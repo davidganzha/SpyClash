@@ -8,7 +8,7 @@ import {
 } from "./checkout-security.ts";
 
 const APP_ORIGIN = "https://spyclash.com";
-const DEFAULT_LIMITLESS_PRICE_ID = "price_1TR5wiRFCq3jt6C66NdM8NY4";
+const DEFAULT_LIMITLESS_PRICE_ID = "price_1TtEoeIIQQptoqiWm68OaO2W";
 const GRANTING_STATUSES = new Set(["active", "trialing", "grace_period"]);
 
 type EntitlementRecord = {

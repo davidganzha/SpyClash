@@ -21,7 +21,7 @@ import {
   StripeEntitlementPersistenceError,
 } from "./stripe-entitlement-persistence.ts";
 
-const DEFAULT_LIMITLESS_PRICE_ID = "price_1TR5wiRFCq3jt6C66NdM8NY4";
+const DEFAULT_LIMITLESS_PRICE_ID = "price_1TtEoeIIQQptoqiWm68OaO2W";
 const MAX_ENTITLEMENTS_PER_USER = 100;
 
 class EntitlementAccountMismatchError extends Error {

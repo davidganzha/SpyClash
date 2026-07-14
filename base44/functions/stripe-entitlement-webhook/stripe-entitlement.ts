@@ -23,7 +23,7 @@ export type EntitlementRecord = {
 };
 
 export const CURRENT_BASE44_APP_ID = "69a0e57fa939f578082f8091";
-export const DEFAULT_LIMITLESS_PRICE_ID = "price_1TR5wiRFCq3jt6C66NdM8NY4";
+export const DEFAULT_LIMITLESS_PRICE_ID = "price_1TtEoeIIQQptoqiWm68OaO2W";
 
 const BASE44_APP_ID_PATTERN = /^[0-9a-f]{24}$/i;
 
