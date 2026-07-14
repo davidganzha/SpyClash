@@ -32,10 +32,6 @@ dist/
 base44/.types/
 base44/.app.json*
 
-# Production audio is intentionally not redistributed. Run
-# scripts/bootstrap-public-assets.sh after cloning to create local placeholders.
-/SpyClash/Resources/Sounds/*.wav
-
 # Local references, neighboring projects, and archived Xcode generations
 /.web-reference/
 /TacticalGridArena/

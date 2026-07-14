@@ -3355,8 +3355,8 @@ struct LocalGameView: View {
     private func nextQuestion(in session: LocalSession) {
         if session.mode == .associations {
             advanceAssociationSpeaker(playerCount: session.players.count)
-            // The roulette completion owns the audible turn cue. The tap that
-            // starts it stays haptic-only so one gesture cannot sound twice.
+            // The roulette completion owns the turn transition. Keep the tap
+            // haptic-only so one gesture cannot trigger feedback twice.
             HapticManager.shared.fire(.tabSelection)
             return
         }

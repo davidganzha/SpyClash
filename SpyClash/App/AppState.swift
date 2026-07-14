@@ -476,7 +476,6 @@ final class AppState: NSObject {
         startDelay: Duration
     ) async {
         standardAuthTimelineTask?.cancel()
-        AuthCinematicSoundPlayer.shared.stopAll()
 
         let runID = UUID()
         standardAuthRunID = runID
@@ -534,13 +533,6 @@ final class AppState: NSObject {
 
             guard standardAuthRunID == runID, user != nil else { return }
 
-            // The bundled lock sample has ~58 ms of leading silence; the sound
-            // player seeks past it so the audible click lands on this deadline.
-            AuthCinematicSoundPlayer.shared.playFragmentLock(
-                index: piece - 1,
-                totalCount: 4
-            )
-
             if piece < 4 {
                 standardAuthCinematicStage = .placing(piece + 1)
             } else {
@@ -557,7 +549,6 @@ final class AppState: NSObject {
 
         guard standardAuthRunID == runID, user != nil else { return }
         standardAuthCinematicStage = .accessGranted
-        AuthCinematicSoundPlayer.shared.playCompletionSurge()
 
         do {
             try await Task.sleep(for: .milliseconds(900))
@@ -613,7 +604,6 @@ final class AppState: NSObject {
         standardAuthRunID = nil
         standardAuthCinematicStage = nil
         authHomeRevealPhase = .idle
-        AuthCinematicSoundPlayer.shared.stopAll()
     }
 
 #if DEBUG
@@ -635,7 +625,6 @@ final class AppState: NSObject {
         standardAuthTimelineTask?.cancel()
         standardAuthTimelineTask = nil
         standardAuthRunID = nil
-        AuthCinematicSoundPlayer.shared.stopAll()
         HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
         client.clearToken()
         KeychainStore.clearToken()
