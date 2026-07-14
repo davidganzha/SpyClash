@@ -6,4 +6,5 @@
 *.md text eol=lf
 *.png binary
 *.ttf binary
+*.wav binary
 *.storekit text eol=lf

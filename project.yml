@@ -26,7 +26,8 @@ targets:
     sources:
       - path: SpyClash
         excludes:
-          - "Services/HapticManager 2.swift"
+          # File-provider conflict copies must never become a second app type.
+          - "Services/HapticManager [0-9]*.swift"
           - "SWIFTUI_MIGRATION.md"
       - path: LICENSES/Rajdhani-OFL-1.1.txt
         buildPhase: resources
