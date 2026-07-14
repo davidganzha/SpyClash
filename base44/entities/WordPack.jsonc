@@ -1,16 +1,37 @@
 {
   "name": "WordPack",
+  "description": "Server-owned personal word packs. Clients access them only through wordPackAction so ownership and content safety are enforced server-side.",
   "type": "object",
   "properties": {
     "name": { "type": "string", "description": "Pack display name" },
-    "category": { "type": "string", "description": "Category label shown in game" },
+    "category": {
+      "type": "string",
+      "description": "Category label shown in game"
+    },
     "words": {
       "type": "array",
       "description": "Array of word strings",
       "items": { "type": "string" }
     },
-    "owner_email": { "type": "string", "description": "Email of the user who created this pack" },
+    "owner_user_id": {
+      "type": "string",
+      "description": "Stable Base44 user id assigned by wordPackAction. Legacy records may only have owner_email until rewritten.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "owner_email": {
+      "type": "string",
+      "description": "Email of the user who created this pack, assigned by wordPackAction"
+    },
     "is_public": { "type": "boolean", "default": false }
   },
-  "required": ["name", "words", "owner_email"]
+  "required": ["name", "words", "owner_email"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
 }

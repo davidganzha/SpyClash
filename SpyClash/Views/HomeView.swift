@@ -747,13 +747,8 @@ struct HomeView: View {
         defer { isLoading = false }
         do {
             let code = joinCode
-            guard let room = try await appState.client.room(code: code) else {
-                statusText = copy.roomNotFound
-                statusKind = .error
-                HapticManager.shared.fire(.notification(.warning))
-                return
-            }
-            appState.activeRoom = try await appState.client.join(room: room, user: user)
+            let room = try await appState.client.join(code: code, user: user)
+            appState.activeRoom = room
             appState.selectedTab = .game
             statusText = copy.roomReady(room.code)
             statusKind = .success

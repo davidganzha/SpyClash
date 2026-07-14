@@ -14,6 +14,7 @@ struct ProfileView: View {
     @State private var isSavingLanguage = false
     @State private var isDeleting = false
     @State private var showDeleteConfirmation = false
+    @State private var legalSheet: LegalSheetKind?
     @State private var status = ""
     @State private var statusKind: ProfileStatusKind?
 
@@ -30,6 +31,7 @@ struct ProfileView: View {
                 spyCard
                 profileCard
                 statsCard
+                legalCard
             }
             .padding(.horizontal, 18)
             .padding(.top, 20)
@@ -63,6 +65,12 @@ struct ProfileView: View {
             }
         }
         .animation(.smooth(duration: 0.22), value: showDeleteConfirmation)
+        .sheet(item: $legalSheet) { sheet in
+            LegalDocumentSheet(kind: sheet)
+                .presentationDetents([.large])
+                .presentationDragIndicator(.hidden)
+                .presentationCornerRadius(0)
+        }
         .onChange(of: showDeleteConfirmation, initial: true) { _, isPresented in
             appState.isShellChromeSuppressed = isPresented
         }
@@ -463,6 +471,63 @@ struct ProfileView: View {
                 }
             }
         }
+    }
+
+    private var legalCard: some View {
+        SpyPanel(motionDelay: 0.48) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(copy.legal)
+                    .font(SpyTheme.micro)
+                    .tracking(0.12)
+                    .foregroundStyle(SpyTheme.dim)
+                    .spyKicker(lines: 2)
+
+                Text(copy.legalHint)
+                    .font(.system(size: 11, weight: .medium, design: .default))
+                    .foregroundStyle(SpyTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                legalButton(copy.privacy, kind: .privacy, icon: "hand.raised.fill")
+                legalButton(copy.terms, kind: .terms, icon: "doc.text.fill")
+                legalButton(
+                    localized(en: "THIRD-PARTY LICENSES", ru: "СТОРОННИЕ ЛИЦЕНЗИИ", es: "LICENCIAS DE TERCEROS"),
+                    kind: .acknowledgements,
+                    icon: "checkmark.seal.fill"
+                )
+            }
+        }
+    }
+
+    private func legalButton(_ title: String, kind: LegalSheetKind, icon: String) -> some View {
+        Button {
+            HapticManager.shared.fire(.buttonPress)
+            legalSheet = kind
+        } label: {
+            HStack(spacing: 10) {
+                Image(systemName: icon)
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(SpyTheme.red)
+                    .frame(width: 18)
+
+                Text(title)
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .tracking(0.06)
+                    .foregroundStyle(.white)
+                    .spyFitted(scale: 0.62)
+
+                Spacer(minLength: 8)
+
+                Image(systemName: "chevron.right")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(SpyTheme.dim)
+            }
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(SpyTheme.black)
+            .overlay(Rectangle().stroke(SpyTheme.stroke, lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SpyWebPressStyle())
     }
 
     private func avatarCategory(

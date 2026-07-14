@@ -1,5 +1,6 @@
 {
   "name": "GameRoom",
+  "description": "Server-owned live room state. Clients read and mutate rooms only through gameRoomAction.",
   "type": "object",
   "properties": {
     "code": { "type": "string", "description": "6-char join code" },
@@ -11,8 +12,33 @@
     },
     "players": {
       "type": "array",
-      "description": "Array of player objects {email, name, avatar}",
+      "description": "Server-normalized player objects {user_id, email, name, avatar}",
       "items": { "type": "object" }
+    },
+    "participant_user_ids": {
+      "type": "array",
+      "description": "Stable user ids mirrored from players for authenticated lookup and lifecycle coordination",
+      "items": { "type": "string" },
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "match_id": {
+      "type": "string",
+      "description": "Immutable server-issued identity for the current match; replaced only when a new replay starts.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "terminal_intent": {
+      "type": "object",
+      "description": "Immutable CAS-claimed server decision reconciled into history and final room state.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "spectators": { "type": "array", "items": { "type": "string" } },
     "ready_players": { "type": "array", "items": { "type": "string" } },
@@ -55,5 +81,11 @@
       "default": "questions"
     }
   },
-  "required": ["code", "host_email", "status"]
+  "required": ["code", "host_email", "status"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
 }

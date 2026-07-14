@@ -163,15 +163,26 @@ struct WelcomeView: View {
     }
 
     private var footer: some View {
-        HStack(spacing: 22) {
+        HStack(spacing: 12) {
             footerButton(copy.privacy, sheet: .privacy)
             Text("//")
                 .foregroundStyle(Color.white.opacity(0.1))
             footerButton(copy.terms, sheet: .terms)
+            Text("//")
+                .foregroundStyle(Color.white.opacity(0.1))
+            footerButton(acknowledgementsTitle, sheet: .acknowledgements)
         }
         .font(SpyTheme.micro)
         .tracking(0.12)
         .foregroundStyle(SpyTheme.dim)
+    }
+
+    private var acknowledgementsTitle: String {
+        switch appState.language {
+        case .en: "LICENSES"
+        case .es: "LICENCIAS"
+        case .ru: "ЛИЦЕНЗИИ"
+        }
     }
 
     private func footerButton(_ title: String, sheet: LegalSheetKind) -> some View {
@@ -236,6 +247,7 @@ struct WelcomeView: View {
 enum LegalSheetKind: String, Identifiable, Hashable {
     case privacy
     case terms
+    case acknowledgements
 
     var id: String { rawValue }
 
@@ -245,10 +257,18 @@ enum LegalSheetKind: String, Identifiable, Hashable {
         switch self {
         case .privacy: "PRIVACY POLICY"
         case .terms: "TERMS OF SERVICE"
+        case .acknowledgements: "THIRD-PARTY ACKNOWLEDGEMENTS"
         }
     }
 
-    var lastUpdated: String { "Last updated: July 2026" }
+    var lastUpdated: String {
+        switch self {
+        case .privacy, .terms:
+            "Last updated: July 2026"
+        case .acknowledgements:
+            "Open-source software and font license notices"
+        }
+    }
 
     var sections: [LegalSection] {
         switch self {
@@ -256,19 +276,19 @@ enum LegalSheetKind: String, Identifiable, Hashable {
             [
                 LegalSection(
                     title: "1. INFORMATION WE COLLECT",
-                    text: "We collect information you provide directly, including your email address and display name. We store account identifiers, private room and game state, custom word packs, match history, scores, and gameplay statistics. When you use LIMITLESS, we store provider subscription and transaction identifiers, status, and dates; we do not receive your full payment-card details. QR camera frames are processed on device and are not uploaded or retained."
+                    text: "We collect information you provide directly, including your email address, display name, avatar, profile comments, and custom word packs. When you submit a Community report, we store the selected reason, the reporter and reported account identifiers, and a private snapshot of the reported comment when applicable. We store account identifiers, private room and game state, match history, scores, and gameplay statistics. When you use LIMITLESS, we store provider subscription and transaction identifiers, status, and dates; we do not receive your full payment-card details. QR camera frames are processed on device and are not uploaded or retained."
                 ),
                 LegalSection(
                     title: "2. HOW WE USE YOUR INFORMATION",
-                    text: "We use the information we collect to operate and improve the game, provide customer support, send game-related notifications, and display leaderboards and player statistics."
+                    text: "We use the information we collect to operate and improve the game, host and moderate user content, investigate Community reports, enforce the Community Standards, provide customer support, send game-related notifications, and display leaderboards and player statistics."
                 ),
                 LegalSection(
                     title: "3. DATA SHARING",
-                    text: "We do not sell your personal information. We use service providers to operate SpyClash, including Base44 for application infrastructure, Apple for iOS purchases and sign-in, Stripe for web purchases, and Google for web sign-in and website analytics. Providers process data under their own terms and only as needed for the relevant service. Your display name and competitive statistics may be visible to other SpyClash players."
+                    text: "We do not sell your personal information. We use service providers to operate SpyClash, including Base44 for application infrastructure, Apple for iOS purchases and sign-in, Stripe for web purchases, and Google for web sign-in and website analytics. Providers process data under their own terms and only as needed for the relevant service. Your display name, avatar, profile comments, competitive statistics, and content you choose to share may be visible to other SpyClash players. A custom word pack may be shown to participants when you select it for a game. Community reports and their snapshots are not public and are available only to authorized administrators and necessary infrastructure providers."
                 ),
                 LegalSection(
                     title: "4. DATA STORAGE",
-                    text: "Account data is retained while your account is active. You can delete the account in the iOS app under Profile > Danger Zone. Profile data, custom word packs, friendships, active room references, and match-history records are removed. Limited subscription and transaction records may be retained where needed for accounting, fraud prevention, dispute handling, and legal obligations. Account deletion does not cancel billing with Apple or Stripe."
+                    text: "Account data is retained while your account is active. You can delete the account in the iOS app under Profile > Danger Zone. Profile data, custom word packs, friendships, profile comments, room invitations, active room references, and match-history records are removed. For a Community report involving the deleted account, raw account identifiers are replaced with stable deletion tombstones. The private report and its content snapshot may be retained only as reasonably necessary for safety investigation, enforcement, and legal records; access remains limited to authorized administrators and necessary infrastructure providers. Limited subscription and transaction records may be retained where needed for accounting, fraud prevention, dispute handling, and legal obligations. Account deletion does not cancel billing with Apple or Stripe."
                 ),
                 LegalSection(
                     title: "5. WEBSITE ANALYTICS AND LOCAL STORAGE",
@@ -310,37 +330,78 @@ enum LegalSheetKind: String, Identifiable, Hashable {
                     text: "You agree not to use the game to transmit any content that is unlawful, harmful, threatening, abusive, harassing, defamatory, or otherwise objectionable. We reserve the right to remove any content that violates these terms."
                 ),
                 LegalSection(
-                    title: "6. INTELLECTUAL PROPERTY",
-                    text: "All content, features, and functionality of SpyClash are owned by us and are protected by international copyright, trademark, and other intellectual property laws."
+                    title: "6. USER CONTENT AND LICENSE",
+                    text: "You retain ownership of content you create or submit, including display names, avatars, comments, and custom word packs. You represent and warrant that you own that content or have every right needed to submit it and that it does not infringe any third party's rights. By submitting user content, you grant SpyClash a worldwide, non-exclusive, royalty-free, sublicensable, and transferable license to host, store, reproduce, format, adapt for technical requirements, publicly display, communicate, distribute, moderate, and otherwise use that content as necessary to operate, provide, secure, improve, and promote the service. This license lasts only as long as reasonably necessary for those purposes, subject to content already shared with other users, backups, legal retention, and enforcement records. You may delete content where controls are provided, and we may remove content that violates these Terms."
                 ),
                 LegalSection(
-                    title: "7. DISCLAIMER OF WARRANTIES",
+                    title: "7. COMMUNITY STANDARDS AND SAFETY",
+                    text: "Do not post harassment, bullying, hate speech, threats, encouragement of self-harm, sexual or exploitative content, illegal content, spam, impersonation, private information, or other abusive material. Automated server filters may reject objectionable submissions, but no filter is perfect. Use Report on a profile or comment to send a private report for moderation review. Use Block to stop both accounts from discovering or opening each other's profiles, commenting, or sending room invitations; existing comments and invitations between the accounts are removed. We may remove content, restrict features, suspend, or terminate accounts after review. Knowingly false or abusive reports also violate these Standards. For a review or appeal request, visit https://spyclash.com/support."
+                ),
+                LegalSection(
+                    title: "8. INTELLECTUAL PROPERTY",
+                    text: "Except for user content, the SpyClash software, brand, original artwork, features, and functionality are owned by us or used under license and are protected by international copyright, trademark, and other intellectual property laws."
+                ),
+                LegalSection(
+                    title: "9. DISCLAIMER OF WARRANTIES",
                     text: "SpyClash is provided 'as is' without any warranties of any kind, either express or implied. We do not warrant that the service will be uninterrupted, error-free, or free of viruses or other harmful components."
                 ),
                 LegalSection(
-                    title: "8. LIMITATION OF LIABILITY",
+                    title: "10. LIMITATION OF LIABILITY",
                     text: "To the maximum extent permitted by law, we shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising out of or related to your use of the service."
                 ),
                 LegalSection(
-                    title: "9. SUBSCRIPTIONS",
+                    title: "11. SUBSCRIPTIONS",
                     text: "LIMITLESS is an optional auto-renewable subscription. Purchases made in the iOS app are billed and managed by Apple; web purchases are billed and managed by Stripe. The provider's price, renewal, cancellation, and refund terms apply. Deleting a SpyClash account does not automatically cancel a subscription with Apple or Stripe."
                 ),
                 LegalSection(
-                    title: "10. CHANGES TO TERMS",
+                    title: "12. CHANGES TO TERMS",
                     text: "We reserve the right to modify these Terms of Service at any time. We will notify users of significant changes by posting an updated version on this page. Continued use of the service after changes constitutes acceptance of the new terms."
                 ),
                 LegalSection(
-                    title: "11. CONTACT",
+                    title: "13. CONTACT",
                     text: "For support or questions about these Terms, visit https://spyclash.com/support."
                 )
             ]
+        case .acknowledgements:
+            [
+                LegalSection(
+                    title: "RAJDHANI BOLD · SIL OPEN FONT LICENSE 1.1",
+                    text: Self.bundledLicense(named: "Rajdhani-OFL-1.1"),
+                    usesMonospacedBody: true
+                ),
+                LegalSection(
+                    title: "SOCKET.IO CLIENT SWIFT 16.1.1 · MIT LICENSE",
+                    text: Self.bundledLicense(named: "SocketIO-MIT"),
+                    usesMonospacedBody: true
+                ),
+                LegalSection(
+                    title: "STARSCREAM 4.0.8 · APACHE LICENSE 2.0",
+                    text: Self.bundledLicense(named: "Starscream-Apache-2.0"),
+                    usesMonospacedBody: true
+                )
+            ]
         }
+    }
+
+    private static func bundledLicense(named name: String) -> String {
+        guard let url = Bundle.main.url(forResource: name, withExtension: "txt"),
+              let text = try? String(contentsOf: url, encoding: .utf8) else {
+            return "The bundled license text could not be loaded. Please contact https://spyclash.com/support."
+        }
+        return text
     }
 }
 
 struct LegalSection: Identifiable {
     let title: String
     let text: String
+    let usesMonospacedBody: Bool
+
+    init(title: String, text: String, usesMonospacedBody: Bool = false) {
+        self.title = title
+        self.text = text
+        self.usesMonospacedBody = usesMonospacedBody
+    }
 
     var id: String { title }
 }
@@ -476,11 +537,16 @@ struct LegalSectionRow: View {
                 .fixedSize(horizontal: false, vertical: true)
 
             Text(section.text)
-                .font(.system(size: 13, weight: .medium, design: .default))
+                .font(.system(
+                    size: 13,
+                    weight: .medium,
+                    design: section.usesMonospacedBody ? .monospaced : .default
+                ))
                 .tracking(0.02)
                 .lineSpacing(9)
                 .foregroundStyle(SpyTheme.muted.opacity(0.98))
                 .fixedSize(horizontal: false, vertical: true)
+                .textSelection(.enabled)
         }
         .frame(maxWidth: .infinity, alignment: .leading)
     }

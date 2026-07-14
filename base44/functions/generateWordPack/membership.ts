@@ -62,9 +62,9 @@ export function resolveGenerationMembership(
   entitlements: EntitlementRecord[],
   now = new Date(),
 ) {
-  const activeEntitlements = canonicalEntitlements(entitlements).filter((item) =>
-    isActiveEntitlement(item, now)
-  );
+  const activeEntitlements = canonicalEntitlements(entitlements).filter((
+    item,
+  ) => isActiveEntitlement(item, now));
   const active = activeEntitlements.length > 0;
   const providers = Array.from(
     new Set(
@@ -134,11 +134,13 @@ export function canonicalEntitlements(
 }
 
 function recordFreshness(item: EntitlementRecord): number {
-  for (const value of [
-    item.provider_event_at,
-    item.last_verified_at,
-    item.created_date,
-  ]) {
+  for (
+    const value of [
+      item.provider_event_at,
+      item.last_verified_at,
+      item.created_date,
+    ]
+  ) {
     const timestamp = Date.parse(value || "");
     if (Number.isFinite(timestamp)) return timestamp;
   }

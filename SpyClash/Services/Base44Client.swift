@@ -169,13 +169,12 @@ final class Base44Client {
         }
     }
 
-    func advanceRound(roomID: String) async throws {
-        let _: EmptyResponse = try await invokeFunction("advanceRound", body: ["roomId": roomID])
-    }
-
     func refreshRoom(id: String) async throws -> GameRoom? {
-        let rooms: [GameRoom] = try await filterEntity("GameRoom", query: ["id": id])
-        return rooms.first
+        do {
+            return try await roomAction("get_room", roomID: id)
+        } catch let error as Base44Error where error.statusCode == 404 {
+            return nil
+        }
     }
 
     func createRoom(for user: SpyUser) async throws -> GameRoom {
@@ -183,21 +182,18 @@ final class Base44Client {
         return try await roomAction("create_room", player: player)
     }
 
-    func room(code: String) async throws -> GameRoom? {
-        let rooms: [GameRoom] = try await filterEntity("GameRoom", query: ["code": code.uppercased()])
-        return rooms.first
-    }
-
-    func activeRooms() async throws -> [GameRoom] {
-        let rooms: [GameRoom] = try await listEntity("GameRoom")
-        return rooms.filter { room in
-            ["waiting", "ready_voting", "roulette", "playing"].contains(room.normalizedStatus)
-        }
-    }
-
     func join(room: GameRoom, user: SpyUser) async throws -> GameRoom {
         let player = Player(email: user.email, name: user.callSign, avatar: user.avatar ?? "🕵️")
         return try await roomAction("join_room", roomID: room.id, player: player)
+    }
+
+    func join(code: String, user: SpyUser) async throws -> GameRoom {
+        let player = Player(email: user.email, name: user.callSign, avatar: user.avatar ?? "🕵️")
+        return try await roomAction(
+            "join_room",
+            roomCode: code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
+            player: player
+        )
     }
 
     func beginReadyCheck(room: GameRoom) async throws -> GameRoom {
@@ -348,8 +344,8 @@ final class Base44Client {
         return try await roomAction("submit_spy_guess", roomID: room.id, guess: normalizedGuess)
     }
 
-    func finishRoom(room: GameRoom, winner: String) async throws -> GameRoom {
-        try await roomAction("finish_room", roomID: room.id, winner: winner)
+    func finalizeExpiredRoom(room: GameRoom) async throws -> GameRoom {
+        try await roomAction("finalize_expired_room", roomID: room.id)
     }
 
     func leaveRoom(room: GameRoom, user: SpyUser) async throws {
@@ -364,42 +360,34 @@ final class Base44Client {
         )
     }
 
-    func wordPacks(ownerEmail: String) async throws -> [WordPack] {
-        let packs: [WordPack] = try await filterEntity("WordPack", query: ["owner_email": ownerEmail])
+    func wordPacks(ownerEmail _: String) async throws -> [WordPack] {
+        let packs: [WordPack] = try await wordPackAction("list")
         return packs.sorted { lhs, rhs in
             lhs.name.localizedCaseInsensitiveCompare(rhs.name) == .orderedAscending
         }
     }
 
-    func createWordPack(name: String, category: String, words: [String], ownerEmail: String) async throws -> WordPack {
-        try await createEntity(
-            "WordPack",
-            body: WordPackPayload(
-                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                category: category.nilIfBlank ?? name.trimmingCharacters(in: .whitespacesAndNewlines),
-                words: words,
-                ownerEmail: ownerEmail,
-                isPublic: false
-            )
+    func createWordPack(name: String, category: String, words: [String], ownerEmail _: String) async throws -> WordPack {
+        try await wordPackAction(
+            "create",
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            category: category.nilIfBlank ?? name.trimmingCharacters(in: .whitespacesAndNewlines),
+            words: words
         )
     }
 
     func updateWordPack(pack: WordPack, name: String, category: String, words: [String]) async throws -> WordPack {
-        try await updateEntity(
-            "WordPack",
-            id: pack.id,
-            body: WordPackPayload(
-                name: name.trimmingCharacters(in: .whitespacesAndNewlines),
-                category: category.nilIfBlank ?? name.trimmingCharacters(in: .whitespacesAndNewlines),
-                words: words,
-                ownerEmail: pack.ownerEmail,
-                isPublic: pack.isPublic ?? false
-            )
+        try await wordPackAction(
+            "update",
+            packID: pack.id,
+            name: name.trimmingCharacters(in: .whitespacesAndNewlines),
+            category: category.nilIfBlank ?? name.trimmingCharacters(in: .whitespacesAndNewlines),
+            words: words
         )
     }
 
     func deleteWordPack(id: String) async throws {
-        try await deleteEntity("WordPack", id: id)
+        let _: EmptyResponse = try await wordPackAction("delete", packID: id)
     }
 
     func generateWordPack(
@@ -448,28 +436,17 @@ final class Base44Client {
         return requestedLimit.map { Array(history.prefix($0)) } ?? history
     }
 
-    func allGameHistory() async throws -> [GameHistory] {
-        let pageSize = 100
-        var history: [GameHistory] = []
-        var seenIDs = Set<String>()
-        var skip = 0
-
-        while true {
-            let page: [GameHistory] = try await filterEntity(
-                "GameHistory",
-                query: [:],
-                sort: "-created_date",
-                limit: pageSize,
-                skip: skip
-            )
-            let unseen = page.filter { seenIDs.insert($0.id).inserted }
-            history.append(contentsOf: unseen.filter(\.isOnlineCompetitiveMatch))
-
-            guard page.count == pageSize, !unseen.isEmpty else { break }
-            skip += page.count
+    func leaderboard() async throws -> [LeaderboardEntry] {
+        guard let token, !token.isEmpty else {
+            throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
-
-        return history
+        let response: LeaderboardResponse = try await request(
+            "/apps/\(Self.appID)/functions/gameRoomAction",
+            method: "POST",
+            body: GameRoomActionPayload(action: "get_leaderboard", accessToken: token),
+            includeAuthorization: false
+        )
+        return response.entries
     }
 
     func updateProfile(
@@ -539,6 +516,42 @@ final class Base44Client {
 
     func communityRelationshipAction(_ action: String, friendshipID: String) async throws -> CommunityState {
         try await communityAction(action, fields: ["friendship_id": friendshipID])
+    }
+
+    func blockCommunityUser(userID: String) async throws -> CommunityState {
+        try await communityAction("block", fields: ["target_user_id": userID])
+    }
+
+    func unblockCommunityUser(friendshipID: String) async throws -> CommunityState {
+        try await communityAction("unblock", fields: ["friendship_id": friendshipID])
+    }
+
+    func reportCommunityUser(
+        userID: String,
+        reason: CommunityReportReason
+    ) async throws -> CommunityActionAcknowledgement {
+        try await communityAction(
+            "report",
+            fields: [
+                "target_user_id": userID,
+                "report_type": "user",
+                "reason": reason.rawValue
+            ]
+        )
+    }
+
+    func reportCommunityComment(
+        commentID: String,
+        reason: CommunityReportReason
+    ) async throws -> CommunityActionAcknowledgement {
+        try await communityAction(
+            "report",
+            fields: [
+                "comment_id": commentID,
+                "report_type": "comment",
+                "reason": reason.rawValue
+            ]
+        )
     }
 
     func addCommunityComment(userID: String, comment: String) async throws -> CommunityProfileDetail {
@@ -811,6 +824,32 @@ final class Base44Client {
                 targetEmail: targetEmail,
                 guess: guess,
                 winner: winner
+            ),
+            includeAuthorization: false
+        )
+    }
+
+    private func wordPackAction<T: Decodable>(
+        _ action: String,
+        packID: String? = nil,
+        name: String? = nil,
+        category: String? = nil,
+        words: [String]? = nil
+    ) async throws -> T {
+        guard let token, !token.isEmpty else {
+            throw Base44Error(message: "Authentication required.", statusCode: 401)
+        }
+
+        return try await request(
+            "/apps/\(Self.appID)/functions/wordPackAction",
+            method: "POST",
+            body: WordPackActionPayload(
+                action: action,
+                accessToken: token,
+                packID: packID,
+                name: name,
+                category: category,
+                words: words
             ),
             includeAuthorization: false
         )
@@ -1193,6 +1232,10 @@ private struct GameRoomActionPayload: Encodable {
     }
 }
 
+private struct LeaderboardResponse: Decodable {
+    let entries: [LeaderboardEntry]
+}
+
 private struct ReadyCheckPayload: Encodable {
     let status: String
     let readyPlayers: [String]
@@ -1428,19 +1471,21 @@ private struct LeaveRoomPayload: Encodable {
     }
 }
 
-private struct WordPackPayload: Encodable {
-    let name: String
-    let category: String
-    let words: [String]
-    let ownerEmail: String?
-    let isPublic: Bool
+private struct WordPackActionPayload: Encodable {
+    let action: String
+    let accessToken: String
+    let packID: String?
+    let name: String?
+    let category: String?
+    let words: [String]?
 
     enum CodingKeys: String, CodingKey {
+        case action
+        case accessToken = "access_token"
+        case packID = "pack_id"
         case name
         case category
         case words
-        case ownerEmail = "owner_email"
-        case isPublic = "is_public"
     }
 }
 

@@ -11,10 +11,24 @@ function assert(condition: boolean, message: string) {
 
 Deno.test("Apple status grants access only for active and grace period", () => {
   const transaction = { expiresDate: Date.parse("2026-07-20T00:00:00Z") };
-  assert(entitlementStatusFromApple({ appleStatus: 1, transaction }) === "active", "active mapping failed");
-  assert(entitlementStatusFromApple({ appleStatus: 4, transaction }) === "grace_period", "grace mapping failed");
-  assert(entitlementStatusFromApple({ appleStatus: 3, transaction }) === "billing_retry", "billing retry mapping failed");
-  assert(entitlementStatusFromApple({ appleStatus: 5, transaction }) === "revoked", "revoked mapping failed");
+  assert(
+    entitlementStatusFromApple({ appleStatus: 1, transaction }) === "active",
+    "active mapping failed",
+  );
+  assert(
+    entitlementStatusFromApple({ appleStatus: 4, transaction }) ===
+      "grace_period",
+    "grace mapping failed",
+  );
+  assert(
+    entitlementStatusFromApple({ appleStatus: 3, transaction }) ===
+      "billing_retry",
+    "billing retry mapping failed",
+  );
+  assert(
+    entitlementStatusFromApple({ appleStatus: 5, transaction }) === "revoked",
+    "revoked mapping failed",
+  );
 });
 
 Deno.test("refund reversal requires canonical App Store status reconciliation", () => {
@@ -77,9 +91,18 @@ Deno.test("Apple entitlement uses grace-period expiry and stable original transa
   });
 
   assert(entitlement.source_key === "apple:original-1", "source key drifted");
-  assert(entitlement.status === "grace_period", "grace access was not retained");
-  assert(entitlement.expires_at === "2026-07-18T00:00:00.000Z", "grace expiry was ignored");
-  assert(entitlement.app_account_token === "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee", "token was not canonicalized");
+  assert(
+    entitlement.status === "grace_period",
+    "grace access was not retained",
+  );
+  assert(
+    entitlement.expires_at === "2026-07-18T00:00:00.000Z",
+    "grace expiry was ignored",
+  );
+  assert(
+    entitlement.app_account_token === "aaaaaaaa-bbbb-4ccc-8ddd-eeeeeeeeeeee",
+    "token was not canonicalized",
+  );
 });
 
 Deno.test("older or duplicate provider events cannot overwrite newer state", () => {
@@ -87,12 +110,18 @@ Deno.test("older or duplicate provider events cannot overwrite newer state", () 
     provider_event_at: "2026-07-14T10:00:00Z",
     provider_event_id: "notification-new",
   };
-  assert(!shouldApplyProviderEvent(current, {
-    provider_event_at: "2026-07-14T09:59:59Z",
-    provider_event_id: "notification-old",
-  }), "older event was accepted");
-  assert(!shouldApplyProviderEvent(current, {
-    provider_event_at: "2026-07-14T10:00:01Z",
-    provider_event_id: "notification-new",
-  }), "duplicate notification was accepted");
+  assert(
+    !shouldApplyProviderEvent(current, {
+      provider_event_at: "2026-07-14T09:59:59Z",
+      provider_event_id: "notification-old",
+    }),
+    "older event was accepted",
+  );
+  assert(
+    !shouldApplyProviderEvent(current, {
+      provider_event_at: "2026-07-14T10:00:01Z",
+      provider_event_id: "notification-new",
+    }),
+    "duplicate notification was accepted",
+  );
 });

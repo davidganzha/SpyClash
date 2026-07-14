@@ -145,18 +145,24 @@ export function normalizeAppleEntitlement(
   const appAccountToken = String(
     transaction.appAccountToken || renewal?.appAccountToken || "",
   ).toLowerCase();
-  const rawEnvironment = String(transaction.environment || renewal?.environment || "");
+  const rawEnvironment = String(
+    transaction.environment || renewal?.environment || "",
+  );
   const environment = rawEnvironment === "Production"
     ? "production"
     : rawEnvironment === "Sandbox"
     ? "sandbox"
     : null;
 
-  if (!originalTransactionID) throw new Error("Apple original transaction ID is missing.");
+  if (!originalTransactionID) {
+    throw new Error("Apple original transaction ID is missing.");
+  }
   if (!transactionID) throw new Error("Apple transaction ID is missing.");
   if (!productID) throw new Error("Apple product ID is missing.");
   if (!appAccountToken) throw new Error("Apple appAccountToken is missing.");
-  if (!environment) throw new Error("Unsupported Apple transaction environment.");
+  if (!environment) {
+    throw new Error("Unsupported Apple transaction environment.");
+  }
 
   const expiresMilliseconds = Math.max(
     Number(transaction.expiresDate) || 0,

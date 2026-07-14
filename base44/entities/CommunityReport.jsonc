@@ -1,0 +1,54 @@
+{
+  "name": "CommunityReport",
+  "description": "Admin-only moderation evidence submitted through communityAction. Clients cannot read or mutate reports directly. Account deletion replaces raw account ids with stable deletion tombstones while retaining the private report and snapshot for safety, enforcement, and legal review.",
+  "type": "object",
+  "properties": {
+    "reporter_user_id": { "type": "string" },
+    "reported_user_id": { "type": "string" },
+    "report_type": {
+      "type": "string",
+      "enum": ["user", "comment"]
+    },
+    "comment_id": { "type": "string" },
+    "reason": {
+      "type": "string",
+      "enum": [
+        "harassment",
+        "hate_speech",
+        "sexual_content",
+        "violence_or_threats",
+        "spam",
+        "impersonation",
+        "other"
+      ]
+    },
+    "details": { "type": "string", "maxLength": 500 },
+    "content_snapshot": {
+      "type": "string",
+      "maxLength": 500,
+      "description": "Private moderation snapshot of the reported content at submission time."
+    },
+    "status": {
+      "type": "string",
+      "enum": ["open", "reviewing", "actioned", "dismissed"],
+      "default": "open"
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "reporter_user_id",
+    "reported_user_id",
+    "report_type",
+    "reason",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

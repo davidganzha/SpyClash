@@ -101,6 +101,7 @@ final class AppState: NSObject {
     private(set) var membershipSyncState: MembershipSyncState = .unknown
     private(set) var limitlessUnlockPresentationID: UUID?
     var selectedTab: AppTab = .home
+    var shellRoute: AppShellRoute = .main
     var localSetupRequestID = 0
     var activeRoom: GameRoom? {
         didSet {
@@ -650,6 +651,7 @@ final class AppState: NSObject {
         standardAuthCinematicStage = nil
         authHomeRevealPhase = .idle
         selectedTab = .home
+        shellRoute = .main
         activeRoom = nil
         presentedSheet = nil
         pendingJoinCode = nil
@@ -835,6 +837,15 @@ final class AppState: NSObject {
         self.membership = membership.updatingAIUsage(used: used, remaining: remaining)
     }
 
+    func openCommunity() {
+        presentedSheet = nil
+        shellRoute = .community
+    }
+
+    func closeCommunity() {
+        shellRoute = .main
+    }
+
     @discardableResult
     func joinRoom(code rawCode: String) async -> Bool {
         guard let user else {
@@ -850,13 +861,9 @@ final class AppState: NSObject {
         }
 
         do {
-            guard let room = try await client.room(code: code) else {
-                deepLinkStatus = "\(language.home.roomNotFound): \(code)"
-                HapticManager.shared.fire(.notification(.warning))
-                return false
-            }
-            activeRoom = try await client.join(room: room, user: user)
+            activeRoom = try await client.join(code: code, user: user)
             selectedTab = .game
+            shellRoute = .main
             presentedSheet = nil
             pendingJoinCode = nil
             deepLinkStatus = language.home.roomReady(code)
@@ -996,6 +1003,7 @@ final class AppState: NSObject {
         isJoiningDeepLink = false
         isBusy = false
         isRestoring = false
+        shellRoute = .main
 
         switch previewArgumentValue(prefix: "--spyclash-preview-sheet=", in: arguments) {
         case "pricing":
@@ -1009,7 +1017,8 @@ final class AppState: NSObject {
         case "scanner", "qrScanner", "qr-scanner":
             presentedSheet = .qrScanner
         case "community":
-            presentedSheet = .community
+            presentedSheet = nil
+            shellRoute = .community
         default:
             presentedSheet = nil
         }
@@ -1090,11 +1099,15 @@ enum RoomQRTarget: String, Hashable {
     }
 }
 
+enum AppShellRoute: String, Hashable {
+    case main
+    case community
+}
+
 enum AppSheet: Identifiable, Hashable {
     case qrScanner
     case roomQR(GameRoom)
     case pricing
-    case community
     case legal(LegalSheetKind)
 
     var id: String {
@@ -1105,8 +1118,6 @@ enum AppSheet: Identifiable, Hashable {
             "roomQR-\(room.id)"
         case .pricing:
             "pricing"
-        case .community:
-            "community"
         case .legal(let kind):
             "legal-\(kind.id)"
         }

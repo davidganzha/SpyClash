@@ -1,6 +1,6 @@
 # SpyClash
 
-SpyClash is a social-deduction game for iPhone with local and online play, custom word packs, room sharing, StoreKit membership, and a Base44-backed online service.
+SpyClash is a social-deduction game for iPhone with local and online play, custom word packs, room sharing, StoreKit membership, and an integrated online service.
 
 ## Source-available, not open source
 
@@ -25,7 +25,7 @@ Submitting a pull request does not grant permission to use the rest of SpyClash 
 
 - `SpyClash/` — SwiftUI iOS application.
 - `SpyClash.xcodeproj/` — primary Xcode project.
-- `base44/` — backend entities, authentication configuration, and server functions.
+- Backend entities, authentication configuration, and server functions are included for contribution review.
 - `StoreKit/` — local StoreKit test configuration.
 - `scripts/` — contributor bootstrap utilities.
 
@@ -45,7 +45,7 @@ After cloning:
 open SpyClash.xcodeproj
 ```
 
-Select your own Apple development team for device builds. Never commit signing certificates, provisioning profiles, private keys, `.env` files, or Base44/Apple/Stripe secrets.
+Select your own Apple development team for device builds. Never commit signing certificates, provisioning profiles, private keys, `.env` files, or backend, Apple, or Stripe secrets.
 
 ## Assets and third-party material
 

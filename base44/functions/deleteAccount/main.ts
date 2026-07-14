@@ -4,10 +4,23 @@ import {
   acquireAppleAccountDeletionLeases,
   type AppleAccountDeletionLease,
   AppleAccountDeletionLeaseError,
-  commitAppleAccountDeletionLeases,
   leasedCanonicalAppleAccountIDs,
-  releaseAppleAccountDeletionLeases,
+  precommitAppleAccountDeletionLeases,
+  releasePrecommittedAppleAccountLeasesBestEffort,
+  renewAppleAccountDeletionLeases,
+  rollbackAppleAccountDeletionLeases,
 } from "./apple-account-deletion-lease.ts";
+import { deleteUserRecord, UserDeletionFailure } from "./user-deletion.ts";
+import { deleteAccountRelationshipRecords } from "./relationship-cleanup.ts";
+import { deletionFailureDisposition } from "./deletion-state-machine.ts";
+import {
+  acquireBillingDeletionMarker,
+  assertBillingDeletionMarker,
+  type BillingIdentityLease,
+  BillingIdentityLifecycleError,
+  releaseBillingDeletionMarker,
+  renewBillingDeletionMarker,
+} from "./billing-identity-lifecycle.ts";
 
 type Entity = Record<string, any>;
 type BillingRedactionSnapshot = {
@@ -125,10 +138,34 @@ async function restoreBillingIdentity(
 
   for (const entitlement of snapshot.entitlements) {
     try {
-      const patch: Entity = { user_id: user.id };
-      const email = clean(entitlement.user_email) || clean(user.email);
-      if (email) patch.user_email = email;
-      await entitlementStore.update(entitlement.id, patch);
+      let restored = false;
+      for (const expectedOwner of [retentionPatch.user_id, user.id]) {
+        const result = await entitlementStore.updateMany(
+          { id: entitlement.id, user_id: expectedOwner },
+          {
+            $set: {
+              user_id: user.id,
+              user_email: clean(user.email),
+              write_revision: crypto.randomUUID(),
+            },
+          },
+        );
+        if (Number(result?.updated) === 1) {
+          restored = true;
+          break;
+        }
+      }
+      if (!restored) {
+        const alreadyRestored = await recordsMatching(entitlementStore, {
+          id: entitlement.id,
+          user_id: user.id,
+        });
+        restored = alreadyRestored.length === 1 &&
+          clean(alreadyRestored[0].user_email) === clean(user.email);
+      }
+      if (!restored) {
+        throw new Error("Entitlement ownership changed concurrently");
+      }
     } catch (error) {
       failures.push(`entitlement:${entitlement.id}:${errorMessage(error)}`);
     }
@@ -139,18 +176,30 @@ async function restoreBillingIdentity(
     // records.
     if (leasedCanonicalIDs.has(clean(account.id))) continue;
     try {
-      const restored = await accountStore.updateMany(
-        { id: account.id, user_id: retentionPatch.user_id },
-        { $set: { user_id: user.id } },
-      );
-      if (Number(restored?.updated) === 1) continue;
-
-      // A redaction failure may occur before this particular row was changed.
-      const alreadyOwned = await recordsMatching(accountStore, {
-        id: account.id,
-        user_id: user.id,
-      });
-      if (alreadyOwned.length !== 1) {
+      let restored = false;
+      for (const expectedOwner of [retentionPatch.user_id, user.id]) {
+        const result = await accountStore.updateMany(
+          { id: account.id, user_id: expectedOwner },
+          {
+            $set: {
+              user_id: user.id,
+              reservation_state: "active",
+            },
+          },
+        );
+        if (Number(result?.updated) === 1) {
+          restored = true;
+          break;
+        }
+      }
+      if (!restored) {
+        const alreadyRestored = await recordsMatching(accountStore, {
+          id: account.id,
+          user_id: user.id,
+        });
+        restored = alreadyRestored.length === 1;
+      }
+      if (!restored) {
         throw new Error("App Store account ownership changed concurrently");
       }
     } catch (error) {
@@ -165,12 +214,46 @@ async function restoreBillingIdentity(
 async function snapshotBillingIdentity(
   base44: any,
   user: Entity,
+  tombstoneUserID: string,
 ): Promise<BillingRedactionSnapshot> {
   const entitlementStore = base44.asServiceRole.entities.Entitlement;
   const accountStore = base44.asServiceRole.entities.AppStoreAccount;
+  const merge = (records: Entity[]) => {
+    const unique = new Map<string, Entity>();
+    for (const record of records) {
+      unique.set(clean(record.id), record);
+    }
+    return [...unique.values()];
+  };
   return {
-    entitlements: await recordsMatching(entitlementStore, { user_id: user.id }),
-    appStoreAccounts: await recordsMatching(accountStore, { user_id: user.id }),
+    entitlements: merge([
+      ...await recordsMatching(entitlementStore, { user_id: user.id }),
+      ...await recordsMatching(entitlementStore, {
+        user_id: tombstoneUserID,
+      }),
+    ]),
+    appStoreAccounts: merge([
+      ...await recordsMatching(accountStore, { user_id: user.id }),
+      ...await recordsMatching(accountStore, { user_id: tombstoneUserID }),
+    ]),
+  };
+}
+
+function mergeBillingSnapshots(
+  current: BillingRedactionSnapshot,
+  next: BillingRedactionSnapshot,
+): BillingRedactionSnapshot {
+  const merge = (records: Entity[]) => {
+    const unique = new Map<string, Entity>();
+    for (const record of records) unique.set(clean(record.id), record);
+    return [...unique.values()];
+  };
+  return {
+    entitlements: merge([...current.entitlements, ...next.entitlements]),
+    appStoreAccounts: merge([
+      ...current.appStoreAccounts,
+      ...next.appStoreAccounts,
+    ]),
   };
 }
 
@@ -196,7 +279,25 @@ async function redactBillingIdentity(
   }
 
   for (const entitlement of snapshot.entitlements) {
-    await entitlementStore.update(entitlement.id, retentionPatch);
+    const redacted = await entitlementStore.updateMany(
+      { id: entitlement.id, user_id: user.id },
+      {
+        $set: {
+          ...retentionPatch,
+          write_revision: crypto.randomUUID(),
+        },
+      },
+    );
+    if (Number(redacted?.updated) === 1) continue;
+    const alreadyRedacted = await recordsMatching(entitlementStore, {
+      id: entitlement.id,
+      user_id: retentionPatch.user_id,
+    });
+    if (alreadyRedacted.length !== 1) {
+      throw new Error(
+        `Entitlement ${clean(entitlement.id)} changed during redaction`,
+      );
+    }
   }
   for (const account of snapshot.appStoreAccounts) {
     if (leasedCanonicalIDs.has(clean(account.id))) continue;
@@ -204,7 +305,12 @@ async function redactBillingIdentity(
       { id: account.id, user_id: user.id },
       { $set: { user_id: retentionPatch.user_id } },
     );
-    if (Number(redacted?.updated) !== 1) {
+    if (Number(redacted?.updated) === 1) continue;
+    const alreadyRedacted = await recordsMatching(accountStore, {
+      id: account.id,
+      user_id: retentionPatch.user_id,
+    });
+    if (alreadyRedacted.length !== 1) {
       throw new Error(
         `App Store account ${clean(account.id)} changed during redaction`,
       );
@@ -218,7 +324,13 @@ async function rollbackBillingIdentityAndAppleLeases(
   snapshot: BillingRedactionSnapshot | undefined,
   retentionPatch: { user_id: string; user_email: string },
   appleLeases: readonly AppleAccountDeletionLease[],
+  billingDeletionMarker: BillingIdentityLease,
 ): Promise<void> {
+  const lifecycleStore = base44.asServiceRole.entities.BillingIdentityLifecycle;
+  // Never restore raw billing identity after another deletion invocation has
+  // taken over this marker. A failed assertion intentionally leaves the
+  // retained rows tombstoned for a later retry.
+  await renewBillingDeletionMarker(lifecycleStore, billingDeletionMarker);
   const failures: string[] = [];
   if (snapshot) {
     try {
@@ -234,9 +346,11 @@ async function rollbackBillingIdentityAndAppleLeases(
     }
   }
   try {
-    await releaseAppleAccountDeletionLeases(
+    await rollbackAppleAccountDeletionLeases(
       base44.asServiceRole.entities.AppStoreAccount,
       appleLeases,
+      user.id,
+      retentionPatch.user_id,
     );
   } catch (error) {
     failures.push(errorMessage(error));
@@ -244,15 +358,42 @@ async function rollbackBillingIdentityAndAppleLeases(
   if (failures.length) {
     throw new Error(`Account deletion rollback failed: ${failures.join("; ")}`);
   }
+  await releaseBillingDeletionMarker(lifecycleStore, billingDeletionMarker);
 }
 
 function appleLeaseErrorStatus(error: unknown): number {
+  if (error instanceof BillingIdentityLifecycleError) {
+    return error.code === "incomplete_state" ? 500 : 503;
+  }
   if (!(error instanceof AppleAccountDeletionLeaseError)) return 500;
   if (error.code === "mixed_owners") return 409;
-  if (error.code === "active_lease" || error.code === "cas_contention") {
+  if (
+    error.code === "active_lease" || error.code === "cas_contention" ||
+    error.code === "stabilization_failed"
+  ) {
     return 503;
   }
   return 500;
+}
+
+async function renewDeletionCoordination(input: {
+  lifecycleStore: any;
+  billingDeletionMarker: BillingIdentityLease;
+  accountStore: any;
+  appleLeases: AppleAccountDeletionLease[];
+  userID: string;
+  tombstoneUserID: string;
+}) {
+  await renewBillingDeletionMarker(
+    input.lifecycleStore,
+    input.billingDeletionMarker,
+  );
+  await renewAppleAccountDeletionLeases(
+    input.accountStore,
+    input.appleLeases,
+    input.userID,
+    input.tombstoneUserID,
+  );
 }
 
 Deno.serve(async (req) => {
@@ -272,14 +413,108 @@ Deno.serve(async (req) => {
       });
     }
 
-    // Delete account-owned/shared content first. Each helper repeatedly queries
-    // from the start so concurrent inserts cannot hide behind a shifting skip
-    // offset. Game rooms are ephemeral, so deleting a referenced room is safer
-    // than overwriting another player's concurrent update with a stale patch.
+    // The admin-only lifecycle row is keyed by a one-way subject hash. Acquire
+    // its deleting marker before any content cleanup so every mediated writer
+    // either finishes under its exact lease or deletion remains untouched.
+    const retentionPatch = await entitlementRetentionPatch(user.id);
+    const userStore = base44.asServiceRole.entities.User;
+    const billingLifecycleStore =
+      base44.asServiceRole.entities.BillingIdentityLifecycle;
+    let billingDeletionMarker: BillingIdentityLease;
     try {
+      billingDeletionMarker = await acquireBillingDeletionMarker(
+        billingLifecycleStore,
+        user.id,
+      );
+    } catch (e) {
+      console.error(
+        "billing identity deletion preflight failed",
+        errorMessage(e),
+      );
+      return Response.json({
+        error: "Billing identity is updating. Retry account deletion shortly.",
+      }, { status: appleLeaseErrorStatus(e) });
+    }
+
+    // Lock Apple billing before deleting any content. A live provider writer or
+    // a foreign/mixed binding must leave the still-live account untouched. The
+    // zero-binding path creates a future-leased real AppStoreAccount sentinel,
+    // which also closes prepare's pre-check/create race.
+    const accountStore = base44.asServiceRole.entities.AppStoreAccount;
+    let appleLeases: AppleAccountDeletionLease[];
+    try {
+      appleLeases = await acquireAppleAccountDeletionLeases(
+        accountStore,
+        user.id,
+        retentionPatch.user_id,
+      );
+    } catch (e) {
+      console.error("Apple account deletion preflight failed", errorMessage(e));
+      try {
+        await releaseBillingDeletionMarker(
+          billingLifecycleStore,
+          billingDeletionMarker,
+        );
+      } catch (releaseError) {
+        console.error(
+          "billing identity marker release after Apple preflight failed",
+          errorMessage(releaseError),
+        );
+      }
+      return Response.json({
+        error: e instanceof AppleAccountDeletionLeaseError &&
+            e.code === "active_lease"
+          ? "App Store billing is updating. Retry account deletion shortly."
+          : "Failed to lock retained App Store billing records",
+      }, { status: appleLeaseErrorStatus(e) });
+    }
+
+    let billingSnapshot: BillingRedactionSnapshot | undefined;
+    try {
+      billingSnapshot = await snapshotBillingIdentity(
+        base44,
+        user,
+        retentionPatch.user_id,
+      );
+    } catch (e) {
+      console.error("billing identity snapshot failed", errorMessage(e));
+      try {
+        await rollbackBillingIdentityAndAppleLeases(
+          base44,
+          user,
+          undefined,
+          retentionPatch,
+          appleLeases,
+          billingDeletionMarker,
+        );
+      } catch (rollbackError) {
+        console.error(
+          "Apple lease rollback after snapshot failure failed",
+          errorMessage(rollbackError),
+        );
+      }
+      return Response.json({ error: "Failed to prepare account deletion" }, {
+        status: 500,
+      });
+    }
+
+    let irreversibleCleanupStarted = false;
+    try {
+      // Each helper repeatedly queries from the start so concurrent inserts
+      // cannot hide behind a shifting skip offset.
+      irreversibleCleanupStarted = true;
       await deleteAllMatching(base44.asServiceRole.entities.GameHistory, {
         player_email: userEmail,
       });
+      await renewDeletionCoordination({
+        lifecycleStore: billingLifecycleStore,
+        billingDeletionMarker,
+        accountStore,
+        appleLeases,
+        userID: user.id,
+        tombstoneUserID: retentionPatch.user_id,
+      });
+
       await deleteAllMatching(base44.asServiceRole.entities.WordPack, {
         owner_email: userEmail,
       });
@@ -289,21 +524,42 @@ Deno.serve(async (req) => {
       await deleteAllMatching(base44.asServiceRole.entities.Friendship, {
         addressee_id: user.id,
       });
+      await deleteAccountRelationshipRecords({
+        profileCommentStore: base44.asServiceRole.entities.ProfileComment,
+        roomInviteStore: base44.asServiceRole.entities.RoomInvite,
+        membershipGrantStore: base44.asServiceRole.entities.MembershipGrant,
+        reportStore: base44.asServiceRole.entities.CommunityReport,
+        wordPackStore: base44.asServiceRole.entities.WordPack,
+        gameHistoryStore: base44.asServiceRole.entities.GameHistory,
+        userID: user.id,
+        tombstoneUserID: retentionPatch.user_id,
+      });
+      await renewDeletionCoordination({
+        lifecycleStore: billingLifecycleStore,
+        billingDeletionMarker,
+        accountStore,
+        appleLeases,
+        userID: user.id,
+        tombstoneUserID: retentionPatch.user_id,
+      });
+
+      // GameRoom records are ephemeral shared sessions. Deleting a referenced
+      // room avoids a stale array write against another player's live session.
       await deleteReferencedRooms(
         base44.asServiceRole.entities.GameRoom,
         userEmail,
       );
-    } catch (e) {
-      console.error("account content cleanup failed", errorMessage(e));
-      return Response.json({ error: "Failed to delete account data" }, {
-        status: 500,
+      await renewDeletionCoordination({
+        lifecycleStore: billingLifecycleStore,
+        billingDeletionMarker,
+        accountStore,
+        appleLeases,
+        userID: user.id,
+        tombstoneUserID: retentionPatch.user_id,
       });
-    }
 
-    // Usage buckets are operational data. Delete them only after account
-    // content has been removed so a retry never loses the records needed to
-    // identify unfinished content cleanup.
-    try {
+      // Usage buckets are operational data. Delete them only after account
+      // content so a retry retains evidence of unfinished content cleanup.
       await deleteAllMatching(
         base44.asServiceRole.entities.AiGenerationUsage,
         { user_id: user.id },
@@ -314,42 +570,26 @@ Deno.serve(async (req) => {
         base44.asServiceRole.entities.AiGenerationQuota,
         { created_by_id: user.id },
       );
-    } catch (e) {
-      console.error("AI usage cleanup failed", errorMessage(e));
-      return Response.json(
-        { error: "Failed to delete account usage records" },
-        { status: 500 },
-      );
-    }
-
-    // Join the same deterministic AppStoreAccount CAS lease used by Apple
-    // purchase sync and notifications. Every canonical token row remains
-    // leased until User.delete either succeeds or is rolled back.
-    const retentionPatch = await entitlementRetentionPatch(user.id);
-    const accountStore = base44.asServiceRole.entities.AppStoreAccount;
-    let appleLeases: AppleAccountDeletionLease[];
-    try {
-      appleLeases = await acquireAppleAccountDeletionLeases(
+      await renewDeletionCoordination({
+        lifecycleStore: billingLifecycleStore,
+        billingDeletionMarker,
         accountStore,
-        user.id,
-      );
-    } catch (e) {
-      console.error("Apple account deletion lease failed", errorMessage(e));
-      return Response.json({
-        error: e instanceof AppleAccountDeletionLeaseError &&
-            e.code === "active_lease"
-          ? "App Store billing is updating. Retry account deletion shortly."
-          : "Failed to lock retained App Store billing records",
-      }, { status: appleLeaseErrorStatus(e) });
-    }
+        appleLeases,
+        userID: user.id,
+        tombstoneUserID: retentionPatch.user_id,
+      });
 
-    // Provider transaction records and Apple token reservations may need to
-    // survive for fraud prevention, refunds, chargebacks, future provider
-    // notifications, and legal obligations. Redact entitlements and only
-    // noncanonical AppStoreAccount rows while canonical rows stay leased.
-    let billingSnapshot: BillingRedactionSnapshot | undefined;
-    try {
-      billingSnapshot = await snapshotBillingIdentity(base44, user);
+      // A prepare request that began in the zero-row window may have created a
+      // second token before observing the sentinel. Renewal absorbs it; the
+      // refreshed snapshot ensures every noncanonical row is also redacted.
+      billingSnapshot = mergeBillingSnapshots(
+        billingSnapshot,
+        await snapshotBillingIdentity(
+          base44,
+          user,
+          retentionPatch.user_id,
+        ),
+      );
       await redactBillingIdentity(
         base44,
         user,
@@ -357,66 +597,122 @@ Deno.serve(async (req) => {
         retentionPatch,
         appleLeases,
       );
-    } catch (e) {
-      console.error("billing identity redaction failed", errorMessage(e));
-      try {
-        await rollbackBillingIdentityAndAppleLeases(
+      await renewDeletionCoordination({
+        lifecycleStore: billingLifecycleStore,
+        billingDeletionMarker,
+        accountStore,
+        appleLeases,
+        userID: user.id,
+        tombstoneUserID: retentionPatch.user_id,
+      });
+      billingSnapshot = mergeBillingSnapshots(
+        billingSnapshot,
+        await snapshotBillingIdentity(
           base44,
           user,
-          billingSnapshot,
-          retentionPatch,
-          appleLeases,
-        );
-      } catch (rollbackError) {
+          retentionPatch.user_id,
+        ),
+      );
+      await redactBillingIdentity(
+        base44,
+        user,
+        billingSnapshot,
+        retentionPatch,
+        appleLeases,
+      );
+
+      await renewBillingDeletionMarker(
+        billingLifecycleStore,
+        billingDeletionMarker,
+      );
+
+      // Canonical rows become tombstones while their future leases remain
+      // active. Any multi-token partial failure is still rollback-safe because
+      // User has not been deleted yet.
+      await precommitAppleAccountDeletionLeases(
+        accountStore,
+        appleLeases,
+        user.id,
+        retentionPatch.user_id,
+      );
+      await assertBillingDeletionMarker(
+        billingLifecycleStore,
+        billingDeletionMarker,
+      );
+    } catch (e) {
+      console.error("account deletion transaction failed", errorMessage(e));
+      const disposition = deletionFailureDisposition(
+        irreversibleCleanupStarted,
+      );
+      if (disposition === "rollback_before_cleanup") {
+        try {
+          await rollbackBillingIdentityAndAppleLeases(
+            base44,
+            user,
+            billingSnapshot,
+            retentionPatch,
+            appleLeases,
+            billingDeletionMarker,
+          );
+        } catch (rollbackError) {
+          console.error(
+            "billing identity rollback before content cleanup failed",
+            errorMessage(rollbackError),
+          );
+        }
+      } else {
         console.error(
-          "billing identity rollback after redaction failure failed",
-          errorMessage(rollbackError),
+          "irreversible cleanup started; deletion marker retained for retry",
         );
       }
       return Response.json({
-        error: "Failed to redact retained billing records",
-      }, { status: 500 });
-    }
-
-    try {
-      await base44.asServiceRole.entities.User.delete(user.id);
-    } catch (e) {
-      console.error("user delete failed", errorMessage(e));
-      try {
-        await rollbackBillingIdentityAndAppleLeases(
-          base44,
-          user,
-          billingSnapshot,
-          retentionPatch,
-          appleLeases,
-        );
-      } catch (rollbackError) {
-        console.error(
-          "billing identity rollback after user delete failure failed",
-          errorMessage(rollbackError),
-        );
-      }
-      return Response.json({ error: "Failed to delete user record" }, {
-        status: 500,
+        error: disposition === "retain_deleting_for_retry"
+          ? "Account deletion is incomplete and will continue on retry."
+          : "Failed to delete account data safely",
+      }, {
+        status: disposition === "retain_deleting_for_retry"
+          ? 503
+          : appleLeaseErrorStatus(e),
       });
     }
 
-    // User.delete is the deletion commit point. Tombstone and release every
-    // leased canonical row last, using the exact owner + timestamp CAS tuple.
     try {
-      await commitAppleAccountDeletionLeases(
+      await deleteUserRecord(
+        userStore,
+        user.id,
+      );
+    } catch (e) {
+      console.error("user delete failed", errorMessage(e));
+      const confirmedPresent = e instanceof UserDeletionFailure &&
+        e.code === "confirmed_present";
+      // Content cleanup is irreversible by this point. A confirmed-present or
+      // ambiguous User.delete must keep state=deleting and all billing
+      // tombstones so the same idempotent endpoint can continue after lease
+      // expiry. Restoring a live account here would expose partial erasure.
+      console.error(
+        confirmedPresent
+          ? "user remains; deleting state retained for retry"
+          : "user deletion is ambiguous; deleting state retained",
+      );
+      return Response.json({
+        error: "Account deletion is being reconciled. Retry shortly.",
+      }, { status: 503 });
+    }
+
+    // Raw identity is already gone from every canonical row. Release is best
+    // effort after User.delete: failure can only delay Apple writers until the
+    // bounded lease expires; it cannot leave an unretryable privacy leak.
+    const releaseFailures =
+      await releasePrecommittedAppleAccountLeasesBestEffort(
         accountStore,
         appleLeases,
         retentionPatch.user_id,
       );
-    } catch (e) {
+    if (releaseFailures.length) {
       console.error(
-        "canonical App Store account deletion commit failed",
-        errorMessage(e),
+        "post-delete Apple lease release delayed",
+        releaseFailures.join(","),
       );
-      return Response.json({
-        error: "Account deleted, but retained App Store records need repair",
-      }, { status: 500 });
     }
 
     return Response.json({ success: true });

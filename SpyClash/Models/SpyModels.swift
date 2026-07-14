@@ -2621,6 +2621,7 @@ struct CommunityState: Codable, Equatable {
     let friends: [CommunityRelationship]
     let incoming: [CommunityRelationship]
     let outgoing: [CommunityRelationship]
+    let blocked: [CommunityRelationship]
     let incomingRoomInvites: [CommunityRoomInvite]
 
     enum CodingKeys: String, CodingKey {
@@ -2628,6 +2629,7 @@ struct CommunityState: Codable, Equatable {
         case friends
         case incoming
         case outgoing
+        case blocked
         case incomingRoomInvites = "incoming_room_invites"
     }
 
@@ -2636,12 +2638,14 @@ struct CommunityState: Codable, Equatable {
         friends: [CommunityRelationship],
         incoming: [CommunityRelationship],
         outgoing: [CommunityRelationship],
+        blocked: [CommunityRelationship] = [],
         incomingRoomInvites: [CommunityRoomInvite] = []
     ) {
         self.me = me
         self.friends = friends
         self.incoming = incoming
         self.outgoing = outgoing
+        self.blocked = blocked
         self.incomingRoomInvites = incomingRoomInvites
     }
 
@@ -2651,6 +2655,7 @@ struct CommunityState: Codable, Equatable {
         friends = try container.decodeIfPresent([CommunityRelationship].self, forKey: .friends) ?? []
         incoming = try container.decodeIfPresent([CommunityRelationship].self, forKey: .incoming) ?? []
         outgoing = try container.decodeIfPresent([CommunityRelationship].self, forKey: .outgoing) ?? []
+        blocked = try container.decodeIfPresent([CommunityRelationship].self, forKey: .blocked) ?? []
         incomingRoomInvites = try container.decodeIfPresent(
             [CommunityRoomInvite].self,
             forKey: .incomingRoomInvites
@@ -2720,6 +2725,18 @@ struct CommunityProfileDetail: Codable, Equatable {
 
 struct CommunityActionAcknowledgement: Codable, Equatable {
     let ok: Bool
+}
+
+enum CommunityReportReason: String, Codable, CaseIterable, Identifiable {
+    case harassment
+    case hateSpeech = "hate_speech"
+    case sexualContent = "sexual_content"
+    case violenceOrThreats = "violence_or_threats"
+    case spam
+    case impersonation
+    case other
+
+    var id: String { rawValue }
 }
 
 struct CommunityInviteActionResult: Codable, Equatable {
@@ -3209,13 +3226,24 @@ struct GameHistory: Codable, Identifiable, Hashable {
     }
 }
 
-struct LeaderboardEntry: Identifiable, Hashable {
+struct LeaderboardEntry: Codable, Identifiable, Hashable {
     let id: String
-    let email: String
+    let displayName: String
     let rating: Int
     let games: Int
     let wins: Int
     let losses: Int
+    let isCurrentUser: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case id
+        case displayName = "display_name"
+        case rating
+        case games
+        case wins
+        case losses
+        case isCurrentUser = "is_current_user"
+    }
 
     var winRate: Int {
         guard games > 0 else { return 0 }

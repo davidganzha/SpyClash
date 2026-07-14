@@ -10,6 +10,11 @@ import {
   resolveStripeWebhookBinding,
 } from "./stripe-entitlement.ts";
 import { resolveStripeSubscriptionEvent } from "./stripe-event-resolution.ts";
+import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
+import {
+  persistStripeEntitlement,
+  StripeEntitlementPersistenceError,
+} from "./stripe-entitlement-persistence.ts";
 
 const MAX_WEBHOOK_BYTES = 1_000_000;
 
@@ -27,36 +32,6 @@ function errorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
     : String(error || "Unknown error");
-}
-
-function writable(record: EntitlementRecord) {
-  return Object.fromEntries(
-    Object.entries(record).filter(([key, value]) =>
-      key !== "id" && value !== undefined
-    ),
-  );
-}
-
-async function upsertStripeEntitlement(
-  store: any,
-  records: EntitlementRecord[],
-  incoming: EntitlementRecord,
-) {
-  const userID = incoming.user_id;
-  if (!userID) throw new WebhookError("Stripe user binding is missing.", 422);
-  if (records.some((record) => record.user_id && record.user_id !== userID)) {
-    throw new WebhookError(
-      "Stripe subscription is bound to another SpyClash account.",
-      409,
-    );
-  }
-
-  const current = records.find((record) => record.user_id === userID);
-  if (current?.id) {
-    await store.update(current.id, writable(incoming));
-    return;
-  }
-  await store.create(writable(incoming));
 }
 
 Deno.serve(async (req) => {
@@ -164,43 +139,58 @@ Deno.serve(async (req) => {
       });
     }
 
-    const normalized = normalizeStripeEntitlement({
-      subscription,
-      userID,
-      userEmail: existing[0]?.user_email,
-      limitlessPriceID,
-      eventID: event.id,
-      eventCreated: event.created,
-    });
-    const current = existing.find((record) => record.user_id === userID);
-    const reconciled = reconcileStripeEntitlementState({
-      current,
-      incoming: normalized,
-      update: {
-        refundLock: resolution.refundLock,
-        disputeLock: resolution.disputeLock,
-        clearRefundLocks: resolution.clearRefundLocks,
+    const persistence = await persistStripeEntitlement({
+      entitlementStore: store,
+      lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+      userStore: base44.asServiceRole.entities.User,
+      subscriptionID,
+      requestedUserID: userID,
+      allowMissingUserTombstone: true,
+      build: (current, ownerUserID) => {
+        const normalized = normalizeStripeEntitlement({
+          subscription,
+          userID: ownerUserID,
+          userEmail: current?.user_email || existing[0]?.user_email,
+          limitlessPriceID,
+          eventID: event.id,
+          eventCreated: event.created,
+        });
+        return reconcileStripeEntitlementState({
+          current,
+          incoming: normalized,
+          update: {
+            refundLock: resolution.refundLock,
+            disputeLock: resolution.disputeLock,
+            clearRefundLocks: resolution.clearRefundLocks,
+          },
+        });
       },
     });
-    const entitlement = reconciled.record;
-    if (!reconciled.shouldPersist) {
+    const entitlement = persistence.record;
+    if (!persistence.persisted) {
       return Response.json({
         received: true,
         ignored: true,
         reason: "stale_or_duplicate_cursor",
       });
     }
-    await upsertStripeEntitlement(store, existing, entitlement);
-
     return Response.json({
       received: true,
       provider: "stripe",
       subscription_id: subscriptionID,
       status: entitlement.status,
-      retained_deleted_account: binding.deletedAccount,
+      retained_deleted_account: persistence.deletedAccount,
     });
   } catch (error) {
-    const status = error instanceof WebhookError ? error.status : 500;
+    const status = error instanceof WebhookError
+      ? error.status
+      : error instanceof StripeEntitlementPersistenceError &&
+          error.code === "owner_conflict"
+      ? 409
+      : error instanceof StripeEntitlementPersistenceError ||
+          error instanceof BillingIdentityLifecycleError
+      ? 503
+      : 500;
     console.error("stripe-entitlement-webhook failed:", errorMessage(error));
     return Response.json(
       {

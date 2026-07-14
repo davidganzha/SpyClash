@@ -182,7 +182,10 @@ Deno.test("newest stored provider event wins if concurrent writes made duplicate
   ], []);
 
   assert(merged.length === 1, "duplicate provider source was not collapsed");
-  assert(merged[0].status === "revoked", "older active event overrode revocation");
+  assert(
+    merged[0].status === "revoked",
+    "older active event overrode revocation",
+  );
 });
 
 Deno.test("provider source cannot be silently rebound to another SpyClash account", () => {

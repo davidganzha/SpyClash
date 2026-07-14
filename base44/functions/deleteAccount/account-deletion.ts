@@ -1,17 +1,19 @@
 export const REDACTED_ENTITLEMENT_EMAIL = "deleted-account@redacted.invalid";
 
-function normalizedUserID(value: unknown): string {
-  const userID = String(value ?? "").trim();
-  if (!userID) {
-    throw new Error("A user id is required to redact retained entitlements");
-  }
-  return userID;
-}
-
 function hex(bytes: ArrayBuffer): string {
   return Array.from(new Uint8Array(bytes))
     .map((byte) => byte.toString(16).padStart(2, "0"))
     .join("");
+}
+
+export async function deletedAccountTombstone(value: unknown): Promise<string> {
+  const userID = String(value ?? "").trim();
+  if (!userID) throw new Error("A stable user id is required.");
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`spyclash-deleted-account:${userID}`),
+  );
+  return `deleted:${hex(digest).slice(0, 40)}`;
 }
 
 /**
@@ -25,14 +27,8 @@ function hex(bytes: ArrayBuffer): string {
 export async function entitlementRetentionPatch(
   userIDValue: unknown,
 ): Promise<{ user_id: string; user_email: string }> {
-  const userID = normalizedUserID(userIDValue);
-  const digest = await crypto.subtle.digest(
-    "SHA-256",
-    new TextEncoder().encode(`spyclash-deleted-account:${userID}`),
-  );
-
   return {
-    user_id: `deleted:${hex(digest).slice(0, 40)}`,
+    user_id: await deletedAccountTombstone(userIDValue),
     user_email: REDACTED_ENTITLEMENT_EMAIL,
   };
 }

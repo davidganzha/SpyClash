@@ -93,13 +93,38 @@ export async function resolveStripeWebhookBinding(input: {
         .filter(Boolean),
     ),
   );
+  const metadataUserID = String(input.metadataUserID || "").trim();
+  const metadataAppID = String(input.metadataAppID || "").trim().toLowerCase();
   if (existingUserIDs.length > 1) {
+    const rawOwners = existingUserIDs.filter((owner) =>
+      !isDeletedEntitlementUserID(owner)
+    );
+    const tombstoneOwners = existingUserIDs.filter(isDeletedEntitlementUserID);
+    if (
+      rawOwners.length === 1 && tombstoneOwners.length === 1 &&
+      await deletedEntitlementUserID(rawOwners[0]) === tombstoneOwners[0]
+    ) {
+      const metadataMatchesOwner = !metadataUserID ||
+        metadataUserID === rawOwners[0] ||
+        metadataUserID === tombstoneOwners[0];
+      const metadataMatchesApp = !metadataAppID ||
+        metadataAppID === input.expectedAppID;
+      if (metadataMatchesOwner && metadataMatchesApp) {
+        // A raw+tombstone pair can exist only across an interrupted deletion
+        // transition. Return the raw owner so persistence can check User: a
+        // missing User redacts the raw row one-way, while a live User fails the
+        // mixed-owner CAS closed.
+        return {
+          decision: "accept",
+          userID: rawOwners[0],
+          deletedAccount: true,
+        };
+      }
+    }
     return { decision: "conflict", reason: "conflicting_existing_owners" };
   }
 
   const existingUserID = existingUserIDs[0] || "";
-  const metadataUserID = String(input.metadataUserID || "").trim();
-  const metadataAppID = String(input.metadataAppID || "").trim().toLowerCase();
   if (existingUserID) {
     const deletedAccount = isDeletedEntitlementUserID(existingUserID);
     const metadataMatchesOwner = !metadataUserID ||

@@ -19,14 +19,15 @@ function htmlFallback(nativeURL: string) {
 
 Deno.serve((req) => {
   const requestURL = new URL(req.url);
-  const nativeURL = `${nativeCallbackBase}?${requestURL.searchParams.toString()}`;
+  const nativeURL =
+    `${nativeCallbackBase}?${requestURL.searchParams.toString()}`;
 
   return new Response(htmlFallback(nativeURL), {
     status: 302,
     headers: {
       "Content-Type": "text/html; charset=utf-8",
       "Location": nativeURL,
-      "Cache-Control": "no-store"
-    }
+      "Cache-Control": "no-store",
+    },
   });
 });
