@@ -645,6 +645,8 @@ private final class InterfaceSoundEngine: @unchecked Sendable {
         qos: .userInitiated
     )
     private let defaultsKey = "spyclash.interface-sounds.enabled"
+    private let recoveryMarkerKey =
+        "spyclash.interface-sounds.recovered-after-noop-v1"
 
     private var players: [Cue: AVAudioPlayer] = [:]
     private var stopWorkItems: [Cue: DispatchWorkItem] = [:]
@@ -661,7 +663,14 @@ private final class InterfaceSoundEngine: @unchecked Sendable {
 
     init() {
         let defaults = UserDefaults.standard
-        if defaults.object(forKey: defaultsKey) == nil {
+        // A short-lived broken build persisted `false` while its audio methods
+        // were no-ops. Recover that value exactly once, then keep honoring the
+        // user's explicit sound preference on every later launch.
+        if !defaults.bool(forKey: recoveryMarkerKey) {
+            defaults.set(true, forKey: defaultsKey)
+            defaults.set(true, forKey: recoveryMarkerKey)
+            isEnabled = true
+        } else if defaults.object(forKey: defaultsKey) == nil {
             isEnabled = true
         } else {
             isEnabled = defaults.bool(forKey: defaultsKey)

@@ -2,44 +2,80 @@ import SwiftUI
 
 struct AppShellView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var dockNamespace
-    @State private var isCommandMenuPresented = ProcessInfo.processInfo.arguments.contains("--spyclash-preview-command-menu-open")
+    @State private var isCommandMenuPresented = AppShellView.initialCommandMenuPresentation
+
+    private static var initialCommandMenuPresentation: Bool {
+#if DEBUG
+        ProcessInfo.processInfo.arguments.contains("--spyclash-preview-command-menu-open")
+#else
+        false
+#endif
+    }
 
     var body: some View {
         @Bindable var appState = appState
         let contentTab = appState.selectedTab == .game && appState.activeRoom == nil ? AppTab.home : appState.selectedTab
         let dockTabs = AppTab.primaryCases
-        let shouldShowShellChrome = !appState.isShellChromeSuppressed
+        let isMainRoute = appState.shellRoute == .main
+        let shouldShowShellChrome = !appState.isShellChromeSuppressed && isMainRoute
         let shouldShowDock = contentTab.showsBottomDock && shouldShowShellChrome
 
-        ZStack(alignment: .bottom) {
-            contentTab
-                .makeContentView()
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .safeAreaInset(edge: .bottom, spacing: 0) {
-                    if shouldShowDock {
-                        Color.clear
-                            .frame(height: 76)
-                            .allowsHitTesting(false)
+        ZStack {
+            ZStack(alignment: .bottom) {
+                contentTab
+                    .makeContentView()
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .safeAreaInset(edge: .bottom, spacing: 0) {
+                        if shouldShowDock {
+                            Color.clear
+                                .frame(height: 76)
+                                .allowsHitTesting(false)
+                        }
                     }
-                }
 
-            FloatingDock(selection: $appState.selectedTab, tabs: dockTabs, namespace: dockNamespace, language: appState.language)
-                .opacity(shouldShowDock ? 1 : 0)
-                .offset(y: shouldShowDock ? 0 : 78)
-                .allowsHitTesting(shouldShowDock)
-                .accessibilityHidden(!shouldShowDock)
-                .animation(.easeOut(duration: 0.20), value: shouldShowDock)
+                FloatingDock(selection: $appState.selectedTab, tabs: dockTabs, namespace: dockNamespace, language: appState.language)
+                    .opacity(shouldShowDock ? 1 : 0)
+                    .offset(y: shouldShowDock ? 0 : 78)
+                    .allowsHitTesting(shouldShowDock)
+                    .accessibilityHidden(!shouldShowDock)
+                    .animation(.easeOut(duration: 0.20), value: shouldShowDock)
+            }
+            .background(SpyTheme.black)
+            .overlay(alignment: .top) {
+                WebPullDownCommandMenu(isPresented: $isCommandMenuPresented)
+                    .opacity(shouldShowShellChrome ? 1 : 0)
+                    .offset(y: shouldShowShellChrome ? 0 : -140)
+                    .allowsHitTesting(shouldShowShellChrome)
+                    .accessibilityHidden(!shouldShowShellChrome)
+                    .animation(.easeOut(duration: 0.18), value: shouldShowShellChrome)
+            }
+            .scaleEffect(isMainRoute || reduceMotion ? 1 : 0.985)
+            .offset(x: isMainRoute || reduceMotion ? 0 : -24)
+            .opacity(isMainRoute ? 1 : 0.34)
+            .allowsHitTesting(isMainRoute)
+            .accessibilityHidden(!isMainRoute)
+
+            if appState.shellRoute == .community {
+                CommunityView {
+                    appState.closeCommunity()
+                }
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
+                .background(SpyTheme.black)
+                .transition(
+                    reduceMotion
+                        ? .opacity
+                        : .move(edge: .trailing).combined(with: .opacity)
+                )
+                .zIndex(20)
+            }
         }
         .background(SpyTheme.black)
-        .overlay(alignment: .top) {
-            WebPullDownCommandMenu(isPresented: $isCommandMenuPresented)
-                .opacity(shouldShowShellChrome ? 1 : 0)
-                .offset(y: shouldShowShellChrome ? 0 : -140)
-                .allowsHitTesting(shouldShowShellChrome)
-                .accessibilityHidden(!shouldShowShellChrome)
-                .animation(.easeOut(duration: 0.18), value: shouldShowShellChrome)
-        }
+        .animation(
+            reduceMotion ? .easeOut(duration: 0.18) : .smooth(duration: 0.44),
+            value: appState.shellRoute
+        )
         .sheet(item: $appState.presentedSheet) { destination in
             switch destination {
             case .qrScanner:
@@ -54,11 +90,6 @@ struct AppShellView: View {
                     .presentationCornerRadius(0)
             case .pricing:
                 PricingView()
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.hidden)
-                    .presentationCornerRadius(0)
-            case .community:
-                CommunityView()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
@@ -96,7 +127,7 @@ struct AppShellView: View {
             case "pricing":
                 appState.presentedSheet = .pricing
             case "community":
-                appState.presentedSheet = .community
+                appState.openCommunity()
             case "privacy":
                 appState.presentedSheet = .legal(.privacy)
             case "terms":
@@ -1452,7 +1483,7 @@ private struct WebCommandMenuPanel: View {
                         icon: "◎",
                         title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD")
                     ) {
-                        closeThen { appState.presentedSheet = .community }
+                        closeThen { appState.openCommunity() }
                     }
                 }
 

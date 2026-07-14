@@ -11,11 +11,13 @@ export type EntitlementRecord = {
 const GRANTING_STATUSES = new Set(["active", "trialing", "grace_period"]);
 
 function freshness(record: EntitlementRecord): number {
-  for (const value of [
-    record.provider_event_at,
-    record.last_verified_at,
-    record.created_date,
-  ]) {
+  for (
+    const value of [
+      record.provider_event_at,
+      record.last_verified_at,
+      record.created_date,
+    ]
+  ) {
     const timestamp = Date.parse(value || "");
     if (Number.isFinite(timestamp)) return timestamp;
   }

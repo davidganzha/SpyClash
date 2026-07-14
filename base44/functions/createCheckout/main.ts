@@ -1,5 +1,7 @@
 import Stripe from "npm:stripe@14";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
+import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
+import { withCheckoutBillingLease } from "./checkout-lifecycle.ts";
 import {
   checkoutIdempotencyKey,
   resolveExpectedBase44AppID,
@@ -271,16 +273,31 @@ Deno.serve(async (req) => {
         },
       },
     };
-    const session = await stripe.checkout.sessions.create(checkoutParams, {
-      idempotencyKey: await checkoutIdempotencyKey({
+    try {
+      const idempotencyKey = await checkoutIdempotencyKey({
         appID: base44AppId,
         userID: user.id,
         priceID: limitlessPriceId,
         email: user.email,
-      }),
-    });
-
-    return Response.json({ url: session.url });
+      });
+      const session = await withCheckoutBillingLease({
+        lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+        userID: user.id,
+        createSession: () =>
+          stripe.checkout.sessions.create(checkoutParams, {
+            idempotencyKey,
+          }),
+      });
+      return Response.json({ url: session.url });
+    } catch (error) {
+      if (error instanceof BillingIdentityLifecycleError) {
+        throw new CheckoutError(
+          "Account billing is being updated. Retry shortly.",
+          503,
+        );
+      }
+      throw error;
+    }
   } catch (error) {
     console.error("Checkout error:", error);
 

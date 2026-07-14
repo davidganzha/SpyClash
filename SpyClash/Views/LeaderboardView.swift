@@ -143,7 +143,7 @@ struct LeaderboardView: View {
         VStack(spacing: 5) {
             Text(rankMedal(rank))
                 .font(.system(size: 24))
-            Text(displayName(for: entry.email).uppercased())
+            Text(displayName(for: entry).uppercased())
                 .font(.system(size: 10, weight: .black, design: .default))
                 .tracking(0.02)
                 .foregroundStyle(.white)
@@ -168,7 +168,7 @@ struct LeaderboardView: View {
                 .frame(width: 34, alignment: .leading)
 
             VStack(alignment: .leading, spacing: 4) {
-                Text(displayName(for: entry.email).uppercased())
+                Text(displayName(for: entry).uppercased())
                     .font(.system(size: 11, weight: .black, design: .default))
                     .tracking(0.02)
                     .foregroundStyle(.white.opacity(0.84))
@@ -220,8 +220,7 @@ struct LeaderboardView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            let history = try await appState.client.allGameHistory()
-            entries = Self.rank(history)
+            entries = try await appState.client.leaderboard()
             status = ""
         } catch {
             status = error.localizedDescription.uppercased()
@@ -249,11 +248,12 @@ struct LeaderboardView: View {
             .map { email, stats in
                 LeaderboardEntry(
                     id: email,
-                    email: email,
+                    displayName: email.components(separatedBy: "@").first ?? email,
                     rating: stats.rating,
                     games: stats.games,
                     wins: stats.wins,
-                    losses: stats.losses
+                    losses: stats.losses,
+                    isCurrentUser: false
                 )
             }
             .sorted { lhs, rhs in
@@ -264,19 +264,12 @@ struct LeaderboardView: View {
             }
     }
 
-    private func displayName(for email: String) -> String {
-        if email.caseInsensitiveCompare(appState.user?.email ?? "") == .orderedSame {
+    private func displayName(for entry: LeaderboardEntry) -> String {
+        if entry.isCurrentUser {
             return "YOU"
         }
-
-        let local = email.components(separatedBy: "@").first ?? email
-        let cleaned = local
-            .replacingOccurrences(of: ".", with: " ")
-            .replacingOccurrences(of: "_", with: " ")
-            .replacingOccurrences(of: "-", with: " ")
-
-        guard cleaned.count > 14 else { return cleaned }
-        return String(cleaned.prefix(13)) + "…"
+        guard entry.displayName.count > 18 else { return entry.displayName }
+        return String(entry.displayName.prefix(17)) + "…"
     }
 
     private func rankMedal(_ rank: Int) -> String {

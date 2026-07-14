@@ -28,6 +28,14 @@ import {
   decideAppleNotificationOwner,
   isAppleAccountLeaseActive,
 } from "./apple-account-binding.ts";
+import {
+  AppleAccountReservationError,
+  reserveAppleAccountToken,
+} from "./apple-account-reservation.ts";
+import {
+  AppleAccountLeaseGuardError,
+  assertAppleAccountLease,
+} from "./apple-account-lease-guard.ts";
 
 const BUNDLE_ID = Deno.env.get("APPLE_IAP_BUNDLE_ID") || "com.spyclash.app";
 const PRODUCT_ID = Deno.env.get("APPLE_IAP_PRODUCT_ID") ||
@@ -544,6 +552,7 @@ async function prepareAppleAccountBindingAfterVerification(input: {
     if (!record.id) {
       throw new Error("Apple entitlement record is missing its entity id.");
     }
+    await assertAppleAccountLease(input.accountStore, input.lease);
     await input.entitlementStore.update(record.id, {
       user_id: input.authenticatedUserID,
       user_email: userEmail,
@@ -642,6 +651,7 @@ async function finalizeDeletedAppleAccountRebind(input: {
         409,
       );
     }
+    await assertAppleAccountLease(input.accountStore, input.lease);
     const result = await input.accountStore.updateMany(
       { id: account.id, user_id: input.tombstoneUserID },
       {
@@ -665,6 +675,7 @@ async function finalizeDeletedAppleAccountRebind(input: {
       user_id: input.authenticatedUserID,
       last_used_at: now,
     };
+  await assertAppleAccountLease(input.accountStore, input.lease);
   const commit = await input.accountStore.updateMany(
     {
       id: input.lease.accountID,
@@ -695,60 +706,20 @@ async function finalizeDeletedAppleAccountRebind(input: {
 }
 
 async function reserveAccountToken(store: any, userID: string) {
-  for (let attempt = 0; attempt < APPLE_ACCOUNT_LEASE_ATTEMPTS; attempt += 1) {
-    const records: AppStoreAccountRecord[] = await store.filter(
-      { user_id: userID },
-      "created_date",
-      100,
-      0,
-    );
-    const canonical = canonicalAppleAccountRecord(records);
-    if (canonical?.id && canonical.app_account_token) {
-      const observedLastUsedAt = String(canonical.last_used_at || "");
-      if (!observedLastUsedAt) {
-        throw new RequestError("Apple account binding is incomplete.", 503);
-      }
-      if (isAppleAccountLeaseActive(observedLastUsedAt)) {
-        throw new RequestError(
-          "Apple account binding is being updated. Retry shortly.",
-          503,
-        );
-      }
-      const touchedAt = new Date().toISOString();
-      const result = await store.updateMany(
-        {
-          id: canonical.id,
-          user_id: userID,
-          last_used_at: observedLastUsedAt,
-        },
-        { $set: { last_used_at: touchedAt } },
-      );
-      if (Number(result?.updated) === 1) {
-        return canonicalUUID(canonical.app_account_token);
-      }
-      continue;
+  try {
+    return await reserveAppleAccountToken(store, userID);
+  } catch (error) {
+    if (error instanceof AppleAccountReservationError) {
+      throw new RequestError(error.message, error.status);
     }
-
-    const now = new Date().toISOString();
-    await store.create({
-      user_id: userID,
-      app_account_token: crypto.randomUUID().toLowerCase(),
-      created_at: now,
-      last_used_at: now,
-    });
-    // Re-read to converge concurrent first prepares on the oldest durable
-    // token. Never delete a token already handed to StoreKit: it is part of
-    // the signed Apple transaction history.
+    throw error;
   }
-  throw new RequestError(
-    "Apple account binding changed concurrently. Retry shortly.",
-    503,
-  );
 }
 
 async function upsertAppleEntitlement(
   store: any,
   incoming: AppleEntitlementRecord,
+  beforePersist: () => Promise<void>,
 ) {
   const [sameOriginal, sameToken] = await Promise.all([
     store.filter(
@@ -783,13 +754,25 @@ async function upsertAppleEntitlement(
   );
   if (current?.id) {
     if (shouldApplyProviderEvent(current, incoming)) {
+      await beforePersist();
       await store.update(current.id, cleanRecord(incoming));
     }
-    return await collapseAppleEntitlementDuplicates(store, incoming, current);
+    return await collapseAppleEntitlementDuplicates(
+      store,
+      incoming,
+      current,
+      beforePersist,
+    );
   }
 
+  await beforePersist();
   await store.create(cleanRecord(incoming));
-  return await collapseAppleEntitlementDuplicates(store, incoming, incoming);
+  return await collapseAppleEntitlementDuplicates(
+    store,
+    incoming,
+    incoming,
+    beforePersist,
+  );
 }
 
 function appleRecordFreshness(record: AppleEntitlementRecord): number {
@@ -804,6 +787,7 @@ async function collapseAppleEntitlementDuplicates(
   store: any,
   incoming: AppleEntitlementRecord,
   fallback: AppleEntitlementRecord,
+  beforePersist: () => Promise<void>,
 ) {
   const records: AppleEntitlementRecord[] = await store.filter(
     {
@@ -833,6 +817,7 @@ async function collapseAppleEntitlementDuplicates(
   for (const duplicate of owned) {
     if (!duplicate.id || duplicate.id === winner.id) continue;
     try {
+      await beforePersist();
       await store.delete(duplicate.id);
     } catch (error) {
       console.error(
@@ -872,12 +857,13 @@ function assertAllowedAppleTransaction(
 
 async function handlePrepare(base44: any) {
   const user = await requireUser(base44);
-  const adminGrants = await base44.asServiceRole.entities.MembershipGrant.filter(
-    { user_id: user.id },
-    "-created_date",
-    100,
-    0,
-  );
+  const adminGrants = await base44.asServiceRole.entities.MembershipGrant
+    .filter(
+      { user_id: user.id },
+      "-created_date",
+      100,
+      0,
+    );
   if (hasActiveAdminGrant(adminGrants)) {
     throw new RequestError(
       "LIMITLESS is already active on this SpyClash account.",
@@ -976,6 +962,7 @@ async function handleAuthenticatedSync(
     const persisted = await upsertAppleEntitlement(
       base44.asServiceRole.entities.Entitlement,
       entitlement,
+      () => assertAppleAccountLease(accountStore, lease),
     );
     if (tombstoneUserID) {
       await finalizeDeletedAppleAccountRebind({
@@ -1114,6 +1101,7 @@ async function handleNotification(base44: any, signedPayload: string) {
     const persisted = await upsertAppleEntitlement(
       base44.asServiceRole.entities.Entitlement,
       entitlement,
+      () => assertAppleAccountLease(accountStore, lease),
     );
     const released = await releaseAppleAccountLease(accountStore, lease);
     if (!released) {
@@ -1162,7 +1150,11 @@ Deno.serve(async (req) => {
         );
     }
   } catch (error) {
-    const status = error instanceof RequestError ? error.status : 500;
+    const status = error instanceof RequestError
+      ? error.status
+      : error instanceof AppleAccountLeaseGuardError
+      ? 503
+      : 500;
     const message = status >= 500
       ? "Unable to verify App Store entitlement."
       : errorMessage(error);

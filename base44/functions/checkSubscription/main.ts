@@ -4,7 +4,6 @@ import {
   applyAdminGrant,
   type EntitlementRecord,
   hasStripePrice,
-  isBoundToAnotherUser,
   isoFromUnixSeconds,
   mergeEntitlements,
   publicEntitlementSources,
@@ -17,6 +16,10 @@ import {
   resolveExpectedBase44AppID,
   stripeSubscriptionBindingDecision,
 } from "./stripe-binding.ts";
+import {
+  persistStripeEntitlement,
+  StripeEntitlementPersistenceError,
+} from "./stripe-entitlement-persistence.ts";
 
 const DEFAULT_LIMITLESS_PRICE_ID = "price_1TR5wiRFCq3jt6C66NdM8NY4";
 const MAX_ENTITLEMENTS_PER_USER = 100;
@@ -90,13 +93,6 @@ function normalizeStripeSubscription(
   };
 }
 
-function writableEntitlement(record: EntitlementRecord) {
-  const entries = Object.entries(record).filter(([, value]) =>
-    value !== undefined
-  );
-  return Object.fromEntries(entries);
-}
-
 function copyStringMap(value: unknown): Record<string, string> | undefined {
   if (!value || typeof value !== "object" || Array.isArray(value)) {
     return undefined;
@@ -110,31 +106,55 @@ function copyStringMap(value: unknown): Record<string, string> | undefined {
 
 async function upsertStripeEntitlement(
   store: any,
+  lifecycleStore: any,
+  userStore: any,
   entitlement: EntitlementRecord,
 ): Promise<void> {
   const subscriptionId = entitlement.stripe_subscription_id;
   if (!subscriptionId || !entitlement.user_id) return;
-
-  const matching = await store.filter(
-    { provider: "stripe", stripe_subscription_id: subscriptionId },
-    "-last_verified_at",
-    10,
-    0,
-  );
-  const boundToAnotherAccount = isBoundToAnotherUser(
-    matching,
-    entitlement.user_id,
-  );
-  if (boundToAnotherAccount) throw new EntitlementAccountMismatchError();
-
-  const current = matching.find((item: EntitlementRecord) =>
-    item.user_id === entitlement.user_id
-  );
-  const data = writableEntitlement(entitlement);
-  if (current?.id) {
-    await store.update(current.id, data);
-  } else {
-    await store.create(data);
+  try {
+    await persistStripeEntitlement({
+      entitlementStore: store,
+      lifecycleStore,
+      userStore,
+      subscriptionID: subscriptionId,
+      requestedUserID: entitlement.user_id,
+      build: (current, ownerUserID) => {
+        const record: EntitlementRecord = {
+          ...entitlement,
+          user_id: ownerUserID,
+        };
+        if (Array.isArray(current?.stripe_refund_blocked_charge_ids)) {
+          record.stripe_refund_blocked_charge_ids = Array.from(
+            new Set(current.stripe_refund_blocked_charge_ids),
+          ).sort();
+        }
+        if (Array.isArray(current?.stripe_dispute_blocked_charge_ids)) {
+          record.stripe_dispute_blocked_charge_ids = Array.from(
+            new Set(current.stripe_dispute_blocked_charge_ids),
+          ).sort();
+        }
+        record.stripe_refund_event_cursors = copyStringMap(
+          current?.stripe_refund_event_cursors,
+        );
+        record.stripe_dispute_event_cursors = copyStringMap(
+          current?.stripe_dispute_event_cursors,
+        );
+        record.status = applyStoredStripeFinancialLocks(
+          current,
+          record.status,
+        );
+        return { record, shouldPersist: true };
+      },
+    });
+  } catch (error) {
+    if (
+      error instanceof StripeEntitlementPersistenceError &&
+      error.code === "owner_conflict"
+    ) {
+      throw new EntitlementAccountMismatchError();
+    }
+    throw error;
   }
 }
 
@@ -178,6 +198,8 @@ async function retrieveBoundStripeSubscriptions(
 
 async function syncStripeEntitlements(
   store: any,
+  lifecycleStore: any,
+  userStore: any,
   user: { id: string; email: string },
   currentEntitlements: EntitlementRecord[],
 ) {
@@ -272,7 +294,12 @@ async function syncStripeEntitlements(
   const persistenceWarnings: string[] = [];
   for (const entitlement of normalized) {
     try {
-      await upsertStripeEntitlement(store, entitlement);
+      await upsertStripeEntitlement(
+        store,
+        lifecycleStore,
+        userStore,
+        entitlement,
+      );
     } catch (error) {
       if (error instanceof EntitlementAccountMismatchError) throw error;
       console.error(
@@ -362,6 +389,8 @@ Deno.serve(async (req) => {
   try {
     const result = await syncStripeEntitlements(
       store,
+      base44.asServiceRole.entities.BillingIdentityLifecycle,
+      base44.asServiceRole.entities.User,
       { id: user.id, email: user.email },
       storedEntitlements,
     );

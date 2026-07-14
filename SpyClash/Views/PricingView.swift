@@ -703,9 +703,9 @@ struct PricingView: View {
         let period = subscriptionPeriodLabel.lowercased()
 
         return localized(
-            en: "\(price) per \(period). Payment is charged to your Apple ID at confirmation. The subscription renews automatically unless cancelled at least 24 hours before the current period ends. LIMITLESS access stays synced with your SpyClash account.",
-            ru: "\(price) за период (\(period)). Оплата списывается с Apple ID при подтверждении. Подписка продлевается автоматически, если не отменить ее минимум за 24 часа до конца текущего периода. LIMITLESS синхронизируется с аккаунтом SpyClash.",
-            es: "\(price) por \(period). El pago se carga a tu Apple ID al confirmar. La suscripcion se renueva automaticamente salvo que se cancele al menos 24 horas antes del fin del periodo. LIMITLESS se sincroniza con tu cuenta de SpyClash."
+            en: "\(price) per \(period). Payment is charged to your Apple Account at confirmation. The subscription renews automatically unless cancelled at least 24 hours before the current period ends. LIMITLESS access stays synced with your SpyClash account.",
+            ru: "\(price) за период (\(period)). Оплата списывается с аккаунта Apple при подтверждении. Подписка продлевается автоматически, если не отменить ее минимум за 24 часа до конца текущего периода. LIMITLESS синхронизируется с аккаунтом SpyClash.",
+            es: "\(price) por \(period). El pago se carga a tu Cuenta de Apple al confirmar. La suscripción se renueva automáticamente salvo que se cancele al menos 24 horas antes del fin del periodo. LIMITLESS se sincroniza con tu cuenta de SpyClash."
         )
     }
 

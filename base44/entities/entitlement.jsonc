@@ -121,6 +121,10 @@
     "provider_event_id": {
       "type": "string",
       "description": "Latest provider event identifier, such as an App Store notification UUID."
+    },
+    "write_revision": {
+      "type": "string",
+      "description": "Opaque server-only CAS revision changed by every entitlement persistence or identity transition."
     }
   },
   "required": [

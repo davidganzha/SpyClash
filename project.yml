@@ -27,6 +27,13 @@ targets:
       - path: SpyClash
         excludes:
           - "Services/HapticManager 2.swift"
+          - "SWIFTUI_MIGRATION.md"
+      - path: LICENSES/Rajdhani-OFL-1.1.txt
+        buildPhase: resources
+      - path: LICENSES/SocketIO-MIT.txt
+        buildPhase: resources
+      - path: LICENSES/Starscream-Apache-2.0.txt
+        buildPhase: resources
     info:
       path: SpyClash/Resources/Info.plist
       properties:

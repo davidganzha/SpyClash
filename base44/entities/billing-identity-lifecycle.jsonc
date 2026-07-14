@@ -1,0 +1,42 @@
+{
+  "name": "BillingIdentityLifecycle",
+  "description": "Server-only deletion and writer coordination. The subject key is a one-way hash and never stores a raw user id.",
+  "type": "object",
+  "properties": {
+    "subject_key": {
+      "type": "string",
+      "description": "Deterministic one-way billing lifecycle subject key."
+    },
+    "state": {
+      "type": "string",
+      "enum": ["active", "deleting"],
+      "description": "Active writer coordination or irreversible account deletion."
+    },
+    "lease_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Bounded lease expiry."
+    },
+    "lease_token": {
+      "type": "string",
+      "description": "Opaque exact lease owner token."
+    },
+    "revision": {
+      "type": "string",
+      "description": "Opaque CAS revision changed by every lifecycle transition."
+    }
+  },
+  "required": [
+    "subject_key",
+    "state",
+    "lease_until",
+    "lease_token",
+    "revision"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

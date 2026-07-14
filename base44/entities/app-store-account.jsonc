@@ -21,6 +21,11 @@
       "type": "string",
       "format": "date-time",
       "description": "Most recent purchase preparation or verified transaction sync."
+    },
+    "reservation_state": {
+      "type": "string",
+      "enum": ["pending", "active", "deletion_sentinel"],
+      "description": "Internal two-phase reservation state. Pending rows are tombstone-owned until prepare safely claims them."
     }
   },
   "required": [

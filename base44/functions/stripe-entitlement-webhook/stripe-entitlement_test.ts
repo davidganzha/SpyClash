@@ -13,7 +13,7 @@ import {
   shouldApplyStripeEvent,
   stripeFinancialEventAction,
 } from "./stripe-entitlement.ts";
-import { entitlementRetentionPatch } from "../deleteAccount/account-deletion.ts";
+import { deletedAccountTombstone } from "./stripe-entitlement-persistence.ts";
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
@@ -140,7 +140,9 @@ Deno.test("existing webhook entitlement allows missing metadata but rejects conf
 
 Deno.test("deleted-account tombstone accepts only its original Stripe owner", async () => {
   const tombstone = await deletedEntitlementUserID("raw-user-1");
-  const deletionPatch = await entitlementRetentionPatch("raw-user-1");
+  const deletionPatch = {
+    user_id: await deletedAccountTombstone("raw-user-1"),
+  };
   assert(
     tombstone === deletionPatch.user_id,
     "webhook tombstone algorithm drifted from account deletion",
@@ -169,6 +171,33 @@ Deno.test("deleted-account tombstone accepts only its original Stripe owner", as
   assert(
     conflict.decision === "conflict",
     "new account adopted deleted billing row",
+  );
+});
+
+Deno.test("raw plus matching tombstone binding is accepted only for convergence", async () => {
+  const rawOwner = "raw-user-1";
+  const tombstone = await deletedEntitlementUserID(rawOwner);
+  const accepted = await resolveStripeWebhookBinding({
+    existingUserIDs: [rawOwner, tombstone],
+    metadataUserID: rawOwner,
+    metadataAppID: CURRENT_BASE44_APP_ID,
+    expectedAppID: CURRENT_BASE44_APP_ID,
+  });
+  const conflict = await resolveStripeWebhookBinding({
+    existingUserIDs: [rawOwner, tombstone],
+    metadataUserID: "another-user",
+    metadataAppID: CURRENT_BASE44_APP_ID,
+    expectedAppID: CURRENT_BASE44_APP_ID,
+  });
+
+  assert(
+    accepted.decision === "accept" && accepted.userID === rawOwner &&
+      accepted.deletedAccount,
+    "matching deletion transition could not converge",
+  );
+  assert(
+    conflict.decision === "conflict",
+    "unrelated metadata adopted a mixed deletion transition",
   );
 });
 

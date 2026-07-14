@@ -1,3 +1,8 @@
+import {
+  safeCommunityAvatar,
+  safeCommunityDisplayName,
+} from "./community-safety.ts";
+
 const SPY_ID_NAMESPACE = "com.spyclash.spyid.v2:";
 const SPY_ID_CAPACITY = 1_000_000;
 export const PROFILE_COMMENT_MAX_LENGTH = 280;
@@ -66,7 +71,9 @@ export function profileMatchesCommunityQuery(
   const query = normalizeCommunityQuery(value);
   if (!query) return true;
 
-  const name = String(user.display_name || user.full_name || "")
+  const name = safeCommunityDisplayName(
+    user.display_name || user.full_name || "",
+  )
     .toLocaleLowerCase();
   const spyID = normalizeSpyID(user.spy_id) || "";
   const compactSpyID = spyID.replace("-", "");
@@ -100,10 +107,10 @@ export function publicProfile(user: Record<string, unknown>) {
   return {
     id: String(user.id || ""),
     spy_id: normalizeSpyID(user.spy_id) || "",
-    display_name: String(
+    display_name: safeCommunityDisplayName(
       user.display_name || user.full_name || "OPERATIVE",
     ),
-    avatar: String(user.avatar || "🕵️"),
+    avatar: safeCommunityAvatar(user.avatar),
     spy_card_theme: String(user.spy_card_theme || "field"),
     spy_card_accent: String(user.spy_card_accent || "signal_red"),
     spy_card_badge: String(user.spy_card_badge || "operative"),

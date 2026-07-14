@@ -5,6 +5,22 @@
     "player_email": {
       "type": "string"
     },
+    "player_user_id": {
+      "type": "string",
+      "description": "Stable authenticated owner id for deletion and owner-scoped reads.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "match_id": {
+      "type": "string",
+      "description": "Immutable server-issued identity of one played match, independent of reusable room code.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
     "room_code": {
       "type": "string"
     },
@@ -55,7 +71,13 @@
   ],
   "rls": {
     "create": { "user_condition": { "role": "admin" } },
-    "read": { "user_condition": { "id": "{{user.id}}" } },
+    "read": {
+      "$or": [
+        { "data.player_user_id": "{{user.id}}" },
+        { "data.player_email": "{{user.email}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
     "update": { "user_condition": { "role": "admin" } },
     "delete": { "user_condition": { "role": "admin" } }
   }

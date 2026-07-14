@@ -27,13 +27,14 @@
 		65B97F60EB8C89F0D594A552 /* WordPacksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */; };
 		6BEB09CD45546EB59A434FFF /* QRSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6E7B15464DD14D3E49671B /* QRSheets.swift */; };
 		6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBA628FB7C9372162E4C619 /* HapticManager.swift */; };
+		71EFCB4E56D0E1AFBB55CD75 /* SocketIO-MIT.txt in Resources */ = {isa = PBXBuildFile; fileRef = DB38FB6B74A483175220231A /* SocketIO-MIT.txt */; };
 		7B6D3EB62FE74629B61B73AE /* PricingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */; };
 		7D6221160001A1F896D98689 /* SpyOrbSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */; };
 		7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 103786B1CACE81CF96C268EF /* AuthView.swift */; };
 		7EF8F8B80F6B85C07FC74C76 /* ui-game-start.wav in Resources */ = {isa = PBXBuildFile; fileRef = 8E0CA4F94BF9F6733599ADAC /* ui-game-start.wav */; };
+		82D1D08C2F15D8C91C49A7A1 /* Rajdhani-OFL-1.1.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */; };
 		8AC6EEDD7A5822C3D45CD93C /* ui-qr-card-flip.wav in Resources */ = {isa = PBXBuildFile; fileRef = 37C733E7D512618D05F45537 /* ui-qr-card-flip.wav */; };
 		8D17771759D4330EBFEC4603 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 0F3E2F7BE3B86567F9077667 /* SocketIO */; };
-		8E679EA8468C18CDF362DB42 /* SWIFTUI_MIGRATION.md in Resources */ = {isa = PBXBuildFile; fileRef = 408F474B77DED2B39517FCDC /* SWIFTUI_MIGRATION.md */; };
 		93E717DA1E64BEA767C702DF /* ui-player-leave.wav in Resources */ = {isa = PBXBuildFile; fileRef = ACA325ED0EEA82FB7421BE48 /* ui-player-leave.wav */; };
 		94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75823698B8005677C73DFC1B /* AppState.swift */; };
 		9A658E5E6BD4A7B8CE13E29E /* ui-countdown-tick.wav in Resources */ = {isa = PBXBuildFile; fileRef = DAB9DD6F57A7019D697EF4E6 /* ui-countdown-tick.wav */; };
@@ -42,6 +43,7 @@
 		A14016F54504B30BA64BB8DA /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B25DFE515749E670224D319 /* ProfileView.swift */; };
 		A29BF7E537E3E3154DEA20D9 /* ui-result-detectives.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4A7A9AC87B29BFFED0F971E8 /* ui-result-detectives.wav */; };
 		A3843D00523FE4F39729F795 /* ui-denied.wav in Resources */ = {isa = PBXBuildFile; fileRef = A5ED8B89074459DACA77EEEF /* ui-denied.wav */; };
+		A390D4427BA1EA3B2F024075 /* Starscream-Apache-2.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = 8E4C198618FA43B34FF1B363 /* Starscream-Apache-2.0.txt */; };
 		A744EDBB751A4EB73DFC2C44 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE1AF213121DB5A761660563 /* WelcomeView.swift */; };
 		A79E33F12838705CF1E207E5 /* SpyBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9065A7D0489C60903CBB7D5B /* SpyBackground.swift */; };
 		AB76F7CF5A42EAAFB84C18A8 /* ui-toggle-on.wav in Resources */ = {isa = PBXBuildFile; fileRef = 72C05B357DA464297A349A4D /* ui-toggle-on.wav */; };
@@ -83,7 +85,6 @@
 		2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPacksView.swift; sourceTree = "<group>"; };
 		37C733E7D512618D05F45537 /* ui-qr-card-flip.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-qr-card-flip.wav"; sourceTree = "<group>"; };
 		3C0127D4B995875AA46568ED /* ui-hard-deny.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-hard-deny.wav"; sourceTree = "<group>"; };
-		408F474B77DED2B39517FCDC /* SWIFTUI_MIGRATION.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = SWIFTUI_MIGRATION.md; sourceTree = "<group>"; };
 		461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInCoordinator.swift; sourceTree = "<group>"; };
 		464F82CB598E4A8DCC748ADA /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipRealtimeService.swift; sourceTree = "<group>"; };
@@ -108,8 +109,10 @@
 		89A2672701BF2A5E11254E90 /* ru-UA */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ru-UA"; path = "ru-UA.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		8B5C87FEFE82151F2F7D6F6A /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
 		8E0CA4F94BF9F6733599ADAC /* ui-game-start.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-game-start.wav"; sourceTree = "<group>"; };
+		8E4C198618FA43B34FF1B363 /* Starscream-Apache-2.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Starscream-Apache-2.0.txt"; sourceTree = "<group>"; };
 		8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalGameView.swift; sourceTree = "<group>"; };
 		8EE75E34545D7FD03BFBF561 /* Base44Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base44Client.swift; sourceTree = "<group>"; };
+		9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Rajdhani-OFL-1.1.txt"; sourceTree = "<group>"; };
 		9065A7D0489C60903CBB7D5B /* SpyBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyBackground.swift; sourceTree = "<group>"; };
 		9A9267E9A3AB96138C9D1EC8 /* ui-ready-lock.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-ready-lock.wav"; sourceTree = "<group>"; };
 		9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
@@ -128,6 +131,7 @@
 		D30EA0DF923F453AB3E7F360 /* SpyClashApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashApp.swift; sourceTree = "<group>"; };
 		DA586ACEEC2D7E92F3621A49 /* AppTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTab.swift; sourceTree = "<group>"; };
 		DAB9DD6F57A7019D697EF4E6 /* ui-countdown-tick.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-countdown-tick.wav"; sourceTree = "<group>"; };
+		DB38FB6B74A483175220231A /* SocketIO-MIT.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SocketIO-MIT.txt"; sourceTree = "<group>"; };
 		DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
 		E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyTheme.swift; sourceTree = "<group>"; };
 		E74F516AB3AE9B5291FDC048 /* ui-player-join.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-player-join.wav"; sourceTree = "<group>"; };
@@ -158,9 +162,20 @@
 			path = StoreKit;
 			sourceTree = "<group>";
 		};
+		5008CF1BFA9100F96B0FAB38 /* LICENSES */ = {
+			isa = PBXGroup;
+			children = (
+				9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */,
+				DB38FB6B74A483175220231A /* SocketIO-MIT.txt */,
+				8E4C198618FA43B34FF1B363 /* Starscream-Apache-2.0.txt */,
+			);
+			path = LICENSES;
+			sourceTree = "<group>";
+		};
 		5CE4B78A27CB1A3000FABA7B = {
 			isa = PBXGroup;
 			children = (
+				5008CF1BFA9100F96B0FAB38 /* LICENSES */,
 				7D8A61AA4B945C23B44EC6D9 /* SpyClash */,
 				111BB6B43C9F8D9D3F8DAF22 /* StoreKit */,
 				7B6BED41BFC5980A89ECA708 /* Products */,
@@ -242,7 +257,6 @@
 		7D8A61AA4B945C23B44EC6D9 /* SpyClash */ = {
 			isa = PBXGroup;
 			children = (
-				408F474B77DED2B39517FCDC /* SWIFTUI_MIGRATION.md */,
 				CFF709D9A9F19039750EC6B1 /* App */,
 				7B5F5EE21DED3DDAA2C1A21D /* Design */,
 				F0907EF3730A23551A82884B /* Models */,
@@ -371,7 +385,9 @@
 				0332FBE99D5419C0A04F460A /* InfoPlist.strings in Resources */,
 				5767CD1715E3A330461009CB /* PrivacyInfo.xcprivacy in Resources */,
 				13D77822DD0A8C0C325DD829 /* Rajdhani-Bold.ttf in Resources */,
-				8E679EA8468C18CDF362DB42 /* SWIFTUI_MIGRATION.md in Resources */,
+				82D1D08C2F15D8C91C49A7A1 /* Rajdhani-OFL-1.1.txt in Resources */,
+				71EFCB4E56D0E1AFBB55CD75 /* SocketIO-MIT.txt in Resources */,
+				A390D4427BA1EA3B2F024075 /* Starscream-Apache-2.0.txt in Resources */,
 				C456B866F00482C8A0F5265B /* apple-access-surge.wav in Resources */,
 				FDA0A0B2C7D3E5E0A17BC1D0 /* apple-fragment-lock.wav in Resources */,
 				2843A2FFB9E2A953C3A63791 /* ui-allow.wav in Resources */,

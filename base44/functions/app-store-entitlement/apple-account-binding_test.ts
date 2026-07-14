@@ -7,7 +7,7 @@ import {
   isAppleAccountLeaseActive,
   isDeletedAccountTombstone,
 } from "./apple-account-binding.ts";
-import { entitlementRetentionPatch } from "../deleteAccount/account-deletion.ts";
+import { deletedAccountTombstone } from "./deleted-account-identity.ts";
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
@@ -17,7 +17,9 @@ const TOMBSTONE_A = `deleted:${"a".repeat(40)}`;
 const TOMBSTONE_B = `deleted:${"b".repeat(40)}`;
 
 Deno.test("Apple binding recognizes the exact deleteAccount tombstone format", async () => {
-  const retained = await entitlementRetentionPatch("base44-user-123");
+  const retained = {
+    user_id: await deletedAccountTombstone("base44-user-123"),
+  };
   assert(
     isDeletedAccountTombstone(retained.user_id),
     "deleteAccount generated a tombstone that Apple restore would reject",
