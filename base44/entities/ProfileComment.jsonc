@@ -1,0 +1,25 @@
+{
+  "name": "ProfileComment",
+  "description": "Server-owned public comments left on SpyClash community profiles.",
+  "type": "object",
+  "properties": {
+    "target_user_id": { "type": "string" },
+    "author_user_id": { "type": "string" },
+    "body": { "type": "string", "maxLength": 280 },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "target_user_id",
+    "author_user_id",
+    "body",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

@@ -1,0 +1,33 @@
+{
+  "name": "RoomInvite",
+  "description": "Server-owned invitation from one SpyClash operative to an active online room.",
+  "type": "object",
+  "properties": {
+    "sender_user_id": { "type": "string" },
+    "recipient_user_id": { "type": "string" },
+    "room_id": { "type": "string" },
+    "room_code": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "accepted", "declined", "expired"],
+      "default": "pending"
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "sender_user_id",
+    "recipient_user_id",
+    "room_id",
+    "room_code",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

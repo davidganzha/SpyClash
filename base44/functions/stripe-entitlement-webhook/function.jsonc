@@ -1,0 +1,4 @@
+{
+  "name": "stripe-entitlement-webhook",
+  "entry": "entry.ts"
+}

@@ -1,0 +1,59 @@
+{
+  "name": "GameRoom",
+  "type": "object",
+  "properties": {
+    "code": { "type": "string", "description": "6-char join code" },
+    "host_email": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["waiting", "ready_voting", "roulette", "playing", "finished"],
+      "default": "waiting"
+    },
+    "players": {
+      "type": "array",
+      "description": "Array of player objects {email, name, avatar}",
+      "items": { "type": "object" }
+    },
+    "spectators": { "type": "array", "items": { "type": "string" } },
+    "ready_players": { "type": "array", "items": { "type": "string" } },
+    "cards_read": { "type": "array", "items": { "type": "string" } },
+    "spy_email": { "type": "string" },
+    "word": { "type": "string" },
+    "category": { "type": "string" },
+    "spy_guess": { "type": "string" },
+    "detective_votes": { "type": "array", "items": { "type": "object" } },
+    "vote_requests": { "type": "array", "items": { "type": "string" } },
+    "winner": {
+      "type": "string",
+      "enum": ["detectives", "spy", ""],
+      "default": ""
+    },
+    "round_number": { "type": "number", "default": 1 },
+    "current_asker_email": { "type": "string" },
+    "current_answerer_email": { "type": "string" },
+    "current_answer": { "type": "string" },
+    "current_answer_feedback": {
+      "type": "string",
+      "enum": ["like", "dislike", null]
+    },
+    "player_feedback": { "type": "array", "items": { "type": "object" } },
+    "questions_in_round": { "type": "number", "default": 0 },
+    "question_phase": {
+      "type": "string",
+      "enum": ["asking", "answering", "countdown", "results"],
+      "default": "asking"
+    },
+    "eliminated_emails": { "type": "array", "items": { "type": "string" } },
+    "word_pool": { "type": "array", "items": { "type": "object" } },
+    "game_started_at": { "type": "string" },
+    "game_duration_seconds": { "type": "number", "default": 900 },
+    "countdown_started_at": { "type": "string" },
+    "roulette_target_email": { "type": "string" },
+    "game_mode": {
+      "type": "string",
+      "enum": ["questions", "associations"],
+      "default": "questions"
+    }
+  },
+  "required": ["code", "host_email", "status"]
+}

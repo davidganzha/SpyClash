@@ -1,0 +1,33 @@
+{
+  "name": "Friendship",
+  "description": "Server-owned SpyClash friend relationship. Clients access it only through communityAction.",
+  "type": "object",
+  "properties": {
+    "requester_id": { "type": "string" },
+    "addressee_id": { "type": "string" },
+    "requester_spy_id": { "type": "string", "description": "Requester SPY ID in 000-000 format" },
+    "addressee_spy_id": { "type": "string", "description": "Addressee SPY ID in 000-000 format" },
+    "status": {
+      "type": "string",
+      "enum": ["pending", "accepted", "declined", "blocked"],
+      "default": "pending"
+    },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "requester_id",
+    "addressee_id",
+    "requester_spy_id",
+    "addressee_spy_id",
+    "status",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

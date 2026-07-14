@@ -1,0 +1,142 @@
+{
+  "name": "Entitlement",
+  "description": "Server-verified provider source for SpyClash LIMITLESS access. Clients cannot read or write these records directly.",
+  "type": "object",
+  "properties": {
+    "source_key": {
+      "type": "string",
+      "description": "Stable provider-scoped key, for example apple:<original_transaction_id> or stripe:<subscription_id>."
+    },
+    "user_id": {
+      "type": "string",
+      "description": "Authenticated Base44 user id that owns this entitlement."
+    },
+    "user_email": {
+      "type": "string",
+      "format": "email",
+      "description": "Last observed account email for support and migration auditing only; never used as the durable owner key."
+    },
+    "provider": {
+      "type": "string",
+      "enum": ["apple", "stripe"],
+      "description": "Payment provider that issued this entitlement."
+    },
+    "product_id": {
+      "type": "string",
+      "description": "Provider product identifier."
+    },
+    "price_id": {
+      "type": "string",
+      "description": "Stripe price identifier when provider is Stripe."
+    },
+    "original_transaction_id": {
+      "type": "string",
+      "description": "Apple original transaction identifier."
+    },
+    "transaction_id": {
+      "type": "string",
+      "description": "Most recently verified Apple transaction identifier."
+    },
+    "stripe_subscription_id": {
+      "type": "string",
+      "description": "Stripe subscription identifier."
+    },
+    "stripe_refund_blocked_charge_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Stripe charge ids with a canonically confirmed full successful refund. Kept independently from dispute locks."
+    },
+    "stripe_dispute_blocked_charge_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Stripe charge ids with at least one canonical active or lost dispute. Kept independently from refund locks."
+    },
+    "stripe_refund_event_cursors": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Latest deterministic Stripe event cursor per refund charge id."
+    },
+    "stripe_dispute_event_cursors": {
+      "type": "object",
+      "additionalProperties": { "type": "string" },
+      "description": "Latest deterministic Stripe event cursor per disputed charge id."
+    },
+    "provider_customer_id": {
+      "type": "string",
+      "description": "Stripe customer identifier or another provider-side account reference."
+    },
+    "app_account_token": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Apple appAccountToken used to bind an App Store purchase to a SpyClash account."
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "active",
+        "trialing",
+        "grace_period",
+        "billing_retry",
+        "past_due",
+        "paused",
+        "canceled",
+        "expired",
+        "revoked",
+        "refunded",
+        "unknown"
+      ],
+      "description": "Last server-verified lifecycle status. Only active, trialing, and grace_period currently grant LIMITLESS access."
+    },
+    "purchased_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Initial provider purchase timestamp."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "End of the currently verified entitlement period."
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["sandbox", "production"],
+      "description": "Provider environment in which the purchase was verified."
+    },
+    "cancel_at_period_end": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether renewal is scheduled to stop after the current paid period."
+    },
+    "last_verified_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Timestamp of the latest successful server-side provider verification."
+    },
+    "provider_event_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Provider-signed event timestamp used to reject delayed out-of-order lifecycle updates."
+    },
+    "provider_event_id": {
+      "type": "string",
+      "description": "Latest provider event identifier, such as an App Store notification UUID."
+    }
+  },
+  "required": [
+    "source_key",
+    "user_id",
+    "provider",
+    "product_id",
+    "status",
+    "environment",
+    "expires_at",
+    "last_verified_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

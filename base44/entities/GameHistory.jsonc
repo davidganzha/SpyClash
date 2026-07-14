@@ -1,0 +1,62 @@
+{
+  "name": "GameHistory",
+  "type": "object",
+  "properties": {
+    "player_email": {
+      "type": "string"
+    },
+    "room_code": {
+      "type": "string"
+    },
+    "match_type": {
+      "type": "string",
+      "enum": [
+        "online",
+        "local"
+      ],
+      "description": "Match origin. Only online matches contribute to competitive statistics."
+    },
+    "ranked": {
+      "type": "boolean",
+      "description": "Whether this result contributes to rating and profile statistics."
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "spy",
+        "detective"
+      ]
+    },
+    "word": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "winner": {
+      "type": "string",
+      "enum": [
+        "detectives",
+        "spy"
+      ]
+    },
+    "player_count": {
+      "type": "number"
+    },
+    "won": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "player_email",
+    "room_code",
+    "role",
+    "winner"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "id": "{{user.id}}" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

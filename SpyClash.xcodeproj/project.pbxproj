@@ -1,0 +1,665 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		0332FBE99D5419C0A04F460A /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 22A24EBF700A367D8B269698 /* InfoPlist.strings */; };
+		047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723E083EC43863E9B19D1DBD /* LeaderboardView.swift */; };
+		0C49A36D2EDBEAA4F224B678 /* ui-ready-lock.wav in Resources */ = {isa = PBXBuildFile; fileRef = 9A9267E9A3AB96138C9D1EC8 /* ui-ready-lock.wav */; };
+		1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22314E28DB2385F7A05ABC74 /* HistoryView.swift */; };
+		1308A466500FC567BF0069FE /* ui-success.wav in Resources */ = {isa = PBXBuildFile; fileRef = 7EE1C3E4FACB2FC485836351 /* ui-success.wav */; };
+		13D77822DD0A8C0C325DD829 /* Rajdhani-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */; };
+		1B26C8D86F0C2C24D9554623 /* ui-copy-confirm.wav in Resources */ = {isa = PBXBuildFile; fileRef = 15AE9755FF9EA0B1E0D8C009 /* ui-copy-confirm.wav */; };
+		1EE919C35D1A92EEA5BD64AF /* ui-vote-cast.wav in Resources */ = {isa = PBXBuildFile; fileRef = 89137658415872EA1DEB4951 /* ui-vote-cast.wav */; };
+		23F7BD86E1F92FC6C3A36A41 /* ui-turn-pass.wav in Resources */ = {isa = PBXBuildFile; fileRef = 74D6E32E79C2279040E7E7FA /* ui-turn-pass.wav */; };
+		2843A2FFB9E2A953C3A63791 /* ui-allow.wav in Resources */ = {isa = PBXBuildFile; fileRef = 042727C413D21618FEA80EAB /* ui-allow.wav */; };
+		2946A41A9575F0D1AEE2D809 /* SpyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86974FE98CF9350796FC28D3 /* SpyModels.swift */; };
+		309F817C661DCC3A931B4F28 /* AppTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA586ACEEC2D7E92F3621A49 /* AppTab.swift */; };
+		32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16DD679CA8E36033E9AD5D76 /* HomeView.swift */; };
+		41D5CC96D0A0C1E09EC359C0 /* ui-navigation-shift.wav in Resources */ = {isa = PBXBuildFile; fileRef = C35CEEAA4EE69EB4BB8DBD68 /* ui-navigation-shift.wav */; };
+		4BEBA1477C858A78FB3F338D /* SpyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */; };
+		557B3950F7F0642889A07BA5 /* SpyClashApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30EA0DF923F453AB3E7F360 /* SpyClashApp.swift */; };
+		5767CD1715E3A330461009CB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */; };
+		65B97F60EB8C89F0D594A552 /* WordPacksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */; };
+		6BEB09CD45546EB59A434FFF /* QRSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6E7B15464DD14D3E49671B /* QRSheets.swift */; };
+		6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBA628FB7C9372162E4C619 /* HapticManager.swift */; };
+		7B6D3EB62FE74629B61B73AE /* PricingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */; };
+		7D6221160001A1F896D98689 /* SpyOrbSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */; };
+		7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 103786B1CACE81CF96C268EF /* AuthView.swift */; };
+		7EF8F8B80F6B85C07FC74C76 /* ui-game-start.wav in Resources */ = {isa = PBXBuildFile; fileRef = 8E0CA4F94BF9F6733599ADAC /* ui-game-start.wav */; };
+		8AC6EEDD7A5822C3D45CD93C /* ui-qr-card-flip.wav in Resources */ = {isa = PBXBuildFile; fileRef = 37C733E7D512618D05F45537 /* ui-qr-card-flip.wav */; };
+		8D17771759D4330EBFEC4603 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 0F3E2F7BE3B86567F9077667 /* SocketIO */; };
+		8E679EA8468C18CDF362DB42 /* SWIFTUI_MIGRATION.md in Resources */ = {isa = PBXBuildFile; fileRef = 408F474B77DED2B39517FCDC /* SWIFTUI_MIGRATION.md */; };
+		93E717DA1E64BEA767C702DF /* ui-player-leave.wav in Resources */ = {isa = PBXBuildFile; fileRef = ACA325ED0EEA82FB7421BE48 /* ui-player-leave.wav */; };
+		94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75823698B8005677C73DFC1B /* AppState.swift */; };
+		9A658E5E6BD4A7B8CE13E29E /* ui-countdown-tick.wav in Resources */ = {isa = PBXBuildFile; fileRef = DAB9DD6F57A7019D697EF4E6 /* ui-countdown-tick.wav */; };
+		9BCF7B5750327C577A989734 /* ui-click.wav in Resources */ = {isa = PBXBuildFile; fileRef = 7406BA90C0914ECBD7B46276 /* ui-click.wav */; };
+		9FDA7B1CDEC288F3FEB114F8 /* ui-toggle-off.wav in Resources */ = {isa = PBXBuildFile; fileRef = EA0DB8D50FC7A353B669AA53 /* ui-toggle-off.wav */; };
+		A14016F54504B30BA64BB8DA /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B25DFE515749E670224D319 /* ProfileView.swift */; };
+		A29BF7E537E3E3154DEA20D9 /* ui-result-detectives.wav in Resources */ = {isa = PBXBuildFile; fileRef = 4A7A9AC87B29BFFED0F971E8 /* ui-result-detectives.wav */; };
+		A3843D00523FE4F39729F795 /* ui-denied.wav in Resources */ = {isa = PBXBuildFile; fileRef = A5ED8B89074459DACA77EEEF /* ui-denied.wav */; };
+		A744EDBB751A4EB73DFC2C44 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE1AF213121DB5A761660563 /* WelcomeView.swift */; };
+		A79E33F12838705CF1E207E5 /* SpyBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9065A7D0489C60903CBB7D5B /* SpyBackground.swift */; };
+		AB76F7CF5A42EAAFB84C18A8 /* ui-toggle-on.wav in Resources */ = {isa = PBXBuildFile; fileRef = 72C05B357DA464297A349A4D /* ui-toggle-on.wav */; };
+		B239488F16943CDB9B562FEF /* ui-secret-reveal.wav in Resources */ = {isa = PBXBuildFile; fileRef = F2267A8D1B67E58A1AB0E3B3 /* ui-secret-reveal.wav */; };
+		B6CC3B1E75D64A6F0CFF41D0 /* ui-player-join.wav in Resources */ = {isa = PBXBuildFile; fileRef = E74F516AB3AE9B5291FDC048 /* ui-player-join.wav */; };
+		B9055F82BF207F9ED86A81FB /* DeviceTiltController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 265067D4B7D30C4F8FEBAD88 /* DeviceTiltController.swift */; };
+		BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */; };
+		C456B866F00482C8A0F5265B /* apple-access-surge.wav in Resources */ = {isa = PBXBuildFile; fileRef = 68B77C95FAC51C0AE8902C41 /* apple-access-surge.wav */; };
+		C5B71F05FD8EE8C617DC09A2 /* ui-echo-blip.wav in Resources */ = {isa = PBXBuildFile; fileRef = 56202A57142FF32F50952A74 /* ui-echo-blip.wav */; };
+		CB22564E02BD266693DE55B4 /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */; };
+		CF447E528FDEEBDE7419A76D /* ui-role-reveal.wav in Resources */ = {isa = PBXBuildFile; fileRef = BE70C66A194E2257DE9DE745 /* ui-role-reveal.wav */; };
+		CFC0DEAA161E86CD90B1B113 /* ui-holographic-tick.wav in Resources */ = {isa = PBXBuildFile; fileRef = 66323FE4AC4D0FEF3B0C52AA /* ui-holographic-tick.wav */; };
+		D3ADBAF623A13BDD9B757FBF /* ui-countdown-go.wav in Resources */ = {isa = PBXBuildFile; fileRef = 253C5503FB420F461DF58420 /* ui-countdown-go.wav */; };
+		D881639D076EDA12A4605402 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */; };
+		E003ECA92C61B98778CAC8EC /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5C87FEFE82151F2F7D6F6A /* GameView.swift */; };
+		E2223AC02229A181EC77480D /* ui-vote-locked.wav in Resources */ = {isa = PBXBuildFile; fileRef = 678F427E0CAD23C5BE7CF358 /* ui-vote-locked.wav */; };
+		E27A943CAA9C87A2F4E58CDB /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */; };
+		E354C5031FBE679050E0623D /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D09D5EDA02EAE3E217C67199 /* AppShellView.swift */; };
+		ECDAC86975194D2BEBB14885 /* Base44Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8EE75E34545D7FD03BFBF561 /* Base44Client.swift */; };
+		ED44596E572F517943ABADD6 /* AppleSignInCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */; };
+		F03729144EB479CC04F2AC9D /* ui-result-spy.wav in Resources */ = {isa = PBXBuildFile; fileRef = 16D29590B68121DB4802DF2B /* ui-result-spy.wav */; };
+		FC61757D64D5967B87F90D6B /* CommunityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F58B6A8B6D7F70B21AE0D8 /* CommunityView.swift */; };
+		FD361D460E74E783FEFC93AE /* ui-hard-deny.wav in Resources */ = {isa = PBXBuildFile; fileRef = 3C0127D4B995875AA46568ED /* ui-hard-deny.wav */; };
+		FDA0A0B2C7D3E5E0A17BC1D0 /* apple-fragment-lock.wav in Resources */ = {isa = PBXBuildFile; fileRef = EB254A88199BCD09F99DCAF6 /* apple-fragment-lock.wav */; };
+		FE4AD779C9178990AE6FB3B2 /* LocalGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		042727C413D21618FEA80EAB /* ui-allow.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-allow.wav"; sourceTree = "<group>"; };
+		05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyOrbSceneView.swift; sourceTree = "<group>"; };
+		0615AC062761EBDE879255B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		103786B1CACE81CF96C268EF /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		15AE9755FF9EA0B1E0D8C009 /* ui-copy-confirm.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-copy-confirm.wav"; sourceTree = "<group>"; };
+		16D29590B68121DB4802DF2B /* ui-result-spy.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-result-spy.wav"; sourceTree = "<group>"; };
+		16DD679CA8E36033E9AD5D76 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
+		22314E28DB2385F7A05ABC74 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
+		253C5503FB420F461DF58420 /* ui-countdown-go.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-countdown-go.wav"; sourceTree = "<group>"; };
+		265067D4B7D30C4F8FEBAD88 /* DeviceTiltController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceTiltController.swift; sourceTree = "<group>"; };
+		2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPacksView.swift; sourceTree = "<group>"; };
+		37C733E7D512618D05F45537 /* ui-qr-card-flip.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-qr-card-flip.wav"; sourceTree = "<group>"; };
+		3C0127D4B995875AA46568ED /* ui-hard-deny.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-hard-deny.wav"; sourceTree = "<group>"; };
+		408F474B77DED2B39517FCDC /* SWIFTUI_MIGRATION.md */ = {isa = PBXFileReference; lastKnownFileType = net.daringfireball.markdown; path = SWIFTUI_MIGRATION.md; sourceTree = "<group>"; };
+		461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInCoordinator.swift; sourceTree = "<group>"; };
+		464F82CB598E4A8DCC748ADA /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipRealtimeService.swift; sourceTree = "<group>"; };
+		4A7A9AC87B29BFFED0F971E8 /* ui-result-detectives.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-result-detectives.wav"; sourceTree = "<group>"; };
+		56202A57142FF32F50952A74 /* ui-echo-blip.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-echo-blip.wav"; sourceTree = "<group>"; };
+		57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Rajdhani-Bold.ttf"; sourceTree = "<group>"; };
+		5BBA628FB7C9372162E4C619 /* HapticManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticManager.swift; sourceTree = "<group>"; };
+		66323FE4AC4D0FEF3B0C52AA /* ui-holographic-tick.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-holographic-tick.wav"; sourceTree = "<group>"; };
+		678F427E0CAD23C5BE7CF358 /* ui-vote-locked.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-vote-locked.wav"; sourceTree = "<group>"; };
+		68B77C95FAC51C0AE8902C41 /* apple-access-surge.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "apple-access-surge.wav"; sourceTree = "<group>"; };
+		6B25DFE515749E670224D319 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
+		6C95C9E321165129F2ED8668 /* SpyClash.storekit */ = {isa = PBXFileReference; path = SpyClash.storekit; sourceTree = "<group>"; };
+		723E083EC43863E9B19D1DBD /* LeaderboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardView.swift; sourceTree = "<group>"; };
+		72C05B357DA464297A349A4D /* ui-toggle-on.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-toggle-on.wav"; sourceTree = "<group>"; };
+		7406BA90C0914ECBD7B46276 /* ui-click.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-click.wav"; sourceTree = "<group>"; };
+		74D6E32E79C2279040E7E7FA /* ui-turn-pass.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-turn-pass.wav"; sourceTree = "<group>"; };
+		75823698B8005677C73DFC1B /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		7EE1C3E4FACB2FC485836351 /* ui-success.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-success.wav"; sourceTree = "<group>"; };
+		86974FE98CF9350796FC28D3 /* SpyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyModels.swift; sourceTree = "<group>"; };
+		89137658415872EA1DEB4951 /* ui-vote-cast.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-vote-cast.wav"; sourceTree = "<group>"; };
+		89A2672701BF2A5E11254E90 /* ru-UA */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ru-UA"; path = "ru-UA.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		8B5C87FEFE82151F2F7D6F6A /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
+		8E0CA4F94BF9F6733599ADAC /* ui-game-start.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-game-start.wav"; sourceTree = "<group>"; };
+		8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalGameView.swift; sourceTree = "<group>"; };
+		8EE75E34545D7FD03BFBF561 /* Base44Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base44Client.swift; sourceTree = "<group>"; };
+		9065A7D0489C60903CBB7D5B /* SpyBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyBackground.swift; sourceTree = "<group>"; };
+		9A9267E9A3AB96138C9D1EC8 /* ui-ready-lock.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-ready-lock.wav"; sourceTree = "<group>"; };
+		9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
+		9E7E31F61F4DBF12D419781A /* SpyClash.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SpyClash.entitlements; sourceTree = "<group>"; };
+		A01D249EEE029FBB05286504 /* SpyClash.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SpyClash.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		A5ED8B89074459DACA77EEEF /* ui-denied.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-denied.wav"; sourceTree = "<group>"; };
+		A6EDDA8AE23141F759D27B13 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		ACA325ED0EEA82FB7421BE48 /* ui-player-leave.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-player-leave.wav"; sourceTree = "<group>"; };
+		B7DA7D7405C80D4685A10F92 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		BE70C66A194E2257DE9DE745 /* ui-role-reveal.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-role-reveal.wav"; sourceTree = "<group>"; };
+		C35CEEAA4EE69EB4BB8DBD68 /* ui-navigation-shift.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-navigation-shift.wav"; sourceTree = "<group>"; };
+		CE1AF213121DB5A761660563 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
+		D09D5EDA02EAE3E217C67199 /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellView.swift; sourceTree = "<group>"; };
+		D2F58B6A8B6D7F70B21AE0D8 /* CommunityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityView.swift; sourceTree = "<group>"; };
+		D30EA0DF923F453AB3E7F360 /* SpyClashApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashApp.swift; sourceTree = "<group>"; };
+		DA586ACEEC2D7E92F3621A49 /* AppTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTab.swift; sourceTree = "<group>"; };
+		DAB9DD6F57A7019D697EF4E6 /* ui-countdown-tick.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-countdown-tick.wav"; sourceTree = "<group>"; };
+		DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
+		E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyTheme.swift; sourceTree = "<group>"; };
+		E74F516AB3AE9B5291FDC048 /* ui-player-join.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-player-join.wav"; sourceTree = "<group>"; };
+		EA0DB8D50FC7A353B669AA53 /* ui-toggle-off.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-toggle-off.wav"; sourceTree = "<group>"; };
+		EB254A88199BCD09F99DCAF6 /* apple-fragment-lock.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "apple-fragment-lock.wav"; sourceTree = "<group>"; };
+		F2267A8D1B67E58A1AB0E3B3 /* ui-secret-reveal.wav */ = {isa = PBXFileReference; lastKnownFileType = audio.wav; path = "ui-secret-reveal.wav"; sourceTree = "<group>"; };
+		F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingView.swift; sourceTree = "<group>"; };
+		FA6E7B15464DD14D3E49671B /* QRSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRSheets.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		7B515AC188A7F561C524F9CF /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				8D17771759D4330EBFEC4603 /* SocketIO in Frameworks */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		111BB6B43C9F8D9D3F8DAF22 /* StoreKit */ = {
+			isa = PBXGroup;
+			children = (
+				6C95C9E321165129F2ED8668 /* SpyClash.storekit */,
+			);
+			path = StoreKit;
+			sourceTree = "<group>";
+		};
+		5CE4B78A27CB1A3000FABA7B = {
+			isa = PBXGroup;
+			children = (
+				7D8A61AA4B945C23B44EC6D9 /* SpyClash */,
+				111BB6B43C9F8D9D3F8DAF22 /* StoreKit */,
+				7B6BED41BFC5980A89ECA708 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		603A88FDDF96AB27B1804FB0 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				D09D5EDA02EAE3E217C67199 /* AppShellView.swift */,
+				103786B1CACE81CF96C268EF /* AuthView.swift */,
+				D2F58B6A8B6D7F70B21AE0D8 /* CommunityView.swift */,
+				8B5C87FEFE82151F2F7D6F6A /* GameView.swift */,
+				22314E28DB2385F7A05ABC74 /* HistoryView.swift */,
+				16DD679CA8E36033E9AD5D76 /* HomeView.swift */,
+				723E083EC43863E9B19D1DBD /* LeaderboardView.swift */,
+				8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */,
+				F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */,
+				6B25DFE515749E670224D319 /* ProfileView.swift */,
+				FA6E7B15464DD14D3E49671B /* QRSheets.swift */,
+				9065A7D0489C60903CBB7D5B /* SpyBackground.swift */,
+				05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */,
+				CE1AF213121DB5A761660563 /* WelcomeView.swift */,
+				2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		65CE1BB42E050F3EFC0C9C12 /* Sounds */ = {
+			isa = PBXGroup;
+			children = (
+				68B77C95FAC51C0AE8902C41 /* apple-access-surge.wav */,
+				EB254A88199BCD09F99DCAF6 /* apple-fragment-lock.wav */,
+				042727C413D21618FEA80EAB /* ui-allow.wav */,
+				7406BA90C0914ECBD7B46276 /* ui-click.wav */,
+				15AE9755FF9EA0B1E0D8C009 /* ui-copy-confirm.wav */,
+				253C5503FB420F461DF58420 /* ui-countdown-go.wav */,
+				DAB9DD6F57A7019D697EF4E6 /* ui-countdown-tick.wav */,
+				A5ED8B89074459DACA77EEEF /* ui-denied.wav */,
+				56202A57142FF32F50952A74 /* ui-echo-blip.wav */,
+				8E0CA4F94BF9F6733599ADAC /* ui-game-start.wav */,
+				3C0127D4B995875AA46568ED /* ui-hard-deny.wav */,
+				66323FE4AC4D0FEF3B0C52AA /* ui-holographic-tick.wav */,
+				C35CEEAA4EE69EB4BB8DBD68 /* ui-navigation-shift.wav */,
+				E74F516AB3AE9B5291FDC048 /* ui-player-join.wav */,
+				ACA325ED0EEA82FB7421BE48 /* ui-player-leave.wav */,
+				37C733E7D512618D05F45537 /* ui-qr-card-flip.wav */,
+				9A9267E9A3AB96138C9D1EC8 /* ui-ready-lock.wav */,
+				4A7A9AC87B29BFFED0F971E8 /* ui-result-detectives.wav */,
+				16D29590B68121DB4802DF2B /* ui-result-spy.wav */,
+				BE70C66A194E2257DE9DE745 /* ui-role-reveal.wav */,
+				F2267A8D1B67E58A1AB0E3B3 /* ui-secret-reveal.wav */,
+				7EE1C3E4FACB2FC485836351 /* ui-success.wav */,
+				EA0DB8D50FC7A353B669AA53 /* ui-toggle-off.wav */,
+				72C05B357DA464297A349A4D /* ui-toggle-on.wav */,
+				74D6E32E79C2279040E7E7FA /* ui-turn-pass.wav */,
+				89137658415872EA1DEB4951 /* ui-vote-cast.wav */,
+				678F427E0CAD23C5BE7CF358 /* ui-vote-locked.wav */,
+			);
+			path = Sounds;
+			sourceTree = "<group>";
+		};
+		7B5F5EE21DED3DDAA2C1A21D /* Design */ = {
+			isa = PBXGroup;
+			children = (
+				E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */,
+			);
+			path = Design;
+			sourceTree = "<group>";
+		};
+		7B6BED41BFC5980A89ECA708 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				A01D249EEE029FBB05286504 /* SpyClash.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		7D8A61AA4B945C23B44EC6D9 /* SpyClash */ = {
+			isa = PBXGroup;
+			children = (
+				408F474B77DED2B39517FCDC /* SWIFTUI_MIGRATION.md */,
+				CFF709D9A9F19039750EC6B1 /* App */,
+				7B5F5EE21DED3DDAA2C1A21D /* Design */,
+				F0907EF3730A23551A82884B /* Models */,
+				83BEED0AFF00EA59546A1A96 /* Resources */,
+				F7C6AF09A4B5E8C78B2583D2 /* Services */,
+				603A88FDDF96AB27B1804FB0 /* Views */,
+			);
+			path = SpyClash;
+			sourceTree = "<group>";
+		};
+		83BEED0AFF00EA59546A1A96 /* Resources */ = {
+			isa = PBXGroup;
+			children = (
+				AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */,
+				0615AC062761EBDE879255B3 /* Info.plist */,
+				9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */,
+				57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */,
+				9E7E31F61F4DBF12D419781A /* SpyClash.entitlements */,
+				22A24EBF700A367D8B269698 /* InfoPlist.strings */,
+				65CE1BB42E050F3EFC0C9C12 /* Sounds */,
+			);
+			path = Resources;
+			sourceTree = "<group>";
+		};
+		CFF709D9A9F19039750EC6B1 /* App */ = {
+			isa = PBXGroup;
+			children = (
+				75823698B8005677C73DFC1B /* AppState.swift */,
+				DA586ACEEC2D7E92F3621A49 /* AppTab.swift */,
+				D30EA0DF923F453AB3E7F360 /* SpyClashApp.swift */,
+			);
+			path = App;
+			sourceTree = "<group>";
+		};
+		F0907EF3730A23551A82884B /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				86974FE98CF9350796FC28D3 /* SpyModels.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		F7C6AF09A4B5E8C78B2583D2 /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */,
+				8EE75E34545D7FD03BFBF561 /* Base44Client.swift */,
+				265067D4B7D30C4F8FEBAD88 /* DeviceTiltController.swift */,
+				5BBA628FB7C9372162E4C619 /* HapticManager.swift */,
+				7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */,
+				4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */,
+				DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		77A6DFFF9D8CFBF19BE6C3C9 /* SpyClash */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = CF20E3432F0D697E0790FE79 /* Build configuration list for PBXNativeTarget "SpyClash" */;
+			buildPhases = (
+				3EEDB8DBA19E39F75370F019 /* Sources */,
+				EA212BCA0AD96EA7103EC761 /* Resources */,
+				7B515AC188A7F561C524F9CF /* Frameworks */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SpyClash;
+			packageProductDependencies = (
+				0F3E2F7BE3B86567F9077667 /* SocketIO */,
+			);
+			productName = SpyClash;
+			productReference = A01D249EEE029FBB05286504 /* SpyClash.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		19208BECA25401009A21A96A /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					77A6DFFF9D8CFBF19BE6C3C9 = {
+						DevelopmentTeam = S24F9M5CG7;
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = 3557A5B7C632F0105E5A73BE /* Build configuration list for PBXProject "SpyClash" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+				es,
+				ru,
+				"ru-UA",
+			);
+			mainGroup = 5CE4B78A27CB1A3000FABA7B;
+			minimizedProjectReferenceProxies = 1;
+			packageReferences = (
+				4F7ED4AB9DEE99B89C08557C /* XCRemoteSwiftPackageReference "socket.io-client-swift" */,
+			);
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 7B6BED41BFC5980A89ECA708 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				77A6DFFF9D8CFBF19BE6C3C9 /* SpyClash */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		EA212BCA0AD96EA7103EC761 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D881639D076EDA12A4605402 /* Assets.xcassets in Resources */,
+				0332FBE99D5419C0A04F460A /* InfoPlist.strings in Resources */,
+				5767CD1715E3A330461009CB /* PrivacyInfo.xcprivacy in Resources */,
+				13D77822DD0A8C0C325DD829 /* Rajdhani-Bold.ttf in Resources */,
+				8E679EA8468C18CDF362DB42 /* SWIFTUI_MIGRATION.md in Resources */,
+				C456B866F00482C8A0F5265B /* apple-access-surge.wav in Resources */,
+				FDA0A0B2C7D3E5E0A17BC1D0 /* apple-fragment-lock.wav in Resources */,
+				2843A2FFB9E2A953C3A63791 /* ui-allow.wav in Resources */,
+				9BCF7B5750327C577A989734 /* ui-click.wav in Resources */,
+				1B26C8D86F0C2C24D9554623 /* ui-copy-confirm.wav in Resources */,
+				D3ADBAF623A13BDD9B757FBF /* ui-countdown-go.wav in Resources */,
+				9A658E5E6BD4A7B8CE13E29E /* ui-countdown-tick.wav in Resources */,
+				A3843D00523FE4F39729F795 /* ui-denied.wav in Resources */,
+				C5B71F05FD8EE8C617DC09A2 /* ui-echo-blip.wav in Resources */,
+				7EF8F8B80F6B85C07FC74C76 /* ui-game-start.wav in Resources */,
+				FD361D460E74E783FEFC93AE /* ui-hard-deny.wav in Resources */,
+				CFC0DEAA161E86CD90B1B113 /* ui-holographic-tick.wav in Resources */,
+				41D5CC96D0A0C1E09EC359C0 /* ui-navigation-shift.wav in Resources */,
+				B6CC3B1E75D64A6F0CFF41D0 /* ui-player-join.wav in Resources */,
+				93E717DA1E64BEA767C702DF /* ui-player-leave.wav in Resources */,
+				8AC6EEDD7A5822C3D45CD93C /* ui-qr-card-flip.wav in Resources */,
+				0C49A36D2EDBEAA4F224B678 /* ui-ready-lock.wav in Resources */,
+				A29BF7E537E3E3154DEA20D9 /* ui-result-detectives.wav in Resources */,
+				F03729144EB479CC04F2AC9D /* ui-result-spy.wav in Resources */,
+				CF447E528FDEEBDE7419A76D /* ui-role-reveal.wav in Resources */,
+				B239488F16943CDB9B562FEF /* ui-secret-reveal.wav in Resources */,
+				1308A466500FC567BF0069FE /* ui-success.wav in Resources */,
+				9FDA7B1CDEC288F3FEB114F8 /* ui-toggle-off.wav in Resources */,
+				AB76F7CF5A42EAAFB84C18A8 /* ui-toggle-on.wav in Resources */,
+				23F7BD86E1F92FC6C3A36A41 /* ui-turn-pass.wav in Resources */,
+				1EE919C35D1A92EEA5BD64AF /* ui-vote-cast.wav in Resources */,
+				E2223AC02229A181EC77480D /* ui-vote-locked.wav in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		3EEDB8DBA19E39F75370F019 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				E354C5031FBE679050E0623D /* AppShellView.swift in Sources */,
+				94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */,
+				309F817C661DCC3A931B4F28 /* AppTab.swift in Sources */,
+				ED44596E572F517943ABADD6 /* AppleSignInCoordinator.swift in Sources */,
+				7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */,
+				ECDAC86975194D2BEBB14885 /* Base44Client.swift in Sources */,
+				FC61757D64D5967B87F90D6B /* CommunityView.swift in Sources */,
+				B9055F82BF207F9ED86A81FB /* DeviceTiltController.swift in Sources */,
+				E003ECA92C61B98778CAC8EC /* GameView.swift in Sources */,
+				6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */,
+				1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */,
+				32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */,
+				E27A943CAA9C87A2F4E58CDB /* KeychainStore.swift in Sources */,
+				047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */,
+				FE4AD779C9178990AE6FB3B2 /* LocalGameView.swift in Sources */,
+				BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */,
+				7B6D3EB62FE74629B61B73AE /* PricingView.swift in Sources */,
+				A14016F54504B30BA64BB8DA /* ProfileView.swift in Sources */,
+				6BEB09CD45546EB59A434FFF /* QRSheets.swift in Sources */,
+				A79E33F12838705CF1E207E5 /* SpyBackground.swift in Sources */,
+				557B3950F7F0642889A07BA5 /* SpyClashApp.swift in Sources */,
+				2946A41A9575F0D1AEE2D809 /* SpyModels.swift in Sources */,
+				7D6221160001A1F896D98689 /* SpyOrbSceneView.swift in Sources */,
+				4BEBA1477C858A78FB3F338D /* SpyTheme.swift in Sources */,
+				CB22564E02BD266693DE55B4 /* StoreKitManager.swift in Sources */,
+				A744EDBB751A4EB73DFC2C44 /* WelcomeView.swift in Sources */,
+				65B97F60EB8C89F0D594A552 /* WordPacksView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin PBXVariantGroup section */
+		22A24EBF700A367D8B269698 /* InfoPlist.strings */ = {
+			isa = PBXVariantGroup;
+			children = (
+				A6EDDA8AE23141F759D27B13 /* en */,
+				B7DA7D7405C80D4685A10F92 /* es */,
+				464F82CB598E4A8DCC748ADA /* ru */,
+				89A2672701BF2A5E11254E90 /* ru-UA */,
+			);
+			name = InfoPlist.strings;
+			sourceTree = "<group>";
+		};
+/* End PBXVariantGroup section */
+
+/* Begin XCBuildConfiguration section */
+		4BB519F2F24F5D23AEDB46C3 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SpyClash/Resources/SpyClash.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = S24F9M5CG7;
+				INFOPLIST_FILE = SpyClash/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.app;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
+		4E1DB2AD0C9C81B11182EF13 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SpyClash/Resources/SpyClash.entitlements;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = S24F9M5CG7;
+				INFOPLIST_FILE = SpyClash/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.app;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
+		B27C89F969CB99AC3F0B6B4C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		CD98D449BCC056243D149F1A /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 1;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		3557A5B7C632F0105E5A73BE /* Build configuration list for PBXProject "SpyClash" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				CD98D449BCC056243D149F1A /* Debug */,
+				B27C89F969CB99AC3F0B6B4C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		CF20E3432F0D697E0790FE79 /* Build configuration list for PBXNativeTarget "SpyClash" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				4BB519F2F24F5D23AEDB46C3 /* Debug */,
+				4E1DB2AD0C9C81B11182EF13 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+
+/* Begin XCRemoteSwiftPackageReference section */
+		4F7ED4AB9DEE99B89C08557C /* XCRemoteSwiftPackageReference "socket.io-client-swift" */ = {
+			isa = XCRemoteSwiftPackageReference;
+			repositoryURL = "https://github.com/socketio/socket.io-client-swift.git";
+			requirement = {
+				kind = upToNextMajorVersion;
+				minimumVersion = 16.1.1;
+			};
+		};
+/* End XCRemoteSwiftPackageReference section */
+
+/* Begin XCSwiftPackageProductDependency section */
+		0F3E2F7BE3B86567F9077667 /* SocketIO */ = {
+			isa = XCSwiftPackageProductDependency;
+			package = 4F7ED4AB9DEE99B89C08557C /* XCRemoteSwiftPackageReference "socket.io-client-swift" */;
+			productName = SocketIO;
+		};
+/* End XCSwiftPackageProductDependency section */
+	};
+	rootObject = 19208BECA25401009A21A96A /* Project object */;
+}

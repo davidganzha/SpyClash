@@ -1,0 +1,12 @@
+{
+  "enableUsernamePassword": true,
+  "enableGoogleLogin": false,
+  "enableMicrosoftLogin": false,
+  "enableFacebookLogin": false,
+  "enableAppleLogin": false,
+  "ssoProviderName": "custom",
+  "enableSSOLogin": true,
+  "googleOAuthMode": "custom",
+  "googleOAuthClientId": "752626074355-q2ij0sej5kjnclv5h8kdjrnldavvcha9.apps.googleusercontent.com",
+  "useWorkspaceSSO": false
+}

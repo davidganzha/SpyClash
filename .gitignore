@@ -1,0 +1,54 @@
+# macOS and Xcode
+.DS_Store
+DerivedData/
+build/
+*.xcarchive
+*.ipa
+*.dSYM
+*.xcuserstate
+**/xcuserdata/
+
+# Dependencies and generated output
+node_modules/
+**/node_modules/
+dist/
+**/dist/
+.build/
+
+# Local configuration and credentials
+.env
+.env.*
+*.local
+!.env.example
+!**/.env.example
+*.p8
+*.p12
+*.pem
+*.key
+*.cer
+*.mobileprovision
+
+# Base44 local state
+base44/.types/
+base44/.app.json*
+
+# Production audio is intentionally not redistributed. Run
+# scripts/bootstrap-public-assets.sh after cloning to create local placeholders.
+/SpyClash/Resources/Sounds/*.wav
+
+# Local references, neighboring projects, and archived Xcode generations
+/.web-reference/
+/TacticalGridArena/
+/SpyClash 2.xcodeproj/
+/SpyClash 3.xcodeproj/
+/SpyClash 4.xcodeproj/
+/-
+/SpyClash/Services/HapticManager 2.swift
+
+# Internal planning and release material
+/APP_STORE_IAP_MIGRATION_VERDICT.txt
+/APP_STORE_SUBMISSION.md
+/IOS_REBRAND_AGENT_BRIEF.txt
+/NEARBY_PROTOCOL_CODEX_TASK.txt
+/RELEASE_CHECKLIST.md
+/SOUND_DESIGN_UX_MAP.md

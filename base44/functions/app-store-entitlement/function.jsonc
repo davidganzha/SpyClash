@@ -1,0 +1,4 @@
+{
+  "name": "app-store-entitlement",
+  "entry": "entry.ts"
+}

@@ -1,0 +1,38 @@
+{
+  "name": "AppStoreAccount",
+  "description": "Server-owned binding between a SpyClash account and the stable Apple appAccountToken used for StoreKit purchases.",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "description": "Authenticated Base44 user that owns this Apple billing identity."
+    },
+    "app_account_token": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Stable UUID passed to StoreKit and returned in Apple transaction and renewal JWS payloads."
+    },
+    "created_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Time the billing identity was reserved for this account."
+    },
+    "last_used_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Most recent purchase preparation or verified transaction sync."
+    }
+  },
+  "required": [
+    "user_id",
+    "app_account_token",
+    "created_at",
+    "last_used_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}
