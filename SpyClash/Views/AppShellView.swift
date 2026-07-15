@@ -5,6 +5,9 @@ struct AppShellView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var dockNamespace
     @State private var isCommandMenuPresented = AppShellView.initialCommandMenuPresentation
+    @State private var communitySection: CommunitySection = .network
+    @State private var communityUnreadCount = 0
+    @State private var communityNavigationResetID = 0
 
     private static var initialCommandMenuPresentation: Bool {
 #if DEBUG
@@ -19,28 +22,36 @@ struct AppShellView: View {
         let contentTab = appState.selectedTab == .game && appState.activeRoom == nil ? AppTab.home : appState.selectedTab
         let dockTabs = AppTab.primaryCases
         let isMainRoute = appState.shellRoute == .main
+        let isCommunityRoute = appState.shellRoute == .community
         let shouldShowShellChrome = !appState.isShellChromeSuppressed && isMainRoute
-        let shouldShowDock = contentTab.showsBottomDock && shouldShowShellChrome
+        let shouldShowDock = isCommunityRoute || (contentTab.showsBottomDock && shouldShowShellChrome)
+        let dockItems = isCommunityRoute
+            ? communityDockItems(language: appState.language)
+            : mainDockItems(tabs: dockTabs, selectedTab: contentTab, language: appState.language)
 
-        ZStack {
-            ZStack(alignment: .bottom) {
-                contentTab
-                    .makeContentView()
-                    .frame(maxWidth: .infinity, maxHeight: .infinity)
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        if shouldShowDock {
-                            Color.clear
-                                .frame(height: 76)
-                                .allowsHitTesting(false)
-                        }
-                    }
-
-                FloatingDock(selection: $appState.selectedTab, tabs: dockTabs, namespace: dockNamespace, language: appState.language)
-                    .opacity(shouldShowDock ? 1 : 0)
-                    .offset(y: shouldShowDock ? 0 : 78)
-                    .allowsHitTesting(shouldShowDock)
-                    .accessibilityHidden(!shouldShowDock)
-                    .animation(.easeOut(duration: 0.20), value: shouldShowDock)
+        ZStack(alignment: .bottom) {
+            ZStack {
+                if isMainRoute {
+                    contentTab
+                        .makeContentView()
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .transition(.opacity)
+                } else {
+                    CommunityView(
+                        selection: $communitySection,
+                        navigationResetID: communityNavigationResetID,
+                        onUnreadCountChange: { communityUnreadCount = $0 }
+                    )
+                        .frame(maxWidth: .infinity, maxHeight: .infinity)
+                        .transition(.opacity)
+                }
+            }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if shouldShowDock {
+                    Color.clear
+                        .frame(height: 76)
+                        .allowsHitTesting(false)
+                }
             }
             .background(SpyTheme.black)
             .overlay(alignment: .top) {
@@ -51,31 +62,16 @@ struct AppShellView: View {
                     .accessibilityHidden(!shouldShowShellChrome)
                     .animation(.easeOut(duration: 0.18), value: shouldShowShellChrome)
             }
-            .scaleEffect(isMainRoute || reduceMotion ? 1 : 0.985)
-            .offset(x: isMainRoute || reduceMotion ? 0 : -24)
-            .opacity(isMainRoute ? 1 : 0.34)
-            .allowsHitTesting(isMainRoute)
-            .accessibilityHidden(!isMainRoute)
 
-            if appState.shellRoute == .community {
-                CommunityView {
-                    appState.closeCommunity()
-                }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
-                .background(SpyTheme.black)
-                .transition(
-                    reduceMotion
-                        ? .opacity
-                        : .move(edge: .trailing).combined(with: .opacity)
-                )
-                .zIndex(20)
-            }
+            FloatingDock(items: dockItems, namespace: dockNamespace, action: handleDockAction)
+                .opacity(shouldShowDock ? 1 : 0)
+                .offset(y: shouldShowDock ? 0 : 78)
+                .allowsHitTesting(shouldShowDock)
+                .accessibilityHidden(!shouldShowDock)
+                .animation(.easeOut(duration: 0.20), value: shouldShowDock)
         }
         .background(SpyTheme.black)
-        .animation(
-            reduceMotion ? .easeOut(duration: 0.18) : .smooth(duration: 0.44),
-            value: appState.shellRoute
-        )
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.22), value: appState.shellRoute)
         .sheet(item: $appState.presentedSheet) { destination in
             switch destination {
             case .qrScanner:
@@ -108,6 +104,87 @@ struct AppShellView: View {
         .onChange(of: appState.activeRoom?.id) { _, roomID in
             guard roomID == nil, appState.selectedTab == .game else { return }
             appState.selectedTab = .home
+        }
+        .onChange(of: appState.shellRoute) { _, route in
+            if route == .community {
+                communitySection = .network
+            }
+        }
+    }
+
+    private func mainDockItems(
+        tabs: [AppTab],
+        selectedTab: AppTab,
+        language: AppLanguage
+    ) -> [FloatingDockItem] {
+        tabs.map { tab in
+            FloatingDockItem(
+                id: "app-\(tab.id)",
+                symbol: tab.symbol,
+                accessibilityLabel: language.tabTitle(tab),
+                isSelected: selectedTab.dockRepresentative == tab,
+                destination: .app(tab)
+            )
+        }
+    }
+
+    private func communityDockItems(language: AppLanguage) -> [FloatingDockItem] {
+        [
+            FloatingDockItem(
+                id: "community-return",
+                symbol: "arrow.backward",
+                accessibilityLabel: communityDockLabel(.returnToApp, language: language),
+                isSelected: false,
+                destination: .returnToApp
+            ),
+            FloatingDockItem(
+                id: "community-network",
+                symbol: "person.2.fill",
+                accessibilityLabel: communityDockLabel(.community(.network), language: language),
+                isSelected: communitySection == .network,
+                destination: .community(.network)
+            ),
+            FloatingDockItem(
+                id: "community-inbox",
+                symbol: "tray.full.fill",
+                accessibilityLabel: communityDockLabel(.community(.inbox), language: language),
+                isSelected: communitySection == .inbox,
+                showsUnreadBadge: communitySection != .inbox && communityUnreadCount > 0,
+                destination: .community(.inbox)
+            )
+        ]
+    }
+
+    private func handleDockAction(_ item: FloatingDockItem) {
+        HapticManager.shared.fire(.tabSelection)
+        switch item.destination {
+        case let .app(tab):
+            appState.selectedTab = tab
+        case .returnToApp:
+            appState.closeCommunity()
+        case let .community(section):
+            if section == .network, communitySection == .network {
+                communityNavigationResetID += 1
+            }
+            communitySection = section
+        }
+    }
+
+    private func communityDockLabel(
+        _ destination: FloatingDockDestination,
+        language: AppLanguage
+    ) -> String {
+        switch (destination, language) {
+        case (.returnToApp, .ru): "Вернуться назад"
+        case (.community(.network), .ru): "Сообщество"
+        case (.community(.inbox), .ru): "Инбокс"
+        case (.returnToApp, .es): "Volver"
+        case (.community(.network), .es): "Comunidad"
+        case (.community(.inbox), .es): "Buzon"
+        case (.returnToApp, _): "Return"
+        case (.community(.network), _): "Community"
+        case (.community(.inbox), _): "Inbox"
+        case (.app, _): ""
         }
     }
 
@@ -1126,20 +1203,20 @@ private struct DrawerCutShape: Shape {
 }
 
 private struct FloatingDock: View {
-    @Binding var selection: AppTab
-    let tabs: [AppTab]
+    let items: [FloatingDockItem]
     let namespace: Namespace.ID
-    let language: AppLanguage
+    let action: (FloatingDockItem) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(tabs) { tab in
+            ForEach(items) { item in
                 Button {
-                    selection = tab
+                    action(item)
                 } label: {
-                    DockItem(tab: tab, isSelected: selection.dockRepresentative == tab, namespace: namespace, language: language)
+                    DockItem(item: item, namespace: namespace)
                 }
                 .buttonStyle(SpyWebPressStyle(pressedScale: 0.90))
+                .accessibilityLabel(item.accessibilityLabel)
             }
         }
         .padding(.horizontal, 8)
@@ -1162,32 +1239,55 @@ private struct FloatingDock: View {
 }
 
 private struct DockItem: View {
-    let tab: AppTab
-    let isSelected: Bool
+    let item: FloatingDockItem
     let namespace: Namespace.ID
-    let language: AppLanguage
 
     var body: some View {
-        Image(systemName: tab.symbol)
-            .font(.system(size: 25, weight: isSelected ? .bold : .medium))
-            .foregroundStyle(isSelected ? SpyTheme.red : Color.white.opacity(0.44))
-            .scaleEffect(isSelected ? 1.12 : 1)
-            .offset(y: isSelected ? -1 : 0)
-            .frame(maxWidth: .infinity)
-            .frame(height: 58)
-            .overlay(alignment: .bottom) {
-                if isSelected {
-                    Rectangle()
-                        .fill(SpyTheme.red)
-                        .frame(width: 28, height: 2)
-                        .matchedGeometryEffect(id: "dock-active-redline", in: namespace)
-                        .offset(y: -2)
-                }
+        ZStack(alignment: .topTrailing) {
+            Image(systemName: item.symbol)
+                .font(.system(size: 25, weight: item.isSelected ? .bold : .medium))
+                .foregroundStyle(item.isSelected ? SpyTheme.red : Color.white.opacity(0.44))
+                .scaleEffect(item.isSelected ? 1.12 : 1)
+                .offset(y: item.isSelected ? -1 : 0)
+
+            if item.showsUnreadBadge {
+                Circle()
+                    .fill(SpyTheme.red)
+                    .frame(width: 7, height: 7)
+                    .overlay(Circle().stroke(Color.black.opacity(0.72), lineWidth: 1))
+                    .offset(x: 7, y: -3)
+                    .accessibilityHidden(true)
             }
-            .contentShape(Rectangle())
-            .animation(.interpolatingSpring(mass: 1, stiffness: 420, damping: 26, initialVelocity: 0), value: isSelected)
-            .accessibilityLabel(language.tabTitle(tab))
+        }
+        .frame(maxWidth: .infinity)
+        .frame(height: 58)
+        .overlay(alignment: .bottom) {
+            if item.isSelected {
+                Rectangle()
+                    .fill(SpyTheme.red)
+                    .frame(width: 28, height: 2)
+                    .matchedGeometryEffect(id: "dock-active-redline", in: namespace)
+                    .offset(y: -2)
+            }
+        }
+        .contentShape(Rectangle())
+        .animation(.interpolatingSpring(mass: 1, stiffness: 420, damping: 26, initialVelocity: 0), value: item.isSelected)
     }
+}
+
+private struct FloatingDockItem: Identifiable {
+    let id: String
+    let symbol: String
+    let accessibilityLabel: String
+    let isSelected: Bool
+    var showsUnreadBadge = false
+    let destination: FloatingDockDestination
+}
+
+private enum FloatingDockDestination {
+    case app(AppTab)
+    case returnToApp
+    case community(CommunitySection)
 }
 
 // Native translation of the Base44 Layout.jsx drawer. Its geometry and reveal
@@ -1480,7 +1580,7 @@ private struct WebCommandMenuPanel: View {
 
                 revealItem(index: 2) {
                     menuButton(
-                        icon: "◎",
+                        icon: "💬",
                         title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD")
                     ) {
                         closeThen { appState.openCommunity() }

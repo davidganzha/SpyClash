@@ -13,6 +13,7 @@ struct PricingView: View {
     @State private var revealStep = 0
     @State private var scannerActive = false
     @State private var heroFlash = false
+    @State private var purchaseConfirmationPresented = false
 
     private var copy: PricingCopy {
         appState.language.pricing
@@ -44,6 +45,25 @@ struct PricingView: View {
                     )
             }
         }
+        .overlay(alignment: .bottom) {
+            if !statusText.isEmpty {
+                statusBanner
+                    .frame(maxWidth: 448)
+                    .padding(.horizontal, 20)
+                    .padding(.bottom, 22)
+                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    .zIndex(4)
+            }
+        }
+        .overlay {
+            if purchaseConfirmationPresented {
+                purchaseConfirmationOverlay
+                    .transition(.opacity)
+                    .zIndex(10)
+            }
+        }
+        .animation(.easeOut(duration: 0.22), value: statusText)
+        .animation(.easeOut(duration: 0.20), value: purchaseConfirmationPresented)
         .task {
             await runLimitlessPresentation()
         }
@@ -579,10 +599,6 @@ struct PricingView: View {
                 }
             }
 
-            if !statusText.isEmpty {
-                statusBanner
-            }
-
             HStack(spacing: 8) {
                 Image(systemName: "lock.shield.fill")
                 Text(localized(en: "APP STORE PURCHASE", ru: "ПОКУПКА В APP STORE", es: "COMPRA EN APP STORE"))
@@ -803,6 +819,151 @@ struct PricingView: View {
         }
     }
 
+    private var purchaseConfirmationOverlay: some View {
+        ZStack {
+            Color.black.opacity(0.82)
+                .ignoresSafeArea()
+                .contentShape(Rectangle())
+                .onTapGesture {
+                    purchaseConfirmationPresented = false
+                }
+
+            VStack(alignment: .leading, spacing: 0) {
+                HStack(spacing: 10) {
+                    Image(systemName: "lock.shield.fill")
+                        .font(.system(size: 18, weight: .black))
+                        .foregroundStyle(SpyTheme.red)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(localized(
+                            en: "SECURE CHECKOUT",
+                            ru: "ЗАЩИЩЕННАЯ ОПЛАТА",
+                            es: "PAGO SEGURO"
+                        ))
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .tracking(0.10)
+                        .foregroundStyle(.white)
+
+                        Text("APP STORE // APPLE ACCOUNT")
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .tracking(0.08)
+                            .foregroundStyle(SpyTheme.red)
+                    }
+
+                    Spacer(minLength: 8)
+
+                    Button {
+                        purchaseConfirmationPresented = false
+                    } label: {
+                        Image(systemName: "xmark")
+                            .font(.system(size: 12, weight: .black))
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                    .buttonStyle(SpyWebPressStyle())
+                    .foregroundStyle(SpyTheme.muted)
+                    .accessibilityLabel(localized(en: "CANCEL", ru: "ОТМЕНИТЬ", es: "CANCELAR"))
+                }
+                .padding(18)
+
+                Rectangle()
+                    .fill(SpyTheme.red.opacity(0.55))
+                    .frame(height: 1)
+
+                VStack(alignment: .leading, spacing: 14) {
+                    HStack(spacing: 12) {
+                        Image(systemName: "apple.logo")
+                            .font(.system(size: 23, weight: .semibold))
+                            .foregroundStyle(.white)
+                            .frame(width: 44, height: 44)
+                            .background(SpyTheme.dark, in: CutCornerShape(cut: 7))
+                            .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+
+                        VStack(alignment: .leading, spacing: 3) {
+                            Text(localized(
+                                en: "PAYMENT METHOD",
+                                ru: "СПОСОБ ОПЛАТЫ",
+                                es: "METODO DE PAGO"
+                            ))
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .tracking(0.08)
+                            .foregroundStyle(SpyTheme.dim)
+
+                            Text(localized(
+                                en: "APP STORE ACCOUNT",
+                                ru: "APP STORE",
+                                es: "APP STORE"
+                            ))
+                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                            .tracking(0.04)
+                            .foregroundStyle(.white)
+                        }
+
+                        Spacer(minLength: 8)
+
+                        VStack(alignment: .trailing, spacing: 3) {
+                            Text(appState.storeKit.displayPrice ?? "APP STORE")
+                                .font(.system(size: 12, weight: .black, design: .monospaced))
+                                .foregroundStyle(SpyTheme.red)
+
+                            Text("/ \(subscriptionPeriodLabel)")
+                                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                                .foregroundStyle(SpyTheme.dim)
+                        }
+                        .tracking(0.04)
+                        .frame(maxWidth: 86, alignment: .trailing)
+                    }
+
+                    Text(localized(
+                        en: "Apple uses the card, balance, or payment method saved to this App Store account. Confirmation stays inside Apple's protected purchase interface.",
+                        ru: "Apple использует карту, баланс или способ оплаты, сохраненный в этом аккаунте App Store. Подтверждение пройдет в защищенном интерфейсе Apple.",
+                        es: "Apple usa la tarjeta, el saldo o el metodo guardado en esta cuenta de App Store. La confirmacion ocurre en la interfaz protegida de Apple."
+                    ))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .lineSpacing(3)
+                    .foregroundStyle(SpyTheme.dim)
+                    .fixedSize(horizontal: false, vertical: true)
+
+#if DEBUG
+                    Text(localized(
+                        en: "TEST BUILD // APPLE MAY REQUEST A SANDBOX APPLE ACCOUNT",
+                        ru: "ТЕСТОВАЯ СБОРКА // APPLE МОЖЕТ ЗАПРОСИТЬ SANDBOX APPLE ACCOUNT",
+                        es: "BUILD DE PRUEBA // APPLE PUEDE SOLICITAR UNA CUENTA SANDBOX"
+                    ))
+                    .font(.system(size: 8, weight: .bold, design: .monospaced))
+                    .tracking(0.04)
+                    .foregroundStyle(SpyTheme.amber)
+#endif
+
+                    Button {
+                        purchaseConfirmationPresented = false
+                        Task { await purchaseLimitless() }
+                    } label: {
+                        HStack(spacing: 10) {
+                            Image(systemName: "arrow.up.right")
+                            Text(localized(
+                                en: "CONTINUE IN APP STORE",
+                                ru: "ПРОДОЛЖИТЬ В APP STORE",
+                                es: "CONTINUAR EN APP STORE"
+                            ))
+                            .spyFitted(lines: 2, scale: 0.64)
+                        }
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .tracking(0.06)
+                        .frame(maxWidth: .infinity, minHeight: 58)
+                    }
+                    .buttonStyle(LimitlessCommandButtonStyle())
+                }
+                .padding(18)
+            }
+            .frame(maxWidth: 420)
+            .background(SpyTheme.black, in: CutCornerShape(cut: 12))
+            .overlay(CutCornerShape(cut: 12).stroke(SpyTheme.red.opacity(0.78), lineWidth: 1))
+            .shadow(color: SpyTheme.red.opacity(0.22), radius: 30)
+            .padding(.horizontal, 24)
+        }
+    }
+
     private func cornerMark(color: Color) -> some View {
         Path { path in
             path.move(to: .zero)
@@ -945,7 +1106,7 @@ struct PricingView: View {
         if appState.hasLimitlessAccess {
             await refreshAccess(showResult: true)
         } else if appState.membershipTier == .free {
-            await purchaseLimitless()
+            purchaseConfirmationPresented = true
         } else {
             await refreshAccess(showResult: true)
         }
@@ -1024,7 +1185,9 @@ struct PricingView: View {
 
         switch await appState.storeKit.purchaseLimitless() {
         case .purchased:
-            await appState.refreshSubscription()
+            if !appState.hasLimitlessAccess {
+                await appState.refreshSubscription()
+            }
             statusText = appState.hasLimitlessAccess ? copy.accessActive : copy.accessNotActive
             statusKind = appState.hasLimitlessAccess ? .success : .error
             if appState.hasLimitlessAccess {
@@ -1041,8 +1204,12 @@ struct PricingView: View {
             statusKind = .warning
             HapticManager.shared.fire(.notification(.warning), sound: .echoBlip)
         case .cancelled:
-            statusText = ""
-            statusKind = nil
+            statusText = localized(
+                en: "PURCHASE NOT COMPLETED // NO CHARGE WAS MADE",
+                ru: "ПОКУПКА НЕ ЗАВЕРШЕНА // СПИСАНИЯ НЕ БЫЛО",
+                es: "COMPRA NO COMPLETADA // NO SE REALIZO NINGUN CARGO"
+            )
+            statusKind = .info
         case .failed(let message):
             showStoreKitFailure(message)
         case .restored, .noPurchases:
@@ -1080,8 +1247,12 @@ struct PricingView: View {
             statusKind = .info
             HapticManager.shared.fire(.tabSelection, sound: .echoBlip)
         case .cancelled:
-            statusText = ""
-            statusKind = nil
+            statusText = localized(
+                en: "RESTORE CANCELLED // ACCESS WAS NOT CHANGED",
+                ru: "ВОССТАНОВЛЕНИЕ ОТМЕНЕНО // ДОСТУП НЕ ИЗМЕНЕН",
+                es: "RESTAURACION CANCELADA // EL ACCESO NO CAMBIO"
+            )
+            statusKind = .info
         case .failed(let message):
             showStoreKitFailure(message)
         case .purchased, .pending:

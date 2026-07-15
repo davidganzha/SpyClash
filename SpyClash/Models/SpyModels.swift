@@ -3446,6 +3446,21 @@ struct Membership: Equatable {
         aiRemaining: nil
     )
 
+    static func verifiedAppleLimitless(
+        status: String,
+        expiresAt: Date
+    ) -> Membership {
+        Membership(
+            tier: .limitless,
+            status: status,
+            providers: ["apple"],
+            benefits: .limitless,
+            expiresAt: expiresAt,
+            aiGenerationsToday: nil,
+            aiRemaining: nil
+        )
+    }
+
     private init(
         tier: MembershipTier,
         status: String,

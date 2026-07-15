@@ -3,11 +3,9 @@ import UIKit
 
 struct CommunityView: View {
     @Environment(AppState.self) private var appState
-    @Namespace private var dockNamespace
-
-    let onExit: () -> Void
-
-    @State private var selectedTab: CommunityTab = .network
+    @Binding var selection: CommunitySection
+    let navigationResetID: Int
+    let onUnreadCountChange: (Int) -> Void
     @State private var network: CommunityState?
     @State private var directory: [PublicSpyProfile] = []
     @State private var nextDirectoryOffset: Int?
@@ -29,26 +27,18 @@ struct CommunityView: View {
     @State private var unblockTarget: CommunityRelationship?
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            PageChrome(
-                eyebrow: localized(en: "// COMMUNITY", ru: "// СООБЩЕСТВО", es: "// COMUNIDAD"),
-                status: localized(en: "OPERATIVE NETWORK", ru: "СЕТЬ ОПЕРАТИВНИКОВ", es: "RED DE OPERATIVOS"),
-                showsPageTopEdge: false,
-                topReserve: 0
-            ) {
-                sceneContent
-                    .padding(.horizontal, 18)
-                    .padding(.top, 14)
-                    .padding(.bottom, 92)
-            }
-
-            CommunityDock(
-                selection: selectedTab,
-                namespace: dockNamespace,
-                language: appState.language,
-                action: handleDockAction
-            )
-            .zIndex(20)
+        PageChrome(
+            eyebrow: localized(en: "// COMMUNITY", ru: "// СООБЩЕСТВО", es: "// COMUNIDAD"),
+            status: selection == .inbox
+                ? localized(en: "SECURE INBOX", ru: "ЗАЩИЩЕННЫЙ ИНБОКС", es: "BUZON SEGURO")
+                : localized(en: "OPERATIVE NETWORK", ru: "СЕТЬ ОПЕРАТИВНИКОВ", es: "RED DE OPERATIVOS"),
+            showsPageTopEdge: false,
+            topReserve: 0
+        ) {
+            sceneContent
+                .padding(.horizontal, 18)
+                .padding(.top, 14)
+                .padding(.bottom, 82)
         }
         .background(SpyTheme.black)
         .task { await loadInitialContent() }
@@ -57,6 +47,26 @@ struct CommunityView: View {
             try? await Task.sleep(for: .milliseconds(320))
             guard !Task.isCancelled else { return }
             await loadDirectory(reset: true)
+        }
+        .onChange(of: selection) { _, newSelection in
+            guard newSelection == .network else {
+                activeProfile = nil
+                profileHistory.removeAll()
+                commentDraft = ""
+                return
+            }
+            activeProfile = nil
+            profileHistory.removeAll()
+            commentDraft = ""
+        }
+        .onChange(of: pendingInboxCount, initial: true) { _, count in
+            onUnreadCountChange(count)
+        }
+        .onChange(of: navigationResetID) { _, _ in
+            selection = .network
+            activeProfile = nil
+            profileHistory.removeAll()
+            commentDraft = ""
         }
         .confirmationDialog(
             localized(en: "REPORT CONTENT", ru: "ПОЖАЛОВАТЬСЯ", es: "REPORTAR CONTENIDO"),
@@ -147,7 +157,10 @@ struct CommunityView: View {
                     .transition(.opacity.combined(with: .move(edge: .top)))
             }
 
-            if let activeProfile {
+            if selection == .inbox {
+                inboxScene
+                    .transition(.opacity)
+            } else if let activeProfile {
                 profileScene(activeProfile)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
             } else {
@@ -155,8 +168,181 @@ struct CommunityView: View {
                     .transition(.opacity.combined(with: .move(edge: .leading)))
             }
         }
+        .animation(.easeInOut(duration: 0.20), value: selection)
         .animation(.smooth(duration: 0.24), value: activeProfile?.profile.id)
         .animation(.easeOut(duration: 0.18), value: message)
+    }
+
+    private var inboxScene: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            VStack(alignment: .leading, spacing: 7) {
+                SpySceneKicker(
+                    title: localized(en: "SIGNAL CENTER", ru: "ЦЕНТР СИГНАЛОВ", es: "CENTRO DE SENALES"),
+                    status: pendingInboxCount == 0
+                        ? localized(en: "CLEAR", ru: "ЧИСТО", es: "LIMPIO")
+                        : "\(pendingInboxCount) \(localized(en: "NEW", ru: "НОВЫХ", es: "NUEVOS"))",
+                    accent: pendingInboxCount == 0 ? SpyTheme.green : SpyTheme.red
+                )
+
+                Text(localized(en: "INBOX", ru: "ИНБОКС", es: "BUZON"))
+                    .font(SpyTheme.brandFont(size: 34))
+                    .tracking(0.8)
+                    .foregroundStyle(.white)
+
+                Text(localized(
+                    en: "Friend requests, room invitations, and official SpyClash field updates arrive here.",
+                    ru: "Здесь появляются запросы в друзья, приглашения в комнаты и официальные новости SpyClash.",
+                    es: "Aqui llegan solicitudes de amistad, invitaciones a salas y novedades oficiales de SpyClash."
+                ))
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .foregroundStyle(SpyTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            }
+            .spyWebEntrance(delay: 0.02, duration: 0.36, y: 8)
+
+            if isInitialLoading {
+                HStack(spacing: 9) {
+                    SpySpinner(size: 16, accent: SpyTheme.red)
+                    Text(localized(en: "SYNCING SIGNALS", ru: "СИНХРОНИЗАЦИЯ СИГНАЛОВ", es: "SINCRONIZANDO SENALES"))
+                        .font(SpyTheme.micro)
+                        .foregroundStyle(SpyTheme.muted)
+                }
+                .frame(maxWidth: .infinity, minHeight: 92)
+            } else {
+                if let network, !network.incoming.isEmpty {
+                    SpyPanel(accent: SpyTheme.amber, motionDelay: 0.04) {
+                        VStack(alignment: .leading, spacing: 11) {
+                            SpySceneKicker(
+                                title: localized(en: "FRIEND REQUESTS", ru: "ЗАПРОСЫ В ДРУЗЬЯ", es: "SOLICITUDES DE AMISTAD"),
+                                status: "\(network.incoming.count)",
+                                accent: SpyTheme.amber
+                            )
+
+                            ForEach(network.incoming) { request in
+                                incomingFriendRow(request)
+                            }
+                        }
+                    }
+                }
+
+                if let network, !network.incomingRoomInvites.isEmpty {
+                    SpyPanel(accent: SpyTheme.red, motionDelay: 0.07) {
+                        VStack(alignment: .leading, spacing: 11) {
+                            SpySceneKicker(
+                                title: localized(en: "ROOM INVITES", ru: "ПРИГЛАШЕНИЯ В КОМНАТУ", es: "INVITACIONES A SALA"),
+                                status: "\(network.incomingRoomInvites.count)",
+                                accent: SpyTheme.red
+                            )
+
+                            ForEach(network.incomingRoomInvites) { invite in
+                                roomInviteRow(invite)
+                            }
+                        }
+                    }
+                }
+
+                if pendingInboxCount == 0 {
+                    inboxClearState
+                }
+
+                SpyPanel(accent: SpyTheme.red.opacity(0.68), motionDelay: 0.10) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        SpySceneKicker(
+                            title: localized(en: "SPYCLASH NEWS", ru: "НОВОСТИ SPYCLASH", es: "NOTICIAS SPYCLASH"),
+                            status: localized(en: "OFFICIAL", ru: "ОФИЦИАЛЬНО", es: "OFICIAL"),
+                            accent: SpyTheme.red
+                        )
+
+                        ForEach(inboxBulletins) { bulletin in
+                            inboxBulletinRow(bulletin)
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private var pendingInboxCount: Int {
+        (network?.incoming.count ?? 0) + (network?.incomingRoomInvites.count ?? 0)
+    }
+
+    private var inboxClearState: some View {
+        HStack(spacing: 12) {
+            Image(systemName: "checkmark.shield.fill")
+                .font(.system(size: 22, weight: .bold))
+                .foregroundStyle(SpyTheme.green)
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(localized(en: "NO PENDING ACTIONS", ru: "НЕТ ОЖИДАЮЩИХ ДЕЙСТВИЙ", es: "SIN ACCIONES PENDIENTES"))
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .tracking(0.5)
+                    .foregroundStyle(.white)
+                Text(localized(en: "Your operative network is synchronized.", ru: "Твоя сеть оперативников синхронизирована.", es: "Tu red de operativos esta sincronizada."))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(SpyTheme.muted)
+            }
+
+            Spacer()
+        }
+        .padding(14)
+        .background(SpyTheme.green.opacity(0.055))
+        .overlay(Rectangle().stroke(SpyTheme.green.opacity(0.24), lineWidth: 1))
+    }
+
+    private func inboxBulletinRow(_ bulletin: CommunityInboxBulletin) -> some View {
+        HStack(alignment: .top, spacing: 11) {
+            Image(systemName: bulletin.symbol)
+                .font(.system(size: 15, weight: .black))
+                .foregroundStyle(SpyTheme.red)
+                .frame(width: 42, height: 42)
+                .background(SpyTheme.red.opacity(0.08))
+                .overlay(Rectangle().stroke(SpyTheme.red.opacity(0.26), lineWidth: 1))
+
+            VStack(alignment: .leading, spacing: 4) {
+                Text(bulletin.title)
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .tracking(0.5)
+                    .foregroundStyle(.white)
+                Text(bulletin.body)
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(SpyTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                Text(bulletin.dateLabel)
+                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                    .tracking(0.7)
+                    .foregroundStyle(SpyTheme.faint)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .padding(.vertical, 4)
+    }
+
+    private var inboxBulletins: [CommunityInboxBulletin] {
+        [
+            CommunityInboxBulletin(
+                id: "community-online",
+                symbol: "person.2.wave.2.fill",
+                title: localized(en: "OPERATIVE NETWORK ONLINE", ru: "СЕТЬ ОПЕРАТИВНИКОВ ЗАПУЩЕНА", es: "RED DE OPERATIVOS ACTIVA"),
+                body: localized(
+                    en: "Discover public SPYCARDs, build your friend network, and invite operatives directly into an open room.",
+                    ru: "Находи публичные SPYCARD, собирай сеть друзей и приглашай оперативников прямо в открытую комнату.",
+                    es: "Descubre SPYCARD publicas, crea tu red de amigos e invita operativos directamente a una sala abierta."
+                ),
+                dateLabel: localized(en: "FIELD UPDATE 01", ru: "ПОЛЕВОЕ ОБНОВЛЕНИЕ 01", es: "ACTUALIZACION 01")
+            ),
+            CommunityInboxBulletin(
+                id: "spyid-protocol",
+                symbol: "number.square.fill",
+                title: localized(en: "SPYID PROTOCOL", ru: "ПРОТОКОЛ SPYID", es: "PROTOCOLO SPYID"),
+                body: localized(
+                    en: "Every operative now has a unique 000-000 identifier for fast, exact discovery.",
+                    ru: "У каждого оперативника теперь есть уникальный идентификатор 000-000 для быстрого и точного поиска.",
+                    es: "Cada operativo ahora tiene un identificador unico 000-000 para una busqueda rapida y exacta."
+                ),
+                dateLabel: localized(en: "SYSTEM NOTICE", ru: "СИСТЕМНОЕ СООБЩЕНИЕ", es: "AVISO DEL SISTEMA")
+            )
+        ]
     }
 
     private var directoryScene: some View {
@@ -981,32 +1167,6 @@ struct CommunityView: View {
         return room
     }
 
-    private func handleDockAction(_ tab: CommunityTab) {
-        HapticManager.shared.fire(.tabSelection, sound: .echoBlip)
-        switch tab {
-        case .exit:
-            onExit()
-        case .network:
-            selectedTab = .network
-            activeProfile = nil
-            profileHistory.removeAll()
-            commentDraft = ""
-        case .me:
-            selectedTab = .me
-            profileHistory.removeAll()
-            commentDraft = ""
-            if let userID = network?.me.id {
-                Task {
-                    await openProfile(
-                        userID,
-                        rememberingCurrent: false,
-                        placeholder: network?.me
-                    )
-                }
-            }
-        }
-    }
-
     private func loadInitialContent() async {
         guard !didLoadInitialContent else { return }
         isInitialLoading = true
@@ -1024,7 +1184,7 @@ struct CommunityView: View {
                 .first(where: { $0.hasPrefix("--spyclash-preview-community-profile=") })
                 .map({ String($0.dropFirst("--spyclash-preview-community-profile=".count)) }) {
                 let userID = target == "me" ? CommunityPreview.me.id : target
-                selectedTab = userID == CommunityPreview.me.id ? .me : .network
+                selection = .network
                 activeProfile = CommunityPreview.profile(userID: userID, viewerID: CommunityPreview.me.id)
             }
 #endif
@@ -1119,7 +1279,7 @@ struct CommunityView: View {
             guard profileRequestID == requestID else { return }
             isProfileLoading = false
             showError(error)
-            if activeProfile == nil, profileHistory.isEmpty { selectedTab = .network }
+            if activeProfile == nil, profileHistory.isEmpty { selection = .network }
         }
     }
 
@@ -1139,7 +1299,7 @@ struct CommunityView: View {
             await openProfile(previousID, rememberingCurrent: false)
         } else {
             activeProfile = nil
-            selectedTab = .network
+            selection = .network
         }
     }
 
@@ -1251,7 +1411,7 @@ struct CommunityView: View {
             network = try await appState.client.blockCommunityUser(userID: profile.id)
             activeProfile = nil
             profileHistory.removeAll()
-            selectedTab = .network
+            selection = .network
             commentDraft = ""
             directory.removeAll { $0.id == profile.id }
             message = localized(
@@ -1494,86 +1654,17 @@ private enum CommunityReportTarget: Identifiable {
     }
 }
 
-private enum CommunityTab: String, CaseIterable, Identifiable {
-    case exit
+enum CommunitySection: String, Hashable {
     case network
-    case me
-
-    var id: String { rawValue }
-
-    var symbol: String {
-        switch self {
-        case .exit: "arrow.backward"
-        case .network: "person.2.fill"
-        case .me: "person.crop.circle.fill"
-        }
-    }
+    case inbox
 }
 
-private struct CommunityDock: View {
-    let selection: CommunityTab
-    let namespace: Namespace.ID
-    let language: AppLanguage
-    let action: (CommunityTab) -> Void
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(CommunityTab.allCases) { tab in
-                Button {
-                    action(tab)
-                } label: {
-                    let isSelected = tab != .exit && selection == tab
-                    Image(systemName: tab.symbol)
-                        .font(.system(size: 25, weight: isSelected ? .bold : .medium))
-                        .foregroundStyle(isSelected ? SpyTheme.red : Color.white.opacity(tab == .exit ? 0.70 : 0.44))
-                        .scaleEffect(isSelected ? 1.10 : 1)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 58)
-                        .overlay(alignment: .bottom) {
-                            if isSelected {
-                                Rectangle()
-                                    .fill(SpyTheme.red)
-                                    .frame(width: 28, height: 2)
-                                    .matchedGeometryEffect(id: "community-dock-redline", in: namespace)
-                                    .offset(y: -2)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(SpyWebPressStyle(pressedScale: 0.90))
-                .accessibilityLabel(accessibilityLabel(tab))
-            }
-        }
-        .padding(.horizontal, 8)
-        .frame(maxWidth: 348)
-        .frame(height: 62)
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(Color.black.opacity(0.72))
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-        }
-        .shadow(color: .black.opacity(0.24), radius: 9, y: 5)
-        .padding(.horizontal, 10)
-        .padding(.bottom, 8)
-    }
-
-    private func accessibilityLabel(_ tab: CommunityTab) -> String {
-        switch (tab, language) {
-        case (.exit, .ru): "Вернуться назад"
-        case (.network, .ru): "Сообщество"
-        case (.me, .ru): "Мой публичный профиль"
-        case (.exit, .es): "Volver"
-        case (.network, .es): "Comunidad"
-        case (.me, .es): "Mi perfil publico"
-        case (.exit, _): "Return"
-        case (.network, _): "Community"
-        case (.me, _): "My public profile"
-        }
-    }
+private struct CommunityInboxBulletin: Identifiable {
+    let id: String
+    let symbol: String
+    let title: String
+    let body: String
+    let dateLabel: String
 }
 
 private enum CommunitySpyCardSize {

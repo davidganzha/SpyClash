@@ -12,7 +12,6 @@ struct SpyClashApp: App {
                 .preferredColorScheme(.dark)
                 .tint(SpyTheme.red)
                 .task {
-                    HapticManager.shared.preloadInterfaceSounds()
                     await appState.restoreSession()
                 }
                 .onChange(of: scenePhase, initial: true) { _, phase in
@@ -20,8 +19,6 @@ struct SpyClashApp: App {
                     HapticManager.shared.setApplicationActive(isActive)
                     if isActive {
                         appState.synchronizeCommerceAccessOnActivation()
-                    } else {
-                        AuthCinematicSoundPlayer.shared.stopAll()
                     }
                 }
         }
