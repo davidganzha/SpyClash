@@ -76,7 +76,6 @@ schemes:
         SpyClash: all
     run:
       config: Debug
-      storeKitConfiguration: StoreKit/SpyClash.storekit
     profile:
       config: Release
     analyze:

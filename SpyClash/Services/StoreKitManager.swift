@@ -88,6 +88,7 @@ private enum StoreKitManagerError: LocalizedError {
     case productUnavailable
     case productMismatch
     case unverifiedTransaction
+    case serverVerificationRequired
     case entitlementNotGranted
     case noWindowScene
 
@@ -101,6 +102,8 @@ private enum StoreKitManagerError: LocalizedError {
             "The App Store returned an unexpected subscription product."
         case .unverifiedTransaction:
             "The App Store transaction could not be verified."
+        case .serverVerificationRequired:
+            "The App Store purchase could not be verified by SpyClash."
         case .entitlementNotGranted:
             "The purchase was verified, but LIMITLESS access is not active."
         case .noWindowScene:
@@ -122,7 +125,7 @@ final class StoreKitManager {
 
     @ObservationIgnored private let client: Base44Client
     @ObservationIgnored private var transactionUpdatesTask: Task<Void, Never>?
-    @ObservationIgnored var onEntitlementChanged: (() async -> Void)?
+    @ObservationIgnored var onEntitlementChanged: ((AppStoreEntitlement) async -> Void)?
 
     init(client: Base44Client) {
         self.client = client
@@ -201,7 +204,7 @@ final class StoreKitManager {
                     throw StoreKitManagerError.entitlementNotGranted
                 }
                 purchaseState = .purchased
-                await onEntitlementChanged?()
+                await onEntitlementChanged?(response.entitlement)
                 return .purchased
             case .pending:
                 purchaseState = .pending
@@ -237,7 +240,6 @@ final class StoreKitManager {
                 return .noPurchases
             }
             purchaseState = .restored
-            await onEntitlementChanged?()
             return .restored(count: count)
         } catch is CancellationError {
             purchaseState = .idle
@@ -254,6 +256,7 @@ final class StoreKitManager {
         defer { isSynchronizingEntitlements = false }
 
         var synchronizedTransactionIDs = Set<UInt64>()
+        var synchronizedEntitlement: AppStoreEntitlement?
         // Transactions delivered while signed out remain unfinished. Bind and
         // acknowledge them only after a SpyClash account is authenticated.
         for await verification in Transaction.unfinished {
@@ -262,8 +265,9 @@ final class StoreKitManager {
             guard transaction.productID == Self.limitlessProductID else {
                 continue
             }
-            try await persist(verification)
+            let response = try await persist(verification)
             synchronizedTransactionIDs.insert(transaction.id)
+            synchronizedEntitlement = response.entitlement
         }
 
         // Restore success is based only on Apple's current entitlements. An
@@ -278,6 +282,7 @@ final class StoreKitManager {
             }
             let response = try await persist(verification)
             synchronizedTransactionIDs.insert(transaction.id)
+            synchronizedEntitlement = response.entitlement
             if response.entitlement.grantsAccess {
                 activeOriginalTransactionIDs.insert(transaction.originalID)
             }
@@ -291,8 +296,12 @@ final class StoreKitManager {
             try Task.checkCancellation()
             let transaction = latest.unsafePayloadValue
             if !synchronizedTransactionIDs.contains(transaction.id) {
-                try await persist(latest)
+                let response = try await persist(latest)
+                synchronizedEntitlement = response.entitlement
             }
+        }
+        if let synchronizedEntitlement {
+            await onEntitlementChanged?(synchronizedEntitlement)
         }
         return activeOriginalTransactionIDs.count
     }
@@ -317,8 +326,8 @@ final class StoreKitManager {
             }
 
             do {
-                try await persist(verification)
-                await onEntitlementChanged?()
+                let response = try await persist(verification)
+                await onEntitlementChanged?(response.entitlement)
             } catch is CancellationError {
                 return
             } catch {
@@ -343,8 +352,8 @@ final class StoreKitManager {
         let response = try await client.syncAppStoreTransaction(
             signedTransaction: verification.jwsRepresentation
         )
-        guard response.success else {
-            throw StoreKitManagerError.entitlementNotGranted
+        guard response.success, response.serverStatusVerified else {
+            throw StoreKitManagerError.serverVerificationRequired
         }
         // A revoked or expired transaction still needs to be acknowledged once
         // the backend has persisted the loss of access. Purchase completion

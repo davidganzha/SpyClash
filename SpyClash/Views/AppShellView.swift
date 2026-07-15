@@ -1580,7 +1580,7 @@ private struct WebCommandMenuPanel: View {
 
                 revealItem(index: 2) {
                     menuButton(
-                        icon: "◎",
+                        icon: "💬",
                         title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD")
                     ) {
                         closeThen { appState.openCommunity() }

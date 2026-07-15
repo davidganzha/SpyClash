@@ -136,8 +136,8 @@ final class AppState: NSObject {
         self.membershipRealtime = MembershipRealtimeService()
         super.init()
 
-        storeKit.onEntitlementChanged = { [weak self] in
-            await self?.refreshSubscription()
+        storeKit.onEntitlementChanged = { [weak self] entitlement in
+            await self?.applyVerifiedAppleEntitlement(entitlement)
         }
         membershipRealtime.onMembershipSignal = { [weak self] in
             self?.handleMembershipRealtimeSignal()
@@ -751,6 +751,36 @@ final class AppState: NSObject {
             }
         }
         await refreshSubscription()
+    }
+
+    private func applyVerifiedAppleEntitlement(
+        _ entitlement: AppStoreEntitlement
+    ) async {
+        guard let requestedUserID = user?.id else { return }
+
+        guard entitlement.grantsAccess else {
+            await refreshSubscription()
+            return
+        }
+
+        let shouldPresentUnlock = membership != nil && membership?.isLimitless == false
+        let verifiedMembership = Membership.verifiedAppleLimitless(
+            status: entitlement.status,
+            expiresAt: entitlement.expiresAt
+        )
+
+        guard user?.id == requestedUserID else { return }
+        membership = verifiedMembership
+        membershipOwnerUserID = requestedUserID
+        membershipSyncState = .synced
+        scheduleMembershipExpiryRefresh(
+            for: verifiedMembership,
+            ownerUserID: requestedUserID
+        )
+
+        if shouldPresentUnlock {
+            presentLimitlessUnlock()
+        }
     }
 
     func synchronizeCommerceAccessOnActivation() {
