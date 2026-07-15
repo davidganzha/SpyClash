@@ -1,0 +1,99 @@
+{
+  "name": "LiveActivityRegistration",
+  "description": "Server-owned encrypted ActivityKit push-to-start or per-activity update token.",
+  "type": "object",
+  "properties": {
+    "user_id": { "type": "string" },
+    "installation_id_hash": { "type": "string" },
+    "token_kind": {
+      "type": "string",
+      "enum": ["push_to_start", "activity"]
+    },
+    "token_hash": { "type": "string" },
+    "token_ciphertext": {
+      "type": "string",
+      "description": "AES-GCM encrypted ActivityKit APNs token.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "token_iv": {
+      "type": "string",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "activity_id_hash": { "type": "string" },
+    "room_id": { "type": "string" },
+    "match_id": { "type": "string" },
+    "environment": {
+      "type": "string",
+      "enum": ["sandbox", "production"]
+    },
+    "bundle_id": { "type": "string" },
+    "status": {
+      "type": "string",
+      "enum": ["active", "ended", "revoked"],
+      "default": "active"
+    },
+    "last_started_match_id": {
+      "type": "string",
+      "description": "Legacy latest match marker retained for compatibility."
+    },
+    "started_match_ids": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Bounded match ledger preventing duplicate push-to-start activities across concurrent rooms."
+    },
+    "last_revision": {
+      "type": "number",
+      "description": "Latest room revision delivered to this activity token."
+    },
+    "provider_match_id": {
+      "type": "string",
+      "description": "Current server match generation bound to this per-activity token. Prevents replay data reaching a stale activity."
+    },
+    "delivery_state": {
+      "type": "string",
+      "enum": ["idle", "processing", "retry", "failed"],
+      "default": "idle"
+    },
+    "delivery_revision": { "type": "string" },
+    "delivery_lease_until": { "type": "string", "format": "date-time" },
+    "delivery_attempt_count": { "type": "number", "default": 0 },
+    "next_attempt_at": { "type": "string", "format": "date-time" },
+    "retry_requested": { "type": "boolean", "default": false },
+    "pending_room_id": { "type": "string" },
+    "pending_match_id": { "type": "string" },
+    "pending_room_revision": { "type": "number" },
+    "last_apns_timestamp": { "type": "number" },
+    "last_seen_at": { "type": "string", "format": "date-time" },
+    "ended_at": { "type": "string", "format": "date-time" },
+    "revoked_at": { "type": "string", "format": "date-time" },
+    "last_error_code": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "user_id",
+    "installation_id_hash",
+    "token_kind",
+    "token_hash",
+    "token_ciphertext",
+    "token_iv",
+    "environment",
+    "bundle_id",
+    "status",
+    "last_seen_at",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

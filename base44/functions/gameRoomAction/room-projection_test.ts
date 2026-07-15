@@ -7,6 +7,7 @@ import {
 Deno.test("active spy projection hides secret data and internal identities", () => {
   const room = {
     id: "room-1",
+    match_id: "opaque-match-7d1c",
     code: "ABC123",
     host_email: "host@example.com",
     status: "playing",
@@ -34,8 +35,11 @@ Deno.test("active spy projection hides secret data and internal identities", () 
   assertEquals(projected.word, "CLASSIFIED");
   assertEquals(projected.secret_word, "CLASSIFIED");
   assertEquals(projected.word_pool, []);
+  assertEquals(projected.match_id, "opaque-match-7d1c");
   assertEquals("participant_user_ids" in projected, false);
   assertEquals("created_by" in projected, false);
+  assertEquals("game_started_event_id" in projected, false);
+  assertEquals("game_finished_event_id" in projected, false);
   assertEquals("user_id" in projected.players[0], false);
 });
 

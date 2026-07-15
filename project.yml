@@ -21,6 +21,7 @@ targets:
     entitlements:
       path: SpyClash/Resources/SpyClash.entitlements
       properties:
+        aps-environment: "$(APS_ENVIRONMENT)"
         com.apple.developer.applesignin:
           - Default
     sources:
@@ -48,6 +49,8 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSRequiresIPhoneOS: true
         ITSAppUsesNonExemptEncryption: false
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
         NSCameraUsageDescription: "Scan SpyClash room QR codes. / Escanear QR de salas SpyClash. / Сканировать QR-коды комнат SpyClash."
         UIAppFonts:
           - Rajdhani-Bold.ttf
@@ -68,8 +71,38 @@ targets:
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: 1
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+      configs:
+        Debug:
+          APS_ENVIRONMENT: development
+        Release:
+          APS_ENVIRONMENT: production
     dependencies:
       - package: SocketIO
+      - target: SpyClashWidgets
+        embed: true
+  SpyClashWidgets:
+    type: app-extension
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: SpyClashWidgets
+      - path: SpyClash/LiveActivityShared
+    info:
+      path: SpyClashWidgets/Info.plist
+      properties:
+        CFBundleDisplayName: SpyClash Live
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        NSExtension:
+          NSExtensionPointIdentifier: com.apple.widgetkit-extension
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.spyclash.app.widgets
+        DEVELOPMENT_TEAM: S24F9M5CG7
+        CODE_SIGN_STYLE: Automatic
+        SKIP_INSTALL: true
+        APPLICATION_EXTENSION_API_ONLY: true
+        TARGETED_DEVICE_FAMILY: 1
 schemes:
   SpyClash:
     build:

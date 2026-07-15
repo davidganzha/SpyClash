@@ -1,0 +1,70 @@
+{
+  "name": "PushDeviceRegistration",
+  "description": "Server-owned APNs alert registration. Raw installation identifiers are never stored and device tokens are encrypted at rest.",
+  "type": "object",
+  "properties": {
+    "user_id": { "type": "string" },
+    "installation_id_hash": { "type": "string" },
+    "token_hash": { "type": "string" },
+    "token_ciphertext": {
+      "type": "string",
+      "description": "AES-GCM encrypted APNs token.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "token_iv": {
+      "type": "string",
+      "description": "AES-GCM nonce for token_ciphertext.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "environment": {
+      "type": "string",
+      "enum": ["sandbox", "production"]
+    },
+    "bundle_id": { "type": "string" },
+    "locale": { "type": "string" },
+    "app_version": { "type": "string" },
+    "alert_authorized": { "type": "boolean", "default": false },
+    "friend_requests_enabled": { "type": "boolean", "default": true },
+    "room_invites_enabled": { "type": "boolean", "default": true },
+    "game_updates_enabled": { "type": "boolean", "default": true },
+    "status": {
+      "type": "string",
+      "enum": ["active", "revoked"],
+      "default": "active"
+    },
+    "last_seen_at": { "type": "string", "format": "date-time" },
+    "revoked_at": { "type": "string", "format": "date-time" },
+    "last_error_code": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "user_id",
+    "installation_id_hash",
+    "token_hash",
+    "token_ciphertext",
+    "token_iv",
+    "environment",
+    "bundle_id",
+    "alert_authorized",
+    "friend_requests_enabled",
+    "room_invites_enabled",
+    "game_updates_enabled",
+    "status",
+    "last_seen_at",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

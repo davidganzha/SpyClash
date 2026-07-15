@@ -26,6 +26,8 @@ import {
   terminalIntentFromRoom,
   terminalPatchFromIntent,
 } from "./room-result-policy.ts";
+import { enqueueGamePushEvents } from "./push-events.ts";
+import { nextRoundNumber } from "./game-round.ts";
 
 function jsonError(message, status = 400) {
   return Response.json({ error: message }, { status });
@@ -478,11 +480,24 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
     terminalPatch,
   );
   const persistedPatch = terminalPatchFromIntent(claimed.intent);
+  const finishedEventID = `game-finished:${clean(claimed.intent.match_id)}`;
+  await enqueueGamePushEvents({
+    base44,
+    room: claimed.room,
+    eventType: "game_finished",
+    sourceEventID: finishedEventID,
+    matchID: clean(claimed.intent.match_id),
+    persist: async (writer) => {
+      await assertRoomPersistenceBoundary(base44);
+      return await writer();
+    },
+  });
   const terminal = {
     ...claimed.room,
     ...persistedPatch,
     status: "finished",
     winner: claimed.intent.winner,
+    game_finished_event_id: finishedEventID,
   };
   // The immutable CAS-claimed terminal intent is persisted first. A retry can
   // only reconcile that same winner/payload, so history and room state cannot
@@ -506,12 +521,15 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
             { status: 409, code: "terminal_state_conflict" },
           );
         }
-        return {};
+        return clean(latest.game_finished_event_id) === finishedEventID
+          ? {}
+          : { game_finished_event_id: finishedEventID };
       }
       return {
         ...terminalPatchFromIntent(intent),
         status: "finished",
         winner: intent.winner,
+        game_finished_event_id: finishedEventID,
       };
     },
     (latest) =>
@@ -702,6 +720,8 @@ async function resetRoomForReplay(base44, room, user, body) {
     match_id: "",
     terminal_intent: null,
     game_started_at: null,
+    game_started_event_id: "",
+    game_finished_event_id: "",
     countdown_started_at: null,
     game_mode: clean(body?.game_mode) || clean(room.game_mode) || "questions",
     game_duration_seconds: Number(
@@ -878,13 +898,29 @@ async function completeGameStart(base44, room, user, body) {
   }
 
   const startPatch = body?.plan ? validatedStartPatch(room, body.plan) : {};
+  const matchID = crypto.randomUUID();
+  const startedEventID = crypto.randomUUID();
+  await enqueueGamePushEvents({
+    base44,
+    room,
+    eventType: "game_started",
+    sourceEventID: startedEventID,
+    matchID,
+    actorUserID: clean(user.id),
+    persist: async (writer) => {
+      await assertRoomPersistenceBoundary(base44);
+      return await writer();
+    },
+  });
 
   return await updateRoom(base44, room, {
     ...startPatch,
     status: "playing",
-    match_id: crypto.randomUUID(),
+    match_id: matchID,
     terminal_intent: null,
     game_started_at: null,
+    game_started_event_id: startedEventID,
+    game_finished_event_id: "",
     ready_players: [],
     cards_read: [],
     vote_requests: [],
@@ -1079,6 +1115,7 @@ async function continueRound(base44, room, user) {
   }
   return await updateRoom(base44, room, {
     question_phase: "asking",
+    round_number: nextRoundNumber(room.round_number),
     questions_in_round: 0,
     current_answer: "",
     current_answer_feedback: null,
@@ -1462,6 +1499,37 @@ async function executeRoomAction(base44, action, room, user, body) {
   }
 }
 
+async function dispatchRoomPushBestEffort(base44, room, action) {
+  const internalSecret = clean(Deno.env.get("PUSH_INTERNAL_SECRET"));
+  if (!internalSecret || !room?.id) return;
+  const sourceEventIDs = [];
+  if (action === "complete_game_start" && clean(room.game_started_event_id)) {
+    sourceEventIDs.push(clean(room.game_started_event_id));
+  }
+  if (clean(room.status) === "finished" && clean(room.game_finished_event_id)) {
+    sourceEventIDs.push(clean(room.game_finished_event_id));
+  }
+  try {
+    for (const sourceEventID of sourceEventIDs) {
+      await base44.asServiceRole.functions.invoke("pushNotificationAction", {
+        action: "process_event",
+        source_event_id: sourceEventID,
+        internal_secret: internalSecret,
+      });
+    }
+    if (clean(room.match_id)) {
+      await base44.asServiceRole.functions.invoke("pushNotificationAction", {
+        action: "sync_live_activity",
+        room_id: clean(room.id),
+        match_id: clean(room.match_id),
+        internal_secret: internalSecret,
+      });
+    }
+  } catch (error) {
+    console.error("room push dispatch deferred", error?.message || error);
+  }
+}
+
 function lifecycleHTTPStatus(error) {
   if (!(error instanceof BillingIdentityLifecycleError)) {
     return Number(error?.status) || 500;
@@ -1583,6 +1651,7 @@ Deno.serve(async (req) => {
         }
       },
     });
+    if (result?.id) await dispatchRoomPushBestEffort(base44, result, action);
     return Response.json(result?.id ? roomForClient(result, user) : result);
   } catch (error) {
     console.error("gameRoomAction error:", error?.message || error);
