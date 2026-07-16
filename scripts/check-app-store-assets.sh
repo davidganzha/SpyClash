@@ -5,6 +5,7 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 screens="$root/AppStoreAssets/Screenshots/en-US"
 notes="$root/AppStoreAssets/APP_REVIEW_NOTES.md"
 fields="$root/AppStoreAssets/APP_STORE_CONNECT_FIELDS.md"
+testflight_acceptance="$root/AppStoreAssets/TESTFLIGHT_ACCEPTANCE.md"
 
 expected_screens='01-online-playing.png
 02-local-results.png
@@ -44,6 +45,12 @@ if ! grep -Fq 'Prepared for iOS version 1.0, build 3.' "$notes"; then
 fi
 if ! grep -Fq 'Select build `1.0 (3)` only.' "$fields"; then
   echo "App Store Connect field guide does not select build 1.0 (3)." >&2
+  exit 1
+fi
+if ! grep -Fq 'version 1.0 build 3' "$testflight_acceptance" \
+    || ! grep -Fq 'com.spyclash.app.limitless.weekly' "$testflight_acceptance" \
+    || ! grep -Fq 'App Store Server Notifications V2' "$testflight_acceptance"; then
+  echo "The physical-device acceptance gate is missing build, product, or notification coverage." >&2
   exit 1
 fi
 if ! grep -Fq 'visual reference only' "$root/AppStoreAssets/README.md" \

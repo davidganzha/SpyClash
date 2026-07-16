@@ -11,6 +11,9 @@ on an iPhone 17 Pro Max simulator running iOS 26.5.
   3; credentials and private contact fields stay in App Store Connect only.
 - `SUPPORT_AND_DSA.md` records the remaining mailbox and EU Digital Services
   Act evidence gates.
+- `TESTFLIGHT_ACCEPTANCE.md` is the physical-device acceptance gate for StoreKit,
+  provider sync, push notifications, Live Activities, and App Store Server
+  Notifications V2.
 - `AUDIO_RIGHTS_MANIFEST.md` maps all 27 release hashes to the reproducible
   original procedural generator documented in the repository root.
 
