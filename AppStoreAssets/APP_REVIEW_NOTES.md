@@ -1,6 +1,6 @@
 # SpyClash App Review package
 
-Prepared for iOS version 1.0, build 2.
+Prepared for iOS version 1.0, build 3.
 
 ## Secure App Store Connect fields
 
@@ -36,7 +36,7 @@ the Restore Purchases control.
 
 ## Remaining review-only verification
 
-- Verify the dedicated review account on build 2 using the exact credentials
+- Verify the dedicated review account on build 3 using the exact credentials
   entered in App Store Connect.
 - Verify a real Sandbox purchase, entitlement restoration, and server sync.
 - Capture the subscription review screenshot from that verified build.

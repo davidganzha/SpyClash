@@ -3,6 +3,17 @@
 Generated from the current Debug build of the canonical `SpyClash.xcodeproj`
 on an iPhone 17 Pro Max simulator running iOS 26.5.
 
+## Submission documents
+
+- `APP_STORE_CONNECT_FIELDS.md` is the non-secret source of truth for App
+  Privacy, Age Rating, build/IAP attachment, and submission gates.
+- `APP_REVIEW_NOTES.md` contains the review instructions for version 1.0 build
+  3; credentials and private contact fields stay in App Store Connect only.
+- `SUPPORT_AND_DSA.md` records the remaining mailbox and EU Digital Services
+  Act evidence gates.
+- `AUDIO_RIGHTS_MANIFEST.md` maps all 27 release hashes to the reproducible
+  original procedural generator documented in the repository root.
+
 ## Product-page screenshots
 
 `Screenshots/en-US` contains five portrait PNG files in the intended order.

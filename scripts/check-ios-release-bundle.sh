@@ -12,6 +12,7 @@ source_privacy="$root/SpyClash/Resources/PrivacyInfo.xcprivacy"
 source_sounds="$root/SpyClash/Resources/Sounds"
 haptic_source="$root/SpyClash/Services/HapticManager.swift"
 source_entitlements="$root/SpyClash/Resources/SpyClash.entitlements"
+audio_generator="$root/scripts/generate-original-sounds.py"
 
 expected_sounds='apple-access-surge.wav
 apple-fragment-lock.wav
@@ -111,6 +112,12 @@ source_sound_count=$(find "$source_sounds" -maxdepth 1 -type f -name '*.wav' | w
 bundle_sound_count=$(find "$app" -maxdepth 1 -type f -name '*.wav' | wc -l | tr -d ' ')
 if [ "$source_sound_count" -ne 27 ] || [ "$bundle_sound_count" -ne 27 ]; then
   echo "Expected exactly 27 source and 27 bundled WAV files; found source=$source_sound_count bundle=$bundle_sound_count." >&2
+  exit 1
+fi
+
+if [ ! -x "$audio_generator" ] \
+    || ! python3 "$audio_generator" --check >/dev/null; then
+  echo "Source sound bank is not reproducible from the reviewed original generator." >&2
   exit 1
 fi
 
