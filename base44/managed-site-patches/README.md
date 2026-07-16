@@ -14,7 +14,8 @@ only publish after a separate production-release approval.
 - Checkpoint git hash: `6e515e16fd2193880cfd3230f6063f7cbf2f4893`
 - Patch: `2026-07-16-limitless-weekly-price.patch`
 - Validation: remote sandbox `npm run build` passed and no `$3.99` remained.
-- Production status: not published from this change set.
+- Production status: published and verified on 2026-07-16. The live web client
+  exposes `$2.99` and no longer contains `$3.99`.
 
 ## 2026-07-16 push and Live Activities privacy disclosure
 
@@ -26,4 +27,18 @@ only publish after a separate production-release approval.
   the notifications release.
 - Validation: remote sandbox `npm run build` passed and the updated policy was
   read back successfully.
-- Production status: not published from this change set.
+- Production status: published and verified on 2026-07-16 at
+  `https://spyclash.com/privacypolicy`.
+
+## 2026-07-16 public legal and support routes
+
+- App ID: `69a0e57fa939f578082f8091`
+- Pre-change checkpoint: `6a59049c82c09d1f3436cf7b`
+- Checkpoint git hash: `a2d561e2662d425e919dfdaf444b5d0720be3c5d`
+- Patch: `2026-07-16-public-legal-support-routes.patch`
+- Reason: App Store review, privacy disclosure, subscription help, and account
+  deletion guidance must remain available without an authenticated web session.
+- Validation: remote sandbox `npm run build` passed. The production
+  `/privacypolicy` and `/support` routes return the expected public content.
+- Production status: published and verified on 2026-07-16. A monitored support
+  email still needs to be configured before App Review submission.

@@ -1,0 +1,125 @@
+diff --git a/src/App.jsx b/src/App.jsx
+--- a/src/App.jsx
++++ b/src/App.jsx
+@@ -23,0 +24,3 @@ import Welcome from './pages/Welcome';
++import PrivacyPolicy from './pages/PrivacyPolicy';
++import Support from './pages/Support';
++import TermsOfService from './pages/TermsOfService';
+@@ -25,0 +29 @@ const { Pages, Layout } = pagesConfig;
++const PUBLIC_PAGE_NAMES = new Set(['PrivacyPolicy', 'Support', 'TermsOfService']);
+@@ -45,0 +50,3 @@ const AppShell = () => {
++  const location = useLocation();
++  const publicInformationRoute = ['/privacypolicy', '/support', '/termsofservice']
++    .includes(location.pathname.toLowerCase());
+@@ -47,2 +54,3 @@ const AppShell = () => {
+-  // Wait for app public settings before rendering anything
+-  if (isLoadingPublicSettings) {
++  // Legal and support pages must stay available even when the application API
++  // is degraded; App Store review and account-deletion help depend on them.
++  if (!publicInformationRoute && isLoadingPublicSettings) {
+@@ -54 +62 @@ const AppShell = () => {
+-  if (authError && authError.type !== 'auth_required' && authError.type !== 'user_not_registered') {
++  if (!publicInformationRoute && authError && authError.type !== 'auth_required' && authError.type !== 'user_not_registered') {
+@@ -86,0 +95,3 @@ const AnimatedRoutes = () => {
++        <Route path="/privacypolicy" element={<PageTransition><PrivacyPolicy /></PageTransition>} />
++        <Route path="/support" element={<PageTransition><Support /></PageTransition>} />
++        <Route path="/termsofservice" element={<PageTransition><TermsOfService /></PageTransition>} />
+@@ -92 +103 @@ const AnimatedRoutes = () => {
+-          {Object.entries(Pages).map(([path, Page]) => (
++          {Object.entries(Pages).filter(([path]) => !PUBLIC_PAGE_NAMES.has(path)).map(([path, Page]) => (
+diff --git a/src/pages/Support.jsx b/src/pages/Support.jsx
+new file mode 100644
+--- /dev/null
++++ b/src/pages/Support.jsx
+@@ -0,0 +1,91 @@
++import { motion } from "framer-motion";
++import { Link, useNavigate } from "react-router-dom";
++import Reveal from "@/components/Reveal";
++import { createPageUrl } from "@/utils";
++
++const supportEmail = String(
++  document.querySelector('meta[name="spyclash-support-email"]')?.getAttribute("content") || ""
++).trim();
++
++const supportTopics = [
++  {
++    title: "PURCHASE OR RESTORE LIMITLESS",
++    text: "On iPhone, open LIMITLESS and use RESTORE PURCHASES while signed in to the same Apple Account and SpyClash account used for the purchase. A verified purchase can take a short time to synchronize after a network interruption."
++  },
++  {
++    title: "MANAGE OR CANCEL AN APPLE SUBSCRIPTION",
++    text: "Open LIMITLESS and choose MANAGE SUBSCRIPTION, or use Apple's subscription settings. Deleting a SpyClash account does not cancel billing with Apple or Stripe."
++  },
++  {
++    title: "ROOM OR QR PROBLEMS",
++    text: "Confirm that every player is using the current SpyClash version. The host can share the six-character room code when camera access or QR scanning is unavailable."
++  },
++  {
++    title: "DELETE YOUR ACCOUNT",
++    text: "In the iOS app, open Profile, scroll to DANGER ZONE, and choose DELETE ACCOUNT. Profile data, saved word packs, and match history are removed; limited transaction records may be retained for legal, accounting, and fraud-prevention obligations."
++  },
++  {
++    title: "REPORT OR BLOCK COMMUNITY ABUSE",
++    text: "Open the operative's Community profile to report the account or block it. Individual profile-wall comments also have a Report control. Reports are private and reviewed by moderation. Blocking prevents both accounts from finding or contacting each other in Community and removes their existing comments and room invitations. Include your Spy ID and the approximate time of the incident if you contact support for a review or appeal."
++  }
++];
++
++export default function Support() {
++  const navigate = useNavigate();
++  const subject = encodeURIComponent("SpyClash support request");
++
++  return (
++    <div style={{ minHeight: "100vh", padding: "60px 20px", background: "#000" }}>
++      <div style={{ maxWidth: 760, margin: "0 auto" }}>
++        <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }}>
++          <div style={{ fontSize: 10, letterSpacing: 4, color: "#555", marginBottom: 12, textTransform: "uppercase" }}>Support</div>
++          <h1 style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 36, letterSpacing: 3, marginBottom: 8, color: "#fff" }}>
++            SPYCLASH SUPPORT
++          </h1>
++          <p style={{ color: "#777", fontSize: 13, lineHeight: 1.8, marginBottom: 36 }}>
++            Include your Spy ID, device model, iOS version, and a short description of the problem. Never send passwords, payment-card details, or Apple verification codes.
++          </p>
++
++          <div style={{ display: "flex", flexDirection: "column", gap: 30 }}>
++            {supportTopics.map((topic, index) => (
++              <Reveal key={topic.title} delay={index * 30}>
++                <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: 2.5, color: "#e53535", marginBottom: 8 }}>
++                  {topic.title}
++                </div>
++                <div style={{ color: "#888", fontSize: 13, lineHeight: 1.8 }}>{topic.text}</div>
++              </Reveal>
++            ))}
++          </div>
++
++          <div style={{ marginTop: 42, padding: 24, border: "1px solid #242424", background: "#080808" }}>
++            <div style={{ color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, letterSpacing: 2, marginBottom: 12 }}>
++              CONTACT
++            </div>
++            {supportEmail ? (
++              <a className="btn-primary" href={`mailto:${supportEmail}?subject=${subject}`} style={{ display: "inline-flex", textDecoration: "none" }}>
++                EMAIL {supportEmail.toUpperCase()}
++              </a>
++            ) : (
++              <div data-support-email-missing style={{ color: "#e2a93b", fontSize: 12, lineHeight: 1.7 }}>
++                The public support email is being finalized before App Store release.
++              </div>
++            )}
++          </div>
++
++          <div style={{ display: "flex", flexWrap: "wrap", gap: 16, marginTop: 28, fontSize: 11, letterSpacing: 1.4 }}>
++            <a href="https://apps.apple.com/account/subscriptions" target="_blank" rel="noreferrer" style={{ color: "#aaa" }}>APPLE SUBSCRIPTIONS</a>
++            <a href="https://reportaproblem.apple.com/" target="_blank" rel="noreferrer" style={{ color: "#aaa" }}>APPLE PURCHASE HELP</a>
++            <Link to="/privacypolicy" style={{ color: "#aaa" }}>PRIVACY POLICY</Link>
++            <Link to="/termsofservice" style={{ color: "#aaa" }}>TERMS</Link>
++          </div>
++
++          <div style={{ marginTop: 52, paddingTop: 24, borderTop: "1px solid #1a1a1a" }}>
++            <button className="btn-ghost" style={{ fontSize: 11 }} onClick={() => navigate(createPageUrl("Home"))}>
++              ← BACK TO HOME
++            </button>
++          </div>
++        </motion.div>
++      </div>
++    </div>
++  );
++}

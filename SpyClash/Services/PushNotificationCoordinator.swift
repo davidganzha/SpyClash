@@ -167,13 +167,18 @@ final class PushNotificationCoordinator {
 
     func didReceiveAPNsToken(_ data: Data) {
         let token = data.map { String(format: "%02x", $0) }.joined()
-        UserDefaults.standard.set(token, forKey: Self.apnsTokenKey)
+        let defaults = UserDefaults.standard
+        guard defaults.string(forKey: Self.apnsTokenKey) != token else {
+            return
+        }
+
+        defaults.set(token, forKey: Self.apnsTokenKey)
         lastRegistrationSignature = nil
 
         guard signedIn else { return }
         registrationTask?.cancel()
         registrationTask = Task { [weak self] in
-            await self?.refreshRegistration()
+            await self?.registerStoredDevice()
         }
     }
 
@@ -577,6 +582,11 @@ final class PushNotificationCoordinator {
         await registerDeviceIfPossible(settings: settings)
     }
 
+    private func registerStoredDevice() async {
+        let settings = await UNUserNotificationCenter.current().notificationSettings()
+        await registerDeviceIfPossible(settings: settings)
+    }
+
     private func registerDeviceIfPossible(
         settings: UNNotificationSettings
     ) async {
@@ -620,6 +630,10 @@ final class PushNotificationCoordinator {
                 appVersion: version
             )
             lastRegistrationSignature = signature
+        } catch is CancellationError {
+            return
+        } catch let error as URLError where error.code == .cancelled {
+            return
         } catch {
 #if DEBUG
             print("Push device registration failed: \(error.localizedDescription)")
