@@ -92,17 +92,17 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Unlimited AI word generation and every premium SpyClash theme.",
+              "description" : "AI, profile styles, full history and stats.",
               "displayName" : "SpyClash LIMITLESS",
               "locale" : "en_US"
             },
             {
-              "description" : "Безлимитная генерация слов ИИ и все премиальные темы SpyClash.",
+              "description" : "ИИ, стили профиля, история и статистика.",
               "displayName" : "SpyClash LIMITLESS",
               "locale" : "ru"
             },
             {
-              "description" : "Generación ilimitada de palabras con IA y todos los temas premium de SpyClash.",
+              "description" : "IA, estilos de perfil, historial y estadísticas.",
               "displayName" : "SpyClash LIMITLESS",
               "locale" : "es_ES"
             }

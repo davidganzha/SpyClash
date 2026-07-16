@@ -1,0 +1,44 @@
+diff --git a/src/pages/PrivacyPolicy.jsx b/src/pages/PrivacyPolicy.jsx
+--- a/src/pages/PrivacyPolicy.jsx
++++ b/src/pages/PrivacyPolicy.jsx
+@@ -17 +17 @@ export default function PrivacyPolicy() {
+-          <div style={{ color: "#444", fontSize: 11, letterSpacing: 2, marginBottom: 48 }}>Last updated: March 2026</div>
++          <div style={{ color: "#444", fontSize: 11, letterSpacing: 2, marginBottom: 48 }}>Last updated: July 2026</div>
+@@ -22,22 +22,22 @@ export default function PrivacyPolicy() {
+               {
+                 title: "1. INFORMATION WE COLLECT",
+-                text: "We collect information you provide directly to us, such as your email address and display name when you create an account. We also collect game data including game history, scores, and gameplay statistics."
++                text: "We collect information you provide directly, including your email address, display name, avatar, profile comments, and custom word packs. When you submit a Community report, we store the selected reason, the reporter and reported account identifiers, and a private snapshot of the reported comment when applicable. We store account identifiers, private room and game state, match history, scores, and gameplay statistics. When you use LIMITLESS, we store provider subscription and transaction identifiers, status, and dates; we do not receive your full payment-card details. To deliver notifications and Live Activities, we collect a randomly generated installation identifier, encrypted APNs and ActivityKit push tokens, notification authorization status and preferences, app version, and selected language or locale. The server stores a one-way hash of the installation identifier and encrypts raw push tokens at rest. These identifiers are linked to your signed-in account only to deliver requested game, friend, room, and match updates and are not used for advertising or tracking. QR camera frames are processed on device and are not uploaded or retained."
+               },
+               {
+                 title: "2. HOW WE USE YOUR INFORMATION",
+-                text: "We use the information we collect to operate and improve the game, provide customer support, send game-related notifications, and display leaderboards and player statistics."
++                text: "We use the information we collect to operate and improve the game, host and moderate user content, investigate Community reports, enforce the Community Standards, provide customer support, send game-related notifications, and display leaderboards and player statistics."
+               },
+               {
+                 title: "3. DATA SHARING",
+-                text: "We do not sell, trade, or rent your personal information to third parties. Your display name and game statistics may be visible to other players on the leaderboard."
++                text: "We do not sell your personal information. We use service providers to operate SpyClash, including Base44 for application infrastructure, Apple for iOS purchases, sign-in, and notification delivery, Stripe for web purchases, and Google for web sign-in and website analytics. Providers process data under their own terms and only as needed for the relevant service. Your display name, avatar, profile comments, competitive statistics, and content you choose to share may be visible to other SpyClash players. A custom word pack may be shown to participants when you select it for a game. Community reports and their snapshots are not public and are available only to authorized administrators and necessary infrastructure providers."
+               },
+               {
+                 title: "4. DATA STORAGE",
+-                text: "Your data is stored securely on our servers. We retain your account data for as long as your account is active. You may request deletion of your data at any time by contacting us."
++                text: "Account data is retained while your account is active. You can delete the account in the iOS app under Profile > Danger Zone. Profile data, custom word packs, friendships, profile comments, room invitations, active room references, match-history records, push-device registrations, and Live Activity registrations are removed. For a Community report involving the deleted account, raw account identifiers are replaced with stable deletion tombstones. The private report and its content snapshot may be retained only as reasonably necessary for safety investigation, enforcement, and legal records; access remains limited to authorized administrators and necessary infrastructure providers. Limited subscription and transaction records may be retained where needed for accounting, fraud prevention, dispute handling, and legal obligations. Account deletion does not cancel billing with Apple or Stripe."
+               },
+               {
+-                title: "5. COOKIES",
+-                text: "We use local storage to remember your language preference and active game session. We use Google Analytics to understand how players use our game — this may set cookies for analytics purposes."
++                title: "5. WEBSITE ANALYTICS AND LOCAL STORAGE",
++                text: "The website uses local storage for language and session state and may use Google Analytics cookies to understand website usage. The current native iOS app does not include a Google Analytics, advertising, or cross-app tracking SDK."
+               },
+               {
+                 title: "6. CHILDREN'S PRIVACY",
+@@ -48,7 +48,7 @@ export default function PrivacyPolicy() {
+               },
+               {
+                 title: "8. CONTACT US",
+-                text: "If you have any questions about this Privacy Policy, please contact us through the game's support channels."
++                text: "For privacy questions or data-deletion assistance, visit https://spyclash.com/support."
+               }
+             ].map((section, i) => (
+               <Reveal key={i} delay={i * 30}>

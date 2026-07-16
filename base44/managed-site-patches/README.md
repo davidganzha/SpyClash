@@ -15,3 +15,15 @@ only publish after a separate production-release approval.
 - Patch: `2026-07-16-limitless-weekly-price.patch`
 - Validation: remote sandbox `npm run build` passed and no `$3.99` remained.
 - Production status: not published from this change set.
+
+## 2026-07-16 push and Live Activities privacy disclosure
+
+- App ID: `69a0e57fa939f578082f8091`
+- Pre-change checkpoint: `6a58c8fc53834a7b0ee3c163`
+- Checkpoint git hash: `7f08e955b24ea0bf16bb570903a9b3821adff950`
+- Patch: `2026-07-16-push-privacy-policy.patch`
+- Reason: disclose the push-device and Live Activity identifiers introduced by
+  the notifications release.
+- Validation: remote sandbox `npm run build` passed and the updated policy was
+  read back successfully.
+- Production status: not published from this change set.

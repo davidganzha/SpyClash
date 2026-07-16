@@ -16,6 +16,10 @@ All prepared PNG files are flattened RGB images without transparency. Run
 `swift scripts/flatten-app-store-screenshots.swift` after replacing or
 recapturing an image to restore this upload-safe format.
 
+The five product-page screenshots were uploaded to App Store Connect for iOS
+version 1.0 on July 16, 2026. Keep this directory as the reviewable source set
+for any replacement upload.
+
 The screenshots use the app's Debug-only preview fixtures. Those fixtures
 render the real production SwiftUI screens and bundled assets without creating
 fake production accounts or changing production data.
@@ -34,6 +38,6 @@ after StoreKit loads the real localized App Store price.
 - locale: English (U.S.)
 - status bar: 09:41, full signal/Wi-Fi, charged battery
 - screenshots contain no real user credentials or production personal data
-- no screenshots have been uploaded to App Store Connect
+- all five product-page screenshots have been uploaded to App Store Connect
 - the subscription image is intentionally blocked from upload until a
   Sandbox/TestFlight recapture replaces it
