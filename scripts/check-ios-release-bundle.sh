@@ -82,6 +82,42 @@ if [ "$widget_id" != 'com.spyclash.app.widgets' ] \
   echo "Unexpected SpyClash Live Activity extension metadata." >&2
   exit 1
 fi
+
+app_profile="$app/embedded.mobileprovision"
+widget_profile="$widget/embedded.mobileprovision"
+if [ ! -f "$app_profile" ] || [ ! -f "$widget_profile" ]; then
+  echo "The exported Release bundle is missing an App Store provisioning profile." >&2
+  exit 1
+fi
+
+profile_work=$(mktemp -d "${TMPDIR:-/tmp}/spyclash-release-profile.XXXXXX")
+trap 'rm -rf "$profile_work"' EXIT HUP INT TERM
+if ! security cms -D -i "$app_profile" > "$profile_work/app.plist" \
+    || ! security cms -D -i "$widget_profile" > "$profile_work/widget.plist"; then
+  echo "Unable to decode the exported App Store provisioning profiles." >&2
+  exit 1
+fi
+
+app_profile_environment=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:aps-environment' "$profile_work/app.plist" 2>/dev/null || true)
+app_profile_debug=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$profile_work/app.plist" 2>/dev/null || true)
+app_profile_beta=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:beta-reports-active' "$profile_work/app.plist" 2>/dev/null || true)
+widget_profile_debug=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:get-task-allow' "$profile_work/widget.plist" 2>/dev/null || true)
+widget_profile_beta=$(/usr/libexec/PlistBuddy -c 'Print :Entitlements:beta-reports-active' "$profile_work/widget.plist" 2>/dev/null || true)
+if [ "$app_profile_environment" != 'production' ] \
+    || [ "$app_profile_debug" != 'false' ] \
+    || [ "$app_profile_beta" != 'true' ] \
+    || [ "$widget_profile_debug" != 'false' ] \
+    || [ "$widget_profile_beta" != 'true' ]; then
+  echo "The exported bundle is not provisioned for App Store distribution." >&2
+  exit 1
+fi
+
+if ! codesign --verify --strict --deep "$app" >/dev/null 2>&1 \
+    || ! codesign -dvv "$app" 2>&1 | grep -Fq 'Authority=Apple Distribution:'; then
+  echo "The exported Release bundle does not have a valid Apple Distribution signature." >&2
+  exit 1
+fi
+
 aps_environment=$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$source_entitlements" 2>/dev/null || true)
 if [ "$aps_environment" != '$(APS_ENVIRONMENT)' ]; then
   echo "The app entitlements do not bind aps-environment to the build configuration." >&2
@@ -157,4 +193,4 @@ if [ "$storekit_count" -ne 0 ]; then
   exit 1
 fi
 
-echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), Live Activity extension embedded, 27 audible WAV files, privacy manifest exact, no .storekit."
+echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), Apple Distribution signing and production APNs exact, Live Activity extension embedded, 27 audible WAV files, privacy manifest exact, no .storekit."
