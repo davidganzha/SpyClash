@@ -1,23 +1,16 @@
-# Base44 function deploy plan
+# Base44 function deployment record
 
 Target app: `69a0e57fa939f578082f8091` (`SpyClash`).
 
-This plan is intentionally narrower than a full Base44 deployment. It does not
-publish the site, push entity schemas, change auth configuration, modify
-connectors, or set/delete secrets.
+This record documents the narrow production function deployment completed on
+July 16, 2026. It did not publish the site, push entity schemas, change auth
+configuration, modify connectors, or set/delete secrets.
 
-## Current remote baseline
+## Current remote state
 
-The read-only production listing on July 16, 2026 returned five functions:
-
-- `advanceRound`
-- `autoRegisterUser`
-- `checkSubscription`
-- `createCheckout`
-- `deleteAccount`
-
-The running iOS simulator consequently receives HTTP 404 for
-`pushNotificationAction` during APNs and Live Activity token registration.
+The read-only production listing on July 18, 2026 returns the complete reviewed
+set of 16 functions listed below. The earlier five-function baseline and the
+resulting `pushNotificationAction` HTTP 404 have been retired.
 
 ## Reviewed deployment set
 
@@ -44,39 +37,42 @@ The local project contains these 16 functions:
 retry worker. The required production secret names have been checked without
 reading, printing, or changing their values.
 
-## Validation before deploy
+## Current validation
 
-- all Base44 Deno tests pass;
-- every function entry point passes `deno check`;
+- all 259 Base44 Deno tests pass;
+- every one of the 16 function entry points passes `deno check`;
+- the required production secret names are present without exposing values;
 - all required production entity schemas exist remotely;
 - the iOS release bundle gate passes for version `1.0 (3)`;
 - the fixed simulator build has no APNs registration loop;
-- the only current push/runtime blocker is the expected missing-function 404.
+- App Store notification request/status helper tests pass for Sandbox and
+  Production environment selection; live Apple delivery remains a separate
+  physical acceptance gate.
 
-Repeat the tests immediately before the production operation if the function
-tree changes after this plan is committed.
+Repeat these tests before any future production deployment if the function tree
+changes after this record is committed.
 
-## Exact production command
+## Historical production command
 
-Run from the repository's `base44` directory only after a fresh explicit
-production confirmation:
+The approved narrow deployment was run from the repository's `base44`
+directory with:
 
 ```sh
 npx base44 functions deploy
 ```
 
-Do not add `--force`. Do not run `base44 deploy`, `entities push`, `auth push`,
-`connectors push`, or any secrets command as part of this operation.
+Do not rerun it merely to verify state. Any future deployment still requires a
+fresh explicit production confirmation. Do not add `--force`, and do not expand
+the operation to `base44 deploy`, `entities push`, `auth push`, `connectors
+push`, or secrets changes without separate review and approval.
 
-## Post-deploy verification
+## Completed post-deploy verification
 
 1. `npx base44 functions list` returns all 16 expected names.
-2. Relaunch the iOS simulator and confirm that neither APNs nor Live Activity
-   registration returns a missing-function 404.
-3. Confirm there is no repeated registration/cancellation loop or sustained
-   CPU spike.
-4. Verify an authenticated device registration record is created/updated.
-5. Run the reviewed App Store Server Notifications v2 test path separately;
-   do not treat deployment alone as proof that Apple delivery works.
-6. Only after backend verification, upload build `1.0 (3)` to App Store
-   Connect under its separately confirmed production operation.
+2. All function entry points type-check and the complete backend test suite
+   passes.
+3. Build `1.0 (3)` is processed in App Store Connect and attached to version
+   `1.0`.
+4. The remaining physical-device acceptance work is tracked in
+   `AppStoreAssets/TESTFLIGHT_ACCEPTANCE.md`, including Apple v2 delivery,
+   purchase/restore, push, and Live Activity evidence.
