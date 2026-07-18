@@ -156,6 +156,9 @@ final class AppState: NSObject {
         membershipRealtime.onMembershipSignal = { [weak self] in
             self?.handleMembershipRealtimeSignal()
         }
+        client.setUnauthorizedHandler { [weak self] in
+            self?.handleUnauthorizedSession()
+        }
         PushNotificationCoordinator.shared.configure(client: client) { [weak self] route in
             self?.handleNotificationRoute(route)
         }
@@ -245,7 +248,7 @@ final class AppState: NSObject {
         await performAuth {
             try await self.client.register(email: email, password: password)
             self.authPhase = .otp(email: email)
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         }
     }
 
@@ -262,7 +265,7 @@ final class AppState: NSObject {
                 )
             } else {
                 self.authPhase = .password(email: email)
-                HapticManager.shared.fire(.notification(.success), sound: .allow)
+                HapticManager.shared.fire(.notification(.success))
             }
         }
     }
@@ -272,7 +275,7 @@ final class AppState: NSObject {
             try await self.client.requestPasswordReset(email: email)
             self.authPhase = .resetEmailSent(email: email)
             self.authNotice = self.language.auth.recoveryLinkNotice
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         }
     }
 
@@ -281,7 +284,7 @@ final class AppState: NSObject {
             try await self.client.resetPassword(token: token, newPassword: newPassword)
             self.authPhase = .email
             self.authNotice = self.language.auth.passphraseUpdatedNotice
-            HapticManager.shared.fire(.notification(.success), sound: .success)
+            HapticManager.shared.fire(.notification(.success))
         }
     }
 
@@ -350,7 +353,7 @@ final class AppState: NSObject {
 
             appleAuthStage = .accessGranted
             // The auth timeline already owns its completion surge.
-            HapticManager.shared.fire(.notification(.success), audioPolicy: .hapticOnly)
+            HapticManager.shared.fire(.notification(.success))
 
             let totalElapsed = animationStartedAt.duration(to: .now)
             let remainingToFourSeconds = Duration.seconds(4) - totalElapsed
@@ -494,7 +497,6 @@ final class AppState: NSObject {
         startDelay: Duration
     ) async {
         standardAuthTimelineTask?.cancel()
-        AuthCinematicSoundPlayer.shared.stopAll()
 
         let runID = UUID()
         standardAuthRunID = runID
@@ -552,13 +554,6 @@ final class AppState: NSObject {
 
             guard standardAuthRunID == runID, user != nil else { return }
 
-            // The bundled lock sample has ~58 ms of leading silence; the sound
-            // player seeks past it so the audible click lands on this deadline.
-            AuthCinematicSoundPlayer.shared.playFragmentLock(
-                index: piece - 1,
-                totalCount: 4
-            )
-
             if piece < 4 {
                 standardAuthCinematicStage = .placing(piece + 1)
             } else {
@@ -575,7 +570,6 @@ final class AppState: NSObject {
 
         guard standardAuthRunID == runID, user != nil else { return }
         standardAuthCinematicStage = .accessGranted
-        AuthCinematicSoundPlayer.shared.playCompletionSurge()
 
         do {
             try await Task.sleep(for: .milliseconds(900))
@@ -631,7 +625,6 @@ final class AppState: NSObject {
         standardAuthRunID = nil
         standardAuthCinematicStage = nil
         authHomeRevealPhase = .idle
-        AuthCinematicSoundPlayer.shared.stopAll()
     }
 
 #if DEBUG
@@ -644,6 +637,28 @@ final class AppState: NSObject {
 #endif
 
     func logout() {
+        clearSession(playFeedback: true, message: nil)
+    }
+
+    private func handleUnauthorizedSession() {
+        guard user != nil || client.hasSessionToken || KeychainStore.readToken() != nil else {
+            return
+        }
+        clearSession(playFeedback: false, message: sessionExpiredMessage)
+    }
+
+    private var sessionExpiredMessage: String {
+        switch language {
+        case .en:
+            "Your session expired. Sign in again."
+        case .ru:
+            "Сессия истекла. Войдите снова."
+        case .es:
+            "Tu sesion ha caducado. Inicia sesion de nuevo."
+        }
+    }
+
+    private func clearSession(playFeedback: Bool, message: String?) {
 #if DEBUG
         // Logout must always leave forced UI-preview routing. Otherwise a
         // device launched into the Apple-auth preview keeps rendering the
@@ -653,8 +668,9 @@ final class AppState: NSObject {
         standardAuthTimelineTask?.cancel()
         standardAuthTimelineTask = nil
         standardAuthRunID = nil
-        AuthCinematicSoundPlayer.shared.stopAll()
-        HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+        if playFeedback {
+            HapticManager.shared.fire(.notification(.success))
+        }
         PushNotificationCoordinator.shared.prepareForLogout()
         client.clearToken()
         KeychainStore.clearToken()
@@ -664,7 +680,7 @@ final class AppState: NSObject {
         membershipSyncState = .unknown
         limitlessUnlockPresentationID = nil
         authPhase = .email
-        authError = nil
+        authError = message
         authNotice = nil
         appleAuthStage = nil
         standardAuthCinematicStage = nil
@@ -887,7 +903,7 @@ final class AppState: NSObject {
             presentedSheet = nil
             pendingJoinCode = nil
             deepLinkStatus = language.home.roomReady(code)
-            HapticManager.shared.fire(.milestone, sound: .playerJoin)
+            HapticManager.shared.fire(.milestone)
             return true
         } catch {
             deepLinkStatus = error.localizedDescription.uppercased()

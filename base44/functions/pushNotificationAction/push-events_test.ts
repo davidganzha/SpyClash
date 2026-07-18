@@ -154,6 +154,7 @@ Deno.test("ordinary lock-screen payload contains routing but never secret game d
     (payload.aps as Record<string, any>).category,
     "SPYCLASH_GAME_UPDATE",
   );
+  assertEquals("sound" in (payload.aps as Record<string, any>), false);
 });
 
 Deno.test("registration opt-outs are applied per notification family", () => {

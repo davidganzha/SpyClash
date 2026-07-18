@@ -29,6 +29,8 @@ targets:
         excludes:
           # File-provider conflict copies must never become a second app type.
           - "Services/HapticManager [0-9]*.swift"
+          # The iOS product intentionally ships without bundled audio.
+          - "Resources/Sounds"
           - "SWIFTUI_MIGRATION.md"
       - path: LICENSES/Rajdhani-OFL-1.1.txt
         buildPhase: resources

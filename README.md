@@ -35,7 +35,6 @@ Requirements:
 
 - macOS with a current Xcode release.
 - iOS 17 or newer simulator/device target.
-- Python 3 for regenerating and verifying the original procedural audio bank.
 - Optional: XcodeGen if regenerating the project from `project.yml`.
 
 After cloning:
@@ -48,19 +47,15 @@ Select your own Apple development team for device builds. Never commit signing c
 
 ## Assets and third-party material
 
-All 27 bundled sound effects are original procedural audio generated solely
-from mathematical oscillators, deterministic pseudo-random noise, envelopes,
-and mixing operations in `scripts/generate-original-sounds.py`. No recordings,
-sample libraries, generated audio assets, or third-party audio are inputs. The
-checked-in WAV files reproduce byte-for-byte; see `AUDIO_PROVENANCE.md` and
-`AppStoreAssets/AUDIO_RIGHTS_MANIFEST.md`.
+The iOS target intentionally contains no bundled audio files or playback
+engine. Interface feedback uses native haptics only.
 
 `Rajdhani-Bold.ttf` is distributed under the SIL Open Font License 1.1. Its license is included at `LICENSES/Rajdhani-OFL-1.1.txt` and takes precedence over `LICENSE.md` for that font file.
 
 The iOS app includes an in-app Third-Party Acknowledgements screen containing the applicable notices for Rajdhani, Socket.IO Client Swift, and Starscream.
 
-Bundled product audio and App Store media remain subject to `LICENSE.md`. Their
-publication does not grant reuse rights.
+Bundled App Store media remains subject to `LICENSE.md`. Its publication does
+not grant reuse rights.
 
 SpyClash names, logos, icons, and trade dress are not licensed for use in other products. See [TRADEMARKS.md](TRADEMARKS.md).
 

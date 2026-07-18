@@ -13,18 +13,15 @@ struct SpyClashApp: App {
                 .preferredColorScheme(.dark)
                 .tint(SpyTheme.red)
                 .task {
-                    HapticManager.shared.preloadInterfaceSounds()
                     await appState.restoreSession()
                 }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     let isActive = phase == .active
-                    HapticManager.shared.setApplicationActive(isActive)
                     if isActive {
                         PushNotificationCoordinator.shared.applicationDidBecomeActive()
                         appState.synchronizeCommerceAccessOnActivation()
                     } else {
                         PushNotificationCoordinator.shared.applicationDidEnterBackground()
-                        AuthCinematicSoundPlayer.shared.stopAll()
                     }
                 }
         }

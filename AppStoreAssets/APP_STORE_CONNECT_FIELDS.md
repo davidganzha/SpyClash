@@ -121,7 +121,7 @@ and display. Do not infer these values from source control or public profiles.
   reference image.
 - A monitored support address is published and deliverable.
 - DSA declaration is complete.
-- The original procedural audio generator reproduces all 27 shipped WAV files
-  byte-for-byte and the verified hashes remain recorded in the rights manifest.
+- The release archive contains no bundled audio files or audio playback engine;
+  native interface feedback remains haptics-only.
 - Build 3 and LIMITLESS are attached to version 1.0.
 - Submit for Review is performed only after a separate explicit confirmation.

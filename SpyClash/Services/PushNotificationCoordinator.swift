@@ -313,7 +313,7 @@ final class PushNotificationCoordinator {
         let center = UNUserNotificationCenter.current()
         var settings = await center.notificationSettings()
         if settings.authorizationStatus == .notDetermined {
-            _ = try? await center.requestAuthorization(options: [.alert, .badge, .sound])
+            _ = try? await center.requestAuthorization(options: [.alert, .badge])
             settings = await center.notificationSettings()
         }
 
@@ -727,7 +727,7 @@ final class SpyClashAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
         if ["game_started", "game_update", "game_turn", "game_ended"].contains(type) {
             return []
         }
-        return [.banner, .list, .sound, .badge]
+        return [.banner, .list, .badge]
     }
 
     func userNotificationCenter(

@@ -733,7 +733,7 @@ struct HomeView: View {
             }
             statusText = copy.roomReady(room.code)
             statusKind = .success
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
         } catch {
             statusText = error.localizedDescription.uppercased()
             statusKind = .error
@@ -752,7 +752,7 @@ struct HomeView: View {
             appState.selectedTab = .game
             statusText = copy.roomReady(room.code)
             statusKind = .success
-            HapticManager.shared.fire(.milestone, sound: .playerJoin)
+            HapticManager.shared.fire(.milestone)
         } catch {
             statusText = error.localizedDescription.uppercased()
             statusKind = .error
@@ -781,7 +781,7 @@ struct HomeView: View {
             }
             statusText = isHost(room) ? localized(en: "ROOM CLOSED", ru: "КОМНАТА ЗАКРЫТА", es: "SALA CERRADA") : localized(en: "LEFT ROOM", ru: "ВЫШЕЛ ИЗ КОМНАТЫ", es: "SALA ABANDONADA")
             statusKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             statusText = error.localizedDescription.uppercased()
             statusKind = .error

@@ -272,7 +272,6 @@ export function alertPayload(
   return {
     aps: {
       alert: selected,
-      sound: "default",
       category,
       "thread-id": threadID.slice(0, 64),
       "content-available": 1,

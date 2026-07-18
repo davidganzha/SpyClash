@@ -95,7 +95,7 @@ struct RoomQRSheet: View {
                         Label(copy.transmitInvite, systemImage: "square.and.arrow.up")
                     }
                     .simultaneousGesture(TapGesture().onEnded {
-                        HapticManager.shared.fire(.buttonPress, audioPolicy: .hapticOnly)
+                        HapticManager.shared.fire(.buttonPress)
                     })
                     .buttonStyle(SpyButtonStyle(variant: .red))
                     .accessibilityIdentifier("roomQR.share")
@@ -103,7 +103,7 @@ struct RoomQRSheet: View {
                     Button {
                         UIPasteboard.general.string = joinURL.absoluteString
                         copiedLink = true
-                        HapticManager.shared.fire(.notification(.success), sound: .copyConfirm)
+                        HapticManager.shared.fire(.notification(.success))
                     } label: {
                         Label(
                             copiedLink
@@ -370,7 +370,7 @@ struct QRScannerSheet: View {
                     ru: "Не удалось запустить камеру. Закрой сканер и попробуй снова.",
                     es: "No se pudo iniciar la camara. Cierra y vuelve a intentarlo."
                 )
-                HapticManager.shared.fire(.notification(.error), sound: .hardDeny)
+                HapticManager.shared.fire(.notification(.error))
             }
             .clipShape(CutCornerShape(cut: 18))
             .overlay(CutCornerShape(cut: 18).stroke(SpyTheme.red.opacity(0.9), lineWidth: 2))

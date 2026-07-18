@@ -1,4 +1,5 @@
 import Foundation
+import OSLog
 
 enum AppleNativeAuthPhase {
     case verifyingIdentity
@@ -10,9 +11,14 @@ enum AppleNativeAuthPhase {
 final class Base44Client {
     static let appID = "69a0e57fa939f578082f8091"
     static let appBaseURL = URL(string: "https://spyclash.com")!
+    private static let logger = Logger(
+        subsystem: "com.spyclash.app",
+        category: "Base44Client"
+    )
 
     private let session: URLSession
     private var token: String?
+    private var unauthorizedHandler: (() -> Void)?
 
     var hasSessionToken: Bool {
         token?.isEmpty == false
@@ -32,6 +38,10 @@ final class Base44Client {
 
     func clearToken() {
         token = nil
+    }
+
+    func setUnauthorizedHandler(_ handler: @escaping () -> Void) {
+        unauthorizedHandler = handler
     }
 
     func currentUser() async throws -> SpyUser {
@@ -94,7 +104,7 @@ final class Base44Client {
 
     func autoRegisterUser() async throws -> SpyUser {
         guard let token, !token.isEmpty else {
-            throw Base44Error(message: "Authentication required.", statusCode: 401)
+            throw authenticationRequiredError()
         }
 
         // A valid SSO identity is not yet an app user at this point. Base44's
@@ -105,7 +115,8 @@ final class Base44Client {
             "/apps/\(Self.appID)/functions/autoRegisterUser",
             method: "POST",
             body: ["access_token": token],
-            includeAuthorization: false
+            includeAuthorization: false,
+            authenticationContextToken: token
         )
         if let user = response.user {
             return user
@@ -430,13 +441,14 @@ final class Base44Client {
 
     func leaveRoom(room: GameRoom, user: SpyUser) async throws {
         guard let token, !token.isEmpty else {
-            throw Base44Error(message: "Authentication required.", statusCode: 401)
+            throw authenticationRequiredError()
         }
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/functions/gameRoomAction",
             method: "POST",
             body: GameRoomActionPayload(action: "leave_room", accessToken: token, roomID: room.id),
-            includeAuthorization: false
+            includeAuthorization: false,
+            authenticationContextToken: token
         )
     }
 
@@ -518,13 +530,14 @@ final class Base44Client {
 
     func leaderboard() async throws -> [LeaderboardEntry] {
         guard let token, !token.isEmpty else {
-            throw Base44Error(message: "Authentication required.", statusCode: 401)
+            throw authenticationRequiredError()
         }
         let response: LeaderboardResponse = try await request(
             "/apps/\(Self.appID)/functions/gameRoomAction",
             method: "POST",
             body: GameRoomActionPayload(action: "get_leaderboard", accessToken: token),
-            includeAuthorization: false
+            includeAuthorization: false,
+            authenticationContextToken: token
         )
         return response.entries
     }
@@ -668,7 +681,7 @@ final class Base44Client {
         fields: [String: String] = [:]
     ) async throws -> T {
         guard let token, !token.isEmpty else {
-            throw Base44Error(message: "Authentication required.", statusCode: 401)
+            throw authenticationRequiredError()
         }
 
         var payload = [
@@ -681,7 +694,8 @@ final class Base44Client {
             "/apps/\(Self.appID)/functions/communityAction",
             method: "POST",
             body: payload,
-            includeAuthorization: false
+            includeAuthorization: false,
+            authenticationContextToken: token
         )
     }
 
@@ -872,7 +886,8 @@ final class Base44Client {
             "/apps/\(Self.appID)/functions/pushNotificationAction",
             method: "POST",
             body: payload,
-            includeAuthorization: false
+            includeAuthorization: false,
+            authenticationContextToken: payload.accessToken
         )
     }
 
@@ -881,9 +896,15 @@ final class Base44Client {
             return override
         }
         guard let token, !token.isEmpty else {
-            throw Base44Error(message: "Authentication required.", statusCode: 401)
+            throw authenticationRequiredError()
         }
         return token
+    }
+
+    private func authenticationRequiredError() -> Base44Error {
+        clearToken()
+        unauthorizedHandler?()
+        return Base44Error(message: "Authentication required.", statusCode: 401)
     }
 
     private func roomAction(
@@ -901,7 +922,7 @@ final class Base44Client {
         winner: String? = nil
     ) async throws -> GameRoom {
         guard let token, !token.isEmpty else {
-            throw Base44Error(message: "Authentication required.", statusCode: 401)
+            throw authenticationRequiredError()
         }
 
         // Provider/SSO tokens are valid Base44 identity tokens, but the
@@ -926,7 +947,8 @@ final class Base44Client {
                 guess: guess,
                 winner: winner
             ),
-            includeAuthorization: false
+            includeAuthorization: false,
+            authenticationContextToken: token
         )
     }
 
@@ -938,7 +960,7 @@ final class Base44Client {
         words: [String]? = nil
     ) async throws -> T {
         guard let token, !token.isEmpty else {
-            throw Base44Error(message: "Authentication required.", statusCode: 401)
+            throw authenticationRequiredError()
         }
 
         return try await request(
@@ -952,7 +974,8 @@ final class Base44Client {
                 category: category,
                 words: words
             ),
-            includeAuthorization: false
+            includeAuthorization: false,
+            authenticationContextToken: token
         )
     }
 
@@ -1007,7 +1030,8 @@ final class Base44Client {
         method: String,
         query: [String: String] = [:],
         body: Body? = Optional<EmptyPayload>.none,
-        includeAuthorization: Bool = true
+        includeAuthorization: Bool = true,
+        authenticationContextToken: String? = nil
     ) async throws -> T {
         var components = URLComponents(url: Self.appBaseURL.appending(path: "/api\(path)"), resolvingAgainstBaseURL: false)!
         if !query.isEmpty {
@@ -1024,8 +1048,13 @@ final class Base44Client {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(Self.appBaseURL.absoluteString, forHTTPHeaderField: "Origin")
         request.setValue(Self.appID, forHTTPHeaderField: "X-App-Id")
-        if includeAuthorization, let token {
-            request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
+        // Bind a possible 401 to the exact credential used by this request.
+        // A best-effort request from a previous session can finish after the
+        // user signs in again; that stale response must never clear the new
+        // session token.
+        let requestToken = includeAuthorization ? token : nil
+        if let requestToken {
+            request.setValue("Bearer \(requestToken)", forHTTPHeaderField: "Authorization")
         }
         if let body {
             request.httpBody = try JSONEncoder.base44.encode(body)
@@ -1038,6 +1067,17 @@ final class Base44Client {
 
         guard 200..<300 ~= http.statusCode else {
             let apiError = try? JSONDecoder.base44.decode(APIErrorEnvelope.self, from: data)
+            Self.logger.error(
+                "HTTP failure status=\(http.statusCode, privacy: .public) method=\(method, privacy: .public) path=\(path, privacy: .public)"
+            )
+            let rejectedToken = requestToken ?? authenticationContextToken
+            if http.statusCode == 401,
+               !path.contains("/auth/"),
+               let rejectedToken,
+               token == rejectedToken {
+                clearToken()
+                unauthorizedHandler?()
+            }
             throw Base44Error(message: apiError?.resolvedMessage ?? "Base44 request failed.", statusCode: http.statusCode)
         }
 

@@ -355,7 +355,7 @@ struct WordPacksView: View {
             deleteTarget = nil
             showDeleteConfirmation = false
             status = ""
-            HapticManager.shared.fire(.notification(.success), sound: .toggleOff)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showDeleteConfirmation = false
             status = error.localizedDescription.uppercased()
@@ -777,7 +777,7 @@ private struct WordPackEditorSheet: View {
 
         if appState.shouldUsePreviewData {
             setStatus(copy.previewSaved, kind: .success)
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
             dismiss()
             return
         }
@@ -807,7 +807,7 @@ private struct WordPackEditorSheet: View {
                     ownerEmail: email
                 )
             }
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
             dismiss()
         } catch {
             setStatus(error.localizedDescription.uppercased(), kind: .error)
@@ -830,7 +830,7 @@ private struct WordPackEditorSheet: View {
             captureAIAllowance(from: generated)
             apply(generated)
             setStatus(copy.aiReadyMessage(words: generated.words.count, used: nil, limit: nil), kind: .success)
-            HapticManager.shared.fire(.milestone, sound: .echoBlip)
+            HapticManager.shared.fire(.milestone)
             return
         }
 
@@ -846,7 +846,7 @@ private struct WordPackEditorSheet: View {
                 ),
                 kind: .success
             )
-            HapticManager.shared.fire(.milestone, sound: .echoBlip)
+            HapticManager.shared.fire(.milestone)
         } catch {
             setStatus(error.localizedDescription.uppercased(), kind: .error)
             HapticManager.shared.fire(.notification(.error))

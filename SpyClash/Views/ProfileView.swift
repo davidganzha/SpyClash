@@ -1015,7 +1015,7 @@ struct ProfileView: View {
             try await appState.setLanguage(selectedLanguage, syncRemote: false)
             status = appState.language.profile.saved
             statusKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             status = error.localizedDescription.uppercased()
             statusKind = .error

@@ -9,38 +9,10 @@ fi
 app=$1
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 source_privacy="$root/SpyClash/Resources/PrivacyInfo.xcprivacy"
-source_sounds="$root/SpyClash/Resources/Sounds"
 haptic_source="$root/SpyClash/Services/HapticManager.swift"
+notification_source="$root/SpyClash/Services/PushNotificationCoordinator.swift"
+push_event_source="$root/base44/functions/pushNotificationAction/push-events.ts"
 source_entitlements="$root/SpyClash/Resources/SpyClash.entitlements"
-audio_generator="$root/scripts/generate-original-sounds.py"
-
-expected_sounds='apple-access-surge.wav
-apple-fragment-lock.wav
-ui-allow.wav
-ui-click.wav
-ui-copy-confirm.wav
-ui-countdown-go.wav
-ui-countdown-tick.wav
-ui-denied.wav
-ui-echo-blip.wav
-ui-game-start.wav
-ui-hard-deny.wav
-ui-holographic-tick.wav
-ui-navigation-shift.wav
-ui-player-join.wav
-ui-player-leave.wav
-ui-qr-card-flip.wav
-ui-ready-lock.wav
-ui-result-detectives.wav
-ui-result-spy.wav
-ui-role-reveal.wav
-ui-secret-reveal.wav
-ui-success.wav
-ui-toggle-off.wav
-ui-toggle-on.wav
-ui-turn-pass.wav
-ui-vote-cast.wav
-ui-vote-locked.wav'
 
 if [ ! -d "$app" ] || [ ! -f "$app/Info.plist" ]; then
   echo "Release app bundle not found: $app" >&2
@@ -124,57 +96,37 @@ if [ "$aps_environment" != '$(APS_ENVIRONMENT)' ]; then
   exit 1
 fi
 
-if ! grep -Fq 'import AVFoundation' "$haptic_source" \
-    || ! grep -Fq 'private let interfaceSoundEngine = InterfaceSoundEngine()' "$haptic_source" \
-    || ! grep -Fq 'private final class InterfaceSoundEngine' "$haptic_source" \
-    || ! grep -Fq 'interfaceSoundEngine.play(cue)' "$haptic_source" \
-    || ! grep -Fq 'spyclash.interface-sounds.recovered-after-noop-v1' "$haptic_source"; then
-  echo "The reviewed source does not contain the active interface-audio engine and recovery migration." >&2
+if ! grep -Fq 'import CoreHaptics' "$haptic_source" \
+    || ! grep -Fq 'engine.playsHapticsOnly = true' "$haptic_source"; then
+  echo "HapticManager is missing the reviewed haptics-only engine." >&2
   exit 1
 fi
-if grep -Fq 'SPYCLASH_LEGACY_AUDIO' "$haptic_source" \
-    || grep -Fq 'func playSound(_ cue: SoundCue) {}' "$haptic_source" \
-    || grep -Fq 'UserDefaults.standard.set(false, forKey: Self.interfaceSoundsEnabledKey)' "$haptic_source"; then
-  echo "HapticManager contains a release-blocking audio bypass or no-op." >&2
+if grep -R -E --include='*.swift' \
+    'AVAudio(Session|Player|Engine|Recorder)|AudioServices|SystemSound|SoundCue|InterfaceSoundEngine|playSound|AuthCinematicSoundPlayer' \
+    "$root/SpyClash" >/dev/null 2>&1; then
+  echo "The iOS source still contains an audio playback path." >&2
   exit 1
 fi
-if ! strings "$app/$bundle_executable" | grep -Fq 'com.spyclash.interface-audio' \
-    || ! strings "$app/$bundle_executable" | grep -Fq 'spyclash.interface-sounds.recovered-after-noop-v1'; then
-  echo "The compiled Release executable does not contain the active audio-engine markers." >&2
+if grep -Fq '.sound' "$notification_source" \
+    || grep -E 'sound[[:space:]]*:' "$push_event_source" >/dev/null 2>&1; then
+  echo "Push notifications still request or deliver sound." >&2
   exit 1
 fi
-
-source_sound_count=$(find "$source_sounds" -maxdepth 1 -type f -name '*.wav' | wc -l | tr -d ' ')
-bundle_sound_count=$(find "$app" -maxdepth 1 -type f -name '*.wav' | wc -l | tr -d ' ')
-if [ "$source_sound_count" -ne 27 ] || [ "$bundle_sound_count" -ne 27 ]; then
-  echo "Expected exactly 27 source and 27 bundled WAV files; found source=$source_sound_count bundle=$bundle_sound_count." >&2
+if strings "$app/$bundle_executable" | grep -E 'com\.spyclash\.interface-audio|spyclash\.interface-sounds' >/dev/null 2>&1; then
+  echo "The compiled Release executable still contains removed audio-engine markers." >&2
   exit 1
 fi
 
-if [ ! -x "$audio_generator" ] \
-    || ! python3 "$audio_generator" --check >/dev/null; then
-  echo "Source sound bank is not reproducible from the reviewed original generator." >&2
+source_audio_count=$(find "$root/SpyClash" -type f \( \
+  -iname '*.wav' -o -iname '*.mp3' -o -iname '*.m4a' -o \
+  -iname '*.caf' -o -iname '*.aif' -o -iname '*.aiff' \) | wc -l | tr -d ' ')
+bundle_audio_count=$(find "$app" -type f \( \
+  -iname '*.wav' -o -iname '*.mp3' -o -iname '*.m4a' -o \
+  -iname '*.caf' -o -iname '*.aif' -o -iname '*.aiff' \) | wc -l | tr -d ' ')
+if [ "$source_audio_count" -ne 0 ] || [ "$bundle_audio_count" -ne 0 ]; then
+  echo "Expected no source or bundled audio files; found source=$source_audio_count bundle=$bundle_audio_count." >&2
   exit 1
 fi
-
-for name in $expected_sounds; do
-  source_file="$source_sounds/$name"
-  bundle_file="$app/$name"
-  if [ ! -f "$source_file" ] || [ ! -f "$bundle_file" ]; then
-    echo "Required Release sound is missing: $name" >&2
-    exit 1
-  fi
-  if ! cmp -s "$source_file" "$bundle_file"; then
-    echo "Bundled sound differs from the reviewed source: $name" >&2
-    exit 1
-  fi
-  audio_offset=$(afinfo "$source_file" | awk '/audio data file offset:/ { print $5; exit }')
-  if [ -z "$audio_offset" ] || ! od -An -t u2 -j "$audio_offset" "$source_file" \
-      | awk '{ for (i = 1; i <= NF; i++) if ($i != 0) found = 1 } END { exit(found ? 0 : 1) }'; then
-    echo "Sound has no non-zero PCM samples: $name" >&2
-    exit 1
-  fi
-done
 
 privacy_count=$(find "$app" -maxdepth 1 -type f -name 'PrivacyInfo.xcprivacy' | wc -l | tr -d ' ')
 if [ "$privacy_count" -ne 1 ] || [ ! -f "$app/PrivacyInfo.xcprivacy" ]; then
@@ -193,4 +145,4 @@ if [ "$storekit_count" -ne 0 ]; then
   exit 1
 fi
 
-echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), Apple Distribution signing and production APNs exact, Live Activity extension embedded, 27 audible WAV files, privacy manifest exact, no .storekit."
+echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), Apple Distribution signing and production APNs exact, Live Activity extension embedded, haptics-only feedback, no bundled audio, privacy manifest exact, no .storekit."

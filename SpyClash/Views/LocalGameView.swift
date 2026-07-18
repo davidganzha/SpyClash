@@ -1477,7 +1477,7 @@ struct LocalGameView: View {
         let key = localWordKey(value)
         guard !snapshot.words.contains(where: { localWordKey($0) == key }) else {
             localNewPoolWord = ""
-            HapticManager.shared.fire(.notification(.warning), audioPolicy: .hapticOnly)
+            HapticManager.shared.fire(.notification(.warning))
             return
         }
 
@@ -2117,7 +2117,7 @@ struct LocalGameView: View {
                 withAnimation(.smooth(duration: 0.28)) {
                     associationRouletteDone = true
                 }
-                HapticManager.shared.fire(.notification(.success), sound: .turnPass)
+                HapticManager.shared.fire(.notification(.success))
             }
         }
     }
@@ -3040,7 +3040,7 @@ struct LocalGameView: View {
             clearLocalPoolDraft()
             wordCount = Double(min(words.count, targetCount))
             status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO")
-            HapticManager.shared.fire(.milestone, sound: .echoBlip)
+            HapticManager.shared.fire(.milestone)
             persistLocalSettings()
         } catch {
             guard localThemeRequestID == requestID else { return }
@@ -3162,7 +3162,7 @@ struct LocalGameView: View {
             packs.append(saved)
             packs.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO")
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
             persistLocalSettings()
         } catch {
             status = error.localizedDescription.uppercased()
@@ -3238,14 +3238,14 @@ struct LocalGameView: View {
         spyGuess = nil
         status = ""
         phase = .cards
-        HapticManager.shared.fire(.milestone, sound: .gameStart)
+        HapticManager.shared.fire(.milestone)
     }
 
     private func revealCard() {
         withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.65)) {
             cardRevealed = true
         }
-        HapticManager.shared.fire(.reveal, sound: .roleReveal)
+        HapticManager.shared.fire(.reveal)
     }
 
     private func nextCardTitle(_ session: LocalSession) -> String {
@@ -3284,7 +3284,7 @@ struct LocalGameView: View {
                 revealIndex += 1
                 cardRevealed = false
             }
-            HapticManager.shared.fire(.buttonPress, sound: .turnPass)
+            HapticManager.shared.fire(.buttonPress)
         }
     }
 
@@ -3294,7 +3294,7 @@ struct LocalGameView: View {
             resetAssociationFlow(playerCount: session.players.count, mode: session.mode)
         }
         phase = .playing
-        HapticManager.shared.fire(.milestone, sound: .countdownGo)
+        HapticManager.shared.fire(.milestone)
         timerTask?.cancel()
         timerTask = Task { @MainActor in
             while !Task.isCancelled && secondsRemaining > 0 {
@@ -3302,12 +3302,11 @@ struct LocalGameView: View {
                 guard !Task.isCancelled else { return }
                 secondsRemaining -= 1
                 if (1...3).contains(secondsRemaining) {
-                    HapticManager.shared.playSound(.countdownTick)
                 }
             }
             if !Task.isCancelled {
                 beginSpyGuess()
-                HapticManager.shared.fire(.notification(.warning), sound: .echoBlip)
+                HapticManager.shared.fire(.notification(.warning))
             }
         }
     }
@@ -3324,7 +3323,6 @@ struct LocalGameView: View {
                 guard !Task.isCancelled else { return }
                 guessSecondsRemaining -= 1
                 if (1...3).contains(guessSecondsRemaining) {
-                    HapticManager.shared.playSound(.countdownTick)
                 }
             }
             if !Task.isCancelled {
@@ -3332,7 +3330,7 @@ struct LocalGameView: View {
                 pendingSpyGuess = nil
                 winner = .detectives
                 phase = .results
-                HapticManager.shared.fire(.milestone, sound: .resultDetectives)
+                HapticManager.shared.fire(.milestone)
             }
         }
     }
@@ -3362,7 +3360,7 @@ struct LocalGameView: View {
         }
 
         questionIndex = (questionIndex + 1) % max(session.players.count, 1)
-        HapticManager.shared.fire(.tabSelection, sound: .turnPass)
+        HapticManager.shared.fire(.tabSelection)
     }
 
     private func resetAssociationFlow(playerCount: Int, mode: LocalMode) {
@@ -3407,11 +3405,7 @@ struct LocalGameView: View {
         spyGuess = nil
         winner = index == session.spyIndex ? .detectives : .spy
         phase = .results
-        let cue: HapticManager.SoundCue = winner == .spy ? .resultSpy : .resultDetectives
-        HapticManager.shared.fire(
-            .notification(index == session.spyIndex ? .success : .warning),
-            sound: cue
-        )
+        HapticManager.shared.fire(.notification(index == session.spyIndex ? .success : .warning))
     }
 
     private func resolveSpyGuess(_ word: String, session: LocalSession) {
@@ -3421,10 +3415,7 @@ struct LocalGameView: View {
         showSpyGuessOptions = false
         winner = localWordKey(word) == localWordKey(session.word) ? .spy : .detectives
         phase = .results
-        HapticManager.shared.fire(
-            .notification(winner == .spy ? .warning : .success),
-            sound: winner == .spy ? .resultSpy : .resultDetectives
-        )
+        HapticManager.shared.fire(.notification(winner == .spy ? .warning : .success))
     }
 
     private func reset() {

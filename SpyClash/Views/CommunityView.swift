@@ -982,7 +982,7 @@ struct CommunityView: View {
     }
 
     private func handleDockAction(_ tab: CommunityTab) {
-        HapticManager.shared.fire(.tabSelection, sound: .echoBlip)
+        HapticManager.shared.fire(.tabSelection)
         switch tab {
         case .exit:
             onExit()
@@ -1160,7 +1160,7 @@ struct CommunityView: View {
         if appState.shouldUsePreviewData {
             message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
@@ -1169,7 +1169,7 @@ struct CommunityView: View {
             await refreshActiveProfile()
             message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1181,14 +1181,14 @@ struct CommunityView: View {
         defer { activeAction = nil }
 
         if appState.shouldUsePreviewData {
-            HapticManager.shared.fire(.notification(.success), sound: action == "accept" ? .playerJoin : .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
         do {
             network = try await appState.client.communityRelationshipAction(action, friendshipID: friendshipID)
             await refreshActiveProfile()
-            HapticManager.shared.fire(.notification(.success), sound: action == "accept" ? .playerJoin : .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1202,7 +1202,7 @@ struct CommunityView: View {
         if appState.shouldUsePreviewData {
             message = localized(en: "REPORT RECEIVED", ru: "ЖАЛОБА ПРИНЯТА", es: "REPORTE RECIBIDO")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
@@ -1227,7 +1227,7 @@ struct CommunityView: View {
                 es: "REPORTE RECIBIDO — MODERACION LO REVISARA"
             )
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1260,7 +1260,7 @@ struct CommunityView: View {
                 es: "OPERATIVO BLOQUEADO — COMENTARIOS E INVITACIONES ELIMINADOS"
             )
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1281,7 +1281,7 @@ struct CommunityView: View {
             network = try await appState.client.unblockCommunityUser(friendshipID: relationship.id)
             message = localized(en: "OPERATIVE UNBLOCKED", ru: "ОПЕРАТИВНИК РАЗБЛОКИРОВАН", es: "OPERATIVO DESBLOQUEADO")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1305,7 +1305,7 @@ struct CommunityView: View {
             commentDraft = ""
             message = localized(en: "FIELD NOTE POSTED", ru: "ЗАПИСЬ ОПУБЛИКОВАНА", es: "NOTA PUBLICADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1320,7 +1320,7 @@ struct CommunityView: View {
 
         do {
             activeProfile = try await appState.client.deleteCommunityComment(commentID: commentID)
-            HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1334,7 +1334,7 @@ struct CommunityView: View {
         if appState.shouldUsePreviewData {
             message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACION ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
@@ -1343,7 +1343,7 @@ struct CommunityView: View {
             guard acknowledgement.ok else { return }
             message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACION ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1380,7 +1380,7 @@ struct CommunityView: View {
         do {
             let result = try await appState.client.communityRoomInviteAction("decline_room_invite", inviteID: invite.id)
             network = result.state
-            HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }

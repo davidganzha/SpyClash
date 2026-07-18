@@ -985,7 +985,7 @@ struct PricingView: View {
         if appState.hasLimitlessAccess {
             statusText = copy.accessActive
             statusKind = .success
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
         } else {
             statusText = copy.accessNotActive
             statusKind = .error
@@ -1007,7 +1007,7 @@ struct PricingView: View {
         if appState.hasLimitlessAccess {
             statusText = copy.accessActive
             statusKind = .success
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
             return
         }
         guard case .synced = appState.membershipSyncState,
@@ -1028,7 +1028,7 @@ struct PricingView: View {
             statusText = appState.hasLimitlessAccess ? copy.accessActive : copy.accessNotActive
             statusKind = appState.hasLimitlessAccess ? .success : .error
             if appState.hasLimitlessAccess {
-                HapticManager.shared.fire(.milestone, sound: .success)
+                HapticManager.shared.fire(.milestone)
             } else {
                 HapticManager.shared.fire(.notification(.error))
             }
@@ -1039,7 +1039,7 @@ struct PricingView: View {
                 es: "COMPRA PENDIENTE DE APROBACION"
             )
             statusKind = .warning
-            HapticManager.shared.fire(.notification(.warning), sound: .echoBlip)
+            HapticManager.shared.fire(.notification(.warning))
         case .cancelled:
             statusText = ""
             statusKind = nil
@@ -1064,7 +1064,7 @@ struct PricingView: View {
                     es: "COMPRA DE APP STORE RESTAURADA"
                 )
                 statusKind = .success
-                HapticManager.shared.fire(.milestone, sound: .success)
+                HapticManager.shared.fire(.milestone)
             } else {
                 statusText = copy.accessNotActive
                 statusKind = .error
@@ -1078,7 +1078,7 @@ struct PricingView: View {
                 es: "NO SE ENCONTRARON COMPRAS ACTIVAS"
             )
             statusKind = .info
-            HapticManager.shared.fire(.tabSelection, sound: .echoBlip)
+            HapticManager.shared.fire(.tabSelection)
         case .cancelled:
             statusText = ""
             statusKind = nil

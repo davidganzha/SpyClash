@@ -544,8 +544,6 @@ struct AppleAuthCinematicOverlay: View {
         .task(id: stage) {
             guard stage == .accessGranted else { return }
 
-            AuthCinematicSoundPlayer.shared.playCompletionSurge()
-
             if reduceMotion {
                 electricityActive = true
                 withAnimation(.easeOut(duration: 0.28)) {
@@ -577,9 +575,6 @@ struct AppleAuthCinematicOverlay: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityStatus)
-        .onAppear {
-            AuthCinematicSoundPlayer.shared.preload()
-        }
     }
 
     private var accessibilityStatus: String {
@@ -663,9 +658,6 @@ private struct StandardAuthCinematicOverlay: View {
                 electricityActive = false
             }
         }
-        .onAppear {
-            AuthCinematicSoundPlayer.shared.preload()
-        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityStatus)
     }
@@ -732,9 +724,6 @@ private struct FourPartAssemblingMark: View {
         }
         .onChange(of: stage) { _, newStage in
             placePieces(for: newStage)
-        }
-        .onDisappear {
-            AuthCinematicSoundPlayer.shared.stopFragmentLocks()
         }
         .accessibilityHidden(true)
     }
@@ -808,8 +797,6 @@ private struct SpyClashAssemblingMark: View {
         }
         .task {
             appeared = true
-            let soundPlayer = AuthCinematicSoundPlayer.shared
-            soundPlayer.preload()
 
             try? await Task.sleep(for: .milliseconds(220))
             for count in 1...fragments.count {
@@ -821,10 +808,6 @@ private struct SpyClashAssemblingMark: View {
                 let placementDuration = reduceMotion ? 120 : 200
                 try? await Task.sleep(for: .milliseconds(placementDuration))
                 guard !Task.isCancelled else { return }
-                soundPlayer.playFragmentLock(
-                    index: count - 1,
-                    totalCount: fragments.count
-                )
 
                 if count < fragments.count {
                     try? await Task.sleep(for: .milliseconds(220 - placementDuration))
@@ -837,9 +820,6 @@ private struct SpyClashAssemblingMark: View {
             withAnimation(.easeIn(duration: 0.42).delay(0.16)) { completionFlash = false }
         }
         .accessibilityHidden(true)
-        .onDisappear {
-            AuthCinematicSoundPlayer.shared.stopFragmentLocks()
-        }
     }
 
     private var assembledCount: Int {
@@ -864,19 +844,6 @@ private struct SpyClashAssemblingMark: View {
         return reduceMotion ? 0 : 0.08
     }
 
-}
-
-@MainActor
-final class AuthCinematicSoundPlayer {
-    static let shared = AuthCinematicSoundPlayer()
-
-    private init() {}
-
-    func preload() {}
-    func playFragmentLock(index: Int, totalCount: Int) {}
-    func playCompletionSurge() {}
-    func stopFragmentLocks() {}
-    func stopAll() {}
 }
 
 private struct ElectricResponse: View {

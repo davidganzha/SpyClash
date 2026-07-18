@@ -230,32 +230,22 @@ async function updateRoom(base44, room, data, options = {}) {
   }
   assertRoomMutationOpen(latest, options.allowPendingTerminal === true);
 
-  const expectedRevision = clean(room?.updated_date);
-  const latestRevision = clean(latest?.updated_date);
-  if (!expectedRevision || !latestRevision) {
-    throw Object.assign(new Error("The room has no stable write revision."), {
-      status: 503,
-      code: "missing_room_revision",
+  // Every room mutation already holds writer leases for the complete,
+  // re-fetched participant set. Base44's system `updated_date` cannot be used
+  // as an updateMany CAS predicate: production returns zero updated rows even
+  // when the record has not changed. That made the mandatory legacy
+  // participant-id backfill fail before mode, duration, or leave could run.
+  // Serialize with the verified leases, write by stable entity id, then
+  // re-read the persisted record for the next transition.
+  await base44.asServiceRole.entities.GameRoom.update(latest.id, data);
+  const persisted = await fetchRoom(base44, latest.id);
+  if (!persisted) {
+    throw Object.assign(new Error("Room not found after update"), {
+      status: 404,
+      code: "room_write_missing",
     });
   }
-  if (expectedRevision !== latestRevision) {
-    throw Object.assign(new Error("The room changed; retry the action."), {
-      status: 409,
-      code: "room_write_conflict",
-    });
-  }
-
-  const result = await base44.asServiceRole.entities.GameRoom.updateMany(
-    { id: latest.id, updated_date: latestRevision },
-    { $set: data },
-  );
-  if (Number(result?.updated) !== 1) {
-    throw Object.assign(new Error("The room changed; retry the action."), {
-      status: 409,
-      code: "room_write_conflict",
-    });
-  }
-  return await fetchRoom(base44, room.id);
+  return persisted;
 }
 
 async function updateRoomWithRetry(
@@ -283,21 +273,7 @@ async function updateRoomWithRetry(
     }
 
     await assertRoomPersistenceBoundary(base44);
-    const revision = clean(latest.updated_date);
-    if (!revision) {
-      throw Object.assign(new Error("The room has no stable write revision."), {
-        status: 503,
-        code: "missing_room_revision",
-      });
-    }
-    const result = await base44.asServiceRole.entities.GameRoom.updateMany(
-      { id: latest.id, updated_date: revision },
-      { $set: patch },
-    );
-    if (Number(result?.updated) !== 1) {
-      await delay(20 + attempt * 35);
-      continue;
-    }
+    await base44.asServiceRole.entities.GameRoom.update(latest.id, patch);
     latest = await fetchRoom(base44, latest.id);
     if (!latest) {
       throw Object.assign(new Error("Room not found"), { status: 404 });
@@ -321,22 +297,11 @@ async function deleteRoom(base44, room) {
   const latest = await fetchRoom(base44, room.id);
   if (!latest) return { success: true };
   assertRoomMutationOpen(latest);
-  const expectedRevision = clean(room?.updated_date);
-  const latestRevision = clean(latest?.updated_date);
-  if (!expectedRevision || expectedRevision !== latestRevision) {
-    throw Object.assign(new Error("The room changed; retry leaving."), {
+  await base44.asServiceRole.entities.GameRoom.delete(latest.id);
+  if (await fetchRoom(base44, latest.id)) {
+    throw Object.assign(new Error("The room could not be deleted; retry."), {
       status: 409,
-      code: "room_delete_conflict",
-    });
-  }
-  const result = await base44.asServiceRole.entities.GameRoom.deleteMany({
-    id: latest.id,
-    updated_date: latestRevision,
-  });
-  if (Number(result?.deleted) !== 1) {
-    throw Object.assign(new Error("The room changed; retry leaving."), {
-      status: 409,
-      code: "room_delete_conflict",
+      code: "room_delete_unverified",
     });
   }
   return { success: true };
@@ -432,37 +397,24 @@ async function claimTerminalIntent(
     if (existing) return { room: latest, intent: existing };
 
     assertServerRankedFinishSource(latest);
-    const revision = clean(latest.updated_date);
-    if (!revision) {
-      throw Object.assign(
-        new Error("The room has no stable revision for terminal commit."),
-        { status: 503, code: "missing_room_revision" },
-      );
-    }
-
     const intent = buildTerminalIntent(
       latest,
       requestedWinner,
       requestedPatch,
     );
     await assertRoomPersistenceBoundary(base44);
-    const result = await base44.asServiceRole.entities.GameRoom.updateMany(
-      { id: latest.id, updated_date: revision },
-      { $set: { terminal_intent: intent } },
-    );
-    if (Number(result?.updated) === 1) {
-      const claimed = await fetchRoom(base44, latest.id);
-      const persisted = terminalIntentFromRoom(claimed);
-      if (!claimed || !persisted) {
-        throw Object.assign(
-          new Error("The terminal decision could not be confirmed."),
-          { status: 503, code: "terminal_intent_unconfirmed" },
-        );
-      }
-      return { room: claimed, intent: persisted };
+    await base44.asServiceRole.entities.GameRoom.update(latest.id, {
+      terminal_intent: intent,
+    });
+    const claimed = await fetchRoom(base44, latest.id);
+    const persisted = terminalIntentFromRoom(claimed);
+    if (!claimed || !persisted) {
+      throw Object.assign(
+        new Error("The terminal decision could not be confirmed."),
+        { status: 503, code: "terminal_intent_unconfirmed" },
+      );
     }
-
-    await delay(20 + attempt * 35);
+    return { room: claimed, intent: persisted };
   }
 
   throw Object.assign(

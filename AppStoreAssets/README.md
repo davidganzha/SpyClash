@@ -14,9 +14,6 @@ on an iPhone 17 Pro Max simulator running iOS 26.5.
 - `TESTFLIGHT_ACCEPTANCE.md` is the physical-device acceptance gate for StoreKit,
   provider sync, push notifications, Live Activities, and App Store Server
   Notifications V2.
-- `AUDIO_RIGHTS_MANIFEST.md` maps all 27 release hashes to the reproducible
-  original procedural generator documented in the repository root.
-
 ## Product-page screenshots
 
 `Screenshots/en-US` contains five portrait PNG files in the intended order.
