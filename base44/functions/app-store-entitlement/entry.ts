@@ -36,6 +36,15 @@ import {
   AppleAccountLeaseGuardError,
   assertAppleAccountLease,
 } from "./apple-account-lease-guard.ts";
+import {
+  type AppStoreNotificationTestAuditEvent,
+  AppStoreNotificationTestError,
+  type AppStoreServerEnvironmentName,
+  getAppStoreTestNotificationStatus,
+  isAppStoreNotificationTestAdmin,
+  parseAppStoreServerEnvironment,
+  requestAppStoreTestNotification,
+} from "./app-store-notification-test.ts";
 
 const BUNDLE_ID = Deno.env.get("APPLE_IAP_BUNDLE_ID") || "com.spyclash.app";
 const PRODUCT_ID = Deno.env.get("APPLE_IAP_PRODUCT_ID") ||
@@ -250,6 +259,22 @@ function appStoreAPIClient(environment: Environment): AppStoreServerAPIClient {
   return client;
 }
 
+function notificationTestAudit(event: AppStoreNotificationTestAuditEvent) {
+  console.info(
+    "app-store-entitlement audit:",
+    JSON.stringify(event),
+  );
+}
+
+function notificationTestClient(
+  environment: AppStoreServerEnvironmentName,
+): () => AppStoreServerAPIClient {
+  const appleEnvironment = environment === "Sandbox"
+    ? Environment.SANDBOX
+    : Environment.PRODUCTION;
+  return () => appStoreAPIClient(appleEnvironment);
+}
+
 async function verifiedTransaction(signedTransaction: string) {
   const environment = environmentFromUntrustedJWS(signedTransaction);
   const verifier = await verifierFor(environment);
@@ -334,10 +359,18 @@ async function requireUser(base44: any) {
     if (typeof user?.id !== "string" || !user.id) {
       throw new Error("missing user");
     }
-    return user as { id: string; email?: string };
+    return user as { id: string; email?: string; role?: string };
   } catch {
     throw new RequestError("Authentication required.", 401);
   }
+}
+
+async function requireAdmin(base44: any) {
+  const user = await requireUser(base44);
+  if (!isAppStoreNotificationTestAdmin(user)) {
+    throw new RequestError("Administrator access required.", 403);
+  }
+  return user;
 }
 
 async function accountsForToken(store: any, rawToken: unknown) {
@@ -855,6 +888,40 @@ function assertAllowedAppleTransaction(
   }
 }
 
+async function handleRequestTestNotification(
+  base44: any,
+  body: Record<string, unknown>,
+) {
+  await requireAdmin(base44);
+  const environment = parseAppStoreServerEnvironment(body.environment);
+  const result = await requestAppStoreTestNotification({
+    client: notificationTestClient(
+      environment,
+    ),
+    environment,
+    audit: notificationTestAudit,
+  });
+  return Response.json(result);
+}
+
+async function handleGetTestNotificationStatus(
+  base44: any,
+  body: Record<string, unknown>,
+) {
+  await requireAdmin(base44);
+  const environment = parseAppStoreServerEnvironment(body.environment);
+  const result = await getAppStoreTestNotificationStatus({
+    client: notificationTestClient(
+      environment,
+    ),
+    environment,
+    testNotificationToken: body.test_notification_token ??
+      body.testNotificationToken,
+    audit: notificationTestAudit,
+  });
+  return Response.json(result);
+}
+
 async function handlePrepare(base44: any) {
   const user = await requireUser(base44);
   const adminGrants = await base44.asServiceRole.entities.MembershipGrant
@@ -1143,6 +1210,10 @@ Deno.serve(async (req) => {
         return await handlePrepare(base44);
       case "sync_transaction":
         return await handleAuthenticatedSync(base44, body);
+      case "request_test_notification":
+        return await handleRequestTestNotification(base44, body);
+      case "get_test_notification_status":
+        return await handleGetTestNotificationStatus(base44, body);
       default:
         throw new RequestError(
           "Unsupported App Store entitlement action.",
@@ -1152,10 +1223,14 @@ Deno.serve(async (req) => {
   } catch (error) {
     const status = error instanceof RequestError
       ? error.status
+      : error instanceof AppStoreNotificationTestError
+      ? error.status
       : error instanceof AppleAccountLeaseGuardError
       ? 503
       : 500;
-    const message = status >= 500
+    const message = error instanceof AppStoreNotificationTestError
+      ? error.message
+      : status >= 500
       ? "Unable to verify App Store entitlement."
       : errorMessage(error);
     console.error("app-store-entitlement failed:", errorMessage(error));

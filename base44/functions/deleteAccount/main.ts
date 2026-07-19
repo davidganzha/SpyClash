@@ -531,6 +531,10 @@ Deno.serve(async (req) => {
         reportStore: base44.asServiceRole.entities.CommunityReport,
         wordPackStore: base44.asServiceRole.entities.WordPack,
         gameHistoryStore: base44.asServiceRole.entities.GameHistory,
+        pushDeviceStore: base44.asServiceRole.entities.PushDeviceRegistration,
+        liveActivityStore:
+          base44.asServiceRole.entities.LiveActivityRegistration,
+        pushEventStore: base44.asServiceRole.entities.PushNotificationEvent,
         userID: user.id,
         tombstoneUserID: retentionPatch.user_id,
       });

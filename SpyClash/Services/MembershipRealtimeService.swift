@@ -9,11 +9,14 @@ final class MembershipRealtimeService {
     private var socket: SocketIOClient?
     private var room: String?
     private var userID: String?
+    private var connectionGeneration: UInt64 = 0
 
     func start(appID: String, token: String, userID: String) {
         stop()
 
         let room = "entities:\(appID):MembershipGrant"
+        connectionGeneration &+= 1
+        let generation = connectionGeneration
         let manager = SocketManager(
             socketURL: URL(string: "https://base44.app")!,
             config: [
@@ -33,13 +36,15 @@ final class MembershipRealtimeService {
         )
         let socket = manager.defaultSocket
 
-        socket.on(clientEvent: .connect) { [weak socket] _, _ in
+        socket.on(clientEvent: .connect) { [weak self, weak socket] _, _ in
+            guard self?.connectionGeneration == generation else { return }
             socket?.emit("join", room)
         }
         socket.on("update_model") { [weak self] payload, _ in
             let signalUserID = Self.userID(from: payload)
             Task { @MainActor [weak self] in
                 guard let self,
+                      self.connectionGeneration == generation,
                       signalUserID == nil || signalUserID == self.userID else { return }
                 self.onMembershipSignal?()
             }
@@ -53,11 +58,12 @@ final class MembershipRealtimeService {
     }
 
     func resume() {
-        guard let socket, socket.status != .connected else { return }
+        guard let socket, !socket.status.active else { return }
         socket.connect()
     }
 
     func stop() {
+        connectionGeneration &+= 1
         if let room, socket?.status == .connected {
             socket?.emit("leave", room)
         }

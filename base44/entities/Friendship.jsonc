@@ -5,8 +5,14 @@
   "properties": {
     "requester_id": { "type": "string" },
     "addressee_id": { "type": "string" },
-    "requester_spy_id": { "type": "string", "description": "Requester SPY ID in 000-000 format" },
-    "addressee_spy_id": { "type": "string", "description": "Addressee SPY ID in 000-000 format" },
+    "requester_spy_id": {
+      "type": "string",
+      "description": "Requester SPY ID in 000-000 format"
+    },
+    "addressee_spy_id": {
+      "type": "string",
+      "description": "Addressee SPY ID in 000-000 format"
+    },
     "status": {
       "type": "string",
       "enum": ["pending", "accepted", "declined", "blocked"],
@@ -15,6 +21,14 @@
     "blocked_by_id": {
       "type": "string",
       "description": "User ID that created the block. Present only while status is blocked.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "request_event_id": {
+      "type": "string",
+      "description": "Opaque server event identity used to deduplicate the current pending request notification.",
       "rls": {
         "read": { "user_condition": { "role": "admin" } },
         "write": { "user_condition": { "role": "admin" } }

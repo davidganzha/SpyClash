@@ -10,6 +10,7 @@ import {
   assertExactRoomLeaseCoverage,
   assertRoomWriteLeases,
   assertRoomWriterLeaseForUser,
+  retryRoomMembershipChangeBeforeAction,
   withRoomWriteLeases,
 } from "./room-write-lifecycle.ts";
 import { projectRoomForClient } from "./room-projection.ts";
@@ -26,6 +27,19 @@ import {
   terminalIntentFromRoom,
   terminalPatchFromIntent,
 } from "./room-result-policy.ts";
+import { enqueueGamePushEvents } from "./push-events.ts";
+import { nextRoundNumber } from "./game-round.ts";
+import {
+  assertLobbySettingsAccess,
+  deleteRoomAndVerify,
+  gameDurationPatch,
+  gameModePatch,
+  leaveAlreadyComplete,
+  roomHasGameDuration,
+  roomHasGameMode,
+  validatedGameDuration,
+  validatedGameMode,
+} from "./room-interaction-safety.ts";
 
 function jsonError(message, status = 400) {
   return Response.json({ error: message }, { status });
@@ -228,32 +242,22 @@ async function updateRoom(base44, room, data, options = {}) {
   }
   assertRoomMutationOpen(latest, options.allowPendingTerminal === true);
 
-  const expectedRevision = clean(room?.updated_date);
-  const latestRevision = clean(latest?.updated_date);
-  if (!expectedRevision || !latestRevision) {
-    throw Object.assign(new Error("The room has no stable write revision."), {
-      status: 503,
-      code: "missing_room_revision",
+  // Every room mutation already holds writer leases for the complete,
+  // re-fetched participant set. Base44's system `updated_date` cannot be used
+  // as an updateMany CAS predicate: production returns zero updated rows even
+  // when the record has not changed. That made the mandatory legacy
+  // participant-id backfill fail before mode, duration, or leave could run.
+  // Serialize with the verified leases, write by stable entity id, then
+  // re-read the persisted record for the next transition.
+  await base44.asServiceRole.entities.GameRoom.update(latest.id, data);
+  const persisted = await fetchRoom(base44, latest.id);
+  if (!persisted) {
+    throw Object.assign(new Error("Room not found after update"), {
+      status: 404,
+      code: "room_write_missing",
     });
   }
-  if (expectedRevision !== latestRevision) {
-    throw Object.assign(new Error("The room changed; retry the action."), {
-      status: 409,
-      code: "room_write_conflict",
-    });
-  }
-
-  const result = await base44.asServiceRole.entities.GameRoom.updateMany(
-    { id: latest.id, updated_date: latestRevision },
-    { $set: data },
-  );
-  if (Number(result?.updated) !== 1) {
-    throw Object.assign(new Error("The room changed; retry the action."), {
-      status: 409,
-      code: "room_write_conflict",
-    });
-  }
-  return await fetchRoom(base44, room.id);
+  return persisted;
 }
 
 async function updateRoomWithRetry(
@@ -281,21 +285,7 @@ async function updateRoomWithRetry(
     }
 
     await assertRoomPersistenceBoundary(base44);
-    const revision = clean(latest.updated_date);
-    if (!revision) {
-      throw Object.assign(new Error("The room has no stable write revision."), {
-        status: 503,
-        code: "missing_room_revision",
-      });
-    }
-    const result = await base44.asServiceRole.entities.GameRoom.updateMany(
-      { id: latest.id, updated_date: revision },
-      { $set: patch },
-    );
-    if (Number(result?.updated) !== 1) {
-      await delay(20 + attempt * 35);
-      continue;
-    }
+    await base44.asServiceRole.entities.GameRoom.update(latest.id, patch);
     latest = await fetchRoom(base44, latest.id);
     if (!latest) {
       throw Object.assign(new Error("Room not found"), { status: 404 });
@@ -319,24 +309,13 @@ async function deleteRoom(base44, room) {
   const latest = await fetchRoom(base44, room.id);
   if (!latest) return { success: true };
   assertRoomMutationOpen(latest);
-  const expectedRevision = clean(room?.updated_date);
-  const latestRevision = clean(latest?.updated_date);
-  if (!expectedRevision || expectedRevision !== latestRevision) {
-    throw Object.assign(new Error("The room changed; retry leaving."), {
-      status: 409,
-      code: "room_delete_conflict",
-    });
-  }
-  const result = await base44.asServiceRole.entities.GameRoom.deleteMany({
-    id: latest.id,
-    updated_date: latestRevision,
+  await deleteRoomAndVerify({
+    roomID: latest.id,
+    deleteByID: (roomID) =>
+      base44.asServiceRole.entities.GameRoom.delete(roomID),
+    fetchByID: (roomID) => fetchRoom(base44, roomID),
+    delay,
   });
-  if (Number(result?.deleted) !== 1) {
-    throw Object.assign(new Error("The room changed; retry leaving."), {
-      status: 409,
-      code: "room_delete_conflict",
-    });
-  }
   return { success: true };
 }
 
@@ -430,37 +409,24 @@ async function claimTerminalIntent(
     if (existing) return { room: latest, intent: existing };
 
     assertServerRankedFinishSource(latest);
-    const revision = clean(latest.updated_date);
-    if (!revision) {
-      throw Object.assign(
-        new Error("The room has no stable revision for terminal commit."),
-        { status: 503, code: "missing_room_revision" },
-      );
-    }
-
     const intent = buildTerminalIntent(
       latest,
       requestedWinner,
       requestedPatch,
     );
     await assertRoomPersistenceBoundary(base44);
-    const result = await base44.asServiceRole.entities.GameRoom.updateMany(
-      { id: latest.id, updated_date: revision },
-      { $set: { terminal_intent: intent } },
-    );
-    if (Number(result?.updated) === 1) {
-      const claimed = await fetchRoom(base44, latest.id);
-      const persisted = terminalIntentFromRoom(claimed);
-      if (!claimed || !persisted) {
-        throw Object.assign(
-          new Error("The terminal decision could not be confirmed."),
-          { status: 503, code: "terminal_intent_unconfirmed" },
-        );
-      }
-      return { room: claimed, intent: persisted };
+    await base44.asServiceRole.entities.GameRoom.update(latest.id, {
+      terminal_intent: intent,
+    });
+    const claimed = await fetchRoom(base44, latest.id);
+    const persisted = terminalIntentFromRoom(claimed);
+    if (!claimed || !persisted) {
+      throw Object.assign(
+        new Error("The terminal decision could not be confirmed."),
+        { status: 503, code: "terminal_intent_unconfirmed" },
+      );
     }
-
-    await delay(20 + attempt * 35);
+    return { room: claimed, intent: persisted };
   }
 
   throw Object.assign(
@@ -478,11 +444,24 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
     terminalPatch,
   );
   const persistedPatch = terminalPatchFromIntent(claimed.intent);
+  const finishedEventID = `game-finished:${clean(claimed.intent.match_id)}`;
+  await enqueueGamePushEvents({
+    base44,
+    room: claimed.room,
+    eventType: "game_finished",
+    sourceEventID: finishedEventID,
+    matchID: clean(claimed.intent.match_id),
+    persist: async (writer) => {
+      await assertRoomPersistenceBoundary(base44);
+      return await writer();
+    },
+  });
   const terminal = {
     ...claimed.room,
     ...persistedPatch,
     status: "finished",
     winner: claimed.intent.winner,
+    game_finished_event_id: finishedEventID,
   };
   // The immutable CAS-claimed terminal intent is persisted first. A retry can
   // only reconcile that same winner/payload, so history and room state cannot
@@ -506,12 +485,15 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
             { status: 409, code: "terminal_state_conflict" },
           );
         }
-        return {};
+        return clean(latest.game_finished_event_id) === finishedEventID
+          ? {}
+          : { game_finished_event_id: finishedEventID };
       }
       return {
         ...terminalPatchFromIntent(intent),
         status: "finished",
         winner: intent.winner,
+        game_finished_event_id: finishedEventID,
       };
     },
     (latest) =>
@@ -702,6 +684,8 @@ async function resetRoomForReplay(base44, room, user, body) {
     match_id: "",
     terminal_intent: null,
     game_started_at: null,
+    game_started_event_id: "",
+    game_finished_event_id: "",
     countdown_started_at: null,
     game_mode: clean(body?.game_mode) || clean(room.game_mode) || "questions",
     game_duration_seconds: Number(
@@ -711,41 +695,31 @@ async function resetRoomForReplay(base44, room, user, body) {
 }
 
 async function updateGameMode(base44, room, user, body) {
-  requireHost(room, user);
-  if (normalizedStatus(room) !== "waiting") {
-    throw Object.assign(new Error("Game mode can only change in the lobby"), {
-      status: 409,
-    });
-  }
-  const mode = clean(body?.mode);
-  if (!["questions", "associations"].includes(mode)) {
-    throw Object.assign(new Error("Invalid game mode"), { status: 400 });
-  }
-  return await updateRoom(base44, room, { game_mode: mode });
+  assertLobbySettingsAccess(room, user, "mode");
+  const mode = validatedGameMode(body?.mode);
+  return await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) => {
+      assertLobbySettingsAccess(latest, user, "mode");
+      return gameModePatch(latest, mode);
+    },
+    (latest) => roomHasGameMode(latest, mode),
+  );
 }
 
 async function updateGameDuration(base44, room, user, body) {
-  requireHost(room, user);
-  if (normalizedStatus(room) !== "waiting") {
-    throw Object.assign(new Error("Duration can only change in the lobby"), {
-      status: 409,
-    });
-  }
-
-  const durationSeconds = Number(body?.game_duration_seconds);
-  if (
-    !Number.isInteger(durationSeconds) || durationSeconds < 60 ||
-    durationSeconds > 900
-  ) {
-    throw Object.assign(
-      new Error("Duration must be between 1 and 15 minutes"),
-      { status: 400 },
-    );
-  }
-
-  return await updateRoom(base44, room, {
-    game_duration_seconds: durationSeconds,
-  });
+  assertLobbySettingsAccess(room, user, "duration");
+  const durationSeconds = validatedGameDuration(body?.game_duration_seconds);
+  return await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) => {
+      assertLobbySettingsAccess(latest, user, "duration");
+      return gameDurationPatch(latest, durationSeconds);
+    },
+    (latest) => roomHasGameDuration(latest, durationSeconds),
+  );
 }
 
 function validatedStartPatch(room, payload) {
@@ -878,13 +852,29 @@ async function completeGameStart(base44, room, user, body) {
   }
 
   const startPatch = body?.plan ? validatedStartPatch(room, body.plan) : {};
+  const matchID = crypto.randomUUID();
+  const startedEventID = crypto.randomUUID();
+  await enqueueGamePushEvents({
+    base44,
+    room,
+    eventType: "game_started",
+    sourceEventID: startedEventID,
+    matchID,
+    actorUserID: clean(user.id),
+    persist: async (writer) => {
+      await assertRoomPersistenceBoundary(base44);
+      return await writer();
+    },
+  });
 
   return await updateRoom(base44, room, {
     ...startPatch,
     status: "playing",
-    match_id: crypto.randomUUID(),
+    match_id: matchID,
     terminal_intent: null,
     game_started_at: null,
+    game_started_event_id: startedEventID,
+    game_finished_event_id: "",
     ready_players: [],
     cards_read: [],
     vote_requests: [],
@@ -1079,6 +1069,7 @@ async function continueRound(base44, room, user) {
   }
   return await updateRoom(base44, room, {
     question_phase: "asking",
+    round_number: nextRoundNumber(room.round_number),
     questions_in_round: 0,
     current_answer: "",
     current_answer_feedback: null,
@@ -1215,7 +1206,7 @@ async function submitSpyGuess(base44, room, user, body) {
 }
 
 async function leaveRoom(base44, room, user) {
-  requirePlayer(room, user);
+  if (leaveAlreadyComplete(room, user.email)) return { success: true };
 
   if (room.host_email === user.email) {
     return await deleteRoom(base44, room);
@@ -1462,6 +1453,37 @@ async function executeRoomAction(base44, action, room, user, body) {
   }
 }
 
+async function dispatchRoomPushBestEffort(base44, room, action) {
+  const internalSecret = clean(Deno.env.get("PUSH_INTERNAL_SECRET"));
+  if (!internalSecret || !room?.id) return;
+  const sourceEventIDs = [];
+  if (action === "complete_game_start" && clean(room.game_started_event_id)) {
+    sourceEventIDs.push(clean(room.game_started_event_id));
+  }
+  if (clean(room.status) === "finished" && clean(room.game_finished_event_id)) {
+    sourceEventIDs.push(clean(room.game_finished_event_id));
+  }
+  try {
+    for (const sourceEventID of sourceEventIDs) {
+      await base44.asServiceRole.functions.invoke("pushNotificationAction", {
+        action: "process_event",
+        source_event_id: sourceEventID,
+        internal_secret: internalSecret,
+      });
+    }
+    if (clean(room.match_id)) {
+      await base44.asServiceRole.functions.invoke("pushNotificationAction", {
+        action: "sync_live_activity",
+        room_id: clean(room.id),
+        match_id: clean(room.match_id),
+        internal_secret: internalSecret,
+      });
+    }
+  } catch (error) {
+    console.error("room push dispatch deferred", error?.message || error);
+  }
+}
+
 function lifecycleHTTPStatus(error) {
   if (!(error instanceof BillingIdentityLifecycleError)) {
     return Number(error?.status) || 500;
@@ -1534,6 +1556,9 @@ Deno.serve(async (req) => {
       ? await fetchRoom(base44, roomId)
       : await fetchRoomByCode(base44, body?.room_code || body?.code);
 
+    if (action === "leave_room" && leaveAlreadyComplete(room, user.email)) {
+      return Response.json({ success: true });
+    }
     if (!room) return jsonError("Room not found", 404);
     if (action === "get_room") {
       requirePlayer(room, user);
@@ -1542,47 +1567,84 @@ Deno.serve(async (req) => {
 
     if (action !== "join_room") requirePlayer(room, user);
 
-    const userIDs = await roomLifecycleUserIDs(base44, room, user);
-    const result = await withRoomWriteLeases({
-      lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
-      userIDs,
-      action: async (context) => {
-        base44.__spyclashRoomWriteLeaseContext = context;
-        try {
-          // The pre-lease room is only an acquisition hint. Refetch under the
-          // leases and require the exact same participant set before writing;
-          // a concurrent join/leave must retry with complete lease coverage.
-          const latestRoom = await fetchRoom(base44, room.id);
-          if (!latestRoom) {
-            throw Object.assign(new Error("Room not found"), { status: 404 });
-          }
-          const latestParticipantUserIDs = await roomParticipantUserIDs(
-            base44,
-            latestRoom,
-            user,
-          );
-          const latestUserIDs = uniqueStrings([
-            ...latestParticipantUserIDs,
-            user.id,
-          ]);
-          assertExactRoomLeaseCoverage(context, latestUserIDs);
-          const migratedRoom = await backfillRoomParticipantUserIDs(
-            base44,
-            latestRoom,
-            latestParticipantUserIDs,
-          );
-          return await executeRoomAction(
-            base44,
-            action,
-            migratedRoom,
-            user,
-            body,
-          );
-        } finally {
-          delete base44.__spyclashRoomWriteLeaseContext;
+    const result = await retryRoomMembershipChangeBeforeAction({
+      attempt: async (markActionStarted) => {
+        // Rebuild the acquisition set for every pre-action membership retry.
+        // This is what lets two QR/code joins serialize instead of rejecting
+        // the slower joiner with a user-visible 409.
+        const acquisitionRoom = await fetchRoom(base44, room.id);
+        if (!acquisitionRoom) {
+          if (action === "leave_room") return { success: true };
+          throw Object.assign(new Error("Room not found"), { status: 404 });
         }
+        if (
+          action === "leave_room" &&
+          leaveAlreadyComplete(acquisitionRoom, user.email)
+        ) {
+          return { success: true };
+        }
+        if (action !== "join_room") requirePlayer(acquisitionRoom, user);
+
+        const userIDs = await roomLifecycleUserIDs(
+          base44,
+          acquisitionRoom,
+          user,
+        );
+        return await withRoomWriteLeases({
+          lifecycleStore:
+            base44.asServiceRole.entities.BillingIdentityLifecycle,
+          userIDs,
+          action: async (context) => {
+            base44.__spyclashRoomWriteLeaseContext = context;
+            try {
+              // The pre-lease room is only an acquisition hint. Refetch under
+              // the leases and require exact participant coverage. If another
+              // join/leave won first, the outer bounded retry releases these
+              // leases, refetches membership, and tries once more safely.
+              const latestRoom = await fetchRoom(base44, room.id);
+              if (!latestRoom) {
+                if (action === "leave_room") return { success: true };
+                throw Object.assign(new Error("Room not found"), {
+                  status: 404,
+                });
+              }
+              if (
+                action === "leave_room" &&
+                leaveAlreadyComplete(latestRoom, user.email)
+              ) {
+                return { success: true };
+              }
+              const latestParticipantUserIDs = await roomParticipantUserIDs(
+                base44,
+                latestRoom,
+                user,
+              );
+              const latestUserIDs = uniqueStrings([
+                ...latestParticipantUserIDs,
+                user.id,
+              ]);
+              assertExactRoomLeaseCoverage(context, latestUserIDs);
+              const migratedRoom = await backfillRoomParticipantUserIDs(
+                base44,
+                latestRoom,
+                latestParticipantUserIDs,
+              );
+              markActionStarted();
+              return await executeRoomAction(
+                base44,
+                action,
+                migratedRoom,
+                user,
+                body,
+              );
+            } finally {
+              delete base44.__spyclashRoomWriteLeaseContext;
+            }
+          },
+        });
       },
     });
+    if (result?.id) await dispatchRoomPushBestEffort(base44, result, action);
     return Response.json(result?.id ? roomForClient(result, user) : result);
   } catch (error) {
     console.error("gameRoomAction error:", error?.message || error);

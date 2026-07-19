@@ -276,7 +276,7 @@ enum LegalSheetKind: String, Identifiable, Hashable {
             [
                 LegalSection(
                     title: "1. INFORMATION WE COLLECT",
-                    text: "We collect information you provide directly, including your email address, display name, avatar, profile comments, and custom word packs. When you submit a Community report, we store the selected reason, the reporter and reported account identifiers, and a private snapshot of the reported comment when applicable. We store account identifiers, private room and game state, match history, scores, and gameplay statistics. When you use LIMITLESS, we store provider subscription and transaction identifiers, status, and dates; we do not receive your full payment-card details. QR camera frames are processed on device and are not uploaded or retained."
+                    text: "We collect information you provide directly, including your email address, display name, avatar, profile comments, and custom word packs. When you submit a Community report, we store the selected reason, the reporter and reported account identifiers, and a private snapshot of the reported comment when applicable. We store account identifiers, private room and game state, match history, scores, and gameplay statistics. When you use LIMITLESS, we store provider subscription and transaction identifiers, status, and dates; we do not receive your full payment-card details. To deliver notifications and Live Activities, we collect a randomly generated installation identifier, encrypted APNs and ActivityKit push tokens, notification authorization status and preferences, app version, and selected language or locale. The server stores a one-way hash of the installation identifier and encrypts raw push tokens at rest. These identifiers are linked to your signed-in account only to deliver requested game, friend, room, and match updates and are not used for advertising or tracking. QR camera frames are processed on device and are not uploaded or retained."
                 ),
                 LegalSection(
                     title: "2. HOW WE USE YOUR INFORMATION",
@@ -284,11 +284,11 @@ enum LegalSheetKind: String, Identifiable, Hashable {
                 ),
                 LegalSection(
                     title: "3. DATA SHARING",
-                    text: "We do not sell your personal information. We use service providers to operate SpyClash, including Base44 for application infrastructure, Apple for iOS purchases and sign-in, Stripe for web purchases, and Google for web sign-in and website analytics. Providers process data under their own terms and only as needed for the relevant service. Your display name, avatar, profile comments, competitive statistics, and content you choose to share may be visible to other SpyClash players. A custom word pack may be shown to participants when you select it for a game. Community reports and their snapshots are not public and are available only to authorized administrators and necessary infrastructure providers."
+                    text: "We do not sell your personal information. We use service providers to operate SpyClash, including Base44 for application infrastructure, Apple for iOS purchases, sign-in, and notification delivery, Stripe for web purchases, and Google for web sign-in and website analytics. Providers process data under their own terms and only as needed for the relevant service. Your display name, avatar, profile comments, competitive statistics, and content you choose to share may be visible to other SpyClash players. A custom word pack may be shown to participants when you select it for a game. Community reports and their snapshots are not public and are available only to authorized administrators and necessary infrastructure providers."
                 ),
                 LegalSection(
                     title: "4. DATA STORAGE",
-                    text: "Account data is retained while your account is active. You can delete the account in the iOS app under Profile > Danger Zone. Profile data, custom word packs, friendships, profile comments, room invitations, active room references, and match-history records are removed. For a Community report involving the deleted account, raw account identifiers are replaced with stable deletion tombstones. The private report and its content snapshot may be retained only as reasonably necessary for safety investigation, enforcement, and legal records; access remains limited to authorized administrators and necessary infrastructure providers. Limited subscription and transaction records may be retained where needed for accounting, fraud prevention, dispute handling, and legal obligations. Account deletion does not cancel billing with Apple or Stripe."
+                    text: "Account data is retained while your account is active. You can delete the account in the iOS app under Profile > Danger Zone. Profile data, custom word packs, friendships, profile comments, room invitations, active room references, match-history records, push-device registrations, and Live Activity registrations are removed. For a Community report involving the deleted account, raw account identifiers are replaced with stable deletion tombstones. The private report and its content snapshot may be retained only as reasonably necessary for safety investigation, enforcement, and legal records; access remains limited to authorized administrators and necessary infrastructure providers. Limited subscription and transaction records may be retained where needed for accounting, fraud prevention, dispute handling, and legal obligations. Account deletion does not cancel billing with Apple or Stripe."
                 ),
                 LegalSection(
                     title: "5. WEBSITE ANALYTICS AND LOCAL STORAGE",
@@ -554,28 +554,53 @@ struct LegalSectionRow: View {
 
 struct LanguageSwitcher: View {
     @Environment(AppState.self) private var appState
+    @State private var pendingLanguage: AppLanguage?
+    @State private var syncError: String?
 
     var body: some View {
-        HStack(spacing: 5) {
-            ForEach(AppLanguage.allCases) { language in
-                Button {
-                    guard appState.language != language else { return }
-                    HapticManager.shared.fire(.tabSelection)
-                    Task {
-                        try? await appState.setLanguage(language, syncRemote: appState.user != nil)
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(spacing: 5) {
+                ForEach(AppLanguage.allCases) { language in
+                    Button {
+                        guard appState.language != language,
+                              pendingLanguage == nil,
+                              !appState.isSynchronizingLanguage else { return }
+                        HapticManager.shared.fire(.tabSelection)
+                        syncError = nil
+                        pendingLanguage = language
+                        Task {
+                            defer { pendingLanguage = nil }
+                            do {
+                                try await appState.setLanguage(language, syncRemote: appState.user != nil)
+                            } catch is CancellationError {
+                                return
+                            } catch {
+                                syncError = error.localizedDescription.uppercased()
+                                HapticManager.shared.fire(.notification(.error))
+                            }
+                        }
+                    } label: {
+                        Text(language.shortCode)
+                            .font(SpyTheme.micro)
+                            .tracking(0.08)
+                            .foregroundStyle(appState.language == language ? .white : SpyTheme.dim)
+                            .frame(width: 34, height: 28)
+                            .background(appState.language == language ? SpyTheme.red.opacity(0.9) : SpyTheme.panelDeep)
+                            .overlay(Rectangle().stroke(appState.language == language ? SpyTheme.red : SpyTheme.stroke))
                     }
-                } label: {
-                    Text(language.shortCode)
-                        .font(SpyTheme.micro)
-                        .tracking(0.08)
-                        .foregroundStyle(appState.language == language ? .white : SpyTheme.dim)
-                        .frame(width: 34, height: 28)
-                        .background(appState.language == language ? SpyTheme.red.opacity(0.9) : SpyTheme.panelDeep)
-                        .overlay(Rectangle().stroke(appState.language == language ? SpyTheme.red : SpyTheme.stroke))
+                    .buttonStyle(SpyWebPressStyle())
+                    .spyHitTarget()
+                    .disabled(pendingLanguage != nil || appState.isSynchronizingLanguage)
+                    .accessibilityLabel("Set language \(language.title)")
                 }
-                .buttonStyle(SpyWebPressStyle())
-                .spyHitTarget()
-                .accessibilityLabel("Set language \(language.title)")
+            }
+
+            if let syncError {
+                Text(syncError)
+                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.red)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
             }
         }
     }

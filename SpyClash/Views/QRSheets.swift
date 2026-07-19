@@ -95,7 +95,7 @@ struct RoomQRSheet: View {
                         Label(copy.transmitInvite, systemImage: "square.and.arrow.up")
                     }
                     .simultaneousGesture(TapGesture().onEnded {
-                        HapticManager.shared.fire(.buttonPress, audioPolicy: .hapticOnly)
+                        HapticManager.shared.fire(.buttonPress)
                     })
                     .buttonStyle(SpyButtonStyle(variant: .red))
                     .accessibilityIdentifier("roomQR.share")
@@ -103,7 +103,7 @@ struct RoomQRSheet: View {
                     Button {
                         UIPasteboard.general.string = joinURL.absoluteString
                         copiedLink = true
-                        HapticManager.shared.fire(.notification(.success), sound: .copyConfirm)
+                        HapticManager.shared.fire(.notification(.success))
                     } label: {
                         Label(
                             copiedLink
@@ -300,6 +300,7 @@ struct QRScannerSheet: View {
     @State private var didScan = false
     @State private var lastInvalidScanAt = Date.distantPast
     @State private var lastInvalidPayload: String?
+    @State private var joinTask: Task<Void, Never>?
 
     private var copy: QRInviteCopy {
         appState.language.qr
@@ -333,6 +334,10 @@ struct QRScannerSheet: View {
         .task {
             await resolvePermission()
         }
+        .onDisappear {
+            joinTask?.cancel()
+            joinTask = nil
+        }
     }
 
     private var scannerFrame: some View {
@@ -354,15 +359,23 @@ struct QRScannerSheet: View {
                 didScan = true
                 statusText = copy.joining(code)
                 HapticManager.shared.fire(.buttonPress)
-                Task {
+                joinTask?.cancel()
+                joinTask = Task {
                     let joined = await appState.joinRoom(code: code)
+                    guard !Task.isCancelled else { return }
                     statusText = joined ? copy.roomLinked : copy.roomNotFound
                     if joined {
-                        try? await Task.sleep(for: .milliseconds(260))
+                        do {
+                            try await Task.sleep(for: .milliseconds(260))
+                        } catch {
+                            return
+                        }
+                        guard !Task.isCancelled else { return }
                         dismiss()
                     } else {
                         didScan = false
                     }
+                    joinTask = nil
                 }
             } onError: {
                 statusText = localized(
@@ -370,7 +383,7 @@ struct QRScannerSheet: View {
                     ru: "Не удалось запустить камеру. Закрой сканер и попробуй снова.",
                     es: "No se pudo iniciar la camara. Cierra y vuelve a intentarlo."
                 )
-                HapticManager.shared.fire(.notification(.error), sound: .hardDeny)
+                HapticManager.shared.fire(.notification(.error))
             }
             .clipShape(CutCornerShape(cut: 18))
             .overlay(CutCornerShape(cut: 18).stroke(SpyTheme.red.opacity(0.9), lineWidth: 2))
@@ -511,16 +524,96 @@ private struct QRScannerRepresentable: UIViewControllerRepresentable {
     }
 }
 
-private final class QRScannerController: UIViewController {
+private final class QRScannerSession: @unchecked Sendable {
     private let session = AVCaptureSession()
-    private let previewLayer = AVCaptureVideoPreviewLayer()
+    private let sessionQueue = DispatchQueue(label: "com.spyclash.qr-scanner.session", qos: .userInitiated)
     private let coordinator: QRScannerRepresentable.Coordinator
     private let onError: () -> Void
     private var isConfigured = false
+    private var shouldRun = false
 
     init(coordinator: QRScannerRepresentable.Coordinator, onError: @escaping () -> Void) {
         self.coordinator = coordinator
         self.onError = onError
+    }
+
+    var captureSession: AVCaptureSession {
+        session
+    }
+
+    func configure() {
+        sessionQueue.async { [weak self] in
+            self?.configureSession()
+        }
+    }
+
+    func start() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.shouldRun = true
+            self.startIfReady()
+        }
+    }
+
+    func stop() {
+        sessionQueue.async { [weak self] in
+            guard let self else { return }
+            self.shouldRun = false
+            guard self.session.isRunning else { return }
+            self.session.stopRunning()
+        }
+    }
+
+    private func configureSession() {
+        guard !isConfigured else { return }
+
+        session.beginConfiguration()
+
+        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
+            ?? AVCaptureDevice.default(for: .video),
+            let input = try? AVCaptureDeviceInput(device: device),
+            session.canAddInput(input) else {
+            session.commitConfiguration()
+            reportConfigurationError()
+            return
+        }
+
+        session.addInput(input)
+
+        let output = AVCaptureMetadataOutput()
+        guard session.canAddOutput(output) else {
+            session.commitConfiguration()
+            reportConfigurationError()
+            return
+        }
+
+        session.addOutput(output)
+        output.setMetadataObjectsDelegate(coordinator, queue: .main)
+        output.metadataObjectTypes = [.qr]
+
+        session.commitConfiguration()
+        isConfigured = true
+        startIfReady()
+    }
+
+    private func startIfReady() {
+        guard shouldRun, isConfigured, !session.isRunning else { return }
+        session.startRunning()
+    }
+
+    private func reportConfigurationError() {
+        DispatchQueue.main.async { [onError] in
+            onError()
+        }
+    }
+}
+
+private final class QRScannerController: UIViewController {
+    private let scannerSession: QRScannerSession
+    private let previewLayer = AVCaptureVideoPreviewLayer()
+
+    init(coordinator: QRScannerRepresentable.Coordinator, onError: @escaping () -> Void) {
+        scannerSession = QRScannerSession(coordinator: coordinator, onError: onError)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -532,7 +625,10 @@ private final class QRScannerController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        configure()
+        previewLayer.session = scannerSession.captureSession
+        previewLayer.videoGravity = .resizeAspectFill
+        view.layer.addSublayer(previewLayer)
+        scannerSession.configure()
     }
 
     override func viewDidLayoutSubviews() {
@@ -542,45 +638,12 @@ private final class QRScannerController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        if isConfigured, !session.isRunning {
-            session.startRunning()
-        }
+        scannerSession.start()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if session.isRunning {
-            session.stopRunning()
-        }
-    }
-
-    private func configure() {
-        guard !isConfigured else { return }
-
-        guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
-            ?? AVCaptureDevice.default(for: .video),
-            let input = try? AVCaptureDeviceInput(device: device),
-            session.canAddInput(input) else {
-            onError()
-            return
-        }
-
-        session.addInput(input)
-
-        let output = AVCaptureMetadataOutput()
-        guard session.canAddOutput(output) else {
-            onError()
-            return
-        }
-
-        session.addOutput(output)
-        output.setMetadataObjectsDelegate(coordinator, queue: .main)
-        output.metadataObjectTypes = [.qr]
-
-        previewLayer.session = session
-        previewLayer.videoGravity = .resizeAspectFill
-        view.layer.addSublayer(previewLayer)
-        isConfigured = true
+        scannerSession.stop()
     }
 }
 

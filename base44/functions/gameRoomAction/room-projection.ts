@@ -50,6 +50,7 @@ export function projectRoomForClient(
 
   return {
     id: clean(room.id),
+    match_id: clean(room.match_id),
     code: clean(room.code),
     host_email: clean(room.host_email),
     status: clean(room.status || "waiting"),

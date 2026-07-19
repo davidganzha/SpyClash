@@ -2846,6 +2846,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
     let id: String
     var code: String
     var hostEmail: String?
+    var matchID: String?
     var status: String?
     var players: [Player]?
     var spyEmail: String?
@@ -2942,6 +2943,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case id
         case code
         case hostEmail = "host_email"
+        case matchID = "match_id"
         case status
         case players
         case spyEmail = "spy_email"
@@ -3073,6 +3075,7 @@ extension GameRoom {
             id: "preview-room-\(status)",
             code: "R7VN",
             hostEmail: players[0].email,
+            matchID: ["playing", "finished"].contains(status) ? "preview-match-\(status)" : nil,
             status: status,
             players: players,
             spyEmail: spyEmail,

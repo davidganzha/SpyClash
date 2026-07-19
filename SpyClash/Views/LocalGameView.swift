@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LocalGameView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var players = ["", ""]
     @State private var avatars = ["🕵️", "👤"]
@@ -17,6 +18,8 @@ struct LocalGameView: View {
     @State private var status = ""
     @State private var isGenerating = false
     @State private var isExpandingLocalThemePool = false
+    @State private var isChoosingLocalPoolExpansion = false
+    @State private var localPoolExpansionCount = 50.0
     @State private var isSavingGeneratedPack = false
     @State private var localThemeError = ""
     @State private var localWordCountMode = LocalWordCountMode.recommended
@@ -435,7 +438,7 @@ struct LocalGameView: View {
             }
             .buttonStyle(SpyWebPressStyle())
 
-            localPlayerNameField(index: index)
+            localPlayerNameField(index: index, id: id)
 
             if players.count > 2 {
                 localRemovePlayerButton(index: index)
@@ -475,10 +478,10 @@ struct LocalGameView: View {
         .accessibilityHint(localized(en: "Hold and drag to reorder", ru: "Зажми и перетащи, чтобы изменить порядок", es: "Mantén y arrastra para reordenar"))
     }
 
-    private func localPlayerNameField(index: Int) -> some View {
+    private func localPlayerNameField(index: Int, id: UUID) -> some View {
         TextField(
             localized(en: "Player \(index + 1)", ru: "Игрок \(index + 1)", es: "Jugador \(index + 1)"),
-            text: $players[index]
+            text: localPlayerNameBinding(id: id)
         )
         .textInputAutocapitalization(.words)
         .autocorrectionDisabled()
@@ -495,6 +498,21 @@ struct LocalGameView: View {
         .layoutPriority(1)
         .submitLabel(.done)
         .focused($focusedLocalSetupField, equals: .player(index))
+    }
+
+    private func localPlayerNameBinding(id: UUID) -> Binding<String> {
+        Binding(
+            get: {
+                guard let index = playerIDs.firstIndex(of: id),
+                      players.indices.contains(index) else { return "" }
+                return players[index]
+            },
+            set: { value in
+                guard let index = playerIDs.firstIndex(of: id),
+                      players.indices.contains(index) else { return }
+                players[index] = value
+            }
+        )
     }
 
     private func resetPlayerDragState() {
@@ -713,13 +731,8 @@ struct LocalGameView: View {
     @ViewBuilder
     private var localIntelGeneratedPackControls: some View {
         if localHasCustomTheme && localThemeAnalyzed {
-            localWordsSlider
+            localGeneratedPoolControls
                 .transition(.opacity.combined(with: .move(edge: .top)))
-
-            if localThemeMaxWords < localThemeGenerationLimit {
-                localAddMoreWordsButton
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
         }
 
         if localShouldShowPoolPreview {
@@ -862,6 +875,7 @@ struct LocalGameView: View {
         localThemeRequestID = UUID()
         isGenerating = false
         isExpandingLocalThemePool = false
+        isChoosingLocalPoolExpansion = false
         generatedPack = nil
         localThemeError = ""
         localPoolExpanded = false
@@ -1098,30 +1112,124 @@ struct LocalGameView: View {
         )
     }
 
-    private var localAddMoreWordsButton: some View {
-        Button {
-            Task { await pushLocalThemeMax() }
-        } label: {
-            if isExpandingLocalThemePool {
-                SpyLoadingLabel(
-                    title: localized(en: "ADDING WORDS", ru: "ДОБАВЛЯЕМ СЛОВА", es: "ANADIENDO PALABRAS"),
-                    accent: SpyTheme.amber
-                )
-                .frame(height: 50)
+    private var localGeneratedPoolControls: some View {
+        Group {
+            if isChoosingLocalPoolExpansion, localPoolExpansionMaximum > 0 {
+                localPoolExpansionPicker
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        )
+                    )
             } else {
-                SpyActionLabel(
-                    title: localized(en: "EXPAND POOL · +50", ru: "РАСШИРИТЬ ПУЛ · +50", es: "AMPLIAR BANCO · +50"),
-                    systemImage: "plus.circle.fill",
-                    fontSize: 10.5,
-                    iconSize: 13,
-                    tracking: 0.02,
-                    lines: 2
+                VStack(alignment: .leading, spacing: 12) {
+                    localWordsSlider
+
+                    if localThemeMaxWords < localThemeGenerationLimit {
+                        localAddMoreWordsButton
+                    }
+                }
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .leading).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    )
                 )
             }
+        }
+        .animation(
+            reduceMotion ? nil : .smooth(duration: 0.28),
+            value: isChoosingLocalPoolExpansion
+        )
+    }
+
+    private var localPoolExpansionPicker: some View {
+        SpyPoolExpansionPicker(
+            additionalWords: $localPoolExpansionCount,
+            range: Double(localPoolExpansionMinimum)...Double(localPoolExpansionMaximum),
+            currentPoolCount: localThemeMaxWords,
+            poolLimit: localThemeGenerationLimit,
+            title: localized(en: "EXPAND POOL", ru: "РАСШИРИТЬ ПУЛ", es: "AMPLIAR BANCO"),
+            poolProgressTitle: localized(
+                en: "PROJECTED POOL",
+                ru: "ПРОГНОЗ ПУЛА",
+                es: "BANCO ESTIMADO"
+            ),
+            confirmTitle: { count in
+                localized(
+                    en: "ADD UP TO +\(count) WORDS",
+                    ru: "ДОБАВИТЬ ДО +\(count) СЛОВ",
+                    es: "ANADIR HASTA +\(count) PALABRAS"
+                )
+            },
+            loadingTitle: { count in
+                localized(
+                    en: "ADDING UP TO +\(count) WORDS",
+                    ru: "ДОБАВЛЯЕМ ДО +\(count) СЛОВ",
+                    es: "ANADIENDO HASTA +\(count) PALABRAS"
+                )
+            },
+            closeAccessibilityLabel: localized(
+                en: "Close pool expansion",
+                ru: "Закрыть расширение пула",
+                es: "Cerrar ampliacion del banco"
+            ),
+            accessibilityPrefix: "localGame.poolExpansion",
+            isLoading: isExpandingLocalThemePool,
+            onClose: closeLocalPoolExpansion,
+            onConfirm: beginLocalPoolExpansion
+        )
+    }
+
+    private var localPoolExpansionMaximum: Int {
+        min(100, max(localThemeGenerationLimit - localThemeMaxWords, 0))
+    }
+
+    private var localPoolExpansionMinimum: Int {
+        min(5, localPoolExpansionMaximum)
+    }
+
+    private var localAddMoreWordsButton: some View {
+        Button {
+            openLocalPoolExpansion()
+        } label: {
+            SpyActionLabel(
+                title: localAddMoreWordsLabel,
+                systemImage: "plus.circle.fill",
+                fontSize: 10.5,
+                iconSize: 13,
+                tracking: 0.02,
+                lines: 2
+            )
         }
         .buttonStyle(SpyButtonStyle(variant: .outline))
         .disabled(isGenerating || localThemeMaxWords >= localThemeGenerationLimit)
         .accessibilityIdentifier("localGame.addMoreThemeWords")
+    }
+
+    private func openLocalPoolExpansion() {
+        guard localPoolExpansionMaximum > 0, !isGenerating else { return }
+        localPoolExpansionCount = Double(min(50, localPoolExpansionMaximum))
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
+            isChoosingLocalPoolExpansion = true
+        }
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func closeLocalPoolExpansion() {
+        guard !isExpandingLocalThemePool else { return }
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
+            isChoosingLocalPoolExpansion = false
+        }
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func beginLocalPoolExpansion(_ count: Int) {
+        guard !isGenerating, localPoolExpansionMaximum > 0 else { return }
+        isExpandingLocalThemePool = true
+        isGenerating = true
+        Task { await pushLocalThemeMax(additionalCount: count) }
     }
 
     private var localSaveAsWordPackButton: some View {
@@ -1277,6 +1385,13 @@ struct LocalGameView: View {
 
     private var localWordsLabel: String {
         localized(en: "WORDS IN GAME", ru: "СЛОВ В ИГРЕ", es: "PALABRAS EN JUEGO")
+    }
+
+    private var localAddMoreWordsLabel: String {
+        if localThemeMaxWords >= localThemeGenerationLimit {
+            return localized(en: "WORD POOL MAXED", ru: "ДОСТИГНУТ МАКСИМУМ", es: "BANCO AL MAXIMO")
+        }
+        return localized(en: "EXPAND POOL", ru: "РАСШИРИТЬ ПУЛ", es: "AMPLIAR BANCO")
     }
 
     private var localAIWarning: String {
@@ -1477,7 +1592,7 @@ struct LocalGameView: View {
         let key = localWordKey(value)
         guard !snapshot.words.contains(where: { localWordKey($0) == key }) else {
             localNewPoolWord = ""
-            HapticManager.shared.fire(.notification(.warning), audioPolicy: .hapticOnly)
+            HapticManager.shared.fire(.notification(.warning))
             return
         }
 
@@ -2117,7 +2232,7 @@ struct LocalGameView: View {
                 withAnimation(.smooth(duration: 0.28)) {
                     associationRouletteDone = true
                 }
-                HapticManager.shared.fire(.notification(.success), sound: .turnPass)
+                HapticManager.shared.fire(.notification(.success))
             }
         }
     }
@@ -2875,15 +2990,6 @@ struct LocalGameView: View {
         HapticManager.shared.fire(.buttonPress)
     }
 
-    private func dropPlayer() {
-        guard players.count > 2 else { return }
-        resetPlayerDragState()
-        players.removeLast()
-        avatars.removeLast()
-        playerIDs.removeLast()
-        HapticManager.shared.fire(.buttonPress)
-    }
-
     private func removePlayer(at index: Int) {
         guard players.count > 2, players.indices.contains(index) else { return }
         resetPlayerDragState()
@@ -2974,6 +3080,8 @@ struct LocalGameView: View {
         let theme = customTheme.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !theme.isEmpty, !isGenerating else { return }
 
+        isChoosingLocalPoolExpansion = false
+
         let existingPoolCount = generatedPack?.words.localCleanWords.count ?? 0
         let initialTargetCount = localWordCountMode == .custom ? Int(localCustomWordCount) : 100
         let targetCount = min(
@@ -3007,6 +3115,7 @@ struct LocalGameView: View {
             } else {
                 generated = try await appState.client.generateWordPack(theme: theme, count: targetCount)
             }
+            try Task.checkCancellation()
             appState.recordAIUsage(
                 used: generated.aiGenerationsToday,
                 remaining: generated.aiRemaining
@@ -3040,8 +3149,10 @@ struct LocalGameView: View {
             clearLocalPoolDraft()
             wordCount = Double(min(words.count, targetCount))
             status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO")
-            HapticManager.shared.fire(.milestone, sound: .echoBlip)
+            HapticManager.shared.fire(.milestone)
             persistLocalSettings()
+        } catch is CancellationError {
+            return
         } catch {
             guard localThemeRequestID == requestID else { return }
             localThemeError = error.localizedDescription.uppercased()
@@ -3050,23 +3161,11 @@ struct LocalGameView: View {
         }
     }
 
-    private func pushLocalThemeMax() async {
-        let theme = customTheme.trimmingCharacters(in: .whitespacesAndNewlines)
-        let current = localPoolSnapshot.words.localCleanWords
-        let selectedWordCount = Int(wordCount)
-        let wasUsingEntirePool = selectedWordCount >= current.count
-        guard !theme.isEmpty,
-              !isGenerating,
-              localThemeMaxWords < localThemeGenerationLimit else { return }
+    private func pushLocalThemeMax(additionalCount requestedAdditionalCount: Int) async {
+        guard isExpandingLocalThemePool, isGenerating else { return }
 
-        let additionalCount = min(50, localThemeGenerationLimit - current.count)
         let requestID = UUID()
-        let themeKey = localWordKey(theme)
-
         localThemeRequestID = requestID
-        isExpandingLocalThemePool = true
-        isGenerating = true
-        localThemeError = ""
         defer {
             if localThemeRequestID == requestID {
                 isGenerating = false
@@ -3074,23 +3173,42 @@ struct LocalGameView: View {
             }
         }
 
+        let theme = customTheme.trimmingCharacters(in: .whitespacesAndNewlines)
+        let current = localPoolSnapshot.words.localCleanWords
+        let selectedWordCount = Int(wordCount)
+        guard !theme.isEmpty,
+              localThemeMaxWords < localThemeGenerationLimit else { return }
+
+        let additionLimit = min(
+            max(requestedAdditionalCount, 1),
+            min(100, localThemeGenerationLimit - current.count)
+        )
+        guard additionLimit > 0 else { return }
+        // The service accepts at least five requested words. Near the 200-word
+        // cap we still expose the true remaining capacity and trim to that cap.
+        let generationRequestCount = max(5, additionLimit)
+        let themeKey = localWordKey(theme)
+
+        localThemeError = ""
+
         do {
             let generated: GeneratedWordPack
             if appState.shouldUsePreviewData {
                 generated = GeneratedWordPack(
                     name: "\(theme) Kit",
                     category: theme,
-                    words: (1...additionalCount).map { "\(theme) \(current.count + $0)" },
+                    words: (1...generationRequestCount).map { "\(theme) \(current.count + $0)" },
                     aiLimit: nil,
                     aiGenerationsToday: nil
                 )
             } else {
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
-                    count: additionalCount,
+                    count: generationRequestCount,
                     excluding: current
                 )
             }
+            try Task.checkCancellation()
             appState.recordAIUsage(
                 used: generated.aiGenerationsToday,
                 remaining: generated.aiRemaining
@@ -3100,7 +3218,11 @@ struct LocalGameView: View {
                   localWordKey(customTheme) == themeKey else { return }
 
             var seen = Set(current.map { localWordKey($0) })
-            let additions = generated.words.localCleanWords.filter { seen.insert(localWordKey($0)).inserted }
+            let additions = Array(
+                generated.words.localCleanWords
+                    .filter { seen.insert(localWordKey($0)).inserted }
+                    .prefix(additionLimit)
+            )
             let merged = Array((current + additions).prefix(200))
             guard merged.count > current.count else {
                 localThemeError = localized(
@@ -3125,14 +3247,21 @@ struct LocalGameView: View {
             disabledPoolWordKeys = disabledPoolWordKeys.filter { key in
                 merged.contains { localWordKey($0) == key }
             }
-            wordCount = Double(
-                wasUsingEntirePool
-                    ? merged.count
-                    : min(merged.count, max(selectedWordCount, 2))
+            let addedCount = merged.count - current.count
+            let minimumGameWords = min(10, merged.count)
+            wordCount = Double(min(merged.count, max(selectedWordCount, minimumGameWords)))
+            status = localized(
+                en: "AI WORD POOL EXPANDED · +\(addedCount)",
+                ru: "AI-ПУЛ СЛОВ РАСШИРЕН · +\(addedCount)",
+                es: "BANCO IA AMPLIADO · +\(addedCount)"
             )
-            status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO")
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
+                isChoosingLocalPoolExpansion = false
+            }
             HapticManager.shared.fire(.milestone)
             persistLocalSettings()
+        } catch is CancellationError {
+            return
         } catch {
             guard localThemeRequestID == requestID else { return }
             localThemeError = error.localizedDescription.uppercased()
@@ -3142,6 +3271,7 @@ struct LocalGameView: View {
     }
 
     private func saveLocalThemePack() async {
+        guard !isSavingGeneratedPack else { return }
         guard let email = appState.user?.email else { return }
         guard let generatedPack else { return }
 
@@ -3159,11 +3289,14 @@ struct LocalGameView: View {
                 words: words,
                 ownerEmail: email
             )
+            try Task.checkCancellation()
             packs.append(saved)
             packs.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO")
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
             persistLocalSettings()
+        } catch is CancellationError {
+            return
         } catch {
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
@@ -3238,14 +3371,14 @@ struct LocalGameView: View {
         spyGuess = nil
         status = ""
         phase = .cards
-        HapticManager.shared.fire(.milestone, sound: .gameStart)
+        HapticManager.shared.fire(.milestone)
     }
 
     private func revealCard() {
         withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.65)) {
             cardRevealed = true
         }
-        HapticManager.shared.fire(.reveal, sound: .roleReveal)
+        HapticManager.shared.fire(.reveal)
     }
 
     private func nextCardTitle(_ session: LocalSession) -> String {
@@ -3284,7 +3417,7 @@ struct LocalGameView: View {
                 revealIndex += 1
                 cardRevealed = false
             }
-            HapticManager.shared.fire(.buttonPress, sound: .turnPass)
+            HapticManager.shared.fire(.buttonPress)
         }
     }
 
@@ -3294,7 +3427,7 @@ struct LocalGameView: View {
             resetAssociationFlow(playerCount: session.players.count, mode: session.mode)
         }
         phase = .playing
-        HapticManager.shared.fire(.milestone, sound: .countdownGo)
+        HapticManager.shared.fire(.milestone)
         timerTask?.cancel()
         timerTask = Task { @MainActor in
             while !Task.isCancelled && secondsRemaining > 0 {
@@ -3302,12 +3435,11 @@ struct LocalGameView: View {
                 guard !Task.isCancelled else { return }
                 secondsRemaining -= 1
                 if (1...3).contains(secondsRemaining) {
-                    HapticManager.shared.playSound(.countdownTick)
                 }
             }
             if !Task.isCancelled {
                 beginSpyGuess()
-                HapticManager.shared.fire(.notification(.warning), sound: .echoBlip)
+                HapticManager.shared.fire(.notification(.warning))
             }
         }
     }
@@ -3324,7 +3456,6 @@ struct LocalGameView: View {
                 guard !Task.isCancelled else { return }
                 guessSecondsRemaining -= 1
                 if (1...3).contains(guessSecondsRemaining) {
-                    HapticManager.shared.playSound(.countdownTick)
                 }
             }
             if !Task.isCancelled {
@@ -3332,12 +3463,13 @@ struct LocalGameView: View {
                 pendingSpyGuess = nil
                 winner = .detectives
                 phase = .results
-                HapticManager.shared.fire(.milestone, sound: .resultDetectives)
+                HapticManager.shared.fire(.milestone)
             }
         }
     }
 
     private func currentAsker(in session: LocalSession) -> LocalPlayer? {
+        guard !session.players.isEmpty else { return nil }
         if session.mode == .associations {
             let fallbackIndex = questionIndex % max(session.players.count, 1)
             let orderedIndex = associationOrder[safe: associationStep] ?? fallbackIndex
@@ -3355,14 +3487,12 @@ struct LocalGameView: View {
     private func nextQuestion(in session: LocalSession) {
         if session.mode == .associations {
             advanceAssociationSpeaker(playerCount: session.players.count)
-            // The roulette completion owns the audible turn cue. The tap that
-            // starts it stays haptic-only so one gesture cannot sound twice.
             HapticManager.shared.fire(.tabSelection)
             return
         }
 
         questionIndex = (questionIndex + 1) % max(session.players.count, 1)
-        HapticManager.shared.fire(.tabSelection, sound: .turnPass)
+        HapticManager.shared.fire(.tabSelection)
     }
 
     private func resetAssociationFlow(playerCount: Int, mode: LocalMode) {
@@ -3407,11 +3537,7 @@ struct LocalGameView: View {
         spyGuess = nil
         winner = index == session.spyIndex ? .detectives : .spy
         phase = .results
-        let cue: HapticManager.SoundCue = winner == .spy ? .resultSpy : .resultDetectives
-        HapticManager.shared.fire(
-            .notification(index == session.spyIndex ? .success : .warning),
-            sound: cue
-        )
+        HapticManager.shared.fire(.notification(index == session.spyIndex ? .success : .warning))
     }
 
     private func resolveSpyGuess(_ word: String, session: LocalSession) {
@@ -3421,10 +3547,7 @@ struct LocalGameView: View {
         showSpyGuessOptions = false
         winner = localWordKey(word) == localWordKey(session.word) ? .spy : .detectives
         phase = .results
-        HapticManager.shared.fire(
-            .notification(winner == .spy ? .warning : .success),
-            sound: winner == .spy ? .resultSpy : .resultDetectives
-        )
+        HapticManager.shared.fire(.notification(winner == .spy ? .warning : .success))
     }
 
     private func reset() {
@@ -3461,8 +3584,13 @@ struct LocalGameView: View {
 
         guard let email = appState.user?.email else { return }
         do {
-            packs = try await appState.client.wordPacks(ownerEmail: email)
+            let loadedPacks = try await appState.client.wordPacks(ownerEmail: email)
+            try Task.checkCancellation()
+            guard appState.user?.email == email else { return }
+            packs = loadedPacks
             reconcileLocalWordSources()
+        } catch is CancellationError {
+            return
         } catch {
             // Keep the restored source until a successful sync can confirm
             // whether the persisted pack still exists.

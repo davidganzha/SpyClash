@@ -74,6 +74,10 @@ struct ProfileView: View {
         .onChange(of: showDeleteConfirmation, initial: true) { _, isPresented in
             appState.isShellChromeSuppressed = isPresented
         }
+        .onChange(of: appState.language) { _, language in
+            guard !isSaving, !isSavingLanguage, !isDeleting else { return }
+            selectedLanguage = language
+        }
         .onDisappear {
             if showDeleteConfirmation {
                 appState.isShellChromeSuppressed = false
@@ -412,6 +416,10 @@ struct ProfileView: View {
                     }
                 }
                 .buttonStyle(SpyPrimaryCommandStyle())
+                .disabled(
+                    isSaving || isSavingLanguage || isDeleting ||
+                        appState.isSynchronizingLanguage || appState.isUpdatingProfile
+                )
 
                 if !status.isEmpty {
                     SpyToast(
@@ -914,7 +922,10 @@ struct ProfileView: View {
             .overlay(Rectangle().stroke(isSelected ? Color.clear : SpyTheme.strokeStrong))
         }
         .buttonStyle(SpyWebPressStyle())
-        .disabled(isSavingLanguage)
+        .disabled(
+            isSaving || isSavingLanguage || isDeleting ||
+                appState.isSynchronizingLanguage || appState.isUpdatingProfile
+        )
         .animation(.smooth(duration: 0.24), value: isSelected)
     }
 
@@ -997,14 +1008,29 @@ struct ProfileView: View {
             return
         }
 
-        history = (try? await appState.client.gameHistory(email: email, limit: nil)) ?? []
+        do {
+            let loadedHistory = try await appState.client.gameHistory(email: email, limit: nil)
+            try Task.checkCancellation()
+            guard appState.user?.email == email else { return }
+            history = loadedHistory
+        } catch is CancellationError {
+            return
+        } catch {
+            status = error.localizedDescription.uppercased()
+            statusKind = .error
+        }
     }
 
     private func save() async {
+        guard !isSaving,
+              !isSavingLanguage,
+              !isDeleting,
+              !appState.isSynchronizingLanguage,
+              !appState.isUpdatingProfile else { return }
         isSaving = true
         defer { isSaving = false }
         do {
-            appState.user = try await appState.client.updateProfile(
+            try await appState.updateProfile(
                 displayName: displayName,
                 avatar: avatar,
                 language: selectedLanguage,
@@ -1012,10 +1038,9 @@ struct ProfileView: View {
                 spyCardAccent: selectedCardAccent,
                 spyCardBadge: selectedCardBadge
             )
-            try await appState.setLanguage(selectedLanguage, syncRemote: false)
             status = appState.language.profile.saved
             statusKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             status = error.localizedDescription.uppercased()
             statusKind = .error
@@ -1024,15 +1049,21 @@ struct ProfileView: View {
     }
 
     private func selectLanguage(_ language: AppLanguage) {
-        guard selectedLanguage != language else { return }
+        guard selectedLanguage != language,
+              !isSaving,
+              !isSavingLanguage,
+              !isDeleting,
+              !appState.isSynchronizingLanguage,
+              !appState.isUpdatingProfile else { return }
 
+        let previousLanguage = appState.language
         selectedLanguage = language
+        isSavingLanguage = true
         status = ""
         statusKind = nil
         HapticManager.shared.fire(.tabSelection)
 
         Task {
-            isSavingLanguage = true
             defer { isSavingLanguage = false }
 
             do {
@@ -1040,6 +1071,8 @@ struct ProfileView: View {
                 status = language.languageSavedMessage
                 statusKind = .success
             } catch {
+                selectedLanguage = previousLanguage
+                try? await appState.setLanguage(previousLanguage, syncRemote: false)
                 status = language.languageFailedMessage
                 statusKind = .error
                 HapticManager.shared.fire(.notification(.warning))
@@ -1048,6 +1081,11 @@ struct ProfileView: View {
     }
 
     private func deleteAccount() async {
+        guard !isDeleting,
+              !isSaving,
+              !isSavingLanguage,
+              !appState.isSynchronizingLanguage,
+              !appState.isUpdatingProfile else { return }
         isDeleting = true
         defer { isDeleting = false }
         do {

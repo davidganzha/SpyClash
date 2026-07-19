@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct SpyClashApp: App {
+    @UIApplicationDelegateAdaptor(SpyClashAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @State private var appState = AppState()
 
@@ -12,16 +13,15 @@ struct SpyClashApp: App {
                 .preferredColorScheme(.dark)
                 .tint(SpyTheme.red)
                 .task {
-                    HapticManager.shared.preloadInterfaceSounds()
                     await appState.restoreSession()
                 }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     let isActive = phase == .active
-                    HapticManager.shared.setApplicationActive(isActive)
                     if isActive {
+                        PushNotificationCoordinator.shared.applicationDidBecomeActive()
                         appState.synchronizeCommerceAccessOnActivation()
                     } else {
-                        AuthCinematicSoundPlayer.shared.stopAll()
+                        PushNotificationCoordinator.shared.applicationDidEnterBackground()
                     }
                 }
         }
@@ -77,7 +77,7 @@ private struct RootView: View {
         }
         .task(id: "\(appState.user?.id ?? "signed-out")|\(appState.isAuthTransitionActive)") {
             guard !appState.isAuthTransitionActive else { return }
-            await appState.consumePendingJoinIfPossible()
+            await appState.consumePendingRoutesIfPossible()
         }
         .animation(.smooth(duration: 0.45), value: appState.isRestoring)
         .animation(.smooth(duration: 0.45), value: appState.user?.id)

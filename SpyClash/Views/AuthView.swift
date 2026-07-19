@@ -148,17 +148,21 @@ struct AuthView: View {
                 divider
                 emailField
                 Button {
-                    guard !email.trimmingCharacters(in: .whitespaces).isEmpty else {
+                    let target = normalizedEmail
+                    guard isValidEmail(target) else {
+                        appState.authError = invalidEmailMessage
                         HapticManager.shared.fire(.notification(.warning))
                         return
                     }
                     appState.authError = nil
                     appState.authNotice = nil
-                    move(to: .password(email: email))
+                    email = target
+                    move(to: .password(email: target))
                 } label: {
                     Label(copy.continueAction, systemImage: "arrow.right")
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
+                .disabled(appState.isBusy)
 
             case .password(let lockedEmail):
                 lockedEmailRow(lockedEmail)
@@ -193,17 +197,21 @@ struct AuthView: View {
                 divider
                 emailField
                 Button {
-                    guard !email.trimmingCharacters(in: .whitespaces).isEmpty else {
+                    let target = normalizedEmail
+                    guard isValidEmail(target) else {
+                        appState.authError = invalidEmailMessage
                         HapticManager.shared.fire(.notification(.warning))
                         return
                     }
                     appState.authError = nil
                     appState.authNotice = nil
-                    move(to: .registerPassword(email: email))
+                    email = target
+                    move(to: .registerPassword(email: target))
                 } label: {
                     Label(copy.joinNetworkAction, systemImage: "arrow.right")
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
+                .disabled(appState.isBusy)
 
             case .registerPassword(let lockedEmail):
                 lockedEmailRow(lockedEmail)
@@ -221,7 +229,7 @@ struct AuthView: View {
                     busyLabel(copy.recruitingBusy, idle: copy.createCredentialsAction)
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
-                .disabled(appState.isBusy || password.isEmpty)
+                .disabled(appState.isBusy || password.isEmpty || confirmPassword.isEmpty)
 
             case .otp(let lockedEmail):
                 Text(copy.sixDigitKeyLabel)
@@ -229,7 +237,7 @@ struct AuthView: View {
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker(lines: 2)
-                TextField("000000", text: $otp)
+                TextField("000000", text: otpBinding)
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .multilineTextAlignment(.center)
@@ -245,7 +253,7 @@ struct AuthView: View {
                     busyLabel(copy.verifyingBusy, idle: copy.verifyEnterAction)
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
-                .disabled(appState.isBusy || otp.count < 6)
+                .disabled(appState.isBusy || otp.count != 6)
 
             case .forgotPassword(let lockedEmail):
                 Text(copy.requestResetBody)
@@ -260,7 +268,11 @@ struct AuthView: View {
                     }
                 Button {
                     let target = email.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !target.isEmpty else { return }
+                    guard isValidEmail(target) else {
+                        appState.authError = invalidEmailMessage
+                        HapticManager.shared.fire(.notification(.warning))
+                        return
+                    }
                     HapticManager.shared.fire(.buttonPress)
                     Task { await appState.requestPasswordReset(email: target) }
                 } label: {
@@ -343,6 +355,7 @@ struct AuthView: View {
                 .foregroundStyle(SpyTheme.red)
                 .spyFitted(lines: 2, scale: 0.62, alignment: .center)
         }
+        .disabled(appState.isBusy)
     }
 
     private var emailField: some View {
@@ -354,6 +367,39 @@ struct AuthView: View {
             textContentType: .emailAddress,
             keyboardType: .emailAddress,
             autocapitalization: .never
+        )
+    }
+
+    private var normalizedEmail: String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func isValidEmail(_ value: String) -> Bool {
+        guard !value.isEmpty,
+              !value.contains(where: \.isWhitespace) else { return false }
+
+        let addressParts = value.split(separator: "@", omittingEmptySubsequences: false)
+        guard addressParts.count == 2,
+              !addressParts[0].isEmpty else { return false }
+
+        let domainParts = addressParts[1].split(separator: ".", omittingEmptySubsequences: false)
+        return domainParts.count >= 2 &&
+            domainParts.allSatisfy { !$0.isEmpty } &&
+            (domainParts.last?.count ?? 0) >= 2
+    }
+
+    private var invalidEmailMessage: String {
+        switch appState.language {
+        case .en: "Enter a valid email address."
+        case .ru: "Введите корректный адрес электронной почты."
+        case .es: "Introduce una direccion de correo valida."
+        }
+    }
+
+    private var otpBinding: Binding<String> {
+        Binding(
+            get: { otp },
+            set: { otp = String($0.filter(\.isNumber).prefix(6)) }
         )
     }
 
@@ -441,6 +487,7 @@ struct AuthView: View {
             .padding(12)
             .spyCutCard(cut: 8, fill: SpyTheme.red.opacity(0.07), stroke: SpyTheme.red.opacity(0.25))
         }
+        .disabled(appState.isBusy)
     }
 
     private func errorBanner(_ text: String) -> some View {
@@ -462,6 +509,7 @@ struct AuthView: View {
     }
 
     private func move(to phase: AuthPhase) {
+        guard !appState.isBusy else { return }
         HapticManager.shared.fire(.buttonPress)
         authTransitionDirection = phase.motionRank >= appState.authPhase.motionRank ? 1 : -1
         appState.authPhase = phase
@@ -544,8 +592,6 @@ struct AppleAuthCinematicOverlay: View {
         .task(id: stage) {
             guard stage == .accessGranted else { return }
 
-            AuthCinematicSoundPlayer.shared.playCompletionSurge()
-
             if reduceMotion {
                 electricityActive = true
                 withAnimation(.easeOut(duration: 0.28)) {
@@ -577,9 +623,6 @@ struct AppleAuthCinematicOverlay: View {
         }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityStatus)
-        .onAppear {
-            AuthCinematicSoundPlayer.shared.preload()
-        }
     }
 
     private var accessibilityStatus: String {
@@ -663,9 +706,6 @@ private struct StandardAuthCinematicOverlay: View {
                 electricityActive = false
             }
         }
-        .onAppear {
-            AuthCinematicSoundPlayer.shared.preload()
-        }
         .accessibilityElement(children: .combine)
         .accessibilityLabel(accessibilityStatus)
     }
@@ -732,9 +772,6 @@ private struct FourPartAssemblingMark: View {
         }
         .onChange(of: stage) { _, newStage in
             placePieces(for: newStage)
-        }
-        .onDisappear {
-            AuthCinematicSoundPlayer.shared.stopFragmentLocks()
         }
         .accessibilityHidden(true)
     }
@@ -808,8 +845,6 @@ private struct SpyClashAssemblingMark: View {
         }
         .task {
             appeared = true
-            let soundPlayer = AuthCinematicSoundPlayer.shared
-            soundPlayer.preload()
 
             try? await Task.sleep(for: .milliseconds(220))
             for count in 1...fragments.count {
@@ -821,10 +856,6 @@ private struct SpyClashAssemblingMark: View {
                 let placementDuration = reduceMotion ? 120 : 200
                 try? await Task.sleep(for: .milliseconds(placementDuration))
                 guard !Task.isCancelled else { return }
-                soundPlayer.playFragmentLock(
-                    index: count - 1,
-                    totalCount: fragments.count
-                )
 
                 if count < fragments.count {
                     try? await Task.sleep(for: .milliseconds(220 - placementDuration))
@@ -837,9 +868,6 @@ private struct SpyClashAssemblingMark: View {
             withAnimation(.easeIn(duration: 0.42).delay(0.16)) { completionFlash = false }
         }
         .accessibilityHidden(true)
-        .onDisappear {
-            AuthCinematicSoundPlayer.shared.stopFragmentLocks()
-        }
     }
 
     private var assembledCount: Int {
@@ -864,19 +892,6 @@ private struct SpyClashAssemblingMark: View {
         return reduceMotion ? 0 : 0.08
     }
 
-}
-
-@MainActor
-final class AuthCinematicSoundPlayer {
-    static let shared = AuthCinematicSoundPlayer()
-
-    private init() {}
-
-    func preload() {}
-    func playFragmentLock(index: Int, totalCount: Int) {}
-    func playCompletionSurge() {}
-    func stopFragmentLocks() {}
-    func stopAll() {}
 }
 
 private struct ElectricResponse: View {

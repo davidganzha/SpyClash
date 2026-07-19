@@ -16,6 +16,7 @@ struct GameView: View {
     @State private var isSubmittingSpyGuess = false
     @State private var isVotingReplay = false
     @State private var isResettingRoom = false
+    @State private var isLeavingRoom = false
     @State private var copiedRoomCode = false
     @State private var showsThemeBuilder = false
     @State private var isUpdatingGameMode = false
@@ -45,6 +46,8 @@ struct GameView: View {
     @State private var roomWordCountMode = RoomWordCountMode.recommended
     @State private var showsAllRoomPoolWords = false
     @State private var roomThemeOperation: RoomThemeOperation?
+    @State private var isChoosingRoomPoolExpansion = false
+    @State private var roomPoolExpansionCount = 50.0
     @State private var isSavingRoomThemePack = false
     @State private var configuredRoomID: String?
     @State private var pendingStartPlan: GameStartPlan?
@@ -54,6 +57,10 @@ struct GameView: View {
 
     private var copy: GameCopy {
         appState.language.game
+    }
+
+    private var isLobbyConfigurationBusy: Bool {
+        isUpdatingGameMode || isUpdatingDuration || isStarting || isLeavingRoom
     }
 
     private var roomQRTargetBinding: Binding<RoomQRTarget> {
@@ -138,12 +145,13 @@ struct GameView: View {
             guard let seconds, !isUpdatingDuration, !isDraggingOnlineDuration else { return }
             selectedDurationMinutes = Double(max(1, min(seconds / 60, 15)))
         }
-        .onChange(of: roomSoundSnapshot) { previous, current in
-            handleRoomSoundTransition(from: previous, to: current)
+        .onChange(of: appState.activeRoom?.id) { _, roomID in
+            if roomID == nil {
+                showSpyGuess = false
+            }
         }
-        .onChange(of: onlineCountdownSecond) { _, second in
-            guard second != nil else { return }
-            HapticManager.shared.playSound(.countdownTick)
+        .onChange(of: roomFeedbackSnapshot) { previous, current in
+            handleRoomFeedbackTransition(from: previous, to: current)
         }
         .sheet(isPresented: $showSpyGuess) {
             if let room = appState.activeRoom {
@@ -174,18 +182,8 @@ struct GameView: View {
         return "waiting-\(room.id)"
     }
 
-    private var roomSoundSnapshot: RoomSoundSnapshot? {
-        appState.activeRoom.map(RoomSoundSnapshot.init(room:))
-    }
-
-    private var onlineCountdownSecond: Int? {
-        guard let room = appState.activeRoom,
-              room.normalizedStatus == "playing" else {
-            return nil
-        }
-
-        let remaining = remainingSeconds(room)
-        return (1...3).contains(remaining) ? remaining : nil
+    private var roomFeedbackSnapshot: RoomFeedbackSnapshot? {
+        appState.activeRoom.map(RoomFeedbackSnapshot.init(room:))
     }
 
     private var isOnlineTextInputFocused: Bool {
@@ -384,7 +382,7 @@ struct GameView: View {
                         if isRoomCodeVisible {
                             HapticManager.shared.fire(.buttonPress)
                         } else {
-                            HapticManager.shared.fire(.reveal, sound: .secretReveal)
+                            HapticManager.shared.fire(.reveal)
                         }
                         withAnimation(
                             reduceMotion
@@ -544,7 +542,7 @@ struct GameView: View {
     private func flipRoomQR() {
         guard !isRoomQRFlipping else { return }
 
-        HapticManager.shared.fire(.reveal, sound: .qrCardFlip)
+        HapticManager.shared.fire(.reveal)
         let revealsQR = !isRoomQRVisible
         let targetProgress = revealsQR ? 1.0 : 0.0
         let flipID = UUID()
@@ -893,7 +891,7 @@ struct GameView: View {
             .contentShape(CutCornerShape(cut: 9))
         }
         .buttonStyle(SpyWebPressStyle())
-        .disabled(!isHost(room) || isUpdatingGameMode)
+        .disabled(!isHost(room) || isLobbyConfigurationBusy)
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: isSelected)
         .accessibilityIdentifier("onlineRoom.mode.\(mode.rawValue)")
     }
@@ -1033,9 +1031,7 @@ struct GameView: View {
                 }
 
                 if roomHasCustomTheme && roomHasGeneratedTheme {
-                    roomWordsSlider
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    roomExpandThemePoolButton
+                    roomGeneratedPoolControls
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
@@ -1157,21 +1153,51 @@ struct GameView: View {
                         )
                 }
 
-                SpyWebSlider(
-                    value: $selectedDurationMinutes,
-                    range: 1...15,
-                    step: 1,
-                    onEditingChanged: { isEditing in
-                        guard !isEditing, isHost(room), !isUpdatingDuration else { return }
-                        let minutes = Int(selectedDurationMinutes)
-                        Task { await updateDuration(room, minutes: minutes) }
-                    },
-                    onInteractionChanged: { isInteracting in
-                        isDraggingOnlineDuration = isInteracting
-                    },
-                    accessibilityIdentifier: "onlineRoom.durationSlider"
-                )
-                .disabled(!isHost(room) || isUpdatingDuration)
+                HStack(spacing: 10) {
+                    durationStepButton(
+                        systemImage: "minus",
+                        enabled: isHost(room) && selectedDurationMinutes > 1 && !isLobbyConfigurationBusy
+                    ) {
+                        Task {
+                            await updateDuration(
+                                room,
+                                minutes: Int(selectedDurationMinutes) - 1
+                            )
+                        }
+                    }
+                    .accessibilityIdentifier("onlineRoom.durationDecrease")
+
+                    SpyWebSlider(
+                        value: $selectedDurationMinutes,
+                        range: 1...15,
+                        step: 1,
+                        onEditingChanged: { isEditing in
+                            guard !isEditing,
+                                  isHost(room),
+                                  !isLobbyConfigurationBusy else { return }
+                            let minutes = Int(selectedDurationMinutes)
+                            Task { await updateDuration(room, minutes: minutes) }
+                        },
+                        onInteractionChanged: { isInteracting in
+                            isDraggingOnlineDuration = isInteracting
+                        },
+                        accessibilityIdentifier: "onlineRoom.durationSlider"
+                    )
+                    .disabled(!isHost(room) || isLobbyConfigurationBusy)
+
+                    durationStepButton(
+                        systemImage: "plus",
+                        enabled: isHost(room) && selectedDurationMinutes < 15 && !isLobbyConfigurationBusy
+                    ) {
+                        Task {
+                            await updateDuration(
+                                room,
+                                minutes: Int(selectedDurationMinutes) + 1
+                            )
+                        }
+                    }
+                    .accessibilityIdentifier("onlineRoom.durationIncrease")
+                }
             }
         }
     }
@@ -1456,8 +1482,7 @@ struct GameView: View {
                 .background(SpyTheme.green.opacity(0.06))
                 .overlay(Rectangle().stroke(SpyTheme.green.opacity(0.24), lineWidth: 1))
 
-                roomWordsSlider
-                roomExpandThemePoolButton
+                roomGeneratedPoolControls
                 roomSaveAsWordPackButton
             }
         }
@@ -1532,7 +1557,7 @@ struct GameView: View {
                         )
                     }
                     .simultaneousGesture(TapGesture().onEnded {
-                        HapticManager.shared.fire(.buttonPress, audioPolicy: .hapticOnly)
+                        HapticManager.shared.fire(.buttonPress)
                     })
                     .buttonStyle(WaitingFooterPressStyle())
                     .frame(maxWidth: .infinity)
@@ -1674,7 +1699,7 @@ struct GameView: View {
                     if isRoomCodeVisible {
                         HapticManager.shared.fire(.buttonPress)
                     } else {
-                        HapticManager.shared.fire(.reveal, sound: .secretReveal)
+                        HapticManager.shared.fire(.reveal)
                     }
                     withAnimation(.easeInOut(duration: 0.20)) {
                         isRoomCodeVisible.toggle()
@@ -1728,7 +1753,7 @@ struct GameView: View {
                         )
                     }
                     .simultaneousGesture(TapGesture().onEnded {
-                        HapticManager.shared.fire(.buttonPress, audioPolicy: .hapticOnly)
+                        HapticManager.shared.fire(.buttonPress)
                     })
                     .buttonStyle(SpyWebPressStyle())
                     .accessibilityIdentifier("onlineRoom.shareInvite")
@@ -1751,6 +1776,7 @@ struct GameView: View {
             } label: {
                 Label(isHost(room) ? closeRoomTitle : copy.leaveRoom, systemImage: "rectangle.portrait.and.arrow.right")
             }
+            .disabled(isLeavingRoom)
         } label: {
             Image(systemName: "ellipsis")
                 .font(.system(size: 13, weight: .black))
@@ -2633,7 +2659,7 @@ struct GameView: View {
 
     private var webHiddenRoleCard: some View {
         Button {
-            HapticManager.shared.fire(.reveal, sound: .roleReveal)
+            HapticManager.shared.fire(.reveal)
             withAnimation(.spring(response: 0.38, dampingFraction: 0.78)) {
                 revealRole = true
             }
@@ -2907,6 +2933,7 @@ struct GameView: View {
             } label: {
                 Label(isHost(room) ? closeRoomTitle : copy.leaveRoom, systemImage: "rectangle.portrait.and.arrow.right")
             }
+            .disabled(isLeavingRoom)
         } label: {
             HStack(spacing: 8) {
                 roomStatePill(room)
@@ -2921,7 +2948,7 @@ struct GameView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle())
-        .disabled(isStarting)
+        .disabled(isStarting || isLeavingRoom)
     }
 
     private func roomStatePill(_ room: GameRoom) -> some View {
@@ -3149,9 +3176,7 @@ struct GameView: View {
                 }
 
                 if roomHasCustomTheme && roomHasGeneratedTheme {
-                    roomWordsSlider
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    roomExpandThemePoolButton
+                    roomGeneratedPoolControls
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
@@ -3485,27 +3510,123 @@ struct GameView: View {
         .overlay(Rectangle().stroke(Color.white.opacity(0.07), lineWidth: 1))
     }
 
-    private var roomExpandThemePoolButton: some View {
-        Button {
-            Task { await pushRoomThemeMax() }
-        } label: {
-            if roomThemeOperation == .expand {
-                SpyLoadingLabel(title: roomAddMoreWordsLabel, accent: SpyTheme.amber)
-                    .frame(height: 50)
+    private var roomGeneratedPoolControls: some View {
+        Group {
+            if isChoosingRoomPoolExpansion, roomPoolExpansionMaximum > 0 {
+                roomPoolExpansionPicker
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        )
+                    )
             } else {
-                SpyActionLabel(
-                    title: roomAddMoreWordsLabel,
-                    systemImage: "plus.circle.fill",
-                    fontSize: 10,
-                    iconSize: 13,
-                    tracking: 0.02,
-                    lines: 2
+                VStack(alignment: .leading, spacing: 12) {
+                    roomWordsSlider
+
+                    if roomThemeMaxWords < 200 {
+                        roomExpandThemePoolButton
+                    }
+                }
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .leading).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    )
                 )
             }
+        }
+        .animation(
+            reduceMotion ? nil : .smooth(duration: 0.28),
+            value: isChoosingRoomPoolExpansion
+        )
+    }
+
+    private var roomPoolExpansionPicker: some View {
+        SpyPoolExpansionPicker(
+            additionalWords: $roomPoolExpansionCount,
+            range: Double(roomPoolExpansionMinimum)...Double(roomPoolExpansionMaximum),
+            currentPoolCount: roomThemeMaxWords,
+            poolLimit: 200,
+            title: localized(en: "EXPAND POOL", ru: "РАСШИРИТЬ ПУЛ", es: "AMPLIAR BANCO"),
+            poolProgressTitle: localized(
+                en: "PROJECTED POOL",
+                ru: "ПРОГНОЗ ПУЛА",
+                es: "BANCO ESTIMADO"
+            ),
+            confirmTitle: { count in
+                localized(
+                    en: "ADD UP TO +\(count) WORDS",
+                    ru: "ДОБАВИТЬ ДО +\(count) СЛОВ",
+                    es: "ANADIR HASTA +\(count) PALABRAS"
+                )
+            },
+            loadingTitle: { count in
+                localized(
+                    en: "ADDING UP TO +\(count) WORDS",
+                    ru: "ДОБАВЛЯЕМ ДО +\(count) СЛОВ",
+                    es: "ANADIENDO HASTA +\(count) PALABRAS"
+                )
+            },
+            closeAccessibilityLabel: localized(
+                en: "Close pool expansion",
+                ru: "Закрыть расширение пула",
+                es: "Cerrar ampliacion del banco"
+            ),
+            accessibilityPrefix: "onlineRoom.poolExpansion",
+            isLoading: roomThemeOperation == .expand,
+            onClose: closeRoomPoolExpansion,
+            onConfirm: beginRoomPoolExpansion
+        )
+    }
+
+    private var roomPoolExpansionMaximum: Int {
+        min(100, max(200 - roomThemeMaxWords, 0))
+    }
+
+    private var roomPoolExpansionMinimum: Int {
+        min(5, roomPoolExpansionMaximum)
+    }
+
+    private var roomExpandThemePoolButton: some View {
+        Button {
+            openRoomPoolExpansion()
+        } label: {
+            SpyActionLabel(
+                title: roomAddMoreWordsLabel,
+                systemImage: "plus.circle.fill",
+                fontSize: 10,
+                iconSize: 13,
+                tracking: 0.02,
+                lines: 2
+            )
         }
         .buttonStyle(SpyButtonStyle(variant: .outline))
         .disabled(isGeneratingRoomTheme || roomThemeMaxWords >= 200)
         .accessibilityIdentifier("onlineRoom.addMoreThemeWords")
+    }
+
+    private func openRoomPoolExpansion() {
+        guard roomPoolExpansionMaximum > 0, !isGeneratingRoomTheme else { return }
+        roomPoolExpansionCount = Double(min(50, roomPoolExpansionMaximum))
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
+            isChoosingRoomPoolExpansion = true
+        }
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func closeRoomPoolExpansion() {
+        guard roomThemeOperation != .expand else { return }
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
+            isChoosingRoomPoolExpansion = false
+        }
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func beginRoomPoolExpansion(_ count: Int) {
+        guard roomThemeOperation == nil, roomPoolExpansionMaximum > 0 else { return }
+        roomThemeOperation = .expand
+        Task { await pushRoomThemeMax(additionalCount: count) }
     }
 
     @ViewBuilder
@@ -3724,7 +3845,7 @@ struct GameView: View {
                         if revealRole {
                             HapticManager.shared.fire(.buttonPress)
                         } else {
-                            HapticManager.shared.fire(.reveal, sound: .roleReveal)
+                            HapticManager.shared.fire(.reveal)
                         }
                         withAnimation(.spring(response: 0.36, dampingFraction: 0.75)) {
                             revealRole.toggle()
@@ -4188,7 +4309,7 @@ struct GameView: View {
                         )
                     }
                     .simultaneousGesture(TapGesture().onEnded {
-                        HapticManager.shared.fire(.buttonPress, audioPolicy: .hapticOnly)
+                        HapticManager.shared.fire(.buttonPress)
                     })
                     .buttonStyle(SpyWebPressStyle())
                     .accessibilityIdentifier("onlineRoom.inviteMore")
@@ -4273,7 +4394,7 @@ struct GameView: View {
                         )
                     }
                     .simultaneousGesture(TapGesture().onEnded {
-                        HapticManager.shared.fire(.buttonPress, audioPolicy: .hapticOnly)
+                        HapticManager.shared.fire(.buttonPress)
                     })
                     .buttonStyle(SpyPrimaryCommandStyle())
                     .accessibilityIdentifier("onlineRoom.inviteMore")
@@ -4823,7 +4944,7 @@ struct GameView: View {
         if roomThemeMaxWords >= 200 {
             return localized(en: "WORD POOL MAXED", ru: "ДОСТИГНУТ МАКСИМУМ", es: "BANCO AL MAXIMO")
         }
-        return localized(en: "EXPAND POOL · +50", ru: "РАСШИРИТЬ ПУЛ · +50", es: "AMPLIAR BANCO · +50")
+        return localized(en: "EXPAND POOL", ru: "РАСШИРИТЬ ПУЛ", es: "AMPLIAR BANCO")
     }
 
     private func roomShowAllWordsLabel(_ count: Int) -> String {
@@ -5002,7 +5123,7 @@ struct GameView: View {
         UIPasteboard.general.string = room.code
         copiedRoomCode = true
         status = roomCopiedTitle
-        HapticManager.shared.fire(.notification(.success), sound: .copyConfirm)
+        HapticManager.shared.fire(.notification(.success))
 
         Task {
             try? await Task.sleep(for: .milliseconds(2800))
@@ -5012,9 +5133,9 @@ struct GameView: View {
         }
     }
 
-    private func handleRoomSoundTransition(
-        from previous: RoomSoundSnapshot?,
-        to current: RoomSoundSnapshot?
+    private func handleRoomFeedbackTransition(
+        from previous: RoomFeedbackSnapshot?,
+        to current: RoomFeedbackSnapshot?
     ) {
         guard let previous,
               let current,
@@ -5024,40 +5145,17 @@ struct GameView: View {
 
         if current.isFinished,
            !previous.isFinished || previous.winner != current.winner {
-            let cue: HapticManager.SoundCue = current.winner == "spy"
-                ? .resultSpy
-                : .resultDetectives
-            HapticManager.shared.fire(.milestone, sound: cue)
+            HapticManager.shared.fire(.milestone)
             return
         }
 
         if previous.status != "roulette", current.status == "roulette" {
-            HapticManager.shared.fire(.milestone, sound: .gameStart)
+            HapticManager.shared.fire(.milestone)
             return
         }
 
         if previous.status == "roulette", current.status == "playing" {
-            HapticManager.shared.fire(.milestone, sound: .countdownGo)
-            return
-        }
-
-        if previous.status != "ready_voting", current.status == "ready_voting" {
-            HapticManager.shared.playSound(.readyLock)
-            return
-        }
-
-        if current.status == "playing",
-           let previousTurn = previous.turnToken,
-           let currentTurn = current.turnToken,
-           previousTurn != currentTurn {
-            HapticManager.shared.playSound(.turnPass)
-            return
-        }
-
-        if !current.playerEmails.subtracting(previous.playerEmails).isEmpty {
-            HapticManager.shared.playSound(.playerJoin)
-        } else if !previous.playerEmails.subtracting(current.playerEmails).isEmpty {
-            HapticManager.shared.playSound(.playerLeave)
+            HapticManager.shared.fire(.milestone)
         }
     }
 
@@ -5200,6 +5298,7 @@ struct GameView: View {
         roomGeneratedPack = nil
         roomThemeError = ""
         showsAllRoomPoolWords = false
+        isChoosingRoomPoolExpansion = false
 
         if hasTheme {
             roomWordSource = .generated
@@ -5217,6 +5316,7 @@ struct GameView: View {
         roomGeneratedPack = nil
         roomThemeError = ""
         showsAllRoomPoolWords = false
+        isChoosingRoomPoolExpansion = false
     }
 
     private var resolvedRoomFallbackSource: RoomWordSource {
@@ -5227,6 +5327,8 @@ struct GameView: View {
     private func generateRoomTheme(usingInitialTarget: Bool) async {
         let theme = roomTheme.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !theme.isEmpty, roomThemeOperation == nil else { return }
+
+        isChoosingRoomPoolExpansion = false
 
         let targetCount: Int
         if usingInitialTarget {
@@ -5287,8 +5389,9 @@ struct GameView: View {
             roomWordSource = .generated
             showsAllRoomPoolWords = false
             status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO")
-            HapticManager.shared.fire(.milestone, sound: .echoBlip)
+            HapticManager.shared.fire(.milestone)
         } catch {
+            guard !(error is CancellationError) else { return }
             guard roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
             roomThemeError = error.localizedDescription.uppercased()
             status = roomThemeError
@@ -5296,18 +5399,27 @@ struct GameView: View {
         }
     }
 
-    private func pushRoomThemeMax() async {
+    private func pushRoomThemeMax(additionalCount requestedAdditionalCount: Int) async {
+        guard roomThemeOperation == .expand else { return }
+        defer { roomThemeOperation = nil }
+
         let theme = roomTheme.trimmingCharacters(in: .whitespacesAndNewlines)
         let currentPack = roomGeneratedPack
         let current = currentPack?.words.roomCleanWords ?? []
         let selectedWordCount = Int(roomWordCount)
-        let wasUsingEntirePool = selectedWordCount >= current.count
-        guard !theme.isEmpty, current.count >= 2, roomThemeOperation == nil else { return }
+        guard !theme.isEmpty,
+              current.count >= 2,
+              current.count < 200 else { return }
 
-        let additionalCount = min(50, 200 - current.count)
-        roomThemeOperation = .expand
+        let additionLimit = min(
+            max(requestedAdditionalCount, 1),
+            min(100, 200 - current.count)
+        )
+        guard additionLimit > 0 else { return }
+        // The service accepts at least five requested words. Near the 200-word
+        // cap we still expose the true remaining capacity and trim to that cap.
+        let generationRequestCount = max(5, additionLimit)
         roomThemeError = ""
-        defer { roomThemeOperation = nil }
 
         do {
             let generated: GeneratedWordPack
@@ -5315,14 +5427,14 @@ struct GameView: View {
                 generated = GeneratedWordPack(
                     name: "\(theme) Kit",
                     category: theme,
-                    words: (1...additionalCount).map { "\(theme) \(current.count + $0)" },
+                    words: (1...generationRequestCount).map { "\(theme) \(current.count + $0)" },
                     aiLimit: nil,
                     aiGenerationsToday: nil
                 )
             } else {
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
-                    count: additionalCount,
+                    count: generationRequestCount,
                     excluding: current
                 )
             }
@@ -5334,7 +5446,11 @@ struct GameView: View {
             guard roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
 
             var seen = Set(current.map { $0.lowercased() })
-            let additions = generated.words.roomCleanWords.filter { seen.insert($0.lowercased()).inserted }
+            let additions = Array(
+                generated.words.roomCleanWords
+                    .filter { seen.insert($0.lowercased()).inserted }
+                    .prefix(additionLimit)
+            )
             let merged = Array((current + additions).prefix(200))
             guard merged.count > current.count else {
                 roomThemeError = localized(
@@ -5354,16 +5470,22 @@ struct GameView: View {
                 aiGenerationsToday: generated.aiGenerationsToday,
                 aiRemaining: generated.aiRemaining
             )
-            roomWordCount = Double(
-                wasUsingEntirePool
-                    ? merged.count
-                    : min(merged.count, max(selectedWordCount, 2))
-            )
+            let addedCount = merged.count - current.count
+            let minimumGameWords = min(5, merged.count)
+            roomWordCount = Double(min(merged.count, max(selectedWordCount, minimumGameWords)))
             roomWordSource = .generated
             showsAllRoomPoolWords = false
-            status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO")
+            status = localized(
+                en: "AI WORD POOL EXPANDED · +\(addedCount)",
+                ru: "AI-ПУЛ СЛОВ РАСШИРЕН · +\(addedCount)",
+                es: "BANCO IA AMPLIADO · +\(addedCount)"
+            )
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
+                isChoosingRoomPoolExpansion = false
+            }
             HapticManager.shared.fire(.milestone)
         } catch {
+            guard !(error is CancellationError) else { return }
             guard roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
             roomThemeError = error.localizedDescription.uppercased()
             status = roomThemeError
@@ -5372,6 +5494,7 @@ struct GameView: View {
     }
 
     private func saveRoomThemePack() async {
+        guard !isSavingRoomThemePack else { return }
         guard let email = appState.user?.email else { return }
         guard let roomGeneratedPack else { return }
         let words = roomGeneratedPack.words.roomCleanWords
@@ -5404,7 +5527,7 @@ struct GameView: View {
             lobbyWordPacks.append(previewPack)
             lobbyPackLoadState = .loaded
             status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO")
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
             return
         }
 
@@ -5419,8 +5542,9 @@ struct GameView: View {
             lobbyWordPacks.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             lobbyPackLoadState = .loaded
             status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO")
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
@@ -5467,6 +5591,7 @@ struct GameView: View {
             return
         }
 
+        guard lobbyPackLoadState != .loading else { return }
         guard force || lobbyPackLoadState != .loaded else { return }
         guard let email = appState.user?.email else {
             lobbyPackLoadState = .failed(localized(
@@ -5487,18 +5612,27 @@ struct GameView: View {
             }
             lobbyPackLoadState = .loaded
         } catch {
+            guard !(error is CancellationError) else { return }
             lobbyPackLoadState = .failed(error.localizedDescription)
         }
     }
 
     private func updateMode(_ room: GameRoom, mode: SpyGameMode) async {
+        guard !isUpdatingGameMode,
+              !isUpdatingDuration,
+              !isStarting,
+              let currentRoom = currentRoom(matching: room) else { return }
+        guard currentRoom.gameModeValue != mode else {
+            selectedGameMode = mode
+            return
+        }
         let previousMode = selectedGameMode
         selectedGameMode = mode
         isUpdatingGameMode = true
         defer { isUpdatingGameMode = false }
 
         if appState.shouldUsePreviewData {
-            var previewRoom = room
+            var previewRoom = currentRoom
             previewRoom.gameMode = mode.rawValue
             appState.activeRoom = previewRoom
             status = copy.modeSynced
@@ -5506,11 +5640,12 @@ struct GameView: View {
             return
         }
         do {
-            appState.activeRoom = try await appState.client.updateGameMode(room: room, mode: mode)
+            appState.activeRoom = try await appState.client.updateGameMode(room: currentRoom, mode: mode)
             selectedGameMode = appState.activeRoom?.gameModeValue ?? mode
             status = copy.modeSynced
             HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard !(error is CancellationError) else { return }
             selectedGameMode = previousMode
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
@@ -5518,14 +5653,22 @@ struct GameView: View {
     }
 
     private func updateDuration(_ room: GameRoom, minutes: Int) async {
+        guard !isUpdatingDuration,
+              !isUpdatingGameMode,
+              !isStarting,
+              let currentRoom = currentRoom(matching: room) else { return }
         let clampedMinutes = max(1, min(minutes, 15))
-        let previousMinutes = selectedDurationMinutes
+        let previousMinutes = Double(max(1, min((currentRoom.gameDurationSeconds ?? 900) / 60, 15)))
+        guard Int(previousMinutes) != clampedMinutes else {
+            selectedDurationMinutes = previousMinutes
+            return
+        }
         selectedDurationMinutes = Double(clampedMinutes)
         isUpdatingDuration = true
         defer { isUpdatingDuration = false }
 
         if appState.shouldUsePreviewData {
-            var previewRoom = room
+            var previewRoom = currentRoom
             previewRoom.gameDurationSeconds = clampedMinutes * 60
             appState.activeRoom = previewRoom
             status = localized(en: "DURATION SYNCED", ru: "ДЛИТЕЛЬНОСТЬ СОХРАНЕНА", es: "DURACION GUARDADA")
@@ -5535,13 +5678,14 @@ struct GameView: View {
 
         do {
             appState.activeRoom = try await appState.client.updateGameDuration(
-                room: room,
+                room: currentRoom,
                 durationSeconds: clampedMinutes * 60
             )
             selectedDurationMinutes = Double(max((appState.activeRoom?.gameDurationSeconds ?? clampedMinutes * 60) / 60, 1))
             status = localized(en: "DURATION SYNCED", ru: "ДЛИТЕЛЬНОСТЬ СОХРАНЕНА", es: "DURACION GUARDADA")
             HapticManager.shared.fire(.tabSelection)
         } catch {
+            guard !(error is CancellationError) else { return }
             selectedDurationMinutes = previousMinutes
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
@@ -5549,30 +5693,34 @@ struct GameView: View {
     }
 
     private func beginReadyCheck(_ room: GameRoom) async {
+        guard !isStarting, let currentRoom = currentRoom(matching: room) else { return }
         if appState.shouldUsePreviewData {
             appState.activeRoom = GameRoom.previewRoom(status: "ready_voting")
             status = copy.readyCheckSent
-            HapticManager.shared.fire(.notification(.success), audioPolicy: .hapticOnly)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
         isStarting = true
         defer { isStarting = false }
         do {
-            appState.activeRoom = try await appState.client.beginReadyCheck(room: room)
+            appState.activeRoom = try await appState.client.beginReadyCheck(room: currentRoom)
             status = copy.readyCheckSent
-            HapticManager.shared.fire(.notification(.success), audioPolicy: .hapticOnly)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func toggleReady(_ room: GameRoom) async {
-        guard let user = appState.user else { return }
-        let wasReady = currentUserIsReady(room)
+        guard !isTogglingReady,
+              let user = appState.user,
+              let currentRoom = currentRoom(matching: room) else { return }
+        let wasReady = currentUserIsReady(currentRoom)
         if appState.shouldUsePreviewData {
-            var previewRoom = room
-            var ready = Set(room.readyPlayers ?? [])
+            var previewRoom = currentRoom
+            var ready = Set(currentRoom.readyPlayers ?? [])
             if wasReady {
                 ready.remove(user.email)
                 status = copy.readyRemoved
@@ -5582,73 +5730,75 @@ struct GameView: View {
             }
             previewRoom.readyPlayers = Array(ready)
             appState.activeRoom = previewRoom
-            HapticManager.shared.fire(
-                .notification(.success),
-                sound: wasReady ? .toggleOff : .readyLock
-            )
+            HapticManager.shared.fire(.notification(.success))
             return
         }
         isTogglingReady = true
         defer { isTogglingReady = false }
         do {
-            appState.activeRoom = try await appState.client.toggleReady(room: room, user: user)
+            appState.activeRoom = try await appState.client.toggleReady(room: currentRoom, user: user)
             status = wasReady ? copy.readyRemoved : copy.readyLocked
-            HapticManager.shared.fire(
-                .notification(.success),
-                sound: wasReady ? .toggleOff : .readyLock
-            )
+            HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func returnToWaiting(_ room: GameRoom) async {
+        guard !isStarting, let currentRoom = currentRoom(matching: room) else { return }
         if appState.shouldUsePreviewData {
             appState.activeRoom = GameRoom.previewRoom(status: "waiting")
             status = copy.lobbyRestored
-            HapticManager.shared.fire(.buttonPress, sound: .navigationShift)
+            HapticManager.shared.fire(.buttonPress)
             return
         }
         isStarting = true
         defer { isStarting = false }
         do {
-            appState.activeRoom = try await appState.client.returnToWaiting(room: room)
+            appState.activeRoom = try await appState.client.returnToWaiting(room: currentRoom)
             status = copy.lobbyRestored
-            HapticManager.shared.fire(.buttonPress, sound: .navigationShift)
+            HapticManager.shared.fire(.buttonPress)
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func voteReplay(_ room: GameRoom) async {
-        guard let user = appState.user else { return }
+        guard !isVotingReplay,
+              !isResettingRoom,
+              let user = appState.user,
+              let currentRoom = currentRoom(matching: room) else { return }
         if appState.shouldUsePreviewData {
             status = copy.replayVoteLocked
-            HapticManager.shared.fire(.notification(.success), sound: .readyLock)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
         isVotingReplay = true
         defer { isVotingReplay = false }
 
         do {
-            let updated = try await appState.client.votePlayAgain(room: room, user: user)
+            let updated = try await appState.client.votePlayAgain(room: currentRoom, user: user)
             appState.activeRoom = updated
             status = copy.replayVoteLocked
-            HapticManager.shared.fire(.notification(.success), sound: .readyLock)
+            HapticManager.shared.fire(.notification(.success))
 
             if isHost(updated), allPlayersReady(updated) {
                 try await Task.sleep(for: .milliseconds(300))
                 await resetRoom(updated)
             }
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func resetRoom(_ room: GameRoom) async {
+        guard !isResettingRoom, let currentRoom = currentRoom(matching: room) else { return }
         if appState.shouldUsePreviewData {
             appState.activeRoom = GameRoom.previewRoom(status: "waiting")
             pendingStartPlan = nil
@@ -5656,14 +5806,14 @@ struct GameView: View {
             revealRole = false
             showSpyGuess = false
             status = copy.lobbyRestored
-            HapticManager.shared.fire(.notification(.success), sound: .navigationShift)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
         isResettingRoom = true
         defer { isResettingRoom = false }
 
         do {
-            appState.activeRoom = try await appState.client.resetRoomForReplay(room: room)
+            appState.activeRoom = try await appState.client.resetRoomForReplay(room: currentRoom)
             selectedGameMode = appState.activeRoom?.gameModeValue ?? selectedGameMode
             selectedDurationMinutes = Double(max((appState.activeRoom?.gameDurationSeconds ?? 900) / 60, 1))
             pendingStartPlan = nil
@@ -5671,15 +5821,18 @@ struct GameView: View {
             revealRole = false
             showSpyGuess = false
             status = copy.lobbyRestored
-            HapticManager.shared.fire(.notification(.success), sound: .navigationShift)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func start(_ room: GameRoom) async {
-        guard appState.user?.email != nil else { return }
+        guard !isStarting,
+              appState.user?.email != nil,
+              let currentRoom = currentRoom(matching: room) else { return }
         guard roomThemeSelectionIsReady, !isGeneratingRoomTheme else {
             status = localized(
                 en: "SELECT A DECK OR GENERATE THE THEME WORDS BEFORE STARTING",
@@ -5693,7 +5846,7 @@ struct GameView: View {
             appState.activeRoom = GameRoom.previewRoom(status: "roulette")
             status = copy.rouletteArmed
             revealRole = false
-            HapticManager.shared.fire(.notification(.success), audioPolicy: .hapticOnly)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
         isStarting = true
@@ -5714,19 +5867,20 @@ struct GameView: View {
             }
             let packs = lobbyWordPacksForStart
             let plan = try appState.client.makeGameStartPlan(
-                room: room,
+                room: currentRoom,
                 wordPacks: packs,
                 selectedPackID: selectedPackID,
                 gameMode: selectedGameMode,
                 durationSeconds: Int(selectedDurationMinutes * 60),
-                forcedAskerEmail: room.rouletteTargetEmail
+                forcedAskerEmail: currentRoom.rouletteTargetEmail
             )
             pendingStartPlan = plan
-            appState.activeRoom = try await appState.client.armRoulette(room: room, plan: plan)
+            appState.activeRoom = try await appState.client.armRoulette(room: currentRoom, plan: plan)
             status = copy.rouletteArmed
             revealRole = false
-            HapticManager.shared.fire(.notification(.success), audioPolicy: .hapticOnly)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
@@ -5740,8 +5894,11 @@ struct GameView: View {
             status = copy.gameReady
             return
         }
-        guard isHost(room), room.normalizedStatus == "roulette" else { return }
-        let key = "\(room.id)-\(room.rouletteTargetEmail ?? "")"
+        guard !isStarting,
+              let currentRoom = currentRoom(matching: room),
+              isHost(currentRoom),
+              currentRoom.normalizedStatus == "roulette" else { return }
+        let key = "\(currentRoom.id)-\(currentRoom.rouletteTargetEmail ?? "")"
         guard rouletteCompletionKey != key else { return }
         rouletteCompletionKey = key
 
@@ -5750,15 +5907,21 @@ struct GameView: View {
 
         do {
             try await Task.sleep(for: .seconds(2))
-            let currentRoom = (try? await appState.client.refreshRoom(id: room.id)) ?? room
-            guard currentRoom.normalizedStatus == "roulette" else { return }
+            guard let refreshedRoom = try await appState.client.refreshRoom(id: currentRoom.id),
+                  refreshedRoom.normalizedStatus == "roulette",
+                  let visibleRoom = self.currentRoom(matching: refreshedRoom),
+                  visibleRoom.normalizedStatus == "roulette" else { return }
 
-            appState.activeRoom = try await appState.client.completeGameStart(room: currentRoom)
+            appState.activeRoom = try await appState.client.completeGameStart(room: refreshedRoom)
             pendingStartPlan = nil
             status = copy.gameReady
             revealRole = false
-            HapticManager.shared.fire(.milestone, audioPolicy: .hapticOnly)
+            HapticManager.shared.fire(.milestone)
         } catch {
+            guard !(error is CancellationError) else {
+                rouletteCompletionKey = nil
+                return
+            }
             rouletteCompletionKey = nil
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
@@ -5766,132 +5929,156 @@ struct GameView: View {
     }
 
     private func advance(_ room: GameRoom) async {
+        guard !isAdvancing, let currentRoom = currentRoom(matching: room) else { return }
         if appState.shouldUsePreviewData {
-            status = room.gameModeValue == .associations ? copy.associationSpun : copy.questionSent
-            HapticManager.shared.fire(.notification(.success), audioPolicy: .hapticOnly)
+            status = currentRoom.gameModeValue == .associations ? copy.associationSpun : copy.questionSent
+            HapticManager.shared.fire(.notification(.success))
             return
         }
         isAdvancing = true
         defer { isAdvancing = false }
         do {
-            if room.gameModeValue == .associations {
-                appState.activeRoom = try await appState.client.advanceAssociation(room: room)
+            if currentRoom.gameModeValue == .associations {
+                appState.activeRoom = try await appState.client.advanceAssociation(room: currentRoom)
                 status = copy.associationSpun
             } else {
-                appState.activeRoom = try await appState.client.advanceQuestion(room: room)
+                appState.activeRoom = try await appState.client.advanceQuestion(room: currentRoom)
                 status = copy.questionSent
             }
-            HapticManager.shared.fire(.notification(.success), audioPolicy: .hapticOnly)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func markCardRead(_ room: GameRoom) async {
-        guard let user = appState.user else { return }
+        guard !isMarkingCardRead,
+              let user = appState.user,
+              let currentRoom = currentRoom(matching: room) else { return }
         if appState.shouldUsePreviewData {
             status = copy.cardConfirmedStatus
-            HapticManager.shared.fire(.notification(.success), sound: .readyLock)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
         isMarkingCardRead = true
         defer { isMarkingCardRead = false }
         do {
-            appState.activeRoom = try await appState.client.markRoleCardRead(room: room, user: user)
+            appState.activeRoom = try await appState.client.markRoleCardRead(room: currentRoom, user: user)
             status = copy.cardConfirmedStatus
-            HapticManager.shared.fire(.notification(.success), sound: .readyLock)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func requestVote(_ room: GameRoom) async {
-        guard let user = appState.user else { return }
+        guard !isRequestingVote,
+              let user = appState.user,
+              let currentRoom = currentRoom(matching: room) else { return }
         if appState.shouldUsePreviewData {
             status = copy.voteRequestedStatus
-            HapticManager.shared.fire(.notification(.success), sound: .voteCast)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
         isRequestingVote = true
         defer { isRequestingVote = false }
         do {
-            appState.activeRoom = try await appState.client.requestVote(room: room, user: user)
+            appState.activeRoom = try await appState.client.requestVote(room: currentRoom, user: user)
             status = copy.voteRequestedStatus
-            HapticManager.shared.fire(.notification(.success), sound: .voteCast)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func castVote(_ room: GameRoom, targetEmail: String) async {
-        guard let user = appState.user else { return }
+        guard !isCastingVote,
+              let user = appState.user,
+              let currentRoom = currentRoom(matching: room) else { return }
         if appState.shouldUsePreviewData {
             status = copy.voteLockedStatus
-            HapticManager.shared.fire(.notification(.success), sound: .voteLocked)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
         isCastingVote = true
         defer { isCastingVote = false }
         do {
-            appState.activeRoom = try await appState.client.castDetectiveVote(room: room, user: user, targetEmail: targetEmail)
+            appState.activeRoom = try await appState.client.castDetectiveVote(room: currentRoom, user: user, targetEmail: targetEmail)
             status = copy.voteLockedStatus
-            HapticManager.shared.fire(.notification(.success), sound: .voteLocked)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func submitSpyGuess(_ room: GameRoom, word: String) async {
-        guard let user = appState.user else { return }
+        guard !isSubmittingSpyGuess,
+              let user = appState.user,
+              let currentRoom = currentRoom(matching: room) else { return }
         if appState.shouldUsePreviewData {
             showSpyGuess = false
             status = copy.spyGuessLocked
-            let isFinished = room.normalizedStatus == "ended" || room.normalizedStatus == "finished"
+            let isFinished = currentRoom.normalizedStatus == "ended" || currentRoom.normalizedStatus == "finished"
             if isFinished {
-                HapticManager.shared.fire(.notification(.success), audioPolicy: .hapticOnly)
+                HapticManager.shared.fire(.notification(.success))
             } else {
-                HapticManager.shared.fire(.notification(.success), sound: .voteLocked)
+                HapticManager.shared.fire(.notification(.success))
             }
             return
         }
         isSubmittingSpyGuess = true
         defer { isSubmittingSpyGuess = false }
         do {
-            let updated = try await appState.client.submitSpyGuess(room: room, user: user, guess: word)
+            let updated = try await appState.client.submitSpyGuess(room: currentRoom, user: user, guess: word)
             appState.activeRoom = updated
             showSpyGuess = false
             status = copy.spyGuessLocked
             let isFinished = updated.normalizedStatus == "ended" || updated.normalizedStatus == "finished"
             if isFinished {
-                HapticManager.shared.fire(.notification(.success), audioPolicy: .hapticOnly)
+                HapticManager.shared.fire(.notification(.success))
             } else {
-                HapticManager.shared.fire(.notification(.success), sound: .voteLocked)
+                HapticManager.shared.fire(.notification(.success))
             }
         } catch {
+            guard !(error is CancellationError) else { return }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func refresh(_ roomID: String, showStatus: Bool) async {
+        guard let roomBeforeRequest = appState.activeRoom,
+              roomBeforeRequest.id == roomID else { return }
         do {
             guard let room = try await appState.client.refreshRoom(id: roomID) else {
+                guard !Task.isCancelled,
+                      appState.activeRoom == roomBeforeRequest else { return }
                 appState.deepLinkStatus = localized(
                     en: "ROOM CLOSED BY HOST",
                     ru: "ХОСТ ЗАКРЫЛ КОМНАТУ",
                     es: "EL HOST CERRO LA SALA"
                 )
-                leaveLocally(playsSound: false)
+                leaveLocally(providesFeedback: false)
                 return
             }
+            try Task.checkCancellation()
+            // A room action may have completed while this poll was in flight.
+            // Never replace that newer response with the older poll snapshot.
+            guard appState.activeRoom == roomBeforeRequest else { return }
             appState.activeRoom = room
             if showStatus {
                 status = copy.roomSynced
             }
+        } catch is CancellationError {
+            return
         } catch {
             if showStatus {
                 status = error.localizedDescription.uppercased()
@@ -5908,11 +6095,16 @@ struct GameView: View {
                 await refresh(roomID, showStatus: false)
             }
             tick += 1
-            try? await Task.sleep(for: .seconds(1))
+            do {
+                try await Task.sleep(for: .seconds(1))
+            } catch {
+                return
+            }
         }
     }
 
     private func leaveRoom(_ room: GameRoom) async {
+        guard !isLeavingRoom, let currentRoom = currentRoom(matching: room) else { return }
         if appState.shouldUsePreviewData {
             leaveLocally()
             return
@@ -5922,18 +6114,32 @@ struct GameView: View {
             return
         }
 
+        isLeavingRoom = true
+        defer { isLeavingRoom = false }
+
         do {
-            try await appState.client.leaveRoom(room: room, user: user)
+            try await appState.client.leaveRoom(room: currentRoom, user: user)
+            try Task.checkCancellation()
+            guard appState.activeRoom?.id == currentRoom.id else { return }
             leaveLocally()
+        } catch is CancellationError {
+            return
         } catch {
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
-    private func leaveLocally(playsSound: Bool = true) {
-        if playsSound {
-            HapticManager.shared.fire(.buttonPress, sound: .playerLeave)
+    private func currentRoom(matching room: GameRoom) -> GameRoom? {
+        guard !isLeavingRoom,
+              let currentRoom = appState.activeRoom,
+              currentRoom.id == room.id else { return nil }
+        return currentRoom
+    }
+
+    private func leaveLocally(providesFeedback: Bool = true) {
+        if providesFeedback {
+            HapticManager.shared.fire(.buttonPress)
         }
         appState.activeRoom = nil
         appState.selectedTab = .home
@@ -5942,30 +6148,15 @@ struct GameView: View {
     }
 }
 
-private struct RoomSoundSnapshot: Equatable {
+private struct RoomFeedbackSnapshot: Equatable {
     let roomID: String
     let status: String
-    let playerEmails: Set<String>
     let winner: String?
-    let turnToken: String?
 
     init(room: GameRoom) {
         roomID = room.id
         status = room.normalizedStatus
-        playerEmails = Set(room.playersList.map(\.email))
         winner = room.winner?.lowercased()
-
-        if room.currentAskerEmail != nil ||
-            room.currentAnswererEmail != nil ||
-            room.questionsInRound != nil {
-            turnToken = [
-                room.currentAskerEmail ?? "-",
-                room.currentAnswererEmail ?? "-",
-                String(room.questionsInRound ?? -1)
-            ].joined(separator: "|")
-        } else {
-            turnToken = nil
-        }
     }
 
     var isFinished: Bool {

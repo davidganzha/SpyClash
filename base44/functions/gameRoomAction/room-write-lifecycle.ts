@@ -2,9 +2,29 @@ import {
   acquireBillingWriterLease,
   assertBillingWriterLease,
   type BillingIdentityLease,
+  BillingIdentityLifecycleError,
   billingIdentitySubjectKey,
   releaseBillingWriterLease,
 } from "./billing-identity-lifecycle.ts";
+
+const ROOM_WRITE_LEASE_ATTEMPTS = 6;
+const ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS = [25, 50, 100, 200, 400];
+const ROOM_WRITE_LEASE_RELEASE_ATTEMPTS = 3;
+
+type AcquireRoomWriterLease = (
+  lifecycleStore: any,
+  userID: string,
+) => Promise<BillingIdentityLease>;
+
+type ReleaseRoomWriterLease = (
+  lifecycleStore: any,
+  lease: BillingIdentityLease,
+) => Promise<void>;
+
+type RoomWriteLeaseDelay = (milliseconds: number) => Promise<void>;
+type RoomMembershipRetryAttempt<T> = (
+  markActionStarted: () => void,
+) => Promise<T>;
 
 function clean(value: unknown): string {
   return String(value ?? "").trim();
@@ -25,6 +45,11 @@ function roomMembershipChanged(): Error {
     new Error("Room membership changed while acquiring lifecycle leases."),
     { status: 409, code: "room_membership_changed" },
   );
+}
+
+function isRoomMembershipChanged(error: unknown): boolean {
+  return clean((error as { code?: unknown })?.code) ===
+    "room_membership_changed";
 }
 
 export function assertExactRoomLeaseCoverage(
@@ -67,10 +92,94 @@ export async function assertRoomWriterLeaseForUser(
   );
 }
 
+function retryableLeaseAcquisitionError(
+  error: unknown,
+): error is BillingIdentityLifecycleError {
+  return error instanceof BillingIdentityLifecycleError &&
+    (error.code === "active_lease" || error.code === "cas_contention");
+}
+
+function boundedAttemptCount(value: number | undefined): number {
+  if (value === undefined || !Number.isFinite(value)) {
+    return ROOM_WRITE_LEASE_ATTEMPTS;
+  }
+  return Math.min(
+    ROOM_WRITE_LEASE_ATTEMPTS,
+    Math.max(1, Math.trunc(value)),
+  );
+}
+
+async function defaultRoomWriteLeaseDelay(milliseconds: number): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+export async function retryRoomMembershipChangeBeforeAction<T>(input: {
+  attempt: RoomMembershipRetryAttempt<T>;
+  delay?: RoomWriteLeaseDelay;
+  attempts?: number;
+}): Promise<T> {
+  const delay = input.delay ?? defaultRoomWriteLeaseDelay;
+  const attempts = boundedAttemptCount(input.attempts);
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    let actionStarted = false;
+    try {
+      return await input.attempt(() => {
+        actionStarted = true;
+      });
+    } catch (error) {
+      if (
+        actionStarted ||
+        !isRoomMembershipChanged(error) ||
+        attempt === attempts - 1
+      ) {
+        throw error;
+      }
+      await delay(ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS[attempt]);
+    }
+  }
+
+  throw new Error("Room membership retry exhausted unexpectedly.");
+}
+
+async function releaseRoomWriteLeases(
+  lifecycleStore: any,
+  leases: readonly BillingIdentityLease[],
+  release: ReleaseRoomWriterLease,
+  delay: RoomWriteLeaseDelay,
+): Promise<unknown[]> {
+  const failures: unknown[] = [];
+  for (const lease of [...leases].reverse()) {
+    let finalError: unknown;
+    for (
+      let attempt = 0;
+      attempt < ROOM_WRITE_LEASE_RELEASE_ATTEMPTS;
+      attempt += 1
+    ) {
+      try {
+        await release(lifecycleStore, lease);
+        finalError = undefined;
+        break;
+      } catch (error) {
+        finalError = error;
+        if (attempt < ROOM_WRITE_LEASE_RELEASE_ATTEMPTS - 1) {
+          await delay(ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS[attempt]);
+        }
+      }
+    }
+    if (finalError !== undefined) failures.push(finalError);
+  }
+  return failures;
+}
+
 export async function withRoomWriteLeases<T>(input: {
   lifecycleStore: any;
   userIDs: readonly unknown[];
   action: (context: RoomWriteLeaseContext) => Promise<T>;
+  acquire?: AcquireRoomWriterLease;
+  release?: ReleaseRoomWriterLease;
+  delay?: RoomWriteLeaseDelay;
+  attempts?: number;
 }): Promise<T> {
   const userIDs = uniqueStableUserIDs(input.userIDs);
   if (!userIDs.length) {
@@ -83,34 +192,63 @@ export async function withRoomWriteLeases<T>(input: {
     );
   }
 
+  const acquire = input.acquire ?? acquireBillingWriterLease;
+  const release = input.release ?? releaseBillingWriterLease;
+  const delay = input.delay ?? defaultRoomWriteLeaseDelay;
+  const attempts = boundedAttemptCount(input.attempts);
+
   const context: RoomWriteLeaseContext = {
     lifecycleStore: input.lifecycleStore,
     userIDs,
     leases: [],
   };
-  let actionError: unknown;
-  try {
-    for (const userID of userIDs) {
-      context.leases.push(
-        await acquireBillingWriterLease(input.lifecycleStore, userID),
+
+  for (let attempt = 0; attempt < attempts; attempt += 1) {
+    context.leases = [];
+    try {
+      for (const userID of userIDs) {
+        context.leases.push(await acquire(input.lifecycleStore, userID));
+      }
+      break;
+    } catch (error) {
+      const releaseFailures = await releaseRoomWriteLeases(
+        input.lifecycleStore,
+        context.leases,
+        release,
+        delay,
       );
+      context.leases = [];
+      if (releaseFailures.length) throw releaseFailures[0];
+      if (
+        !retryableLeaseAcquisitionError(error) ||
+        attempt === attempts - 1
+      ) {
+        throw error;
+      }
+      await delay(ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS[attempt]);
     }
+  }
+
+  let actionFailed = false;
+  try {
     return await input.action(context);
   } catch (error) {
-    actionError = error;
+    actionFailed = true;
     throw error;
   } finally {
-    const releaseFailures: unknown[] = [];
-    for (const lease of [...context.leases].reverse()) {
-      try {
-        await releaseBillingWriterLease(input.lifecycleStore, lease);
-      } catch (error) {
-        releaseFailures.push(error);
-      }
-    }
-    if (!actionError && releaseFailures.length) throw releaseFailures[0];
+    const releaseFailures = await releaseRoomWriteLeases(
+      input.lifecycleStore,
+      context.leases,
+      release,
+      delay,
+    );
     if (releaseFailures.length) {
-      console.error("gameRoomAction lease release failed", releaseFailures);
+      console.error(
+        actionFailed
+          ? "gameRoomAction lease release failed after action error"
+          : "gameRoomAction lease release failed after committed action",
+        releaseFailures,
+      );
     }
   }
 }

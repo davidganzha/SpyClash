@@ -19,6 +19,7 @@ struct CommunityView: View {
     @State private var commentDraft = ""
     @State private var isInitialLoading = true
     @State private var isDirectoryLoading = false
+    @State private var directoryRequestID: UUID?
     @State private var isProfileLoading = false
     @State private var didLoadInitialContent = false
     @State private var activeAction: String?
@@ -355,6 +356,7 @@ struct CommunityView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(SpyWebPressStyle())
+                .disabled(activeAction != nil)
                 .accessibilityLabel(localized(en: "Back to community", ru: "Назад в сообщество", es: "Volver a comunidad"))
             }
 
@@ -982,12 +984,16 @@ struct CommunityView: View {
     }
 
     private func handleDockAction(_ tab: CommunityTab) {
-        HapticManager.shared.fire(.tabSelection, sound: .echoBlip)
+        guard activeAction == nil else { return }
+        HapticManager.shared.fire(.tabSelection)
         switch tab {
         case .exit:
+            profileRequestID = nil
             onExit()
         case .network:
             selectedTab = .network
+            profileRequestID = nil
+            isProfileLoading = false
             activeProfile = nil
             profileHistory.removeAll()
             commentDraft = ""
@@ -1044,12 +1050,21 @@ struct CommunityView: View {
     }
 
     private func loadDirectory(reset: Bool, offset: Int = 0) async {
-        guard !isDirectoryLoading else { return }
+        if !reset {
+            guard !isDirectoryLoading else { return }
+        }
+        let requestedQuery = query
+        let requestID = UUID()
+        directoryRequestID = requestID
         isDirectoryLoading = true
-        defer { isDirectoryLoading = false }
+        defer {
+            if directoryRequestID == requestID {
+                isDirectoryLoading = false
+            }
+        }
 
         if appState.shouldUsePreviewData {
-            let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let normalized = requestedQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             directory = CommunityPreview.directory.filter { profile in
                 profile.id != CommunityPreview.night.id &&
                     (
@@ -1063,7 +1078,10 @@ struct CommunityView: View {
         }
 
         do {
-            let page = try await appState.client.communityDirectory(query: query, offset: offset)
+            let page = try await appState.client.communityDirectory(query: requestedQuery, offset: offset)
+            try Task.checkCancellation()
+            guard directoryRequestID == requestID,
+                  query == requestedQuery else { return }
             if reset {
                 directory = page.profiles
             } else {
@@ -1074,6 +1092,7 @@ struct CommunityView: View {
         } catch is CancellationError {
             return
         } catch {
+            guard !isCancellation(error), directoryRequestID == requestID else { return }
             showError(error)
         }
     }
@@ -1134,10 +1153,13 @@ struct CommunityView: View {
     }
 
     private func returnFromProfile() async {
+        guard activeAction == nil else { return }
         commentDraft = ""
         if let previousID = profileHistory.popLast() {
             await openProfile(previousID, rememberingCurrent: false)
         } else {
+            profileRequestID = nil
+            isProfileLoading = false
             activeProfile = nil
             selectedTab = .network
         }
@@ -1149,7 +1171,17 @@ struct CommunityView: View {
             activeProfile = CommunityPreview.profile(userID: userID, viewerID: network?.me.id)
             return
         }
-        activeProfile = try? await appState.client.communityProfile(userID: userID)
+        do {
+            let refreshed = try await appState.client.communityProfile(userID: userID)
+            try Task.checkCancellation()
+            guard activeProfile?.profile.id == userID else { return }
+            profileCache[userID] = refreshed
+            activeProfile = refreshed
+        } catch is CancellationError {
+            return
+        } catch {
+            showError(error)
+        }
     }
 
     private func sendFriendRequest(to userID: String) async {
@@ -1160,7 +1192,7 @@ struct CommunityView: View {
         if appState.shouldUsePreviewData {
             message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
@@ -1169,7 +1201,7 @@ struct CommunityView: View {
             await refreshActiveProfile()
             message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1181,14 +1213,14 @@ struct CommunityView: View {
         defer { activeAction = nil }
 
         if appState.shouldUsePreviewData {
-            HapticManager.shared.fire(.notification(.success), sound: action == "accept" ? .playerJoin : .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
         do {
             network = try await appState.client.communityRelationshipAction(action, friendshipID: friendshipID)
             await refreshActiveProfile()
-            HapticManager.shared.fire(.notification(.success), sound: action == "accept" ? .playerJoin : .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1202,7 +1234,7 @@ struct CommunityView: View {
         if appState.shouldUsePreviewData {
             message = localized(en: "REPORT RECEIVED", ru: "ЖАЛОБА ПРИНЯТА", es: "REPORTE RECIBIDO")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
@@ -1227,7 +1259,7 @@ struct CommunityView: View {
                 es: "REPORTE RECIBIDO — MODERACION LO REVISARA"
             )
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1260,7 +1292,7 @@ struct CommunityView: View {
                 es: "OPERATIVO BLOQUEADO — COMENTARIOS E INVITACIONES ELIMINADOS"
             )
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1281,7 +1313,7 @@ struct CommunityView: View {
             network = try await appState.client.unblockCommunityUser(friendshipID: relationship.id)
             message = localized(en: "OPERATIVE UNBLOCKED", ru: "ОПЕРАТИВНИК РАЗБЛОКИРОВАН", es: "OPERATIVO DESBLOQUEADO")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1301,11 +1333,15 @@ struct CommunityView: View {
         }
 
         do {
-            activeProfile = try await appState.client.addCommunityComment(userID: userID, comment: body)
+            let updatedProfile = try await appState.client.addCommunityComment(userID: userID, comment: body)
+            profileCache[userID] = updatedProfile
+            if activeProfile?.profile.id == userID {
+                activeProfile = updatedProfile
+            }
             commentDraft = ""
             message = localized(en: "FIELD NOTE POSTED", ru: "ЗАПИСЬ ОПУБЛИКОВАНА", es: "NOTA PUBLICADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1313,14 +1349,20 @@ struct CommunityView: View {
 
     private func deleteComment(_ commentID: String) async {
         guard activeAction == nil else { return }
+        let visibleProfileID = activeProfile?.profile.id
         activeAction = commentID
         defer { activeAction = nil }
 
         if appState.shouldUsePreviewData { return }
 
         do {
-            activeProfile = try await appState.client.deleteCommunityComment(commentID: commentID)
-            HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+            let updatedProfile = try await appState.client.deleteCommunityComment(commentID: commentID)
+            profileCache[updatedProfile.profile.id] = updatedProfile
+            if activeProfile?.profile.id == visibleProfileID,
+               updatedProfile.profile.id == visibleProfileID {
+                activeProfile = updatedProfile
+            }
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1334,7 +1376,7 @@ struct CommunityView: View {
         if appState.shouldUsePreviewData {
             message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACION ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
@@ -1343,7 +1385,7 @@ struct CommunityView: View {
             guard acknowledgement.ok else { return }
             message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACION ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1380,7 +1422,7 @@ struct CommunityView: View {
         do {
             let result = try await appState.client.communityRoomInviteAction("decline_room_invite", inviteID: invite.id)
             network = result.state
-            HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }

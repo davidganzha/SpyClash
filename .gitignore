@@ -1,6 +1,8 @@
 # macOS and Xcode
 .DS_Store
 DerivedData/
+/.derivedData/
+/.derived-data-*/
 build/
 *.xcarchive
 *.ipa
@@ -31,19 +33,14 @@ dist/
 # Base44 local state
 base44/.types/
 base44/.app.json*
-
-# Production audio is intentionally not redistributed. Run
-# scripts/bootstrap-public-assets.sh after cloning to create local placeholders.
-/SpyClash/Resources/Sounds/*.wav
+/.base44-cutover/
 
 # Local references, neighboring projects, and archived Xcode generations
 /.web-reference/
 /TacticalGridArena/
-/SpyClash 2.xcodeproj/
-/SpyClash 3.xcodeproj/
-/SpyClash 4.xcodeproj/
+/SpyClash [0-9]*.xcodeproj/
 /-
-/SpyClash/Services/HapticManager 2.swift
+/SpyClash/Services/HapticManager [0-9]*.swift
 
 # Internal planning and release material
 /APP_STORE_IAP_MIGRATION_VERDICT.txt
@@ -51,4 +48,3 @@ base44/.app.json*
 /IOS_REBRAND_AGENT_BRIEF.txt
 /NEARBY_PROTOCOL_CODEX_TASK.txt
 /RELEASE_CHECKLIST.md
-/SOUND_DESIGN_UX_MAP.md

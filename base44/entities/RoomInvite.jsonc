@@ -12,6 +12,14 @@
       "enum": ["pending", "accepted", "declined", "expired"],
       "default": "pending"
     },
+    "notification_event_id": {
+      "type": "string",
+      "description": "Opaque server event identity used to deduplicate this invite notification.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
     "created_at": { "type": "string", "format": "date-time" },
     "updated_at": { "type": "string", "format": "date-time" }
   },

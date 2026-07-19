@@ -1,0 +1,18 @@
+{
+  "name": "pushNotificationAction",
+  "entry": "main.ts",
+  "automations": [
+    {
+      "type": "scheduled",
+      "name": "drain_push_delivery_retries",
+      "description": "Cost-bounded retry worker. The automation creator must retain the admin role.",
+      "is_active": true,
+      "schedule_mode": "recurring",
+      "schedule_type": "simple",
+      "repeat_unit": "minutes",
+      "repeat_interval": 30,
+      "ends_type": "never",
+      "function_args": { "action": "drain", "limit": 12 }
+    }
+  ]
+}
