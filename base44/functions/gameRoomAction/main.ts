@@ -10,6 +10,7 @@ import {
   assertExactRoomLeaseCoverage,
   assertRoomWriteLeases,
   assertRoomWriterLeaseForUser,
+  retryRoomMembershipChangeBeforeAction,
   withRoomWriteLeases,
 } from "./room-write-lifecycle.ts";
 import { projectRoomForClient } from "./room-projection.ts";
@@ -1566,52 +1567,81 @@ Deno.serve(async (req) => {
 
     if (action !== "join_room") requirePlayer(room, user);
 
-    const userIDs = await roomLifecycleUserIDs(base44, room, user);
-    const result = await withRoomWriteLeases({
-      lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
-      userIDs,
-      action: async (context) => {
-        base44.__spyclashRoomWriteLeaseContext = context;
-        try {
-          // The pre-lease room is only an acquisition hint. Refetch under the
-          // leases and require the exact same participant set before writing;
-          // a concurrent join/leave must retry with complete lease coverage.
-          const latestRoom = await fetchRoom(base44, room.id);
-          if (!latestRoom) {
-            if (action === "leave_room") return { success: true };
-            throw Object.assign(new Error("Room not found"), { status: 404 });
-          }
-          if (
-            action === "leave_room" &&
-            leaveAlreadyComplete(latestRoom, user.email)
-          ) {
-            return { success: true };
-          }
-          const latestParticipantUserIDs = await roomParticipantUserIDs(
-            base44,
-            latestRoom,
-            user,
-          );
-          const latestUserIDs = uniqueStrings([
-            ...latestParticipantUserIDs,
-            user.id,
-          ]);
-          assertExactRoomLeaseCoverage(context, latestUserIDs);
-          const migratedRoom = await backfillRoomParticipantUserIDs(
-            base44,
-            latestRoom,
-            latestParticipantUserIDs,
-          );
-          return await executeRoomAction(
-            base44,
-            action,
-            migratedRoom,
-            user,
-            body,
-          );
-        } finally {
-          delete base44.__spyclashRoomWriteLeaseContext;
+    const result = await retryRoomMembershipChangeBeforeAction({
+      attempt: async (markActionStarted) => {
+        // Rebuild the acquisition set for every pre-action membership retry.
+        // This is what lets two QR/code joins serialize instead of rejecting
+        // the slower joiner with a user-visible 409.
+        const acquisitionRoom = await fetchRoom(base44, room.id);
+        if (!acquisitionRoom) {
+          if (action === "leave_room") return { success: true };
+          throw Object.assign(new Error("Room not found"), { status: 404 });
         }
+        if (
+          action === "leave_room" &&
+          leaveAlreadyComplete(acquisitionRoom, user.email)
+        ) {
+          return { success: true };
+        }
+        if (action !== "join_room") requirePlayer(acquisitionRoom, user);
+
+        const userIDs = await roomLifecycleUserIDs(
+          base44,
+          acquisitionRoom,
+          user,
+        );
+        return await withRoomWriteLeases({
+          lifecycleStore:
+            base44.asServiceRole.entities.BillingIdentityLifecycle,
+          userIDs,
+          action: async (context) => {
+            base44.__spyclashRoomWriteLeaseContext = context;
+            try {
+              // The pre-lease room is only an acquisition hint. Refetch under
+              // the leases and require exact participant coverage. If another
+              // join/leave won first, the outer bounded retry releases these
+              // leases, refetches membership, and tries once more safely.
+              const latestRoom = await fetchRoom(base44, room.id);
+              if (!latestRoom) {
+                if (action === "leave_room") return { success: true };
+                throw Object.assign(new Error("Room not found"), {
+                  status: 404,
+                });
+              }
+              if (
+                action === "leave_room" &&
+                leaveAlreadyComplete(latestRoom, user.email)
+              ) {
+                return { success: true };
+              }
+              const latestParticipantUserIDs = await roomParticipantUserIDs(
+                base44,
+                latestRoom,
+                user,
+              );
+              const latestUserIDs = uniqueStrings([
+                ...latestParticipantUserIDs,
+                user.id,
+              ]);
+              assertExactRoomLeaseCoverage(context, latestUserIDs);
+              const migratedRoom = await backfillRoomParticipantUserIDs(
+                base44,
+                latestRoom,
+                latestParticipantUserIDs,
+              );
+              markActionStarted();
+              return await executeRoomAction(
+                base44,
+                action,
+                migratedRoom,
+                user,
+                body,
+              );
+            } finally {
+              delete base44.__spyclashRoomWriteLeaseContext;
+            }
+          },
+        });
       },
     });
     if (result?.id) await dispatchRoomPushBestEffort(base44, result, action);

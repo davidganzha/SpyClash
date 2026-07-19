@@ -154,6 +154,30 @@ Deno.test("writer lease serializes competing room mutations", async () => {
   await releaseBillingWriterLease(store, writer, NOW, sequence("release"));
 });
 
+Deno.test("lost release response is idempotent on bounded retry", async () => {
+  const store = new MockLifecycleStore();
+  const writer = await acquireBillingWriterLease(
+    store,
+    "user-1",
+    () => NOW,
+    sequence("writer"),
+  );
+
+  store.throwAfterApply = true;
+  store.reconciliationOutage = true;
+  const firstError = await assertRejects(
+    () => releaseBillingWriterLease(store, writer, NOW, sequence("release")),
+    BillingIdentityLifecycleError,
+  );
+  assertEquals(firstError.code, "ambiguous");
+
+  await releaseBillingWriterLease(store, writer, NOW, sequence("retry"));
+  assertEquals(
+    isBillingIdentityLeaseActive(store.records[0].lease_until, NOW),
+    false,
+  );
+});
+
 Deno.test("deleting state blocks writers and permits deletion retry after lease expiry", async () => {
   const store = new MockLifecycleStore();
   const deletion = await acquireBillingDeletionMarker(

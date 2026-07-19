@@ -356,6 +356,7 @@ struct CommunityView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(SpyWebPressStyle())
+                .disabled(activeAction != nil)
                 .accessibilityLabel(localized(en: "Back to community", ru: "Назад в сообщество", es: "Volver a comunidad"))
             }
 
@@ -983,6 +984,7 @@ struct CommunityView: View {
     }
 
     private func handleDockAction(_ tab: CommunityTab) {
+        guard activeAction == nil else { return }
         HapticManager.shared.fire(.tabSelection)
         switch tab {
         case .exit:
@@ -1151,6 +1153,7 @@ struct CommunityView: View {
     }
 
     private func returnFromProfile() async {
+        guard activeAction == nil else { return }
         commentDraft = ""
         if let previousID = profileHistory.popLast() {
             await openProfile(previousID, rememberingCurrent: false)
@@ -1330,7 +1333,11 @@ struct CommunityView: View {
         }
 
         do {
-            activeProfile = try await appState.client.addCommunityComment(userID: userID, comment: body)
+            let updatedProfile = try await appState.client.addCommunityComment(userID: userID, comment: body)
+            profileCache[userID] = updatedProfile
+            if activeProfile?.profile.id == userID {
+                activeProfile = updatedProfile
+            }
             commentDraft = ""
             message = localized(en: "FIELD NOTE POSTED", ru: "ЗАПИСЬ ОПУБЛИКОВАНА", es: "NOTA PUBLICADA")
             messageKind = .success
@@ -1342,13 +1349,19 @@ struct CommunityView: View {
 
     private func deleteComment(_ commentID: String) async {
         guard activeAction == nil else { return }
+        let visibleProfileID = activeProfile?.profile.id
         activeAction = commentID
         defer { activeAction = nil }
 
         if appState.shouldUsePreviewData { return }
 
         do {
-            activeProfile = try await appState.client.deleteCommunityComment(commentID: commentID)
+            let updatedProfile = try await appState.client.deleteCommunityComment(commentID: commentID)
+            profileCache[updatedProfile.profile.id] = updatedProfile
+            if activeProfile?.profile.id == visibleProfileID,
+               updatedProfile.profile.id == visibleProfileID {
+                activeProfile = updatedProfile
+            }
             HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)

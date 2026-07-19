@@ -74,6 +74,10 @@ struct ProfileView: View {
         .onChange(of: showDeleteConfirmation, initial: true) { _, isPresented in
             appState.isShellChromeSuppressed = isPresented
         }
+        .onChange(of: appState.language) { _, language in
+            guard !isSaving, !isSavingLanguage, !isDeleting else { return }
+            selectedLanguage = language
+        }
         .onDisappear {
             if showDeleteConfirmation {
                 appState.isShellChromeSuppressed = false
@@ -412,7 +416,10 @@ struct ProfileView: View {
                     }
                 }
                 .buttonStyle(SpyPrimaryCommandStyle())
-                .disabled(isSaving || isSavingLanguage || isDeleting || appState.isSynchronizingLanguage)
+                .disabled(
+                    isSaving || isSavingLanguage || isDeleting ||
+                        appState.isSynchronizingLanguage || appState.isUpdatingProfile
+                )
 
                 if !status.isEmpty {
                     SpyToast(
@@ -915,7 +922,10 @@ struct ProfileView: View {
             .overlay(Rectangle().stroke(isSelected ? Color.clear : SpyTheme.strokeStrong))
         }
         .buttonStyle(SpyWebPressStyle())
-        .disabled(isSaving || isSavingLanguage || isDeleting || appState.isSynchronizingLanguage)
+        .disabled(
+            isSaving || isSavingLanguage || isDeleting ||
+                appState.isSynchronizingLanguage || appState.isUpdatingProfile
+        )
         .animation(.smooth(duration: 0.24), value: isSelected)
     }
 
@@ -1012,11 +1022,15 @@ struct ProfileView: View {
     }
 
     private func save() async {
-        guard !isSaving, !isSavingLanguage, !isDeleting else { return }
+        guard !isSaving,
+              !isSavingLanguage,
+              !isDeleting,
+              !appState.isSynchronizingLanguage,
+              !appState.isUpdatingProfile else { return }
         isSaving = true
         defer { isSaving = false }
         do {
-            appState.user = try await appState.client.updateProfile(
+            try await appState.updateProfile(
                 displayName: displayName,
                 avatar: avatar,
                 language: selectedLanguage,
@@ -1024,7 +1038,6 @@ struct ProfileView: View {
                 spyCardAccent: selectedCardAccent,
                 spyCardBadge: selectedCardBadge
             )
-            try await appState.setLanguage(selectedLanguage, syncRemote: false)
             status = appState.language.profile.saved
             statusKind = .success
             HapticManager.shared.fire(.notification(.success))
@@ -1040,7 +1053,8 @@ struct ProfileView: View {
               !isSaving,
               !isSavingLanguage,
               !isDeleting,
-              !appState.isSynchronizingLanguage else { return }
+              !appState.isSynchronizingLanguage,
+              !appState.isUpdatingProfile else { return }
 
         let previousLanguage = appState.language
         selectedLanguage = language
@@ -1067,7 +1081,11 @@ struct ProfileView: View {
     }
 
     private func deleteAccount() async {
-        guard !isDeleting, !isSaving, !isSavingLanguage else { return }
+        guard !isDeleting,
+              !isSaving,
+              !isSavingLanguage,
+              !appState.isSynchronizingLanguage,
+              !appState.isUpdatingProfile else { return }
         isDeleting = true
         defer { isDeleting = false }
         do {

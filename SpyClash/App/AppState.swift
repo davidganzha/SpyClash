@@ -127,6 +127,7 @@ final class AppState: NSObject {
         }
     }
     private(set) var isSynchronizingLanguage = false
+    private(set) var isUpdatingProfile = false
     var pendingJoinCode: String?
     var deepLinkStatus: String?
     var isJoiningDeepLink = false
@@ -767,8 +768,45 @@ final class AppState: NSObject {
         selectedTab = .local
     }
 
+    func updateProfile(
+        displayName: String,
+        avatar: String,
+        language newLanguage: AppLanguage,
+        spyCardTheme: SpyCardThemeID,
+        spyCardAccent: SpyCardAccentID,
+        spyCardBadge: SpyCardBadgeID
+    ) async throws {
+        guard !isUpdatingProfile, !isSynchronizingLanguage else {
+            throw Base44Error(message: "Profile synchronization is already in progress.", statusCode: nil)
+        }
+        guard let requestedUserID = user?.id else {
+            throw Base44Error(message: "Authentication required.", statusCode: 401)
+        }
+
+        isUpdatingProfile = true
+        defer { isUpdatingProfile = false }
+
+        let updatedUser = try await client.updateProfile(
+            displayName: displayName,
+            avatar: avatar,
+            language: newLanguage,
+            spyCardTheme: spyCardTheme,
+            spyCardAccent: spyCardAccent,
+            spyCardBadge: spyCardBadge
+        )
+
+        // The PUT may already have committed when its presenting view is
+        // cancelled. Reconcile the verified response, but never let an old
+        // account overwrite a replacement session.
+        guard user?.id == requestedUserID else { throw CancellationError() }
+        user = updatedUser
+        language = newLanguage
+        newLanguage.persist()
+    }
+
     func setLanguage(_ newLanguage: AppLanguage, syncRemote: Bool = true) async throws {
-        guard !isSynchronizingLanguage || !syncRemote else {
+        guard !isUpdatingProfile,
+              !isSynchronizingLanguage || !syncRemote else {
             throw Base44Error(message: "Language synchronization is already in progress.", statusCode: nil)
         }
         let previousLanguage = language
@@ -1199,11 +1237,23 @@ final class AppState: NSObject {
 
         do {
             guard let room = try await client.refreshRoom(id: roomID) else {
+                guard activeRoom == nil,
+                      !isJoiningRoom,
+                      !isJoiningDeepLink,
+                      UserDefaults.standard.string(forKey: Self.activeRoomIDStorageKey) == roomID else {
+                    return
+                }
                 clearStoredActiveRoom()
                 return
             }
             try Task.checkCancellation()
-            guard self.user?.id == user.id else { return }
+            guard self.user?.id == user.id,
+                  activeRoom == nil,
+                  !isJoiningRoom,
+                  !isJoiningDeepLink,
+                  UserDefaults.standard.string(forKey: Self.activeRoomIDStorageKey) == roomID else {
+                return
+            }
             guard ["waiting", "ready_voting", "roulette", "playing"].contains(room.normalizedStatus),
                   room.playersList.contains(where: { $0.email == user.email }) else {
                 clearStoredActiveRoom()

@@ -488,6 +488,7 @@ private struct WordPackEditorSheet: View {
             }
             aiGenerationsToday = appState.membership?.aiGenerationsToday
         }
+        .interactiveDismissDisabled(isSaving || isGenerating)
     }
 
     private var sheetHeader: some View {
@@ -519,6 +520,8 @@ private struct WordPackEditorSheet: View {
                     .clipShape(CutCornerShape(cut: 9))
             }
             .buttonStyle(SpyWebPressStyle())
+            .disabled(isSaving || isGenerating)
+            .opacity(isSaving || isGenerating ? 0.45 : 1)
             .spyHitTarget()
         }
         .padding(.horizontal, 20)

@@ -149,7 +149,8 @@ struct AuthView: View {
                 emailField
                 Button {
                     let target = normalizedEmail
-                    guard !target.isEmpty else {
+                    guard isValidEmail(target) else {
+                        appState.authError = invalidEmailMessage
                         HapticManager.shared.fire(.notification(.warning))
                         return
                     }
@@ -161,6 +162,7 @@ struct AuthView: View {
                     Label(copy.continueAction, systemImage: "arrow.right")
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
+                .disabled(appState.isBusy)
 
             case .password(let lockedEmail):
                 lockedEmailRow(lockedEmail)
@@ -196,7 +198,8 @@ struct AuthView: View {
                 emailField
                 Button {
                     let target = normalizedEmail
-                    guard !target.isEmpty else {
+                    guard isValidEmail(target) else {
+                        appState.authError = invalidEmailMessage
                         HapticManager.shared.fire(.notification(.warning))
                         return
                     }
@@ -208,6 +211,7 @@ struct AuthView: View {
                     Label(copy.joinNetworkAction, systemImage: "arrow.right")
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
+                .disabled(appState.isBusy)
 
             case .registerPassword(let lockedEmail):
                 lockedEmailRow(lockedEmail)
@@ -264,7 +268,11 @@ struct AuthView: View {
                     }
                 Button {
                     let target = email.trimmingCharacters(in: .whitespacesAndNewlines)
-                    guard !target.isEmpty else { return }
+                    guard isValidEmail(target) else {
+                        appState.authError = invalidEmailMessage
+                        HapticManager.shared.fire(.notification(.warning))
+                        return
+                    }
                     HapticManager.shared.fire(.buttonPress)
                     Task { await appState.requestPasswordReset(email: target) }
                 } label: {
@@ -347,6 +355,7 @@ struct AuthView: View {
                 .foregroundStyle(SpyTheme.red)
                 .spyFitted(lines: 2, scale: 0.62, alignment: .center)
         }
+        .disabled(appState.isBusy)
     }
 
     private var emailField: some View {
@@ -363,6 +372,28 @@ struct AuthView: View {
 
     private var normalizedEmail: String {
         email.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func isValidEmail(_ value: String) -> Bool {
+        guard !value.isEmpty,
+              !value.contains(where: \.isWhitespace) else { return false }
+
+        let addressParts = value.split(separator: "@", omittingEmptySubsequences: false)
+        guard addressParts.count == 2,
+              !addressParts[0].isEmpty else { return false }
+
+        let domainParts = addressParts[1].split(separator: ".", omittingEmptySubsequences: false)
+        return domainParts.count >= 2 &&
+            domainParts.allSatisfy { !$0.isEmpty } &&
+            (domainParts.last?.count ?? 0) >= 2
+    }
+
+    private var invalidEmailMessage: String {
+        switch appState.language {
+        case .en: "Enter a valid email address."
+        case .ru: "Введите корректный адрес электронной почты."
+        case .es: "Introduce una direccion de correo valida."
+        }
     }
 
     private var otpBinding: Binding<String> {
@@ -456,6 +487,7 @@ struct AuthView: View {
             .padding(12)
             .spyCutCard(cut: 8, fill: SpyTheme.red.opacity(0.07), stroke: SpyTheme.red.opacity(0.25))
         }
+        .disabled(appState.isBusy)
     }
 
     private func errorBanner(_ text: String) -> some View {
@@ -477,6 +509,7 @@ struct AuthView: View {
     }
 
     private func move(to phase: AuthPhase) {
+        guard !appState.isBusy else { return }
         HapticManager.shared.fire(.buttonPress)
         authTransitionDirection = phase.motionRank >= appState.authPhase.motionRank ? 1 : -1
         appState.authPhase = phase

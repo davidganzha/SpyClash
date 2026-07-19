@@ -1002,7 +1002,8 @@ private struct CompactCommandMenuPanel: View {
         Button {
             guard appState.language != language,
                   pendingLanguage == nil,
-                  !appState.isSynchronizingLanguage else { return }
+                  !appState.isSynchronizingLanguage,
+                  !appState.isUpdatingProfile else { return }
             HapticManager.shared.fire(.buttonPress)
             pendingLanguage = language
             Task {
@@ -1026,7 +1027,10 @@ private struct CompactCommandMenuPanel: View {
                 .overlay(CutCornerShape(cut: 4).stroke(appState.language == language ? SpyTheme.red : SpyTheme.inputBorder, lineWidth: 1))
         }
         .buttonStyle(SpyWebPressStyle())
-        .disabled(pendingLanguage != nil || appState.isSynchronizingLanguage)
+        .disabled(
+            pendingLanguage != nil || appState.isSynchronizingLanguage ||
+                appState.isUpdatingProfile
+        )
     }
 
     private func menuRow(
@@ -1641,7 +1645,8 @@ private struct WebCommandMenuPanel: View {
         Button {
             guard appState.language != language,
                   pendingLanguage == nil,
-                  !appState.isSynchronizingLanguage else { return }
+                  !appState.isSynchronizingLanguage,
+                  !appState.isUpdatingProfile else { return }
             HapticManager.shared.fire(.tabSelection)
             pendingLanguage = language
             Task {
@@ -1667,7 +1672,10 @@ private struct WebCommandMenuPanel: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle())
-        .disabled(pendingLanguage != nil || appState.isSynchronizingLanguage)
+        .disabled(
+            pendingLanguage != nil || appState.isSynchronizingLanguage ||
+                appState.isUpdatingProfile
+        )
     }
 
     private var footerProgress: CGFloat {

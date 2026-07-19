@@ -6,6 +6,7 @@ import {
 import {
   assertExactRoomLeaseCoverage,
   assertRoomWriterLeaseForUser,
+  retryRoomMembershipChangeBeforeAction,
   uniqueStableUserIDs,
   withRoomWriteLeases,
 } from "./room-write-lifecycle.ts";
@@ -58,6 +59,77 @@ Deno.test("exact participant set is independent of ordering and duplicates", () 
     userIDs: ["host-user", "player-a"],
     leases: [],
   }, ["player-a", "host-user", "player-a"]);
+});
+
+Deno.test("membership change before action refetches and retries instead of returning 409", async () => {
+  let attemptCalls = 0;
+  const delays: number[] = [];
+
+  const result = await retryRoomMembershipChangeBeforeAction({
+    delay: (milliseconds) => {
+      delays.push(milliseconds);
+      return Promise.resolve();
+    },
+    attempt: (markActionStarted) => {
+      attemptCalls += 1;
+      if (attemptCalls === 1) {
+        const staleContext = {
+          lifecycleStore: {},
+          userIDs: ["host-user", "joining-user"],
+          leases: [],
+        };
+        assertExactRoomLeaseCoverage(staleContext, [
+          "host-user",
+          "first-joiner",
+          "joining-user",
+        ]);
+      }
+      markActionStarted();
+      return Promise.resolve("joined");
+    },
+  });
+
+  assertEquals(result, "joined");
+  assertEquals(attemptCalls, 2);
+  assertEquals(delays, [25]);
+});
+
+Deno.test("membership error after action start is never replayed", async () => {
+  let attemptCalls = 0;
+  const delays: number[] = [];
+
+  const error = await assertRejects(
+    () =>
+      retryRoomMembershipChangeBeforeAction({
+        delay: (milliseconds) => {
+          delays.push(milliseconds);
+          return Promise.resolve();
+        },
+        attempt: (markActionStarted) => {
+          attemptCalls += 1;
+          markActionStarted();
+          const staleContext = {
+            lifecycleStore: {},
+            userIDs: ["host-user"],
+            leases: [],
+          };
+          assertExactRoomLeaseCoverage(staleContext, [
+            "host-user",
+            "late-user",
+          ]);
+          return Promise.resolve("unreachable");
+        },
+      }),
+    Error,
+    "Room membership changed",
+  );
+
+  assertEquals(
+    (error as Error & { code?: string }).code,
+    "room_membership_changed",
+  );
+  assertEquals(attemptCalls, 1);
+  assertEquals(delays, []);
 });
 
 Deno.test("history persistence cannot borrow another participant's lease", async () => {
@@ -317,5 +389,40 @@ Deno.test("partial lease release failure aborts acquisition retry", async () => 
   assertEquals(error, releaseError);
   assertEquals(acquireCalls, 2);
   assertEquals(actionCalls, 0);
-  assertEquals(delayCalls, 0);
+  assertEquals(delayCalls, 2);
+});
+
+Deno.test("committed action result survives bounded release failure", async () => {
+  let releaseCalls = 0;
+  const delays: number[] = [];
+  let loggedFailures = 0;
+  const originalConsoleError = console.error;
+  console.error = () => {
+    loggedFailures += 1;
+  };
+
+  try {
+    const result = await withRoomWriteLeases({
+      lifecycleStore: {},
+      userIDs: ["user-a"],
+      acquire: (_store, userID) => Promise.resolve(lease(userID)),
+      release: () => {
+        releaseCalls += 1;
+        return Promise.reject(new Error("release unavailable"));
+      },
+      delay: (milliseconds) => {
+        delays.push(milliseconds);
+        return Promise.resolve();
+      },
+      action: () => Promise.resolve("committed"),
+    });
+
+    assertEquals(result, "committed");
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assertEquals(releaseCalls, 3);
+  assertEquals(delays, [25, 50]);
+  assertEquals(loggedFailures, 1);
 });
