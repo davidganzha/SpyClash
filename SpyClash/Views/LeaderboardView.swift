@@ -50,6 +50,7 @@ struct LeaderboardView: View {
                     .frame(width: 42, height: 42)
             }
             .buttonStyle(SpyButtonStyle(variant: .ghost))
+            .disabled(isLoading)
         }
         .spyWebEntrance(duration: 0.40, y: -8)
     }
@@ -209,6 +210,7 @@ struct LeaderboardView: View {
     }
 
     private func load() async {
+        guard !isLoading else { return }
         if appState.shouldUsePreviewData {
             entries = Self.rank(GameHistory.previewLeaderboardPool)
             status = ""
@@ -216,12 +218,17 @@ struct LeaderboardView: View {
             return
         }
 
-        guard appState.user != nil else { return }
+        guard let requestedUserID = appState.user?.id else { return }
         isLoading = true
         defer { isLoading = false }
         do {
-            entries = try await appState.client.leaderboard()
+            let loadedEntries = try await appState.client.leaderboard()
+            try Task.checkCancellation()
+            guard appState.user?.id == requestedUserID else { return }
+            entries = loadedEntries
             status = ""
+        } catch is CancellationError {
+            return
         } catch {
             status = error.localizedDescription.uppercased()
         }

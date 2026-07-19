@@ -283,7 +283,7 @@ struct HomeView: View {
             ) {
                 Task { await createRoom() }
             }
-            .disabled(isLoading)
+            .disabled(isLoading || appState.isJoiningRoom)
 
             webChoiceCard(
                 title: localized(en: "ENTER ROOM", ru: "ВОЙТИ В КОМНАТУ", es: "ENTRAR A SALA"),
@@ -355,7 +355,7 @@ struct HomeView: View {
                     webSmallActionButton(title: localized(en: isLoading ? "Joining..." : "Join", ru: isLoading ? "Входим..." : "Войти", es: isLoading ? "Entrando..." : "Entrar"), variant: .red) {
                         Task { await joinRoom() }
                     }
-                    .disabled(isLoading || joinCode.isEmpty)
+                    .disabled(isLoading || appState.isJoiningRoom || joinCode.isEmpty)
 
                     webSmallActionButton(title: localized(en: "SCAN", ru: "СКАН", es: "SCAN"), systemImage: "qrcode.viewfinder", variant: .outline) {
                         isQRScannerPresented = true
@@ -723,17 +723,21 @@ struct HomeView: View {
     }
 
     private func createRoom() async {
-        guard let user = appState.user else { return }
+        guard !isLoading, let user = appState.user else { return }
         isLoading = true
         defer { isLoading = false }
         do {
             let room = try await appState.client.createRoom(for: user)
+            try Task.checkCancellation()
+            guard appState.user?.id == user.id else { return }
             withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
                 appState.activeRoom = room
             }
             statusText = copy.roomReady(room.code)
             statusKind = .success
             HapticManager.shared.fire(.milestone)
+        } catch is CancellationError {
+            return
         } catch {
             statusText = error.localizedDescription.uppercased()
             statusKind = .error
@@ -742,25 +746,30 @@ struct HomeView: View {
     }
 
     private func joinRoom() async {
-        guard let user = appState.user else { return }
+        let code = joinCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !isLoading,
+              !appState.isJoiningRoom,
+              !code.isEmpty,
+              appState.user != nil else { return }
         isLoading = true
         defer { isLoading = false }
-        do {
-            let code = joinCode
-            let room = try await appState.client.join(code: code, user: user)
-            appState.activeRoom = room
-            appState.selectedTab = .game
+        let joined = await appState.joinRoom(code: code)
+        guard !Task.isCancelled else { return }
+        if joined, let room = appState.activeRoom {
             statusText = copy.roomReady(room.code)
             statusKind = .success
-            HapticManager.shared.fire(.milestone)
-        } catch {
-            statusText = error.localizedDescription.uppercased()
+        } else {
+            statusText = appState.deepLinkStatus ?? localized(
+                en: "ROOM COULD NOT BE JOINED",
+                ru: "НЕ УДАЛОСЬ ВОЙТИ В КОМНАТУ",
+                es: "NO SE PUDO ENTRAR A LA SALA"
+            )
             statusKind = .error
-            HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func closeActiveRoom(_ room: GameRoom) async {
+        guard !isClosingRoom else { return }
         guard let user = appState.user else {
             withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
                 appState.activeRoom = nil
@@ -773,7 +782,11 @@ struct HomeView: View {
         defer { isClosingRoom = false }
 
         do {
-            try await appState.client.leaveRoom(room: room, user: user)
+            guard let currentRoom = appState.activeRoom,
+                  currentRoom.id == room.id else { return }
+            try await appState.client.leaveRoom(room: currentRoom, user: user)
+            try Task.checkCancellation()
+            guard appState.activeRoom?.id == room.id else { return }
             withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
                 appState.activeRoom = nil
                 appState.selectedTab = .home
@@ -782,6 +795,8 @@ struct HomeView: View {
             statusText = isHost(room) ? localized(en: "ROOM CLOSED", ru: "КОМНАТА ЗАКРЫТА", es: "SALA CERRADA") : localized(en: "LEFT ROOM", ru: "ВЫШЕЛ ИЗ КОМНАТЫ", es: "SALA ABANDONADA")
             statusKind = .success
             HapticManager.shared.fire(.notification(.success))
+        } catch is CancellationError {
+            return
         } catch {
             statusText = error.localizedDescription.uppercased()
             statusKind = .error

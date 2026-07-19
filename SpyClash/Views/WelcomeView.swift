@@ -554,28 +554,53 @@ struct LegalSectionRow: View {
 
 struct LanguageSwitcher: View {
     @Environment(AppState.self) private var appState
+    @State private var pendingLanguage: AppLanguage?
+    @State private var syncError: String?
 
     var body: some View {
-        HStack(spacing: 5) {
-            ForEach(AppLanguage.allCases) { language in
-                Button {
-                    guard appState.language != language else { return }
-                    HapticManager.shared.fire(.tabSelection)
-                    Task {
-                        try? await appState.setLanguage(language, syncRemote: appState.user != nil)
+        VStack(alignment: .trailing, spacing: 4) {
+            HStack(spacing: 5) {
+                ForEach(AppLanguage.allCases) { language in
+                    Button {
+                        guard appState.language != language,
+                              pendingLanguage == nil,
+                              !appState.isSynchronizingLanguage else { return }
+                        HapticManager.shared.fire(.tabSelection)
+                        syncError = nil
+                        pendingLanguage = language
+                        Task {
+                            defer { pendingLanguage = nil }
+                            do {
+                                try await appState.setLanguage(language, syncRemote: appState.user != nil)
+                            } catch is CancellationError {
+                                return
+                            } catch {
+                                syncError = error.localizedDescription.uppercased()
+                                HapticManager.shared.fire(.notification(.error))
+                            }
+                        }
+                    } label: {
+                        Text(language.shortCode)
+                            .font(SpyTheme.micro)
+                            .tracking(0.08)
+                            .foregroundStyle(appState.language == language ? .white : SpyTheme.dim)
+                            .frame(width: 34, height: 28)
+                            .background(appState.language == language ? SpyTheme.red.opacity(0.9) : SpyTheme.panelDeep)
+                            .overlay(Rectangle().stroke(appState.language == language ? SpyTheme.red : SpyTheme.stroke))
                     }
-                } label: {
-                    Text(language.shortCode)
-                        .font(SpyTheme.micro)
-                        .tracking(0.08)
-                        .foregroundStyle(appState.language == language ? .white : SpyTheme.dim)
-                        .frame(width: 34, height: 28)
-                        .background(appState.language == language ? SpyTheme.red.opacity(0.9) : SpyTheme.panelDeep)
-                        .overlay(Rectangle().stroke(appState.language == language ? SpyTheme.red : SpyTheme.stroke))
+                    .buttonStyle(SpyWebPressStyle())
+                    .spyHitTarget()
+                    .disabled(pendingLanguage != nil || appState.isSynchronizingLanguage)
+                    .accessibilityLabel("Set language \(language.title)")
                 }
-                .buttonStyle(SpyWebPressStyle())
-                .spyHitTarget()
-                .accessibilityLabel("Set language \(language.title)")
+            }
+
+            if let syncError {
+                Text(syncError)
+                    .font(.system(size: 7, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.red)
+                    .lineLimit(2)
+                    .multilineTextAlignment(.trailing)
             }
         }
     }

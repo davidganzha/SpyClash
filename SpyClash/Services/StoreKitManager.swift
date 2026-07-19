@@ -74,7 +74,7 @@ enum StoreKitPurchaseState: Equatable {
     }
 }
 
-enum StoreKitActionOutcome: Equatable {
+enum StoreKitActionOutcome: Equatable, Sendable {
     case purchased
     case pending
     case cancelled
@@ -90,6 +90,7 @@ private enum StoreKitManagerError: LocalizedError {
     case unverifiedTransaction
     case entitlementNotGranted
     case noWindowScene
+    case accountChanged
 
     var errorDescription: String? {
         switch self {
@@ -105,8 +106,21 @@ private enum StoreKitManagerError: LocalizedError {
             "The purchase was verified, but LIMITLESS access is not active."
         case .noWindowScene:
             "The App Store subscription manager is unavailable right now."
+        case .accountChanged:
+            "Your SpyClash account changed during the App Store operation. Try again."
         }
     }
+}
+
+private struct PendingStoreKitAction<Result: Sendable> {
+    let id: UUID
+    let task: Task<Result, Never>
+}
+
+private struct PendingStoreKitSync {
+    let id: UUID
+    let accountGeneration: UInt64
+    let task: Task<Int, Error>
 }
 
 @MainActor
@@ -122,6 +136,14 @@ final class StoreKitManager {
 
     @ObservationIgnored private let client: Base44Client
     @ObservationIgnored private var transactionUpdatesTask: Task<Void, Never>?
+    @ObservationIgnored private var purchaseTask: PendingStoreKitAction<StoreKitActionOutcome>?
+    @ObservationIgnored private var restoreTask: PendingStoreKitAction<StoreKitActionOutcome>?
+    @ObservationIgnored private var entitlementSyncTask: PendingStoreKitSync?
+    @ObservationIgnored private var entitlementPersistenceTail: Task<Void, Never>?
+    @ObservationIgnored private var activePersistenceTasks: [
+        UUID: Task<AppStoreEntitlementSyncResponse, Error>
+    ] = [:]
+    @ObservationIgnored private var accountGeneration: UInt64 = 0
     @ObservationIgnored var onEntitlementChanged: (() async -> Void)?
 
     init(client: Base44Client) {
@@ -144,6 +166,20 @@ final class StoreKitManager {
     }
 
     func accountDidChange() {
+        accountGeneration &+= 1
+        purchaseTask?.task.cancel()
+        restoreTask?.task.cancel()
+        entitlementSyncTask?.task.cancel()
+        entitlementPersistenceTail?.cancel()
+        for task in activePersistenceTasks.values {
+            task.cancel()
+        }
+        purchaseTask = nil
+        restoreTask = nil
+        entitlementSyncTask = nil
+        entitlementPersistenceTail = nil
+        activePersistenceTasks.removeAll()
+        isSynchronizingEntitlements = false
         purchaseState = .idle
         lastErrorMessage = nil
     }
@@ -171,9 +207,34 @@ final class StoreKitManager {
     }
 
     func purchaseLimitless() async -> StoreKitActionOutcome {
-        guard client.hasSessionToken else {
+        if let purchaseTask {
+            return await purchaseTask.task.value
+        }
+        guard restoreTask == nil else { return .cancelled }
+        guard let accessToken = client.currentAccessToken else {
             return fail(StoreKitManagerError.authenticationRequired)
         }
+        let operationID = UUID()
+        let operationAccountGeneration = accountGeneration
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return StoreKitActionOutcome.cancelled }
+            return await self.performPurchase(
+                accessToken: accessToken,
+                accountGeneration: operationAccountGeneration
+            )
+        }
+        purchaseTask = PendingStoreKitAction(id: operationID, task: task)
+        let outcome = await task.value
+        if purchaseTask?.id == operationID {
+            purchaseTask = nil
+        }
+        return outcome
+    }
+
+    private func performPurchase(
+        accessToken: String,
+        accountGeneration: UInt64
+    ) async -> StoreKitActionOutcome {
         purchaseState = .preparing
         lastErrorMessage = nil
         if product == nil {
@@ -184,7 +245,17 @@ final class StoreKitManager {
         }
 
         do {
-            let context = try await client.prepareAppStorePurchase()
+            try requireCurrentAccount(
+                accessToken: accessToken,
+                accountGeneration: accountGeneration
+            )
+            let context = try await client.prepareAppStorePurchase(
+                accessToken: accessToken
+            )
+            try requireCurrentAccount(
+                accessToken: accessToken,
+                accountGeneration: accountGeneration
+            )
             guard context.productID == Self.limitlessProductID else {
                 throw StoreKitManagerError.productMismatch
             }
@@ -196,7 +267,11 @@ final class StoreKitManager {
             switch result {
             case .success(let verification):
                 purchaseState = .synchronizing
-                let response = try await persist(verification)
+                let response = try await persist(
+                    verification,
+                    accessToken: accessToken,
+                    accountGeneration: accountGeneration
+                )
                 guard response.entitlement.grantsAccess else {
                     throw StoreKitManagerError.entitlementNotGranted
                 }
@@ -221,17 +296,49 @@ final class StoreKitManager {
     }
 
     func restorePurchases() async -> StoreKitActionOutcome {
-        guard client.hasSessionToken else {
+        if let restoreTask {
+            return await restoreTask.task.value
+        }
+        guard purchaseTask == nil else { return .cancelled }
+        guard let accessToken = client.currentAccessToken else {
             return fail(StoreKitManagerError.authenticationRequired)
         }
 
+        let operationID = UUID()
+        let operationAccountGeneration = accountGeneration
+        let task = Task { @MainActor [weak self] in
+            guard let self else { return StoreKitActionOutcome.cancelled }
+            return await self.performRestore(
+                accessToken: accessToken,
+                accountGeneration: operationAccountGeneration
+            )
+        }
+        restoreTask = PendingStoreKitAction(id: operationID, task: task)
+        let outcome = await task.value
+        if restoreTask?.id == operationID {
+            restoreTask = nil
+        }
+        return outcome
+    }
+
+    private func performRestore(
+        accessToken: String,
+        accountGeneration: UInt64
+    ) async -> StoreKitActionOutcome {
         purchaseState = .restoring
         lastErrorMessage = nil
         do {
             // Apple can present an App Store authentication prompt here, so
             // this method is called only from the explicit Restore button.
             try await AppStore.sync()
-            let count = try await synchronizeStoreKitState()
+            try requireCurrentAccount(
+                accessToken: accessToken,
+                accountGeneration: accountGeneration
+            )
+            let count = try await synchronizeStoreKitState(
+                accessToken: accessToken,
+                accountGeneration: accountGeneration
+            )
             guard count > 0 else {
                 purchaseState = .idle
                 return .noPurchases
@@ -249,9 +356,60 @@ final class StoreKitManager {
 
     @discardableResult
     func synchronizeStoreKitState() async throws -> Int {
-        guard client.hasSessionToken else { return 0 }
+        guard let accessToken = client.currentAccessToken else { return 0 }
+        return try await synchronizeStoreKitState(
+            accessToken: accessToken,
+            accountGeneration: accountGeneration
+        )
+    }
+
+    private func synchronizeStoreKitState(
+        accessToken: String,
+        accountGeneration: UInt64
+    ) async throws -> Int {
+        if let entitlementSyncTask,
+           entitlementSyncTask.accountGeneration == accountGeneration {
+            return try await entitlementSyncTask.task.value
+        }
+
+        let operationID = UUID()
+        let task = Task { @MainActor [weak self] () throws -> Int in
+            guard let self else { throw CancellationError() }
+            return try await self.performStoreKitSynchronization(
+                accessToken: accessToken,
+                accountGeneration: accountGeneration
+            )
+        }
+        entitlementSyncTask = PendingStoreKitSync(
+            id: operationID,
+            accountGeneration: accountGeneration,
+            task: task
+        )
         isSynchronizingEntitlements = true
-        defer { isSynchronizingEntitlements = false }
+        do {
+            let count = try await task.value
+            if entitlementSyncTask?.id == operationID {
+                entitlementSyncTask = nil
+                isSynchronizingEntitlements = false
+            }
+            return count
+        } catch {
+            if entitlementSyncTask?.id == operationID {
+                entitlementSyncTask = nil
+                isSynchronizingEntitlements = false
+            }
+            throw error
+        }
+    }
+
+    private func performStoreKitSynchronization(
+        accessToken: String,
+        accountGeneration: UInt64
+    ) async throws -> Int {
+        try requireCurrentAccount(
+            accessToken: accessToken,
+            accountGeneration: accountGeneration
+        )
 
         var synchronizedTransactionIDs = Set<UInt64>()
         // Transactions delivered while signed out remain unfinished. Bind and
@@ -262,7 +420,11 @@ final class StoreKitManager {
             guard transaction.productID == Self.limitlessProductID else {
                 continue
             }
-            try await persist(verification)
+            try await persist(
+                verification,
+                accessToken: accessToken,
+                accountGeneration: accountGeneration
+            )
             synchronizedTransactionIDs.insert(transaction.id)
         }
 
@@ -276,7 +438,11 @@ final class StoreKitManager {
             guard transaction.productID == Self.limitlessProductID else {
                 continue
             }
-            let response = try await persist(verification)
+            let response = try await persist(
+                verification,
+                accessToken: accessToken,
+                accountGeneration: accountGeneration
+            )
             synchronizedTransactionIDs.insert(transaction.id)
             if response.entitlement.grantsAccess {
                 activeOriginalTransactionIDs.insert(transaction.originalID)
@@ -291,7 +457,11 @@ final class StoreKitManager {
             try Task.checkCancellation()
             let transaction = latest.unsafePayloadValue
             if !synchronizedTransactionIDs.contains(transaction.id) {
-                try await persist(latest)
+                try await persist(
+                    latest,
+                    accessToken: accessToken,
+                    accountGeneration: accountGeneration
+                )
             }
         }
         return activeOriginalTransactionIDs.count
@@ -310,17 +480,23 @@ final class StoreKitManager {
         for await verification in Transaction.updates {
             guard !Task.isCancelled else { return }
             guard verification.unsafePayloadValue.productID == Self.limitlessProductID,
-                  client.hasSessionToken else {
+                  let accessToken = client.currentAccessToken else {
                 // Signed-out updates remain unfinished and are reconciled by
                 // synchronizeStoreKitState() on the next authenticated session.
                 continue
             }
+            let operationAccountGeneration = accountGeneration
 
             do {
-                try await persist(verification)
+                try await persist(
+                    verification,
+                    accessToken: accessToken,
+                    accountGeneration: operationAccountGeneration
+                )
                 await onEntitlementChanged?()
             } catch is CancellationError {
-                return
+                if Task.isCancelled { return }
+                continue
             } catch {
                 // Do not finish on failure. StoreKit can redeliver this
                 // transaction after Base44 or the network recovers.
@@ -331,7 +507,9 @@ final class StoreKitManager {
 
     @discardableResult
     private func persist(
-        _ verification: VerificationResult<Transaction>
+        _ verification: VerificationResult<Transaction>,
+        accessToken: String,
+        accountGeneration: UInt64
     ) async throws -> AppStoreEntitlementSyncResponse {
         guard case .verified(let transaction) = verification else {
             throw StoreKitManagerError.unverifiedTransaction
@@ -340,17 +518,60 @@ final class StoreKitManager {
             throw StoreKitManagerError.productMismatch
         }
 
-        let response = try await client.syncAppStoreTransaction(
-            signedTransaction: verification.jwsRepresentation
-        )
-        guard response.success else {
-            throw StoreKitManagerError.entitlementNotGranted
+        // Serialize entitlement writes across purchase, restore, activation,
+        // and Transaction.updates. The backend protects account binding with a
+        // short lease; concurrent client writes only create avoidable 409/503s.
+        let predecessor = entitlementPersistenceTail
+        let operationID = UUID()
+        let task = Task { @MainActor [weak self] () throws -> AppStoreEntitlementSyncResponse in
+            if let predecessor {
+                await predecessor.value
+            }
+            guard let self else { throw CancellationError() }
+            try self.requireCurrentAccount(
+                accessToken: accessToken,
+                accountGeneration: accountGeneration
+            )
+            let response = try await self.client.syncAppStoreTransaction(
+                signedTransaction: verification.jwsRepresentation,
+                accessToken: accessToken
+            )
+            try self.requireCurrentAccount(
+                accessToken: accessToken,
+                accountGeneration: accountGeneration
+            )
+            guard response.success, response.serverStatusVerified else {
+                throw StoreKitManagerError.entitlementNotGranted
+            }
+            // A revoked or expired transaction still needs to be acknowledged
+            // once the backend has persisted the loss of access. Purchase
+            // completion separately requires a granting entitlement above.
+            await transaction.finish()
+            return response
         }
-        // A revoked or expired transaction still needs to be acknowledged once
-        // the backend has persisted the loss of access. Purchase completion
-        // separately requires a granting entitlement above.
-        await transaction.finish()
-        return response
+        activePersistenceTasks[operationID] = task
+        entitlementPersistenceTail = Task {
+            _ = try? await task.value
+        }
+        do {
+            let response = try await task.value
+            activePersistenceTasks.removeValue(forKey: operationID)
+            return response
+        } catch {
+            activePersistenceTasks.removeValue(forKey: operationID)
+            throw error
+        }
+    }
+
+    private func requireCurrentAccount(
+        accessToken: String,
+        accountGeneration: UInt64
+    ) throws {
+        try Task.checkCancellation()
+        guard self.accountGeneration == accountGeneration,
+              client.currentAccessToken == accessToken else {
+            throw StoreKitManagerError.accountChanged
+        }
     }
 
     private func fail(_ error: Error) -> StoreKitActionOutcome {

@@ -148,13 +148,15 @@ struct AuthView: View {
                 divider
                 emailField
                 Button {
-                    guard !email.trimmingCharacters(in: .whitespaces).isEmpty else {
+                    let target = normalizedEmail
+                    guard !target.isEmpty else {
                         HapticManager.shared.fire(.notification(.warning))
                         return
                     }
                     appState.authError = nil
                     appState.authNotice = nil
-                    move(to: .password(email: email))
+                    email = target
+                    move(to: .password(email: target))
                 } label: {
                     Label(copy.continueAction, systemImage: "arrow.right")
                 }
@@ -193,13 +195,15 @@ struct AuthView: View {
                 divider
                 emailField
                 Button {
-                    guard !email.trimmingCharacters(in: .whitespaces).isEmpty else {
+                    let target = normalizedEmail
+                    guard !target.isEmpty else {
                         HapticManager.shared.fire(.notification(.warning))
                         return
                     }
                     appState.authError = nil
                     appState.authNotice = nil
-                    move(to: .registerPassword(email: email))
+                    email = target
+                    move(to: .registerPassword(email: target))
                 } label: {
                     Label(copy.joinNetworkAction, systemImage: "arrow.right")
                 }
@@ -221,7 +225,7 @@ struct AuthView: View {
                     busyLabel(copy.recruitingBusy, idle: copy.createCredentialsAction)
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
-                .disabled(appState.isBusy || password.isEmpty)
+                .disabled(appState.isBusy || password.isEmpty || confirmPassword.isEmpty)
 
             case .otp(let lockedEmail):
                 Text(copy.sixDigitKeyLabel)
@@ -229,7 +233,7 @@ struct AuthView: View {
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker(lines: 2)
-                TextField("000000", text: $otp)
+                TextField("000000", text: otpBinding)
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .multilineTextAlignment(.center)
@@ -245,7 +249,7 @@ struct AuthView: View {
                     busyLabel(copy.verifyingBusy, idle: copy.verifyEnterAction)
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
-                .disabled(appState.isBusy || otp.count < 6)
+                .disabled(appState.isBusy || otp.count != 6)
 
             case .forgotPassword(let lockedEmail):
                 Text(copy.requestResetBody)
@@ -354,6 +358,17 @@ struct AuthView: View {
             textContentType: .emailAddress,
             keyboardType: .emailAddress,
             autocapitalization: .never
+        )
+    }
+
+    private var normalizedEmail: String {
+        email.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private var otpBinding: Binding<String> {
+        Binding(
+            get: { otp },
+            set: { otp = String($0.filter(\.isNumber).prefix(6)) }
         )
     }
 

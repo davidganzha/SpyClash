@@ -330,6 +330,7 @@ final class PushNotificationCoordinator {
     ) async -> Bool {
         guard signedIn,
               let client,
+              client.hasSessionToken,
               isCurrentAccountGeneration(request.accountGeneration) else {
             return false
         }
@@ -391,6 +392,7 @@ final class PushNotificationCoordinator {
     ) async -> Bool {
         guard signedIn,
               let client,
+              client.hasSessionToken,
               isCurrentAccountGeneration(request.accountGeneration) else {
             return false
         }
@@ -592,6 +594,7 @@ final class PushNotificationCoordinator {
     ) async {
         guard signedIn,
               let client,
+              client.hasSessionToken,
               let token = UserDefaults.standard.string(forKey: Self.apnsTokenKey),
               !token.isEmpty else {
             return

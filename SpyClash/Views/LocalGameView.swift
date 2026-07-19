@@ -435,7 +435,7 @@ struct LocalGameView: View {
             }
             .buttonStyle(SpyWebPressStyle())
 
-            localPlayerNameField(index: index)
+            localPlayerNameField(index: index, id: id)
 
             if players.count > 2 {
                 localRemovePlayerButton(index: index)
@@ -475,10 +475,10 @@ struct LocalGameView: View {
         .accessibilityHint(localized(en: "Hold and drag to reorder", ru: "Зажми и перетащи, чтобы изменить порядок", es: "Mantén y arrastra para reordenar"))
     }
 
-    private func localPlayerNameField(index: Int) -> some View {
+    private func localPlayerNameField(index: Int, id: UUID) -> some View {
         TextField(
             localized(en: "Player \(index + 1)", ru: "Игрок \(index + 1)", es: "Jugador \(index + 1)"),
-            text: $players[index]
+            text: localPlayerNameBinding(id: id)
         )
         .textInputAutocapitalization(.words)
         .autocorrectionDisabled()
@@ -495,6 +495,21 @@ struct LocalGameView: View {
         .layoutPriority(1)
         .submitLabel(.done)
         .focused($focusedLocalSetupField, equals: .player(index))
+    }
+
+    private func localPlayerNameBinding(id: UUID) -> Binding<String> {
+        Binding(
+            get: {
+                guard let index = playerIDs.firstIndex(of: id),
+                      players.indices.contains(index) else { return "" }
+                return players[index]
+            },
+            set: { value in
+                guard let index = playerIDs.firstIndex(of: id),
+                      players.indices.contains(index) else { return }
+                players[index] = value
+            }
+        )
     }
 
     private func resetPlayerDragState() {
@@ -2875,15 +2890,6 @@ struct LocalGameView: View {
         HapticManager.shared.fire(.buttonPress)
     }
 
-    private func dropPlayer() {
-        guard players.count > 2 else { return }
-        resetPlayerDragState()
-        players.removeLast()
-        avatars.removeLast()
-        playerIDs.removeLast()
-        HapticManager.shared.fire(.buttonPress)
-    }
-
     private func removePlayer(at index: Int) {
         guard players.count > 2, players.indices.contains(index) else { return }
         resetPlayerDragState()
@@ -3007,6 +3013,7 @@ struct LocalGameView: View {
             } else {
                 generated = try await appState.client.generateWordPack(theme: theme, count: targetCount)
             }
+            try Task.checkCancellation()
             appState.recordAIUsage(
                 used: generated.aiGenerationsToday,
                 remaining: generated.aiRemaining
@@ -3042,6 +3049,8 @@ struct LocalGameView: View {
             status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO")
             HapticManager.shared.fire(.milestone)
             persistLocalSettings()
+        } catch is CancellationError {
+            return
         } catch {
             guard localThemeRequestID == requestID else { return }
             localThemeError = error.localizedDescription.uppercased()
@@ -3091,6 +3100,7 @@ struct LocalGameView: View {
                     excluding: current
                 )
             }
+            try Task.checkCancellation()
             appState.recordAIUsage(
                 used: generated.aiGenerationsToday,
                 remaining: generated.aiRemaining
@@ -3133,6 +3143,8 @@ struct LocalGameView: View {
             status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO")
             HapticManager.shared.fire(.milestone)
             persistLocalSettings()
+        } catch is CancellationError {
+            return
         } catch {
             guard localThemeRequestID == requestID else { return }
             localThemeError = error.localizedDescription.uppercased()
@@ -3142,6 +3154,7 @@ struct LocalGameView: View {
     }
 
     private func saveLocalThemePack() async {
+        guard !isSavingGeneratedPack else { return }
         guard let email = appState.user?.email else { return }
         guard let generatedPack else { return }
 
@@ -3159,11 +3172,14 @@ struct LocalGameView: View {
                 words: words,
                 ownerEmail: email
             )
+            try Task.checkCancellation()
             packs.append(saved)
             packs.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO")
             HapticManager.shared.fire(.milestone)
             persistLocalSettings()
+        } catch is CancellationError {
+            return
         } catch {
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
@@ -3336,6 +3352,7 @@ struct LocalGameView: View {
     }
 
     private func currentAsker(in session: LocalSession) -> LocalPlayer? {
+        guard !session.players.isEmpty else { return nil }
         if session.mode == .associations {
             let fallbackIndex = questionIndex % max(session.players.count, 1)
             let orderedIndex = associationOrder[safe: associationStep] ?? fallbackIndex
@@ -3353,8 +3370,6 @@ struct LocalGameView: View {
     private func nextQuestion(in session: LocalSession) {
         if session.mode == .associations {
             advanceAssociationSpeaker(playerCount: session.players.count)
-            // The roulette completion owns the audible turn cue. The tap that
-            // starts it stays haptic-only so one gesture cannot sound twice.
             HapticManager.shared.fire(.tabSelection)
             return
         }
@@ -3452,8 +3467,13 @@ struct LocalGameView: View {
 
         guard let email = appState.user?.email else { return }
         do {
-            packs = try await appState.client.wordPacks(ownerEmail: email)
+            let loadedPacks = try await appState.client.wordPacks(ownerEmail: email)
+            try Task.checkCancellation()
+            guard appState.user?.email == email else { return }
+            packs = loadedPacks
             reconcileLocalWordSources()
+        } catch is CancellationError {
+            return
         } catch {
             // Keep the restored source until a successful sync can confirm
             // whether the persisted pack still exists.

@@ -28,6 +28,17 @@ import {
 } from "./room-result-policy.ts";
 import { enqueueGamePushEvents } from "./push-events.ts";
 import { nextRoundNumber } from "./game-round.ts";
+import {
+  assertLobbySettingsAccess,
+  deleteRoomAndVerify,
+  gameDurationPatch,
+  gameModePatch,
+  leaveAlreadyComplete,
+  roomHasGameDuration,
+  roomHasGameMode,
+  validatedGameDuration,
+  validatedGameMode,
+} from "./room-interaction-safety.ts";
 
 function jsonError(message, status = 400) {
   return Response.json({ error: message }, { status });
@@ -297,13 +308,13 @@ async function deleteRoom(base44, room) {
   const latest = await fetchRoom(base44, room.id);
   if (!latest) return { success: true };
   assertRoomMutationOpen(latest);
-  await base44.asServiceRole.entities.GameRoom.delete(latest.id);
-  if (await fetchRoom(base44, latest.id)) {
-    throw Object.assign(new Error("The room could not be deleted; retry."), {
-      status: 409,
-      code: "room_delete_unverified",
-    });
-  }
+  await deleteRoomAndVerify({
+    roomID: latest.id,
+    deleteByID: (roomID) =>
+      base44.asServiceRole.entities.GameRoom.delete(roomID),
+    fetchByID: (roomID) => fetchRoom(base44, roomID),
+    delay,
+  });
   return { success: true };
 }
 
@@ -683,41 +694,31 @@ async function resetRoomForReplay(base44, room, user, body) {
 }
 
 async function updateGameMode(base44, room, user, body) {
-  requireHost(room, user);
-  if (normalizedStatus(room) !== "waiting") {
-    throw Object.assign(new Error("Game mode can only change in the lobby"), {
-      status: 409,
-    });
-  }
-  const mode = clean(body?.mode);
-  if (!["questions", "associations"].includes(mode)) {
-    throw Object.assign(new Error("Invalid game mode"), { status: 400 });
-  }
-  return await updateRoom(base44, room, { game_mode: mode });
+  assertLobbySettingsAccess(room, user, "mode");
+  const mode = validatedGameMode(body?.mode);
+  return await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) => {
+      assertLobbySettingsAccess(latest, user, "mode");
+      return gameModePatch(latest, mode);
+    },
+    (latest) => roomHasGameMode(latest, mode),
+  );
 }
 
 async function updateGameDuration(base44, room, user, body) {
-  requireHost(room, user);
-  if (normalizedStatus(room) !== "waiting") {
-    throw Object.assign(new Error("Duration can only change in the lobby"), {
-      status: 409,
-    });
-  }
-
-  const durationSeconds = Number(body?.game_duration_seconds);
-  if (
-    !Number.isInteger(durationSeconds) || durationSeconds < 60 ||
-    durationSeconds > 900
-  ) {
-    throw Object.assign(
-      new Error("Duration must be between 1 and 15 minutes"),
-      { status: 400 },
-    );
-  }
-
-  return await updateRoom(base44, room, {
-    game_duration_seconds: durationSeconds,
-  });
+  assertLobbySettingsAccess(room, user, "duration");
+  const durationSeconds = validatedGameDuration(body?.game_duration_seconds);
+  return await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) => {
+      assertLobbySettingsAccess(latest, user, "duration");
+      return gameDurationPatch(latest, durationSeconds);
+    },
+    (latest) => roomHasGameDuration(latest, durationSeconds),
+  );
 }
 
 function validatedStartPatch(room, payload) {
@@ -1204,7 +1205,7 @@ async function submitSpyGuess(base44, room, user, body) {
 }
 
 async function leaveRoom(base44, room, user) {
-  requirePlayer(room, user);
+  if (leaveAlreadyComplete(room, user.email)) return { success: true };
 
   if (room.host_email === user.email) {
     return await deleteRoom(base44, room);
@@ -1554,6 +1555,9 @@ Deno.serve(async (req) => {
       ? await fetchRoom(base44, roomId)
       : await fetchRoomByCode(base44, body?.room_code || body?.code);
 
+    if (action === "leave_room" && leaveAlreadyComplete(room, user.email)) {
+      return Response.json({ success: true });
+    }
     if (!room) return jsonError("Room not found", 404);
     if (action === "get_room") {
       requirePlayer(room, user);
@@ -1574,7 +1578,14 @@ Deno.serve(async (req) => {
           // a concurrent join/leave must retry with complete lease coverage.
           const latestRoom = await fetchRoom(base44, room.id);
           if (!latestRoom) {
+            if (action === "leave_room") return { success: true };
             throw Object.assign(new Error("Room not found"), { status: 404 });
+          }
+          if (
+            action === "leave_room" &&
+            leaveAlreadyComplete(latestRoom, user.email)
+          ) {
+            return { success: true };
           }
           const latestParticipantUserIDs = await roomParticipantUserIDs(
             base44,

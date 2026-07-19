@@ -1,7 +1,4 @@
-import {
-  assert,
-  assertStringIncludes,
-} from "jsr:@std/assert@1";
+import { assert, assertStringIncludes } from "jsr:@std/assert@1";
 
 Deno.test("room writes use lifecycle-serialized entity id operations", async () => {
   const source = await Deno.readTextFile(
@@ -22,6 +19,14 @@ Deno.test("room writes use lifecycle-serialized entity id operations", async () 
   );
   assertStringIncludes(
     source,
-    "entities.GameRoom.delete(latest.id)",
+    "deleteRoomAndVerify({",
+  );
+  assertStringIncludes(
+    source,
+    "updateRoomWithRetry(\n    base44,\n    room,",
+  );
+  assertStringIncludes(
+    source,
+    'action === "leave_room" && leaveAlreadyComplete(room, user.email)',
   );
 });

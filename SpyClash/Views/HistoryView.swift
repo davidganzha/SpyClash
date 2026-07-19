@@ -52,6 +52,7 @@ struct HistoryView: View {
                     .frame(width: 46, height: 46)
             }
             .buttonStyle(SpyButtonStyle(variant: .ghost))
+            .disabled(isLoading)
         }
         .spyWebEntrance(duration: 0.40, y: -8)
     }
@@ -393,6 +394,7 @@ struct HistoryView: View {
     }
 
     private func load() async {
+        guard !isLoading else { return }
         if appState.shouldUsePreviewData {
             history = GameHistory.previewArchive
             status = ""
@@ -404,11 +406,16 @@ struct HistoryView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            history = try await appState.client.gameHistory(
+            let loadedHistory = try await appState.client.gameHistory(
                 email: email,
                 limit: hasFullHistory ? nil : historyLimit
             )
+            try Task.checkCancellation()
+            guard appState.user?.email == email else { return }
+            history = loadedHistory
             status = ""
+        } catch is CancellationError {
+            return
         } catch {
             status = error.localizedDescription.uppercased()
         }

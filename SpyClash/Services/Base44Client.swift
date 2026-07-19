@@ -15,10 +15,20 @@ final class Base44Client {
         subsystem: "com.spyclash.app",
         category: "Base44Client"
     )
+    private static let readOnlyCommunityActions: Set<String> = [
+        "state", "directory", "profile", "search"
+    ]
+    private static let readOnlyRoomActions: Set<String> = [
+        "get_room", "get_active_room", "get_leaderboard"
+    ]
 
     private let session: URLSession
     private var token: String?
     private var unauthorizedHandler: (() -> Void)?
+    private var credentialGeneration: UInt64 = 0
+    private var authenticationAttemptGeneration: UInt64 = 0
+    private var inFlightRoomActions: [RoomActionKey: Task<GameRoom, Error>] = [:]
+    private var roomMutationTails: [String: PendingRoomMutation] = [:]
 
     var hasSessionToken: Bool {
         token?.isEmpty == false
@@ -33,10 +43,14 @@ final class Base44Client {
     }
 
     func setToken(_ token: String) {
-        self.token = token
+        credentialGeneration &+= 1
+        authenticationAttemptGeneration &+= 1
+        self.token = token.isEmpty ? nil : token
     }
 
     func clearToken() {
+        credentialGeneration &+= 1
+        authenticationAttemptGeneration &+= 1
         token = nil
     }
 
@@ -45,15 +59,27 @@ final class Base44Client {
     }
 
     func currentUser() async throws -> SpyUser {
-        try await request("/apps/\(Self.appID)/entities/User/me", method: "GET")
+        try await request(
+            "/apps/\(Self.appID)/entities/User/me",
+            method: "GET",
+            retryTransientFailures: true
+        )
     }
 
     func login(email: String, password: String) async throws -> LoginResponse {
+        authenticationAttemptGeneration &+= 1
+        let attemptGeneration = authenticationAttemptGeneration
+        let startingCredentialGeneration = credentialGeneration
         let response: LoginResponse = try await request(
             "/apps/\(Self.appID)/auth/login",
             method: "POST",
-            body: ["email": email, "password": password]
+            body: ["email": email, "password": password],
+            includeAuthorization: false
         )
+        guard authenticationAttemptGeneration == attemptGeneration,
+              credentialGeneration == startingCredentialGeneration else {
+            throw CancellationError()
+        }
         setToken(response.accessToken)
         return response
     }
@@ -62,7 +88,8 @@ final class Base44Client {
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/auth/register",
             method: "POST",
-            body: ["email": email, "password": password]
+            body: ["email": email, "password": password],
+            includeAuthorization: false
         )
     }
 
@@ -70,7 +97,8 @@ final class Base44Client {
         try await request(
             "/apps/\(Self.appID)/auth/verify-otp",
             method: "POST",
-            body: ["email": email, "otp_code": code]
+            body: ["email": email, "otp_code": code],
+            includeAuthorization: false
         )
     }
 
@@ -78,7 +106,8 @@ final class Base44Client {
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/auth/resend-otp",
             method: "POST",
-            body: ["email": email]
+            body: ["email": email],
+            includeAuthorization: false
         )
     }
 
@@ -86,7 +115,8 @@ final class Base44Client {
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/auth/reset-password-request",
             method: "POST",
-            body: ["email": email]
+            body: ["email": email],
+            includeAuthorization: false
         )
     }
 
@@ -94,7 +124,8 @@ final class Base44Client {
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/auth/reset-password",
             method: "POST",
-            body: ["reset_token": token, "new_password": newPassword]
+            body: ["reset_token": token, "new_password": newPassword],
+            includeAuthorization: false
         )
     }
 
@@ -128,29 +159,39 @@ final class Base44Client {
     }
 
     func checkSubscription() async throws -> SubscriptionStatus {
-        try await invokeFunction("checkSubscription", body: EmptyPayload())
+        try await invokeFunction(
+            "checkSubscription",
+            body: EmptyPayload(),
+            retryTransientFailures: true
+        )
     }
 
     func membership() async throws -> Membership {
         Membership(subscriptionStatus: try await checkSubscription())
     }
 
-    func prepareAppStorePurchase() async throws -> AppStorePurchaseContext {
+    func prepareAppStorePurchase(
+        accessToken: String? = nil
+    ) async throws -> AppStorePurchaseContext {
         try await invokeFunction(
             "app-store-entitlement",
-            body: ["action": "prepare"]
+            body: ["action": "prepare"],
+            authorizationToken: accessToken
         )
     }
 
     func syncAppStoreTransaction(
-        signedTransaction: String
+        signedTransaction: String,
+        accessToken: String? = nil
     ) async throws -> AppStoreEntitlementSyncResponse {
         try await invokeFunction(
             "app-store-entitlement",
             body: [
                 "action": "sync_transaction",
                 "signed_transaction": signedTransaction
-            ]
+            ],
+            authorizationToken: accessToken,
+            retryTransientFailures: true
         )
     }
 
@@ -443,12 +484,28 @@ final class Base44Client {
         guard let token, !token.isEmpty else {
             throw authenticationRequiredError()
         }
+
+        // Closing is terminal for this room, but it can be tapped while the
+        // last mode/duration mutation is still crossing the network. Wait for
+        // that serialized write before deleting. The backend leave operation
+        // is idempotent, so retrying a lost response cannot delete twice or
+        // turn an already-closed room into a user-visible error.
+        let operationCredentialGeneration = credentialGeneration
+        if let predecessor = roomMutationTails[room.id]?.task {
+            _ = try? await predecessor.value
+        }
+        try Task.checkCancellation()
+        guard credentialGeneration == operationCredentialGeneration,
+              self.token == token else {
+            throw CancellationError()
+        }
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/functions/gameRoomAction",
             method: "POST",
             body: GameRoomActionPayload(action: "leave_room", accessToken: token, roomID: room.id),
             includeAuthorization: false,
-            authenticationContextToken: token
+            authenticationContextToken: token,
+            retryTransientFailures: true
         )
     }
 
@@ -537,7 +594,8 @@ final class Base44Client {
             method: "POST",
             body: GameRoomActionPayload(action: "get_leaderboard", accessToken: token),
             includeAuthorization: false,
-            authenticationContextToken: token
+            authenticationContextToken: token,
+            retryTransientFailures: true
         )
         return response.entries
     }
@@ -560,7 +618,8 @@ final class Base44Client {
                 "spy_card_theme": spyCardTheme.rawValue,
                 "spy_card_accent": spyCardAccent.rawValue,
                 "spy_card_badge": spyCardBadge.rawValue
-            ]
+            ],
+            retryTransientFailures: true
         )
     }
 
@@ -568,7 +627,8 @@ final class Base44Client {
         try await request(
             "/apps/\(Self.appID)/entities/User/me",
             method: "PUT",
-            body: ["language": language.rawValue]
+            body: ["language": language.rawValue],
+            retryTransientFailures: true
         )
     }
 
@@ -695,7 +755,8 @@ final class Base44Client {
             method: "POST",
             body: payload,
             includeAuthorization: false,
-            authenticationContextToken: token
+            authenticationContextToken: token,
+            retryTransientFailures: Self.readOnlyCommunityActions.contains(action)
         )
     }
 
@@ -734,6 +795,7 @@ final class Base44Client {
 
         var request = URLRequest(url: url)
         request.httpMethod = "POST"
+        request.timeoutInterval = 30
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(Self.appBaseURL.absoluteString, forHTTPHeaderField: "Origin")
@@ -859,7 +921,8 @@ final class Base44Client {
         return try await request(
             "/apps/\(Self.appID)/entities/\(entity)",
             method: "GET",
-            query: parameters
+            query: parameters,
+            retryTransientFailures: true
         )
     }
 
@@ -875,8 +938,19 @@ final class Base44Client {
         let _: EmptyResponse = try await request("/apps/\(Self.appID)/entities/\(entity)/\(id)", method: "DELETE")
     }
 
-    private func invokeFunction<T: Decodable, Body: Encodable>(_ name: String, body: Body) async throws -> T {
-        try await request("/apps/\(Self.appID)/functions/\(name)", method: "POST", body: body)
+    private func invokeFunction<T: Decodable, Body: Encodable>(
+        _ name: String,
+        body: Body,
+        authorizationToken: String? = nil,
+        retryTransientFailures: Bool = false
+    ) async throws -> T {
+        try await request(
+            "/apps/\(Self.appID)/functions/\(name)",
+            method: "POST",
+            body: body,
+            authorizationToken: authorizationToken,
+            retryTransientFailures: retryTransientFailures
+        )
     }
 
     private func pushNotificationAction<T: Decodable>(
@@ -887,7 +961,9 @@ final class Base44Client {
             method: "POST",
             body: payload,
             includeAuthorization: false,
-            authenticationContextToken: payload.accessToken
+            authenticationContextToken: payload.accessToken,
+            enforceCurrentAuthentication: payload.action != "unregister_device",
+            retryTransientFailures: true
         )
     }
 
@@ -925,6 +1001,87 @@ final class Base44Client {
             throw authenticationRequiredError()
         }
 
+        let payload = GameRoomActionPayload(
+            action: action,
+            accessToken: token,
+            roomID: roomID,
+            roomCode: roomCode,
+            player: player,
+            mode: mode?.rawValue,
+            gameMode: gameMode?.rawValue,
+            gameDurationSeconds: gameDurationSeconds,
+            plan: plan,
+            rouletteTargetEmail: rouletteTargetEmail,
+            targetEmail: targetEmail,
+            guess: guess,
+            winner: winner
+        )
+
+        if Self.readOnlyRoomActions.contains(action) {
+            return try await performRoomAction(
+                payload,
+                retryTransientFailures: true
+            )
+        }
+
+        let key = RoomActionKey(
+            credentialGeneration: credentialGeneration,
+            action: action,
+            roomID: roomID,
+            roomCode: roomCode,
+            player: player,
+            mode: mode?.rawValue,
+            gameMode: gameMode?.rawValue,
+            gameDurationSeconds: gameDurationSeconds,
+            plan: plan,
+            rouletteTargetEmail: rouletteTargetEmail,
+            targetEmail: targetEmail,
+            guess: guess,
+            winner: winner
+        )
+        if let existing = inFlightRoomActions[key] {
+            return try await existing.value
+        }
+
+        // Every mutation for one room is serialized. Rapid slider updates and
+        // duplicate taps can otherwise overtake each other and make the older
+        // response overwrite newer state, or trigger avoidable 409 conflicts.
+        let serialKey = roomID
+            ?? roomCode.map { "code:\($0)" }
+            ?? "account:\(credentialGeneration)"
+        let predecessor = roomMutationTails[serialKey]?.task
+        let operationID = UUID()
+        let operationCredentialGeneration = credentialGeneration
+        let task = Task { @MainActor [weak self] () throws -> GameRoom in
+            if let predecessor {
+                _ = try? await predecessor.value
+            }
+            try Task.checkCancellation()
+            guard let self,
+                  self.credentialGeneration == operationCredentialGeneration,
+                  self.token == token else {
+                throw CancellationError()
+            }
+            return try await self.performRoomAction(payload)
+        }
+        inFlightRoomActions[key] = task
+        roomMutationTails[serialKey] = PendingRoomMutation(
+            id: operationID,
+            task: task
+        )
+        defer {
+            inFlightRoomActions.removeValue(forKey: key)
+            if roomMutationTails[serialKey]?.id == operationID {
+                roomMutationTails.removeValue(forKey: serialKey)
+            }
+        }
+        return try await task.value
+    }
+
+    private func performRoomAction(
+        _ payload: GameRoomActionPayload,
+        retryTransientFailures: Bool = false
+    ) async throws -> GameRoom {
         // Provider/SSO tokens are valid Base44 identity tokens, but the
         // functions gateway can reject them before the function runs. Pass
         // the token inside the encrypted HTTPS body, then let the backend
@@ -932,23 +1089,10 @@ final class Base44Client {
         return try await request(
             "/apps/\(Self.appID)/functions/gameRoomAction",
             method: "POST",
-            body: GameRoomActionPayload(
-                action: action,
-                accessToken: token,
-                roomID: roomID,
-                roomCode: roomCode,
-                player: player,
-                mode: mode?.rawValue,
-                gameMode: gameMode?.rawValue,
-                gameDurationSeconds: gameDurationSeconds,
-                plan: plan,
-                rouletteTargetEmail: rouletteTargetEmail,
-                targetEmail: targetEmail,
-                guess: guess,
-                winner: winner
-            ),
+            body: payload,
             includeAuthorization: false,
-            authenticationContextToken: token
+            authenticationContextToken: payload.accessToken,
+            retryTransientFailures: retryTransientFailures
         )
     }
 
@@ -975,7 +1119,8 @@ final class Base44Client {
                 words: words
             ),
             includeAuthorization: false,
-            authenticationContextToken: token
+            authenticationContextToken: token,
+            retryTransientFailures: action == "list"
         )
     }
 
@@ -1031,7 +1176,10 @@ final class Base44Client {
         query: [String: String] = [:],
         body: Body? = Optional<EmptyPayload>.none,
         includeAuthorization: Bool = true,
-        authenticationContextToken: String? = nil
+        authorizationToken: String? = nil,
+        authenticationContextToken: String? = nil,
+        enforceCurrentAuthentication: Bool = true,
+        retryTransientFailures: Bool = false
     ) async throws -> T {
         var components = URLComponents(url: Self.appBaseURL.appending(path: "/api\(path)"), resolvingAgainstBaseURL: false)!
         if !query.isEmpty {
@@ -1044,6 +1192,8 @@ final class Base44Client {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
+        request.timeoutInterval = 30
+        request.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(Self.appBaseURL.absoluteString, forHTTPHeaderField: "Origin")
@@ -1052,7 +1202,19 @@ final class Base44Client {
         // A best-effort request from a previous session can finish after the
         // user signs in again; that stale response must never clear the new
         // session token.
-        let requestToken = includeAuthorization ? token : nil
+        let requestToken = includeAuthorization
+            ? (authorizationToken ?? token)
+            : nil
+        if includeAuthorization, requestToken == nil {
+            throw authenticationRequiredError()
+        }
+        let requestAuthenticationToken = requestToken ?? authenticationContextToken
+        if enforceCurrentAuthentication,
+           let requestAuthenticationToken,
+           token != requestAuthenticationToken {
+            throw CancellationError()
+        }
+        let requestCredentialGeneration = credentialGeneration
         if let requestToken {
             request.setValue("Bearer \(requestToken)", forHTTPHeaderField: "Authorization")
         }
@@ -1060,36 +1222,146 @@ final class Base44Client {
             request.httpBody = try JSONEncoder.base44.encode(body)
         }
 
-        let (data, response) = try await session.data(for: request)
-        guard let http = response as? HTTPURLResponse else {
-            throw Base44Error(message: "Invalid API response.")
-        }
-
-        guard 200..<300 ~= http.statusCode else {
-            let apiError = try? JSONDecoder.base44.decode(APIErrorEnvelope.self, from: data)
-            Self.logger.error(
-                "HTTP failure status=\(http.statusCode, privacy: .public) method=\(method, privacy: .public) path=\(path, privacy: .public)"
-            )
-            let rejectedToken = requestToken ?? authenticationContextToken
-            if http.statusCode == 401,
-               !path.contains("/auth/"),
-               let rejectedToken,
-               token == rejectedToken {
-                clearToken()
-                unauthorizedHandler?()
+        let maximumAttempts = retryTransientFailures ? 3 : 1
+        var attempt = 1
+        while true {
+            try Task.checkCancellation()
+            if enforceCurrentAuthentication,
+               let requestAuthenticationToken,
+               (credentialGeneration != requestCredentialGeneration ||
+                token != requestAuthenticationToken) {
+                throw CancellationError()
             }
-            throw Base44Error(message: apiError?.resolvedMessage ?? "Base44 request failed.", statusCode: http.statusCode)
-        }
 
-        if T.self == EmptyResponse.self {
-            return EmptyResponse() as! T
-        }
+            let data: Data
+            let http: HTTPURLResponse
+            do {
+                let result = try await session.data(for: request)
+                guard let response = result.1 as? HTTPURLResponse else {
+                    throw Base44Error(message: "Invalid API response.")
+                }
+                data = result.0
+                http = response
+            } catch {
+                guard attempt < maximumAttempts,
+                      Self.isRetryableTransportError(error) else {
+                    throw error
+                }
+                try await Self.waitBeforeRetry(attempt: attempt)
+                attempt += 1
+                continue
+            }
 
-        if data.isEmpty {
-            throw Base44Error(message: "Empty API response.", statusCode: http.statusCode)
-        }
+            if attempt < maximumAttempts,
+               Self.isRetryableHTTPStatus(http.statusCode) {
+                try await Self.waitBeforeRetry(
+                    attempt: attempt,
+                    retryAfter: http.value(forHTTPHeaderField: "Retry-After")
+                )
+                attempt += 1
+                continue
+            }
 
-        return try JSONDecoder.base44.decode(T.self, from: data)
+            guard 200..<300 ~= http.statusCode else {
+                if enforceCurrentAuthentication,
+                   let requestAuthenticationToken,
+                   (credentialGeneration != requestCredentialGeneration ||
+                    token != requestAuthenticationToken) {
+                    // The response belongs to an account that has already
+                    // been replaced. Surface cancellation rather than a stale
+                    // 401 that an outer session-restoration caller could
+                    // mistake for proof against the new credential.
+                    throw CancellationError()
+                }
+                let apiError = try? JSONDecoder.base44.decode(APIErrorEnvelope.self, from: data)
+                Self.logger.error(
+                    "HTTP failure status=\(http.statusCode, privacy: .public) method=\(method, privacy: .public) path=\(path, privacy: .public)"
+                )
+                let rejectedToken = requestAuthenticationToken
+                if http.statusCode == 401,
+                   !path.contains("/auth/"),
+                   let rejectedToken,
+                   credentialGeneration == requestCredentialGeneration,
+                   token == rejectedToken {
+                    clearToken()
+                    unauthorizedHandler?()
+                }
+                throw Base44Error(
+                    message: apiError?.resolvedMessage ?? "Base44 request failed.",
+                    statusCode: http.statusCode
+                )
+            }
+
+            if enforceCurrentAuthentication,
+               let requestAuthenticationToken,
+               (credentialGeneration != requestCredentialGeneration ||
+                token != requestAuthenticationToken) {
+                throw CancellationError()
+            }
+
+            if T.self == EmptyResponse.self {
+                return EmptyResponse() as! T
+            }
+
+            if data.isEmpty {
+                if attempt < maximumAttempts {
+                    try await Self.waitBeforeRetry(attempt: attempt)
+                    attempt += 1
+                    continue
+                }
+                throw Base44Error(message: "Empty API response.")
+            }
+
+            do {
+                return try JSONDecoder.base44.decode(T.self, from: data)
+            } catch {
+                if attempt < maximumAttempts {
+                    try await Self.waitBeforeRetry(attempt: attempt)
+                    attempt += 1
+                    continue
+                }
+                Self.logger.error(
+                    "Decode failure method=\(method, privacy: .public) path=\(path, privacy: .public) bytes=\(data.count, privacy: .public)"
+                )
+                throw Base44Error(
+                    message: "The server returned an unreadable response."
+                )
+            }
+        }
+    }
+
+    private static func isRetryableHTTPStatus(_ statusCode: Int) -> Bool {
+        statusCode == 408 || statusCode == 425 || statusCode == 429 ||
+            (500...599).contains(statusCode)
+    }
+
+    private static func isRetryableTransportError(_ error: Error) -> Bool {
+        if error is CancellationError { return false }
+        guard let urlError = error as? URLError else { return false }
+        return [
+            .timedOut,
+            .cannotFindHost,
+            .cannotConnectToHost,
+            .networkConnectionLost,
+            .dnsLookupFailed,
+            .notConnectedToInternet,
+            .internationalRoamingOff,
+            .callIsActive,
+            .dataNotAllowed,
+            .secureConnectionFailed
+        ].contains(urlError.code)
+    }
+
+    private static func waitBeforeRetry(
+        attempt: Int,
+        retryAfter: String? = nil
+    ) async throws {
+        let serverDelay = retryAfter
+            .flatMap(Double.init)
+            .map { min(max($0, 0), 5) }
+        let exponentialDelay = min(0.35 * pow(2, Double(attempt - 1)), 2)
+        let delay = serverDelay ?? exponentialDelay
+        try await Task.sleep(for: .milliseconds(Int(delay * 1_000)))
     }
 }
 
@@ -1339,9 +1611,43 @@ struct Base44Error: LocalizedError {
     let message: String
     var statusCode: Int?
 
+    /// Only an explicit HTTP 401 proves that the stored Base44 credential is
+    /// invalid. Network failures, 5xx responses, decoding errors, and 403
+    /// authorization denials must preserve the session for a later retry.
+    var invalidatesSession: Bool {
+        statusCode == 401
+    }
+
+    var isTransientHTTPFailure: Bool {
+        guard let statusCode else { return false }
+        return statusCode == 408 || statusCode == 425 || statusCode == 429 ||
+            (500...599).contains(statusCode)
+    }
+
     var errorDescription: String? {
         statusCode.map { "\(message) [\($0)]" } ?? message
     }
+}
+
+private struct RoomActionKey: Hashable {
+    let credentialGeneration: UInt64
+    let action: String
+    let roomID: String?
+    let roomCode: String?
+    let player: Player?
+    let mode: String?
+    let gameMode: String?
+    let gameDurationSeconds: Int?
+    let plan: StartGamePayload?
+    let rouletteTargetEmail: String?
+    let targetEmail: String?
+    let guess: String?
+    let winner: String?
+}
+
+private struct PendingRoomMutation {
+    let id: UUID
+    let task: Task<GameRoom, Error>
 }
 
 struct GameStartPlan: Hashable {

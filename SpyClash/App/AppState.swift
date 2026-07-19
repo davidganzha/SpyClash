@@ -87,7 +87,13 @@ final class AppState: NSObject {
                     userID: user.id
                 )
             }
-            PushNotificationCoordinator.shared.accountDidChange(isSignedIn: user != nil)
+            // A profile object alone is not an authenticated push session.
+            // Starting APNs/ActivityKit registration before the access token
+            // exists can manufacture a local 401 and clear an otherwise valid
+            // auth transition (including provider handoff and debug previews).
+            PushNotificationCoordinator.shared.accountDidChange(
+                isSignedIn: user != nil && client.hasSessionToken
+            )
             synchronizeLiveActivitiesForAccountChange(previousUserID: previousUserID)
         }
     }
@@ -120,9 +126,11 @@ final class AppState: NSObject {
             PushNotificationCoordinator.shared.updatePreferredLocale(language.rawValue)
         }
     }
+    private(set) var isSynchronizingLanguage = false
     var pendingJoinCode: String?
     var deepLinkStatus: String?
     var isJoiningDeepLink = false
+    private(set) var isJoiningRoom = false
 #if DEBUG
     var isUIPreviewMode = false
 #endif
@@ -141,6 +149,7 @@ final class AppState: NSObject {
     @ObservationIgnored private var liveActivityPushToStartTokenTask: Task<Void, Never>?
     @ObservationIgnored private var liveActivityLifecycleTask: Task<Void, Never>?
     @ObservationIgnored private var pendingMatchRoomID: String?
+    @ObservationIgnored private var isOpeningPendingMatch = false
     private static let activeRoomIDStorageKey = "spyclash.activeRoomID"
 
     override init() {
@@ -218,7 +227,7 @@ final class AppState: NSObject {
             reconcileLanguagePreference(with: user?.language)
             await synchronizeCommerceAccess()
             await restoreActiveRoomIfPossible()
-        } catch {
+        } catch let error as Base44Error where error.invalidatesSession {
             client.clearToken()
             KeychainStore.clearToken()
             user = nil
@@ -226,6 +235,14 @@ final class AppState: NSObject {
             membershipOwnerUserID = nil
             membershipSyncState = .unknown
             clearStoredActiveRoom()
+        } catch is CancellationError {
+            isRestoring = false
+            return
+        } catch {
+            // A transport, server, or decoding failure does not prove that the
+            // credential is invalid. Preserve it so a temporary outage cannot
+            // turn into a cascade of unauthenticated requests on next launch.
+            authError = error.localizedDescription
         }
 
         isRestoring = false
@@ -361,6 +378,10 @@ final class AppState: NSObject {
             try? await Task.sleep(for: completionHold)
 
             await revealHomeAfterAppleAuth()
+        } catch is CancellationError {
+            appleAuthStage = nil
+            authHomeRevealPhase = .idle
+            return
         } catch {
             appleAuthStage = nil
             authHomeRevealPhase = .idle
@@ -430,6 +451,9 @@ final class AppState: NSObject {
 
                     do {
                         try await self.acceptProviderToken(token, cinematic: .standard)
+                    } catch is CancellationError {
+                        continuation.resume()
+                        return
                     } catch {
                         self.authError = error.localizedDescription
                         HapticManager.shared.fire(.notification(.error))
@@ -486,8 +510,13 @@ final class AppState: NSObject {
                 }
             }
         } catch {
-            client.clearToken()
-            KeychainStore.clearToken()
+            // A slower provider attempt can be cancelled after a newer login
+            // has already installed its credential. Never let that stale
+            // failure erase the replacement account.
+            if client.currentAccessToken == token {
+                client.clearToken()
+                KeychainStore.clearToken()
+            }
             throw error
         }
     }
@@ -668,6 +697,14 @@ final class AppState: NSObject {
         standardAuthTimelineTask?.cancel()
         standardAuthTimelineTask = nil
         standardAuthRunID = nil
+        webAuthSession?.cancel()
+        webAuthSession = nil
+        commerceActivationSyncTask?.cancel()
+        commerceActivationSyncTask = nil
+        membershipRealtimeRefreshTask?.cancel()
+        membershipRealtimeRefreshTask = nil
+        membershipExpiryTask?.cancel()
+        membershipExpiryTask = nil
         if playFeedback {
             HapticManager.shared.fire(.notification(.success))
         }
@@ -693,6 +730,8 @@ final class AppState: NSObject {
         pendingMatchRoomID = nil
         deepLinkStatus = nil
         isJoiningDeepLink = false
+        isJoiningRoom = false
+        isOpeningPendingMatch = false
     }
 
     private func revealHomeAfterAppleAuth() async {
@@ -729,14 +768,33 @@ final class AppState: NSObject {
     }
 
     func setLanguage(_ newLanguage: AppLanguage, syncRemote: Bool = true) async throws {
+        guard !isSynchronizingLanguage || !syncRemote else {
+            throw Base44Error(message: "Language synchronization is already in progress.", statusCode: nil)
+        }
+        let previousLanguage = language
+        let requestedUserID = user?.id
         language = newLanguage
         newLanguage.persist()
 
-        guard syncRemote, user != nil else {
+        guard syncRemote, let requestedUserID else {
             return
         }
 
-        user = try await client.updateLanguage(newLanguage)
+        isSynchronizingLanguage = true
+        defer { isSynchronizingLanguage = false }
+
+        do {
+            let updatedUser = try await client.updateLanguage(newLanguage)
+            try Task.checkCancellation()
+            guard user?.id == requestedUserID else { throw CancellationError() }
+            user = updatedUser
+        } catch {
+            if user?.id == requestedUserID, language == newLanguage {
+                language = previousLanguage
+                previousLanguage.persist()
+            }
+            throw error
+        }
     }
 
     func refreshSubscription() async {
@@ -801,19 +859,50 @@ final class AppState: NSObject {
     }
 
     func synchronizeCommerceAccessOnActivation() {
-        guard user != nil,
-              !isRestoring,
+        guard !isRestoring,
               !shouldUsePreviewData,
-              commerceActivationSyncTask == nil else {
+              commerceActivationSyncTask == nil,
+              user != nil || client.hasSessionToken else {
             return
         }
-
-        membershipRealtime.resume()
 
         commerceActivationSyncTask = Task { @MainActor [weak self] in
             guard let self else { return }
             defer { self.commerceActivationSyncTask = nil }
+
+            // A launch-time transport/5xx failure preserves the credential but
+            // cannot populate `user`. Recover that exact session on the next
+            // activation before any membership, room, route, push, or realtime
+            // work is allowed to run. A real 401 still clears the same token in
+            // Base44Client and never enters this path again.
+            if self.user == nil {
+                do {
+                    let restoredUser = try await self.client.currentUser()
+                    try Task.checkCancellation()
+                    guard self.client.hasSessionToken else { return }
+                    self.user = restoredUser
+                    self.reconcileLanguagePreference(with: restoredUser.language)
+                    self.authError = nil
+                } catch is CancellationError {
+                    return
+                } catch {
+                    // Keep the valid credential for another activation retry.
+                    // The app must not manufacture an unauthenticated cascade
+                    // from a transient recovery failure.
+                    self.authError = error.localizedDescription
+                    return
+                }
+            }
+
+            guard self.user != nil else { return }
+            self.membershipRealtime.resume()
             await self.synchronizeCommerceAccess()
+            if self.activeRoom == nil,
+               !self.isJoiningRoom,
+               !self.isJoiningDeepLink {
+                await self.restoreActiveRoomIfPossible()
+            }
+            await self.consumePendingRoutesIfPossible()
         }
     }
 
@@ -884,6 +973,8 @@ final class AppState: NSObject {
 
     @discardableResult
     func joinRoom(code rawCode: String) async -> Bool {
+        guard !isJoiningRoom else { return false }
+
         guard let user else {
             pendingJoinCode = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
             deepLinkStatus = language.auth.signInToJoin(pendingJoinCode)
@@ -896,8 +987,17 @@ final class AppState: NSObject {
             return false
         }
 
+        isJoiningRoom = true
+        defer { isJoiningRoom = false }
+
         do {
-            activeRoom = try await client.join(code: code, user: user)
+            let room = try await client.join(code: code, user: user)
+            // `join_room` is a server mutation and may already have committed
+            // when a presenting QR sheet disappears. Reconcile the successful
+            // response even if that UI task was cancelled; otherwise other
+            // players see a ghost member while this device stays outside.
+            guard self.user?.id == user.id else { return false }
+            activeRoom = room
             selectedTab = .game
             shellRoute = .main
             presentedSheet = nil
@@ -905,6 +1005,8 @@ final class AppState: NSObject {
             deepLinkStatus = language.home.roomReady(code)
             HapticManager.shared.fire(.milestone)
             return true
+        } catch is CancellationError {
+            return false
         } catch {
             deepLinkStatus = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
@@ -975,23 +1077,42 @@ final class AppState: NSObject {
         guard let user else { return }
 
         if activeRoom?.id == roomID {
-            pendingMatchRoomID = nil
+            clearPendingMatchRoute(ifMatching: roomID)
             selectedTab = .game
             shellRoute = .main
             presentedSheet = nil
             return
         }
 
-        guard let room = try? await client.refreshRoom(id: roomID),
-              room.playersList.contains(where: { $0.email == user.email }) else {
-            pendingMatchRoomID = nil
+        do {
+            guard let room = try await client.refreshRoom(id: roomID) else {
+                clearPendingMatchRoute(ifMatching: roomID)
+                return
+            }
+            try Task.checkCancellation()
+            guard pendingMatchRoomID == roomID else { return }
+            guard room.playersList.contains(where: { $0.email == user.email }) else {
+                clearPendingMatchRoute(ifMatching: roomID)
+                return
+            }
+            clearPendingMatchRoute(ifMatching: roomID)
+            activeRoom = room
+            selectedTab = .game
+            shellRoute = .main
+            presentedSheet = nil
+        } catch is CancellationError {
             return
+        } catch {
+            // Keep the route armed after a transient refresh failure. The app
+            // activation path will retry it instead of silently losing the tap.
+            guard pendingMatchRoomID == roomID else { return }
+            deepLinkStatus = error.localizedDescription.uppercased()
         }
+    }
+
+    private func clearPendingMatchRoute(ifMatching roomID: String) {
+        guard pendingMatchRoomID == roomID else { return }
         pendingMatchRoomID = nil
-        activeRoom = room
-        selectedTab = .game
-        shellRoute = .main
-        presentedSheet = nil
     }
 
     private func handleNotificationRoute(_ route: SpyNotificationRoute) {
@@ -1019,7 +1140,9 @@ final class AppState: NSObject {
 
     @discardableResult
     func consumePendingJoinIfPossible() async -> Bool {
-        guard user != nil, let code = pendingJoinCode else {
+        guard user != nil,
+              !isJoiningDeepLink,
+              let code = pendingJoinCode else {
             return false
         }
 
@@ -1036,10 +1159,19 @@ final class AppState: NSObject {
     private func consumePendingMatchRouteIfPossible() async {
         guard user != nil,
               !isRestoring,
-              let roomID = pendingMatchRoomID else {
+              !isOpeningPendingMatch,
+              pendingMatchRoomID != nil else {
             return
         }
-        await openMatchFromLiveActivity(roomID: roomID)
+        isOpeningPendingMatch = true
+        defer { isOpeningPendingMatch = false }
+
+        while !Task.isCancelled, let roomID = pendingMatchRoomID {
+            await openMatchFromLiveActivity(roomID: roomID)
+            // A transient failure intentionally keeps this exact route armed;
+            // retry it on activation rather than spinning indefinitely here.
+            if pendingMatchRoomID == roomID { return }
+        }
     }
 
     private func performAuth(_ operation: @escaping () async throws -> Void) async {
@@ -1051,6 +1183,8 @@ final class AppState: NSObject {
 
         do {
             try await operation()
+        } catch is CancellationError {
+            return
         } catch {
             authError = error.localizedDescription
             HapticManager.shared.fire(.notification(.error))
@@ -1063,15 +1197,29 @@ final class AppState: NSObject {
             return
         }
 
-        guard let room = try? await client.refreshRoom(id: roomID),
-              ["waiting", "ready_voting", "roulette", "playing"].contains(room.normalizedStatus),
-              room.playersList.contains(where: { $0.email == user.email }) else {
-            clearStoredActiveRoom()
-            return
-        }
+        do {
+            guard let room = try await client.refreshRoom(id: roomID) else {
+                clearStoredActiveRoom()
+                return
+            }
+            try Task.checkCancellation()
+            guard self.user?.id == user.id else { return }
+            guard ["waiting", "ready_voting", "roulette", "playing"].contains(room.normalizedStatus),
+                  room.playersList.contains(where: { $0.email == user.email }) else {
+                clearStoredActiveRoom()
+                return
+            }
 
-        activeRoom = room
-        selectedTab = .game
+            activeRoom = room
+            selectedTab = .game
+        } catch is CancellationError {
+            return
+        } catch {
+            // Preserve the stored room reference during a temporary outage.
+            // `refreshRoom` returns nil only for a confirmed 404, handled
+            // above; transport/5xx/decoding failures should be retried later.
+            deepLinkStatus = error.localizedDescription.uppercased()
+        }
     }
 
     private func synchronizeLiveActivitiesForAccountChange(previousUserID: String?) {

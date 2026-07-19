@@ -737,6 +737,7 @@ private struct PullDownCommandMenu: View {
 
 private struct CompactCommandMenuPanel: View {
     @Environment(AppState.self) private var appState
+    @State private var pendingLanguage: AppLanguage?
 
     let progress: CGFloat
     let topInset: CGFloat
@@ -999,9 +1000,21 @@ private struct CompactCommandMenuPanel: View {
 
     private func languageChip(_ language: AppLanguage) -> some View {
         Button {
+            guard appState.language != language,
+                  pendingLanguage == nil,
+                  !appState.isSynchronizingLanguage else { return }
             HapticManager.shared.fire(.buttonPress)
+            pendingLanguage = language
             Task {
-                try? await appState.setLanguage(language, syncRemote: appState.user != nil)
+                defer { pendingLanguage = nil }
+                do {
+                    try await appState.setLanguage(language, syncRemote: appState.user != nil)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    appState.deepLinkStatus = error.localizedDescription.uppercased()
+                    HapticManager.shared.fire(.notification(.error))
+                }
             }
         } label: {
             Text(language.shortCode)
@@ -1013,6 +1026,7 @@ private struct CompactCommandMenuPanel: View {
                 .overlay(CutCornerShape(cut: 4).stroke(appState.language == language ? SpyTheme.red : SpyTheme.inputBorder, lineWidth: 1))
         }
         .buttonStyle(SpyWebPressStyle())
+        .disabled(pendingLanguage != nil || appState.isSynchronizingLanguage)
     }
 
     private func menuRow(
@@ -1448,6 +1462,7 @@ private struct WebMenuTopBar: View {
 
 private struct WebCommandMenuPanel: View {
     @Environment(AppState.self) private var appState
+    @State private var pendingLanguage: AppLanguage?
 
     let progress: CGFloat
     let close: () -> Void
@@ -1624,10 +1639,21 @@ private struct WebCommandMenuPanel: View {
 
     private func languageButton(_ language: AppLanguage) -> some View {
         Button {
-            guard appState.language != language else { return }
+            guard appState.language != language,
+                  pendingLanguage == nil,
+                  !appState.isSynchronizingLanguage else { return }
             HapticManager.shared.fire(.tabSelection)
+            pendingLanguage = language
             Task {
-                try? await appState.setLanguage(language, syncRemote: appState.user != nil)
+                defer { pendingLanguage = nil }
+                do {
+                    try await appState.setLanguage(language, syncRemote: appState.user != nil)
+                } catch is CancellationError {
+                    return
+                } catch {
+                    appState.deepLinkStatus = error.localizedDescription.uppercased()
+                    HapticManager.shared.fire(.notification(.error))
+                }
             }
         } label: {
             Text(language.shortCode)
@@ -1641,6 +1667,7 @@ private struct WebCommandMenuPanel: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle())
+        .disabled(pendingLanguage != nil || appState.isSynchronizingLanguage)
     }
 
     private var footerProgress: CGFloat {

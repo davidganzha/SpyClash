@@ -942,6 +942,7 @@ struct PricingView: View {
     }
 
     private func performPrimaryAction() async {
+        guard !isBusy else { return }
         if appState.hasLimitlessAccess {
             await refreshAccess(showResult: true)
         } else if appState.membershipTier == .free {
@@ -952,6 +953,7 @@ struct PricingView: View {
     }
 
     private func refreshAccess(showResult: Bool) async {
+        guard !isBusy else { return }
         isRefreshingAccess = true
         if showResult {
             statusText = ""
@@ -994,6 +996,7 @@ struct PricingView: View {
     }
 
     private func purchaseLimitless() async {
+        guard !isBusy else { return }
         statusText = ""
         statusKind = nil
 
@@ -1051,6 +1054,7 @@ struct PricingView: View {
     }
 
     private func restorePurchases() async {
+        guard !isBusy else { return }
         statusText = ""
         statusKind = nil
 
@@ -1090,6 +1094,7 @@ struct PricingView: View {
     }
 
     private func manageSubscription() async {
+        guard !isBusy else { return }
         statusText = ""
         statusKind = nil
         isRefreshingAccess = true

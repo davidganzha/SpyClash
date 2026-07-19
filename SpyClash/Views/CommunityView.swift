@@ -19,6 +19,7 @@ struct CommunityView: View {
     @State private var commentDraft = ""
     @State private var isInitialLoading = true
     @State private var isDirectoryLoading = false
+    @State private var directoryRequestID: UUID?
     @State private var isProfileLoading = false
     @State private var didLoadInitialContent = false
     @State private var activeAction: String?
@@ -985,9 +986,12 @@ struct CommunityView: View {
         HapticManager.shared.fire(.tabSelection)
         switch tab {
         case .exit:
+            profileRequestID = nil
             onExit()
         case .network:
             selectedTab = .network
+            profileRequestID = nil
+            isProfileLoading = false
             activeProfile = nil
             profileHistory.removeAll()
             commentDraft = ""
@@ -1044,12 +1048,21 @@ struct CommunityView: View {
     }
 
     private func loadDirectory(reset: Bool, offset: Int = 0) async {
-        guard !isDirectoryLoading else { return }
+        if !reset {
+            guard !isDirectoryLoading else { return }
+        }
+        let requestedQuery = query
+        let requestID = UUID()
+        directoryRequestID = requestID
         isDirectoryLoading = true
-        defer { isDirectoryLoading = false }
+        defer {
+            if directoryRequestID == requestID {
+                isDirectoryLoading = false
+            }
+        }
 
         if appState.shouldUsePreviewData {
-            let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            let normalized = requestedQuery.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
             directory = CommunityPreview.directory.filter { profile in
                 profile.id != CommunityPreview.night.id &&
                     (
@@ -1063,7 +1076,10 @@ struct CommunityView: View {
         }
 
         do {
-            let page = try await appState.client.communityDirectory(query: query, offset: offset)
+            let page = try await appState.client.communityDirectory(query: requestedQuery, offset: offset)
+            try Task.checkCancellation()
+            guard directoryRequestID == requestID,
+                  query == requestedQuery else { return }
             if reset {
                 directory = page.profiles
             } else {
@@ -1074,6 +1090,7 @@ struct CommunityView: View {
         } catch is CancellationError {
             return
         } catch {
+            guard !isCancellation(error), directoryRequestID == requestID else { return }
             showError(error)
         }
     }
@@ -1138,6 +1155,8 @@ struct CommunityView: View {
         if let previousID = profileHistory.popLast() {
             await openProfile(previousID, rememberingCurrent: false)
         } else {
+            profileRequestID = nil
+            isProfileLoading = false
             activeProfile = nil
             selectedTab = .network
         }
@@ -1149,7 +1168,17 @@ struct CommunityView: View {
             activeProfile = CommunityPreview.profile(userID: userID, viewerID: network?.me.id)
             return
         }
-        activeProfile = try? await appState.client.communityProfile(userID: userID)
+        do {
+            let refreshed = try await appState.client.communityProfile(userID: userID)
+            try Task.checkCancellation()
+            guard activeProfile?.profile.id == userID else { return }
+            profileCache[userID] = refreshed
+            activeProfile = refreshed
+        } catch is CancellationError {
+            return
+        } catch {
+            showError(error)
+        }
     }
 
     private func sendFriendRequest(to userID: String) async {

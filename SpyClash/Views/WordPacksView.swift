@@ -326,6 +326,7 @@ struct WordPacksView: View {
     }
 
     private func load() async {
+        guard !isLoading else { return }
         if appState.shouldUsePreviewData {
             packs = WordPack.previewPacks
             status = ""
@@ -337,18 +338,25 @@ struct WordPacksView: View {
         isLoading = true
         defer { isLoading = false }
         do {
-            packs = try await appState.client.wordPacks(ownerEmail: email)
+            let loadedPacks = try await appState.client.wordPacks(ownerEmail: email)
+            try Task.checkCancellation()
+            guard appState.user?.email == email else { return }
+            packs = loadedPacks
             status = ""
+        } catch is CancellationError {
+            return
         } catch {
             status = error.localizedDescription.uppercased()
         }
     }
 
     private func delete(_ pack: WordPack) async {
+        guard deletingID == nil else { return }
         deletingID = pack.id
         defer { deletingID = nil }
         do {
             try await appState.client.deleteWordPack(id: pack.id)
+            try Task.checkCancellation()
             withAnimation(SpyMotion.page) {
                 packs.removeAll { $0.id == pack.id }
             }
@@ -356,6 +364,8 @@ struct WordPacksView: View {
             showDeleteConfirmation = false
             status = ""
             HapticManager.shared.fire(.notification(.success))
+        } catch is CancellationError {
+            return
         } catch {
             showDeleteConfirmation = false
             status = error.localizedDescription.uppercased()
@@ -807,8 +817,11 @@ private struct WordPackEditorSheet: View {
                     ownerEmail: email
                 )
             }
+            try Task.checkCancellation()
             HapticManager.shared.fire(.milestone)
             dismiss()
+        } catch is CancellationError {
+            return
         } catch {
             setStatus(error.localizedDescription.uppercased(), kind: .error)
             HapticManager.shared.fire(.notification(.error))
@@ -836,6 +849,7 @@ private struct WordPackEditorSheet: View {
 
         do {
             let generated = try await appState.client.generateWordPack(theme: cleanAITheme, count: aiCount)
+            try Task.checkCancellation()
             captureAIAllowance(from: generated)
             apply(generated)
             setStatus(
@@ -847,6 +861,8 @@ private struct WordPackEditorSheet: View {
                 kind: .success
             )
             HapticManager.shared.fire(.milestone)
+        } catch is CancellationError {
+            return
         } catch {
             setStatus(error.localizedDescription.uppercased(), kind: .error)
             HapticManager.shared.fire(.notification(.error))

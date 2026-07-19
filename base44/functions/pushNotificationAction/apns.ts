@@ -11,6 +11,30 @@ export type APNsResult = {
 let cachedJWT: { value: string; expiresAt: number; identity: string } | null =
   null;
 
+/**
+ * Push transport is the final boundary before an APNs payload leaves our
+ * service. Keep notifications silent even if a future event builder (or a
+ * retried stored payload) accidentally includes `aps.sound`.
+ *
+ * The JSON round-trip intentionally mirrors APNs serialization and guarantees
+ * that the caller-owned payload is never mutated.
+ */
+export function withoutNotificationSound(
+  payload: Record<string, unknown>,
+): Record<string, unknown> {
+  const sanitized = JSON.parse(JSON.stringify(payload ?? {})) as Record<
+    string,
+    unknown
+  >;
+  if (
+    sanitized.aps && typeof sanitized.aps === "object" &&
+    !Array.isArray(sanitized.aps)
+  ) {
+    delete (sanitized.aps as Record<string, unknown>).sound;
+  }
+  return sanitized;
+}
+
 async function providerJWT(now = new Date()): Promise<string> {
   const keyID = clean(Deno.env.get("APNS_KEY_ID"));
   const teamID = clean(Deno.env.get("APNS_TEAM_ID"));
@@ -92,7 +116,7 @@ export async function sendAlertPush(input: {
           "content-type": "application/json",
         },
         signal: AbortSignal.timeout(8_000),
-        body: JSON.stringify(input.payload),
+        body: JSON.stringify(withoutNotificationSound(input.payload)),
       },
     );
   } catch {
@@ -187,7 +211,7 @@ export async function sendLiveActivityPush(input: {
           "content-type": "application/json",
         },
         signal: AbortSignal.timeout(8_000),
-        body: JSON.stringify(input.payload),
+        body: JSON.stringify(withoutNotificationSound(input.payload)),
       },
     );
     if (response.status === 200) {
