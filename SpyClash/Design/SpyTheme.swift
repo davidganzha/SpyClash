@@ -508,6 +508,115 @@ struct SpyWebSlider: View {
 
 }
 
+struct SpyPoolExpansionPicker: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Binding var additionalWords: Double
+
+    let range: ClosedRange<Double>
+    let currentPoolCount: Int
+    let poolLimit: Int
+    let title: String
+    let poolProgressTitle: String
+    let confirmTitle: (Int) -> String
+    let loadingTitle: (Int) -> String
+    let closeAccessibilityLabel: String
+    let accessibilityPrefix: String
+    let isLoading: Bool
+    let onClose: () -> Void
+    let onConfirm: (Int) -> Void
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 13) {
+            HStack(alignment: .top, spacing: 10) {
+                VStack(alignment: .leading, spacing: 6) {
+                    Text(title)
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .tracking(0.08)
+                        .foregroundStyle(SpyTheme.red)
+                        .spyKicker()
+
+                    Text("\(poolProgressTitle) · \(currentPoolCount) → ≤\(projectedPoolCount) / \(poolLimit)")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(0.02)
+                        .foregroundStyle(SpyTheme.dim)
+                        .spyFitted(lines: 2, scale: 0.58)
+                }
+
+                Spacer(minLength: 8)
+
+                Text("+\(selectedCount)")
+                    .font(.system(size: 23, weight: .black, design: .monospaced))
+                    .tracking(0.04)
+                    .foregroundStyle(SpyTheme.red)
+                    .contentTransition(.numericText())
+                    .accessibilityLabel("+\(selectedCount)")
+
+                Button(action: onClose) {
+                    Image(systemName: "xmark")
+                        .font(.system(size: 12, weight: .black))
+                        .foregroundStyle(SpyTheme.dim)
+                        .frame(width: 28, height: 28)
+                        .background(Color.white.opacity(0.04), in: Circle())
+                        .overlay(Circle().stroke(SpyTheme.strokeStrong, lineWidth: 1))
+                }
+                .buttonStyle(SpyWebPressStyle())
+                .spyHitTarget()
+                .disabled(isLoading)
+                .opacity(isLoading ? 0.42 : 1)
+                .accessibilityLabel(closeAccessibilityLabel)
+                .accessibilityIdentifier("\(accessibilityPrefix).close")
+            }
+
+            SpyWebSlider(
+                value: $additionalWords,
+                range: range,
+                step: 1,
+                accent: SpyTheme.red,
+                accessibilityIdentifier: "\(accessibilityPrefix).slider"
+            )
+            .disabled(isLoading || range.lowerBound == range.upperBound)
+
+            Button {
+                onConfirm(selectedCount)
+            } label: {
+                if isLoading {
+                    SpyLoadingLabel(title: loadingTitle(selectedCount), accent: .white)
+                        .frame(height: 50)
+                } else {
+                    SpyActionLabel(
+                        title: confirmTitle(selectedCount),
+                        systemImage: "plus.circle.fill",
+                        fontSize: 10.5,
+                        iconSize: 13,
+                        tracking: 0.02,
+                        lines: 2
+                    )
+                }
+            }
+            .buttonStyle(SpyButtonStyle(variant: .red))
+            .disabled(isLoading)
+            .accessibilityIdentifier("\(accessibilityPrefix).confirm")
+        }
+        .padding(13)
+        .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 9))
+        .overlay(
+            CutCornerShape(cut: 9)
+                .stroke(SpyTheme.red.opacity(0.72), lineWidth: 1)
+        )
+        .shadow(color: SpyTheme.red.opacity(0.10), radius: 14, y: 8)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.20), value: selectedCount)
+    }
+
+    private var selectedCount: Int {
+        let rounded = Int(additionalWords.rounded())
+        return min(max(rounded, Int(range.lowerBound)), Int(range.upperBound))
+    }
+
+    private var projectedPoolCount: Int {
+        min(poolLimit, currentPoolCount + selectedCount)
+    }
+}
+
 private struct SpyNativeSlider: UIViewRepresentable {
     @Binding var value: Double
 

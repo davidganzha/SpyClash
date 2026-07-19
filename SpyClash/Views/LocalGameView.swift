@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LocalGameView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     @State private var players = ["", ""]
     @State private var avatars = ["🕵️", "👤"]
@@ -17,6 +18,8 @@ struct LocalGameView: View {
     @State private var status = ""
     @State private var isGenerating = false
     @State private var isExpandingLocalThemePool = false
+    @State private var isChoosingLocalPoolExpansion = false
+    @State private var localPoolExpansionCount = 50.0
     @State private var isSavingGeneratedPack = false
     @State private var localThemeError = ""
     @State private var localWordCountMode = LocalWordCountMode.recommended
@@ -728,13 +731,8 @@ struct LocalGameView: View {
     @ViewBuilder
     private var localIntelGeneratedPackControls: some View {
         if localHasCustomTheme && localThemeAnalyzed {
-            localWordsSlider
+            localGeneratedPoolControls
                 .transition(.opacity.combined(with: .move(edge: .top)))
-
-            if localThemeMaxWords < localThemeGenerationLimit {
-                localAddMoreWordsButton
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
         }
 
         if localShouldShowPoolPreview {
@@ -877,6 +875,7 @@ struct LocalGameView: View {
         localThemeRequestID = UUID()
         isGenerating = false
         isExpandingLocalThemePool = false
+        isChoosingLocalPoolExpansion = false
         generatedPack = nil
         localThemeError = ""
         localPoolExpanded = false
@@ -1113,30 +1112,124 @@ struct LocalGameView: View {
         )
     }
 
-    private var localAddMoreWordsButton: some View {
-        Button {
-            Task { await pushLocalThemeMax() }
-        } label: {
-            if isExpandingLocalThemePool {
-                SpyLoadingLabel(
-                    title: localized(en: "ADDING WORDS", ru: "ДОБАВЛЯЕМ СЛОВА", es: "ANADIENDO PALABRAS"),
-                    accent: SpyTheme.amber
-                )
-                .frame(height: 50)
+    private var localGeneratedPoolControls: some View {
+        Group {
+            if isChoosingLocalPoolExpansion, localPoolExpansionMaximum > 0 {
+                localPoolExpansionPicker
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        )
+                    )
             } else {
-                SpyActionLabel(
-                    title: localized(en: "EXPAND POOL · +50", ru: "РАСШИРИТЬ ПУЛ · +50", es: "AMPLIAR BANCO · +50"),
-                    systemImage: "plus.circle.fill",
-                    fontSize: 10.5,
-                    iconSize: 13,
-                    tracking: 0.02,
-                    lines: 2
+                VStack(alignment: .leading, spacing: 12) {
+                    localWordsSlider
+
+                    if localThemeMaxWords < localThemeGenerationLimit {
+                        localAddMoreWordsButton
+                    }
+                }
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .leading).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    )
                 )
             }
+        }
+        .animation(
+            reduceMotion ? nil : .smooth(duration: 0.28),
+            value: isChoosingLocalPoolExpansion
+        )
+    }
+
+    private var localPoolExpansionPicker: some View {
+        SpyPoolExpansionPicker(
+            additionalWords: $localPoolExpansionCount,
+            range: Double(localPoolExpansionMinimum)...Double(localPoolExpansionMaximum),
+            currentPoolCount: localThemeMaxWords,
+            poolLimit: localThemeGenerationLimit,
+            title: localized(en: "EXPAND POOL", ru: "РАСШИРИТЬ ПУЛ", es: "AMPLIAR BANCO"),
+            poolProgressTitle: localized(
+                en: "PROJECTED POOL",
+                ru: "ПРОГНОЗ ПУЛА",
+                es: "BANCO ESTIMADO"
+            ),
+            confirmTitle: { count in
+                localized(
+                    en: "ADD UP TO +\(count) WORDS",
+                    ru: "ДОБАВИТЬ ДО +\(count) СЛОВ",
+                    es: "ANADIR HASTA +\(count) PALABRAS"
+                )
+            },
+            loadingTitle: { count in
+                localized(
+                    en: "ADDING UP TO +\(count) WORDS",
+                    ru: "ДОБАВЛЯЕМ ДО +\(count) СЛОВ",
+                    es: "ANADIENDO HASTA +\(count) PALABRAS"
+                )
+            },
+            closeAccessibilityLabel: localized(
+                en: "Close pool expansion",
+                ru: "Закрыть расширение пула",
+                es: "Cerrar ampliacion del banco"
+            ),
+            accessibilityPrefix: "localGame.poolExpansion",
+            isLoading: isExpandingLocalThemePool,
+            onClose: closeLocalPoolExpansion,
+            onConfirm: beginLocalPoolExpansion
+        )
+    }
+
+    private var localPoolExpansionMaximum: Int {
+        min(100, max(localThemeGenerationLimit - localThemeMaxWords, 0))
+    }
+
+    private var localPoolExpansionMinimum: Int {
+        min(5, localPoolExpansionMaximum)
+    }
+
+    private var localAddMoreWordsButton: some View {
+        Button {
+            openLocalPoolExpansion()
+        } label: {
+            SpyActionLabel(
+                title: localAddMoreWordsLabel,
+                systemImage: "plus.circle.fill",
+                fontSize: 10.5,
+                iconSize: 13,
+                tracking: 0.02,
+                lines: 2
+            )
         }
         .buttonStyle(SpyButtonStyle(variant: .outline))
         .disabled(isGenerating || localThemeMaxWords >= localThemeGenerationLimit)
         .accessibilityIdentifier("localGame.addMoreThemeWords")
+    }
+
+    private func openLocalPoolExpansion() {
+        guard localPoolExpansionMaximum > 0, !isGenerating else { return }
+        localPoolExpansionCount = Double(min(50, localPoolExpansionMaximum))
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
+            isChoosingLocalPoolExpansion = true
+        }
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func closeLocalPoolExpansion() {
+        guard !isExpandingLocalThemePool else { return }
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
+            isChoosingLocalPoolExpansion = false
+        }
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func beginLocalPoolExpansion(_ count: Int) {
+        guard !isGenerating, localPoolExpansionMaximum > 0 else { return }
+        isExpandingLocalThemePool = true
+        isGenerating = true
+        Task { await pushLocalThemeMax(additionalCount: count) }
     }
 
     private var localSaveAsWordPackButton: some View {
@@ -1292,6 +1385,13 @@ struct LocalGameView: View {
 
     private var localWordsLabel: String {
         localized(en: "WORDS IN GAME", ru: "СЛОВ В ИГРЕ", es: "PALABRAS EN JUEGO")
+    }
+
+    private var localAddMoreWordsLabel: String {
+        if localThemeMaxWords >= localThemeGenerationLimit {
+            return localized(en: "WORD POOL MAXED", ru: "ДОСТИГНУТ МАКСИМУМ", es: "BANCO AL MAXIMO")
+        }
+        return localized(en: "EXPAND POOL", ru: "РАСШИРИТЬ ПУЛ", es: "AMPLIAR BANCO")
     }
 
     private var localAIWarning: String {
@@ -2980,6 +3080,8 @@ struct LocalGameView: View {
         let theme = customTheme.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !theme.isEmpty, !isGenerating else { return }
 
+        isChoosingLocalPoolExpansion = false
+
         let existingPoolCount = generatedPack?.words.localCleanWords.count ?? 0
         let initialTargetCount = localWordCountMode == .custom ? Int(localCustomWordCount) : 100
         let targetCount = min(
@@ -3059,23 +3161,11 @@ struct LocalGameView: View {
         }
     }
 
-    private func pushLocalThemeMax() async {
-        let theme = customTheme.trimmingCharacters(in: .whitespacesAndNewlines)
-        let current = localPoolSnapshot.words.localCleanWords
-        let selectedWordCount = Int(wordCount)
-        let wasUsingEntirePool = selectedWordCount >= current.count
-        guard !theme.isEmpty,
-              !isGenerating,
-              localThemeMaxWords < localThemeGenerationLimit else { return }
+    private func pushLocalThemeMax(additionalCount requestedAdditionalCount: Int) async {
+        guard isExpandingLocalThemePool, isGenerating else { return }
 
-        let additionalCount = min(50, localThemeGenerationLimit - current.count)
         let requestID = UUID()
-        let themeKey = localWordKey(theme)
-
         localThemeRequestID = requestID
-        isExpandingLocalThemePool = true
-        isGenerating = true
-        localThemeError = ""
         defer {
             if localThemeRequestID == requestID {
                 isGenerating = false
@@ -3083,20 +3173,38 @@ struct LocalGameView: View {
             }
         }
 
+        let theme = customTheme.trimmingCharacters(in: .whitespacesAndNewlines)
+        let current = localPoolSnapshot.words.localCleanWords
+        let selectedWordCount = Int(wordCount)
+        guard !theme.isEmpty,
+              localThemeMaxWords < localThemeGenerationLimit else { return }
+
+        let additionLimit = min(
+            max(requestedAdditionalCount, 1),
+            min(100, localThemeGenerationLimit - current.count)
+        )
+        guard additionLimit > 0 else { return }
+        // The service accepts at least five requested words. Near the 200-word
+        // cap we still expose the true remaining capacity and trim to that cap.
+        let generationRequestCount = max(5, additionLimit)
+        let themeKey = localWordKey(theme)
+
+        localThemeError = ""
+
         do {
             let generated: GeneratedWordPack
             if appState.shouldUsePreviewData {
                 generated = GeneratedWordPack(
                     name: "\(theme) Kit",
                     category: theme,
-                    words: (1...additionalCount).map { "\(theme) \(current.count + $0)" },
+                    words: (1...generationRequestCount).map { "\(theme) \(current.count + $0)" },
                     aiLimit: nil,
                     aiGenerationsToday: nil
                 )
             } else {
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
-                    count: additionalCount,
+                    count: generationRequestCount,
                     excluding: current
                 )
             }
@@ -3110,7 +3218,11 @@ struct LocalGameView: View {
                   localWordKey(customTheme) == themeKey else { return }
 
             var seen = Set(current.map { localWordKey($0) })
-            let additions = generated.words.localCleanWords.filter { seen.insert(localWordKey($0)).inserted }
+            let additions = Array(
+                generated.words.localCleanWords
+                    .filter { seen.insert(localWordKey($0)).inserted }
+                    .prefix(additionLimit)
+            )
             let merged = Array((current + additions).prefix(200))
             guard merged.count > current.count else {
                 localThemeError = localized(
@@ -3135,12 +3247,17 @@ struct LocalGameView: View {
             disabledPoolWordKeys = disabledPoolWordKeys.filter { key in
                 merged.contains { localWordKey($0) == key }
             }
-            wordCount = Double(
-                wasUsingEntirePool
-                    ? merged.count
-                    : min(merged.count, max(selectedWordCount, 2))
+            let addedCount = merged.count - current.count
+            let minimumGameWords = min(10, merged.count)
+            wordCount = Double(min(merged.count, max(selectedWordCount, minimumGameWords)))
+            status = localized(
+                en: "AI WORD POOL EXPANDED · +\(addedCount)",
+                ru: "AI-ПУЛ СЛОВ РАСШИРЕН · +\(addedCount)",
+                es: "BANCO IA AMPLIADO · +\(addedCount)"
             )
-            status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO")
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
+                isChoosingLocalPoolExpansion = false
+            }
             HapticManager.shared.fire(.milestone)
             persistLocalSettings()
         } catch is CancellationError {

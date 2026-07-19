@@ -46,6 +46,8 @@ struct GameView: View {
     @State private var roomWordCountMode = RoomWordCountMode.recommended
     @State private var showsAllRoomPoolWords = false
     @State private var roomThemeOperation: RoomThemeOperation?
+    @State private var isChoosingRoomPoolExpansion = false
+    @State private var roomPoolExpansionCount = 50.0
     @State private var isSavingRoomThemePack = false
     @State private var configuredRoomID: String?
     @State private var pendingStartPlan: GameStartPlan?
@@ -1029,9 +1031,7 @@ struct GameView: View {
                 }
 
                 if roomHasCustomTheme && roomHasGeneratedTheme {
-                    roomWordsSlider
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    roomExpandThemePoolButton
+                    roomGeneratedPoolControls
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
@@ -1482,8 +1482,7 @@ struct GameView: View {
                 .background(SpyTheme.green.opacity(0.06))
                 .overlay(Rectangle().stroke(SpyTheme.green.opacity(0.24), lineWidth: 1))
 
-                roomWordsSlider
-                roomExpandThemePoolButton
+                roomGeneratedPoolControls
                 roomSaveAsWordPackButton
             }
         }
@@ -3177,9 +3176,7 @@ struct GameView: View {
                 }
 
                 if roomHasCustomTheme && roomHasGeneratedTheme {
-                    roomWordsSlider
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                    roomExpandThemePoolButton
+                    roomGeneratedPoolControls
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
 
@@ -3513,27 +3510,123 @@ struct GameView: View {
         .overlay(Rectangle().stroke(Color.white.opacity(0.07), lineWidth: 1))
     }
 
-    private var roomExpandThemePoolButton: some View {
-        Button {
-            Task { await pushRoomThemeMax() }
-        } label: {
-            if roomThemeOperation == .expand {
-                SpyLoadingLabel(title: roomAddMoreWordsLabel, accent: SpyTheme.amber)
-                    .frame(height: 50)
+    private var roomGeneratedPoolControls: some View {
+        Group {
+            if isChoosingRoomPoolExpansion, roomPoolExpansionMaximum > 0 {
+                roomPoolExpansionPicker
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .trailing).combined(with: .opacity),
+                            removal: .move(edge: .trailing).combined(with: .opacity)
+                        )
+                    )
             } else {
-                SpyActionLabel(
-                    title: roomAddMoreWordsLabel,
-                    systemImage: "plus.circle.fill",
-                    fontSize: 10,
-                    iconSize: 13,
-                    tracking: 0.02,
-                    lines: 2
+                VStack(alignment: .leading, spacing: 12) {
+                    roomWordsSlider
+
+                    if roomThemeMaxWords < 200 {
+                        roomExpandThemePoolButton
+                    }
+                }
+                .transition(
+                    .asymmetric(
+                        insertion: .move(edge: .leading).combined(with: .opacity),
+                        removal: .move(edge: .leading).combined(with: .opacity)
+                    )
                 )
             }
+        }
+        .animation(
+            reduceMotion ? nil : .smooth(duration: 0.28),
+            value: isChoosingRoomPoolExpansion
+        )
+    }
+
+    private var roomPoolExpansionPicker: some View {
+        SpyPoolExpansionPicker(
+            additionalWords: $roomPoolExpansionCount,
+            range: Double(roomPoolExpansionMinimum)...Double(roomPoolExpansionMaximum),
+            currentPoolCount: roomThemeMaxWords,
+            poolLimit: 200,
+            title: localized(en: "EXPAND POOL", ru: "РАСШИРИТЬ ПУЛ", es: "AMPLIAR BANCO"),
+            poolProgressTitle: localized(
+                en: "PROJECTED POOL",
+                ru: "ПРОГНОЗ ПУЛА",
+                es: "BANCO ESTIMADO"
+            ),
+            confirmTitle: { count in
+                localized(
+                    en: "ADD UP TO +\(count) WORDS",
+                    ru: "ДОБАВИТЬ ДО +\(count) СЛОВ",
+                    es: "ANADIR HASTA +\(count) PALABRAS"
+                )
+            },
+            loadingTitle: { count in
+                localized(
+                    en: "ADDING UP TO +\(count) WORDS",
+                    ru: "ДОБАВЛЯЕМ ДО +\(count) СЛОВ",
+                    es: "ANADIENDO HASTA +\(count) PALABRAS"
+                )
+            },
+            closeAccessibilityLabel: localized(
+                en: "Close pool expansion",
+                ru: "Закрыть расширение пула",
+                es: "Cerrar ampliacion del banco"
+            ),
+            accessibilityPrefix: "onlineRoom.poolExpansion",
+            isLoading: roomThemeOperation == .expand,
+            onClose: closeRoomPoolExpansion,
+            onConfirm: beginRoomPoolExpansion
+        )
+    }
+
+    private var roomPoolExpansionMaximum: Int {
+        min(100, max(200 - roomThemeMaxWords, 0))
+    }
+
+    private var roomPoolExpansionMinimum: Int {
+        min(5, roomPoolExpansionMaximum)
+    }
+
+    private var roomExpandThemePoolButton: some View {
+        Button {
+            openRoomPoolExpansion()
+        } label: {
+            SpyActionLabel(
+                title: roomAddMoreWordsLabel,
+                systemImage: "plus.circle.fill",
+                fontSize: 10,
+                iconSize: 13,
+                tracking: 0.02,
+                lines: 2
+            )
         }
         .buttonStyle(SpyButtonStyle(variant: .outline))
         .disabled(isGeneratingRoomTheme || roomThemeMaxWords >= 200)
         .accessibilityIdentifier("onlineRoom.addMoreThemeWords")
+    }
+
+    private func openRoomPoolExpansion() {
+        guard roomPoolExpansionMaximum > 0, !isGeneratingRoomTheme else { return }
+        roomPoolExpansionCount = Double(min(50, roomPoolExpansionMaximum))
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
+            isChoosingRoomPoolExpansion = true
+        }
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func closeRoomPoolExpansion() {
+        guard roomThemeOperation != .expand else { return }
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
+            isChoosingRoomPoolExpansion = false
+        }
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func beginRoomPoolExpansion(_ count: Int) {
+        guard roomThemeOperation == nil, roomPoolExpansionMaximum > 0 else { return }
+        roomThemeOperation = .expand
+        Task { await pushRoomThemeMax(additionalCount: count) }
     }
 
     @ViewBuilder
@@ -4851,7 +4944,7 @@ struct GameView: View {
         if roomThemeMaxWords >= 200 {
             return localized(en: "WORD POOL MAXED", ru: "ДОСТИГНУТ МАКСИМУМ", es: "BANCO AL MAXIMO")
         }
-        return localized(en: "EXPAND POOL · +50", ru: "РАСШИРИТЬ ПУЛ · +50", es: "AMPLIAR BANCO · +50")
+        return localized(en: "EXPAND POOL", ru: "РАСШИРИТЬ ПУЛ", es: "AMPLIAR BANCO")
     }
 
     private func roomShowAllWordsLabel(_ count: Int) -> String {
@@ -5205,6 +5298,7 @@ struct GameView: View {
         roomGeneratedPack = nil
         roomThemeError = ""
         showsAllRoomPoolWords = false
+        isChoosingRoomPoolExpansion = false
 
         if hasTheme {
             roomWordSource = .generated
@@ -5222,6 +5316,7 @@ struct GameView: View {
         roomGeneratedPack = nil
         roomThemeError = ""
         showsAllRoomPoolWords = false
+        isChoosingRoomPoolExpansion = false
     }
 
     private var resolvedRoomFallbackSource: RoomWordSource {
@@ -5232,6 +5327,8 @@ struct GameView: View {
     private func generateRoomTheme(usingInitialTarget: Bool) async {
         let theme = roomTheme.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !theme.isEmpty, roomThemeOperation == nil else { return }
+
+        isChoosingRoomPoolExpansion = false
 
         let targetCount: Int
         if usingInitialTarget {
@@ -5302,22 +5399,27 @@ struct GameView: View {
         }
     }
 
-    private func pushRoomThemeMax() async {
+    private func pushRoomThemeMax(additionalCount requestedAdditionalCount: Int) async {
+        guard roomThemeOperation == .expand else { return }
+        defer { roomThemeOperation = nil }
+
         let theme = roomTheme.trimmingCharacters(in: .whitespacesAndNewlines)
         let currentPack = roomGeneratedPack
         let current = currentPack?.words.roomCleanWords ?? []
         let selectedWordCount = Int(roomWordCount)
-        let wasUsingEntirePool = selectedWordCount >= current.count
         guard !theme.isEmpty,
               current.count >= 2,
-              current.count < 200,
-              roomThemeOperation == nil else { return }
+              current.count < 200 else { return }
 
-        let additionalCount = min(50, 200 - current.count)
-        guard additionalCount > 0 else { return }
-        roomThemeOperation = .expand
+        let additionLimit = min(
+            max(requestedAdditionalCount, 1),
+            min(100, 200 - current.count)
+        )
+        guard additionLimit > 0 else { return }
+        // The service accepts at least five requested words. Near the 200-word
+        // cap we still expose the true remaining capacity and trim to that cap.
+        let generationRequestCount = max(5, additionLimit)
         roomThemeError = ""
-        defer { roomThemeOperation = nil }
 
         do {
             let generated: GeneratedWordPack
@@ -5325,14 +5427,14 @@ struct GameView: View {
                 generated = GeneratedWordPack(
                     name: "\(theme) Kit",
                     category: theme,
-                    words: (1...additionalCount).map { "\(theme) \(current.count + $0)" },
+                    words: (1...generationRequestCount).map { "\(theme) \(current.count + $0)" },
                     aiLimit: nil,
                     aiGenerationsToday: nil
                 )
             } else {
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
-                    count: additionalCount,
+                    count: generationRequestCount,
                     excluding: current
                 )
             }
@@ -5344,7 +5446,11 @@ struct GameView: View {
             guard roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
 
             var seen = Set(current.map { $0.lowercased() })
-            let additions = generated.words.roomCleanWords.filter { seen.insert($0.lowercased()).inserted }
+            let additions = Array(
+                generated.words.roomCleanWords
+                    .filter { seen.insert($0.lowercased()).inserted }
+                    .prefix(additionLimit)
+            )
             let merged = Array((current + additions).prefix(200))
             guard merged.count > current.count else {
                 roomThemeError = localized(
@@ -5364,14 +5470,19 @@ struct GameView: View {
                 aiGenerationsToday: generated.aiGenerationsToday,
                 aiRemaining: generated.aiRemaining
             )
-            roomWordCount = Double(
-                wasUsingEntirePool
-                    ? merged.count
-                    : min(merged.count, max(selectedWordCount, 2))
-            )
+            let addedCount = merged.count - current.count
+            let minimumGameWords = min(5, merged.count)
+            roomWordCount = Double(min(merged.count, max(selectedWordCount, minimumGameWords)))
             roomWordSource = .generated
             showsAllRoomPoolWords = false
-            status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO")
+            status = localized(
+                en: "AI WORD POOL EXPANDED · +\(addedCount)",
+                ru: "AI-ПУЛ СЛОВ РАСШИРЕН · +\(addedCount)",
+                es: "BANCO IA AMPLIADO · +\(addedCount)"
+            )
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
+                isChoosingRoomPoolExpansion = false
+            }
             HapticManager.shared.fire(.milestone)
         } catch {
             guard !(error is CancellationError) else { return }
