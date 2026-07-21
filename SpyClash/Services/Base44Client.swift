@@ -970,7 +970,12 @@ final class Base44Client {
 
         guard 200..<300 ~= http.statusCode else {
             let apiError = try? JSONDecoder.base44.decode(APIErrorEnvelope.self, from: data)
-            throw Base44Error(message: apiError?.resolvedMessage ?? "Base44 request failed.", statusCode: http.statusCode)
+            throw Base44Error(
+                message: apiError?.resolvedMessage ?? "Base44 request failed.",
+                statusCode: http.statusCode,
+                code: apiError?.code,
+                retryable: apiError?.retryable ?? false
+            )
         }
 
         if T.self == EmptyResponse.self {
@@ -1099,6 +1104,8 @@ struct EmptyPayload: Encodable {}
 private struct APIErrorEnvelope: Decodable {
     let message: String?
     let error: String?
+    let code: String?
+    let retryable: Bool?
 
     var resolvedMessage: String? { message ?? error }
 }
@@ -1118,6 +1125,20 @@ private struct AutoRegisterUserResponse: Decodable {
 struct Base44Error: LocalizedError {
     let message: String
     var statusCode: Int?
+    var code: String?
+    var retryable = false
+
+    init(
+        message: String,
+        statusCode: Int? = nil,
+        code: String? = nil,
+        retryable: Bool = false
+    ) {
+        self.message = message
+        self.statusCode = statusCode
+        self.code = code
+        self.retryable = retryable
+    }
 
     var errorDescription: String? {
         statusCode.map { "\(message) [\($0)]" } ?? message
