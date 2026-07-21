@@ -189,11 +189,23 @@ final class Base44Client {
 
     func join(code: String, user: SpyUser) async throws -> GameRoom {
         let player = Player(email: user.email, name: user.callSign, avatar: user.avatar ?? "🕵️")
-        return try await roomAction(
-            "join_room",
-            roomCode: code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased(),
-            player: player
-        )
+        let normalizedCode = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let retryDelays = [250, 650]
+
+        for attempt in 0...retryDelays.count {
+            do {
+                return try await roomAction(
+                    "join_room",
+                    roomCode: normalizedCode,
+                    player: player
+                )
+            } catch let error as Base44Error
+                where error.isRetryableRoomJoinConflict && attempt < retryDelays.count {
+                try await Task.sleep(for: .milliseconds(retryDelays[attempt]))
+            }
+        }
+
+        throw Base44Error(message: "Room join failed after retry.", statusCode: 409)
     }
 
     func beginReadyCheck(room: GameRoom) async throws -> GameRoom {
@@ -484,7 +496,7 @@ final class Base44Client {
     }
 
     func communityState() async throws -> CommunityState {
-        try await communityAction("state")
+        try await communityAction("state", retriesTransientReadFailures: true)
     }
 
     func communityDirectory(query: String = "", offset: Int = 0, limit: Int = 24) async throws -> CommunityDirectoryPage {
@@ -494,16 +506,25 @@ final class Base44Client {
                 "query": query,
                 "offset": String(offset),
                 "limit": String(limit)
-            ]
+            ],
+            retriesTransientReadFailures: true
         )
     }
 
     func communityProfile(userID: String) async throws -> CommunityProfileDetail {
-        try await communityAction("profile", fields: ["target_user_id": userID])
+        try await communityAction(
+            "profile",
+            fields: ["target_user_id": userID],
+            retriesTransientReadFailures: true
+        )
     }
 
     func searchCommunity(spyID: String) async throws -> CommunitySearchResult {
-        try await communityAction("search", fields: ["spy_id": spyID])
+        try await communityAction(
+            "search",
+            fields: ["spy_id": spyID],
+            retriesTransientReadFailures: true
+        )
     }
 
     func sendFriendRequest(spyID: String) async throws -> CommunityState {
@@ -585,7 +606,8 @@ final class Base44Client {
 
     private func communityAction<T: Decodable>(
         _ action: String,
-        fields: [String: String] = [:]
+        fields: [String: String] = [:],
+        retriesTransientReadFailures: Bool = false
     ) async throws -> T {
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
@@ -597,12 +619,23 @@ final class Base44Client {
         ]
         payload.merge(fields) { _, newValue in newValue }
 
-        return try await request(
-            "/apps/\(Self.appID)/functions/communityAction",
-            method: "POST",
-            body: payload,
-            includeAuthorization: false
-        )
+        let retryDelays = [180, 520]
+        var attempt = 0
+        while true {
+            do {
+                return try await request(
+                    "/apps/\(Self.appID)/functions/communityAction",
+                    method: "POST",
+                    body: payload,
+                    includeAuthorization: false
+                )
+            } catch let error as Base44Error
+                where retriesTransientReadFailures && error.statusCode == 503 && attempt < retryDelays.count {
+                let delay = retryDelays[attempt]
+                attempt += 1
+                try await Task.sleep(for: .milliseconds(delay))
+            }
+        }
     }
 
     func googleLoginURL(callbackURL _: URL) -> URL {
@@ -1088,6 +1121,14 @@ struct Base44Error: LocalizedError {
 
     var errorDescription: String? {
         statusCode.map { "\(message) [\($0)]" } ?? message
+    }
+
+    var isRetryableRoomJoinConflict: Bool {
+        guard statusCode == 409 else { return false }
+        let normalized = message.lowercased()
+        return normalized.contains("could not be verified")
+            || normalized.contains("room membership changed")
+            || normalized.contains("room changed; retry")
     }
 }
 

@@ -3,11 +3,11 @@ import UIKit
 
 struct CommunityView: View {
     @Environment(AppState.self) private var appState
-    @Namespace private var dockNamespace
 
+    @Binding var selectedTab: CommunityTab
+    let dockRequest: CommunityDockRequest
     let onExit: () -> Void
 
-    @State private var selectedTab: CommunityTab = .network
     @State private var network: CommunityState?
     @State private var directory: [PublicSpyProfile] = []
     @State private var nextDirectoryOffset: Int?
@@ -19,39 +19,33 @@ struct CommunityView: View {
     @State private var commentDraft = ""
     @State private var isInitialLoading = true
     @State private var isDirectoryLoading = false
+    @State private var directoryLoadFailed = false
     @State private var isProfileLoading = false
     @State private var didLoadInitialContent = false
     @State private var activeAction: String?
     @State private var message = ""
-    @State private var messageKind: SpyToast.Kind = .success
+    @State private var messageKind: AppToastKind = .success
     @State private var reportTarget: CommunityReportTarget?
     @State private var blockTarget: PublicSpyProfile?
     @State private var unblockTarget: CommunityRelationship?
 
     var body: some View {
-        ZStack(alignment: .bottom) {
-            PageChrome(
-                eyebrow: localized(en: "// COMMUNITY", ru: "// СООБЩЕСТВО", es: "// COMUNIDAD"),
-                status: localized(en: "OPERATIVE NETWORK", ru: "СЕТЬ ОПЕРАТИВНИКОВ", es: "RED DE OPERATIVOS"),
-                showsPageTopEdge: false,
-                topReserve: 0
-            ) {
-                sceneContent
-                    .padding(.horizontal, 18)
-                    .padding(.top, 14)
-                    .padding(.bottom, 92)
-            }
-
-            CommunityDock(
-                selection: selectedTab,
-                namespace: dockNamespace,
-                language: appState.language,
-                action: handleDockAction
-            )
-            .zIndex(20)
+        PageChrome(
+            eyebrow: localized(en: "// COMMUNITY", ru: "// СООБЩЕСТВО", es: "// COMUNIDAD"),
+            status: localized(en: "OPERATIVE NETWORK", ru: "СЕТЬ ОПЕРАТИВНИКОВ", es: "RED DE OPERATIVOS")
+        ) {
+            sceneContent
+                .padding(.horizontal, 18)
+                .padding(.top, 14)
         }
         .background(SpyTheme.black)
         .task { await loadInitialContent() }
+        .onChange(of: dockRequest.id) { _, _ in
+            handleDockAction(dockRequest.tab)
+        }
+        .onChange(of: message) { _, newMessage in
+            publishCommunityToast(newMessage)
+        }
         .task(id: query) {
             guard didLoadInitialContent else { return }
             try? await Task.sleep(for: .milliseconds(320))
@@ -142,11 +136,6 @@ struct CommunityView: View {
     @ViewBuilder
     private var sceneContent: some View {
         VStack(alignment: .leading, spacing: 16) {
-            if !message.isEmpty {
-                SpyToast(text: message, kind: messageKind)
-                    .transition(.opacity.combined(with: .move(edge: .top)))
-            }
-
             if let activeProfile {
                 profileScene(activeProfile)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
@@ -156,7 +145,17 @@ struct CommunityView: View {
             }
         }
         .animation(.smooth(duration: 0.24), value: activeProfile?.profile.id)
-        .animation(.easeOut(duration: 0.18), value: message)
+    }
+
+    private func publishCommunityToast(_ newMessage: String) {
+        guard !newMessage.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        Task { @MainActor in
+            await Task.yield()
+            guard message == newMessage else { return }
+            appState.showToast(newMessage, kind: messageKind)
+            message = ""
+        }
     }
 
     private var directoryScene: some View {
@@ -205,7 +204,11 @@ struct CommunityView: View {
             }
 
             if directory.isEmpty, !isDirectoryLoading, !isInitialLoading {
-                emptyDirectory
+                if directoryLoadFailed {
+                    directoryUnavailable
+                } else {
+                    emptyDirectory
+                }
             } else {
                 LazyVGrid(
                     columns: [
@@ -308,6 +311,37 @@ struct CommunityView: View {
         }
         .frame(maxWidth: .infinity, minHeight: 160)
         .overlay(CutCornerShape(cut: 10).stroke(SpyTheme.stroke, lineWidth: 1))
+    }
+
+    private var directoryUnavailable: some View {
+        VStack(spacing: 13) {
+            Image(systemName: "antenna.radiowaves.left.and.right.slash")
+                .font(.system(size: 27, weight: .light))
+                .foregroundStyle(SpyTheme.red)
+
+            Text(localized(
+                en: "OPERATIVE NETWORK TEMPORARILY UNAVAILABLE",
+                ru: "СЕТЬ ОПЕРАТИВНИКОВ ВРЕМЕННО НЕДОСТУПНА",
+                es: "RED DE OPERATIVOS TEMPORALMENTE NO DISPONIBLE"
+            ))
+            .font(SpyTheme.micro)
+            .tracking(0.7)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(SpyTheme.muted)
+
+            Button {
+                Task { await retryInitialContent() }
+            } label: {
+                commandLabel(
+                    localized(en: "RETRY NETWORK", ru: "ПОВТОРИТЬ", es: "REINTENTAR"),
+                    icon: "arrow.clockwise"
+                )
+            }
+            .buttonStyle(SpyButtonStyle(variant: .ghost))
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity, minHeight: 176)
+        .overlay(CutCornerShape(cut: 10).stroke(SpyTheme.red.opacity(0.38), lineWidth: 1))
     }
 
     private func profileScene(_ detail: CommunityProfileDetail) -> some View {
@@ -982,7 +1016,7 @@ struct CommunityView: View {
     }
 
     private func handleDockAction(_ tab: CommunityTab) {
-        HapticManager.shared.fire(.tabSelection, sound: .echoBlip)
+        HapticManager.shared.fire(.tabSelection)
         switch tab {
         case .exit:
             onExit()
@@ -1032,12 +1066,21 @@ struct CommunityView: View {
         }
 
         do {
-            async let stateRequest = appState.client.communityState()
-            async let directoryRequest = appState.client.communityDirectory()
-            let (loadedState, page) = try await (stateRequest, directoryRequest)
-            network = loadedState
+            // Keep these reads sequential. Older deployed Community builds used
+            // a shared writer lease even for reads, so parallel startup calls
+            // could make one request fail with a transient 503 and discard both
+            // successful and failed results together.
+            let page = try await appState.client.communityDirectory()
             directory = page.profiles
             nextDirectoryOffset = page.nextOffset
+            directoryLoadFailed = false
+        } catch {
+            directoryLoadFailed = true
+            showError(error)
+        }
+
+        do {
+            network = try await appState.client.communityState()
         } catch {
             showError(error)
         }
@@ -1066,6 +1109,7 @@ struct CommunityView: View {
             let page = try await appState.client.communityDirectory(query: query, offset: offset)
             if reset {
                 directory = page.profiles
+                directoryLoadFailed = false
             } else {
                 let known = Set(directory.map(\.id))
                 directory.append(contentsOf: page.profiles.filter { !known.contains($0.id) })
@@ -1074,7 +1118,22 @@ struct CommunityView: View {
         } catch is CancellationError {
             return
         } catch {
+            if reset { directoryLoadFailed = true }
             showError(error)
+        }
+    }
+
+    private func retryInitialContent() async {
+        guard !isDirectoryLoading else { return }
+        message = ""
+        directoryLoadFailed = false
+        await loadDirectory(reset: true)
+        if network == nil {
+            do {
+                network = try await appState.client.communityState()
+            } catch {
+                showError(error)
+            }
         }
     }
 
@@ -1160,7 +1219,7 @@ struct CommunityView: View {
         if appState.shouldUsePreviewData {
             message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
@@ -1169,7 +1228,7 @@ struct CommunityView: View {
             await refreshActiveProfile()
             message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1181,14 +1240,14 @@ struct CommunityView: View {
         defer { activeAction = nil }
 
         if appState.shouldUsePreviewData {
-            HapticManager.shared.fire(.notification(.success), sound: action == "accept" ? .playerJoin : .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
         do {
             network = try await appState.client.communityRelationshipAction(action, friendshipID: friendshipID)
             await refreshActiveProfile()
-            HapticManager.shared.fire(.notification(.success), sound: action == "accept" ? .playerJoin : .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1202,7 +1261,7 @@ struct CommunityView: View {
         if appState.shouldUsePreviewData {
             message = localized(en: "REPORT RECEIVED", ru: "ЖАЛОБА ПРИНЯТА", es: "REPORTE RECIBIDO")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
@@ -1227,7 +1286,7 @@ struct CommunityView: View {
                 es: "REPORTE RECIBIDO — MODERACION LO REVISARA"
             )
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1260,7 +1319,7 @@ struct CommunityView: View {
                 es: "OPERATIVO BLOQUEADO — COMENTARIOS E INVITACIONES ELIMINADOS"
             )
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1281,7 +1340,7 @@ struct CommunityView: View {
             network = try await appState.client.unblockCommunityUser(friendshipID: relationship.id)
             message = localized(en: "OPERATIVE UNBLOCKED", ru: "ОПЕРАТИВНИК РАЗБЛОКИРОВАН", es: "OPERATIVO DESBLOQUEADO")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1305,7 +1364,7 @@ struct CommunityView: View {
             commentDraft = ""
             message = localized(en: "FIELD NOTE POSTED", ru: "ЗАПИСЬ ОПУБЛИКОВАНА", es: "NOTA PUBLICADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1320,7 +1379,7 @@ struct CommunityView: View {
 
         do {
             activeProfile = try await appState.client.deleteCommunityComment(commentID: commentID)
-            HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1334,7 +1393,7 @@ struct CommunityView: View {
         if appState.shouldUsePreviewData {
             message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACION ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
@@ -1343,7 +1402,7 @@ struct CommunityView: View {
             guard acknowledgement.ok else { return }
             message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACION ENVIADA")
             messageKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1380,7 +1439,7 @@ struct CommunityView: View {
         do {
             let result = try await appState.client.communityRoomInviteAction("decline_room_invite", inviteID: invite.id)
             network = result.state
-            HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showError(error)
         }
@@ -1494,7 +1553,7 @@ private enum CommunityReportTarget: Identifiable {
     }
 }
 
-private enum CommunityTab: String, CaseIterable, Identifiable {
+enum CommunityTab: String, CaseIterable, Identifiable {
     case exit
     case network
     case me
@@ -1508,61 +1567,9 @@ private enum CommunityTab: String, CaseIterable, Identifiable {
         case .me: "person.crop.circle.fill"
         }
     }
-}
 
-private struct CommunityDock: View {
-    let selection: CommunityTab
-    let namespace: Namespace.ID
-    let language: AppLanguage
-    let action: (CommunityTab) -> Void
-
-    var body: some View {
-        HStack(spacing: 0) {
-            ForEach(CommunityTab.allCases) { tab in
-                Button {
-                    action(tab)
-                } label: {
-                    let isSelected = tab != .exit && selection == tab
-                    Image(systemName: tab.symbol)
-                        .font(.system(size: 25, weight: isSelected ? .bold : .medium))
-                        .foregroundStyle(isSelected ? SpyTheme.red : Color.white.opacity(tab == .exit ? 0.70 : 0.44))
-                        .scaleEffect(isSelected ? 1.10 : 1)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 58)
-                        .overlay(alignment: .bottom) {
-                            if isSelected {
-                                Rectangle()
-                                    .fill(SpyTheme.red)
-                                    .frame(width: 28, height: 2)
-                                    .matchedGeometryEffect(id: "community-dock-redline", in: namespace)
-                                    .offset(y: -2)
-                            }
-                        }
-                        .contentShape(Rectangle())
-                }
-                .buttonStyle(SpyWebPressStyle(pressedScale: 0.90))
-                .accessibilityLabel(accessibilityLabel(tab))
-            }
-        }
-        .padding(.horizontal, 8)
-        .frame(maxWidth: 348)
-        .frame(height: 62)
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(.ultraThinMaterial)
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(Color.black.opacity(0.72))
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-        }
-        .shadow(color: .black.opacity(0.24), radius: 9, y: 5)
-        .padding(.horizontal, 10)
-        .padding(.bottom, 8)
-    }
-
-    private func accessibilityLabel(_ tab: CommunityTab) -> String {
-        switch (tab, language) {
+    func accessibilityLabel(language: AppLanguage) -> String {
+        switch (self, language) {
         case (.exit, .ru): "Вернуться назад"
         case (.network, .ru): "Сообщество"
         case (.me, .ru): "Мой публичный профиль"
@@ -1573,6 +1580,17 @@ private struct CommunityDock: View {
         case (.network, _): "Community"
         case (.me, _): "My public profile"
         }
+    }
+}
+
+struct CommunityDockRequest: Equatable {
+    let id: Int
+    let tab: CommunityTab
+
+    static let initial = CommunityDockRequest(id: 0, tab: .network)
+
+    func next(_ tab: CommunityTab) -> CommunityDockRequest {
+        CommunityDockRequest(id: id &+ 1, tab: tab)
     }
 }
 
@@ -1605,7 +1623,7 @@ private struct CommunitySpyCard: View {
     }
 
     private var themeColors: [Color] {
-        switch SpyCardThemeID(rawValue: profile.spyCardTheme) ?? .field {
+        switch theme {
         case .field:
             [Color.white.opacity(0.085), Color.white.opacity(0.018), Color.black.opacity(0.24)]
         case .blacksite:
@@ -1613,6 +1631,10 @@ private struct CommunitySpyCard: View {
         case .dossier:
             [SpyTheme.red.opacity(0.14), Color.white.opacity(0.025), Color.black.opacity(0.46)]
         }
+    }
+
+    private var theme: SpyCardThemeID {
+        SpyCardThemeID(rawValue: profile.spyCardTheme) ?? .field
     }
 
     private var badge: SpyCardBadgeID {
@@ -1643,7 +1665,7 @@ private struct CommunitySpyCard: View {
                         .frame(width: 28, height: 36)
                         .offset(x: -2)
 
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
                         Text(badgeGlyph)
                             .foregroundStyle(accent)
                         Text(badgeTitle)
@@ -1652,6 +1674,10 @@ private struct CommunitySpyCard: View {
                     }
                     .font(.system(size: 7, weight: .black, design: .monospaced))
                     .tracking(0.6)
+                    .padding(.horizontal, 9)
+                    .frame(height: 24)
+                    .background(accent.opacity(0.075), in: Capsule())
+                    .overlay(Capsule().stroke(accent.opacity(0.30), lineWidth: 0.75))
 
                     Spacer(minLength: 12)
 
@@ -1713,6 +1739,8 @@ private struct CommunitySpyCard: View {
                     cardShape.fill(LinearGradient(colors: themeColors, startPoint: .topLeading, endPoint: .bottomTrailing))
                     cardShape.fill(RadialGradient(colors: [Color.white.opacity(0.10), .clear], center: .topLeading, startRadius: 0, endRadius: proxy.size.width * 0.58))
                     cardShape.fill(RadialGradient(colors: [accent.opacity(0.11), .clear], center: .bottomTrailing, startRadius: 0, endRadius: proxy.size.width * 0.66))
+                    SpyCardSurfacePattern(theme: theme, accent: accent)
+                        .clipShape(cardShape)
                 }
             }
             .clipShape(cardShape)
@@ -1802,6 +1830,8 @@ private struct CommunitySpyCard: View {
                     cardShape.fill(Color.black.opacity(profile.spyCardTheme == SpyCardThemeID.blacksite.rawValue ? 0.72 : 0.28))
                     cardShape.fill(LinearGradient(colors: themeColors, startPoint: .topLeading, endPoint: .bottomTrailing))
                     cardShape.fill(RadialGradient(colors: [accent.opacity(0.12), .clear], center: .bottomTrailing, startRadius: 0, endRadius: proxy.size.width * 0.82))
+                    SpyCardSurfacePattern(theme: theme, accent: accent)
+                        .clipShape(cardShape)
                 }
             }
             .clipShape(cardShape)

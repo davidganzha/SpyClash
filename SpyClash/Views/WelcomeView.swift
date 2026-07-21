@@ -28,6 +28,7 @@ struct WelcomeView: View {
         }
         .sheet(isPresented: $showAuth) {
             AuthView()
+                .spyGlobalToastLayer()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)
@@ -35,6 +36,7 @@ struct WelcomeView: View {
         }
         .sheet(item: $legalSheet) { sheet in
             LegalDocumentSheet(kind: sheet)
+                .spyGlobalToastLayer()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)

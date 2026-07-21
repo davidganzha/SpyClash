@@ -43,7 +43,16 @@
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
 	<key>NSCameraUsageDescription</key>
-	<string>Scan SpyClash room QR codes. / Escanear QR de salas SpyClash. / Сканировать QR-коды комнат SpyClash.</string>
+	<string>Scan room QR codes and stabilize nearby Radar positions. / Escanear QR y estabilizar posiciones del Radar. / Сканировать QR-коды и стабилизировать позиции на Радаре.</string>
+	<key>NSLocalNetworkUsageDescription</key>
+	<string>Find nearby SpyClash players and deliver room invitations while the app is open. / Buscar jugadores cercanos y enviar invitaciones. / Находить игроков рядом и отправлять приглашения, пока приложение открыто.</string>
+	<key>NSNearbyInteractionUsageDescription</key>
+	<string>Measure the distance to nearby SpyClash players so the radar can show precise proximity. / Medir la distancia a jugadores cercanos. / Измерять расстояние до игроков рядом для точного радара.</string>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_spyclash-radar._tcp</string>
+		<string>_spyclash-radar._udp</string>
+	</array>
 	<key>UILaunchScreen</key>
 	<dict>
 		<key>UIColorName</key>

@@ -114,6 +114,8 @@ struct LocalGameView: View {
             .onChange(of: localCustomWordCount) { _, _ in persistLocalSettings() }
             .onChange(of: phase) { _, _ in updateLocalShellChromeSuppression() }
             .onChange(of: appState.localSetupRequestID) { _, _ in consumeLocalSetupRequestIfNeeded() }
+            .onChange(of: status) { _, message in publishLocalToast(message) }
+            .onChange(of: localThemeError) { _, message in publishLocalThemeError(message) }
             .onDisappear {
                 timerTask?.cancel()
                 appState.isShellChromeSuppressed = false
@@ -212,6 +214,9 @@ struct LocalGameView: View {
                 localSetupSlot(.mode) {
                     localModePanel
                 }
+                localSetupSlot(.timing) {
+                    localTimingPanel
+                }
                 localSetupSlot(.players) {
                     localPlayersPanel
                 }
@@ -220,9 +225,6 @@ struct LocalGameView: View {
                 }
                 localSetupSlot(.controls) {
                     localControls
-                }
-                localSetupSlot(.timing) {
-                    localTimingPanel
                 }
             }
         }
@@ -676,14 +678,6 @@ struct LocalGameView: View {
 
     @ViewBuilder
     private var localIntelMessages: some View {
-        if !localThemeError.isEmpty {
-            Text(localThemeError)
-                .font(.system(size: 12, weight: .semibold, design: .default))
-                .tracking(0.02)
-                .foregroundStyle(SpyTheme.red)
-                .spyFitted(lines: 2, scale: 0.62)
-        }
-
         if localHasCustomTheme, let generatedPack, !generatedPack.words.localCleanWords.isEmpty {
             Text(localAIWarning)
                 .font(.system(size: 9, weight: .bold, design: .default))
@@ -1183,15 +1177,47 @@ struct LocalGameView: View {
             }
             .buttonStyle(SpyButtonStyle(variant: .ghost))
 
-            if !status.isEmpty {
-                Text(status)
-                    .font(SpyTheme.micro)
-                    .tracking(0.02)
-                    .foregroundStyle(SpyTheme.red)
-                    .spyFitted(lines: 3, scale: 0.62)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
         }
+    }
+
+    private func publishLocalToast(_ message: String) {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        Task { @MainActor in
+            await Task.yield()
+            guard status == message else { return }
+            appState.showToast(trimmed, kind: localToastKind(trimmed))
+            status = ""
+        }
+    }
+
+    private func publishLocalThemeError(_ message: String) {
+        let trimmed = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !trimmed.isEmpty else { return }
+
+        Task { @MainActor in
+            await Task.yield()
+            guard localThemeError == message else { return }
+            appState.showToast(trimmed, kind: .error)
+            localThemeError = ""
+        }
+    }
+
+    private func localToastKind(_ message: String) -> AppToastKind {
+        let upper = message.uppercased()
+        let errorMarkers = ["ERROR", "FAILED", "COULDN'T", "НЕ УДАЛ", "ОШИБ", "NO SE PUDO"]
+        if errorMarkers.contains(where: upper.contains) {
+            return .error
+        }
+        let successMarkers = [
+            "READY", "SAVED", "REROLLED", "EXPANDED", "ГОТОВ", "СОХРАН", "ОБНОВЛЕН", "РАСШИРЕН",
+            "LISTO", "GUARDADO", "CAMBIADA", "AMPLIADO"
+        ]
+        if successMarkers.contains(where: upper.contains) {
+            return .success
+        }
+        return .warning
     }
 
     private var localPrimaryActionTitle: String {
@@ -1477,7 +1503,7 @@ struct LocalGameView: View {
         let key = localWordKey(value)
         guard !snapshot.words.contains(where: { localWordKey($0) == key }) else {
             localNewPoolWord = ""
-            HapticManager.shared.fire(.notification(.warning), audioPolicy: .hapticOnly)
+            HapticManager.shared.fire(.notification(.warning))
             return
         }
 
@@ -2117,7 +2143,7 @@ struct LocalGameView: View {
                 withAnimation(.smooth(duration: 0.28)) {
                     associationRouletteDone = true
                 }
-                HapticManager.shared.fire(.notification(.success), sound: .turnPass)
+                HapticManager.shared.fire(.notification(.success))
             }
         }
     }
@@ -3040,12 +3066,11 @@ struct LocalGameView: View {
             clearLocalPoolDraft()
             wordCount = Double(min(words.count, targetCount))
             status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO")
-            HapticManager.shared.fire(.milestone, sound: .echoBlip)
+            HapticManager.shared.fire(.milestone)
             persistLocalSettings()
         } catch {
             guard localThemeRequestID == requestID else { return }
             localThemeError = error.localizedDescription.uppercased()
-            status = localThemeError
             HapticManager.shared.fire(.notification(.error))
         }
     }
@@ -3136,7 +3161,6 @@ struct LocalGameView: View {
         } catch {
             guard localThemeRequestID == requestID else { return }
             localThemeError = error.localizedDescription.uppercased()
-            status = localThemeError
             HapticManager.shared.fire(.notification(.error))
         }
     }
@@ -3162,7 +3186,7 @@ struct LocalGameView: View {
             packs.append(saved)
             packs.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO")
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
             persistLocalSettings()
         } catch {
             status = error.localizedDescription.uppercased()
@@ -3238,14 +3262,14 @@ struct LocalGameView: View {
         spyGuess = nil
         status = ""
         phase = .cards
-        HapticManager.shared.fire(.milestone, sound: .gameStart)
+        HapticManager.shared.fire(.milestone)
     }
 
     private func revealCard() {
         withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.65)) {
             cardRevealed = true
         }
-        HapticManager.shared.fire(.reveal, sound: .roleReveal)
+        HapticManager.shared.fire(.reveal)
     }
 
     private func nextCardTitle(_ session: LocalSession) -> String {
@@ -3284,7 +3308,7 @@ struct LocalGameView: View {
                 revealIndex += 1
                 cardRevealed = false
             }
-            HapticManager.shared.fire(.buttonPress, sound: .turnPass)
+            HapticManager.shared.fire(.buttonPress)
         }
     }
 
@@ -3294,7 +3318,7 @@ struct LocalGameView: View {
             resetAssociationFlow(playerCount: session.players.count, mode: session.mode)
         }
         phase = .playing
-        HapticManager.shared.fire(.milestone, sound: .countdownGo)
+        HapticManager.shared.fire(.milestone)
         timerTask?.cancel()
         timerTask = Task { @MainActor in
             while !Task.isCancelled && secondsRemaining > 0 {
@@ -3302,12 +3326,11 @@ struct LocalGameView: View {
                 guard !Task.isCancelled else { return }
                 secondsRemaining -= 1
                 if (1...3).contains(secondsRemaining) {
-                    HapticManager.shared.playSound(.countdownTick)
                 }
             }
             if !Task.isCancelled {
                 beginSpyGuess()
-                HapticManager.shared.fire(.notification(.warning), sound: .echoBlip)
+                HapticManager.shared.fire(.notification(.warning))
             }
         }
     }
@@ -3324,7 +3347,6 @@ struct LocalGameView: View {
                 guard !Task.isCancelled else { return }
                 guessSecondsRemaining -= 1
                 if (1...3).contains(guessSecondsRemaining) {
-                    HapticManager.shared.playSound(.countdownTick)
                 }
             }
             if !Task.isCancelled {
@@ -3332,7 +3354,7 @@ struct LocalGameView: View {
                 pendingSpyGuess = nil
                 winner = .detectives
                 phase = .results
-                HapticManager.shared.fire(.milestone, sound: .resultDetectives)
+                HapticManager.shared.fire(.milestone)
             }
         }
     }
@@ -3355,14 +3377,12 @@ struct LocalGameView: View {
     private func nextQuestion(in session: LocalSession) {
         if session.mode == .associations {
             advanceAssociationSpeaker(playerCount: session.players.count)
-            // The roulette completion owns the audible turn cue. The tap that
-            // starts it stays haptic-only so one gesture cannot sound twice.
             HapticManager.shared.fire(.tabSelection)
             return
         }
 
         questionIndex = (questionIndex + 1) % max(session.players.count, 1)
-        HapticManager.shared.fire(.tabSelection, sound: .turnPass)
+        HapticManager.shared.fire(.tabSelection)
     }
 
     private func resetAssociationFlow(playerCount: Int, mode: LocalMode) {
@@ -3407,10 +3427,8 @@ struct LocalGameView: View {
         spyGuess = nil
         winner = index == session.spyIndex ? .detectives : .spy
         phase = .results
-        let cue: HapticManager.SoundCue = winner == .spy ? .resultSpy : .resultDetectives
         HapticManager.shared.fire(
-            .notification(index == session.spyIndex ? .success : .warning),
-            sound: cue
+            .notification(index == session.spyIndex ? .success : .warning)
         )
     }
 
@@ -3422,8 +3440,7 @@ struct LocalGameView: View {
         winner = localWordKey(word) == localWordKey(session.word) ? .spy : .detectives
         phase = .results
         HapticManager.shared.fire(
-            .notification(winner == .spy ? .warning : .success),
-            sound: winner == .spy ? .resultSpy : .resultDetectives
+            .notification(winner == .spy ? .warning : .success)
         )
     }
 

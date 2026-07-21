@@ -12,16 +12,13 @@ struct SpyClashApp: App {
                 .preferredColorScheme(.dark)
                 .tint(SpyTheme.red)
                 .task {
-                    HapticManager.shared.preloadInterfaceSounds()
                     await appState.restoreSession()
                 }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     let isActive = phase == .active
-                    HapticManager.shared.setApplicationActive(isActive)
+                    appState.setRadarApplicationActive(isActive)
                     if isActive {
                         appState.synchronizeCommerceAccessOnActivation()
-                    } else {
-                        AuthCinematicSoundPlayer.shared.stopAll()
                     }
                 }
         }
@@ -65,8 +62,15 @@ private struct RootView: View {
                     .transition(.opacity)
             }
         }
+        .overlay {
+            if let invitation = appState.radarNearby.incomingInvitation {
+                RadarIncomingInvitationOverlay(invitation: invitation)
+            }
+        }
+        .spyGlobalToastLayer()
         .sheet(isPresented: recoverySheetBinding) {
             AuthView()
+                .spyGlobalToastLayer()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)
@@ -78,6 +82,10 @@ private struct RootView: View {
         .task(id: "\(appState.user?.id ?? "signed-out")|\(appState.isAuthTransitionActive)") {
             guard !appState.isAuthTransitionActive else { return }
             await appState.consumePendingJoinIfPossible()
+        }
+        .task(id: appState.activeRoom?.id) {
+            guard let roomID = appState.activeRoom?.id else { return }
+            await appState.monitorActiveRoom(roomID)
         }
         .animation(.smooth(duration: 0.45), value: appState.isRestoring)
         .animation(.smooth(duration: 0.45), value: appState.user?.id)
@@ -257,6 +265,7 @@ private enum DebugPreviewDestination {
     case standardAuthTerminal
     case scanner
     case roomQR
+    case radar
     case pricing
     case privacy
     case terms
@@ -289,6 +298,8 @@ private enum DebugPreviewDestination {
             return .scanner
         case "roomQR", "room-qr", "qr":
             return .roomQR
+        case "radar", "nearby":
+            return .radar
         case "pricing":
             return .pricing
         case "privacy":
@@ -322,6 +333,8 @@ private enum DebugPreviewDestination {
             QRScannerSheet()
         case .roomQR:
             RoomQRSheet(room: GameRoom.previewRoom(status: "waiting"))
+        case .radar:
+            RadarInviteView(room: GameRoom.previewRoom(status: "waiting"))
         case .pricing:
             PricingView()
         case .privacy:
@@ -436,6 +449,7 @@ private struct DebugAuthSheetPresenter: View {
             .ignoresSafeArea()
             .sheet(isPresented: $showAuth) {
                 AuthView()
+                    .spyGlobalToastLayer()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)

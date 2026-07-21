@@ -41,12 +41,14 @@ struct HomeView: View {
         }
         .sheet(item: $tutorialMode) { mode in
             HowToPlaySheet(initialMode: mode, language: appState.language)
+                .spyGlobalToastLayer()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)
         }
         .sheet(isPresented: $isQRScannerPresented) {
             QRScannerSheet()
+                .spyGlobalToastLayer()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)
@@ -54,10 +56,16 @@ struct HomeView: View {
         .onAppear {
             startHeroEntranceIfNeeded()
             startAmbientMotionIfNeeded()
+#if DEBUG
+            configureStatusPreviewIfNeeded()
+#endif
         }
         .onChange(of: entranceMotionEnabled) { _, isEnabled in
             guard isEnabled else { return }
             startHeroEntranceIfNeeded()
+        }
+        .onChange(of: statusText) { _, message in
+            publishHomeToast(message)
         }
     }
 
@@ -81,6 +89,17 @@ struct HomeView: View {
             }
         }
     }
+
+#if DEBUG
+    private func configureStatusPreviewIfNeeded() {
+        guard ProcessInfo.processInfo.arguments.contains("--spyclash-preview-home-room-closed"),
+              statusText.isEmpty
+        else { return }
+
+        statusText = localized(en: "ROOM CLOSED", ru: "КОМНАТА ЗАКРЫТА", es: "SALA CERRADA")
+        statusKind = .success
+    }
+#endif
 
     private var copy: HomeCopy {
         appState.language.home
@@ -118,7 +137,6 @@ struct HomeView: View {
                         .frame(maxWidth: stage == .main ? 340 : 360)
                         .id(stage)
                         .animation(SpyMotion.page, value: stage)
-                    statusBanner
                 }
             }
 
@@ -339,16 +357,6 @@ struct HomeView: View {
                 .background(SpyTheme.dark, in: CutCornerShape(cut: 10))
                 .overlay(CutCornerShape(cut: 10).stroke(SpyTheme.inputBorder, lineWidth: 1))
                 .padding(.bottom, 12)
-
-            if statusKind == .error, !statusText.isEmpty {
-                    Text("⚠ \(statusText)")
-                        .font(SpyTheme.micro)
-                        .tracking(0.12)
-                    .foregroundStyle(SpyTheme.red)
-                    .spyFitted(lines: 2, scale: 0.62)
-                    .padding(.bottom, 12)
-                    .transition(.opacity)
-            }
 
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
@@ -709,31 +717,40 @@ struct HomeView: View {
         .disabled(isClosingRoom)
     }
 
-    @ViewBuilder
-    private var statusBanner: some View {
-        if let deepLinkStatus = appState.deepLinkStatus, !deepLinkStatus.isEmpty {
-            SpyToast(
-                text: deepLinkStatus,
-                kind: deepLinkStatus.contains("READY") || deepLinkStatus.contains("ARMED") ? .success : .error,
-                isLoading: appState.isJoiningDeepLink
+    private func publishHomeToast(_ message: String) {
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        Task { @MainActor in
+            await Task.yield()
+            guard statusText == message else { return }
+            appState.showToast(
+                message,
+                kind: statusKind == .success ? .success : .error
             )
-        } else if !(stage == .join && statusKind == .error), !statusText.isEmpty {
-            SpyToast(text: statusText, kind: statusKind == .success ? .success : .error)
+            statusText = ""
+            statusKind = nil
         }
     }
 
     private func createRoom() async {
         guard let user = appState.user else { return }
+        let operation = RoomSyncOperation.creatingRoom
+        guard appState.beginRoomSync(operation) else { return }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            appState.endRoomSync(operation)
+        }
+        await Task.yield()
         do {
             let room = try await appState.client.createRoom(for: user)
             withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
                 appState.activeRoom = room
+                appState.selectedTab = .game
             }
             statusText = copy.roomReady(room.code)
             statusKind = .success
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
         } catch {
             statusText = error.localizedDescription.uppercased()
             statusKind = .error
@@ -743,8 +760,14 @@ struct HomeView: View {
 
     private func joinRoom() async {
         guard let user = appState.user else { return }
+        let operation = RoomSyncOperation.joiningRoom
+        guard appState.beginRoomSync(operation) else { return }
         isLoading = true
-        defer { isLoading = false }
+        defer {
+            isLoading = false
+            appState.endRoomSync(operation)
+        }
+        await Task.yield()
         do {
             let code = joinCode
             let room = try await appState.client.join(code: code, user: user)
@@ -752,7 +775,7 @@ struct HomeView: View {
             appState.selectedTab = .game
             statusText = copy.roomReady(room.code)
             statusKind = .success
-            HapticManager.shared.fire(.milestone, sound: .playerJoin)
+            HapticManager.shared.fire(.milestone)
         } catch {
             statusText = error.localizedDescription.uppercased()
             statusKind = .error
@@ -769,8 +792,14 @@ struct HomeView: View {
             return
         }
 
+        let operation = isHost(room) ? RoomSyncOperation.closingRoom : .leavingRoom
+        guard appState.beginRoomSync(operation) else { return }
         isClosingRoom = true
-        defer { isClosingRoom = false }
+        defer {
+            isClosingRoom = false
+            appState.endRoomSync(operation)
+        }
+        await Task.yield()
 
         do {
             try await appState.client.leaveRoom(room: room, user: user)
@@ -781,7 +810,7 @@ struct HomeView: View {
             }
             statusText = isHost(room) ? localized(en: "ROOM CLOSED", ru: "КОМНАТА ЗАКРЫТА", es: "SALA CERRADA") : localized(en: "LEFT ROOM", ru: "ВЫШЕЛ ИЗ КОМНАТЫ", es: "SALA ABANDONADA")
             statusKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             statusText = error.localizedDescription.uppercased()
             statusKind = .error

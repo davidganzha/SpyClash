@@ -26,7 +26,8 @@ targets:
     sources:
       - path: SpyClash
         excludes:
-          - "Services/HapticManager 2.swift"
+          # File-provider conflict copies must never become a second app type.
+          - "Services/HapticManager [0-9]*.swift"
           - "SWIFTUI_MIGRATION.md"
       - path: LICENSES/Rajdhani-OFL-1.1.txt
         buildPhase: resources
@@ -47,7 +48,12 @@ targets:
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSRequiresIPhoneOS: true
         ITSAppUsesNonExemptEncryption: false
-        NSCameraUsageDescription: "Scan SpyClash room QR codes. / Escanear QR de salas SpyClash. / Сканировать QR-коды комнат SpyClash."
+        NSCameraUsageDescription: "Scan room QR codes and stabilize nearby Radar positions. / Escanear QR y estabilizar posiciones del Radar. / Сканировать QR-коды и стабилизировать позиции на Радаре."
+        NSLocalNetworkUsageDescription: "Find nearby SpyClash players and deliver room invitations while the app is open. / Buscar jugadores cercanos y enviar invitaciones. / Находить игроков рядом и отправлять приглашения, пока приложение открыто."
+        NSNearbyInteractionUsageDescription: "Measure the distance to nearby SpyClash players so the radar can show precise proximity. / Medir la distancia a jugadores cercanos. / Измерять расстояние до игроков рядом для точного радара."
+        NSBonjourServices:
+          - _spyclash-radar._tcp
+          - _spyclash-radar._udp
         UIAppFonts:
           - Rajdhani-Bold.ttf
         UILaunchScreen:

@@ -27,6 +27,9 @@ struct HistoryView: View {
             }
             await load()
         }
+        .onChange(of: status) { _, message in
+            publishHistoryError(message)
+        }
     }
 
     private var header: some View {
@@ -113,15 +116,12 @@ struct HistoryView: View {
                 membershipUnavailablePanel
             }
         }
+    }
 
-        if !status.isEmpty {
-            Text(status)
-                .font(SpyTheme.micro)
-                .tracking(0.35)
-                .foregroundStyle(SpyTheme.red)
-                .spyFitted(lines: 2, scale: 0.62)
-                .spyWebEntrance(delay: 0.35, duration: 0.40, y: 8)
-        }
+    private func publishHistoryError(_ message: String) {
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        appState.showToast(message, kind: .error)
+        status = ""
     }
 
     private var sortedHistory: [GameHistory] {

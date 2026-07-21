@@ -67,6 +67,7 @@ struct ProfileView: View {
         .animation(.smooth(duration: 0.22), value: showDeleteConfirmation)
         .sheet(item: $legalSheet) { sheet in
             LegalDocumentSheet(kind: sheet)
+                .spyGlobalToastLayer()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)
@@ -78,6 +79,9 @@ struct ProfileView: View {
             if showDeleteConfirmation {
                 appState.isShellChromeSuppressed = false
             }
+        }
+        .onChange(of: status) { _, message in
+            publishProfileToast(message)
         }
     }
 
@@ -92,7 +96,7 @@ struct ProfileView: View {
                         .frame(width: 28, height: 36)
                         .offset(x: -2)
 
-                    HStack(spacing: 5) {
+                    HStack(spacing: 6) {
                         Text(cardBadgeGlyph(selectedCardBadge))
                             .foregroundStyle(spyCardAccentColor)
                         Text(cardBadgeTitle(selectedCardBadge).uppercased())
@@ -101,6 +105,13 @@ struct ProfileView: View {
                     }
                     .font(.system(size: 7, weight: .black, design: .monospaced))
                     .tracking(0.6)
+                    .padding(.horizontal, 9)
+                    .frame(height: 24)
+                    .background(spyCardAccentColor.opacity(0.075), in: Capsule())
+                    .overlay(
+                        Capsule()
+                            .stroke(spyCardAccentColor.opacity(0.30), lineWidth: 0.75)
+                    )
 
                     Spacer(minLength: 12)
 
@@ -213,18 +224,11 @@ struct ProfileView: View {
                             )
                         )
 
-                    LinearGradient(
-                        colors: [
-                            .clear,
-                            Color.white.opacity(0.055),
-                            .clear
-                        ],
-                        startPoint: .leading,
-                        endPoint: .trailing
+                    SpyCardSurfacePattern(
+                        theme: selectedCardTheme,
+                        accent: spyCardAccentColor
                     )
-                    .rotationEffect(.degrees(-18))
-                    .offset(x: -proxy.size.width * 0.24)
-                    .mask(cardShape)
+                    .clipShape(cardShape)
                 }
             }
             .clipShape(cardShape)
@@ -273,8 +277,20 @@ struct ProfileView: View {
                     .padding(.bottom, 1)
                     .shadow(color: spyCardAccentColor.opacity(appState.hasLimitlessAccess ? 0.28 : 0.10), radius: 5)
             }
-            .shadow(color: spyCardAccentColor.opacity(0.09), radius: 18, y: 8)
-            .shadow(color: .black.opacity(0.42), radius: 24, y: 14)
+            .background {
+                ZStack {
+                    cardShape
+                        .stroke(Color.black.opacity(0.90), lineWidth: 1)
+                        .shadow(color: .black.opacity(0.38), radius: 14)
+
+                    cardShape
+                        .stroke(spyCardAccentColor.opacity(0.18), lineWidth: 1)
+                        .shadow(color: spyCardAccentColor.opacity(0.11), radius: 10)
+                }
+            }
+            .animation(.smooth(duration: 0.28), value: selectedCardTheme)
+            .animation(.smooth(duration: 0.22), value: selectedCardAccent)
+            .animation(.smooth(duration: 0.22), value: selectedCardBadge)
             .accessibilityElement(children: .ignore)
             .accessibilityLabel(spyCardAccessibilityLabel)
         }
@@ -394,6 +410,8 @@ struct ProfileView: View {
 
                 languageSelector
 
+                RadarPolicySettingsView()
+
                 Button {
                     Task { await save() }
                 } label: {
@@ -413,13 +431,22 @@ struct ProfileView: View {
                 }
                 .buttonStyle(SpyPrimaryCommandStyle())
 
-                if !status.isEmpty {
-                    SpyToast(
-                        text: status,
-                        kind: statusKind == .success ? .success : .error
-                    )
-                }
             }
+        }
+    }
+
+    private func publishProfileToast(_ message: String) {
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+
+        Task { @MainActor in
+            await Task.yield()
+            guard status == message else { return }
+            appState.showToast(
+                message,
+                kind: statusKind == .success ? .success : .error
+            )
+            status = ""
+            statusKind = nil
         }
     }
 
@@ -625,13 +652,15 @@ struct ProfileView: View {
     }
 
     private var spyCardCustomization: some View {
-        VStack(alignment: .leading, spacing: 12) {
+        VStack(alignment: .leading, spacing: 10) {
             HStack(spacing: 8) {
-                Text(localized(en: "// SPYCARD CONFIG", ru: "// НАСТРОЙКА SPYCARD", es: "// CONFIGURAR SPYCARD"))
+                Text(localized(en: "// SPYCARD STUDIO", ru: "// SPYCARD СТУДИЯ", es: "// ESTUDIO SPYCARD"))
                     .font(SpyTheme.micro)
                     .tracking(0.10)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker(lines: 2)
+
+                Spacer(minLength: 0)
 
                 Text("LIMITLESS")
                     .font(.system(size: 7, weight: .black, design: .monospaced))
@@ -643,40 +672,40 @@ struct ProfileView: View {
                     .overlay(Rectangle().stroke(SpyTheme.red.opacity(0.34), lineWidth: 1))
             }
 
-            customizationLabel(localized(en: "FIELD SKIN", ru: "ОБШИВКА", es: "ESTILO"))
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
-                ForEach(SpyCardThemeID.allCases) { item in
-                    customizationButton(
-                        title: cardThemeTitle(item),
-                        icon: cardThemeIcon(item),
-                        isSelected: selectedCardTheme == item,
-                        isLocked: item.requiresLimitless && !hasSpyCardCustomizationAccess && selectedCardTheme != item
-                    ) {
-                        selectCardTheme(item)
+            VStack(spacing: 7) {
+                customizationRow(label: localized(en: "SKIN", ru: "ОБШИВКА", es: "ESTILO")) {
+                    HStack(spacing: 6) {
+                        ForEach(SpyCardThemeID.allCases) { item in
+                            themeSwatch(item)
+                        }
                     }
                 }
-            }
 
-            customizationLabel(localized(en: "SIGNAL ACCENT", ru: "СИГНАЛЬНЫЙ ЦВЕТ", es: "ACENTO"))
-            HStack(spacing: 8) {
-                ForEach(SpyCardAccentID.allCases) { item in
-                    accentButton(item)
-                }
-            }
-
-            customizationLabel(localized(en: "CLEARANCE BADGE", ru: "ЗНАК ДОПУСКА", es: "INSIGNIA"))
-            LazyVGrid(columns: [GridItem(.adaptive(minimum: 84), spacing: 8)], spacing: 8) {
-                ForEach(SpyCardBadgeID.allCases) { item in
-                    customizationButton(
-                        title: cardBadgeTitle(item),
-                        icon: cardBadgeGlyph(item),
-                        isSelected: selectedCardBadge == item,
-                        isLocked: item.requiresLimitless && !hasSpyCardCustomizationAccess && selectedCardBadge != item
-                    ) {
-                        selectCardBadge(item)
+                customizationRow(label: localized(en: "SIGNAL", ru: "СВЕТ", es: "SENAL")) {
+                    HStack(spacing: 6) {
+                        ForEach(SpyCardAccentID.allCases) { item in
+                            accentSwatch(item)
+                        }
                     }
                 }
+
+                customizationRow(label: localized(en: "CLEARANCE", ru: "ДОПУСК", es: "ACCESO")) {
+                    ScrollView(.horizontal) {
+                        HStack(spacing: 6) {
+                            ForEach(SpyCardBadgeID.allCases) { item in
+                                badgeSwatch(item)
+                            }
+                        }
+                    }
+                    .scrollIndicators(.hidden)
+                }
             }
+            .padding(8)
+            .background(SpyTheme.black.opacity(0.64), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
+            .overlay(
+                RoundedRectangle(cornerRadius: 12, style: .continuous)
+                    .stroke(SpyTheme.stroke, lineWidth: 1)
+            )
 
             if !hasSpyCardCustomizationAccess {
                 Text(localized(
@@ -693,49 +722,78 @@ struct ProfileView: View {
         .padding(.top, 4)
     }
 
-    private func customizationLabel(_ title: String) -> some View {
-        Text(title)
-            .font(.system(size: 8, weight: .black, design: .monospaced))
-            .tracking(0.7)
-            .foregroundStyle(SpyTheme.faint)
+    private func customizationRow<Content: View>(
+        label: String,
+        @ViewBuilder content: () -> Content
+    ) -> some View {
+        HStack(spacing: 6) {
+            Text(label)
+                .font(.system(size: 7, weight: .black, design: .monospaced))
+                .tracking(0.55)
+                .foregroundStyle(SpyTheme.faint)
+                .frame(width: 48, alignment: .leading)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+            content()
+                .frame(maxWidth: .infinity, alignment: .leading)
+        }
     }
 
-    private func customizationButton(
-        title: String,
-        icon: String,
-        isSelected: Bool,
-        isLocked: Bool,
-        action: @escaping () -> Void
-    ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 7) {
-                Text(icon)
-                    .font(.system(size: 13, weight: .black, design: .monospaced))
-                    .frame(width: 18)
+    private func themeSwatch(_ item: SpyCardThemeID) -> some View {
+        let isSelected = selectedCardTheme == item
+        let isLocked = item.requiresLimitless && !hasSpyCardCustomizationAccess && selectedCardTheme != item
 
-                Text(title)
-                    .font(.system(size: 8, weight: .black, design: .monospaced))
-                    .tracking(0.35)
-                    .spyFitted(scale: 0.58)
+        return Button {
+            selectCardTheme(item)
+        } label: {
+            ZStack(alignment: .topTrailing) {
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .fill(themeSwatchGradient(item))
+                    .overlay(SpyCardSurfacePattern(theme: item, accent: spyCardAccentColor).opacity(0.72))
+                    .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
 
-                Spacer(minLength: 0)
+                VStack(alignment: .leading, spacing: 0) {
+                    Spacer(minLength: 0)
+                    Text(cardThemeTitle(item))
+                        .font(.system(size: 7, weight: .black, design: .monospaced))
+                        .tracking(0.35)
+                        .foregroundStyle(.white.opacity(isLocked ? 0.35 : 0.88))
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.65)
+                }
+                .padding(6)
 
                 if isLocked {
                     Image(systemName: "lock.fill")
+                        .font(.system(size: 6, weight: .black))
+                        .foregroundStyle(.white)
+                        .frame(width: 16, height: 16)
+                        .background(SpyTheme.red, in: Circle())
+                        .padding(4)
+                } else if isSelected {
+                    Image(systemName: "checkmark")
                         .font(.system(size: 7, weight: .black))
+                        .foregroundStyle(.black)
+                        .frame(width: 16, height: 16)
+                        .background(spyCardAccentColor, in: Circle())
+                        .padding(4)
                 }
             }
-            .foregroundStyle(isSelected ? SpyTheme.red : (isLocked ? SpyTheme.faint : SpyTheme.muted))
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, minHeight: 44)
-            .background(isSelected ? SpyTheme.red.opacity(0.09) : SpyTheme.black)
-            .overlay(Rectangle().stroke(isSelected ? SpyTheme.red : SpyTheme.stroke, lineWidth: 1))
-            .contentShape(Rectangle())
+            .frame(maxWidth: .infinity)
+            .frame(height: 48)
+            .opacity(isLocked ? 0.68 : 1)
+            .overlay(
+                RoundedRectangle(cornerRadius: 8, style: .continuous)
+                    .stroke(isSelected ? spyCardAccentColor : SpyTheme.strokeStrong, lineWidth: isSelected ? 1.25 : 0.75)
+            )
         }
-        .buttonStyle(SpyWebPressStyle())
+        .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+        .accessibilityLabel(cardThemeTitle(item))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private func accentButton(_ item: SpyCardAccentID) -> some View {
+    private func accentSwatch(_ item: SpyCardAccentID) -> some View {
         let isSelected = selectedCardAccent == item
         let isLocked = item.requiresLimitless && !hasSpyCardCustomizationAccess && selectedCardAccent != item
         let color = cardAccentColor(item)
@@ -748,29 +806,77 @@ struct ProfileView: View {
                 HapticManager.shared.fire(.tabSelection)
             }
         } label: {
-            HStack(spacing: 8) {
+            HStack(spacing: 5) {
                 Circle()
                     .fill(color)
-                    .frame(width: 12, height: 12)
-                    .shadow(color: color.opacity(isSelected ? 0.55 : 0), radius: 5)
+                    .frame(width: 9, height: 9)
+                    .shadow(color: color.opacity(isSelected ? 0.75 : 0.15), radius: 4)
 
                 Text(cardAccentTitle(item))
-                    .font(.system(size: 8, weight: .black, design: .monospaced))
-                    .tracking(0.25)
-                    .spyFitted(scale: 0.55)
+                    .font(.system(size: 7, weight: .black, design: .monospaced))
+                    .tracking(0.15)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.58)
 
                 if isLocked {
                     Image(systemName: "lock.fill")
-                        .font(.system(size: 7, weight: .black))
+                        .font(.system(size: 6, weight: .black))
                 }
             }
             .foregroundStyle(isSelected ? color : (isLocked ? SpyTheme.faint : SpyTheme.muted))
+            .padding(.horizontal, 7)
             .frame(maxWidth: .infinity, minHeight: 44)
-            .background(isSelected ? color.opacity(0.07) : SpyTheme.black)
-            .overlay(Rectangle().stroke(isSelected ? color : SpyTheme.stroke, lineWidth: 1))
-            .contentShape(Rectangle())
+            .background(isSelected ? color.opacity(0.11) : SpyTheme.control, in: Capsule())
+            .overlay(Capsule().stroke(isSelected ? color.opacity(0.85) : SpyTheme.stroke, lineWidth: 1))
         }
-        .buttonStyle(SpyWebPressStyle())
+        .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+        .accessibilityLabel(cardAccentTitle(item))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func badgeSwatch(_ item: SpyCardBadgeID) -> some View {
+        let isSelected = selectedCardBadge == item
+        let isLocked = item.requiresLimitless && !hasSpyCardCustomizationAccess && selectedCardBadge != item
+
+        return Button {
+            selectCardBadge(item)
+        } label: {
+            HStack(spacing: 5) {
+                Text(cardBadgeGlyph(item))
+                    .foregroundStyle(isSelected ? spyCardAccentColor : SpyTheme.dim)
+
+                Text(cardBadgeTitle(item))
+                    .lineLimit(1)
+
+                if isLocked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 6, weight: .black))
+                }
+            }
+            .font(.system(size: 6.5, weight: .black, design: .monospaced))
+            .tracking(0.2)
+            .foregroundStyle(isSelected ? .white : (isLocked ? SpyTheme.faint : SpyTheme.muted))
+            .padding(.horizontal, 6)
+            .frame(height: 34)
+            .background(isSelected ? spyCardAccentColor.opacity(0.10) : SpyTheme.control, in: Capsule())
+            .overlay(Capsule().stroke(isSelected ? spyCardAccentColor.opacity(0.85) : SpyTheme.stroke, lineWidth: 1))
+        }
+        .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+        .accessibilityLabel(cardBadgeTitle(item))
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+    }
+
+    private func themeSwatchGradient(_ item: SpyCardThemeID) -> LinearGradient {
+        let colors: [Color]
+        switch item {
+        case .field:
+            colors = [Color(red: 0.10, green: 0.12, blue: 0.13), Color.black]
+        case .blacksite:
+            colors = [Color(red: 0.055, green: 0.055, blue: 0.065), Color.black]
+        case .dossier:
+            colors = [SpyTheme.red.opacity(0.26), Color(red: 0.10, green: 0.055, blue: 0.055), Color.black]
+        }
+        return LinearGradient(colors: colors, startPoint: .topLeading, endPoint: .bottomTrailing)
     }
 
     private func selectCardTheme(_ item: SpyCardThemeID) {
@@ -800,14 +906,6 @@ struct ProfileView: View {
         case .field: localized(en: "FIELD", ru: "ПОЛЕ", es: "CAMPO")
         case .blacksite: localized(en: "BLACKSITE", ru: "БЛЭКСАЙТ", es: "BLACKSITE")
         case .dossier: localized(en: "DOSSIER", ru: "ДОСЬЕ", es: "DOSSIER")
-        }
-    }
-
-    private func cardThemeIcon(_ item: SpyCardThemeID) -> String {
-        switch item {
-        case .field: "▦"
-        case .blacksite: "◼"
-        case .dossier: "⌁"
         }
     }
 
@@ -1015,7 +1113,7 @@ struct ProfileView: View {
             try await appState.setLanguage(selectedLanguage, syncRemote: false)
             status = appState.language.profile.saved
             statusKind = .success
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             status = error.localizedDescription.uppercased()
             statusKind = .error
@@ -1060,6 +1158,106 @@ struct ProfileView: View {
             statusKind = .error
             HapticManager.shared.fire(.notification(.error))
         }
+    }
+}
+
+struct SpyCardSurfacePattern: View {
+    let theme: SpyCardThemeID
+    let accent: Color
+
+    var body: some View {
+        Canvas { context, size in
+            switch theme {
+            case .field:
+                drawFieldGrid(in: &context, size: size)
+            case .blacksite:
+                drawBlacksitePanels(in: &context, size: size)
+            case .dossier:
+                drawDossierMarks(in: &context, size: size)
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func drawFieldGrid(in context: inout GraphicsContext, size: CGSize) {
+        let spacing = max(18, size.width / 13)
+        var grid = Path()
+
+        stride(from: spacing, through: size.width, by: spacing).forEach { x in
+            grid.move(to: CGPoint(x: x, y: 0))
+            grid.addLine(to: CGPoint(x: x, y: size.height))
+        }
+        stride(from: spacing, through: size.height, by: spacing).forEach { y in
+            grid.move(to: CGPoint(x: 0, y: y))
+            grid.addLine(to: CGPoint(x: size.width, y: y))
+        }
+        context.stroke(grid, with: .color(Color.white.opacity(0.026)), lineWidth: 0.5)
+
+        let center = CGPoint(x: size.width * 0.83, y: size.height * 0.69)
+        var reticle = Path()
+        reticle.addEllipse(in: CGRect(x: center.x - 16, y: center.y - 16, width: 32, height: 32))
+        reticle.move(to: CGPoint(x: center.x - 24, y: center.y))
+        reticle.addLine(to: CGPoint(x: center.x - 9, y: center.y))
+        reticle.move(to: CGPoint(x: center.x + 9, y: center.y))
+        reticle.addLine(to: CGPoint(x: center.x + 24, y: center.y))
+        reticle.move(to: CGPoint(x: center.x, y: center.y - 24))
+        reticle.addLine(to: CGPoint(x: center.x, y: center.y - 9))
+        reticle.move(to: CGPoint(x: center.x, y: center.y + 9))
+        reticle.addLine(to: CGPoint(x: center.x, y: center.y + 24))
+        context.stroke(reticle, with: .color(accent.opacity(0.16)), lineWidth: 0.7)
+    }
+
+    private func drawBlacksitePanels(in context: inout GraphicsContext, size: CGSize) {
+        let panels: [(CGFloat, CGFloat)] = [(0.76, 0.055), (0.84, 0.035), (0.91, 0.02)]
+        for (position, opacity) in panels {
+            var panel = Path()
+            panel.move(to: CGPoint(x: size.width * position, y: 0))
+            panel.addLine(to: CGPoint(x: size.width * min(position + 0.08, 1.04), y: 0))
+            panel.addLine(to: CGPoint(x: size.width * max(position - 0.08, 0), y: size.height))
+            panel.addLine(to: CGPoint(x: size.width * max(position - 0.16, -0.04), y: size.height))
+            panel.closeSubpath()
+            context.fill(panel, with: .color(Color.white.opacity(opacity)))
+        }
+
+        var accessRail = Path()
+        accessRail.move(to: CGPoint(x: size.width * 0.925, y: size.height * 0.18))
+        accessRail.addLine(to: CGPoint(x: size.width * 0.925, y: size.height * 0.82))
+        context.stroke(accessRail, with: .color(accent.opacity(0.32)), lineWidth: 1)
+    }
+
+    private func drawDossierMarks(in context: inout GraphicsContext, size: CGSize) {
+        let left = size.width * 0.68
+        let right = size.width * 0.92
+        let lineColor = Color.white.opacity(0.06)
+
+        for index in 0..<5 {
+            let y = size.height * (0.18 + CGFloat(index) * 0.095)
+            var line = Path()
+            line.move(to: CGPoint(x: left, y: y))
+            line.addLine(to: CGPoint(x: right - CGFloat(index % 2) * size.width * 0.07, y: y))
+            context.stroke(line, with: .color(lineColor), lineWidth: 1)
+        }
+
+        var stamp = Path()
+        stamp.addEllipse(in: CGRect(
+            x: size.width * 0.73,
+            y: size.height * 0.59,
+            width: size.width * 0.16,
+            height: size.width * 0.16
+        ))
+        context.stroke(stamp, with: .color(accent.opacity(0.18)), lineWidth: 1.2)
+
+        var registration = Path()
+        let inset = size.width * 0.055
+        let length = size.width * 0.045
+        registration.move(to: CGPoint(x: inset, y: inset + length))
+        registration.addLine(to: CGPoint(x: inset, y: inset))
+        registration.addLine(to: CGPoint(x: inset + length, y: inset))
+        registration.move(to: CGPoint(x: size.width - inset - length, y: size.height - inset))
+        registration.addLine(to: CGPoint(x: size.width - inset, y: size.height - inset))
+        registration.addLine(to: CGPoint(x: size.width - inset, y: size.height - inset - length))
+        context.stroke(registration, with: .color(accent.opacity(0.24)), lineWidth: 0.8)
     }
 }
 

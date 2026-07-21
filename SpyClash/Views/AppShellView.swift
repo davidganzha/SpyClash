@@ -5,6 +5,8 @@ struct AppShellView: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Namespace private var dockNamespace
     @State private var isCommandMenuPresented = AppShellView.initialCommandMenuPresentation
+    @State private var communityTab: CommunityTab = .network
+    @State private var communityDockRequest = CommunityDockRequest.initial
 
     private static var initialCommandMenuPresentation: Bool {
 #if DEBUG
@@ -18,15 +20,27 @@ struct AppShellView: View {
         @Bindable var appState = appState
         let contentTab = appState.selectedTab == .game && appState.activeRoom == nil ? AppTab.home : appState.selectedTab
         let dockTabs = AppTab.primaryCases
-        let isMainRoute = appState.shellRoute == .main
-        let shouldShowShellChrome = !appState.isShellChromeSuppressed && isMainRoute
-        let shouldShowDock = contentTab.showsBottomDock && shouldShowShellChrome
+        let isCommunityRoute = appState.shellRoute == .community
+        let shouldShowShellChrome = !appState.isShellChromeSuppressed
+        let shouldShowDock = (isCommunityRoute || contentTab.showsBottomDock) && shouldShowShellChrome
 
         ZStack {
-            ZStack(alignment: .bottom) {
-                contentTab
-                    .makeContentView()
+            ZStack {
+                ZStack(alignment: .bottom) {
+                    Group {
+                        if isCommunityRoute {
+                            CommunityView(
+                                selectedTab: $communityTab,
+                                dockRequest: communityDockRequest
+                            ) {
+                                appState.closeCommunity()
+                            }
+                        } else {
+                            contentTab.makeContentView()
+                        }
+                    }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .transition(.opacity)
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         if shouldShowDock {
                             Color.clear
@@ -35,66 +49,79 @@ struct AppShellView: View {
                         }
                     }
 
-                FloatingDock(selection: $appState.selectedTab, tabs: dockTabs, namespace: dockNamespace, language: appState.language)
+                    FloatingDock(
+                        selection: $appState.selectedTab,
+                        tabs: dockTabs,
+                        communitySelection: communityTab,
+                        isCommunity: isCommunityRoute,
+                        namespace: dockNamespace,
+                        language: appState.language
+                    ) { tab in
+                        if tab != .exit {
+                            communityTab = tab
+                        }
+                        communityDockRequest = communityDockRequest.next(tab)
+                    }
                     .opacity(shouldShowDock ? 1 : 0)
                     .offset(y: shouldShowDock ? 0 : 78)
                     .allowsHitTesting(shouldShowDock)
                     .accessibilityHidden(!shouldShowDock)
                     .animation(.easeOut(duration: 0.20), value: shouldShowDock)
-            }
-            .background(SpyTheme.black)
-            .overlay(alignment: .top) {
-                WebPullDownCommandMenu(isPresented: $isCommandMenuPresented)
-                    .opacity(shouldShowShellChrome ? 1 : 0)
-                    .offset(y: shouldShowShellChrome ? 0 : -140)
-                    .allowsHitTesting(shouldShowShellChrome)
-                    .accessibilityHidden(!shouldShowShellChrome)
-                    .animation(.easeOut(duration: 0.18), value: shouldShowShellChrome)
-            }
-            .scaleEffect(isMainRoute || reduceMotion ? 1 : 0.985)
-            .offset(x: isMainRoute || reduceMotion ? 0 : -24)
-            .opacity(isMainRoute ? 1 : 0.34)
-            .allowsHitTesting(isMainRoute)
-            .accessibilityHidden(!isMainRoute)
-
-            if appState.shellRoute == .community {
-                CommunityView {
-                    appState.closeCommunity()
                 }
-                .frame(maxWidth: .infinity, maxHeight: .infinity)
                 .background(SpyTheme.black)
-                .transition(
-                    reduceMotion
-                        ? .opacity
-                        : .move(edge: .trailing).combined(with: .opacity)
-                )
-                .zIndex(20)
+                .overlay(alignment: .top) {
+                    WebPullDownCommandMenu(isPresented: $isCommandMenuPresented)
+                        .opacity(shouldShowShellChrome ? 1 : 0)
+                        .offset(y: shouldShowShellChrome ? 0 : -140)
+                        .allowsHitTesting(shouldShowShellChrome)
+                        .accessibilityHidden(!shouldShowShellChrome)
+                        .animation(.easeOut(duration: 0.18), value: shouldShowShellChrome)
+                }
+            }
+            .blur(radius: roomSyncBlurRadius)
+            .disabled(showsBlockingRoomSyncOverlay)
+            .allowsHitTesting(!showsBlockingRoomSyncOverlay)
+            .accessibilityHidden(showsBlockingRoomSyncOverlay)
+
+            if let operation = appState.roomSyncOperation,
+               showsBlockingRoomSyncOverlay {
+                RoomSynchronizationOverlay(operation: operation, language: appState.language)
+                    .transition(.opacity)
+                    .zIndex(100)
             }
         }
         .background(SpyTheme.black)
         .animation(
-            reduceMotion ? .easeOut(duration: 0.18) : .smooth(duration: 0.44),
+            .easeOut(duration: reduceMotion ? 0.12 : 0.18),
             value: appState.shellRoute
+        )
+        .animation(
+            reduceMotion ? .easeOut(duration: 0.14) : .easeInOut(duration: 0.26),
+            value: appState.roomSyncOperation
         )
         .sheet(item: $appState.presentedSheet) { destination in
             switch destination {
             case .qrScanner:
                 QRScannerSheet()
+                    .spyGlobalToastLayer()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
             case .roomQR(let room):
                 RoomQRSheet(room: room)
+                    .spyGlobalToastLayer()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
             case .pricing:
                 PricingView()
+                    .spyGlobalToastLayer()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
             case .legal(let kind):
                 LegalDocumentSheet(kind: kind)
+                    .spyGlobalToastLayer()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
@@ -108,6 +135,29 @@ struct AppShellView: View {
         .onChange(of: appState.activeRoom?.id) { _, roomID in
             guard roomID == nil, appState.selectedTab == .game else { return }
             appState.selectedTab = .home
+        }
+        .onChange(of: appState.shellRoute) { _, route in
+            guard route == .main else { return }
+            communityTab = .network
+            communityDockRequest = .initial
+        }
+    }
+
+    private var showsBlockingRoomSyncOverlay: Bool {
+        guard let operation = appState.roomSyncOperation else { return false }
+        if case .updatingDuration = operation { return false }
+        return true
+    }
+
+    private var roomSyncBlurRadius: CGFloat {
+        guard let operation = appState.roomSyncOperation else { return 0 }
+        switch operation {
+        case .updatingDuration:
+            return 0
+        case .creatingRoom, .closingRoom:
+            return 1.2
+        default:
+            return 0.8
         }
     }
 
@@ -142,6 +192,113 @@ struct AppShellView: View {
         }
     }
 #endif
+}
+
+private struct RoomSynchronizationOverlay: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let operation: RoomSyncOperation
+    let language: AppLanguage
+
+    @State private var isSpinning = false
+
+    var body: some View {
+        ZStack {
+            Color.black.opacity(0.08)
+
+            if operation == .creatingRoom || operation == .closingRoom {
+                RoomSynchronizationTerminalLine(operation: operation, language: language)
+            } else {
+                Circle()
+                    .trim(from: 0.12, to: 0.82)
+                    .stroke(
+                        SpyTheme.red,
+                        style: StrokeStyle(lineWidth: 2.5, lineCap: .round)
+                    )
+                    .frame(width: 34, height: 34)
+                    .rotationEffect(.degrees(isSpinning ? 360 : 0))
+            }
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .ignoresSafeArea()
+        .contentShape(Rectangle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(operation.title(for: language)). \(operation.detail(for: language))")
+        .accessibilityIdentifier("roomSync.overlay")
+        .onAppear {
+            guard operation != .creatingRoom,
+                  operation != .closingRoom,
+                  !reduceMotion else { return }
+            withAnimation(.linear(duration: 1.15).repeatForever(autoreverses: false)) {
+                isSpinning = true
+            }
+        }
+    }
+}
+
+private struct RoomSynchronizationTerminalLine: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let operation: RoomSyncOperation
+    let language: AppLanguage
+
+    @State private var renderedText = ""
+    @State private var isCursorVisible = true
+
+    var body: some View {
+        HStack(spacing: 0) {
+            Text("> ")
+                .foregroundStyle(SpyTheme.red)
+            Text(renderedText)
+                .foregroundStyle(.white.opacity(0.88))
+            Text("_")
+                .foregroundStyle(SpyTheme.red)
+                .opacity(isCursorVisible ? 1 : 0.18)
+                .scaleEffect(x: isCursorVisible ? 1 : 0.45, anchor: .leading)
+                .animation(
+                    reduceMotion ? nil : .easeInOut(duration: 0.12),
+                    value: isCursorVisible
+                )
+                .task {
+                    isCursorVisible = true
+                    guard !reduceMotion else { return }
+
+                    while !Task.isCancelled {
+                        try? await Task.sleep(for: .milliseconds(480))
+                        guard !Task.isCancelled else { return }
+                        isCursorVisible.toggle()
+                    }
+                }
+        }
+        .font(.system(size: 13, weight: .semibold, design: .monospaced))
+        .tracking(0.7)
+        .task(id: terminalText) {
+            renderedText = ""
+            guard !reduceMotion else {
+                renderedText = terminalText
+                return
+            }
+
+            for character in terminalText {
+                guard !Task.isCancelled else { return }
+                try? await Task.sleep(for: .milliseconds(55))
+                guard !Task.isCancelled else { return }
+                renderedText.append(character)
+            }
+        }
+    }
+
+    private var terminalText: String {
+        switch (operation, language) {
+        case (.creatingRoom, .ru): "Создание комнаты"
+        case (.creatingRoom, .es): "Creando sala"
+        case (.creatingRoom, _): "Creating Room"
+        case (.closingRoom, .ru): "Закрытие комнаты"
+        case (.closingRoom, .es): "Cerrando sala"
+        case (.closingRoom, _): "Shutting Down"
+        default: operation.title(for: language)
+        }
+    }
 }
 
 private struct PullDownCommandMenu: View {
@@ -1128,16 +1285,25 @@ private struct DrawerCutShape: Shape {
 private struct FloatingDock: View {
     @Binding var selection: AppTab
     let tabs: [AppTab]
+    let communitySelection: CommunityTab
+    let isCommunity: Bool
     let namespace: Namespace.ID
     let language: AppLanguage
+    let communityAction: (CommunityTab) -> Void
 
     var body: some View {
         HStack(spacing: 0) {
-            ForEach(tabs) { tab in
+            ForEach(Array(dockItems.enumerated()), id: \.offset) { index, item in
                 Button {
-                    selection = tab
+                    handleTap(at: index)
                 } label: {
-                    DockItem(tab: tab, isSelected: selection.dockRepresentative == tab, namespace: namespace, language: language)
+                    DockItem(
+                        symbol: item.symbol,
+                        isSelected: item.isSelected,
+                        inactiveOpacity: item.inactiveOpacity,
+                        namespace: namespace,
+                        accessibilityLabel: item.accessibilityLabel
+                    )
                 }
                 .buttonStyle(SpyWebPressStyle(pressedScale: 0.90))
             }
@@ -1159,18 +1325,59 @@ private struct FloatingDock: View {
         .padding(.horizontal, 10)
         .padding(.bottom, 8)
     }
+
+    private var dockItems: [ShellDockItem] {
+        if isCommunity {
+            return CommunityTab.allCases.map { tab in
+                ShellDockItem(
+                    symbol: tab.symbol,
+                    isSelected: tab != .exit && communitySelection == tab,
+                    inactiveOpacity: tab == .exit ? 0.70 : 0.44,
+                    accessibilityLabel: tab.accessibilityLabel(language: language)
+                )
+            }
+        }
+
+        return tabs.map { tab in
+            ShellDockItem(
+                symbol: tab.symbol,
+                isSelected: selection.dockRepresentative == tab,
+                inactiveOpacity: 0.44,
+                accessibilityLabel: language.tabTitle(tab)
+            )
+        }
+    }
+
+    private func handleTap(at index: Int) {
+        if isCommunity {
+            guard CommunityTab.allCases.indices.contains(index) else { return }
+            HapticManager.shared.fire(.tabSelection)
+            communityAction(CommunityTab.allCases[index])
+        } else {
+            guard tabs.indices.contains(index) else { return }
+            selection = tabs[index]
+        }
+    }
+}
+
+private struct ShellDockItem {
+    let symbol: String
+    let isSelected: Bool
+    let inactiveOpacity: Double
+    let accessibilityLabel: String
 }
 
 private struct DockItem: View {
-    let tab: AppTab
+    let symbol: String
     let isSelected: Bool
+    let inactiveOpacity: Double
     let namespace: Namespace.ID
-    let language: AppLanguage
+    let accessibilityLabel: String
 
     var body: some View {
-        Image(systemName: tab.symbol)
+        Image(systemName: symbol)
             .font(.system(size: 25, weight: isSelected ? .bold : .medium))
-            .foregroundStyle(isSelected ? SpyTheme.red : Color.white.opacity(0.44))
+            .foregroundStyle(isSelected ? SpyTheme.red : Color.white.opacity(inactiveOpacity))
             .scaleEffect(isSelected ? 1.12 : 1)
             .offset(y: isSelected ? -1 : 0)
             .frame(maxWidth: .infinity)
@@ -1185,8 +1392,10 @@ private struct DockItem: View {
                 }
             }
             .contentShape(Rectangle())
+            .contentTransition(.opacity)
+            .animation(.easeOut(duration: 0.14), value: symbol)
             .animation(.interpolatingSpring(mass: 1, stiffness: 420, damping: 26, initialVelocity: 0), value: isSelected)
-            .accessibilityLabel(language.tabTitle(tab))
+            .accessibilityLabel(accessibilityLabel)
     }
 }
 
@@ -1462,9 +1671,12 @@ private struct WebCommandMenuPanel: View {
                     menuButton(
                         icon: "👤",
                         title: localized(en: "PROFILE", ru: "ПРОФИЛЬ", es: "PERFIL"),
-                        selected: appState.selectedTab == .profile
+                        selected: appState.shellRoute == .main && appState.selectedTab == .profile
                     ) {
-                        closeThen { appState.selectedTab = .profile }
+                        closeThen {
+                            appState.closeCommunity()
+                            appState.selectedTab = .profile
+                        }
                     }
                 }
 
@@ -1472,16 +1684,20 @@ private struct WebCommandMenuPanel: View {
                     menuButton(
                         icon: "📦",
                         title: localized(en: "WORD-PACKS", ru: "ПАКЕТЫ", es: "PAQUETES"),
-                        selected: appState.selectedTab == .packs
+                        selected: appState.shellRoute == .main && appState.selectedTab == .packs
                     ) {
-                        closeThen { appState.selectedTab = .packs }
+                        closeThen {
+                            appState.closeCommunity()
+                            appState.selectedTab = .packs
+                        }
                     }
                 }
 
                 revealItem(index: 2) {
                     menuButton(
                         icon: "◎",
-                        title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD")
+                        title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD"),
+                        selected: appState.shellRoute == .community
                     ) {
                         closeThen { appState.openCommunity() }
                     }

@@ -53,6 +53,9 @@ struct PricingView: View {
                 await appState.synchronizeCommerceAccess()
             }
         }
+        .onChange(of: statusText) { _, message in
+            publishPricingToast(message)
+        }
     }
 
     private var pricingEyebrow: String {
@@ -579,10 +582,6 @@ struct PricingView: View {
                 }
             }
 
-            if !statusText.isEmpty {
-                statusBanner
-            }
-
             HStack(spacing: 8) {
                 Image(systemName: "lock.shield.fill")
                 Text(localized(en: "APP STORE PURCHASE", ru: "ПОКУПКА В APP STORE", es: "COMPRA EN APP STORE"))
@@ -787,19 +786,21 @@ struct PricingView: View {
         .buttonStyle(SpyWebPressStyle())
     }
 
-    private var statusBanner: some View {
-        SpyToast(
-            text: statusText,
-            kind: statusToastKind
-        )
-    }
+    private func publishPricingToast(_ message: String) {
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
 
-    private var statusToastKind: SpyToast.Kind {
-        switch statusKind {
-        case .success: .success
-        case .warning: .warning
-        case .info, nil: .info
-        case .error: .error
+        Task { @MainActor in
+            await Task.yield()
+            guard statusText == message else { return }
+            let kind: AppToastKind = switch statusKind {
+            case .success: .success
+            case .warning: .warning
+            case .error: .error
+            case .info, nil: .info
+            }
+            appState.showToast(message, kind: kind)
+            statusText = ""
+            statusKind = nil
         }
     }
 
@@ -985,7 +986,7 @@ struct PricingView: View {
         if appState.hasLimitlessAccess {
             statusText = copy.accessActive
             statusKind = .success
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
         } else {
             statusText = copy.accessNotActive
             statusKind = .error
@@ -1007,7 +1008,7 @@ struct PricingView: View {
         if appState.hasLimitlessAccess {
             statusText = copy.accessActive
             statusKind = .success
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
             return
         }
         guard case .synced = appState.membershipSyncState,
@@ -1028,7 +1029,7 @@ struct PricingView: View {
             statusText = appState.hasLimitlessAccess ? copy.accessActive : copy.accessNotActive
             statusKind = appState.hasLimitlessAccess ? .success : .error
             if appState.hasLimitlessAccess {
-                HapticManager.shared.fire(.milestone, sound: .success)
+                HapticManager.shared.fire(.milestone)
             } else {
                 HapticManager.shared.fire(.notification(.error))
             }
@@ -1039,7 +1040,7 @@ struct PricingView: View {
                 es: "COMPRA PENDIENTE DE APROBACION"
             )
             statusKind = .warning
-            HapticManager.shared.fire(.notification(.warning), sound: .echoBlip)
+            HapticManager.shared.fire(.notification(.warning))
         case .cancelled:
             statusText = ""
             statusKind = nil
@@ -1064,7 +1065,7 @@ struct PricingView: View {
                     es: "COMPRA DE APP STORE RESTAURADA"
                 )
                 statusKind = .success
-                HapticManager.shared.fire(.milestone, sound: .success)
+                HapticManager.shared.fire(.milestone)
             } else {
                 statusText = copy.accessNotActive
                 statusKind = .error
@@ -1078,7 +1079,7 @@ struct PricingView: View {
                 es: "NO SE ENCONTRARON COMPRAS ACTIVAS"
             )
             statusKind = .info
-            HapticManager.shared.fire(.tabSelection, sound: .echoBlip)
+            HapticManager.shared.fire(.tabSelection)
         case .cancelled:
             statusText = ""
             statusKind = nil

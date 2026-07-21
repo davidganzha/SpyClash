@@ -14,9 +14,8 @@ Thank you for helping improve the official SpyClash project. This repository use
 1. Fork the repository on GitHub.
 2. Clone your fork only for the purpose of preparing a SpyClash contribution.
 3. Create a focused branch.
-4. Run `./scripts/bootstrap-public-assets.sh` to create local placeholder audio.
-5. Implement and test the change.
-6. Open a pull request against `main` and complete the supplied template.
+4. Implement and test the change.
+5. Open a pull request against `main` and complete the supplied template.
 
 ## Pull-request requirements
 

@@ -890,58 +890,110 @@ struct SpyModal<Content: View>: View {
     }
 }
 
-struct SpyToast: View {
-    enum Kind {
-        case success
-        case error
-        case info
-        case warning
-
-        var accent: Color {
-            switch self {
-            case .success: SpyTheme.green
-            case .error: SpyTheme.red
-            case .info: SpyTheme.muted
-            case .warning: SpyTheme.amber
-            }
+extension View {
+    func spyGlobalToastLayer() -> some View {
+        overlay(alignment: .bottomTrailing) {
+            GlobalToastLayer()
+                .zIndex(1_000_000)
         }
+    }
+}
 
-        var icon: String {
-            switch self {
-            case .success: "checkmark.seal.fill"
-            case .error: "exclamationmark.triangle.fill"
-            case .info: "dot.radiowaves.left.and.right"
-            case .warning: "exclamationmark.triangle.fill"
+private struct GlobalToastLayer: View {
+    @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    var body: some View {
+        if !appState.toastNotices.isEmpty {
+            VStack(alignment: .trailing, spacing: 8) {
+                ForEach(appState.toastNotices) { notice in
+                    GlobalToastNoticeView(notice: notice)
+                        .transition(toastTransition)
+                }
             }
+            .frame(maxWidth: 236)
+            .padding(.trailing, 12)
+            .padding(.bottom, 92)
+            .allowsHitTesting(false)
+            .accessibilityElement(children: .contain)
+            .animation(
+                reduceMotion ? .easeOut(duration: 0.14) : .smooth(duration: 0.28),
+                value: appState.toastNotices.map(\.id)
+            )
         }
     }
 
-    let text: String
-    var kind: Kind = .info
-    var isLoading = false
+    private var toastTransition: AnyTransition {
+        guard !reduceMotion else { return .opacity }
+        return .asymmetric(
+            insertion: .move(edge: .trailing).combined(with: .opacity),
+            removal: .move(edge: .trailing).combined(with: .opacity)
+        )
+    }
+}
+
+private struct GlobalToastNoticeView: View {
+    let notice: AppToastNotice
+
+    private var accent: Color {
+        switch notice.kind {
+        case .success: SpyTheme.green
+        case .warning, .info: SpyTheme.amber
+        case .error: SpyTheme.red
+        }
+    }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 10) {
-            if isLoading {
-                SpySpinner(size: 18, accent: kind.accent)
-            } else {
-                Image(systemName: kind.icon)
-                    .font(.system(size: 13, weight: .black))
-                    .foregroundStyle(kind.accent)
+        HStack(alignment: .top, spacing: 8) {
+            Group {
+                if let avatar = notice.avatar {
+                    Text(avatar)
+                        .font(.system(size: 14))
+                } else {
+                    Image(systemName: notice.systemImage)
+                        .font(.system(size: 11, weight: .bold))
+                        .foregroundStyle(accent)
+                }
             }
+            .frame(width: 24, height: 24)
+            .background(SpyTheme.control, in: CutCornerShape(cut: 5))
 
-            Text(text)
-                .font(SpyTheme.micro)
-                .tracking(0.12)
-                .foregroundStyle(kind.accent)
-                .fixedSize(horizontal: false, vertical: true)
-                .spyFitted(lines: 3, scale: 0.62)
-                .frame(maxWidth: .infinity, alignment: .leading)
+            VStack(alignment: .leading, spacing: 3) {
+                Text(notice.title)
+                    .font(.system(size: 9, weight: .black, design: .default))
+                    .tracking(0.04)
+                    .foregroundStyle(.white)
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.72)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                HStack(spacing: 5) {
+                    Circle()
+                        .fill(accent)
+                        .frame(width: 4, height: 4)
+                    Text(notice.detail)
+                        .font(.system(size: 7, weight: .black, design: .monospaced))
+                        .tracking(0.10)
+                        .foregroundStyle(accent)
+                        .lineLimit(1)
+                }
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
         }
-        .padding(12)
-        .background(kind.accent.opacity(0.08), in: CutCornerShape(cut: 8))
-        .overlay(CutCornerShape(cut: 8).stroke(kind.accent.opacity(0.30), lineWidth: 1))
-        .spyWebEntrance(duration: 0.25, y: 8)
+        .padding(.horizontal, 9)
+        .padding(.vertical, 8)
+        .frame(minHeight: 42)
+        .background(SpyTheme.panelDeep.opacity(0.98), in: CutCornerShape(cut: 7))
+        .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.stroke, lineWidth: 1))
+        .overlay(alignment: .leading) {
+            Rectangle()
+                .fill(accent)
+                .frame(width: 2, height: 18)
+        }
+        .shadow(color: accent.opacity(0.12), radius: 7)
+        .shadow(color: .black.opacity(0.46), radius: 8, y: 4)
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(notice.title), \(notice.detail)")
     }
 }
 

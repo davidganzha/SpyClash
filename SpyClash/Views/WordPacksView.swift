@@ -33,9 +33,6 @@ struct WordPacksView: View {
                     }
                 }
 
-                if !status.isEmpty {
-                    statusBanner
-                }
             }
             .padding(.horizontal, 18)
             .padding(.top, 20)
@@ -51,6 +48,7 @@ struct WordPacksView: View {
             Task { await load() }
         }) { route in
             WordPackEditorSheet(route: route)
+                .spyGlobalToastLayer()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)
@@ -80,6 +78,9 @@ struct WordPacksView: View {
             if showDeleteConfirmation {
                 appState.isShellChromeSuppressed = false
             }
+        }
+        .onChange(of: status) { _, message in
+            publishWordPacksToast(message)
         }
     }
 
@@ -228,8 +229,10 @@ struct WordPacksView: View {
         }
     }
 
-    private var statusBanner: some View {
-        SpyToast(text: status, kind: .error)
+    private func publishWordPacksToast(_ message: String) {
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        appState.showToast(message, kind: .error)
+        status = ""
     }
 
     private func packPanel(_ pack: WordPack, index: Int) -> some View {
@@ -355,7 +358,7 @@ struct WordPacksView: View {
             deleteTarget = nil
             showDeleteConfirmation = false
             status = ""
-            HapticManager.shared.fire(.notification(.success), sound: .toggleOff)
+            HapticManager.shared.fire(.notification(.success))
         } catch {
             showDeleteConfirmation = false
             status = error.localizedDescription.uppercased()
@@ -401,8 +404,6 @@ private struct WordPackEditorSheet: View {
     @State private var aiWordCount: Double
     @State private var isGenerating = false
     @State private var isSaving = false
-    @State private var status = ""
-    @State private var statusKind: EditorStatusKind?
     @State private var aiGenerationsToday: Int?
     @State private var aiLimitFromResponse: Int?
     @FocusState private var focusedField: Field?
@@ -456,12 +457,6 @@ private struct WordPackEditorSheet: View {
                                     focus: .category
                                 )
                                 wordsSection
-                                if !status.isEmpty {
-                                    SpyToast(
-                                        text: status,
-                                        kind: statusKind == .success ? .success : .error
-                                    )
-                                }
                                 saveButton
                             }
                         }
@@ -777,7 +772,7 @@ private struct WordPackEditorSheet: View {
 
         if appState.shouldUsePreviewData {
             setStatus(copy.previewSaved, kind: .success)
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
             dismiss()
             return
         }
@@ -807,7 +802,7 @@ private struct WordPackEditorSheet: View {
                     ownerEmail: email
                 )
             }
-            HapticManager.shared.fire(.milestone, sound: .allow)
+            HapticManager.shared.fire(.milestone)
             dismiss()
         } catch {
             setStatus(error.localizedDescription.uppercased(), kind: .error)
@@ -830,7 +825,7 @@ private struct WordPackEditorSheet: View {
             captureAIAllowance(from: generated)
             apply(generated)
             setStatus(copy.aiReadyMessage(words: generated.words.count, used: nil, limit: nil), kind: .success)
-            HapticManager.shared.fire(.milestone, sound: .echoBlip)
+            HapticManager.shared.fire(.milestone)
             return
         }
 
@@ -846,7 +841,7 @@ private struct WordPackEditorSheet: View {
                 ),
                 kind: .success
             )
-            HapticManager.shared.fire(.milestone, sound: .echoBlip)
+            HapticManager.shared.fire(.milestone)
         } catch {
             setStatus(error.localizedDescription.uppercased(), kind: .error)
             HapticManager.shared.fire(.notification(.error))
@@ -881,14 +876,17 @@ private struct WordPackEditorSheet: View {
     }
 
     private func setStatus(_ message: String, kind: EditorStatusKind) {
-        status = message
-        statusKind = kind
+        let toastKind: AppToastKind = switch kind {
+        case .success: .success
+        case .error: .error
+        }
+        appState.showToast(
+            message,
+            kind: toastKind
+        )
     }
 
-    private func clearStatus() {
-        status = ""
-        statusKind = nil
-    }
+    private func clearStatus() {}
 
     private func previewGeneratedWordPack(theme: String, count: Int) -> GeneratedWordPack {
         let seeds = previewWordSeeds

@@ -7,6 +7,7 @@ struct RoomQRSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @State private var copiedLink = false
+    @State private var isRadarPresented = false
 
     let room: GameRoom
 
@@ -95,15 +96,27 @@ struct RoomQRSheet: View {
                         Label(copy.transmitInvite, systemImage: "square.and.arrow.up")
                     }
                     .simultaneousGesture(TapGesture().onEnded {
-                        HapticManager.shared.fire(.buttonPress, audioPolicy: .hapticOnly)
+                        HapticManager.shared.fire(.buttonPress)
                     })
                     .buttonStyle(SpyButtonStyle(variant: .red))
                     .accessibilityIdentifier("roomQR.share")
 
                     Button {
+                        HapticManager.shared.fire(.buttonPress)
+                        isRadarPresented = true
+                    } label: {
+                        Label(
+                            localized(en: "FIND BY RADAR", ru: "НАЙТИ ПО РАДАРУ", es: "BUSCAR POR RADAR"),
+                            systemImage: "dot.radiowaves.left.and.right"
+                        )
+                    }
+                    .buttonStyle(SpyButtonStyle(variant: .outline))
+                    .accessibilityIdentifier("roomQR.openRadar")
+
+                    Button {
                         UIPasteboard.general.string = joinURL.absoluteString
                         copiedLink = true
-                        HapticManager.shared.fire(.notification(.success), sound: .copyConfirm)
+                        HapticManager.shared.fire(.notification(.success))
                     } label: {
                         Label(
                             copiedLink
@@ -126,6 +139,10 @@ struct RoomQRSheet: View {
                 .padding(.horizontal, 18)
                 .padding(.vertical, 24)
             }
+        }
+        .fullScreenCover(isPresented: $isRadarPresented) {
+            RadarInviteView(room: room)
+                .spyGlobalToastLayer()
         }
     }
 
@@ -343,7 +360,7 @@ struct QRScannerSheet: View {
                     let now = Date()
                     guard now.timeIntervalSince(lastInvalidScanAt) >= 1.5 else { return }
                     lastInvalidScanAt = now
-                    statusText = copy.invalidCode
+                    appState.showToast(copy.invalidCode, kind: .warning)
                     if lastInvalidPayload != payload {
                         lastInvalidPayload = payload
                         HapticManager.shared.fire(.notification(.warning))
@@ -356,7 +373,7 @@ struct QRScannerSheet: View {
                 HapticManager.shared.fire(.buttonPress)
                 Task {
                     let joined = await appState.joinRoom(code: code)
-                    statusText = joined ? copy.roomLinked : copy.roomNotFound
+                    statusText = nil
                     if joined {
                         try? await Task.sleep(for: .milliseconds(260))
                         dismiss()
@@ -365,12 +382,14 @@ struct QRScannerSheet: View {
                     }
                 }
             } onError: {
-                statusText = localized(
+                let message = localized(
                     en: "Camera could not start. Close the scanner and try again.",
                     ru: "Не удалось запустить камеру. Закрой сканер и попробуй снова.",
                     es: "No se pudo iniciar la camara. Cierra y vuelve a intentarlo."
                 )
-                HapticManager.shared.fire(.notification(.error), sound: .hardDeny)
+                statusText = nil
+                appState.showToast(message, kind: .error)
+                HapticManager.shared.fire(.notification(.error))
             }
             .clipShape(CutCornerShape(cut: 18))
             .overlay(CutCornerShape(cut: 18).stroke(SpyTheme.red.opacity(0.9), lineWidth: 2))

@@ -35,13 +35,11 @@ Requirements:
 
 - macOS with a current Xcode release.
 - iOS 17 or newer simulator/device target.
-- Python 3 for generating local placeholder audio.
 - Optional: XcodeGen if regenerating the project from `project.yml`.
 
 After cloning:
 
 ```bash
-./scripts/bootstrap-public-assets.sh
 open SpyClash.xcodeproj
 ```
 
@@ -49,9 +47,11 @@ Select your own Apple development team for device builds. Never commit signing c
 
 ## Assets and third-party material
 
-Production sound files are deliberately omitted because redistribution rights have not been verified for a public source repository. The bootstrap script creates silent local placeholders without replacing any existing production audio.
-
 `Rajdhani-Bold.ttf` is distributed under the SIL Open Font License 1.1. Its license is included at `LICENSES/Rajdhani-OFL-1.1.txt` and takes precedence over `LICENSE.md` for that font file.
+
+The iOS app includes an in-app Third-Party Acknowledgements screen containing the applicable notices for Rajdhani, Socket.IO Client Swift, and Starscream.
+
+App Store media remain subject to `LICENSE.md` and any file-specific third-party terms. Their publication does not grant reuse rights.
 
 SpyClash names, logos, icons, and trade dress are not licensed for use in other products. See [TRADEMARKS.md](TRADEMARKS.md).
 

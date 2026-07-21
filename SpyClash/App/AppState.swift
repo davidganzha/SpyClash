@@ -61,14 +61,115 @@ enum MembershipSyncState: Equatable {
     case unavailable(message: String)
 }
 
+enum RoomSyncOperation: Equatable {
+    case creatingRoom
+    case joiningRoom
+    case closingRoom
+    case leavingRoom
+    case updatingMode(SpyGameMode)
+    case updatingDuration(minutes: Int)
+
+    func title(for language: AppLanguage) -> String {
+        switch (self, language) {
+        case (.creatingRoom, .ru): "СОЗДАНИЕ КОМНАТЫ"
+        case (.creatingRoom, .es): "CREANDO SALA"
+        case (.creatingRoom, _): "CREATING ROOM"
+        case (.joiningRoom, .ru): "ПОДКЛЮЧЕНИЕ К КОМНАТЕ"
+        case (.joiningRoom, .es): "CONECTANDO A LA SALA"
+        case (.joiningRoom, _): "JOINING ROOM"
+        case (.closingRoom, .ru): "ЗАКРЫТИЕ КОМНАТЫ"
+        case (.closingRoom, .es): "CERRANDO SALA"
+        case (.closingRoom, _): "CLOSING ROOM"
+        case (.leavingRoom, .ru): "ВЫХОД ИЗ КОМНАТЫ"
+        case (.leavingRoom, .es): "SALIENDO DE LA SALA"
+        case (.leavingRoom, _): "LEAVING ROOM"
+        case (.updatingMode, .ru): "СИНХРОНИЗАЦИЯ РЕЖИМА"
+        case (.updatingMode, .es): "SINCRONIZANDO MODO"
+        case (.updatingMode, _): "SYNCING GAME MODE"
+        case (.updatingDuration, .ru): "СИНХРОНИЗАЦИЯ ВРЕМЕНИ"
+        case (.updatingDuration, .es): "SINCRONIZANDO TIEMPO"
+        case (.updatingDuration, _): "SYNCING DURATION"
+        }
+    }
+
+    func detail(for language: AppLanguage) -> String {
+        switch self {
+        case .creatingRoom:
+            return switch language {
+            case .ru: "Подготавливаем защищённую игровую сессию. Пожалуйста, подождите."
+            case .es: "Preparando una sesion segura. Espera un momento."
+            default: "Preparing a secure game session. Please wait."
+            }
+        case .joiningRoom:
+            return switch language {
+            case .ru: "Подключаемся и синхронизируем состояние комнаты. Пожалуйста, подождите."
+            case .es: "Conectando y sincronizando el estado de la sala. Espera un momento."
+            default: "Connecting and synchronizing room state. Please wait."
+            }
+        case .closingRoom:
+            return switch language {
+            case .ru: "Закрываем сессию для всех игроков. Пожалуйста, подождите."
+            case .es: "Cerrando la sesion para todos los jugadores. Espera un momento."
+            default: "Closing the session for every player. Please wait."
+            }
+        case .leavingRoom:
+            return switch language {
+            case .ru: "Синхронизируем выход из комнаты. Пожалуйста, подождите."
+            case .es: "Sincronizando tu salida de la sala. Espera un momento."
+            default: "Synchronizing your exit from the room. Please wait."
+            }
+        case .updatingMode(let mode):
+            let modeTitle: String
+            switch (mode, language) {
+            case (.questions, .ru): modeTitle = "«Вопросы»"
+            case (.associations, .ru): modeTitle = "«Ассоциации»"
+            case (.questions, .es): modeTitle = "Preguntas"
+            case (.associations, .es): modeTitle = "Asociaciones"
+            case (.questions, _): modeTitle = "Questions"
+            case (.associations, _): modeTitle = "Associations"
+            }
+            switch language {
+            case .ru: return "Переключаем комнату на режим \(modeTitle). Пожалуйста, подождите."
+            case .es: return "Cambiando la sala al modo \(modeTitle). Espera un momento."
+            default: return "Switching the room to \(modeTitle) mode. Please wait."
+            }
+        case .updatingDuration(let minutes):
+            return switch language {
+            case .ru: "Устанавливаем длительность игры: \(minutes) мин. Пожалуйста, подождите."
+            case .es: "Ajustando la duracion a \(minutes) min. Espera un momento."
+            default: "Setting game duration to \(minutes) min. Please wait."
+            }
+        }
+    }
+}
+
+enum AppToastKind: Equatable {
+    case success
+    case warning
+    case error
+    case info
+}
+
+struct AppToastNotice: Identifiable, Equatable {
+    let id: UUID
+    let kind: AppToastKind
+    let title: String
+    let detail: String
+    let systemImage: String
+    let avatar: String?
+}
+
 @MainActor
 @Observable
 final class AppState: NSObject {
     let client: Base44Client
     let storeKit: StoreKitManager
     let membershipRealtime: MembershipRealtimeService
+    let radarNearby: RadarNearbyService
     var user: SpyUser? {
         didSet {
+            radarNearby.configure(user: user)
+            radarNearby.setActiveRoom(activeRoom)
             guard oldValue?.id != user?.id else { return }
             // A verified entitlement belongs to exactly one SpyClash account.
             // Clear it synchronously before the replacement account renders.
@@ -92,8 +193,18 @@ final class AppState: NSObject {
     var isBusy = false
     private(set) var isAppleAuthorizationPending = false
     var authPhase: AuthPhase = .email
-    var authError: String?
-    var authNotice: String?
+    var authError: String? {
+        didSet {
+            guard authError != oldValue, let authError else { return }
+            showToast(authError, kind: .error)
+        }
+    }
+    var authNotice: String? {
+        didSet {
+            guard authNotice != oldValue, let authNotice else { return }
+            showToast(authNotice, kind: .success)
+        }
+    }
     var appleAuthStage: AppleAuthStage?
     var standardAuthCinematicStage: StandardAuthCinematicStage?
     var authHomeRevealPhase: AuthHomeRevealPhase = .idle
@@ -106,15 +217,24 @@ final class AppState: NSObject {
     var activeRoom: GameRoom? {
         didSet {
             persistActiveRoomReference(activeRoom)
+            radarNearby.setActiveRoom(activeRoom)
+            handleRoomPresenceChange(from: oldValue, to: activeRoom)
         }
     }
     var isShellChromeSuppressed = false
+    private(set) var roomSyncOperation: RoomSyncOperation?
     var presentedSheet: AppSheet?
     var roomQRTarget: RoomQRTarget = .web
     var language: AppLanguage = .stored
     var pendingJoinCode: String?
-    var deepLinkStatus: String?
+    var deepLinkStatus: String? {
+        didSet {
+            guard deepLinkStatus != oldValue, let deepLinkStatus else { return }
+            showToast(deepLinkStatus, kind: Self.deepLinkToastKind(deepLinkStatus))
+        }
+    }
     var isJoiningDeepLink = false
+    private(set) var toastNotices: [AppToastNotice] = []
 #if DEBUG
     var isUIPreviewMode = false
 #endif
@@ -131,9 +251,11 @@ final class AppState: NSObject {
 
     override init() {
         let client = Base44Client()
+        let radarNearby = RadarNearbyService()
         self.client = client
         self.storeKit = StoreKitManager(client: client)
         self.membershipRealtime = MembershipRealtimeService()
+        self.radarNearby = radarNearby
         super.init()
 
         storeKit.onEntitlementChanged = { [weak self] in
@@ -141,6 +263,9 @@ final class AppState: NSObject {
         }
         membershipRealtime.onMembershipSignal = { [weak self] in
             self?.handleMembershipRealtimeSignal()
+        }
+        radarNearby.onAutomaticInvitation = { [weak self] invitation in
+            self?.handleAutomaticRadarInvitation(invitation)
         }
     }
 
@@ -151,6 +276,252 @@ final class AppState: NSObject {
         false
 #endif
     }
+
+    @discardableResult
+    func beginRoomSync(_ operation: RoomSyncOperation) -> Bool {
+        guard roomSyncOperation == nil else { return false }
+        roomSyncOperation = operation
+        return true
+    }
+
+    func endRoomSync(_ operation: RoomSyncOperation) {
+        guard roomSyncOperation == operation else { return }
+        roomSyncOperation = nil
+    }
+
+    func showToast(
+        _ message: String,
+        kind: AppToastKind,
+        detail: String? = nil,
+        systemImage: String? = nil,
+        avatar: String? = nil,
+        duration: Duration = .milliseconds(2_800)
+    ) {
+        let title = message.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty else { return }
+
+        let notice = AppToastNotice(
+            id: UUID(),
+            kind: kind,
+            title: title,
+            detail: detail ?? toastDetail(for: kind),
+            systemImage: systemImage ?? toastSystemImage(for: kind),
+            avatar: avatar
+        )
+
+        toastNotices.append(notice)
+        if toastNotices.count > 3 {
+            toastNotices.removeFirst(toastNotices.count - 3)
+        }
+
+        Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: duration)
+            } catch {
+                return
+            }
+            self?.dismissToast(notice.id)
+        }
+    }
+
+    func dismissToast(_ id: UUID) {
+        toastNotices.removeAll { $0.id == id }
+    }
+
+    func monitorActiveRoom(_ roomID: String) async {
+#if DEBUG
+        if shouldUsePreviewData {
+            return
+        }
+#endif
+
+        while !Task.isCancelled, activeRoom?.id == roomID {
+            if roomSyncOperation == nil {
+                do {
+                    let refreshedRoom = try await client.refreshRoom(id: roomID)
+                    guard !Task.isCancelled,
+                          activeRoom?.id == roomID,
+                          roomSyncOperation == nil else { return }
+
+                    if let refreshedRoom {
+                        activeRoom = refreshedRoom
+                    } else {
+                        activeRoom = nil
+                        if selectedTab == .game {
+                            selectedTab = .home
+                        }
+                        showToast(
+                            roomClosedToastMessage,
+                            kind: .warning,
+                            systemImage: "rectangle.portrait.and.arrow.right"
+                        )
+                        return
+                    }
+                } catch {
+                    // Background room refreshes are best-effort. User-initiated
+                    // actions publish their own actionable errors as toasts.
+                }
+            }
+
+            do {
+                try await Task.sleep(for: .seconds(3))
+            } catch {
+                return
+            }
+        }
+    }
+
+    private func handleRoomPresenceChange(from previous: GameRoom?, to current: GameRoom?) {
+        guard let previous,
+              let current,
+              previous.id == current.id else { return }
+
+        let currentUserID = user?.email
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let previousIDs = Set(previous.playersList.map(normalizedPlayerID))
+        let currentIDs = Set(current.playersList.map(normalizedPlayerID))
+        let joined = current.playersList.filter { player in
+            let id = normalizedPlayerID(player)
+            return id != currentUserID && !previousIDs.contains(id)
+        }
+        let left = previous.playersList.filter { player in
+            let id = normalizedPlayerID(player)
+            return id != currentUserID && !currentIDs.contains(id)
+        }
+
+        guard !joined.isEmpty || !left.isEmpty else { return }
+
+        if !joined.isEmpty {
+            showPresenceToast(for: joined, joined: true)
+        }
+        if !left.isEmpty {
+            showPresenceToast(for: left, joined: false)
+        }
+        HapticManager.shared.fire(.navigation)
+    }
+
+    private func showPresenceToast(for players: [Player], joined: Bool) {
+        let isSinglePlayer = players.count == 1
+        let title = isSinglePlayer
+            ? (players.first?.name.uppercased() ?? presencePlayersTitle(players.count))
+            : presencePlayersTitle(players.count)
+
+        showToast(
+            title,
+            kind: joined ? .success : .error,
+            detail: presenceDetail(joined: joined, isPlural: !isSinglePlayer),
+            systemImage: joined ? "person.badge.plus.fill" : "person.badge.minus.fill",
+            avatar: isSinglePlayer ? players.first?.avatar : nil,
+            duration: .milliseconds(2_400)
+        )
+    }
+
+    private func normalizedPlayerID(_ player: Player) -> String {
+        player.email
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+    }
+
+    private func presencePlayersTitle(_ count: Int) -> String {
+        switch language {
+        case .ru: "ИГРОКОВ: \(count)"
+        case .es: "\(count) JUGADORES"
+        default: "\(count) PLAYERS"
+        }
+    }
+
+    private func presenceDetail(joined: Bool, isPlural: Bool) -> String {
+        switch (joined, isPlural, language) {
+        case (true, false, .ru): "ВОШЁЛ"
+        case (true, true, .ru): "ВОШЛИ"
+        case (false, false, .ru): "ВЫШЕЛ"
+        case (false, true, .ru): "ВЫШЛИ"
+        case (true, false, .es): "ENTRÓ"
+        case (true, true, .es): "ENTRARON"
+        case (false, false, .es): "SALIÓ"
+        case (false, true, .es): "SALIERON"
+        case (true, false, _): "JOINED"
+        case (true, true, _): "JOINED"
+        case (false, false, _): "LEFT"
+        case (false, true, _): "LEFT"
+        }
+    }
+
+    private func toastDetail(for kind: AppToastKind) -> String {
+        switch (kind, language) {
+        case (.success, .ru): "ГОТОВО"
+        case (.warning, .ru), (.info, .ru): "ВНИМАНИЕ"
+        case (.error, .ru): "ОШИБКА"
+        case (.success, .es): "LISTO"
+        case (.warning, .es), (.info, .es): "ATENCIÓN"
+        case (.error, .es): "ERROR"
+        case (.success, _): "SUCCESS"
+        case (.warning, _), (.info, _): "ATTENTION"
+        case (.error, _): "ERROR"
+        }
+    }
+
+    private func toastSystemImage(for kind: AppToastKind) -> String {
+        switch kind {
+        case .success: "checkmark.seal.fill"
+        case .warning: "exclamationmark.triangle.fill"
+        case .error: "xmark.octagon.fill"
+        case .info: "info.circle.fill"
+        }
+    }
+
+    private static func deepLinkToastKind(_ message: String) -> AppToastKind {
+        let upper = message.uppercased()
+        let errorMarkers = ["ERROR", "FAILED", "NOT FOUND", "COULD NOT", "НЕ УДАЛ", "НЕ НАЙД", "NO SE PUDO"]
+        if errorMarkers.contains(where: upper.contains) {
+            return .error
+        }
+        if upper.contains("READY") || upper.contains("ГОТОВ") || upper.contains("LISTA") {
+            return .success
+        }
+        return .warning
+    }
+
+    private var roomClosedToastMessage: String {
+        switch language {
+        case .ru: "ХОСТ ЗАКРЫЛ КОМНАТУ"
+        case .es: "EL HOST CERRÓ LA SALA"
+        default: "ROOM CLOSED BY HOST"
+        }
+    }
+
+#if DEBUG
+    private func scheduleToastPreviewIfRequested(roomID: String?) {
+        let arguments = ProcessInfo.processInfo.arguments
+
+        guard arguments.contains("--spyclash-preview-room-presence-events") else { return }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + 0.75) { [weak self] in
+            guard let self,
+                  let roomID,
+                  var joinedRoom = self.activeRoom,
+                  joinedRoom.id == roomID else { return }
+            let previewPlayer = Player(
+                email: "signal.echo@spyclash.local",
+                name: "Signal Echo",
+                avatar: "🛰️"
+            )
+            if !joinedRoom.playersList.contains(where: { $0.email == previewPlayer.email }) {
+                joinedRoom.players = joinedRoom.playersList + [previewPlayer]
+                self.activeRoom = joinedRoom
+            }
+
+            DispatchQueue.main.asyncAfter(deadline: .now() + 3.1) { [weak self] in
+                guard let self,
+                      var leftRoom = self.activeRoom,
+                      leftRoom.id == roomID else { return }
+                leftRoom.players = leftRoom.playersList.filter { $0.email != previewPlayer.email }
+                self.activeRoom = leftRoom
+            }
+        }
+    }
+#endif
 
     var hasActiveAuthCinematic: Bool {
         appleAuthStage != nil || standardAuthCinematicStage != nil
@@ -227,7 +598,7 @@ final class AppState: NSObject {
         await performAuth {
             try await self.client.register(email: email, password: password)
             self.authPhase = .otp(email: email)
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         }
     }
 
@@ -244,7 +615,7 @@ final class AppState: NSObject {
                 )
             } else {
                 self.authPhase = .password(email: email)
-                HapticManager.shared.fire(.notification(.success), sound: .allow)
+                HapticManager.shared.fire(.notification(.success))
             }
         }
     }
@@ -254,7 +625,7 @@ final class AppState: NSObject {
             try await self.client.requestPasswordReset(email: email)
             self.authPhase = .resetEmailSent(email: email)
             self.authNotice = self.language.auth.recoveryLinkNotice
-            HapticManager.shared.fire(.notification(.success), sound: .allow)
+            HapticManager.shared.fire(.notification(.success))
         }
     }
 
@@ -263,7 +634,7 @@ final class AppState: NSObject {
             try await self.client.resetPassword(token: token, newPassword: newPassword)
             self.authPhase = .email
             self.authNotice = self.language.auth.passphraseUpdatedNotice
-            HapticManager.shared.fire(.notification(.success), sound: .success)
+            HapticManager.shared.fire(.notification(.success))
         }
     }
 
@@ -332,7 +703,7 @@ final class AppState: NSObject {
 
             appleAuthStage = .accessGranted
             // The auth timeline already owns its completion surge.
-            HapticManager.shared.fire(.notification(.success), audioPolicy: .hapticOnly)
+            HapticManager.shared.fire(.notification(.success))
 
             let totalElapsed = animationStartedAt.duration(to: .now)
             let remainingToFourSeconds = Duration.seconds(4) - totalElapsed
@@ -476,7 +847,6 @@ final class AppState: NSObject {
         startDelay: Duration
     ) async {
         standardAuthTimelineTask?.cancel()
-        AuthCinematicSoundPlayer.shared.stopAll()
 
         let runID = UUID()
         standardAuthRunID = runID
@@ -534,13 +904,6 @@ final class AppState: NSObject {
 
             guard standardAuthRunID == runID, user != nil else { return }
 
-            // The bundled lock sample has ~58 ms of leading silence; the sound
-            // player seeks past it so the audible click lands on this deadline.
-            AuthCinematicSoundPlayer.shared.playFragmentLock(
-                index: piece - 1,
-                totalCount: 4
-            )
-
             if piece < 4 {
                 standardAuthCinematicStage = .placing(piece + 1)
             } else {
@@ -557,7 +920,6 @@ final class AppState: NSObject {
 
         guard standardAuthRunID == runID, user != nil else { return }
         standardAuthCinematicStage = .accessGranted
-        AuthCinematicSoundPlayer.shared.playCompletionSurge()
 
         do {
             try await Task.sleep(for: .milliseconds(900))
@@ -613,7 +975,6 @@ final class AppState: NSObject {
         standardAuthRunID = nil
         standardAuthCinematicStage = nil
         authHomeRevealPhase = .idle
-        AuthCinematicSoundPlayer.shared.stopAll()
     }
 
 #if DEBUG
@@ -635,8 +996,7 @@ final class AppState: NSObject {
         standardAuthTimelineTask?.cancel()
         standardAuthTimelineTask = nil
         standardAuthRunID = nil
-        AuthCinematicSoundPlayer.shared.stopAll()
-        HapticManager.shared.fire(.notification(.success), sound: .playerLeave)
+        HapticManager.shared.fire(.notification(.success))
         client.clearToken()
         KeychainStore.clearToken()
         user = nil
@@ -653,6 +1013,7 @@ final class AppState: NSObject {
         selectedTab = .home
         shellRoute = .main
         activeRoom = nil
+        roomSyncOperation = nil
         presentedSheet = nil
         pendingJoinCode = nil
         deepLinkStatus = nil
@@ -846,6 +1207,55 @@ final class AppState: NSObject {
         shellRoute = .main
     }
 
+    func setRadarApplicationActive(_ isActive: Bool) {
+        radarNearby.setApplicationActive(isActive)
+    }
+
+    @discardableResult
+    func acceptRadarInvitation() async -> Bool {
+        guard let invitation = radarNearby.incomingInvitation else { return false }
+
+        if let activeRoom,
+           activeRoom.code.caseInsensitiveCompare(invitation.roomCode) == .orderedSame {
+            await radarNearby.acceptIncomingInvitation()
+            selectedTab = .game
+            shellRoute = .main
+            presentedSheet = nil
+            return true
+        }
+
+        let joined = await joinRoom(code: invitation.roomCode)
+        if joined {
+            await radarNearby.acceptIncomingInvitation()
+        }
+        return joined
+    }
+
+    func declineRadarInvitation() {
+        radarNearby.declineIncomingInvitation()
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func handleAutomaticRadarInvitation(_ invitation: RadarIncomingInvitation) {
+        if let activeRoom,
+           activeRoom.code.caseInsensitiveCompare(invitation.roomCode) != .orderedSame {
+            // Never replace an active session without explicit confirmation,
+            // even when the user opted into automatic nearby joins.
+            radarNearby.presentForConfirmation(invitation)
+            return
+        }
+
+        guard activeRoom == nil else { return }
+        Task {
+            let joined = await joinRoom(code: invitation.roomCode)
+            if joined {
+                await radarNearby.acceptIncomingInvitation()
+            } else {
+                radarNearby.presentForConfirmation(invitation)
+            }
+        }
+    }
+
     @discardableResult
     func joinRoom(code rawCode: String) async -> Bool {
         guard let user else {
@@ -867,7 +1277,7 @@ final class AppState: NSObject {
             presentedSheet = nil
             pendingJoinCode = nil
             deepLinkStatus = language.home.roomReady(code)
-            HapticManager.shared.fire(.milestone, sound: .playerJoin)
+            HapticManager.shared.fire(.milestone)
             return true
         } catch {
             deepLinkStatus = error.localizedDescription.uppercased()
@@ -998,6 +1408,7 @@ final class AppState: NSObject {
         activeRoom = shouldPreviewActiveRoom
             ? GameRoom.previewRoom(status: previewArgumentValue(prefix: "--spyclash-preview-room=", in: arguments) ?? "waiting")
             : nil
+        roomSyncOperation = previewRoomSyncOperation(from: arguments)
         pendingJoinCode = nil
         deepLinkStatus = nil
         isJoiningDeepLink = false
@@ -1023,6 +1434,49 @@ final class AppState: NSObject {
             presentedSheet = nil
         }
 
+        if arguments.contains("--spyclash-preview-radar-invite") {
+            radarNearby.presentForConfirmation(
+                RadarIncomingInvitation(
+                    roomCode: "R7VN",
+                    hostCallSign: "Night Fox",
+                    hostAvatar: "🥷",
+                    hostSpyID: "350-911",
+                    hostSpyCardTheme: .dossier,
+                    hostSpyCardAccent: .clearanceAmber,
+                    hostSpyCardBadge: .ghost,
+                    hostRating: 1_240,
+                    hostGamesPlayed: 42,
+                    hostWinRate: 60
+                )
+            )
+        }
+
+        if arguments.contains("--spyclash-preview-radar-peers") {
+            radarNearby.installPreviewRangingPeers()
+        }
+
+        if arguments.contains("--spyclash-preview-toasts") {
+            showToast(
+                language == .ru ? "ПРОФИЛЬ СОХРАНЁН" : "PROFILE SAVED",
+                kind: .success,
+                duration: .seconds(10)
+            )
+            showToast(
+                language == .ru ? "ПРОВЕРЬТЕ ПОДКЛЮЧЕНИЕ" : "CHECK CONNECTION",
+                kind: .warning,
+                duration: .seconds(10)
+            )
+            showToast(
+                language == .ru ? "НЕ УДАЛОСЬ СИНХРОНИЗИРОВАТЬ" : "SYNC FAILED",
+                kind: .error,
+                duration: .seconds(10)
+            )
+        }
+
+        if arguments.contains("--spyclash-preview-room-presence-events") {
+            scheduleToastPreviewIfRequested(roomID: activeRoom?.id)
+        }
+
         return true
     }
 
@@ -1031,6 +1485,19 @@ final class AppState: NSObject {
             return nil
         }
         return AppTab(rawValue: rawValue)
+    }
+
+    private func previewRoomSyncOperation(from arguments: [String]) -> RoomSyncOperation? {
+        switch previewArgumentValue(prefix: "--spyclash-preview-room-sync=", in: arguments) {
+        case "create", "creating": .creatingRoom
+        case "join", "joining": .joiningRoom
+        case "close", "closing": .closingRoom
+        case "leave", "leaving": .leavingRoom
+        case "questions": .updatingMode(.questions)
+        case "associations": .updatingMode(.associations)
+        case "duration": .updatingDuration(minutes: 10)
+        default: nil
+        }
     }
 
     private func previewLanguage(from arguments: [String]) -> AppLanguage? {

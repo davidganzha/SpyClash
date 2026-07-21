@@ -24,6 +24,9 @@ struct LeaderboardView: View {
         .task {
             await load()
         }
+        .onChange(of: status) { _, message in
+            publishLeaderboardError(message)
+        }
     }
 
     private var header: some View {
@@ -111,15 +114,12 @@ struct LeaderboardView: View {
                 }
             }
         }
+    }
 
-        if !status.isEmpty {
-            Text(status)
-                .font(SpyTheme.micro)
-                .tracking(0.35)
-                .foregroundStyle(SpyTheme.red)
-                .spyFitted(lines: 2, scale: 0.62)
-                .spyWebEntrance(delay: 0.35, duration: 0.40, y: 8)
-        }
+    private func publishLeaderboardError(_ message: String) {
+        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
+        appState.showToast(message, kind: .error)
+        status = ""
     }
 
     private var boardHeader: some View {

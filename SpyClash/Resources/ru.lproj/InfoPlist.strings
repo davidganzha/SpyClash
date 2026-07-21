@@ -1,1 +1,3 @@
-"NSCameraUsageDescription" = "SpyClash использует камеру, чтобы сканировать QR-коды комнат.";
+"NSCameraUsageDescription" = "SpyClash использует камеру, чтобы сканировать QR-коды комнат и стабилизировать позиции игроков на Радаре.";
+"NSLocalNetworkUsageDescription" = "SpyClash использует локальную сеть, чтобы находить игроков рядом и отправлять приглашения, пока приложение открыто.";
+"NSNearbyInteractionUsageDescription" = "SpyClash измеряет расстояние до игроков рядом, чтобы Радар показывал точную близость.";
