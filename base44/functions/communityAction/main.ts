@@ -1,5 +1,6 @@
 import { createClient, createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
+  communityActionRequiresProfileWriteLease,
   normalizeCommunityQuery,
   normalizeSpyID,
   preferredSpyIDOwner,
@@ -635,11 +636,13 @@ Deno.serve(async (req) => {
     const lifecycleStore =
       base44.asServiceRole.entities.BillingIdentityLifecycle;
     const action = clean(body.action || "state").toLowerCase();
-    const current = await withCommunityWriteLeases({
-      lifecycleStore,
-      userIDs: [user.id],
-      action: ({ persist }) => ensureUserProfile(base44, user, persist),
-    });
+    const current = communityActionRequiresProfileWriteLease(action)
+      ? await withCommunityWriteLeases({
+        lifecycleStore,
+        userIDs: [user.id],
+        action: ({ persist }) => ensureUserProfile(base44, user, persist),
+      })
+      : await ensureUserProfile(base44, user);
 
     if (action === "state") {
       return Response.json(await buildState(base44, current));

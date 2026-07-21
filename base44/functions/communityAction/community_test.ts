@@ -1,4 +1,5 @@
 import {
+  communityActionRequiresProfileWriteLease,
   normalizeCommunityQuery,
   normalizeSpyID,
   preferredSpyIDOwner,
@@ -8,6 +9,19 @@ import {
   sanitizeProfileComment,
   stableSpyID,
 } from "./community.ts";
+
+Deno.test("community reads do not acquire the profile writer lease", () => {
+  for (const action of ["state", "directory", "search", "profile"]) {
+    if (communityActionRequiresProfileWriteLease(action)) {
+      throw new Error(`${action} unexpectedly requires a writer lease`);
+    }
+  }
+  for (const action of ["send_request", "add_comment", "report"]) {
+    if (!communityActionRequiresProfileWriteLease(action)) {
+      throw new Error(`${action} unexpectedly bypasses the writer lease`);
+    }
+  }
+});
 
 Deno.test("normalizes canonical and compact SPY IDs", () => {
   const expected = "004-219";
