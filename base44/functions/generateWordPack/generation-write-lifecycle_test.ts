@@ -83,3 +83,89 @@ Deno.test("generation side effect is rejected after its writer lease expires", a
   assertEquals(error.code, "active_lease");
   assertEquals(providerCalls, 0);
 });
+
+Deno.test("committed generation survives transient lease release failures", async () => {
+  const store = new MockLifecycleStore();
+  const delays: number[] = [];
+  let releaseCalls = 0;
+
+  const result = await withGenerationWriterLease({
+    lifecycleStore: store,
+    userID: "user-1",
+    nowFactory: () => START,
+    randomUUID: sequence("generation"),
+    release: async () => {
+      releaseCalls += 1;
+      if (releaseCalls < 3) throw new Error("transient release failure");
+    },
+    delay: (milliseconds) => {
+      delays.push(milliseconds);
+      return Promise.resolve();
+    },
+    action: () => Promise.resolve("generated"),
+  });
+
+  assertEquals(result, "generated");
+  assertEquals(releaseCalls, 3);
+  assertEquals(delays, [50, 150]);
+});
+
+Deno.test("exhausted lease release never replaces a committed result", async () => {
+  const store = new MockLifecycleStore();
+  const delays: number[] = [];
+  let releaseCalls = 0;
+
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    const result = await withGenerationWriterLease({
+      lifecycleStore: store,
+      userID: "user-1",
+      nowFactory: () => START,
+      randomUUID: sequence("generation"),
+      release: () => {
+        releaseCalls += 1;
+        return Promise.reject(new Error("release unavailable"));
+      },
+      delay: (milliseconds) => {
+        delays.push(milliseconds);
+        return Promise.resolve();
+      },
+      action: () => Promise.resolve("generated"),
+    });
+
+    assertEquals(result, "generated");
+  } finally {
+    console.error = originalConsoleError;
+  }
+
+  assertEquals(releaseCalls, 3);
+  assertEquals(delays, [50, 150]);
+});
+
+Deno.test("action error remains authoritative when lease release also fails", async () => {
+  const store = new MockLifecycleStore();
+  const actionError = new Error("provider failed");
+
+  const originalConsoleError = console.error;
+  console.error = () => {};
+  try {
+    const error = await assertRejects(
+      () =>
+        withGenerationWriterLease({
+          lifecycleStore: store,
+          userID: "user-1",
+          nowFactory: () => START,
+          randomUUID: sequence("generation"),
+          release: () => Promise.reject(new Error("release unavailable")),
+          delay: () => Promise.resolve(),
+          action: () => Promise.reject(actionError),
+        }),
+      Error,
+      "provider failed",
+    );
+    assertEquals(error, actionError);
+  } finally {
+    console.error = originalConsoleError;
+  }
+});

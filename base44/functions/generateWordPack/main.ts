@@ -23,6 +23,7 @@ import {
   type GenerationWriteGuard,
   withGenerationWriterLease,
 } from "./generation-write-lifecycle.ts";
+import { invokeAIProviderWithRetry } from "./ai-provider-resilience.ts";
 
 function errorMessage(error: unknown) {
   return error instanceof Error
@@ -173,10 +174,12 @@ async function invokeWordPackLLM(
     }.`
     : "";
 
-  return await guard.boundary<any>(() =>
-    base44.integrations.Core.InvokeLLM({
-      prompt:
-        `You are setting up a Spyfall-style social deduction party game. The theme/category is: "${theme}".
+  return await invokeAIProviderWithRetry<any>({
+    operation: () =>
+      guard.boundary<any>(() =>
+        base44.integrations.Core.InvokeLLM({
+          prompt:
+            `You are setting up a Spyfall-style social deduction party game. The theme/category is: "${theme}".
 
 Generate exactly ${count} specific, well-known, recognizable items from this theme.
 
@@ -190,24 +193,35 @@ Requirements:
 - If you cannot safely reach ${count} without inventing, return fewer real items.${exclusions}
 
 Return ONLY JSON: {"words": [...unique strings...], "category": "short display category"}`,
-      add_context_from_internet: true,
-      response_json_schema: {
-        type: "object",
-        properties: {
-          words: {
-            type: "array",
-            items: { type: "string" },
+          response_json_schema: {
+            type: "object",
+            properties: {
+              words: {
+                type: "array",
+                items: { type: "string" },
+              },
+              category: { type: "string" },
+            },
           },
-          category: { type: "string" },
-        },
-      },
-    })
-  );
+        })
+      ),
+    onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
+      console.warn(
+        `generateWordPack AI retry ${attempt}->${nextAttempt} after ${delayMilliseconds}ms:`,
+        errorMessage(error),
+      );
+    },
+  });
 }
 
 function lifecycleHTTPStatus(error: unknown): number {
   if (!(error instanceof BillingIdentityLifecycleError)) {
-    return Number((error as { status?: number })?.status || 500);
+    const candidate = Number(
+      (error as { status?: number; statusCode?: number })?.status ??
+        (error as { statusCode?: number })?.statusCode ??
+        500,
+    );
+    return Number.isInteger(candidate) ? candidate : 500;
   }
   return ["deletion_in_progress", "active_lease", "cas_contention"].includes(
       error.code,
@@ -355,17 +369,27 @@ Deno.serve(async (req) => {
           );
 
           if (words.length < count && words.length < count * 0.8) {
-            const secondPass = await invokeWordPackLLM(
-              base44,
-              theme,
-              count - words.length,
-              [...excludedWords, ...words],
-              guard,
-            );
-            words = filterSafeCommunityStrings(removeExcludedWords(
-              [...words, ...(secondPass?.words || [])],
-              excludedWords,
-            ));
+            try {
+              const secondPass = await invokeWordPackLLM(
+                base44,
+                theme,
+                count - words.length,
+                [...excludedWords, ...words],
+                guard,
+              );
+              words = filterSafeCommunityStrings(removeExcludedWords(
+                [...words, ...(secondPass?.words || [])],
+                excludedWords,
+              ));
+            } catch (error) {
+              // The refill is optional. Never discard a playable first pass
+              // just because the provider is briefly unavailable again.
+              if (words.length < 2) throw error;
+              console.warn(
+                "generateWordPack optional refill skipped:",
+                errorMessage(error),
+              );
+            }
           }
 
           words = words.slice(0, count);
@@ -391,7 +415,9 @@ Deno.serve(async (req) => {
             })
           );
         } catch (error) {
-          if (error instanceof BillingIdentityLifecycleError) throw error;
+          // This User field is a compatibility/display mirror only. Quota is
+          // already committed in the server-owned entity, so a mirror or
+          // lease-assertion outage must not replace valid words with a 503.
           console.error(
             "generateWordPack usage mirror error:",
             errorMessage(error),
@@ -414,8 +440,16 @@ Deno.serve(async (req) => {
   } catch (error) {
     console.error("generateWordPack error:", errorMessage(error));
     const status = lifecycleHTTPStatus(error);
-    return Response.json({ error: errorMessage(error) }, {
-      status: status >= 400 && status < 600 ? status : 500,
+    const normalizedStatus = status >= 400 && status < 600 ? status : 500;
+    const code = String((error as { code?: unknown })?.code || "").trim();
+    const retryable = (error as { retryable?: unknown })?.retryable === true;
+    return Response.json({
+      error: errorMessage(error),
+      ...(code ? { code } : {}),
+      ...(retryable ? { retryable: true } : {}),
+    }, {
+      status: normalizedStatus,
+      headers: normalizedStatus === 503 ? { "retry-after": "2" } : undefined,
     });
   }
 });
