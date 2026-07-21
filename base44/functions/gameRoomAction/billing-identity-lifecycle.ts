@@ -283,6 +283,19 @@ function leaseMatches(record: LifecycleRecord, lease: BillingIdentityLease) {
     clean(record.revision) === lease.revision;
 }
 
+function recordNoLongerCarriesLease(
+  record: LifecycleRecord,
+  lease: BillingIdentityLease,
+): boolean {
+  return clean(record.id) === lease.recordID &&
+    clean(record.subject_key) === lease.subjectKey &&
+    (
+      lifecycleState(record.state) !== lease.state ||
+      clean(record.lease_token) !== lease.leaseToken ||
+      clean(record.lease_until) !== lease.leaseUntil
+    );
+}
+
 async function hasExactLease(
   store: any,
   lease: BillingIdentityLease,
@@ -475,6 +488,10 @@ async function releaseLease(
         clean(record.lease_until) === releasedAt &&
         clean(record.revision) === revision
       ) return;
+      // A response-lost release may already have been followed by another
+      // valid writer/deletion lease. Never turn that completed cleanup into a
+      // false failure or overwrite the replacement lease.
+      if (record && recordNoLongerCarriesLease(record, lease)) return;
     } catch {
       // The bounded old lease or exact release remains fail-closed.
     }
@@ -484,6 +501,12 @@ async function releaseLease(
     );
   }
   if (Number(result?.updated) !== 1) {
+    try {
+      const record = await singletonRecord(store, lease.subjectKey);
+      if (record && recordNoLongerCarriesLease(record, lease)) return;
+    } catch {
+      // Preserve the typed contention below when reconciliation is unreadable.
+    }
     throw new BillingIdentityLifecycleError(
       "cas_contention",
       "Billing lifecycle lease changed before release.",
