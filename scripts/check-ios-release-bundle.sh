@@ -27,7 +27,7 @@ bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.pl
 marketing_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")
 build_number=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")
 bundle_executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")
-if [ "$bundle_id" != 'com.spyclash.app' ] || [ -z "$marketing_version" ] || [ -z "$build_number" ]; then
+if [ "$bundle_id" != 'com.spyclash.ios' ] || [ -z "$marketing_version" ] || [ -z "$build_number" ]; then
   echo "Unexpected bundle metadata: id=$bundle_id version=$marketing_version build=$build_number" >&2
   exit 1
 fi

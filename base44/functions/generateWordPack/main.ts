@@ -2,6 +2,7 @@ import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
   type AdminGrantRecord,
   applyAdminGenerationGrant,
+  applyAlphaGenerationAccess,
   canGenerate,
   type EntitlementRecord,
   generationUsageMetadata,
@@ -284,9 +285,11 @@ Deno.serve(async (req) => {
       console.error("generateWordPack grant read error:", errorMessage(error));
     }
 
-    const membership = applyAdminGenerationGrant(
-      resolveGenerationMembership(entitlements),
-      adminGrants,
+    const membership = applyAlphaGenerationAccess(
+      applyAdminGenerationGrant(
+        resolveGenerationMembership(entitlements),
+        adminGrants,
+      ),
     );
     if (!membership.active && (entitlementReadError || adminGrantReadError)) {
       return Response.json({

@@ -112,7 +112,7 @@ private enum StoreKitManagerError: LocalizedError {
 @MainActor
 @Observable
 final class StoreKitManager {
-    static let limitlessProductID = "com.spyclash.app.limitless.weekly"
+    static let limitlessProductID = "com.spyclash.ios.limitless.weekly"
 
     private(set) var product: Product?
     private(set) var productState: StoreKitProductState = .idle

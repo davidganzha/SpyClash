@@ -263,7 +263,7 @@
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
 					77A6DFFF9D8CFBF19BE6C3C9 = {
-						DevelopmentTeam = S24F9M5CG7;
+						DevelopmentTeam = 3Z64QKNL54;
 						ProvisioningStyle = Automatic;
 					};
 				};
@@ -372,13 +372,13 @@
 				CODE_SIGN_ENTITLEMENTS = SpyClash/Resources/SpyClash.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = S24F9M5CG7;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
 				INFOPLIST_FILE = SpyClash/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -392,13 +392,13 @@
 				CODE_SIGN_ENTITLEMENTS = SpyClash/Resources/SpyClash.entitlements;
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
-				DEVELOPMENT_TEAM = S24F9M5CG7;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
 				INFOPLIST_FILE = SpyClash/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
 					"@executable_path/Frameworks",
 				);
-				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.app;
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -438,7 +438,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -496,7 +496,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 3;
+				CURRENT_PROJECT_VERSION = 4;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

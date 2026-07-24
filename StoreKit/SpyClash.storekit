@@ -92,22 +92,22 @@
           "introductoryOffer" : null,
           "localizations" : [
             {
-              "description" : "Unlimited AI word generation and every premium SpyClash theme.",
+              "description" : "Unlimited AI, profile styles, match history",
               "displayName" : "SpyClash LIMITLESS",
               "locale" : "en_US"
             },
             {
-              "description" : "Безлимитная генерация слов ИИ и все премиальные темы SpyClash.",
+              "description" : "AI без ограничений, профиль и история игр",
               "displayName" : "SpyClash LIMITLESS",
               "locale" : "ru"
             },
             {
-              "description" : "Generación ilimitada de palabras con IA y todos los temas premium de SpyClash.",
+              "description" : "IA ilimitada, perfil e historial de partidas",
               "displayName" : "SpyClash LIMITLESS",
               "locale" : "es_ES"
             }
           ],
-          "productID" : "com.spyclash.app.limitless.weekly",
+          "productID" : "com.spyclash.ios.limitless.weekly",
           "recurringSubscriptionPeriod" : "P1W",
           "referenceName" : "SpyClash LIMITLESS Weekly",
           "subscriptionGroupID" : "22234605",

@@ -1,4 +1,5 @@
 import {
+  applyAlphaAccess,
   activeAdminGrantExpiry,
   applyAdminGrant,
   FREE_BENEFITS,
@@ -28,6 +29,14 @@ Deno.test("free membership exposes the promised FREE benefits", () => {
     "FREE AI limit drifted",
   );
   assert(membership.benefits.history_limit === 5, "FREE history limit drifted");
+});
+
+Deno.test("disabled alpha program preserves free membership", () => {
+  const membership = applyAlphaAccess(summarizeMembership([]));
+  assert(!membership.active, "disabled alpha access activated membership");
+  assert(membership.tier === "free", "disabled alpha access unlocked LIMITLESS");
+  assert(membership.providers.length === 0, "disabled alpha access fabricated a provider");
+  assert(!membership.benefits.full_history, "disabled alpha access unlocked full history");
 });
 
 Deno.test("verified Apple entitlement unlocks LIMITLESS", () => {

@@ -8,12 +8,15 @@ import {
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import { Buffer } from "node:buffer";
 import {
+  appleCommerceConfigurationError,
   type AppleEntitlementRecord,
   LIMITLESS_PRODUCT_ID,
   normalizeAppleEntitlement,
   publicAppleEntitlement,
   requiresCanonicalSubscriptionStatus,
   shouldApplyProviderEvent,
+  SPYCLASH_APPLE_APP_ID,
+  SPYCLASH_IOS_BUNDLE_ID,
 } from "./apple-entitlement.ts";
 import {
   type EntitlementRecord,
@@ -37,7 +40,8 @@ import {
   assertAppleAccountLease,
 } from "./apple-account-lease-guard.ts";
 
-const BUNDLE_ID = Deno.env.get("APPLE_IAP_BUNDLE_ID") || "com.spyclash.app";
+const BUNDLE_ID = Deno.env.get("APPLE_IAP_BUNDLE_ID") ||
+  SPYCLASH_IOS_BUNDLE_ID;
 const PRODUCT_ID = Deno.env.get("APPLE_IAP_PRODUCT_ID") ||
   LIMITLESS_PRODUCT_ID;
 const MAX_REQUEST_BYTES = 256_000;
@@ -182,13 +186,26 @@ function appleRootCertificates(): Promise<Buffer[]> {
 
 function productionAppAppleID(): number {
   const value = Number(Deno.env.get("APPLE_IAP_APPLE_ID"));
-  if (!Number.isSafeInteger(value) || value <= 0) {
+  if (!Number.isSafeInteger(value) || value !== SPYCLASH_APPLE_APP_ID) {
     throw new RequestError(
-      "APPLE_IAP_APPLE_ID is required for production verification.",
+      "APPLE_IAP_APPLE_ID must match the current App Store Connect app.",
       503,
     );
   }
   return value;
+}
+
+function assertAppleCommerceConfiguration() {
+  const rawAppleID = Deno.env.get("APPLE_IAP_APPLE_ID")?.trim();
+  const configuredAppleID = rawAppleID ? Number(rawAppleID) : undefined;
+  const configurationError = appleCommerceConfigurationError({
+    bundleID: BUNDLE_ID,
+    productID: PRODUCT_ID,
+    appAppleID: configuredAppleID,
+  });
+  if (configurationError) {
+    throw new RequestError(configurationError, 503);
+  }
 }
 
 function verifierFor(environment: Environment): Promise<SignedDataVerifier> {
@@ -1129,6 +1146,7 @@ Deno.serve(async (req) => {
   }
 
   try {
+    assertAppleCommerceConfiguration();
     const body = await parseJSONBody(req);
     const base44 = createClientFromRequest(req);
     const signedPayload = typeof body.signedPayload === "string"

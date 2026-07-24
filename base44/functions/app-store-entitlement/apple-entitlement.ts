@@ -1,4 +1,26 @@
-export const LIMITLESS_PRODUCT_ID = "com.spyclash.app.limitless.weekly";
+export const SPYCLASH_IOS_BUNDLE_ID = "com.spyclash.ios";
+export const SPYCLASH_APPLE_APP_ID = 6793534085;
+export const LIMITLESS_PRODUCT_ID = `${SPYCLASH_IOS_BUNDLE_ID}.limitless.weekly`;
+
+export function appleCommerceConfigurationError(input: {
+  bundleID: string;
+  productID: string;
+  appAppleID?: number;
+}): string | null {
+  if (input.bundleID !== SPYCLASH_IOS_BUNDLE_ID) {
+    return "APPLE_IAP_BUNDLE_ID does not match the current SpyClash iOS app.";
+  }
+  if (input.productID !== LIMITLESS_PRODUCT_ID) {
+    return "APPLE_IAP_PRODUCT_ID does not match the current LIMITLESS product.";
+  }
+  if (
+    input.appAppleID !== undefined &&
+    input.appAppleID !== SPYCLASH_APPLE_APP_ID
+  ) {
+    return "APPLE_IAP_APPLE_ID does not match the current App Store Connect app.";
+  }
+  return null;
+}
 
 export type AppleEnvironment = "Sandbox" | "Production";
 

@@ -1,3 +1,3 @@
 "NSCameraUsageDescription" = "SpyClash usa la cámara para escanear códigos QR y estabilizar posiciones cercanas en el Radar.";
-"NSLocalNetworkUsageDescription" = "SpyClash usa tu red local para encontrar jugadores cercanos y enviar invitaciones mientras la app esta abierta.";
+"NSLocalNetworkUsageDescription" = "SpyClash usa tu red local para encontrar jugadores cercanos y enviar invitaciones mientras la app está abierta.";
 "NSNearbyInteractionUsageDescription" = "SpyClash mide la distancia a jugadores cercanos para mostrar proximidad precisa en el Radar.";

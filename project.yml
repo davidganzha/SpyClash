@@ -7,7 +7,7 @@ fileGroups:
   - StoreKit
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 3
+    CURRENT_PROJECT_VERSION: 4
     MARKETING_VERSION: 1.0
     SWIFT_VERSION: 6.0
 packages:
@@ -68,8 +68,8 @@ targets:
               - spyclash
     settings:
       base:
-        PRODUCT_BUNDLE_IDENTIFIER: com.spyclash.app
-        DEVELOPMENT_TEAM: S24F9M5CG7
+        PRODUCT_BUNDLE_IDENTIFIER: com.spyclash.ios
+        DEVELOPMENT_TEAM: 3Z64QKNL54
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: 1
         ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor

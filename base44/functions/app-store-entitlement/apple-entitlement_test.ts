@@ -1,13 +1,41 @@
 import {
+  appleCommerceConfigurationError,
   entitlementStatusFromApple,
   normalizeAppleEntitlement,
   requiresCanonicalSubscriptionStatus,
   shouldApplyProviderEvent,
+  SPYCLASH_APPLE_APP_ID,
+  SPYCLASH_IOS_BUNDLE_ID,
 } from "./apple-entitlement.ts";
 
 function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
 }
+
+Deno.test("Apple commerce identity matches the David Ganzha app", () => {
+  assert(
+    SPYCLASH_IOS_BUNDLE_ID === "com.spyclash.ios",
+    "bundle identity drifted",
+  );
+  assert(SPYCLASH_APPLE_APP_ID === 6793534085, "Apple app ID drifted");
+  assert(
+    appleCommerceConfigurationError({
+      bundleID: "com.spyclash.ios",
+      productID: "com.spyclash.ios.limitless.weekly",
+      appAppleID: 6793534085,
+    }) === null,
+    "current commerce identity was rejected",
+  );
+  assert(
+    appleCommerceConfigurationError({
+      bundleID: "com.spyclash.app",
+      productID: "com.spyclash.ios.limitless.weekly",
+      appAppleID: 6793534085,
+    }) ===
+      "APPLE_IAP_BUNDLE_ID does not match the current SpyClash iOS app.",
+    "stale bundle identity was not rejected",
+  );
+});
 
 Deno.test("Apple status grants access only for active and grace period", () => {
   const transaction = { expiresDate: Date.parse("2026-07-20T00:00:00Z") };
@@ -75,7 +103,7 @@ Deno.test("Apple entitlement uses grace-period expiry and stable original transa
     transaction: {
       originalTransactionId: "original-1",
       transactionId: "transaction-2",
-      productId: "com.spyclash.app.limitless.weekly",
+      productId: "com.spyclash.ios.limitless.weekly",
       appAccountToken: "AAAAAAAA-BBBB-4CCC-8DDD-EEEEEEEEEEEE",
       originalPurchaseDate: Date.parse("2026-07-01T00:00:00Z"),
       expiresDate: Date.parse("2026-07-14T00:00:00Z"),

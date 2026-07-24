@@ -1,6 +1,7 @@
 import Stripe from "npm:stripe@14";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
+  applyAlphaAccess,
   applyAdminGrant,
   type EntitlementRecord,
   hasStripePrice,
@@ -414,7 +415,7 @@ Deno.serve(async (req) => {
     summarizeMembership(allEntitlements),
     adminGrants,
   );
-  const membership = membershipResolution.membership;
+  const membership = applyAlphaAccess(membershipResolution.membership);
 
   let aiGenerationsToday: number | null = null;
   let quotaReadError: unknown = null;

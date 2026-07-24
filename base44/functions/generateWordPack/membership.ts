@@ -40,6 +40,10 @@ export const LIMITLESS_BENEFITS: MembershipBenefits = Object.freeze({
   history_limit: null,
 });
 
+// Keep production generation on verified billing entitlements. A future
+// internal alpha must opt in deliberately rather than inheriting free access.
+export const ALPHA_PROGRAM_ENABLED = false;
+
 const ACCESS_GRANTING_STATUSES = new Set([
   "active",
   "trialing",
@@ -81,6 +85,18 @@ export function resolveGenerationMembership(
     tier: (active ? "limitless" : "free") as MembershipTier,
     providers,
     benefits: active ? LIMITLESS_BENEFITS : FREE_BENEFITS,
+  };
+}
+
+export function applyAlphaGenerationAccess(
+  membership: ReturnType<typeof resolveGenerationMembership>,
+) {
+  if (!ALPHA_PROGRAM_ENABLED) return membership;
+  return {
+    active: true,
+    tier: "limitless" as const,
+    providers: membership.providers,
+    benefits: LIMITLESS_BENEFITS,
   };
 }
 

@@ -1646,6 +1646,6 @@ private enum ResetPasswordLinkParser {
     }
 }
 enum SpyClashRelease {
-    static let isAlpha = true
+    static let isAlpha = false
     static let alphaVersionLabel = "ALPHA 01.01V"
 }

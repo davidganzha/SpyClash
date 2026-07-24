@@ -1,5 +1,6 @@
 import {
   applyAdminGenerationGrant,
+  applyAlphaGenerationAccess,
   canGenerate,
   FREE_BENEFITS,
   generationUsageMetadata,
@@ -15,6 +16,18 @@ Deno.test("FREE generation policy is ten successful generations per UTC day", ()
   assert(canGenerate("free", 9), "FREE user should receive generation ten");
   assert(!canGenerate("free", 10), "FREE user exceeded the daily limit");
   assert(canGenerate("limitless", 10_000), "LIMITLESS user was capped");
+});
+
+Deno.test("disabled alpha program preserves the free generation limit", () => {
+  const membership = applyAlphaGenerationAccess(
+    resolveGenerationMembership([]),
+  );
+  assert(!membership.active, "disabled alpha access activated membership");
+  assert(membership.tier === "free", "disabled alpha access unlocked LIMITLESS");
+  assert(
+    !canGenerate(membership.tier, 10),
+    "disabled alpha access bypassed the free generation limit",
+  );
 });
 
 Deno.test("generation membership trusts only a valid provider entitlement", () => {

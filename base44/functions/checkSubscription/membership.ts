@@ -58,6 +58,10 @@ export const LIMITLESS_BENEFITS: MembershipBenefits = Object.freeze({
   history_limit: null,
 });
 
+// Keep the launch build on verified billing entitlements. This switch remains
+// explicit so a future internal alpha can be enabled deliberately in code.
+export const ALPHA_PROGRAM_ENABLED = false;
+
 const ACCESS_GRANTING_STATUSES = new Set([
   "active",
   "trialing",
@@ -118,6 +122,19 @@ export function summarizeMembership(
   };
 }
 
+export function applyAlphaAccess(
+  membership: ReturnType<typeof summarizeMembership>,
+) {
+  if (!ALPHA_PROGRAM_ENABLED) return membership;
+  return {
+    ...membership,
+    active: true,
+    tier: "limitless" as const,
+    status: "active",
+    benefits: LIMITLESS_BENEFITS,
+  };
+}
+
 export function activeAdminGrantExpiry(
   grants: AdminGrantRecord[],
   now = new Date(),
@@ -166,7 +183,7 @@ export function applyAdminGrant(
       tier: "limitless" as const,
       status: "active",
       providers: Array.from(
-        new Set<string>([...membership.providers, "admin"]),
+        new Set<EntitlementProvider>([...membership.providers, "admin"]),
       ),
       benefits: LIMITLESS_BENEFITS,
       expires_at: expiresAt,
