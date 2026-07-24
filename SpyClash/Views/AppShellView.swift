@@ -114,11 +114,19 @@ struct AppShellView: View {
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
             case .pricing:
-                PricingView()
-                    .spyGlobalToastLayer()
-                    .presentationDetents([.large])
-                    .presentationDragIndicator(.hidden)
-                    .presentationCornerRadius(0)
+                if appState.isAlphaProgram {
+                    AlphaAccessView()
+                        .spyGlobalToastLayer()
+                        .presentationDetents([.large])
+                        .presentationDragIndicator(.hidden)
+                        .presentationCornerRadius(0)
+                } else {
+                    PricingView()
+                        .spyGlobalToastLayer()
+                        .presentationDetents([.large])
+                        .presentationDragIndicator(.hidden)
+                        .presentationCornerRadius(0)
+                }
             case .legal(let kind):
                 LegalDocumentSheet(kind: kind)
                     .spyGlobalToastLayer()
@@ -933,15 +941,6 @@ private struct CompactCommandMenuPanel: View {
                         closeThen { appState.selectedTab = .packs }
                     }
 
-                    menuRow(
-                        icon: "⚡",
-                        title: "LIMITLESS",
-                        highlighted: true,
-                        phaseStart: 0.42
-                    ) {
-                        closeThen { appState.presentedSheet = .pricing }
-                    }
-
                     Rectangle()
                         .fill(SpyTheme.strokeStrong.opacity(0.58))
                         .frame(height: 1)
@@ -1080,7 +1079,12 @@ private struct CompactCommandMenuPanel: View {
 
     private var header: some View {
         HStack(alignment: .center, spacing: 16) {
-            spyClashLogo(fontSize: 30)
+            VStack(alignment: .leading, spacing: 3) {
+                spyClashLogo(fontSize: 30)
+                if appState.isAlphaProgram {
+                    AlphaVersionMark()
+                }
+            }
 
             Spacer()
 
@@ -1614,7 +1618,12 @@ private struct WebMenuTopBar: View {
     }
 
     private var wordmark: some View {
-        SpyWordmark(fontSize: 30)
+        VStack(alignment: .leading, spacing: 2) {
+            SpyWordmark(fontSize: 30)
+            if SpyClashRelease.isAlpha {
+                AlphaVersionMark()
+            }
+        }
     }
 
     private var toggleIndicator: some View {
@@ -1700,12 +1709,6 @@ private struct WebCommandMenuPanel: View {
                         selected: appState.shellRoute == .community
                     ) {
                         closeThen { appState.openCommunity() }
-                    }
-                }
-
-                revealItem(index: 3) {
-                    menuButton(icon: "⚡", title: "LIMITLESS", highlighted: true) {
-                        closeThen { appState.presentedSheet = .pricing }
                     }
                 }
 
@@ -1884,6 +1887,86 @@ private struct WebCommandMenuPanel: View {
 
     private func clamp(_ value: CGFloat) -> CGFloat {
         min(max(value, 0), 1)
+    }
+}
+
+private struct AlphaVersionMark: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var isGlitching = false
+
+    var body: some View {
+        Text(SpyClashRelease.alphaVersionLabel)
+            .font(.system(size: 9, weight: .bold, design: .monospaced))
+            .tracking(2.1)
+            .foregroundStyle(Color.white.opacity(0.46))
+            .overlay(alignment: .topLeading) {
+                if !reduceMotion {
+                    Text(SpyClashRelease.alphaVersionLabel)
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(2.1)
+                        .foregroundStyle(SpyTheme.red.opacity(0.82))
+                        .mask(alignment: .top) {
+                            Rectangle().frame(height: 3)
+                        }
+                        .offset(x: 2)
+                        .opacity(isGlitching ? 1 : 0)
+                }
+            }
+            .accessibilityLabel("SpyClash alpha version 01.01")
+            .task {
+                guard !reduceMotion else { return }
+                while !Task.isCancelled {
+                    do {
+                        try await Task.sleep(for: .seconds(3.4))
+                        isGlitching = true
+                        try await Task.sleep(for: .milliseconds(90))
+                        isGlitching = false
+                    } catch {
+                        return
+                    }
+                }
+            }
+    }
+}
+
+private struct AlphaAccessView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    var body: some View {
+        ZStack {
+            SpyTheme.black.ignoresSafeArea()
+
+            VStack(spacing: 22) {
+                SpyWordmark(fontSize: 36)
+
+                AlphaVersionMark()
+
+                Image(systemName: "infinity")
+                    .font(.system(size: 48, weight: .black))
+                    .foregroundStyle(.white)
+                    .shadow(color: SpyTheme.red.opacity(0.72), radius: 16)
+
+                VStack(spacing: 8) {
+                    Text("ALL FEATURES ENABLED")
+                        .font(.system(size: 15, weight: .black, design: .monospaced))
+                        .tracking(1.4)
+                        .foregroundStyle(.white)
+
+                    Text("ALPHA ACCESS // NO PURCHASE REQUIRED")
+                        .font(.system(size: 9, weight: .bold, design: .monospaced))
+                        .tracking(0.8)
+                        .foregroundStyle(SpyTheme.red)
+                }
+                .multilineTextAlignment(.center)
+
+                Button("CLOSE") {
+                    dismiss()
+                }
+                .buttonStyle(SpyButtonStyle(variant: .outline))
+                .frame(maxWidth: 280)
+            }
+            .padding(28)
+        }
     }
 }
 

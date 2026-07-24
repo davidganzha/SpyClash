@@ -532,18 +532,24 @@ final class AppState: NSObject {
     }
 
     var membershipTier: MembershipTier? {
+        if isAlphaProgram { return .limitless }
         guard let membership else { return nil }
         return membership.isLimitless ? .limitless : .free
     }
 
     var membershipBenefits: MembershipBenefits? {
+        if isAlphaProgram { return .limitless }
         guard let membership else { return nil }
         return membership.isLimitless ? membership.benefits : .free
     }
 
     var hasLimitlessAccess: Bool {
-        membership?.isLimitless == true
+        isAlphaProgram || membership?.isLimitless == true
     }
+
+    /// Temporary launch phase. Keep billing and entitlement infrastructure in
+    /// the binary, while exposing the complete product without paid gates.
+    var isAlphaProgram: Bool { SpyClashRelease.isAlpha }
 
     // Kept as a read-only bridge for existing premium presentation code while
     // the richer membership model becomes the shared source of truth.
@@ -1086,7 +1092,8 @@ final class AppState: NSObject {
             // Ignore a response that belongs to the account that just logged
             // out (or was replaced by another login) while this was in flight.
             guard user?.id == requestedUserID else { return }
-            let shouldPresentUnlock = membership != nil &&
+            let shouldPresentUnlock = !isAlphaProgram &&
+                membership != nil &&
                 membership?.isLimitless == false &&
                 refreshedMembership.isLimitless
             membership = refreshedMembership
@@ -1637,4 +1644,8 @@ private enum ResetPasswordLinkParser {
         let path = url.path.lowercased()
         return host.contains("reset") || path.contains("reset-password") || path.contains("reset")
     }
+}
+enum SpyClashRelease {
+    static let isAlpha = true
+    static let alphaVersionLabel = "ALPHA 01.01V"
 }
