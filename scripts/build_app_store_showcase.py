@@ -180,7 +180,7 @@ def make_contact_sheet(outputs: list[Path]) -> None:
         with Image.open(path) as image:
             thumb = image.convert("RGB").resize((thumb_width, thumb_height), Image.Resampling.LANCZOS)
         sheet.paste(thumb, (gap + index * (thumb_width + gap), gap))
-    sheet.save(OUTPUT_DIR / "preview-all-5.jpg", quality=92, optimize=True)
+    sheet.save(OUTPUT_DIR.parent / "preview-all-5.jpg", quality=92, optimize=True)
 
 
 def main() -> None:
