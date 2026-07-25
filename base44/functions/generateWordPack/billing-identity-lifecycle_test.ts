@@ -119,6 +119,7 @@ Deno.test("writer lease blocks deletion and initializes protected lifecycle", as
     BillingIdentityLifecycleError,
   );
   assertEquals(error.code, "active_lease");
+  assertEquals(error.retryable, true);
 
   await releaseBillingWriterLease(store, writer, NOW, sequence("release"));
   const deletion = await acquireBillingDeletionMarker(

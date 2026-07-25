@@ -1,0 +1,95 @@
+{
+  "name": "AiWordPackCacheVariant",
+  "description": "Server-owned AI word-pack cache. Each row is one reusable variant for an exact normalized theme/language/prompt-version key; raw themes are never stored.",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Authenticated Base44 user id that exclusively owns this cache variant."
+    },
+    "cache_key": {
+      "type": "string",
+      "pattern": "^awc1_[A-Za-z0-9_-]{43}$",
+      "description": "One-way exact-match key for normalized theme, language, and prompt version."
+    },
+    "theme_key": {
+      "type": "string",
+      "pattern": "^awt1_[A-Za-z0-9_-]{43}$",
+      "description": "One-way theme identifier suitable for telemetry; never a raw theme."
+    },
+    "language_key": {
+      "type": "string",
+      "maxLength": 35,
+      "description": "Canonical lowercase BCP 47 language key."
+    },
+    "prompt_version": {
+      "type": "string",
+      "pattern": "^[a-z0-9][a-z0-9._-]{0,63}$",
+      "description": "Exact normalized prompt contract version."
+    },
+    "exclusion_key": {
+      "type": "string",
+      "pattern": "^awe1_[A-Za-z0-9_-]{43}$",
+      "description": "One-way exact identifier for the exclusion set used to interpret an exhausted partial; raw exclusions are never stored."
+    },
+    "variant_key": {
+      "type": "string",
+      "pattern": "^awv1_[A-Za-z0-9_-]{43}$",
+      "description": "Content-derived identifier. Distinct generated packs remain separate variants under the same cache key."
+    },
+    "category": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Safe display category returned with this variant."
+    },
+    "words": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 100,
+      "items": { "type": "string", "maxLength": 120 },
+      "description": "Unique generated words. Exclusions are applied again when this variant is read."
+    },
+    "exhausted": {
+      "type": "boolean",
+      "description": "True when the provider could not safely produce more real words for this result; callers should not attempt a futile refill."
+    },
+    "word_count": {
+      "type": "integer",
+      "minimum": 2,
+      "maximum": 100,
+      "description": "Number of unique words stored in this variant."
+    },
+    "generated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the provider result was generated."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Hard TTL boundary. Reads ignore this row at or after the timestamp."
+    }
+  },
+  "required": [
+    "user_id",
+    "cache_key",
+    "theme_key",
+    "language_key",
+    "prompt_version",
+    "exclusion_key",
+    "variant_key",
+    "category",
+    "words",
+    "exhausted",
+    "word_count",
+    "generated_at",
+    "expires_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

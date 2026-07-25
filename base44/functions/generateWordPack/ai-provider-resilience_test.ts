@@ -112,6 +112,7 @@ Deno.test("transient classification accepts provider status shapes and transport
     { status: 400, cause: { status: 503 } },
     { statusCode: 401 },
     { response: { status: 403 } },
+    { status: 503, retryable: false },
     { status: 501 },
     Object.assign(new Error("HTTP 400 validation failed"), {
       cause: { status: 503 },

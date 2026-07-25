@@ -191,6 +191,8 @@ function hasTransientTransportSignal(
 }
 
 export function isTransientAIProviderError(error: unknown): boolean {
+  const record = asRecord(error);
+  if (record && recordValue(record, "retryable") === false) return false;
   const status = errorStatus(error);
   if (status !== undefined) return TRANSIENT_HTTP_STATUSES.has(status);
   return hasTransientTransportSignal(error);

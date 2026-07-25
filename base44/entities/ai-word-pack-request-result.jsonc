@@ -1,0 +1,75 @@
+{
+  "name": "AiWordPackRequestResult",
+  "description": "Server-owned successful AI word-pack result for idempotent replay. The request key is scoped to authenticated user plus request_id; no raw theme is stored.",
+  "type": "object",
+  "properties": {
+    "request_key": {
+      "type": "string",
+      "pattern": "^awr1_[A-Za-z0-9_-]{43}$",
+      "description": "One-way key derived only from authenticated user id and normalized request_id."
+    },
+    "user_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Authenticated Base44 user id owning this idempotency key."
+    },
+    "request_id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Client-supplied opaque request id after compatibility normalization and trim."
+    },
+    "request_fingerprint": {
+      "type": "string",
+      "pattern": "^awf1_[A-Za-z0-9_-]{43}$",
+      "description": "One-way fingerprint of cache key, requested count, and sorted normalized exclusions."
+    },
+    "result_category": {
+      "type": "string",
+      "maxLength": 120,
+      "description": "Successful category returned for every replay of this request."
+    },
+    "result_words": {
+      "type": "array",
+      "minItems": 2,
+      "maxItems": 100,
+      "items": { "type": "string", "maxLength": 120 },
+      "description": "Successful word list returned for every replay of this request."
+    },
+    "exhausted": {
+      "type": "boolean",
+      "description": "Exact exhaustion signal replayed with the successful result."
+    },
+    "cache_variant_key": {
+      "type": "string",
+      "pattern": "^awv1_[A-Za-z0-9_-]{43}$",
+      "description": "Optional cache variant that supplied or received this result."
+    },
+    "completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "When the successful result became replayable."
+    },
+    "expires_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Idempotency retention boundary. Expired rows no longer replay or conflict."
+    }
+  },
+  "required": [
+    "request_key",
+    "user_id",
+    "request_id",
+    "request_fingerprint",
+    "result_category",
+    "result_words",
+    "exhausted",
+    "completed_at",
+    "expires_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}
