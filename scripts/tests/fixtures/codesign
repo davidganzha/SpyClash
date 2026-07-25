@@ -1,0 +1,43 @@
+#!/bin/sh
+set -eu
+
+action=
+target=
+for argument do
+  case "$argument" in
+    --verify) action=verify ;;
+    -d) action=display ;;
+    -dvv) action=details ;;
+  esac
+  target=$argument
+done
+
+case "$action" in
+  verify)
+    if [ -f "$target/.mock-invalid-signature" ]; then
+      exit 1
+    fi
+    ;;
+  display)
+    if [ ! -f "$target/.mock-entitlements.plist" ]; then
+      exit 1
+    fi
+    cp "$target/.mock-entitlements.plist" /dev/stdout
+    ;;
+  details)
+    if [ -f "$target/.mock-adhoc-signature" ] \
+        || [ ! -f "$target/.mock-entitlements.plist" ]; then
+      printf 'Signature=adhoc\nTeamIdentifier=not set\n' >&2
+      exit 0
+    fi
+    team=$(/usr/libexec/PlistBuddy \
+      -c 'Print :com.apple.developer.team-identifier' \
+      "$target/.mock-entitlements.plist" 2>/dev/null || true)
+    printf 'Authority=Apple Development: Test Fixture\nTeamIdentifier=%s\n' \
+      "$team" >&2
+    ;;
+  *)
+    echo "Unexpected mock codesign invocation: $*" >&2
+    exit 2
+    ;;
+esac
