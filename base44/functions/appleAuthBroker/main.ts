@@ -59,6 +59,7 @@ const USERINFO_AUDIENCE = `${ISSUER}?action=userinfo`;
 const APPLE_STATE_AUDIENCE = "spyclash:apple-callback";
 const GOOGLE_STATE_AUDIENCE = "spyclash:google-callback";
 const NATIVE_TICKET_AUDIENCE = "spyclash:native-bootstrap";
+const EXPECTED_APPLE_NATIVE_CLIENT_ID = "com.spyclash.ios";
 const NATIVE_COOKIE = "__Host-SpyClashNativeOIDC";
 const APPLE_ISSUER = "https://appleid.apple.com";
 const APPLE_TOKEN_ENDPOINT = "https://appleid.apple.com/auth/token";
@@ -1388,6 +1389,13 @@ async function handleJwks(req: Request) {
 async function handleNativeExchange(req: Request, params: URLSearchParams) {
   assertMethod(req, "POST");
   const clientId = requiredEnv("APPLE_NATIVE_CLIENT_ID");
+  if (!await secureEqual(clientId, EXPECTED_APPLE_NATIVE_CLIENT_ID)) {
+    throw new BrokerError(
+      "apple_native_client_misconfigured",
+      503,
+      "APPLE_NATIVE_CLIENT_ID does not match the current SpyClash iOS app",
+    );
+  }
   const code = bounded(
     params.get("authorization_code") || params.get("code"),
     "authorization_code",
