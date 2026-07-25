@@ -38,20 +38,28 @@
 	</array>
 	<key>CFBundleVersion</key>
 	<string>$(CURRENT_PROJECT_VERSION)</string>
-	<key>LSRequiresIPhoneOS</key>
-	<true/>
 	<key>ITSAppUsesNonExemptEncryption</key>
 	<false/>
+	<key>LSRequiresIPhoneOS</key>
+	<true/>
+	<key>NSBonjourServices</key>
+	<array>
+		<string>_spyclash-radar._tcp</string>
+		<string>_spyclash-radar._udp</string>
+	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan room QR codes and stabilize nearby Radar positions. / Escanear QR y estabilizar posiciones del Radar. / Сканировать QR-коды и стабилизировать позиции на Радаре.</string>
 	<key>NSLocalNetworkUsageDescription</key>
 	<string>Find nearby SpyClash players and deliver room invitations while the app is open. / Buscar jugadores cercanos y enviar invitaciones. / Находить игроков рядом и отправлять приглашения, пока приложение открыто.</string>
 	<key>NSNearbyInteractionUsageDescription</key>
 	<string>Measure the distance to nearby SpyClash players so the radar can show precise proximity. / Medir la distancia a jugadores cercanos. / Измерять расстояние до игроков рядом для точного радара.</string>
-	<key>NSBonjourServices</key>
+	<key>NSSupportsLiveActivities</key>
+	<true/>
+	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
+	<true/>
+	<key>UIAppFonts</key>
 	<array>
-		<string>_spyclash-radar._tcp</string>
-		<string>_spyclash-radar._udp</string>
+		<string>Rajdhani-Bold.ttf</string>
 	</array>
 	<key>UILaunchScreen</key>
 	<dict>
@@ -62,10 +70,6 @@
 		<key>UIImageRespectsSafeAreaInsets</key>
 		<true/>
 	</dict>
-	<key>UIAppFonts</key>
-	<array>
-		<string>Rajdhani-Bold.ttf</string>
-	</array>
 	<key>UISupportedInterfaceOrientations</key>
 	<array>
 		<string>UIInterfaceOrientationPortrait</string>

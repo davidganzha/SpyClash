@@ -10,6 +10,7 @@ app=$1
 root=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
 source_privacy="$root/SpyClash/Resources/PrivacyInfo.xcprivacy"
 haptic_source="$root/SpyClash/Services/HapticManager.swift"
+source_entitlements="$root/SpyClash/Resources/SpyClash.entitlements"
 
 if [ ! -d "$app" ] || [ ! -f "$app/Info.plist" ]; then
   echo "Release app bundle not found: $app" >&2
@@ -33,6 +34,27 @@ if [ "$bundle_id" != 'com.spyclash.ios' ] || [ -z "$marketing_version" ] || [ -z
 fi
 if [ ! -f "$app/$bundle_executable" ]; then
   echo "The compiled Release executable is missing." >&2
+  exit 1
+fi
+
+live_activities=$(/usr/libexec/PlistBuddy -c 'Print :NSSupportsLiveActivities' "$app/Info.plist" 2>/dev/null || true)
+widget="$app/PlugIns/SpyClashWidgets.appex"
+if [ "$live_activities" != 'true' ] || [ ! -f "$widget/Info.plist" ]; then
+  echo "The Release bundle is missing Live Activity support or its widget extension." >&2
+  exit 1
+fi
+widget_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$widget/Info.plist")
+widget_point=$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$widget/Info.plist")
+widget_executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$widget/Info.plist")
+if [ "$widget_id" != 'com.spyclash.ios.widgets' ] \
+    || [ "$widget_point" != 'com.apple.widgetkit-extension' ] \
+    || [ ! -f "$widget/$widget_executable" ]; then
+  echo "Unexpected SpyClash Live Activity extension metadata." >&2
+  exit 1
+fi
+aps_environment=$(/usr/libexec/PlistBuddy -c 'Print :aps-environment' "$source_entitlements" 2>/dev/null || true)
+if [ "$aps_environment" != '$(APS_ENVIRONMENT)' ]; then
+  echo "The app entitlements do not bind aps-environment to the build configuration." >&2
   exit 1
 fi
 
@@ -83,4 +105,4 @@ if [ "$storekit_count" -ne 0 ]; then
   exit 1
 fi
 
-echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), no audio files or playback paths, privacy manifest exact, no .storekit."
+echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), Live Activity extension embedded, no audio files or playback paths, privacy manifest exact, no .storekit."

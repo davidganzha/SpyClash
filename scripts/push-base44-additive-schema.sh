@@ -175,11 +175,15 @@ add_optional_field() {
 }
 
 add_optional_field Friendship blocked_by_id
+add_optional_field Friendship request_event_id
 add_optional_field GameHistory player_user_id
 add_optional_field GameHistory match_id
 add_optional_field GameRoom participant_user_ids
 add_optional_field GameRoom match_id
 add_optional_field GameRoom terminal_intent
+add_optional_field GameRoom game_started_event_id
+add_optional_field GameRoom game_finished_event_id
+add_optional_field RoomInvite notification_event_id
 add_optional_field WordPack owner_user_id
 add_optional_field AppStoreAccount reservation_state app-store-account.jsonc
 add_optional_field Entitlement write_revision entitlement.jsonc
@@ -187,7 +191,13 @@ add_optional_field Entitlement write_revision entitlement.jsonc
 # These entities are safe to create during the additive phase because both are
 # service-role/admin-only boundaries. If a prior attempt already created one,
 # require exact equality instead of silently replacing production drift.
-for entity_file in CommunityReport.jsonc billing-identity-lifecycle.jsonc; do
+for entity_file in \
+  CommunityReport.jsonc \
+  billing-identity-lifecycle.jsonc \
+  push-device-registration.jsonc \
+  live-activity-registration.jsonc \
+  push-notification-event.jsonc
+do
   entity_name=$(jq -er '.name' "$ROOT/base44/entities/$entity_file")
   if jq -e --arg name "$entity_name" \
     '.schemas | any(.entity_name == $name)' "$REMOTE" >/dev/null; then
@@ -244,7 +254,13 @@ done
 
 remote_count=$(jq -r '.total' "$REMOTE")
 new_count=0
-for name in CommunityReport BillingIdentityLifecycle; do
+for name in \
+  CommunityReport \
+  BillingIdentityLifecycle \
+  PushDeviceRegistration \
+  LiveActivityRegistration \
+  PushNotificationEvent
+do
   if ! jq -e --arg name "$name" '.schemas | any(.entity_name == $name)' \
     "$REMOTE" >/dev/null; then
     new_count=$((new_count + 1))

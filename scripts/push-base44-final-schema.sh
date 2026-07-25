@@ -188,11 +188,15 @@ require_live_property() {
 }
 
 require_live_property Friendship blocked_by_id
+require_live_property Friendship request_event_id
 require_live_property GameHistory player_user_id
 require_live_property GameHistory match_id
 require_live_property GameRoom participant_user_ids
 require_live_property GameRoom match_id
 require_live_property GameRoom terminal_intent
+require_live_property GameRoom game_started_event_id
+require_live_property GameRoom game_finished_event_id
+require_live_property RoomInvite notification_event_id
 require_live_property WordPack owner_user_id
 require_live_property AppStoreAccount reservation_state
 require_live_property Entitlement write_revision

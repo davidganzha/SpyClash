@@ -36,12 +36,15 @@ export type BillingIdentityLifecycleErrorCode =
   | "ambiguous";
 
 export class BillingIdentityLifecycleError extends Error {
+  public readonly retryable: boolean;
+
   constructor(
     public readonly code: BillingIdentityLifecycleErrorCode,
     message: string,
   ) {
     super(message);
     this.name = "BillingIdentityLifecycleError";
+    this.retryable = code === "active_lease" || code === "cas_contention";
   }
 }
 

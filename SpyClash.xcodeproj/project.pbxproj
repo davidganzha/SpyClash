@@ -9,13 +9,17 @@
 /* Begin PBXBuildFile section */
 		0332FBE99D5419C0A04F460A /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 22A24EBF700A367D8B269698 /* InfoPlist.strings */; };
 		047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723E083EC43863E9B19D1DBD /* LeaderboardView.swift */; };
+		04ABFF97837288EEF867A306 /* SpyClashWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = EB074CEB86E78BFB857C6C47 /* SpyClashWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22314E28DB2385F7A05ABC74 /* HistoryView.swift */; };
 		13D77822DD0A8C0C325DD829 /* Rajdhani-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */; };
 		1FBE45CC7EB218F58B3FF8B3 /* RadarNearbyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9250197E503D48B2502EFF /* RadarNearbyService.swift */; };
+		2296623A2D3D1D8A43A1A4DC /* SpyClashMatchLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 154D6A5D3C20539A72285920 /* SpyClashMatchLiveActivityController.swift */; };
 		2946A41A9575F0D1AEE2D809 /* SpyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86974FE98CF9350796FC28D3 /* SpyModels.swift */; };
+		2AE8379041D2415FE0005E5B /* GameRoomLiveActivityProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E0CCD1E46813B6962CBD4B /* GameRoomLiveActivityProjection.swift */; };
 		309F817C661DCC3A931B4F28 /* AppTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA586ACEEC2D7E92F3621A49 /* AppTab.swift */; };
 		32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16DD679CA8E36033E9AD5D76 /* HomeView.swift */; };
 		4BEBA1477C858A78FB3F338D /* SpyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */; };
+		536D944266FBEEDCB7840020 /* SpyClashMatchLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7478AB896B134807D6FA315E /* SpyClashMatchLiveActivity.swift */; };
 		557B3950F7F0642889A07BA5 /* SpyClashApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30EA0DF923F453AB3E7F360 /* SpyClashApp.swift */; };
 		5767CD1715E3A330461009CB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */; };
 		65B97F60EB8C89F0D594A552 /* WordPacksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */; };
@@ -28,13 +32,16 @@
 		82D1D08C2F15D8C91C49A7A1 /* Rajdhani-OFL-1.1.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */; };
 		8D17771759D4330EBFEC4603 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 0F3E2F7BE3B86567F9077667 /* SocketIO */; };
 		94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75823698B8005677C73DFC1B /* AppState.swift */; };
+		98DA09BA0F4F02C29F67E3EA /* PushNotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B7F0D77CCD84E2E31D982D /* PushNotificationCoordinator.swift */; };
 		A14016F54504B30BA64BB8DA /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B25DFE515749E670224D319 /* ProfileView.swift */; };
 		A390D4427BA1EA3B2F024075 /* Starscream-Apache-2.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = 8E4C198618FA43B34FF1B363 /* Starscream-Apache-2.0.txt */; };
 		A744EDBB751A4EB73DFC2C44 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE1AF213121DB5A761660563 /* WelcomeView.swift */; };
 		A79E33F12838705CF1E207E5 /* SpyBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9065A7D0489C60903CBB7D5B /* SpyBackground.swift */; };
-		B9055F82BF207F9ED86A81FB /* DeviceTiltController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 265067D4B7D30C4F8FEBAD88 /* DeviceTiltController.swift */; };
+		BA98E60B487B564CAA1C023C /* SpyClashWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760CBEBE89AEE2AA0F8A6E0E /* SpyClashWidgetsBundle.swift */; };
 		BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */; };
+		BD9EDC5A7F4F7334FFA8354D /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
 		CB22564E02BD266693DE55B4 /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */; };
+		D6B23D48649F5025143180FD /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
 		D881639D076EDA12A4605402 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */; };
 		D91C343CDDE1B6DD38511FD3 /* RadarInviteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE93DA44796A2FB3D6F8F93 /* RadarInviteView.swift */; };
 		E003ECA92C61B98778CAC8EC /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5C87FEFE82151F2F7D6F6A /* GameView.swift */; };
@@ -46,15 +53,41 @@
 		FE4AD779C9178990AE6FB3B2 /* LocalGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */; };
 /* End PBXBuildFile section */
 
+/* Begin PBXContainerItemProxy section */
+		1FC9717294F437C06029B1C6 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 19208BECA25401009A21A96A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 2495D60CD15D3317F5BF4176;
+			remoteInfo = SpyClashWidgets;
+		};
+/* End PBXContainerItemProxy section */
+
+/* Begin PBXCopyFilesBuildPhase section */
+		8DD18DBFA015526BD445F977 /* Embed Foundation Extensions */ = {
+			isa = PBXCopyFilesBuildPhase;
+			buildActionMask = 2147483647;
+			dstPath = "";
+			dstSubfolderSpec = 13;
+			files = (
+				04ABFF97837288EEF867A306 /* SpyClashWidgets.appex in Embed Foundation Extensions */,
+			);
+			name = "Embed Foundation Extensions";
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXCopyFilesBuildPhase section */
+
 /* Begin PBXFileReference section */
 		05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyOrbSceneView.swift; sourceTree = "<group>"; };
 		0615AC062761EBDE879255B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		103786B1CACE81CF96C268EF /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
+		154D6A5D3C20539A72285920 /* SpyClashMatchLiveActivityController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashMatchLiveActivityController.swift; sourceTree = "<group>"; };
 		16DD679CA8E36033E9AD5D76 /* HomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HomeView.swift; sourceTree = "<group>"; };
 		1B9250197E503D48B2502EFF /* RadarNearbyService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadarNearbyService.swift; sourceTree = "<group>"; };
+		1CB8625B19A0A8DEA9DB544A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		22314E28DB2385F7A05ABC74 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
-		265067D4B7D30C4F8FEBAD88 /* DeviceTiltController.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DeviceTiltController.swift; sourceTree = "<group>"; };
 		2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPacksView.swift; sourceTree = "<group>"; };
+		34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashMatchActivityAttributes.swift; sourceTree = "<group>"; };
 		461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInCoordinator.swift; sourceTree = "<group>"; };
 		464F82CB598E4A8DCC748ADA /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipRealtimeService.swift; sourceTree = "<group>"; };
@@ -64,7 +97,10 @@
 		6C95C9E321165129F2ED8668 /* SpyClash.storekit */ = {isa = PBXFileReference; path = SpyClash.storekit; sourceTree = "<group>"; };
 		6DE93DA44796A2FB3D6F8F93 /* RadarInviteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadarInviteView.swift; sourceTree = "<group>"; };
 		723E083EC43863E9B19D1DBD /* LeaderboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardView.swift; sourceTree = "<group>"; };
+		7478AB896B134807D6FA315E /* SpyClashMatchLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashMatchLiveActivity.swift; sourceTree = "<group>"; };
 		75823698B8005677C73DFC1B /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		760CBEBE89AEE2AA0F8A6E0E /* SpyClashWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashWidgetsBundle.swift; sourceTree = "<group>"; };
+		79E0CCD1E46813B6962CBD4B /* GameRoomLiveActivityProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRoomLiveActivityProjection.swift; sourceTree = "<group>"; };
 		7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		86974FE98CF9350796FC28D3 /* SpyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyModels.swift; sourceTree = "<group>"; };
 		89A2672701BF2A5E11254E90 /* ru-UA */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ru-UA"; path = "ru-UA.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
@@ -78,6 +114,7 @@
 		9E7E31F61F4DBF12D419781A /* SpyClash.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SpyClash.entitlements; sourceTree = "<group>"; };
 		A01D249EEE029FBB05286504 /* SpyClash.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SpyClash.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6EDDA8AE23141F759D27B13 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A8B7F0D77CCD84E2E31D982D /* PushNotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationCoordinator.swift; sourceTree = "<group>"; };
 		AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B7DA7D7405C80D4685A10F92 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		CE1AF213121DB5A761660563 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
@@ -88,6 +125,7 @@
 		DB38FB6B74A483175220231A /* SocketIO-MIT.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SocketIO-MIT.txt"; sourceTree = "<group>"; };
 		DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
 		E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyTheme.swift; sourceTree = "<group>"; };
+		EB074CEB86E78BFB857C6C47 /* SpyClashWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = SpyClashWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingView.swift; sourceTree = "<group>"; };
 		FA6E7B15464DD14D3E49671B /* QRSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRSheets.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -112,6 +150,14 @@
 			path = StoreKit;
 			sourceTree = "<group>";
 		};
+		4108F65FED61E8D5617165A2 /* LiveActivityShared */ = {
+			isa = PBXGroup;
+			children = (
+				34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */,
+			);
+			path = LiveActivityShared;
+			sourceTree = "<group>";
+		};
 		5008CF1BFA9100F96B0FAB38 /* LICENSES */ = {
 			isa = PBXGroup;
 			children = (
@@ -122,11 +168,22 @@
 			path = LICENSES;
 			sourceTree = "<group>";
 		};
+		53542A2CB102A9F2E71DBD13 /* SpyClashWidgets */ = {
+			isa = PBXGroup;
+			children = (
+				1CB8625B19A0A8DEA9DB544A /* Info.plist */,
+				7478AB896B134807D6FA315E /* SpyClashMatchLiveActivity.swift */,
+				760CBEBE89AEE2AA0F8A6E0E /* SpyClashWidgetsBundle.swift */,
+			);
+			path = SpyClashWidgets;
+			sourceTree = "<group>";
+		};
 		5CE4B78A27CB1A3000FABA7B = {
 			isa = PBXGroup;
 			children = (
 				5008CF1BFA9100F96B0FAB38 /* LICENSES */,
 				7D8A61AA4B945C23B44EC6D9 /* SpyClash */,
+				53542A2CB102A9F2E71DBD13 /* SpyClashWidgets */,
 				111BB6B43C9F8D9D3F8DAF22 /* StoreKit */,
 				7B6BED41BFC5980A89ECA708 /* Products */,
 			);
@@ -167,6 +224,7 @@
 			isa = PBXGroup;
 			children = (
 				A01D249EEE029FBB05286504 /* SpyClash.app */,
+				EB074CEB86E78BFB857C6C47 /* SpyClashWidgets.appex */,
 			);
 			name = Products;
 			sourceTree = "<group>";
@@ -176,6 +234,8 @@
 			children = (
 				CFF709D9A9F19039750EC6B1 /* App */,
 				7B5F5EE21DED3DDAA2C1A21D /* Design */,
+				92A77D041539A3A6A9582B14 /* LiveActivities */,
+				4108F65FED61E8D5617165A2 /* LiveActivityShared */,
 				F0907EF3730A23551A82884B /* Models */,
 				83BEED0AFF00EA59546A1A96 /* Resources */,
 				F7C6AF09A4B5E8C78B2583D2 /* Services */,
@@ -195,6 +255,15 @@
 				22A24EBF700A367D8B269698 /* InfoPlist.strings */,
 			);
 			path = Resources;
+			sourceTree = "<group>";
+		};
+		92A77D041539A3A6A9582B14 /* LiveActivities */ = {
+			isa = PBXGroup;
+			children = (
+				79E0CCD1E46813B6962CBD4B /* GameRoomLiveActivityProjection.swift */,
+				154D6A5D3C20539A72285920 /* SpyClashMatchLiveActivityController.swift */,
+			);
+			path = LiveActivities;
 			sourceTree = "<group>";
 		};
 		CFF709D9A9F19039750EC6B1 /* App */ = {
@@ -220,10 +289,10 @@
 			children = (
 				461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */,
 				8EE75E34545D7FD03BFBF561 /* Base44Client.swift */,
-				265067D4B7D30C4F8FEBAD88 /* DeviceTiltController.swift */,
 				5BBA628FB7C9372162E4C619 /* HapticManager.swift */,
 				7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */,
 				4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */,
+				A8B7F0D77CCD84E2E31D982D /* PushNotificationCoordinator.swift */,
 				1B9250197E503D48B2502EFF /* RadarNearbyService.swift */,
 				DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */,
 			);
@@ -233,6 +302,23 @@
 /* End PBXGroup section */
 
 /* Begin PBXNativeTarget section */
+		2495D60CD15D3317F5BF4176 /* SpyClashWidgets */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 7D5CB69C95C758D1FC3CF72F /* Build configuration list for PBXNativeTarget "SpyClashWidgets" */;
+			buildPhases = (
+				013926390C5628C20D5762EE /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SpyClashWidgets;
+			packageProductDependencies = (
+			);
+			productName = SpyClashWidgets;
+			productReference = EB074CEB86E78BFB857C6C47 /* SpyClashWidgets.appex */;
+			productType = "com.apple.product-type.app-extension";
+		};
 		77A6DFFF9D8CFBF19BE6C3C9 /* SpyClash */ = {
 			isa = PBXNativeTarget;
 			buildConfigurationList = CF20E3432F0D697E0790FE79 /* Build configuration list for PBXNativeTarget "SpyClash" */;
@@ -240,10 +326,12 @@
 				3EEDB8DBA19E39F75370F019 /* Sources */,
 				EA212BCA0AD96EA7103EC761 /* Resources */,
 				7B515AC188A7F561C524F9CF /* Frameworks */,
+				8DD18DBFA015526BD445F977 /* Embed Foundation Extensions */,
 			);
 			buildRules = (
 			);
 			dependencies = (
+				9DA2E9AEB533EC7E3B941702 /* PBXTargetDependency */,
 			);
 			name = SpyClash;
 			packageProductDependencies = (
@@ -262,6 +350,10 @@
 				BuildIndependentTargetsInParallel = YES;
 				LastUpgradeCheck = 1430;
 				TargetAttributes = {
+					2495D60CD15D3317F5BF4176 = {
+						DevelopmentTeam = 3Z64QKNL54;
+						ProvisioningStyle = Automatic;
+					};
 					77A6DFFF9D8CFBF19BE6C3C9 = {
 						DevelopmentTeam = 3Z64QKNL54;
 						ProvisioningStyle = Automatic;
@@ -289,6 +381,7 @@
 			projectRoot = "";
 			targets = (
 				77A6DFFF9D8CFBF19BE6C3C9 /* SpyClash */,
+				2495D60CD15D3317F5BF4176 /* SpyClashWidgets */,
 			);
 		};
 /* End PBXProject section */
@@ -311,6 +404,16 @@
 /* End PBXResourcesBuildPhase section */
 
 /* Begin PBXSourcesBuildPhase section */
+		013926390C5628C20D5762EE /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				BD9EDC5A7F4F7334FFA8354D /* SpyClashMatchActivityAttributes.swift in Sources */,
+				536D944266FBEEDCB7840020 /* SpyClashMatchLiveActivity.swift in Sources */,
+				BA98E60B487B564CAA1C023C /* SpyClashWidgetsBundle.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
 		3EEDB8DBA19E39F75370F019 /* Sources */ = {
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
@@ -322,7 +425,7 @@
 				7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */,
 				ECDAC86975194D2BEBB14885 /* Base44Client.swift in Sources */,
 				FC61757D64D5967B87F90D6B /* CommunityView.swift in Sources */,
-				B9055F82BF207F9ED86A81FB /* DeviceTiltController.swift in Sources */,
+				2AE8379041D2415FE0005E5B /* GameRoomLiveActivityProjection.swift in Sources */,
 				E003ECA92C61B98778CAC8EC /* GameView.swift in Sources */,
 				6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */,
 				1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */,
@@ -333,11 +436,14 @@
 				BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */,
 				7B6D3EB62FE74629B61B73AE /* PricingView.swift in Sources */,
 				A14016F54504B30BA64BB8DA /* ProfileView.swift in Sources */,
+				98DA09BA0F4F02C29F67E3EA /* PushNotificationCoordinator.swift in Sources */,
 				6BEB09CD45546EB59A434FFF /* QRSheets.swift in Sources */,
 				D91C343CDDE1B6DD38511FD3 /* RadarInviteView.swift in Sources */,
 				1FBE45CC7EB218F58B3FF8B3 /* RadarNearbyService.swift in Sources */,
 				A79E33F12838705CF1E207E5 /* SpyBackground.swift in Sources */,
 				557B3950F7F0642889A07BA5 /* SpyClashApp.swift in Sources */,
+				D6B23D48649F5025143180FD /* SpyClashMatchActivityAttributes.swift in Sources */,
+				2296623A2D3D1D8A43A1A4DC /* SpyClashMatchLiveActivityController.swift in Sources */,
 				2946A41A9575F0D1AEE2D809 /* SpyModels.swift in Sources */,
 				7D6221160001A1F896D98689 /* SpyOrbSceneView.swift in Sources */,
 				4BEBA1477C858A78FB3F338D /* SpyTheme.swift in Sources */,
@@ -348,6 +454,14 @@
 			runOnlyForDeploymentPostprocessing = 0;
 		};
 /* End PBXSourcesBuildPhase section */
+
+/* Begin PBXTargetDependency section */
+		9DA2E9AEB533EC7E3B941702 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 2495D60CD15D3317F5BF4176 /* SpyClashWidgets */;
+			targetProxy = 1FC9717294F437C06029B1C6 /* PBXContainerItemProxy */;
+		};
+/* End PBXTargetDependency section */
 
 /* Begin PBXVariantGroup section */
 		22A24EBF700A367D8B269698 /* InfoPlist.strings */ = {
@@ -364,9 +478,30 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		365D3BB48F24DD369A39102B /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				INFOPLIST_FILE = SpyClashWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.widgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Debug;
+		};
 		4BB519F2F24F5D23AEDB46C3 /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APS_ENVIRONMENT = development;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = SpyClash/Resources/SpyClash.entitlements;
@@ -387,6 +522,7 @@
 		4E1DB2AD0C9C81B11182EF13 /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
+				APS_ENVIRONMENT = production;
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = SpyClash/Resources/SpyClash.entitlements;
@@ -438,7 +574,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -496,7 +632,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 9;
+				CURRENT_PROJECT_VERSION = 10;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -527,6 +663,26 @@
 			};
 			name = Debug;
 		};
+		E763C2DDF70E3A7FC63F880A /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				INFOPLIST_FILE = SpyClashWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.widgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = Release;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -535,6 +691,15 @@
 			buildConfigurations = (
 				CD98D449BCC056243D149F1A /* Debug */,
 				B27C89F969CB99AC3F0B6B4C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		7D5CB69C95C758D1FC3CF72F /* Build configuration list for PBXNativeTarget "SpyClashWidgets" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				365D3BB48F24DD369A39102B /* Debug */,
+				E763C2DDF70E3A7FC63F880A /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

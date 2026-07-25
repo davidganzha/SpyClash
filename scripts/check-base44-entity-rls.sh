@@ -33,11 +33,15 @@ done
 
 authority_fields=(
   'Friendship:blocked_by_id'
+  'Friendship:request_event_id'
   'GameHistory:player_user_id'
   'GameHistory:match_id'
   'GameRoom:participant_user_ids'
   'GameRoom:match_id'
   'GameRoom:terminal_intent'
+  'GameRoom:game_started_event_id'
+  'GameRoom:game_finished_event_id'
+  'RoomInvite:notification_event_id'
   'WordPack:owner_user_id'
 )
 for authority in "${authority_fields[@]}"; do

@@ -113,8 +113,8 @@ struct HomeView: View {
     }
 
     private func homeScene(height: CGFloat) -> some View {
-        let compact = height < 690
         let roomActive = appState.activeRoom != nil
+        let compact = height < 760 || (!roomActive && stage != .main)
 
         return VStack(spacing: compact ? 12 : 18) {
             Color.clear
@@ -134,7 +134,7 @@ struct HomeView: View {
             if !roomActive {
                 VStack(spacing: compact ? 10 : 12) {
                     mainActions
-                        .frame(maxWidth: stage == .main ? 340 : 360)
+                        .frame(maxWidth: stage == .main ? 350 : 382)
                         .id(stage)
                         .animation(SpyMotion.page, value: stage)
                 }
@@ -142,9 +142,9 @@ struct HomeView: View {
 
             Spacer(minLength: 76)
         }
-        .frame(maxWidth: 390)
+        .frame(maxWidth: 414)
         .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, 22)
+        .padding(.horizontal, 16)
     }
 
     private var homeTopBarReserve: some View {
@@ -255,7 +255,8 @@ struct HomeView: View {
             webChoiceCard(
                 title: localized(en: "LOCAL", ru: "ЛОКАЛЬНО", es: "LOCAL"),
                 subtitle: localized(en: "One device · pass & play", ru: "Один телефон, передаёте по кругу", es: "Un telefono · pasar y jugar"),
-                icon: "📱"
+                icon: "📱",
+                compact: true
             ) {
                 HapticManager.shared.fire(.tabSelection)
                 appState.openLocalSetup()
@@ -265,7 +266,8 @@ struct HomeView: View {
                 title: localized(en: "ONLINE", ru: "ОНЛАЙН", es: "ONLINE"),
                 subtitle: localized(en: "Each player on their own device", ru: "Каждый на своём телефоне", es: "Cada jugador en su telefono"),
                 icon: "📡",
-                highlighted: true
+                highlighted: true,
+                compact: true
             ) {
                 HapticManager.shared.fire(.buttonPress)
                 withAnimation(SpyMotion.page) {
@@ -452,9 +454,9 @@ struct HomeView: View {
                     .foregroundStyle(highlighted ? SpyTheme.red : SpyTheme.dim)
                     .accessibilityHidden(true)
             }
-            .padding(.horizontal, 28)
-            .padding(.vertical, compact ? 22 : 28)
-            .frame(maxWidth: .infinity, minHeight: compact ? 88 : 108)
+            .padding(.horizontal, compact ? 20 : 24)
+            .padding(.vertical, compact ? 18 : 24)
+            .frame(maxWidth: .infinity, minHeight: compact ? 82 : 102)
             .background((highlighted ? SpyTheme.red.opacity(0.06) : SpyTheme.control), in: CutCornerShape(cut: 14))
             .overlay(CutCornerShape(cut: 14).stroke(highlighted ? SpyTheme.red.opacity(0.50) : SpyTheme.strokeStrong, lineWidth: 1))
             .overlay(alignment: .topLeading) {
@@ -481,7 +483,7 @@ struct HomeView: View {
             }
             .foregroundStyle(SpyTheme.muted)
             .frame(maxWidth: .infinity)
-            .frame(height: 58)
+            .frame(height: 52)
             .background(Color.clear, in: CutCornerShape(cut: 12))
             .overlay(CutCornerShape(cut: 12).stroke(SpyTheme.strokeDim, lineWidth: 1))
             .contentShape(CutCornerShape(cut: 12))

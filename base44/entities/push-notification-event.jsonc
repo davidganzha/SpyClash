@@ -1,0 +1,75 @@
+{
+  "name": "PushNotificationEvent",
+  "description": "Server-owned source-validated APNs outbox with a bounded exact worker lease.",
+  "type": "object",
+  "properties": {
+    "dedupe_key": { "type": "string" },
+    "source_event_id": { "type": "string" },
+    "event_type": {
+      "type": "string",
+      "enum": ["friend_request", "room_invite", "game_started", "game_finished"]
+    },
+    "source_type": {
+      "type": "string",
+      "enum": ["friendship", "room_invite", "game_room"]
+    },
+    "recipient_user_id": { "type": "string" },
+    "actor_user_id": { "type": "string" },
+    "room_id": { "type": "string" },
+    "match_id": { "type": "string" },
+    "state": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "processing",
+        "retry",
+        "delivered",
+        "partial",
+        "no_devices",
+        "cancelled",
+        "failed"
+      ],
+      "default": "pending"
+    },
+    "attempt_count": { "type": "number", "default": 0 },
+    "delivered_count": { "type": "number", "default": 0 },
+    "failed_count": { "type": "number", "default": 0 },
+    "delivered_token_hashes": {
+      "type": "array",
+      "items": { "type": "string" },
+      "description": "Device token hashes already accepted by APNs. Successful devices are not resent on a partial retry."
+    },
+    "lease_token": { "type": "string" },
+    "lease_until": { "type": "string", "format": "date-time" },
+    "revision": { "type": "string" },
+    "next_attempt_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "last_error_code": { "type": "string" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" },
+    "delivered_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "dedupe_key",
+    "source_event_id",
+    "event_type",
+    "source_type",
+    "recipient_user_id",
+    "state",
+    "attempt_count",
+    "delivered_count",
+    "failed_count",
+    "lease_token",
+    "lease_until",
+    "revision",
+    "expires_at",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

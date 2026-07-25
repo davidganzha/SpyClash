@@ -170,9 +170,10 @@ final class AppState: NSObject {
     let radarNearby: RadarNearbyService
     var user: SpyUser? {
         didSet {
+            let previousUserID = oldValue?.id
             radarNearby.configure(user: user)
             radarNearby.setActiveRoom(activeRoom)
-            guard oldValue?.id != user?.id else { return }
+            guard previousUserID != user?.id else { return }
             // Account-scoped access belongs to exactly one SpyClash account.
             // Clear it synchronously before the replacement account renders.
             membership = nil
@@ -189,6 +190,10 @@ final class AppState: NSObject {
                     userID: user.id
                 )
             }
+            PushNotificationCoordinator.shared.accountDidChange(
+                isSignedIn: user != nil && client.hasSessionToken
+            )
+            synchronizeLiveActivitiesForAccountChange(previousUserID: previousUserID)
         }
     }
     var isRestoring = true
@@ -221,13 +226,18 @@ final class AppState: NSObject {
             persistActiveRoomReference(activeRoom)
             radarNearby.setActiveRoom(activeRoom)
             handleRoomPresenceChange(from: oldValue, to: activeRoom)
+            synchronizeMatchLiveActivity(previousRoom: oldValue, room: activeRoom)
         }
     }
     var isShellChromeSuppressed = false
     private(set) var roomSyncOperation: RoomSyncOperation?
     var presentedSheet: AppSheet?
     var roomQRTarget: RoomQRTarget = .web
-    var language: AppLanguage = .stored
+    var language: AppLanguage = .stored {
+        didSet {
+            PushNotificationCoordinator.shared.updatePreferredLocale(language.rawValue)
+        }
+    }
     var pendingJoinCode: String?
     var deepLinkStatus: String? {
         didSet {
@@ -249,6 +259,13 @@ final class AppState: NSObject {
     @ObservationIgnored private var membershipExpiryTask: Task<Void, Never>?
     @ObservationIgnored private var accessActivationSyncTask: Task<Void, Never>?
     @ObservationIgnored private var membershipRealtimeRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var liveActivitySyncTask: Task<Void, Never>?
+    @ObservationIgnored private var liveActivityPushTokenTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var liveActivityStateTasks: [String: Task<Void, Never>] = [:]
+    @ObservationIgnored private var liveActivityPushToStartTokenTask: Task<Void, Never>?
+    @ObservationIgnored private var liveActivityLifecycleTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingMatchRoomID: String?
+    @ObservationIgnored private var isOpeningPendingMatch = false
     private static let activeRoomIDStorageKey = "spyclash.activeRoomID"
 
     override init() {
@@ -270,6 +287,9 @@ final class AppState: NSObject {
         }
         radarNearby.onAutomaticInvitation = { [weak self] invitation in
             self?.handleAutomaticRadarInvitation(invitation)
+        }
+        PushNotificationCoordinator.shared.configure(client: client) { [weak self] route in
+            self?.handleNotificationRoute(route)
         }
     }
 
@@ -563,6 +583,7 @@ final class AppState: NSObject {
 
     func restoreSession() async {
         isRestoring = true
+        var shouldSynchronizeLiveActivity = true
 
 #if DEBUG
         if activateUIPreviewModeIfRequested() {
@@ -579,7 +600,21 @@ final class AppState: NSObject {
             reconcileLanguagePreference(with: user?.language)
             await synchronizeAccess()
             await restoreActiveRoomIfPossible()
-        } catch {
+        } catch is CancellationError {
+            // A newer authentication attempt replaced this restore. Its own
+            // account transition owns notification and ActivityKit cleanup.
+            shouldSynchronizeLiveActivity = false
+        } catch let error as Base44Error where error.statusCode == 401 {
+            // A confirmed credential rejection must also clean up ActivityKit
+            // when user was already nil on a cold launch (so user.didSet does
+            // not observe an account transition).
+            shouldSynchronizeLiveActivity = false
+            PushNotificationCoordinator.shared.accountDidChange(isSignedIn: false)
+            cancelLiveActivityPushTokenObservers()
+            cancelLiveActivityStateObservers()
+            cancelLiveActivityPushToStartTokenObserver()
+            cancelLiveActivityLifecycleObserver()
+            await SpyClashMatchLiveActivityController.shared.endAll()
             client.clearToken()
             KeychainStore.clearToken()
             user = nil
@@ -587,10 +622,21 @@ final class AppState: NSObject {
             membershipOwnerUserID = nil
             membershipSyncState = .unknown
             clearStoredActiveRoom()
+        } catch {
+            // A temporary transport/server failure is not proof that the
+            // account was revoked. Preserve the token and any remotely driven
+            // Live Activity so the next activation can recover.
+            shouldSynchronizeLiveActivity = false
+#if DEBUG
+            print("Session restore deferred: \(error.localizedDescription)")
+#endif
         }
 
         isRestoring = false
-        await consumePendingJoinIfPossible()
+        if shouldSynchronizeLiveActivity {
+            synchronizeMatchLiveActivity(previousRoom: nil, room: activeRoom)
+        }
+        await consumePendingRoutesIfPossible()
     }
 
     func login(email: String, password: String) async {
@@ -1007,6 +1053,7 @@ final class AppState: NSObject {
         standardAuthTimelineTask = nil
         standardAuthRunID = nil
         HapticManager.shared.fire(.notification(.success))
+        PushNotificationCoordinator.shared.prepareForLogout()
         client.clearToken()
         KeychainStore.clearToken()
         user = nil
@@ -1026,8 +1073,10 @@ final class AppState: NSObject {
         roomSyncOperation = nil
         presentedSheet = nil
         pendingJoinCode = nil
+        pendingMatchRoomID = nil
         deepLinkStatus = nil
         isJoiningDeepLink = false
+        isOpeningPendingMatch = false
     }
 
     private func revealHomeAfterAppleAuth() async {
@@ -1150,6 +1199,8 @@ final class AppState: NSObject {
             guard let self else { return }
             defer { self.accessActivationSyncTask = nil }
             await self.synchronizeAccess()
+            await self.consumePendingRoutesIfPossible()
+            self.synchronizeMatchLiveActivity(previousRoom: nil, room: self.activeRoom)
         }
     }
 
@@ -1298,6 +1349,29 @@ final class AppState: NSObject {
     }
 
     func handleIncomingURL(_ url: URL) {
+        if url.scheme?.lowercased() == "spyclash",
+           url.host?.lowercased() == "community" {
+            openCommunity()
+            return
+        }
+
+        if url.scheme?.lowercased() == "spyclash",
+           url.host?.lowercased() == "match",
+           let roomID = url.pathComponents.first(where: { $0 != "/" && !$0.isEmpty }) {
+            queueMatchRoute(roomID: roomID)
+            return
+        }
+
+        if url.scheme?.lowercased() == "spyclash",
+           url.host?.lowercased() == "game",
+           let roomID = URLComponents(url: url, resolvingAgainstBaseURL: false)?
+            .queryItems?
+            .first(where: { $0.name == "room_id" })?
+            .value?.nilIfBlank {
+            queueMatchRoute(roomID: roomID)
+            return
+        }
+
         if let token = ResetPasswordLinkParser.tokenIfPresent(from: url.absoluteString) {
             authPhase = .resetPassword(token: token)
             authError = nil
@@ -1323,6 +1397,81 @@ final class AppState: NSObject {
         }
     }
 
+    private func queueMatchRoute(roomID: String) {
+        guard let normalizedRoomID = roomID.nilIfBlank else { return }
+        pendingMatchRoomID = normalizedRoomID
+        guard user != nil, !isRestoring else {
+            authPhase = .email
+            return
+        }
+        Task { await consumePendingMatchRouteIfPossible() }
+    }
+
+    private func openMatchFromLiveActivity(roomID: String) async {
+        guard let user else { return }
+
+        if activeRoom?.id == roomID {
+            clearPendingMatchRoute(ifMatching: roomID)
+            selectedTab = .game
+            shellRoute = .main
+            presentedSheet = nil
+            return
+        }
+
+        do {
+            guard let room = try await client.refreshRoom(id: roomID) else {
+                clearPendingMatchRoute(ifMatching: roomID)
+                return
+            }
+            try Task.checkCancellation()
+            guard pendingMatchRoomID == roomID else { return }
+            guard room.playersList.contains(where: {
+                $0.email.compare(user.email, options: .caseInsensitive) == .orderedSame
+            }) else {
+                clearPendingMatchRoute(ifMatching: roomID)
+                return
+            }
+            clearPendingMatchRoute(ifMatching: roomID)
+            activeRoom = room
+            selectedTab = .game
+            shellRoute = .main
+            presentedSheet = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            guard pendingMatchRoomID == roomID else { return }
+            deepLinkStatus = error.localizedDescription.uppercased()
+        }
+    }
+
+    private func clearPendingMatchRoute(ifMatching roomID: String) {
+        guard pendingMatchRoomID == roomID else { return }
+        pendingMatchRoomID = nil
+    }
+
+    private func handleNotificationRoute(_ route: SpyNotificationRoute) {
+        switch route {
+        case .communityRequests:
+            openCommunity()
+        case .room(let code):
+            pendingJoinCode = code
+            deepLinkStatus = language.welcome.inviteArmed(code)
+            if user == nil {
+                authPhase = .email
+            } else {
+                Task { await consumePendingJoinIfPossible() }
+            }
+        case .activeGame:
+            if activeRoom != nil {
+                selectedTab = .game
+                shellRoute = .main
+                presentedSheet = nil
+            }
+        case .url(let url):
+            handleIncomingURL(url)
+        }
+    }
+
     @discardableResult
     func consumePendingJoinIfPossible() async -> Bool {
         guard user != nil, let code = pendingJoinCode else {
@@ -1332,6 +1481,27 @@ final class AppState: NSObject {
         isJoiningDeepLink = true
         defer { isJoiningDeepLink = false }
         return await joinRoom(code: code)
+    }
+
+    func consumePendingRoutesIfPossible() async {
+        _ = await consumePendingJoinIfPossible()
+        await consumePendingMatchRouteIfPossible()
+    }
+
+    private func consumePendingMatchRouteIfPossible() async {
+        guard user != nil,
+              !isRestoring,
+              !isOpeningPendingMatch,
+              pendingMatchRoomID != nil else {
+            return
+        }
+        isOpeningPendingMatch = true
+        defer { isOpeningPendingMatch = false }
+
+        while !Task.isCancelled, let roomID = pendingMatchRoomID {
+            await openMatchFromLiveActivity(roomID: roomID)
+            if pendingMatchRoomID == roomID { return }
+        }
     }
 
     private func performAuth(_ operation: @escaping () async throws -> Void) async {
@@ -1365,6 +1535,283 @@ final class AppState: NSObject {
         activeRoom = room
         selectedTab = .game
     }
+
+    private func synchronizeLiveActivitiesForAccountChange(previousUserID: String?) {
+#if DEBUG
+        guard !isUIPreviewMode else { return }
+#endif
+        if previousUserID != nil, let expectedUserID = user?.id {
+            // An Activity may still contain the previous account's private role/word.
+            // Tear it down before observing or projecting state for the replacement account.
+            liveActivitySyncTask?.cancel()
+            cancelLiveActivityPushTokenObservers()
+            cancelLiveActivityStateObservers()
+            cancelLiveActivityPushToStartTokenObserver()
+            cancelLiveActivityLifecycleObserver()
+            liveActivitySyncTask = Task { @MainActor [weak self] in
+                await SpyClashMatchLiveActivityController.shared.endAll()
+                guard let self, self.user?.id == expectedUserID else { return }
+                self.observeLiveActivityLifecycleIfNeeded()
+                self.observeLiveActivityPushToStartTokenIfNeeded()
+                guard !self.isRestoring else { return }
+                self.synchronizeMatchLiveActivity(previousRoom: nil, room: self.activeRoom)
+            }
+            return
+        }
+
+        guard user != nil else {
+            liveActivitySyncTask?.cancel()
+            // Cancel registration retries before the logout cleanup request can
+            // race a late token write back into the previous account.
+            cancelLiveActivityPushTokenObservers()
+            cancelLiveActivityStateObservers()
+            cancelLiveActivityPushToStartTokenObserver()
+            cancelLiveActivityLifecycleObserver()
+            liveActivitySyncTask = Task { @MainActor in
+                await SpyClashMatchLiveActivityController.shared.endAll()
+            }
+            return
+        }
+
+        observeLiveActivityLifecycleIfNeeded()
+        observeLiveActivityPushToStartTokenIfNeeded()
+        guard !isRestoring else { return }
+        synchronizeMatchLiveActivity(previousRoom: nil, room: activeRoom)
+    }
+
+    private func synchronizeMatchLiveActivity(
+        previousRoom: GameRoom?,
+        room: GameRoom?
+    ) {
+#if DEBUG
+        guard !isUIPreviewMode else { return }
+#endif
+        guard !isRestoring else { return }
+        let viewer = user
+        liveActivitySyncTask?.cancel()
+        liveActivitySyncTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            let controller = SpyClashMatchLiveActivityController.shared
+
+            if let previousRoom,
+               room?.id != previousRoom.id {
+                await controller.endAll()
+                cancelLiveActivityPushTokenObservers()
+            }
+
+            let previousMatchID = previousRoom?.matchID?.nilIfBlank
+            let currentMatchID = room?.matchID?.nilIfBlank
+            if let previousRoom,
+               previousRoom.id == room?.id,
+               previousMatchID != currentMatchID {
+                if let previousMatchID,
+                   let activityID = controller.activityID(matchID: previousMatchID) {
+                    PushNotificationCoordinator.shared.cancelPendingLiveActivityRegistration(
+                        tokenKind: .activity,
+                        activityID: activityID,
+                        matchID: previousMatchID
+                    )
+                    await PushNotificationCoordinator.shared.unregisterLiveActivityToken(
+                        tokenKind: .activity,
+                        activityID: activityID,
+                        matchID: previousMatchID
+                    )
+                    liveActivityPushTokenTasks.removeValue(forKey: activityID)?.cancel()
+                }
+                await controller.endActivities(
+                    roomID: previousRoom.id,
+                    excludingMatchID: currentMatchID
+                )
+            }
+
+            guard !Task.isCancelled,
+                  let room,
+                  let viewer,
+                  let projection = room.liveActivityProjection(for: viewer) else {
+                if room == nil {
+                    await controller.endAll()
+                    cancelLiveActivityPushTokenObservers()
+                }
+                return
+            }
+
+            if projection.state.phase == .completed {
+                if let activityID = controller.activityID(matchID: projection.attributes.matchID) {
+                    PushNotificationCoordinator.shared.cancelPendingLiveActivityRegistration(
+                        tokenKind: .activity,
+                        activityID: activityID,
+                        matchID: projection.attributes.matchID
+                    )
+                    await PushNotificationCoordinator.shared.unregisterLiveActivityToken(
+                        tokenKind: .activity,
+                        activityID: activityID,
+                        matchID: projection.attributes.matchID
+                    )
+                    liveActivityPushTokenTasks.removeValue(forKey: activityID)?.cancel()
+                }
+                try? await controller.end(
+                    matchID: projection.attributes.matchID,
+                    finalState: projection.state
+                )
+                return
+            }
+
+            do {
+                await controller.endActivities(
+                    roomID: projection.attributes.roomID,
+                    excludingMatchID: projection.attributes.matchID
+                )
+                if #available(iOS 17.2, *) {
+                    // Push-to-start is the sole creation authority. A local
+                    // fallback can race a delayed APNs start and create two
+                    // Activities for the same personalized match.
+                    if let activityID = try await controller.updateIfPresent(
+                        attributes: projection.attributes,
+                        state: projection.state
+                    ) {
+                        await reconcileAndObserveLiveActivity(activityID: activityID)
+                    }
+                } else {
+                    let activityID = try await controller.startOrUpdate(
+                        attributes: projection.attributes,
+                        initialState: projection.state,
+                        receivesPushUpdates: true
+                    )
+                    await reconcileAndObserveLiveActivity(activityID: activityID)
+                }
+            } catch {
+#if DEBUG
+                print("Live Activity synchronization failed: \(error.localizedDescription)")
+#endif
+            }
+        }
+    }
+
+    private func cancelLiveActivityPushTokenObservers() {
+        for task in liveActivityPushTokenTasks.values {
+            task.cancel()
+        }
+        liveActivityPushTokenTasks.removeAll()
+    }
+
+    private func cancelLiveActivityStateObservers() {
+        for task in liveActivityStateTasks.values {
+            task.cancel()
+        }
+        liveActivityStateTasks.removeAll()
+    }
+
+    private func observeLiveActivityLifecycleIfNeeded() {
+        guard liveActivityLifecycleTask == nil else { return }
+        liveActivityLifecycleTask = SpyClashMatchLiveActivityController.shared
+            .observeActivityUpdates { [weak self] activityID in
+                guard let self else { return }
+                await self.reconcileAndObserveLiveActivity(activityID: activityID)
+            }
+    }
+
+    private func reconcileAndObserveLiveActivity(activityID: String) async {
+        let controller = SpyClashMatchLiveActivityController.shared
+        let duplicates = await controller.reconcileDuplicateActivities()
+        for duplicate in duplicates {
+            await retireLiveActivity(
+                duplicate,
+                cancelStateObserver: true
+            )
+        }
+
+        guard controller.activityDescriptor(activityID: activityID) != nil else {
+            return
+        }
+        observeLiveActivityStateIfNeeded(activityID: activityID)
+        observeLiveActivityPushTokensIfNeeded(activityID: activityID)
+    }
+
+    private func observeLiveActivityStateIfNeeded(activityID: String) {
+        guard liveActivityStateTasks[activityID] == nil else { return }
+        do {
+            liveActivityStateTasks[activityID] = try SpyClashMatchLiveActivityController.shared
+                .observeActivityState(activityID: activityID) { [weak self] update in
+                    guard update.state.isTerminal, let self else { return }
+                    await self.retireLiveActivity(
+                        update.activity,
+                        cancelStateObserver: false
+                    )
+                }
+        } catch {
+#if DEBUG
+            print("Live Activity state observation failed: \(error.localizedDescription)")
+#endif
+        }
+    }
+
+    private func retireLiveActivity(
+        _ activity: SpyClashMatchLiveActivityController.ActivityDescriptor,
+        cancelStateObserver: Bool
+    ) async {
+        liveActivityPushTokenTasks.removeValue(forKey: activity.activityID)?.cancel()
+        if cancelStateObserver {
+            liveActivityStateTasks.removeValue(forKey: activity.activityID)?.cancel()
+        } else {
+            // This callback runs inside the state observer. Removing without
+            // cancelling lets the exact unregister request finish first.
+            _ = liveActivityStateTasks.removeValue(forKey: activity.activityID)
+        }
+        PushNotificationCoordinator.shared.cancelPendingLiveActivityRegistration(
+            tokenKind: .activity,
+            activityID: activity.activityID,
+            matchID: activity.matchID
+        )
+        await PushNotificationCoordinator.shared.unregisterLiveActivityToken(
+            tokenKind: .activity,
+            activityID: activity.activityID,
+            matchID: activity.matchID
+        )
+    }
+
+    private func observeLiveActivityPushTokensIfNeeded(activityID: String) {
+        guard liveActivityPushTokenTasks[activityID] == nil else { return }
+        do {
+            liveActivityPushTokenTasks[activityID] = try SpyClashMatchLiveActivityController.shared
+                .observePushTokens(activityID: activityID) { registration in
+                    await PushNotificationCoordinator.shared.registerLiveActivityToken(
+                        token: registration.token,
+                        tokenKind: .activity,
+                        activityID: registration.activityID,
+                        roomID: registration.roomID,
+                        matchID: registration.matchID
+                    )
+                }
+        } catch {
+#if DEBUG
+            print("Live Activity token observation failed: \(error.localizedDescription)")
+#endif
+        }
+    }
+
+    private func observeLiveActivityPushToStartTokenIfNeeded() {
+        guard liveActivityPushToStartTokenTask == nil else { return }
+        if #available(iOS 17.2, *) {
+            liveActivityPushToStartTokenTask = SpyClashMatchLiveActivityController.shared
+                .observePushToStartTokens { token in
+                    await PushNotificationCoordinator.shared.registerLiveActivityToken(
+                        token: token,
+                        tokenKind: .pushToStart
+                    )
+                }
+        }
+    }
+
+    private func cancelLiveActivityPushToStartTokenObserver() {
+        liveActivityPushToStartTokenTask?.cancel()
+        liveActivityPushToStartTokenTask = nil
+    }
+
+    private func cancelLiveActivityLifecycleObserver() {
+        liveActivityLifecycleTask?.cancel()
+        liveActivityLifecycleTask = nil
+    }
+
 
     private func persistActiveRoomReference(_ room: GameRoom?) {
 #if DEBUG
@@ -1488,7 +1935,73 @@ final class AppState: NSObject {
             scheduleToastPreviewIfRequested(roomID: activeRoom?.id)
         }
 
+        if arguments.contains("--spyclash-live-activity-preview") {
+            startLiveActivityPreview()
+        }
+
         return true
+    }
+
+    private func startLiveActivityPreview() {
+        Task { @MainActor in
+            let controller = SpyClashMatchLiveActivityController.shared
+            await controller.endAll()
+
+            let viewerID = "preview-red-raven"
+            let participants = [
+                SpyClashMatchActivityAttributes.Participant(
+                    id: viewerID,
+                    displayName: "Red Raven",
+                    avatarSymbol: "🕵️"
+                ),
+                SpyClashMatchActivityAttributes.Participant(
+                    id: "preview-night-fox",
+                    displayName: "Night Fox",
+                    avatarSymbol: "🥷"
+                ),
+                SpyClashMatchActivityAttributes.Participant(
+                    id: "preview-signal-echo",
+                    displayName: "Signal Echo",
+                    avatarSymbol: "🛰️"
+                ),
+                SpyClashMatchActivityAttributes.Participant(
+                    id: "preview-crimson-owl",
+                    displayName: "Crimson Owl",
+                    avatarSymbol: "🦉"
+                )
+            ]
+            let attributes = SpyClashMatchActivityAttributes(
+                roomID: "preview-room",
+                matchID: "preview-match-build-10",
+                viewerPlayerID: viewerID,
+                startedAt: .now
+            )
+            let state = SpyClashMatchActivityAttributes.ContentState(
+                phase: .playing,
+                mode: .questions,
+                participants: participants,
+                currentSpeakerID: "preview-night-fox",
+                currentAskerID: "preview-night-fox",
+                currentResponderID: viewerID,
+                round: 2,
+                timerEndsAt: .now.addingTimeInterval(8 * 60),
+                privateIntel: .init(
+                    ownerPlayerID: viewerID,
+                    role: .detective,
+                    secretWord: "MUST NEVER LEAVE THE APP"
+                ),
+                revision: 10
+            )
+
+            do {
+                _ = try await controller.startPreview(
+                    attributes: attributes,
+                    initialState: state
+                )
+            } catch {
+                print("Live Activity preview failed: \(error.localizedDescription)")
+            }
+        }
     }
 
     private func previewTab(from arguments: [String]) -> AppTab? {

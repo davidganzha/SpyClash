@@ -143,6 +143,86 @@ final class Base44Client {
         )
     }
 
+    func registerPushDevice(
+        installationID: String,
+        apnsToken: String,
+        environment: PushEnvironment,
+        alertAuthorized: Bool,
+        locale: String,
+        appVersion: String
+    ) async throws -> PushRegistrationResponse {
+        try await pushNotificationAction(
+            PushNotificationActionPayload(
+                action: "register_device",
+                accessToken: try requireAccessToken(),
+                installationID: installationID,
+                apnsToken: apnsToken,
+                environment: environment.rawValue,
+                bundleID: Bundle.main.bundleIdentifier ?? "com.spyclash.ios",
+                locale: locale,
+                appVersion: appVersion,
+                alertAuthorized: alertAuthorized,
+                preferences: PushNotificationPreferences()
+            )
+        )
+    }
+
+    func unregisterPushDevice(
+        installationID: String,
+        accessToken: String? = nil
+    ) async throws {
+        let _: EmptyResponse = try await pushNotificationAction(
+            PushNotificationActionPayload(
+                action: "unregister_device",
+                accessToken: try requireAccessToken(accessToken),
+                installationID: installationID
+            )
+        )
+    }
+
+    func registerLiveActivityToken(
+        installationID: String,
+        tokenKind: LiveActivityPushTokenKind,
+        token: String,
+        environment: PushEnvironment,
+        activityID: String? = nil,
+        roomID: String? = nil,
+        matchID: String? = nil
+    ) async throws -> PushRegistrationResponse {
+        try await pushNotificationAction(
+            PushNotificationActionPayload(
+                action: "register_live_activity_token",
+                accessToken: try requireAccessToken(),
+                installationID: installationID,
+                environment: environment.rawValue,
+                bundleID: Bundle.main.bundleIdentifier ?? "com.spyclash.ios",
+                tokenKind: tokenKind.rawValue,
+                liveActivityToken: token,
+                activityID: activityID,
+                roomID: roomID,
+                matchID: matchID
+            )
+        )
+    }
+
+    func unregisterLiveActivityToken(
+        installationID: String,
+        tokenKind: LiveActivityPushTokenKind,
+        activityID: String? = nil,
+        matchID: String? = nil
+    ) async throws {
+        let _: EmptyResponse = try await pushNotificationAction(
+            PushNotificationActionPayload(
+                action: "unregister_live_activity_token",
+                accessToken: try requireAccessToken(),
+                installationID: installationID,
+                tokenKind: tokenKind.rawValue,
+                activityID: activityID,
+                matchID: matchID
+            )
+        )
+    }
+
     func roomJoinURL(code: String) -> URL {
         var components = URLComponents(url: Self.appBaseURL, resolvingAgainstBaseURL: false)!
         components.path = "/"
@@ -818,6 +898,147 @@ final class Base44Client {
         try await request("/apps/\(Self.appID)/functions/\(name)", method: "POST", body: body)
     }
 
+    private func pushNotificationAction<T: Decodable>(
+        _ payload: PushNotificationActionPayload
+    ) async throws -> T {
+        let path = "/apps/\(Self.appID)/functions/pushNotificationAction"
+        let expectedToken = payload.accessToken
+        let enforceCurrentAccount = payload.action != "unregister_device"
+        if enforceCurrentAccount, token != expectedToken {
+            throw CancellationError()
+        }
+
+        let url = Self.appBaseURL.appending(path: "/api\(path)")
+        var actionRequest = URLRequest(url: url)
+        actionRequest.httpMethod = "POST"
+        actionRequest.timeoutInterval = 30
+        actionRequest.cachePolicy = .reloadIgnoringLocalAndRemoteCacheData
+        actionRequest.setValue("application/json", forHTTPHeaderField: "Accept")
+        actionRequest.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        actionRequest.setValue(Self.appBaseURL.absoluteString, forHTTPHeaderField: "Origin")
+        actionRequest.setValue(Self.appID, forHTTPHeaderField: "X-App-Id")
+        actionRequest.httpBody = try JSONEncoder.base44.encode(payload)
+
+        var attempt = 1
+        let maximumAttempts = 3
+        while true {
+            try Task.checkCancellation()
+            if enforceCurrentAccount, token != expectedToken {
+                throw CancellationError()
+            }
+
+            let data: Data
+            let response: HTTPURLResponse
+            do {
+                let result = try await session.data(for: actionRequest)
+                guard let http = result.1 as? HTTPURLResponse else {
+                    throw Base44Error(message: "Invalid API response.")
+                }
+                data = result.0
+                response = http
+            } catch {
+                guard attempt < maximumAttempts,
+                      Self.isRetryablePushTransportError(error) else {
+                    throw error
+                }
+                try await Self.waitBeforePushRetry(attempt: attempt)
+                attempt += 1
+                continue
+            }
+
+            if attempt < maximumAttempts,
+               Self.isRetryablePushHTTPStatus(response.statusCode) {
+                try await Self.waitBeforePushRetry(
+                    attempt: attempt,
+                    retryAfter: response.value(forHTTPHeaderField: "Retry-After")
+                )
+                attempt += 1
+                continue
+            }
+
+            if enforceCurrentAccount, token != expectedToken {
+                throw CancellationError()
+            }
+
+            guard 200..<300 ~= response.statusCode else {
+                let apiError = try? JSONDecoder.base44.decode(APIErrorEnvelope.self, from: data)
+                throw Base44Error(
+                    message: apiError?.resolvedMessage ?? "Base44 request failed.",
+                    statusCode: response.statusCode,
+                    code: apiError?.code,
+                    retryable: apiError?.retryable ?? false
+                )
+            }
+
+            if T.self == EmptyResponse.self {
+                return EmptyResponse() as! T
+            }
+            guard !data.isEmpty else {
+                if attempt < maximumAttempts {
+                    try await Self.waitBeforePushRetry(attempt: attempt)
+                    attempt += 1
+                    continue
+                }
+                throw Base44Error(message: "Empty API response.")
+            }
+
+            do {
+                return try JSONDecoder.base44.decode(T.self, from: data)
+            } catch {
+                if attempt < maximumAttempts {
+                    try await Self.waitBeforePushRetry(attempt: attempt)
+                    attempt += 1
+                    continue
+                }
+                throw Base44Error(message: "The server returned an unreadable response.")
+            }
+        }
+    }
+
+    private static func isRetryablePushHTTPStatus(_ statusCode: Int) -> Bool {
+        statusCode == 408 || statusCode == 425 || statusCode == 429 ||
+            (500...599).contains(statusCode)
+    }
+
+    private static func isRetryablePushTransportError(_ error: Error) -> Bool {
+        if error is CancellationError { return false }
+        guard let urlError = error as? URLError else { return false }
+        return [
+            .timedOut,
+            .cannotFindHost,
+            .cannotConnectToHost,
+            .networkConnectionLost,
+            .dnsLookupFailed,
+            .notConnectedToInternet,
+            .internationalRoamingOff,
+            .callIsActive,
+            .dataNotAllowed,
+            .secureConnectionFailed
+        ].contains(urlError.code)
+    }
+
+    private static func waitBeforePushRetry(
+        attempt: Int,
+        retryAfter: String? = nil
+    ) async throws {
+        let serverDelay = retryAfter
+            .flatMap(Double.init)
+            .map { min(max($0, 0), 5) }
+        let exponentialDelay = min(0.35 * pow(2, Double(attempt - 1)), 2)
+        let delay = serverDelay ?? exponentialDelay
+        try await Task.sleep(for: .milliseconds(Int(delay * 1_000)))
+    }
+
+    private func requireAccessToken(_ override: String? = nil) throws -> String {
+        if let override, !override.isEmpty {
+            return override
+        }
+        guard let token, !token.isEmpty else {
+            throw Base44Error(message: "Authentication required.", statusCode: 401)
+        }
+        return token
+    }
+
     private func roomAction(
         _ action: String,
         roomID: String? = nil,
@@ -1100,6 +1321,118 @@ private let fallbackMissionWords = [
 ]
 
 struct EmptyPayload: Encodable {}
+
+enum PushEnvironment: String, Encodable, Sendable {
+    case sandbox
+    case production
+
+    static var current: Self {
+#if DEBUG
+        .sandbox
+#else
+        .production
+#endif
+    }
+}
+
+enum LiveActivityPushTokenKind: String, Encodable, Sendable {
+    case pushToStart = "push_to_start"
+    case activity
+}
+
+struct PushRegistrationResponse: Decodable, Sendable {
+    let ok: Bool
+    let registrationID: String
+    let updatedAt: String
+
+    enum CodingKeys: String, CodingKey {
+        case ok
+        case registrationID = "registration_id"
+        case updatedAt = "updated_at"
+    }
+}
+
+private struct PushNotificationPreferences: Encodable {
+    let friendRequests = true
+    let roomInvites = true
+    let gameUpdates = true
+
+    enum CodingKeys: String, CodingKey {
+        case friendRequests = "friend_requests"
+        case roomInvites = "room_invites"
+        case gameUpdates = "game_updates"
+    }
+}
+
+private struct PushNotificationActionPayload: Encodable {
+    let action: String
+    let accessToken: String
+    let installationID: String
+    let apnsToken: String?
+    let environment: String?
+    let bundleID: String?
+    let locale: String?
+    let appVersion: String?
+    let alertAuthorized: Bool?
+    let preferences: PushNotificationPreferences?
+    let tokenKind: String?
+    let liveActivityToken: String?
+    let activityID: String?
+    let roomID: String?
+    let matchID: String?
+
+    init(
+        action: String,
+        accessToken: String,
+        installationID: String,
+        apnsToken: String? = nil,
+        environment: String? = nil,
+        bundleID: String? = nil,
+        locale: String? = nil,
+        appVersion: String? = nil,
+        alertAuthorized: Bool? = nil,
+        preferences: PushNotificationPreferences? = nil,
+        tokenKind: String? = nil,
+        liveActivityToken: String? = nil,
+        activityID: String? = nil,
+        roomID: String? = nil,
+        matchID: String? = nil
+    ) {
+        self.action = action
+        self.accessToken = accessToken
+        self.installationID = installationID
+        self.apnsToken = apnsToken
+        self.environment = environment
+        self.bundleID = bundleID
+        self.locale = locale
+        self.appVersion = appVersion
+        self.alertAuthorized = alertAuthorized
+        self.preferences = preferences
+        self.tokenKind = tokenKind
+        self.liveActivityToken = liveActivityToken
+        self.activityID = activityID
+        self.roomID = roomID
+        self.matchID = matchID
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case action
+        case accessToken = "access_token"
+        case installationID = "installation_id"
+        case apnsToken = "apns_token"
+        case environment
+        case bundleID = "bundle_id"
+        case locale
+        case appVersion = "app_version"
+        case alertAuthorized = "alert_authorized"
+        case preferences
+        case tokenKind = "token_kind"
+        case liveActivityToken = "live_activity_token"
+        case activityID = "activity_id"
+        case roomID = "room_id"
+        case matchID = "match_id"
+    }
+}
 
 private struct APIErrorEnvelope: Decodable {
     let message: String?

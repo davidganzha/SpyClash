@@ -925,17 +925,26 @@ private struct CompactCommandMenuPanel: View {
                         closeThen { appState.selectedTab = .packs }
                     }
 
+                    menuRow(
+                        icon: "🪪",
+                        title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD"),
+                        selected: appState.shellRoute == .community,
+                        phaseStart: 0.42
+                    ) {
+                        closeThen { appState.openCommunity() }
+                    }
+
                     Rectangle()
                         .fill(SpyTheme.strokeStrong.opacity(0.58))
                         .frame(height: 1)
                         .padding(.vertical, 11)
-                        .opacity(phase(0.50, 0.64))
+                        .opacity(phase(0.56, 0.70))
 
                     menuRow(
                         icon: "🚪",
                         title: profileCopy.logOut,
                         highlighted: true,
-                        phaseStart: 0.54
+                        phaseStart: 0.62
                     ) {
                         close()
                         appState.logout()
@@ -1684,7 +1693,7 @@ private struct WebCommandMenuPanel: View {
 
                 revealItem(index: 2) {
                     menuButton(
-                        icon: "◎",
+                        icon: "🪪",
                         title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD"),
                         selected: appState.shellRoute == .community
                     ) {

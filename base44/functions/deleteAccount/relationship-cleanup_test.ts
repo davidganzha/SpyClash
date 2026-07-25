@@ -121,6 +121,23 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
       player_email: "target@example.com",
     },
   ]);
+  const pushDevices = new MockStore([
+    { id: "device-target", user_id: "target", token_ciphertext: "private" },
+    { id: "device-safe", user_id: "other", token_ciphertext: "safe" },
+  ]);
+  const liveActivities = new MockStore([
+    { id: "activity-target", user_id: "target", token_ciphertext: "private" },
+    { id: "activity-safe", user_id: "other", token_ciphertext: "safe" },
+  ]);
+  const pushEvents = new MockStore([
+    {
+      id: "event-recipient",
+      recipient_user_id: "target",
+      actor_user_id: "other",
+    },
+    { id: "event-actor", recipient_user_id: "other", actor_user_id: "target" },
+    { id: "event-safe", recipient_user_id: "other", actor_user_id: "third" },
+  ]);
 
   await deleteAccountRelationshipRecords({
     profileCommentStore: comments,
@@ -129,6 +146,9 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     reportStore: reports,
     wordPackStore: wordPacks,
     gameHistoryStore: histories,
+    pushDeviceStore: pushDevices,
+    liveActivityStore: liveActivities,
+    pushEventStore: pushEvents,
     userID: "target",
     tombstoneUserID: "deleted:stable-target",
   });
@@ -166,6 +186,11 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
   ]);
   assertEquals(wordPacks.records.map((record) => record.id), ["pack-safe"]);
   assertEquals(histories.records.map((record) => record.id), ["history-safe"]);
+  assertEquals(pushDevices.records.map((record) => record.id), ["device-safe"]);
+  assertEquals(liveActivities.records.map((record) => record.id), [
+    "activity-safe",
+  ]);
+  assertEquals(pushEvents.records.map((record) => record.id), ["event-safe"]);
 
   // A lost response/retry must be idempotent and must not erase the retained
   // report or change its moderation evidence a second time.
@@ -176,6 +201,9 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     reportStore: reports,
     wordPackStore: wordPacks,
     gameHistoryStore: histories,
+    pushDeviceStore: pushDevices,
+    liveActivityStore: liveActivities,
+    pushEventStore: pushEvents,
     userID: "target",
     tombstoneUserID: "deleted:stable-target",
   });

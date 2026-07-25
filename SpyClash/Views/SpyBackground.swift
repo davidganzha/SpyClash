@@ -15,8 +15,6 @@ struct SpyBackground: View {
                 gridLayer(size: size)
 
                 scanlines(size: size)
-
-                pageCorners
             }
         }
         .ignoresSafeArea()
@@ -139,45 +137,6 @@ struct SpyBackground: View {
         .allowsHitTesting(false)
     }
 
-    private var pageCorners: some View {
-        VStack {
-            HStack {
-                corner(edges: [.top, .leading])
-                Spacer()
-                corner(edges: [.top, .trailing])
-            }
-            Spacer()
-            HStack {
-                corner(edges: [.bottom, .leading])
-                Spacer()
-                corner(edges: [.bottom, .trailing])
-            }
-        }
-        .padding(12)
-        .allowsHitTesting(false)
-    }
-
-    private func corner(edges: Edge.Set) -> some View {
-        CornerStroke(color: SpyTheme.red)
-            .rotationEffect(rotation(for: edges))
-            .frame(width: 18, height: 18)
-    }
-
-    private func rotation(for edges: Edge.Set) -> Angle {
-        switch (edges.contains(.top), edges.contains(.leading), edges.contains(.bottom), edges.contains(.trailing)) {
-        case (true, true, false, false):
-            .degrees(0)
-        case (true, false, false, true):
-            .degrees(90)
-        case (false, false, true, true):
-            .degrees(180)
-        case (false, true, true, false):
-            .degrees(270)
-        default:
-            .degrees(0)
-        }
-    }
-
 }
 
 struct PageChrome<Content: View>: View {
@@ -244,21 +203,7 @@ typealias SpyPageChrome<Content: View> = PageChrome<Content>
 
 struct SpyPageTopEdge: View {
     var body: some View {
-        ZStack(alignment: .top) {
-            HStack {
-                CornerStroke(color: SpyTheme.red)
-                    .frame(width: 18, height: 18)
-                    .spyWebEntrance(delay: 0.15, duration: 0.50, x: -10, y: -10, scale: 0)
-
-                Spacer()
-
-                CornerStroke(color: SpyTheme.red)
-                    .rotationEffect(.degrees(90))
-                    .frame(width: 18, height: 18)
-                    .spyWebEntrance(delay: 0.25, duration: 0.50, x: 10, y: -10, scale: 0)
-            }
-            .padding(.horizontal, 12)
-        }
+        Color.clear.frame(height: 1)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
     }

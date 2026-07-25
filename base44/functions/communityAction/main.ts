@@ -24,6 +24,10 @@ import {
   safeCommunityTextForDisplay,
   sanitizeCommunityReportDetails,
 } from "./community-safety.ts";
+import {
+  enqueueCommunityPushEvent,
+  reusablePendingInviteEventID,
+} from "./push-events.ts";
 
 type Entity = Record<string, any>;
 type Persist = <T>(writer: () => Promise<T>) => Promise<T>;
@@ -538,6 +542,7 @@ async function sendFriendRequest(
   current: Entity,
   target: Entity,
   persist: Persist,
+  eventID: string,
 ) {
   if (target.id === current.id) {
     throw Object.assign(new Error("Cannot add yourself"), { status: 409 });
@@ -547,6 +552,9 @@ async function sendFriendRequest(
     throw Object.assign(new Error("Already friends"), { status: 409 });
   }
   if (existing?.status === "pending") {
+    if (clean(existing.requester_id) === current.id) {
+      return clean(existing.request_event_id);
+    }
     throw Object.assign(new Error("Request already pending"), { status: 409 });
   }
   if (existing?.status === "blocked") {
@@ -560,8 +568,17 @@ async function sendFriendRequest(
     requester_spy_id: current.spy_id,
     addressee_spy_id: target.spy_id,
     status: "pending",
+    request_event_id: eventID,
     updated_at: now,
   };
+  await enqueueCommunityPushEvent({
+    store: base44.asServiceRole.entities.PushNotificationEvent,
+    persist,
+    eventType: "friend_request",
+    sourceEventID: eventID,
+    actorUserID: current.id,
+    recipientUserID: target.id,
+  });
   if (existing) {
     await persist(() =>
       base44.asServiceRole.entities.Friendship.update(existing.id, payload)
@@ -572,6 +589,24 @@ async function sendFriendRequest(
         ...payload,
         created_at: now,
       })
+    );
+  }
+  return eventID;
+}
+
+async function processPushEventBestEffort(base44: any, eventID: string) {
+  const internalSecret = clean(Deno.env.get("PUSH_INTERNAL_SECRET"));
+  if (!eventID || !internalSecret) return;
+  try {
+    await base44.asServiceRole.functions.invoke("pushNotificationAction", {
+      action: "process_event",
+      source_event_id: eventID,
+      internal_secret: internalSecret,
+    });
+  } catch (error) {
+    console.error(
+      "community push dispatch deferred",
+      error instanceof Error ? error.message : error,
     );
   }
 }
@@ -675,7 +710,8 @@ Deno.serve(async (req) => {
     if (action === "send_request") {
       const target = await resolveTargetUser(base44, body);
       if (!target) return errorResponse("Operative not found", 404);
-      await withCommunityWriteLeases({
+      const eventID = crypto.randomUUID();
+      const queuedEventID = await withCommunityWriteLeases({
         lifecycleStore,
         userIDs: [current.id, target.id],
         action: async ({ persist }) => {
@@ -688,14 +724,16 @@ Deno.serve(async (req) => {
               status: 404,
             });
           }
-          await sendFriendRequest(
+          return await sendFriendRequest(
             base44,
             await ensureUserProfile(base44, freshCurrent, persist),
             await ensureUserProfile(base44, freshTarget, persist),
             persist,
+            eventID,
           );
         },
       });
+      await processPushEventBestEffort(base44, queuedEventID);
       return Response.json(await buildState(base44, current));
     }
 
@@ -822,7 +860,8 @@ Deno.serve(async (req) => {
     if (action === "invite_to_room") {
       const target = await resolveTargetUser(base44, body);
       if (!target) return errorResponse("Operative not found", 404);
-      await withCommunityWriteLeases({
+      const eventID = crypto.randomUUID();
+      const queuedEventID = await withCommunityWriteLeases({
         lifecycleStore,
         userIDs: [current.id, target.id],
         action: async ({ persist }) => {
@@ -853,6 +892,8 @@ Deno.serve(async (req) => {
               room_id: room.id,
             }) || [],
           )[0];
+          const reusableEventID = reusablePendingInviteEventID(existing);
+          if (reusableEventID) return reusableEventID;
           const now = new Date().toISOString();
           const payload = {
             sender_user_id: current.id,
@@ -860,8 +901,18 @@ Deno.serve(async (req) => {
             room_id: room.id,
             room_code: clean(room.code).toUpperCase(),
             status: "pending",
+            notification_event_id: eventID,
             updated_at: now,
           };
+          await enqueueCommunityPushEvent({
+            store: base44.asServiceRole.entities.PushNotificationEvent,
+            persist,
+            eventType: "room_invite",
+            sourceEventID: eventID,
+            actorUserID: current.id,
+            recipientUserID: target.id,
+            roomID: room.id,
+          });
           if (existing) {
             await persist(() =>
               base44.asServiceRole.entities.RoomInvite.update(
@@ -877,8 +928,10 @@ Deno.serve(async (req) => {
               })
             );
           }
+          return eventID;
         },
       });
+      await processPushEventBestEffort(base44, queuedEventID);
       return Response.json({ ok: true });
     }
 

@@ -2,6 +2,7 @@ import SwiftUI
 
 @main
 struct SpyClashApp: App {
+    @UIApplicationDelegateAdaptor(SpyClashAppDelegate.self) private var appDelegate
     @Environment(\.scenePhase) private var scenePhase
     @State private var appState = AppState()
 
@@ -18,7 +19,10 @@ struct SpyClashApp: App {
                     let isActive = phase == .active
                     appState.setRadarApplicationActive(isActive)
                     if isActive {
+                        PushNotificationCoordinator.shared.applicationDidBecomeActive()
                         appState.synchronizeAccessOnActivation()
+                    } else {
+                        PushNotificationCoordinator.shared.applicationDidEnterBackground()
                     }
                 }
         }
@@ -81,7 +85,7 @@ private struct RootView: View {
         }
         .task(id: "\(appState.user?.id ?? "signed-out")|\(appState.isAuthTransitionActive)") {
             guard !appState.isAuthTransitionActive else { return }
-            await appState.consumePendingJoinIfPossible()
+            await appState.consumePendingRoutesIfPossible()
         }
         .task(id: appState.activeRoom?.id) {
             guard let roomID = appState.activeRoom?.id else { return }
