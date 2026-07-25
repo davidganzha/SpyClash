@@ -7,9 +7,12 @@ from PIL import Image, ImageDraw, ImageFilter, ImageFont
 ROOT = Path(__file__).resolve().parents[1]
 SOURCE_DIR = ROOT / "AppStoreAssets" / "Showcase" / "Sources-2026-07-25"
 OUTPUT_DIR = ROOT / "AppStoreAssets" / "Showcase" / "en-US"
+OUTPUT_65_DIR = ROOT / "AppStoreAssets" / "Showcase" / "en-US-6.5"
 
 WIDTH = 1320
 HEIGHT = 2868
+WIDTH_65 = 1284
+HEIGHT_65 = 2778
 RED = (229, 53, 53)
 WHITE = (248, 248, 248)
 MUTED = (142, 142, 146)
@@ -183,12 +186,22 @@ def make_contact_sheet(outputs: list[Path]) -> None:
     sheet.save(OUTPUT_DIR.parent / "preview-all-5.jpg", quality=92, optimize=True)
 
 
+def make_65_inch(image: Image.Image) -> Image.Image:
+    scaled_height = round(image.height * WIDTH_65 / image.width)
+    resized = image.resize((WIDTH_65, scaled_height), Image.Resampling.LANCZOS)
+    crop_top = max(0, (scaled_height - HEIGHT_65) // 2)
+    return resized.crop((0, crop_top, WIDTH_65, crop_top + HEIGHT_65)).convert("RGB")
+
+
 def main() -> None:
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
+    OUTPUT_65_DIR.mkdir(parents=True, exist_ok=True)
     outputs = []
     for item in ITEMS:
         output_path = OUTPUT_DIR / item["filename"]
-        make_card(item).save(output_path, format="PNG", optimize=True)
+        card = make_card(item)
+        card.save(output_path, format="PNG", optimize=True)
+        make_65_inch(card).save(OUTPUT_65_DIR / item["filename"], format="PNG", optimize=True)
         outputs.append(output_path)
     make_contact_sheet(outputs)
 
