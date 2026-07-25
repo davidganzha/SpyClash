@@ -10,7 +10,8 @@ import { Buffer } from "node:buffer";
 import {
   appleCommerceConfigurationError,
   type AppleEntitlementRecord,
-  LIMITLESS_PRODUCT_ID,
+  casadaPurchaseRetirement,
+  LEGACY_SUBSCRIPTION_PRODUCT_ID,
   normalizeAppleEntitlement,
   publicAppleEntitlement,
   requiresCanonicalSubscriptionStatus,
@@ -43,7 +44,7 @@ import {
 const BUNDLE_ID = Deno.env.get("APPLE_IAP_BUNDLE_ID") ||
   SPYCLASH_IOS_BUNDLE_ID;
 const PRODUCT_ID = Deno.env.get("APPLE_IAP_PRODUCT_ID") ||
-  LIMITLESS_PRODUCT_ID;
+  LEGACY_SUBSCRIPTION_PRODUCT_ID;
 const MAX_REQUEST_BYTES = 256_000;
 const ENTITY_PAGE_SIZE = 100;
 const APPLE_ACCOUNT_LEASE_MILLISECONDS = 5 * 60 * 1_000;
@@ -857,7 +858,7 @@ function assertAllowedAppleTransaction(
   }
   if (transaction.productId !== PRODUCT_ID) {
     throw new RequestError(
-      "Apple transaction product is not a LIMITLESS subscription.",
+      "Apple transaction product does not match the legacy subscription.",
       422,
     );
   }
@@ -874,6 +875,10 @@ function assertAllowedAppleTransaction(
 
 async function handlePrepare(base44: any) {
   const user = await requireUser(base44);
+  const retirement = casadaPurchaseRetirement();
+  if (retirement) {
+    throw new RequestError(retirement.message, retirement.status);
+  }
   const adminGrants = await base44.asServiceRole.entities.MembershipGrant
     .filter(
       { user_id: user.id },
@@ -883,7 +888,7 @@ async function handlePrepare(base44: any) {
     );
   if (hasActiveAdminGrant(adminGrants)) {
     throw new RequestError(
-      "LIMITLESS is already active on this SpyClash account.",
+      "Subscription access is already active on this SpyClash account.",
       409,
     );
   }
@@ -896,7 +901,7 @@ async function handlePrepare(base44: any) {
     );
   if (hasActiveMembership(stored)) {
     throw new RequestError(
-      "LIMITLESS is already active on this SpyClash account.",
+      "Subscription access is already active on this SpyClash account.",
       409,
     );
   }
@@ -1029,7 +1034,7 @@ async function handleNotification(base44: any, signedPayload: string) {
 
   const signedTransaction = notification.data?.signedTransactionInfo;
   if (!signedTransaction) {
-    // Summary/app-data notifications do not change LIMITLESS subscription state.
+    // Summary/app-data notifications do not change legacy subscription state.
     return Response.json({ success: true, ignored: true });
   }
   const transaction = await verifier.verifyAndDecodeTransaction(

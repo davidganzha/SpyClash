@@ -18,7 +18,7 @@ struct SpyClashApp: App {
                     let isActive = phase == .active
                     appState.setRadarApplicationActive(isActive)
                     if isActive {
-                        appState.synchronizeCommerceAccessOnActivation()
+                        appState.synchronizeAccessOnActivation()
                     }
                 }
         }
@@ -57,8 +57,8 @@ private struct RootView: View {
                 )
         }
         .overlay {
-            if let presentationID = appState.limitlessUnlockPresentationID {
-                LimitlessUnlockOverlay(presentationID: presentationID)
+            if let presentationID = appState.fullAccessUnlockPresentationID {
+                FullAccessUnlockOverlay(presentationID: presentationID)
                     .transition(.opacity)
             }
         }
@@ -122,7 +122,7 @@ private struct RootView: View {
     }
 }
 
-private struct LimitlessUnlockOverlay: View {
+private struct FullAccessUnlockOverlay: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     let presentationID: UUID
@@ -171,11 +171,6 @@ private struct LimitlessUnlockOverlay: View {
                     .foregroundStyle(.white)
                     .shadow(color: SpyTheme.red.opacity(0.9), radius: 14)
 
-                Text("LIMITLESS")
-                    .font(.system(size: 30, weight: .black, design: .monospaced))
-                    .tracking(0.22)
-                    .foregroundStyle(.white)
-
                 Text(statusText)
                     .font(.system(size: 9, weight: .bold, design: .monospaced))
                     .tracking(0.16)
@@ -186,9 +181,9 @@ private struct LimitlessUnlockOverlay: View {
         }
         .allowsHitTesting(false)
         .accessibilityElement(children: .combine)
-        .accessibilityLabel("LIMITLESS, \(statusText)")
+        .accessibilityLabel(statusText)
         .task(id: presentationID) {
-            HapticManager.shared.prepareLimitlessPresentation()
+            HapticManager.shared.prepareFullAccessPresentation()
             if reduceMotion {
                 isVisible = true
                 ringScale = 1
@@ -204,10 +199,10 @@ private struct LimitlessUnlockOverlay: View {
                     scanOffset = 120
                 }
             }
-            HapticManager.shared.playLimitlessCharge()
+            HapticManager.shared.playFullAccessCharge()
             try? await Task.sleep(for: .milliseconds(520))
             guard !Task.isCancelled else { return }
-            HapticManager.shared.playLimitlessCompletion()
+            HapticManager.shared.playFullAccessCompletion()
             try? await Task.sleep(for: .milliseconds(reduceMotion ? 900 : 1_280))
             guard !Task.isCancelled else { return }
             if !reduceMotion {
@@ -217,7 +212,7 @@ private struct LimitlessUnlockOverlay: View {
                 }
                 try? await Task.sleep(for: .milliseconds(300))
             }
-            appState.dismissLimitlessUnlock(presentationID)
+            appState.dismissFullAccessUnlock(presentationID)
         }
     }
 
@@ -266,7 +261,6 @@ private enum DebugPreviewDestination {
     case scanner
     case roomQR
     case radar
-    case pricing
     case privacy
     case terms
     case acknowledgements
@@ -300,8 +294,6 @@ private enum DebugPreviewDestination {
             return .roomQR
         case "radar", "nearby":
             return .radar
-        case "pricing":
-            return .pricing
         case "privacy":
             return .privacy
         case "terms":
@@ -335,8 +327,6 @@ private enum DebugPreviewDestination {
             RoomQRSheet(room: GameRoom.previewRoom(status: "waiting"))
         case .radar:
             RadarInviteView(room: GameRoom.previewRoom(status: "waiting"))
-        case .pricing:
-            PricingView()
         case .privacy:
             LegalDocumentSheet(kind: .privacy)
         case .terms:

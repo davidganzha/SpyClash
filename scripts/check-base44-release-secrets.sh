@@ -36,6 +36,8 @@ do
   fi
 done
 
+# Apple subscription reconciliation accepts either supported private-key
+# encoding, but ambiguous duplicate configuration is unsafe.
 iap_key_count=0
 for name in APPLE_IAP_PRIVATE_KEY_P8_B64 APPLE_IAP_PRIVATE_KEY_P8; do
   if grep -qx "$name" "$NAMES_FILE"; then

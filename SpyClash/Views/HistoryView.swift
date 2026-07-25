@@ -98,22 +98,11 @@ struct HistoryView: View {
                 .frame(maxWidth: .infinity, minHeight: 130)
             }
 
-            if appState.membershipTier == .free {
-                upgradeArchivePanel
-            }
         } else {
-            if hasAdvancedStatistics {
-                advancedAnalyticsPanel
-            }
+            advancedAnalyticsPanel
 
             ForEach(Array(visibleHistory.enumerated()), id: \.element.id) { index, item in
                 historyRow(item, index: index)
-            }
-
-            if appState.membershipTier == .free {
-                upgradeArchivePanel
-            } else if appState.membershipTier == nil {
-                membershipUnavailablePanel
             }
         }
     }
@@ -129,30 +118,15 @@ struct HistoryView: View {
     }
 
     private var visibleHistory: [GameHistory] {
-        guard !hasFullHistory else { return sortedHistory }
-        return Array(sortedHistory.prefix(historyLimit))
+        sortedHistory
     }
 
     private var metricsHistory: [GameHistory] {
-        hasAdvancedStatistics ? sortedHistory : visibleHistory
-    }
-
-    private var hasFullHistory: Bool {
-        appState.membershipBenefits?.fullHistory == true
-    }
-
-    private var hasAdvancedStatistics: Bool {
-        appState.membershipBenefits?.advancedStatistics == true
-    }
-
-    private var historyLimit: Int {
-        max(1, appState.membershipBenefits?.historyLimit ?? 5)
+        sortedHistory
     }
 
     private var summaryGamesLabel: String {
-        hasFullHistory || history.count <= visibleHistory.count
-            ? "\(visibleHistory.count)"
-            : "\(visibleHistory.count)/\(history.count)"
+        "\(visibleHistory.count)"
     }
 
     private var wins: Int {
@@ -171,9 +145,9 @@ struct HistoryView: View {
                     Image(systemName: "chart.bar.xaxis")
                         .foregroundStyle(SpyTheme.red)
                     Text(localized(
-                        en: "LIMITLESS ANALYTICS",
-                        ru: "АНАЛИТИКА LIMITLESS",
-                        es: "ANALITICA LIMITLESS"
+                        en: "ANALYTICS",
+                        ru: "АНАЛИТИКА",
+                        es: "ANALITICA"
                     ))
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .tracking(0.10)
@@ -209,66 +183,6 @@ struct HistoryView: View {
                 }
             }
         }
-    }
-
-    private var upgradeArchivePanel: some View {
-        SpyPanel(accent: SpyTheme.red, motionDelay: 0.38) {
-            VStack(alignment: .leading, spacing: 12) {
-                HStack(spacing: 10) {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 13, weight: .black))
-                        .foregroundStyle(SpyTheme.red)
-
-                    VStack(alignment: .leading, spacing: 4) {
-                        Text(localized(
-                            en: "FREE ARCHIVE // RECENT \(historyLimit)",
-                            ru: "АРХИВ FREE // ПОСЛЕДНИЕ \(historyLimit)",
-                            es: "ARCHIVO FREE // ULTIMAS \(historyLimit)"
-                        ))
-                        .font(.system(size: 10, weight: .black, design: .monospaced))
-                        .tracking(0.08)
-                        .foregroundStyle(.white)
-
-                        Text(localized(
-                            en: "LIMITLESS unlocks the complete match archive, role win rates, streaks and lobby analytics.",
-                            ru: "LIMITLESS открывает весь архив матчей, победы по ролям, серии и аналитику лобби.",
-                            es: "LIMITLESS abre todo el archivo, victorias por rol, rachas y analitica de lobby."
-                        ))
-                        .font(.system(size: 10, weight: .medium, design: .default))
-                        .foregroundStyle(SpyTheme.dim)
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-                }
-
-                Button {
-                    appState.presentedSheet = .pricing
-                } label: {
-                    Label(
-                        localized(en: "UNLOCK FULL ARCHIVE", ru: "ОТКРЫТЬ ВЕСЬ АРХИВ", es: "ABRIR ARCHIVO COMPLETO"),
-                        systemImage: "bolt.fill"
-                    )
-                }
-                .buttonStyle(SpyButtonStyle(variant: .outline))
-            }
-        }
-    }
-
-    private var membershipUnavailablePanel: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "antenna.radiowaves.left.and.right.slash")
-            Text(localized(
-                en: "MEMBERSHIP STATUS UNAVAILABLE // SHOWING RECENT HISTORY",
-                ru: "СТАТУС ПОДПИСКИ НЕДОСТУПЕН // ПОКАЗАНА НЕДАВНЯЯ ИСТОРИЯ",
-                es: "ESTADO NO DISPONIBLE // MOSTRANDO HISTORIAL RECIENTE"
-            ))
-        }
-        .font(.system(size: 8, weight: .bold, design: .monospaced))
-        .tracking(0.06)
-        .foregroundStyle(SpyTheme.amber)
-        .padding(12)
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .background(SpyTheme.amber.opacity(0.06))
-        .overlay(Rectangle().stroke(SpyTheme.amber.opacity(0.28)))
     }
 
     private func analyticsMetric(_ title: String, value: String, accent: Color) -> some View {
@@ -406,7 +320,7 @@ struct HistoryView: View {
         do {
             history = try await appState.client.gameHistory(
                 email: email,
-                limit: hasFullHistory ? nil : historyLimit
+                limit: nil
             )
             status = ""
         } catch {

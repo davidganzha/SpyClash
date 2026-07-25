@@ -96,13 +96,13 @@ private enum StoreKitManagerError: LocalizedError {
         case .authenticationRequired:
             "Sign in to your SpyClash account before purchasing."
         case .productUnavailable:
-            "LIMITLESS is not available from the App Store right now."
+            "The legacy App Store product is not available right now."
         case .productMismatch:
             "The App Store returned an unexpected subscription product."
         case .unverifiedTransaction:
             "The App Store transaction could not be verified."
         case .entitlementNotGranted:
-            "The purchase was verified, but LIMITLESS access is not active."
+            "The purchase was verified, but the legacy entitlement is not active."
         case .noWindowScene:
             "The App Store subscription manager is unavailable right now."
         }

@@ -18,13 +18,13 @@ final class HapticManager {
     private let impactGenerator = UIImpactFeedbackGenerator(style: .medium)
     private let rigidGenerator = UIImpactFeedbackGenerator(style: .rigid)
     private let notificationGenerator = UINotificationFeedbackGenerator()
-    private var limitlessEngine: CHHapticEngine?
+    private var fullAccessEngine: CHHapticEngine?
 
     private init() {
         selectionGenerator.prepare()
         impactGenerator.prepare()
         rigidGenerator.prepare()
-        configureLimitlessEngine()
+        configureFullAccessEngine()
     }
 
     func fire(_ type: HapticType, isEnabled: Bool = true) {
@@ -44,16 +44,16 @@ final class HapticManager {
         }
     }
 
-    func prepareLimitlessPresentation() {
-        guard let limitlessEngine else {
+    func prepareFullAccessPresentation() {
+        guard let fullAccessEngine else {
             rigidGenerator.prepare()
             return
         }
 
-        try? limitlessEngine.start()
+        try? fullAccessEngine.start()
     }
 
-    func playLimitlessCharge() {
+    func playFullAccessCharge() {
         let events = [
             continuousEvent(time: 0, duration: 0.34, intensity: 0.18, sharpness: 0.82),
             transientEvent(time: 0.02, intensity: 0.24, sharpness: 0.90),
@@ -61,10 +61,10 @@ final class HapticManager {
             transientEvent(time: 0.27, intensity: 0.88, sharpness: 1.00)
         ]
 
-        playLimitlessPattern(events, fallbackIntensity: 0.88)
+        playFullAccessPattern(events, fallbackIntensity: 0.88)
     }
 
-    func playLimitlessUnlock(index: Int) {
+    func playFullAccessUnlock(index: Int) {
         let emphasis = min(1, 0.72 + Float(index) * 0.06)
         let events = [
             transientEvent(time: 0, intensity: emphasis, sharpness: 1.00),
@@ -72,10 +72,10 @@ final class HapticManager {
             transientEvent(time: 0.12, intensity: 0.38, sharpness: 0.42)
         ]
 
-        playLimitlessPattern(events, fallbackIntensity: CGFloat(emphasis))
+        playFullAccessPattern(events, fallbackIntensity: CGFloat(emphasis))
     }
 
-    func playLimitlessCompletion() {
+    func playFullAccessCompletion() {
         let events = [
             transientEvent(time: 0, intensity: 0.42, sharpness: 0.64),
             transientEvent(time: 0.09, intensity: 0.66, sharpness: 0.84),
@@ -83,10 +83,10 @@ final class HapticManager {
             continuousEvent(time: 0.22, duration: 0.18, intensity: 0.25, sharpness: 0.58)
         ]
 
-        playLimitlessPattern(events, fallbackIntensity: 1)
+        playFullAccessPattern(events, fallbackIntensity: 1)
     }
 
-    private func configureLimitlessEngine() {
+    private func configureFullAccessEngine() {
         guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
             return
         }
@@ -97,26 +97,26 @@ final class HapticManager {
             engine.isAutoShutdownEnabled = true
             engine.resetHandler = { [weak self] in
                 Task { @MainActor in
-                    try? self?.limitlessEngine?.start()
+                    try? self?.fullAccessEngine?.start()
                 }
             }
-            limitlessEngine = engine
+            fullAccessEngine = engine
         } catch {
-            limitlessEngine = nil
+            fullAccessEngine = nil
         }
     }
 
-    private func playLimitlessPattern(_ events: [CHHapticEvent], fallbackIntensity: CGFloat) {
-        guard let limitlessEngine else {
+    private func playFullAccessPattern(_ events: [CHHapticEvent], fallbackIntensity: CGFloat) {
+        guard let fullAccessEngine else {
             rigidGenerator.impactOccurred(intensity: fallbackIntensity)
             rigidGenerator.prepare()
             return
         }
 
         do {
-            try limitlessEngine.start()
+            try fullAccessEngine.start()
             let pattern = try CHHapticPattern(events: events, parameters: [])
-            let player = try limitlessEngine.makePlayer(with: pattern)
+            let player = try fullAccessEngine.makePlayer(with: pattern)
             try player.start(atTime: CHHapticTimeImmediate)
         } catch {
             rigidGenerator.impactOccurred(intensity: fallbackIntensity)

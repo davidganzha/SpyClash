@@ -1,10 +1,11 @@
 import {
   applyAdminGenerationGrant,
-  applyAlphaGenerationAccess,
+  applyCasadaGenerationAccess,
   canGenerate,
-  FREE_BENEFITS,
+  CASADA_BENEFITS,
+  CASADA_COMPATIBILITY_EXPIRY,
   generationUsageMetadata,
-  LIMITLESS_BENEFITS,
+  LEGACY_FREE_BENEFITS,
   resolveGenerationMembership,
 } from "./membership.ts";
 
@@ -12,21 +13,30 @@ function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
 }
 
-Deno.test("FREE generation policy is ten successful generations per UTC day", () => {
+Deno.test("legacy free is capped while CASADA generation is unlimited", () => {
   assert(canGenerate("free", 9), "FREE user should receive generation ten");
   assert(!canGenerate("free", 10), "FREE user exceeded the daily limit");
-  assert(canGenerate("limitless", 10_000), "LIMITLESS user was capped");
+  assert(canGenerate("limitless", 10_000), "CASADA user was capped");
 });
 
-Deno.test("disabled alpha program preserves the free generation limit", () => {
-  const membership = applyAlphaGenerationAccess(
+Deno.test("CASADA removes the generator limit without inventing a provider", () => {
+  const membership = applyCasadaGenerationAccess(
     resolveGenerationMembership([]),
   );
-  assert(!membership.active, "disabled alpha access activated membership");
-  assert(membership.tier === "free", "disabled alpha access unlocked LIMITLESS");
+  assert(membership.active, "CASADA access was not activated");
   assert(
-    !canGenerate(membership.tier, 10),
-    "disabled alpha access bypassed the free generation limit",
+    membership.tier === "limitless",
+    "legacy-compatible CASADA tier was not selected",
+  );
+  assert(membership.protocol === "casada", "CASADA protocol marker missing");
+  assert(membership.providers.includes("casada"), "CASADA source missing");
+  assert(
+    membership.expires_at === CASADA_COMPATIBILITY_EXPIRY,
+    "CASADA compatibility expiry drifted",
+  );
+  assert(
+    canGenerate(membership.tier, 100_000),
+    "CASADA retained the legacy generation limit",
   );
 });
 
@@ -45,13 +55,13 @@ Deno.test("generation membership trusts only a valid provider entitlement", () =
       expires_at: "2026-07-20T12:00:00Z",
     },
   ], now);
-  assert(free.tier === "free", "invalid entitlement unlocked LIMITLESS");
+  assert(free.tier === "free", "invalid entitlement unlocked provider access");
   assert(
-    JSON.stringify(free.benefits) === JSON.stringify(FREE_BENEFITS),
+    JSON.stringify(free.benefits) === JSON.stringify(LEGACY_FREE_BENEFITS),
     "FREE benefits drifted",
   );
 
-  const limitless = resolveGenerationMembership([
+  const providerBacked = resolveGenerationMembership([
     {
       provider: "apple",
       status: "grace_period",
@@ -59,16 +69,16 @@ Deno.test("generation membership trusts only a valid provider entitlement", () =
     },
   ], now);
   assert(
-    limitless.tier === "limitless",
-    "valid grace period did not unlock LIMITLESS",
+    providerBacked.tier === "limitless",
+    "valid grace period did not retain provider-backed access",
   );
   assert(
-    JSON.stringify(limitless.benefits) === JSON.stringify(LIMITLESS_BENEFITS),
-    "LIMITLESS benefits drifted",
+    JSON.stringify(providerBacked.benefits) === JSON.stringify(CASADA_BENEFITS),
+    "CASADA benefits drifted",
   );
 });
 
-Deno.test("usage metadata is explicit for FREE and unlimited for LIMITLESS", () => {
+Deno.test("usage metadata preserves legacy free fields and CASADA is unlimited", () => {
   const free = generationUsageMetadata("free", 7);
   assert(free.ai_limit === 10, "legacy FREE ai_limit missing");
   assert(
@@ -77,13 +87,13 @@ Deno.test("usage metadata is explicit for FREE and unlimited for LIMITLESS", () 
   );
   assert(free.ai_remaining === 3, "FREE remaining count incorrect");
 
-  const limitless = generationUsageMetadata("limitless", 900);
-  assert(limitless.ai_limit === null, "LIMITLESS legacy limit must be null");
+  const casada = generationUsageMetadata("limitless", 900);
+  assert(casada.ai_limit === null, "CASADA legacy limit must be null");
   assert(
-    limitless.ai_generations_daily_limit === null,
-    "LIMITLESS canonical limit must be null",
+    casada.ai_generations_daily_limit === null,
+    "CASADA canonical limit must be null",
   );
-  assert(limitless.ai_remaining === null, "LIMITLESS remaining must be null");
+  assert(casada.ai_remaining === null, "CASADA remaining must be null");
 });
 
 Deno.test("newer revocation wins over a duplicate active provider row", () => {
@@ -106,7 +116,7 @@ Deno.test("newer revocation wins over a duplicate active provider row", () => {
     },
   ], new Date("2026-07-13T14:00:00Z"));
 
-  assert(membership.tier === "free", "stale duplicate granted unlimited AI");
+  assert(membership.tier === "free", "stale duplicate granted provider access");
 });
 
 Deno.test("admin grant receives unlimited generation policy", () => {
@@ -116,7 +126,10 @@ Deno.test("admin grant receives unlimited generation policy", () => {
     [{ active: true }],
     now,
   );
-  assert(membership.tier === "limitless", "admin grant stayed FREE");
+  assert(
+    membership.tier === "limitless",
+    "admin grant lost legacy tier compatibility",
+  );
   assert(membership.providers.includes("admin"), "admin provider missing");
   assert(canGenerate(membership.tier, 1000), "admin grant was quota-capped");
 });

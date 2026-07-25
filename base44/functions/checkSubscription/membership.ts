@@ -1,5 +1,8 @@
+// `limitless` remains on the wire solely so already-shipped clients can decode
+// CASADA access. `protocol` is the canonical product meaning.
 export type MembershipTier = "free" | "limitless";
-export type EntitlementProvider = "apple" | "stripe" | "admin";
+export type AccessProtocol = "casada";
+export type EntitlementProvider = "apple" | "stripe" | "admin" | "casada";
 
 export type MembershipBenefits = {
   ai_generations_daily_limit: number | null;
@@ -42,7 +45,7 @@ export type AdminGrantRecord = {
   expires_at?: string;
 };
 
-export const FREE_BENEFITS: MembershipBenefits = Object.freeze({
+export const LEGACY_FREE_BENEFITS: MembershipBenefits = Object.freeze({
   ai_generations_daily_limit: 10,
   premium_avatars: false,
   full_history: false,
@@ -50,7 +53,7 @@ export const FREE_BENEFITS: MembershipBenefits = Object.freeze({
   history_limit: 5,
 });
 
-export const LIMITLESS_BENEFITS: MembershipBenefits = Object.freeze({
+export const CASADA_BENEFITS: MembershipBenefits = Object.freeze({
   ai_generations_daily_limit: null,
   premium_avatars: true,
   full_history: true,
@@ -58,9 +61,11 @@ export const LIMITLESS_BENEFITS: MembershipBenefits = Object.freeze({
   history_limit: null,
 });
 
-// Keep the launch build on verified billing entitlements. This switch remains
-// explicit so a future internal alpha can be enabled deliberately in code.
-export const ALPHA_PROGRAM_ENABLED = false;
+// CASADA deliberately makes every previously paid capability available to
+// every authenticated user. Provider entitlements remain readable only for
+// historical billing compatibility and account reconciliation.
+export const CASADA_PROTOCOL_ENABLED = true;
+export const CASADA_COMPATIBILITY_EXPIRY = "9999-12-31T23:59:59Z";
 
 const ACCESS_GRANTING_STATUSES = new Set([
   "active",
@@ -116,22 +121,58 @@ export function summarizeMembership(
     tier: (active ? "limitless" : "free") as MembershipTier,
     status: active ? "active" : "inactive",
     providers,
-    benefits: active ? LIMITLESS_BENEFITS : FREE_BENEFITS,
+    benefits: active ? CASADA_BENEFITS : LEGACY_FREE_BENEFITS,
     expires_at: expiresAt,
     activeEntitlements,
   };
 }
 
-export function applyAlphaAccess(
+export function applyCasadaAccess(
   membership: ReturnType<typeof summarizeMembership>,
 ) {
-  if (!ALPHA_PROGRAM_ENABLED) return membership;
+  if (!CASADA_PROTOCOL_ENABLED) {
+    return { ...membership, protocol: null };
+  }
   return {
     ...membership,
     active: true,
     tier: "limitless" as const,
     status: "active",
-    benefits: LIMITLESS_BENEFITS,
+    providers: Array.from(
+      new Set<EntitlementProvider>([...membership.providers, "casada"]),
+    ),
+    benefits: CASADA_BENEFITS,
+    // Build 7 recognizes permanent access only through a known provider or a
+    // future expiry. CASADA is not a billing provider, so use this documented
+    // non-renewing compatibility sentinel rather than inventing Apple/Stripe.
+    expires_at: CASADA_COMPATIBILITY_EXPIRY,
+    protocol: "casada" as AccessProtocol,
+  };
+}
+
+export function casadaMembershipResponse(now = new Date()) {
+  if (!CASADA_PROTOCOL_ENABLED) return null;
+  const membership = applyCasadaAccess(summarizeMembership([], now));
+  return {
+    active: membership.active,
+    tier: membership.tier,
+    protocol: membership.protocol,
+    status: membership.status,
+    providers: membership.providers,
+    benefits: membership.benefits,
+    expires_at: membership.expires_at,
+    ai_generations_today: null,
+    ai_remaining: null,
+    sources: [],
+    checked_at: now.toISOString(),
+    checkout_required: false,
+    provider_sync: {
+      entitlements: "not_required",
+      stripe: "not_required",
+      persistence: "not_required",
+      admin_grant: "not_required",
+      quota: "not_required",
+    },
   };
 }
 
@@ -185,7 +226,7 @@ export function applyAdminGrant(
       providers: Array.from(
         new Set<EntitlementProvider>([...membership.providers, "admin"]),
       ),
-      benefits: LIMITLESS_BENEFITS,
+      benefits: CASADA_BENEFITS,
       expires_at: expiresAt,
     },
     adminGrantActive: true,

@@ -1,8 +1,9 @@
 import Stripe from "npm:stripe@14";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
-  applyAlphaAccess,
   applyAdminGrant,
+  applyCasadaAccess,
+  casadaMembershipResponse,
   type EntitlementRecord,
   hasStripePrice,
   isoFromUnixSeconds,
@@ -22,7 +23,10 @@ import {
   StripeEntitlementPersistenceError,
 } from "./stripe-entitlement-persistence.ts";
 
-const DEFAULT_LIMITLESS_PRICE_ID = "price_1TR5wiRFCq3jt6C66NdM8NY4";
+// Retained only to reconcile subscriptions created before CASADA made access
+// universal. The environment key and price value are deployed compatibility
+// contracts and must not be repurposed.
+const LEGACY_STRIPE_PRICE_ID = "price_1TR5wiRFCq3jt6C66NdM8NY4";
 const MAX_ENTITLEMENTS_PER_USER = 100;
 
 class EntitlementAccountMismatchError extends Error {
@@ -57,11 +61,11 @@ function stripePriceIds(subscription: any): string[] {
     );
 }
 
-function isLimitlessStripeSubscription(
+function isLegacyStripeSubscription(
   subscription: any,
-  limitlessPriceId: string,
+  legacyPriceID: string,
 ): boolean {
-  return hasStripePrice(stripePriceIds(subscription), limitlessPriceId);
+  return hasStripePrice(stripePriceIds(subscription), legacyPriceID);
 }
 
 function normalizeStripeSubscription(
@@ -210,8 +214,8 @@ async function syncStripeEntitlements(
   }
 
   const stripe = new Stripe(secretKey);
-  const limitlessPriceId = Deno.env.get("STRIPE_LIMITLESS_PRICE_ID") ||
-    DEFAULT_LIMITLESS_PRICE_ID;
+  const legacyPriceID = Deno.env.get("STRIPE_LIMITLESS_PRICE_ID") ||
+    LEGACY_STRIPE_PRICE_ID;
   const expectedAppId = resolveExpectedBase44AppID(
     Deno.env.get("BASE44_APP_ID"),
     Deno.env.get("SPYCLASH_APP_ID"),
@@ -237,11 +241,11 @@ async function syncStripeEntitlements(
   for (const subscription of subscriptionsById.values()) {
     const subscriptionId = String(subscription?.id || "");
     const alreadyBound = alreadyBoundSubscriptionIds.has(subscriptionId);
-    const isLimitless = isLimitlessStripeSubscription(
+    const isLegacyProduct = isLegacyStripeSubscription(
       subscription,
-      limitlessPriceId,
+      legacyPriceID,
     );
-    if (!isLimitless && !alreadyBound) continue;
+    if (!isLegacyProduct && !alreadyBound) continue;
 
     const binding = stripeSubscriptionBindingDecision({
       alreadyBound,
@@ -260,7 +264,7 @@ async function syncStripeEntitlements(
       user,
       verifiedAt,
     );
-    if (!isLimitless) {
+    if (!isLegacyProduct) {
       entitlement.status = "revoked";
     } else {
       const stored = currentEntitlements.find((item) =>
@@ -321,6 +325,7 @@ function unknownMembershipBody(
   return {
     active: false,
     tier: null,
+    protocol: null,
     status,
     providers: [],
     benefits: null,
@@ -354,6 +359,9 @@ Deno.serve(async (req) => {
       { status: 401 },
     );
   }
+
+  const casadaResponse = casadaMembershipResponse();
+  if (casadaResponse) return Response.json(casadaResponse);
 
   const store = base44.asServiceRole.entities.Entitlement;
   let storedEntitlements: EntitlementRecord[] = [];
@@ -415,7 +423,7 @@ Deno.serve(async (req) => {
     summarizeMembership(allEntitlements),
     adminGrants,
   );
-  const membership = applyAlphaAccess(membershipResolution.membership);
+  const membership = applyCasadaAccess(membershipResolution.membership);
 
   let aiGenerationsToday: number | null = null;
   let quotaReadError: unknown = null;
@@ -448,7 +456,8 @@ Deno.serve(async (req) => {
   }
 
   // A verified active source remains usable during a temporary provider or
-  // persistence outage. Without one, uncertainty must not be reported as FREE.
+  // persistence outage. Without one, uncertainty must not be reported as a
+  // verified provider-backed state. CASADA itself remains universal.
   if (
     !membership.active &&
     !membershipResolution.adminGrantActive &&
@@ -466,6 +475,7 @@ Deno.serve(async (req) => {
   return Response.json({
     active: membership.active,
     tier: membership.tier,
+    protocol: membership.protocol,
     status: membership.status,
     providers: membership.providers,
     benefits: membership.benefits,

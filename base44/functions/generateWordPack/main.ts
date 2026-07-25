@@ -2,10 +2,12 @@ import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
   type AdminGrantRecord,
   applyAdminGenerationGrant,
-  applyAlphaGenerationAccess,
+  applyCasadaGenerationAccess,
   canGenerate,
+  CASADA_PROTOCOL_ENABLED,
   type EntitlementRecord,
   generationUsageMetadata,
+  type MembershipTier,
   resolveGenerationMembership,
 } from "./membership.ts";
 import {
@@ -42,9 +44,15 @@ type QuotaReservation = {
 async function reserveGenerationQuota(
   store: any,
   userId: string,
-  tier: "free" | "limitless",
+  tier: MembershipTier,
   guard: GenerationWriteGuard,
 ): Promise<QuotaReservation> {
+  // CASADA grants unlimited generation, so it must not read or mutate the
+  // legacy daily-quota store. `limitless` remains the compatibility wire tier.
+  if (tier === "limitless") {
+    return { allowed: true, usedBefore: 0, usedAfter: 0 };
+  }
+
   const now = new Date();
   const key = quotaKey(userId, now);
   const usageDate = utcUsageDate(now);
@@ -256,36 +264,44 @@ Deno.serve(async (req) => {
 
     let entitlements: EntitlementRecord[] = [];
     let entitlementReadError: unknown = null;
-    try {
-      entitlements = await base44.asServiceRole.entities.Entitlement.filter(
-        { user_id: user.id },
-        "-last_verified_at",
-        100,
-        0,
-      );
-    } catch (error) {
-      entitlementReadError = error;
-      console.error(
-        "generateWordPack membership verification error:",
-        errorMessage(error),
-      );
+    if (!CASADA_PROTOCOL_ENABLED) {
+      try {
+        entitlements = await base44.asServiceRole.entities.Entitlement.filter(
+          { user_id: user.id },
+          "-last_verified_at",
+          100,
+          0,
+        );
+      } catch (error) {
+        entitlementReadError = error;
+        console.error(
+          "generateWordPack membership verification error:",
+          errorMessage(error),
+        );
+      }
     }
 
     let adminGrants: AdminGrantRecord[] = [];
     let adminGrantReadError: unknown = null;
-    try {
-      adminGrants = await base44.asServiceRole.entities.MembershipGrant.filter(
-        { user_id: user.id },
-        "-created_date",
-        100,
-        0,
-      );
-    } catch (error) {
-      adminGrantReadError = error;
-      console.error("generateWordPack grant read error:", errorMessage(error));
+    if (!CASADA_PROTOCOL_ENABLED) {
+      try {
+        adminGrants = await base44.asServiceRole.entities.MembershipGrant
+          .filter(
+            { user_id: user.id },
+            "-created_date",
+            100,
+            0,
+          );
+      } catch (error) {
+        adminGrantReadError = error;
+        console.error(
+          "generateWordPack grant read error:",
+          errorMessage(error),
+        );
+      }
     }
 
-    const membership = applyAlphaGenerationAccess(
+    const membership = applyCasadaGenerationAccess(
       applyAdminGenerationGrant(
         resolveGenerationMembership(entitlements),
         adminGrants,
@@ -326,6 +342,8 @@ Deno.serve(async (req) => {
             code: "quota_unavailable",
             active: membership.active,
             tier: membership.tier,
+            protocol: membership.protocol,
+            expires_at: membership.expires_at,
             status: "unknown",
             providers: membership.providers,
             benefits: membership.benefits,
@@ -344,6 +362,8 @@ Deno.serve(async (req) => {
               code: "daily_ai_limit_reached",
               active: membership.active,
               tier: membership.tier,
+              protocol: membership.protocol,
+              expires_at: membership.expires_at,
               status: membership.active ? "active" : "inactive",
               providers: membership.providers,
               benefits: membership.benefits,
@@ -408,23 +428,25 @@ Deno.serve(async (req) => {
         }
 
         const generationCount = reservation.usedAfter;
-        try {
-          // Compatibility/display mirror only. The admin-only quota entity
-          // above remains authoritative.
-          await guard.boundary(() =>
-            base44.auth.updateMe({
-              ai_generations_today: generationCount,
-              last_ai_generation_date: new Date().toISOString(),
-            })
-          );
-        } catch (error) {
-          // This User field is a compatibility/display mirror only. Quota is
-          // already committed in the server-owned entity, so a mirror or
-          // lease-assertion outage must not replace valid words with a 503.
-          console.error(
-            "generateWordPack usage mirror error:",
-            errorMessage(error),
-          );
+        if (membership.tier !== "limitless") {
+          try {
+            // Compatibility/display mirror only. The admin-only quota entity
+            // above remains authoritative.
+            await guard.boundary(() =>
+              base44.auth.updateMe({
+                ai_generations_today: generationCount,
+                last_ai_generation_date: new Date().toISOString(),
+              })
+            );
+          } catch (error) {
+            // This User field is a compatibility/display mirror only. Quota is
+            // already committed in the server-owned entity, so a mirror or
+            // lease-assertion outage must not replace valid words with a 503.
+            console.error(
+              "generateWordPack usage mirror error:",
+              errorMessage(error),
+            );
+          }
         }
 
         return Response.json({
@@ -433,6 +455,8 @@ Deno.serve(async (req) => {
           words,
           active: membership.active,
           tier: membership.tier,
+          protocol: membership.protocol,
+          expires_at: membership.expires_at,
           status: membership.active ? "active" : "inactive",
           providers: membership.providers,
           benefits: membership.benefits,

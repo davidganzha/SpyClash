@@ -1,6 +1,19 @@
 export const SPYCLASH_IOS_BUNDLE_ID = "com.spyclash.ios";
 export const SPYCLASH_APPLE_APP_ID = 6793534085;
-export const LIMITLESS_PRODUCT_ID = `${SPYCLASH_IOS_BUNDLE_ID}.limitless.weekly`;
+// The historical product id cannot be renamed because Apple transactions and
+// server notifications refer to it permanently.
+export const LEGACY_SUBSCRIPTION_PRODUCT_ID =
+  `${SPYCLASH_IOS_BUNDLE_ID}.limitless.weekly`;
+export const CASADA_PROTOCOL_ENABLED = true;
+
+export function casadaPurchaseRetirement() {
+  if (!CASADA_PROTOCOL_ENABLED) return null;
+  return {
+    status: 409,
+    message:
+      "Full access is already included. App Store purchase is not required.",
+  } as const;
+}
 
 export function appleCommerceConfigurationError(input: {
   bundleID: string;
@@ -10,8 +23,8 @@ export function appleCommerceConfigurationError(input: {
   if (input.bundleID !== SPYCLASH_IOS_BUNDLE_ID) {
     return "APPLE_IAP_BUNDLE_ID does not match the current SpyClash iOS app.";
   }
-  if (input.productID !== LIMITLESS_PRODUCT_ID) {
-    return "APPLE_IAP_PRODUCT_ID does not match the current LIMITLESS product.";
+  if (input.productID !== LEGACY_SUBSCRIPTION_PRODUCT_ID) {
+    return "APPLE_IAP_PRODUCT_ID does not match the legacy subscription product.";
   }
   if (
     input.appAppleID !== undefined &&

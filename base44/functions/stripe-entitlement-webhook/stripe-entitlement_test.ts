@@ -3,7 +3,7 @@ import {
   deletedEntitlementUserID,
   financialEventChargeID,
   hasCanonicalFullSuccessfulRefund,
-  isLimitlessSubscription,
+  isLegacySubscription,
   normalizeStripeEntitlement,
   preserveStoredFinancialRevocation,
   reconcileStripeEntitlementState,
@@ -30,7 +30,7 @@ function subscription(overrides: Record<string, unknown> = {}) {
     current_period_end: 1_753_012_800,
     cancel_at_period_end: false,
     items: {
-      data: [{ price: { id: "price_limitless", product: "prod_limitless" } }],
+      data: [{ price: { id: "price_legacy", product: "prod_legacy" } }],
     },
     ...overrides,
   };
@@ -40,7 +40,7 @@ Deno.test("Stripe webhook normalization creates a provider-scoped entitlement", 
   const record = normalizeStripeEntitlement({
     subscription: subscription(),
     userID: "user-123",
-    limitlessPriceID: "price_limitless",
+    legacyPriceID: "price_legacy",
     eventID: "evt_123",
     eventCreated: 1_752_408_100,
     verifiedAt: new Date("2025-07-13T12:05:00Z"),
@@ -56,13 +56,13 @@ Deno.test("wrong Stripe price revokes an already-bound source", () => {
     items: { data: [{ price: { id: "price_other", product: "prod_other" } }] },
   });
   assert(
-    !isLimitlessSubscription(candidate, "price_limitless"),
+    !isLegacySubscription(candidate, "price_legacy"),
     "wrong price was accepted",
   );
   const record = normalizeStripeEntitlement({
     subscription: candidate,
     userID: "user-123",
-    limitlessPriceID: "price_limitless",
+    legacyPriceID: "price_legacy",
     eventID: "evt_124",
     eventCreated: 1_752_408_200,
   });
@@ -303,7 +303,7 @@ function incomingRecord(
     source_key: "stripe:sub_123",
     user_id: "user-1",
     provider: "stripe",
-    product_id: "prod_limitless",
+    product_id: "prod_legacy",
     stripe_subscription_id: "sub_123",
     status,
     environment: "production",

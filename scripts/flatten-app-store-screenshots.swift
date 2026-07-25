@@ -11,7 +11,6 @@ let defaultRelativePaths = [
     "AppStoreAssets/Screenshots/en-US/03-word-packs.png",
     "AppStoreAssets/Screenshots/en-US/04-home.png",
     "AppStoreAssets/Screenshots/en-US/05-community.png",
-    "AppStoreAssets/SubscriptionReview/limitless-weekly-test-2.99.png",
 ]
 
 let requestedPaths = Array(CommandLine.arguments.dropFirst())

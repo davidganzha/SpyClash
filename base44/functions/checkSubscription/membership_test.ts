@@ -1,12 +1,14 @@
 import {
-  applyAlphaAccess,
   activeAdminGrantExpiry,
   applyAdminGrant,
-  FREE_BENEFITS,
+  applyCasadaAccess,
+  CASADA_BENEFITS,
+  CASADA_COMPATIBILITY_EXPIRY,
+  casadaMembershipResponse,
   hasStripePrice,
   isBoundToAnotherUser,
   isEntitlementActive,
-  LIMITLESS_BENEFITS,
+  LEGACY_FREE_BENEFITS,
   mergeEntitlements,
   stripeStatusToEntitlementStatus,
   summarizeMembership,
@@ -16,13 +18,14 @@ function assert(condition: boolean, message: string) {
   if (!condition) throw new Error(message);
 }
 
-Deno.test("free membership exposes the promised FREE benefits", () => {
+Deno.test("legacy provider summary remains restricted before CASADA overlay", () => {
   const membership = summarizeMembership([], new Date("2026-07-13T12:00:00Z"));
   assert(membership.active === false, "empty entitlement set must be inactive");
   assert(membership.tier === "free", "empty entitlement set must be FREE");
   assert(
-    JSON.stringify(membership.benefits) === JSON.stringify(FREE_BENEFITS),
-    "FREE benefits drifted",
+    JSON.stringify(membership.benefits) ===
+      JSON.stringify(LEGACY_FREE_BENEFITS),
+    "legacy free benefits drifted",
   );
   assert(
     membership.benefits.ai_generations_daily_limit === 10,
@@ -31,15 +34,62 @@ Deno.test("free membership exposes the promised FREE benefits", () => {
   assert(membership.benefits.history_limit === 5, "FREE history limit drifted");
 });
 
-Deno.test("disabled alpha program preserves free membership", () => {
-  const membership = applyAlphaAccess(summarizeMembership([]));
-  assert(!membership.active, "disabled alpha access activated membership");
-  assert(membership.tier === "free", "disabled alpha access unlocked LIMITLESS");
-  assert(membership.providers.length === 0, "disabled alpha access fabricated a provider");
-  assert(!membership.benefits.full_history, "disabled alpha access unlocked full history");
+Deno.test("CASADA grants every authenticated user full access without a provider", () => {
+  const membership = applyCasadaAccess(summarizeMembership([]));
+  assert(membership.active, "CASADA access was not activated");
+  assert(
+    membership.tier === "limitless",
+    "legacy-compatible CASADA tier was not selected",
+  );
+  assert(membership.protocol === "casada", "CASADA protocol marker missing");
+  assert(
+    membership.providers.length === 1 && membership.providers[0] === "casada",
+    "CASADA access source missing",
+  );
+  assert(
+    membership.expires_at === CASADA_COMPATIBILITY_EXPIRY,
+    "CASADA compatibility expiry drifted",
+  );
+  assert(
+    membership.benefits.full_history,
+    "CASADA did not unlock full history",
+  );
+  assert(membership.benefits.premium_avatars, "CASADA did not unlock avatars");
+  assert(
+    membership.benefits.ai_generations_daily_limit === null,
+    "CASADA retained a generator limit",
+  );
 });
 
-Deno.test("verified Apple entitlement unlocks LIMITLESS", () => {
+Deno.test("CASADA membership response has no billing or quota dependency", () => {
+  const response = casadaMembershipResponse(
+    new Date("2026-07-25T08:00:00.000Z"),
+  );
+  assert(response?.active === true, "CASADA response was not active");
+  assert(
+    response?.tier === "limitless",
+    "CASADA response lost build-7 tier compatibility",
+  );
+  assert(response?.protocol === "casada", "CASADA response marker drifted");
+  assert(
+    response?.providers.length === 1 && response.providers[0] === "casada",
+    "CASADA response access source drifted",
+  );
+  assert(response?.ai_remaining === null, "CASADA response retained quota");
+  assert(
+    response?.expires_at === CASADA_COMPATIBILITY_EXPIRY,
+    "CASADA response compatibility expiry drifted",
+  );
+  assert(response?.checkout_required === false, "checkout was still required");
+  assert(
+    Object.values(response?.provider_sync || {}).every((value) =>
+      value === "not_required"
+    ),
+    "CASADA response still depends on billing synchronization",
+  );
+});
+
+Deno.test("verified Apple entitlement remains a legacy provider source", () => {
   const membership = summarizeMembership([
     {
       provider: "apple",
@@ -51,12 +101,12 @@ Deno.test("verified Apple entitlement unlocks LIMITLESS", () => {
   assert(membership.active, "active Apple entitlement was rejected");
   assert(
     membership.tier === "limitless",
-    "active Apple entitlement did not unlock LIMITLESS",
+    "active Apple entitlement did not resolve full access",
   );
   assert(membership.providers[0] === "apple", "Apple provider missing");
   assert(
-    JSON.stringify(membership.benefits) === JSON.stringify(LIMITLESS_BENEFITS),
-    "LIMITLESS benefits drifted",
+    JSON.stringify(membership.benefits) === JSON.stringify(CASADA_BENEFITS),
+    "CASADA benefits drifted",
   );
 });
 
@@ -89,14 +139,14 @@ Deno.test("expired and billing-retry records do not grant access", () => {
   );
 });
 
-Deno.test("live Stripe verification requires the current LIMITLESS price", () => {
+Deno.test("legacy Stripe verification requires the deployed price id", () => {
   assert(
-    hasStripePrice(["price_limitless"], "price_limitless"),
-    "current LIMITLESS price was rejected",
+    hasStripePrice(["price_legacy"], "price_legacy"),
+    "current legacy price was rejected",
   );
   assert(
-    !hasStripePrice(["price_downgraded"], "price_limitless"),
-    "different current price retained LIMITLESS",
+    !hasStripePrice(["price_downgraded"], "price_legacy"),
+    "different current price retained provider access",
   );
 });
 
@@ -165,7 +215,7 @@ Deno.test("live Stripe verification replaces a stale stored status", () => {
   );
   assert(
     membership.tier === "free",
-    "stale stored Stripe status still granted LIMITLESS",
+    "stale stored Stripe status still granted provider access",
   );
 });
 
@@ -208,7 +258,7 @@ Deno.test("provider source cannot be silently rebound to another SpyClash accoun
   );
 });
 
-Deno.test("admin grant unlocks LIMITLESS without exposing payment records", () => {
+Deno.test("legacy admin grant resolves CASADA benefits without payment records", () => {
   const now = new Date("2026-07-14T12:00:00Z");
   const resolved = applyAdminGrant(
     summarizeMembership([], now),
@@ -220,7 +270,7 @@ Deno.test("admin grant unlocks LIMITLESS without exposing payment records", () =
   assert(resolved.membership.active, "admin grant did not activate access");
   assert(
     resolved.membership.tier === "limitless",
-    "admin grant did not select LIMITLESS",
+    "admin grant did not select CASADA",
   );
   assert(
     resolved.membership.providers.includes("admin"),

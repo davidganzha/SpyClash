@@ -23,7 +23,7 @@ export type EntitlementRecord = {
 };
 
 export const CURRENT_BASE44_APP_ID = "69a0e57fa939f578082f8091";
-export const DEFAULT_LIMITLESS_PRICE_ID = "price_1TR5wiRFCq3jt6C66NdM8NY4";
+export const LEGACY_STRIPE_PRICE_ID = "price_1TR5wiRFCq3jt6C66NdM8NY4";
 
 const BASE44_APP_ID_PATTERN = /^[0-9a-f]{24}$/i;
 
@@ -344,18 +344,18 @@ export function subscriptionPriceIDs(subscription: any): string[] {
     );
 }
 
-export function isLimitlessSubscription(
+export function isLegacySubscription(
   subscription: any,
-  limitlessPriceID: string,
+  legacyPriceID: string,
 ): boolean {
-  return hasStripePrice(subscriptionPriceIDs(subscription), limitlessPriceID);
+  return hasStripePrice(subscriptionPriceIDs(subscription), legacyPriceID);
 }
 
 export function normalizeStripeEntitlement(input: {
   subscription: any;
   userID: string;
   userEmail?: string;
-  limitlessPriceID: string;
+  legacyPriceID: string;
   eventID: string;
   eventCreated: number;
   verifiedAt?: Date;
@@ -365,6 +365,8 @@ export function normalizeStripeEntitlement(input: {
 
   const firstItem = subscription.items?.data?.[0];
   const priceID = firstItem?.price?.id;
+  // Existing rows may already carry this fallback value, so retain it as a
+  // provider-compatibility identifier rather than presenting it to users.
   const productID = objectID(firstItem?.price?.product) || priceID ||
     "stripe_limitless";
   const expiresAt = isoFromUnixSeconds(
@@ -373,7 +375,7 @@ export function normalizeStripeEntitlement(input: {
   );
   if (!expiresAt) throw new Error("Stripe subscription expiry is missing.");
 
-  const status = isLimitlessSubscription(subscription, input.limitlessPriceID)
+  const status = isLegacySubscription(subscription, input.legacyPriceID)
     ? stripeStatusToEntitlementStatus(subscription.status)
     : "revoked";
   const verifiedAt = input.verifiedAt ?? new Date();

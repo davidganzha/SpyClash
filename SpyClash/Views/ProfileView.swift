@@ -18,15 +18,23 @@ struct ProfileView: View {
     @State private var status = ""
     @State private var statusKind: ProfileStatusKind?
 
-    private let basicAvatars = ["🕵️", "🥷", "🧠", "🎭"]
-    private let premiumAvatars = ["🃏", "👁️", "🔥", "⚡️", "🎯", "🛡️"]
+    private let availableAvatars = ["🕵️", "🥷", "🧠", "🎭", "🃏", "👁️", "🔥", "⚡️", "🎯", "🛡️"]
 
     private var copy: ProfileCopy {
         appState.language.profile
     }
 
+    private var deleteDialogMessage: String {
+        guard appState.isCasadaProtocolActive else { return copy.deleteDialogMessage }
+        return localized(
+            en: "This permanently deletes your profile, game history, custom packs, and social data. Limited security, moderation, and legacy billing records may be retained where legally required. Deleting your account does not cancel an existing Apple or Stripe subscription; manage it with that provider.",
+            ru: "Это навсегда удалит профиль, историю игр, пользовательские паки и социальные данные. Ограниченные записи безопасности, модерации и прежних платежей могут храниться по закону. Удаление аккаунта не отменяет действующую подписку Apple или Stripe — управляйте ею у провайдера.",
+            es: "Esto elimina permanentemente tu perfil, historial, paquetes personalizados y datos sociales. Algunos registros de seguridad, moderacion y facturacion anterior pueden conservarse por ley. Eliminar la cuenta no cancela una suscripcion existente de Apple o Stripe; gestionela con el proveedor."
+        )
+    }
+
     var body: some View {
-        PageChrome(eyebrow: copy.eyebrow, status: copy.lockedStatus) {
+        PageChrome(eyebrow: copy.eyebrow, status: "") {
             VStack(alignment: .leading, spacing: 16) {
                 spyCard
                 profileCard
@@ -52,7 +60,7 @@ struct ProfileView: View {
             if showDeleteConfirmation {
                 SpyConfirmDialog(
                     title: copy.deleteDialogTitle,
-                    message: copy.deleteDialogMessage,
+                    message: deleteDialogMessage,
                     confirmTitle: copy.deleteDialogAction,
                     cancelTitle: copy.cancel,
                     isBusy: isDeleting
@@ -114,17 +122,6 @@ struct ProfileView: View {
                     )
 
                     Spacer(minLength: 12)
-
-                    HStack(spacing: 5) {
-                        Circle()
-                            .fill(membershipAccent)
-                            .frame(width: 5, height: 5)
-
-                        Text(membershipTitle)
-                            .font(.system(size: 8, weight: .black, design: .monospaced))
-                            .tracking(0.12)
-                            .foregroundStyle(membershipAccent)
-                    }
                 }
                 .padding(.leading, 13)
                 .padding(.trailing, 17)
@@ -169,14 +166,14 @@ struct ProfileView: View {
                     HStack(spacing: 9) {
                         spyCardMetric(
                             copy.rating,
-                            value: hasAdvancedStatistics ? "\(rating >= 0 ? "+" : "")\(rating)" : "—",
-                            accent: hasAdvancedStatistics ? SpyTheme.red : SpyTheme.muted
+                            value: "\(rating >= 0 ? "+" : "")\(rating)",
+                            accent: SpyTheme.red
                         )
                         spyCardMetric(copy.games, value: "\(gamesCount)", accent: SpyTheme.amber)
                         spyCardMetric(
                             copy.rate,
-                            value: hasAdvancedStatistics ? "\(winRate)%" : "—",
-                            accent: hasAdvancedStatistics ? SpyTheme.green : SpyTheme.muted
+                            value: "\(winRate)%",
+                            accent: SpyTheme.green
                         )
                     }
                     .frame(maxWidth: .infinity, alignment: .trailing)
@@ -265,7 +262,7 @@ struct ProfileView: View {
                 LinearGradient(
                     colors: [
                         .clear,
-                        spyCardAccentColor.opacity(appState.hasLimitlessAccess ? 0.88 : 0.42),
+                        spyCardAccentColor.opacity(appState.hasFullAccess ? 0.88 : 0.42),
                         Color.white.opacity(0.16),
                         .clear
                     ],
@@ -275,7 +272,7 @@ struct ProfileView: View {
                     .frame(width: 76, height: 1.5)
                     .padding(.trailing, 22)
                     .padding(.bottom, 1)
-                    .shadow(color: spyCardAccentColor.opacity(appState.hasLimitlessAccess ? 0.28 : 0.10), radius: 5)
+                    .shadow(color: spyCardAccentColor.opacity(appState.hasFullAccess ? 0.28 : 0.10), radius: 5)
             }
             .background {
                 ZStack {
@@ -305,37 +302,7 @@ struct ProfileView: View {
     }
 
     private var spyCardAccessibilityLabel: String {
-        let identity = "SPYCARD, \(profileCallSign), SPYID \(appState.user?.spyID ?? "unassigned"), \(membershipTitle), \(copy.games) \(gamesCount)"
-        guard hasAdvancedStatistics else {
-            return "\(identity), \(localized(en: "advanced statistics locked", ru: "расширенная статистика закрыта", es: "estadisticas avanzadas bloqueadas"))"
-        }
-        return "\(identity), \(copy.rating) \(rating), \(copy.rate) \(winRate) percent"
-    }
-
-    private var membershipTitle: String {
-        switch appState.membershipTier {
-        case .limitless:
-            "LIMITLESS"
-        case .free:
-            "FREE"
-        case nil:
-            if case .unavailable = appState.membershipSyncState {
-                localized(en: "UNAVAILABLE", ru: "НЕДОСТУПЕН", es: "NO DISPONIBLE")
-            } else {
-                localized(en: "SYNCING", ru: "СИНХРОНИЗАЦИЯ", es: "SINCRONIZANDO")
-            }
-        }
-    }
-
-    private var membershipAccent: Color {
-        switch appState.membershipTier {
-        case .limitless:
-            SpyTheme.red
-        case .free:
-            Color(red: 142 / 255, green: 142 / 255, blue: 146 / 255)
-        case nil:
-            SpyTheme.amber
-        }
+        "SPYCARD, \(profileCallSign), SPYID \(appState.user?.spyID ?? "unassigned"), \(copy.games) \(gamesCount), \(copy.rating) \(rating), \(copy.rate) \(winRate) percent"
     }
 
     private var spyCardAccentColor: Color {
@@ -384,17 +351,8 @@ struct ProfileView: View {
                     .spyKicker(lines: 2)
 
                 avatarCategory(
-                    title: localized(en: "BASIC SET", ru: "БАЗОВЫЙ НАБОР", es: "SET BASICO"),
-                    badge: "FREE",
-                    avatars: basicAvatars,
-                    isPremium: false
-                )
-
-                avatarCategory(
-                    title: localized(en: "PREMIUM IDENTITIES", ru: "ПРЕМИУМ ОБРАЗЫ", es: "IDENTIDADES PREMIUM"),
-                    badge: "LIMITLESS",
-                    avatars: premiumAvatars,
-                    isPremium: true
+                    title: localized(en: "OPERATIVE IDENTITIES", ru: "ОБРАЗЫ ОПЕРАТИВНИКА", es: "IDENTIDADES OPERATIVAS"),
+                    avatars: availableAvatars
                 )
 
                 spyCardCustomization
@@ -458,43 +416,15 @@ struct ProfileView: View {
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker()
-                if hasAdvancedStatistics {
-                    HStack(spacing: 12) {
-                        stat(copy.rating, "\(rating >= 0 ? "+" : "")\(rating)")
-                        stat(copy.games, "\(gamesCount)")
-                        stat(copy.rate, "\(winRate)%")
-                    }
-                    HStack(spacing: 8) {
-                        statPill(copy.wins, "\(winCount)", color: SpyTheme.green)
-                        statPill(copy.spy, "\(spyGames)", color: SpyTheme.red)
-                        statPill(copy.detective, "\(detectiveGames)", color: .white.opacity(0.74))
-                    }
-                } else {
-                    HStack(spacing: 12) {
-                        stat(copy.games, "\(gamesCount)")
-
-                        Button {
-                            appState.presentedSheet = .pricing
-                        } label: {
-                            VStack(spacing: 6) {
-                                Image(systemName: "lock.fill")
-                                    .font(.system(size: 15, weight: .black))
-                                Text(localized(
-                                    en: "ADVANCED STATISTICS // LIMITLESS",
-                                    ru: "РАСШИРЕННАЯ СТАТИСТИКА // LIMITLESS",
-                                    es: "ESTADISTICAS AVANZADAS // LIMITLESS"
-                                ))
-                                .font(.system(size: 8, weight: .black, design: .monospaced))
-                                .tracking(0.06)
-                                .spyFitted(lines: 2, scale: 0.58, alignment: .center)
-                            }
-                            .foregroundStyle(SpyTheme.red)
-                            .frame(maxWidth: .infinity, minHeight: 70)
-                            .background(SpyTheme.red.opacity(0.05))
-                            .overlay(Rectangle().stroke(SpyTheme.red.opacity(0.28)))
-                        }
-                        .buttonStyle(SpyWebPressStyle())
-                    }
+                HStack(spacing: 12) {
+                    stat(copy.rating, "\(rating >= 0 ? "+" : "")\(rating)")
+                    stat(copy.games, "\(gamesCount)")
+                    stat(copy.rate, "\(winRate)%")
+                }
+                HStack(spacing: 8) {
+                    statPill(copy.wins, "\(winCount)", color: SpyTheme.green)
+                    statPill(copy.spy, "\(spyGames)", color: SpyTheme.red)
+                    statPill(copy.detective, "\(detectiveGames)", color: .white.opacity(0.74))
                 }
             }
         }
@@ -559,118 +489,48 @@ struct ProfileView: View {
 
     private func avatarCategory(
         title: String,
-        badge: String,
-        avatars: [String],
-        isPremium: Bool
+        avatars: [String]
     ) -> some View {
         VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 8) {
-                Text(title)
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .tracking(0.09)
-                    .foregroundStyle(isPremium ? SpyTheme.red : SpyTheme.dim)
-                    .spyFitted(scale: 0.64)
-
-                Text(badge)
-                    .font(.system(size: 7, weight: .black, design: .monospaced))
-                    .tracking(0.08)
-                    .foregroundStyle(isPremium ? SpyTheme.red : SpyTheme.muted)
-                    .padding(.horizontal, 7)
-                    .frame(height: 20)
-                    .background((isPremium ? SpyTheme.red : SpyTheme.muted).opacity(0.08))
-                    .overlay(
-                        Rectangle()
-                            .stroke((isPremium ? SpyTheme.red : SpyTheme.muted).opacity(0.34), lineWidth: 1)
-                    )
-
-                Spacer(minLength: 0)
-            }
+            Text(title)
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .tracking(0.09)
+                .foregroundStyle(SpyTheme.dim)
+                .spyFitted(scale: 0.64)
 
             LazyVGrid(columns: [GridItem(.adaptive(minimum: 44), spacing: 8)], spacing: 8) {
                 ForEach(Array(avatars.enumerated()), id: \.element) { index, item in
-                    avatarButton(item, index: index, isPremium: isPremium)
+                    avatarButton(item, index: index)
                 }
-            }
-
-            if isPremium && !hasPremiumAvatarAccess {
-                Text(premiumAvatarLockMessage)
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                .tracking(0.06)
-                .foregroundStyle(SpyTheme.faint)
-                .fixedSize(horizontal: false, vertical: true)
             }
         }
     }
 
-    private func avatarButton(_ item: String, index: Int, isPremium: Bool) -> some View {
+    private func avatarButton(_ item: String, index: Int) -> some View {
         let isSelected = avatar == item
-        let isPreserved = isPremium && item == appState.user?.avatar && !hasPremiumAvatarAccess
-        let isLocked = isPremium && !hasPremiumAvatarAccess && !isPreserved
-        let border = isSelected
-            ? SpyTheme.red
-            : (isLocked ? SpyTheme.red.opacity(0.28) : SpyTheme.stroke)
 
         return Button {
-            if isLocked {
-                appState.presentedSheet = .pricing
-            } else {
-                avatar = item
-                HapticManager.shared.fire(.tabSelection)
-            }
+            avatar = item
+            HapticManager.shared.fire(.tabSelection)
         } label: {
-            ZStack(alignment: .topTrailing) {
-                Text(item)
-                    .font(.system(size: 24))
-                    .frame(width: 44, height: 44)
-                    .opacity(isLocked ? 0.34 : 1)
-
-                if isLocked {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 7, weight: .black))
-                        .foregroundStyle(.white)
-                        .frame(width: 15, height: 15)
-                        .background(SpyTheme.red, in: Circle())
-                        .offset(x: 4, y: -4)
-                } else if isPreserved {
-                    Image(systemName: "checkmark.shield.fill")
-                        .font(.system(size: 10, weight: .black))
-                        .foregroundStyle(SpyTheme.amber)
-                        .offset(x: 4, y: -4)
-                }
-            }
-            .frame(width: 44, height: 44)
-            .background(isSelected ? SpyTheme.red.opacity(0.12) : SpyTheme.panelDeep)
-            .overlay(Rectangle().stroke(border, lineWidth: 1))
+            Text(item)
+                .font(.system(size: 24))
+                .frame(width: 44, height: 44)
+                .background(isSelected ? SpyTheme.red.opacity(0.12) : SpyTheme.panelDeep)
+                .overlay(Rectangle().stroke(isSelected ? SpyTheme.red : SpyTheme.stroke, lineWidth: 1))
         }
         .buttonStyle(SpyWebPressStyle(pressedScale: 0.90))
-        .accessibilityLabel(
-            isLocked
-                ? localized(en: "Premium avatar, locked", ru: "Премиум аватар, закрыт", es: "Avatar premium bloqueado")
-                : localized(en: "Avatar \(item)", ru: "Аватар \(item)", es: "Avatar \(item)")
-        )
+        .accessibilityLabel(localized(en: "Avatar \(item)", ru: "Аватар \(item)", es: "Avatar \(item)"))
         .spyWebEntrance(delay: Double(index) * 0.04, duration: 0.35, y: 0, scale: 0.8)
     }
 
     private var spyCardCustomization: some View {
         VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Text(localized(en: "// SPYCARD STUDIO", ru: "// SPYCARD СТУДИЯ", es: "// ESTUDIO SPYCARD"))
-                    .font(SpyTheme.micro)
-                    .tracking(0.10)
-                    .foregroundStyle(SpyTheme.dim)
-                    .spyKicker(lines: 2)
-
-                Spacer(minLength: 0)
-
-                Text("LIMITLESS")
-                    .font(.system(size: 7, weight: .black, design: .monospaced))
-                    .tracking(0.8)
-                    .foregroundStyle(SpyTheme.red)
-                    .padding(.horizontal, 7)
-                    .frame(height: 20)
-                    .background(SpyTheme.red.opacity(0.08))
-                    .overlay(Rectangle().stroke(SpyTheme.red.opacity(0.34), lineWidth: 1))
-            }
+            Text(localized(en: "// SPYCARD STUDIO", ru: "// SPYCARD СТУДИЯ", es: "// ESTUDIO SPYCARD"))
+                .font(SpyTheme.micro)
+                .tracking(0.10)
+                .foregroundStyle(SpyTheme.dim)
+                .spyKicker(lines: 2)
 
             VStack(spacing: 7) {
                 customizationRow(label: localized(en: "SKIN", ru: "ОБШИВКА", es: "ESTILO")) {
@@ -707,17 +567,6 @@ struct ProfileView: View {
                     .stroke(SpyTheme.stroke, lineWidth: 1)
             )
 
-            if !hasSpyCardCustomizationAccess {
-                Text(localized(
-                    en: "BASE CARD ACTIVE // LIMITLESS UNLOCKS ALL FIELD SKINS, SIGNALS AND BADGES",
-                    ru: "БАЗОВАЯ КАРТА АКТИВНА // LIMITLESS ОТКРЫВАЕТ ВСЕ ОБШИВКИ, СИГНАЛЫ И ЗНАКИ",
-                    es: "TARJETA BASE ACTIVA // LIMITLESS DESBLOQUEA TODOS LOS ESTILOS, ACENTOS E INSIGNIAS"
-                ))
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                .tracking(0.45)
-                .foregroundStyle(SpyTheme.faint)
-                .fixedSize(horizontal: false, vertical: true)
-            }
         }
         .padding(.top, 4)
     }
@@ -742,7 +591,6 @@ struct ProfileView: View {
 
     private func themeSwatch(_ item: SpyCardThemeID) -> some View {
         let isSelected = selectedCardTheme == item
-        let isLocked = item.requiresLimitless && !hasSpyCardCustomizationAccess && selectedCardTheme != item
 
         return Button {
             selectCardTheme(item)
@@ -758,20 +606,13 @@ struct ProfileView: View {
                     Text(cardThemeTitle(item))
                         .font(.system(size: 7, weight: .black, design: .monospaced))
                         .tracking(0.35)
-                        .foregroundStyle(.white.opacity(isLocked ? 0.35 : 0.88))
+                        .foregroundStyle(.white.opacity(0.88))
                         .lineLimit(1)
                         .minimumScaleFactor(0.65)
                 }
                 .padding(6)
 
-                if isLocked {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 6, weight: .black))
-                        .foregroundStyle(.white)
-                        .frame(width: 16, height: 16)
-                        .background(SpyTheme.red, in: Circle())
-                        .padding(4)
-                } else if isSelected {
+                if isSelected {
                     Image(systemName: "checkmark")
                         .font(.system(size: 7, weight: .black))
                         .foregroundStyle(.black)
@@ -782,7 +623,6 @@ struct ProfileView: View {
             }
             .frame(maxWidth: .infinity)
             .frame(height: 48)
-            .opacity(isLocked ? 0.68 : 1)
             .overlay(
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(isSelected ? spyCardAccentColor : SpyTheme.strokeStrong, lineWidth: isSelected ? 1.25 : 0.75)
@@ -795,16 +635,11 @@ struct ProfileView: View {
 
     private func accentSwatch(_ item: SpyCardAccentID) -> some View {
         let isSelected = selectedCardAccent == item
-        let isLocked = item.requiresLimitless && !hasSpyCardCustomizationAccess && selectedCardAccent != item
         let color = cardAccentColor(item)
 
         return Button {
-            if isLocked {
-                appState.presentedSheet = .pricing
-            } else {
-                selectedCardAccent = item
-                HapticManager.shared.fire(.tabSelection)
-            }
+            selectedCardAccent = item
+            HapticManager.shared.fire(.tabSelection)
         } label: {
             HStack(spacing: 5) {
                 Circle()
@@ -818,12 +653,8 @@ struct ProfileView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.58)
 
-                if isLocked {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 6, weight: .black))
-                }
             }
-            .foregroundStyle(isSelected ? color : (isLocked ? SpyTheme.faint : SpyTheme.muted))
+            .foregroundStyle(isSelected ? color : SpyTheme.muted)
             .padding(.horizontal, 7)
             .frame(maxWidth: .infinity, minHeight: 44)
             .background(isSelected ? color.opacity(0.11) : SpyTheme.control, in: Capsule())
@@ -836,7 +667,6 @@ struct ProfileView: View {
 
     private func badgeSwatch(_ item: SpyCardBadgeID) -> some View {
         let isSelected = selectedCardBadge == item
-        let isLocked = item.requiresLimitless && !hasSpyCardCustomizationAccess && selectedCardBadge != item
 
         return Button {
             selectCardBadge(item)
@@ -848,14 +678,10 @@ struct ProfileView: View {
                 Text(cardBadgeTitle(item))
                     .lineLimit(1)
 
-                if isLocked {
-                    Image(systemName: "lock.fill")
-                        .font(.system(size: 6, weight: .black))
-                }
             }
             .font(.system(size: 6.5, weight: .black, design: .monospaced))
             .tracking(0.2)
-            .foregroundStyle(isSelected ? .white : (isLocked ? SpyTheme.faint : SpyTheme.muted))
+            .foregroundStyle(isSelected ? .white : SpyTheme.muted)
             .padding(.horizontal, 6)
             .frame(height: 34)
             .background(isSelected ? spyCardAccentColor.opacity(0.10) : SpyTheme.control, in: Capsule())
@@ -880,25 +706,13 @@ struct ProfileView: View {
     }
 
     private func selectCardTheme(_ item: SpyCardThemeID) {
-        if item.requiresLimitless && !hasSpyCardCustomizationAccess && selectedCardTheme != item {
-            appState.presentedSheet = .pricing
-        } else {
-            selectedCardTheme = item
-            HapticManager.shared.fire(.tabSelection)
-        }
+        selectedCardTheme = item
+        HapticManager.shared.fire(.tabSelection)
     }
 
     private func selectCardBadge(_ item: SpyCardBadgeID) {
-        if item.requiresLimitless && !hasSpyCardCustomizationAccess && selectedCardBadge != item {
-            appState.presentedSheet = .pricing
-        } else {
-            selectedCardBadge = item
-            HapticManager.shared.fire(.tabSelection)
-        }
-    }
-
-    private var hasSpyCardCustomizationAccess: Bool {
-        appState.hasLimitlessAccess
+        selectedCardBadge = item
+        HapticManager.shared.fire(.tabSelection)
     }
 
     private func cardThemeTitle(_ item: SpyCardThemeID) -> String {
@@ -941,30 +755,6 @@ struct ProfileView: View {
         case .clearanceAmber: SpyTheme.amber
         case .verifiedGreen: SpyTheme.green
         }
-    }
-
-    private var hasPremiumAvatarAccess: Bool {
-        appState.membershipBenefits?.premiumAvatars == true
-    }
-
-    private var hasAdvancedStatistics: Bool {
-        appState.membershipBenefits?.advancedStatistics == true
-    }
-
-    private var premiumAvatarLockMessage: String {
-        if appState.membershipTier == .free {
-            return localized(
-                en: "LOCKED FOR FREE // TAP AN AVATAR TO VIEW LIMITLESS",
-                ru: "ЗАКРЫТО ДЛЯ FREE // НАЖМИ, ЧТОБЫ ОТКРЫТЬ LIMITLESS",
-                es: "BLOQUEADO EN FREE // TOCA PARA VER LIMITLESS"
-            )
-        }
-
-        return localized(
-            en: "MEMBERSHIP STATUS REQUIRED // TAP TO VERIFY ACCESS",
-            ru: "НУЖЕН СТАТУС ПОДПИСКИ // НАЖМИ ДЛЯ ПРОВЕРКИ",
-            es: "SE REQUIERE MEMBRESIA // TOCA PARA VERIFICAR"
-        )
     }
 
     private var languageSelector: some View {

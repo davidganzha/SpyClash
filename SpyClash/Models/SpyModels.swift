@@ -402,119 +402,6 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         }
     }
 
-    var pricing: PricingCopy {
-        switch self {
-        case .en:
-            PricingCopy(
-                eyebrow: "// PRICING",
-                title: "Limitless",
-                activeSubtitle: "Subscription active",
-                inactiveSubtitle: "Unlock the full field kit",
-                planName: "LIMITLESS",
-                proBadge: "PRO",
-                features: [
-                    PricingFeature(
-                        key: "unlimited",
-                        title: "Limitless",
-                        detail: "Unlimited AI themes and word generation for every new mission.",
-                        systemImage: "infinity"
-                    ),
-                    PricingFeature(
-                        key: "profile_customization",
-                        title: "Profile Customization",
-                        detail: "Exclusive avatars, operative identity styles, and future cosmetic drops.",
-                        systemImage: "paintbrush.pointed.fill"
-                    ),
-                    PricingFeature(
-                        key: "game_statistics",
-                        title: "Game Statistics",
-                        detail: "Complete match history, win rate, roles, and advanced analytics.",
-                        systemImage: "chart.bar.xaxis"
-                    )
-                ],
-                activeAction: "REFRESH ACCESS",
-                inactiveAction: "SUBSCRIBE NOW",
-                checkingAccess: "CHECKING ACCESS...",
-                contactingAppStore: "CONTACTING APP STORE...",
-                appStoreUnavailable: "APP STORE PRODUCT UNAVAILABLE",
-                accessActive: "LIMITLESS ACCESS ACTIVE",
-                accessNotActive: "LIMITLESS ACCESS NOT ACTIVE YET"
-            )
-        case .es:
-            PricingCopy(
-                eyebrow: "// SUSCRIPCION",
-                title: "Limitless",
-                activeSubtitle: "Suscripcion activa",
-                inactiveSubtitle: "Desbloquea el kit de campo completo",
-                planName: "LIMITLESS",
-                proBadge: "PRO",
-                features: [
-                    PricingFeature(
-                        key: "unlimited",
-                        title: "Sin limites",
-                        detail: "Temas y palabras generados con IA sin limite para cada nueva mision.",
-                        systemImage: "infinity"
-                    ),
-                    PricingFeature(
-                        key: "profile_customization",
-                        title: "Personalizacion del perfil",
-                        detail: "Avatares exclusivos, estilos de identidad y futuras recompensas cosmeticas.",
-                        systemImage: "paintbrush.pointed.fill"
-                    ),
-                    PricingFeature(
-                        key: "game_statistics",
-                        title: "Estadisticas de juego",
-                        detail: "Historial completo, porcentaje de victorias, roles y analitica avanzada.",
-                        systemImage: "chart.bar.xaxis"
-                    )
-                ],
-                activeAction: "ACTUALIZAR ACCESO",
-                inactiveAction: "SUSCRIBIRSE AHORA",
-                checkingAccess: "COMPROBANDO ACCESO...",
-                contactingAppStore: "CONECTANDO CON APP STORE...",
-                appStoreUnavailable: "PRODUCTO NO DISPONIBLE EN APP STORE",
-                accessActive: "ACCESO LIMITLESS ACTIVO",
-                accessNotActive: "ACCESO LIMITLESS AUN NO ACTIVO"
-            )
-        case .ru:
-            PricingCopy(
-                eyebrow: "// ТАРИФ",
-                title: "Limitless",
-                activeSubtitle: "Подписка активна",
-                inactiveSubtitle: "Открой полный полевой набор",
-                planName: "LIMITLESS",
-                proBadge: "PRO",
-                features: [
-                    PricingFeature(
-                        key: "unlimited",
-                        title: "Безлимит",
-                        detail: "Неограниченная AI-генерация тем и слов для каждой новой миссии.",
-                        systemImage: "infinity"
-                    ),
-                    PricingFeature(
-                        key: "profile_customization",
-                        title: "Кастомизация профиля",
-                        detail: "Эксклюзивные аватары, стили ID оперативника и будущие косметические обновления.",
-                        systemImage: "paintbrush.pointed.fill"
-                    ),
-                    PricingFeature(
-                        key: "game_statistics",
-                        title: "Статистика игр",
-                        detail: "Полная история матчей, процент побед, роли и расширенная аналитика.",
-                        systemImage: "chart.bar.xaxis"
-                    )
-                ],
-                activeAction: "ПРОВЕРИТЬ ДОСТУП",
-                inactiveAction: "ОФОРМИТЬ ПОДПИСКУ",
-                checkingAccess: "ПРОВЕРКА ДОСТУПА...",
-                contactingAppStore: "СВЯЗЬ С APP STORE...",
-                appStoreUnavailable: "ПОДПИСКА НЕДОСТУПНА В APP STORE",
-                accessActive: "LIMITLESS ДОСТУП АКТИВЕН",
-                accessNotActive: "LIMITLESS ЕЩЕ НЕ АКТИВЕН"
-            )
-        }
-    }
-
     var qr: QRInviteCopy {
         switch self {
         case .en:
@@ -582,14 +469,11 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en:
             ProfileCopy(
                 eyebrow: "// PROFILE",
-                lockedStatus: "LOCKED",
-                manageLimitless: "MANAGE LIMITLESS",
-                unlockLimitless: "UNLOCK LIMITLESS",
                 logOut: "LOG OUT",
                 deleteDialogTitle: "DELETE ACCOUNT",
                 deleteDialogAction: "DELETE ACCOUNT",
                 cancel: "CANCEL",
-                deleteDialogMessage: "This permanently deletes your profile, game history, custom packs, and social data. It does not cancel an Apple or Stripe subscription—manage it separately with the provider. Limited billing and transaction records may be retained for fraud prevention and legal obligations.",
+                deleteDialogMessage: "This permanently deletes your profile, game history, custom packs, and social data. Limited security and moderation records may be retained where legally required.",
                 operativeID: "OPERATIVE ID",
                 selectAvatar: "// SELECT AVATAR",
                 displayName: "// DISPLAY NAME",
@@ -611,7 +495,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 privacy: "PRIVACY",
                 terms: "TERMS",
                 dangerZone: "// DANGER ZONE",
-                dangerBody: "Deleting the account erases profile data, custom packs and archive entries. Apple and Stripe subscriptions must be managed separately.",
+                dangerBody: "Deleting the account erases profile data, custom packs and archive entries.",
                 deleteAccount: "DELETE ACCOUNT",
                 deletingAccount: "DELETING ACCOUNT...",
                 saved: "SAVED"
@@ -619,14 +503,11 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .es:
             ProfileCopy(
                 eyebrow: "// PERFIL",
-                lockedStatus: "BLOQUEADO",
-                manageLimitless: "GESTIONAR LIMITLESS",
-                unlockLimitless: "DESBLOQUEAR LIMITLESS",
                 logOut: "CERRAR SESION",
                 deleteDialogTitle: "ELIMINAR CUENTA",
                 deleteDialogAction: "ELIMINAR CUENTA",
                 cancel: "CANCELAR",
-                deleteDialogMessage: "Esto elimina permanentemente tu perfil, historial de partidas, paquetes personalizados y datos sociales. No cancela una suscripción de Apple o Stripe: debes gestionarla por separado con el proveedor. Podemos conservar registros limitados de facturación y transacciones para prevenir fraudes y cumplir obligaciones legales.",
+                deleteDialogMessage: "Esto elimina permanentemente tu perfil, historial de partidas, paquetes personalizados y datos sociales. Algunos registros de seguridad y moderacion pueden conservarse cuando la ley lo exija.",
                 operativeID: "ID OPERATIVO",
                 selectAvatar: "// ELEGIR AVATAR",
                 displayName: "// NOMBRE VISIBLE",
@@ -648,7 +529,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 privacy: "PRIVACIDAD",
                 terms: "TERMINOS",
                 dangerZone: "// ZONA DE PELIGRO",
-                dangerBody: "Eliminar la cuenta borra el perfil, los paquetes personalizados y el archivo. Las suscripciones de Apple y Stripe se gestionan por separado.",
+                dangerBody: "Eliminar la cuenta borra el perfil, los paquetes personalizados y el archivo.",
                 deleteAccount: "ELIMINAR CUENTA",
                 deletingAccount: "ELIMINANDO CUENTA...",
                 saved: "GUARDADO"
@@ -656,14 +537,11 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .ru:
             ProfileCopy(
                 eyebrow: "// ПРОФИЛЬ",
-                lockedStatus: "ЗАКРЫТО",
-                manageLimitless: "УПРАВЛЯТЬ LIMITLESS",
-                unlockLimitless: "ОТКРЫТЬ LIMITLESS",
                 logOut: "ВЫЙТИ",
                 deleteDialogTitle: "УДАЛИТЬ АККАУНТ",
                 deleteDialogAction: "УДАЛИТЬ АККАУНТ",
                 cancel: "ОТМЕНА",
-                deleteDialogMessage: "Это навсегда удалит профиль, историю игр, пользовательские паки и социальные данные. Удаление не отменяет подписку Apple или Stripe — ей нужно управлять отдельно у провайдера. Ограниченные платежные и транзакционные записи могут храниться для предотвращения мошенничества и выполнения юридических обязательств.",
+                deleteDialogMessage: "Это навсегда удалит профиль, историю игр, пользовательские паки и социальные данные. Ограниченные записи безопасности и модерации могут храниться, если этого требует закон.",
                 operativeID: "ID ОПЕРАТИВНИКА",
                 selectAvatar: "// ВЫБОР АВАТАРА",
                 displayName: "// ИМЯ НА ЭКРАНЕ",
@@ -685,7 +563,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 privacy: "ПРИВАТНОСТЬ",
                 terms: "УСЛОВИЯ",
                 dangerZone: "// ОПАСНАЯ ЗОНА",
-                dangerBody: "Удаление аккаунта стирает профиль, пользовательские паки и архив. Подписками Apple и Stripe нужно управлять отдельно.",
+                dangerBody: "Удаление аккаунта стирает профиль, пользовательские паки и архив.",
                 deleteAccount: "УДАЛИТЬ АККАУНТ",
                 deletingAccount: "УДАЛЕНИЕ АККАУНТА...",
                 saved: "СОХРАНЕНО"
@@ -968,16 +846,12 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en:
             HomeCopy(
                 eyebrow: "// HOME",
-                lockedStatus: "LOCKED",
-                limitlessStatus: "LIMITLESS",
                 operativeLabel: "OPERATIVE",
                 unknownOperative: "UNKNOWN",
                 missionControl: "MISSION CONTROL",
                 createOnlineRoom: "CREATE ONLINE ROOM",
                 roomKeyPlaceholder: "ROOM KEY",
                 scanQR: "SCAN QR",
-                pricing: "PRICING",
-                limitless: "LIMITLESS",
                 localPassMode: "LOCAL PASS MODE",
                 ranked: "RANKED",
                 archive: "ARCHIVE",
@@ -1004,16 +878,12 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .es:
             HomeCopy(
                 eyebrow: "// INICIO",
-                lockedStatus: "BLOQUEADO",
-                limitlessStatus: "LIMITLESS",
                 operativeLabel: "OPERATIVO",
                 unknownOperative: "DESCONOCIDO",
                 missionControl: "CONTROL DE MISIÓN",
                 createOnlineRoom: "CREAR SALA EN LÍNEA",
                 roomKeyPlaceholder: "CÓDIGO DE SALA",
                 scanQR: "ESCANEAR QR",
-                pricing: "TARIFA",
-                limitless: "LIMITLESS",
                 localPassMode: "MODO LOCAL",
                 ranked: "CLASIFICACIÓN",
                 archive: "ARCHIVO",
@@ -1040,16 +910,12 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .ru:
             HomeCopy(
                 eyebrow: "// ГЛАВНАЯ",
-                lockedStatus: "ЗАКРЫТО",
-                limitlessStatus: "LIMITLESS",
                 operativeLabel: "ОПЕРАТИВНИК",
                 unknownOperative: "НЕИЗВЕСТНО",
                 missionControl: "ЦЕНТР МИССИИ",
                 createOnlineRoom: "СОЗДАТЬ ОНЛАЙН-КОМНАТУ",
                 roomKeyPlaceholder: "КОД КОМНАТЫ",
                 scanQR: "СКАН QR",
-                pricing: "ТАРИФ",
-                limitless: "LIMITLESS",
                 localPassMode: "ЛОКАЛЬНЫЙ РЕЖИМ",
                 ranked: "РАНГ",
                 archive: "АРХИВ",
@@ -1835,44 +1701,6 @@ struct AuthCopy: Hashable {
     }
 }
 
-struct PricingCopy: Hashable {
-    let eyebrow: String
-    let title: String
-    let activeSubtitle: String
-    let inactiveSubtitle: String
-    let planName: String
-    let proBadge: String
-    let features: [PricingFeature]
-    let activeAction: String
-    let inactiveAction: String
-    let checkingAccess: String
-    let contactingAppStore: String
-    let appStoreUnavailable: String
-    let accessActive: String
-    let accessNotActive: String
-
-    func subtitle(isActive: Bool) -> String {
-        isActive ? activeSubtitle : inactiveSubtitle
-    }
-
-    func actionTitle(isActive: Bool) -> String {
-        isActive ? activeAction : inactiveAction
-    }
-
-    func busyTitle(isActive: Bool) -> String {
-        isActive ? checkingAccess : contactingAppStore
-    }
-}
-
-struct PricingFeature: Hashable, Identifiable {
-    let key: String
-    let title: String
-    let detail: String
-    let systemImage: String
-
-    var id: String { key }
-}
-
 struct QRInviteCopy: Hashable {
     let roomBeaconEyebrow: String
     let roomBeaconSubtitle: String
@@ -1898,9 +1726,6 @@ struct QRInviteCopy: Hashable {
 
 struct ProfileCopy: Hashable {
     let eyebrow: String
-    let lockedStatus: String
-    let manageLimitless: String
-    let unlockLimitless: String
     let logOut: String
     let deleteDialogTitle: String
     let deleteDialogAction: String
@@ -1932,9 +1757,6 @@ struct ProfileCopy: Hashable {
     let deletingAccount: String
     let saved: String
 
-    func limitlessAction(isActive: Bool) -> String {
-        isActive ? manageLimitless : unlockLimitless
-    }
 }
 
 struct HistoryCopy: Hashable {
@@ -2080,16 +1902,12 @@ struct WordPackEditorCopy: Hashable {
 
 struct HomeCopy: Hashable {
     let eyebrow: String
-    let lockedStatus: String
-    let limitlessStatus: String
     let operativeLabel: String
     let unknownOperative: String
     let missionControl: String
     let createOnlineRoom: String
     let roomKeyPlaceholder: String
     let scanQR: String
-    let pricing: String
-    let limitless: String
     let localPassMode: String
     let ranked: String
     let archive: String
@@ -2541,7 +2359,7 @@ enum SpyCardThemeID: String, Codable, CaseIterable, Identifiable {
     case dossier
 
     var id: String { rawValue }
-    var requiresLimitless: Bool { self != .field }
+    var requiresFullAccess: Bool { self != .field }
 }
 
 enum SpyCardAccentID: String, Codable, CaseIterable, Identifiable {
@@ -2550,7 +2368,7 @@ enum SpyCardAccentID: String, Codable, CaseIterable, Identifiable {
     case verifiedGreen = "verified_green"
 
     var id: String { rawValue }
-    var requiresLimitless: Bool { self != .signalRed }
+    var requiresFullAccess: Bool { self != .signalRed }
 }
 
 enum SpyCardBadgeID: String, Codable, CaseIterable, Identifiable {
@@ -2560,7 +2378,7 @@ enum SpyCardBadgeID: String, Codable, CaseIterable, Identifiable {
     case handler
 
     var id: String { rawValue }
-    var requiresLimitless: Bool { self != .operative }
+    var requiresFullAccess: Bool { self != .operative }
 }
 
 struct PublicSpyProfile: Codable, Identifiable, Equatable {
@@ -3375,7 +3193,7 @@ struct MembershipBenefits: Codable, Equatable {
         historyLimit: 5
     )
 
-    static let limitless = MembershipBenefits(
+    static let fullAccess = MembershipBenefits(
         aiGenerationsDailyLimit: nil,
         premiumAvatars: true,
         fullHistory: true,
@@ -3401,8 +3219,9 @@ struct Membership: Equatable {
     let aiGenerationsToday: Int?
     let aiRemaining: Int?
 
-    var isLimitless: Bool {
+    var grantsFullAccess: Bool {
         guard tier == .limitless else { return false }
+        if providers.contains("casada") { return true }
         if providers.contains("preview") { return true }
         if providers.contains("admin"), expiresAt == nil { return true }
         guard let expiresAt else { return false }
@@ -3411,7 +3230,7 @@ struct Membership: Equatable {
 
     init(subscriptionStatus: SubscriptionStatus) {
         // `active` remains the authority while older deployments roll forward.
-        // A contradictory inactive response must never grant LIMITLESS access.
+        // A contradictory inactive response must never grant full access.
         let effectiveTier: MembershipTier = subscriptionStatus.active && subscriptionStatus.tier == .limitless
             ? .limitless
             : .free
@@ -3436,11 +3255,11 @@ struct Membership: Equatable {
         aiRemaining: nil
     )
 
-    static let limitlessPreview = Membership(
+    static let fullAccessPreview = Membership(
         tier: .limitless,
         status: "active",
         providers: ["preview"],
-        benefits: .limitless,
+        benefits: .fullAccess,
         expiresAt: nil,
         aiGenerationsToday: nil,
         aiRemaining: nil
@@ -3502,13 +3321,22 @@ struct SubscriptionStatus: Decodable {
         let container = try decoder.container(keyedBy: CodingKeys.self)
         let decodedActive = try container.decodeIfPresent(Bool.self, forKey: .active) ?? false
         let tierKeyIsPresent = container.contains(.tier)
-        let decodedTier = try? container.decode(MembershipTier.self, forKey: .tier)
+        let decodedTierKey = try? container.decode(String.self, forKey: .tier)
+        let decodedTier = decodedTierKey.flatMap { rawValue -> MembershipTier? in
+            let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            if normalized == "casada" {
+                // CASADA is the public full-access protocol. Internally it maps
+                // to the legacy full-benefits tier to preserve wire compatibility.
+                return .limitless
+            }
+            return MembershipTier(rawValue: normalized)
+        }
         // `active` is a compatibility bridge only for the old response shape
         // where `tier` did not exist. A present-but-invalid tier must fail
-        // closed instead of silently becoming LIMITLESS.
+        // closed instead of silently becoming full access.
         let resolvedTier = decodedTier
             ?? (!tierKeyIsPresent && decodedActive ? .limitless : .free)
-        let defaults: MembershipBenefits = resolvedTier == .limitless ? .limitless : .free
+        let defaults: MembershipBenefits = resolvedTier == .limitless ? .fullAccess : .free
         let partialBenefits = try container.decodeIfPresent(PartialMembershipBenefits.self, forKey: .benefits)
 
         active = decodedActive

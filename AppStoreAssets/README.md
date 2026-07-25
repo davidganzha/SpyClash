@@ -20,20 +20,11 @@ The screenshots use the app's Debug-only preview fixtures. Those fixtures
 render the real production SwiftUI screens and bundled assets without creating
 fake production accounts or changing production data.
 
-## Subscription review screenshot
-
-`SubscriptionReview/limitless-weekly-test-2.99.png` shows the StoreKit purchase
-surface and restore control. The displayed `$2.99 / 7 DAYS` value comes from the
-local StoreKit test configuration and now matches the saved App Store Connect
-weekly base price of USD 2.99. This file is a visual reference only and must not
-be attached to App Review. Recapture the same screen from Sandbox or TestFlight
-after StoreKit loads the real localized App Store price.
-
 ## Capture state
 
 - locale: English (U.S.)
 - status bar: 09:41, full signal/Wi-Fi, charged battery
 - screenshots contain no real user credentials or production personal data
 - no screenshots have been uploaded to App Store Connect
-- the subscription image is intentionally blocked from upload until a
-  Sandbox/TestFlight recapture replaces it
+- Every feature is available without a paid tier; no purchase-review image is
+  part of this package

@@ -278,7 +278,7 @@ enum LegalSheetKind: String, Identifiable, Hashable {
             [
                 LegalSection(
                     title: "1. INFORMATION WE COLLECT",
-                    text: "We collect information you provide directly, including your email address, display name, avatar, profile comments, and custom word packs. When you submit a Community report, we store the selected reason, the reporter and reported account identifiers, and a private snapshot of the reported comment when applicable. We store account identifiers, private room and game state, match history, scores, and gameplay statistics. When you use LIMITLESS, we store provider subscription and transaction identifiers, status, and dates; we do not receive your full payment-card details. QR camera frames are processed on device and are not uploaded or retained."
+                    text: "We collect information you provide directly, including your email address, display name, avatar, profile comments, and custom word packs. When you submit a Community report, we store the selected reason, the reporter and reported account identifiers, and a private snapshot of the reported comment when applicable. We store account identifiers, private room and game state, match history, scores, gameplay statistics, and AI-generation diagnostics needed to operate and improve the service. For accounts with a legacy provider agreement, we may retain transaction or subscription identifiers, lifecycle status, and dates; we do not receive full payment-card details. QR camera frames are processed on device and are not uploaded or retained."
                 ),
                 LegalSection(
                     title: "2. HOW WE USE YOUR INFORMATION",
@@ -286,11 +286,11 @@ enum LegalSheetKind: String, Identifiable, Hashable {
                 ),
                 LegalSection(
                     title: "3. DATA SHARING",
-                    text: "We do not sell your personal information. We use service providers to operate SpyClash, including Base44 for application infrastructure, Apple for iOS purchases and sign-in, Stripe for web purchases, and Google for web sign-in and website analytics. Providers process data under their own terms and only as needed for the relevant service. Your display name, avatar, profile comments, competitive statistics, and content you choose to share may be visible to other SpyClash players. A custom word pack may be shown to participants when you select it for a game. Community reports and their snapshots are not public and are available only to authorized administrators and necessary infrastructure providers."
+                    text: "We do not sell your personal information. We use service providers to operate SpyClash, including Base44 for application infrastructure, Apple for iOS sign-in and legacy transaction reconciliation, Stripe for legacy web billing records, and Google for web sign-in and website analytics. Providers process data under their own terms and only as needed for the relevant service. Your display name, avatar, profile comments, competitive statistics, and content you choose to share may be visible to other SpyClash players. A custom word pack may be shown to participants when you select it for a game. Community reports and their snapshots are not public and are available only to authorized administrators and necessary infrastructure providers."
                 ),
                 LegalSection(
                     title: "4. DATA STORAGE",
-                    text: "Account data is retained while your account is active. You can delete the account in the iOS app under Profile > Danger Zone. Profile data, custom word packs, friendships, profile comments, room invitations, active room references, and match-history records are removed. For a Community report involving the deleted account, raw account identifiers are replaced with stable deletion tombstones. The private report and its content snapshot may be retained only as reasonably necessary for safety investigation, enforcement, and legal records; access remains limited to authorized administrators and necessary infrastructure providers. Limited subscription and transaction records may be retained where needed for accounting, fraud prevention, dispute handling, and legal obligations. Account deletion does not cancel billing with Apple or Stripe."
+                    text: "Account data is retained while your account is active. You can delete the account in the iOS app under Profile > Danger Zone. Profile data, custom word packs, friendships, profile comments, room invitations, active room references, and match-history records are removed. For a Community report involving the deleted account, raw account identifiers are replaced with stable deletion tombstones. The private report and its content snapshot may be retained only as reasonably necessary for safety investigation, enforcement, and legal records; access remains limited to authorized administrators and necessary infrastructure providers. Limited legacy transaction records may be retained for cancellation, refund, dispute, fraud-prevention, accounting, and legal obligations. Account deletion does not cancel an existing Apple or Stripe subscription."
                 ),
                 LegalSection(
                     title: "5. WEBSITE ANALYTICS AND LOCAL STORAGE",
@@ -352,8 +352,8 @@ enum LegalSheetKind: String, Identifiable, Hashable {
                     text: "To the maximum extent permitted by law, we shall not be liable for any indirect, incidental, special, consequential, or punitive damages arising out of or related to your use of the service."
                 ),
                 LegalSection(
-                    title: "11. SUBSCRIPTIONS",
-                    text: "LIMITLESS is an optional auto-renewable subscription. Purchases made in the iOS app are billed and managed by Apple; web purchases are billed and managed by Stripe. The provider's price, renewal, cancellation, and refund terms apply. Deleting a SpyClash account does not automatically cancel a subscription with Apple or Stripe."
+                    title: "11. LEGACY PROVIDER AGREEMENTS",
+                    text: "Apple or Stripe agreements created in earlier versions remain managed by the applicable provider. Deleting a SpyClash account does not cancel such an agreement."
                 ),
                 LegalSection(
                     title: "12. CHANGES TO TERMS",

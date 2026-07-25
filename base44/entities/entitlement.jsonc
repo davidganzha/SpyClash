@@ -1,6 +1,6 @@
 {
   "name": "Entitlement",
-  "description": "Server-verified provider source for SpyClash LIMITLESS access. Clients cannot read or write these records directly.",
+  "description": "Legacy server-verified billing source retained for transaction reconciliation. Clients cannot read or write these records directly.",
   "type": "object",
   "properties": {
     "source_key": {
@@ -86,7 +86,7 @@
         "refunded",
         "unknown"
       ],
-      "description": "Last server-verified lifecycle status. Only active, trialing, and grace_period currently grant LIMITLESS access."
+      "description": "Last server-verified legacy billing lifecycle status. Current feature access does not depend on this value."
     },
     "purchased_at": {
       "type": "string",

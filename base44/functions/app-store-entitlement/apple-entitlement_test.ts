@@ -1,5 +1,7 @@
 import {
   appleCommerceConfigurationError,
+  CASADA_PROTOCOL_ENABLED,
+  casadaPurchaseRetirement,
   entitlementStatusFromApple,
   normalizeAppleEntitlement,
   requiresCanonicalSubscriptionStatus,
@@ -13,6 +15,7 @@ function assert(condition: boolean, message: string) {
 }
 
 Deno.test("Apple commerce identity matches the David Ganzha app", () => {
+  assert(CASADA_PROTOCOL_ENABLED, "CASADA purchase retirement was disabled");
   assert(
     SPYCLASH_IOS_BUNDLE_ID === "com.spyclash.ios",
     "bundle identity drifted",
@@ -34,6 +37,20 @@ Deno.test("Apple commerce identity matches the David Ganzha app", () => {
     }) ===
       "APPLE_IAP_BUNDLE_ID does not match the current SpyClash iOS app.",
     "stale bundle identity was not rejected",
+  );
+});
+
+Deno.test("CASADA retires new App Store purchase preparation", () => {
+  const retirement = casadaPurchaseRetirement();
+  assert(retirement?.status === 409, "purchase preparation was not retired");
+  assert(
+    retirement?.message ===
+      "Full access is already included. App Store purchase is not required.",
+    "purchase retirement response drifted",
+  );
+  assert(
+    !retirement?.message.toLowerCase().includes("casada"),
+    "internal protocol name leaked into the purchase message",
   );
 });
 

@@ -1,9 +1,9 @@
 import Stripe from "npm:stripe@14";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
-  DEFAULT_LIMITLESS_PRICE_ID,
   type EntitlementRecord,
-  isLimitlessSubscription,
+  isLegacySubscription,
+  LEGACY_STRIPE_PRICE_ID,
   normalizeStripeEntitlement,
   reconcileStripeEntitlementState,
   resolveExpectedBase44AppID,
@@ -126,10 +126,10 @@ Deno.serve(async (req) => {
     }
     const userID = binding.userID;
 
-    const limitlessPriceID = Deno.env.get("STRIPE_LIMITLESS_PRICE_ID") ||
-      DEFAULT_LIMITLESS_PRICE_ID;
+    const legacyPriceID = Deno.env.get("STRIPE_LIMITLESS_PRICE_ID") ||
+      LEGACY_STRIPE_PRICE_ID;
     if (
-      !isLimitlessSubscription(subscription, limitlessPriceID) &&
+      !isLegacySubscription(subscription, legacyPriceID) &&
       !existing.length
     ) {
       return Response.json({
@@ -151,7 +151,7 @@ Deno.serve(async (req) => {
           subscription,
           userID: ownerUserID,
           userEmail: current?.user_email || existing[0]?.user_email,
-          limitlessPriceID,
+          legacyPriceID,
           eventID: event.id,
           eventCreated: event.created,
         });

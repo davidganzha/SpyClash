@@ -14,7 +14,7 @@ import { reconcileStripeEntitlementState } from "./stripe-entitlement.ts";
 
 type RecordValue = Record<string, any>;
 const USER_ID = "user-1";
-const SUBSCRIPTION_ID = "sub_limitless";
+const SUBSCRIPTION_ID = "sub_legacy";
 const NOW = new Date("2026-07-14T12:00:00.000Z");
 
 function sequence(prefix: string) {
@@ -169,7 +169,7 @@ function entitlement(userID = USER_ID): RecordValue {
       ? "operative@example.com"
       : REDACTED_ENTITLEMENT_EMAIL,
     provider: "stripe",
-    product_id: "limitless",
+    product_id: "legacy_subscription",
     stripe_subscription_id: SUBSCRIPTION_ID,
     status: "active",
     environment: "production",

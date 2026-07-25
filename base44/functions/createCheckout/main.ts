@@ -1,6 +1,7 @@
 import Stripe from "npm:stripe@14";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
+import { casadaCheckoutRetirement } from "./casada-checkout.ts";
 import { withCheckoutBillingLease } from "./checkout-lifecycle.ts";
 import {
   checkoutIdempotencyKey,
@@ -8,7 +9,9 @@ import {
 } from "./checkout-security.ts";
 
 const APP_ORIGIN = "https://spyclash.com";
-const DEFAULT_LIMITLESS_PRICE_ID = "price_1TR5wiRFCq3jt6C66NdM8NY4";
+// Legacy billing identifier retained only for reconciliation if CASADA is
+// disabled during a controlled rollback. New checkout creation is retired.
+const LEGACY_STRIPE_PRICE_ID = "price_1TR5wiRFCq3jt6C66NdM8NY4";
 const GRANTING_STATUSES = new Set(["active", "trialing", "grace_period"]);
 
 type EntitlementRecord = {
@@ -137,7 +140,7 @@ function hasActiveAdminGrant(records: any[], now = new Date()): boolean {
 async function assertNoExistingStripeAccess(
   stripe: Stripe,
   user: { id: string; email: string },
-  limitlessPriceID: string,
+  legacyPriceID: string,
 ) {
   const customers = await stripe.customers.list({
     email: user.email,
@@ -155,7 +158,7 @@ async function assertNoExistingStripeAccess(
   );
 
   for (const subscription of pages.flatMap((page) => page.data)) {
-    if (!hasStripePrice(stripePriceIDs(subscription), limitlessPriceID)) {
+    if (!hasStripePrice(stripePriceIDs(subscription), legacyPriceID)) {
       continue;
     }
     const active = isEntitlementActive({
@@ -172,7 +175,7 @@ async function assertNoExistingStripeAccess(
       );
     }
     throw new CheckoutError(
-      "LIMITLESS is already active on this SpyClash account.",
+      "Subscription access is already active on this SpyClash account.",
       409,
     );
   }
@@ -187,6 +190,11 @@ Deno.serve(async (req) => {
       return Response.json({ error: "Authentication required" }, {
         status: 401,
       });
+    }
+
+    const retirement = casadaCheckoutRetirement();
+    if (retirement) {
+      return Response.json(retirement.body, { status: retirement.status });
     }
 
     let adminGrants: any[];
@@ -205,13 +213,13 @@ Deno.serve(async (req) => {
     }
     if (hasActiveAdminGrant(adminGrants)) {
       throw new CheckoutError(
-        "LIMITLESS is already active on this SpyClash account.",
+        "Subscription access is already active on this SpyClash account.",
         409,
       );
     }
 
-    const limitlessPriceId = Deno.env.get("STRIPE_LIMITLESS_PRICE_ID") ||
-      DEFAULT_LIMITLESS_PRICE_ID;
+    const legacyPriceID = Deno.env.get("STRIPE_LIMITLESS_PRICE_ID") ||
+      LEGACY_STRIPE_PRICE_ID;
     const stripeSecretKey = Deno.env.get("STRIPE_SECRET_KEY");
     if (!stripeSecretKey) {
       return Response.json({ error: "Checkout is temporarily unavailable" }, {
@@ -241,14 +249,14 @@ Deno.serve(async (req) => {
     }
     if (hasActiveStoredMembership(storedEntitlements)) {
       throw new CheckoutError(
-        "LIMITLESS is already active on this SpyClash account.",
+        "Subscription access is already active on this SpyClash account.",
         409,
       );
     }
     await assertNoExistingStripeAccess(
       stripe,
       { id: user.id, email: user.email },
-      limitlessPriceId,
+      legacyPriceID,
     );
 
     const checkoutParams: Stripe.Checkout.SessionCreateParams = {
@@ -256,7 +264,7 @@ Deno.serve(async (req) => {
       mode: "subscription",
       client_reference_id: user.id,
       line_items: [{
-        price: limitlessPriceId,
+        price: legacyPriceID,
         quantity: 1,
       }],
       customer_email: user.email,
@@ -277,7 +285,7 @@ Deno.serve(async (req) => {
       const idempotencyKey = await checkoutIdempotencyKey({
         appID: base44AppId,
         userID: user.id,
-        priceID: limitlessPriceId,
+        priceID: legacyPriceID,
         email: user.email,
       });
       const session = await withCheckoutBillingLease({

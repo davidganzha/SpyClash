@@ -1,16 +1,16 @@
 {
   "name": "MembershipGrant",
-  "description": "Admin-managed LIMITLESS access grants. Clients may read only grants for their own Base44 user id and cannot write them.",
+  "description": "Legacy admin-managed access grants retained for transition compatibility. Clients may read only grants for their own Base44 user id and cannot write them.",
   "type": "object",
   "properties": {
     "user_id": {
       "type": "string",
-      "description": "Base44 User id receiving the LIMITLESS grant."
+      "description": "Base44 User id associated with the legacy grant."
     },
     "active": {
       "type": "boolean",
       "default": true,
-      "description": "Whether this manual LIMITLESS grant is active."
+      "description": "Whether this legacy manual grant is active."
     },
     "expires_at": {
       "type": "string",

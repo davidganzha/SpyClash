@@ -24,7 +24,7 @@ Deno.test("checkout idempotency key is deterministic and account scoped", async 
   const common = {
     appID: CURRENT_BASE44_APP_ID,
     userID: "user-1",
-    priceID: "price_limitless",
+    priceID: "price_legacy",
     email: "Agent@Example.com",
     now: new Date("2026-07-14T12:01:00Z"),
   };
@@ -44,7 +44,7 @@ Deno.test("checkout idempotency is stable only inside its five-minute window", a
   const base = {
     appID: CURRENT_BASE44_APP_ID,
     userID: "user-1",
-    priceID: "price_limitless",
+    priceID: "price_legacy",
     email: "agent@example.com",
   };
   const first = await checkoutIdempotencyKey({

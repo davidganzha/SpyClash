@@ -404,8 +404,6 @@ private struct WordPackEditorSheet: View {
     @State private var aiWordCount: Double
     @State private var isGenerating = false
     @State private var isSaving = false
-    @State private var aiGenerationsToday: Int?
-    @State private var aiLimitFromResponse: Int?
     @FocusState private var focusedField: Field?
 
     private enum Field {
@@ -471,7 +469,6 @@ private struct WordPackEditorSheet: View {
             if !appState.shouldUsePreviewData && appState.membership == nil {
                 await appState.refreshSubscription()
             }
-            aiGenerationsToday = appState.membership?.aiGenerationsToday
         }
     }
 
@@ -534,23 +531,6 @@ private struct WordPackEditorSheet: View {
                     .font(.system(size: 18, weight: .black, design: .monospaced))
                     .foregroundStyle(SpyTheme.red)
             }
-
-            HStack(spacing: 8) {
-                Image(systemName: appState.hasLimitlessAccess ? "infinity" : "clock.fill")
-                    .font(.system(size: 11, weight: .black))
-
-                Text(aiAllowanceLabel)
-                    .font(.system(size: 8, weight: .black, design: .monospaced))
-                    .tracking(0.07)
-                    .spyFitted(lines: 2, scale: 0.62)
-
-                Spacer(minLength: 0)
-            }
-            .foregroundStyle(aiAllowanceAccent)
-            .padding(.horizontal, 10)
-            .frame(minHeight: 34)
-            .background(aiAllowanceAccent.opacity(0.06))
-            .overlay(Rectangle().stroke(aiAllowanceAccent.opacity(0.28), lineWidth: 1))
 
             SpyInput(
                 label: nil,
@@ -678,59 +658,7 @@ private struct WordPackEditorSheet: View {
     }
 
     private var canGenerate: Bool {
-        !isSaving && !isGenerating && !cleanAITheme.isEmpty && !dailyAllowanceExhausted
-    }
-
-    private var effectiveAILimit: Int? {
-        aiLimitFromResponse ?? appState.membershipBenefits?.aiGenerationsDailyLimit
-    }
-
-    private var dailyAllowanceExhausted: Bool {
-        guard appState.membershipTier == .free,
-              let used = aiGenerationsToday,
-              let limit = effectiveAILimit else {
-            return false
-        }
-        return used >= limit
-    }
-
-    private var aiAllowanceLabel: String {
-        switch appState.membershipTier {
-        case .limitless:
-            return localized(
-                en: "LIMITLESS // UNLIMITED AI GENERATIONS",
-                ru: "LIMITLESS // AI-ГЕНЕРАЦИЯ БЕЗ ЛИМИТА",
-                es: "LIMITLESS // GENERACIONES AI ILIMITADAS"
-            )
-        case .free:
-            let limit = effectiveAILimit ?? 10
-            if let aiGenerationsToday {
-                return localized(
-                    en: "FREE // \(aiGenerationsToday) OF \(limit) USED TODAY",
-                    ru: "FREE // \(aiGenerationsToday) ИЗ \(limit) СЕГОДНЯ",
-                    es: "FREE // \(aiGenerationsToday) DE \(limit) USADAS HOY"
-                )
-            }
-            return localized(
-                en: "FREE // \(limit) AI GENERATIONS PER DAY",
-                ru: "FREE // \(limit) AI-ГЕНЕРАЦИЙ В ДЕНЬ",
-                es: "FREE // \(limit) GENERACIONES AI AL DIA"
-            )
-        case nil:
-            return localized(
-                en: "MEMBERSHIP STATUS SYNCING",
-                ru: "СИНХРОНИЗАЦИЯ СТАТУСА ПОДПИСКИ",
-                es: "SINCRONIZANDO ESTADO DE MEMBRESIA"
-            )
-        }
-    }
-
-    private var aiAllowanceAccent: Color {
-        switch appState.membershipTier {
-        case .limitless: SpyTheme.red
-        case .free: SpyTheme.muted
-        case nil: SpyTheme.amber
-        }
+        !isSaving && !isGenerating && !cleanAITheme.isEmpty
     }
 
     private func textFieldSection(label: String, placeholder: String, text: Binding<String>, focus: Field) -> some View {
@@ -836,8 +764,8 @@ private struct WordPackEditorSheet: View {
             setStatus(
                 copy.aiReadyMessage(
                     words: generated.words.count,
-                    used: generated.aiGenerationsToday,
-                    limit: generated.aiLimit
+                    used: nil,
+                    limit: nil
                 ),
                 kind: .success
             )
@@ -857,14 +785,10 @@ private struct WordPackEditorSheet: View {
     }
 
     private func captureAIAllowance(from generated: GeneratedWordPack) {
-        aiGenerationsToday = generated.aiGenerationsToday
         appState.recordAIUsage(
             used: generated.aiGenerationsToday,
             remaining: generated.aiRemaining
         )
-        if let aiLimit = generated.aiLimit {
-            aiLimitFromResponse = aiLimit
-        }
     }
 
     private func localized(en: String, ru: String, es: String) -> String {

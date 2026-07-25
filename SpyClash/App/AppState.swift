@@ -163,7 +163,9 @@ struct AppToastNotice: Identifiable, Equatable {
 @Observable
 final class AppState: NSObject {
     let client: Base44Client
-    let storeKit: StoreKitManager
+    /// Nil while CASADA is active so StoreKit is neither initialized nor
+    /// observed in the full-access protocol.
+    let storeKit: StoreKitManager?
     let membershipRealtime: MembershipRealtimeService
     let radarNearby: RadarNearbyService
     var user: SpyUser? {
@@ -171,14 +173,14 @@ final class AppState: NSObject {
             radarNearby.configure(user: user)
             radarNearby.setActiveRoom(activeRoom)
             guard oldValue?.id != user?.id else { return }
-            // A verified entitlement belongs to exactly one SpyClash account.
+            // Account-scoped access belongs to exactly one SpyClash account.
             // Clear it synchronously before the replacement account renders.
             membership = nil
             membershipOwnerUserID = nil
             membershipSyncState = .unknown
             membershipExpiryTask?.cancel()
             membershipExpiryTask = nil
-            storeKit.accountDidChange()
+            storeKit?.accountDidChange()
             membershipRealtime.stop()
             if let user, let token = client.currentAccessToken {
                 membershipRealtime.start(
@@ -210,7 +212,7 @@ final class AppState: NSObject {
     var authHomeRevealPhase: AuthHomeRevealPhase = .idle
     private(set) var membership: Membership?
     private(set) var membershipSyncState: MembershipSyncState = .unknown
-    private(set) var limitlessUnlockPresentationID: UUID?
+    private(set) var fullAccessUnlockPresentationID: UUID?
     var selectedTab: AppTab = .home
     var shellRoute: AppShellRoute = .main
     var localSetupRequestID = 0
@@ -245,7 +247,7 @@ final class AppState: NSObject {
     @ObservationIgnored private var standardAuthTimelineTask: Task<Void, Never>?
     @ObservationIgnored private var standardAuthRunID: UUID?
     @ObservationIgnored private var membershipExpiryTask: Task<Void, Never>?
-    @ObservationIgnored private var commerceActivationSyncTask: Task<Void, Never>?
+    @ObservationIgnored private var accessActivationSyncTask: Task<Void, Never>?
     @ObservationIgnored private var membershipRealtimeRefreshTask: Task<Void, Never>?
     private static let activeRoomIDStorageKey = "spyclash.activeRoomID"
 
@@ -253,12 +255,14 @@ final class AppState: NSObject {
         let client = Base44Client()
         let radarNearby = RadarNearbyService()
         self.client = client
-        self.storeKit = StoreKitManager(client: client)
+        self.storeKit = SpyClashRelease.isCasadaProtocolActive
+            ? nil
+            : StoreKitManager(client: client)
         self.membershipRealtime = MembershipRealtimeService()
         self.radarNearby = radarNearby
         super.init()
 
-        storeKit.onEntitlementChanged = { [weak self] in
+        storeKit?.onEntitlementChanged = { [weak self] in
             await self?.refreshSubscription()
         }
         membershipRealtime.onMembershipSignal = { [weak self] in
@@ -532,29 +536,29 @@ final class AppState: NSObject {
     }
 
     var membershipTier: MembershipTier? {
-        if isAlphaProgram { return .limitless }
+        if isCasadaProtocolActive { return .limitless }
         guard let membership else { return nil }
-        return membership.isLimitless ? .limitless : .free
+        return membership.grantsFullAccess ? .limitless : .free
     }
 
     var membershipBenefits: MembershipBenefits? {
-        if isAlphaProgram { return .limitless }
+        if isCasadaProtocolActive { return .fullAccess }
         guard let membership else { return nil }
-        return membership.isLimitless ? membership.benefits : .free
+        return membership.grantsFullAccess ? membership.benefits : .free
     }
 
-    var hasLimitlessAccess: Bool {
-        isAlphaProgram || membership?.isLimitless == true
+    var hasFullAccess: Bool {
+        isCasadaProtocolActive || membership?.grantsFullAccess == true
     }
 
-    /// Temporary launch phase. Keep billing and entitlement infrastructure in
-    /// the binary, while exposing the complete product without paid gates.
-    var isAlphaProgram: Bool { SpyClashRelease.isAlpha }
+    /// CASADA exposes the complete product without paid gates. Legacy billing
+    /// infrastructure remains available only for entitlement compatibility.
+    var isCasadaProtocolActive: Bool { SpyClashRelease.isCasadaProtocolActive }
 
     // Kept as a read-only bridge for existing premium presentation code while
     // the richer membership model becomes the shared source of truth.
     var subscriptionActive: Bool {
-        hasLimitlessAccess
+        hasFullAccess
     }
 
     func restoreSession() async {
@@ -573,7 +577,7 @@ final class AppState: NSObject {
         do {
             user = try await client.currentUser()
             reconcileLanguagePreference(with: user?.language)
-            await synchronizeCommerceAccess()
+            await synchronizeAccess()
             await restoreActiveRoomIfPossible()
         } catch {
             client.clearToken()
@@ -836,9 +840,9 @@ final class AppState: NSObject {
 #endif
 
             if cinematic == .apple {
-                // Subscription work must not hold the Apple access screen.
+                // Access synchronization must not hold the Apple sign-in screen.
                 Task { [weak self] in
-                    await self?.synchronizeCommerceAccess()
+                    await self?.synchronizeAccess()
                 }
             }
         } catch {
@@ -865,7 +869,7 @@ final class AppState: NSObject {
         user = authenticatedUser
 
         Task { [weak self] in
-            await self?.synchronizeCommerceAccess()
+            await self?.synchronizeAccess()
         }
 
         let timeline = Task { @MainActor [weak self] in
@@ -1009,7 +1013,7 @@ final class AppState: NSObject {
         membership = nil
         membershipOwnerUserID = nil
         membershipSyncState = .unknown
-        limitlessUnlockPresentationID = nil
+        fullAccessUnlockPresentationID = nil
         authPhase = .email
         authError = nil
         authNotice = nil
@@ -1092,10 +1096,10 @@ final class AppState: NSObject {
             // Ignore a response that belongs to the account that just logged
             // out (or was replaced by another login) while this was in flight.
             guard user?.id == requestedUserID else { return }
-            let shouldPresentUnlock = !isAlphaProgram &&
+            let shouldPresentUnlock = !isCasadaProtocolActive &&
                 membership != nil &&
-                membership?.isLimitless == false &&
-                refreshedMembership.isLimitless
+                membership?.grantsFullAccess == false &&
+                refreshedMembership.grantsFullAccess
             membership = refreshedMembership
             membershipOwnerUserID = requestedUserID
             membershipSyncState = .synced
@@ -1104,54 +1108,54 @@ final class AppState: NSObject {
                 ownerUserID: requestedUserID
             )
             if shouldPresentUnlock {
-                presentLimitlessUnlock()
+                presentFullAccessUnlock()
             }
         } catch is CancellationError {
             guard user?.id == requestedUserID else { return }
             membershipSyncState = membership == nil ? .unknown : .synced
         } catch {
             guard user?.id == requestedUserID else { return }
-            // Preserve the last verified category during an outage. A failed
-            // refresh must not silently turn a LIMITLESS member into FREE.
+            // Preserve the last verified access state during an outage.
             membershipSyncState = .unavailable(message: error.localizedDescription)
         }
     }
 
-    func synchronizeCommerceAccess() async {
-        if client.hasSessionToken {
+    func synchronizeAccess() async {
+        if !isCasadaProtocolActive,
+           client.hasSessionToken,
+           let storeKit {
             do {
                 _ = try await storeKit.synchronizeStoreKitState()
             } catch is CancellationError {
                 return
             } catch {
-                // Stripe or a previously verified Apple source can still be
-                // resolved by checkSubscription while StoreKit/Base44 sync is
-                // temporarily unavailable.
+                // Legacy provider access can still be resolved by Base44 while
+                // StoreKit synchronization is temporarily unavailable.
             }
         }
         await refreshSubscription()
     }
 
-    func synchronizeCommerceAccessOnActivation() {
+    func synchronizeAccessOnActivation() {
         guard user != nil,
               !isRestoring,
               !shouldUsePreviewData,
-              commerceActivationSyncTask == nil else {
+              accessActivationSyncTask == nil else {
             return
         }
 
         membershipRealtime.resume()
 
-        commerceActivationSyncTask = Task { @MainActor [weak self] in
+        accessActivationSyncTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.commerceActivationSyncTask = nil }
-            await self.synchronizeCommerceAccess()
+            defer { self.accessActivationSyncTask = nil }
+            await self.synchronizeAccess()
         }
     }
 
-    func dismissLimitlessUnlock(_ presentationID: UUID) {
-        guard limitlessUnlockPresentationID == presentationID else { return }
-        limitlessUnlockPresentationID = nil
+    func dismissFullAccessUnlock(_ presentationID: UUID) {
+        guard fullAccessUnlockPresentationID == presentationID else { return }
+        fullAccessUnlockPresentationID = nil
     }
 
     private func handleMembershipRealtimeSignal() {
@@ -1167,8 +1171,8 @@ final class AppState: NSObject {
         }
     }
 
-    private func presentLimitlessUnlock() {
-        limitlessUnlockPresentationID = UUID()
+    private func presentFullAccessUnlock() {
+        fullAccessUnlockPresentationID = UUID()
     }
 
     private func scheduleMembershipExpiryRefresh(
@@ -1403,8 +1407,10 @@ final class AppState: NSObject {
             spyCardAccent: "signal_red",
             spyCardBadge: "operative"
         )
-        membership = arguments.contains("--spyclash-preview-limitless")
-            ? .limitlessPreview
+        let previewsFullAccess = arguments.contains("--spyclash-preview-casada")
+            || arguments.contains("--spyclash-preview-limitless")
+        membership = previewsFullAccess
+            ? .fullAccessPreview
             : .free
         membershipOwnerUserID = user?.id
         membershipSyncState = .synced
@@ -1424,8 +1430,6 @@ final class AppState: NSObject {
         shellRoute = .main
 
         switch previewArgumentValue(prefix: "--spyclash-preview-sheet=", in: arguments) {
-        case "pricing":
-            presentedSheet = .pricing
         case "privacy", "privacyPolicy", "privacy-policy":
             presentedSheet = .legal(.privacy)
         case "terms", "termsOfService", "terms-of-service":
@@ -1581,7 +1585,6 @@ enum AppShellRoute: String, Hashable {
 enum AppSheet: Identifiable, Hashable {
     case qrScanner
     case roomQR(GameRoom)
-    case pricing
     case legal(LegalSheetKind)
 
     var id: String {
@@ -1590,8 +1593,6 @@ enum AppSheet: Identifiable, Hashable {
             "qrScanner"
         case .roomQR(let room):
             "roomQR-\(room.id)"
-        case .pricing:
-            "pricing"
         case .legal(let kind):
             "legal-\(kind.id)"
         }
@@ -1646,6 +1647,19 @@ private enum ResetPasswordLinkParser {
     }
 }
 enum SpyClashRelease {
-    static let isAlpha = false
-    static let alphaVersionLabel = "ALPHA 01.01V"
+    static let isCasadaProtocolActive = true
+
+    static var headerVersionLabel: String {
+        let info = Bundle.main.infoDictionary ?? [:]
+        guard let marketingVersion = info["CFBundleShortVersionString"] as? String,
+              let buildVersion = info["CFBundleVersion"] as? String,
+              let majorVersion = marketingVersion.split(separator: ".").first else {
+            return ""
+        }
+
+        let formattedBuild = Int(buildVersion)
+            .map { String(format: "%02d", $0) }
+            ?? buildVersion
+        return "\(majorVersion).\(formattedBuild)v"
+    }
 }
