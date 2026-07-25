@@ -630,6 +630,13 @@ struct LocalGameView: View {
         VStack(alignment: .leading, spacing: 16) {
             localIntelHeader
             localThemeInput
+            AIThemeSuggestionStrip(
+                language: appState.language,
+                selectedTheme: customTheme,
+                accessibilityIdentifier: "localGame.themeSuggestions"
+            ) { suggestion in
+                updateLocalThemeInput(suggestion)
+            }
             localIntelThemeActions
             localIntelMessages
             localIntelPackSelection
@@ -3031,7 +3038,12 @@ struct LocalGameView: View {
                     aiGenerationsToday: nil
                 )
             } else {
-                generated = try await appState.client.generateWordPack(theme: theme, count: targetCount)
+                generated = try await appState.client.generateWordPack(
+                    theme: theme,
+                    count: targetCount,
+                    requestID: requestID,
+                    preferFresh: existingPoolCount >= 2
+                )
             }
             appState.recordAIUsage(
                 used: generated.aiGenerationsToday,
@@ -3113,7 +3125,9 @@ struct LocalGameView: View {
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
                     count: additionalCount,
-                    excluding: current
+                    requestID: requestID,
+                    excluding: current,
+                    preferFresh: false
                 )
             }
             appState.recordAIUsage(

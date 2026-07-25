@@ -457,6 +457,164 @@ struct SpyInput: View {
     }
 }
 
+struct AIThemeSuggestionStrip: View {
+    let language: AppLanguage
+    let selectedTheme: String
+    let accessibilityIdentifier: String
+    let onSelect: (String) -> Void
+
+    private struct Suggestion: Identifiable {
+        let id: String
+        let title: String
+        let systemImage: String
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            HStack(spacing: 8) {
+                Text("// \(title)")
+                    .foregroundStyle(SpyTheme.dim)
+
+                Spacer(minLength: 8)
+
+                Text(actionHint)
+                    .foregroundStyle(SpyTheme.faint)
+                    .multilineTextAlignment(.trailing)
+            }
+            .font(.system(size: 8, weight: .black, design: .monospaced))
+            .tracking(0.08)
+            .lineLimit(1)
+            .minimumScaleFactor(0.66)
+            .accessibilityHidden(true)
+
+            ScrollView(.horizontal, showsIndicators: false) {
+                LazyHStack(spacing: 8) {
+                    ForEach(suggestions) { suggestion in
+                        suggestionButton(suggestion)
+                    }
+                }
+                .padding(.horizontal, 1)
+            }
+            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+        }
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+
+    private func suggestionButton(_ suggestion: Suggestion) -> some View {
+        let isSelected = selectedTheme
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .localizedCaseInsensitiveCompare(suggestion.title) == .orderedSame
+
+        return Button {
+            HapticManager.shared.fire(.tabSelection)
+            withAnimation(.smooth(duration: 0.18)) {
+                onSelect(suggestion.title)
+            }
+        } label: {
+            HStack(spacing: 7) {
+                Image(systemName: suggestion.systemImage)
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(isSelected ? SpyTheme.red : SpyTheme.dim)
+                    .accessibilityHidden(true)
+
+                Text(suggestion.title.uppercased())
+                    .font(.system(size: 10, weight: .black, design: .monospaced))
+                    .tracking(0.04)
+                    .foregroundStyle(isSelected ? .white : SpyTheme.muted)
+                    .lineLimit(1)
+            }
+            .padding(.horizontal, 11)
+            .frame(minHeight: 40)
+            .background(
+                isSelected ? SpyTheme.red.opacity(0.10) : SpyTheme.control,
+                in: CutCornerShape(cut: 7)
+            )
+            .overlay(
+                CutCornerShape(cut: 7)
+                    .stroke(
+                        isSelected ? SpyTheme.red.opacity(0.62) : SpyTheme.strokeStrong,
+                        lineWidth: 1
+                    )
+            )
+            .contentShape(CutCornerShape(cut: 7))
+        }
+        .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+        .spyHitTarget()
+        .accessibilityLabel(suggestion.title)
+        .accessibilityHint(selectionHint)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("\(accessibilityIdentifier).\(suggestion.id)")
+    }
+
+    private var title: String {
+        switch language {
+        case .ru: "ИДЕИ ДЛЯ ТЕМЫ"
+        case .es: "IDEAS DE TEMA"
+        case .en: "THEME IDEAS"
+        }
+    }
+
+    private var actionHint: String {
+        switch language {
+        case .ru: "НАЖМИ, ЧТОБЫ ВСТАВИТЬ"
+        case .es: "TOCA PARA USAR"
+        case .en: "TAP TO USE"
+        }
+    }
+
+    private var selectionHint: String {
+        switch language {
+        case .ru: "Подставить эту тему в поле"
+        case .es: "Usar este tema en el campo"
+        case .en: "Use this theme in the field"
+        }
+    }
+
+    private var suggestions: [Suggestion] {
+        switch language {
+        case .ru:
+            [
+                Suggestion(id: "marvel", title: "Герои Marvel", systemImage: "shield.fill"),
+                Suggestion(id: "harry-potter", title: "Мир Гарри Поттера", systemImage: "sparkles"),
+                Suggestion(id: "europe", title: "Страны Европы", systemImage: "globe.europe.africa.fill"),
+                Suggestion(id: "music-2000s", title: "Хиты 2000-х", systemImage: "music.note"),
+                Suggestion(id: "football", title: "Футболисты", systemImage: "soccerball"),
+                Suggestion(id: "brands", title: "Известные бренды", systemImage: "tag.fill"),
+                Suggestion(id: "world-food", title: "Мировая кухня", systemImage: "fork.knife"),
+                Suggestion(id: "video-games", title: "Видеоигры", systemImage: "gamecontroller.fill"),
+                Suggestion(id: "mythology", title: "Греческая мифология", systemImage: "building.columns.fill"),
+                Suggestion(id: "movies-tv", title: "Фильмы и сериалы", systemImage: "film.fill")
+            ]
+        case .es:
+            [
+                Suggestion(id: "marvel", title: "Héroes de Marvel", systemImage: "shield.fill"),
+                Suggestion(id: "harry-potter", title: "Mundo de Harry Potter", systemImage: "sparkles"),
+                Suggestion(id: "europe", title: "Países de Europa", systemImage: "globe.europe.africa.fill"),
+                Suggestion(id: "music-2000s", title: "Éxitos de los 2000", systemImage: "music.note"),
+                Suggestion(id: "football", title: "Futbolistas", systemImage: "soccerball"),
+                Suggestion(id: "brands", title: "Marcas famosas", systemImage: "tag.fill"),
+                Suggestion(id: "world-food", title: "Cocina del mundo", systemImage: "fork.knife"),
+                Suggestion(id: "video-games", title: "Videojuegos", systemImage: "gamecontroller.fill"),
+                Suggestion(id: "mythology", title: "Mitología griega", systemImage: "building.columns.fill"),
+                Suggestion(id: "movies-tv", title: "Cine y series", systemImage: "film.fill")
+            ]
+        case .en:
+            [
+                Suggestion(id: "marvel", title: "Marvel heroes", systemImage: "shield.fill"),
+                Suggestion(id: "harry-potter", title: "Harry Potter universe", systemImage: "sparkles"),
+                Suggestion(id: "europe", title: "European countries", systemImage: "globe.europe.africa.fill"),
+                Suggestion(id: "music-2000s", title: "2000s hits", systemImage: "music.note"),
+                Suggestion(id: "football", title: "Football players", systemImage: "soccerball"),
+                Suggestion(id: "brands", title: "Famous brands", systemImage: "tag.fill"),
+                Suggestion(id: "world-food", title: "World cuisine", systemImage: "fork.knife"),
+                Suggestion(id: "video-games", title: "Video games", systemImage: "gamecontroller.fill"),
+                Suggestion(id: "mythology", title: "Greek mythology", systemImage: "building.columns.fill"),
+                Suggestion(id: "movies-tv", title: "Movies and TV", systemImage: "film.fill")
+            ]
+        }
+    }
+}
+
 struct SpyWebSlider: View {
     @Environment(\.isEnabled) private var isEnabled
     @Binding var value: Double
@@ -904,23 +1062,21 @@ private struct GlobalToastLayer: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        if !appState.toastNotices.isEmpty {
-            VStack(alignment: .trailing, spacing: 8) {
-                ForEach(appState.toastNotices) { notice in
-                    GlobalToastNoticeView(notice: notice)
-                        .transition(toastTransition)
+        VStack(alignment: .trailing, spacing: 8) {
+            ForEach(appState.toastNotices) { notice in
+                GlobalToastNoticeView(notice: notice) {
+                    dismiss(notice)
                 }
+                .transition(toastTransition)
             }
-            .frame(maxWidth: 236)
-            .padding(.trailing, 12)
-            .padding(.bottom, 92)
-            .allowsHitTesting(false)
-            .accessibilityElement(children: .contain)
-            .animation(
-                reduceMotion ? .easeOut(duration: 0.14) : .smooth(duration: 0.28),
-                value: appState.toastNotices.map(\.id)
-            )
         }
+        .padding(.trailing, 12)
+        .padding(.bottom, 92)
+        .accessibilityElement(children: .contain)
+        .animation(
+            reduceMotion ? .easeOut(duration: 0.18) : .easeInOut(duration: 0.34),
+            value: appState.toastNotices.map(\.id)
+        )
     }
 
     private var toastTransition: AnyTransition {
@@ -930,10 +1086,18 @@ private struct GlobalToastLayer: View {
             removal: .move(edge: .trailing).combined(with: .opacity)
         )
     }
+
+    private func dismiss(_ notice: AppToastNotice) {
+        HapticManager.shared.playToastDismissFeedback()
+        withAnimation(reduceMotion ? .easeOut(duration: 0.18) : .easeInOut(duration: 0.26)) {
+            appState.dismissToast(notice.id)
+        }
+    }
 }
 
 private struct GlobalToastNoticeView: View {
     let notice: AppToastNotice
+    let onDismiss: () -> Void
 
     private var accent: Color {
         switch notice.kind {
@@ -944,56 +1108,75 @@ private struct GlobalToastNoticeView: View {
     }
 
     var body: some View {
-        HStack(alignment: .top, spacing: 8) {
-            Group {
-                if let avatar = notice.avatar {
-                    Text(avatar)
-                        .font(.system(size: 14))
-                } else {
-                    Image(systemName: notice.systemImage)
-                        .font(.system(size: 11, weight: .bold))
-                        .foregroundStyle(accent)
+        Button(action: onDismiss) {
+            HStack(alignment: .top, spacing: 8) {
+                Group {
+                    if let avatar = notice.avatar {
+                        Text(avatar)
+                            .font(.system(size: 14))
+                    } else {
+                        Image(systemName: notice.systemImage)
+                            .font(.system(size: 11, weight: .bold))
+                            .foregroundStyle(accent)
+                    }
+                }
+                .frame(width: 24, height: 24)
+                .background(SpyTheme.control, in: CutCornerShape(cut: 5))
+
+                VStack(alignment: .leading, spacing: 3) {
+                    Text(notice.title)
+                        .font(.system(size: 9, weight: .black, design: .default))
+                        .tracking(0.04)
+                        .foregroundStyle(.white)
+                        .lineLimit(3)
+                        .minimumScaleFactor(0.72)
+                        .fixedSize(horizontal: false, vertical: true)
+
+                    HStack(spacing: 5) {
+                        Circle()
+                            .fill(accent)
+                            .frame(width: 4, height: 4)
+                        Text(notice.detail)
+                            .font(.system(size: 7, weight: .black, design: .monospaced))
+                            .tracking(0.10)
+                            .foregroundStyle(accent)
+                            .lineLimit(1)
+                    }
                 }
             }
-            .frame(width: 24, height: 24)
-            .background(SpyTheme.control, in: CutCornerShape(cut: 5))
-
-            VStack(alignment: .leading, spacing: 3) {
-                Text(notice.title)
-                    .font(.system(size: 9, weight: .black, design: .default))
-                    .tracking(0.04)
-                    .foregroundStyle(.white)
-                    .lineLimit(3)
-                    .minimumScaleFactor(0.72)
-                    .fixedSize(horizontal: false, vertical: true)
-
-                HStack(spacing: 5) {
-                    Circle()
-                        .fill(accent)
-                        .frame(width: 4, height: 4)
-                    Text(notice.detail)
-                        .font(.system(size: 7, weight: .black, design: .monospaced))
-                        .tracking(0.10)
-                        .foregroundStyle(accent)
-                        .lineLimit(1)
-                }
+            .padding(.horizontal, 9)
+            .padding(.vertical, 8)
+            .frame(minHeight: 42)
+            .frame(width: toastWidth, alignment: .leading)
+            .background(SpyTheme.panelDeep.opacity(0.98), in: CutCornerShape(cut: 7))
+            .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.stroke, lineWidth: 1))
+            .overlay(alignment: .leading) {
+                Rectangle()
+                    .fill(accent)
+                    .frame(width: 2, height: 18)
             }
-            .frame(maxWidth: .infinity, alignment: .leading)
+            .contentShape(CutCornerShape(cut: 7))
         }
-        .padding(.horizontal, 9)
-        .padding(.vertical, 8)
-        .frame(minHeight: 42)
-        .background(SpyTheme.panelDeep.opacity(0.98), in: CutCornerShape(cut: 7))
-        .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.stroke, lineWidth: 1))
-        .overlay(alignment: .leading) {
-            Rectangle()
-                .fill(accent)
-                .frame(width: 2, height: 18)
-        }
+        .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
         .shadow(color: accent.opacity(0.12), radius: 7)
         .shadow(color: .black.opacity(0.46), radius: 8, y: 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(notice.title), \(notice.detail)")
+        .accessibilityHint("Tap to dismiss")
+    }
+
+    private var toastWidth: CGFloat {
+        let titleFont = UIFont.systemFont(ofSize: 9, weight: .black)
+        let detailFont = UIFont.monospacedSystemFont(ofSize: 7, weight: .black)
+        let titleWidth = (notice.title as NSString)
+            .size(withAttributes: [.font: titleFont]).width
+            + CGFloat(max(0, notice.title.count - 1)) * 0.36
+        let detailWidth = (notice.detail as NSString)
+            .size(withAttributes: [.font: detailFont]).width
+            + CGFloat(max(0, notice.detail.count - 1)) * 0.70
+
+        // Icon, spacing, status dot, and horizontal padding around the text.
+        return min(236, max(112, max(titleWidth, detailWidth + 9) + 50))
     }
 }
 

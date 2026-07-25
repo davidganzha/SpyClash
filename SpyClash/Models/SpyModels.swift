@@ -2676,10 +2676,11 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var currentAskerEmail: String?
     var currentAnswererEmail: String?
     var winner: String?
+    var introStartedAt: String?
     var gameStartedAt: String?
     var gameDurationSeconds: Int?
-    var gamePausedAt: String? = nil
-    var gamePausedTotalSeconds: Int? = nil
+    var gamePausedAt: String?
+    var gamePausedTotalSeconds: Int?
     var questionPhase: String?
     var currentAnswer: String?
     var currentAnswerFeedback: String?
@@ -2759,6 +2760,10 @@ struct GameRoom: Codable, Identifiable, Hashable {
         !playersList.isEmpty && playersList.allSatisfy { cardsReadList.contains($0.email) }
     }
 
+    var isGamePaused: Bool {
+        gamePausedAt?.nilIfBlank != nil
+    }
+
     enum CodingKeys: String, CodingKey {
         case id
         case code
@@ -2775,6 +2780,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case currentAskerEmail = "current_asker_email"
         case currentAnswererEmail = "current_answerer_email"
         case winner
+        case introStartedAt = "intro_started_at"
         case gameStartedAt = "game_started_at"
         case gameDurationSeconds = "game_duration_seconds"
         case gamePausedAt = "game_paused_at"
@@ -2797,12 +2803,27 @@ struct GameRoom: Codable, Identifiable, Hashable {
 }
 
 extension GameRoom {
-    static func previewRoom(status rawStatus: String = "waiting") -> GameRoom {
-        let players = [
+    static func previewRoom(status rawStatus: String = "waiting", playerCount: Int = 3) -> GameRoom {
+        let basePlayers = [
             Player(email: "operative.preview@spyclash.local", name: "Red Raven", avatar: "🕵️"),
             Player(email: "cipher@spyclash.local", name: "Cipher", avatar: "🎭"),
             Player(email: "ghost@spyclash.local", name: "Ghost", avatar: "👤")
         ]
+        let clampedPlayerCount = min(max(playerCount, basePlayers.count), 12)
+        let additionalPlayers: [Player]
+        if clampedPlayerCount > basePlayers.count {
+            additionalPlayers = (basePlayers.count..<clampedPlayerCount).map { index in
+                let number = index + 1
+                return Player(
+                    email: "operative\(number)@spyclash.local",
+                    name: "Operative \(number)",
+                    avatar: "🕶️"
+                )
+            }
+        } else {
+            additionalPlayers = []
+        }
+        let players = basePlayers + additionalPlayers
         let normalizedStatus = rawStatus.lowercased()
         let status: String
         let readyPlayers: [String]
@@ -2841,7 +2862,16 @@ extension GameRoom {
             winner = nil
             spyEmail = players[1].email
             questionPhase = "asking"
-        case "playing":
+        case "cards_last", "cards-last", "last-card":
+            status = "playing"
+            readyPlayers = []
+            cardsRead = [players[1].email, players[2].email]
+            voteRequests = []
+            detectiveVotes = nil
+            winner = nil
+            spyEmail = players[1].email
+            questionPhase = "asking"
+        case "playing", "paused":
             status = "playing"
             readyPlayers = []
             cardsRead = players.map(\.email)
@@ -2854,7 +2884,7 @@ extension GameRoom {
             status = "playing"
             readyPlayers = []
             cardsRead = players.map(\.email)
-            voteRequests = [players[0].email, players[2].email]
+            voteRequests = Array(players.prefix(max(2, players.count / 2 + 1))).map(\.email)
             detectiveVotes = nil
             winner = nil
             spyEmail = players[1].email
@@ -2909,8 +2939,11 @@ extension GameRoom {
             currentAskerEmail: players[0].email,
             currentAnswererEmail: players[2].email,
             winner: winner,
-            gameStartedAt: status == "playing" ? startedAt : nil,
+            introStartedAt: status == "roulette" ? ISO8601DateFormatter().string(from: Date()) : nil,
+            gameStartedAt: status == "playing" && cardsRead.count == players.count ? startedAt : nil,
             gameDurationSeconds: 900,
+            gamePausedAt: normalizedStatus == "paused" ? ISO8601DateFormatter().string(from: Date()) : nil,
+            gamePausedTotalSeconds: 0,
             questionPhase: questionPhase,
             currentAnswer: nil,
             currentAnswerFeedback: nil,

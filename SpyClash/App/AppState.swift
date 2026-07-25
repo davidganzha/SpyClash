@@ -1873,8 +1873,15 @@ final class AppState: NSObject {
         let shouldPreviewActiveRoom = requestedTab == .game || arguments.contains("--spyclash-preview-active-room")
         selectedTab = requestedTab
         language = previewLanguage(from: arguments) ?? AppLanguage.stored
+        let previewPlayerCount = previewArgumentValue(
+            prefix: "--spyclash-preview-player-count=",
+            in: arguments
+        ).flatMap(Int.init)
         activeRoom = shouldPreviewActiveRoom
-            ? GameRoom.previewRoom(status: previewArgumentValue(prefix: "--spyclash-preview-room=", in: arguments) ?? "waiting")
+            ? GameRoom.previewRoom(
+                status: previewArgumentValue(prefix: "--spyclash-preview-room=", in: arguments) ?? "waiting",
+                playerCount: previewPlayerCount ?? 3
+            )
             : nil
         roomSyncOperation = previewRoomSyncOperation(from: arguments)
         pendingJoinCode = nil

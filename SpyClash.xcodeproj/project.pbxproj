@@ -14,6 +14,7 @@
 		13D77822DD0A8C0C325DD829 /* Rajdhani-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */; };
 		1FBE45CC7EB218F58B3FF8B3 /* RadarNearbyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9250197E503D48B2502EFF /* RadarNearbyService.swift */; };
 		2296623A2D3D1D8A43A1A4DC /* SpyClashMatchLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 154D6A5D3C20539A72285920 /* SpyClashMatchLiveActivityController.swift */; };
+		230419432726BAB7D67CCCA2 /* OnlineGameExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02196190F4444A14882CA7C3 /* OnlineGameExperience.swift */; };
 		2946A41A9575F0D1AEE2D809 /* SpyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86974FE98CF9350796FC28D3 /* SpyModels.swift */; };
 		2AE8379041D2415FE0005E5B /* GameRoomLiveActivityProjection.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E0CCD1E46813B6962CBD4B /* GameRoomLiveActivityProjection.swift */; };
 		309F817C661DCC3A931B4F28 /* AppTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA586ACEEC2D7E92F3621A49 /* AppTab.swift */; };
@@ -78,6 +79,7 @@
 /* End PBXCopyFilesBuildPhase section */
 
 /* Begin PBXFileReference section */
+		02196190F4444A14882CA7C3 /* OnlineGameExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineGameExperience.swift; sourceTree = "<group>"; };
 		05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyOrbSceneView.swift; sourceTree = "<group>"; };
 		0615AC062761EBDE879255B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		103786B1CACE81CF96C268EF /* AuthView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthView.swift; sourceTree = "<group>"; };
@@ -200,6 +202,7 @@
 				16DD679CA8E36033E9AD5D76 /* HomeView.swift */,
 				723E083EC43863E9B19D1DBD /* LeaderboardView.swift */,
 				8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */,
+				02196190F4444A14882CA7C3 /* OnlineGameExperience.swift */,
 				F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */,
 				6B25DFE515749E670224D319 /* ProfileView.swift */,
 				FA6E7B15464DD14D3E49671B /* QRSheets.swift */,
@@ -434,6 +437,7 @@
 				047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */,
 				FE4AD779C9178990AE6FB3B2 /* LocalGameView.swift in Sources */,
 				BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */,
+				230419432726BAB7D67CCCA2 /* OnlineGameExperience.swift in Sources */,
 				7B6D3EB62FE74629B61B73AE /* PricingView.swift in Sources */,
 				A14016F54504B30BA64BB8DA /* ProfileView.swift in Sources */,
 				98DA09BA0F4F02C29F67E3EA /* PushNotificationCoordinator.swift in Sources */,
@@ -574,7 +578,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -632,7 +636,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 14;
+				CURRENT_PROJECT_VERSION = 15;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

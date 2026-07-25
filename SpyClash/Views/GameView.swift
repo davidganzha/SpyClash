@@ -11,6 +11,8 @@ struct GameView: View {
     @State private var isRequestingVote = false
     @State private var isCastingVote = false
     @State private var isMarkingCardRead = false
+    @State private var isTogglingGamePause = false
+    @State private var isFinalizingExpiredRoom = false
     @State private var isTogglingReady = false
     @State private var lobbyPackLoadState = RoomPackLoadState.idle
     @State private var isSubmittingSpyGuess = false
@@ -89,33 +91,14 @@ struct GameView: View {
     }
 
     var body: some View {
-        PageChrome(eyebrow: copy.eyebrow, status: appState.activeRoom.map(roomStateLabel) ?? copy.standby) {
-            VStack(alignment: .leading, spacing: 18) {
-                Group {
-                    if let room = appState.activeRoom {
-                        switch room.normalizedStatus {
-                        case "ready_voting":
-                            readyVotingRoom(room)
-                        case "roulette":
-                            rouletteRoom(room)
-                        case "playing":
-                            playingRoom(room)
-                        case "ended", "finished":
-                            finishedRoom(room)
-                        default:
-                            waitingRoom(room)
-                        }
-                    } else {
-                        emptyRoom
-                    }
-                }
-                .id(roomSceneKey)
-                .transition(.opacity)
+        Group {
+            if let room = appState.activeRoom, showsImmersiveGameExperience(for: room) {
+                immersiveGameExperience(room)
+            } else {
+                standardGameSurface
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 20)
-            .animation(SpyMotion.page, value: roomSceneKey)
         }
+        .animation(reduceMotion ? nil : SpyMotion.page, value: roomSceneKey)
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if let room = appState.activeRoom,
                showsWaitingFooter(for: room),
@@ -140,6 +123,13 @@ struct GameView: View {
                 }
             }
         }
+        .task(id: expiredRoomTaskKey) {
+            guard let room = appState.activeRoom,
+                  room.normalizedStatus == "playing",
+                  isTimeExpired(room),
+                  !room.isGamePaused else { return }
+            await finalizeExpiredRoomIfNeeded(room)
+        }
         .onChange(of: appState.activeRoom?.gameMode) { _, rawMode in
             guard let rawMode else { return }
             selectedGameMode = SpyGameMode(rawValue: rawMode.lowercased()) ?? .questions
@@ -147,6 +137,20 @@ struct GameView: View {
         .onChange(of: appState.activeRoom?.gameDurationSeconds) { _, seconds in
             guard let seconds, !isUpdatingDuration, !isDraggingOnlineDuration else { return }
             selectedDurationMinutes = Double(max(1, min(seconds / 60, 15)))
+        }
+        .onAppear {
+            updateOnlineShellChromeSuppression()
+#if DEBUG
+            if ProcessInfo.processInfo.arguments.contains("--spyclash-preview-reveal-role") {
+                revealRole = true
+            }
+#endif
+        }
+        .onChange(of: appState.activeRoom?.normalizedStatus) { _, _ in
+            updateOnlineShellChromeSuppression()
+        }
+        .onDisappear {
+            appState.isShellChromeSuppressed = false
         }
         .onChange(of: status) { _, message in
             publishGameToast(message)
@@ -175,8 +179,42 @@ struct GameView: View {
         }
     }
 
+    private var standardGameSurface: some View {
+        PageChrome(eyebrow: copy.eyebrow, status: appState.activeRoom.map(roomStateLabel) ?? copy.standby) {
+            VStack(alignment: .leading, spacing: 18) {
+                Group {
+                    if let room = appState.activeRoom {
+                        switch room.normalizedStatus {
+                        case "ready_voting":
+                            readyVotingRoom(room)
+                        case "roulette":
+                            rouletteRoom(room)
+                        case "playing":
+                            playingRoom(room)
+                        case "ended", "finished":
+                            finishedRoom(room)
+                        default:
+                            waitingRoom(room)
+                        }
+                    } else {
+                        emptyRoom
+                    }
+                }
+                .id(roomSceneKey)
+                .transition(.opacity)
+            }
+            .padding(.horizontal, 18)
+            .padding(.top, 20)
+            .animation(SpyMotion.page, value: roomSceneKey)
+        }
+    }
+
     private var roomSceneKey: String {
         guard let room = appState.activeRoom else { return "empty" }
+        if room.normalizedStatus == "playing" {
+            let phase = room.allRoleCardsRead && room.gameStartedAt != nil ? "active" : "role-gate"
+            return "\(room.id)-playing-\(phase)"
+        }
         return "\(room.id)-\(room.normalizedStatus)"
     }
 
@@ -188,8 +226,168 @@ struct GameView: View {
         return "waiting-\(room.id)"
     }
 
+    private var expiredRoomTaskKey: String {
+        guard let room = appState.activeRoom,
+              room.normalizedStatus == "playing",
+              room.gameStartedAt != nil else { return "inactive" }
+        return "\(room.id)-\(room.gameStartedAt ?? "")-\(room.isGamePaused)-\(isTimeExpired(room))"
+    }
+
     private var isOnlineTextInputFocused: Bool {
         focusedOnlineSetupField != nil
+    }
+
+    private func updateOnlineShellChromeSuppression() {
+        guard let status = appState.activeRoom?.normalizedStatus else {
+            appState.isShellChromeSuppressed = false
+            return
+        }
+        appState.isShellChromeSuppressed = status == "roulette" || status == "playing"
+    }
+
+    private func showsImmersiveGameExperience(for room: GameRoom) -> Bool {
+        room.normalizedStatus == "roulette" || room.normalizedStatus == "playing"
+    }
+
+    @ViewBuilder
+    private func immersiveGameExperience(_ room: GameRoom) -> some View {
+        switch room.normalizedStatus {
+        case "roulette":
+            OnlineGameIntroScene(room: room, language: appState.language)
+                .transition(.opacity)
+                .task(id: "intro-\(room.id)-\(room.introStartedAt ?? "pending")") {
+                    await completeRouletteIfNeeded(room)
+                }
+
+        case "playing" where !room.allRoleCardsRead || room.gameStartedAt == nil:
+            OnlineRoleRevealScene(
+                room: room,
+                language: appState.language,
+                role: onlineRoleContent(for: room),
+                cardTheme: onlineCardTheme,
+                cardAccent: onlineCardAccent,
+                currentUserEmail: appState.user?.email,
+                isRevealed: revealRole,
+                isConfirming: isMarkingCardRead,
+                onReveal: revealOnlineRole,
+                onConfirm: {
+                    Task { await markCardRead(room) }
+                },
+                onLeave: {
+                    Task { await leaveRoom(room) }
+                }
+            )
+            .transition(.opacity)
+
+        case "playing":
+            OnlineActiveGameScene(
+                room: room,
+                language: appState.language,
+                role: onlineRoleContent(for: room),
+                cardTheme: onlineCardTheme,
+                cardAccent: onlineCardAccent,
+                currentUserEmail: appState.user?.email,
+                isHost: isHost(room),
+                isRoleRevealed: revealRole,
+                canAdvance: canCurrentUserAdvance(room),
+                canRequestVote: canCurrentUserRequestVote(room),
+                canSpyGuess: canCurrentUserGuess(room),
+                canCastVote: canCurrentUserCastVote(room),
+                onToggleRole: revealOnlineRole,
+                onTogglePause: {
+                    Task { await toggleGamePause(room) }
+                },
+                onAdvance: {
+                    Task { await advance(room) }
+                },
+                onRequestVote: {
+                    Task { await requestVote(room) }
+                },
+                onCastVote: { targetEmail in
+                    Task { await castVote(room, targetEmail: targetEmail) }
+                },
+                onSpyGuess: {
+                    showSpyGuess = true
+                    HapticManager.shared.fire(.buttonPress)
+                },
+                onLeave: {
+                    Task { await leaveRoom(room) }
+                }
+            )
+            .transition(.opacity)
+
+        default:
+            standardGameSurface
+        }
+    }
+
+    private func revealOnlineRole() {
+        withAnimation(reduceMotion ? .easeInOut(duration: 0.16) : .spring(response: 0.72, dampingFraction: 0.78)) {
+            revealRole.toggle()
+        }
+        HapticManager.shared.fire(revealRole ? .reveal : .buttonPress)
+    }
+
+    private func onlineRoleContent(for room: GameRoom) -> MissionRoleCardContent {
+        if isCurrentUserSpectator(room) {
+            return .spectator
+        }
+        if currentUserIsSpy(room) {
+            return .spy
+        }
+        return .detective(word: room.displayWord ?? copy.classified)
+    }
+
+    private var onlineCardTheme: SpyCardThemeID {
+        SpyCardThemeID(rawValue: appState.user?.spyCardTheme ?? "") ?? .field
+    }
+
+    private var onlineCardAccent: Color {
+        switch SpyCardAccentID(rawValue: appState.user?.spyCardAccent ?? "") ?? .signalRed {
+        case .signalRed:
+            SpyTheme.red
+        case .clearanceAmber:
+            SpyTheme.amber
+        case .verifiedGreen:
+            SpyTheme.green
+        }
+    }
+
+    private func canCurrentUserAdvance(_ room: GameRoom) -> Bool {
+        guard let email = appState.user?.email else { return false }
+        return !room.isGamePaused &&
+            !isTimeExpired(room) &&
+            !room.isVotingActive &&
+            !isAdvancing &&
+            !isCurrentUserSpectator(room) &&
+            room.currentAskerEmail == email
+    }
+
+    private func canCurrentUserRequestVote(_ room: GameRoom) -> Bool {
+        !room.isGamePaused &&
+            !isTimeExpired(room) &&
+            !room.isVotingActive &&
+            !isRequestingVote &&
+            !isCurrentUserSpectator(room) &&
+            !hasCurrentUserRequestedVote(room)
+    }
+
+    private func canCurrentUserGuess(_ room: GameRoom) -> Bool {
+        !room.isGamePaused &&
+            !isSubmittingSpyGuess &&
+            !room.enabledWordPool.isEmpty &&
+            currentUserIsSpy(room) &&
+            (!isTimeExpired(room) || postGameGuessSecondsRemaining(room) > 0) &&
+            !isCurrentUserSpectator(room)
+    }
+
+    private func canCurrentUserCastVote(_ room: GameRoom) -> Bool {
+        !room.isGamePaused &&
+            !isTimeExpired(room) &&
+            room.isVotingActive &&
+            !isCastingVote &&
+            !isCurrentUserSpectator(room) &&
+            myVote(in: room) == nil
     }
 
     private func showsWaitingFooter(for room: GameRoom) -> Bool {
@@ -3320,54 +3518,64 @@ struct GameView: View {
     }
 
     private var roomThemeInput: some View {
-        HStack(spacing: 12) {
-            Image(systemName: "sparkles")
-                .font(.system(size: 14, weight: .black))
-                .foregroundStyle(focusedOnlineSetupField == .theme ? SpyTheme.red : SpyTheme.dim)
-                .frame(width: 18)
+        VStack(alignment: .leading, spacing: 10) {
+            HStack(spacing: 12) {
+                Image(systemName: "sparkles")
+                    .font(.system(size: 14, weight: .black))
+                    .foregroundStyle(focusedOnlineSetupField == .theme ? SpyTheme.red : SpyTheme.dim)
+                    .frame(width: 18)
 
-            TextField("", text: $roomTheme, prompt: Text(roomThemePlaceholder).foregroundStyle(SpyTheme.dim))
-                .textInputAutocapitalization(.words)
-                .autocorrectionDisabled()
-                .submitLabel(.done)
-                .font(SpyTheme.mono)
-                .tracking(0.04)
-                .foregroundStyle(.white)
-                .tint(SpyTheme.red)
-                .focused($focusedOnlineSetupField, equals: .theme)
-                .onSubmit {
-                    dismissOnlineSetupCapture()
-                }
-                .accessibilityIdentifier("onlineRoom.themeInput")
-
-            if roomHasCustomTheme {
-                Button {
-                    withAnimation(.smooth(duration: 0.20)) {
-                        roomTheme = ""
+                TextField("", text: $roomTheme, prompt: Text(roomThemePlaceholder).foregroundStyle(SpyTheme.dim))
+                    .textInputAutocapitalization(.words)
+                    .autocorrectionDisabled()
+                    .submitLabel(.done)
+                    .font(SpyTheme.mono)
+                    .tracking(0.04)
+                    .foregroundStyle(.white)
+                    .tint(SpyTheme.red)
+                    .focused($focusedOnlineSetupField, equals: .theme)
+                    .onSubmit {
+                        dismissOnlineSetupCapture()
                     }
-                } label: {
-                    Image(systemName: "xmark.circle.fill")
-                        .font(.system(size: 15, weight: .bold))
-                        .foregroundStyle(SpyTheme.dim)
-                        .frame(width: 28, height: 36)
+                    .accessibilityIdentifier("onlineRoom.themeInput")
+
+                if roomHasCustomTheme {
+                    Button {
+                        withAnimation(.smooth(duration: 0.20)) {
+                            roomTheme = ""
+                        }
+                    } label: {
+                        Image(systemName: "xmark.circle.fill")
+                            .font(.system(size: 15, weight: .bold))
+                            .foregroundStyle(SpyTheme.dim)
+                            .frame(width: 28, height: 36)
+                    }
+                    .buttonStyle(SpyWebPressStyle())
+                    .spyHitTarget()
+                    .accessibilityLabel(localized(en: "Clear theme", ru: "Очистить тему", es: "Limpiar tema"))
                 }
-                .buttonStyle(SpyWebPressStyle())
-                .spyHitTarget()
-                .accessibilityLabel(localized(en: "Clear theme", ru: "Очистить тему", es: "Limpiar tema"))
+            }
+            .padding(.horizontal, 14)
+            .frame(height: 50)
+            .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 9))
+            .overlay(
+                CutCornerShape(cut: 9)
+                    .stroke(
+                        focusedOnlineSetupField == .theme ? SpyTheme.red.opacity(0.86) : SpyTheme.inputBorder,
+                        lineWidth: 1
+                    )
+            )
+            .shadow(color: focusedOnlineSetupField == .theme ? SpyTheme.red.opacity(0.12) : .clear, radius: 8)
+            .animation(.smooth(duration: 0.18), value: focusedOnlineSetupField == .theme)
+
+            AIThemeSuggestionStrip(
+                language: appState.language,
+                selectedTheme: roomTheme,
+                accessibilityIdentifier: "onlineRoom.themeSuggestions"
+            ) { suggestion in
+                roomTheme = suggestion
             }
         }
-        .padding(.horizontal, 14)
-        .frame(height: 50)
-        .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 9))
-        .overlay(
-            CutCornerShape(cut: 9)
-                .stroke(
-                    focusedOnlineSetupField == .theme ? SpyTheme.red.opacity(0.86) : SpyTheme.inputBorder,
-                    lineWidth: 1
-                )
-        )
-        .shadow(color: focusedOnlineSetupField == .theme ? SpyTheme.red.opacity(0.12) : .clear, radius: 8)
-        .animation(.smooth(duration: 0.18), value: focusedOnlineSetupField == .theme)
         .onChange(of: roomTheme) { previousTheme, currentTheme in
             updateRoomThemeDraft(from: previousTheme, to: currentTheme)
         }
@@ -5335,6 +5543,7 @@ struct GameView: View {
 
     private func roomStateLabel(_ room: GameRoom) -> String {
         if room.normalizedStatus == "playing" && !room.allRoleCardsRead { return copy.dealing }
+        if room.isGamePaused { return localized(en: "PAUSED", ru: "ПАУЗА", es: "PAUSA") }
         if room.isVotingActive { return copy.voting }
         if room.questionPhase == "results" { return copy.results }
         return copy.statusLabel(room.normalizedStatus)
@@ -5358,14 +5567,25 @@ struct GameView: View {
     }
 
     private func remainingSeconds(_ room: GameRoom) -> Int {
-        guard let started = room.gameStartedAt,
-              let duration = room.gameDurationSeconds,
-              let startDate = parseDate(started) else {
+        guard let duration = room.gameDurationSeconds,
+              let elapsed = elapsedGameSeconds(room) else {
             return room.gameDurationSeconds ?? 0
         }
-
-        let elapsed = Int(now.timeIntervalSince(startDate))
         return max(0, duration - elapsed)
+    }
+
+    private func elapsedGameSeconds(_ room: GameRoom) -> Int? {
+        guard let started = room.gameStartedAt,
+              let startDate = parseDate(started) else { return nil }
+        let effectiveNow = room.gamePausedAt.flatMap(parseDate) ?? now
+        let pausedSeconds = max(room.gamePausedTotalSeconds ?? 0, 0)
+        return max(Int(effectiveNow.timeIntervalSince(startDate)) - pausedSeconds, 0)
+    }
+
+    private func postGameGuessSecondsRemaining(_ room: GameRoom) -> Int {
+        guard let duration = room.gameDurationSeconds,
+              let elapsed = elapsedGameSeconds(room) else { return 30 }
+        return max(30 - max(elapsed - duration, 0), 0)
     }
 
     private func isTimeExpired(_ room: GameRoom) -> Bool {
@@ -5437,6 +5657,7 @@ struct GameView: View {
     private func generateRoomTheme(usingInitialTarget: Bool) async {
         let theme = roomTheme.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !theme.isEmpty, roomThemeOperation == nil else { return }
+        let requestID = UUID()
 
         let targetCount: Int
         if usingInitialTarget {
@@ -5460,7 +5681,12 @@ struct GameView: View {
                     aiGenerationsToday: nil
                 )
             } else {
-                generated = try await appState.client.generateWordPack(theme: theme, count: max(targetCount, 5))
+                generated = try await appState.client.generateWordPack(
+                    theme: theme,
+                    count: max(targetCount, 5),
+                    requestID: requestID,
+                    preferFresh: !usingInitialTarget
+                )
             }
             appState.recordAIUsage(
                 used: generated.aiGenerationsToday,
@@ -5513,6 +5739,7 @@ struct GameView: View {
         let selectedWordCount = Int(roomWordCount)
         let wasUsingEntirePool = selectedWordCount >= current.count
         guard !theme.isEmpty, current.count >= 2, roomThemeOperation == nil else { return }
+        let requestID = UUID()
 
         let additionalCount = min(50, 200 - current.count)
         roomThemeOperation = .expand
@@ -5533,7 +5760,9 @@ struct GameView: View {
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
                     count: additionalCount,
-                    excluding: current
+                    requestID: requestID,
+                    excluding: current,
+                    preferFresh: false
                 )
             }
             appState.recordAIUsage(
@@ -5963,14 +6192,16 @@ struct GameView: View {
 
     private func completeRouletteIfNeeded(_ room: GameRoom) async {
         if appState.shouldUsePreviewData {
-            try? await Task.sleep(for: .seconds(2))
+            try? await Task.sleep(for: .seconds(8))
             guard appState.activeRoom?.normalizedStatus == "roulette" else { return }
-            appState.activeRoom = GameRoom.previewRoom(status: "playing")
+            appState.activeRoom = GameRoom.previewRoom(status: "cards-last")
             status = copy.gameReady
             return
         }
-        guard isHost(room), room.normalizedStatus == "roulette" else { return }
-        let key = "\(room.id)-\(room.rouletteTargetEmail ?? "")"
+        guard room.normalizedStatus == "roulette",
+              let userEmail = appState.user?.email,
+              room.playersList.contains(where: { $0.email == userEmail }) else { return }
+        let key = "\(room.id)-\(room.introStartedAt ?? room.rouletteTargetEmail ?? "")"
         guard rouletteCompletionKey != key else { return }
         rouletteCompletionKey = key
 
@@ -5978,7 +6209,13 @@ struct GameView: View {
         defer { isStarting = false }
 
         do {
-            try await Task.sleep(for: .seconds(2))
+            let elapsed = room.introStartedAt
+                .flatMap(parseDate)
+                .map { max(Date().timeIntervalSince($0), 0) } ?? 0
+            let delay = max(8.2 - elapsed, 0)
+            if delay > 0 {
+                try await Task.sleep(for: .seconds(delay))
+            }
             let currentRoom = (try? await appState.client.refreshRoom(id: room.id)) ?? room
             guard currentRoom.normalizedStatus == "roulette" else { return }
 
@@ -5995,6 +6232,7 @@ struct GameView: View {
     }
 
     private func advance(_ room: GameRoom) async {
+        guard !room.isGamePaused, !isTimeExpired(room) else { return }
         if appState.shouldUsePreviewData {
             status = room.gameModeValue == .associations ? copy.associationSpun : copy.questionSent
             HapticManager.shared.fire(.notification(.success))
@@ -6020,6 +6258,19 @@ struct GameView: View {
     private func markCardRead(_ room: GameRoom) async {
         guard let user = appState.user else { return }
         if appState.shouldUsePreviewData {
+            var previewRoom = room
+            var cardsRead = previewRoom.cardsReadList
+            if !cardsRead.contains(user.email) {
+                cardsRead.append(user.email)
+            }
+            previewRoom.cardsRead = cardsRead
+            if previewRoom.playersList.allSatisfy({ cardsRead.contains($0.email) }) {
+                previewRoom.gameStartedAt = ISO8601DateFormatter().string(from: Date())
+                previewRoom.gamePausedAt = nil
+                previewRoom.gamePausedTotalSeconds = 0
+            }
+            appState.activeRoom = previewRoom
+            revealRole = false
             status = copy.cardConfirmedStatus
             HapticManager.shared.fire(.notification(.success))
             return
@@ -6028,6 +6279,7 @@ struct GameView: View {
         defer { isMarkingCardRead = false }
         do {
             appState.activeRoom = try await appState.client.markRoleCardRead(room: room, user: user)
+            revealRole = false
             status = copy.cardConfirmedStatus
             HapticManager.shared.fire(.notification(.success))
         } catch {
@@ -6036,7 +6288,80 @@ struct GameView: View {
         }
     }
 
+    private func toggleGamePause(_ room: GameRoom) async {
+        guard isHost(room), room.gameStartedAt != nil, !isTogglingGamePause else { return }
+        if appState.shouldUsePreviewData {
+            var previewRoom = room
+            if room.isGamePaused {
+                if let pausedAt = room.gamePausedAt.flatMap(parseDate) {
+                    let additionalPause = max(Int(Date().timeIntervalSince(pausedAt)), 0)
+                    previewRoom.gamePausedTotalSeconds = max(room.gamePausedTotalSeconds ?? 0, 0) + additionalPause
+                }
+                previewRoom.gamePausedAt = nil
+            } else {
+                previewRoom.gamePausedAt = ISO8601DateFormatter().string(from: Date())
+            }
+            appState.activeRoom = previewRoom
+            HapticManager.shared.fire(.buttonPress)
+            return
+        }
+
+        isTogglingGamePause = true
+        defer { isTogglingGamePause = false }
+        do {
+            let updatedRoom: GameRoom
+            if room.isGamePaused {
+                updatedRoom = try await appState.client.resumeGame(room: room)
+            } else {
+                updatedRoom = try await appState.client.pauseGame(room: room)
+            }
+            appState.activeRoom = updatedRoom
+            HapticManager.shared.fire(.notification(.success))
+        } catch {
+            status = error.localizedDescription.uppercased()
+            HapticManager.shared.fire(.notification(.error))
+        }
+    }
+
+    private func finalizeExpiredRoomIfNeeded(_ room: GameRoom) async {
+        guard room.normalizedStatus == "playing",
+              room.gameStartedAt != nil,
+              !room.isGamePaused,
+              isTimeExpired(room),
+              !isFinalizingExpiredRoom else { return }
+
+        if appState.shouldUsePreviewData {
+            return
+        }
+
+        isFinalizingExpiredRoom = true
+        defer { isFinalizingExpiredRoom = false }
+        do {
+            let graceSeconds = postGameGuessSecondsRemaining(room)
+            if graceSeconds > 0 {
+                try await Task.sleep(for: .seconds(graceSeconds))
+            }
+            guard !Task.isCancelled,
+                  let currentRoom = appState.activeRoom,
+                  currentRoom.id == room.id,
+                  currentRoom.normalizedStatus == "playing",
+                  !currentRoom.isGamePaused,
+                  isTimeExpired(currentRoom) else { return }
+            appState.activeRoom = try await appState.client.finalizeExpiredRoom(room: currentRoom)
+        } catch is CancellationError {
+            return
+        } catch {
+            // Another participant may have already committed the terminal state.
+            if let refreshed = try? await appState.client.refreshRoom(id: room.id) {
+                appState.activeRoom = refreshed
+            } else {
+                status = error.localizedDescription.uppercased()
+            }
+        }
+    }
+
     private func requestVote(_ room: GameRoom) async {
+        guard !room.isGamePaused, !isTimeExpired(room) else { return }
         guard let user = appState.user else { return }
         if appState.shouldUsePreviewData {
             status = copy.voteRequestedStatus
@@ -6056,7 +6381,9 @@ struct GameView: View {
     }
 
     private func castVote(_ room: GameRoom, targetEmail: String) async {
+        guard !room.isGamePaused, !isTimeExpired(room) else { return }
         guard let user = appState.user else { return }
+        guard targetEmail.caseInsensitiveCompare(user.email) != .orderedSame else { return }
         if appState.shouldUsePreviewData {
             status = copy.voteLockedStatus
             HapticManager.shared.fire(.notification(.success))
@@ -6075,6 +6402,8 @@ struct GameView: View {
     }
 
     private func submitSpyGuess(_ room: GameRoom, word: String) async {
+        guard !room.isGamePaused else { return }
+        guard !isTimeExpired(room) || postGameGuessSecondsRemaining(room) > 0 else { return }
         guard let user = appState.user else { return }
         if appState.shouldUsePreviewData {
             showSpyGuess = false

@@ -44,6 +44,11 @@ final class HapticManager {
         }
     }
 
+    func playToastDismissFeedback() {
+        rigidGenerator.impactOccurred(intensity: 0.22)
+        rigidGenerator.prepare()
+    }
+
     func prepareFullAccessPresentation() {
         guard let fullAccessEngine else {
             rigidGenerator.prepare()

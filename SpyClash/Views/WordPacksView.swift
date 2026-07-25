@@ -404,7 +404,13 @@ private struct WordPackEditorSheet: View {
     @State private var aiWordCount: Double
     @State private var isGenerating = false
     @State private var isSaving = false
+    @State private var lastSuccessfulAIGenerationSignature: AIGenerationSignature?
     @FocusState private var focusedField: Field?
+
+    private struct AIGenerationSignature: Equatable {
+        let theme: String
+        let count: Int
+    }
 
     private enum Field {
         case name
@@ -540,6 +546,14 @@ private struct WordPackEditorSheet: View {
                 isFocused: focusedField == .category,
                 autocapitalization: .sentences
             )
+
+            AIThemeSuggestionStrip(
+                language: appState.language,
+                selectedTheme: aiTheme,
+                accessibilityIdentifier: "wordPacks.aiThemeSuggestions"
+            ) { suggestion in
+                aiTheme = suggestion
+            }
 
             VStack(alignment: .leading, spacing: 8) {
                 SpyWebSlider(value: $aiWordCount, range: 5...100, step: 1)
@@ -744,12 +758,16 @@ private struct WordPackEditorSheet: View {
             return
         }
 
+        let signature = AIGenerationSignature(theme: cleanAITheme, count: aiCount)
+        let preferFresh = lastSuccessfulAIGenerationSignature == signature
+        let requestID = UUID()
         isGenerating = true
         clearStatus()
         defer { isGenerating = false }
 
         if appState.shouldUsePreviewData {
-            let generated = previewGeneratedWordPack(theme: cleanAITheme, count: aiCount)
+            let generated = previewGeneratedWordPack(theme: signature.theme, count: signature.count)
+            lastSuccessfulAIGenerationSignature = signature
             captureAIAllowance(from: generated)
             apply(generated)
             setStatus(copy.aiReadyMessage(words: generated.words.count, used: nil, limit: nil), kind: .success)
@@ -758,7 +776,13 @@ private struct WordPackEditorSheet: View {
         }
 
         do {
-            let generated = try await appState.client.generateWordPack(theme: cleanAITheme, count: aiCount)
+            let generated = try await appState.client.generateWordPack(
+                theme: signature.theme,
+                count: signature.count,
+                requestID: requestID,
+                preferFresh: preferFresh
+            )
+            lastSuccessfulAIGenerationSignature = signature
             captureAIAllowance(from: generated)
             apply(generated)
             setStatus(

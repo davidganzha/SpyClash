@@ -20,6 +20,7 @@ struct HomeView: View {
     var body: some View {
         ZStack {
             SpyBackground()
+            HomeLaserScanLayer(reduceMotion: reduceMotion)
 
             VStack(spacing: 0) {
                 homeTopBarReserve
@@ -173,15 +174,6 @@ struct HomeView: View {
             }
 
             ZStack {
-                SpyOrbSceneView(intensity: idlePulse ? 1.08 : 0.92)
-                    .frame(width: compact ? 188 : 238, height: compact ? 188 : 238)
-                    .opacity(revealHero ? 0.86 : 0)
-                    .scaleEffect(revealHero ? (visualDrift ? 1.035 : 0.985) : 0.78)
-                    .rotation3DEffect(.degrees(visualDrift ? 5 : -5), axis: (x: 0.2, y: 1, z: 0))
-                    .offset(y: visualDrift ? -3 : 5)
-                    .allowsHitTesting(false)
-                    .accessibilityHidden(true)
-
                 HomeHeroTitle(
                     isModeHero: isModeHero,
                     fontSize: compact ? 48 : 58
@@ -843,6 +835,67 @@ struct HomeView: View {
 
 }
 
+private struct HomeLaserScanLayer: View {
+    let reduceMotion: Bool
+
+    var body: some View {
+        GeometryReader { proxy in
+            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
+                let cycleDuration = 15.7
+                let movementDuration = 8.4
+                let absoluteTime = reduceMotion
+                    ? 0
+                    : timeline.date.timeIntervalSinceReferenceDate
+                let cycleIndex = Int(floor(absoluteTime / cycleDuration))
+                let routeSeed = cycleIndex &* 1_103_515_245 &+ 12_345
+                let cycleTime = reduceMotion
+                    ? movementDuration * 0.5
+                    : absoluteTime.truncatingRemainder(dividingBy: cycleDuration)
+                let isMoving = reduceMotion || cycleTime < movementDuration
+                let progress = min(1, cycleTime / movementDuration)
+                let edgeFade = min(1, min(progress / 0.08, (1 - progress) / 0.08))
+                let laserOpacity = isMoving ? (reduceMotion ? 0.425 : 0.85 * edgeFade) : 0
+                let horizontalProgress = routeSeed & 1 == 0 ? progress : 1 - progress
+                let verticalProgress = routeSeed & 4 == 0 ? progress : 1 - progress
+                let horizontalY = proxy.size.height * CGFloat(horizontalProgress)
+                let verticalX = proxy.size.width * CGFloat(verticalProgress)
+
+                ZStack(alignment: .topLeading) {
+                    laserLine(horizontal: true)
+                        .frame(width: proxy.size.width, height: 18)
+                        .offset(y: horizontalY - 9)
+                        .opacity(laserOpacity)
+
+                    laserLine(horizontal: false)
+                        .frame(width: 18, height: proxy.size.height)
+                        .offset(x: verticalX - 9)
+                        .opacity(laserOpacity)
+                }
+            }
+        }
+        .ignoresSafeArea()
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+
+    private func laserLine(horizontal: Bool) -> some View {
+        Rectangle()
+            .fill(
+                LinearGradient(
+                    colors: [.clear, SpyTheme.red.opacity(0.42), SpyTheme.red, SpyTheme.red.opacity(0.42), .clear],
+                    startPoint: horizontal ? .leading : .top,
+                    endPoint: horizontal ? .trailing : .bottom
+                )
+            )
+            .frame(
+                maxWidth: horizontal ? .infinity : 1,
+                maxHeight: horizontal ? 1 : .infinity
+            )
+            .shadow(color: SpyTheme.red.opacity(0.48), radius: 3)
+            .shadow(color: SpyTheme.red.opacity(0.20), radius: 7)
+    }
+}
+
 private struct HomeHeroTitle: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.spyEntranceMotionEnabled) private var entranceMotionEnabled
@@ -851,26 +904,30 @@ private struct HomeHeroTitle: View {
     let isModeHero: Bool
     let fontSize: CGFloat
 
-    private var lines: [String] {
+    private var lineWords: [[String]] {
         isModeHero
-            ? ["SELECT", "YOUR", "MODE"]
-            : ["CAN YOU", "FIND THE", "SPY?"]
+            ? [["SELECT"], ["YOUR"], ["MODE"]]
+            : [["CAN", "YOU"], ["FIND", "THE"], ["SPY?"]]
     }
 
     var body: some View {
         VStack(spacing: 8) {
-            ForEach(Array(lines.enumerated()), id: \.offset) { lineIndex, line in
-                HStack(spacing: 4) {
-                    ForEach(Array(line.enumerated()), id: \.offset) { characterIndex, character in
-                        HomeHeroGlyph(
-                            character: character,
-                            index: glyphOffset(for: lineIndex) + characterIndex,
-                            isVisible: isVisible,
-                            reduceMotion: reduceMotion
-                        )
+            ForEach(Array(lineWords.enumerated()), id: \.offset) { lineIndex, words in
+                HStack(spacing: 14) {
+                    ForEach(Array(words.enumerated()), id: \.offset) { wordIndex, word in
+                        HStack(spacing: 4) {
+                            ForEach(Array(word.enumerated()), id: \.offset) { characterIndex, character in
+                                HomeHeroGlyph(
+                                    character: character,
+                                    index: glyphOffset(for: lineIndex, wordIndex: wordIndex) + characterIndex,
+                                    isVisible: isVisible,
+                                    reduceMotion: reduceMotion,
+                                    faceColor: lineIndex == lineWords.count - 1 ? SpyTheme.red : .white
+                                )
+                            }
+                        }
                     }
                 }
-                .foregroundStyle(lineIndex == lines.count - 1 ? SpyTheme.red : .white)
                 .lineLimit(1)
             }
         }
@@ -878,7 +935,7 @@ private struct HomeHeroTitle: View {
         .multilineTextAlignment(.center)
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(lines.joined(separator: " "))
+        .accessibilityLabel(lineWords.flatMap { $0 }.joined(separator: " "))
         .task(id: entranceMotionEnabled) {
             guard entranceMotionEnabled, !isVisible else { return }
             await Task.yield()
@@ -886,9 +943,12 @@ private struct HomeHeroTitle: View {
         }
     }
 
-    private func glyphOffset(for lineIndex: Int) -> Int {
-        lines.prefix(lineIndex).reduce(0) { $0 + $1.count }
+    private func glyphOffset(for lineIndex: Int, wordIndex: Int) -> Int {
+        let previousLines = lineWords.prefix(lineIndex).flatMap { $0 }.reduce(0) { $0 + $1.count }
+        let previousWords = lineWords[lineIndex].prefix(wordIndex).reduce(0) { $0 + $1.count }
+        return previousLines + previousWords
     }
+
 }
 
 private struct HomeHeroGlyph: View {
@@ -896,9 +956,11 @@ private struct HomeHeroGlyph: View {
     let index: Int
     let isVisible: Bool
     let reduceMotion: Bool
+    let faceColor: Color
 
     var body: some View {
         Text(String(character))
+            .foregroundStyle(faceColor)
             .opacity(isVisible ? 1 : 0)
             .blur(radius: reduceMotion || isVisible ? 0 : 18)
             .offset(y: reduceMotion || isVisible ? 0 : -16)

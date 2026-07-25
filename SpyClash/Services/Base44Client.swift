@@ -418,6 +418,14 @@ final class Base44Client {
         try await roomAction("mark_role_card_read", roomID: room.id)
     }
 
+    func pauseGame(room: GameRoom) async throws -> GameRoom {
+        try await roomAction("pause_game", roomID: room.id)
+    }
+
+    func resumeGame(room: GameRoom) async throws -> GameRoom {
+        try await roomAction("resume_game", roomID: room.id)
+    }
+
     func advanceQuestion(room: GameRoom) async throws -> GameRoom {
         try await roomAction("advance_question", roomID: room.id)
     }
@@ -489,14 +497,18 @@ final class Base44Client {
     func generateWordPack(
         theme: String,
         count: Int,
-        excluding excludedWords: [String] = []
+        requestID: UUID,
+        excluding excludedWords: [String] = [],
+        preferFresh: Bool = false
     ) async throws -> GeneratedWordPack {
         try await invokeFunction(
             "generateWordPack",
             body: GenerateWordPackPayload(
                 theme: theme.trimmingCharacters(in: .whitespacesAndNewlines),
                 count: count,
-                excludedWords: excludedWords
+                requestID: requestID,
+                excludedWords: excludedWords,
+                preferFresh: preferFresh
             )
         )
     }
@@ -1456,10 +1468,19 @@ private struct PushNotificationActionPayload: Encodable {
 private struct APIErrorEnvelope: Decodable {
     let message: String?
     let error: String?
+    let errorDescription: String?
     let code: String?
     let retryable: Bool?
 
-    var resolvedMessage: String? { message ?? error }
+    enum CodingKeys: String, CodingKey {
+        case message
+        case error
+        case errorDescription = "error_description"
+        case code
+        case retryable
+    }
+
+    var resolvedMessage: String? { message ?? errorDescription ?? error }
 }
 
 private struct AppleAuthBootstrapResponse: Decodable {
@@ -1932,12 +1953,16 @@ private struct WordPackActionPayload: Encodable {
 private struct GenerateWordPackPayload: Encodable {
     let theme: String
     let count: Int
+    let requestID: UUID
     let excludedWords: [String]
+    let preferFresh: Bool
 
     enum CodingKeys: String, CodingKey {
         case theme
         case count
+        case requestID = "request_id"
         case excludedWords = "exclude_words"
+        case preferFresh = "prefer_fresh"
     }
 }
 
