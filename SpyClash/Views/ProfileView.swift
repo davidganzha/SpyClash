@@ -40,10 +40,12 @@ struct ProfileView: View {
                 profileCard
                 statsCard
                 legalCard
+                dangerZoneCard
             }
             .padding(.horizontal, 18)
             .padding(.top, 20)
         }
+        .accessibilityHidden(showDeleteConfirmation)
         .task {
             displayName = appState.user?.callSign ?? ""
             avatar = appState.user?.avatar ?? "🕵️"
@@ -61,7 +63,7 @@ struct ProfileView: View {
                 SpyConfirmDialog(
                     title: copy.deleteDialogTitle,
                     message: deleteDialogMessage,
-                    confirmTitle: copy.deleteDialogAction,
+                    confirmTitle: isDeleting ? copy.deletingAccount : copy.deleteDialogAction,
                     cancelTitle: copy.cancel,
                     isBusy: isDeleting
                 ) {
@@ -70,6 +72,8 @@ struct ProfileView: View {
                     showDeleteConfirmation = false
                 }
                 .zIndex(10)
+                .accessibilityElement(children: .contain)
+                .accessibilityAddTraits(.isModal)
             }
         }
         .animation(.smooth(duration: 0.22), value: showDeleteConfirmation)
@@ -451,6 +455,41 @@ struct ProfileView: View {
                     kind: .acknowledgements,
                     icon: "checkmark.seal.fill"
                 )
+            }
+        }
+    }
+
+    private var dangerZoneCard: some View {
+        SpyPanel(accent: SpyTheme.red, motionDelay: 0.56) {
+            VStack(alignment: .leading, spacing: 12) {
+                Text(copy.dangerZone)
+                    .font(SpyTheme.micro)
+                    .tracking(0.12)
+                    .foregroundStyle(SpyTheme.red)
+                    .spyKicker(lines: 2)
+
+                Text(copy.dangerBody)
+                    .font(.system(size: 11, weight: .medium, design: .default))
+                    .foregroundStyle(SpyTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button(role: .destructive) {
+                    HapticManager.shared.fire(.buttonPress)
+                    status = ""
+                    statusKind = nil
+                    showDeleteConfirmation = true
+                } label: {
+                    SpyActionLabel(
+                        title: copy.deleteAccount,
+                        systemImage: "trash.fill",
+                        tracking: 0.02,
+                        lines: 2
+                    )
+                }
+                .buttonStyle(SpyButtonStyle(variant: .outline))
+                .disabled(isDeleting)
+                .accessibilityIdentifier("profile.deleteAccount")
+                .accessibilityHint(deleteDialogMessage)
             }
         }
     }
@@ -943,7 +982,6 @@ struct ProfileView: View {
             showDeleteConfirmation = false
             appState.logout()
         } catch {
-            showDeleteConfirmation = false
             status = error.localizedDescription.uppercased()
             statusKind = .error
             HapticManager.shared.fire(.notification(.error))
