@@ -174,6 +174,27 @@ add_optional_field() {
   mv "$next" "$staged"
 }
 
+# Ensure every service-role/admin-only entity exists in the local stage before
+# adding fields. A missing production LiveActivityRegistration must not make
+# preparation fail before its canonical schema can be staged.
+for entity_file in \
+  CommunityReport.jsonc \
+  apple-sign-in-credential.jsonc \
+  billing-identity-lifecycle.jsonc \
+  ai-word-pack-cache-variant.jsonc \
+  ai-word-pack-request-result.jsonc \
+  push-device-registration.jsonc \
+  live-activity-registration.jsonc \
+  push-notification-event.jsonc
+do
+  entity_name=$(jq -er '.name' "$ROOT/base44/entities/$entity_file")
+  if ! jq -e --arg name "$entity_name" \
+    '.schemas | any(.entity_name == $name)' "$REMOTE" >/dev/null; then
+    cp "$ROOT/base44/entities/$entity_file" \
+      "$STAGE/base44/entities/$entity_name.jsonc"
+  fi
+done
+
 add_optional_field Friendship blocked_by_id
 add_optional_field Friendship request_event_id
 add_optional_field GameHistory player_user_id
@@ -183,37 +204,36 @@ add_optional_field GameRoom match_id
 add_optional_field GameRoom terminal_intent
 add_optional_field GameRoom game_started_event_id
 add_optional_field GameRoom game_finished_event_id
+add_optional_field GameRoom intro_started_at
+add_optional_field GameRoom game_paused_at
+add_optional_field GameRoom game_paused_total_seconds
 add_optional_field RoomInvite notification_event_id
 add_optional_field WordPack owner_user_id
 add_optional_field AppStoreAccount reservation_state app-store-account.jsonc
 add_optional_field Entitlement write_revision entitlement.jsonc
+add_optional_field LiveActivityRegistration pending_force_end live-activity-registration.jsonc
 
-# These entities are safe to create during the additive phase because both are
-# service-role/admin-only boundaries. If a prior attempt already created one,
-# require exact equality instead of silently replacing production drift.
+# After additive fields are applied, every service-role/admin-only entity must
+# exactly match the canonical release boundary. Refuse silent production drift.
 for entity_file in \
   CommunityReport.jsonc \
   apple-sign-in-credential.jsonc \
   billing-identity-lifecycle.jsonc \
+  ai-word-pack-cache-variant.jsonc \
+  ai-word-pack-request-result.jsonc \
   push-device-registration.jsonc \
   live-activity-registration.jsonc \
   push-notification-event.jsonc
 do
   entity_name=$(jq -er '.name' "$ROOT/base44/entities/$entity_file")
-  if jq -e --arg name "$entity_name" \
-    '.schemas | any(.entity_name == $name)' "$REMOTE" >/dev/null; then
-    jq -e \
-      --slurpfile canonical "$ROOT/base44/entities/$entity_file" \
-      --arg name "$entity_name" \
-      '(.schemas[] | select(.entity_name == $name) | .entity_schema) == $canonical[0]' \
-      "$REMOTE" >/dev/null || {
-        echo "Production schema for $entity_name differs from the canonical release schema." >&2
-        exit 65
-      }
-  else
-    cp "$ROOT/base44/entities/$entity_file" \
-      "$STAGE/base44/entities/$entity_name.jsonc"
-  fi
+  staged_entity="$STAGE/base44/entities/$entity_name.jsonc"
+  jq -e \
+    --slurpfile canonical "$ROOT/base44/entities/$entity_file" \
+    '. == $canonical[0]' \
+    "$staged_entity" >/dev/null || {
+      echo "Production schema for $entity_name differs from the canonical release schema." >&2
+      exit 65
+    }
 done
 
 # Turn the additive phase into a write-maintenance boundary for every custom
@@ -259,6 +279,8 @@ for name in \
   CommunityReport \
   AppleSignInCredential \
   BillingIdentityLifecycle \
+  AiWordPackCacheVariant \
+  AiWordPackRequestResult \
   PushDeviceRegistration \
   LiveActivityRegistration \
   PushNotificationEvent
