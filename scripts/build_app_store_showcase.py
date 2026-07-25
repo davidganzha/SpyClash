@@ -93,14 +93,6 @@ def draw_grid(draw: ImageDraw.ImageDraw) -> None:
         draw.line((0, y, WIDTH, y), fill=grid, width=1)
 
 
-def draw_corner_marks(draw: ImageDraw.ImageDraw) -> None:
-    x0, x1, y0, y1, length = 42, WIDTH - 42, 46, HEIGHT - 46, 54
-    for x, sx in ((x0, 1), (x1, -1)):
-        for y, sy in ((y0, 1), (y1, -1)):
-            draw.line((x, y, x + sx * length, y), fill=RED, width=3)
-            draw.line((x, y, x, y + sy * length), fill=RED, width=3)
-
-
 def fit_display_font(text: str, max_width: int, initial_size: int) -> ImageFont.FreeTypeFont:
     size = initial_size
     while size > 72:
@@ -125,7 +117,6 @@ def make_card(item: dict) -> Image.Image:
     canvas = Image.new("RGB", (WIDTH, HEIGHT), BACKGROUND)
     draw = ImageDraw.Draw(canvas)
     draw_grid(draw)
-    draw_corner_marks(draw)
 
     brand_font = font(MONO_FONT, 31)
     draw.text((76, 112), "//", font=brand_font, fill=RED)
