@@ -24,10 +24,16 @@ struct SpyClashMatchLiveActivity: Widget {
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("ROUND \(state.round)")
-                            .font(.system(size: 11, weight: .black, design: .monospaced))
-                            .foregroundStyle(SpyClashActivityPalette.red)
-                        Text(state.mode.shortLabel)
+                        HStack(spacing: 1) {
+                            Text("SPY")
+                                .foregroundStyle(SpyClashActivityPalette.red)
+                            Text("CLASH")
+                                .foregroundStyle(.white)
+                        }
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .tracking(0.5)
+
+                        Text("R\(state.round) // \(state.mode.shortLabel)")
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(SpyClashActivityPalette.muted)
                     }
@@ -36,7 +42,7 @@ struct SpyClashMatchLiveActivity: Widget {
                 DynamicIslandExpandedRegion(.trailing) {
                     SpyClashActivityTimer(state: state)
                         .font(.system(size: 14, weight: .black, design: .monospaced))
-                        .foregroundStyle(SpyClashActivityPalette.green)
+                        .foregroundStyle(SpyClashActivityPalette.red)
                         .monospacedDigit()
                 }
 
@@ -50,18 +56,20 @@ struct SpyClashMatchLiveActivity: Widget {
                     .padding(.horizontal, 4)
                 }
             } compactLeading: {
-                Text(state.speaker?.avatarSymbol ?? "🎯")
-                    .font(.system(size: 15))
-                    .accessibilityLabel(state.speaker?.displayName ?? "SpyClash")
+                Image(systemName: "scope")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(SpyClashActivityPalette.red)
+                    .accessibilityLabel("SpyClash")
             } compactTrailing: {
                 SpyClashActivityTimer(state: state)
                     .font(.system(size: 12, weight: .black, design: .monospaced))
-                    .foregroundStyle(SpyClashActivityPalette.green)
+                    .foregroundStyle(SpyClashActivityPalette.red)
                     .monospacedDigit()
             } minimal: {
-                Text(state.speaker?.avatarSymbol ?? "🎯")
-                    .font(.system(size: 14))
-                    .accessibilityLabel(state.speaker?.displayName ?? "SpyClash match")
+                Image(systemName: "scope")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(SpyClashActivityPalette.red)
+                    .accessibilityLabel("SpyClash match")
             }
             .keylineTint(SpyClashActivityPalette.red)
             .widgetURL(matchURL(for: context.attributes.roomID))
@@ -89,169 +97,213 @@ private struct SpyClashMatchLockScreenView: View {
     var body: some View {
         let currentState = sanitizedState
 
-        VStack(spacing: 5) {
-            HStack(spacing: 8) {
-                HStack(spacing: 2) {
-                    Text("SPY")
+        ZStack {
+            SpyClashActivityBackdrop()
+
+            VStack(spacing: 7) {
+                SpyClashActivityHeader(state: currentState, isStale: isStale)
+
+                HStack(spacing: 7) {
+                    SpyClashActiveAgentPanel(state: currentState)
+                        .frame(width: 126, height: 79)
+
+                    SpyClashTurnSummary(state: currentState, compact: false)
+                        .padding(.horizontal, 10)
+                        .frame(maxWidth: .infinity, minHeight: 79, alignment: .leading)
+                        .background(
+                            SpyClashActivityPalette.panel,
+                            in: SpyClashActivityCutCornerShape(cut: 8)
+                        )
+                        .overlay {
+                            SpyClashActivityCutCornerShape(cut: 8)
+                                .stroke(SpyClashActivityPalette.stroke, lineWidth: 1)
+                        }
+                        .overlay(alignment: .topLeading) {
+                            Rectangle()
+                                .fill(SpyClashActivityPalette.red)
+                                .frame(width: 28, height: 2)
+                        }
+                }
+
+                HStack(spacing: 6) {
+                    Image(systemName: "lock.shield.fill")
                         .foregroundStyle(SpyClashActivityPalette.red)
-                    Text("CLASH")
+                    Text("ROLE + WORD REMAIN INSIDE SPYCLASH")
+                    Spacer(minLength: 4)
+                    Text("SECURE")
                         .foregroundStyle(.white)
                 }
-                .font(.system(size: 15, weight: .black, design: .monospaced))
-                .tracking(1.2)
-
-                Text("R\(currentState.round)")
-                    .font(.system(size: 10, weight: .black, design: .monospaced))
-                    .foregroundStyle(SpyClashActivityPalette.muted)
-
-                Text(currentState.mode.shortLabel)
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundStyle(SpyClashActivityPalette.red)
-                    .lineLimit(1)
-
-                Spacer(minLength: 4)
-
-                if isStale {
-                    Image(systemName: "wifi.exclamationmark")
-                        .font(.system(size: 10, weight: .bold))
-                        .foregroundStyle(SpyClashActivityPalette.amber)
-                        .accessibilityLabel("Match data may be out of date")
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(SpyClashActivityPalette.muted)
+                .padding(.horizontal, 9)
+                .frame(maxWidth: .infinity, minHeight: 25)
+                .background(
+                    SpyClashActivityPalette.panelElevated,
+                    in: SpyClashActivityCutCornerShape(cut: 6)
+                )
+                .overlay {
+                    SpyClashActivityCutCornerShape(cut: 6)
+                        .stroke(SpyClashActivityPalette.stroke, lineWidth: 1)
                 }
-
-                SpyClashActivityTimer(state: currentState)
-                    .font(.system(size: 15, weight: .black, design: .monospaced))
-                    .foregroundStyle(SpyClashActivityPalette.green)
-                    .monospacedDigit()
             }
-            .frame(height: 17)
-
-            HStack(spacing: 10) {
-                SpyClashRoundTableView(state: currentState)
-                    .frame(maxWidth: 132)
-                    .frame(height: 82)
-
-                SpyClashTurnSummary(state: currentState, compact: false)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-            }
-
-            HStack(spacing: 6) {
-                Image(systemName: "lock.shield")
-                Text("ROLE & WORD STAY PROTECTED IN SPYCLASH")
-            }
-            .font(.system(size: 8, weight: .bold, design: .monospaced))
-            .foregroundStyle(SpyClashActivityPalette.muted)
-            .frame(maxWidth: .infinity, minHeight: 27)
-            .background(SpyClashActivityPalette.panel)
-            .overlay(
-                RoundedRectangle(cornerRadius: 6)
-                    .stroke(SpyClashActivityPalette.stroke, lineWidth: 1)
-            )
+            .padding(.horizontal, 10)
+            .padding(.vertical, 8)
         }
-        .padding(.horizontal, 10)
-        .padding(.vertical, 8)
         .foregroundStyle(.white)
         .opacity(isStale ? 0.78 : 1)
     }
 }
 
-private struct SpyClashRoundTableView: View {
+private struct SpyClashActivityHeader: View {
+    typealias Attributes = SpyClashMatchActivityAttributes
+
+    let state: Attributes.ContentState
+    let isStale: Bool
+
+    var body: some View {
+        HStack(spacing: 7) {
+            HStack(spacing: 2) {
+                Text("SPY")
+                    .foregroundStyle(SpyClashActivityPalette.red)
+                Text("CLASH")
+                    .foregroundStyle(.white)
+            }
+            .font(.system(size: 15, weight: .black, design: .monospaced))
+            .tracking(1.1)
+
+            Rectangle()
+                .fill(SpyClashActivityPalette.red)
+                .frame(width: 2, height: 13)
+
+            Text("LIVE MATCH")
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(SpyClashActivityPalette.muted)
+
+            Text("R\(String(format: "%02d", state.round))")
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(.white)
+
+            Text(state.mode.shortLabel)
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .foregroundStyle(SpyClashActivityPalette.red)
+                .lineLimit(1)
+
+            Spacer(minLength: 4)
+
+            if isStale {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 9, weight: .black))
+                    .foregroundStyle(SpyClashActivityPalette.red)
+                    .accessibilityLabel("Match data may be out of date")
+            }
+
+            HStack(spacing: 5) {
+                Rectangle()
+                    .fill(SpyClashActivityPalette.red)
+                    .frame(width: 4, height: 4)
+
+                SpyClashActivityTimer(state: state)
+                    .monospacedDigit()
+            }
+            .font(.system(size: 15, weight: .black, design: .monospaced))
+            .foregroundStyle(.white)
+        }
+        .frame(height: 17)
+    }
+}
+
+private struct SpyClashActiveAgentPanel: View {
     typealias Attributes = SpyClashMatchActivityAttributes
 
     let state: Attributes.ContentState
 
     private var visiblePlayers: [Attributes.Participant] {
-        Array(state.participants.prefix(8))
+        Array(state.participants.prefix(4))
     }
 
     var body: some View {
-        GeometryReader { proxy in
-            let side = min(proxy.size.width, proxy.size.height)
-            let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
-            let radius = max(18, (side / 2) - 15)
+        VStack(alignment: .leading, spacing: 5) {
+            HStack(spacing: 4) {
+                Text("// ACTIVE AGENT")
+                    .foregroundStyle(SpyClashActivityPalette.red)
+                Spacer(minLength: 2)
+                Text("\(state.participants.count) ONLINE")
+                    .foregroundStyle(SpyClashActivityPalette.muted)
+            }
+            .font(.system(size: 7, weight: .black, design: .monospaced))
 
-            ZStack {
-                Circle()
-                    .fill(SpyClashActivityPalette.table)
-                    .overlay(
-                        Circle()
-                            .stroke(SpyClashActivityPalette.stroke, lineWidth: 1)
+            HStack(spacing: 7) {
+                Text(state.speaker?.avatarSymbol ?? "🕵️")
+                    .font(.system(size: 25))
+                    .frame(width: 39, height: 39)
+                    .background(
+                        SpyClashActivityPalette.background,
+                        in: SpyClashActivityCutCornerShape(cut: 6)
                     )
-                    .frame(width: side - 20, height: side - 20)
-                    .position(center)
-
-                VStack(spacing: 0) {
-                    Text(state.speaker?.avatarSymbol ?? "🎯")
-                        .font(.system(size: 19))
-                    if state.participants.count > visiblePlayers.count {
-                        Text("+\(state.participants.count - visiblePlayers.count)")
-                            .font(.system(size: 7, weight: .black, design: .monospaced))
-                            .foregroundStyle(SpyClashActivityPalette.muted)
+                    .overlay {
+                        SpyClashActivityCutCornerShape(cut: 6)
+                            .stroke(SpyClashActivityPalette.red.opacity(0.82), lineWidth: 1)
                     }
-                }
-                .position(center)
 
-                ForEach(Array(visiblePlayers.enumerated()), id: \.element.id) { index, player in
-                    let angle = ((Double(index) / Double(max(visiblePlayers.count, 1))) * 2 * Double.pi) - (Double.pi / 2)
-                    let x = center.x + (CGFloat(cos(angle)) * radius)
-                    let y = center.y + (CGFloat(sin(angle)) * radius)
-
-                    SpyClashPlayerNode(
-                        player: player,
-                        isSpeaker: player.id == state.currentSpeakerID,
-                        isAsker: player.id == state.currentAskerID,
-                        isResponder: player.id == state.currentResponderID
-                    )
-                    .position(x: x, y: y)
+                VStack(alignment: .leading, spacing: 2) {
+                    Text("SPEAKING")
+                        .font(.system(size: 7, weight: .black, design: .monospaced))
+                        .foregroundStyle(SpyClashActivityPalette.muted)
+                    Text(state.speaker?.compactName ?? "AWAITING")
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.66)
                 }
+                .frame(maxWidth: .infinity, alignment: .leading)
             }
-        }
-        .accessibilityElement(children: .contain)
-        .accessibilityLabel("Players around the SpyClash table")
-    }
-}
 
-private struct SpyClashPlayerNode: View {
-    let player: SpyClashMatchActivityAttributes.Participant
-    let isSpeaker: Bool
-    let isAsker: Bool
-    let isResponder: Bool
-
-    private var ringColor: Color {
-        if isSpeaker { return SpyClashActivityPalette.green }
-        if isAsker { return SpyClashActivityPalette.red }
-        if isResponder { return .white }
-        return SpyClashActivityPalette.stroke
-    }
-
-    private var turnLabel: String {
-        var roles: [String] = []
-        if isSpeaker { roles.append("speaking") }
-        if isAsker { roles.append("asking") }
-        if isResponder { roles.append("answering") }
-        return roles.isEmpty ? "at table" : roles.joined(separator: ", ")
-    }
-
-    var body: some View {
-        ZStack(alignment: .bottomTrailing) {
-            Circle()
-                .fill(SpyClashActivityPalette.panel)
-                .overlay(Circle().stroke(ringColor, lineWidth: isSpeaker ? 2 : 1))
-                .frame(width: 27, height: 27)
-                .overlay {
+            HStack(spacing: 3) {
+                ForEach(visiblePlayers) { player in
                     Text(player.avatarSymbol)
-                        .font(.system(size: 14))
+                        .font(.system(size: 10))
+                        .frame(width: 20, height: 16)
+                        .background(
+                            player.id == state.currentSpeakerID
+                                ? SpyClashActivityPalette.red.opacity(0.22)
+                                : SpyClashActivityPalette.background,
+                            in: SpyClashActivityCutCornerShape(cut: 3)
+                        )
+                        .overlay {
+                            SpyClashActivityCutCornerShape(cut: 3)
+                                .stroke(
+                                    player.id == state.currentSpeakerID
+                                        ? SpyClashActivityPalette.red
+                                        : SpyClashActivityPalette.stroke,
+                                    lineWidth: 1
+                                )
+                        }
+                        .opacity(player.status == .active ? 1 : 0.4)
                 }
 
-            if isSpeaker || isAsker || isResponder {
-                Circle()
-                    .fill(ringColor)
-                    .frame(width: 7, height: 7)
-                    .overlay(Circle().stroke(SpyClashActivityPalette.background, lineWidth: 1))
+                if state.participants.count > visiblePlayers.count {
+                    Text("+\(state.participants.count - visiblePlayers.count)")
+                        .font(.system(size: 7, weight: .black, design: .monospaced))
+                        .foregroundStyle(SpyClashActivityPalette.muted)
+                }
             }
         }
-        .opacity(player.status == .active ? 1 : 0.42)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(player.displayName), \(turnLabel)")
+        .padding(7)
+        .background(
+            SpyClashActivityPalette.panel,
+            in: SpyClashActivityCutCornerShape(cut: 8)
+        )
+        .overlay {
+            SpyClashActivityCutCornerShape(cut: 8)
+                .stroke(SpyClashActivityPalette.stroke, lineWidth: 1)
+        }
+        .overlay(alignment: .bottomTrailing) {
+            Rectangle()
+                .fill(SpyClashActivityPalette.red)
+                .frame(width: 24, height: 2)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("Active agent \(state.speaker?.displayName ?? "awaiting turn")")
     }
 }
 
@@ -265,11 +317,11 @@ private struct SpyClashTurnSummary: View {
         Group {
             switch state.phase {
             case .preparing:
-                status(title: "FIELD LINK", detail: "WAITING FOR PLAYERS", color: SpyClashActivityPalette.amber)
+                status(title: "FIELD LINK", detail: "WAITING FOR PLAYERS", color: SpyClashActivityPalette.red)
             case .voting:
                 status(title: "VOTE ACTIVE", detail: "IDENTIFY THE SPY", color: SpyClashActivityPalette.red)
             case .completed:
-                status(title: "MISSION COMPLETE", detail: "OPEN SPYCLASH FOR RESULTS", color: SpyClashActivityPalette.green)
+                status(title: "MISSION COMPLETE", detail: "OPEN SPYCLASH FOR RESULTS", color: .white)
             case .playing:
                 if state.mode == .associations {
                     associationTurn
@@ -311,10 +363,10 @@ private struct SpyClashTurnSummary: View {
             HStack(spacing: 6) {
                 Text(state.speaker?.avatarSymbol ?? "🎯")
                     .font(.system(size: compact ? 17 : 22))
-                agentName(state.speaker, color: SpyClashActivityPalette.green)
+                agentName(state.speaker, color: .white)
             }
 
-            label("RESPONDING NOW", color: SpyClashActivityPalette.green)
+            label("RESPONDING NOW", color: SpyClashActivityPalette.red)
         }
     }
 
@@ -325,7 +377,7 @@ private struct SpyClashTurnSummary: View {
                 .foregroundStyle(SpyClashActivityPalette.muted)
             Text(state.speaker?.compactName ?? "AWAITING TURN")
                 .font(.system(size: compact ? 11 : 13, weight: .black, design: .monospaced))
-                .foregroundStyle(SpyClashActivityPalette.green)
+                .foregroundStyle(.white)
                 .lineLimit(1)
                 .minimumScaleFactor(0.65)
         }
@@ -398,7 +450,7 @@ private struct SpyClashPrivateIntelView: View {
         .background(compact ? Color.clear : SpyClashActivityPalette.panel)
         .overlay {
             if !compact {
-                RoundedRectangle(cornerRadius: 6)
+                SpyClashActivityCutCornerShape(cut: 6)
                     .stroke(SpyClashActivityPalette.red.opacity(0.45), lineWidth: 1)
                 }
         }
@@ -438,11 +490,16 @@ private struct SpyClashPlayerRail: View {
                 Text(player.avatarSymbol)
                     .font(.system(size: 13))
                     .frame(width: 22, height: 22)
-                    .background(SpyClashActivityPalette.panel, in: Circle())
+                    .background(
+                        player.id == state.currentSpeakerID
+                            ? SpyClashActivityPalette.red.opacity(0.22)
+                            : SpyClashActivityPalette.panel,
+                        in: SpyClashActivityCutCornerShape(cut: 4)
+                    )
                     .overlay(
-                        Circle().stroke(
+                        SpyClashActivityCutCornerShape(cut: 4).stroke(
                             player.id == state.currentSpeakerID
-                                ? SpyClashActivityPalette.green
+                                ? SpyClashActivityPalette.red
                                 : SpyClashActivityPalette.stroke,
                             lineWidth: 1
                         )
@@ -454,13 +511,92 @@ private struct SpyClashPlayerRail: View {
     }
 }
 
+private struct SpyClashActivityCutCornerShape: Shape {
+    let cut: CGFloat
+
+    func path(in rect: CGRect) -> Path {
+        let resolvedCut = min(max(cut, 0), min(rect.width, rect.height) * 0.28)
+        var path = Path()
+        path.move(to: CGPoint(x: rect.minX, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX - resolvedCut, y: rect.minY))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.minY + resolvedCut))
+        path.addLine(to: CGPoint(x: rect.maxX, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX + resolvedCut, y: rect.maxY))
+        path.addLine(to: CGPoint(x: rect.minX, y: rect.maxY - resolvedCut))
+        path.closeSubpath()
+        return path
+    }
+}
+
+private struct SpyClashActivityBackdrop: View {
+    var body: some View {
+        GeometryReader { proxy in
+            ZStack {
+                SpyClashActivityPalette.background
+
+                RadialGradient(
+                    colors: [
+                        SpyClashActivityPalette.red.opacity(0.16),
+                        SpyClashActivityPalette.red.opacity(0.035),
+                        .clear
+                    ],
+                    center: UnitPoint(x: 0.24, y: 0.42),
+                    startRadius: 0,
+                    endRadius: max(proxy.size.width, proxy.size.height) * 0.78
+                )
+
+                Canvas { context, size in
+                    var grid = Path()
+                    let spacing: CGFloat = 25
+
+                    stride(from: CGFloat.zero, through: size.width, by: spacing).forEach { x in
+                        grid.move(to: CGPoint(x: x, y: 0))
+                        grid.addLine(to: CGPoint(x: x, y: size.height))
+                    }
+
+                    stride(from: CGFloat.zero, through: size.height, by: spacing).forEach { y in
+                        grid.move(to: CGPoint(x: 0, y: y))
+                        grid.addLine(to: CGPoint(x: size.width, y: y))
+                    }
+
+                    context.stroke(
+                        grid,
+                        with: .color(SpyClashActivityPalette.red.opacity(0.055)),
+                        lineWidth: 0.7
+                    )
+                }
+
+                Rectangle()
+                    .fill(
+                        LinearGradient(
+                            colors: [
+                                .clear,
+                                SpyClashActivityPalette.red.opacity(0.68),
+                                .clear
+                            ],
+                            startPoint: .leading,
+                            endPoint: .trailing
+                        )
+                    )
+                    .frame(height: 1)
+                    .offset(y: (proxy.size.height * 0.5) - 1)
+
+                Rectangle()
+                    .fill(SpyClashActivityPalette.red.opacity(0.65))
+                    .frame(width: 1)
+                    .offset(x: -(proxy.size.width * 0.31))
+            }
+        }
+        .allowsHitTesting(false)
+        .accessibilityHidden(true)
+    }
+}
+
 private enum SpyClashActivityPalette {
     static let background = Color(red: 5 / 255, green: 5 / 255, blue: 5 / 255)
     static let panel = Color(red: 15 / 255, green: 15 / 255, blue: 15 / 255)
-    static let table = Color(red: 10 / 255, green: 10 / 255, blue: 10 / 255)
+    static let panelElevated = Color(red: 10 / 255, green: 10 / 255, blue: 10 / 255)
     static let stroke = Color(red: 50 / 255, green: 50 / 255, blue: 50 / 255)
     static let muted = Color(red: 130 / 255, green: 130 / 255, blue: 130 / 255)
     static let red = Color(red: 229 / 255, green: 53 / 255, blue: 53 / 255)
-    static let green = Color(red: 74 / 255, green: 222 / 255, blue: 128 / 255)
-    static let amber = Color(red: 251 / 255, green: 191 / 255, blue: 36 / 255)
 }
