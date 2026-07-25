@@ -92,7 +92,7 @@ final class Base44Client {
         let _: EmptyResponse = try await invokeFunction("autoRegisterUser", body: ["email": email])
     }
 
-    func autoRegisterUser() async throws -> SpyUser {
+    func autoRegisterUser(appleBindingTicket: String? = nil) async throws -> SpyUser {
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
@@ -101,10 +101,14 @@ final class Base44Client {
         // function gateway rejects that bearer token before autoRegisterUser
         // can provision it, so send it in the encrypted body and let the
         // backend verify it directly with Base44.
+        var payload = ["access_token": token]
+        if let appleBindingTicket, !appleBindingTicket.isEmpty {
+            payload["apple_binding_ticket"] = appleBindingTicket
+        }
         let response: AutoRegisterUserResponse = try await request(
             "/apps/\(Self.appID)/functions/autoRegisterUser",
             method: "POST",
-            body: ["access_token": token],
+            body: payload,
             includeAuthorization: false
         )
         if let user = response.user {
@@ -571,8 +575,15 @@ final class Base44Client {
         )
     }
 
-    func deleteAccount() async throws {
-        let _: EmptyResponse = try await invokeFunction("deleteAccount", body: EmptyPayload())
+    func deleteAccount() async throws -> AccountDeletionResult {
+        let result: AccountDeletionResult = try await invokeFunction(
+            "deleteAccount",
+            body: EmptyPayload()
+        )
+        guard result.success else {
+            throw Base44Error(message: "Account deletion was not confirmed.")
+        }
+        return result
     }
 
     func communityState() async throws -> CommunityState {
@@ -740,7 +751,7 @@ final class Base44Client {
         return components.url!
     }
 
-    func appleNativeBootstrapURL(for credential: AppleSignInCredential) async throws -> URL {
+    private func appleNativeBootstrap(for credential: AppleSignInCredential) async throws -> AppleAuthBootstrapResponse {
         var components = URLComponents(
             url: Self.appBaseURL.appending(path: "/functions/appleAuthBroker"),
             resolvingAgainstBaseURL: false
@@ -774,21 +785,29 @@ final class Base44Client {
         let bootstrap = try JSONDecoder.base44.decode(AppleAuthBootstrapResponse.self, from: data)
         guard let bootstrapURL = URL(string: bootstrap.bootstrapURL),
               bootstrapURL.scheme?.lowercased() == "https",
-              bootstrapURL.host?.lowercased() == Self.appBaseURL.host?.lowercased() else {
+              bootstrapURL.host?.lowercased() == Self.appBaseURL.host?.lowercased(),
+              !bootstrap.bindingTicket.isEmpty,
+              bootstrap.bindingTicket.count <= 512 else {
             throw Base44Error(message: "Apple authentication returned an invalid handoff URL.")
         }
 
-        return bootstrapURL
+        return bootstrap
     }
 
     func appleNativeAccessToken(
         for credential: AppleSignInCredential,
         onPhaseChange: (AppleNativeAuthPhase) -> Void = { _ in }
-    ) async throws -> String {
+    ) async throws -> AppleNativeSession {
         onPhaseChange(.verifyingIdentity)
-        let bootstrapURL = try await appleNativeBootstrapURL(for: credential)
+        let bootstrap = try await appleNativeBootstrap(for: credential)
+        guard let bootstrapURL = URL(string: bootstrap.bootstrapURL) else {
+            throw Base44Error(message: "Apple authentication returned an invalid handoff URL.")
+        }
         onPhaseChange(.establishingSession)
-        return try await resolveSilentAppleHandoff(from: bootstrapURL)
+        return AppleNativeSession(
+            accessToken: try await resolveSilentAppleHandoff(from: bootstrapURL),
+            bindingTicket: bootstrap.bindingTicket
+        )
     }
 
     private func resolveSilentAppleHandoff(from bootstrapURL: URL) async throws -> String {
@@ -1445,9 +1464,35 @@ private struct APIErrorEnvelope: Decodable {
 
 private struct AppleAuthBootstrapResponse: Decodable {
     let bootstrapURL: String
+    let bindingTicket: String
 
     enum CodingKeys: String, CodingKey {
         case bootstrapURL = "bootstrap_url"
+        case bindingTicket = "binding_ticket"
+    }
+}
+
+struct AppleNativeSession {
+    let accessToken: String
+    let bindingTicket: String
+}
+
+struct AccountDeletionResult: Decodable {
+    let success: Bool
+    let manualAppleRevocationRequired: Bool
+
+    enum CodingKeys: String, CodingKey {
+        case success
+        case manualAppleRevocationRequired = "manual_apple_revocation_required"
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        success = try container.decode(Bool.self, forKey: .success)
+        manualAppleRevocationRequired = try container.decodeIfPresent(
+            Bool.self,
+            forKey: .manualAppleRevocationRequired
+        ) ?? false
     }
 }
 

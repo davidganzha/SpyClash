@@ -72,6 +72,16 @@ private struct RootView: View {
             }
         }
         .spyGlobalToastLayer()
+        .alert(
+            manualAppleRevocationTitle,
+            isPresented: manualAppleRevocationBinding
+        ) {
+            Button(manualAppleRevocationDoneTitle) {
+                appState.accountDeletionManualRevocationNotice = nil
+            }
+        } message: {
+            Text(appState.accountDeletionManualRevocationNotice ?? "")
+        }
         .sheet(isPresented: recoverySheetBinding) {
             AuthView()
                 .spyGlobalToastLayer()
@@ -122,6 +132,32 @@ private struct RootView: View {
             if !isPresented, appState.authPhase.isRecoveryPresentation {
                 appState.authPhase = .email
             }
+        }
+    }
+
+    private var manualAppleRevocationBinding: Binding<Bool> {
+        Binding {
+            appState.accountDeletionManualRevocationNotice != nil
+        } set: { isPresented in
+            if !isPresented {
+                appState.accountDeletionManualRevocationNotice = nil
+            }
+        }
+    }
+
+    private var manualAppleRevocationTitle: String {
+        switch appState.language {
+        case .ru: "ДОСТУП APPLE"
+        case .es: "ACCESO DE APPLE"
+        default: "APPLE ACCESS"
+        }
+    }
+
+    private var manualAppleRevocationDoneTitle: String {
+        switch appState.language {
+        case .ru: "ГОТОВО"
+        case .es: "LISTO"
+        default: "DONE"
         }
     }
 }

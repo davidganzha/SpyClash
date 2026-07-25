@@ -9,7 +9,7 @@ violations="$(
       'base44\.entities\.(GameRoom|WordPack)\.(create|update|delete|filter|list|subscribe)' \
       "$root/.web-reference/spyclash-web/src" || true
     rg -n \
-      'base44\.entities\.(AiGenerationQuota|AiGenerationUsage|AppStoreAccount|Entitlement|BillingIdentityLifecycle|CommunityReport)\.' \
+      'base44\.entities\.(AiGenerationQuota|AiGenerationUsage|AppStoreAccount|AppleSignInCredential|Entitlement|BillingIdentityLifecycle|CommunityReport)\.' \
       "$root/.web-reference/spyclash-web/src" || true
     rg -n \
       'base44\.entities\.GameHistory\.(create|update|delete|list|subscribe)' \
@@ -24,7 +24,7 @@ violations="$(
       '(createEntity|updateEntity|deleteEntity|filterEntity)\(\s*"(GameRoom|WordPack)"' \
       "$root/SpyClash" || true
     rg -n -U \
-      '(createEntity|updateEntity|deleteEntity|filterEntity)\(\s*"(AiGenerationQuota|AiGenerationUsage|AppStoreAccount|Entitlement|BillingIdentityLifecycle|CommunityReport)"' \
+      '(createEntity|updateEntity|deleteEntity|filterEntity)\(\s*"(AiGenerationQuota|AiGenerationUsage|AppStoreAccount|AppleSignInCredential|Entitlement|BillingIdentityLifecycle|CommunityReport)"' \
       "$root/SpyClash" || true
     rg -n -U \
       '(createEntity|updateEntity|deleteEntity)\(\s*"GameHistory"|filterEntity\(\s*"GameHistory"\s*,\s*query:\s*\[:\]' \

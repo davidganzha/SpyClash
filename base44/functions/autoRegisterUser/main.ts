@@ -1,4 +1,10 @@
 import { createClient } from "npm:@base44/sdk@0.8.31";
+import {
+  type AppleCredentialIdentityWriter,
+  AppleSignInCredentialError,
+  bindPendingAppleSignInCredentials,
+  withPendingAppleCredentialBindingIdentityWriter,
+} from "./apple-sign-in-credential.ts";
 
 type AuthUser = {
   id?: string;
@@ -92,6 +98,9 @@ Deno.serve(async (req) => {
     const accessToken = typeof body?.access_token === "string"
       ? body.access_token.trim()
       : "";
+    const appleBindingTicket = typeof body?.apple_binding_ticket === "string"
+      ? body.apple_binding_ticket.trim()
+      : "";
     const serviceHeader = req.headers.get("Base44-Service-Authorization");
     const appId = req.headers.get("Base44-App-Id");
     const serverUrl = req.headers.get("Base44-Api-Url") || "https://base44.app";
@@ -114,7 +123,37 @@ Deno.serve(async (req) => {
     });
     const identity = await getVerifiedIdentity(userClient);
 
+    // The service token is injected by Base44 and never accepted from the
+    // request body. It owns both user provisioning and the admin-only Apple
+    // credential binding record.
+    const serviceClient = createClient({
+      appId,
+      serverUrl,
+      token: serviceHeader.slice("Bearer ".length),
+    }) as ReturnType<typeof createClient> & UserInvitationClient;
+
+    const appleCredentialStore =
+      (serviceClient as any).entities.AppleSignInCredential;
+    const billingLifecycleStore =
+      (serviceClient as any).entities.BillingIdentityLifecycle;
+    const bindAppleCredential = async (
+      user: AuthUser,
+      identityWriter?: AppleCredentialIdentityWriter,
+    ) => {
+      if (!appleBindingTicket) return;
+      const verifiedUser = verifiedResponseUser(user);
+      await bindPendingAppleSignInCredentials({
+        store: appleCredentialStore,
+        lifecycleStore: billingLifecycleStore,
+        email: verifiedUser.email,
+        userID: verifiedUser.id,
+        bindingTicket: appleBindingTicket,
+        identityWriter,
+      });
+    };
+
     if (identity.alreadyRegistered) {
+      await bindAppleCredential(identity.user!);
       return json({
         success: true,
         already_registered: true,
@@ -122,30 +161,42 @@ Deno.serve(async (req) => {
       });
     }
 
-    // The SDK does not expose users under asServiceRole. Build a server-only
-    // client with the injected service token so the supported users module can
-    // perform the invite. The caller's email is never trusted.
-    const serviceClient = createClient({
-      appId,
-      serverUrl,
-      token: serviceHeader.slice("Bearer ".length),
-    }) as ReturnType<typeof createClient> & UserInvitationClient;
+    const provisionAndBind = async (
+      identityWriter?: AppleCredentialIdentityWriter,
+    ): Promise<AuthUser> => {
+      // The SDK does not expose users under asServiceRole. The server-only
+      // client uses the injected service token; the caller's email is never
+      // trusted.
+      let inviteError = null;
+      try {
+        await serviceClient.users.inviteUser(identity.email, "user");
+      } catch (error) {
+        // A concurrent request may have completed the same invite.
+        inviteError = error;
+      }
 
-    let inviteError = null;
-    try {
-      await serviceClient.users.inviteUser(identity.email, "user");
-    } catch (error) {
-      // A concurrent request may have completed the same invite. Verification
-      // below is the source of truth; otherwise surface the original failure.
-      inviteError = error;
-    }
+      let provisionedUser: AuthUser;
+      try {
+        provisionedUser = await verifyProvisioning(userClient);
+      } catch (verificationError) {
+        throw inviteError || verificationError;
+      }
+      await bindAppleCredential(provisionedUser, identityWriter);
+      return provisionedUser;
+    };
 
-    let provisionedUser: AuthUser;
-    try {
-      provisionedUser = await verifyProvisioning(userClient);
-    } catch (verificationError) {
-      throw inviteError || verificationError;
-    }
+    // Validate the short-lived Apple ticket and hold its identity writer before
+    // creating a Base44 User. A stale pre-deletion access token therefore
+    // cannot create a phantom account and fail binding afterward.
+    const provisionedUser = appleBindingTicket
+      ? await withPendingAppleCredentialBindingIdentityWriter({
+        store: appleCredentialStore,
+        lifecycleStore: billingLifecycleStore,
+        email: identity.email,
+        bindingTicket: appleBindingTicket,
+        operation: provisionAndBind,
+      })
+      : await provisionAndBind();
 
     return json({
       success: true,
@@ -155,10 +206,18 @@ Deno.serve(async (req) => {
     console.error("autoRegisterUser error:", error);
 
     const sdkError = error as SDKError;
-    const status = sdkError.status === 401 || sdkError.status === 403
-      ? sdkError.status
-      : 500;
-    const message = status === 401
+    const credentialStatus = error instanceof AppleSignInCredentialError
+      ? error.status
+      : undefined;
+    const status = credentialStatus ||
+      (sdkError.status === 401 || sdkError.status === 403
+        ? sdkError.status
+        : 500);
+    const message = error instanceof AppleSignInCredentialError
+      ? status >= 500
+        ? "Apple credential binding is temporarily unavailable"
+        : "Apple credential binding was rejected"
+      : status === 401
       ? "Authentication required"
       : status === 403
       ? "Access denied"

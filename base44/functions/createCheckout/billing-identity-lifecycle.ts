@@ -313,6 +313,7 @@ async function acquireLease(
   targetState: "active" | "deleting",
   nowFactory: () => Date,
   randomUUID: () => string,
+  allowDeletingTakeover = true,
 ): Promise<BillingIdentityLease> {
   const subjectKey = await billingIdentitySubjectKey(userIDValue);
   for (let attempt = 0; attempt < LIFECYCLE_ATTEMPTS; attempt += 1) {
@@ -324,7 +325,10 @@ async function acquireLease(
       randomUUID,
     );
     const state = lifecycleState(current.state);
-    if (targetState === "active" && state === "deleting") {
+    if (
+      state === "deleting" &&
+      (targetState === "active" || !allowDeletingTakeover)
+    ) {
       throw new BillingIdentityLifecycleError(
         "deletion_in_progress",
         "Account deletion is in progress or already completed.",
@@ -405,6 +409,24 @@ export async function acquireBillingDeletionMarker(
   randomUUID: () => string = () => crypto.randomUUID(),
 ): Promise<BillingIdentityLease> {
   return await acquireLease(store, userID, "deleting", nowFactory, randomUUID);
+}
+
+export async function acquireBillingIssuanceMarker(
+  store: any,
+  userID: unknown,
+  nowFactory: () => Date = () => new Date(),
+  randomUUID: () => string = () => crypto.randomUUID(),
+): Promise<BillingIdentityLease> {
+  // Issuance may create an external bearer token. It transitions only from
+  // active state and never takes over an expired deletion/quarantine row.
+  return await acquireLease(
+    store,
+    userID,
+    "deleting",
+    nowFactory,
+    randomUUID,
+    false,
+  );
 }
 
 async function assertExactActiveLease(

@@ -212,6 +212,7 @@ final class AppState: NSObject {
             showToast(authNotice, kind: .success)
         }
     }
+    var accountDeletionManualRevocationNotice: String?
     var appleAuthStage: AppleAuthStage?
     var standardAuthCinematicStage: StandardAuthCinematicStage?
     var authHomeRevealPhase: AuthHomeRevealPhase = .idle
@@ -740,7 +741,7 @@ final class AppState: NSObject {
             }
 
             appleAuthStage = .verifyingIdentity
-            let token = try await client.appleNativeAccessToken(for: credential) { [weak self] phase in
+            let nativeSession = try await client.appleNativeAccessToken(for: credential) { [weak self] phase in
                 switch phase {
                 case .verifyingIdentity:
                     self?.appleAuthStage = .verifyingIdentity
@@ -749,7 +750,11 @@ final class AppState: NSObject {
                 }
             }
             appleAuthStage = .synchronizingProfile
-            try await acceptProviderToken(token, cinematic: .apple)
+            try await acceptProviderToken(
+                nativeSession.accessToken,
+                cinematic: .apple,
+                appleBindingTicket: nativeSession.bindingTicket
+            )
 
             let assemblyElapsed = animationStartedAt.duration(to: .now)
             let assemblyDuration = Duration.milliseconds(3_100)
@@ -863,11 +868,14 @@ final class AppState: NSObject {
 
     private func acceptProviderToken(
         _ token: String,
-        cinematic: ProviderAuthCinematic
+        cinematic: ProviderAuthCinematic,
+        appleBindingTicket: String? = nil
     ) async throws {
         client.setToken(token)
         do {
-            let authenticatedUser = try await client.autoRegisterUser()
+            let authenticatedUser = try await client.autoRegisterUser(
+                appleBindingTicket: appleBindingTicket
+            )
             KeychainStore.saveToken(token)
             reconcileLanguagePreference(with: authenticatedUser.language)
             if cinematic == .standard {

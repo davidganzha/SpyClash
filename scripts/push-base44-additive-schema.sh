@@ -193,6 +193,7 @@ add_optional_field Entitlement write_revision entitlement.jsonc
 # require exact equality instead of silently replacing production drift.
 for entity_file in \
   CommunityReport.jsonc \
+  apple-sign-in-credential.jsonc \
   billing-identity-lifecycle.jsonc \
   push-device-registration.jsonc \
   live-activity-registration.jsonc \
@@ -256,6 +257,7 @@ remote_count=$(jq -r '.total' "$REMOTE")
 new_count=0
 for name in \
   CommunityReport \
+  AppleSignInCredential \
   BillingIdentityLifecycle \
   PushDeviceRegistration \
   LiveActivityRegistration \

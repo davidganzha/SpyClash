@@ -1,4 +1,5 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
+import { importPKCS8, SignJWT } from "npm:jose@5.10.0";
 import { entitlementRetentionPatch } from "./account-deletion.ts";
 import {
   acquireAppleAccountDeletionLeases,
@@ -21,6 +22,11 @@ import {
   releaseBillingDeletionMarker,
   renewBillingDeletionMarker,
 } from "./billing-identity-lifecycle.ts";
+import {
+  AppleSignInCredentialError,
+  deleteAppleSignInCredentialRecords,
+  revokeAppleSignInCredentials,
+} from "./apple-sign-in-credential.ts";
 
 type Entity = Record<string, any>;
 type BillingRedactionSnapshot = {
@@ -29,6 +35,9 @@ type BillingRedactionSnapshot = {
 };
 
 const MAX_CLEANUP_PASSES = 8;
+const APPLE_ISSUER = "https://appleid.apple.com";
+
+let applePrivateKeyPromise: ReturnType<typeof loadApplePrivateKey> | undefined;
 
 function list(value: unknown): any[] {
   return Array.isArray(value) ? value : [];
@@ -42,6 +51,90 @@ function errorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
     : String(error || "Unknown error");
+}
+
+function requiredEnv(name: string): string {
+  const value = clean(Deno.env.get(name));
+  if (!value) {
+    throw new AppleSignInCredentialError(
+      "apple_revocation_configuration_unavailable",
+      503,
+      `Missing ${name}`,
+    );
+  }
+  return value;
+}
+
+function decodeBase64UTF8(value: string): string {
+  try {
+    const normalized = value
+      .replace(/\s/g, "")
+      .replace(/-/g, "+")
+      .replace(/_/g, "/");
+    const padded = normalized.padEnd(Math.ceil(normalized.length / 4) * 4, "=");
+    const binary = atob(padded);
+    return new TextDecoder().decode(
+      Uint8Array.from(binary, (character) => character.charCodeAt(0)),
+    );
+  } catch {
+    throw new AppleSignInCredentialError(
+      "apple_revocation_configuration_unavailable",
+      503,
+      "Apple private key is not valid base64.",
+    );
+  }
+}
+
+async function loadApplePrivateKey() {
+  const pem = decodeBase64UTF8(requiredEnv("APPLE_PRIVATE_KEY_P8_B64"));
+  if (!pem.includes("-----BEGIN PRIVATE KEY-----")) { // gitleaks:allow -- validates a PEM header literal, not a key.
+    throw new AppleSignInCredentialError(
+      "apple_revocation_configuration_unavailable",
+      503,
+      "Apple private key is not PKCS#8.",
+    );
+  }
+  try {
+    return await importPKCS8(pem, "ES256");
+  } catch {
+    throw new AppleSignInCredentialError(
+      "apple_revocation_configuration_unavailable",
+      503,
+      "Apple private key could not be imported.",
+    );
+  }
+}
+
+function applePrivateKey() {
+  applePrivateKeyPromise ??= loadApplePrivateKey();
+  return applePrivateKeyPromise;
+}
+
+async function createAppleRevocationClientSecret(clientID: string) {
+  const allowedClientIDs = [
+    requiredEnv("APPLE_NATIVE_CLIENT_ID"),
+    requiredEnv("APPLE_WEB_CLIENT_ID"),
+  ];
+  if (!allowedClientIDs.includes(clientID)) {
+    throw new AppleSignInCredentialError(
+      "apple_revocation_client_invalid",
+      503,
+      "Stored Apple client id is not configured for this app.",
+    );
+  }
+  const now = Math.floor(Date.now() / 1000);
+  return await new SignJWT({})
+    .setProtectedHeader({
+      alg: "ES256",
+      kid: requiredEnv("APPLE_KEY_ID"),
+      typ: "JWT",
+    })
+    .setIssuer(requiredEnv("APPLE_TEAM_ID"))
+    .setSubject(clientID)
+    .setAudience(APPLE_ISSUER)
+    .setIssuedAt(now)
+    .setExpirationTime(now + 300)
+    .sign(await applePrivateKey());
 }
 
 async function recordsMatching(
@@ -362,6 +455,7 @@ async function rollbackBillingIdentityAndAppleLeases(
 }
 
 function appleLeaseErrorStatus(error: unknown): number {
+  if (error instanceof AppleSignInCredentialError) return error.status;
   if (error instanceof BillingIdentityLifecycleError) {
     return error.code === "incomplete_state" ? 500 : 503;
   }
@@ -398,6 +492,12 @@ async function renewDeletionCoordination(input: {
 
 Deno.serve(async (req) => {
   try {
+    if (req.method !== "POST") {
+      return Response.json({ error: "Method not allowed" }, {
+        status: 405,
+        headers: { Allow: "POST" },
+      });
+    }
     const base44 = createClientFromRequest(req);
     const user = await base44.auth.me();
 
@@ -498,8 +598,46 @@ Deno.serve(async (req) => {
       });
     }
 
+    const appleCredentialStore =
+      base44.asServiceRole.entities.AppleSignInCredential;
+    let appleCredentialRecordIDs: string[] = [];
+    let appleIdentityDeletionMarker: BillingIdentityLease | undefined;
+    let manualAppleRevocationRequired = false;
     let irreversibleCleanupStarted = false;
     try {
+      const appleCredentialResult = await revokeAppleSignInCredentials({
+        store: appleCredentialStore,
+        lifecycleStore: billingLifecycleStore,
+        email: userEmail,
+        userID: user.id,
+        createClientSecret: createAppleRevocationClientSecret,
+        beforeRevokeRequest: () => {
+          // A request may have reached Apple even when its response is lost.
+          // Keep deletion markers for an idempotent retry from this point.
+          irreversibleCleanupStarted = true;
+        },
+        onDeletionMarkerAcquired: (marker) => {
+          appleIdentityDeletionMarker = marker;
+          // Keep both the user and Apple-identity deletion boundaries until
+          // User.delete is confirmed. Otherwise a zero-row login can race the
+          // remaining cleanup and leave an orphaned refresh credential.
+          irreversibleCleanupStarted = true;
+        },
+      });
+      appleCredentialRecordIDs = appleCredentialResult.recordIDs;
+      manualAppleRevocationRequired =
+        appleCredentialResult.manualRevocationRequired;
+
+      if (appleCredentialRecordIDs.length) irreversibleCleanupStarted = true;
+      await assertBillingDeletionMarker(
+        billingLifecycleStore,
+        appleCredentialResult.identityDeletionMarker,
+      );
+      await deleteAppleSignInCredentialRecords(
+        appleCredentialStore,
+        appleCredentialRecordIDs,
+      );
+
       // Each helper repeatedly queries from the start so concurrent inserts
       // cannot hide behind a shifting skip offset.
       irreversibleCleanupStarted = true;
@@ -704,8 +842,9 @@ Deno.serve(async (req) => {
     }
 
     // Raw identity is already gone from every canonical row. Release is best
-    // effort after User.delete: failure can only delay Apple writers until the
-    // bounded lease expires; it cannot leave an unretryable privacy leak.
+    // effort after User.delete. A failure remains privacy-safe, but the
+    // deleting identity marker intentionally blocks a recreated Apple login
+    // until service-role reconciliation releases it.
     const releaseFailures =
       await releasePrecommittedAppleAccountLeasesBestEffort(
         accountStore,
@@ -719,7 +858,27 @@ Deno.serve(async (req) => {
       );
     }
 
-    return Response.json({ success: true });
+    if (appleIdentityDeletionMarker) {
+      try {
+        await releaseBillingDeletionMarker(
+          billingLifecycleStore,
+          appleIdentityDeletionMarker,
+        );
+      } catch (releaseError) {
+        // User deletion is already committed and every credential row is
+        // confirmed absent. Retaining the marker is privacy-safe and blocks a
+        // recreated Apple login until service-role reconciliation succeeds.
+        console.error(
+          "post-delete Apple identity marker release delayed",
+          errorMessage(releaseError),
+        );
+      }
+    }
+
+    return Response.json({
+      success: true,
+      manual_apple_revocation_required: manualAppleRevocationRequired,
+    });
   } catch (error) {
     console.error(
       "deleteAccount fatal",

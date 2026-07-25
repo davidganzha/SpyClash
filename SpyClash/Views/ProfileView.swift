@@ -33,6 +33,14 @@ struct ProfileView: View {
         )
     }
 
+    private var manualAppleRevocationMessage: String {
+        localized(
+            en: "Your SpyClash account was deleted. If you previously used Sign in with Apple, also open your Apple Account settings and remove SpyClash from Sign in with Apple.",
+            ru: "Аккаунт SpyClash удалён. Если вы раньше входили через Apple, откройте настройки Аккаунта Apple и удалите SpyClash из раздела «Вход с Apple».",
+            es: "Tu cuenta de SpyClash se eliminó. Si antes usaste Iniciar sesión con Apple, abre los ajustes de tu Cuenta de Apple y elimina SpyClash de Iniciar sesión con Apple."
+        )
+    }
+
     var body: some View {
         PageChrome(eyebrow: copy.eyebrow, status: "") {
             VStack(alignment: .leading, spacing: 16) {
@@ -978,9 +986,15 @@ struct ProfileView: View {
         isDeleting = true
         defer { isDeleting = false }
         do {
-            try await appState.client.deleteAccount()
+            let result = try await appState.client.deleteAccount()
             showDeleteConfirmation = false
+            let manualNotice = result.manualAppleRevocationRequired
+                ? manualAppleRevocationMessage
+                : nil
+            // Clear the deleted account's bearer material immediately. The
+            // root-level notice survives the Profile view disappearing.
             appState.logout()
+            appState.accountDeletionManualRevocationNotice = manualNotice
         } catch {
             status = error.localizedDescription.uppercased()
             statusKind = .error

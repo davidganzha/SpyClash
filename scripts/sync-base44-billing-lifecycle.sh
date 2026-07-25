@@ -9,6 +9,8 @@ if [ "${1:-}" = "--check" ]; then
   for target in \
     "$ROOT/base44/functions/checkSubscription/billing-identity-lifecycle.ts" \
     "$ROOT/base44/functions/createCheckout/billing-identity-lifecycle.ts" \
+    "$ROOT/base44/functions/appleAuthBroker/billing-identity-lifecycle.ts" \
+    "$ROOT/base44/functions/autoRegisterUser/billing-identity-lifecycle.ts" \
     "$ROOT/base44/functions/deleteAccount/billing-identity-lifecycle.ts" \
     "$ROOT/base44/functions/communityAction/billing-identity-lifecycle.ts" \
     "$ROOT/base44/functions/gameRoomAction/billing-identity-lifecycle.ts" \
@@ -31,6 +33,8 @@ fi
 for target in \
   "$ROOT/base44/functions/checkSubscription/billing-identity-lifecycle.ts" \
   "$ROOT/base44/functions/createCheckout/billing-identity-lifecycle.ts" \
+  "$ROOT/base44/functions/appleAuthBroker/billing-identity-lifecycle.ts" \
+  "$ROOT/base44/functions/autoRegisterUser/billing-identity-lifecycle.ts" \
   "$ROOT/base44/functions/deleteAccount/billing-identity-lifecycle.ts" \
   "$ROOT/base44/functions/communityAction/billing-identity-lifecycle.ts" \
   "$ROOT/base44/functions/gameRoomAction/billing-identity-lifecycle.ts" \

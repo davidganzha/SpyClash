@@ -7,6 +7,18 @@ import {
   jwtVerify,
   SignJWT,
 } from "npm:jose@5.10.0";
+import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
+import {
+  type AppleCredentialIdentityWriter,
+  type AppleCredentialIssuanceBoundary,
+  AppleSignInCredentialError,
+  assertTrackedAppleSignInCredential,
+  persistPendingAppleSignInCredential,
+  withAppleCredentialIdentityWriter,
+  withAppleCredentialIssuanceBoundary,
+} from "./apple-sign-in-credential.ts";
+import { appleCodeExchangeTokenOutcome } from "./apple-code-exchange.ts";
+import { compensateUntrackedAppleRefreshToken } from "./apple-token-compensation.ts";
 import { upstreamProviderFromBase44State } from "./provider.ts";
 import {
   type GoogleTransactionChannel,
@@ -78,6 +90,8 @@ type Profile = {
   authTime: number;
 };
 
+type UpstreamAuthProvider = "apple" | "google";
+
 type OidcRequest = {
   clientId: string;
   redirectUri: string;
@@ -96,6 +110,17 @@ class BrokerError extends Error {
   ) {
     super(message);
     this.name = "BrokerError";
+  }
+}
+
+class AppleCodeExchangeError extends BrokerError {
+  constructor(
+    code: string,
+    status: number,
+    readonly tokenOutcome: "not_issued" | "unknown",
+  ) {
+    super(code, status);
+    this.name = "AppleCodeExchangeError";
   }
 }
 
@@ -495,6 +520,10 @@ async function redeemAppleCode(
   code: string,
   clientId: string,
   redirectUri?: string,
+  hooks: {
+    beforeRequest?: () => void;
+    onRefreshToken?: (refreshToken: string) => void;
+  } = {},
 ) {
   bounded(code, "authorization_code", 4096);
   const clientSecret = await createAppleClientSecret(clientId);
@@ -506,6 +535,7 @@ async function redeemAppleCode(
   });
   if (redirectUri) body.set("redirect_uri", redirectUri);
 
+  hooks.beforeRequest?.();
   const response = await fetch(APPLE_TOKEN_ENDPOINT, {
     method: "POST",
     headers: {
@@ -519,12 +549,61 @@ async function redeemAppleCode(
   try {
     data = await response.json() as Record<string, unknown>;
   } catch {
-    throw new BrokerError("apple_token_exchange_failed", 502);
+    throw new AppleCodeExchangeError(
+      "apple_token_exchange_failed",
+      502,
+      appleCodeExchangeTokenOutcome(response, undefined),
+    );
   }
-  if (!response.ok || typeof data.id_token !== "string") {
-    throw new BrokerError("invalid_grant", 400);
+  const refreshToken = typeof data.refresh_token === "string"
+    ? data.refresh_token.trim()
+    : "";
+  if (refreshToken) hooks.onRefreshToken?.(refreshToken);
+  if (
+    !response.ok || typeof data.id_token !== "string" ||
+    !refreshToken
+  ) {
+    throw new AppleCodeExchangeError(
+      "invalid_grant",
+      response.ok ? 502 : 400,
+      appleCodeExchangeTokenOutcome(response, data),
+    );
   }
-  return data as Record<string, unknown> & { id_token: string };
+  return { ...data, refresh_token: refreshToken } as Record<string, unknown> & {
+    id_token: string;
+    refresh_token: string;
+  };
+}
+
+type AppleCredentialStores = {
+  credentialStore: any;
+  lifecycleStore: any;
+};
+
+function appleCredentialStores(req: Request): AppleCredentialStores {
+  const base44 = createClientFromRequest(req);
+  return {
+    credentialStore: base44.asServiceRole.entities.AppleSignInCredential,
+    lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+  };
+}
+
+async function persistAppleCredential(
+  stores: AppleCredentialStores,
+  redeemed: { refresh_token: string },
+  profile: Profile,
+  clientID: string,
+  issuanceBoundary?: AppleCredentialIssuanceBoundary,
+) {
+  return await persistPendingAppleSignInCredential({
+    store: stores.credentialStore,
+    lifecycleStore: stores.lifecycleStore,
+    email: profile.email,
+    subject: profile.sub,
+    clientID,
+    refreshToken: redeemed.refresh_token,
+    issuanceBoundary,
+  });
 }
 
 async function verifyAppleIdentityToken(
@@ -668,10 +747,17 @@ async function assertSameAppleIdentity(left: JWTPayload, right: JWTPayload) {
   }
 }
 
-function issueAuthorizationCode(profile: Profile, oidc: OidcRequest) {
+function issueAuthorizationCode(
+  profile: Profile,
+  oidc: OidcRequest,
+  upstreamProvider: UpstreamAuthProvider,
+  appleClientID?: string,
+) {
   return signBrokerJwt(
     {
       token_use: "authorization_code",
+      upstream_provider: upstreamProvider,
+      apple_client_id: upstreamProvider === "apple" ? appleClientID : undefined,
       sub: profile.sub,
       email: profile.email,
       email_verified: profile.emailVerified,
@@ -693,9 +779,16 @@ function issueAuthorizationCode(profile: Profile, oidc: OidcRequest) {
 async function authorizationSuccess(
   profile: Profile,
   oidc: OidcRequest,
+  upstreamProvider: UpstreamAuthProvider,
+  appleClientID?: string,
   cookies?: ResponseCookies,
 ) {
-  const code = await issueAuthorizationCode(profile, oidc);
+  const code = await issueAuthorizationCode(
+    profile,
+    oidc,
+    upstreamProvider,
+    appleClientID,
+  );
   const location = new URL(oidc.redirectUri);
   location.searchParams.set("code", code);
   location.searchParams.set("state", oidc.state);
@@ -1023,7 +1116,23 @@ async function handleAuthorize(req: Request, params: URLSearchParams) {
           ? payload.auth_time
           : Math.floor(Date.now() / 1000),
       };
-      return authorizationSuccess(profile, oidc, clearNativeCookie());
+      const appleClientID = requireStringClaim(
+        payload,
+        "apple_client_id",
+        255,
+      );
+      if (
+        !await secureEqual(appleClientID, requiredEnv("APPLE_NATIVE_CLIENT_ID"))
+      ) {
+        throw new BrokerError("invalid_native_ticket", 401);
+      }
+      return authorizationSuccess(
+        profile,
+        oidc,
+        "apple",
+        appleClientID,
+        clearNativeCookie(),
+      );
     } catch {
       // Invalid or expired bootstrap cookies do not reveal validation details;
       // clear them and continue with a normal Apple authorization.
@@ -1136,6 +1245,15 @@ async function handleToken(req: Request, params: URLSearchParams) {
     }
   }
 
+  const upstreamProvider = requireStringClaim(
+    payload,
+    "upstream_provider",
+    16,
+  );
+  if (upstreamProvider !== "apple" && upstreamProvider !== "google") {
+    throw new BrokerError("invalid_grant", 400);
+  }
+
   const sub = requireStringClaim(payload, "sub", 512);
   const email = requireStringClaim(payload, "email", 320);
   const name = cleanName(
@@ -1157,28 +1275,74 @@ async function handleToken(req: Request, params: URLSearchParams) {
     scope,
   };
 
-  const accessToken = await signBrokerJwt(
-    { ...commonClaims, token_use: "access_token" },
-    USERINFO_AUDIENCE,
-    ACCESS_TOKEN_TTL_SECONDS,
-  );
-  const idToken = await signBrokerJwt(
-    {
-      ...commonClaims,
-      token_use: "id_token",
-      nonce: typeof payload.nonce === "string" ? payload.nonce : undefined,
-    },
-    clientId,
-    ID_TOKEN_TTL_SECONDS,
-  );
+  const issueTokens = async () => {
+    const accessToken = await signBrokerJwt(
+      { ...commonClaims, token_use: "access_token" },
+      USERINFO_AUDIENCE,
+      ACCESS_TOKEN_TTL_SECONDS,
+    );
+    const idToken = await signBrokerJwt(
+      {
+        ...commonClaims,
+        token_use: "id_token",
+        nonce: typeof payload.nonce === "string" ? payload.nonce : undefined,
+      },
+      clientId,
+      ID_TOKEN_TTL_SECONDS,
+    );
 
-  return json({
-    access_token: accessToken,
-    token_type: "Bearer",
-    expires_in: ACCESS_TOKEN_TTL_SECONDS,
-    id_token: idToken,
-    scope,
-  });
+    return json({
+      access_token: accessToken,
+      token_type: "Bearer",
+      expires_in: ACCESS_TOKEN_TTL_SECONDS,
+      id_token: idToken,
+      scope,
+    });
+  };
+
+  if (upstreamProvider === "google") return await issueTokens();
+
+  const appleClientID = requireStringClaim(payload, "apple_client_id", 255);
+  const allowedAppleClientIDs = [
+    requiredEnv("APPLE_NATIVE_CLIENT_ID"),
+    requiredEnv("APPLE_WEB_CLIENT_ID"),
+  ];
+  let allowedAppleClientID = false;
+  for (const expectedClientID of allowedAppleClientIDs) {
+    if (await secureEqual(appleClientID, expectedClientID)) {
+      allowedAppleClientID = true;
+      break;
+    }
+  }
+  if (!allowedAppleClientID) throw new BrokerError("invalid_grant", 400);
+
+  const stores = appleCredentialStores(req);
+  try {
+    return await withAppleCredentialIdentityWriter({
+      lifecycleStore: stores.lifecycleStore,
+      email,
+      operation: async (identityWriter: AppleCredentialIdentityWriter) => {
+        await assertTrackedAppleSignInCredential({
+          store: stores.credentialStore,
+          lifecycleStore: stores.lifecycleStore,
+          email,
+          subject: sub,
+          clientID: appleClientID,
+          identityWriter,
+        });
+        return await issueTokens();
+      },
+    });
+  } catch (error) {
+    if (error instanceof AppleSignInCredentialError) {
+      const temporary = error.status >= 500;
+      throw new BrokerError(
+        temporary ? "temporarily_unavailable" : "invalid_grant",
+        temporary ? 503 : 400,
+      );
+    }
+    throw error;
+  }
 }
 
 async function handleUserinfo(req: Request) {
@@ -1248,35 +1412,82 @@ async function handleNativeExchange(req: Request, params: URLSearchParams) {
     clientId,
     expectedNonce,
   );
-  const redeemed = await redeemAppleCode(code, clientId);
-  const redeemedPayload = await verifyAppleIdentityToken(
-    redeemed.id_token,
-    clientId,
-    expectedNonce,
-  );
-  await assertSameAppleIdentity(presentedPayload, redeemedPayload);
+  const requestedName = nameFromInput(params);
+  const presentedProfile = profileFromApple(presentedPayload, requestedName);
+  const stores = appleCredentialStores(req);
+  let exchangeRequestStarted = false;
+  let issuedRefreshToken: string | undefined;
+  let tokenTracked = false;
 
-  const profile = profileFromApple(redeemedPayload, nameFromInput(params));
-  const ticket = await signBrokerJwt(
-    {
-      token_use: "native_ticket",
-      sub: profile.sub,
-      email: profile.email,
-      email_verified: profile.emailVerified,
-      name: profile.name,
-      is_private_email: profile.isPrivateEmail,
-      auth_time: profile.authTime,
+  // Persist a deletion-state issuance boundary before asking Apple to mint a
+  // refresh token. Unknown exchange/compensation outcomes retain that durable
+  // boundary; ordinary writers can never take it over after lease expiry.
+  return await withAppleCredentialIssuanceBoundary({
+    lifecycleStore: stores.lifecycleStore,
+    email: presentedProfile.email,
+    onOperationError: async (error) => {
+      if (tokenTracked || !exchangeRequestStarted) return "release";
+      if (!issuedRefreshToken) {
+        return error instanceof AppleCodeExchangeError &&
+            error.tokenOutcome === "not_issued"
+          ? "release"
+          : "retain";
+      }
+      return await compensateUntrackedAppleRefreshToken({
+        refreshToken: issuedRefreshToken,
+        clientID: clientId,
+        createClientSecret: createAppleClientSecret,
+      });
     },
-    NATIVE_TICKET_AUDIENCE,
-    NATIVE_TICKET_TTL_SECONDS,
-  );
+    operation: async (issuanceBoundary) => {
+      const redeemed = await redeemAppleCode(code, clientId, undefined, {
+        beforeRequest: () => {
+          exchangeRequestStarted = true;
+        },
+        onRefreshToken: (token) => {
+          issuedRefreshToken = token;
+        },
+      });
+      const redeemedPayload = await verifyAppleIdentityToken(
+        redeemed.id_token,
+        clientId,
+        expectedNonce,
+      );
+      await assertSameAppleIdentity(presentedPayload, redeemedPayload);
 
-  const bootstrapURL = new URL(ISSUER);
-  bootstrapURL.searchParams.set("action", "native-bootstrap");
-  bootstrapURL.searchParams.set("ticket", ticket);
-  return json({
-    bootstrap_url: bootstrapURL.toString(),
-    expires_in: NATIVE_TICKET_TTL_SECONDS,
+      const profile = profileFromApple(redeemedPayload, requestedName);
+      const storedCredential = await persistAppleCredential(
+        stores,
+        redeemed,
+        profile,
+        clientId,
+        issuanceBoundary,
+      );
+      tokenTracked = true;
+      const ticket = await signBrokerJwt(
+        {
+          token_use: "native_ticket",
+          sub: profile.sub,
+          email: profile.email,
+          email_verified: profile.emailVerified,
+          name: profile.name,
+          is_private_email: profile.isPrivateEmail,
+          auth_time: profile.authTime,
+          apple_client_id: clientId,
+        },
+        NATIVE_TICKET_AUDIENCE,
+        NATIVE_TICKET_TTL_SECONDS,
+      );
+
+      const bootstrapURL = new URL(ISSUER);
+      bootstrapURL.searchParams.set("action", "native-bootstrap");
+      bootstrapURL.searchParams.set("ticket", ticket);
+      return json({
+        bootstrap_url: bootstrapURL.toString(),
+        binding_ticket: storedCredential.bindingTicket,
+        expires_in: NATIVE_TICKET_TTL_SECONDS,
+      });
+    },
   });
 }
 
@@ -1386,15 +1597,70 @@ async function handleAppleCallback(req: Request, params: URLSearchParams) {
       clientId,
       expectedNonce,
     );
-    const redeemed = await redeemAppleCode(code, clientId, APPLE_CALLBACK_URL);
-    const redeemedPayload = await verifyAppleIdentityToken(
-      redeemed.id_token,
-      clientId,
-      expectedNonce,
-    );
-    await assertSameAppleIdentity(postedPayload, redeemedPayload);
-    const profile = profileFromApple(redeemedPayload, nameFromInput(params));
-    return authorizationSuccess(profile, oidc, appleCallbackTerminalCookies());
+    const requestedName = nameFromInput(params);
+    const postedProfile = profileFromApple(postedPayload, requestedName);
+    const stores = appleCredentialStores(req);
+    let exchangeRequestStarted = false;
+    let issuedRefreshToken: string | undefined;
+    let tokenTracked = false;
+    return await withAppleCredentialIssuanceBoundary({
+      lifecycleStore: stores.lifecycleStore,
+      email: postedProfile.email,
+      onOperationError: async (error) => {
+        if (tokenTracked || !exchangeRequestStarted) return "release";
+        if (!issuedRefreshToken) {
+          return error instanceof AppleCodeExchangeError &&
+              error.tokenOutcome === "not_issued"
+            ? "release"
+            : "retain";
+        }
+        return await compensateUntrackedAppleRefreshToken({
+          refreshToken: issuedRefreshToken,
+          clientID: clientId,
+          createClientSecret: createAppleClientSecret,
+        });
+      },
+      operation: async (issuanceBoundary) => {
+        const redeemed = await redeemAppleCode(
+          code,
+          clientId,
+          APPLE_CALLBACK_URL,
+          {
+            beforeRequest: () => {
+              exchangeRequestStarted = true;
+            },
+            onRefreshToken: (token) => {
+              issuedRefreshToken = token;
+            },
+          },
+        );
+        const redeemedPayload = await verifyAppleIdentityToken(
+          redeemed.id_token,
+          clientId,
+          expectedNonce,
+        );
+        await assertSameAppleIdentity(postedPayload, redeemedPayload);
+        const profile = profileFromApple(redeemedPayload, requestedName);
+        // Browser SSO has no authenticated Base44 owner at callback time. The
+        // encrypted pending row is intentionally left unowned; deletion finds
+        // it by the verified identity key, and a later login rotates it.
+        await persistAppleCredential(
+          stores,
+          redeemed,
+          profile,
+          clientId,
+          issuanceBoundary,
+        );
+        tokenTracked = true;
+        return authorizationSuccess(
+          profile,
+          oidc,
+          "apple",
+          clientId,
+          appleCallbackTerminalCookies(),
+        );
+      },
+    });
   } catch (error) {
     logCallbackFailure("apple", error);
     return authorizationError(
@@ -1438,7 +1704,13 @@ async function handleGoogleCallback(req: Request, params: URLSearchParams) {
       expectedNonce,
     );
     const profile = profileFromGoogle(payload);
-    return authorizationSuccess(profile, oidc, googleCallbackTerminalCookies());
+    return authorizationSuccess(
+      profile,
+      oidc,
+      "google",
+      undefined,
+      googleCallbackTerminalCookies(),
+    );
   } catch (error) {
     logCallbackFailure("google", error);
     return authorizationError(
