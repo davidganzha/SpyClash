@@ -27,7 +27,10 @@ import {
 } from "./push-events.ts";
 import { sendAlertPush } from "./apns.ts";
 import { clampDeadline, runBounded } from "./bounded-work.ts";
-import { sendLiveActivityUpdate } from "./live-activity.ts";
+import {
+  sendLiveActivityTermination,
+  sendLiveActivityUpdate,
+} from "./live-activity.ts";
 import {
   claimLiveDelivery,
   completeLiveDelivery,
@@ -37,6 +40,7 @@ import {
   queueLiveRetry,
 } from "./live-delivery.ts";
 import { isAdminAutomationUser, scheduledDrainArgs } from "./worker-auth.ts";
+import { repairCommittedRoomPushEvents } from "./room-reconciliation.ts";
 
 type Entity = Record<string, any>;
 const PAGE_SIZE = 100;
@@ -79,6 +83,84 @@ async function allMatching(
     records.push(...page);
     if (page.length < PAGE_SIZE) return records;
   }
+}
+
+function roomParticipantUserIDs(room: Entity): string[] {
+  return [
+    ...new Set(
+      [
+        ...(Array.isArray(room?.participant_user_ids)
+          ? room.participant_user_ids
+          : []),
+        ...(Array.isArray(room?.players)
+          ? room.players.map((player: Entity) => player?.user_id)
+          : []),
+      ].map(clean).filter(Boolean),
+    ),
+  ].sort();
+}
+
+async function repairRoomPushOutbox(base44: any, room: Entity) {
+  const userIDs = roomParticipantUserIDs(room);
+  if (!clean(room?.id) || !userIDs.length) return 0;
+  return await withPushWriterLeases({
+    lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+    userIDs,
+    action: async (persist) =>
+      await repairCommittedRoomPushEvents({
+        eventStore: base44.asServiceRole.entities.PushNotificationEvent,
+        room,
+        persist,
+      }),
+  });
+}
+
+async function roomForSourceEvent(base44: any, sourceEventID: string) {
+  for (const field of ["game_started_event_id", "game_finished_event_id"]) {
+    const rows = await allMatching(
+      base44.asServiceRole.entities.GameRoom,
+      { [field]: sourceEventID },
+    );
+    const exact = rows.find((room) => clean(room?.[field]) === sourceEventID);
+    if (exact) return exact;
+  }
+  return null;
+}
+
+async function reconcileRecentRoomOutboxes(
+  base44: any,
+  deadlineEpochMs: number,
+): Promise<number> {
+  const rooms: Entity[] = [];
+  for (const status of ["playing", "finished"]) {
+    rooms.push(
+      ...await base44.asServiceRole.entities.GameRoom.filter(
+        { status },
+        "-updated_date",
+        8,
+        0,
+      ) || [],
+    );
+  }
+  const uniqueRooms = rooms.filter((room, index, all) =>
+    all.findIndex((candidate) => clean(candidate.id) === clean(room.id)) ===
+      index
+  );
+  let created = 0;
+  await runBounded({
+    items: uniqueRooms.slice(0, 12),
+    concurrency: 3,
+    deadlineEpochMs,
+    worker: async (room) => {
+      try {
+        created += await repairRoomPushOutbox(base44, room);
+      } catch {
+        // The committed room identity remains a durable repair source for the
+        // next scheduled pass or any later process_event call.
+      }
+    },
+  });
+  return created;
 }
 
 function internalRequest(body: Entity): boolean {
@@ -702,6 +784,211 @@ async function syncLiveActivities(base44: any, body: Entity): Promise<Entity> {
   };
 }
 
+async function deliverForcedLiveActivityEnd(input: {
+  base44: any;
+  registration: Entity;
+  roomID: string;
+  matchID: string;
+  roomRevision: number;
+  callerHoldsLifecycleLeases?: boolean;
+}): Promise<"delivered" | "failed" | "skipped"> {
+  const liveStore =
+    input.base44.asServiceRole.entities.LiveActivityRegistration;
+  const deliver = async () => {
+    const rows = await allMatching(liveStore, {
+      id: clean(input.registration.id),
+    });
+    const current = rows[0];
+    if (
+      !current || clean(current.status) !== "active" ||
+      clean(current.token_kind) !== "activity"
+    ) return "skipped" as const;
+    const exactRoom = clean(current.room_id) === clean(input.roomID) &&
+      clean(current.match_id) === clean(input.matchID) &&
+      clean(current.provider_match_id) === clean(input.matchID);
+    const exactPendingEnd = current.pending_force_end === true &&
+      clean(current.pending_room_id) === clean(input.roomID) &&
+      clean(current.pending_match_id) === clean(input.matchID);
+    if (!exactRoom && !exactPendingEnd) return "skipped" as const;
+    const claimed = await claimLiveDelivery({
+      store: liveStore,
+      registration: current,
+      roomID: input.roomID,
+      matchID: input.matchID,
+      roomRevision: input.roomRevision,
+      forceEnd: true,
+    });
+    if (!claimed) return "skipped" as const;
+    let result;
+    try {
+      result = await sendLiveActivityTermination({
+        registration: claimed,
+        roomID: input.roomID,
+        matchID: input.matchID,
+        revision: input.roomRevision,
+      });
+    } catch {
+      const attempts = Number(claimed.delivery_attempt_count || 1);
+      const canRetry = attempts < MAX_LIVE_DELIVERY_ATTEMPTS;
+      await completeLiveDelivery({
+        store: liveStore,
+        claimed,
+        state: canRetry ? "retry" : "failed",
+        nextAttemptAt: canRetry ? liveRetryAt(attempts) : undefined,
+        errorCode: "credential_error",
+      });
+      return "failed" as const;
+    }
+    if (result.delivered) {
+      await completeLiveDelivery({
+        store: liveStore,
+        claimed,
+        state: "idle",
+        patch: {
+          status: "ended",
+          ended_at: new Date().toISOString(),
+          pending_force_end: false,
+          last_revision: result.revision,
+        },
+      });
+      return "delivered" as const;
+    }
+    if (result.invalidateToken) {
+      await revokeRegistration(liveStore, claimed, result.reason);
+      return "failed" as const;
+    }
+    const attempts = Number(claimed.delivery_attempt_count || 1);
+    const canRetry = result.retryable &&
+      attempts < MAX_LIVE_DELIVERY_ATTEMPTS;
+    await completeLiveDelivery({
+      store: liveStore,
+      claimed,
+      state: canRetry ? "retry" : "failed",
+      nextAttemptAt: canRetry ? liveRetryAt(attempts) : undefined,
+      errorCode: result.reason,
+    });
+    return "failed" as const;
+  };
+  if (input.callerHoldsLifecycleLeases) return await deliver();
+  return await withPushWriterLeases({
+    lifecycleStore:
+      input.base44.asServiceRole.entities.BillingIdentityLifecycle,
+    userIDs: [clean(input.registration.user_id)],
+    action: async (persist) => {
+      await persist(async () => undefined);
+      return await deliver();
+    },
+  });
+}
+
+async function endRoomLiveActivities(
+  base44: any,
+  body: Entity,
+): Promise<Entity> {
+  const roomID = clean(body.room_id);
+  const matchID = clean(body.match_id);
+  if (!roomID || !matchID) {
+    throw new PushContractError("Room and match are required.");
+  }
+  const rooms = await allMatching(base44.asServiceRole.entities.GameRoom, {
+    id: roomID,
+  });
+  const room = rooms[0];
+  if (!room || clean(room.match_id) !== matchID) {
+    throw new PushContractError(
+      "The room end source is stale.",
+      409,
+      "stale_match_binding",
+    );
+  }
+  const roomRevision = Number.isFinite(Date.parse(clean(room.updated_date)))
+    ? Date.parse(clean(room.updated_date))
+    : Date.now();
+  const liveStore = base44.asServiceRole.entities.LiveActivityRegistration;
+  const leasedParticipantIDs = new Set(roomParticipantUserIDs(room));
+  const registrations = (await allMatching(liveStore, {
+    status: "active",
+    room_id: roomID,
+    token_kind: "activity",
+  })).filter((registration) =>
+    clean(registration.match_id) === matchID &&
+    clean(registration.provider_match_id) === matchID
+  );
+
+  // Persist every terminal intent before the first APNs call. The caller keeps
+  // the current participant lifecycle leases. A stale activity belonging to a
+  // player who already left is leased here separately before touching its row.
+  for (const registration of registrations) {
+    const queue = async () =>
+      await queueLiveRetry({
+        store: liveStore,
+        registrationID: clean(registration.id),
+        roomID,
+        matchID,
+        roomRevision,
+        forceEnd: true,
+      });
+    const queued = leasedParticipantIDs.has(clean(registration.user_id))
+      ? await queue()
+      : await withPushWriterLeases({
+        lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+        userIDs: [clean(registration.user_id)],
+        action: async (persist) => {
+          await persist(async () => undefined);
+          return await queue();
+        },
+      });
+    if (!queued) {
+      const latest = (await allMatching(liveStore, {
+        id: clean(registration.id),
+      }))[0];
+      if (latest && clean(latest.status) === "active") {
+        throw new PushContractError(
+          "Live Activity end could not be queued.",
+          503,
+          "live_end_queue_contention",
+        );
+      }
+    }
+  }
+
+  let delivered = 0;
+  let failed = 0;
+  let skipped = 0;
+  const deadlineEpochMs = clampDeadline(
+    body.deadline_epoch_ms,
+    LIVE_SYNC_BUDGET_MS,
+  );
+  const work = await runBounded({
+    items: registrations,
+    concurrency: 6,
+    deadlineEpochMs,
+    worker: async (registration) => {
+      const outcome = await deliverForcedLiveActivityEnd({
+        base44,
+        registration,
+        roomID,
+        matchID,
+        roomRevision,
+        callerHoldsLifecycleLeases: leasedParticipantIDs.has(
+          clean(registration.user_id),
+        ),
+      });
+      if (outcome === "delivered") delivered += 1;
+      else if (outcome === "failed") failed += 1;
+      else skipped += 1;
+    },
+  });
+  return {
+    ok: true,
+    queued: registrations.length,
+    delivered,
+    failed,
+    skipped,
+    deferred: work.unstarted.length,
+  };
+}
+
 async function drainLiveActivityRetries(
   base44: any,
   limit: number,
@@ -750,17 +1037,75 @@ async function drainLiveActivityRetries(
         );
         if (!roomID || !matchID) continue;
         try {
-          results.push(
-            await syncLiveActivities(base44, {
-              room_id: roomID,
-              match_id: matchID,
-              registration_id: registration.id,
-              deadline_epoch_ms: deadlineEpochMs,
-            }),
-          );
+          if (registration.pending_force_end === true) {
+            results.push({
+              ok: true,
+              forced_end: await deliverForcedLiveActivityEnd({
+                base44,
+                registration,
+                roomID,
+                matchID,
+                roomRevision: Number(
+                  registration.pending_room_revision ||
+                    registration.last_revision || 0,
+                ),
+              }),
+            });
+          } else {
+            results.push(
+              await syncLiveActivities(base44, {
+                room_id: roomID,
+                match_id: matchID,
+                registration_id: registration.id,
+                deadline_epoch_ms: deadlineEpochMs,
+              }),
+            );
+          }
         } catch {
           // The durable retry row remains due for the next trusted drain.
         }
+      }
+    },
+  });
+  return results;
+}
+
+async function reconcileIdleLiveActivityDrift(
+  base44: any,
+  limit: number,
+  deadlineEpochMs: number,
+): Promise<Entity[]> {
+  const store = base44.asServiceRole.entities.LiveActivityRegistration;
+  // Oldest-idle-first gives every bound activity a periodic reconciliation
+  // pass. If a gameRoomAction -> sync_live_activity invocation was lost before
+  // it could mark a retry, the registration's old revision remains durable and
+  // this sweep repairs it without a global room scan.
+  const candidates: Entity[] = await store.filter(
+    { status: "active", token_kind: "activity", delivery_state: "idle" },
+    "updated_at",
+    Math.min(12, Math.max(1, limit)),
+    0,
+  ) || [];
+  const results: Entity[] = [];
+  await runBounded({
+    items: candidates,
+    concurrency: 3,
+    deadlineEpochMs,
+    worker: async (registration) => {
+      const roomID = clean(registration.room_id);
+      const matchID = clean(registration.match_id);
+      if (!roomID || !matchID) return;
+      try {
+        results.push(
+          await syncLiveActivities(base44, {
+            room_id: roomID,
+            match_id: matchID,
+            registration_id: registration.id,
+            deadline_epoch_ms: deadlineEpochMs,
+          }),
+        );
+      } catch {
+        // The unchanged oldest-idle row is selected again on the next drain.
       }
     },
   });
@@ -771,10 +1116,20 @@ async function processEvents(base44: any, body: Entity): Promise<Entity> {
   const deadlineEpochMs = Date.now() + 50_000;
   const sourceEventID = clean(body.source_event_id);
   if (!sourceEventID) throw new PushContractError("Source event is required.");
-  const events = await allMatching(
+  let events = await allMatching(
     base44.asServiceRole.entities.PushNotificationEvent,
     { source_event_id: sourceEventID },
   );
+  if (!events.length) {
+    const room = await roomForSourceEvent(base44, sourceEventID);
+    if (room) {
+      await repairRoomPushOutbox(base44, room);
+      events = await allMatching(
+        base44.asServiceRole.entities.PushNotificationEvent,
+        { source_event_id: sourceEventID },
+      );
+    }
+  }
   // ActivityKit is attempted before the ordinary event becomes terminal. If
   // this invocation is interrupted, the still-pending alert outbox remains a
   // durable trigger for the scheduled failover worker.
@@ -813,7 +1168,16 @@ async function processEvents(base44: any, body: Entity): Promise<Entity> {
 async function drain(base44: any, body: Entity): Promise<Entity> {
   const deadlineEpochMs = Date.now() + DRAIN_BUDGET_MS;
   const limit = Math.min(12, Math.max(1, Number(body.limit || 8)));
+  const repairedEvents = await reconcileRecentRoomOutboxes(
+    base44,
+    Math.min(deadlineEpochMs, Date.now() + 10_000),
+  );
   const liveResults = await drainLiveActivityRetries(
+    base44,
+    Math.min(6, limit),
+    Math.min(deadlineEpochMs, Date.now() + 20_000),
+  );
+  const reconciledLiveResults = await reconcileIdleLiveActivityDrift(
     base44,
     Math.min(6, limit),
     Math.min(deadlineEpochMs, Date.now() + 20_000),
@@ -897,11 +1261,14 @@ async function drain(base44: any, body: Entity): Promise<Entity> {
   });
   return {
     ok: true,
-    processed: results.length + liveResults.length,
+    processed: results.length + liveResults.length +
+      reconciledLiveResults.length,
     deferred: Math.max(0, due.length - results.length),
     ordinary_unstarted: ordinaryWork.unstarted.length,
     results,
     live_activity_results: liveResults,
+    live_activity_reconciliations: reconciledLiveResults,
+    repaired_events: repairedEvents,
   };
 }
 
@@ -915,7 +1282,14 @@ Deno.serve(async (req) => {
     const action = clean(body.action || automationArgs?.action).toLowerCase();
     const base44 = createClientFromRequest(req);
 
-    if (["process_event", "drain", "sync_live_activity"].includes(action)) {
+    if (
+      [
+        "process_event",
+        "drain",
+        "sync_live_activity",
+        "end_room_live_activities",
+      ].includes(action)
+    ) {
       if (action === "drain" && !internalRequest(body)) {
         const automationUser = await base44.auth.me().catch(() => null);
         if (!isAdminAutomationUser(automationUser)) {
@@ -935,6 +1309,9 @@ Deno.serve(async (req) => {
       }
       if (action === "sync_live_activity") {
         return Response.json(await syncLiveActivities(base44, body));
+      }
+      if (action === "end_room_live_activities") {
+        return Response.json(await endRoomLiveActivities(base44, body));
       }
       return Response.json(await drain(base44, body));
     }

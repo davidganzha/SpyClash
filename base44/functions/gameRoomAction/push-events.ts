@@ -1,3 +1,5 @@
+import { gameTimerDeadlineMilliseconds } from "./game-timer-policy.ts";
+
 type Entity = Record<string, any>;
 
 function clean(value: unknown): string {
@@ -22,12 +24,17 @@ export function gamePushExpiry(
   if (eventType === "game_finished") {
     return new Date(now.getTime() + 60 * 60 * 1_000).toISOString();
   }
-  const startedAt = Date.parse(clean(room.game_started_at));
-  const duration = Number(room.game_duration_seconds);
-  const timerDeadline = Number.isFinite(startedAt) &&
-      Number.isFinite(duration) && duration > 0
-    ? startedAt + Math.min(duration, 15 * 60) * 1_000 + 5 * 60 * 1_000
-    : now.getTime() + 20 * 60 * 1_000;
+  let timerDeadline = now.getTime() + 20 * 60 * 1_000;
+  try {
+    timerDeadline = gameTimerDeadlineMilliseconds(
+      room,
+      now.getTime(),
+      5 * 60,
+    );
+  } catch {
+    // Legacy pre-timer rooms have no authoritative start yet. Keep their
+    // bounded fallback rather than retaining a stale start alert indefinitely.
+  }
   // A queued start alert is useful only around the active match. Never let an
   // offline device receive it hours after the table has already finished.
   return new Date(Math.min(timerDeadline, now.getTime() + 20 * 60 * 1_000))

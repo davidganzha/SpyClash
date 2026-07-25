@@ -2,6 +2,7 @@ import { assertEquals } from "jsr:@std/assert@1";
 import {
   contentStateForUser,
   liveActivityPayload,
+  liveActivityTerminationPayload,
   sendLiveActivityUpdate,
 } from "./live-activity.ts";
 
@@ -135,4 +136,20 @@ Deno.test("push-to-start dedupe ledger supports multiple concurrent match ids", 
   });
   assertEquals(skipped.skipped, true);
   assertEquals(skipped.reason, "already_started");
+});
+
+Deno.test("generic remote end survives room deletion without leaking room data", () => {
+  const payload = liveActivityTerminationPayload({
+    revision: 42,
+    now: new Date("2026-07-26T12:00:00.000Z"),
+  });
+  assertEquals(payload.aps.event, "end");
+  assertEquals(payload.aps["content-state"].phase, "completed");
+  assertEquals(payload.aps["content-state"].participants, []);
+  assertEquals(payload.aps["content-state"].revision, 42);
+  assertEquals(
+    payload.aps["dismissal-date"],
+    payload.aps.timestamp + 300,
+  );
+  assertEquals(JSON.stringify(payload).includes("email"), false);
 });

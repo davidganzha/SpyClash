@@ -408,6 +408,7 @@ export async function registerLiveActivity(input: {
     pending_room_id: "",
     pending_match_id: "",
     pending_room_revision: 0,
+    pending_force_end: false,
     ended_at: null,
     revoked_at: null,
     last_seen_at: nowISO,

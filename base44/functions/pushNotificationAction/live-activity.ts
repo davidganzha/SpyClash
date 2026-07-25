@@ -308,3 +308,70 @@ export async function sendLiveActivityUpdate(input: {
     event: built.event,
   };
 }
+
+export function liveActivityTerminationPayload(input: {
+  revision?: number;
+  now?: Date;
+} = {}): Entity {
+  const now = input.now || new Date();
+  const timestamp = Math.floor(now.getTime() / 1_000);
+  const revision = Math.max(0, Math.round(Number(input.revision || 0)));
+  return {
+    aps: {
+      timestamp,
+      event: "end",
+      "content-state": {
+        phase: "completed",
+        mode: "questions",
+        participants: [],
+        currentSpeakerID: null,
+        currentAskerID: null,
+        currentResponderID: null,
+        round: 1,
+        timerEndsAtEpochSeconds: null,
+        pausedSecondsRemaining: null,
+        privateIntel: null,
+        revision,
+      },
+      "dismissal-date": timestamp + 300,
+      "relevance-score": 0,
+    },
+  };
+}
+
+/**
+ * Ends an already-created activity without reading the room. The deliberately
+ * generic terminal state lets a durable deletion intent finish after its
+ * ephemeral GameRoom source has been removed.
+ */
+export async function sendLiveActivityTermination(input: {
+  registration: Entity;
+  roomID: string;
+  matchID: string;
+  revision?: number;
+  now?: Date;
+}): Promise<APNsResult & { revision: number; event: "end" }> {
+  const now = input.now || new Date();
+  const revision = Math.max(0, Math.round(Number(input.revision || 0)));
+  const token = await decryptPushToken(
+    clean(input.registration.token_ciphertext),
+    clean(input.registration.token_iv),
+    tokenBinding(input.registration),
+  );
+  return {
+    ...await sendLiveActivityPush({
+      token,
+      environment: clean(input.registration.environment) === "production"
+        ? "production"
+        : "sandbox",
+      bundleID: clean(input.registration.bundle_id),
+      collapseID: `live:${clean(input.matchID)}:${
+        clean(input.registration.user_id)
+      }`,
+      expiration: Math.floor(now.getTime() / 1_000) + 3600,
+      payload: liveActivityTerminationPayload({ revision, now }),
+    }),
+    revision,
+    event: "end",
+  };
+}

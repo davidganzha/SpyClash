@@ -53,3 +53,33 @@ Deno.test("game start alert expires with the match instead of lingering offline"
     "2026-07-15T13:00:00.000Z",
   );
 });
+
+Deno.test("game start alert expiry follows accumulated and active pauses", () => {
+  const start = "2026-07-15T12:00:00.000Z";
+  assertEquals(
+    gamePushExpiry(
+      {
+        game_started_at: start,
+        game_duration_seconds: 60,
+        game_paused_total_seconds: 30,
+      },
+      "game_started",
+      new Date(start),
+    ),
+    "2026-07-15T12:06:30.000Z",
+  );
+
+  assertEquals(
+    gamePushExpiry(
+      {
+        game_started_at: start,
+        game_duration_seconds: 60,
+        game_paused_at: "2026-07-15T12:00:20.000Z",
+        game_paused_total_seconds: 0,
+      },
+      "game_started",
+      new Date("2026-07-15T12:01:00.000Z"),
+    ),
+    "2026-07-15T12:06:40.000Z",
+  );
+});

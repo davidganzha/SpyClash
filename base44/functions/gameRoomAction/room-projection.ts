@@ -9,6 +9,10 @@ function clean(value: unknown): string {
   return String(value ?? "").trim();
 }
 
+function normalizedEmail(value: unknown): string {
+  return clean(value).toLocaleLowerCase();
+}
+
 function safeEmailList(value: unknown): string[] {
   return Array.isArray(value)
     ? [...new Set(value.map(clean).filter(Boolean))]
@@ -25,8 +29,20 @@ export function shouldRedactRoomSecret(
   room: Record<string, any>,
   viewer: Record<string, any>,
 ): boolean {
-  return clean(viewer?.email) === clean(room?.spy_email) &&
+  return Boolean(normalizedEmail(viewer?.email)) &&
+    normalizedEmail(viewer?.email) === normalizedEmail(room?.spy_email) &&
     clean(room?.status || "waiting").toLowerCase() !== "finished";
+}
+
+function maySeeSpyIdentity(
+  room: Record<string, any>,
+  viewer: Record<string, any>,
+): boolean {
+  if (clean(room?.status || "waiting").toLowerCase() === "finished") {
+    return true;
+  }
+  return Boolean(normalizedEmail(viewer?.email)) &&
+    normalizedEmail(viewer?.email) === normalizedEmail(room?.spy_email);
 }
 
 export function projectRoomForClient(
@@ -35,6 +51,7 @@ export function projectRoomForClient(
 ) {
   if (!room) return room;
   const redacted = shouldRedactRoomSecret(room, viewer);
+  const revealSpyIdentity = maySeeSpyIdentity(room, viewer);
   const safeWord = safeCommunityTextForDisplay(
     room.word || room.secret_word,
     "CLASSIFIED",
@@ -62,7 +79,7 @@ export function projectRoomForClient(
     spectators: safeEmailList(room.spectators),
     ready_players: safeEmailList(room.ready_players),
     cards_read: safeEmailList(room.cards_read),
-    spy_email: clean(room.spy_email),
+    spy_email: revealSpyIdentity ? clean(room.spy_email) : "",
     word: redacted ? "CLASSIFIED" : safeWord,
     secret_word: redacted ? "CLASSIFIED" : safeWord,
     category: safeCommunityTextForDisplay(room.category, "CLASSIC"),
@@ -81,9 +98,18 @@ export function projectRoomForClient(
     questions_in_round: Number(room.questions_in_round || 0),
     question_phase: clean(room.question_phase || "asking"),
     eliminated_emails: safeEmailList(room.eliminated_emails),
-    word_pool: redacted ? [] : wordPool,
+    // The candidate pool is gameplay data, not the exact role secret. The spy
+    // needs it for a legitimate early guess while their exact word stays
+    // CLASSIFIED until the match finishes.
+    word_pool: wordPool,
+    intro_started_at: clean(room.intro_started_at),
     game_started_at: clean(room.game_started_at),
     game_duration_seconds: Number(room.game_duration_seconds || 900),
+    game_paused_at: clean(room.game_paused_at),
+    game_paused_total_seconds: Math.max(
+      0,
+      Math.floor(Number(room.game_paused_total_seconds) || 0),
+    ),
     countdown_started_at: clean(room.countdown_started_at),
     roulette_target_email: clean(room.roulette_target_email),
     game_mode: clean(room.game_mode || "questions"),

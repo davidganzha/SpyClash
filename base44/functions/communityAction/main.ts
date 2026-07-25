@@ -28,6 +28,7 @@ import {
   enqueueCommunityPushEvent,
   reusablePendingInviteEventID,
 } from "./push-events.ts";
+import { internalPushSecret } from "./internal-push.ts";
 
 type Entity = Record<string, any>;
 type Persist = <T>(writer: () => Promise<T>) => Promise<T>;
@@ -595,7 +596,9 @@ async function sendFriendRequest(
 }
 
 async function processPushEventBestEffort(base44: any, eventID: string) {
-  const internalSecret = clean(Deno.env.get("PUSH_INTERNAL_SECRET"));
+  const internalSecret = internalPushSecret(
+    Deno.env.get("PUSH_INTERNAL_SECRET"),
+  );
   if (!eventID || !internalSecret) return;
   try {
     await base44.asServiceRole.functions.invoke("pushNotificationAction", {

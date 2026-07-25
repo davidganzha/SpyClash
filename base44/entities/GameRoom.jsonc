@@ -71,6 +71,10 @@
     },
     "eliminated_emails": { "type": "array", "items": { "type": "string" } },
     "word_pool": { "type": "array", "items": { "type": "object" } },
+    "intro_started_at": {
+      "type": "string",
+      "description": "Server-issued timestamp anchoring the synchronized online intro."
+    },
     "game_started_at": { "type": "string" },
     "game_started_event_id": {
       "type": "string",
@@ -89,6 +93,16 @@
       }
     },
     "game_duration_seconds": { "type": "number", "default": 900 },
+    "game_paused_at": {
+      "type": "string",
+      "description": "Server-issued timestamp for the currently active host pause."
+    },
+    "game_paused_total_seconds": {
+      "type": "number",
+      "default": 0,
+      "minimum": 0,
+      "description": "Accumulated completed pause duration used by the authoritative deadline."
+    },
     "countdown_started_at": { "type": "string" },
     "roulette_target_email": { "type": "string" },
     "game_mode": {

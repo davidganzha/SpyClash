@@ -37,6 +37,7 @@ export async function claimLiveDelivery(input: {
   roomID: string;
   matchID: string;
   roomRevision: number;
+  forceEnd?: boolean;
   now?: Date;
   randomUUID?: () => string;
 }): Promise<Entity | null> {
@@ -65,6 +66,8 @@ export async function claimLiveDelivery(input: {
     pending_room_id: clean(input.roomID),
     pending_match_id: clean(input.matchID),
     pending_room_revision: Math.max(0, Number(input.roomRevision || 0)),
+    pending_force_end: input.forceEnd === true ||
+      current.pending_force_end === true,
     updated_at: now.toISOString(),
   };
   const result = await input.store.updateMany(exact(current), { $set: patch });
@@ -77,6 +80,7 @@ export async function queueLiveRetry(input: {
   roomID: string;
   matchID: string;
   roomRevision: number;
+  forceEnd?: boolean;
   now?: Date;
 }): Promise<boolean> {
   const now = input.now || new Date();
@@ -96,6 +100,7 @@ export async function queueLiveRetry(input: {
     const patch: Entity = {
       retry_requested: true,
       updated_at: now.toISOString(),
+      ...(input.forceEnd === true ? { pending_force_end: true } : {}),
     };
     if (clean(current.delivery_state) !== "processing") {
       patch.delivery_state = "retry";

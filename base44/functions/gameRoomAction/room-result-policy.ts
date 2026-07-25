@@ -1,4 +1,7 @@
+import { gameActiveElapsedSeconds } from "./game-timer-policy.ts";
+
 const POST_GAME_GUESS_SECONDS = 30;
+export const ONLINE_GAME_INTRO_SECONDS = 8;
 
 type Room = Record<string, any>;
 
@@ -44,6 +47,89 @@ function rankedParticipants(room: Room) {
     userID: clean(player?.user_id),
     email: clean(player?.email).toLocaleLowerCase(),
   }));
+}
+
+function normalizedEmail(value: unknown): string {
+  return clean(value).toLocaleLowerCase();
+}
+
+function validTimestamp(value: unknown, message: string): string {
+  const timestamp = clean(value);
+  if (!timestamp || !Number.isFinite(Date.parse(timestamp))) {
+    throw Object.assign(new Error(message), {
+      status: 400,
+      code: "invalid_game_timestamp",
+    });
+  }
+  return timestamp;
+}
+
+export function serverIntroStartPatch(
+  startedAt = new Date().toISOString(),
+): Room {
+  return {
+    intro_started_at: validTimestamp(
+      startedAt,
+      "The game intro timestamp is invalid.",
+    ),
+  };
+}
+
+export function introStartedAtForCompletion(
+  room: Room,
+  fallbackStartedAt = new Date().toISOString(),
+): string {
+  const existing = clean(room?.intro_started_at);
+  if (existing && Number.isFinite(Date.parse(existing))) return existing;
+  return validTimestamp(
+    fallbackStartedAt,
+    "The game intro timestamp is invalid.",
+  );
+}
+
+/**
+ * Any current participant may commit the already-armed plan once the
+ * server-clocked intro window ends, so neither an eager host nor a
+ * backgrounded host can skip or strand the synchronized intro.
+ */
+export function assertIntroCompletionAccess(
+  room: Room,
+  actorEmailValue: unknown,
+  nowMilliseconds = Date.now(),
+): void {
+  if (status(room) !== "roulette") {
+    throw Object.assign(new Error("Mission is not armed"), {
+      status: 409,
+      code: "game_intro_inactive",
+    });
+  }
+
+  const actorEmail = normalizedEmail(actorEmailValue);
+  const participantEmails = rankedParticipants(room).map((player) =>
+    player.email
+  );
+  if (!actorEmail || !participantEmails.includes(actorEmail)) {
+    throw Object.assign(new Error("Not a player in this room"), {
+      status: 403,
+      code: "player_access_required",
+    });
+  }
+
+  const introStartedAt = Date.parse(clean(room?.intro_started_at));
+  if (!Number.isFinite(introStartedAt) || !Number.isFinite(nowMilliseconds)) {
+    throw Object.assign(new Error("The game intro timestamp is invalid."), {
+      status: 409,
+      code: "invalid_game_intro",
+    });
+  }
+
+  const deadline = introStartedAt + ONLINE_GAME_INTRO_SECONDS * 1_000;
+  if (nowMilliseconds < deadline) {
+    throw Object.assign(new Error("The game intro is still in progress."), {
+      status: 409,
+      code: "game_intro_in_progress",
+    });
+  }
 }
 
 function assertStartedRankedRoom(room: Room): {
@@ -209,9 +295,9 @@ export function terminalPatchFromIntent(intent: TerminalIntent): Room {
 }
 
 /**
- * Produces the single mutation for a role-card acknowledgement. Once the
- * caller is present in cards_read the transition is a no-op, so the timer can
- * only be set by the one transition that completes the set.
+ * Produces the single mutation for a role-card acknowledgement. A duplicate
+ * acknowledgement is normally a no-op, but also repairs the safe partial
+ * state where every card was persisted as read and the timer write was lost.
  */
 export function roleCardReadTransitionPatch(
   room: Room,
@@ -236,15 +322,16 @@ export function roleCardReadTransitionPatch(
   }
 
   const existing = (Array.isArray(room?.cards_read) ? room.cards_read : [])
-    .map((value) => clean(value).toLocaleLowerCase()).filter(Boolean);
-  if (existing.includes(userEmail)) return {};
-
+    .map((value) => clean(value).toLocaleLowerCase())
+    .filter((email) => participantEmails.includes(email));
+  const alreadyRead = existing.includes(userEmail);
   const next = [...new Set([...existing, userEmail])];
-  const patch: Room = { cards_read: next };
-  if (
-    participantEmails.length > 0 &&
-    participantEmails.every((email) => next.includes(email))
-  ) {
+  const allCardsRead = participantEmails.length > 0 &&
+    participantEmails.every((email) => next.includes(email));
+  if (alreadyRead && (!allCardsRead || clean(room?.game_started_at))) return {};
+
+  const patch: Room = alreadyRead ? {} : { cards_read: next };
+  if (allCardsRead && !clean(room?.game_started_at)) {
     const timestamp = clean(startedAt);
     if (!timestamp || !Number.isFinite(Date.parse(timestamp))) {
       throw Object.assign(new Error("The game start timestamp is invalid."), {
@@ -254,6 +341,137 @@ export function roleCardReadTransitionPatch(
     patch.ready_players = [];
     patch.game_started_at = timestamp;
     patch.game_duration_seconds = Number(room?.game_duration_seconds || 900);
+    patch.game_paused_at = null;
+    patch.game_paused_total_seconds = 0;
+  }
+  return patch;
+}
+
+function abandonedPreTimerMatchPatch(): Room {
+  return {
+    status: "waiting",
+    spy_email: "",
+    secret_word: "",
+    word: "",
+    category: "",
+    spy_guess: "",
+    detective_votes: [],
+    winner: "",
+    cards_read: [],
+    vote_requests: [],
+    spectators: [],
+    eliminated_emails: [],
+    ready_players: [],
+    question_phase: "asking",
+    questions_in_round: 0,
+    round_number: 1,
+    current_answer: "",
+    current_answer_feedback: null,
+    current_asker_email: "",
+    current_answerer_email: "",
+    roulette_target_email: "",
+    player_feedback: [],
+    word_pool: [],
+    match_id: "",
+    terminal_intent: null,
+    intro_started_at: null,
+    game_started_at: null,
+    game_paused_at: null,
+    game_paused_total_seconds: 0,
+    game_started_event_id: "",
+    game_finished_event_id: "",
+    countdown_started_at: null,
+  };
+}
+
+/**
+ * Reconciles a post-leave snapshot while role cards are still being read.
+ * A valid remaining ranked table keeps the assigned spy and starts the timer
+ * exactly once when every remaining player has acknowledged their card. If the
+ * spy left, fewer than three authenticated players remain, or identity mirrors
+ * are inconsistent, the half-started match is cleared back to the lobby.
+ */
+export function preTimerMembershipTransitionPatch(
+  room: Room,
+  startedAt = new Date().toISOString(),
+): Room {
+  const roomStatus = status(room);
+  if (
+    !["roulette", "playing"].includes(roomStatus) ||
+    clean(room?.game_started_at)
+  ) return {};
+
+  const participants = rankedParticipants(room);
+  const userIDs = participants.map((player) => player.userID);
+  const emails = participants.map((player) => player.email);
+  const mirroredIDs =
+    (Array.isArray(room?.participant_user_ids) ? room.participant_user_ids : [])
+      .map(clean).filter(Boolean);
+  const spyEmail = normalizedEmail(room?.spy_email);
+  const validRankedTable = participants.length >= 3 &&
+    participants.every((player) => player.userID && player.email) &&
+    new Set(userIDs).size === participants.length &&
+    new Set(emails).size === participants.length &&
+    new Set(mirroredIDs).size === participants.length &&
+    userIDs.every((userID) => mirroredIDs.includes(userID)) &&
+    emails.includes(spyEmail) &&
+    Boolean(clean(room?.word || room?.secret_word));
+
+  if (!validRankedTable) return abandonedPreTimerMatchPatch();
+
+  const playersByEmail = new Map(
+    (Array.isArray(room?.players) ? room.players : []).map((player) => [
+      normalizedEmail(player?.email),
+      clean(player?.email),
+    ]),
+  );
+  const requestedAsker = normalizedEmail(room?.current_asker_email);
+  const askerEmail = playersByEmail.get(requestedAsker) ||
+    playersByEmail.get(emails[0]) || clean(room.players?.[0]?.email);
+  const requestedAnswerer = normalizedEmail(room?.current_answerer_email);
+  const answererEmail = requestedAnswerer !== normalizedEmail(askerEmail) &&
+      playersByEmail.has(requestedAnswerer)
+    ? playersByEmail.get(requestedAnswerer)
+    : (Array.isArray(room?.players) ? room.players : [])
+      .map((player) => clean(player?.email))
+      .find((email) => normalizedEmail(email) !== normalizedEmail(askerEmail));
+
+  const patch: Room = {};
+  if (clean(room?.current_asker_email) !== askerEmail) {
+    patch.current_asker_email = askerEmail;
+  }
+  if (clean(room?.current_answerer_email) !== answererEmail) {
+    patch.current_answerer_email = answererEmail;
+  }
+  if (!playersByEmail.has(normalizedEmail(room?.roulette_target_email))) {
+    patch.roulette_target_email = askerEmail;
+  }
+
+  const rawRead = (Array.isArray(room?.cards_read) ? room.cards_read : [])
+    .map(normalizedEmail).filter(Boolean);
+  const read = new Set(rawRead.filter((email) => emails.includes(email)));
+  const canonicalRead = (Array.isArray(room?.players) ? room.players : [])
+    .map((player) => clean(player?.email))
+    .filter((email) => read.has(normalizedEmail(email)));
+  if (
+    rawRead.length !== canonicalRead.length ||
+    rawRead.some((email, index) =>
+      email !== normalizedEmail(canonicalRead[index])
+    )
+  ) {
+    patch.cards_read = canonicalRead;
+  }
+  if (
+    roomStatus === "playing" && emails.every((email) => read.has(email))
+  ) {
+    patch.cards_read = canonicalRead;
+    patch.ready_players = [];
+    patch.game_started_at = validTimestamp(
+      startedAt,
+      "The game start timestamp is invalid.",
+    );
+    patch.game_paused_at = null;
+    patch.game_paused_total_seconds = 0;
   }
   return patch;
 }
@@ -267,10 +485,12 @@ export function deriveExpiredGameWinner(
   room: Room,
   nowMilliseconds = Date.now(),
 ): "detectives" {
-  const { startedAt, durationSeconds } = assertStartedRankedRoom(room);
-  const deadline = startedAt +
-    (durationSeconds + POST_GAME_GUESS_SECONDS) * 1_000;
-  if (!Number.isFinite(nowMilliseconds) || nowMilliseconds < deadline) {
+  const { durationSeconds } = assertStartedRankedRoom(room);
+  const activeElapsedSeconds = gameActiveElapsedSeconds(room, nowMilliseconds);
+  if (
+    !Number.isFinite(nowMilliseconds) ||
+    activeElapsedSeconds < durationSeconds + POST_GAME_GUESS_SECONDS
+  ) {
     throw invalidTerminal("The server game deadline has not elapsed.");
   }
   return "detectives";

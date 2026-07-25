@@ -99,3 +99,43 @@ Deno.test("a newer room state queued during send survives completion", async () 
   assertEquals(store.records[0].pending_room_revision, 200);
   assertEquals(liveDeliveryDue(store.records[0]), true);
 });
+
+Deno.test("forced remote end remains durable across a retry claim", async () => {
+  const store = new Store([registration()]);
+  assertEquals(
+    await queueLiveRetry({
+      store,
+      registrationID: "live-1",
+      roomID: "room-1",
+      matchID: "match-1",
+      roomRevision: 100,
+      forceEnd: true,
+      now: new Date("2026-07-15T12:00:00.000Z"),
+    }),
+    true,
+  );
+  assertEquals(store.records[0].pending_force_end, true);
+  const claimed = await claimLiveDelivery({
+    store,
+    registration: structuredClone(store.records[0]),
+    roomID: "room-1",
+    matchID: "match-1",
+    roomRevision: 100,
+    forceEnd: true,
+    now: new Date("2026-07-15T12:00:01.000Z"),
+    randomUUID: () => "forced-end-claim",
+  });
+  assertEquals(claimed?.pending_force_end, true);
+  assertEquals(
+    await completeLiveDelivery({
+      store,
+      claimed: claimed!,
+      state: "retry",
+      nextAttemptAt: "2026-07-15T12:01:00.000Z",
+      randomUUID: () => "retry",
+    }),
+    true,
+  );
+  assertEquals(store.records[0].pending_force_end, true);
+  assertEquals(store.records[0].delivery_state, "retry");
+});

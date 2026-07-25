@@ -68,6 +68,11 @@
     "pending_room_id": { "type": "string" },
     "pending_match_id": { "type": "string" },
     "pending_room_revision": { "type": "number" },
+    "pending_force_end": {
+      "type": "boolean",
+      "default": false,
+      "description": "Durable remote-end intent retained until ActivityKit accepts the terminal push or the token is revoked."
+    },
     "last_apns_timestamp": { "type": "number" },
     "last_seen_at": { "type": "string", "format": "date-time" },
     "ended_at": { "type": "string", "format": "date-time" },

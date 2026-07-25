@@ -16,28 +16,40 @@ import {
 import { projectRoomForClient } from "./room-projection.ts";
 import { loadLeaderboard } from "./leaderboard.ts";
 import {
+  assertIntroCompletionAccess,
   assertRankedTerminalRoom,
   assertServerRankedFinishSource,
   buildTerminalIntent,
   deriveExpiredGameWinner,
   historyRecordsForMatch,
+  introStartedAtForCompletion,
+  preTimerMembershipTransitionPatch,
   rankedMatchIdentity,
   rejectRetiredResultRecording,
   roleCardReadTransitionPatch,
+  serverIntroStartPatch,
   terminalIntentFromRoom,
   terminalPatchFromIntent,
 } from "./room-result-policy.ts";
+import {
+  assertGameActionAllowedByDeadline,
+  assertGameActionAllowedWhilePaused,
+  finishGamePauseTransitionPatch,
+  pauseGameTransitionPatch,
+  resumeGameTransitionPatch,
+} from "./game-timer-policy.ts";
 import { enqueueGamePushEvents } from "./push-events.ts";
 import { nextRoundNumber } from "./game-round.ts";
+import { internalPushSecret } from "./internal-push.ts";
 import {
   assertLobbySettingsAccess,
   deleteRoomAndVerify,
   gameDurationPatch,
   gameModePatch,
   leaveAlreadyComplete,
-  roomHasParticipantIdentity,
   roomHasGameDuration,
   roomHasGameMode,
+  roomHasParticipantIdentity,
   validatedGameDuration,
   validatedGameMode,
 } from "./room-interaction-safety.ts";
@@ -305,11 +317,48 @@ async function updateRoomWithRetry(
   );
 }
 
+async function endRoomLiveActivitiesBeforeDelete(base44, room) {
+  const roomID = clean(room?.id);
+  const matchID = clean(room?.match_id);
+  if (!roomID || !matchID) return;
+  const internalSecret = internalPushSecret(
+    Deno.env.get("PUSH_INTERNAL_SECRET"),
+  );
+  if (!internalSecret) {
+    throw Object.assign(
+      new Error("Live Activity end delivery is not configured."),
+      { status: 503, code: "push_internal_secret_invalid" },
+    );
+  }
+  try {
+    await base44.asServiceRole.functions.invoke("pushNotificationAction", {
+      action: "end_room_live_activities",
+      room_id: roomID,
+      match_id: matchID,
+      internal_secret: internalSecret,
+    });
+  } catch (error) {
+    console.error(
+      "room Live Activity end deferred",
+      error instanceof Error ? error.message : error,
+    );
+    throw Object.assign(
+      new Error("Could not queue the Lock Screen session end; retry."),
+      { status: 503, code: "live_activity_end_unavailable" },
+    );
+  }
+}
+
 async function deleteRoom(base44, room) {
   await assertRoomPersistenceBoundary(base44);
   const latest = await fetchRoom(base44, room.id);
   if (!latest) return { success: true };
   assertRoomMutationOpen(latest);
+  // The internal receiver durably marks every exact per-activity token before
+  // the ephemeral room is removed. If that boundary cannot be confirmed, keep
+  // the room so a caller retry can still produce a real ActivityKit `end`.
+  await endRoomLiveActivitiesBeforeDelete(base44, latest);
+  await assertRoomPersistenceBoundary(base44);
   await deleteRoomAndVerify({
     roomID: latest.id,
     deleteByID: (roomID) =>
@@ -445,6 +494,10 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
     terminalPatch,
   );
   const persistedPatch = terminalPatchFromIntent(claimed.intent);
+  const finishedPausePatch = finishGamePauseTransitionPatch(
+    claimed.room,
+    claimed.intent.decided_at,
+  );
   const finishedEventID = `game-finished:${clean(claimed.intent.match_id)}`;
   await enqueueGamePushEvents({
     base44,
@@ -460,6 +513,7 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
   const terminal = {
     ...claimed.room,
     ...persistedPatch,
+    ...finishedPausePatch,
     status: "finished",
     winner: claimed.intent.winner,
     game_finished_event_id: finishedEventID,
@@ -479,6 +533,10 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
           { status: 409, code: "terminal_intent_changed" },
         );
       }
+      const pausePatch = finishGamePauseTransitionPatch(
+        latest,
+        intent.decided_at,
+      );
       if (normalizedStatus(latest) === "finished") {
         if (clean(latest.winner) !== intent.winner) {
           throw Object.assign(
@@ -486,12 +544,16 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
             { status: 409, code: "terminal_state_conflict" },
           );
         }
-        return clean(latest.game_finished_event_id) === finishedEventID
-          ? {}
-          : { game_finished_event_id: finishedEventID };
+        return {
+          ...pausePatch,
+          ...(clean(latest.game_finished_event_id) === finishedEventID
+            ? {}
+            : { game_finished_event_id: finishedEventID }),
+        };
       }
       return {
         ...terminalPatchFromIntent(intent),
+        ...pausePatch,
         status: "finished",
         winner: intent.winner,
         game_finished_event_id: finishedEventID,
@@ -518,6 +580,10 @@ async function createRoom(base44, user, body) {
     participant_user_ids: [clean(user.id)],
     game_mode: "questions",
     game_duration_seconds: 900,
+    intro_started_at: null,
+    game_started_at: null,
+    game_paused_at: null,
+    game_paused_total_seconds: 0,
     ready_players: [],
     winner: "",
   });
@@ -639,10 +705,22 @@ async function toggleReady(base44, room, user) {
 
 async function votePlayAgain(base44, room, user) {
   requirePlayer(room, user);
+  if (normalizedStatus(room) !== "finished") {
+    throw Object.assign(new Error("Replay voting is not active"), {
+      status: 409,
+      code: "replay_vote_inactive",
+    });
+  }
   return await updateRoomWithRetry(
     base44,
     room,
     (latest) => {
+      if (normalizedStatus(latest) !== "finished") {
+        throw Object.assign(new Error("Replay voting is not active"), {
+          status: 409,
+          code: "replay_vote_inactive",
+        });
+      }
       const ready = readyPlayers(latest);
       return ready.includes(user.email)
         ? {}
@@ -686,7 +764,10 @@ async function resetRoomForReplay(base44, room, user, body) {
     word_pool: [],
     match_id: "",
     terminal_intent: null,
+    intro_started_at: null,
     game_started_at: null,
+    game_paused_at: null,
+    game_paused_total_seconds: 0,
     game_started_event_id: "",
     game_finished_event_id: "",
     countdown_started_at: null,
@@ -843,39 +924,64 @@ async function armRoulette(base44, room, user, body) {
   const startPatch = validatedStartPatch(room, body?.plan || {});
   return await updateRoom(base44, room, {
     ...startPatch,
+    ...serverIntroStartPatch(),
     status: "roulette",
     roulette_target_email: target,
+    game_started_at: null,
+    game_paused_at: null,
+    game_paused_total_seconds: 0,
   });
 }
 
-async function completeGameStart(base44, room, user, body) {
-  requireHost(room, user);
-  if (normalizedStatus(room) !== "roulette") {
-    throw Object.assign(new Error("Mission is not armed"), { status: 409 });
+async function enqueueCommittedGameStart(base44, room) {
+  const matchID = clean(room?.match_id);
+  const startedEventID = clean(room?.game_started_event_id);
+  if (
+    normalizedStatus(room) !== "playing" || !matchID || !startedEventID
+  ) {
+    throw Object.assign(
+      new Error("The committed game start could not be confirmed."),
+      { status: 503, code: "game_start_commit_unconfirmed" },
+    );
   }
-
-  const startPatch = body?.plan ? validatedStartPatch(room, body.plan) : {};
-  const matchID = crypto.randomUUID();
-  const startedEventID = crypto.randomUUID();
   await enqueueGamePushEvents({
     base44,
     room,
     eventType: "game_started",
     sourceEventID: startedEventID,
     matchID,
-    actorUserID: clean(user.id),
     persist: async (writer) => {
       await assertRoomPersistenceBoundary(base44);
       return await writer();
     },
   });
+}
 
-  return await updateRoom(base44, room, {
-    ...startPatch,
+async function completeGameStart(base44, room, user) {
+  requirePlayer(room, user);
+  // The request path refetches this room while holding the complete participant
+  // writer-lease set. Therefore only one caller can leave roulette; every
+  // competing or crash-retry caller observes these persisted IDs and merely
+  // reconciles the deduplicated push rows below.
+  if (
+    normalizedStatus(room) === "playing" && clean(room.match_id) &&
+    clean(room.game_started_event_id)
+  ) {
+    await enqueueCommittedGameStart(base44, room);
+    return room;
+  }
+  assertIntroCompletionAccess(room, user.email);
+
+  const matchID = crypto.randomUUID();
+  const startedEventID = crypto.randomUUID();
+  const committed = await updateRoom(base44, room, {
     status: "playing",
     match_id: matchID,
     terminal_intent: null,
+    intro_started_at: introStartedAtForCompletion(room),
     game_started_at: null,
+    game_paused_at: null,
+    game_paused_total_seconds: 0,
     game_started_event_id: startedEventID,
     game_finished_event_id: "",
     ready_players: [],
@@ -886,6 +992,8 @@ async function completeGameStart(base44, room, user, body) {
     eliminated_emails: [],
     winner: "",
   });
+  await enqueueCommittedGameStart(base44, committed);
+  return committed;
 }
 
 async function markRoleCardRead(base44, room, user) {
@@ -913,6 +1021,26 @@ async function markRoleCardRead(base44, room, user) {
   }
 
   return updatedReadRoom;
+}
+
+async function pauseGame(base44, room, user) {
+  const pausedAt = new Date().toISOString();
+  return await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) => pauseGameTransitionPatch(latest, user.email, pausedAt),
+    (latest) => Boolean(clean(latest.game_paused_at)),
+  );
+}
+
+async function resumeGame(base44, room, user) {
+  const resumedAt = new Date().toISOString();
+  return await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) => resumeGameTransitionPatch(latest, user.email, resumedAt),
+    (latest) => !clean(latest.game_paused_at),
+  );
 }
 
 async function advanceQuestion(base44, room, user) {
@@ -1118,6 +1246,14 @@ async function castDetectiveVote(base44, room, user, body) {
       status: 400,
     });
   }
+  if (
+    targetEmail.toLocaleLowerCase() === clean(user.email).toLocaleLowerCase()
+  ) {
+    throw Object.assign(new Error("You cannot vote for yourself"), {
+      status: 400,
+      code: "self_vote_not_allowed",
+    });
+  }
 
   if (shouldSpyWin(room)) {
     return await finishRoom(base44, room, "spy");
@@ -1211,7 +1347,12 @@ async function submitSpyGuess(base44, room, user, body) {
 async function leaveRoom(base44, room, user) {
   if (leaveAlreadyComplete(room, user.email)) return { success: true };
 
-  if (room.host_email === user.email) {
+  const hostLeaving = clean(room.host_email).toLocaleLowerCase() ===
+    clean(user.email).toLocaleLowerCase();
+  const leavingDuringPreTimer =
+    ["roulette", "playing"].includes(normalizedStatus(room)) &&
+    !clean(room.game_started_at);
+  if (hostLeaving && !leavingDuringPreTimer) {
     return await deleteRoom(base44, room);
   }
 
@@ -1219,33 +1360,53 @@ async function leaveRoom(base44, room, user) {
     base44,
     room,
     (latest) => {
+      const leavingEmail = clean(user.email).toLocaleLowerCase();
       const nextPlayers = players(latest).filter((player) =>
-        player.email !== user.email
+        clean(player.email).toLocaleLowerCase() !== leavingEmail
       );
-      return {
+      const membershipPatch = {
         players: nextPlayers,
+        ...(clean(latest.host_email).toLocaleLowerCase() === leavingEmail
+          ? { host_email: clean(nextPlayers[0]?.email) }
+          : {}),
         participant_user_ids: uniqueStrings(latest?.participant_user_ids)
           .filter((userID) => userID !== clean(user.id)),
         status:
           nextPlayers.length === 0 && normalizedStatus(latest) === "finished"
             ? "waiting"
             : normalizedStatus(latest),
-        spectators: spectators(latest).filter((email) => email !== user.email),
-        ready_players: readyPlayers(latest).filter((email) =>
-          email !== user.email
+        spectators: spectators(latest).filter((email) =>
+          clean(email).toLocaleLowerCase() !== leavingEmail
         ),
-        cards_read: cardsRead(latest).filter((email) => email !== user.email),
+        ready_players: readyPlayers(latest).filter((email) =>
+          clean(email).toLocaleLowerCase() !== leavingEmail
+        ),
+        cards_read: cardsRead(latest).filter((email) =>
+          clean(email).toLocaleLowerCase() !== leavingEmail
+        ),
         eliminated_emails: uniqueStrings(latest?.eliminated_emails).filter((
           email,
-        ) => email !== user.email),
+        ) => clean(email).toLocaleLowerCase() !== leavingEmail),
         vote_requests: voteRequests(latest).filter((email) =>
-          email !== user.email
+          clean(email).toLocaleLowerCase() !== leavingEmail
         ),
         detective_votes: detectiveVotes(latest).filter(
           (vote) =>
-            vote.voter_email !== user.email &&
-            vote.voted_for_email !== user.email,
+            clean(vote.voter_email).toLocaleLowerCase() !== leavingEmail &&
+            clean(vote.voted_for_email).toLocaleLowerCase() !== leavingEmail,
         ),
+        player_feedback:
+          (Array.isArray(latest?.player_feedback) ? latest.player_feedback : [])
+            .filter((feedback) =>
+              clean(feedback?.email).toLocaleLowerCase() !== leavingEmail
+            ),
+      };
+      return {
+        ...membershipPatch,
+        ...preTimerMembershipTransitionPatch({
+          ...latest,
+          ...membershipPatch,
+        }),
       };
     },
     (latest) => !playerInRoom(latest, user.email),
@@ -1395,6 +1556,9 @@ async function executeRoomAction(base44, action, room, user, body) {
     return await finishRoom(base44, room, terminal.winner);
   }
 
+  assertGameActionAllowedWhilePaused(room, action);
+  assertGameActionAllowedByDeadline(room, action);
+
   switch (action) {
     case "join_room":
       return await joinRoom(base44, room, user, body);
@@ -1418,6 +1582,10 @@ async function executeRoomAction(base44, action, room, user, body) {
       return await completeGameStart(base44, room, user, body);
     case "mark_role_card_read":
       return await markRoleCardRead(base44, room, user);
+    case "pause_game":
+      return await pauseGame(base44, room, user);
+    case "resume_game":
+      return await resumeGame(base44, room, user);
     case "advance_question":
       return await advanceQuestion(base44, room, user);
     case "advance_association":
@@ -1436,7 +1604,10 @@ async function executeRoomAction(base44, action, room, user, body) {
       return await castDetectiveVote(base44, room, user, body);
     case "submit_spy_guess":
       return await submitSpyGuess(base44, room, user, body);
-    case "finalize_expired_room":
+    case "finalize_expired_room": {
+      const winner = deriveExpiredGameWinner(room);
+      return await finishRoom(base44, room, winner);
+    }
     case "finish_room": {
       requireHost(room, user);
       // `finish_room` is accepted only for a short compatibility window. Both
@@ -1457,10 +1628,14 @@ async function executeRoomAction(base44, action, room, user, body) {
 }
 
 async function dispatchRoomPushBestEffort(base44, room, action) {
-  const internalSecret = clean(Deno.env.get("PUSH_INTERNAL_SECRET"));
+  const internalSecret = internalPushSecret(
+    Deno.env.get("PUSH_INTERNAL_SECRET"),
+  );
   if (!internalSecret || !room?.id) return;
   const sourceEventIDs = [];
-  if (action === "complete_game_start" && clean(room.game_started_event_id)) {
+  if (
+    clean(room.status) === "playing" && clean(room.game_started_event_id)
+  ) {
     sourceEventIDs.push(clean(room.game_started_event_id));
   }
   if (clean(room.status) === "finished" && clean(room.game_finished_event_id)) {
