@@ -2,6 +2,7 @@ import { assertEquals } from "jsr:@std/assert@1";
 import {
   committedRoomPushEvents,
   repairCommittedRoomPushEvents,
+  runCommittedRoomPushRepairIfFresh,
 } from "./room-reconciliation.ts";
 
 class Store {
@@ -80,4 +81,89 @@ Deno.test("old terminal identities are not resurrected as fresh alerts", async (
     0,
   );
   assertEquals(store.records, []);
+});
+
+Deno.test("old terminal room skips the lease-producing repair callback", async () => {
+  let repairCalls = 0;
+  const repaired = await runCommittedRoomPushRepairIfFresh({
+    room: {
+      id: "room-old",
+      status: "finished",
+      match_id: "match-old",
+      game_finished_event_id: "finish-old",
+      participant_user_ids: ["user-a"],
+      updated_date: "2026-07-26T09:00:00.000Z",
+    },
+    now: new Date("2026-07-26T12:00:00.000Z"),
+    repair: async () => {
+      repairCalls += 1;
+      return 1;
+    },
+  });
+  assertEquals(repaired, 0);
+  assertEquals(repairCalls, 0);
+});
+
+Deno.test("expired game start skips the lease-producing repair callback", async () => {
+  let repairCalls = 0;
+  const repaired = await runCommittedRoomPushRepairIfFresh({
+    room: {
+      id: "room-old",
+      status: "playing",
+      match_id: "match-old",
+      game_started_event_id: "start-old",
+      participant_user_ids: ["user-a"],
+      game_started_at: "2026-07-26T09:00:00.000Z",
+      game_duration_seconds: 900,
+    },
+    now: new Date("2026-07-26T12:00:00.000Z"),
+    repair: async () => {
+      repairCalls += 1;
+      return 1;
+    },
+  });
+  assertEquals(repaired, 0);
+  assertEquals(repairCalls, 0);
+});
+
+Deno.test("old game start without a duration also skips repair", async () => {
+  let repairCalls = 0;
+  const repaired = await runCommittedRoomPushRepairIfFresh({
+    room: {
+      id: "room-old-legacy",
+      status: "playing",
+      match_id: "match-old-legacy",
+      game_started_event_id: "start-old-legacy",
+      participant_user_ids: ["user-a"],
+      updated_date: "2026-07-26T09:00:00.000Z",
+    },
+    now: new Date("2026-07-26T12:00:00.000Z"),
+    repair: async () => {
+      repairCalls += 1;
+      return 1;
+    },
+  });
+  assertEquals(repaired, 0);
+  assertEquals(repairCalls, 0);
+});
+
+Deno.test("fresh room reaches the lease-producing repair callback", async () => {
+  let repairCalls = 0;
+  const repaired = await runCommittedRoomPushRepairIfFresh({
+    room: {
+      id: "room-current",
+      status: "finished",
+      match_id: "match-current",
+      game_finished_event_id: "finish-current",
+      participant_user_ids: ["user-a"],
+      updated_date: "2026-07-26T11:59:30.000Z",
+    },
+    now: new Date("2026-07-26T12:00:00.000Z"),
+    repair: async () => {
+      repairCalls += 1;
+      return 2;
+    },
+  });
+  assertEquals(repaired, 2);
+  assertEquals(repairCalls, 1);
 });

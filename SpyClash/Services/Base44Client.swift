@@ -994,8 +994,15 @@ final class Base44Client {
                 continue
             }
 
+            let apiError = 200..<300 ~= response.statusCode
+                ? nil
+                : try? JSONDecoder.base44.decode(APIErrorEnvelope.self, from: data)
             if attempt < maximumAttempts,
-               Self.isRetryablePushHTTPStatus(response.statusCode) {
+               Self.isRetryablePushHTTPStatus(
+                   response.statusCode,
+                   action: payload.action,
+                   apiError: apiError
+               ) {
                 try await Self.waitBeforePushRetry(
                     attempt: attempt,
                     retryAfter: response.value(forHTTPHeaderField: "Retry-After")
@@ -1009,7 +1016,6 @@ final class Base44Client {
             }
 
             guard 200..<300 ~= response.statusCode else {
-                let apiError = try? JSONDecoder.base44.decode(APIErrorEnvelope.self, from: data)
                 throw Base44Error(
                     message: apiError?.resolvedMessage ?? "Base44 request failed.",
                     statusCode: response.statusCode,
@@ -1043,8 +1049,34 @@ final class Base44Client {
         }
     }
 
-    private static func isRetryablePushHTTPStatus(_ statusCode: Int) -> Bool {
-        statusCode == 408 || statusCode == 425 || statusCode == 429 ||
+    private static func isRetryablePushHTTPStatus(
+        _ statusCode: Int,
+        action: String,
+        apiError: APIErrorEnvelope?
+    ) -> Bool {
+        if statusCode == 409 {
+            // Live Activity requests already own a longer bounded retry policy.
+            // Keep the transport-level 409 retry limited to alert-device
+            // registration so that request recovers from a short
+            // BillingIdentityLifecycle collision without multiplying retries.
+            guard action == "register_device",
+                  apiError?.retryable != false else {
+                return false
+            }
+            let code = apiError?.code?.trimmingCharacters(
+                in: .whitespacesAndNewlines
+            ).lowercased()
+            if let code, !code.isEmpty {
+                return [
+                    "active_lease",
+                    "cas_contention",
+                    "device_owner_changed"
+                ].contains(code)
+            }
+            return apiError?.resolvedMessage ==
+                "Push registration is temporarily unavailable."
+        }
+        return statusCode == 408 || statusCode == 425 || statusCode == 429 ||
             (500...599).contains(statusCode)
     }
 

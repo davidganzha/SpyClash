@@ -33,6 +33,8 @@ function startExpiry(room: Entity, now: Date): string {
     ? reference +
       (Math.min(duration, 15 * 60) + completedPause + activePause + 5 * 60) *
         1_000
+    : Number.isFinite(reference)
+    ? reference + 20 * 60 * 1_000
     : now.getTime() + 20 * 60 * 1_000;
   return new Date(Math.min(deadline, now.getTime() + 20 * 60 * 1_000))
     .toISOString();
@@ -42,6 +44,10 @@ export type CommittedRoomPushEvent = {
   eventType: "game_started" | "game_finished";
   sourceEventID: string;
   matchID: string;
+};
+
+type RepairableCommittedRoomPushEvent = CommittedRoomPushEvent & {
+  expiresAt: string;
 };
 
 export function committedRoomPushEvents(
@@ -67,6 +73,44 @@ export function committedRoomPushEvents(
   return [];
 }
 
+function repairableCommittedRoomPushEvents(
+  room: Entity,
+  now: Date,
+): RepairableCommittedRoomPushEvent[] {
+  return committedRoomPushEvents(room).flatMap((event) => {
+    const expiresAt = event.eventType === "game_finished"
+      ? new Date(now.getTime() + 60 * 60 * 1_000).toISOString()
+      : startExpiry(room, now);
+    if (
+      event.eventType === "game_started" &&
+      Date.parse(expiresAt) <= now.getTime()
+    ) return [];
+    if (event.eventType === "game_finished") {
+      const finishedAt = Date.parse(clean(
+        room?.terminal_intent?.decided_at || room?.updated_date ||
+          room?.created_date,
+      ));
+      if (
+        Number.isFinite(finishedAt) &&
+        now.getTime() - finishedAt >= 60 * 60 * 1_000
+      ) return [];
+    }
+    return [{ ...event, expiresAt }];
+  });
+}
+
+export async function runCommittedRoomPushRepairIfFresh(input: {
+  room: Entity;
+  repair: (now: Date) => Promise<number>;
+  now?: Date;
+}): Promise<number> {
+  const now = input.now || new Date();
+  // The callback may acquire every participant's lifecycle lease. Keep stale
+  // scheduled reconciliation passes read-only by rejecting them first.
+  if (!repairableCommittedRoomPushEvents(input.room, now).length) return 0;
+  return await input.repair(now);
+}
+
 export async function repairCommittedRoomPushEvents(input: {
   eventStore: any;
   room: Entity;
@@ -77,24 +121,7 @@ export async function repairCommittedRoomPushEvents(input: {
   const now = input.now || new Date();
   const randomUUID = input.randomUUID || (() => crypto.randomUUID());
   let created = 0;
-  for (const event of committedRoomPushEvents(input.room)) {
-    const expiresAt = event.eventType === "game_finished"
-      ? new Date(now.getTime() + 60 * 60 * 1_000).toISOString()
-      : startExpiry(input.room, now);
-    if (
-      event.eventType === "game_started" &&
-      Date.parse(expiresAt) <= now.getTime()
-    ) continue;
-    if (event.eventType === "game_finished") {
-      const finishedAt = Date.parse(clean(
-        input.room?.terminal_intent?.decided_at || input.room?.updated_date ||
-          input.room?.created_date,
-      ));
-      if (
-        Number.isFinite(finishedAt) &&
-        now.getTime() - finishedAt >= 60 * 60 * 1_000
-      ) continue;
-    }
+  for (const event of repairableCommittedRoomPushEvents(input.room, now)) {
     for (const recipientUserID of stableParticipantUserIDs(input.room)) {
       const dedupeKey = [event.eventType, event.sourceEventID, recipientUserID]
         .join(":");
@@ -120,7 +147,7 @@ export async function repairCommittedRoomPushEvents(input: {
           lease_token: "",
           lease_until: now.toISOString(),
           revision: randomUUID(),
-          expires_at: expiresAt,
+          expires_at: event.expiresAt,
           created_at: now.toISOString(),
           updated_at: now.toISOString(),
         })

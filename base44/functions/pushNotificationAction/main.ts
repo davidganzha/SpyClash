@@ -40,7 +40,10 @@ import {
   queueLiveRetry,
 } from "./live-delivery.ts";
 import { isAdminAutomationUser, scheduledDrainArgs } from "./worker-auth.ts";
-import { repairCommittedRoomPushEvents } from "./room-reconciliation.ts";
+import {
+  repairCommittedRoomPushEvents,
+  runCommittedRoomPushRepairIfFresh,
+} from "./room-reconciliation.ts";
 
 type Entity = Record<string, any>;
 const PAGE_SIZE = 100;
@@ -101,17 +104,24 @@ function roomParticipantUserIDs(room: Entity): string[] {
 }
 
 async function repairRoomPushOutbox(base44: any, room: Entity) {
-  const userIDs = roomParticipantUserIDs(room);
-  if (!clean(room?.id) || !userIDs.length) return 0;
-  return await withPushWriterLeases({
-    lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
-    userIDs,
-    action: async (persist) =>
-      await repairCommittedRoomPushEvents({
-        eventStore: base44.asServiceRole.entities.PushNotificationEvent,
-        room,
-        persist,
-      }),
+  if (!clean(room?.id)) return 0;
+  return await runCommittedRoomPushRepairIfFresh({
+    room,
+    repair: async (now) => {
+      const userIDs = roomParticipantUserIDs(room);
+      if (!userIDs.length) return 0;
+      return await withPushWriterLeases({
+        lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+        userIDs,
+        action: async (persist) =>
+          await repairCommittedRoomPushEvents({
+            eventStore: base44.asServiceRole.entities.PushNotificationEvent,
+            room,
+            persist,
+            now,
+          }),
+      });
+    },
   });
 }
 
