@@ -314,12 +314,13 @@ struct HistoryView: View {
             return
         }
 
-        guard let email = appState.user?.email else { return }
+        guard let user = appState.user else { return }
         isLoading = true
         defer { isLoading = false }
         do {
             history = try await appState.client.gameHistory(
-                email: email,
+                userID: user.id,
+                email: user.email,
                 limit: nil
             )
             status = ""

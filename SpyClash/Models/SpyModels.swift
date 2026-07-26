@@ -3485,4 +3485,20 @@ extension String {
     var nilIfBlank: String? {
         trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? nil : self
     }
+
+    func boundedUnicodeScalars(_ limit: Int) -> String {
+        guard limit > 0 else { return "" }
+        guard unicodeScalars.count > limit else { return self }
+
+        var result = ""
+        var usedScalars = 0
+        for character in self {
+            let value = String(character)
+            let scalarCount = value.unicodeScalars.count
+            guard usedScalars + scalarCount <= limit else { break }
+            result.append(character)
+            usedScalars += scalarCount
+        }
+        return result
+    }
 }

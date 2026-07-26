@@ -515,34 +515,48 @@ final class Base44Client {
         )
     }
 
-    func gameHistory(email: String, limit: Int? = nil) async throws -> [GameHistory] {
+    func gameHistory(userID: String, email: String, limit: Int? = nil) async throws -> [GameHistory] {
         let pageSize = 100
         let requestedLimit = limit.map { max(0, $0) }
         if requestedLimit == 0 { return [] }
 
         var history: [GameHistory] = []
         var seenIDs = Set<String>()
-        var skip = 0
+        var successfulQueries = 0
+        var firstError: Error?
 
-        while true {
-            let page: [GameHistory] = try await filterEntity(
-                "GameHistory",
-                query: ["player_email": email],
-                sort: "-created_date",
-                limit: pageSize,
-                skip: skip
-            )
-            let unseen = page.filter { seenIDs.insert($0.id).inserted }
-            history.append(contentsOf: unseen.filter(\.isOnlineCompetitiveMatch))
-
-            if let requestedLimit, history.count >= requestedLimit {
-                return Array(history.prefix(requestedLimit))
-            }
-
-            guard page.count == pageSize, !unseen.isEmpty else { break }
-            skip += page.count
+        let queries = [
+            ["player_user_id": userID],
+            ["player_email": email]
+        ].filter { query in
+            !(query.values.first ?? "").trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
         }
 
+        for query in queries {
+            var skip = 0
+            do {
+                while true {
+                    let page: [GameHistory] = try await filterEntity(
+                        "GameHistory",
+                        query: query,
+                        sort: "-created_date",
+                        limit: pageSize,
+                        skip: skip
+                    )
+                    history.append(contentsOf: page.filter { record in
+                        seenIDs.insert(record.id).inserted && record.isOnlineCompetitiveMatch
+                    })
+                    guard page.count == pageSize else { break }
+                    skip += page.count
+                }
+                successfulQueries += 1
+            } catch {
+                if firstError == nil { firstError = error }
+            }
+        }
+
+        if successfulQueries == 0, let firstError { throw firstError }
+        history.sort { ($0.createdDate ?? "") > ($1.createdDate ?? "") }
         return requestedLimit.map { Array(history.prefix($0)) } ?? history
     }
 
@@ -567,11 +581,12 @@ final class Base44Client {
         spyCardAccent: SpyCardAccentID,
         spyCardBadge: SpyCardBadgeID
     ) async throws -> SpyUser {
-        try await request(
+        let boundedDisplayName = displayName.boundedUnicodeScalars(48)
+        return try await request(
             "/apps/\(Self.appID)/entities/User/me",
             method: "PUT",
             body: [
-                "display_name": displayName,
+                "display_name": boundedDisplayName,
                 "avatar": avatar,
                 "language": language.rawValue,
                 "spy_card_theme": spyCardTheme.rawValue,

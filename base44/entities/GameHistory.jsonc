@@ -9,7 +9,6 @@
       "type": "string",
       "description": "Stable authenticated owner id for deletion and owner-scoped reads.",
       "rls": {
-        "read": { "user_condition": { "role": "admin" } },
         "write": { "user_condition": { "role": "admin" } }
       }
     },
@@ -17,7 +16,6 @@
       "type": "string",
       "description": "Immutable server-issued identity of one played match, independent of reusable room code.",
       "rls": {
-        "read": { "user_condition": { "role": "admin" } },
         "write": { "user_condition": { "role": "admin" } }
       }
     },

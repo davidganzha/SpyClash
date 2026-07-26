@@ -31,11 +31,9 @@ for schema in "$entities_root"/*.jsonc; do
   fi
 done
 
-authority_fields=(
+private_authority_fields=(
   'Friendship:blocked_by_id'
   'Friendship:request_event_id'
-  'GameHistory:player_user_id'
-  'GameHistory:match_id'
   'GameRoom:participant_user_ids'
   'GameRoom:match_id'
   'GameRoom:terminal_intent'
@@ -44,12 +42,31 @@ authority_fields=(
   'RoomInvite:notification_event_id'
   'WordPack:owner_user_id'
 )
-for authority in "${authority_fields[@]}"; do
+for authority in "${private_authority_fields[@]}"; do
   entity="${authority%%:*}"
   field="${authority#*:}"
   schema="$entities_root/$entity.jsonc"
   if ! jq -e --arg field "$field" '
     .properties[$field].rls.read.user_condition.role == "admin" and
+    .properties[$field].rls.write.user_condition.role == "admin"
+  ' "$schema" >/dev/null; then
+    missing_authority_fls+=("$entity.$field")
+  fi
+done
+
+# GameHistory is owner-readable directly by the native and web clients. Its
+# stable owner and match identifiers must remain visible after the row-level
+# owner check succeeds, while all writes stay server-only.
+owner_visible_authority_fields=(
+  'GameHistory:player_user_id'
+  'GameHistory:match_id'
+)
+for authority in "${owner_visible_authority_fields[@]}"; do
+  entity="${authority%%:*}"
+  field="${authority#*:}"
+  schema="$entities_root/$entity.jsonc"
+  if ! jq -e --arg field "$field" '
+    (.properties[$field].rls | has("read") | not) and
     .properties[$field].rls.write.user_condition.role == "admin"
   ' "$schema" >/dev/null; then
     missing_authority_fls+=("$entity.$field")
@@ -69,7 +86,7 @@ if (( ${#tautological_reads[@]} )); then
 fi
 
 if (( ${#missing_authority_fls[@]} )); then
-  print -u2 -- "Server authority fields missing admin-only read/write FLS:"
+  print -u2 -- "Server authority fields have an invalid read/write FLS boundary:"
   printf '%s\n' "${missing_authority_fls[@]}" >&2
   exit 1
 fi

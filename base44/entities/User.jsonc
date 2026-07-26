@@ -1,27 +1,43 @@
 {
   "name": "User",
+  "description": "Custom SpyClash fields on Base44's built-in User principal. Base44 owns row security and the built-in id, email, full_name, and role fields; clients may read and update only their own User row. Server-authoritative mirrors are additionally protected with field-level admin write rules.",
   "type": "object",
   "properties": {
-    "role": {
-      "type": "string",
-      "enum": ["admin", "user"],
-      "default": "user"
-    },
     "display_name": {
       "type": "string",
-      "description": "Player display name"
+      "maxLength": 48,
+      "description": "Player-controlled display name. Public Community projections sanitize it before sharing."
     },
     "avatar": {
       "type": "string",
-      "description": "Avatar emoji or image url"
+      "maxLength": 512,
+      "description": "Player-controlled avatar emoji or image URL. Public Community projections sanitize it before sharing."
+    },
+    "rating": {
+      "type": "integer",
+      "default": 0,
+      "description": "Legacy server-authoritative profile rating mirror. Competitive leaderboard values are derived from GameHistory.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "games_played": {
-      "type": "number",
-      "default": 0
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Legacy server-authoritative profile statistics mirror.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "games_won": {
-      "type": "number",
-      "default": 0
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Legacy server-authoritative profile statistics mirror.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "language": {
       "type": "string",
@@ -30,33 +46,47 @@
       "default": "en"
     },
     "ai_generations_today": {
-      "type": "number",
-      "description": "AI generations used today (resets daily)",
-      "default": 0
+      "type": "integer",
+      "minimum": 0,
+      "description": "Compatibility/display mirror of the server-owned AiGenerationUsage bucket.",
+      "default": 0,
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "last_ai_generation_date": {
       "type": "string",
-      "description": "ISO date of last AI generation (for daily reset)"
+      "format": "date-time",
+      "description": "Compatibility/display timestamp for the latest server-reserved AI generation.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "spy_id": {
       "type": "string",
-      "description": "Unique public SpyClash identifier in 000-000 format"
+      "pattern": "^[0-9]{3}-[0-9]{3}$",
+      "description": "Collision-checked public SpyClash identifier allocated by communityAction.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
     },
     "spy_card_theme": {
       "type": "string",
       "description": "Selected SpyCard visual theme identifier",
+      "enum": ["field", "blacksite", "dossier"],
       "default": "field"
     },
     "spy_card_accent": {
       "type": "string",
       "description": "Selected SpyCard accent identifier",
+      "enum": ["signal_red", "clearance_amber", "verified_green"],
       "default": "signal_red"
     },
     "spy_card_badge": {
       "type": "string",
       "description": "Selected SpyCard badge identifier",
+      "enum": ["operative", "ghost", "analyst", "handler"],
       "default": "operative"
     }
-  },
-  "required": ["role"]
+  }
 }

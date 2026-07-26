@@ -1966,7 +1966,7 @@ struct LocalGameView: View {
                 HStack(spacing: 5) {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .black))
-                    Text(localized(en: "STOP", ru: "СТОП", es: "STOP"))
+                    Text(localized(en: "STOP", ru: "СТОП", es: "PARAR"))
                         .font(.system(size: 10, weight: .black, design: .monospaced))
                         .tracking(0.08)
                 }

@@ -793,7 +793,7 @@ Deno.serve(async (req) => {
             // Compatibility/display mirror only. The admin-only quota entity
             // above remains authoritative.
             await guard.boundary(() =>
-              base44.auth.updateMe({
+              base44.asServiceRole.entities.User.update(user.id, {
                 ai_generations_today: generationCount,
                 last_ai_generation_date: new Date().toISOString(),
               })

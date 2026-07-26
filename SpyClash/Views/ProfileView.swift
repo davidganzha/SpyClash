@@ -375,7 +375,8 @@ struct ProfileView: View {
                     text: $displayName,
                     icon: "person.crop.circle.fill",
                     autocapitalization: .words,
-                    height: 50
+                    height: 50,
+                    maxLength: 48
                 )
 
                 languageSelector
@@ -925,14 +926,18 @@ struct ProfileView: View {
     }
 
     private func loadHistory() async {
-        guard let email = appState.user?.email else { return }
+        guard let user = appState.user else { return }
 
         if appState.shouldUsePreviewData {
             history = GameHistory.previewArchive
             return
         }
 
-        history = (try? await appState.client.gameHistory(email: email, limit: nil)) ?? []
+        history = (try? await appState.client.gameHistory(
+            userID: user.id,
+            email: user.email,
+            limit: nil
+        )) ?? []
     }
 
     private func save() async {

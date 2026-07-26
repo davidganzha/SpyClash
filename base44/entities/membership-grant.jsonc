@@ -19,7 +19,11 @@
     },
     "label": {
       "type": "string",
-      "description": "Optional internal support label."
+      "description": "Optional internal support label.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
     }
   },
   "required": ["user_id", "active"],

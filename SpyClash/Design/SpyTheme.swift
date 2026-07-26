@@ -400,6 +400,7 @@ struct SpyInput: View {
     var autocapitalization: TextInputAutocapitalization = .sentences
     var autocorrectionDisabled = true
     var height: CGFloat = 52
+    var maxLength: Int?
 
     var body: some View {
         VStack(alignment: .leading, spacing: label == nil ? 0 : 8) {
@@ -440,13 +441,13 @@ struct SpyInput: View {
     private var field: some View {
         switch kind {
         case .text:
-            TextField("", text: $text, prompt: prompt)
+            TextField("", text: boundedText, prompt: prompt)
                 .textInputAutocapitalization(autocapitalization)
                 .keyboardType(keyboardType)
                 .textContentType(textContentType)
                 .autocorrectionDisabled(autocorrectionDisabled)
         case .secure:
-            SecureField("", text: $text, prompt: prompt)
+            SecureField("", text: boundedText, prompt: prompt)
                 .textContentType(textContentType)
                 .autocorrectionDisabled(autocorrectionDisabled)
         }
@@ -454,6 +455,19 @@ struct SpyInput: View {
 
     private var prompt: Text {
         Text(placeholder).foregroundStyle(SpyTheme.dim)
+    }
+
+    private var boundedText: Binding<String> {
+        Binding(
+            get: { text },
+            set: { newValue in
+                guard let maxLength else {
+                    text = newValue
+                    return
+                }
+                text = newValue.boundedUnicodeScalars(maxLength)
+            }
+        )
     }
 }
 

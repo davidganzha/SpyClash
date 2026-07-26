@@ -1,6 +1,18 @@
 #!/bin/sh
 set -eu
 
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+EXPECTED_APP_ID=69a0e57fa939f578082f8091
+APP_ID=$(sed -n 's/^[[:space:]]*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p' "$ROOT/base44/.app.jsonc" | head -n 1)
+[ "$APP_ID" = "$EXPECTED_APP_ID" ] || {
+  echo "Repository app id is not the reviewed SpyClash app $EXPECTED_APP_ID." >&2
+  exit 77
+}
+if [ "${BASE44_APP_ID+x}" = x ] && [ "$BASE44_APP_ID" != "$APP_ID" ]; then
+  echo "BASE44_APP_ID targets $BASE44_APP_ID, not reviewed app $APP_ID." >&2
+  exit 77
+fi
+
 LIST_FILE=$(mktemp "${TMPDIR:-/tmp}/spyclash-release-secrets.XXXXXX")
 NAMES_FILE=$(mktemp "${TMPDIR:-/tmp}/spyclash-release-secret-names.XXXXXX")
 cleanup() {
@@ -8,7 +20,8 @@ cleanup() {
 }
 trap cleanup EXIT HUP INT TERM
 
-if ! npx --yes base44@0.1.4 secrets list > "$LIST_FILE" 2>&1; then
+if ! env -u BASE44_APP_ID npx --yes base44@0.1.4 \
+  --app-id "$APP_ID" secrets list > "$LIST_FILE" 2>&1; then
   echo "Unable to verify Base44 release secret names." >&2
   exit 70
 fi
