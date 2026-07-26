@@ -16,6 +16,12 @@ struct SpyClashMatchActivityAttributes: ActivityAttributes, Sendable {
         var currentAskerID: String?
         var currentResponderID: String?
         var round: Int
+        /// Public match category shown on glanceable system surfaces. This is
+        /// deliberately separate from `privateIntel.secretWord`.
+        var publicTopic: String?
+        /// The language selected inside SpyClash. Widget extensions do not
+        /// reliably inherit an app-managed language preference.
+        var displayLanguageCode: String?
         /// Unix epoch seconds keep ActivityKit APNs JSON unambiguous. Apple
         /// decodes remote `content-state` using default Codable strategies.
         var timerEndsAtEpochSeconds: Int?
@@ -31,6 +37,8 @@ struct SpyClashMatchActivityAttributes: ActivityAttributes, Sendable {
             currentAskerID: String? = nil,
             currentResponderID: String? = nil,
             round: Int,
+            publicTopic: String? = nil,
+            displayLanguageCode: String? = nil,
             timerEndsAt: Date? = nil,
             pausedSecondsRemaining: Int? = nil,
             privateIntel: PrivateIntel? = nil,
@@ -43,6 +51,16 @@ struct SpyClashMatchActivityAttributes: ActivityAttributes, Sendable {
             self.currentAskerID = currentAskerID
             self.currentResponderID = currentResponderID
             self.round = max(1, round)
+            self.publicTopic = publicTopic?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfEmpty
+                .map { String($0.prefix(40)) }
+            let normalizedLanguage = displayLanguageCode?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            self.displayLanguageCode = ["en", "es", "ru"].contains(normalizedLanguage ?? "")
+                ? normalizedLanguage
+                : nil
             self.timerEndsAtEpochSeconds = timerEndsAt.map {
                 Int($0.timeIntervalSince1970.rounded())
             }

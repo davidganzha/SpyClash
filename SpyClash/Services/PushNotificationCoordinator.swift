@@ -34,6 +34,7 @@ struct LiveActivityRegistrationRetryPolicy: Equatable, Sendable {
     func isRetryableHTTPStatus(_ statusCode: Int?) -> Bool {
         guard let statusCode else { return true }
         return statusCode == 408
+            || statusCode == 409
             || statusCode == 425
             || statusCode == 429
             || (500...599).contains(statusCode)
@@ -79,6 +80,9 @@ final class PushNotificationCoordinator {
     private var accountGeneration: UInt64 = 0
     private var isApplicationActive = false
     private var pendingLiveActivityRegistrations: [
+        LiveActivityRegistrationKey: PendingLiveActivityRegistration
+    ] = [:]
+    private var currentLiveActivityRegistrations: [
         LiveActivityRegistrationKey: PendingLiveActivityRegistration
     ] = [:]
     private var pendingLiveActivityRetryTasks: [
@@ -143,7 +147,9 @@ final class PushNotificationCoordinator {
         guard signedIn else { return }
         registrationTask?.cancel()
         registrationTask = Task { [weak self] in
-            await self?.refreshRegistration()
+            guard let self else { return }
+            await self.refreshRegistration()
+            await self.refreshLiveActivityRegistrations()
         }
     }
 
@@ -252,6 +258,9 @@ final class PushNotificationCoordinator {
         if pendingLiveActivityRegistrations[key]?.token != token {
             pendingLiveActivityRegistrations.removeValue(forKey: key)
         }
+        if currentLiveActivityRegistrations[key]?.token != token {
+            currentLiveActivityRegistrations.removeValue(forKey: key)
+        }
         return await performLiveActivityRegistration(request)
     }
 
@@ -270,6 +279,7 @@ final class PushNotificationCoordinator {
         )
         pendingLiveActivityRetryTasks.removeValue(forKey: key)?.cancel()
         pendingLiveActivityRegistrations.removeValue(forKey: key)
+        currentLiveActivityRegistrations.removeValue(forKey: key)
     }
 
     @discardableResult
@@ -347,6 +357,7 @@ final class PushNotificationCoordinator {
                     tokenKind: request.key.tokenKind,
                     token: request.token,
                     environment: .current,
+                    locale: preferredLocale,
                     activityID: request.key.activityID,
                     roomID: request.roomID,
                     matchID: request.key.matchID
@@ -357,6 +368,7 @@ final class PushNotificationCoordinator {
                 if pendingLiveActivityRegistrations[request.key]?.token == request.token {
                     pendingLiveActivityRegistrations.removeValue(forKey: request.key)
                 }
+                currentLiveActivityRegistrations[request.key] = request
                 return true
             } catch {
                 let retryable = shouldRetryLiveActivityRequest(error, policy: policy)
@@ -544,7 +556,23 @@ final class PushNotificationCoordinator {
     private func clearPendingLiveActivityRequests() {
         cancelPendingLiveActivityRetryTasks()
         pendingLiveActivityRegistrations.removeAll()
+        currentLiveActivityRegistrations.removeAll()
         pendingLiveActivityUnregistrations.removeAll()
+    }
+
+    private func refreshLiveActivityRegistrations() async {
+        guard signedIn else { return }
+        let registrations = Array(currentLiveActivityRegistrations.values)
+        for registration in registrations {
+            guard signedIn, !Task.isCancelled else { return }
+            let refreshed = PendingLiveActivityRegistration(
+                key: registration.key,
+                token: registration.token,
+                roomID: registration.roomID,
+                accountGeneration: accountGeneration
+            )
+            _ = await performLiveActivityRegistration(refreshed)
+        }
     }
 
     private func shouldRetryLiveActivityRequest(

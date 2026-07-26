@@ -28,6 +28,7 @@ const room = {
   participant_user_ids: ["detective-id", "spy-id"],
   spy_email: "spy@example.com",
   word: "Embassy",
+  category: "Secret Agent",
   current_asker_email: "Detective@Example.com",
   current_answerer_email: "spy@example.com",
   round_number: 2,
@@ -43,7 +44,15 @@ Deno.test("Live Activity uses opaque player ids and never exports private intel"
   assertEquals(result?.state.privateIntel, null);
   assertEquals(result?.state.timerEndsAtEpochSeconds, 1784117700);
   assertEquals(result?.state.currentSpeakerID, result?.state.currentAskerID);
+  assertEquals(result?.state.publicTopic, "SECRET AGENT");
+  assertEquals(result?.state.displayLanguageCode, "en");
   assertEquals(JSON.stringify(result?.state).includes("@example.com"), false);
+  assertEquals(JSON.stringify(result?.state).includes("Embassy"), false);
+});
+
+Deno.test("Live Activity follows the in-app language carried by its registration", async () => {
+  const result = await contentStateForUser(room, "detective-id", "ru_RU");
+  assertEquals(result?.state.displayLanguageCode, "ru");
 });
 
 Deno.test("spy Activity also receives no private role payload", async () => {
@@ -123,6 +132,37 @@ Deno.test("ActivityKit push-to-start attributes bind room and current match gene
   assertEquals(aps.attributes.matchID, "provider-match-1");
   assertEquals(aps["stale-date"], 1784117760);
   assertEquals(aps["attributes-type"], "SpyClashMatchActivityAttributes");
+  assertEquals(aps.alert, {
+    title: "Mission started",
+    body: "Your SpyClash table is live on the Lock Screen.",
+  });
+});
+
+Deno.test("ActivityKit push-to-start alert follows the stored registration locale", async () => {
+  const russian = await liveActivityPayload({
+    room,
+    registration: {
+      user_id: "detective-id",
+      token_kind: "push_to_start",
+      locale: "ru_RU",
+    },
+  });
+  const spanish = await liveActivityPayload({
+    room,
+    registration: {
+      user_id: "detective-id",
+      token_kind: "push_to_start",
+      locale: "es-ES",
+    },
+  });
+  assertEquals(russian?.payload.aps.alert, {
+    title: "Миссия началась",
+    body: "Стол SpyClash уже доступен на экране блокировки.",
+  });
+  assertEquals(spanish?.payload.aps.alert, {
+    title: "La misión ha comenzado",
+    body: "La mesa de SpyClash ya está activa en la pantalla bloqueada.",
+  });
 });
 
 Deno.test("push-to-start dedupe ledger supports multiple concurrent match ids", async () => {

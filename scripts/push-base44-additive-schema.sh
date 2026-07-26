@@ -212,6 +212,7 @@ add_optional_field WordPack owner_user_id
 add_optional_field AppStoreAccount reservation_state app-store-account.jsonc
 add_optional_field Entitlement write_revision entitlement.jsonc
 add_optional_field LiveActivityRegistration pending_force_end live-activity-registration.jsonc
+add_optional_field LiveActivityRegistration locale live-activity-registration.jsonc
 
 # After additive fields are applied, every service-role/admin-only entity must
 # exactly match the canonical release boundary. Refuse silent production drift.

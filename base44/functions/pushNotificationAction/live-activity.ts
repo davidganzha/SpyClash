@@ -8,6 +8,34 @@ function bounded(value: unknown, length: number): string {
   return clean(value).slice(0, length);
 }
 
+function liveActivityLanguage(value: unknown): "en" | "es" | "ru" {
+  const code = clean(value).toLowerCase().split(/[-_]/)[0];
+  return code === "ru" || code === "es" ? code : "en";
+}
+
+function liveActivityStartAlert(locale: unknown): {
+  title: string;
+  body: string;
+} {
+  switch (liveActivityLanguage(locale)) {
+    case "ru":
+      return {
+        title: "Миссия началась",
+        body: "Стол SpyClash уже доступен на экране блокировки.",
+      };
+    case "es":
+      return {
+        title: "La misión ha comenzado",
+        body: "La mesa de SpyClash ya está activa en la pantalla bloqueada.",
+      };
+    default:
+      return {
+        title: "Mission started",
+        body: "Your SpyClash table is live on the Lock Screen.",
+      };
+  }
+}
+
 async function opaquePlayerID(
   roomID: string,
   emailValue: unknown,
@@ -123,6 +151,7 @@ function roomRevision(room: Entity): number {
 export async function contentStateForUser(
   room: Entity,
   userID: string,
+  locale: unknown = "en",
 ): Promise<{ state: Entity; viewerPlayerID: string; revision: number } | null> {
   const viewer = playerForUser(room, userID);
   if (!viewer?.email) return null;
@@ -163,6 +192,10 @@ export async function contentStateForUser(
         ? await idForEmail(room.current_answerer_email)
         : null,
       round: Math.max(1, Math.round(Number(room.round_number || 1))),
+      // The category is public game context. The secret word remains absent.
+      publicTopic: (bounded(room.category || "CLASSIC", 40) || "CLASSIC")
+        .toUpperCase(),
+      displayLanguageCode: liveActivityLanguage(locale),
       timerEndsAtEpochSeconds: timer.timerEndsAtEpochSeconds,
       pausedSecondsRemaining: timer.pausedSecondsRemaining,
       // Lock Screen and Dynamic Island are public glanceable surfaces.
@@ -194,6 +227,7 @@ export async function liveActivityPayload(input: {
   const personalized = await contentStateForUser(
     input.room,
     clean(input.registration.user_id),
+    input.registration.locale,
   );
   if (!personalized) return null;
   const isFinished = clean(input.room.status) === "finished";
@@ -221,10 +255,7 @@ export async function liveActivityPayload(input: {
       viewerPlayerID: personalized.viewerPlayerID,
       startedAt: startedAtReferenceSeconds(input.room),
     };
-    aps.alert = {
-      title: "Mission started",
-      body: "Your SpyClash table is live on the Lock Screen.",
-    };
+    aps.alert = liveActivityStartAlert(input.registration.locale);
   }
   if (event === "end") {
     aps["dismissal-date"] = timestamp + 300;
@@ -328,6 +359,8 @@ export function liveActivityTerminationPayload(input: {
         currentAskerID: null,
         currentResponderID: null,
         round: 1,
+        publicTopic: null,
+        displayLanguageCode: null,
         timerEndsAtEpochSeconds: null,
         pausedSecondsRemaining: null,
         privateIntel: null,

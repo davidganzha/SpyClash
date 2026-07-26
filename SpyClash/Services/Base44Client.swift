@@ -189,6 +189,7 @@ final class Base44Client {
         tokenKind: LiveActivityPushTokenKind,
         token: String,
         environment: PushEnvironment,
+        locale: String,
         activityID: String? = nil,
         roomID: String? = nil,
         matchID: String? = nil
@@ -200,6 +201,7 @@ final class Base44Client {
                 installationID: installationID,
                 environment: environment.rawValue,
                 bundleID: Bundle.main.bundleIdentifier ?? "com.spyclash.ios",
+                locale: locale,
                 tokenKind: tokenKind.rawValue,
                 liveActivityToken: token,
                 activityID: activityID,

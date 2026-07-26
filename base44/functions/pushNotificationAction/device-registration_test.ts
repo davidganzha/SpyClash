@@ -103,6 +103,7 @@ Deno.test("per-activity token requires the room's current match generation", asy
         token_kind: "activity",
         environment: "sandbox",
         bundle_id: "com.spyclash.ios",
+        locale: "ru",
         activity_id: "activity-1",
         room_id: "room-1",
         match_id: "random-match",
@@ -111,6 +112,7 @@ Deno.test("per-activity token requires the room's current match generation", asy
     });
     assertEquals(saved.match_id, "random-match");
     assertEquals(saved.provider_match_id, "random-match");
+    assertEquals(saved.locale, "ru");
     await assertRejects(() =>
       registerLiveActivity({
         liveActivityStore: liveStore,

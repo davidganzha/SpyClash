@@ -392,6 +392,7 @@ export async function registerLiveActivity(input: {
     match_id: matchID,
     environment,
     bundle_id: bundleID,
+    locale: boundedText(input.body.locale, 32),
     status: "active",
     provider_match_id: tokenKind === "activity" ? matchID : "",
     started_match_ids: Array.isArray(existing?.started_match_ids)

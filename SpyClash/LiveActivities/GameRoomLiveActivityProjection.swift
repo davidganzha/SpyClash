@@ -56,6 +56,10 @@ extension GameRoom {
                 currentAskerID: mode == .questions ? askerID : nil,
                 currentResponderID: mode == .questions ? responderID : nil,
                 round: roundNumber ?? 1,
+                publicTopic: category?.nilIfBlank ?? "CLASSIC",
+                displayLanguageCode: AppLanguage
+                    .normalized(viewer.language ?? AppLanguage.stored.rawValue)
+                    .rawValue,
                 timerEndsAt: timer.endsAt,
                 pausedSecondsRemaining: timer.pausedSecondsRemaining,
                 // Lock Screen and Dynamic Island are glanceable surfaces.

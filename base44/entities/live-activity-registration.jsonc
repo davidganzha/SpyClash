@@ -33,6 +33,7 @@
       "enum": ["sandbox", "production"]
     },
     "bundle_id": { "type": "string" },
+    "locale": { "type": "string" },
     "status": {
       "type": "string",
       "enum": ["active", "ended", "revoked"],

@@ -20,14 +20,17 @@ struct SpyClashMatchLiveActivity: Widget {
             let state = context.state.sanitized(
                 for: context.attributes.viewerPlayerID
             )
+            let copy = SpyClashLiveActivityCopy(
+                languageCode: state.displayLanguageCode
+            )
 
             return DynamicIsland {
                 DynamicIslandExpandedRegion(.leading) {
                     VStack(alignment: .leading, spacing: 2) {
-                        Text("ROUND \(state.round)")
+                        Text("\(copy.round) \(state.round)")
                             .font(.system(size: 11, weight: .black, design: .monospaced))
                             .foregroundStyle(SpyClashActivityPalette.red)
-                        Text(state.mode.shortLabel)
+                        Text(copy.modeLabel(state.mode))
                             .font(.system(size: 9, weight: .bold, design: .monospaced))
                             .foregroundStyle(SpyClashActivityPalette.muted)
                     }
@@ -89,7 +92,7 @@ private struct SpyClashMatchLockScreenView: View {
     var body: some View {
         let currentState = sanitizedState
 
-        VStack(spacing: 8) {
+        VStack(spacing: 5) {
             HStack(spacing: 8) {
                 HStack(spacing: 2) {
                     Text("SPY")
@@ -97,33 +100,34 @@ private struct SpyClashMatchLockScreenView: View {
                     Text("CLASH")
                         .foregroundStyle(.white)
                 }
-                .font(.system(size: 15, weight: .black, design: .monospaced))
-                .tracking(1.2)
+                .font(.system(size: 16, weight: .black, design: .monospaced))
+                .tracking(1)
 
                 Spacer(minLength: 12)
 
                 SpyClashActivityTimer(state: currentState)
-                    .font(.system(size: 15, weight: .black, design: .monospaced))
+                    .font(.system(size: 16, weight: .black, design: .monospaced))
                     .foregroundStyle(SpyClashActivityPalette.green)
                     .monospacedDigit()
                     .lineLimit(1)
-                    .frame(width: 54, alignment: .trailing)
+                    .frame(width: 60, alignment: .trailing)
             }
-            .frame(height: 17)
+            .frame(height: 19)
             .frame(maxWidth: .infinity)
 
-            HStack(spacing: 12) {
+            HStack(alignment: .center, spacing: 20) {
                 SpyClashRoundTableView(state: currentState)
-                    .frame(maxWidth: 132)
-                    .frame(height: 88)
+                    .frame(width: 136, height: 120)
+                    .fixedSize()
 
-                SpyClashTurnSummary(state: currentState, compact: false)
+                SpyClashLockScreenTurnSummary(state: currentState)
                     .frame(maxWidth: .infinity, alignment: .leading)
             }
+            .frame(height: 120)
         }
-        .padding(.horizontal, 12)
-        .padding(.vertical, 10)
-        .frame(maxWidth: .infinity)
+        .padding(.horizontal, 18)
+        .padding(.vertical, 6)
+        .frame(maxWidth: .infinity, minHeight: 156)
         .foregroundStyle(.white)
         .opacity(isStale ? 0.78 : 1)
         .accessibilityValue(isStale ? "Match data may be out of date" : "Live match data")
@@ -136,35 +140,33 @@ private struct SpyClashRoundTableView: View {
     let state: Attributes.ContentState
 
     private var visiblePlayers: [Attributes.Participant] {
-        Array(state.participants.prefix(8))
+        var players = Array(state.participants.prefix(8))
+        guard state.participants.count > players.count,
+              let speaker = state.speaker,
+              !players.contains(where: { $0.id == speaker.id }),
+              !players.isEmpty else {
+            return players
+        }
+        players[players.count - 1] = speaker
+        return players
+    }
+
+    private var hiddenPlayerCount: Int {
+        max(0, state.participants.count - visiblePlayers.count)
     }
 
     var body: some View {
         GeometryReader { proxy in
             let side = min(proxy.size.width, proxy.size.height)
             let center = CGPoint(x: proxy.size.width / 2, y: proxy.size.height / 2)
-            let radius = max(18, (side / 2) - 15)
+            let nodeSize: CGFloat = 28
+            let radius = max(18, (side - nodeSize) / 2)
 
             ZStack {
                 Circle()
-                    .fill(SpyClashActivityPalette.table)
-                    .overlay(
-                        Circle()
-                            .stroke(SpyClashActivityPalette.stroke, lineWidth: 1)
-                    )
-                    .frame(width: side - 20, height: side - 20)
+                    .stroke(SpyClashActivityPalette.ring, lineWidth: 0.8)
+                    .frame(width: radius * 2, height: radius * 2)
                     .position(center)
-
-                VStack(spacing: 0) {
-                    Text(state.speaker?.avatarSymbol ?? "🎯")
-                        .font(.system(size: 19))
-                    if state.participants.count > visiblePlayers.count {
-                        Text("+\(state.participants.count - visiblePlayers.count)")
-                            .font(.system(size: 7, weight: .black, design: .monospaced))
-                            .foregroundStyle(SpyClashActivityPalette.muted)
-                    }
-                }
-                .position(center)
 
                 ForEach(Array(visiblePlayers.enumerated()), id: \.element.id) { index, player in
                     let angle = ((Double(index) / Double(max(visiblePlayers.count, 1))) * 2 * Double.pi) - (Double.pi / 2)
@@ -173,11 +175,17 @@ private struct SpyClashRoundTableView: View {
 
                     SpyClashPlayerNode(
                         player: player,
-                        isSpeaker: player.id == state.currentSpeakerID,
-                        isAsker: player.id == state.currentAskerID,
-                        isResponder: player.id == state.currentResponderID
+                        isSpeaker: player.id == state.currentSpeakerID
                     )
                     .position(x: x, y: y)
+                }
+
+                if hiddenPlayerCount > 0 {
+                    Text("+\(hiddenPlayerCount)")
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .foregroundStyle(SpyClashActivityPalette.muted)
+                        .position(center)
+                        .accessibilityLabel("\(hiddenPlayerCount) more players")
                 }
             }
         }
@@ -189,22 +197,14 @@ private struct SpyClashRoundTableView: View {
 private struct SpyClashPlayerNode: View {
     let player: SpyClashMatchActivityAttributes.Participant
     let isSpeaker: Bool
-    let isAsker: Bool
-    let isResponder: Bool
 
     private var ringColor: Color {
         if isSpeaker { return SpyClashActivityPalette.green }
-        if isAsker { return SpyClashActivityPalette.red }
-        if isResponder { return .white }
-        return SpyClashActivityPalette.stroke
+        return SpyClashActivityPalette.ring
     }
 
     private var turnLabel: String {
-        var roles: [String] = []
-        if isSpeaker { roles.append("speaking") }
-        if isAsker { roles.append("asking") }
-        if isResponder { roles.append("answering") }
-        return roles.isEmpty ? "at table" : roles.joined(separator: ", ")
+        isSpeaker ? "speaking" : "at table"
     }
 
     var body: some View {
@@ -212,16 +212,16 @@ private struct SpyClashPlayerNode: View {
             Circle()
                 .fill(SpyClashActivityPalette.panel)
                 .overlay(Circle().stroke(ringColor, lineWidth: isSpeaker ? 2 : 1))
-                .frame(width: 27, height: 27)
+                .frame(width: 28, height: 28)
                 .overlay {
                     Text(player.avatarSymbol)
-                        .font(.system(size: 14))
+                        .font(.system(size: 15))
                 }
 
-            if isSpeaker || isAsker || isResponder {
+            if isSpeaker {
                 Circle()
                     .fill(ringColor)
-                    .frame(width: 7, height: 7)
+                    .frame(width: 8, height: 8)
                     .overlay(Circle().stroke(SpyClashActivityPalette.background, lineWidth: 1))
             }
         }
@@ -231,21 +231,249 @@ private struct SpyClashPlayerNode: View {
     }
 }
 
+private struct SpyClashLockScreenTurnSummary: View {
+    typealias Attributes = SpyClashMatchActivityAttributes
+
+    @Environment(\.locale) private var locale
+
+    let state: Attributes.ContentState
+
+    private var copy: SpyClashLiveActivityCopy {
+        SpyClashLiveActivityCopy(
+            languageCode: state.displayLanguageCode
+                ?? locale.language.languageCode?.identifier
+        )
+    }
+
+    private var topic: String {
+        let value = state.publicTopic?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let value, !value.isEmpty else { return copy.defaultTopic }
+        if ["CLASSIC", "CLASICO", "CLÁSICO", "КЛАССИКА"].contains(value.uppercased()) {
+            return copy.defaultTopic
+        }
+        return value.uppercased(with: locale)
+    }
+
+    var body: some View {
+        Group {
+            switch state.phase {
+            case .preparing:
+                status(title: copy.preparing, detail: copy.waiting, color: SpyClashActivityPalette.amber)
+            case .voting:
+                status(title: copy.voting, detail: copy.identifySpy, color: SpyClashActivityPalette.red)
+            case .completed:
+                status(title: copy.completed, detail: copy.openForResults, color: SpyClashActivityPalette.green)
+            case .playing:
+                if state.mode == .associations {
+                    associationTurn
+                } else {
+                    questionTurn
+                }
+            }
+        }
+        .accessibilityElement(children: .combine)
+    }
+
+    private var questionTurn: some View {
+        VStack(alignment: .leading, spacing: 8) {
+            eyebrow(copy.question)
+
+            (agentNameText(state.asker)
+                + Text(" → ").foregroundColor(SpyClashActivityPalette.red)
+                + agentNameText(state.responder))
+            .font(.system(size: 17, weight: .black, design: .monospaced))
+            .fontWidth(.condensed)
+            .lineLimit(1)
+            .minimumScaleFactor(0.68)
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            (Text("\(copy.topic) ").foregroundColor(SpyClashActivityPalette.red)
+                + Text(topic).foregroundColor(.white))
+            .font(.system(size: 12, weight: .black, design: .monospaced))
+            .fontWidth(.condensed)
+            .lineLimit(1)
+            .minimumScaleFactor(0.68)
+        }
+    }
+
+    private var associationTurn: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            eyebrow(copy.speaking)
+
+            agentName(state.speaker, size: 20)
+
+            Text(copy.topic)
+                .font(.system(size: 12, weight: .black, design: .monospaced))
+                .fontWidth(.condensed)
+                .foregroundStyle(SpyClashActivityPalette.red)
+
+            Text(topic)
+                .font(.system(size: 15, weight: .black, design: .monospaced))
+                .fontWidth(.condensed)
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.62)
+        }
+    }
+
+    private func eyebrow(_ value: String) -> some View {
+        Text(value)
+            .font(.system(size: 11, weight: .black, design: .monospaced))
+            .fontWidth(.condensed)
+            .foregroundStyle(SpyClashActivityPalette.muted)
+            .lineLimit(1)
+    }
+
+    private func agentName(_ player: Attributes.Participant?, size: CGFloat = 15) -> some View {
+        Text(player?.compactName ?? copy.awaiting)
+            .font(.system(size: size, weight: .black, design: .monospaced))
+            .fontWidth(.condensed)
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.62)
+            .layoutPriority(1)
+    }
+
+    private func agentNameText(_ player: Attributes.Participant?) -> Text {
+        Text(player?.compactName ?? copy.awaiting)
+            .foregroundColor(.white)
+    }
+
+    private func status(title: String, detail: String, color: Color) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            Text(title)
+                .font(.system(size: 15, weight: .black, design: .monospaced))
+                .foregroundStyle(color)
+            Text(detail)
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .foregroundStyle(SpyClashActivityPalette.muted)
+                .lineLimit(2)
+        }
+    }
+}
+
+private struct SpyClashLiveActivityCopy {
+    let round: String
+    let questionsMode: String
+    let associationsMode: String
+    let question: String
+    let speaking: String
+    let topic: String
+    let defaultTopic: String
+    let awaiting: String
+    let preparing: String
+    let waiting: String
+    let voting: String
+    let identifySpy: String
+    let completed: String
+    let openForResults: String
+    let asks: String
+    let answers: String
+    let associationTurn: String
+    let respondingNow: String
+    let speakingNow: String
+    let awaitingTurn: String
+    let pending: String
+
+    func modeLabel(_ mode: SpyClashMatchActivityAttributes.MatchMode) -> String {
+        switch mode {
+        case .questions: questionsMode
+        case .associations: associationsMode
+        }
+    }
+
+    init(languageCode: String?) {
+        switch languageCode {
+        case "ru":
+            round = "РАУНД"
+            questionsMode = "ВОПРОСЫ"
+            associationsMode = "АССОЦИАЦИИ"
+            question = "ВОПРОС"
+            speaking = "ГОВОРИТ:"
+            topic = "ТЕМА:"
+            defaultTopic = "КЛАССИКА"
+            awaiting = "ОЖИДАНИЕ"
+            preparing = "ПОДКЛЮЧЕНИЕ"
+            waiting = "ОЖИДАНИЕ ИГРОКОВ"
+            voting = "ГОЛОСОВАНИЕ"
+            identifySpy = "НАЙДИТЕ ШПИОНА"
+            completed = "МИССИЯ ЗАВЕРШЕНА"
+            openForResults = "ОТКРОЙТЕ SPYCLASH"
+            asks = "СПРАШИВАЕТ"
+            answers = "ОТВЕЧАЕТ"
+            associationTurn = "ХОД АССОЦИАЦИИ"
+            respondingNow = "ОТВЕЧАЕТ СЕЙЧАС"
+            speakingNow = "СЕЙЧАС ГОВОРИТ"
+            awaitingTurn = "ОЖИДАНИЕ ХОДА"
+            pending = "ОЖИДАНИЕ"
+        case "es":
+            round = "RONDA"
+            questionsMode = "PREGUNTAS"
+            associationsMode = "ASOCIACIONES"
+            question = "PREGUNTA"
+            speaking = "HABLA:"
+            topic = "TEMA:"
+            defaultTopic = "CLÁSICO"
+            awaiting = "ESPERANDO"
+            preparing = "CONECTANDO"
+            waiting = "ESPERANDO JUGADORES"
+            voting = "VOTACIÓN"
+            identifySpy = "IDENTIFICA AL ESPÍA"
+            completed = "MISIÓN COMPLETADA"
+            openForResults = "ABRE SPYCLASH"
+            asks = "PREGUNTA"
+            answers = "RESPONDE"
+            associationTurn = "TURNO DE ASOCIACIÓN"
+            respondingNow = "RESPONDIENDO"
+            speakingNow = "HABLANDO AHORA"
+            awaitingTurn = "ESPERANDO TURNO"
+            pending = "PENDIENTE"
+        default:
+            round = "ROUND"
+            questionsMode = "Q&A"
+            associationsMode = "ASSOCIATIONS"
+            question = "QUESTION"
+            speaking = "SPEAKING:"
+            topic = "TOPIC:"
+            defaultTopic = "CLASSIC"
+            awaiting = "AWAITING"
+            preparing = "FIELD LINK"
+            waiting = "WAITING FOR PLAYERS"
+            voting = "VOTE ACTIVE"
+            identifySpy = "IDENTIFY THE SPY"
+            completed = "MISSION COMPLETE"
+            openForResults = "OPEN SPYCLASH"
+            asks = "ASKS"
+            answers = "ANSWERS"
+            associationTurn = "ASSOCIATION TURN"
+            respondingNow = "RESPONDING NOW"
+            speakingNow = "SPEAKING NOW"
+            awaitingTurn = "AWAITING TURN"
+            pending = "PENDING"
+        }
+    }
+}
+
 private struct SpyClashTurnSummary: View {
     typealias Attributes = SpyClashMatchActivityAttributes
 
     let state: Attributes.ContentState
     let compact: Bool
 
+    private var copy: SpyClashLiveActivityCopy {
+        SpyClashLiveActivityCopy(languageCode: state.displayLanguageCode)
+    }
+
     var body: some View {
         Group {
             switch state.phase {
             case .preparing:
-                status(title: "FIELD LINK", detail: "WAITING FOR PLAYERS", color: SpyClashActivityPalette.amber)
+                status(title: copy.preparing, detail: copy.waiting, color: SpyClashActivityPalette.amber)
             case .voting:
-                status(title: "VOTE ACTIVE", detail: "IDENTIFY THE SPY", color: SpyClashActivityPalette.red)
+                status(title: copy.voting, detail: copy.identifySpy, color: SpyClashActivityPalette.red)
             case .completed:
-                status(title: "MISSION COMPLETE", detail: "OPEN SPYCLASH FOR RESULTS", color: SpyClashActivityPalette.green)
+                status(title: copy.completed, detail: copy.openForResults, color: SpyClashActivityPalette.green)
             case .playing:
                 if state.mode == .associations {
                     associationTurn
@@ -271,10 +499,10 @@ private struct SpyClashTurnSummary: View {
 
             if compact {
                 HStack(spacing: 5) {
-                    label("ASKS", color: SpyClashActivityPalette.red)
+                    label(copy.asks, color: SpyClashActivityPalette.red)
                     Text("→")
                         .foregroundStyle(SpyClashActivityPalette.muted)
-                    label("ANSWERS", color: .white)
+                    label(copy.answers, color: .white)
                 }
             }
         }
@@ -282,7 +510,7 @@ private struct SpyClashTurnSummary: View {
 
     private var associationTurn: some View {
         VStack(alignment: compact ? .center : .leading, spacing: compact ? 3 : 5) {
-            Text("ASSOCIATION TURN")
+            Text(copy.associationTurn)
                 .font(.system(size: compact ? 8 : 9, weight: .black, design: .monospaced))
                 .foregroundStyle(SpyClashActivityPalette.muted)
 
@@ -292,16 +520,16 @@ private struct SpyClashTurnSummary: View {
                 agentName(state.speaker, color: SpyClashActivityPalette.green)
             }
 
-            label("RESPONDING NOW", color: SpyClashActivityPalette.green)
+            label(copy.respondingNow, color: SpyClashActivityPalette.green)
         }
     }
 
     private var turnHeader: some View {
         VStack(alignment: compact ? .center : .leading, spacing: 1) {
-            Text("SPEAKING NOW")
+            Text(copy.speakingNow)
                 .font(.system(size: compact ? 8 : 9, weight: .black, design: .monospaced))
                 .foregroundStyle(SpyClashActivityPalette.muted)
-            Text(state.speaker?.compactName ?? "AWAITING TURN")
+            Text(state.speaker?.compactName ?? copy.awaitingTurn)
                 .font(.system(size: compact ? 11 : 13, weight: .black, design: .monospaced))
                 .foregroundStyle(SpyClashActivityPalette.green)
                 .lineLimit(1)
@@ -322,7 +550,7 @@ private struct SpyClashTurnSummary: View {
     }
 
     private func agentName(_ player: Attributes.Participant?, color: Color) -> some View {
-        Text(player?.compactName ?? "PENDING")
+        Text(player?.compactName ?? copy.pending)
             .font(.system(size: compact ? 9 : 11, weight: .black, design: .monospaced))
             .foregroundStyle(color)
             .lineLimit(1)
@@ -392,10 +620,16 @@ private struct SpyClashActivityTimer: View {
         if let pausedSeconds = state.pausedSecondsRemaining {
             Text(formatted(seconds: pausedSeconds))
         } else if let endDate = state.timerEndsAt {
-            Text(
-                timerInterval: Date.now...max(Date.now, endDate),
-                countsDown: true
-            )
+            TimelineView(.periodic(from: .now, by: 1)) { timeline in
+                Text(
+                    formatted(
+                        seconds: Int(
+                            max(0, endDate.timeIntervalSince(timeline.date))
+                                .rounded(.down)
+                        )
+                    )
+                )
+            }
         } else {
             Text("--:--")
         }
@@ -403,7 +637,7 @@ private struct SpyClashActivityTimer: View {
 
     private func formatted(seconds: Int) -> String {
         let safe = max(0, seconds)
-        return String(format: "%02d:%02d", safe / 60, safe % 60)
+        return String(format: "%d:%02d", safe / 60, safe % 60)
     }
 }
 
@@ -437,6 +671,7 @@ private enum SpyClashActivityPalette {
     static let panel = Color(red: 15 / 255, green: 15 / 255, blue: 15 / 255)
     static let table = Color(red: 10 / 255, green: 10 / 255, blue: 10 / 255)
     static let stroke = Color(red: 50 / 255, green: 50 / 255, blue: 50 / 255)
+    static let ring = Color(red: 104 / 255, green: 104 / 255, blue: 104 / 255)
     static let muted = Color(red: 130 / 255, green: 130 / 255, blue: 130 / 255)
     static let red = Color(red: 229 / 255, green: 53 / 255, blue: 53 / 255)
     static let green = Color(red: 74 / 255, green: 222 / 255, blue: 128 / 255)

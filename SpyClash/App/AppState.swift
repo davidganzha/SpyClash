@@ -1951,22 +1951,35 @@ final class AppState: NSObject {
         }
 
         if arguments.contains("--spyclash-live-activity-preview") {
-            startLiveActivityPreview()
+            startLiveActivityPreview(
+                mode: previewArgumentValue(
+                    prefix: "--spyclash-live-activity-mode=",
+                    in: arguments
+                )
+            )
         }
 
         return true
     }
 
-    private func startLiveActivityPreview() {
+    private func startLiveActivityPreview(mode rawMode: String?) {
         Task { @MainActor in
             let controller = SpyClashMatchLiveActivityController.shared
             await controller.endAll()
 
             let viewerID = "preview-red-raven"
+            let mode: SpyClashMatchActivityAttributes.MatchMode = rawMode == "associations"
+                ? .associations
+                : .questions
+            let publicTopic = switch language {
+            case .en: "SECRET AGENT"
+            case .es: "AGENTE SECRETO"
+            case .ru: "ТАЙНЫЙ АГЕНТ"
+            }
             let participants = [
                 SpyClashMatchActivityAttributes.Participant(
-                    id: viewerID,
-                    displayName: "Red Raven",
+                    id: "preview-field-agent",
+                    displayName: "Field Agent",
                     avatarSymbol: "🕵️"
                 ),
                 SpyClashMatchActivityAttributes.Participant(
@@ -1975,37 +1988,79 @@ final class AppState: NSObject {
                     avatarSymbol: "🥷"
                 ),
                 SpyClashMatchActivityAttributes.Participant(
-                    id: "preview-signal-echo",
-                    displayName: "Signal Echo",
-                    avatarSymbol: "🛰️"
+                    id: viewerID,
+                    displayName: "Red Raven",
+                    avatarSymbol: "🕵️‍♂️"
+                ),
+                SpyClashMatchActivityAttributes.Participant(
+                    id: "preview-specter",
+                    displayName: "Specter",
+                    avatarSymbol: "🤖"
+                ),
+                SpyClashMatchActivityAttributes.Participant(
+                    id: "preview-silent-key",
+                    displayName: "Silent Key",
+                    avatarSymbol: "🕵️"
+                ),
+                SpyClashMatchActivityAttributes.Participant(
+                    id: "preview-shadow",
+                    displayName: "Shadow",
+                    avatarSymbol: "🥷"
+                ),
+                SpyClashMatchActivityAttributes.Participant(
+                    id: "preview-cipher",
+                    displayName: "Cipher",
+                    avatarSymbol: "🎭"
                 ),
                 SpyClashMatchActivityAttributes.Participant(
                     id: "preview-crimson-owl",
                     displayName: "Crimson Owl",
                     avatarSymbol: "🦉"
+                ),
+                SpyClashMatchActivityAttributes.Participant(
+                    id: "preview-sable",
+                    displayName: "Sable",
+                    avatarSymbol: "🦊"
+                ),
+                SpyClashMatchActivityAttributes.Participant(
+                    id: "preview-orbit",
+                    displayName: "Orbit",
+                    avatarSymbol: "🛰️"
+                ),
+                SpyClashMatchActivityAttributes.Participant(
+                    id: "preview-velvet",
+                    displayName: "Velvet",
+                    avatarSymbol: "🐈‍⬛"
+                ),
+                SpyClashMatchActivityAttributes.Participant(
+                    id: "preview-last-speaker",
+                    displayName: "Last Speaker",
+                    avatarSymbol: "🦅"
                 )
             ]
             let attributes = SpyClashMatchActivityAttributes(
                 roomID: "preview-room",
-                matchID: "preview-match-build-10",
+                matchID: "preview-match-build-20-\(mode.rawValue)",
                 viewerPlayerID: viewerID,
                 startedAt: .now
             )
             let state = SpyClashMatchActivityAttributes.ContentState(
                 phase: .playing,
-                mode: .questions,
+                mode: mode,
                 participants: participants,
-                currentSpeakerID: "preview-night-fox",
-                currentAskerID: "preview-night-fox",
-                currentResponderID: viewerID,
+                currentSpeakerID: "preview-last-speaker",
+                currentAskerID: mode == .questions ? "preview-last-speaker" : nil,
+                currentResponderID: mode == .questions ? viewerID : nil,
                 round: 2,
+                publicTopic: publicTopic,
+                displayLanguageCode: language.rawValue,
                 timerEndsAt: .now.addingTimeInterval(8 * 60),
                 privateIntel: .init(
                     ownerPlayerID: viewerID,
                     role: .detective,
                     secretWord: "MUST NEVER LEAVE THE APP"
                 ),
-                revision: 10
+                revision: 20
             )
 
             do {
