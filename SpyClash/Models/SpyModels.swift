@@ -427,14 +427,14 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
             QRInviteCopy(
                 roomBeaconEyebrow: "// BALIZA DE SALA",
                 roomBeaconSubtitle: "Escanea para unirte a esta sala",
-                transmitInvite: "TRANSMITIR INVITE",
+                transmitInvite: "ENVIAR INVITACIÓN",
                 close: "CERRAR",
                 scanEyebrow: "// ESCANEO QR",
                 scanTitle: "Uplink de Sala",
                 alignRoomBeacon: "ALINEA LA BALIZA",
-                checkingCamera: "COMPROBANDO CAMARA",
+                checkingCamera: "COMPROBANDO CÁMARA",
                 cameraPreparing: "Preparando canal seguro de camara.",
-                cameraLocked: "CAMARA BLOQUEADA",
+                cameraLocked: "CÁMARA BLOQUEADA",
                 cameraLockedDetail: "Activa la camara en Ajustes para escanear QR de sala.",
                 cancel: "CANCELAR",
                 joiningPrefix: "UNIENDO",
@@ -741,8 +741,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .es:
             WordPacksCopy(
                 eyebrow: "// PACKS",
-                status: "ARMERIA",
-                title: "ARMERIA",
+                status: "ARMERÍA",
+                title: "ARMERÍA",
                 countSuffix: "PACKS PROPIOS",
                 loading: "CARGANDO PACKS",
                 emptyTitle: "SIN PACKS PROPIOS",
@@ -755,30 +755,30 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 deleteActionPrefix: "ELIMINAR",
                 cancel: "CANCELAR",
                 deleteMessagePrefix: "Esto elimina",
-                deleteMessageSuffix: "de tu armeria Base44.",
+                deleteMessageSuffix: "de tu armería Base44.",
                 editor: WordPackEditorCopy(
-                    eyebrow: "// EDITOR DE ARMERIA",
+                    eyebrow: "// EDITOR DE ARMERÍA",
                     newTitle: "NUEVO PACK",
                     editTitle: "EDITAR PACK",
                     wordsMetric: "PALABRAS",
                     modeMetric: "MODO",
                     createMode: "CREAR",
                     updateMode: "ACTUALIZAR",
-                    aiGeneration: "// GENERACION IA",
+                    aiGeneration: "// GENERACIÓN IA",
                     themePlaceholder: "Tema en cualquier idioma",
                     wordsToGenerate: "PALABRAS A GENERAR",
                     generateWords: "GENERAR PALABRAS",
                     aiDraftHint: "La IA solo llena el borrador. Revisa y edita antes de guardar.",
                     packNameLabel: "// NOMBRE DEL PACK",
-                    packNamePlaceholder: "Ciudades, peliculas, caos familiar...",
-                    categoryLabel: "// CATEGORIA",
+                    packNamePlaceholder: "Ciudades, películas, caos familiar...",
+                    categoryLabel: "// CATEGORÍA",
                     categoryPlaceholder: "Propio",
                     wordsLabel: "// PALABRAS",
-                    wordsInputHint: "COMA O LINEA NUEVA",
-                    emptyWordsHint: "Anade al menos dos palabras jugables.",
+                    wordsInputHint: "COMA O LÍNEA NUEVA",
+                    emptyWordsHint: "Añade al menos dos palabras jugables.",
                     createPack: "CREAR PACK",
                     savePack: "GUARDAR PACK",
-                    signInRequired: "SESION REQUERIDA",
+                    signInRequired: "SESIÓN REQUERIDA",
                     packNeedsNameAndWords: "EL PACK NECESITA NOMBRE Y AL MENOS DOS PALABRAS",
                     enterThemeFirst: "ESCRIBE UN TEMA PRIMERO",
                     aiReady: "IA LISTA",
@@ -3031,6 +3031,67 @@ extension WordPack {
             isPublic: false
         )
     ]
+
+    static func localizedPreviewPacks(for language: AppLanguage) -> [WordPack] {
+        switch language {
+        case .en:
+            previewPacks
+        case .ru:
+            [
+                WordPack(
+                    id: "preview-pack-places",
+                    name: "Ночной город",
+                    category: "Места",
+                    words: ["Посольство", "Порт", "Казино", "Метро", "Музей", "Крыша", "Театр", "Рынок", "Отель", "Аэропорт", "Хранилище", "Тоннель"],
+                    ownerEmail: "operative.preview@spyclash.local",
+                    isPublic: false
+                ),
+                WordPack(
+                    id: "preview-pack-tech",
+                    name: "Техносигналы",
+                    category: "Технологии",
+                    words: ["Спутник", "Шифр", "Дрон", "Фаервол", "Сервер", "Маяк", "Консоль", "Датчик", "Роутер", "Терминал", "Прокси", "Ключ-карта"],
+                    ownerEmail: "operative.preview@spyclash.local",
+                    isPublic: false
+                ),
+                WordPack(
+                    id: "preview-pack-party",
+                    name: "Хаос вечеринки",
+                    category: "Общение",
+                    words: ["Караоке", "Пицца", "Костюм", "Балкон", "Плейлист", "Конфетти", "Селфи", "Танцпол", "Моктейль", "Приглашение"],
+                    ownerEmail: "operative.preview@spyclash.local",
+                    isPublic: false
+                ),
+            ]
+        case .es:
+            [
+                WordPack(
+                    id: "preview-pack-places",
+                    name: "Ciudad Nocturna",
+                    category: "Lugares",
+                    words: ["Embajada", "Puerto", "Casino", "Metro", "Museo", "Azotea", "Teatro", "Mercado", "Hotel", "Aeropuerto", "Bóveda", "Túnel"],
+                    ownerEmail: "operative.preview@spyclash.local",
+                    isPublic: false
+                ),
+                WordPack(
+                    id: "preview-pack-tech",
+                    name: "Señales Tecnológicas",
+                    category: "Tecnología",
+                    words: ["Satélite", "Cifrado", "Dron", "Cortafuegos", "Servidor", "Baliza", "Consola", "Sensor", "Router", "Terminal", "Proxy", "Tarjeta"],
+                    ownerEmail: "operative.preview@spyclash.local",
+                    isPublic: false
+                ),
+                WordPack(
+                    id: "preview-pack-party",
+                    name: "Caos de Fiesta",
+                    category: "Social",
+                    words: ["Karaoke", "Pizza", "Disfraz", "Balcón", "Lista", "Confeti", "Selfi", "Pista", "Cóctel", "Invitación"],
+                    ownerEmail: "operative.preview@spyclash.local",
+                    isPublic: false
+                ),
+            ]
+        }
+    }
 }
 
 struct GameHistory: Codable, Identifiable, Hashable {

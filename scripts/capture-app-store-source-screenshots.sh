@@ -22,7 +22,7 @@ ALL_SCREENS=(
     "active-round"
     "local-pass-and-play"
     "word-packs-ai"
-    "community-profile-history"
+    "community-attention"
 )
 
 APP_PATH=""
@@ -82,7 +82,7 @@ role-reveal                  Online role-card reveal gate (card initially concea
 active-round                 Online active round with deterministic preview room data
 local-pass-and-play          Local pass-and-play active round
 word-packs-ai                Word packs and AI theme-generation surface
-community-profile-history    Community personal profile/history fixture
+community-attention          Community invitations and friend-request fixture
 SCREENS
 }
 
@@ -312,7 +312,7 @@ fixture_configuration() {
             FIXTURE_ARGS=("--spyclash-preview-tab=home")
             # The first localized launch must warm both the custom wordmark
             # font and SF Symbols before simctl snapshots the framebuffer.
-            FIXTURE_EXTRA_WAIT="7.0"
+            FIXTURE_EXTRA_WAIT="12.0"
             ;;
         online-lobby-qr)
             FIXTURE_FILENAME="02-online-lobby-qr.png"
@@ -338,7 +338,7 @@ fixture_configuration() {
                 "--spyclash-preview-tab=game"
                 "--spyclash-preview-room=playing"
             )
-            FIXTURE_EXTRA_WAIT="0.8"
+            FIXTURE_EXTRA_WAIT="35.0"
             ;;
         local-pass-and-play)
             FIXTURE_FILENAME="05-local-pass-and-play.png"
@@ -353,15 +353,14 @@ fixture_configuration() {
         word-packs-ai)
             FIXTURE_FILENAME="06-word-packs-ai.png"
             FIXTURE_ARGS=("--spyclash-preview-tab=packs")
-            FIXTURE_EXTRA_WAIT="0.8"
+            FIXTURE_EXTRA_WAIT="17.0"
             ;;
-        community-profile-history)
-            FIXTURE_FILENAME="07-community-profile-history.png"
-            FIXTURE_ARGS=(
-                "--spyclash-preview-sheet=community"
-                "--spyclash-preview-community-profile=me"
-            )
-            FIXTURE_EXTRA_WAIT="1.2"
+        community-attention)
+            FIXTURE_FILENAME="07-community-attention.png"
+            FIXTURE_ARGS=("--spyclash-preview-sheet=community")
+            # The Community route mounts after the shell and its wordmark must
+            # finish the same warm-up path as Home before capture.
+            FIXTURE_EXTRA_WAIT="35.0"
             ;;
         *)
             die "internal fixture mapping is missing for '$screen'"
@@ -489,8 +488,11 @@ for screen in "${REQUESTED_SCREENS[@]}"; do
 
     /bin/sleep "$SETTLE_SECONDS"
 
-    TEMP_CAPTURE=$(mktemp "$LOCALE_OUTPUT/.${FIXTURE_FILENAME%.png}.raw.XXXXXX") \
-        || die "cannot create a temporary capture in $LOCALE_OUTPUT"
+    # `simctl io screenshot` can be denied direct writes inside protected
+    # user folders even when this script may create files there. Capture in
+    # /tmp first, then move the validated RGB result into AppStoreAssets.
+    TEMP_CAPTURE=$(mktemp "/tmp/spyclash-${FIXTURE_FILENAME%.png}.raw.XXXXXX") \
+        || die "cannot create a temporary capture in /tmp"
     xcrun simctl io "$DEVICE_UDID" screenshot \
         --type=png \
         --mask=ignored \

@@ -278,7 +278,7 @@ struct AppShellView: View {
             title = localizedCommunityAttention(
                 en: "ROOM INVITE RECEIVED",
                 ru: "ПРИГЛАШЕНИЕ В КОМНАТУ",
-                es: "INVITACION A UNA SALA"
+                es: "INVITACIÓN A UNA SALA"
             )
             detail = snapshot.senderName(forRoomInviteIDs: newIDs).map {
                 localizedCommunityAttention(

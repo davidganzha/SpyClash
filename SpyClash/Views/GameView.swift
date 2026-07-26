@@ -1000,7 +1000,7 @@ struct GameView: View {
             VStack(spacing: 0) {
                 roomAccessHeader(
                     room,
-                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACION QR")
+                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR")
                 )
                 .padding(.horizontal, 18)
                 .padding(.top, 15)
@@ -1054,7 +1054,7 @@ struct GameView: View {
             VStack(spacing: 0) {
                 roomAccessHeader(
                     room,
-                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACION QR")
+                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR")
                 )
                 .padding(.horizontal, 18)
                 .padding(.top, 15)
@@ -1089,7 +1089,7 @@ struct GameView: View {
                         ? "СКАНИРУЙ ЛЮБОЙ КАМЕРОЙ · ТАП — СКРЫТЬ"
                         : "ОТКРОЕТСЯ В SPYCLASH · ТАП — СКРЫТЬ",
                     es: appState.roomQRTarget == .web
-                        ? "ESCANEA CON CUALQUIER CAMARA · TOCA PARA OCULTAR"
+                        ? "ESCANEA CON CUALQUIER CÁMARA · TOCA PARA OCULTAR"
                         : "ABRE EN SPYCLASH · TOCA PARA OCULTAR"
                 ))
                 .font(.system(size: 8, weight: .black, design: .monospaced))
@@ -2179,7 +2179,7 @@ struct GameView: View {
 
         return onlineRoomGlassCard(verticalPadding: 24) {
             VStack(spacing: 16) {
-                Text("// \(localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACION QR"))")
+                Text("// \(localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR"))")
                     .font(.system(size: 9, weight: .medium, design: .monospaced))
                     .tracking(2.8)
                     .foregroundStyle(SpyTheme.dim.opacity(0.70))
@@ -3247,7 +3247,7 @@ struct GameView: View {
             Button {
                 appState.presentedSheet = .roomQR(room)
             } label: {
-                Label(localized(en: "QR INVITE", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACION QR"), systemImage: "qrcode")
+                Label(localized(en: "QR INVITE", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR"), systemImage: "qrcode")
             }
 
             if room.normalizedStatus == "ready_voting", isHost(room) {

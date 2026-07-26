@@ -196,10 +196,15 @@ require_live_property GameRoom match_id
 require_live_property GameRoom terminal_intent
 require_live_property GameRoom game_started_event_id
 require_live_property GameRoom game_finished_event_id
+require_live_property GameRoom intro_started_at
+require_live_property GameRoom game_paused_at
+require_live_property GameRoom game_paused_total_seconds
 require_live_property RoomInvite notification_event_id
 require_live_property WordPack owner_user_id
 require_live_property AppStoreAccount reservation_state
 require_live_property Entitlement write_revision
+require_live_property LiveActivityRegistration pending_force_end
+require_live_property LiveActivityRegistration locale
 
 : > "$CHANGED_NAMES"
 mkdir -p "$STAGE/diff"

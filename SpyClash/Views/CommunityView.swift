@@ -201,7 +201,7 @@ struct CommunityView: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 7) {
                 SpySceneKicker(
-                    title: localized(en: "PUBLIC DIRECTORY", ru: "ПУБЛИЧНЫЙ КАТАЛОГ", es: "DIRECTORIO PUBLICO"),
+                    title: localized(en: "PUBLIC DIRECTORY", ru: "ПУБЛИЧНЫЙ КАТАЛОГ", es: "DIRECTORIO PÚBLICO"),
                     status: localized(en: "DISCOVER", ru: "ПОИСК", es: "DESCUBRIR"),
                     accent: SpyTheme.red
                 )
@@ -219,7 +219,7 @@ struct CommunityView: View {
                 Text(localized(
                     en: "Search by callsign or SPYID. Every card is the operative's real public identity.",
                     ru: "Ищи по позывному или SPYID. Каждая карточка — настоящая публичная личность игрока.",
-                    es: "Busca por alias o SPYID. Cada tarjeta es la identidad publica real del jugador."
+                    es: "Busca por alias o SPYID. Cada tarjeta es la identidad pública real del jugador."
                 ))
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(SpyTheme.muted)
@@ -435,8 +435,8 @@ struct CommunityView: View {
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(detail.isSelf
-                    ? localized(en: "MY PUBLIC PROFILE", ru: "МОЙ ПУБЛИЧНЫЙ ПРОФИЛЬ", es: "MI PERFIL PUBLICO")
-                    : localized(en: "PUBLIC DOSSIER", ru: "ПУБЛИЧНОЕ ДОСЬЕ", es: "EXPEDIENTE PUBLICO"))
+                    ? localized(en: "MY PUBLIC PROFILE", ru: "МОЙ ПУБЛИЧНЫЙ ПРОФИЛЬ", es: "MI PERFIL PÚBLICO")
+                    : localized(en: "PUBLIC DOSSIER", ru: "ПУБЛИЧНОЕ ДОСЬЕ", es: "EXPEDIENTE PÚBLICO"))
                     .font(SpyTheme.brandFont(size: 23))
                     .tracking(0.6)
                     .foregroundStyle(.white)
@@ -596,7 +596,7 @@ struct CommunityView: View {
             Text(localized(
                 en: "YOUR PUBLIC PROFILE IS LIVE. OPERATIVES CAN FIND IT IN THE COMMUNITY DIRECTORY.",
                 ru: "ТВОЙ ПУБЛИЧНЫЙ ПРОФИЛЬ АКТИВЕН. ОПЕРАТИВНИКИ МОГУТ НАЙТИ ЕГО В КАТАЛОГЕ.",
-                es: "TU PERFIL PUBLICO ESTA ACTIVO. LOS OPERATIVOS PUEDEN ENCONTRARLO EN EL DIRECTORIO."
+                es: "TU PERFIL PÚBLICO ESTÁ ACTIVO. LOS OPERATIVOS PUEDEN ENCONTRARLO EN EL DIRECTORIO."
             ))
             .font(.system(size: 10, weight: .medium, design: .monospaced))
             .foregroundStyle(SpyTheme.muted)
@@ -652,7 +652,7 @@ struct CommunityView: View {
                 )
 
                 if detail.friends.isEmpty {
-                    Text(localized(en: "NO PUBLIC CONNECTIONS YET", ru: "ПОКА НЕТ ПУБЛИЧНЫХ СВЯЗЕЙ", es: "AUN NO HAY CONEXIONES PUBLICAS"))
+                    Text(localized(en: "NO PUBLIC CONNECTIONS YET", ru: "ПОКА НЕТ ПУБЛИЧНЫХ СВЯЗЕЙ", es: "AÚN NO HAY CONEXIONES PÚBLICAS"))
                         .font(SpyTheme.micro)
                         .tracking(0.6)
                         .foregroundStyle(SpyTheme.faint)
@@ -1709,7 +1709,7 @@ struct CommunityView: View {
         defer { activeAction = nil }
 
         if appState.shouldUsePreviewData {
-            message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACION ENVIADA")
+            message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA")
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
             return
@@ -1718,7 +1718,7 @@ struct CommunityView: View {
         do {
             let acknowledgement = try await appState.client.inviteCommunityOperative(userID: profile.id, room: room)
             guard acknowledgement.ok else { return }
-            message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACION ENVIADA")
+            message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA")
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
         } catch {
@@ -1808,7 +1808,7 @@ struct CommunityView: View {
                 try await Task.sleep(for: .milliseconds(760))
                 await showActionSuccess(
                     actionID,
-                    message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACION RECHAZADA")
+                    message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACIÓN RECHAZADA")
                 )
                 resolvedRoomInviteIDs.insert(invite.id)
                 network = networkRemovingRoomInvite(invite.id, from: network)
@@ -1823,7 +1823,7 @@ struct CommunityView: View {
             let result = try await appState.client.communityRoomInviteAction("decline_room_invite", inviteID: invite.id)
             await showActionSuccess(
                 actionID,
-                message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACION RECHAZADA")
+                message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACIÓN RECHAZADA")
             )
             resolvedRoomInviteIDs.insert(invite.id)
             withAnimation(.smooth(duration: 0.24)) {
@@ -2430,7 +2430,7 @@ private struct CommunitySpyCard: View {
         switch language {
         case .en: "PUBLIC"
         case .ru: "ПУБЛИЧНЫЙ"
-        case .es: "PUBLICO"
+        case .es: "PÚBLICO"
         }
     }
 

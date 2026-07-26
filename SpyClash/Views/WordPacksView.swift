@@ -105,7 +105,7 @@ struct WordPacksView: View {
                         Text(localized(
                             en: "Build reusable intelligence for every mission.",
                             ru: "Собирай разведданные для каждой новой миссии.",
-                            es: "Crea inteligencia reutilizable para cada mision."
+                            es: "Crea inteligencia reutilizable para cada misión."
                         ))
                         .font(.system(size: 11, weight: .semibold, design: .default))
                         .foregroundStyle(SpyTheme.muted)
@@ -140,7 +140,7 @@ struct WordPacksView: View {
                             .foregroundStyle(packs.isEmpty ? SpyTheme.dim : SpyTheme.red)
                             .lineLimit(1)
                             .minimumScaleFactor(0.58)
-                        Text(localized(en: "LATEST INTEL", ru: "ПОСЛЕДНИЙ INTEL", es: "ULTIMO INTEL"))
+                        Text(localized(en: "LATEST INTEL", ru: "ПОСЛЕДНИЙ INTEL", es: "ÚLTIMO INTEL"))
                             .font(.system(size: 7, weight: .black, design: .monospaced))
                             .tracking(0.06)
                             .foregroundStyle(SpyTheme.faint)
@@ -152,7 +152,7 @@ struct WordPacksView: View {
                     editor = .create
                 } label: {
                     SpyPrimaryCommandLabel(
-                        title: localized(en: "CREATE WORD PACK", ru: "СОЗДАТЬ КОЛОДУ", es: "CREAR WORD PACK"),
+                        title: localized(en: "CREATE WORD PACK", ru: "СОЗДАТЬ КОЛОДУ", es: "CREAR PACK"),
                         detail: nil,
                         systemImage: "plus"
                     )
@@ -330,7 +330,7 @@ struct WordPacksView: View {
 
     private func load() async {
         if appState.shouldUsePreviewData {
-            packs = WordPack.previewPacks
+            packs = WordPack.localizedPreviewPacks(for: appState.language)
             status = ""
             isLoading = false
             return

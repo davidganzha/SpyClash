@@ -1,17 +1,17 @@
 # SpyClash App Store assets
 
-The current `Build-15` images were captured from the real SwiftUI shell of
-`SpyClash` 1.0 (15) on an iPhone 17 Pro Max simulator running iOS 26.5.
+The current `Build-22` images were captured from the real SwiftUI shell of
+`SpyClash` 1.0 (22) on an iPhone 17 Pro Max simulator running iOS 26.5.
 
 ## Product-page screenshots
 
-`Build-15/en-US`, `Build-15/ru`, and `Build-15/es-ES` are the current localized
+`Build-22/en-US`, `Build-22/ru`, and `Build-22/es-ES` are the current localized
 6.9-inch source sets. Each contains seven flattened RGB PNG files at
 `1320 x 2868`. Do not upload the older `Screenshots`, `Showcase`, ZIP,
-contact-sheet, or duplicate 6.5-inch files as the build-15 set.
+contact-sheet, or duplicate 6.5-inch files as the build-22 set.
 
 The current sequence is home, private lobby/QR, secret role, active online
-round, local pass-and-play, word packs, and Community profile/history.
+round, local pass-and-play, word packs, and Community attention/actions.
 
 Use `scripts/capture-app-store-source-screenshots.sh` to regenerate the source
 sets. Validate every output for dimensions, alpha, locale, current UI, and

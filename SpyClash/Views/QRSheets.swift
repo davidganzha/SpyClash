@@ -25,7 +25,7 @@ struct RoomQRSheet: View {
             localized(
                 en: "Scan with any camera to join in a browser.",
                 ru: "Отсканируй любой камерой, чтобы войти через браузер.",
-                es: "Escanea con cualquier camara para entrar desde el navegador."
+                es: "Escanea con cualquier cámara para entrar desde el navegador."
             )
         case .ios:
             localized(
@@ -56,7 +56,7 @@ struct RoomQRSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 18) {
                     sheetHeader(
-                        eyebrow: localized(en: "// ROOM INVITE", ru: "// ПРИГЛАШЕНИЕ", es: "// INVITACION"),
+                        eyebrow: localized(en: "// ROOM INVITE", ru: "// ПРИГЛАШЕНИЕ", es: "// INVITACIÓN"),
                         title: room.code.uppercased(),
                         subtitle: inviteSubtitle
                     )
