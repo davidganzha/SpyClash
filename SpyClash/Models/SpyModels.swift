@@ -2682,6 +2682,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var gamePausedAt: String?
     var gamePausedTotalSeconds: Int?
     var questionPhase: String?
+    var countdownStartedAt: String?
     var currentAnswer: String?
     var currentAnswerFeedback: String?
     var gameMode: String?
@@ -2786,6 +2787,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case gamePausedAt = "game_paused_at"
         case gamePausedTotalSeconds = "game_paused_total_seconds"
         case questionPhase = "question_phase"
+        case countdownStartedAt = "countdown_started_at"
         case currentAnswer = "current_answer"
         case currentAnswerFeedback = "current_answer_feedback"
         case gameMode = "game_mode"
@@ -2945,6 +2947,7 @@ extension GameRoom {
             gamePausedAt: normalizedStatus == "paused" ? ISO8601DateFormatter().string(from: Date()) : nil,
             gamePausedTotalSeconds: 0,
             questionPhase: questionPhase,
+            countdownStartedAt: nil,
             currentAnswer: nil,
             currentAnswerFeedback: nil,
             gameMode: "questions",

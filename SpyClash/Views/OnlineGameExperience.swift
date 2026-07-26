@@ -1128,19 +1128,25 @@ struct OnlineActiveGameScene: View {
     let currentUserEmail: String?
     let isHost: Bool
     let isRoleRevealed: Bool
-    let canAdvance: Bool
+    let roundCommand: OnlineRoundCommand?
+    let isRoundTransitioning: Bool
+    let canStopAssociationSpin: Bool
     let canRequestVote: Bool
     let canSpyGuess: Bool
     let canCastVote: Bool
     let onToggleRole: () -> Void
     let onTogglePause: () -> Void
-    let onAdvance: () -> Void
+    let onRoundCommand: (OnlineRoundCommand) -> Void
+    let onCountdownElapsed: () -> Void
+    let onAssociationSpinElapsed: () -> Void
     let onRequestVote: () -> Void
     let onCastVote: (String) -> Void
     let onSpyGuess: () -> Void
     let onLeave: () -> Void
 
     @State private var isConfirmingLeave = false
+    @State private var handledCountdownEventID: String?
+    @State private var handledAssociationSpinEventID: String?
 
     init(
         room: GameRoom,
@@ -1151,13 +1157,17 @@ struct OnlineActiveGameScene: View {
         currentUserEmail: String?,
         isHost: Bool,
         isRoleRevealed: Bool,
-        canAdvance: Bool,
+        roundCommand: OnlineRoundCommand?,
+        isRoundTransitioning: Bool,
+        canStopAssociationSpin: Bool,
         canRequestVote: Bool,
         canSpyGuess: Bool,
         canCastVote: Bool = true,
         onToggleRole: @escaping () -> Void,
         onTogglePause: @escaping () -> Void,
-        onAdvance: @escaping () -> Void,
+        onRoundCommand: @escaping (OnlineRoundCommand) -> Void,
+        onCountdownElapsed: @escaping () -> Void,
+        onAssociationSpinElapsed: @escaping () -> Void,
         onRequestVote: @escaping () -> Void,
         onCastVote: @escaping (String) -> Void,
         onSpyGuess: @escaping () -> Void,
@@ -1171,13 +1181,17 @@ struct OnlineActiveGameScene: View {
         self.currentUserEmail = currentUserEmail
         self.isHost = isHost
         self.isRoleRevealed = isRoleRevealed
-        self.canAdvance = canAdvance
+        self.roundCommand = roundCommand
+        self.isRoundTransitioning = isRoundTransitioning
+        self.canStopAssociationSpin = canStopAssociationSpin
         self.canRequestVote = canRequestVote
         self.canSpyGuess = canSpyGuess
         self.canCastVote = canCastVote
         self.onToggleRole = onToggleRole
         self.onTogglePause = onTogglePause
-        self.onAdvance = onAdvance
+        self.onRoundCommand = onRoundCommand
+        self.onCountdownElapsed = onCountdownElapsed
+        self.onAssociationSpinElapsed = onAssociationSpinElapsed
         self.onRequestVote = onRequestVote
         self.onCastVote = onCastVote
         self.onSpyGuess = onSpyGuess
@@ -1203,6 +1217,7 @@ struct OnlineActiveGameScene: View {
                                     .padding(.top, 4)
 
                                 centralStage(
+                                    at: timeline.date,
                                     maxCardWidth: min(205, max(164, (proxy.size.height - 480) * 0.76)),
                                     maxVotingHeight: min(284, max(180, proxy.size.height * 0.31))
                                 )
@@ -1234,6 +1249,7 @@ struct OnlineActiveGameScene: View {
         .animation(.spring(response: 0.54, dampingFraction: 0.82), value: room.isVotingActive)
         .animation(.spring(response: 0.54, dampingFraction: 0.82), value: room.currentAskerEmail)
         .animation(.spring(response: 0.54, dampingFraction: 0.82), value: room.currentAnswererEmail)
+        .animation(.spring(response: 0.44, dampingFraction: 0.84), value: room.questionPhase)
         .confirmationDialog(
             isHost ? copy.closeGame : copy.leaveGame,
             isPresented: $isConfirmingLeave,
@@ -1241,6 +1257,12 @@ struct OnlineActiveGameScene: View {
         ) {
             Button(isHost ? copy.closeGame : copy.leaveGame, role: .destructive, action: leave)
             Button(copy.cancel, role: .cancel) {}
+        }
+        .task(id: countdownTaskID) {
+            await advanceCountdownIfNeeded()
+        }
+        .task(id: associationSpinTaskID) {
+            await stopAssociationSpinIfNeeded()
         }
     }
 
@@ -1382,26 +1404,32 @@ struct OnlineActiveGameScene: View {
         .accessibilityIdentifier("onlineExperience.players")
     }
 
-    private func centralStage(maxCardWidth: CGFloat, maxVotingHeight: CGFloat) -> some View {
+    private func centralStage(
+        at date: Date,
+        maxCardWidth: CGFloat,
+        maxVotingHeight: CGFloat
+    ) -> some View {
         ZStack {
             VStack(spacing: 12) {
-                Button(action: onToggleRole) {
-                    MissionRoleCard(
-                        role: role,
-                        category: room.category,
-                        theme: cardTheme,
-                        accent: cardAccent,
-                        language: language,
-                        isRevealed: isRoleRevealed,
-                        size: .compact
-                    )
-                    .frame(width: maxCardWidth)
+                if room.onlineRoundPhase != .results {
+                    Button(action: onToggleRole) {
+                        MissionRoleCard(
+                            role: role,
+                            category: room.category,
+                            theme: cardTheme,
+                            accent: cardAccent,
+                            language: language,
+                            isRevealed: isRoleRevealed,
+                            size: .compact
+                        )
+                        .frame(width: maxCardWidth)
+                    }
+                    .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
+                    .accessibilityIdentifier("onlineExperience.compactRoleCard")
                 }
-                .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
-                .accessibilityIdentifier("onlineExperience.compactRoleCard")
 
                 if !room.isVotingActive {
-                    activePairStrip
+                    roundStage(at: date, maxHeight: maxVotingHeight)
                 }
             }
             .opacity(room.isVotingActive ? 0 : 1)
@@ -1411,6 +1439,149 @@ struct OnlineActiveGameScene: View {
                     .transition(.opacity.combined(with: .scale(scale: 0.97)))
             }
         }
+    }
+
+    @ViewBuilder
+    private func roundStage(at date: Date, maxHeight: CGFloat) -> some View {
+        if room.onlineRoundPhase == .results {
+            roundResultsStage(maxHeight: maxHeight)
+        } else if room.gameModeValue == .associations {
+            associationStage
+        } else if room.onlineRoundPhase == .countdown {
+            countdownStage(at: date)
+        } else {
+            activePairStrip
+        }
+    }
+
+    private func countdownStage(at date: Date) -> some View {
+        let remaining = Int(ceil(room.countdownRemaining(at: date)))
+
+        return VStack(spacing: 8) {
+            Text(copy.nextQuestionIn)
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .tracking(1.8)
+                .foregroundStyle(SpyTheme.dim)
+
+            Text(String(max(remaining, 0)))
+                .font(SpyTheme.brandFont(size: 54))
+                .tracking(2)
+                .foregroundStyle(SpyTheme.red)
+                .monospacedDigit()
+                .contentTransition(.numericText(countsDown: true))
+
+            Text(copy.waitForNextTurn)
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(1.1)
+                .foregroundStyle(Color.white.opacity(0.52))
+        }
+        .frame(maxWidth: .infinity, minHeight: 118)
+        .background(Color.black.opacity(0.76), in: CutCornerShape(cut: 9))
+        .overlay {
+            CutCornerShape(cut: 9)
+                .stroke(SpyTheme.red.opacity(0.42), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("onlineExperience.questionCountdown")
+    }
+
+    private var associationStage: some View {
+        let state = room.associationRoundState
+        let speaker = player(email: room.currentAskerEmail)
+
+        return VStack(spacing: 10) {
+            Text(state.spinning ? copy.selectingSpeaker : copy.currentSpeaker)
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .tracking(1.8)
+                .foregroundStyle(state.spinning ? SpyTheme.red : SpyTheme.dim)
+
+            ZStack {
+                CutCornerShape(cut: 8)
+                    .fill(SpyTheme.control)
+                    .frame(width: 58, height: 58)
+                    .overlay {
+                        CutCornerShape(cut: 8)
+                            .stroke(state.spinning ? SpyTheme.red : SpyTheme.strokeStrong, lineWidth: 1)
+                    }
+
+                if state.spinning {
+                    ProgressView()
+                        .tint(SpyTheme.red)
+                        .controlSize(.large)
+                } else {
+                    Text(speaker?.avatar ?? "?")
+                        .font(.system(size: 30))
+                }
+            }
+
+            Text(state.spinning ? copy.signalScanning : (speaker?.name.uppercased() ?? copy.pending))
+                .font(SpyTheme.brandFont(size: 16))
+                .tracking(1)
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.58)
+
+            Text(copy.associationProgress(state.spoken.count, room.activePlayers.count))
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .tracking(1.1)
+                .foregroundStyle(SpyTheme.dim)
+        }
+        .frame(maxWidth: .infinity, minHeight: 142)
+        .background(Color.black.opacity(0.76), in: CutCornerShape(cut: 9))
+        .overlay {
+            CutCornerShape(cut: 9)
+                .stroke(state.spinning ? SpyTheme.red.opacity(0.54) : SpyTheme.strokeStrong, lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("onlineExperience.associationState")
+    }
+
+    private func roundResultsStage(maxHeight: CGFloat) -> some View {
+        VStack(spacing: 10) {
+            Text(copy.roundResults)
+                .font(SpyTheme.brandFont(size: 23))
+                .tracking(1.4)
+                .foregroundStyle(.white)
+
+            ScrollView(.vertical, showsIndicators: roundResultPlayers.count > 4) {
+                LazyVStack(spacing: 7) {
+                    ForEach(roundResultPlayers.indices, id: \.self) { index in
+                        let player = roundResultPlayers[index]
+                        HStack(spacing: 10) {
+                            Text(String(format: "%02d", index + 1))
+                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                .foregroundStyle(index == 0 ? SpyTheme.red : SpyTheme.dim)
+
+                            Text(player.avatar)
+                                .font(.system(size: 20))
+
+                            Text(player.name.uppercased())
+                                .font(SpyTheme.brandFont(size: 13))
+                                .tracking(0.8)
+                                .foregroundStyle(.white)
+                                .lineLimit(1)
+
+                            Spacer(minLength: 8)
+
+                            Text(formattedRoundScore(for: player))
+                                .font(.system(size: 12, weight: .black, design: .monospaced))
+                                .foregroundStyle(roundScore(for: player) >= 0 ? SpyTheme.green : SpyTheme.red)
+                        }
+                        .padding(.horizontal, 12)
+                        .frame(height: 42)
+                        .background(Color.black.opacity(0.52), in: CutCornerShape(cut: 6))
+                        .overlay {
+                            CutCornerShape(cut: 6)
+                                .stroke(index == 0 ? SpyTheme.red.opacity(0.34) : SpyTheme.stroke, lineWidth: 1)
+                        }
+                    }
+                }
+            }
+            .frame(maxHeight: maxHeight)
+        }
+        .frame(maxWidth: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onlineExperience.roundResults")
     }
 
     private var activePairStrip: some View {
@@ -1573,16 +1744,24 @@ struct OnlineActiveGameScene: View {
     @ViewBuilder
     private var commandArea: some View {
         VStack(spacing: 8) {
-            if canAdvance {
-                Button(action: advance) {
+            if let roundCommand {
+                Button {
+                    perform(roundCommand)
+                } label: {
                     HStack(spacing: 9) {
-                        Image(systemName: "arrow.right")
-                        Text(copy.nextTurn)
+                        if isRoundTransitioning {
+                            ProgressView()
+                                .tint(.white)
+                        } else {
+                            Image(systemName: roundCommand.systemImage)
+                        }
+                        Text(roundCommand.title(copy: copy))
                     }
                 }
                 .buttonStyle(OnlineCinematicButtonStyle(variant: .primary))
-                .accessibilityIdentifier("onlineExperience.action.next")
-            } else if canSpyGuess {
+                .disabled(isRoundTransitioning)
+                .accessibilityIdentifier(roundCommand.accessibilityIdentifier)
+            } else if canSpyGuess && !suppressesFallbackPrimaryAction {
                 Button(action: spyGuess) {
                     HStack(spacing: 9) {
                         Image(systemName: "target")
@@ -1591,7 +1770,7 @@ struct OnlineActiveGameScene: View {
                 }
                 .buttonStyle(OnlineCinematicButtonStyle(variant: .primary))
                 .accessibilityIdentifier("onlineExperience.action.spyGuess")
-            } else if canRequestVote && !room.isVotingActive {
+            } else if canRequestVote && !room.isVotingActive && !suppressesFallbackPrimaryAction {
                 Button(action: requestVote) {
                     HStack(spacing: 9) {
                         Image(systemName: "person.3.fill")
@@ -1610,7 +1789,7 @@ struct OnlineActiveGameScene: View {
                     action: toggleRole
                 )
 
-                if canRequestVote && !room.isVotingActive && (canAdvance || canSpyGuess) {
+                if canRequestVote && !room.isVotingActive && !showsRoundResults && (roundCommand != nil || canSpyGuess) {
                     secondaryCommand(
                         title: copy.vote,
                         systemImage: "person.3.fill",
@@ -1619,7 +1798,7 @@ struct OnlineActiveGameScene: View {
                     )
                 }
 
-                if canSpyGuess && !(!canAdvance && canSpyGuess) {
+                if canSpyGuess && roundCommand != nil && !showsRoundResults {
                     secondaryCommand(
                         title: copy.guess,
                         systemImage: "target",
@@ -1631,6 +1810,16 @@ struct OnlineActiveGameScene: View {
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("onlineExperience.actionTray")
+    }
+
+    private var showsRoundResults: Bool {
+        room.onlineRoundPhase == .results
+    }
+
+    private var suppressesFallbackPrimaryAction: Bool {
+        showsRoundResults ||
+            (room.gameModeValue == .questions && room.onlineRoundPhase == .countdown) ||
+            (room.gameModeValue == .associations && room.associationRoundState.spinning)
     }
 
     private func secondaryCommand(
@@ -1710,11 +1899,6 @@ struct OnlineActiveGameScene: View {
         onTogglePause()
     }
 
-    private func advance() {
-        HapticManager.shared.fire(.navigation)
-        onAdvance()
-    }
-
     private func requestVote() {
         HapticManager.shared.fire(.buttonPress)
         onRequestVote()
@@ -1743,6 +1927,117 @@ struct OnlineActiveGameScene: View {
     private func player(email: String?) -> Player? {
         guard let email else { return nil }
         return room.playersList.first { $0.email == email }
+    }
+
+    private var roundResultPlayers: [Player] {
+        let eliminated = Set(room.eliminatedEmails ?? [])
+        return room.playersList
+            .filter { !eliminated.contains($0.email) }
+            .sorted { left, right in
+                let leftScore = roundScore(for: left)
+                let rightScore = roundScore(for: right)
+                if leftScore == rightScore {
+                    return left.name.localizedCaseInsensitiveCompare(right.name) == .orderedAscending
+                }
+                return leftScore > rightScore
+            }
+    }
+
+    private func roundScore(for player: Player) -> Int {
+        guard let feedback = room.playerFeedback?.first(where: { $0.email == player.email }) else {
+            return 0
+        }
+        return feedback.likes - feedback.dislikes
+    }
+
+    private func formattedRoundScore(for player: Player) -> String {
+        let score = roundScore(for: player)
+        return score > 0 ? "+\(score)" : "\(score)"
+    }
+
+    private func perform(_ command: OnlineRoundCommand) {
+        guard !isRoundTransitioning else { return }
+        HapticManager.shared.fire(.buttonPress)
+        onRoundCommand(command)
+    }
+
+    private var countdownTaskID: String {
+        [
+            countdownEventID ?? "inactive",
+            String(room.isGamePaused),
+            String(isRoundTransitioning)
+        ].joined(separator: "|")
+    }
+
+    private var countdownEventID: String? {
+        guard room.gameModeValue == .questions,
+              room.onlineRoundPhase == .countdown,
+              room.containsPlayer(email: currentUserEmail) else { return nil }
+        return [
+            room.id,
+            room.countdownStartedAt ?? "legacy",
+            room.currentAskerEmail ?? "",
+            String(room.roundNumber ?? 0),
+            String(room.questionsInRound ?? 0),
+            currentUserEmail ?? ""
+        ].joined(separator: "|")
+    }
+
+    private func advanceCountdownIfNeeded() async {
+        guard let eventID = countdownEventID,
+              !room.isGamePaused,
+              !isRoundTransitioning,
+              handledCountdownEventID != eventID else { return }
+
+        let delay = room.countdownRemaining(at: Date())
+        if delay > 0 {
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+        }
+        guard !Task.isCancelled,
+              room.shouldAdvanceQuestionAfterCountdown(
+                for: currentUserEmail,
+                at: Date()
+              ) else { return }
+        handledCountdownEventID = eventID
+        onCountdownElapsed()
+    }
+
+    private var associationSpinTaskID: String {
+        [
+            associationSpinEventID ?? "inactive",
+            String(room.isGamePaused),
+            String(isRoundTransitioning)
+        ].joined(separator: "|")
+    }
+
+    private var associationSpinEventID: String? {
+        guard canStopAssociationSpin else { return nil }
+        return [
+            room.id,
+            room.currentAskerEmail ?? "",
+            room.currentAnswer ?? "",
+            String(room.roundNumber ?? 0),
+            currentUserEmail ?? ""
+        ].joined(separator: "|")
+    }
+
+    private func stopAssociationSpinIfNeeded() async {
+        guard let eventID = associationSpinEventID,
+              !room.isGamePaused,
+              !isRoundTransitioning,
+              handledAssociationSpinEventID != eventID else { return }
+        do {
+            try await Task.sleep(for: .seconds(2))
+        } catch {
+            return
+        }
+        guard !Task.isCancelled else { return }
+        handledAssociationSpinEventID = eventID
+        onAssociationSpinElapsed()
     }
 
     private var votingCandidates: [Player] {
@@ -1930,6 +2225,19 @@ private struct OnlineExperienceCopy {
     var voteIsFinal: String { text("THE VOTE IS FINAL", "EL VOTO ES DEFINITIVO", "ГОЛОС НЕЛЬЗЯ ИЗМЕНИТЬ") }
     var voteRecorded: String { text("VOTE RECORDED", "VOTO REGISTRADO", "ГОЛОС ПРИНЯТ") }
     var nextTurn: String { text("NEXT TURN", "SIGUIENTE TURNO", "СЛЕДУЮЩИЙ ХОД") }
+    var answerReceived: String { text("ANSWER RECEIVED", "RESPUESTA RECIBIDA", "ОТВЕТ ПОЛУЧЕН") }
+    var continueRound: String { text("CONTINUE ROUND", "CONTINUAR RONDA", "ПРОДОЛЖИТЬ РАУНД") }
+    var startAssociations: String { text("START ASSOCIATIONS", "INICIAR ASOCIACIONES", "НАЧАТЬ АССОЦИАЦИИ") }
+    var associationGiven: String { text("ASSOCIATION GIVEN", "ASOCIACIÓN DADA", "АССОЦИАЦИЯ НАЗВАНА") }
+    var nextQuestionIn: String { text("NEXT QUESTION IN", "SIGUIENTE PREGUNTA EN", "СЛЕДУЮЩИЙ ВОПРОС ЧЕРЕЗ") }
+    var waitForNextTurn: String { text("SYNCHRONIZING ALL OPERATIVES", "SINCRONIZANDO OPERATIVOS", "СИНХРОНИЗАЦИЯ ИГРОКОВ") }
+    var selectingSpeaker: String { text("SELECTING NEXT SPEAKER", "ELIGIENDO AL SIGUIENTE", "ВЫБИРАЕМ СЛЕДУЮЩЕГО") }
+    var currentSpeaker: String { text("CURRENT SPEAKER", "HABLA AHORA", "СЕЙЧАС ГОВОРИТ") }
+    var signalScanning: String { text("SIGNAL SCANNING", "ESCANEANDO SEÑAL", "СКАНИРУЕМ СИГНАЛ") }
+    var roundResults: String { text("ROUND RESULTS", "RESULTADOS DE RONDA", "ИТОГИ РАУНДА") }
+    func associationProgress(_ spoken: Int, _ total: Int) -> String {
+        text("ASSOCIATIONS", "ASOCIACIONES", "АССОЦИАЦИИ") + "  \(spoken)/\(max(total, 0))"
+    }
     var guessWord: String { text("GUESS THE WORD", "ADIVINAR PALABRA", "УГАДАТЬ СЛОВО") }
     var startVote: String { text("START VOTE", "INICIAR VOTACIÓN", "НАЧАТЬ ГОЛОСОВАНИЕ") }
     var hideCard: String { text("HIDE CARD", "OCULTAR TARJETA", "СКРЫТЬ КАРТУ") }
@@ -1940,4 +2248,45 @@ private struct OnlineExperienceCopy {
     var paused: String { text("PAUSED", "PAUSA", "ПАУЗА") }
     var timerStopped: String { text("THE TIMER IS STOPPED", "EL TEMPORIZADOR ESTÁ DETENIDO", "ТАЙМЕР ОСТАНОВЛЕН") }
     var resumeGame: String { text("RESUME GAME", "CONTINUAR JUEGO", "ПРОДОЛЖИТЬ ИГРУ") }
+}
+
+private extension OnlineRoundCommand {
+    func title(copy: OnlineExperienceCopy) -> String {
+        switch self {
+        case .markAnswerHeard:
+            copy.answerReceived
+        case .continueRound:
+            copy.continueRound
+        case .startAssociation:
+            copy.startAssociations
+        case .advanceAssociation:
+            copy.associationGiven
+        }
+    }
+
+    var systemImage: String {
+        switch self {
+        case .markAnswerHeard:
+            "ear.fill"
+        case .continueRound:
+            "arrow.right"
+        case .startAssociation:
+            "shuffle"
+        case .advanceAssociation:
+            "checkmark"
+        }
+    }
+
+    var accessibilityIdentifier: String {
+        switch self {
+        case .markAnswerHeard:
+            "onlineExperience.action.answerReceived"
+        case .continueRound:
+            "onlineExperience.action.continueRound"
+        case .startAssociation:
+            "onlineExperience.action.startAssociation"
+        case .advanceAssociation:
+            "onlineExperience.action.advanceAssociation"
+        }
+    }
 }

@@ -289,7 +289,16 @@ struct GameView: View {
                 currentUserEmail: appState.user?.email,
                 isHost: isHost(room),
                 isRoleRevealed: revealRole,
-                canAdvance: canCurrentUserAdvance(room),
+                roundCommand: room.onlineRoundCommand(
+                    for: appState.user?.email,
+                    isHost: isHost(room),
+                    isTransitioning: isTimeExpired(room) || room.isVotingActive
+                ),
+                isRoundTransitioning: isAdvancing,
+                canStopAssociationSpin: room.canStopAssociationSpin(
+                    for: appState.user?.email,
+                    isHost: isHost(room)
+                ) && !isTimeExpired(room),
                 canRequestVote: canCurrentUserRequestVote(room),
                 canSpyGuess: canCurrentUserGuess(room),
                 canCastVote: canCurrentUserCastVote(room),
@@ -297,8 +306,14 @@ struct GameView: View {
                 onTogglePause: {
                     Task { await toggleGamePause(room) }
                 },
-                onAdvance: {
-                    Task { await advance(room) }
+                onRoundCommand: { command in
+                    Task { await performOnlineRoundCommand(command, room: room) }
+                },
+                onCountdownElapsed: {
+                    Task { await advanceQuestionAfterCountdown(room) }
+                },
+                onAssociationSpinElapsed: {
+                    Task { await stopAssociationSpinAfterAnimation(room) }
                 },
                 onRequestVote: {
                     Task { await requestVote(room) }
@@ -351,16 +366,6 @@ struct GameView: View {
         case .verifiedGreen:
             SpyTheme.green
         }
-    }
-
-    private func canCurrentUserAdvance(_ room: GameRoom) -> Bool {
-        guard let email = appState.user?.email else { return false }
-        return !room.isGamePaused &&
-            !isTimeExpired(room) &&
-            !room.isVotingActive &&
-            !isAdvancing &&
-            !isCurrentUserSpectator(room) &&
-            room.currentAskerEmail == email
     }
 
     private func canCurrentUserRequestVote(_ room: GameRoom) -> Bool {
@@ -6253,6 +6258,168 @@ struct GameView: View {
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
+    }
+
+    private func performOnlineRoundCommand(_ command: OnlineRoundCommand, room: GameRoom) async {
+        guard !isAdvancing, !room.isGamePaused, !isTimeExpired(room) else { return }
+        if appState.shouldUsePreviewData {
+            applyPreviewRoundCommand(command, room: room)
+            HapticManager.shared.fire(.notification(.success))
+            return
+        }
+
+        isAdvancing = true
+        defer { isAdvancing = false }
+
+        do {
+            guard let currentRoom = try await appState.client.refreshRoom(id: room.id) else {
+                throw Base44Error(message: "Room is no longer available.", statusCode: 404)
+            }
+            let currentCommand = currentRoom.onlineRoundCommand(
+                for: appState.user?.email,
+                isHost: isHost(currentRoom),
+                isTransitioning: false
+            )
+            guard currentCommand == command else {
+                appState.activeRoom = currentRoom
+                return
+            }
+
+            switch command {
+            case .markAnswerHeard:
+                appState.activeRoom = try await appState.client.markAnswerHeard(room: currentRoom)
+            case .continueRound:
+                appState.activeRoom = try await appState.client.continueRound(room: currentRoom)
+            case .startAssociation:
+                appState.activeRoom = try await appState.client.startAssociation(room: currentRoom)
+            case .advanceAssociation:
+                appState.activeRoom = try await appState.client.advanceAssociation(room: currentRoom)
+            }
+            status = onlineRoundSuccessStatus(command)
+            HapticManager.shared.fire(.notification(.success))
+        } catch is CancellationError {
+            return
+        } catch {
+            status = error.localizedDescription.uppercased()
+            HapticManager.shared.fire(.notification(.error))
+        }
+    }
+
+    private func advanceQuestionAfterCountdown(_ room: GameRoom) async {
+        guard !isAdvancing, !room.isGamePaused, !isTimeExpired(room) else { return }
+        if appState.shouldUsePreviewData {
+            var previewRoom = room
+            let nextCount = (previewRoom.questionsInRound ?? 0) + 1
+            previewRoom.questionsInRound = nextCount
+            previewRoom.questionPhase = nextCount >= 8 ? "results" : "asking"
+            previewRoom.countdownStartedAt = nil
+            appState.activeRoom = previewRoom
+            return
+        }
+
+        isAdvancing = true
+        defer { isAdvancing = false }
+
+        do {
+            guard let currentRoom = try await appState.client.refreshRoom(id: room.id),
+                  currentRoom.onlineRoundPhase == .countdown,
+                  emailsMatch(currentRoom.currentAskerEmail, appState.user?.email) else {
+                return
+            }
+            appState.activeRoom = try await appState.client.advanceQuestion(room: currentRoom)
+            status = copy.questionSent
+            HapticManager.shared.fire(.notification(.success))
+        } catch is CancellationError {
+            return
+        } catch {
+            status = error.localizedDescription.uppercased()
+            HapticManager.shared.fire(.notification(.error))
+        }
+    }
+
+    private func stopAssociationSpinAfterAnimation(_ room: GameRoom) async {
+        guard !isAdvancing, !room.isGamePaused, !isTimeExpired(room) else { return }
+        if appState.shouldUsePreviewData {
+            var previewRoom = room
+            var state = previewRoom.associationRoundState
+            state.spinning = false
+            previewRoom.currentAnswer = state.encodedValue
+            appState.activeRoom = previewRoom
+            return
+        }
+
+        isAdvancing = true
+        defer { isAdvancing = false }
+
+        do {
+            guard let currentRoom = try await appState.client.refreshRoom(id: room.id),
+                  currentRoom.canStopAssociationSpin(
+                    for: appState.user?.email,
+                    isHost: isHost(currentRoom)
+                  ) else {
+                return
+            }
+            appState.activeRoom = try await appState.client.stopAssociationSpin(room: currentRoom)
+        } catch is CancellationError {
+            return
+        } catch {
+            status = error.localizedDescription.uppercased()
+            HapticManager.shared.fire(.notification(.error))
+        }
+    }
+
+    private func applyPreviewRoundCommand(_ command: OnlineRoundCommand, room: GameRoom) {
+        var previewRoom = room
+        switch command {
+        case .markAnswerHeard:
+            previewRoom.questionPhase = "countdown"
+            previewRoom.countdownStartedAt = ISO8601DateFormatter().string(from: Date())
+        case .continueRound:
+            previewRoom.questionPhase = "asking"
+            previewRoom.countdownStartedAt = nil
+            previewRoom.roundNumber = (previewRoom.roundNumber ?? 1) + 1
+            previewRoom.questionsInRound = 0
+            previewRoom.currentAnswer = ""
+            previewRoom.currentAnswerFeedback = nil
+            previewRoom.playerFeedback = []
+        case .startAssociation:
+            previewRoom.currentAskerEmail = previewRoom.activePlayers.first?.email
+            previewRoom.currentAnswer = AssociationRoundState(spoken: [], spinning: true).encodedValue
+            previewRoom.questionPhase = "asking"
+        case .advanceAssociation:
+            var state = previewRoom.associationRoundState
+            if let currentSpeaker = previewRoom.currentAskerEmail,
+               !state.spoken.contains(currentSpeaker) {
+                state.spoken.append(currentSpeaker)
+            }
+            let remaining = previewRoom.activePlayers.filter { !state.spoken.contains($0.email) }
+            if remaining.isEmpty {
+                state.spoken = []
+                previewRoom.roundNumber = (previewRoom.roundNumber ?? 1) + 1
+            }
+            previewRoom.currentAskerEmail = (remaining.first ?? previewRoom.activePlayers.first)?.email
+            state.spinning = true
+            previewRoom.currentAnswer = state.encodedValue
+        }
+        appState.activeRoom = previewRoom
+        status = onlineRoundSuccessStatus(command)
+    }
+
+    private func onlineRoundSuccessStatus(_ command: OnlineRoundCommand) -> String {
+        switch command {
+        case .markAnswerHeard:
+            localized(en: "ANSWER CONFIRMED", ru: "ОТВЕТ ПОДТВЕРЖДЕН", es: "RESPUESTA CONFIRMADA")
+        case .continueRound:
+            localized(en: "NEXT ROUND READY", ru: "НОВЫЙ РАУНД ГОТОВ", es: "NUEVA RONDA LISTA")
+        case .startAssociation, .advanceAssociation:
+            copy.associationSpun
+        }
+    }
+
+    private func emailsMatch(_ left: String?, _ right: String?) -> Bool {
+        guard let left, let right else { return false }
+        return left.trimmingCharacters(in: .whitespacesAndNewlines)
+            .caseInsensitiveCompare(right.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
     }
 
     private func markCardRead(_ room: GameRoom) async {

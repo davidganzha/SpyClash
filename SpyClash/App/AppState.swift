@@ -143,6 +143,35 @@ enum RoomSyncOperation: Equatable {
     }
 }
 
+enum RoomConnectionState: Equatable {
+    case synced
+    case reconnecting
+}
+
+struct RoomRefreshFailureTracker {
+    private(set) var consecutiveFailures = 0
+    private(set) var hasAnnouncedInterruption = false
+
+    mutating func recordFailure(threshold: Int = 3) -> Bool {
+        if consecutiveFailures < Int.max {
+            consecutiveFailures += 1
+        }
+        guard consecutiveFailures >= max(threshold, 1),
+              !hasAnnouncedInterruption else {
+            return false
+        }
+        hasAnnouncedInterruption = true
+        return true
+    }
+
+    mutating func recordSuccess() -> Bool {
+        let shouldAnnounceRecovery = hasAnnouncedInterruption
+        consecutiveFailures = 0
+        hasAnnouncedInterruption = false
+        return shouldAnnounceRecovery
+    }
+}
+
 enum AppToastKind: Equatable {
     case success
     case warning
@@ -224,6 +253,9 @@ final class AppState: NSObject {
     var localSetupRequestID = 0
     var activeRoom: GameRoom? {
         didSet {
+            if oldValue?.id != activeRoom?.id {
+                roomConnectionState = .synced
+            }
             persistActiveRoomReference(activeRoom)
             radarNearby.setActiveRoom(activeRoom)
             handleRoomPresenceChange(from: oldValue, to: activeRoom)
@@ -232,6 +264,7 @@ final class AppState: NSObject {
     }
     var isShellChromeSuppressed = false
     private(set) var roomSyncOperation: RoomSyncOperation?
+    private(set) var roomConnectionState: RoomConnectionState = .synced
     var presentedSheet: AppSheet?
     var roomQRTarget: RoomQRTarget = .web
     var language: AppLanguage = .stored {
@@ -259,6 +292,7 @@ final class AppState: NSObject {
     @ObservationIgnored private var standardAuthRunID: UUID?
     @ObservationIgnored private var membershipExpiryTask: Task<Void, Never>?
     @ObservationIgnored private var accessActivationSyncTask: Task<Void, Never>?
+    @ObservationIgnored private var activeRoomActivationRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var membershipRealtimeRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var liveActivitySyncTask: Task<Void, Never>?
     @ObservationIgnored private var liveActivityPushTokenTasks: [String: Task<Void, Never>] = [:]
@@ -360,6 +394,8 @@ final class AppState: NSObject {
         }
 #endif
 
+        var failureTracker = RoomRefreshFailureTracker()
+
         while !Task.isCancelled, activeRoom?.id == roomID {
             if roomSyncOperation == nil {
                 do {
@@ -370,21 +406,27 @@ final class AppState: NSObject {
 
                     if let refreshedRoom {
                         activeRoom = refreshedRoom
-                    } else {
-                        activeRoom = nil
-                        if selectedTab == .game {
-                            selectedTab = .home
+                        if failureTracker.recordSuccess() {
+                            markRoomSyncRecoveredIfNeeded()
                         }
-                        showToast(
-                            roomClosedToastMessage,
-                            kind: .warning,
-                            systemImage: "rectangle.portrait.and.arrow.right"
-                        )
+                    } else {
+                        closeActiveRoomAfterRefresh(roomID: roomID)
                         return
                     }
+                } catch is CancellationError {
+                    return
                 } catch {
-                    // Background room refreshes are best-effort. User-initiated
-                    // actions publish their own actionable errors as toasts.
+                    guard !Task.isCancelled else { return }
+                    if failureTracker.recordFailure(),
+                       activeRoom?.id == roomID,
+                       roomConnectionState != .reconnecting {
+                        roomConnectionState = .reconnecting
+                        showToast(
+                            roomSyncInterruptedToastMessage,
+                            kind: .warning,
+                            systemImage: "arrow.triangle.2.circlepath"
+                        )
+                    }
                 }
             }
 
@@ -394,6 +436,72 @@ final class AppState: NSObject {
                 return
             }
         }
+    }
+
+    func refreshActiveRoomOnActivation() {
+#if DEBUG
+        guard !shouldUsePreviewData else { return }
+#endif
+        guard user != nil, roomSyncOperation == nil else { return }
+
+        let preferredRoomID = activeRoom?.id ?? UserDefaults.standard
+            .string(forKey: Self.activeRoomIDStorageKey)?
+            .nilIfBlank
+
+        activeRoomActivationRefreshTask?.cancel()
+        activeRoomActivationRefreshTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            var refreshedRoom: GameRoom?
+            if let preferredRoomID {
+                refreshedRoom = try? await self.client.refreshRoom(id: preferredRoomID)
+            }
+            if refreshedRoom == nil || refreshedRoom?.normalizedStatus == "finished" {
+                do {
+                    refreshedRoom = try await self.client.activeRoom(preferredRoomID: preferredRoomID)
+                } catch {
+                    // A network failure is not evidence that the room closed.
+                    // The existing monitor will continue its bounded retries.
+                    return
+                }
+            }
+
+            guard !Task.isCancelled, self.roomSyncOperation == nil else { return }
+
+            if let refreshedRoom,
+               ["waiting", "ready_voting", "roulette", "playing"].contains(refreshedRoom.normalizedStatus),
+               refreshedRoom.containsPlayer(email: self.user?.email) {
+                self.activeRoom = refreshedRoom
+                self.selectedTab = .game
+                self.markRoomSyncRecoveredIfNeeded()
+            } else if let currentRoomID = self.activeRoom?.id,
+                      currentRoomID == preferredRoomID {
+                self.closeActiveRoomAfterRefresh(roomID: currentRoomID)
+            }
+        }
+    }
+
+    private func markRoomSyncRecoveredIfNeeded() {
+        guard roomConnectionState == .reconnecting else { return }
+        roomConnectionState = .synced
+        showToast(
+            roomSyncRecoveredToastMessage,
+            kind: .success,
+            systemImage: "checkmark.icloud.fill"
+        )
+    }
+
+    private func closeActiveRoomAfterRefresh(roomID: String) {
+        guard activeRoom?.id == roomID else { return }
+        activeRoom = nil
+        if selectedTab == .game {
+            selectedTab = .home
+        }
+        showToast(
+            roomClosedToastMessage,
+            kind: .warning,
+            systemImage: "rectangle.portrait.and.arrow.right"
+        )
     }
 
     private func handleRoomPresenceChange(from previous: GameRoom?, to current: GameRoom?) {
@@ -513,6 +621,22 @@ final class AppState: NSObject {
         case .ru: "ХОСТ ЗАКРЫЛ КОМНАТУ"
         case .es: "EL HOST CERRÓ LA SALA"
         default: "ROOM CLOSED BY HOST"
+        }
+    }
+
+    private var roomSyncInterruptedToastMessage: String {
+        switch language {
+        case .ru: "СВЯЗЬ С КОМНАТОЙ ПРЕРВАНА — ПЕРЕПОДКЛЮЧАЕМСЯ"
+        case .es: "CONEXIÓN INTERRUMPIDA — RECONECTANDO"
+        default: "ROOM SYNC INTERRUPTED — RECONNECTING"
+        }
+    }
+
+    private var roomSyncRecoveredToastMessage: String {
+        switch language {
+        case .ru: "СИНХРОНИЗАЦИЯ КОМНАТЫ ВОССТАНОВЛЕНА"
+        case .es: "SINCRONIZACIÓN DE SALA RESTAURADA"
+        default: "ROOM SYNC RESTORED"
         }
     }
 
@@ -1079,6 +1203,8 @@ final class AppState: NSObject {
         shellRoute = .main
         activeRoom = nil
         roomSyncOperation = nil
+        activeRoomActivationRefreshTask?.cancel()
+        activeRoomActivationRefreshTask = nil
         presentedSheet = nil
         pendingJoinCode = nil
         pendingMatchRoomID = nil
@@ -1528,15 +1654,28 @@ final class AppState: NSObject {
     }
 
     private func restoreActiveRoomIfPossible() async {
-        guard let user,
-              let roomID = UserDefaults.standard.string(forKey: Self.activeRoomIDStorageKey)?.nilIfBlank else {
-            return
+        guard let user else { return }
+        let storedRoomID = UserDefaults.standard
+            .string(forKey: Self.activeRoomIDStorageKey)?
+            .nilIfBlank
+
+        var room: GameRoom?
+        if let storedRoomID {
+            room = try? await client.refreshRoom(id: storedRoomID)
+        }
+        if room == nil || room?.normalizedStatus == "finished" {
+            // The backend keeps this lookup bounded to the preferred id, host
+            // query, and the authenticated participant index. Never enumerate
+            // rooms from the client when moving an account between Web and iOS.
+            room = try? await client.activeRoom(preferredRoomID: storedRoomID)
         }
 
-        guard let room = try? await client.refreshRoom(id: roomID),
+        guard let room,
               ["waiting", "ready_voting", "roulette", "playing"].contains(room.normalizedStatus),
-              room.playersList.contains(where: { $0.email == user.email }) else {
-            clearStoredActiveRoom()
+              room.containsPlayer(email: user.email) else {
+            if storedRoomID != nil {
+                clearStoredActiveRoom()
+            }
             return
         }
 

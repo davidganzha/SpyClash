@@ -21,6 +21,7 @@ struct SpyClashApp: App {
                     if isActive {
                         PushNotificationCoordinator.shared.applicationDidBecomeActive()
                         appState.synchronizeAccessOnActivation()
+                        appState.refreshActiveRoomOnActivation()
                     } else {
                         PushNotificationCoordinator.shared.applicationDidEnterBackground()
                     }

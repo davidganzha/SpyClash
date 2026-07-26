@@ -7,7 +7,7 @@ fileGroups:
   - StoreKit
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 26
+    CURRENT_PROJECT_VERSION: 27
     MARKETING_VERSION: 1.0
     SWIFT_VERSION: 6.0
 packages:
@@ -108,6 +108,21 @@ targets:
         SKIP_INSTALL: true
         APPLICATION_EXTENSION_API_ONLY: true
         TARGETED_DEVICE_FAMILY: 1
+  SpyClashTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: SpyClashTests
+    dependencies:
+      - target: SpyClash
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.spyclash.ios.tests
+        GENERATE_INFOPLIST_FILE: true
+        DEVELOPMENT_TEAM: 3Z64QKNL54
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: 1
 schemes:
   SpyClash:
     build:
@@ -120,6 +135,10 @@ schemes:
       config: Release
     analyze:
       config: Debug
+    test:
+      config: Debug
+      targets:
+        - SpyClashTests
     archive:
       config: Release
     management:

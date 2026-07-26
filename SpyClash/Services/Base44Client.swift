@@ -263,6 +263,24 @@ final class Base44Client {
         }
     }
 
+    func activeRoom(preferredRoomID: String? = nil) async throws -> GameRoom? {
+        guard let token, !token.isEmpty else {
+            throw Base44Error(message: "Authentication required.", statusCode: 401)
+        }
+
+        let room: GameRoom? = try await request(
+            "/apps/\(Self.appID)/functions/gameRoomAction",
+            method: "POST",
+            body: GameRoomActionPayload(
+                action: "get_active_room",
+                accessToken: token,
+                roomID: preferredRoomID
+            ),
+            includeAuthorization: false
+        )
+        return room
+    }
+
     func createRoom(for user: SpyUser) async throws -> GameRoom {
         let player = Player(email: user.email, name: user.callSign, avatar: user.avatar ?? "🕵️")
         return try await roomAction("create_room", player: player)
@@ -434,6 +452,22 @@ final class Base44Client {
 
     func advanceAssociation(room: GameRoom) async throws -> GameRoom {
         try await roomAction("advance_association", roomID: room.id)
+    }
+
+    func startAssociation(room: GameRoom) async throws -> GameRoom {
+        try await roomAction("start_association", roomID: room.id)
+    }
+
+    func stopAssociationSpin(room: GameRoom) async throws -> GameRoom {
+        try await roomAction("stop_association_spin", roomID: room.id)
+    }
+
+    func markAnswerHeard(room: GameRoom) async throws -> GameRoom {
+        try await roomAction("mark_answer_heard", roomID: room.id)
+    }
+
+    func continueRound(room: GameRoom) async throws -> GameRoom {
+        try await roomAction("continue_round", roomID: room.id)
     }
 
 
