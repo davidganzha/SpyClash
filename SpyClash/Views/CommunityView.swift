@@ -6,6 +6,8 @@ struct CommunityView: View {
 
     @Binding var selectedTab: CommunityTab
     let dockRequest: CommunityDockRequest
+    let externalNetworkState: CommunityState?
+    let onAttentionChange: (CommunityState) -> Void
     let onExit: () -> Void
 
     @State private var network: CommunityState?
@@ -42,6 +44,15 @@ struct CommunityView: View {
         .task { await loadInitialContent() }
         .onChange(of: dockRequest.id) { _, _ in
             handleDockAction(dockRequest.tab)
+        }
+        .onChange(of: externalNetworkState) { _, state in
+            guard let state, state != network else { return }
+            network = state
+        }
+        .onChange(of: network) { _, state in
+            if let state {
+                onAttentionChange(state)
+            }
         }
         .onChange(of: message) { _, newMessage in
             publishCommunityToast(newMessage)
@@ -187,6 +198,8 @@ struct CommunityView: View {
                 .fixedSize(horizontal: false, vertical: true)
             }
             .spyWebEntrance(delay: 0.02, duration: 0.40, y: 10)
+
+            incomingAttentionSections
 
             searchField
 
@@ -529,6 +542,39 @@ struct CommunityView: View {
 
     @ViewBuilder
     private func ownNetworkSections(_ detail: CommunityProfileDetail) -> some View {
+        incomingAttentionSections
+
+        if let network, !network.blocked.isEmpty {
+            SpyPanel(accent: SpyTheme.muted, motionDelay: 0.10) {
+                VStack(alignment: .leading, spacing: 10) {
+                    SpySceneKicker(
+                        title: localized(en: "BLOCKED OPERATIVES", ru: "ЗАБЛОКИРОВАННЫЕ", es: "OPERATIVOS BLOQUEADOS"),
+                        status: "\(network.blocked.count)",
+                        accent: SpyTheme.muted
+                    )
+
+                    ForEach(network.blocked) { relationship in
+                        blockedOperativeRow(relationship)
+                    }
+                }
+            }
+        }
+
+        if detail.friends.isEmpty, network?.incoming.isEmpty != false, network?.incomingRoomInvites.isEmpty != false {
+            Text(localized(
+                en: "YOUR PUBLIC PROFILE IS LIVE. OPERATIVES CAN FIND IT IN THE COMMUNITY DIRECTORY.",
+                ru: "ТВОЙ ПУБЛИЧНЫЙ ПРОФИЛЬ АКТИВЕН. ОПЕРАТИВНИКИ МОГУТ НАЙТИ ЕГО В КАТАЛОГЕ.",
+                es: "TU PERFIL PUBLICO ESTA ACTIVO. LOS OPERATIVOS PUEDEN ENCONTRARLO EN EL DIRECTORIO."
+            ))
+            .font(.system(size: 10, weight: .medium, design: .monospaced))
+            .foregroundStyle(SpyTheme.muted)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.vertical, 4)
+        }
+    }
+
+    @ViewBuilder
+    private var incomingAttentionSections: some View {
         if let network, !network.incomingRoomInvites.isEmpty {
             SpyPanel(accent: SpyTheme.red, motionDelay: 0.05) {
                 VStack(alignment: .leading, spacing: 10) {
@@ -559,34 +605,6 @@ struct CommunityView: View {
                     }
                 }
             }
-        }
-
-        if let network, !network.blocked.isEmpty {
-            SpyPanel(accent: SpyTheme.muted, motionDelay: 0.10) {
-                VStack(alignment: .leading, spacing: 10) {
-                    SpySceneKicker(
-                        title: localized(en: "BLOCKED OPERATIVES", ru: "ЗАБЛОКИРОВАННЫЕ", es: "OPERATIVOS BLOQUEADOS"),
-                        status: "\(network.blocked.count)",
-                        accent: SpyTheme.muted
-                    )
-
-                    ForEach(network.blocked) { relationship in
-                        blockedOperativeRow(relationship)
-                    }
-                }
-            }
-        }
-
-        if detail.friends.isEmpty, network?.incoming.isEmpty != false, network?.incomingRoomInvites.isEmpty != false {
-            Text(localized(
-                en: "YOUR PUBLIC PROFILE IS LIVE. OPERATIVES CAN FIND IT IN THE COMMUNITY DIRECTORY.",
-                ru: "ТВОЙ ПУБЛИЧНЫЙ ПРОФИЛЬ АКТИВЕН. ОПЕРАТИВНИКИ МОГУТ НАЙТИ ЕГО В КАТАЛОГЕ.",
-                es: "TU PERFIL PUBLICO ESTA ACTIVO. LOS OPERATIVOS PUEDEN ENCONTRARLO EN EL DIRECTORIO."
-            ))
-            .font(.system(size: 10, weight: .medium, design: .monospaced))
-            .foregroundStyle(SpyTheme.muted)
-            .fixedSize(horizontal: false, vertical: true)
-            .padding(.vertical, 4)
         }
     }
 
@@ -1065,6 +1083,12 @@ struct CommunityView: View {
             return
         }
 
+        // Render already-known actionable items immediately while the public
+        // directory performs its independent network refresh.
+        if let externalNetworkState {
+            network = externalNetworkState
+        }
+
         do {
             // Keep these reads sequential. Older deployed Community builds used
             // a shared writer lease even for reads, so parallel startup calls
@@ -1079,8 +1103,14 @@ struct CommunityView: View {
             showError(error)
         }
 
+        if let externalNetworkState {
+            network = externalNetworkState
+            return
+        }
+
         do {
-            network = try await appState.client.communityState()
+            let loadedState = try await appState.client.communityState()
+            network = externalNetworkState ?? loadedState
         } catch {
             showError(error)
         }

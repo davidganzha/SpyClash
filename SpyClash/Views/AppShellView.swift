@@ -3,10 +3,14 @@ import SwiftUI
 struct AppShellView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
     @Namespace private var dockNamespace
     @State private var isCommandMenuPresented = AppShellView.initialCommandMenuPresentation
     @State private var communityTab: CommunityTab = .network
     @State private var communityDockRequest = CommunityDockRequest.initial
+    @State private var communityAttention = CommunityAttentionSnapshot.empty
+    @State private var communityNetworkState: CommunityState?
+    @State private var communityAttentionRequestID: UUID?
 
     private static var initialCommandMenuPresentation: Bool {
 #if DEBUG
@@ -31,7 +35,12 @@ struct AppShellView: View {
                         if isCommunityRoute {
                             CommunityView(
                                 selectedTab: $communityTab,
-                                dockRequest: communityDockRequest
+                                dockRequest: communityDockRequest,
+                                externalNetworkState: communityNetworkState,
+                                onAttentionChange: { state in
+                                    communityAttentionRequestID = nil
+                                    installCommunityAttention(state, announceNew: false)
+                                }
                             ) {
                                 appState.closeCommunity()
                             }
@@ -54,6 +63,7 @@ struct AppShellView: View {
                         tabs: dockTabs,
                         communitySelection: communityTab,
                         isCommunity: isCommunityRoute,
+                        communityAttentionCount: communityAttention.totalCount,
                         namespace: dockNamespace,
                         language: appState.language
                     ) { tab in
@@ -70,7 +80,10 @@ struct AppShellView: View {
                 }
                 .background(SpyTheme.black)
                 .overlay(alignment: .top) {
-                    WebPullDownCommandMenu(isPresented: $isCommandMenuPresented)
+                    WebPullDownCommandMenu(
+                        isPresented: $isCommandMenuPresented,
+                        communityAttentionCount: communityAttention.totalCount
+                    )
                         .opacity(shouldShowShellChrome ? 1 : 0)
                         .offset(y: shouldShowShellChrome ? 0 : -140)
                         .allowsHitTesting(shouldShowShellChrome)
@@ -134,6 +147,196 @@ struct AppShellView: View {
             guard route == .main else { return }
             communityTab = .network
             communityDockRequest = .initial
+        }
+        .task(id: communityAttentionMonitorID) {
+            guard appState.user != nil else {
+                communityAttention = .empty
+                communityNetworkState = nil
+                communityAttentionRequestID = nil
+                return
+            }
+            guard scenePhase == .active else { return }
+
+#if DEBUG
+            if let previewCount = communityAttentionPreviewCount {
+                communityAttention = .preview(count: previewCount)
+                return
+            }
+#endif
+
+            await monitorCommunityAttention()
+        }
+    }
+
+    private var communityAttentionMonitorID: String {
+        let userID = appState.user?.id ?? "signed-out"
+        let activity = scenePhase == .active ? "active" : "inactive"
+        return "\(userID):\(activity)"
+    }
+
+#if DEBUG
+    private var communityAttentionPreviewCount: Int? {
+        ProcessInfo.processInfo.arguments
+            .first { $0.hasPrefix("--spyclash-preview-community-attention=") }
+            .flatMap { Int($0.dropFirst("--spyclash-preview-community-attention=".count)) }
+            .map { max(0, $0) }
+    }
+#endif
+
+    private func monitorCommunityAttention() async {
+        while !Task.isCancelled {
+            await refreshCommunityAttention()
+
+            do {
+                try await Task.sleep(for: .seconds(20))
+            } catch {
+                return
+            }
+        }
+    }
+
+    private func refreshCommunityAttention() async {
+        guard let userID = appState.user?.id else {
+            communityAttention = .empty
+            communityNetworkState = nil
+            communityAttentionRequestID = nil
+            return
+        }
+
+        let requestID = UUID()
+        communityAttentionRequestID = requestID
+
+        do {
+            let state = try await appState.client.communityState()
+            guard !Task.isCancelled,
+                  appState.user?.id == userID,
+                  communityAttentionRequestID == requestID else {
+                return
+            }
+            installCommunityAttention(state, for: userID, announceNew: true)
+        } catch is CancellationError {
+            return
+        } catch {
+            // Attention polling is supplementary. Community keeps its own
+            // visible retry/error path, so a transient poll must stay silent.
+        }
+
+        if communityAttentionRequestID == requestID {
+            communityAttentionRequestID = nil
+        }
+    }
+
+    private func installCommunityAttention(
+        _ state: CommunityState,
+        for userID: String? = nil,
+        announceNew: Bool
+    ) {
+        guard let resolvedUserID = userID ?? appState.user?.id else {
+            communityAttention = .empty
+            return
+        }
+
+        let next = CommunityAttentionSnapshot(state: state)
+        let seenIDs = storedCommunityAttentionIDs(for: resolvedUserID)
+        let newIDs = next.allIDs.subtracting(seenIDs)
+
+        communityAttention = next
+        communityNetworkState = state
+        guard !newIDs.isEmpty else { return }
+
+        storeCommunityAttentionIDs(seenIDs.union(next.allIDs), for: resolvedUserID)
+        if announceNew {
+            publishCommunityAttentionToast(for: next, newIDs: newIDs)
+        }
+    }
+
+    private func publishCommunityAttentionToast(
+        for snapshot: CommunityAttentionSnapshot,
+        newIDs: Set<String>
+    ) {
+        let newFriendCount = snapshot.friendRequestIDs.intersection(newIDs).count
+        let newRoomInviteCount = snapshot.roomInviteIDs.intersection(newIDs).count
+        let title: String
+        let detail: String
+        let systemImage: String
+
+        if newRoomInviteCount > 0, newFriendCount > 0 {
+            title = localizedCommunityAttention(
+                en: "NEW COMMUNITY ACTIVITY",
+                ru: "НОВОЕ В СООБЩЕСТВЕ",
+                es: "NOVEDADES EN COMUNIDAD"
+            )
+            detail = localizedCommunityAttention(
+                en: "Room invite and friend request received.",
+                ru: "Получены приглашение в комнату и запрос в друзья.",
+                es: "Recibiste una invitacion y una solicitud de amistad."
+            )
+            systemImage = "bell.badge.fill"
+        } else if newRoomInviteCount > 0 {
+            title = localizedCommunityAttention(
+                en: "ROOM INVITE RECEIVED",
+                ru: "ПРИГЛАШЕНИЕ В КОМНАТУ",
+                es: "INVITACION A UNA SALA"
+            )
+            detail = snapshot.senderName(forRoomInviteIDs: newIDs).map {
+                localizedCommunityAttention(
+                    en: "From \($0). Open Community to respond.",
+                    ru: "От \($0). Откройте Сообщество, чтобы ответить.",
+                    es: "De \($0). Abre Comunidad para responder."
+                )
+            } ?? localizedCommunityAttention(
+                en: "Open Community to respond.",
+                ru: "Откройте Сообщество, чтобы ответить.",
+                es: "Abre Comunidad para responder."
+            )
+            systemImage = "door.left.hand.open"
+        } else {
+            title = localizedCommunityAttention(
+                en: "NEW FRIEND REQUEST",
+                ru: "НОВЫЙ ЗАПРОС В ДРУЗЬЯ",
+                es: "NUEVA SOLICITUD DE AMISTAD"
+            )
+            detail = snapshot.senderName(forFriendRequestIDs: newIDs).map {
+                localizedCommunityAttention(
+                    en: "From \($0). Open Community to respond.",
+                    ru: "От \($0). Откройте Сообщество, чтобы ответить.",
+                    es: "De \($0). Abre Comunidad para responder."
+                )
+            } ?? localizedCommunityAttention(
+                en: "Open Community to respond.",
+                ru: "Откройте Сообщество, чтобы ответить.",
+                es: "Abre Comunidad para responder."
+            )
+            systemImage = "person.crop.circle.badge.plus"
+        }
+
+        HapticManager.shared.fire(.notification(.warning))
+        appState.showToast(
+            title,
+            kind: .warning,
+            detail: detail,
+            systemImage: systemImage,
+            duration: .seconds(5)
+        )
+    }
+
+    private func storedCommunityAttentionIDs(for userID: String) -> Set<String> {
+        Set(UserDefaults.standard.stringArray(forKey: communityAttentionStorageKey(for: userID)) ?? [])
+    }
+
+    private func storeCommunityAttentionIDs(_ ids: Set<String>, for userID: String) {
+        UserDefaults.standard.set(Array(ids).sorted(), forKey: communityAttentionStorageKey(for: userID))
+    }
+
+    private func communityAttentionStorageKey(for userID: String) -> String {
+        "spyclash.community-attention.seen.\(userID)"
+    }
+
+    private func localizedCommunityAttention(en: String, ru: String, es: String) -> String {
+        switch appState.language {
+        case .en: en
+        case .ru: ru
+        case .es: es
         }
     }
 
@@ -1282,6 +1485,7 @@ private struct FloatingDock: View {
     let tabs: [AppTab]
     let communitySelection: CommunityTab
     let isCommunity: Bool
+    let communityAttentionCount: Int
     let namespace: Namespace.ID
     let language: AppLanguage
     let communityAction: (CommunityTab) -> Void
@@ -1296,6 +1500,7 @@ private struct FloatingDock: View {
                         symbol: item.symbol,
                         isSelected: item.isSelected,
                         inactiveOpacity: item.inactiveOpacity,
+                        badgeCount: item.badgeCount,
                         namespace: namespace,
                         accessibilityLabel: item.accessibilityLabel
                     )
@@ -1328,6 +1533,7 @@ private struct FloatingDock: View {
                     symbol: tab.symbol,
                     isSelected: tab != .exit && communitySelection == tab,
                     inactiveOpacity: tab == .exit ? 0.70 : 0.44,
+                    badgeCount: tab == .network ? communityAttentionCount : 0,
                     accessibilityLabel: tab.accessibilityLabel(language: language)
                 )
             }
@@ -1338,6 +1544,7 @@ private struct FloatingDock: View {
                 symbol: tab.symbol,
                 isSelected: selection.dockRepresentative == tab,
                 inactiveOpacity: 0.44,
+                badgeCount: 0,
                 accessibilityLabel: language.tabTitle(tab)
             )
         }
@@ -1359,6 +1566,7 @@ private struct ShellDockItem {
     let symbol: String
     let isSelected: Bool
     let inactiveOpacity: Double
+    let badgeCount: Int
     let accessibilityLabel: String
 }
 
@@ -1366,6 +1574,7 @@ private struct DockItem: View {
     let symbol: String
     let isSelected: Bool
     let inactiveOpacity: Double
+    let badgeCount: Int
     let namespace: Namespace.ID
     let accessibilityLabel: String
 
@@ -1386,11 +1595,20 @@ private struct DockItem: View {
                         .offset(y: -2)
                 }
             }
+            .overlay(alignment: .topTrailing) {
+                if badgeCount > 0 {
+                    CommunityAttentionBadge(count: badgeCount, compact: true)
+                        .offset(x: -14, y: 4)
+                        .transition(.scale.combined(with: .opacity))
+                }
+            }
             .contentShape(Rectangle())
             .contentTransition(.opacity)
             .animation(.easeOut(duration: 0.14), value: symbol)
+            .animation(.easeOut(duration: 0.18), value: badgeCount)
             .animation(.interpolatingSpring(mass: 1, stiffness: 420, damping: 26, initialVelocity: 0), value: isSelected)
             .accessibilityLabel(accessibilityLabel)
+            .accessibilityValue(badgeCount > 0 ? "\(badgeCount) pending items" : "")
     }
 }
 
@@ -1398,6 +1616,7 @@ private struct DockItem: View {
 // phases intentionally mirror the web source so both shells share one rhythm.
 private struct WebPullDownCommandMenu: View {
     @Binding var isPresented: Bool
+    let communityAttentionCount: Int
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1424,7 +1643,11 @@ private struct WebPullDownCommandMenu: View {
                 }
 
                 VStack(spacing: 0) {
-                    WebMenuTopBar(progress: progress, topInset: topInset)
+                    WebMenuTopBar(
+                        progress: progress,
+                        topInset: topInset,
+                        communityAttentionCount: communityAttentionCount
+                    )
                         .frame(height: topBarHeight)
                         .contentShape(Rectangle())
                         .accessibilityElement(children: .ignore)
@@ -1436,7 +1659,11 @@ private struct WebPullDownCommandMenu: View {
                         }
 
                     if revealedHeight > 0.5 || isPresented {
-                        WebCommandMenuPanel(progress: progress, close: closeMenu)
+                        WebCommandMenuPanel(
+                            progress: progress,
+                            communityAttentionCount: communityAttentionCount,
+                            close: closeMenu
+                        )
                             .frame(height: revealedHeight)
                             .clipped()
                             .allowsHitTesting(progress > 0.92)
@@ -1556,6 +1783,7 @@ private struct WebPullDownCommandMenu: View {
 private struct WebMenuTopBar: View {
     let progress: CGFloat
     let topInset: CGFloat
+    let communityAttentionCount: Int
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1570,6 +1798,13 @@ private struct WebMenuTopBar: View {
 
                     toggleIndicator
                         .frame(width: 44, height: 40)
+                        .overlay(alignment: .topTrailing) {
+                            if communityAttentionCount > 0 {
+                                CommunityAttentionBadge(count: communityAttentionCount, compact: true)
+                                    .offset(x: 3, y: -4)
+                                    .transition(.scale.combined(with: .opacity))
+                            }
+                        }
                 }
                 .padding(.horizontal, 24)
 
@@ -1606,6 +1841,12 @@ private struct WebMenuTopBar: View {
             }
             .frame(height: 1)
         }
+        .animation(.easeOut(duration: 0.18), value: communityAttentionCount)
+        .accessibilityValue(
+            communityAttentionCount > 0
+                ? "\(communityAttentionCount) pending Community items"
+                : "No pending Community items"
+        )
     }
 
     private var wordmark: some View {
@@ -1657,6 +1898,7 @@ private struct WebCommandMenuPanel: View {
     @Environment(AppState.self) private var appState
 
     let progress: CGFloat
+    let communityAttentionCount: Int
     let close: () -> Void
 
     private let itemHeight: CGFloat = 40
@@ -1695,7 +1937,8 @@ private struct WebCommandMenuPanel: View {
                     menuButton(
                         icon: "🪪",
                         title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD"),
-                        selected: appState.shellRoute == .community
+                        selected: appState.shellRoute == .community,
+                        badgeCount: communityAttentionCount
                     ) {
                         closeThen { appState.openCommunity() }
                     }
@@ -1761,6 +2004,7 @@ private struct WebCommandMenuPanel: View {
         title: String,
         selected: Bool = false,
         highlighted: Bool = false,
+        badgeCount: Int = 0,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -1776,6 +2020,11 @@ private struct WebCommandMenuPanel: View {
                     .minimumScaleFactor(0.72)
 
                 Spacer(minLength: 0)
+
+                if badgeCount > 0 {
+                    CommunityAttentionBadge(count: badgeCount)
+                        .transition(.scale.combined(with: .opacity))
+                }
             }
             .foregroundStyle(selected || highlighted ? SpyTheme.red : Color(red: 187 / 255, green: 187 / 255, blue: 187 / 255))
             .padding(.horizontal, 16)
@@ -1788,6 +2037,7 @@ private struct WebCommandMenuPanel: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle())
+        .animation(.easeOut(duration: 0.18), value: badgeCount)
     }
 
     private var languageFooter: some View {
@@ -1886,6 +2136,92 @@ private struct SpyAppVersionMark: View {
             .tracking(2.1)
             .foregroundStyle(Color.white.opacity(0.46))
             .accessibilityLabel("SpyClash version \(SpyClashRelease.headerVersionLabel)")
+    }
+}
+
+private struct CommunityAttentionSnapshot: Equatable {
+    let friendRequestIDs: Set<String>
+    let roomInviteIDs: Set<String>
+    let friendRequestSendersByID: [String: String]
+    let roomInviteSendersByID: [String: String]
+
+    static let empty = CommunityAttentionSnapshot(
+        friendRequestIDs: [],
+        roomInviteIDs: [],
+        friendRequestSendersByID: [:],
+        roomInviteSendersByID: [:]
+    )
+
+    init(state: CommunityState) {
+        let friendRequests = state.incoming.filter { $0.status.lowercased() == "pending" }
+        let roomInvites = state.incomingRoomInvites.filter { $0.status.lowercased() == "pending" }
+
+        friendRequestIDs = Set(friendRequests.map { "friend:\($0.id)" })
+        roomInviteIDs = Set(roomInvites.map { "room:\($0.id)" })
+        friendRequestSendersByID = Dictionary(
+            uniqueKeysWithValues: friendRequests.map { ("friend:\($0.id)", $0.profile.displayName) }
+        )
+        roomInviteSendersByID = Dictionary(
+            uniqueKeysWithValues: roomInvites.map { ("room:\($0.id)", $0.sender.displayName) }
+        )
+    }
+
+    private init(
+        friendRequestIDs: Set<String>,
+        roomInviteIDs: Set<String>,
+        friendRequestSendersByID: [String: String],
+        roomInviteSendersByID: [String: String]
+    ) {
+        self.friendRequestIDs = friendRequestIDs
+        self.roomInviteIDs = roomInviteIDs
+        self.friendRequestSendersByID = friendRequestSendersByID
+        self.roomInviteSendersByID = roomInviteSendersByID
+    }
+
+    var allIDs: Set<String> {
+        friendRequestIDs.union(roomInviteIDs)
+    }
+
+    var totalCount: Int {
+        allIDs.count
+    }
+
+    func senderName(forFriendRequestIDs ids: Set<String>) -> String? {
+        ids.sorted().compactMap { friendRequestSendersByID[$0] }.first
+    }
+
+    func senderName(forRoomInviteIDs ids: Set<String>) -> String? {
+        ids.sorted().compactMap { roomInviteSendersByID[$0] }.first
+    }
+
+#if DEBUG
+    static func preview(count: Int) -> CommunityAttentionSnapshot {
+        CommunityAttentionSnapshot(
+            friendRequestIDs: Set((0..<count).map { "preview-friend:\($0)" }),
+            roomInviteIDs: [],
+            friendRequestSendersByID: count > 0 ? ["preview-friend:0": "RED RAVEN"] : [:],
+            roomInviteSendersByID: [:]
+        )
+    }
+#endif
+}
+
+private struct CommunityAttentionBadge: View {
+    let count: Int
+    var compact = false
+
+    var body: some View {
+        Text(count > 99 ? "99+" : "\(count)")
+            .font(.system(size: compact ? 9 : 10, weight: .black, design: .monospaced))
+            .foregroundStyle(.white)
+            .lineLimit(1)
+            .minimumScaleFactor(0.72)
+            .padding(.horizontal, compact ? 5 : 7)
+            .frame(minWidth: compact ? 19 : 24, minHeight: compact ? 19 : 22)
+            .background(SpyTheme.red, in: Capsule())
+            .overlay(Capsule().stroke(Color.white.opacity(0.90), lineWidth: 1))
+            .shadow(color: SpyTheme.red.opacity(0.72), radius: 7)
+            .accessibilityLabel("\(count) pending Community items")
     }
 }
 
