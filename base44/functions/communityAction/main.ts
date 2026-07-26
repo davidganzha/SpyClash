@@ -39,6 +39,7 @@ const DIRECTORY_MAX_LIMIT = 60;
 const PROFILE_FRIEND_LIMIT = 60;
 const PROFILE_COMMENT_LIMIT = 40;
 const COMMENT_COOLDOWN_MS = 5_000;
+const PROFILE_LOOKUP_CONCURRENCY = 8;
 
 function errorResponse(message: string, status = 400) {
   return Response.json({ error: message }, { status });
@@ -430,34 +431,53 @@ async function buildState(base44: any, rawUser: Entity) {
     incomingRoomInvites(base44, user),
   ]);
 
-  const profileCache = new Map<string, Entity>();
-  async function counterpart(friendship: Entity) {
-    const otherID = friendship.requester_id === user.id
-      ? friendship.addressee_id
-      : friendship.requester_id;
-    if (!profileCache.has(otherID)) {
-      const found = await findUserByID(base44, otherID);
-      if (found) {
-        profileCache.set(otherID, await ensureUserProfile(base44, found));
-      }
-    }
-    const found = profileCache.get(otherID);
-    return found ? publicProfile(found) : null;
+  const counterpartIDs = [
+    ...new Set(
+      all.map((friendship) =>
+        friendship.requester_id === user.id
+          ? clean(friendship.addressee_id)
+          : clean(friendship.requester_id)
+      ).filter(Boolean),
+    ),
+  ];
+  const profileEntries: Array<readonly [string, Entity | null]> = [];
+  for (
+    let offset = 0;
+    offset < counterpartIDs.length;
+    offset += PROFILE_LOOKUP_CONCURRENCY
+  ) {
+    const batch = counterpartIDs.slice(
+      offset,
+      offset + PROFILE_LOOKUP_CONCURRENCY,
+    );
+    profileEntries.push(
+      ...await Promise.all(batch.map(async (otherID) => {
+        const found = await findUserByID(base44, otherID);
+        return [
+          otherID,
+          found ? await ensureUserProfile(base44, found) : null,
+        ] as const;
+      })),
+    );
   }
+  const profileCache = new Map<string, Entity | null>(profileEntries);
 
   const friends = [];
   const incoming = [];
   const outgoing = [];
   const blocked = [];
   for (const friendship of all) {
-    const profile = await counterpart(friendship);
-    if (!profile) continue;
+    const otherID = friendship.requester_id === user.id
+      ? clean(friendship.addressee_id)
+      : clean(friendship.requester_id);
+    const counterpart = profileCache.get(otherID);
+    if (!counterpart) continue;
 
     const record = {
       id: friendship.id,
       status: friendship.status,
       direction: friendship.requester_id === user.id ? "outgoing" : "incoming",
-      profile,
+      profile: publicProfile(counterpart),
     };
     if (friendship.status === "blocked") {
       if (blockedByUserID(friendship) === user.id) blocked.push(record);
@@ -948,9 +968,16 @@ Deno.serve(async (req) => {
         "RoomInvite",
         inviteID,
       );
-      if (
-        !initialInvite || clean(initialInvite.recipient_user_id) !== current.id
-      ) {
+      if (!initialInvite) {
+        if (action !== "consume_room_invite") {
+          return errorResponse("Room invite not found", 404);
+        }
+        return Response.json({
+          state: await buildState(base44, current),
+          room_code: null,
+        });
+      }
+      if (clean(initialInvite.recipient_user_id) !== current.id) {
         return errorResponse("Room invite not found", 404);
       }
       let acceptedRoomCode: string | null = null;
@@ -962,6 +989,7 @@ Deno.serve(async (req) => {
         ],
         action: async ({ persist }) => {
           const invite = await findEntityByID(base44, "RoomInvite", inviteID);
+          if (!invite && action === "consume_room_invite") return;
           if (!invite || clean(invite.recipient_user_id) !== current.id) {
             throw Object.assign(new Error("Room invite not found"), {
               status: 404,

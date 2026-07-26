@@ -1,6 +1,19 @@
 import SwiftUI
 import UIKit
 
+private enum CommunityActionFeedbackPhase: Equatable {
+    case waiting
+    case success
+    case failure
+}
+
+private struct CommunityActionFeedback: Equatable {
+    let id: String
+    var phase: CommunityActionFeedbackPhase
+    var waitingTitle: String
+    let successTitle: String
+}
+
 struct CommunityView: View {
     @Environment(AppState.self) private var appState
 
@@ -25,6 +38,11 @@ struct CommunityView: View {
     @State private var isProfileLoading = false
     @State private var didLoadInitialContent = false
     @State private var activeAction: String?
+    @State private var actionFeedback: CommunityActionFeedback?
+    @State private var deferredExternalNetworkState: CommunityState?
+    @State private var resolvedRelationshipIDs: Set<String> = []
+    @State private var resolvedRoomInviteIDs: Set<String> = []
+    @State private var networkRefreshGeneration = 0
     @State private var message = ""
     @State private var messageKind: AppToastKind = .success
     @State private var reportTarget: CommunityReportTarget?
@@ -46,8 +64,18 @@ struct CommunityView: View {
             handleDockAction(dockRequest.tab)
         }
         .onChange(of: externalNetworkState) { _, state in
-            guard let state, state != network else { return }
-            network = state
+            guard let state else { return }
+            if activeAction == nil {
+                retireResolvedMarkersConfirmed(by: state)
+            }
+            let sanitizedState = sanitizedNetworkState(state)
+            guard sanitizedState != network else { return }
+            networkRefreshGeneration += 1
+            guard activeAction == nil else {
+                deferredExternalNetworkState = sanitizedState
+                return
+            }
+            network = sanitizedState
         }
         .onChange(of: network) { _, state in
             if let state {
@@ -500,25 +528,29 @@ struct CommunityView: View {
                     await relationshipAction("remove_friend", relationship.id)
                 }
             }
-        } else if relationship?.direction == "incoming" {
+        } else if let relationship, relationship.direction == "incoming" {
             HStack(spacing: 9) {
                 communityActionButton(
                     localized(en: "ACCEPT", ru: "ПРИНЯТЬ", es: "ACEPTAR"),
                     icon: "checkmark",
                     color: SpyTheme.green,
-                    filled: true
+                    filled: true,
+                    feedbackID: relationshipFeedbackID("accept", relationship.id),
+                    waitingTitle: localized(en: "ACCEPTING...", ru: "ПРИНИМАЕМ...", es: "ACEPTANDO..."),
+                    successTitle: localized(en: "ACCEPTED", ru: "ПРИНЯТО", es: "ACEPTADO")
                 ) {
-                    guard let relationship else { return }
-                    await relationshipAction("accept", relationship.id)
+                    await relationshipDecision("accept", relationship.id)
                 }
 
                 communityActionButton(
                     localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR"),
                     icon: "xmark",
-                    color: SpyTheme.muted
+                    color: SpyTheme.muted,
+                    feedbackID: relationshipFeedbackID("decline", relationship.id),
+                    waitingTitle: localized(en: "DECLINING...", ru: "ОТКЛОНЯЕМ...", es: "RECHAZANDO..."),
+                    successTitle: localized(en: "DECLINED", ru: "ОТКЛОНЕНО", es: "RECHAZADO")
                 ) {
-                    guard let relationship else { return }
-                    await relationshipAction("decline", relationship.id)
+                    await relationshipDecision("decline", relationship.id)
                 }
             }
         } else if let relationship {
@@ -832,17 +864,23 @@ struct CommunityView: View {
                     localized(en: "ACCEPT", ru: "ПРИНЯТЬ", es: "ACEPTAR"),
                     icon: "checkmark",
                     color: SpyTheme.green,
-                    filled: true
+                    filled: true,
+                    feedbackID: relationshipFeedbackID("accept", record.id),
+                    waitingTitle: localized(en: "ACCEPTING...", ru: "ПРИНИМАЕМ...", es: "ACEPTANDO..."),
+                    successTitle: localized(en: "ACCEPTED", ru: "ПРИНЯТО", es: "ACEPTADO")
                 ) {
-                    await relationshipAction("accept", record.id)
+                    await relationshipDecision("accept", record.id)
                 }
 
                 communityActionButton(
                     localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR"),
                     icon: "xmark",
-                    color: SpyTheme.muted
+                    color: SpyTheme.muted,
+                    feedbackID: relationshipFeedbackID("decline", record.id),
+                    waitingTitle: localized(en: "DECLINING...", ru: "ОТКЛОНЯЕМ...", es: "RECHAZANDO..."),
+                    successTitle: localized(en: "DECLINED", ru: "ОТКЛОНЕНО", es: "RECHAZADO")
                 ) {
-                    await relationshipAction("decline", record.id)
+                    await relationshipDecision("decline", record.id)
                 }
             }
         }
@@ -876,7 +914,10 @@ struct CommunityView: View {
                     localized(en: "JOIN", ru: "ВОЙТИ", es: "ENTRAR"),
                     icon: "arrow.right",
                     color: SpyTheme.red,
-                    filled: true
+                    filled: true,
+                    feedbackID: roomInviteFeedbackID("accept", invite.id),
+                    waitingTitle: localized(en: "ACCEPTING...", ru: "ПРИНИМАЕМ...", es: "ACEPTANDO..."),
+                    successTitle: localized(en: "READY", ru: "ГОТОВО", es: "LISTO")
                 ) {
                     await acceptRoomInvite(invite)
                 }
@@ -884,7 +925,10 @@ struct CommunityView: View {
                 communityActionButton(
                     localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR"),
                     icon: "xmark",
-                    color: SpyTheme.muted
+                    color: SpyTheme.muted,
+                    feedbackID: roomInviteFeedbackID("decline", invite.id),
+                    waitingTitle: localized(en: "DECLINING...", ru: "ОТКЛОНЯЕМ...", es: "RECHAZANDO..."),
+                    successTitle: localized(en: "DECLINED", ru: "ОТКЛОНЕНО", es: "RECHAZADO")
                 ) {
                     await declineRoomInvite(invite)
                 }
@@ -977,27 +1021,181 @@ struct CommunityView: View {
         icon: String,
         color: Color,
         filled: Bool = false,
+        feedbackID: String? = nil,
+        waitingTitle: String? = nil,
+        successTitle: String? = nil,
         action: @escaping @MainActor () async -> Void
     ) -> some View {
-        Button {
+        let feedback = actionFeedback.flatMap { current in
+            current.id == feedbackID ? current : nil
+        }
+        let feedbackColor: Color = switch feedback?.phase {
+        case .some(.success): SpyTheme.green
+        case .some(.failure): SpyTheme.red
+        default: color
+        }
+
+        return Button {
+            if let feedbackID, let waitingTitle, let successTitle {
+                guard beginActionFeedback(
+                    id: feedbackID,
+                    waitingTitle: waitingTitle,
+                    successTitle: successTitle
+                ) else { return }
+            }
             Task { await action() }
         } label: {
             HStack(spacing: 7) {
-                Image(systemName: icon)
-                    .font(.system(size: 12, weight: .black))
-                Text(title)
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .tracking(0.35)
-                    .spyFitted(scale: 0.58, alignment: .center)
+                if let feedback {
+                    switch feedback.phase {
+                    case .waiting:
+                        SpySpinner(
+                            size: 14,
+                            accent: filled ? Color.black.opacity(0.82) : feedbackColor
+                        )
+                        .accessibilityHidden(true)
+                        Text(feedback.waitingTitle)
+                            .contentTransition(.numericText())
+                    case .success:
+                        Image(systemName: "checkmark.circle.fill")
+                            .font(.system(size: 13, weight: .black))
+                        Text(feedback.successTitle)
+                            .contentTransition(.numericText())
+                    case .failure:
+                        Image(systemName: "exclamationmark.triangle.fill")
+                            .font(.system(size: 12, weight: .black))
+                        Text(localized(en: "RETRY", ru: "ПОВТОРИТЬ", es: "REINTENTAR"))
+                            .contentTransition(.numericText())
+                    }
+                } else {
+                    Image(systemName: icon)
+                        .font(.system(size: 12, weight: .black))
+                    Text(title)
+                }
             }
-            .foregroundStyle(filled ? Color.black.opacity(0.82) : color)
+            .font(.system(size: 9, weight: .black, design: .monospaced))
+            .tracking(0.35)
+            .spyFitted(scale: 0.58, alignment: .center)
+            .foregroundStyle(filled && feedback?.phase != .failure ? Color.black.opacity(0.82) : feedbackColor)
             .frame(maxWidth: .infinity, minHeight: 46)
-            .background(filled ? color : Color.clear)
-            .overlay(Rectangle().stroke(color.opacity(filled ? 0.85 : 0.48), lineWidth: 1))
+            .background(filled && feedback?.phase != .failure ? feedbackColor : feedbackColor.opacity(feedback == nil ? 0 : 0.10))
+            .overlay(Rectangle().stroke(feedbackColor.opacity(filled ? 0.85 : 0.58), lineWidth: feedback == nil ? 1 : 1.5))
             .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle())
         .disabled(activeAction != nil)
+        .opacity(activeAction == nil || activeAction == feedbackID ? 1 : 0.46)
+        .animation(.snappy(duration: 0.18), value: feedback)
+        .accessibilityValue(actionAccessibilityValue(feedback))
+    }
+
+    @MainActor
+    private func beginActionFeedback(
+        id: String,
+        waitingTitle: String,
+        successTitle: String
+    ) -> Bool {
+        guard activeAction == nil else { return false }
+
+        networkRefreshGeneration += 1
+        activeAction = id
+        withAnimation(.snappy(duration: 0.18)) {
+            actionFeedback = CommunityActionFeedback(
+                id: id,
+                phase: .waiting,
+                waitingTitle: waitingTitle,
+                successTitle: successTitle
+            )
+        }
+        HapticManager.shared.fire(.buttonPress)
+        UIAccessibility.post(notification: .announcement, argument: waitingTitle)
+        return true
+    }
+
+    @MainActor
+    private func updateActionWaitingTitle(_ title: String, id: String) {
+        guard activeAction == id, var feedback = actionFeedback, feedback.id == id else { return }
+        feedback.waitingTitle = title
+        withAnimation(.snappy(duration: 0.18)) {
+            actionFeedback = feedback
+        }
+        UIAccessibility.post(notification: .announcement, argument: title)
+    }
+
+    @MainActor
+    private func showActionSuccess(_ id: String, message successMessage: String) async {
+        guard activeAction == id, var feedback = actionFeedback, feedback.id == id else { return }
+        feedback.phase = .success
+        withAnimation(.snappy(duration: 0.18)) {
+            actionFeedback = feedback
+        }
+        appState.showToast(successMessage, kind: .success)
+        HapticManager.shared.fire(.notification(.success))
+        UIAccessibility.post(notification: .announcement, argument: feedback.successTitle)
+        try? await Task.sleep(for: .milliseconds(520))
+    }
+
+    @MainActor
+    private func finishActionFeedback(_ id: String) {
+        guard activeAction == id || actionFeedback?.id == id else { return }
+        activeAction = nil
+        withAnimation(.snappy(duration: 0.18)) {
+            actionFeedback = nil
+        }
+    }
+
+    @MainActor
+    private func failActionFeedback(_ id: String, error: Error) {
+        if isCancellation(error) {
+            finishActionFeedback(id)
+            return
+        }
+
+        activeAction = nil
+        if var feedback = actionFeedback, feedback.id == id {
+            feedback.phase = .failure
+            withAnimation(.snappy(duration: 0.18)) {
+                actionFeedback = feedback
+            }
+        }
+        showError(error)
+        UIAccessibility.post(
+            notification: .announcement,
+            argument: localized(
+                en: "Action failed. Try again.",
+                ru: "Не удалось. Попробуйте ещё раз.",
+                es: "La accion fallo. Intentalo de nuevo."
+            )
+        )
+        reconcileNetworkAfterAction()
+
+        Task { @MainActor in
+            try? await Task.sleep(for: .milliseconds(1_400))
+            guard actionFeedback?.id == id, actionFeedback?.phase == .failure else { return }
+            withAnimation(.snappy(duration: 0.18)) {
+                actionFeedback = nil
+            }
+        }
+    }
+
+    private func actionAccessibilityValue(_ feedback: CommunityActionFeedback?) -> String {
+        guard let feedback else { return "" }
+        switch feedback.phase {
+        case .waiting:
+            return localized(en: "In progress", ru: "Выполняется", es: "En progreso")
+        case .success:
+            return localized(en: "Successful", ru: "Успешно", es: "Completado")
+        case .failure:
+            return localized(en: "Failed. Try again", ru: "Ошибка. Повторить", es: "Error. Reintentar")
+        }
+    }
+
+    private func relationshipFeedbackID(_ action: String, _ friendshipID: String) -> String {
+        "relationship:\(friendshipID):\(action)"
+    }
+
+    private func roomInviteFeedbackID(_ action: String, _ inviteID: String) -> String {
+        "room-invite:\(inviteID):\(action)"
     }
 
     private func connectionStatus(_ title: String, icon: String, color: Color) -> some View {
@@ -1283,6 +1481,96 @@ struct CommunityView: View {
         }
     }
 
+    private func relationshipDecision(_ action: String, _ friendshipID: String) async {
+        let actionID = relationshipFeedbackID(action, friendshipID)
+        guard activeAction == actionID else { return }
+
+        do {
+            let updatedNetwork: CommunityState?
+            if appState.shouldUsePreviewData {
+                try await Task.sleep(for: .milliseconds(760))
+                updatedNetwork = previewNetworkAfterRelationshipAction(action, friendshipID: friendshipID)
+            } else {
+                updatedNetwork = try await appState.client.communityRelationshipAction(
+                    action,
+                    friendshipID: friendshipID
+                )
+            }
+
+            let successMessage = action == "accept"
+                ? localized(en: "OPERATIVE ADDED", ru: "ОПЕРАТИВНИК ДОБАВЛЕН", es: "OPERATIVO AGREGADO")
+                : localized(en: "REQUEST DECLINED", ru: "ЗАПРОС ОТКЛОНЁН", es: "SOLICITUD RECHAZADA")
+            await showActionSuccess(actionID, message: successMessage)
+
+            resolvedRelationshipIDs.insert(friendshipID)
+            if let updatedNetwork {
+                withAnimation(.smooth(duration: 0.24)) {
+                    network = sanitizedNetworkState(updatedNetwork)
+                }
+            }
+            updateActiveProfileAfterRelationshipAction(action, friendshipID: friendshipID)
+            finishActionFeedback(actionID)
+            reconcileNetworkAfterAction()
+        } catch {
+            failActionFeedback(actionID, error: error)
+        }
+    }
+
+    private func previewNetworkAfterRelationshipAction(
+        _ action: String,
+        friendshipID: String
+    ) -> CommunityState? {
+        guard let current = network else { return nil }
+        guard let relationship = current.incoming.first(where: { $0.id == friendshipID }) else {
+            return current
+        }
+
+        var friends = current.friends
+        if action == "accept" {
+            friends.removeAll { $0.id == friendshipID }
+            friends.append(
+                CommunityRelationship(
+                    id: relationship.id,
+                    status: "accepted",
+                    direction: relationship.direction,
+                    profile: relationship.profile
+                )
+            )
+        }
+
+        return CommunityState(
+            me: current.me,
+            friends: friends,
+            incoming: current.incoming.filter { $0.id != friendshipID },
+            outgoing: current.outgoing,
+            blocked: current.blocked,
+            incomingRoomInvites: current.incomingRoomInvites
+        )
+    }
+
+    private func updateActiveProfileAfterRelationshipAction(
+        _ action: String,
+        friendshipID: String
+    ) {
+        guard let detail = activeProfile, detail.relationship?.id == friendshipID else { return }
+        let updatedRelationship: CommunityRelationshipSummary? = action == "accept"
+            ? CommunityRelationshipSummary(
+                id: friendshipID,
+                status: "accepted",
+                direction: detail.relationship?.direction ?? "incoming"
+            )
+            : nil
+        let updatedDetail = CommunityProfileDetail(
+            profile: detail.profile,
+            isSelf: detail.isSelf,
+            relationship: updatedRelationship,
+            friends: detail.friends,
+            comments: detail.comments
+        )
+        activeProfile = updatedDetail
+        profileCache[detail.profile.id] = updatedDetail
+    }
+
     private func submitReport(_ target: CommunityReportTarget, reason: CommunityReportReason) async {
         guard activeAction == nil else { return }
         activeAction = "report-\(target.id)"
@@ -1439,40 +1727,267 @@ struct CommunityView: View {
     }
 
     private func acceptRoomInvite(_ invite: CommunityRoomInvite) async {
-        guard activeAction == nil else { return }
-        activeAction = invite.id
-        defer { activeAction = nil }
+        let actionID = roomInviteFeedbackID("accept", invite.id)
+        guard activeAction == actionID else { return }
 
         if appState.shouldUsePreviewData {
-            _ = await appState.joinRoom(code: invite.roomCode)
+            do {
+                try await Task.sleep(for: .milliseconds(620))
+                updateActionWaitingTitle(
+                    localized(en: "JOINING...", ru: "ВХОДИМ...", es: "ENTRANDO..."),
+                    id: actionID
+                )
+                try await Task.sleep(for: .milliseconds(620))
+                await showActionSuccess(
+                    actionID,
+                    message: localized(en: "ROOM READY", ru: "КОМНАТА ГОТОВА", es: "SALA LISTA")
+                )
+                resolvedRoomInviteIDs.insert(invite.id)
+                network = networkRemovingRoomInvite(invite.id, from: network)
+                finishActionFeedback(actionID)
+                reconcileNetworkAfterAction()
+            } catch {
+                failActionFeedback(actionID, error: error)
+            }
             return
         }
 
         do {
-            let result = try await appState.client.communityRoomInviteAction("accept_room_invite", inviteID: invite.id)
-            network = result.state
-            guard let code = result.roomCode, await appState.joinRoom(code: code) else { return }
-            let consumed = try await appState.client.communityRoomInviteAction("consume_room_invite", inviteID: invite.id)
-            network = consumed.state
+            var acceptedState = network
+            var roomCode = invite.roomCode
+            if invite.status.lowercased() != "accepted" {
+                let result = try await appState.client.communityRoomInviteAction(
+                    "accept_room_invite",
+                    inviteID: invite.id
+                )
+                acceptedState = result.state
+                roomCode = result.roomCode ?? invite.roomCode
+            }
+
+            updateActionWaitingTitle(
+                localized(en: "JOINING...", ru: "ВХОДИМ...", es: "ENTRANDO..."),
+                id: actionID
+            )
+            guard await appState.joinRoom(code: roomCode) else {
+                network = acceptedState
+                throw Base44Error(message: localized(
+                    en: "Could not join the room",
+                    ru: "Не удалось войти в комнату",
+                    es: "No se pudo entrar a la sala"
+                ))
+            }
+
+            resolvedRoomInviteIDs.insert(invite.id)
+            let cleanupUserID = appState.user?.id
+            if let cleanupUserID {
+                persistPendingRoomInviteCleanup(invite.id, userID: cleanupUserID)
+            }
+            Task { @MainActor in
+                guard let cleanupUserID else { return }
+                await consumeRoomInviteWithRetry(invite.id, userID: cleanupUserID)
+            }
+
+            await showActionSuccess(
+                actionID,
+                message: localized(en: "ROOM READY", ru: "КОМНАТА ГОТОВА", es: "SALA LISTA")
+            )
+            network = networkRemovingRoomInvite(invite.id, from: acceptedState)
+            finishActionFeedback(actionID)
+            reconcileNetworkAfterAction()
         } catch {
-            showError(error)
+            failActionFeedback(actionID, error: error)
         }
     }
 
     private func declineRoomInvite(_ invite: CommunityRoomInvite) async {
-        guard activeAction == nil else { return }
-        activeAction = invite.id
-        defer { activeAction = nil }
+        let actionID = roomInviteFeedbackID("decline", invite.id)
+        guard activeAction == actionID else { return }
 
-        if appState.shouldUsePreviewData { return }
+        if appState.shouldUsePreviewData {
+            do {
+                try await Task.sleep(for: .milliseconds(760))
+                await showActionSuccess(
+                    actionID,
+                    message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACION RECHAZADA")
+                )
+                resolvedRoomInviteIDs.insert(invite.id)
+                network = networkRemovingRoomInvite(invite.id, from: network)
+                finishActionFeedback(actionID)
+            } catch {
+                failActionFeedback(actionID, error: error)
+            }
+            return
+        }
 
         do {
             let result = try await appState.client.communityRoomInviteAction("decline_room_invite", inviteID: invite.id)
-            network = result.state
-            HapticManager.shared.fire(.notification(.success))
+            await showActionSuccess(
+                actionID,
+                message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACION RECHAZADA")
+            )
+            resolvedRoomInviteIDs.insert(invite.id)
+            withAnimation(.smooth(duration: 0.24)) {
+                network = sanitizedNetworkState(result.state)
+            }
+            finishActionFeedback(actionID)
+            reconcileNetworkAfterAction()
         } catch {
-            showError(error)
+            failActionFeedback(actionID, error: error)
         }
+    }
+
+    private func networkRemovingRoomInvite(
+        _ inviteID: String,
+        from state: CommunityState?
+    ) -> CommunityState? {
+        guard let state else { return nil }
+        return CommunityState(
+            me: state.me,
+            friends: state.friends,
+            incoming: state.incoming,
+            outgoing: state.outgoing,
+            blocked: state.blocked,
+            incomingRoomInvites: state.incomingRoomInvites.filter { $0.id != inviteID }
+        )
+    }
+
+    private func sanitizedNetworkState(_ state: CommunityState) -> CommunityState {
+        CommunityState(
+            me: state.me,
+            friends: state.friends,
+            incoming: state.incoming.filter { !resolvedRelationshipIDs.contains($0.id) },
+            outgoing: state.outgoing,
+            blocked: state.blocked,
+            incomingRoomInvites: state.incomingRoomInvites.filter { !resolvedRoomInviteIDs.contains($0.id) }
+        )
+    }
+
+    private func reconcileNetworkAfterAction() {
+        if let deferredExternalNetworkState, let network {
+            self.network = mergeNetworkState(
+                sanitizedNetworkState(deferredExternalNetworkState),
+                into: network
+            )
+        }
+        deferredExternalNetworkState = nil
+        guard !appState.shouldUsePreviewData else { return }
+        networkRefreshGeneration += 1
+        let generation = networkRefreshGeneration
+        Task { @MainActor in
+            await refreshNetworkFromServer(generation: generation)
+        }
+    }
+
+    @MainActor
+    private func refreshNetworkFromServer(generation: Int) async {
+        do {
+            let rawState = try await appState.client.communityState()
+            guard generation == networkRefreshGeneration else { return }
+            if activeAction == nil {
+                retireResolvedMarkersConfirmed(by: rawState)
+                network = sanitizedNetworkState(rawState)
+            } else {
+                deferredExternalNetworkState = sanitizedNetworkState(rawState)
+            }
+        } catch {
+            // Mutation already succeeded. The shell poll will retry convergence.
+        }
+    }
+
+    @MainActor
+    private func consumeRoomInviteWithRetry(_ inviteID: String, userID: String) async {
+        let delays = [0, 300, 900]
+        for (index, delay) in delays.enumerated() {
+            guard appState.user?.id == userID else { return }
+            if delay > 0 {
+                try? await Task.sleep(for: .milliseconds(delay))
+            }
+            guard appState.user?.id == userID else { return }
+
+            do {
+                _ = try await appState.client.communityRoomInviteAction(
+                    "consume_room_invite",
+                    inviteID: inviteID
+                )
+                guard appState.user?.id == userID else { return }
+                clearPendingRoomInviteCleanup(inviteID, userID: userID)
+                networkRefreshGeneration += 1
+                await refreshNetworkFromServer(generation: networkRefreshGeneration)
+                return
+            } catch let error as Base44Error
+                where error.statusCode == 404 || error.statusCode == 409 {
+                guard appState.user?.id == userID else { return }
+                clearPendingRoomInviteCleanup(inviteID, userID: userID)
+                networkRefreshGeneration += 1
+                await refreshNetworkFromServer(generation: networkRefreshGeneration)
+                return
+            } catch {
+                guard index == delays.indices.last else { continue }
+                // Keep the invite hidden locally. A future accepted-invite retry is safe.
+            }
+        }
+    }
+
+    private func retireResolvedMarkersConfirmed(by state: CommunityState) {
+        let stillIncomingRelationshipIDs = Set(state.incoming.map(\.id))
+        let stillAcceptedRoomInviteIDs = Set(
+            state.incomingRoomInvites
+                .filter { $0.status.lowercased() == "accepted" }
+                .map(\.id)
+        )
+        resolvedRelationshipIDs.formIntersection(stillIncomingRelationshipIDs)
+        resolvedRoomInviteIDs.formIntersection(stillAcceptedRoomInviteIDs)
+    }
+
+    private func mergeNetworkState(
+        _ supplemental: CommunityState,
+        into primary: CommunityState
+    ) -> CommunityState {
+        let primaryRelationshipIDs = Set(
+            (primary.friends + primary.incoming + primary.outgoing + primary.blocked).map(\.id)
+        )
+        let primaryRoomInviteIDs = Set(primary.incomingRoomInvites.map(\.id))
+
+        return CommunityState(
+            me: primary.me,
+            friends: primary.friends + supplemental.friends.filter {
+                !primaryRelationshipIDs.contains($0.id)
+            },
+            incoming: primary.incoming + supplemental.incoming.filter {
+                !primaryRelationshipIDs.contains($0.id)
+            },
+            outgoing: primary.outgoing + supplemental.outgoing.filter {
+                !primaryRelationshipIDs.contains($0.id)
+            },
+            blocked: primary.blocked + supplemental.blocked.filter {
+                !primaryRelationshipIDs.contains($0.id)
+            },
+            incomingRoomInvites: primary.incomingRoomInvites + supplemental.incomingRoomInvites.filter {
+                !primaryRoomInviteIDs.contains($0.id)
+            }
+        )
+    }
+
+    private func persistPendingRoomInviteCleanup(_ inviteID: String, userID: String) {
+        let key = pendingRoomInviteCleanupStorageKey(userID: userID)
+        var inviteIDs = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+        inviteIDs.insert(inviteID)
+        UserDefaults.standard.set(Array(inviteIDs).sorted(), forKey: key)
+    }
+
+    private func clearPendingRoomInviteCleanup(_ inviteID: String, userID: String) {
+        let key = pendingRoomInviteCleanupStorageKey(userID: userID)
+        var inviteIDs = Set(UserDefaults.standard.stringArray(forKey: key) ?? [])
+        inviteIDs.remove(inviteID)
+        if inviteIDs.isEmpty {
+            UserDefaults.standard.removeObject(forKey: key)
+        } else {
+            UserDefaults.standard.set(Array(inviteIDs).sorted(), forKey: key)
+        }
+    }
+
+    private func pendingRoomInviteCleanupStorageKey(userID: String) -> String {
+        "spyclash.community-room-invite-cleanup.\(userID)"
     }
 
     private func relationshipTitle(_ relationship: CommunityRelationshipSummary?) -> String {

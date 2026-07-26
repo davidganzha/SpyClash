@@ -214,6 +214,7 @@ struct AppShellView: View {
                 return
             }
             installCommunityAttention(state, for: userID, announceNew: true)
+            await retryPendingRoomInviteCleanups(for: userID)
         } catch is CancellationError {
             return
         } catch {
@@ -236,12 +237,13 @@ struct AppShellView: View {
             return
         }
 
-        let next = CommunityAttentionSnapshot(state: state)
+        let visibleState = stateHidingPendingRoomInviteCleanups(state, userID: resolvedUserID)
+        let next = CommunityAttentionSnapshot(state: visibleState)
         let seenIDs = storedCommunityAttentionIDs(for: resolvedUserID)
         let newIDs = next.allIDs.subtracting(seenIDs)
 
         communityAttention = next
-        communityNetworkState = state
+        communityNetworkState = visibleState
         guard !newIDs.isEmpty else { return }
 
         storeCommunityAttentionIDs(seenIDs.union(next.allIDs), for: resolvedUserID)
@@ -330,6 +332,79 @@ struct AppShellView: View {
 
     private func communityAttentionStorageKey(for userID: String) -> String {
         "spyclash.community-attention.seen.\(userID)"
+    }
+
+    private func pendingRoomInviteCleanupStorageKey(userID: String) -> String {
+        "spyclash.community-room-invite-cleanup.\(userID)"
+    }
+
+    private func pendingRoomInviteCleanupIDs(for userID: String) -> Set<String> {
+        Set(UserDefaults.standard.stringArray(
+            forKey: pendingRoomInviteCleanupStorageKey(userID: userID)
+        ) ?? [])
+    }
+
+    private func removePendingRoomInviteCleanup(_ inviteID: String, userID: String) {
+        let key = pendingRoomInviteCleanupStorageKey(userID: userID)
+        var pendingIDs = pendingRoomInviteCleanupIDs(for: userID)
+        pendingIDs.remove(inviteID)
+        if pendingIDs.isEmpty {
+            UserDefaults.standard.removeObject(forKey: key)
+        } else {
+            UserDefaults.standard.set(Array(pendingIDs).sorted(), forKey: key)
+        }
+    }
+
+    private func stateHidingPendingRoomInviteCleanups(
+        _ state: CommunityState,
+        userID: String
+    ) -> CommunityState {
+        var hiddenInviteIDs = pendingRoomInviteCleanupIDs(for: userID)
+        guard !hiddenInviteIDs.isEmpty else { return state }
+        let reusedPendingIDs = Set(
+            state.incomingRoomInvites
+                .filter {
+                    hiddenInviteIDs.contains($0.id) && $0.status.lowercased() == "pending"
+                }
+                .map(\.id)
+        )
+        for inviteID in reusedPendingIDs {
+            removePendingRoomInviteCleanup(inviteID, userID: userID)
+        }
+        hiddenInviteIDs.subtract(reusedPendingIDs)
+        return CommunityState(
+            me: state.me,
+            friends: state.friends,
+            incoming: state.incoming,
+            outgoing: state.outgoing,
+            blocked: state.blocked,
+            incomingRoomInvites: state.incomingRoomInvites.filter {
+                !hiddenInviteIDs.contains($0.id)
+            }
+        )
+    }
+
+    private func retryPendingRoomInviteCleanups(for userID: String) async {
+        let pendingIDs = pendingRoomInviteCleanupIDs(for: userID)
+        guard !pendingIDs.isEmpty else { return }
+
+        for inviteID in pendingIDs.sorted() {
+            guard !Task.isCancelled, appState.user?.id == userID else { return }
+            do {
+                _ = try await appState.client.communityRoomInviteAction(
+                    "consume_room_invite",
+                    inviteID: inviteID
+                )
+                guard appState.user?.id == userID else { return }
+                removePendingRoomInviteCleanup(inviteID, userID: userID)
+            } catch let error as Base44Error
+                where error.statusCode == 404 || error.statusCode == 409 {
+                guard appState.user?.id == userID else { return }
+                removePendingRoomInviteCleanup(inviteID, userID: userID)
+            } catch {
+                continue
+            }
+        }
     }
 
     private func localizedCommunityAttention(en: String, ru: String, es: String) -> String {
