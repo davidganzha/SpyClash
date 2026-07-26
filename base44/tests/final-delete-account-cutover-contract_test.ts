@@ -82,7 +82,9 @@ async function createStep8EvidenceFixture(): Promise<Step8Fixture> {
   const digest = (character: string) => character.repeat(64);
   const attemptID = digest("a");
   const planDigest = digest("b");
+  const postflightPlanDigest = digest("2");
   const snapshotDigest = digest("c");
+  const postflightSnapshotDigest = digest("3");
   const remoteDigest = digest("d");
   const operator = { identity_sha256: digest("e"), role: "admin" };
   const reviewedInputs = {
@@ -117,7 +119,7 @@ async function createStep8EvidenceFixture(): Promise<Step8Fixture> {
     remote_digest: remoteDigest,
   };
   const postflightReport = {
-    plan_digest: planDigest,
+    plan_digest: postflightPlanDigest,
     operator,
     source_sha256: sourceDigest,
     lifecycle_source_sha256: lifecycleDigest,
@@ -150,20 +152,25 @@ async function createStep8EvidenceFixture(): Promise<Step8Fixture> {
     preflight_snapshot_sha256: snapshotDigest,
     requested_plan_digest: planDigest,
     plan_digest: planDigest,
-    preflight: { operator, room_updates: 0, word_pack_updates: 0 },
+    preflight: {
+      operator,
+      plan_digest: planDigest,
+      room_updates: 13,
+      word_pack_updates: 0,
+    },
     apply: {
       status: 0,
       report_status: 0,
       report: {
         phase: "completed",
         plan_digest: planDigest,
-        applied_room_updates: 0,
+        applied_room_updates: 13,
         applied_word_pack_updates: 0,
       },
     },
     postflight: {
       status: 0,
-      snapshot_sha256: snapshotDigest,
+      snapshot_sha256: postflightSnapshotDigest,
       report: postflightReport,
     },
   };
@@ -184,11 +191,11 @@ async function createStep8EvidenceFixture(): Promise<Step8Fixture> {
     lifecycle_source_sha256: lifecycleDigest,
     reviewed_inputs: reviewedInputs,
     final_schema: finalSchema,
-    plan_digest: planDigest,
+    plan_digest: postflightPlanDigest,
     preflight: { operator },
     postflight: {
       status: 0,
-      snapshot_sha256: snapshotDigest,
+      snapshot_sha256: postflightSnapshotDigest,
       report: postflightReport,
     },
   };
@@ -329,6 +336,32 @@ async function fixturePermissionsGranted() {
   ]);
   return permissions.every(({ state }) => state === "granted");
 }
+
+Deno.test("final deleteAccount accepts a verified mutating Step 7 with a distinct zero-update postflight plan", async () => {
+  if (!(await fixturePermissionsGranted())) return;
+  const fixture = await createStep8EvidenceFixture();
+  try {
+    const output = await new Deno.Command(fixture.script, {
+      clearEnv: true,
+      env: fixture.env,
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    const stderr = new TextDecoder().decode(output.stderr);
+    assertEquals(output.code, 90, stderr);
+    assertEquals(
+      stderr.includes(
+        "completion/attempt evidence is not fully postflight-verified",
+      ),
+      false,
+    );
+    const calls = await Deno.readTextFile(fixture.calls);
+    assertStringIncludes(calls, "functions pull");
+    assertEquals(calls.includes("functions deploy deleteAccount"), false);
+  } finally {
+    await removeStep8Fixture(fixture.root);
+  }
+});
 
 Deno.test("final deleteAccount deploy is Step-8-only, exact-16 and evidence-bound", async () => {
   const source = await Deno.readTextFile(finalDeleteURL);

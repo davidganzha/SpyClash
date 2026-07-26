@@ -757,6 +757,7 @@ validate_backfill_completion() {
       (.preflight_snapshot_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
       (.requested_plan_digest | type == "string" and test("^[0-9a-f]{64}$")) and
       .requested_plan_digest == .plan_digest and
+      .preflight.plan_digest == .plan_digest and
       .requested_plan_digest == .apply.report.plan_digest and
       .apply.status == 0 and
       .apply.report_status == 0 and
@@ -765,7 +766,7 @@ validate_backfill_completion() {
       .apply.report.applied_word_pack_updates == .preflight.word_pack_updates and
       .postflight.status == 0 and
       (.postflight.snapshot_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
-      .postflight.report.plan_digest == .plan_digest and
+      (.postflight.report.plan_digest | type == "string" and test("^[0-9a-f]{64}$")) and
       .postflight.report.unresolved_total == 0 and
       .postflight.report.mismatch_total == 0 and
       .postflight.report.room_updates == 0 and
@@ -798,7 +799,8 @@ validate_backfill_last_attempt() {
       .lifecycle_source_sha256 == $completion[0].lifecycle_source_sha256 and
       .reviewed_inputs == $completion[0].reviewed_inputs and
       .plan_digest == $completion[0].plan_digest and
-      .postflight.snapshot_sha256 == $completion[0].postflight.snapshot_sha256
+      .postflight.snapshot_sha256 == $completion[0].postflight.snapshot_sha256 and
+      .postflight.report.plan_digest == $completion[0].postflight.report.plan_digest
     ' "$last_attempt" >/dev/null || {
         echo "Step 7 last-attempt is pending, ambiguous, or differs from verified completion." >&2
         return 65
@@ -855,6 +857,7 @@ validate_fresh_backfill_manifest() {
       (.postflight.snapshot_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
       (.plan_digest | type == "string" and test("^[0-9a-f]{64}$")) and
       .plan_digest == .postflight.report.plan_digest and
+      .plan_digest == $completion[0].postflight.report.plan_digest and
       (.postflight.report.operator.identity_sha256 | type == "string" and test("^[0-9a-f]{64}$")) and
       .postflight.report.operator.role == "admin" and
       .postflight.report.operator == .preflight.operator and
