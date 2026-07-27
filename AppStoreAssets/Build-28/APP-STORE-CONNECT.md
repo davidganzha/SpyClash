@@ -35,9 +35,15 @@ The prepared cross-platform site is published. A read-only smoke check on
 27 July 2026 returned HTTP 200 for the landing, Support, Privacy Policy, and
 Terms routes, and the live JavaScript bundle matched the reviewed local build
 byte-for-byte. Privacy Policy, Marketing, and Terms URLs are ready for the
-portal. The Support URL and optional User Privacy Choices URL remain blocked
-until the account holder supplies a monitored public email, the site is
-republished with that address, and the Support route is smoke-tested again.
+portal.
+
+On 28 July 2026 the account holder supplied the monitored public support email
+`yanushevych.mr@gmail.com`. Release-site commit `9bcc0c6` bakes the address into
+the Support page, and the guarded read-only preparation passed the production
+build, boundary check, release typecheck, release lint, and all five release
+tests. No site deployment was performed. The Support URL and optional User
+Privacy Choices URL remain blocked only until that exact candidate is published
+with fresh approval and the live Support route is smoke-tested again.
 
 ## Local validation evidence
 
