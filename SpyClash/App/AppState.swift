@@ -188,10 +188,74 @@ struct AppToastNotice: Identifiable, Equatable {
     let avatar: String?
 }
 
+enum SpyClashCustomRoute: Equatable {
+    case notifications(scope: NotificationInboxScope, itemID: String?)
+    case community
+    case match(roomID: String)
+    case join(code: String)
+    case resetPassword(token: String)
+    case authenticationCallback
+    case unsupported
+
+    static func parse(_ url: URL) -> Self? {
+        guard url.scheme?.lowercased() == "spyclash" else { return nil }
+
+        let host = url.host?.lowercased() ?? ""
+        let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
+
+        switch host {
+        case "notifications":
+            let scopeQuery = query.first(where: { $0.name == "scope" })
+            let scopeValue = scopeQuery?.value?.lowercased()
+            let scope = scopeValue.flatMap(NotificationInboxScope.init(rawValue:)) ?? .global
+            let itemQuery = query.first(where: { ["item_id", "id"].contains($0.name) })
+            let itemID = itemQuery?.value?.nilIfBlank
+            return .notifications(scope: scope, itemID: itemID)
+
+        case "community":
+            return .community
+
+        case "match":
+            guard let roomID = url.pathComponents
+                .first(where: { $0 != "/" && !$0.isEmpty })?
+                .nilIfBlank else {
+                return .unsupported
+            }
+            return .match(roomID: roomID)
+
+        case "game":
+            let roomQuery = query.first(where: { $0.name == "room_id" })
+            guard let roomID = roomQuery?.value?.nilIfBlank else {
+                return .unsupported
+            }
+            return .match(roomID: roomID)
+
+        case "join", "room":
+            guard let code = SpyLinkParser.roomCodeIfPresent(from: url.absoluteString) else {
+                return .unsupported
+            }
+            return .join(code: code)
+
+        case "auth":
+            return .authenticationCallback
+
+        default:
+            if let token = ResetPasswordLinkParser.tokenIfPresent(from: url.absoluteString) {
+                return .resetPassword(token: token)
+            }
+            // Never feed an unknown custom-scheme host into SpyLinkParser:
+            // legacy fallback parsing can otherwise mistake hosts such as
+            // `rooms` for a valid room code.
+            return .unsupported
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class AppState: NSObject {
     let client: Base44Client
+    let notificationInbox: NotificationInboxStore
     /// Nil while CASADA is active so StoreKit is neither initialized nor
     /// observed in the full-access protocol.
     let storeKit: StoreKitManager?
@@ -222,6 +286,7 @@ final class AppState: NSObject {
             PushNotificationCoordinator.shared.accountDidChange(
                 isSignedIn: user != nil && client.hasSessionToken
             )
+            notificationInbox.bindAccount(user?.id)
             synchronizeLiveActivitiesForAccountChange(previousUserID: previousUserID)
         }
     }
@@ -248,11 +313,24 @@ final class AppState: NSObject {
     private(set) var membership: Membership?
     private(set) var membershipSyncState: MembershipSyncState = .unknown
     private(set) var fullAccessUnlockPresentationID: UUID?
-    var selectedTab: AppTab = .home
+    var selectedTab: AppTab = .home {
+        didSet {
+            if selectedTab != .home {
+                isHomeLandingPresentationRequested = false
+            }
+        }
+    }
     var shellRoute: AppShellRoute = .main
+    var homeRootRequestID = 0
+    private(set) var isHomeLandingPresentationRequested = false
+    var notificationFocusItemID: String?
+    var notificationFocusRequestID = 0
     var localSetupRequestID = 0
     var activeRoom: GameRoom? {
         didSet {
+            if activeRoom == nil {
+                isHomeLandingPresentationRequested = false
+            }
             if oldValue?.id != activeRoom?.id {
                 roomConnectionState = .synced
             }
@@ -307,6 +385,7 @@ final class AppState: NSObject {
         let client = Base44Client()
         let radarNearby = RadarNearbyService()
         self.client = client
+        self.notificationInbox = NotificationInboxStore(client: client)
         self.storeKit = SpyClashRelease.isCasadaProtocolActive
             ? nil
             : StoreKitManager(client: client)
@@ -323,9 +402,15 @@ final class AppState: NSObject {
         radarNearby.onAutomaticInvitation = { [weak self] invitation in
             self?.handleAutomaticRadarInvitation(invitation)
         }
-        PushNotificationCoordinator.shared.configure(client: client) { [weak self] route in
-            self?.handleNotificationRoute(route)
-        }
+        PushNotificationCoordinator.shared.configure(
+            client: client,
+            routeHandler: { [weak self] route in
+                self?.handleNotificationRoute(route)
+            },
+            inboxInvalidationHandler: { [weak self] in
+                self?.refreshNotificationInboxAfterPush()
+            }
+        )
     }
 
     var shouldUsePreviewData: Bool {
@@ -1246,6 +1331,15 @@ final class AppState: NSObject {
         selectedTab = .local
     }
 
+    func openHomeRoot() {
+        homeRootRequestID &+= 1
+        isHomeLandingPresentationRequested = true
+        presentedSheet = nil
+        notificationFocusItemID = nil
+        shellRoute = .main
+        selectedTab = .home
+    }
+
     func setLanguage(_ newLanguage: AppLanguage, syncRemote: Bool = true) async throws {
         language = newLanguage
         newLanguage.persist()
@@ -1396,11 +1490,52 @@ final class AppState: NSObject {
 
     func openCommunity() {
         presentedSheet = nil
+        notificationFocusItemID = nil
         shellRoute = .community
     }
 
     func closeCommunity() {
         shellRoute = .main
+    }
+
+    func openNotifications(
+        scope: NotificationInboxScope = .global,
+        itemID: String? = nil
+    ) {
+        presentedSheet = nil
+        notificationInbox.selectScope(scope)
+        notificationFocusItemID = itemID?.nilIfBlank.map { value in
+            value.contains(":") ? value : "\(scope.rawValue):\(value)"
+        }
+        notificationFocusRequestID &+= 1
+        shellRoute = .notifications
+    }
+
+    func openMainTab(_ tab: AppTab) {
+        presentedSheet = nil
+        notificationFocusItemID = nil
+        shellRoute = .main
+        if tab == .home {
+            isHomeLandingPresentationRequested = false
+        }
+        selectedTab = tab
+    }
+
+    func dismissHomeLandingPresentation() {
+        isHomeLandingPresentationRequested = false
+    }
+
+    private func refreshNotificationInboxAfterPush() {
+        guard user != nil else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.notificationInbox.refreshSummary()
+            if self.shellRoute == .notifications {
+                await self.notificationInbox.refresh(
+                    scope: self.notificationInbox.selectedScope
+                )
+            }
+        }
     }
 
     func setRadarApplicationActive(_ isActive: Bool) {
@@ -1483,26 +1618,30 @@ final class AppState: NSObject {
     }
 
     func handleIncomingURL(_ url: URL) {
-        if url.scheme?.lowercased() == "spyclash",
-           url.host?.lowercased() == "community" {
-            openCommunity()
-            return
-        }
-
-        if url.scheme?.lowercased() == "spyclash",
-           url.host?.lowercased() == "match",
-           let roomID = url.pathComponents.first(where: { $0 != "/" && !$0.isEmpty }) {
-            queueMatchRoute(roomID: roomID)
-            return
-        }
-
-        if url.scheme?.lowercased() == "spyclash",
-           url.host?.lowercased() == "game",
-           let roomID = URLComponents(url: url, resolvingAgainstBaseURL: false)?
-            .queryItems?
-            .first(where: { $0.name == "room_id" })?
-            .value?.nilIfBlank {
-            queueMatchRoute(roomID: roomID)
+        if let route = SpyClashCustomRoute.parse(url) {
+            switch route {
+            case .notifications(let scope, let itemID):
+                openNotifications(scope: scope, itemID: itemID)
+            case .community:
+                openCommunity()
+            case .match(let roomID):
+                queueMatchRoute(roomID: roomID)
+            case .join(let code):
+                pendingJoinCode = code
+                deepLinkStatus = language.welcome.inviteArmed(code)
+                if user == nil {
+                    authPhase = .email
+                } else {
+                    Task { await consumePendingJoinIfPossible() }
+                }
+            case .resetPassword(let token):
+                authPhase = .resetPassword(token: token)
+                authError = nil
+                authNotice = language.auth.chooseNewPassphraseNotice
+                presentedSheet = nil
+            case .authenticationCallback, .unsupported:
+                break
+            }
             return
         }
 
@@ -1601,6 +1740,8 @@ final class AppState: NSObject {
                 shellRoute = .main
                 presentedSheet = nil
             }
+        case .notifications(let scope, let itemID):
+            openNotifications(scope: scope ?? .global, itemID: itemID)
         case .url(let url):
             handleIncomingURL(url)
         }
@@ -1991,7 +2132,7 @@ final class AppState: NSObject {
             displayName: "Red Raven",
             avatar: "🕵️",
             language: nil,
-            role: "user",
+            role: arguments.contains("--spyclash-preview-admin") ? "admin" : "user",
             isVerified: true,
             rating: 1240,
             gamesPlayed: 42,
@@ -2042,6 +2183,10 @@ final class AppState: NSObject {
         case "community":
             presentedSheet = nil
             shellRoute = .community
+        case "notifications", "inbox":
+            presentedSheet = nil
+            notificationInbox.installPreview(accountID: user?.id ?? "debug-ui-preview-user")
+            shellRoute = .notifications
         default:
             presentedSheet = nil
         }
@@ -2302,6 +2447,7 @@ enum RoomQRTarget: String, Hashable {
 enum AppShellRoute: String, Hashable {
     case main
     case community
+    case notifications
 }
 
 enum AppSheet: Identifiable, Hashable {

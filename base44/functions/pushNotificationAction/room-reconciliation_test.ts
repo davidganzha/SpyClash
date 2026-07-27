@@ -44,6 +44,15 @@ Deno.test("persisted game start identity repairs a missing outbox idempotently",
     "user-c",
   ]);
   assertEquals(store.records.every((row) => row.state === "pending"), true);
+  assertEquals(
+    store.records.every((row) =>
+      row.inbox_projection_version === 1 &&
+      row.inbox_title_en === "Mission started" &&
+      row.inbox_action_deep_link === "spyclash://game?room_id=room-1" &&
+      row.inbox_visible === true && Boolean(row.inbox_committed_at)
+    ),
+    true,
+  );
 });
 
 Deno.test("finished rooms repair only the terminal event", async () => {

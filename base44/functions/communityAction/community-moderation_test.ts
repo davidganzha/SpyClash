@@ -29,6 +29,19 @@ class MockEntityStore {
   async delete(id: string) {
     this.records = this.records.filter((record) => record.id !== id);
   }
+
+  async updateMany(filter: Entity, update: { $set?: Entity }) {
+    let updated = 0;
+    for (const record of this.records) {
+      if (
+        Object.entries(filter).every(([key, value]) => record[key] === value)
+      ) {
+        Object.assign(record, update.$set || {});
+        updated += 1;
+      }
+    }
+    return { updated };
+  }
 }
 
 class MockLifecycleStore extends MockEntityStore {
@@ -45,7 +58,7 @@ class MockLifecycleStore extends MockEntityStore {
     return structuredClone(record);
   }
 
-  async updateMany(filter: Entity, update: { $set?: Entity }) {
+  override async updateMany(filter: Entity, update: { $set?: Entity }) {
     let updated = 0;
     for (const record of this.records) {
       if (
@@ -75,11 +88,41 @@ Deno.test("blocking deletes comments and room invites in both directions only", 
     { id: "invite-reverse", sender_user_id: "b", recipient_user_id: "a" },
     { id: "invite-safe", sender_user_id: "c", recipient_user_id: "a" },
   ]);
+  const pushEvents = new MockEntityStore([
+    {
+      id: "event-forward",
+      actor_user_id: "a",
+      recipient_user_id: "b",
+      event_type: "friend_request",
+      state: "delivered",
+      lease_token: "",
+      revision: "r1",
+    },
+    {
+      id: "event-reverse",
+      actor_user_id: "b",
+      recipient_user_id: "a",
+      event_type: "room_invite",
+      state: "pending",
+      lease_token: "",
+      revision: "r2",
+    },
+    {
+      id: "event-safe",
+      actor_user_id: "c",
+      recipient_user_id: "a",
+      event_type: "room_invite",
+      state: "delivered",
+      lease_token: "",
+      revision: "r3",
+    },
+  ]);
   let guardedDeletes = 0;
 
   const deleted = await deleteBlockedPairContent({
     profileCommentStore: comments,
     roomInviteStore: invites,
+    pushEventStore: pushEvents,
     firstUserID: "a",
     secondUserID: "b",
     persist: async (writer) => {
@@ -88,10 +131,19 @@ Deno.test("blocking deletes comments and room invites in both directions only", 
     },
   });
 
-  assertEquals(deleted, { profileComments: 2, roomInvites: 2 });
-  assertEquals(guardedDeletes, 4);
+  assertEquals(deleted, {
+    profileComments: 2,
+    roomInvites: 2,
+    pushEvents: 2,
+  });
+  assertEquals(guardedDeletes, 6);
   assertEquals(comments.records.map((record) => record.id), ["comment-safe"]);
   assertEquals(invites.records.map((record) => record.id), ["invite-safe"]);
+  assertEquals(pushEvents.records.map((record) => record.state), [
+    "cancelled",
+    "cancelled",
+    "delivered",
+  ]);
 });
 
 Deno.test("blocked counterpart set is bidirectional", () => {

@@ -13,6 +13,7 @@
 		1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22314E28DB2385F7A05ABC74 /* HistoryView.swift */; };
 		13D77822DD0A8C0C325DD829 /* Rajdhani-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */; };
 		1FBE45CC7EB218F58B3FF8B3 /* RadarNearbyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9250197E503D48B2502EFF /* RadarNearbyService.swift */; };
+		1FF4A5D102DD6D6DE4AA8143 /* NotificationInboxModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA85E77102835211355B7C6 /* NotificationInboxModels.swift */; };
 		2296623A2D3D1D8A43A1A4DC /* SpyClashMatchLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 154D6A5D3C20539A72285920 /* SpyClashMatchLiveActivityController.swift */; };
 		230419432726BAB7D67CCCA2 /* OnlineGameExperience.swift in Sources */ = {isa = PBXBuildFile; fileRef = 02196190F4444A14882CA7C3 /* OnlineGameExperience.swift */; };
 		2946A41A9575F0D1AEE2D809 /* SpyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86974FE98CF9350796FC28D3 /* SpyModels.swift */; };
@@ -25,6 +26,7 @@
 		536D944266FBEEDCB7840020 /* SpyClashMatchLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7478AB896B134807D6FA315E /* SpyClashMatchLiveActivity.swift */; };
 		557B3950F7F0642889A07BA5 /* SpyClashApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30EA0DF923F453AB3E7F360 /* SpyClashApp.swift */; };
 		5767CD1715E3A330461009CB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */; };
+		604A2B3BA5EA644CBDE1CD9B /* NotificationInboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A55F10E69B0D74795D94C42 /* NotificationInboxStore.swift */; };
 		65B97F60EB8C89F0D594A552 /* WordPacksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */; };
 		6BEB09CD45546EB59A434FFF /* QRSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6E7B15464DD14D3E49671B /* QRSheets.swift */; };
 		6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBA628FB7C9372162E4C619 /* HapticManager.swift */; };
@@ -44,6 +46,7 @@
 		BA98E60B487B564CAA1C023C /* SpyClashWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760CBEBE89AEE2AA0F8A6E0E /* SpyClashWidgetsBundle.swift */; };
 		BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */; };
 		BD9EDC5A7F4F7334FFA8354D /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
+		C59197AFE6D361EBD8D48B44 /* NotificationInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */; };
 		CB22564E02BD266693DE55B4 /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */; };
 		D6B23D48649F5025143180FD /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
 		D881639D076EDA12A4605402 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */; };
@@ -55,6 +58,7 @@
 		ED44596E572F517943ABADD6 /* AppleSignInCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */; };
 		FC61757D64D5967B87F90D6B /* CommunityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F58B6A8B6D7F70B21AE0D8 /* CommunityView.swift */; };
 		FE4AD779C9178990AE6FB3B2 /* LocalGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */; };
+		FF867ED1B30F3153F5913AC9 /* NotificationsInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */; };
 /* End PBXBuildFile section */
 
 /* Begin PBXContainerItemProxy section */
@@ -99,6 +103,8 @@
 		1CB8625B19A0A8DEA9DB544A /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		22314E28DB2385F7A05ABC74 /* HistoryView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HistoryView.swift; sourceTree = "<group>"; };
 		2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPacksView.swift; sourceTree = "<group>"; };
+		2A55F10E69B0D74795D94C42 /* NotificationInboxStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInboxStore.swift; sourceTree = "<group>"; };
+		2EA85E77102835211355B7C6 /* NotificationInboxModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInboxModels.swift; sourceTree = "<group>"; };
 		34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashMatchActivityAttributes.swift; sourceTree = "<group>"; };
 		37FD3AD53D245670F659C1E4 /* SpyClashTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SpyClashTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInCoordinator.swift; sourceTree = "<group>"; };
@@ -132,6 +138,7 @@
 		AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base44ClientRoomActionTests.swift; sourceTree = "<group>"; };
 		AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B7DA7D7405C80D4685A10F92 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsInboxView.swift; sourceTree = "<group>"; };
 		CE1AF213121DB5A761660563 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		D09D5EDA02EAE3E217C67199 /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellView.swift; sourceTree = "<group>"; };
 		D2F58B6A8B6D7F70B21AE0D8 /* CommunityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityView.swift; sourceTree = "<group>"; };
@@ -142,6 +149,7 @@
 		DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
 		E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyTheme.swift; sourceTree = "<group>"; };
 		EB074CEB86E78BFB857C6C47 /* SpyClashWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = SpyClashWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInboxTests.swift; sourceTree = "<group>"; };
 		F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingView.swift; sourceTree = "<group>"; };
 		FA6E7B15464DD14D3E49671B /* QRSheets.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRSheets.swift; sourceTree = "<group>"; };
 /* End PBXFileReference section */
@@ -217,6 +225,7 @@
 				16DD679CA8E36033E9AD5D76 /* HomeView.swift */,
 				723E083EC43863E9B19D1DBD /* LeaderboardView.swift */,
 				8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */,
+				CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */,
 				02196190F4444A14882CA7C3 /* OnlineGameExperience.swift */,
 				F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */,
 				6B25DFE515749E670224D319 /* ProfileView.swift */,
@@ -289,6 +298,7 @@
 			isa = PBXGroup;
 			children = (
 				AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */,
+				F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */,
 				673C14A27AC3CD3669188134 /* OnlineRoundStateTests.swift */,
 			);
 			path = SpyClashTests;
@@ -307,6 +317,7 @@
 		F0907EF3730A23551A82884B /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				2EA85E77102835211355B7C6 /* NotificationInboxModels.swift */,
 				D67CB7923E19DDEA905468EC /* OnlineRoundState.swift */,
 				86974FE98CF9350796FC28D3 /* SpyModels.swift */,
 			);
@@ -321,6 +332,7 @@
 				5BBA628FB7C9372162E4C619 /* HapticManager.swift */,
 				7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */,
 				4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */,
+				2A55F10E69B0D74795D94C42 /* NotificationInboxStore.swift */,
 				A8B7F0D77CCD84E2E31D982D /* PushNotificationCoordinator.swift */,
 				1B9250197E503D48B2502EFF /* RadarNearbyService.swift */,
 				DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */,
@@ -399,7 +411,6 @@
 				TargetAttributes = {
 					2495D60CD15D3317F5BF4176 = {
 						DevelopmentTeam = 3Z64QKNL54;
-						ProvisioningStyle = Automatic;
 					};
 					40E1B196DB508D0D139EDED8 = {
 						DevelopmentTeam = 3Z64QKNL54;
@@ -407,7 +418,6 @@
 					};
 					77A6DFFF9D8CFBF19BE6C3C9 = {
 						DevelopmentTeam = 3Z64QKNL54;
-						ProvisioningStyle = Automatic;
 					};
 				};
 			};
@@ -486,6 +496,9 @@
 				047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */,
 				FE4AD779C9178990AE6FB3B2 /* LocalGameView.swift in Sources */,
 				BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */,
+				1FF4A5D102DD6D6DE4AA8143 /* NotificationInboxModels.swift in Sources */,
+				604A2B3BA5EA644CBDE1CD9B /* NotificationInboxStore.swift in Sources */,
+				FF867ED1B30F3153F5913AC9 /* NotificationsInboxView.swift in Sources */,
 				230419432726BAB7D67CCCA2 /* OnlineGameExperience.swift in Sources */,
 				4F3F760B50FDF28F0B715AB5 /* OnlineRoundState.swift in Sources */,
 				7B6D3EB62FE74629B61B73AE /* PricingView.swift in Sources */,
@@ -512,6 +525,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				82D3EF58665CCD0D09A29F69 /* Base44ClientRoomActionTests.swift in Sources */,
+				C59197AFE6D361EBD8D48B44 /* NotificationInboxTests.swift in Sources */,
 				39840D09E8474E87D45E1555 /* OnlineRoundStateTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -634,8 +648,8 @@
 				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
 				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
 				CODE_SIGN_ENTITLEMENTS = SpyClash/Resources/SpyClash.entitlements;
-				CODE_SIGN_IDENTITY = "iPhone Developer";
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = 3Z64QKNL54;
 				INFOPLIST_FILE = SpyClash/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
@@ -643,6 +657,7 @@
 					"@executable_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios;
+				PROVISIONING_PROFILE_SPECIFIER = "SpyClash App Store 2026-07-26";
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 			};
@@ -682,7 +697,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 32;
+				CURRENT_PROJECT_VERSION = 33;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -740,7 +755,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 32;
+				CURRENT_PROJECT_VERSION = 33;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -775,7 +790,8 @@
 			isa = XCBuildConfiguration;
 			buildSettings = {
 				APPLICATION_EXTENSION_API_ONLY = YES;
-				CODE_SIGN_STYLE = Automatic;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = 3Z64QKNL54;
 				INFOPLIST_FILE = SpyClashWidgets/Info.plist;
 				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
@@ -785,6 +801,7 @@
 					"@executable_path/../../Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.widgets;
+				PROVISIONING_PROFILE_SPECIFIER = "SpyClash Widgets App Store 2026-07-26";
 				SDKROOT = iphoneos;
 				SKIP_INSTALL = YES;
 				TARGETED_DEVICE_FAMILY = 1;

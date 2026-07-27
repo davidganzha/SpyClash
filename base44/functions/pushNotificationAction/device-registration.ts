@@ -197,6 +197,7 @@ export async function registerDevice(input: {
     friendRequests: existing?.friend_requests_enabled !== false,
     roomInvites: existing?.room_invites_enabled !== false,
     gameUpdates: existing?.game_updates_enabled !== false,
+    announcements: existing?.announcements_enabled !== false,
   });
   const encryptionRecord = {
     user_id: input.userID,
@@ -221,6 +222,7 @@ export async function registerDevice(input: {
     friend_requests_enabled: currentPreferences.friendRequests,
     room_invites_enabled: currentPreferences.roomInvites,
     game_updates_enabled: currentPreferences.gameUpdates,
+    announcements_enabled: currentPreferences.announcements,
     status: "active",
     revoked_at: null,
     last_seen_at: nowISO,

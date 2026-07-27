@@ -7,16 +7,44 @@
     "source_event_id": { "type": "string" },
     "event_type": {
       "type": "string",
-      "enum": ["friend_request", "room_invite", "game_started", "game_finished"]
+      "enum": [
+        "friend_request",
+        "room_invite",
+        "game_started",
+        "game_finished",
+        "global_announcement"
+      ]
     },
     "source_type": {
       "type": "string",
-      "enum": ["friendship", "room_invite", "game_room"]
+      "enum": [
+        "friendship",
+        "room_invite",
+        "game_room",
+        "notification_announcement"
+      ]
     },
     "recipient_user_id": { "type": "string" },
     "actor_user_id": { "type": "string" },
     "room_id": { "type": "string" },
     "match_id": { "type": "string" },
+    "announcement_id": { "type": "string" },
+    "inbox_kind": { "type": "string" },
+    "inbox_importance": {
+      "type": "string",
+      "enum": ["quiet", "important"]
+    },
+    "inbox_title_en": { "type": "string" },
+    "inbox_body_en": { "type": "string" },
+    "inbox_title_ru": { "type": "string" },
+    "inbox_body_ru": { "type": "string" },
+    "inbox_title_es": { "type": "string" },
+    "inbox_body_es": { "type": "string" },
+    "inbox_action_deep_link": { "type": "string" },
+    "inbox_published_at": { "type": "string", "format": "date-time" },
+    "inbox_projection_version": { "type": "number" },
+    "inbox_visible": { "type": "boolean", "default": false },
+    "inbox_committed_at": { "type": "string", "format": "date-time" },
     "state": {
       "type": "string",
       "enum": [

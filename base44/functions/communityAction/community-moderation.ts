@@ -34,13 +34,69 @@ async function deleteUnique(
   return ids.length;
 }
 
+async function cancelPairPushEvents(input: {
+  store: any;
+  firstUserID: string;
+  secondUserID: string;
+  persist: <T>(writer: () => Promise<T>) => Promise<T>;
+}): Promise<number> {
+  if (!input.store) return 0;
+  const groups = await Promise.all(
+    [
+      [input.firstUserID, input.secondUserID],
+      [input.secondUserID, input.firstUserID],
+    ].flatMap(([actor, recipient]) =>
+      ["friend_request", "room_invite"].map((eventType) =>
+        allMatching(input.store, {
+          actor_user_id: actor,
+          recipient_user_id: recipient,
+          event_type: eventType,
+        })
+      )
+    ),
+  );
+  const events = groups.flat().filter((event, index, all) =>
+    all.findIndex((candidate) => clean(candidate.id) === clean(event.id)) ===
+      index
+  );
+  let cancelled = 0;
+  const now = new Date().toISOString();
+  for (const event of events) {
+    if (!clean(event.id) || clean(event.state) === "cancelled") continue;
+    const result: Entity = await input.persist(() =>
+      input.store.updateMany({
+        id: event.id,
+        state: event.state,
+        lease_token: event.lease_token,
+        revision: event.revision,
+      }, {
+        $set: {
+          state: "cancelled",
+          inbox_visible: false,
+          lease_token: "",
+          lease_until: now,
+          revision: crypto.randomUUID(),
+          next_attempt_at: null,
+          last_error_code: "relationship_blocked",
+          updated_at: now,
+        },
+      })
+    );
+    cancelled += Number(result?.updated) === 1 ? 1 : 0;
+  }
+  return cancelled;
+}
+
 export async function deleteBlockedPairContent(input: {
   profileCommentStore: any;
   roomInviteStore: any;
+  pushEventStore?: any;
   firstUserID: string;
   secondUserID: string;
   persist?: <T>(writer: () => Promise<T>) => Promise<T>;
-}): Promise<{ profileComments: number; roomInvites: number }> {
+}): Promise<
+  { profileComments: number; roomInvites: number; pushEvents: number }
+> {
   const firstUserID = clean(input.firstUserID);
   const secondUserID = clean(input.secondUserID);
   if (!firstUserID || !secondUserID || firstUserID === secondUserID) {
@@ -77,7 +133,13 @@ export async function deleteBlockedPairContent(input: {
     [...invitesForward, ...invitesReverse],
     persist,
   );
-  return { profileComments, roomInvites };
+  const pushEvents = await cancelPairPushEvents({
+    store: input.pushEventStore,
+    firstUserID,
+    secondUserID,
+    persist,
+  });
+  return { profileComments, roomInvites, pushEvents };
 }
 
 export function blockedCounterpartIDs(

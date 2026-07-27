@@ -1,5 +1,23 @@
 import SwiftUI
 
+enum HomeRootPrimaryAction: Equatable {
+    case chooseMode
+    case returnToActiveRoom
+}
+
+struct HomeRootPresentationPolicy {
+    static func showsLandingActions(
+        hasActiveRoom: Bool,
+        explicitlyRequested: Bool
+    ) -> Bool {
+        !hasActiveRoom || explicitlyRequested
+    }
+
+    static func primaryAction(hasActiveRoom: Bool) -> HomeRootPrimaryAction {
+        hasActiveRoom ? .returnToActiveRoom : .chooseMode
+    }
+}
+
 struct HomeView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -65,6 +83,9 @@ struct HomeView: View {
             guard isEnabled else { return }
             startHeroEntranceIfNeeded()
         }
+        .onChange(of: appState.homeRootRequestID) { _, _ in
+            resetToHomeRoot()
+        }
         .onChange(of: statusText) { _, message in
             publishHomeToast(message)
         }
@@ -88,6 +109,16 @@ struct HomeView: View {
             withAnimation(.easeInOut(duration: 7.2).repeatForever(autoreverses: true)) {
                 visualDrift = true
             }
+        }
+    }
+
+    private func resetToHomeRoot() {
+        joinCode = ""
+        statusText = ""
+        statusKind = nil
+
+        withAnimation(reduceMotion ? .easeOut(duration: 0.12) : SpyMotion.page) {
+            stage = .main
         }
     }
 
@@ -115,16 +146,21 @@ struct HomeView: View {
 
     private func homeScene(height: CGFloat) -> some View {
         let roomActive = appState.activeRoom != nil
-        let compact = height < 760 || (!roomActive && stage != .main)
+        let showsLandingActions = HomeRootPresentationPolicy.showsLandingActions(
+            hasActiveRoom: roomActive,
+            explicitlyRequested: appState.isHomeLandingPresentationRequested
+        )
+        let showsActiveRoomPanel = roomActive && !showsLandingActions
+        let compact = height < 760 || (showsLandingActions && stage != .main)
 
         return VStack(spacing: compact ? 12 : 18) {
             Color.clear
                 .frame(height: compact ? 8 : 18)
 
-            hero(compact: compact || roomActive)
+            hero(compact: compact || showsActiveRoomPanel)
                 .layoutPriority(1)
 
-            if roomActive {
+            if showsActiveRoomPanel {
                 activeRoomPanel
                     .transition(.scale(scale: 0.94).combined(with: .opacity))
             }
@@ -132,7 +168,7 @@ struct HomeView: View {
             Color.clear
                 .frame(height: compact ? 6 : 12)
 
-            if !roomActive {
+            if showsLandingActions {
                 VStack(spacing: compact ? 10 : 12) {
                     mainActions
                         .frame(maxWidth: stage == .main ? 350 : 382)
@@ -222,8 +258,18 @@ struct HomeView: View {
         VStack(spacing: 10) {
             Button {
                 HapticManager.shared.fire(.buttonPress)
-                withAnimation(SpyMotion.page) {
-                    stage = .playMode
+                switch HomeRootPresentationPolicy.primaryAction(
+                    hasActiveRoom: appState.activeRoom != nil
+                ) {
+                case .chooseMode:
+                    withAnimation(SpyMotion.page) {
+                        stage = .playMode
+                    }
+                case .returnToActiveRoom:
+                    appState.dismissHomeLandingPresentation()
+                    withAnimation(.smooth(duration: 0.28)) {
+                        appState.selectedTab = .game
+                    }
                 }
             } label: {
                 heroButtonLabel(

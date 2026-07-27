@@ -38,7 +38,7 @@ import {
   pauseGameTransitionPatch,
   resumeGameTransitionPatch,
 } from "./game-timer-policy.ts";
-import { enqueueGamePushEvents } from "./push-events.ts";
+import { commitGamePushEvents, enqueueGamePushEvents } from "./push-events.ts";
 import { nextRoundNumber } from "./game-round.ts";
 import { internalPushSecret } from "./internal-push.ts";
 import {
@@ -522,7 +522,7 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
   // only reconcile that same winner/payload, so history and room state cannot
   // diverge even if either write phase is interrupted.
   await archiveRoomResult(base44, terminal, claimed.intent.winner);
-  return await updateRoomWithRetry(
+  const finished = await updateRoomWithRetry(
     base44,
     claimed.room,
     (latest) => {
@@ -565,6 +565,25 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
     6,
     { allowPendingTerminal: true },
   );
+  const committed = await commitGamePushEvents({
+    store: base44.asServiceRole.entities.PushNotificationEvent,
+    persist: async (writer) => {
+      await assertRoomPersistenceBoundary(base44);
+      return await writer();
+    },
+    eventType: "game_finished",
+    sourceEventID: finishedEventID,
+  });
+  const expectedInboxRecipients = uniqueStrings([
+    ...(finished.participant_user_ids || []),
+    ...players(finished).map((player) => player.user_id),
+  ]).length;
+  if (committed < expectedInboxRecipients) {
+    throw Object.assign(new Error("Game finish inbox commit failed"), {
+      status: 503,
+    });
+  }
+  return finished;
 }
 
 async function createRoom(base44, user, body) {
@@ -954,6 +973,7 @@ async function enqueueCommittedGameStart(base44, room) {
       await assertRoomPersistenceBoundary(base44);
       return await writer();
     },
+    sourceCommitted: true,
   });
 }
 

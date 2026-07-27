@@ -19,17 +19,19 @@ export async function runBounded<T>(input: {
   concurrency: number;
   deadlineEpochMs: number;
   worker: (item: T) => Promise<void>;
+  nowEpochMs?: () => number;
 }): Promise<BoundedWorkResult<T>> {
   const items = [...input.items];
   const completed: T[] = [];
   let nextIndex = 0;
+  const nowEpochMs = input.nowEpochMs || Date.now;
   const concurrency = Math.max(
     1,
     Math.min(items.length || 1, input.concurrency),
   );
 
   const runner = async () => {
-    while (Date.now() < input.deadlineEpochMs) {
+    while (nowEpochMs() < input.deadlineEpochMs) {
       const index = nextIndex;
       if (index >= items.length) return;
       nextIndex += 1;

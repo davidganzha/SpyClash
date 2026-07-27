@@ -162,6 +162,10 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     { id: "event-actor", recipient_user_id: "other", actor_user_id: "target" },
     { id: "event-safe", recipient_user_id: "other", actor_user_id: "third" },
   ]);
+  const notificationReceipts = new MockStore([
+    { id: "receipt-target", user_id: "target", notification_key: "global:1" },
+    { id: "receipt-safe", user_id: "other", notification_key: "global:1" },
+  ]);
 
   await deleteAccountRelationshipRecords({
     profileCommentStore: comments,
@@ -175,6 +179,7 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     pushDeviceStore: pushDevices,
     liveActivityStore: liveActivities,
     pushEventStore: pushEvents,
+    notificationReceiptStore: notificationReceipts,
     userID: "target",
     tombstoneUserID: "deleted:stable-target",
   });
@@ -223,6 +228,9 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     "activity-safe",
   ]);
   assertEquals(pushEvents.records.map((record) => record.id), ["event-safe"]);
+  assertEquals(notificationReceipts.records.map((record) => record.id), [
+    "receipt-safe",
+  ]);
 
   // A lost response/retry must be idempotent and must not erase the retained
   // report or change its moderation evidence a second time.
@@ -238,6 +246,7 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     pushDeviceStore: pushDevices,
     liveActivityStore: liveActivities,
     pushEventStore: pushEvents,
+    notificationReceiptStore: notificationReceipts,
     userID: "target",
     tombstoneUserID: "deleted:stable-target",
   });

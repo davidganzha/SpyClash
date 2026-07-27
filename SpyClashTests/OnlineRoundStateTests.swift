@@ -132,3 +132,148 @@ final class OnlineRoundStateTests: XCTestCase {
         XCTAssertTrue(tracker.recordFailure())
     }
 }
+
+final class NavigationSwipeTests: XCTestCase {
+    func testResolverMapsHorizontalSwipeDirection() {
+        XCTAssertEqual(
+            TabSwipeResolver.resolve(translation: CGSize(width: -80, height: 10)),
+            .next
+        )
+        XCTAssertEqual(
+            TabSwipeResolver.resolve(translation: CGSize(width: 80, height: -10)),
+            .previous
+        )
+    }
+
+    func testResolverRejectsShortVerticalAndDiagonalDrags() {
+        XCTAssertNil(
+            TabSwipeResolver.resolve(
+                translation: CGSize(width: TabSwipeResolver.minimumTranslation - 1, height: 0)
+            )
+        )
+        XCTAssertNil(TabSwipeResolver.resolve(translation: CGSize(width: 25, height: 90)))
+        XCTAssertNil(TabSwipeResolver.resolve(translation: CGSize(width: 80, height: 70)))
+    }
+
+    func testResolverAcceptsHorizontalDominantDragAtThreshold() {
+        XCTAssertEqual(
+            TabSwipeResolver.resolve(
+                translation: CGSize(width: TabSwipeResolver.minimumTranslation, height: 10)
+            ),
+            .previous
+        )
+    }
+
+    func testResolverSuppressesTabSwipeWhileTextInputIsActive() {
+        XCTAssertNil(
+            TabSwipeResolver.resolve(
+                translation: CGSize(width: -120, height: 4),
+                isTextInputActive: true
+            )
+        )
+        XCTAssertEqual(
+            TabSwipeResolver.resolve(
+                translation: CGSize(width: -120, height: 4),
+                isTextInputActive: false
+            ),
+            .next
+        )
+    }
+
+    func testResolverSuppressesTabSwipeFromInteractiveHorizontalControl() {
+        XCTAssertNil(
+            TabSwipeResolver.resolve(
+                translation: CGSize(width: -120, height: 4),
+                isInteractiveHorizontalControlActive: true
+            )
+        )
+        XCTAssertEqual(
+            TabSwipeResolver.resolve(
+                translation: CGSize(width: -120, height: 4),
+                isInteractiveHorizontalControlActive: false
+            ),
+            .next
+        )
+    }
+
+    func testPrimaryTabsAdvanceWithoutWrapping() {
+        XCTAssertEqual(AppTab.home.primaryNeighbor(for: .next), .packs)
+        XCTAssertEqual(AppTab.packs.primaryNeighbor(for: .next), .profile)
+        XCTAssertNil(AppTab.profile.primaryNeighbor(for: .next))
+
+        XCTAssertEqual(AppTab.profile.primaryNeighbor(for: .previous), .packs)
+        XCTAssertEqual(AppTab.packs.primaryNeighbor(for: .previous), .home)
+        XCTAssertNil(AppTab.home.primaryNeighbor(for: .previous))
+    }
+
+    func testNonPrimaryTabsDoNotParticipateInPrimarySwipes() {
+        XCTAssertNil(AppTab.game.primaryNeighbor(for: .next))
+        XCTAssertNil(AppTab.local.primaryNeighbor(for: .previous))
+        XCTAssertNil(AppTab.history.primaryNeighbor(for: .previous))
+    }
+
+    func testCommunityTabsAdvanceWithoutExitOrWrapping() {
+        XCTAssertEqual(CommunityTab.network.swipeNeighbor(for: .next), .me)
+        XCTAssertEqual(CommunityTab.me.swipeNeighbor(for: .previous), .network)
+        XCTAssertNil(CommunityTab.network.swipeNeighbor(for: .previous))
+        XCTAssertNil(CommunityTab.me.swipeNeighbor(for: .next))
+        XCTAssertNil(CommunityTab.exit.swipeNeighbor(for: .next))
+    }
+
+    func testCommunityMeTransitionWaitsForProfileAndIdleActions() {
+        XCTAssertFalse(
+            CommunityMeTransitionResolver.canCommit(
+                selfUserID: nil,
+                activeAction: nil
+            )
+        )
+        XCTAssertFalse(
+            CommunityMeTransitionResolver.canCommit(
+                selfUserID: "user-a",
+                activeAction: "friend-user-b"
+            )
+        )
+        XCTAssertTrue(
+            CommunityMeTransitionResolver.canCommit(
+                selfUserID: "user-a",
+                activeAction: nil
+            )
+        )
+    }
+
+    func testCommunityProfileResponseIsRejectedAfterNetworkInvalidatesRequest() {
+        var state = CommunityProfileRequestState()
+        let requestID = UUID()
+
+        XCTAssertEqual(state.begin(requestID), requestID)
+        XCTAssertTrue(state.accepts(requestID))
+
+        state.invalidate()
+
+        XCTAssertNil(state.activeRequestID)
+        XCTAssertFalse(state.accepts(requestID))
+    }
+
+    func testExplicitHomeRootShowsLandingWithoutDiscardingActiveRoom() {
+        XCTAssertTrue(
+            HomeRootPresentationPolicy.showsLandingActions(
+                hasActiveRoom: true,
+                explicitlyRequested: true
+            )
+        )
+        XCTAssertFalse(
+            HomeRootPresentationPolicy.showsLandingActions(
+                hasActiveRoom: true,
+                explicitlyRequested: false
+            )
+        )
+        XCTAssertEqual(
+            HomeRootPresentationPolicy.primaryAction(hasActiveRoom: true),
+            .returnToActiveRoom
+        )
+        XCTAssertEqual(
+            HomeRootPresentationPolicy.primaryAction(hasActiveRoom: false),
+            .chooseMode
+        )
+    }
+}

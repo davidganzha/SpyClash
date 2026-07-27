@@ -677,6 +677,8 @@ Deno.serve(async (req) => {
         liveActivityStore:
           base44.asServiceRole.entities.LiveActivityRegistration,
         pushEventStore: base44.asServiceRole.entities.PushNotificationEvent,
+        notificationReceiptStore:
+          base44.asServiceRole.entities.NotificationReadReceipt,
         userID: user.id,
         tombstoneUserID: retentionPatch.user_id,
       });

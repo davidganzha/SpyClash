@@ -33,6 +33,7 @@
     "friend_requests_enabled": { "type": "boolean", "default": true },
     "room_invites_enabled": { "type": "boolean", "default": true },
     "game_updates_enabled": { "type": "boolean", "default": true },
+    "announcements_enabled": { "type": "boolean", "default": true },
     "status": {
       "type": "string",
       "enum": ["active", "revoked"],

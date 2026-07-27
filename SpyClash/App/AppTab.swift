@@ -13,6 +13,18 @@ enum AppTab: String, CaseIterable, Identifiable {
 
     static let primaryCases: [AppTab] = [.home, .packs, .profile]
 
+    func primaryNeighbor(for direction: TabSwipeDirection) -> AppTab? {
+        guard let index = Self.primaryCases.firstIndex(of: self) else { return nil }
+
+        let targetIndex = switch direction {
+        case .previous: index - 1
+        case .next: index + 1
+        }
+
+        guard Self.primaryCases.indices.contains(targetIndex) else { return nil }
+        return Self.primaryCases[targetIndex]
+    }
+
     static func primaryCases(hasActiveRoom: Bool) -> [AppTab] {
         primaryCases
     }
@@ -73,5 +85,37 @@ enum AppTab: String, CaseIterable, Identifiable {
         case .history: HistoryView()
         case .profile: ProfileView()
         }
+    }
+}
+
+enum TabSwipeDirection: Equatable {
+    case previous
+    case next
+}
+
+struct TabSwipeResolver {
+    static let gestureMinimumDistance: CGFloat = 18
+    static let minimumTranslation: CGFloat = 56
+    static let horizontalDominanceRatio: CGFloat = 1.30
+
+    static func resolve(
+        translation: CGSize,
+        isTextInputActive: Bool = false,
+        isInteractiveHorizontalControlActive: Bool = false
+    ) -> TabSwipeDirection? {
+        guard !isTextInputActive,
+              !isInteractiveHorizontalControlActive else {
+            return nil
+        }
+
+        let horizontal = abs(translation.width)
+        let vertical = abs(translation.height)
+
+        guard horizontal >= minimumTranslation,
+              horizontal > vertical * horizontalDominanceRatio else {
+            return nil
+        }
+
+        return translation.width < 0 ? .next : .previous
     }
 }

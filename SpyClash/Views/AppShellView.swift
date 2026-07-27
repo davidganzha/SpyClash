@@ -1,4 +1,75 @@
 import SwiftUI
+import UIKit
+
+@MainActor
+private enum ShellTextInputActivity {
+    static var isActive: Bool {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .contains { window in
+                guard let responder = firstResponder(in: window) else { return false }
+                return responder is UITextField || responder is UITextView
+            }
+    }
+
+    private static func firstResponder(in view: UIView) -> UIView? {
+        if view.isFirstResponder { return view }
+        for subview in view.subviews {
+            if let responder = firstResponder(in: subview) {
+                return responder
+            }
+        }
+        return nil
+    }
+}
+
+@MainActor
+private enum ShellHorizontalControlHitTest {
+    static func containsInteractiveHorizontalControl(at globalPoint: CGPoint) -> Bool {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+            .filter { !$0.isHidden && $0.alpha > 0 }
+            .sorted { $0.isKeyWindow && !$1.isKeyWindow }
+            .contains { window in
+                let windowPoint = window.convert(globalPoint, from: nil)
+                guard window.bounds.contains(windowPoint),
+                      let hitView = window.hitTest(windowPoint, with: nil) else {
+                    return false
+                }
+                return hasInteractiveHorizontalAncestor(hitView)
+            }
+    }
+
+    private static func hasInteractiveHorizontalAncestor(_ hitView: UIView) -> Bool {
+        var candidate: UIView? = hitView
+        while let view = candidate {
+            if view is UISlider {
+                return true
+            }
+
+            if let scrollView = view as? UIScrollView,
+               scrollView.isScrollEnabled,
+               isHorizontallyScrollable(scrollView) {
+                return true
+            }
+            candidate = view.superview
+        }
+        return false
+    }
+
+    private static func isHorizontallyScrollable(_ scrollView: UIScrollView) -> Bool {
+        if scrollView.alwaysBounceHorizontal {
+            return true
+        }
+
+        let contentWidth = scrollView.contentSize.width
+            + scrollView.adjustedContentInset.left
+            + scrollView.adjustedContentInset.right
+        return contentWidth > scrollView.bounds.width + 8
+    }
+}
 
 struct AppShellView: View {
     @Environment(AppState.self) private var appState
@@ -25,8 +96,15 @@ struct AppShellView: View {
         let contentTab = appState.selectedTab == .game && appState.activeRoom == nil ? AppTab.home : appState.selectedTab
         let dockTabs = AppTab.primaryCases
         let isCommunityRoute = appState.shellRoute == .community
+        let isNotificationsRoute = appState.shellRoute == .notifications
+        let dockSelection = Binding<AppTab>(
+            get: { appState.selectedTab },
+            set: { appState.openMainTab($0) }
+        )
         let shouldShowShellChrome = !appState.isShellChromeSuppressed
-        let shouldShowDock = (isCommunityRoute || contentTab.showsBottomDock) && shouldShowShellChrome
+        let shouldShowDock = (
+            isCommunityRoute || isNotificationsRoute || contentTab.showsBottomDock
+        ) && shouldShowShellChrome
 
         ZStack {
             ZStack {
@@ -44,12 +122,35 @@ struct AppShellView: View {
                             ) {
                                 appState.closeCommunity()
                             }
+                        } else if isNotificationsRoute {
+                            NotificationsInboxView(
+                                store: appState.notificationInbox,
+                                language: appState.language,
+                                canPublishGlobal: appState.user?.role == "admin",
+                                onOpenItem: { item in
+                                    guard let rawLink = item.actionDeepLink?.nilIfBlank,
+                                          let url = URL(string: rawLink) else {
+                                        return
+                                    }
+                                    appState.handleIncomingURL(url)
+                                },
+                                focusItemID: appState.notificationFocusItemID,
+                                focusRequestID: appState.notificationFocusRequestID
+                            )
                         } else {
                             contentTab.makeContentView()
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
                     .transition(.opacity)
+                    .contentShape(Rectangle())
+                    .simultaneousGesture(
+                        contentSwipeGesture(
+                            contentTab: contentTab,
+                            isCommunityRoute: isCommunityRoute
+                        ),
+                        including: .all
+                    )
                     .safeAreaInset(edge: .bottom, spacing: 0) {
                         if shouldShowDock {
                             Color.clear
@@ -59,7 +160,7 @@ struct AppShellView: View {
                     }
 
                     FloatingDock(
-                        selection: $appState.selectedTab,
+                        selection: dockSelection,
                         tabs: dockTabs,
                         communitySelection: communityTab,
                         isCommunity: isCommunityRoute,
@@ -67,10 +168,7 @@ struct AppShellView: View {
                         namespace: dockNamespace,
                         language: appState.language
                     ) { tab in
-                        if tab != .exit {
-                            communityTab = tab
-                        }
-                        communityDockRequest = communityDockRequest.next(tab)
+                        requestCommunityTab(tab)
                     }
                     .opacity(shouldShowDock ? 1 : 0)
                     .offset(y: shouldShowDock ? 0 : 78)
@@ -82,7 +180,8 @@ struct AppShellView: View {
                 .overlay(alignment: .top) {
                     WebPullDownCommandMenu(
                         isPresented: $isCommandMenuPresented,
-                        communityAttentionCount: communityAttention.totalCount
+                        communityAttentionCount: communityAttention.totalCount,
+                        notificationUnreadCount: appState.notificationInbox.unread.total
                     )
                         .opacity(shouldShowShellChrome ? 1 : 0)
                         .offset(y: shouldShowShellChrome ? 0 : -140)
@@ -166,12 +265,118 @@ struct AppShellView: View {
 
             await monitorCommunityAttention()
         }
+        .task(id: notificationInboxMonitorID) {
+            guard appState.user != nil else {
+                PushNotificationCoordinator.shared.synchronizeBadgeCount(0)
+                return
+            }
+            guard scenePhase == .active else { return }
+
+#if DEBUG
+            if appState.shouldUsePreviewData {
+                appState.notificationInbox.installPreview(accountID: appState.user?.id)
+                synchronizeNotificationBadge()
+                return
+            }
+#endif
+
+            await monitorNotificationInbox()
+        }
+        .onChange(of: appState.notificationInbox.unread.total, initial: true) { _, _ in
+            synchronizeNotificationBadge()
+        }
     }
 
     private var communityAttentionMonitorID: String {
         let userID = appState.user?.id ?? "signed-out"
         let activity = scenePhase == .active ? "active" : "inactive"
         return "\(userID):\(activity)"
+    }
+
+    private var notificationInboxMonitorID: String {
+        let userID = appState.user?.id ?? "signed-out"
+        let activity = scenePhase == .active ? "active" : "inactive"
+        return "\(userID):\(activity):notifications"
+    }
+
+    private func monitorNotificationInbox() async {
+        while !Task.isCancelled {
+            await appState.notificationInbox.refreshSummary()
+            synchronizeNotificationBadge()
+
+            do {
+                try await Task.sleep(for: .seconds(20))
+            } catch {
+                return
+            }
+        }
+    }
+
+    private func synchronizeNotificationBadge() {
+        let count = appState.user == nil ? 0 : appState.notificationInbox.unread.total
+        PushNotificationCoordinator.shared.synchronizeBadgeCount(count)
+    }
+
+    private func contentSwipeGesture(
+        contentTab: AppTab,
+        isCommunityRoute: Bool
+    ) -> some Gesture {
+        DragGesture(
+            minimumDistance: TabSwipeResolver.gestureMinimumDistance,
+            coordinateSpace: .global
+        )
+        .onEnded { value in
+            handleContentSwipe(
+                translation: value.translation,
+                startLocation: value.startLocation,
+                contentTab: contentTab,
+                isCommunityRoute: isCommunityRoute
+            )
+        }
+    }
+
+    private func handleContentSwipe(
+        translation: CGSize,
+        startLocation: CGPoint,
+        contentTab: AppTab,
+        isCommunityRoute: Bool
+    ) {
+        guard !isCommandMenuPresented,
+              !showsBlockingRoomSyncOverlay,
+              !appState.isShellChromeSuppressed,
+              appState.presentedSheet == nil,
+              let direction = TabSwipeResolver.resolve(
+                  translation: translation,
+                  isTextInputActive: ShellTextInputActivity.isActive,
+                  isInteractiveHorizontalControlActive: ShellHorizontalControlHitTest
+                      .containsInteractiveHorizontalControl(at: startLocation)
+              ) else {
+            return
+        }
+
+        if isCommunityRoute {
+            guard let target = communityTab.swipeNeighbor(for: direction) else { return }
+            requestCommunityTab(target)
+            return
+        }
+
+        guard appState.shellRoute == .main,
+              appState.selectedTab == contentTab,
+              let target = contentTab.primaryNeighbor(for: direction) else {
+            return
+        }
+
+        HapticManager.shared.fire(.tabSelection)
+        withAnimation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.20)) {
+            appState.selectedTab = target
+        }
+    }
+
+    private func requestCommunityTab(_ tab: CommunityTab) {
+        // CommunityView commits the visible selection only after its target is
+        // available. In particular, a cold-load Me request must not make the
+        // dock claim success while the directory is still on screen.
+        communityDockRequest = communityDockRequest.next(tab)
     }
 
 #if DEBUG
@@ -448,6 +653,9 @@ struct AppShellView: View {
             switch previewSheet {
             case "community":
                 appState.openCommunity()
+            case "notifications", "inbox":
+                appState.notificationInbox.installPreview(accountID: appState.user?.id ?? "debug-ui-preview-user")
+                appState.openNotifications()
             case "privacy":
                 appState.presentedSheet = .legal(.privacy)
             case "terms":
@@ -1692,6 +1900,7 @@ private struct DockItem: View {
 private struct WebPullDownCommandMenu: View {
     @Binding var isPresented: Bool
     let communityAttentionCount: Int
+    let notificationUnreadCount: Int
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
@@ -1721,11 +1930,12 @@ private struct WebPullDownCommandMenu: View {
                     WebMenuTopBar(
                         progress: progress,
                         topInset: topInset,
-                        communityAttentionCount: communityAttentionCount
+                        communityAttentionCount: communityAttentionCount,
+                        notificationUnreadCount: notificationUnreadCount
                     )
                         .frame(height: topBarHeight)
                         .contentShape(Rectangle())
-                        .accessibilityElement(children: .ignore)
+                        .accessibilityElement(children: .contain)
                         .accessibilityLabel(isPresented ? "Close command menu" : "Pull down command menu")
                         .accessibilityIdentifier("spy-command-menu-drag-handle")
                         .accessibilityAddTraits(.isButton)
@@ -1737,6 +1947,7 @@ private struct WebPullDownCommandMenu: View {
                         WebCommandMenuPanel(
                             progress: progress,
                             communityAttentionCount: communityAttentionCount,
+                            notificationUnreadCount: notificationUnreadCount,
                             close: closeMenu
                         )
                             .frame(height: revealedHeight)
@@ -1762,6 +1973,18 @@ private struct WebPullDownCommandMenu: View {
                 }
                 .clipped()
                 .shadow(color: .black.opacity(0.42 * progress), radius: 18, y: 10)
+                // Keep the large wordmark button outside the subtree that owns
+                // the pull-down DragGesture. A small amount of finger jitter can
+                // therefore never promote the parent drag and cancel this tap.
+                .overlay(alignment: .topLeading) {
+                    WebHeaderHomeButton(
+                        attentionCount: communityAttentionCount + notificationUnreadCount,
+                        action: openHomeRoot
+                    )
+                    .frame(width: min(proxy.size.width - 112, 252), height: 80, alignment: .leading)
+                    .padding(.leading, 24)
+                    .padding(.top, topInset)
+                }
             }
             .frame(maxWidth: .infinity, alignment: .top)
             .frame(height: progress > 0.001 ? proxy.size.height : totalHeight, alignment: .top)
@@ -1835,6 +2058,15 @@ private struct WebPullDownCommandMenu: View {
         setPresented(false)
     }
 
+    private func openHomeRoot() {
+        if isPresented {
+            setPresented(false)
+        } else {
+            HapticManager.shared.fire(.buttonPress)
+        }
+        appState.openHomeRoot()
+    }
+
     private func setPresented(_ presented: Bool) {
         if isPresented != presented {
             HapticManager.shared.fire(.buttonPress)
@@ -1859,6 +2091,11 @@ private struct WebMenuTopBar: View {
     let progress: CGFloat
     let topInset: CGFloat
     let communityAttentionCount: Int
+    let notificationUnreadCount: Int
+
+    private var totalAttentionCount: Int {
+        communityAttentionCount + notificationUnreadCount
+    }
 
     var body: some View {
         VStack(spacing: 0) {
@@ -1867,15 +2104,17 @@ private struct WebMenuTopBar: View {
 
             ZStack {
                 HStack(spacing: 0) {
-                    wordmark
-
                     Spacer()
 
                     toggleIndicator
                         .frame(width: 44, height: 40)
                         .overlay(alignment: .topTrailing) {
-                            if communityAttentionCount > 0 {
-                                CommunityAttentionBadge(count: communityAttentionCount, compact: true)
+                            if totalAttentionCount > 0 {
+                                CommunityAttentionBadge(
+                                    count: totalAttentionCount,
+                                    compact: true,
+                                    accessibilityDescription: "pending items"
+                                )
                                     .offset(x: 3, y: -4)
                                     .transition(.scale.combined(with: .opacity))
                             }
@@ -1916,19 +2155,12 @@ private struct WebMenuTopBar: View {
             }
             .frame(height: 1)
         }
-        .animation(.easeOut(duration: 0.18), value: communityAttentionCount)
+        .animation(.easeOut(duration: 0.18), value: totalAttentionCount)
         .accessibilityValue(
-            communityAttentionCount > 0
-                ? "\(communityAttentionCount) pending Community items"
-                : "No pending Community items"
+            totalAttentionCount > 0
+                ? "\(totalAttentionCount) pending items"
+                : "No pending items"
         )
-    }
-
-    private var wordmark: some View {
-        VStack(alignment: .leading, spacing: 2) {
-            SpyWordmark(fontSize: 30)
-            SpyAppVersionMark()
-        }
     }
 
     private var toggleIndicator: some View {
@@ -1969,11 +2201,32 @@ private struct WebMenuTopBar: View {
     }
 }
 
+private struct WebHeaderHomeButton: View {
+    let attentionCount: Int
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            VStack(alignment: .leading, spacing: 2) {
+                SpyWordmark(fontSize: 30)
+                SpyAppVersionMark()
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SpyWebPressStyle(pressedScale: 0.97))
+        .accessibilityLabel("Open SpyClash home")
+        .accessibilityValue(attentionCount > 0 ? "\(attentionCount) pending items" : "")
+        .accessibilityIdentifier("shell.header.home")
+    }
+}
+
 private struct WebCommandMenuPanel: View {
     @Environment(AppState.self) private var appState
 
     let progress: CGFloat
     let communityAttentionCount: Int
+    let notificationUnreadCount: Int
     let close: () -> Void
 
     private let itemHeight: CGFloat = 40
@@ -1989,8 +2242,7 @@ private struct WebCommandMenuPanel: View {
                         selected: appState.shellRoute == .main && appState.selectedTab == .profile
                     ) {
                         closeThen {
-                            appState.closeCommunity()
-                            appState.selectedTab = .profile
+                            appState.openMainTab(.profile)
                         }
                     }
                 }
@@ -2002,8 +2254,7 @@ private struct WebCommandMenuPanel: View {
                         selected: appState.shellRoute == .main && appState.selectedTab == .packs
                     ) {
                         closeThen {
-                            appState.closeCommunity()
-                            appState.selectedTab = .packs
+                            appState.openMainTab(.packs)
                         }
                     }
                 }
@@ -2017,6 +2268,27 @@ private struct WebCommandMenuPanel: View {
                     ) {
                         closeThen { appState.openCommunity() }
                     }
+                }
+
+                revealItem(index: 3) {
+                    menuButton(
+                        icon: "🔔",
+                        title: localized(
+                            en: "NOTIFICATIONS",
+                            ru: "УВЕДОМЛЕНИЯ",
+                            es: "NOTIFICACIONES"
+                        ),
+                        selected: appState.shellRoute == .notifications,
+                        badgeCount: notificationUnreadCount,
+                        badgeAccessibilityDescription: localized(
+                            en: "unread notifications",
+                            ru: "непрочитанных уведомлений",
+                            es: "notificaciones sin leer"
+                        )
+                    ) {
+                        closeThen { appState.openNotifications() }
+                    }
+                    .accessibilityIdentifier("spy-command-menu.notifications")
                 }
 
                 revealDivider(index: 4)
@@ -2080,6 +2352,7 @@ private struct WebCommandMenuPanel: View {
         selected: Bool = false,
         highlighted: Bool = false,
         badgeCount: Int = 0,
+        badgeAccessibilityDescription: String = "pending Community items",
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -2097,7 +2370,10 @@ private struct WebCommandMenuPanel: View {
                 Spacer(minLength: 0)
 
                 if badgeCount > 0 {
-                    CommunityAttentionBadge(count: badgeCount)
+                    CommunityAttentionBadge(
+                        count: badgeCount,
+                        accessibilityDescription: badgeAccessibilityDescription
+                    )
                         .transition(.scale.combined(with: .opacity))
                 }
             }
@@ -2284,6 +2560,7 @@ private struct CommunityAttentionSnapshot: Equatable {
 private struct CommunityAttentionBadge: View {
     let count: Int
     var compact = false
+    var accessibilityDescription = "pending Community items"
 
     var body: some View {
         Text(count > 99 ? "99+" : "\(count)")
@@ -2296,7 +2573,7 @@ private struct CommunityAttentionBadge: View {
             .background(SpyTheme.red, in: Capsule())
             .overlay(Capsule().stroke(Color.white.opacity(0.90), lineWidth: 1))
             .shadow(color: SpyTheme.red.opacity(0.72), radius: 7)
-            .accessibilityLabel("\(count) pending Community items")
+            .accessibilityLabel("\(count) \(accessibilityDescription)")
     }
 }
 

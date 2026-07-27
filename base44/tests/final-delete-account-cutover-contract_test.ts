@@ -220,6 +220,17 @@ async function createStep8EvidenceFixture(): Promise<Step8Fixture> {
       `export default "${name}";\n`,
     );
   }
+  // Step 8 validates the reviewed maintenance guard before it attempts any
+  // remote read. Mirror that immutable local prerequisite in this isolated
+  // fixture so the test reaches its intended mocked `functions list` failure.
+  await writeFixtureFile(
+    `${scripts}/base44-maintenance/deleteAccount/function.jsonc`,
+    JSON.stringify({ name: "deleteAccount", entry: "main.ts" }) + "\n",
+  );
+  await writeFixtureFile(
+    `${scripts}/base44-maintenance/deleteAccount/main.ts`,
+    'export default "deleteAccount-maintenance-guard";\n',
+  );
   await writeFixtureFile(
     `${scripts}/backfill-sensitive-entity-owners.ts`,
     sourceContent,
@@ -348,7 +359,7 @@ Deno.test("final deleteAccount accepts a verified mutating Step 7 with a distinc
       stderr: "piped",
     }).output();
     const stderr = new TextDecoder().decode(output.stderr);
-    assertEquals(output.code, 90, stderr);
+    assertEquals(output.code, 70, stderr);
     assertEquals(
       stderr.includes(
         "completion/attempt evidence is not fully postflight-verified",
@@ -356,7 +367,7 @@ Deno.test("final deleteAccount accepts a verified mutating Step 7 with a distinc
       false,
     );
     const calls = await Deno.readTextFile(fixture.calls);
-    assertStringIncludes(calls, "functions pull");
+    assertStringIncludes(calls, "functions list");
     assertEquals(calls.includes("functions deploy deleteAccount"), false);
   } finally {
     await removeStep8Fixture(fixture.root);

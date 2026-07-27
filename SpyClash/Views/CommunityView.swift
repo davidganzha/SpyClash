@@ -14,6 +14,29 @@ private struct CommunityActionFeedback: Equatable {
     let successTitle: String
 }
 
+struct CommunityMeTransitionResolver {
+    static func canCommit(selfUserID: String?, activeAction: String?) -> Bool {
+        selfUserID?.nilIfBlank != nil && activeAction == nil
+    }
+}
+
+struct CommunityProfileRequestState: Equatable {
+    private(set) var activeRequestID: UUID?
+
+    mutating func begin(_ requestID: UUID = UUID()) -> UUID {
+        activeRequestID = requestID
+        return requestID
+    }
+
+    mutating func invalidate() {
+        activeRequestID = nil
+    }
+
+    func accepts(_ requestID: UUID) -> Bool {
+        activeRequestID == requestID
+    }
+}
+
 struct CommunityView: View {
     @Environment(AppState.self) private var appState
 
@@ -29,7 +52,7 @@ struct CommunityView: View {
     @State private var query = ""
     @State private var activeProfile: CommunityProfileDetail?
     @State private var profileCache: [String: CommunityProfileDetail] = [:]
-    @State private var profileRequestID: UUID?
+    @State private var profileRequestState = CommunityProfileRequestState()
     @State private var profileHistory: [String] = []
     @State private var commentDraft = ""
     @State private var isInitialLoading = true
@@ -38,6 +61,7 @@ struct CommunityView: View {
     @State private var isProfileLoading = false
     @State private var didLoadInitialContent = false
     @State private var activeAction: String?
+    @State private var isSelfProfileTransitionPending = false
     @State private var actionFeedback: CommunityActionFeedback?
     @State private var deferredExternalNetworkState: CommunityState?
     @State private var resolvedRelationshipIDs: Set<String> = []
@@ -59,7 +83,16 @@ struct CommunityView: View {
                 .padding(.top, 14)
         }
         .background(SpyTheme.black)
-        .task { await loadInitialContent() }
+        .task {
+            // The shell keeps the last Community dock selection. Re-entering
+            // on Me therefore needs the same deferred transition as a cold
+            // swipe before network.me has arrived.
+            if selectedTab == .me {
+                isSelfProfileTransitionPending = true
+            }
+            await loadInitialContent()
+            await completePendingSelfProfileTransitionIfPossible()
+        }
         .onChange(of: dockRequest.id) { _, _ in
             handleDockAction(dockRequest.tab)
         }
@@ -81,6 +114,11 @@ struct CommunityView: View {
             if let state {
                 onAttentionChange(state)
             }
+            Task { await completePendingSelfProfileTransitionIfPossible() }
+        }
+        .onChange(of: activeAction) { _, action in
+            guard action == nil else { return }
+            Task { await completePendingSelfProfileTransitionIfPossible() }
         }
         .onChange(of: message) { _, newMessage in
             publishCommunityToast(newMessage)
@@ -1237,24 +1275,41 @@ struct CommunityView: View {
         case .exit:
             onExit()
         case .network:
+            isSelfProfileTransitionPending = false
+            profileRequestState.invalidate()
+            isProfileLoading = false
             selectedTab = .network
             activeProfile = nil
             profileHistory.removeAll()
             commentDraft = ""
         case .me:
-            selectedTab = .me
+            isSelfProfileTransitionPending = true
             profileHistory.removeAll()
             commentDraft = ""
-            if let userID = network?.me.id {
-                Task {
-                    await openProfile(
-                        userID,
-                        rememberingCurrent: false,
-                        placeholder: network?.me
-                    )
-                }
+            Task {
+                await completePendingSelfProfileTransitionIfPossible()
             }
         }
+    }
+
+    @MainActor
+    private func completePendingSelfProfileTransitionIfPossible() async {
+        guard isSelfProfileTransitionPending,
+              CommunityMeTransitionResolver.canCommit(
+                  selfUserID: network?.me.id,
+                  activeAction: activeAction
+              ),
+              let profile = network?.me else {
+            return
+        }
+
+        isSelfProfileTransitionPending = false
+        selectedTab = .me
+        await openProfile(
+            profile.id,
+            rememberingCurrent: false,
+            placeholder: profile
+        )
     }
 
     private func loadInitialContent() async {
@@ -1376,8 +1431,7 @@ struct CommunityView: View {
             profileHistory.append(currentID)
         }
 
-        let requestID = UUID()
-        profileRequestID = requestID
+        let requestID = profileRequestState.begin()
         commentDraft = ""
 
         if let cached = profileCache[userID] {
@@ -1398,12 +1452,12 @@ struct CommunityView: View {
 
         do {
             let detail = try await appState.client.communityProfile(userID: userID)
-            guard profileRequestID == requestID, !Task.isCancelled else { return }
+            guard profileRequestState.accepts(requestID), !Task.isCancelled else { return }
             profileCache[userID] = detail
             activeProfile = detail
             isProfileLoading = false
         } catch {
-            guard profileRequestID == requestID else { return }
+            guard profileRequestState.accepts(requestID) else { return }
             isProfileLoading = false
             showError(error)
             if activeProfile == nil, profileHistory.isEmpty { selectedTab = .network }
@@ -2104,6 +2158,20 @@ enum CommunityTab: String, CaseIterable, Identifiable {
     case me
 
     var id: String { rawValue }
+
+    static let swipeCases: [CommunityTab] = [.network, .me]
+
+    func swipeNeighbor(for direction: TabSwipeDirection) -> CommunityTab? {
+        guard let index = Self.swipeCases.firstIndex(of: self) else { return nil }
+
+        let targetIndex = switch direction {
+        case .previous: index - 1
+        case .next: index + 1
+        }
+
+        guard Self.swipeCases.indices.contains(targetIndex) else { return nil }
+        return Self.swipeCases[targetIndex]
+    }
 
     var symbol: String {
         switch self {

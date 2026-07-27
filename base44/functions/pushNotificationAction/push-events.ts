@@ -6,6 +6,7 @@ export type SourceContext = {
   retryable?: boolean;
   actorName?: string;
   winner?: string;
+  announcement?: PushEvent;
   reason?: string;
 };
 
@@ -45,6 +46,12 @@ export function pushEventLifecycleUserIDs(event: PushEvent): string[] {
 }
 
 export function alertCollapseID(event: PushEvent): string {
+  if (clean(event.event_type) === "global_announcement") {
+    return `announcement:${
+      clean(event.announcement_id || event.source_event_id)
+    }`
+      .slice(0, 64);
+  }
   const gameEvent = ["game_started", "game_finished"].includes(
     clean(event.event_type),
   );
@@ -62,6 +69,36 @@ export async function validatePushSource(
   const actorID = clean(event.actor_user_id);
   if (!sourceEventID || !recipientID) {
     return { valid: false, reason: "invalid_event" };
+  }
+
+  if (event.event_type === "global_announcement") {
+    const announcementID = clean(event.announcement_id || sourceEventID);
+    if (
+      clean(event.source_type) !== "notification_announcement" ||
+      announcementID !== sourceEventID
+    ) return { valid: false, reason: "announcement_binding_stale" };
+    const announcement = await one(
+      base44.asServiceRole.entities.NotificationAnnouncement,
+      { id: announcementID },
+    );
+    if (!announcement) {
+      return {
+        valid: false,
+        retryable: recentlyQueued(event),
+        reason: "announcement_source_pending",
+      };
+    }
+    const publishedAt = Date.parse(clean(announcement.published_at));
+    const expiresAt = Date.parse(clean(announcement.expires_at));
+    if (
+      clean(announcement.status) !== "published" ||
+      clean(announcement.importance) !== "important" ||
+      !Number.isFinite(publishedAt) || publishedAt > Date.now() ||
+      !boundedText(announcement.title_en, 80) ||
+      !boundedText(announcement.body_en, 800) ||
+      (Number.isFinite(expiresAt) && expiresAt <= Date.now())
+    ) return { valid: false, reason: "announcement_stale" };
+    return { valid: true, announcement };
   }
 
   if (event.event_type === "friend_request") {
@@ -185,6 +222,9 @@ export function preferenceAllows(
   if (eventType === "room_invite") {
     return registration.room_invites_enabled !== false;
   }
+  if (eventType === "global_announcement") {
+    return registration.announcements_enabled !== false;
+  }
   return registration.game_updates_enabled !== false;
 }
 
@@ -201,6 +241,39 @@ export function alertPayload(
   locale: unknown,
 ): Record<string, unknown> {
   const lang = language(locale);
+  if (clean(event.event_type) === "global_announcement") {
+    const announcement = source.announcement || {};
+    const title = boundedText(
+      announcement[`title_${lang}`] || announcement.title_en,
+      80,
+    );
+    const body = boundedText(
+      announcement[`body_${lang}`] || announcement.body_en,
+      800,
+    );
+    const announcementID = boundedText(
+      event.announcement_id || event.source_event_id,
+      200,
+    );
+    const configuredDeepLink = boundedText(
+      announcement.action_deep_link,
+      500,
+    );
+    return {
+      aps: {
+        alert: { title, body },
+        category: "SPYCLASH_ANNOUNCEMENT",
+        "thread-id": "announcements",
+        "content-available": 1,
+      },
+      event_type: "global_announcement",
+      event_id: clean(event.source_event_id),
+      announcement_id: announcementID,
+      deep_link: configuredDeepLink.startsWith("spyclash://")
+        ? configuredDeepLink
+        : `spyclash://notifications?id=${encodeURIComponent(announcementID)}`,
+    };
+  }
   const actor = source.actorName ||
     (lang === "ru" ? "Оперативник" : "An operative");
   const copy: Record<

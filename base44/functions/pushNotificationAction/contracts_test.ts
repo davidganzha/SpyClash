@@ -19,6 +19,7 @@ Deno.test("push preferences default safely and preserve explicit opt-outs", () =
     friendRequests: true,
     roomInvites: false,
     gameUpdates: true,
+    announcements: true,
   });
   assertThrows(() => requireBundleID("com.attacker.clone"));
 });

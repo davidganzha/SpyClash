@@ -46,6 +46,8 @@ const expectedEntityNames = [
   "GameRoom",
   "LiveActivityRegistration",
   "MembershipGrant",
+  "NotificationAnnouncement",
+  "NotificationReadReceipt",
   "ProfileComment",
   "PushDeviceRegistration",
   "PushNotificationEvent",
@@ -67,6 +69,8 @@ const serverOnlyEntities = [
   "Friendship",
   "GameRoom",
   "LiveActivityRegistration",
+  "NotificationAnnouncement",
+  "NotificationReadReceipt",
   "ProfileComment",
   "PushDeviceRegistration",
   "PushNotificationEvent",
@@ -161,7 +165,7 @@ function assertAdminOnlyPolicy(
   );
 }
 
-Deno.test("all 20 canonical entity schemas are explicit and parseable", async () => {
+Deno.test("all 22 canonical entity schemas are explicit and parseable", async () => {
   const all = await schemas();
   assertEquals([...all.keys()].sort(), expectedEntityNames);
 
@@ -327,6 +331,35 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
     AppStoreAccount: ["reservation_state"],
     Entitlement: ["write_revision"],
     LiveActivityRegistration: ["locale", "pending_force_end"],
+    NotificationAnnouncement: [
+      "importance",
+      "status",
+      "fanout_state",
+      "fanout_revision",
+      "fanout_phase",
+      "fanout_cursor_registration_id",
+      "fanout_cutoff_at",
+      "fanout_enqueued_count",
+      "action_deep_link",
+    ],
+    NotificationReadReceipt: ["user_id", "notification_key", "read_at"],
+    PushDeviceRegistration: ["announcements_enabled"],
+    PushNotificationEvent: [
+      "announcement_id",
+      "inbox_kind",
+      "inbox_importance",
+      "inbox_title_en",
+      "inbox_body_en",
+      "inbox_title_ru",
+      "inbox_body_ru",
+      "inbox_title_es",
+      "inbox_body_es",
+      "inbox_action_deep_link",
+      "inbox_published_at",
+      "inbox_projection_version",
+      "inbox_visible",
+      "inbox_committed_at",
+    ],
     User: [
       "rating",
       "spy_id",
@@ -362,6 +395,7 @@ Deno.test("mediated functions authenticate callers before service-role entity ac
   const guardedFunctions = [
     "communityAction",
     "gameRoomAction",
+    "notificationAction",
     "pushNotificationAction",
     "wordPackAction",
   ];

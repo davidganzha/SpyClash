@@ -598,14 +598,12 @@ struct ProfileView: View {
                 }
 
                 customizationRow(label: localized(en: "CLEARANCE", ru: "ДОПУСК", es: "ACCESO")) {
-                    ScrollView(.horizontal) {
-                        HStack(spacing: 6) {
-                            ForEach(SpyCardBadgeID.allCases) { item in
-                                badgeSwatch(item)
-                            }
+                    HStack(spacing: 6) {
+                        ForEach(SpyCardBadgeID.allCases) { item in
+                            badgeSwatch(item)
+                                .frame(maxWidth: .infinity)
                         }
                     }
-                    .scrollIndicators(.hidden)
                 }
             }
             .padding(8)
@@ -725,6 +723,7 @@ struct ProfileView: View {
 
                 Text(cardBadgeTitle(item))
                     .lineLimit(1)
+                    .minimumScaleFactor(0.62)
 
             }
             .font(.system(size: 6.5, weight: .black, design: .monospaced))

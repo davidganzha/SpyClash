@@ -6,6 +6,7 @@ enum SpyNotificationRoute: Sendable {
     case communityRequests
     case room(code: String)
     case activeGame
+    case notifications(scope: NotificationInboxScope?, itemID: String?)
     case url(URL)
 }
 
@@ -66,12 +67,14 @@ final class PushNotificationCoordinator {
     static let friendRequestCategory = "SPYCLASH_FRIEND_REQUEST"
     static let roomInviteCategory = "SPYCLASH_ROOM_INVITE"
     static let gameUpdateCategory = "SPYCLASH_GAME_UPDATE"
+    static let announcementCategory = "SPYCLASH_ANNOUNCEMENT"
 
     private static let installationIDKey = "spyclash.push.installation-id"
     private static let apnsTokenKey = "spyclash.push.apns-token"
 
     private var client: Base44Client?
     private var routeHandler: ((SpyNotificationRoute) -> Void)?
+    private var inboxInvalidationHandler: (() -> Void)?
     private var pendingRoute: SpyNotificationRoute?
     private var signedIn = false
     private var preferredLocale = AppLanguage.stored.rawValue
@@ -111,10 +114,12 @@ final class PushNotificationCoordinator {
 
     func configure(
         client: Base44Client,
-        routeHandler: @escaping (SpyNotificationRoute) -> Void
+        routeHandler: @escaping (SpyNotificationRoute) -> Void,
+        inboxInvalidationHandler: @escaping () -> Void = {}
     ) {
         self.client = client
         self.routeHandler = routeHandler
+        self.inboxInvalidationHandler = inboxInvalidationHandler
         if let pendingRoute {
             self.pendingRoute = nil
             routeHandler(pendingRoute)
@@ -130,6 +135,7 @@ final class PushNotificationCoordinator {
         guard isSignedIn else {
             registrationTask?.cancel()
             registrationTask = nil
+            synchronizeBadgeCount(0)
             return
         }
 
@@ -217,6 +223,7 @@ final class PushNotificationCoordinator {
     }
 
     func route(userInfo: [AnyHashable: Any]) {
+        invalidateInboxIfNeeded(userInfo: userInfo)
         let route = Self.notificationRoute(from: userInfo)
         guard let route else { return }
         guard let routeHandler else {
@@ -224,6 +231,33 @@ final class PushNotificationCoordinator {
             return
         }
         routeHandler(route)
+    }
+
+    func receivedForegroundNotification(userInfo: [AnyHashable: Any]) {
+        invalidateInboxIfNeeded(userInfo: userInfo)
+    }
+
+    func synchronizeBadgeCount(_ count: Int) {
+        Task {
+            try? await UNUserNotificationCenter.current().setBadgeCount(max(0, count))
+        }
+    }
+
+    private func invalidateInboxIfNeeded(userInfo: [AnyHashable: Any]) {
+        let type = Self.notificationType(from: userInfo)
+        guard [
+            "friend_request",
+            "room_invite",
+            "game_started",
+            "game_update",
+            "game_turn",
+            "game_ended",
+            "game_finished",
+            "global_announcement"
+        ].contains(type) else {
+            return
+        }
+        inboxInvalidationHandler?()
     }
 
     @discardableResult
@@ -672,7 +706,7 @@ final class PushNotificationCoordinator {
         }
     }
 
-    private static func notificationRoute(
+    static func notificationRoute(
         from userInfo: [AnyHashable: Any]
     ) -> SpyNotificationRoute? {
         if let rawURL = userInfo["deep_link"] as? String,
@@ -681,6 +715,10 @@ final class PushNotificationCoordinator {
         }
 
         let type = notificationType(from: userInfo)
+        if type == "global_announcement" {
+            let itemID = (userInfo["announcement_id"] as? String)?.nilIfBlank
+            return .notifications(scope: .global, itemID: itemID)
+        }
         if type == "friend_request" {
             return .communityRequests
         }
@@ -729,6 +767,11 @@ final class SpyClashAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
                 identifier: PushNotificationCoordinator.gameUpdateCategory,
                 actions: [],
                 intentIdentifiers: []
+            ),
+            UNNotificationCategory(
+                identifier: PushNotificationCoordinator.announcementCategory,
+                actions: [],
+                intentIdentifiers: []
             )
         ])
         return true
@@ -752,6 +795,9 @@ final class SpyClashAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
         _ center: UNUserNotificationCenter,
         willPresent notification: UNNotification
     ) async -> UNNotificationPresentationOptions {
+        PushNotificationCoordinator.shared.receivedForegroundNotification(
+            userInfo: notification.request.content.userInfo
+        )
         let type = PushNotificationCoordinator.notificationType(
             from: notification.request.content.userInfo
         )
@@ -768,6 +814,5 @@ final class SpyClashAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
         PushNotificationCoordinator.shared.route(
             userInfo: response.notification.request.content.userInfo
         )
-        try? await center.setBadgeCount(0)
     }
 }

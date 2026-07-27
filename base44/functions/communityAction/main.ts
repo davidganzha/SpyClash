@@ -25,6 +25,8 @@ import {
   sanitizeCommunityReportDetails,
 } from "./community-safety.ts";
 import {
+  cancelCommunityPushEvent,
+  commitCommunityPushEvent,
   enqueueCommunityPushEvent,
   reusablePendingInviteEventID,
 } from "./push-events.ts";
@@ -574,7 +576,41 @@ async function sendFriendRequest(
   }
   if (existing?.status === "pending") {
     if (clean(existing.requester_id) === current.id) {
-      return clean(existing.request_event_id);
+      const existingEventID = clean(existing.request_event_id);
+      if (!existingEventID) {
+        throw Object.assign(new Error("Friend request event is unavailable"), {
+          status: 503,
+        });
+      }
+      await enqueueCommunityPushEvent({
+        store: base44.asServiceRole.entities.PushNotificationEvent,
+        persist,
+        eventType: "friend_request",
+        sourceEventID: existingEventID,
+        actorUserID: current.id,
+        actorDisplayName: safeCommunityTextForDisplay(
+          current.display_name || current.full_name,
+          "An operative",
+        ),
+        recipientUserID: target.id,
+      });
+      if (
+        !await commitCommunityPushEvent({
+          store: base44.asServiceRole.entities.PushNotificationEvent,
+          persist,
+          eventType: "friend_request",
+          sourceEventID: existingEventID,
+          actorDisplayName: safeCommunityTextForDisplay(
+            current.display_name || current.full_name,
+            "An operative",
+          ),
+        })
+      ) {
+        throw Object.assign(new Error("Friend request inbox commit failed"), {
+          status: 503,
+        });
+      }
+      return existingEventID;
     }
     throw Object.assign(new Error("Request already pending"), { status: 409 });
   }
@@ -598,6 +634,10 @@ async function sendFriendRequest(
     eventType: "friend_request",
     sourceEventID: eventID,
     actorUserID: current.id,
+    actorDisplayName: safeCommunityTextForDisplay(
+      current.display_name || current.full_name,
+      "An operative",
+    ),
     recipientUserID: target.id,
   });
   if (existing) {
@@ -611,6 +651,22 @@ async function sendFriendRequest(
         created_at: now,
       })
     );
+  }
+  if (
+    !await commitCommunityPushEvent({
+      store: base44.asServiceRole.entities.PushNotificationEvent,
+      persist,
+      eventType: "friend_request",
+      sourceEventID: eventID,
+      actorDisplayName: safeCommunityTextForDisplay(
+        current.display_name || current.full_name,
+        "An operative",
+      ),
+    })
+  ) {
+    throw Object.assign(new Error("Friend request inbox commit failed"), {
+      status: 503,
+    });
   }
   return eventID;
 }
@@ -916,7 +972,41 @@ Deno.serve(async (req) => {
             }) || [],
           )[0];
           const reusableEventID = reusablePendingInviteEventID(existing);
-          if (reusableEventID) return reusableEventID;
+          if (reusableEventID) {
+            await enqueueCommunityPushEvent({
+              store: base44.asServiceRole.entities.PushNotificationEvent,
+              persist,
+              eventType: "room_invite",
+              sourceEventID: reusableEventID,
+              actorUserID: current.id,
+              actorDisplayName: safeCommunityTextForDisplay(
+                current.display_name || current.full_name,
+                "An operative",
+              ),
+              recipientUserID: target.id,
+              roomID: room.id,
+            });
+            if (
+              !await commitCommunityPushEvent({
+                store: base44.asServiceRole.entities.PushNotificationEvent,
+                persist,
+                eventType: "room_invite",
+                sourceEventID: reusableEventID,
+                actorDisplayName: safeCommunityTextForDisplay(
+                  current.display_name || current.full_name,
+                  "An operative",
+                ),
+              })
+            ) {
+              throw Object.assign(
+                new Error("Room invite inbox commit failed"),
+                {
+                  status: 503,
+                },
+              );
+            }
+            return reusableEventID;
+          }
           const now = new Date().toISOString();
           const payload = {
             sender_user_id: current.id,
@@ -933,6 +1023,10 @@ Deno.serve(async (req) => {
             eventType: "room_invite",
             sourceEventID: eventID,
             actorUserID: current.id,
+            actorDisplayName: safeCommunityTextForDisplay(
+              current.display_name || current.full_name,
+              "An operative",
+            ),
             recipientUserID: target.id,
             roomID: room.id,
           });
@@ -950,6 +1044,22 @@ Deno.serve(async (req) => {
                 created_at: now,
               })
             );
+          }
+          if (
+            !await commitCommunityPushEvent({
+              store: base44.asServiceRole.entities.PushNotificationEvent,
+              persist,
+              eventType: "room_invite",
+              sourceEventID: eventID,
+              actorDisplayName: safeCommunityTextForDisplay(
+                current.display_name || current.full_name,
+                "An operative",
+              ),
+            })
+          ) {
+            throw Object.assign(new Error("Room invite inbox commit failed"), {
+              status: 503,
+            });
           }
           return eventID;
         },
@@ -1122,6 +1232,7 @@ Deno.serve(async (req) => {
           await deleteBlockedPairContent({
             profileCommentStore: base44.asServiceRole.entities.ProfileComment,
             roomInviteStore: base44.asServiceRole.entities.RoomInvite,
+            pushEventStore: base44.asServiceRole.entities.PushNotificationEvent,
             firstUserID: current.id,
             secondUserID: target.id,
             persist,
@@ -1318,6 +1429,15 @@ Deno.serve(async (req) => {
             })
           );
         } else {
+          if (action === "cancel_request") {
+            await cancelCommunityPushEvent({
+              store: base44.asServiceRole.entities.PushNotificationEvent,
+              persist,
+              eventType: "friend_request",
+              sourceEventID: clean(friendship.request_event_id),
+              reason: "friend_request_cancelled",
+            });
+          }
           await persist(() =>
             base44.asServiceRole.entities.Friendship.delete(friendship.id)
           );

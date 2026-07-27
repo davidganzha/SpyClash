@@ -1,0 +1,85 @@
+{
+  "name": "NotificationAnnouncement",
+  "description": "Server-owned localized global inbox announcement with an idempotent bounded fanout lease. The user inbox exposes the newest 500 retained global announcements independently from the personal window.",
+  "type": "object",
+  "properties": {
+    "dedupe_key": { "type": "string" },
+    "topic": {
+      "type": "string",
+      "enum": ["release", "service", "community", "developer"]
+    },
+    "status": {
+      "type": "string",
+      "enum": ["draft", "published", "withdrawn"],
+      "default": "draft"
+    },
+    "importance": {
+      "type": "string",
+      "enum": ["quiet", "important"],
+      "default": "quiet"
+    },
+    "title_en": { "type": "string" },
+    "body_en": { "type": "string" },
+    "title_ru": { "type": "string" },
+    "body_ru": { "type": "string" },
+    "title_es": { "type": "string" },
+    "body_es": { "type": "string" },
+    "action_deep_link": { "type": "string" },
+    "published_at": { "type": "string", "format": "date-time" },
+    "expires_at": { "type": "string", "format": "date-time" },
+    "fanout_state": {
+      "type": "string",
+      "enum": [
+        "not_requested",
+        "pending",
+        "processing",
+        "retry",
+        "complete",
+        "cancelled",
+        "failed"
+      ],
+      "default": "not_requested"
+    },
+    "fanout_attempt_count": { "type": "number", "default": 0 },
+    "fanout_phase": {
+      "type": "string",
+      "enum": ["enqueue", "verify"],
+      "default": "enqueue"
+    },
+    "fanout_cursor_registration_id": { "type": "string" },
+    "fanout_cutoff_at": { "type": "string", "format": "date-time" },
+    "fanout_enqueued_count": { "type": "number", "default": 0 },
+    "fanout_sweep_failed": { "type": "boolean", "default": false },
+    "fanout_verify_failure_passes": { "type": "number", "default": 0 },
+    "fanout_last_failed_registration_id": { "type": "string" },
+    "fanout_lease_token": { "type": "string" },
+    "fanout_lease_until": { "type": "string", "format": "date-time" },
+    "fanout_revision": { "type": "string" },
+    "fanout_next_attempt_at": { "type": "string", "format": "date-time" },
+    "fanout_last_error_code": { "type": "string" },
+    "fanout_completed_at": { "type": "string", "format": "date-time" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "dedupe_key",
+    "topic",
+    "status",
+    "importance",
+    "title_en",
+    "body_en",
+    "fanout_state",
+    "fanout_attempt_count",
+    "fanout_lease_token",
+    "fanout_lease_until",
+    "fanout_revision",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

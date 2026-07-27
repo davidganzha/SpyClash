@@ -11,6 +11,22 @@ class Store {
   async create(record: Record<string, any>) {
     this.records.push({ id: `row-${this.records.length + 1}`, ...record });
   }
+  async updateMany(
+    filter: Record<string, any>,
+    update: Record<string, any>,
+  ) {
+    let updated = 0;
+    this.records = this.records.map((record) => {
+      if (
+        !Object.entries(filter).every(([key, value]) => record[key] === value)
+      ) {
+        return record;
+      }
+      updated += 1;
+      return { ...record, ...(update.$set || {}) };
+    });
+    return { updated };
+  }
 }
 
 Deno.test("game event fans out once per stable participant id", async () => {
@@ -30,12 +46,25 @@ Deno.test("game event fans out once per stable participant id", async () => {
     randomUUID: () => crypto.randomUUID(),
   };
   await enqueueGamePushEvents(input);
-  await enqueueGamePushEvents(input);
+  assertEquals(
+    store.records.every((record) => record.inbox_visible === false),
+    true,
+  );
+  await enqueueGamePushEvents({ ...input, sourceCommitted: true });
   assertEquals(store.records.map((record) => record.recipient_user_id), [
     "a",
     "b",
     "c",
   ]);
+  assertEquals(
+    store.records.every((record) =>
+      record.inbox_projection_version === 1 &&
+      record.inbox_kind === "game_started" &&
+      record.inbox_action_deep_link === "spyclash://game?room_id=room-1" &&
+      record.inbox_visible === true && Boolean(record.inbox_committed_at)
+    ),
+    true,
+  );
 });
 
 Deno.test("game start alert expires with the match instead of lingering offline", () => {

@@ -37,3 +37,21 @@ Deno.test("expired deadline leaves work unstarted for durable retry", async () =
   assertEquals(result.completed, []);
   assertEquals(result.unstarted, [1, 2, 3]);
 });
+
+Deno.test("injected clock stops new work after a completed item exhausts the deadline", async () => {
+  let epoch = 0;
+  const started: number[] = [];
+  const result = await runBounded({
+    items: [1, 2, 3],
+    concurrency: 1,
+    deadlineEpochMs: 50,
+    nowEpochMs: () => epoch,
+    worker: async (item) => {
+      started.push(item);
+      epoch = 50;
+    },
+  });
+  assertEquals(started, [1]);
+  assertEquals(result.completed, [1]);
+  assertEquals(result.unstarted, [2, 3]);
+});

@@ -64,6 +64,7 @@ export type PushPreferences = {
   friendRequests: boolean;
   roomInvites: boolean;
   gameUpdates: boolean;
+  announcements: boolean;
 };
 
 export function preferences(
@@ -72,6 +73,7 @@ export function preferences(
     friendRequests: true,
     roomInvites: true,
     gameUpdates: true,
+    announcements: true,
   },
 ): PushPreferences {
   const source = value && typeof value === "object"
@@ -87,6 +89,9 @@ export function preferences(
     gameUpdates: typeof source.game_updates === "boolean"
       ? source.game_updates
       : fallback.gameUpdates,
+    announcements: typeof source.announcements === "boolean"
+      ? source.announcements
+      : fallback.announcements,
   };
 }
 

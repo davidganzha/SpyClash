@@ -40,6 +40,54 @@ function startExpiry(room: Entity, now: Date): string {
     .toISOString();
 }
 
+function gameInboxProjection(
+  eventType: "game_started" | "game_finished",
+  roomID: string,
+  now: Date,
+) {
+  const copy = eventType === "game_started"
+    ? {
+      en: { title: "Mission started", body: "Your SpyClash game is now live." },
+      ru: {
+        title: "Игра началась",
+        body: "Ваша миссия SpyClash уже началась.",
+      },
+      es: {
+        title: "La misión comenzó",
+        body: "Tu partida de SpyClash ya comenzó.",
+      },
+    }
+    : {
+      en: {
+        title: "Mission complete",
+        body: "Open SpyClash to see the result.",
+      },
+      ru: {
+        title: "Игра завершена",
+        body: "Откройте SpyClash, чтобы увидеть результат.",
+      },
+      es: {
+        title: "Misión completada",
+        body: "Abre SpyClash para ver el resultado.",
+      },
+    };
+  return {
+    inbox_kind: eventType,
+    inbox_importance: "important",
+    inbox_title_en: copy.en.title,
+    inbox_body_en: copy.en.body,
+    inbox_title_ru: copy.ru.title,
+    inbox_body_ru: copy.ru.body,
+    inbox_title_es: copy.es.title,
+    inbox_body_es: copy.es.body,
+    inbox_action_deep_link: `spyclash://game?room_id=${
+      encodeURIComponent(clean(roomID).slice(0, 200))
+    }`,
+    inbox_published_at: now.toISOString(),
+    inbox_projection_version: 1,
+  };
+}
+
 export type CommittedRoomPushEvent = {
   eventType: "game_started" | "game_finished";
   sourceEventID: string;
@@ -139,6 +187,9 @@ export async function repairCommittedRoomPushEvents(input: {
           actor_user_id: "",
           room_id: clean(input.room.id),
           match_id: event.matchID,
+          ...gameInboxProjection(event.eventType, clean(input.room.id), now),
+          inbox_visible: true,
+          inbox_committed_at: now.toISOString(),
           state: "pending",
           attempt_count: 0,
           delivered_count: 0,

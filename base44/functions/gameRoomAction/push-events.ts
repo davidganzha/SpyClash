@@ -16,6 +16,54 @@ function stableUserIDs(room: Entity): string[] {
   return [...new Set([...mirrored, ...players].filter(Boolean))].sort();
 }
 
+function inboxProjection(
+  eventType: "game_started" | "game_finished",
+  roomID: string,
+  now: Date,
+) {
+  const copy = eventType === "game_started"
+    ? {
+      en: { title: "Mission started", body: "Your SpyClash game is now live." },
+      ru: {
+        title: "Игра началась",
+        body: "Ваша миссия SpyClash уже началась.",
+      },
+      es: {
+        title: "La misión comenzó",
+        body: "Tu partida de SpyClash ya comenzó.",
+      },
+    }
+    : {
+      en: {
+        title: "Mission complete",
+        body: "Open SpyClash to see the result.",
+      },
+      ru: {
+        title: "Игра завершена",
+        body: "Откройте SpyClash, чтобы увидеть результат.",
+      },
+      es: {
+        title: "Misión completada",
+        body: "Abre SpyClash para ver el resultado.",
+      },
+    };
+  return {
+    inbox_kind: eventType,
+    inbox_importance: "important",
+    inbox_title_en: copy.en.title,
+    inbox_body_en: copy.en.body,
+    inbox_title_ru: copy.ru.title,
+    inbox_body_ru: copy.ru.body,
+    inbox_title_es: copy.es.title,
+    inbox_body_es: copy.es.body,
+    inbox_action_deep_link: `spyclash://game?room_id=${
+      encodeURIComponent(clean(roomID).slice(0, 200))
+    }`,
+    inbox_published_at: now.toISOString(),
+    inbox_projection_version: 1,
+  };
+}
+
 export function gamePushExpiry(
   room: Entity,
   eventType: "game_started" | "game_finished",
@@ -51,6 +99,7 @@ export async function enqueueGamePushEvents(input: {
   persist: <T>(writer: () => Promise<T>) => Promise<T>;
   now?: Date;
   randomUUID?: () => string;
+  sourceCommitted?: boolean;
 }): Promise<void> {
   const now = input.now || new Date();
   const randomUUID = input.randomUUID || (() => crypto.randomUUID());
@@ -70,6 +119,9 @@ export async function enqueueGamePushEvents(input: {
         actor_user_id: clean(input.actorUserID),
         room_id: clean(input.room.id),
         match_id: clean(input.matchID),
+        ...inboxProjection(input.eventType, clean(input.room.id), now),
+        inbox_visible: false,
+        inbox_committed_at: null,
         state: "pending",
         attempt_count: 0,
         delivered_count: 0,
@@ -84,4 +136,68 @@ export async function enqueueGamePushEvents(input: {
       })
     );
   }
+  if (input.sourceCommitted) {
+    const committed = await commitGamePushEvents({
+      store,
+      persist: input.persist,
+      eventType: input.eventType,
+      sourceEventID: input.sourceEventID,
+      now,
+      randomUUID,
+    });
+    if (committed < stableUserIDs(input.room).length) {
+      throw new Error("game_inbox_commit_incomplete");
+    }
+  }
+}
+
+export async function commitGamePushEvents(input: {
+  store: any;
+  persist: <T>(writer: () => Promise<T>) => Promise<T>;
+  eventType: "game_started" | "game_finished";
+  sourceEventID: string;
+  now?: Date;
+  randomUUID?: () => string;
+}): Promise<number> {
+  const events = await input.store.filter(
+    {
+      source_event_id: clean(input.sourceEventID),
+      event_type: input.eventType,
+    },
+    "created_date",
+    100,
+    0,
+  ) || [];
+  const now = (input.now || new Date()).toISOString();
+  const randomUUID = input.randomUUID || (() => crypto.randomUUID());
+  let committed = 0;
+  for (const event of events) {
+    if (event.inbox_visible === true && clean(event.inbox_committed_at)) {
+      committed += 1;
+      continue;
+    }
+    if (clean(event.state) === "cancelled") continue;
+    const result: Entity = await input.persist(() =>
+      input.store.updateMany({
+        id: event.id,
+        state: event.state,
+        lease_token: event.lease_token,
+        revision: event.revision,
+      }, {
+        $set: {
+          ...inboxProjection(
+            input.eventType,
+            clean(event.room_id),
+            new Date(now),
+          ),
+          inbox_visible: true,
+          inbox_committed_at: now,
+          revision: randomUUID(),
+          updated_at: now,
+        },
+      })
+    );
+    committed += Number(result?.updated) === 1 ? 1 : 0;
+  }
+  return committed;
 }

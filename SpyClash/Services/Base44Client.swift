@@ -758,6 +758,124 @@ final class Base44Client {
         try await communityAction(action, fields: ["invite_id": inviteID])
     }
 
+    func notificationInboxSummary() async throws -> NotificationInboxSummary {
+        try await notificationInboxAction(
+            NotificationInboxActionPayload(
+                action: "summary",
+                accessToken: try requireAccessToken()
+            ),
+            retriesTransientReadFailures: true
+        )
+    }
+
+    func notificationInboxList(
+        scope: NotificationInboxScope,
+        cursor: String? = nil,
+        limit: Int = 30
+    ) async throws -> NotificationInboxPage {
+        try await notificationInboxAction(
+            NotificationInboxActionPayload(
+                action: "list",
+                accessToken: try requireAccessToken(),
+                scope: scope.rawValue,
+                cursor: cursor?.nilIfBlank,
+                limit: min(max(limit, 1), 50)
+            ),
+            retriesTransientReadFailures: true
+        )
+    }
+
+    func notificationInboxMarkRead(itemID: String) async throws -> NotificationInboxMutationResponse {
+        let itemID = itemID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !itemID.isEmpty else {
+            throw Base44Error(message: "Notification identifier is required.", statusCode: 422)
+        }
+
+        return try await notificationInboxAction(
+            NotificationInboxActionPayload(
+                action: "mark_read",
+                accessToken: try requireAccessToken(),
+                itemID: itemID
+            )
+        )
+    }
+
+    func notificationInboxMarkAllRead(
+        scope: NotificationInboxScope
+    ) async throws -> NotificationInboxMutationResponse {
+        try await notificationInboxAction(
+            NotificationInboxActionPayload(
+                action: "mark_all_read",
+                accessToken: try requireAccessToken(),
+                scope: scope.rawValue
+            )
+        )
+    }
+
+    func notificationInboxPublishGlobal(
+        draft: NotificationGlobalDraft
+    ) async throws -> NotificationGlobalPublishResponse {
+        let title = draft.title.trimmingCharacters(in: .whitespacesAndNewlines)
+        let body = draft.body.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !title.isEmpty, !body.isEmpty else {
+            throw Base44Error(message: "Notification title and body are required.", statusCode: 422)
+        }
+        guard title.count <= 80, body.count <= 800 else {
+            throw Base44Error(message: "Notification content is too long.", statusCode: 422)
+        }
+
+        return try await notificationInboxAction(
+            NotificationInboxActionPayload(
+                action: "publish_global",
+                accessToken: try requireAccessToken(),
+                requestID: draft.requestID.uuidString.lowercased(),
+                title: title,
+                body: body,
+                importance: draft.importance.rawValue,
+                actionDeepLink: draft.actionDeepLink?.nilIfBlank
+            )
+        )
+    }
+
+    private func notificationInboxAction<T: Decodable>(
+        _ payload: NotificationInboxActionPayload,
+        retriesTransientReadFailures: Bool = false
+    ) async throws -> T {
+        let expectedToken = payload.accessToken
+        guard token == expectedToken else {
+            throw CancellationError()
+        }
+
+        let retryDelays = [180, 520]
+        var attempt = 0
+        while true {
+            try Task.checkCancellation()
+            guard token == expectedToken else {
+                throw CancellationError()
+            }
+
+            do {
+                let response: T = try await request(
+                    "/apps/\(Self.appID)/functions/notificationAction",
+                    method: "POST",
+                    body: payload,
+                    includeAuthorization: false
+                )
+                guard token == expectedToken else {
+                    throw CancellationError()
+                }
+                return response
+            } catch let error as Base44Error
+                where retriesTransientReadFailures &&
+                    error.statusCode == 503 &&
+                    attempt < retryDelays.count {
+                let delay = retryDelays[attempt]
+                attempt += 1
+                try await Task.sleep(for: .milliseconds(delay))
+            }
+        }
+    }
+
     private func communityAction<T: Decodable>(
         _ action: String,
         fields: [String: String] = [:],
@@ -1436,6 +1554,60 @@ private let fallbackMissionWords = [
 
 struct EmptyPayload: Encodable {}
 
+private struct NotificationInboxActionPayload: Encodable {
+    let action: String
+    let accessToken: String
+    let scope: String?
+    let cursor: String?
+    let limit: Int?
+    let itemID: String?
+    let requestID: String?
+    let title: String?
+    let body: String?
+    let importance: String?
+    let actionDeepLink: String?
+
+    init(
+        action: String,
+        accessToken: String,
+        scope: String? = nil,
+        cursor: String? = nil,
+        limit: Int? = nil,
+        itemID: String? = nil,
+        requestID: String? = nil,
+        title: String? = nil,
+        body: String? = nil,
+        importance: String? = nil,
+        actionDeepLink: String? = nil
+    ) {
+        self.action = action
+        self.accessToken = accessToken
+        self.scope = scope
+        self.cursor = cursor
+        self.limit = limit
+        self.itemID = itemID
+        self.requestID = requestID
+        self.title = title
+        self.body = body
+        self.importance = importance
+        self.actionDeepLink = actionDeepLink
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case action
+        case accessToken = "access_token"
+        case scope
+        case cursor
+        case limit
+        case itemID = "item_id"
+        case requestID = "request_id"
+        case title
+        case body
+        case importance
+        case actionDeepLink = "action_deep_link"
+    }
+}
+
 enum PushEnvironment: String, Encodable, Sendable {
     case sandbox
     case production
@@ -1470,11 +1642,13 @@ private struct PushNotificationPreferences: Encodable {
     let friendRequests = true
     let roomInvites = true
     let gameUpdates = true
+    let announcements = true
 
     enum CodingKeys: String, CodingKey {
         case friendRequests = "friend_requests"
         case roomInvites = "room_invites"
         case gameUpdates = "game_updates"
+        case announcements
     }
 }
 

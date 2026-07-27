@@ -1,0 +1,27 @@
+{
+  "name": "NotificationReadReceipt",
+  "description": "Server-owned per-user inbox receipt for the exact bounded inbox window. The __all__ key is the user's mark-all-read watermark; writes are serialized and duplicate cardinality fails closed.",
+  "type": "object",
+  "properties": {
+    "dedupe_key": { "type": "string" },
+    "user_id": { "type": "string" },
+    "notification_key": { "type": "string" },
+    "read_at": { "type": "string", "format": "date-time" },
+    "created_at": { "type": "string", "format": "date-time" },
+    "updated_at": { "type": "string", "format": "date-time" }
+  },
+  "required": [
+    "dedupe_key",
+    "user_id",
+    "notification_key",
+    "read_at",
+    "created_at",
+    "updated_at"
+  ],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": { "user_condition": { "role": "admin" } },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

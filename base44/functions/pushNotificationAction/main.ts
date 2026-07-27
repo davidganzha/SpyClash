@@ -44,6 +44,17 @@ import {
   repairCommittedRoomPushEvents,
   runCommittedRoomPushRepairIfFresh,
 } from "./room-reconciliation.ts";
+import { drainAnnouncementFanout } from "./announcement-fanout.ts";
+import {
+  normalizePushDrainLimit,
+  PUSH_DRAIN_CONCURRENCY,
+  pushDrainQueryLimit,
+} from "./drain-policy.ts";
+import {
+  committedPersonalInboxPatch,
+  isPersonalInboxEvent,
+} from "./inbox-projection.ts";
+import { backfillLegacyInboxProjections } from "./inbox-backfill.ts";
 
 type Entity = Record<string, any>;
 const PAGE_SIZE = 100;
@@ -284,6 +295,29 @@ async function processOneEvent(base44: any, event: Entity): Promise<Entity> {
             nextAttemptAt: canRetry ? retryAt(attempt, now) : undefined,
           });
           return { id: claimed.id, state: canRetry ? "retry" : "cancelled" };
+        }
+        if (isPersonalInboxEvent(claimed)) {
+          const inboxPatch = committedPersonalInboxPatch(
+            claimed,
+            stableSource,
+            now,
+          );
+          const inboxCommit: Entity = await persist(() =>
+            store.updateMany({
+              id: claimed.id,
+              state: "processing",
+              lease_token: claimed.lease_token,
+              revision: claimed.revision,
+            }, { $set: inboxPatch })
+          );
+          if (Number(inboxCommit?.updated) !== 1) {
+            throw new PushContractError(
+              "Inbox projection commit raced with delivery.",
+              409,
+              "inbox_commit_contention",
+            );
+          }
+          Object.assign(claimed, inboxPatch);
         }
         const recipientRows = await allMatching(
           base44.asServiceRole.entities.User,
@@ -1177,7 +1211,15 @@ async function processEvents(base44: any, body: Entity): Promise<Entity> {
 
 async function drain(base44: any, body: Entity): Promise<Entity> {
   const deadlineEpochMs = Date.now() + DRAIN_BUDGET_MS;
-  const limit = Math.min(12, Math.max(1, Number(body.limit || 8)));
+  const limit = normalizePushDrainLimit(body.limit);
+  const announcementFanoutResults = await drainAnnouncementFanout({
+    base44,
+    deadlineEpochMs: Math.min(deadlineEpochMs, Date.now() + 15_000),
+  });
+  const inboxBackfill = await backfillLegacyInboxProjections({
+    base44,
+    deadlineEpochMs: Math.min(deadlineEpochMs, Date.now() + 8_000),
+  });
   const repairedEvents = await reconcileRecentRoomOutboxes(
     base44,
     Math.min(deadlineEpochMs, Date.now() + 10_000),
@@ -1193,6 +1235,7 @@ async function drain(base44: any, body: Entity): Promise<Entity> {
     Math.min(deadlineEpochMs, Date.now() + 20_000),
   );
   const candidates: Entity[] = [];
+  const queryLimit = pushDrainQueryLimit(limit);
   for (const state of ["pending", "retry", "processing"]) {
     candidates.push(
       ...await base44.asServiceRole.entities.PushNotificationEvent.filter(
@@ -1202,7 +1245,7 @@ async function drain(base44: any, body: Entity): Promise<Entity> {
           : state === "processing"
           ? "lease_until"
           : "created_at",
-        24,
+        queryLimit,
         0,
       ) || [],
     );
@@ -1220,7 +1263,7 @@ async function drain(base44: any, body: Entity): Promise<Entity> {
   due.sort((left, right) =>
     Date.parse(clean(left.created_at)) - Date.parse(clean(right.created_at))
   );
-  const batch = due.slice(0, Math.min(8, limit));
+  const batch = due.slice(0, limit);
   const gameEvents = new Map<string, Entity>();
   for (const event of batch) {
     if (
@@ -1232,8 +1275,8 @@ async function drain(base44: any, body: Entity): Promise<Entity> {
   }
   const syncedGameKeys = new Set<string>();
   await runBounded({
-    items: [...gameEvents.entries()].slice(0, 2),
-    concurrency: 2,
+    items: [...gameEvents.entries()].slice(0, 12),
+    concurrency: 6,
     deadlineEpochMs,
     worker: async ([key, event]) => {
       try {
@@ -1259,7 +1302,7 @@ async function drain(base44: any, body: Entity): Promise<Entity> {
   const results: Entity[] = [];
   const ordinaryWork = await runBounded({
     items: eligibleEvents,
-    concurrency: 4,
+    concurrency: PUSH_DRAIN_CONCURRENCY,
     deadlineEpochMs,
     worker: async (event) => {
       try {
@@ -1279,6 +1322,8 @@ async function drain(base44: any, body: Entity): Promise<Entity> {
     live_activity_results: liveResults,
     live_activity_reconciliations: reconciledLiveResults,
     repaired_events: repairedEvents,
+    announcement_fanout_results: announcementFanoutResults,
+    inbox_backfill: inboxBackfill,
   };
 }
 

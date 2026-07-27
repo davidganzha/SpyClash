@@ -164,9 +164,18 @@ Deno.test("registration opt-outs are applied per notification family", () => {
     friend_requests_enabled: false,
     room_invites_enabled: true,
     game_updates_enabled: true,
+    announcements_enabled: true,
   };
   assertEquals(preferenceAllows(registration, "friend_request"), false);
   assertEquals(preferenceAllows(registration, "room_invite"), true);
+  assertEquals(preferenceAllows(registration, "global_announcement"), true);
+  assertEquals(
+    preferenceAllows(
+      { ...registration, announcements_enabled: false },
+      "global_announcement",
+    ),
+    false,
+  );
   assertEquals(
     preferenceAllows(
       { ...registration, alert_authorized: false },
@@ -174,6 +183,42 @@ Deno.test("registration opt-outs are applied per notification family", () => {
     ),
     false,
   );
+});
+
+Deno.test("global announcement source and payload are localized without sound", async () => {
+  const event = {
+    event_type: "global_announcement",
+    source_type: "notification_announcement",
+    source_event_id: "announcement-1",
+    announcement_id: "announcement-1",
+    recipient_user_id: "recipient",
+  };
+  const base44 = service({
+    NotificationAnnouncement: new Store([{
+      id: "announcement-1",
+      status: "published",
+      importance: "important",
+      published_at: "2020-01-01T00:00:00.000Z",
+      title_en: "Build 29",
+      body_en: "Swipe navigation is ready.",
+      title_ru: "Сборка 29",
+      body_ru: "Свайпы готовы.",
+      action_deep_link: "spyclash://notifications?id=announcement-1",
+      expires_at: "2099-01-01T00:00:00.000Z",
+    }]),
+  });
+  const source = await validatePushSource(base44, event);
+  assertEquals(source.valid, true);
+  const payload = alertPayload(event, source, "ru-RU");
+  assertEquals(payload.event_type, "global_announcement");
+  assertEquals(payload.announcement_id, "announcement-1");
+  assertEquals((payload.aps as Record<string, any>).alert.title, "Сборка 29");
+  assertEquals(
+    (payload.aps as Record<string, any>).category,
+    "SPYCLASH_ANNOUNCEMENT",
+  );
+  assertEquals("sound" in (payload.aps as Record<string, any>), false);
+  assertEquals(alertCollapseID(event), "announcement:announcement-1");
 });
 
 Deno.test("privacy-bearing notifications lease both actor and recipient", () => {
