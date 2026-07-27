@@ -8,6 +8,7 @@ ios_client="${project_root}/SpyClash/Services/Base44Client.swift"
 ios_model="${project_root}/SpyClash/Models/SpyModels.swift"
 backend="${project_root}/base44/functions/gameRoomAction/main.ts"
 community_backend="${project_root}/base44/functions/communityAction/main.ts"
+web_auth_transport="${web_root}/src/lib/socialAuth.js"
 
 fail() {
   echo "cross-platform sync check failed: $*" >&2
@@ -18,6 +19,38 @@ fail() {
 [[ -f "${ios_client}" ]] || fail "missing iOS Base44 client"
 [[ -f "${backend}" ]] || fail "missing canonical gameRoomAction backend"
 [[ -f "${community_backend}" ]] || fail "missing canonical communityAction backend"
+[[ -f "${web_auth_transport}" ]] || fail "missing canonical Web social-auth transport"
+
+required_auth_functions=(
+  appleAuthBroker
+  appleAuthCallback
+  googleAuthCallback
+  mobileAuthCallback
+)
+
+for function_name in "${required_auth_functions[@]}"; do
+  [[ -f "${project_root}/base44/functions/${function_name}/function.jsonc" ]] \
+    || fail "missing canonical ${function_name} function config"
+  [[ -f "${project_root}/base44/functions/${function_name}/main.ts" ]] \
+    || fail "missing canonical ${function_name} implementation"
+done
+
+for auth_page in "${web_root}/src/pages/Login.jsx" "${web_root}/src/pages/Register.jsx"; do
+  rg -q --fixed-strings 'buildSocialLoginUrl' "${auth_page}" \
+    || fail "$(basename "${auth_page}") bypasses the reviewed social-auth redirect"
+done
+
+rg -q --fixed-strings '/auth/sso/login' "${web_auth_transport}" \
+  || fail "Web social auth is not routed through Base44 custom SSO"
+rg -q --fixed-strings 'auth_provider' "${web_auth_transport}" \
+  || fail "Web social auth cannot select the Google upstream provider"
+
+if rg -n 'loginWithProvider\(|AppleSignInSheet|popup_origin' \
+  "${web_root}/src/pages/Login.jsx" \
+  "${web_root}/src/pages/Register.jsx" \
+  "${web_root}/src/lib/socialAuth.js"; then
+  fail "Web social auth reintroduced the fragile SDK or popup redirect path"
+fi
 
 if rg -n 'base44\.entities\.GameRoom|entities\.GameRoom' "${web_root}/src"; then
   fail "Web source still bypasses gameRoomAction with direct GameRoom access"
