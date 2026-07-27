@@ -87,6 +87,11 @@
       "description": "Selected SpyCard badge identifier",
       "enum": ["operative", "ghost", "analyst", "handler"],
       "default": "operative"
+    },
+    "radar_invite_policy": {
+      "type": "string",
+      "description": "Player-controlled account preference for nearby Radar room invitations. Existing accounts may omit it so the iOS client can migrate its account-scoped local fallback before the first server write.",
+      "enum": ["ask", "automatic", "blocked"]
     }
   }
 }

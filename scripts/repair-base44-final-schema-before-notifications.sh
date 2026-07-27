@@ -394,6 +394,13 @@ strip_unreleased_notification_schema() {
     mv "$next" "$event"
 }
 
+strip_unreleased_radar_policy() {
+    local user="$STAGE/base44/entities/User.jsonc"
+    local next="$WORK/stripped-user.json"
+    jq 'del(.properties.radar_invite_policy)' "$user" > "$next"
+    mv "$next" "$user"
+}
+
 merge_platform_user_boundary() {
     local remote=$1 live_user="$WORK/live-user.json" canonical_user
     local staged_user="$STAGE/base44/entities/User.jsonc" next="$WORK/staged-user.json"
@@ -430,6 +437,7 @@ prepare_candidate() {
     copy_local_final_baseline
     strip_unreleased_notification_schema
     merge_platform_user_boundary "$remote"
+    strip_unreleased_radar_policy
     for file in "$STAGE"/base44/entities/*.jsonc; do jq -er '.name' "$file"; done |
         LC_ALL=C sort > "$target_names"
     write_expected_names "$expected_names" "${ENTITIES[@]}"

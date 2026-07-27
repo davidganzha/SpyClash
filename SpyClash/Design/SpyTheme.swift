@@ -418,6 +418,7 @@ struct SpyInput: View {
                         .font(.system(size: 14, weight: .black))
                         .foregroundStyle(isFocused ? accent : SpyTheme.dim)
                         .frame(width: 18)
+                        .accessibilityHidden(true)
                 }
 
                 field
@@ -971,6 +972,7 @@ struct SpyPrimaryCommandLabel: View {
             Image(systemName: systemImage)
                 .font(.system(size: 18, weight: .black))
                 .frame(width: 26)
+                .accessibilityHidden(true)
 
             VStack(alignment: .leading, spacing: detail == nil ? 0 : 3) {
                 Text(title.uppercased())
@@ -990,6 +992,7 @@ struct SpyPrimaryCommandLabel: View {
 
             Image(systemName: "arrow.right")
                 .font(.system(size: 14, weight: .black))
+                .accessibilityHidden(true)
         }
         .padding(.horizontal, 18)
         .frame(maxWidth: .infinity, minHeight: detail == nil ? 58 : 66)

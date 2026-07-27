@@ -2,6 +2,7 @@ import { createClient, createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
   communityActionRequiresProfileWriteLease,
   normalizeCommunityQuery,
+  normalizeRadarInvitePolicy,
   normalizeSpyID,
   preferredSpyIDOwner,
   profileMatchesCommunityQuery,
@@ -784,6 +785,33 @@ Deno.serve(async (req) => {
       const target = await resolveTargetUser(base44, body);
       if (!target) return errorResponse("Operative not found", 404);
       return Response.json(await buildProfileDetail(base44, current, target));
+    }
+
+    if (action === "set_radar_invite_policy") {
+      const policy = normalizeRadarInvitePolicy(body.radar_invite_policy);
+      if (!policy) return errorResponse("Invalid Radar invite policy", 422);
+
+      if (normalizeRadarInvitePolicy(current.radar_invite_policy) !== policy) {
+        await withCommunityWriteLeases({
+          lifecycleStore,
+          userIDs: [current.id],
+          action: async ({ persist }) => {
+            const freshCurrent = await findUserByID(base44, current.id);
+            if (!freshCurrent) {
+              throw Object.assign(new Error("Operative not found"), {
+                status: 404,
+              });
+            }
+            await persist(() =>
+              base44.asServiceRole.entities.User.update(current.id, {
+                radar_invite_policy: policy,
+              })
+            );
+          },
+        });
+      }
+
+      return Response.json({ radar_invite_policy: policy });
     }
 
     if (action === "send_request") {

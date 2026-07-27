@@ -60,6 +60,10 @@ source_entitlements="$root/SpyClash/Resources/SpyClash.entitlements"
 source_app_icon="$root/SpyClash/Resources/Assets.xcassets/AppIcon.appiconset/AppIcon-1024.png"
 expected_team_identifier=$(awk '$1 == "DEVELOPMENT_TEAM:" { print $2; exit }' \
   "$root/project.yml")
+expected_marketing_version=$(awk '$1 == "MARKETING_VERSION:" { print $2; exit }' \
+  "$root/project.yml")
+expected_build_number=$(awk '$1 == "CURRENT_PROJECT_VERSION:" { print $2; exit }' \
+  "$root/project.yml")
 
 fail() {
   echo "$1" >&2
@@ -97,8 +101,8 @@ extract_effective_entitlements() {
     fail "$signed_label is ad-hoc signed instead of certificate-signed."
   fi
   if ! printf '%s\n' "$signature_metadata" \
-      | grep -Eq '^Authority=Apple (Development|Distribution):'; then
-    fail "$signed_label is not signed by an Apple Development or Apple Distribution identity."
+      | grep -Eq '^Authority=Apple Distribution:'; then
+    fail "$signed_label is not signed by an Apple Distribution identity."
   fi
   if ! printf '%s\n' "$signature_metadata" \
       | grep -Eq '^TeamIdentifier=[^[:space:]]+$'; then
@@ -174,6 +178,13 @@ if [ "$bundle_id" != 'com.spyclash.ios' ] || [ -z "$marketing_version" ] || [ -z
   echo "Unexpected bundle metadata: id=$bundle_id version=$marketing_version build=$build_number" >&2
   exit 1
 fi
+if [ -z "$expected_marketing_version" ] || [ -z "$expected_build_number" ]; then
+  fail "project.yml does not declare the expected marketing version and build number."
+fi
+if [ "$marketing_version" != "$expected_marketing_version" ] \
+    || [ "$build_number" != "$expected_build_number" ]; then
+  fail "Release artifact $marketing_version ($build_number) does not match project.yml $expected_marketing_version ($expected_build_number)."
+fi
 if [ ! -f "$app/$bundle_executable" ]; then
   echo "The compiled Release executable is missing." >&2
   exit 1
@@ -186,9 +197,13 @@ if [ "$live_activities" != 'true' ] || [ ! -f "$widget/Info.plist" ]; then
   exit 1
 fi
 widget_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$widget/Info.plist")
+widget_marketing_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$widget/Info.plist")
+widget_build_number=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$widget/Info.plist")
 widget_point=$(/usr/libexec/PlistBuddy -c 'Print :NSExtension:NSExtensionPointIdentifier' "$widget/Info.plist")
 widget_executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$widget/Info.plist")
 if [ "$widget_id" != 'com.spyclash.ios.widgets' ] \
+    || [ "$widget_marketing_version" != "$marketing_version" ] \
+    || [ "$widget_build_number" != "$build_number" ] \
     || [ "$widget_point" != 'com.apple.widgetkit-extension' ] \
     || [ ! -f "$widget/$widget_executable" ]; then
   echo "Unexpected SpyClash Live Activity extension metadata." >&2
@@ -237,10 +252,14 @@ if [ "$require_signed_entitlements" = true ]; then
 
   signed_aps_environment=$(/usr/libexec/PlistBuddy \
     -c 'Print :aps-environment' "$effective_app_entitlements" 2>/dev/null || true)
-  case "$signed_aps_environment" in
-    development|production) ;;
-    *) fail "SpyClash app effective entitlements are missing a valid aps-environment." ;;
-  esac
+  if [ "$signed_aps_environment" != production ]; then
+    fail "SpyClash app effective entitlements must use aps-environment=production."
+  fi
+  app_get_task_allow=$(/usr/libexec/PlistBuddy \
+    -c 'Print :get-task-allow' "$effective_app_entitlements" 2>/dev/null || true)
+  if [ "$app_get_task_allow" != false ]; then
+    fail "SpyClash app effective entitlements must set get-task-allow=false."
+  fi
   if ! /usr/libexec/PlistBuddy -c 'Print :com.apple.developer.applesignin' \
       "$effective_app_entitlements" 2>/dev/null \
       | grep -Eq '^[[:space:]]*Default[[:space:]]*$'; then
@@ -254,6 +273,11 @@ if [ "$require_signed_entitlements" = true ]; then
     "SpyClash Live Activity extension" "$widget")
   if [ "$widget_team_identifier" != "$app_team_identifier" ]; then
     fail "SpyClash app and Live Activity extension are signed by different teams."
+  fi
+  widget_get_task_allow=$(/usr/libexec/PlistBuddy \
+    -c 'Print :get-task-allow' "$effective_widget_entitlements" 2>/dev/null || true)
+  if [ "$widget_get_task_allow" != false ]; then
+    fail "SpyClash Live Activity extension effective entitlements must set get-task-allow=false."
   fi
   entitlement_gate_summary="effective signed entitlements verified (aps-environment=$signed_aps_environment, Sign in with Apple=Default)"
 else

@@ -404,7 +404,18 @@ Deno.test("mediated functions authenticate callers before service-role entity ac
       new URL(`../functions/${name}/main.ts`, import.meta.url),
     );
     assertStringIncludes(source, "createClientFromRequest(req)");
-    assertStringIncludes(source, ".auth.me()");
+    if (name === "gameRoomAction") {
+      assertStringIncludes(source, "resolveRoomActionUser({");
+      const requestAuth = await Deno.readTextFile(
+        new URL(
+          "../functions/gameRoomAction/request-auth.ts",
+          import.meta.url,
+        ),
+      );
+      assertStringIncludes(requestAuth, ".auth.me()");
+    } else {
+      assertStringIncludes(source, ".auth.me()");
+    }
     assertStringIncludes(source, "asServiceRole.entities");
   }
 

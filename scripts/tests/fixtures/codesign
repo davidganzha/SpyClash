@@ -33,8 +33,12 @@ case "$action" in
     team=$(/usr/libexec/PlistBuddy \
       -c 'Print :com.apple.developer.team-identifier' \
       "$target/.mock-entitlements.plist" 2>/dev/null || true)
-    printf 'Authority=Apple Development: Test Fixture\nTeamIdentifier=%s\n' \
-      "$team" >&2
+    if [ -f "$target/.mock-development-signature" ]; then
+      authority='Apple Development: Test Fixture'
+    else
+      authority='Apple Distribution: Test Fixture'
+    fi
+    printf 'Authority=%s\nTeamIdentifier=%s\n' "$authority" "$team" >&2
     ;;
   *)
     echo "Unexpected mock codesign invocation: $*" >&2

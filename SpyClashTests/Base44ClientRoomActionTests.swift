@@ -56,6 +56,83 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertEqual(body["access_token"] as? String, "test-token")
     }
 
+    func testRadarInvitePolicyUsesAuthenticatedCommunityActionContract() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"radar_invite_policy":"automatic"}"#.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let confirmed = try await makeClient().updateRadarInvitePolicy(.automatic)
+
+        XCTAssertEqual(confirmed, .automatic)
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        XCTAssertEqual(body["action"] as? String, "set_radar_invite_policy")
+        XCTAssertEqual(body["radar_invite_policy"] as? String, "automatic")
+        XCTAssertEqual(body["access_token"] as? String, "test-token")
+        XCTAssertTrue(try XCTUnwrap(recorder.requestURLs().first).absoluteString.contains("communityAction"))
+    }
+
+    func testRadarInvitePolicyFallbackMigratesLegacyValueOnlyOnceAndScopesAccounts() throws {
+        let suiteName = "Base44ClientRoomActionTests.RadarInvitePolicy.\(UUID().uuidString)"
+        let defaults = try XCTUnwrap(UserDefaults(suiteName: suiteName))
+        defaults.removePersistentDomain(forName: suiteName)
+        defer { defaults.removePersistentDomain(forName: suiteName) }
+
+        defaults.set("automatic", forKey: RadarInvitePolicy.legacyStorageKey)
+
+        XCTAssertEqual(RadarInvitePolicy.stored(for: "account-a", defaults: defaults), .automatic)
+        XCTAssertNil(defaults.string(forKey: RadarInvitePolicy.legacyStorageKey))
+        XCTAssertEqual(RadarInvitePolicy.stored(for: "account-b", defaults: defaults), .ask)
+
+        RadarInvitePolicy.blocked.persist(for: "account-b", defaults: defaults)
+        XCTAssertEqual(RadarInvitePolicy.stored(for: "account-a", defaults: defaults), .automatic)
+        XCTAssertEqual(RadarInvitePolicy.stored(for: "account-b", defaults: defaults), .blocked)
+    }
+
+    func testSpyUserDecodesSharedRadarInvitePolicyField() throws {
+        let user = try JSONDecoder().decode(
+            SpyUser.self,
+            from: Data(#"{"id":"user-1","email":"operative@example.com","radar_invite_policy":"blocked"}"#.utf8)
+        )
+
+        XCTAssertEqual(user.radarInvitePolicy, "blocked")
+    }
+
+    func testPendingRadarRetryProtectsLocalPolicyFromStaleSameAccountRefresh() {
+        XCTAssertTrue(
+            AppState.hasUncommittedRadarInvitePolicy(
+                userID: "user-1",
+                syncOwnerUserID: "user-1",
+                syncState: .pendingRetry,
+                hasQueuedWrite: false
+            )
+        )
+        XCTAssertFalse(
+            AppState.hasUncommittedRadarInvitePolicy(
+                userID: "user-2",
+                syncOwnerUserID: "user-1",
+                syncState: .pendingRetry,
+                hasQueuedWrite: false
+            )
+        )
+        XCTAssertFalse(
+            AppState.hasUncommittedRadarInvitePolicy(
+                userID: "user-1",
+                syncOwnerUserID: "user-1",
+                syncState: .synced,
+                hasQueuedWrite: false
+            )
+        )
+    }
+
     private func makeClient() -> Base44Client {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]
@@ -68,18 +145,29 @@ final class Base44ClientRoomActionTests: XCTestCase {
 private final class RequestRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var bodies: [[String: Any]] = []
+    private var urls: [URL] = []
 
     func append(_ request: URLRequest) throws {
         let data = try Self.bodyData(from: request)
         let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
         lock.lock()
         bodies.append(body)
+        if let url = request.url {
+            urls.append(url)
+        }
         lock.unlock()
     }
 
     func requestBodies() throws -> [[String: Any]] {
         lock.lock()
         let snapshot = bodies
+        lock.unlock()
+        return snapshot
+    }
+
+    func requestURLs() -> [URL] {
+        lock.lock()
+        let snapshot = urls
         lock.unlock()
         return snapshot
     }

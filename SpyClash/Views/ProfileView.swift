@@ -513,6 +513,7 @@ struct ProfileView: View {
                     .font(.system(size: 12, weight: .black))
                     .foregroundStyle(SpyTheme.red)
                     .frame(width: 18)
+                    .accessibilityHidden(true)
 
                 Text(title)
                     .font(.system(size: 10, weight: .black, design: .monospaced))
@@ -525,6 +526,7 @@ struct ProfileView: View {
                 Image(systemName: "chevron.right")
                     .font(.system(size: 9, weight: .black))
                     .foregroundStyle(SpyTheme.dim)
+                    .accessibilityHidden(true)
             }
             .padding(.horizontal, 12)
             .frame(maxWidth: .infinity, minHeight: 44)
@@ -533,6 +535,7 @@ struct ProfileView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle())
+        .accessibilityLabel(title)
     }
 
     private func avatarCategory(

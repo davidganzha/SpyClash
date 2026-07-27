@@ -87,6 +87,7 @@ The only allowed delta is:
 - add `announcements_enabled` to `PushDeviceRegistration`;
 - append `global_announcement` / `notification_announcement` and add the 14
   reviewed optional inbox fields to `PushNotificationEvent`;
+- add the optional account-scoped `radar_invite_policy` field to `User`;
 - delete no entity or field, and change no existing RLS or required list.
 
 `--deploy` is intentionally unusable without all four independent gates: the

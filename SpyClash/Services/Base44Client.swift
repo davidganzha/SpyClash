@@ -653,6 +653,20 @@ final class Base44Client {
         try await communityAction("state", retriesTransientReadFailures: true)
     }
 
+    func updateRadarInvitePolicy(_ policy: RadarInvitePolicy) async throws -> RadarInvitePolicy {
+        let response: RadarInvitePolicySyncResponse = try await communityAction(
+            "set_radar_invite_policy",
+            fields: ["radar_invite_policy": policy.rawValue]
+        )
+        guard let confirmed = RadarInvitePolicy(rawValue: response.radarInvitePolicy) else {
+            throw Base44Error(message: "Invalid Radar invite policy response.", statusCode: 502)
+        }
+        guard confirmed == policy else {
+            throw Base44Error(message: "Radar invite policy was not confirmed.", statusCode: 502)
+        }
+        return confirmed
+    }
+
     func communityDirectory(query: String = "", offset: Int = 0, limit: Int = 24) async throws -> CommunityDirectoryPage {
         try await communityAction(
             "directory",

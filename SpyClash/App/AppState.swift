@@ -61,6 +61,13 @@ enum MembershipSyncState: Equatable {
     case unavailable(message: String)
 }
 
+enum RadarInvitePolicySyncState: Equatable {
+    case localOnly
+    case syncing
+    case synced
+    case pendingRetry
+}
+
 enum RoomSyncOperation: Equatable {
     case creatingRoom
     case joiningRoom
@@ -264,9 +271,10 @@ final class AppState: NSObject {
     var user: SpyUser? {
         didSet {
             let previousUserID = oldValue?.id
-            radarNearby.configure(user: user)
+            let accountChanged = previousUserID != user?.id
+            reconcileRadarInvitePolicy(for: user, accountChanged: accountChanged)
             radarNearby.setActiveRoom(activeRoom)
-            guard previousUserID != user?.id else { return }
+            guard accountChanged else { return }
             // Account-scoped access belongs to exactly one SpyClash account.
             // Clear it synchronously before the replacement account renders.
             membership = nil
@@ -312,6 +320,7 @@ final class AppState: NSObject {
     var authHomeRevealPhase: AuthHomeRevealPhase = .idle
     private(set) var membership: Membership?
     private(set) var membershipSyncState: MembershipSyncState = .unknown
+    private(set) var radarInvitePolicySyncState: RadarInvitePolicySyncState = .localOnly
     private(set) var fullAccessUnlockPresentationID: UUID?
     var selectedTab: AppTab = .home {
         didSet {
@@ -372,6 +381,10 @@ final class AppState: NSObject {
     @ObservationIgnored private var accessActivationSyncTask: Task<Void, Never>?
     @ObservationIgnored private var activeRoomActivationRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var membershipRealtimeRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var radarInvitePolicySyncTask: Task<Void, Never>?
+    @ObservationIgnored private var radarInvitePolicySyncRunID: UUID?
+    private var pendingRadarInvitePolicy: RadarInvitePolicy?
+    private var radarInvitePolicySyncOwnerUserID: String?
     @ObservationIgnored private var liveActivitySyncTask: Task<Void, Never>?
     @ObservationIgnored private var liveActivityPushTokenTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var liveActivityStateTasks: [String: Task<Void, Never>] = [:]
@@ -1351,6 +1364,137 @@ final class AppState: NSObject {
         user = try await client.updateLanguage(newLanguage)
     }
 
+    func setRadarInvitePolicy(_ policy: RadarInvitePolicy) {
+        radarNearby.setInvitePolicy(policy)
+        guard let userID = user?.id, client.hasSessionToken else {
+            radarInvitePolicySyncState = .localOnly
+            return
+        }
+        queueRadarInvitePolicySync(policy, userID: userID)
+    }
+
+    func retryRadarInvitePolicySync() {
+        guard radarInvitePolicySyncState == .pendingRetry,
+              let userID = user?.id,
+              client.hasSessionToken else {
+            return
+        }
+        queueRadarInvitePolicySync(radarNearby.invitePolicy, userID: userID)
+    }
+
+    static func hasUncommittedRadarInvitePolicy(
+        userID: String?,
+        syncOwnerUserID: String?,
+        syncState: RadarInvitePolicySyncState,
+        hasQueuedWrite: Bool
+    ) -> Bool {
+        guard let userID, userID == syncOwnerUserID else { return false }
+        return syncState == .syncing || syncState == .pendingRetry || hasQueuedWrite
+    }
+
+    private func reconcileRadarInvitePolicy(
+        for user: SpyUser?,
+        accountChanged: Bool
+    ) {
+        if accountChanged {
+            radarInvitePolicySyncTask?.cancel()
+            radarInvitePolicySyncTask = nil
+            radarInvitePolicySyncRunID = nil
+            pendingRadarInvitePolicy = nil
+            radarInvitePolicySyncOwnerUserID = user?.id
+            radarInvitePolicySyncState = .localOnly
+        }
+
+        let hasPendingWrite = Self.hasUncommittedRadarInvitePolicy(
+            userID: user?.id,
+            syncOwnerUserID: radarInvitePolicySyncOwnerUserID,
+            syncState: radarInvitePolicySyncState,
+            hasQueuedWrite: pendingRadarInvitePolicy != nil
+        )
+        radarNearby.configure(
+            user: user,
+            applyRemoteInvitePolicy: !hasPendingWrite
+        )
+
+        guard let user, client.hasSessionToken else {
+            radarInvitePolicySyncState = .localOnly
+            return
+        }
+        if RadarInvitePolicy(rawValue: user.radarInvitePolicy ?? "") != nil {
+            if !hasPendingWrite {
+                radarInvitePolicySyncState = .synced
+            }
+            return
+        }
+        if !hasPendingWrite {
+            queueRadarInvitePolicySync(radarNearby.invitePolicy, userID: user.id)
+        }
+    }
+
+    private func queueRadarInvitePolicySync(
+        _ policy: RadarInvitePolicy,
+        userID: String
+    ) {
+        guard user?.id == userID, client.hasSessionToken else {
+            radarInvitePolicySyncState = .localOnly
+            return
+        }
+
+        radarInvitePolicySyncOwnerUserID = userID
+        pendingRadarInvitePolicy = policy
+        radarInvitePolicySyncState = .syncing
+        guard radarInvitePolicySyncTask == nil else { return }
+
+        let runID = UUID()
+        radarInvitePolicySyncRunID = runID
+        radarInvitePolicySyncTask = Task { @MainActor [weak self] in
+            await self?.runRadarInvitePolicySync(userID: userID, runID: runID)
+        }
+    }
+
+    private func runRadarInvitePolicySync(userID: String, runID: UUID) async {
+        defer {
+            if radarInvitePolicySyncRunID == runID {
+                radarInvitePolicySyncTask = nil
+                radarInvitePolicySyncRunID = nil
+            }
+        }
+
+        while !Task.isCancelled,
+              user?.id == userID,
+              radarInvitePolicySyncOwnerUserID == userID,
+              let requestedPolicy = pendingRadarInvitePolicy {
+            pendingRadarInvitePolicy = nil
+            do {
+                let confirmedPolicy = try await client.updateRadarInvitePolicy(requestedPolicy)
+                guard !Task.isCancelled,
+                      user?.id == userID,
+                      radarInvitePolicySyncOwnerUserID == userID else {
+                    return
+                }
+
+                if pendingRadarInvitePolicy == nil {
+                    if radarNearby.invitePolicy == confirmedPolicy {
+                        radarInvitePolicySyncState = .synced
+                    } else {
+                        pendingRadarInvitePolicy = radarNearby.invitePolicy
+                    }
+                }
+            } catch is CancellationError {
+                return
+            } catch {
+                guard user?.id == userID,
+                      radarInvitePolicySyncOwnerUserID == userID else {
+                    return
+                }
+                if pendingRadarInvitePolicy == nil {
+                    radarInvitePolicySyncState = .pendingRetry
+                    return
+                }
+            }
+        }
+    }
+
     func refreshSubscription() async {
         guard let requestedUserID = user?.id else {
             membership = nil
@@ -2140,7 +2284,8 @@ final class AppState: NSObject {
             remoteSpyID: "350-911",
             spyCardTheme: "field",
             spyCardAccent: "signal_red",
-            spyCardBadge: "operative"
+            spyCardBadge: "operative",
+            radarInvitePolicy: nil
         )
         let previewsFullAccess = arguments.contains("--spyclash-preview-casada")
             || arguments.contains("--spyclash-preview-limitless")

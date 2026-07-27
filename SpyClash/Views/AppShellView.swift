@@ -1789,6 +1789,7 @@ private struct FloatingDock: View {
                     )
                 }
                 .buttonStyle(SpyWebPressStyle(pressedScale: 0.90))
+                .accessibilityLabel(item.accessibilityLabel)
             }
         }
         .padding(.horizontal, 8)

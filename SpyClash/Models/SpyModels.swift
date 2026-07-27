@@ -2323,6 +2323,7 @@ struct SpyUser: Codable, Identifiable, Equatable {
     let spyCardTheme: String?
     let spyCardAccent: String?
     let spyCardBadge: String?
+    let radarInvitePolicy: String?
 
     var callSign: String {
         displayName?.nilIfBlank ?? fullName?.nilIfBlank ?? email.components(separatedBy: "@").first ?? "Operative"
@@ -2350,6 +2351,7 @@ struct SpyUser: Codable, Identifiable, Equatable {
         case spyCardTheme = "spy_card_theme"
         case spyCardAccent = "spy_card_accent"
         case spyCardBadge = "spy_card_badge"
+        case radarInvitePolicy = "radar_invite_policy"
     }
 }
 
@@ -2543,6 +2545,14 @@ struct CommunityProfileDetail: Codable, Equatable {
 
 struct CommunityActionAcknowledgement: Codable, Equatable {
     let ok: Bool
+}
+
+struct RadarInvitePolicySyncResponse: Codable, Equatable {
+    let radarInvitePolicy: String
+
+    enum CodingKeys: String, CodingKey {
+        case radarInvitePolicy = "radar_invite_policy"
+    }
 }
 
 enum CommunityReportReason: String, Codable, CaseIterable, Identifiable {

@@ -1,6 +1,7 @@
 import {
   communityActionRequiresProfileWriteLease,
   normalizeCommunityQuery,
+  normalizeRadarInvitePolicy,
   normalizeSpyID,
   preferredSpyIDOwner,
   profileMatchesCommunityQuery,
@@ -16,9 +17,32 @@ Deno.test("community reads do not acquire the profile writer lease", () => {
       throw new Error(`${action} unexpectedly requires a writer lease`);
     }
   }
-  for (const action of ["send_request", "add_comment", "report"]) {
+  for (
+    const action of [
+      "send_request",
+      "add_comment",
+      "report",
+      "set_radar_invite_policy",
+    ]
+  ) {
     if (!communityActionRequiresProfileWriteLease(action)) {
       throw new Error(`${action} unexpectedly bypasses the writer lease`);
+    }
+  }
+});
+
+Deno.test("Radar invite policy accepts only the shared account enum", () => {
+  if (normalizeRadarInvitePolicy(" AUTOMATIC ") !== "automatic") {
+    throw new Error("automatic policy was not normalized");
+  }
+  for (const policy of ["ask", "blocked"]) {
+    if (normalizeRadarInvitePolicy(policy) !== policy) {
+      throw new Error(`${policy} policy was rejected`);
+    }
+  }
+  for (const invalid of ["", "auto", "friends_only", null]) {
+    if (normalizeRadarInvitePolicy(invalid) !== null) {
+      throw new Error(`invalid Radar policy was accepted: ${invalid}`);
     }
   }
 });

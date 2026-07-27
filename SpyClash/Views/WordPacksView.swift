@@ -127,6 +127,11 @@ struct WordPacksView: View {
                     .buttonStyle(SpyWebPressStyle())
                     .disabled(isLoading)
                     .opacity(isLoading ? 0.45 : 1)
+                    .accessibilityLabel(localized(
+                        en: "Refresh word packs",
+                        ru: "Обновить паки слов",
+                        es: "Actualizar packs de palabras"
+                    ))
                 }
 
                 HStack(spacing: 18) {
@@ -256,11 +261,26 @@ struct WordPacksView: View {
                     Spacer(minLength: 8)
 
                     HStack(spacing: 8) {
-                        smallActionButton("pencil") {
+                        smallActionButton(
+                            "pencil",
+                            accessibilityLabel: localized(
+                                en: "Edit \(pack.name)",
+                                ru: "Изменить \(pack.name)",
+                                es: "Editar \(pack.name)"
+                            )
+                        ) {
                             editor = .edit(pack)
                         }
 
-                        smallActionButton("trash.fill", accent: SpyTheme.red) {
+                        smallActionButton(
+                            "trash.fill",
+                            accessibilityLabel: localized(
+                                en: "Delete \(pack.name)",
+                                ru: "Удалить \(pack.name)",
+                                es: "Eliminar \(pack.name)"
+                            ),
+                            accent: SpyTheme.red
+                        ) {
                             deleteTarget = pack
                             showDeleteConfirmation = true
                         }
@@ -289,6 +309,7 @@ struct WordPacksView: View {
         HStack(spacing: 6) {
             Image(systemName: systemName)
                 .font(.system(size: 9, weight: .bold))
+                .accessibilityHidden(true)
             Text(text.uppercased())
                 .spyFitted(scale: 0.66)
         }
@@ -315,7 +336,12 @@ struct WordPacksView: View {
         .spyHitTarget()
     }
 
-    private func smallActionButton(_ symbol: String, accent: Color = SpyTheme.muted, action: @escaping () -> Void) -> some View {
+    private func smallActionButton(
+        _ symbol: String,
+        accessibilityLabel: String,
+        accent: Color = SpyTheme.muted,
+        action: @escaping () -> Void
+    ) -> some View {
         Button(action: action) {
             Image(systemName: symbol)
                 .font(.system(size: 14, weight: .bold))
@@ -323,9 +349,11 @@ struct WordPacksView: View {
                 .frame(width: 38, height: 38)
                 .background(SpyTheme.panelDeep)
                 .overlay(Rectangle().stroke(accent.opacity(0.35), lineWidth: 1))
+                .accessibilityHidden(true)
         }
         .buttonStyle(SpyWebPressStyle())
         .spyHitTarget()
+        .accessibilityLabel(accessibilityLabel)
     }
 
     private func load() async {
@@ -508,6 +536,7 @@ private struct WordPackEditorSheet: View {
             }
             .buttonStyle(SpyWebPressStyle())
             .spyHitTarget()
+            .accessibilityLabel(localized(en: "Close editor", ru: "Закрыть редактор", es: "Cerrar editor"))
         }
         .padding(.horizontal, 20)
         .padding(.top, 18)

@@ -252,7 +252,7 @@ verify_schema_boundary() {
       select(.app_id == $app_id and .step == "A" and .live_count == 20 and .target_count == 22 and
         .delta.additions == ["NotificationAnnouncement","NotificationReadReceipt"] and
         .delta.deletions == [] and
-        .delta.changes == ["PushDeviceRegistration","PushNotificationEvent"] and
+        .delta.changes == ["PushDeviceRegistration","PushNotificationEvent","User"] and
         (.target_schema_digest | test("^[0-9a-f]{64}$"))) |
       .target_schema_digest' "$SCHEMA_MANIFEST")" || return 77
     jq -e --arg app_id "$APP_ID" --arg digest "$expected_digest" '

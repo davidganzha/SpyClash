@@ -18,6 +18,8 @@ const historicalFunctionsURL = new URL(
 );
 const entitiesURL = new URL("../entities/", import.meta.url);
 const functionsURL = new URL("../functions/", import.meta.url);
+const expectedStepZeroSchemaDigest =
+  "f09988b0e0b5c5e93a55c4738e47ba20b160bd536ee0cacd65337fa05fd674af";
 
 const expectedEntities = [
   "AiGenerationQuota",
@@ -230,6 +232,17 @@ Deno.test("Step A read-only prepare builds the exact 20 to 22 candidate without 
       )
     );
     response.total = response.schemas.length;
+    const user = response.schemas.find((row) =>
+      row.entity_name === "User"
+    )!.entity_schema as Record<string, unknown>;
+    const userProperties = user.properties as Record<string, unknown>;
+    delete userProperties.radar_invite_policy;
+    userProperties.role = {
+      default: "user",
+      enum: ["admin", "user"],
+      type: "string",
+    };
+    user.required = ["role"];
     const registration = response.schemas.find((row) =>
       row.entity_name === "PushDeviceRegistration"
     )!.entity_schema as Record<string, unknown>;
@@ -270,6 +283,65 @@ Deno.test("Step A read-only prepare builds the exact 20 to 22 candidate without 
     await writePrivateJSON(remotePath, response);
     await writeFakeNetworkCommands(fixture.bin, false);
 
+    const missingStepZero = await new Deno.Command("bash", {
+      args: [`${fixture.root}/scripts/cutover-base44-notification-schema.sh`],
+      cwd: fixture.root,
+      env: {
+        HOME: fixture.home,
+        TMPDIR: `${fixture.root}/tmp`,
+        PATH: `${fixture.bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
+        MOCK_COMMAND_LOG: fixture.log,
+        MOCK_SCHEMA_PATH: remotePath,
+      },
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assertEquals(missingStepZero.code, 77);
+
+    const stepZeroDigest = await schemaDigest(remotePath);
+    assertEquals(stepZeroDigest, expectedStepZeroSchemaDigest);
+    const stepZeroPlanDigest = "a".repeat(64);
+    const stepZeroStage =
+      `${fixture.root}/.base44-cutover/notification-step-0-schema-repair`;
+    const stepZeroEvidence =
+      `${fixture.root}/.base44-cutover/evidence/notification-step-0-schema-repair`;
+    await Deno.mkdir(stepZeroStage, { recursive: true, mode: 0o700 });
+    await Deno.mkdir(stepZeroEvidence, { recursive: true, mode: 0o700 });
+    await writePrivateJSON(`${stepZeroStage}/manifest.json`, {
+      app_id: "69a0e57fa939f578082f8091",
+      action: "SPYCLASH_NOTIFICATION_STEP_0_SCHEMA_REPAIR",
+      step: "0",
+      live_count: 20,
+      target_count: 20,
+      target_custom_entity_count: 19,
+      target_schema_digest: expectedStepZeroSchemaDigest,
+      plan_digest: stepZeroPlanDigest,
+      delta: {
+        entity_additions: [],
+        entity_deletions: [],
+        property_removals: [],
+        rls_changes: [
+          "AiGenerationQuota",
+          "GameHistory",
+          "GameRoom",
+          "WordPack",
+        ],
+      },
+    });
+    await writePrivateJSON(`${stepZeroEvidence}/latest-postflight.json`, {
+      app_id: "69a0e57fa939f578082f8091",
+      reviewed_plan_digest: stepZeroPlanDigest,
+      expected_schema_digest: expectedStepZeroSchemaDigest,
+      actual_schema_digest: expectedStepZeroSchemaDigest,
+      expected_count: 20,
+      actual_count: 20,
+      push_status: 0,
+      postflight_fetch_status: 0,
+      postflight_schema_status: 0,
+      admin_write_boundary: true,
+      matches_reviewed_stage: true,
+    });
+
     const result = await new Deno.Command("bash", {
       args: [`${fixture.root}/scripts/cutover-base44-notification-schema.sh`],
       cwd: fixture.root,
@@ -298,9 +370,10 @@ Deno.test("Step A read-only prepare builds the exact 20 to 22 candidate without 
     assertEquals(manifest.delta.changes, [
       "PushDeviceRegistration",
       "PushNotificationEvent",
+      "User",
     ]);
     assertEquals(manifest.delta.deletions, []);
-    assertEquals(manifest.delta.unchanged.length, 18);
+    assertEquals(manifest.delta.unchanged.length, 17);
     assert(/^[0-9a-f]{64}$/.test(manifest.plan_digest));
     const commands = await Deno.readTextFile(fixture.log);
     assertStringIncludes(commands, "whoami");
@@ -337,7 +410,7 @@ Deno.test("Step B read-only prepare binds exact Step A evidence and the 16 to 17
       delta: {
         additions: ["NotificationAnnouncement", "NotificationReadReceipt"],
         deletions: [],
-        changes: ["PushDeviceRegistration", "PushNotificationEvent"],
+        changes: ["PushDeviceRegistration", "PushNotificationEvent", "User"],
       },
       target_schema_digest: digest,
     });
@@ -426,7 +499,11 @@ Deno.test("Step A is exact, additive, digest-bound, and fail closed", async () =
       "EXPECTED_TARGET_COUNT=22",
       "EXPECTED_CUSTOM_ENTITY_COUNT=21",
       "ADDED_ENTITIES=(NotificationAnnouncement NotificationReadReceipt)",
-      "CHANGED_ENTITIES=(PushDeviceRegistration PushNotificationEvent)",
+      "CHANGED_ENTITIES=(PushDeviceRegistration PushNotificationEvent User)",
+      "add_property_from_local User radar_invite_policy",
+      `EXPECTED_STEP_ZERO_SCHEMA_DIGEST="${expectedStepZeroSchemaDigest}"`,
+      "verify_step_zero_boundary \"$REMOTE\"",
+      "verify_step_zero_boundary \"$JIT_REMOTE\"",
       'ACTION="SPYCLASH_NOTIFICATION_STEP_A_SCHEMA"',
       "--deploy --plan-digest <sha256>",
       "BASE44_CONFIRM_NOTIFICATION_SCHEMA_PLAN_DIGEST",
@@ -512,6 +589,10 @@ Deno.test("Step B binds 16 to 17 sources and preserves all non-targets", async (
   assertBefore(source, mutation, 'pull_remote_functions "$REMOTE_AFTER"');
   assertBefore(source, mutation, 'fetch_remote_schema "$SCHEMA_POST"');
   assertStringIncludes(source, '.additions == ["notificationAction"]');
+  assertStringIncludes(
+    source,
+    '.delta.changes == ["PushDeviceRegistration","PushNotificationEvent","User"]',
+  );
   assertStringIncludes(source, ".deletions == []");
   assertStringIncludes(source, "(.unchanged | length) == 12");
   assertEquals(occurrenceCount(source, "base44_cli functions deploy"), 1);

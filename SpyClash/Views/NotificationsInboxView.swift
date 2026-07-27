@@ -224,48 +224,72 @@ struct NotificationsInboxView: View {
     }
 
     private var scopeActions: some View {
-        HStack(spacing: 10) {
-            SpySceneKicker(
-                title: copy.channel,
-                status: copy.scopeTitle(store.selectedScope),
-                accent: store.selectedScope == .global ? SpyTheme.red : SpyTheme.green
-            )
+        ViewThatFits(in: .horizontal) {
+            HStack(spacing: 10) {
+                scopeActionKicker
+                    .fixedSize(horizontal: true, vertical: false)
 
-            Spacer(minLength: 4)
+                Spacer(minLength: 4)
 
-            Button {
-                Task {
-                    let succeeded = await store.markAllRead(scope: store.selectedScope)
-                    HapticManager.shared.fire(
-                        succeeded ? .notification(.success) : .notification(.error)
-                    )
-                }
-            } label: {
-                HStack(spacing: 7) {
-                    if store.markingAllScopes.contains(store.selectedScope) {
-                        SpySpinner(size: 14, accent: SpyTheme.green)
-                    } else {
-                        Image(systemName: "checkmark.circle")
-                            .font(.system(size: 13, weight: .bold))
-                    }
-
-                    Text(copy.markAll)
-                        .font(.system(size: 9, weight: .black, design: .monospaced))
-                        .tracking(0.06)
-                        .lineLimit(1)
-                }
-                .foregroundStyle(
-                    store.unreadCount(for: store.selectedScope) > 0 ? SpyTheme.green : SpyTheme.dim
-                )
-                .frame(minHeight: 44)
+                markAllReadButton
+                    .fixedSize(horizontal: true, vertical: false)
             }
-            .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
-            .disabled(
-                store.unreadCount(for: store.selectedScope) == 0 ||
-                    store.isMutating(scope: store.selectedScope)
-            )
-            .accessibilityIdentifier("notifications.markAll")
+
+            VStack(alignment: .leading, spacing: 6) {
+                scopeActionKicker
+
+                markAllReadButton
+                    .fixedSize(horizontal: true, vertical: false)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+            }
         }
+    }
+
+    private var scopeActionKicker: some View {
+        SpySceneKicker(
+            title: copy.channel,
+            status: copy.scopeTitle(store.selectedScope),
+            accent: store.selectedScope == .global ? SpyTheme.red : SpyTheme.green
+        )
+    }
+
+    private var markAllReadButton: some View {
+        Button {
+            Task {
+                let succeeded = await store.markAllRead(scope: store.selectedScope)
+                HapticManager.shared.fire(
+                    succeeded ? .notification(.success) : .notification(.error)
+                )
+            }
+        } label: {
+            HStack(spacing: 7) {
+                if store.markingAllScopes.contains(store.selectedScope) {
+                    SpySpinner(size: 14, accent: SpyTheme.green)
+                        .accessibilityHidden(true)
+                } else {
+                    Image(systemName: "checkmark.circle")
+                        .font(.system(size: 13, weight: .bold))
+                        .accessibilityHidden(true)
+                }
+
+                Text(copy.markAll)
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .tracking(0.06)
+                    .lineLimit(1)
+                    .fixedSize(horizontal: true, vertical: false)
+            }
+            .foregroundStyle(
+                store.unreadCount(for: store.selectedScope) > 0 ? SpyTheme.green : SpyTheme.dim
+            )
+            .frame(minHeight: 44)
+        }
+        .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+        .disabled(
+            store.unreadCount(for: store.selectedScope) == 0 ||
+                store.isMutating(scope: store.selectedScope)
+        )
+        .accessibilityLabel(copy.markAll)
+        .accessibilityIdentifier("notifications.markAll")
     }
 
     @ViewBuilder

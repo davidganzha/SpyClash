@@ -343,6 +343,7 @@ struct CommunityView: View {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 17, weight: .bold))
                 .foregroundStyle(query.isEmpty ? SpyTheme.muted : SpyTheme.red)
+                .accessibilityHidden(true)
 
             TextField(
                 localized(en: "CALLSIGN OR 000-000", ru: "ПОЗЫВНОЙ ИЛИ 000-000", es: "ALIAS O 000-000"),
@@ -353,6 +354,11 @@ struct CommunityView: View {
             .font(.system(size: 13, weight: .bold, design: .monospaced))
             .foregroundStyle(.white)
             .submitLabel(.search)
+            .accessibilityLabel(localized(
+                en: "Search operatives",
+                ru: "Поиск оперативников",
+                es: "Buscar operativos"
+            ))
 
             if !query.isEmpty {
                 Button {
@@ -785,6 +791,7 @@ struct CommunityView: View {
                 } label: {
                     HStack(spacing: 7) {
                         Image(systemName: "paperplane.fill")
+                            .accessibilityHidden(true)
                         Text(localized(en: "POST", ru: "ОТПРАВИТЬ", es: "PUBLICAR"))
                     }
                     .font(.system(size: 10, weight: .black, design: .monospaced))
@@ -1124,6 +1131,7 @@ struct CommunityView: View {
         .disabled(activeAction != nil)
         .opacity(activeAction == nil || activeAction == feedbackID ? 1 : 0.46)
         .animation(.snappy(duration: 0.18), value: feedback)
+        .accessibilityLabel(title)
         .accessibilityValue(actionAccessibilityValue(feedback))
     }
 
@@ -1240,6 +1248,7 @@ struct CommunityView: View {
         HStack(spacing: 7) {
             Image(systemName: icon)
                 .font(.system(size: 12, weight: .black))
+                .accessibilityHidden(true)
             Text(title)
                 .font(.system(size: 9, weight: .black, design: .monospaced))
                 .tracking(0.35)
@@ -1255,6 +1264,7 @@ struct CommunityView: View {
         HStack(spacing: 10) {
             Image(systemName: icon)
                 .font(.system(size: 14, weight: .black))
+                .accessibilityHidden(true)
             Text(title)
                 .font(.system(size: 10, weight: .black, design: .monospaced))
                 .tracking(0.8)

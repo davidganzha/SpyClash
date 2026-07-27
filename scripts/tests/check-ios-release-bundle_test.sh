@@ -5,6 +5,10 @@ root=$(CDPATH= cd -- "$(dirname -- "$0")/../.." && pwd)
 gate="$root/scripts/check-ios-release-bundle.sh"
 mock_bin="$root/scripts/tests/fixtures"
 test_root=$(mktemp -d /tmp/spyclash-release-gate-tests.XXXXXX)
+expected_marketing_version=$(awk '$1 == "MARKETING_VERSION:" { print $2; exit }' \
+  "$root/project.yml")
+expected_build_number=$(awk '$1 == "CURRENT_PROJECT_VERSION:" { print $2; exit }' \
+  "$root/project.yml")
 
 cleanup() {
   case "$test_root" in
@@ -36,6 +40,7 @@ make_entitlements() {
     plist_add "$output" 'Add :com.apple.developer.applesignin array'
     plist_add "$output" 'Add :com.apple.developer.applesignin:0 string Default'
   fi
+  plist_add "$output" 'Add :get-task-allow bool false'
 }
 
 make_fixture() {
@@ -49,8 +54,8 @@ make_fixture() {
   mkdir -p "$widget"
   plutil -create xml1 "$app/Info.plist"
   plist_add "$app/Info.plist" 'Add :CFBundleIdentifier string com.spyclash.ios'
-  plist_add "$app/Info.plist" 'Add :CFBundleShortVersionString string 1.0'
-  plist_add "$app/Info.plist" 'Add :CFBundleVersion string 99'
+  plist_add "$app/Info.plist" "Add :CFBundleShortVersionString string $expected_marketing_version"
+  plist_add "$app/Info.plist" "Add :CFBundleVersion string $expected_build_number"
   plist_add "$app/Info.plist" 'Add :CFBundleExecutable string SpyClash'
   plist_add "$app/Info.plist" "Add :DTPlatformName string $platform"
   plist_add "$app/Info.plist" 'Add :NSSupportsLiveActivities bool true'
@@ -60,6 +65,8 @@ make_fixture() {
 
   plutil -create xml1 "$widget/Info.plist"
   plist_add "$widget/Info.plist" 'Add :CFBundleIdentifier string com.spyclash.ios.widgets'
+  plist_add "$widget/Info.plist" "Add :CFBundleShortVersionString string $expected_marketing_version"
+  plist_add "$widget/Info.plist" "Add :CFBundleVersion string $expected_build_number"
   plist_add "$widget/Info.plist" 'Add :CFBundleExecutable string SpyClashWidgets'
   plist_add "$widget/Info.plist" 'Add :NSExtension dict'
   plist_add "$widget/Info.plist" 'Add :NSExtension:NSExtensionPointIdentifier string com.apple.widgetkit-extension'
@@ -122,8 +129,15 @@ expect_pass "auto validates effective entitlements for iphoneos" "$gate" "$signe
 development_push_app=$(make_fixture "$test_root/development-push" iphoneos true)
 /usr/libexec/PlistBuddy -c 'Set :aps-environment development' \
   "$development_push_app/.mock-entitlements.plist" >/dev/null
-expect_pass "signed device accepts development APNs entitlement" \
+expect_fail_with "signed Release rejects development APNs entitlement" \
+  'effective entitlements must use aps-environment=production.' \
   "$gate" "$development_push_app"
+
+development_signature_app=$(make_fixture "$test_root/development-signature" iphoneos true)
+touch "$development_signature_app/.mock-development-signature"
+expect_fail_with "signed Release rejects Apple Development identity" \
+  'is not signed by an Apple Distribution identity.' \
+  "$gate" "$development_signature_app"
 
 adhoc_app=$(make_fixture "$test_root/adhoc" iphoneos true)
 touch "$adhoc_app/.mock-adhoc-signature"
@@ -140,8 +154,36 @@ missing_push_app=$(make_fixture "$test_root/missing-push" iphoneos true)
 /usr/libexec/PlistBuddy -c 'Delete :aps-environment' \
   "$missing_push_app/.mock-entitlements.plist" >/dev/null
 expect_fail_with "signed iphoneos rejects missing APNs entitlement" \
-  'effective entitlements are missing a valid aps-environment.' \
+  'effective entitlements must use aps-environment=production.' \
   "$gate" "$missing_push_app"
+
+debuggable_app=$(make_fixture "$test_root/debuggable" iphoneos true)
+/usr/libexec/PlistBuddy -c 'Set :get-task-allow true' \
+  "$debuggable_app/.mock-entitlements.plist" >/dev/null
+expect_fail_with "signed Release rejects get-task-allow=true" \
+  'effective entitlements must set get-task-allow=false.' \
+  "$gate" "$debuggable_app"
+
+debuggable_widget_app=$(make_fixture "$test_root/debuggable-widget" iphoneos true)
+/usr/libexec/PlistBuddy -c 'Set :get-task-allow true' \
+  "$debuggable_widget_app/PlugIns/SpyClashWidgets.appex/.mock-entitlements.plist" >/dev/null
+expect_fail_with "signed Release rejects a debuggable widget" \
+  'Live Activity extension effective entitlements must set get-task-allow=false.' \
+  "$gate" "$debuggable_widget_app"
+
+stale_build_app=$(make_fixture "$test_root/stale-build" iphoneos true)
+/usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 1' \
+  "$stale_build_app/Info.plist" >/dev/null
+expect_fail_with "gate rejects an artifact that does not match project.yml" \
+  'does not match project.yml' \
+  "$gate" "$stale_build_app"
+
+widget_version_app=$(make_fixture "$test_root/widget-version" iphoneos true)
+/usr/libexec/PlistBuddy -c 'Set :CFBundleVersion 1' \
+  "$widget_version_app/PlugIns/SpyClashWidgets.appex/Info.plist" >/dev/null
+expect_fail_with "gate rejects mismatched app and widget versions" \
+  'Unexpected SpyClash Live Activity extension metadata.' \
+  "$gate" "$widget_version_app"
 
 missing_sign_in_app=$(make_fixture "$test_root/missing-sign-in" iphoneos true)
 /usr/libexec/PlistBuddy -c 'Delete :com.apple.developer.applesignin' \

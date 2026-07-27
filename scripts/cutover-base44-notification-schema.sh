@@ -15,6 +15,9 @@ APP_ID="$(sed -n 's/^[[:space:]]*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p
 CUTOVER_DIR="$ROOT/.base44-cutover"
 FIXED_STAGE="$CUTOVER_DIR/notification-step-a-schema"
 EVIDENCE_DIR="$CUTOVER_DIR/evidence/notification-step-a-schema"
+STEP_ZERO_STAGE="$CUTOVER_DIR/notification-step-0-schema-repair"
+STEP_ZERO_MANIFEST="$STEP_ZERO_STAGE/manifest.json"
+STEP_ZERO_POSTFLIGHT="$CUTOVER_DIR/evidence/notification-step-0-schema-repair/latest-postflight.json"
 LOCK_DIR="$CUTOVER_DIR/.notification-step-a-schema.lock"
 PRODUCTION_LOCK_DIR="$CUTOVER_DIR/.production-mutation.lock"
 PRODUCTION_LOCK_OWNER="$PRODUCTION_LOCK_DIR/owner"
@@ -33,6 +36,10 @@ EXPECTED_LIVE_COUNT=20
 EXPECTED_TARGET_COUNT=22
 EXPECTED_CUSTOM_ENTITY_COUNT=21
 ACTION="SPYCLASH_NOTIFICATION_STEP_A_SCHEMA"
+EXPECTED_STEP_ZERO_ACTION="SPYCLASH_NOTIFICATION_STEP_0_SCHEMA_REPAIR"
+EXPECTED_STEP_ZERO_SCHEMA_DIGEST="f09988b0e0b5c5e93a55c4738e47ba20b160bd536ee0cacd65337fa05fd674af"
+STEP_ZERO_PLAN_DIGEST=""
+STEP_ZERO_POSTFLIGHT_DIGEST=""
 
 LIVE_ENTITIES=(
     AiGenerationQuota AiWordPackCacheVariant AiWordPackRequestResult
@@ -50,7 +57,7 @@ TARGET_ENTITIES=(
     AiGenerationUsage AppStoreAccount
 )
 ADDED_ENTITIES=(NotificationAnnouncement NotificationReadReceipt)
-CHANGED_ENTITIES=(PushDeviceRegistration PushNotificationEvent)
+CHANGED_ENTITIES=(PushDeviceRegistration PushNotificationEvent User)
 
 usage() {
     echo "Usage: $0 [--deploy --plan-digest <sha256>]" >&2
@@ -283,6 +290,57 @@ schema_stage_digest() {
         shasum -a 256 | awk '{print $1}'
 }
 
+verify_step_zero_boundary() {
+    local remote=$1 expected="$WORK/step-zero-expected.txt" actual="$WORK/step-zero-actual.txt"
+    local plan_digest current_digest
+    [[ -f "$STEP_ZERO_MANIFEST" && -f "$STEP_ZERO_POSTFLIGHT" &&
+       ! -L "$STEP_ZERO_MANIFEST" && ! -L "$STEP_ZERO_POSTFLIGHT" ]] || {
+        echo "Step A requires a verified Step 0 schema repair postflight." >&2
+        return 77
+    }
+    secure_private_json_file "$STEP_ZERO_MANIFEST" || return 65
+    secure_private_json_file "$STEP_ZERO_POSTFLIGHT" || return 65
+    plan_digest="$(jq -er --arg app_id "$APP_ID" --arg action "$EXPECTED_STEP_ZERO_ACTION" \
+        --arg digest "$EXPECTED_STEP_ZERO_SCHEMA_DIGEST" '
+      select(.app_id == $app_id and .action == $action and .step == "0" and
+        .live_count == 20 and .target_count == 20 and .target_custom_entity_count == 19 and
+        .target_schema_digest == $digest and
+        .delta.entity_additions == [] and .delta.entity_deletions == [] and
+        .delta.property_removals == [] and
+        .delta.rls_changes == ["AiGenerationQuota","GameHistory","GameRoom","WordPack"] and
+        (.plan_digest | test("^[0-9a-f]{64}$"))) |
+      .plan_digest' "$STEP_ZERO_MANIFEST")" || {
+        echo "Step 0 manifest does not prove the reviewed final baseline." >&2
+        return 77
+    }
+    jq -e --arg app_id "$APP_ID" --arg plan_digest "$plan_digest" \
+        --arg digest "$EXPECTED_STEP_ZERO_SCHEMA_DIGEST" '
+      .app_id == $app_id and .reviewed_plan_digest == $plan_digest and
+      .expected_schema_digest == $digest and .actual_schema_digest == $digest and
+      .expected_count == 20 and .actual_count == 20 and .push_status == 0 and
+      .postflight_fetch_status == 0 and .postflight_schema_status == 0 and
+      .admin_write_boundary == true and .matches_reviewed_stage == true
+    ' "$STEP_ZERO_POSTFLIGHT" >/dev/null || {
+        echo "Step 0 postflight does not prove the reviewed final baseline." >&2
+        return 77
+    }
+    validate_remote_schema "$remote" || return 65
+    [[ "$(jq -r '.total' "$remote")" -eq "$EXPECTED_LIVE_COUNT" ]] || return 77
+    write_expected_names "$expected" "${LIVE_ENTITIES[@]}"
+    remote_names "$remote" "$actual"
+    cmp -s "$expected" "$actual" || {
+        echo "Current schema inventory differs from the verified Step 0 baseline." >&2
+        return 77
+    }
+    current_digest="$(schema_remote_set_digest "$remote")"
+    [[ "$current_digest" == "$EXPECTED_STEP_ZERO_SCHEMA_DIGEST" ]] || {
+        echo "Current schema bytes differ from the verified Step 0 baseline." >&2
+        return 77
+    }
+    STEP_ZERO_PLAN_DIGEST="$plan_digest"
+    STEP_ZERO_POSTFLIGHT_DIGEST="$(shasum -a 256 "$STEP_ZERO_POSTFLIGHT" | awk '{print $1}')"
+}
+
 tree_bytes_digest() {
     local tree=$1 records="$WORK/tree-records-$RANDOM.txt" relative
     [[ -d "$tree" && ! -L "$tree" ]] || return 65
@@ -399,6 +457,7 @@ prepare_candidate() {
         inbox_published_at inbox_projection_version inbox_visible inbox_committed_at; do
         add_property_from_local PushNotificationEvent "$name"
     done
+    add_property_from_local User radar_invite_policy
 
     write_expected_names "$expected_target" "${TARGET_ENTITIES[@]}"
     for source in "$STAGE"/base44/entities/*.jsonc; do jq -er '.name' "$source"; done |
@@ -418,6 +477,13 @@ prepare_candidate() {
       ($checks | length) == $expected and all($checks[]; . == true)
     ' "$STAGE"/base44/entities/*.jsonc >/dev/null || {
         echo "Candidate does not retain the admin-only direct-write boundary for all 21 custom entities." >&2
+        jq -s -r '
+          .[] | select(.name != "User") |
+          select((.rls.create.user_condition.role == "admin" and
+            .rls.update.user_condition.role == "admin" and
+            .rls.delete.user_condition.role == "admin") | not) |
+          "Non-admin direct-write boundary: \(.name)"
+        ' "$STAGE"/base44/entities/*.jsonc >&2
         return 65
     }
 }
@@ -456,14 +522,18 @@ write_delta_and_assert() {
     jq -e '
       .additions == ["NotificationAnnouncement","NotificationReadReceipt"] and
       .deletions == [] and
-      .changes == ["PushDeviceRegistration","PushNotificationEvent"] and
-      (.unchanged | length) == 18 and
+      .changes == ["PushDeviceRegistration","PushNotificationEvent","User"] and
+      (.unchanged | length) == 17 and
       all(.details[]; (.property_removals | length) == 0) and
       all(.details[]; .rls_changed == false) and
       ([.details[] | select(.entity == "PushDeviceRegistration") |
         .changed_existing_properties] == [[]]) and
       ([.details[] | select(.entity == "PushNotificationEvent") |
-        (.changed_existing_properties - ["event_type","source_type"])] == [[]])
+        (.changed_existing_properties - ["event_type","source_type"])] == [[]]) and
+      ([.details[] | select(.entity == "User") |
+        .property_additions] == [["radar_invite_policy"]]) and
+      ([.details[] | select(.entity == "User") |
+        .changed_existing_properties] == [[]])
     ' "$output" >/dev/null || {
         echo "Candidate contains a deletion, an unreviewed entity change, or a non-additive property change." >&2
         return 65
@@ -497,6 +567,7 @@ if [[ "$MODE" == "deploy" ]]; then
 fi
 
 fetch_remote_schema "$REMOTE" || { echo "Unable to fetch Production schema." >&2; exit 70; }
+verify_step_zero_boundary "$REMOTE" || exit $?
 prepare_candidate "$REMOTE"
 DELTA="$STAGE/schema-delta.json"
 write_delta_and_assert "$REMOTE" "$DELTA"
@@ -509,6 +580,9 @@ plan_input="$STAGE/plan-input.json"
 jq -S -n \
     --arg step "A" --arg action "$ACTION" --arg app_id "$APP_ID" \
     --arg remote_digest "$remote_digest" --arg target_digest "$target_digest" \
+    --arg step_zero_plan_digest "$STEP_ZERO_PLAN_DIGEST" \
+    --arg step_zero_postflight_digest "$STEP_ZERO_POSTFLIGHT_DIGEST" \
+    --arg step_zero_schema_digest "$EXPECTED_STEP_ZERO_SCHEMA_DIGEST" \
     --arg stage_bytes_digest "$stage_bytes_digest" --arg local_inputs_digest "$inputs_digest" \
     --arg delta_digest "$delta_digest" \
     --argjson live_count "$EXPECTED_LIVE_COUNT" --argjson target_count "$EXPECTED_TARGET_COUNT" \
@@ -516,6 +590,9 @@ jq -S -n \
     --slurpfile delta "$DELTA" \
     '{step:$step,action:$action,app_id:$app_id,live_count:$live_count,target_count:$target_count,
       target_custom_entity_count:$custom_count,
+      step_zero_plan_digest:$step_zero_plan_digest,
+      step_zero_postflight_digest:$step_zero_postflight_digest,
+      step_zero_schema_digest:$step_zero_schema_digest,
       remote_digest:$remote_digest,target_schema_digest:$target_digest,
       stage_bytes_digest:$stage_bytes_digest,local_inputs_digest:$local_inputs_digest,
       schema_delta_digest:$delta_digest,delta:$delta[0]}' > "$plan_input"
@@ -538,6 +615,8 @@ reviewed_plan_digest="$(jq -er '.plan_digest' "$REVIEWED_MANIFEST")"
 reviewed_stage_digest="$(jq -er '.stage_bytes_digest' "$REVIEWED_MANIFEST")"
 reviewed_inputs_digest="$(jq -er '.local_inputs_digest' "$REVIEWED_MANIFEST")"
 reviewed_remote_digest="$(jq -er '.remote_digest' "$REVIEWED_MANIFEST")"
+reviewed_step_zero_plan_digest="$(jq -er '.step_zero_plan_digest' "$REVIEWED_MANIFEST")"
+reviewed_step_zero_postflight_digest="$(jq -er '.step_zero_postflight_digest' "$REVIEWED_MANIFEST")"
 reviewed_manifest_digest="$(shasum -a 256 "$REVIEWED_MANIFEST" | awk '{print $1}')"
 if [[ "$EXPECTED_PLAN_DIGEST" != "$reviewed_plan_digest" || "$plan_digest" != "$reviewed_plan_digest" ||
       "$stage_bytes_digest" != "$reviewed_stage_digest" || "$inputs_digest" != "$reviewed_inputs_digest" ||
@@ -563,7 +642,12 @@ diff -qr "$STAGE/base44" "$FIXED_STAGE/base44" >/dev/null || {
 }
 
 fetch_remote_schema "$JIT_REMOTE" || exit 70
-validate_remote_schema "$JIT_REMOTE" || exit 65
+verify_step_zero_boundary "$JIT_REMOTE" || exit $?
+[[ "$STEP_ZERO_PLAN_DIGEST" == "$reviewed_step_zero_plan_digest" &&
+    "$STEP_ZERO_POSTFLIGHT_DIGEST" == "$reviewed_step_zero_postflight_digest" ]] || {
+    echo "Verified Step 0 evidence changed after Step A review." >&2
+    exit 77
+}
 [[ "$(schema_remote_digest "$JIT_REMOTE")" == "$reviewed_remote_digest" ]] || {
     echo "Production schema changed after review; refusing Step A." >&2
     exit 77

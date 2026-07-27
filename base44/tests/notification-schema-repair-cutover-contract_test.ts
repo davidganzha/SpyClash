@@ -130,6 +130,7 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
 
   const user = schemas.find((schema) => schema.name === "User")!;
   const userProperties = user.properties as Record<string, unknown>;
+  delete userProperties.radar_invite_policy;
   userProperties.role = {
     default: "user",
     enum: ["admin", "user"],

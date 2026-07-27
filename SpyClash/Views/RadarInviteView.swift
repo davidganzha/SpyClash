@@ -844,14 +844,7 @@ struct RadarPolicySettingsView: View {
                 }
             }
 
-            Text(localized(
-                en: "Saved immediately on this iPhone. Account sync will be added with the server presence layer.",
-                ru: "Сохраняется сразу на этом iPhone. Синхронизация аккаунта появится вместе с серверным слоем присутствия.",
-                es: "Se guarda al instante en este iPhone. La sincronización llegará con la presencia del servidor."
-            ))
-            .font(.system(size: 8, weight: .semibold, design: .monospaced))
-            .foregroundStyle(SpyTheme.faint)
-            .fixedSize(horizontal: false, vertical: true)
+            syncStatus
         }
         .padding(12)
         .background(Color.black.opacity(0.42), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
@@ -864,7 +857,7 @@ struct RadarPolicySettingsView: View {
     private func policyButton(_ policy: RadarInvitePolicy) -> some View {
         let selected = appState.radarNearby.invitePolicy == policy
         return Button {
-            appState.radarNearby.invitePolicy = policy
+            appState.setRadarInvitePolicy(policy)
             HapticManager.shared.fire(.tabSelection)
         } label: {
             HStack(spacing: 11) {
@@ -899,6 +892,63 @@ struct RadarPolicySettingsView: View {
         }
         .buttonStyle(SpyWebPressStyle())
         .accessibilityIdentifier("profile.radarPolicy.\(policy.rawValue)")
+    }
+
+    @ViewBuilder
+    private var syncStatus: some View {
+        switch appState.radarInvitePolicySyncState {
+        case .localOnly:
+            syncStatusLabel(
+                icon: "iphone",
+                text: localized(
+                    en: "Saved on this iPhone. Sign in to sync it with your SpyClash account.",
+                    ru: "Сохранено на этом iPhone. Войди, чтобы синхронизировать с аккаунтом SpyClash.",
+                    es: "Guardado en este iPhone. Inicia sesión para sincronizarlo con tu cuenta de SpyClash."
+                )
+            )
+        case .syncing:
+            HStack(alignment: .firstTextBaseline, spacing: 7) {
+                ProgressView()
+                    .controlSize(.mini)
+                    .tint(SpyTheme.red)
+                Text(localized(
+                    en: "Saved on this iPhone. Syncing your account…",
+                    ru: "Сохранено на этом iPhone. Синхронизируем аккаунт…",
+                    es: "Guardado en este iPhone. Sincronizando tu cuenta…"
+                ))
+            }
+            .syncStatusStyle()
+        case .synced:
+            syncStatusLabel(
+                icon: "checkmark.circle.fill",
+                text: localized(
+                    en: "Saved to your SpyClash account.",
+                    ru: "Сохранено в аккаунте SpyClash.",
+                    es: "Guardado en tu cuenta de SpyClash."
+                )
+            )
+        case .pendingRetry:
+            Button {
+                appState.retryRadarInvitePolicySync()
+                HapticManager.shared.fire(.buttonPress)
+            } label: {
+                syncStatusLabel(
+                    icon: "arrow.clockwise",
+                    text: localized(
+                        en: "Saved on this iPhone. Account sync is waiting — tap to retry.",
+                        ru: "Сохранено на этом iPhone. Синхронизация ожидает — нажми, чтобы повторить.",
+                        es: "Guardado en este iPhone. La sincronización está pendiente; toca para reintentar."
+                    )
+                )
+            }
+            .buttonStyle(.plain)
+            .accessibilityIdentifier("profile.radarPolicy.retrySync")
+        }
+    }
+
+    private func syncStatusLabel(icon: String, text: String) -> some View {
+        Label(text, systemImage: icon)
+            .syncStatusStyle()
     }
 
     private func title(for policy: RadarInvitePolicy) -> String {
@@ -943,6 +993,14 @@ struct RadarPolicySettingsView: View {
         case .es: es
         default: en
         }
+    }
+}
+
+private extension View {
+    func syncStatusStyle() -> some View {
+        font(.system(size: 8, weight: .semibold, design: .monospaced))
+            .foregroundStyle(SpyTheme.faint)
+            .fixedSize(horizontal: false, vertical: true)
     }
 }
 

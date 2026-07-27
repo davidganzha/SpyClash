@@ -11,13 +11,23 @@ const READ_ONLY_COMMUNITY_ACTIONS = new Set([
   "search",
   "profile",
 ]);
+const RADAR_INVITE_POLICIES = new Set(["ask", "automatic", "blocked"]);
 export const PROFILE_COMMENT_MAX_LENGTH = 280;
+
+export type RadarInvitePolicy = "ask" | "automatic" | "blocked";
 
 export function communityActionRequiresProfileWriteLease(
   value: unknown,
 ): boolean {
   const action = String(value || "state").trim().toLowerCase();
   return !READ_ONLY_COMMUNITY_ACTIONS.has(action);
+}
+
+export function normalizeRadarInvitePolicy(
+  value: unknown,
+): RadarInvitePolicy | null {
+  const policy = String(value || "").trim().toLowerCase();
+  return RADAR_INVITE_POLICIES.has(policy) ? policy as RadarInvitePolicy : null;
 }
 
 export function normalizeSpyID(value: unknown): string | null {

@@ -10,15 +10,39 @@ enum RadarInvitePolicy: String, CaseIterable, Identifiable {
     case automatic
     case blocked
 
-    static let storageKey = "spyclash.radar.invite-policy"
+    static let legacyStorageKey = "spyclash.radar.invite-policy"
 
     var id: String { rawValue }
 
-    static var stored: RadarInvitePolicy {
-        guard let rawValue = UserDefaults.standard.string(forKey: storageKey) else {
-            return .ask
+    static func stored(
+        for userID: String,
+        defaults: UserDefaults = .standard
+    ) -> RadarInvitePolicy {
+        let key = accountStorageKey(for: userID)
+        if let rawValue = defaults.string(forKey: key) {
+            return RadarInvitePolicy(rawValue: rawValue) ?? .ask
         }
-        return RadarInvitePolicy(rawValue: rawValue) ?? .ask
+
+        // Migrate the one device-wide preference to the first account that
+        // opens Radar after this update. Removing the legacy value prevents it
+        // from leaking into another account on the same iPhone.
+        let migrated = defaults.string(forKey: legacyStorageKey)
+            .flatMap(RadarInvitePolicy.init(rawValue:)) ?? .ask
+        defaults.set(migrated.rawValue, forKey: key)
+        defaults.removeObject(forKey: legacyStorageKey)
+        return migrated
+    }
+
+    func persist(
+        for userID: String,
+        defaults: UserDefaults = .standard
+    ) {
+        defaults.set(rawValue, forKey: Self.accountStorageKey(for: userID))
+    }
+
+    private static func accountStorageKey(for userID: String) -> String {
+        let normalizedUserID = userID.trimmingCharacters(in: .whitespacesAndNewlines)
+        return "\(legacyStorageKey).account.\(normalizedUserID)"
     }
 }
 
@@ -291,10 +315,12 @@ final class RadarNearbyService: NSObject {
     private(set) var supportsDirectionMeasurement: Bool
     private(set) var supportsCameraAssistance: Bool
 
-    var invitePolicy: RadarInvitePolicy {
+    private(set) var invitePolicy: RadarInvitePolicy {
         didSet {
             guard oldValue != invitePolicy else { return }
-            UserDefaults.standard.set(invitePolicy.rawValue, forKey: RadarInvitePolicy.storageKey)
+            if let userID = identity?.userID {
+                invitePolicy.persist(for: userID)
+            }
             rebuildTransportIfNeeded()
         }
     }
@@ -324,7 +350,7 @@ final class RadarNearbyService: NSObject {
 #endif
 
     override init() {
-        invitePolicy = .stored
+        invitePolicy = .ask
         supportsPreciseDistance = NISession.deviceCapabilities.supportsPreciseDistanceMeasurement
         supportsDirectionMeasurement = NISession.deviceCapabilities.supportsDirectionMeasurement
         supportsCameraAssistance = NISession.deviceCapabilities.supportsCameraAssistance
@@ -338,7 +364,7 @@ final class RadarNearbyService: NSObject {
         )
     }
 
-    func configure(user: SpyUser?) {
+    func configure(user: SpyUser?, applyRemoteInvitePolicy: Bool = true) {
         let nextIdentity = user.map {
             RadarLocalIdentity(
                 userID: $0.id,
@@ -354,9 +380,37 @@ final class RadarNearbyService: NSObject {
             )
         }
 
-        guard nextIdentity != identity else { return }
+        let remotePolicy = user.flatMap {
+            RadarInvitePolicy(rawValue: $0.radarInvitePolicy ?? "")
+        }
+        let nextPolicy: RadarInvitePolicy
+        if let user {
+            if applyRemoteInvitePolicy, let remotePolicy {
+                nextPolicy = remotePolicy
+            } else if identity?.userID == user.id {
+                nextPolicy = invitePolicy
+            } else {
+                nextPolicy = RadarInvitePolicy.stored(for: user.id)
+            }
+        } else {
+            nextPolicy = .ask
+        }
+        let identityChanged = nextIdentity != identity
+        let policyChanged = nextPolicy != invitePolicy
+        guard identityChanged || policyChanged else { return }
+
         identity = nextIdentity
-        rebuildTransportIfNeeded()
+        if policyChanged {
+            // The didSet rebuild uses the new identity and persists only to the
+            // current account's fallback key.
+            invitePolicy = nextPolicy
+        } else {
+            rebuildTransportIfNeeded()
+        }
+    }
+
+    func setInvitePolicy(_ policy: RadarInvitePolicy) {
+        invitePolicy = policy
     }
 
     func setActiveRoom(_ room: GameRoom?) {
