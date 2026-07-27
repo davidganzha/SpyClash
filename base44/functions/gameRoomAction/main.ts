@@ -38,6 +38,7 @@ import {
   pauseGameTransitionPatch,
   resumeGameTransitionPatch,
 } from "./game-timer-policy.ts";
+import { resolveRoomActionUser } from "./request-auth.ts";
 import { commitGamePushEvents, enqueueGamePushEvents } from "./push-events.ts";
 import { nextRoundNumber } from "./game-round.ts";
 import { internalPushSecret } from "./internal-push.ts";
@@ -1701,20 +1702,29 @@ Deno.serve(async (req) => {
       req.headers.get("X-App-Id");
     const serverUrl = req.headers.get("Base44-Api-Url") || "https://base44.app";
 
-    if (!accessToken || !appId) {
+    if (!appId) {
       return jsonError("Unauthorized", 401);
     }
+
+    const base44 = createClientFromRequest(req);
 
     // The function gateway does not accept every provider/SSO token as its
     // Authorization header. Verify that token directly against Base44, while
     // keeping createClientFromRequest for server-side service-role access.
-    const identityClient = createClient({
-      appId,
-      serverUrl,
-      token: accessToken,
-    });
-    const user = await identityClient.auth.me();
-    const base44 = createClientFromRequest(req);
+    // If the browser has an authenticated SSO/cookie session but no readable
+    // storage token, the request client is also allowed to resolve that user.
+    let user;
+    try {
+      user = await resolveRoomActionUser({
+        accessToken,
+        appId,
+        serverUrl,
+        requestClient: base44,
+        createIdentityClient: (config) => createClient(config),
+      });
+    } catch {
+      return jsonError("Unauthorized", 401);
+    }
 
     if (!user?.id || !user?.email) {
       return jsonError("Unauthorized", 401);
