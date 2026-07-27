@@ -2927,7 +2927,7 @@ extension GameRoom {
 
         return GameRoom(
             id: "preview-room-\(status)",
-            code: "R7VN",
+            code: "R7VN28",
             hostEmail: players[0].email,
             matchID: ["playing", "finished"].contains(status) ? "preview-match-\(status)" : nil,
             status: status,

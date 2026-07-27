@@ -3,6 +3,13 @@ import XCTest
 @testable import SpyClash
 
 final class OnlineRoundStateTests: XCTestCase {
+    func testPreviewRoomUsesCurrentSixCharacterRoomCodeContract() {
+        let room = GameRoom.previewRoom(status: "waiting")
+
+        XCTAssertEqual(room.code.count, 6)
+        XCTAssertTrue(room.code.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) })
+    }
+
     func testQuestionAskerConfirmsBeforeAdvance() {
         var room = GameRoom.previewRoom(status: "playing")
         room.questionPhase = "asking"

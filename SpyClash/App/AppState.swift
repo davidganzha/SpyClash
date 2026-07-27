@@ -2049,7 +2049,7 @@ final class AppState: NSObject {
         if arguments.contains("--spyclash-preview-radar-invite") {
             radarNearby.presentForConfirmation(
                 RadarIncomingInvitation(
-                    roomCode: "R7VN",
+                    roomCode: "R7VN28",
                     hostCallSign: "Night Fox",
                     hostAvatar: "🥷",
                     hostSpyID: "350-911",
