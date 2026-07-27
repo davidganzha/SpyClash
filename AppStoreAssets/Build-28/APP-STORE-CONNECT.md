@@ -79,6 +79,11 @@ added. Privacy Policy and User Privacy Choices URLs are empty, and the
 published App Privacy answers incorrectly declare tracking plus fifteen data
 types. Replace them with the eleven-item non-tracking declaration below.
 
+The Free Apps Agreement is active from 21 July 2026 through 21 July 2027, so
+the inactive Paid Apps Agreement does not block this free candidate. TestFlight
+currently contains only builds 4 and 7; build 28 has not been uploaded. The DSA
+entry is active and the app-level declaration is Non-trader.
+
 ## English (U.S.)
 
 ### Subtitle
