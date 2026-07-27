@@ -28,6 +28,7 @@ import {
   fallbackGoogleTransactionHandoff,
   primaryGoogleTransactionHandoff,
 } from "./handoff.ts";
+import { requestForBase44ServiceRole } from "./service-role-request.ts";
 import {
   clearUpstreamFallbackTransactionCookie,
   clearUpstreamTransactionCookie,
@@ -582,7 +583,7 @@ type AppleCredentialStores = {
 };
 
 function appleCredentialStores(req: Request): AppleCredentialStores {
-  const base44 = createClientFromRequest(req);
+  const base44 = createClientFromRequest(requestForBase44ServiceRole(req));
   return {
     credentialStore: base44.asServiceRole.entities.AppleSignInCredential,
     lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
