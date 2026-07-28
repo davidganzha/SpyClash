@@ -1,5 +1,10 @@
 # SpyClash 1.0 (28) — App Store Connect packet
 
+> Historical packet. Build 28 screenshots and archive evidence are no longer
+> authoritative for submission. Use
+> [`../Build-39/RELEASE-EVIDENCE.md`](../Build-39/RELEASE-EVIDENCE.md) for the
+> current local candidate and recapture store media from the final build.
+
 Prepared for Apple ID `6793534085`, team `David Ganzha (3Z64QKNL54)`, and
 bundle ID `com.spyclash.ios`.
 
