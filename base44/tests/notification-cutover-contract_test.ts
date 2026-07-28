@@ -161,6 +161,15 @@ case " $* " in
     mkdir -p "$PWD/base44"
     cp -R "$MOCK_REMOTE_FUNCTIONS" "$PWD/base44/functions"
     ;;
+  *" functions deploy "*)
+    while [ "$#" -gt 0 ] && [ "$1" != "deploy" ]; do shift; done
+    [ "\${1:-}" = "deploy" ]
+    shift
+    for function_name in "$@"; do
+      mkdir -p "$MOCK_REMOTE_FUNCTIONS/$function_name"
+      cp -R "$PWD/base44/functions/$function_name/." "$MOCK_REMOTE_FUNCTIONS/$function_name/"
+    done
+    ;;
   *" whoami "*) ;;
   *) exit 99 ;;
 esac
@@ -181,6 +190,38 @@ cat "$MOCK_SCHEMA_PATH"
   await Deno.writeTextFile(`${bin}/curl`, curl, { mode: 0o700 });
   await Deno.chmod(`${bin}/npx`, 0o700);
   await Deno.chmod(`${bin}/curl`, 0o700);
+}
+
+async function snapshotFunctionTrees(
+  root: string,
+  names: string[],
+): Promise<Array<{ path: string; contents: string }>> {
+  const snapshot: Array<{ path: string; contents: string }> = [];
+
+  async function walk(directory: string, relativeDirectory: string) {
+    const entries = [];
+    for await (const entry of Deno.readDir(directory)) entries.push(entry);
+    entries.sort((left, right) => left.name.localeCompare(right.name));
+    for (const entry of entries) {
+      const path = `${directory}/${entry.name}`;
+      const relativePath = relativeDirectory
+        ? `${relativeDirectory}/${entry.name}`
+        : entry.name;
+      if (entry.isDirectory) {
+        await walk(path, relativePath);
+      } else if (entry.isFile) {
+        snapshot.push({
+          path: relativePath,
+          contents: await Deno.readTextFile(path),
+        });
+      }
+    }
+  }
+
+  for (const name of [...names].sort()) {
+    await walk(`${root}/${name}`, name);
+  }
+  return snapshot;
 }
 
 async function canonicalSchemaResponse(
@@ -232,9 +273,8 @@ Deno.test("Step A read-only prepare builds the exact 20 to 22 candidate without 
       )
     );
     response.total = response.schemas.length;
-    const user = response.schemas.find((row) =>
-      row.entity_name === "User"
-    )!.entity_schema as Record<string, unknown>;
+    const user = response.schemas.find((row) => row.entity_name === "User")!
+      .entity_schema as Record<string, unknown>;
     const userProperties = user.properties as Record<string, unknown>;
     delete userProperties.radar_invite_policy;
     userProperties.role = {
@@ -443,6 +483,19 @@ Deno.test("Step B read-only prepare binds exact Step A evidence and the 16 to 17
         `${await Deno.readTextFile(main)}\n// fixture legacy source\n`,
       );
     }
+    const deferredLocalDrift = [
+      "advanceRound",
+      "autoRegisterUser",
+      "checkSubscription",
+      "createCheckout",
+    ];
+    for (const name of deferredLocalDrift) {
+      const main = `${remoteFunctions}/${name}/main.ts`;
+      await Deno.writeTextFile(
+        main,
+        `${await Deno.readTextFile(main)}\n// fixture remote-only source\n`,
+      );
+    }
     await writeFakeNetworkCommands(fixture.bin, true);
 
     const result = await new Deno.Command("bash", {
@@ -479,10 +532,83 @@ Deno.test("Step B read-only prepare binds exact Step A evidence and the 16 to 17
     ]);
     assertEquals(manifest.delta.deletions, []);
     assertEquals(manifest.delta.unchanged.length, 12);
+    assertEquals(manifest.informational_deferred_local_delta.additions, []);
+    assertEquals(manifest.informational_deferred_local_delta.deletions, []);
+    assertEquals(
+      manifest.informational_deferred_local_delta.changes,
+      deferredLocalDrift,
+    );
+    assertEquals(
+      manifest.informational_deferred_local_delta.unchanged.length,
+      8,
+    );
+    assertEquals(manifest.deploy_function_order, [
+      "notificationAction",
+      "communityAction",
+      "gameRoomAction",
+      "deleteAccount",
+      "pushNotificationAction",
+    ]);
     assert(/^[0-9a-f]{64}$/.test(manifest.plan_digest));
     const commands = await Deno.readTextFile(fixture.log);
     assertStringIncludes(commands, "functions pull");
     assertEquals(commands.includes("functions deploy"), false);
+
+    const unchangedNames = manifest.delta.unchanged as string[];
+    const unchangedBefore = await snapshotFunctionTrees(
+      remoteFunctions,
+      unchangedNames,
+    );
+    const deployResult = await new Deno.Command("bash", {
+      args: [
+        `${fixture.root}/scripts/cutover-base44-notification-functions.sh`,
+        "--deploy",
+        "--plan-digest",
+        manifest.plan_digest,
+      ],
+      cwd: fixture.root,
+      env: {
+        HOME: fixture.home,
+        TMPDIR: `${fixture.root}/tmp`,
+        PATH: `${fixture.bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
+        MOCK_COMMAND_LOG: fixture.log,
+        MOCK_SCHEMA_PATH: remoteSchemaPath,
+        MOCK_REMOTE_FUNCTIONS: remoteFunctions,
+        BASE44_CONFIRM_APP_ID: "69a0e57fa939f578082f8091",
+        BASE44_CONFIRM_ACTION: "SPYCLASH_NOTIFICATION_STEP_B_FUNCTIONS",
+        BASE44_CONFIRM_NOTIFICATION_FUNCTION_PLAN_DIGEST: manifest.plan_digest,
+      },
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assertEquals(
+      deployResult.code,
+      0,
+      new TextDecoder().decode(deployResult.stderr),
+    );
+    assertEquals(
+      await snapshotFunctionTrees(remoteFunctions, unchangedNames),
+      unchangedBefore,
+    );
+    const postflight = JSON.parse(
+      await Deno.readTextFile(
+        `${fixture.root}/.base44-cutover/evidence/notification-step-b-functions/latest-postflight.json`,
+      ),
+    );
+    assertEquals(postflight.deploy_status, 0);
+    assertEquals(postflight.function_postflight_status, 0);
+    assertEquals(postflight.schema_postflight_status, 0);
+    assertEquals(postflight.matches_reviewed_stage, true);
+    assertEquals(
+      postflight.actual_unchanged_bytes_digest,
+      postflight.expected_unchanged_bytes_digest,
+    );
+    const commandsAfterDeploy = await Deno.readTextFile(fixture.log);
+    assertStringIncludes(
+      commandsAfterDeploy,
+      "functions deploy notificationAction communityAction gameRoomAction deleteAccount pushNotificationAction",
+    );
+    assertEquals(commandsAfterDeploy.includes("--force"), false);
   } finally {
     await Deno.remove(fixture.root, { recursive: true });
   }
@@ -502,8 +628,8 @@ Deno.test("Step A is exact, additive, digest-bound, and fail closed", async () =
       "CHANGED_ENTITIES=(PushDeviceRegistration PushNotificationEvent User)",
       "add_property_from_local User radar_invite_policy",
       `EXPECTED_STEP_ZERO_SCHEMA_DIGEST="${expectedStepZeroSchemaDigest}"`,
-      "verify_step_zero_boundary \"$REMOTE\"",
-      "verify_step_zero_boundary \"$JIT_REMOTE\"",
+      'verify_step_zero_boundary "$REMOTE"',
+      'verify_step_zero_boundary "$JIT_REMOTE"',
       'ACTION="SPYCLASH_NOTIFICATION_STEP_A_SCHEMA"',
       "--deploy --plan-digest <sha256>",
       "BASE44_CONFIRM_NOTIFICATION_SCHEMA_PLAN_DIGEST",
@@ -571,8 +697,13 @@ Deno.test("Step B binds 16 to 17 sources and preserves all non-targets", async (
       "trap 'exit 130' INT",
       "trap 'exit 143' TERM",
       "remote_function_digest",
+      "expected_target_function_digest",
       "local_deploy_function_digest",
       "unchanged_before_digest",
+      "unchanged_before_bytes_digest",
+      "informational_deferred_local_delta",
+      "function_set_bytes_digest",
+      "copy_scoped_target_functions",
       'status:"mutation-started-postflight-required"',
       "matches_reviewed_stage",
     ]

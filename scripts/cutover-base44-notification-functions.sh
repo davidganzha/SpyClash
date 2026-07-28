@@ -24,6 +24,8 @@ PRODUCTION_LOCK_OWNER="$PRODUCTION_LOCK_DIR/owner"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/spyclash-notification-functions.XXXXXX")"
 STAGE="$WORK/candidate-stage"
 DEPLOY_STAGE="$STAGE/deploy"
+SCOPED_TARGET="$WORK/scoped-target"
+JIT_SCOPED_TARGET="$WORK/jit-scoped-target"
 REMOTE_BEFORE="$WORK/remote-before"
 REMOTE_JIT="$WORK/remote-jit"
 REMOTE_AFTER="$WORK/remote-after"
@@ -374,6 +376,20 @@ tree_bytes_digest() {
     shasum -a 256 "$records" | awk '{print $1}'
 }
 
+function_set_bytes_digest() {
+    local root=$1
+    shift
+    local records="$WORK/function-set-bytes-$RANDOM.txt" name relative
+    : > "$records"
+    for name in "$@"; do
+        while IFS= read -r relative; do
+            printf '%s\t%s\n' "$name/$relative" \
+                "$(shasum -a 256 "$root/$name/$relative" | awk '{print $1}')" >> "$records"
+        done < <(cd "$root/$name" && find . -type f -print | sed 's#^\./##' | LC_ALL=C sort)
+    done
+    shasum -a 256 "$records" | awk '{print $1}'
+}
+
 copy_deploy_functions() {
     local destination=$1 name
     mkdir -p "$destination/base44/functions"
@@ -384,7 +400,20 @@ copy_deploy_functions() {
     done
 }
 
-assert_delta_contract() {
+copy_scoped_target_functions() {
+    local destination=$1 remote_root=$2 name
+    mkdir -p "$destination/base44/functions"
+    cp "$ROOT/base44/config.jsonc" "$destination/base44/config.jsonc"
+    cp "$APP_FILE" "$destination/base44/.app.jsonc"
+    for name in "${UNCHANGED_FUNCTIONS[@]}"; do
+        cp -R "$remote_root/$name" "$destination/base44/functions/$name"
+    done
+    for name in "${DEPLOY_FUNCTIONS[@]}"; do
+        cp -R "$ROOT/base44/functions/$name" "$destination/base44/functions/$name"
+    done
+}
+
+write_function_delta() {
     local before=$1 target=$2 output=$3
     jq -S -n --slurpfile before "$before" --slurpfile target "$target" '
       ($before[0] | map({key:.name,value:.effective_digest}) | from_entries) as $live |
@@ -398,12 +427,29 @@ assert_delta_contract() {
           select($live[$name] != null and $live[$name] == $wanted[$name]) | $name]
       }
     ' > "$output"
+}
+
+assert_delta_contract() {
+    local before=$1 target=$2 output=$3
+    write_function_delta "$before" "$target" "$output"
     jq -e '
       .additions == ["notificationAction"] and .deletions == [] and
       .changes == ["communityAction","deleteAccount","gameRoomAction","pushNotificationAction"] and
       (.unchanged | length) == 12
     ' "$output" >/dev/null || {
         echo "Function plan contains an unreviewed addition or deletion." >&2
+        return 65
+    }
+}
+
+assert_deferred_local_drift_contract() {
+    local remote_unchanged=$1 local_unchanged=$2 output=$3
+    write_function_delta "$remote_unchanged" "$local_unchanged" "$output"
+    jq -e '
+      .additions == [] and .deletions == [] and
+      ((.changes | length) + (.unchanged | length) == 12)
+    ' "$output" >/dev/null || {
+        echo "Deferred non-target function comparison is incomplete or ambiguous." >&2
         return 65
     }
 }
@@ -442,16 +488,22 @@ validate_inventory "$REMOTE_BEFORE/base44/functions" remote-before "${LIVE_FUNCT
 rm -rf -- "$STAGE"
 copy_deploy_functions "$DEPLOY_STAGE"
 validate_inventory "$DEPLOY_STAGE/base44/functions" deploy-target "${DEPLOY_FUNCTIONS[@]}"
+copy_scoped_target_functions "$SCOPED_TARGET" "$REMOTE_BEFORE/base44/functions"
+validate_inventory "$SCOPED_TARGET/base44/functions" scoped-target "${TARGET_FUNCTIONS[@]}"
 remote_manifest="$STAGE/remote-functions-before.json"
-local_full_manifest="$STAGE/local-functions-all.json"
+expected_target_manifest="$STAGE/expected-target-functions-all.json"
 local_deploy_manifest="$STAGE/local-functions-deploy.json"
 unchanged_before_manifest="$STAGE/unchanged-functions-before.json"
+local_non_target_manifest="$STAGE/local-non-target-functions.json"
+deferred_local_delta="$STAGE/deferred-local-function-delta.json"
 delta="$STAGE/function-delta.json"
 write_function_manifest "$REMOTE_BEFORE/base44/functions" "$remote_manifest" "${LIVE_FUNCTIONS[@]}"
-write_function_manifest "$ROOT/base44/functions" "$local_full_manifest" "${TARGET_FUNCTIONS[@]}"
+write_function_manifest "$SCOPED_TARGET/base44/functions" "$expected_target_manifest" "${TARGET_FUNCTIONS[@]}"
 write_function_manifest "$DEPLOY_STAGE/base44/functions" "$local_deploy_manifest" "${DEPLOY_FUNCTIONS[@]}"
 write_function_manifest "$REMOTE_BEFORE/base44/functions" "$unchanged_before_manifest" "${UNCHANGED_FUNCTIONS[@]}"
-assert_delta_contract "$remote_manifest" "$local_full_manifest" "$delta"
+write_function_manifest "$ROOT/base44/functions" "$local_non_target_manifest" "${UNCHANGED_FUNCTIONS[@]}"
+assert_delta_contract "$remote_manifest" "$expected_target_manifest" "$delta"
+assert_deferred_local_drift_contract "$unchanged_before_manifest" "$local_non_target_manifest" "$deferred_local_delta"
 
 local_deploy_direct="$WORK/local-deploy-direct.json"
 write_function_manifest "$ROOT/base44/functions" "$local_deploy_direct" "${DEPLOY_FUNCTIONS[@]}"
@@ -461,41 +513,59 @@ cmp -s "$local_deploy_manifest" "$local_deploy_direct" || {
 }
 
 remote_digest="$(json_digest "$remote_manifest")"
-local_full_digest="$(json_digest "$local_full_manifest")"
+expected_target_digest="$(json_digest "$expected_target_manifest")"
 local_deploy_digest="$(json_digest "$local_deploy_manifest")"
 unchanged_before_digest="$(json_digest "$unchanged_before_manifest")"
+unchanged_before_bytes_digest="$(function_set_bytes_digest "$REMOTE_BEFORE/base44/functions" "${UNCHANGED_FUNCTIONS[@]}")"
+local_non_target_digest="$(json_digest "$local_non_target_manifest")"
+deferred_local_delta_digest="$(json_digest "$deferred_local_delta")"
 delta_digest="$(json_digest "$delta")"
 stage_bytes_digest="$(tree_bytes_digest "$DEPLOY_STAGE/base44")"
 schema_manifest_digest="$(json_digest "$SCHEMA_MANIFEST")"
 schema_postflight_digest="$(json_digest "$SCHEMA_POSTFLIGHT")"
+deploy_order_json="$(jq -cn '$ARGS.positional' --args "${DEPLOY_FUNCTIONS[@]}")"
 plan_input="$STAGE/plan-input.json"
 jq -S -n --arg step "B" --arg action "$ACTION" --arg app_id "$APP_ID" \
     --arg schema_digest "$schema_digest" --arg schema_manifest_digest "$schema_manifest_digest" \
     --arg schema_postflight_digest "$schema_postflight_digest" --arg remote_digest "$remote_digest" \
-    --arg local_full_digest "$local_full_digest" --arg local_deploy_digest "$local_deploy_digest" \
-    --arg unchanged_before_digest "$unchanged_before_digest" --arg delta_digest "$delta_digest" \
+    --arg expected_target_digest "$expected_target_digest" --arg local_deploy_digest "$local_deploy_digest" \
+    --arg unchanged_before_digest "$unchanged_before_digest" \
+    --arg unchanged_before_bytes_digest "$unchanged_before_bytes_digest" \
+    --arg delta_digest "$delta_digest" \
     --arg stage_bytes_digest "$stage_bytes_digest" \
+    --argjson deploy_order "$deploy_order_json" \
     --argjson live_count "$EXPECTED_LIVE_FUNCTION_COUNT" --argjson target_count "$EXPECTED_TARGET_FUNCTION_COUNT" \
-    --slurpfile delta "$delta" --slurpfile remote "$remote_manifest" \
+    --slurpfile delta "$delta" \
+    --slurpfile remote "$remote_manifest" \
     --slurpfile deploy "$local_deploy_manifest" --slurpfile unchanged "$unchanged_before_manifest" \
     '{step:$step,action:$action,app_id:$app_id,schema_count:22,schema_digest:$schema_digest,
       schema_manifest_digest:$schema_manifest_digest,schema_postflight_digest:$schema_postflight_digest,
       live_function_count:$live_count,target_function_count:$target_count,
-      remote_function_digest:$remote_digest,local_full_function_digest:$local_full_digest,
+      remote_function_digest:$remote_digest,expected_target_function_digest:$expected_target_digest,
       local_deploy_function_digest:$local_deploy_digest,unchanged_before_digest:$unchanged_before_digest,
+      unchanged_before_bytes_digest:$unchanged_before_bytes_digest,
       function_delta_digest:$delta_digest,stage_bytes_digest:$stage_bytes_digest,
+      deploy_function_order:$deploy_order,
       delta:$delta[0],remote_functions:$remote[0],deploy_functions:$deploy[0],
       unchanged_functions_before:$unchanged[0]}' > "$plan_input"
 plan_digest="$(json_digest "$plan_input")"
 jq -S --arg prepared_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg plan_digest "$plan_digest" \
-    '. + {prepared_at:$prepared_at,plan_digest:$plan_digest}' "$plan_input" > "$STAGE/manifest.json"
+    --arg local_non_target_digest "$local_non_target_digest" \
+    --arg deferred_local_delta_digest "$deferred_local_delta_digest" \
+    --slurpfile deferred "$deferred_local_delta" \
+    '. + {prepared_at:$prepared_at,plan_digest:$plan_digest,
+      informational_local_non_target_function_digest:$local_non_target_digest,
+      informational_deferred_local_function_delta_digest:$deferred_local_delta_digest,
+      informational_deferred_local_delta:$deferred[0]}' "$plan_input" > "$STAGE/manifest.json"
 
 if [[ "$MODE" == "prepare" ]]; then
+    deferred_local_changes="$(jq -r '.changes | join(" ")' "$deferred_local_delta")"
     rm -rf -- "$FIXED_STAGE"
     mv "$STAGE" "$FIXED_STAGE"
     secure_private_tree "$FIXED_STAGE"
     echo "Prepared read-only notification Step B function plan: $FIXED_STAGE"
     echo "Live functions: $EXPECTED_LIVE_FUNCTION_COUNT; target functions: $EXPECTED_TARGET_FUNCTION_COUNT"
+    echo "Deferred local-only drift (not deployed): $deferred_local_changes"
     echo "Plan digest: $plan_digest"
     echo "No Base44 mutation was made."
     exit 0
@@ -503,18 +573,20 @@ fi
 
 reviewed_plan_digest="$(jq -er '.plan_digest' "$REVIEWED_MANIFEST")"
 reviewed_remote_digest="$(jq -er '.remote_function_digest' "$REVIEWED_MANIFEST")"
-reviewed_local_full_digest="$(jq -er '.local_full_function_digest' "$REVIEWED_MANIFEST")"
+reviewed_expected_target_digest="$(jq -er '.expected_target_function_digest' "$REVIEWED_MANIFEST")"
 reviewed_local_deploy_digest="$(jq -er '.local_deploy_function_digest' "$REVIEWED_MANIFEST")"
 reviewed_unchanged_digest="$(jq -er '.unchanged_before_digest' "$REVIEWED_MANIFEST")"
+reviewed_unchanged_bytes_digest="$(jq -er '.unchanged_before_bytes_digest' "$REVIEWED_MANIFEST")"
 reviewed_stage_digest="$(jq -er '.stage_bytes_digest' "$REVIEWED_MANIFEST")"
 reviewed_schema_digest="$(jq -er '.schema_digest' "$REVIEWED_MANIFEST")"
 reviewed_schema_manifest_digest="$(jq -er '.schema_manifest_digest' "$REVIEWED_MANIFEST")"
 reviewed_schema_postflight_digest="$(jq -er '.schema_postflight_digest' "$REVIEWED_MANIFEST")"
 reviewed_manifest_digest="$(json_digest "$REVIEWED_MANIFEST")"
 if [[ "$EXPECTED_PLAN_DIGEST" != "$reviewed_plan_digest" || "$plan_digest" != "$reviewed_plan_digest" ||
-      "$remote_digest" != "$reviewed_remote_digest" || "$local_full_digest" != "$reviewed_local_full_digest" ||
+      "$remote_digest" != "$reviewed_remote_digest" || "$expected_target_digest" != "$reviewed_expected_target_digest" ||
       "$local_deploy_digest" != "$reviewed_local_deploy_digest" ||
       "$unchanged_before_digest" != "$reviewed_unchanged_digest" ||
+      "$unchanged_before_bytes_digest" != "$reviewed_unchanged_bytes_digest" ||
       "$stage_bytes_digest" != "$reviewed_stage_digest" || "$schema_digest" != "$reviewed_schema_digest" ]]; then
     echo "Step B no longer reproduces the exact reviewed plan." >&2
     exit 77
@@ -548,11 +620,17 @@ write_function_manifest "$REMOTE_JIT/base44/functions" "$jit_remote_manifest" "$
     echo "Production functions changed after Step B review." >&2
     exit 77
 }
-jit_local_full="$WORK/local-full-jit.json"
+[[ "$(function_set_bytes_digest "$REMOTE_JIT/base44/functions" "${UNCHANGED_FUNCTIONS[@]}")" == "$reviewed_unchanged_bytes_digest" ]] || {
+    echo "Non-target Production function bytes changed after Step B review." >&2
+    exit 77
+}
+jit_expected_target="$WORK/expected-target-jit.json"
 jit_local_deploy="$WORK/local-deploy-jit.json"
-write_function_manifest "$ROOT/base44/functions" "$jit_local_full" "${TARGET_FUNCTIONS[@]}"
+copy_scoped_target_functions "$JIT_SCOPED_TARGET" "$REMOTE_JIT/base44/functions"
+validate_inventory "$JIT_SCOPED_TARGET/base44/functions" scoped-target-jit "${TARGET_FUNCTIONS[@]}"
+write_function_manifest "$JIT_SCOPED_TARGET/base44/functions" "$jit_expected_target" "${TARGET_FUNCTIONS[@]}"
 write_function_manifest "$ROOT/base44/functions" "$jit_local_deploy" "${DEPLOY_FUNCTIONS[@]}"
-[[ "$(json_digest "$jit_local_full")" == "$reviewed_local_full_digest" &&
+[[ "$(json_digest "$jit_expected_target")" == "$reviewed_expected_target_digest" &&
     "$(json_digest "$jit_local_deploy")" == "$reviewed_local_deploy_digest" &&
     "$(tree_bytes_digest "$FIXED_STAGE/deploy/base44")" == "$reviewed_stage_digest" ]] || {
     echo "Reviewed Step B stage or checked-in sources changed immediately before deployment." >&2
@@ -587,6 +665,7 @@ function_postflight_status=0
 schema_postflight_status=0
 target_after_digest=""
 unchanged_after_digest=""
+unchanged_after_bytes_digest=""
 schema_after_digest=""
 set +e
 (
@@ -600,6 +679,7 @@ function_postflight_status=$?
 if [[ "$function_postflight_status" -eq 0 ]]; then
     target_after_digest="$(json_digest "$WORK/target-after.json")"
     unchanged_after_digest="$(json_digest "$WORK/unchanged-after.json")"
+    unchanged_after_bytes_digest="$(function_set_bytes_digest "$REMOTE_AFTER/base44/functions" "${UNCHANGED_FUNCTIONS[@]}")"
 fi
 fetch_remote_schema "$SCHEMA_POST"
 schema_postflight_status=$?
@@ -618,6 +698,7 @@ matches_reviewed_stage=false
 if [[ "$deploy_status" -eq 0 && "$function_postflight_status" -eq 0 && "$schema_postflight_status" -eq 0 &&
       "$target_after_digest" == "$reviewed_local_deploy_digest" &&
       "$unchanged_after_digest" == "$reviewed_unchanged_digest" &&
+      "$unchanged_after_bytes_digest" == "$reviewed_unchanged_bytes_digest" &&
       "$schema_after_digest" == "$reviewed_schema_digest" ]]; then
     matches_reviewed_stage=true
 fi
@@ -625,6 +706,8 @@ jq -n --arg audited_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg app_id "$APP_ID" \
     --arg reviewed_plan_digest "$reviewed_plan_digest" \
     --arg expected_target_digest "$reviewed_local_deploy_digest" --arg actual_target_digest "$target_after_digest" \
     --arg expected_unchanged_digest "$reviewed_unchanged_digest" --arg actual_unchanged_digest "$unchanged_after_digest" \
+    --arg expected_unchanged_bytes_digest "$reviewed_unchanged_bytes_digest" \
+    --arg actual_unchanged_bytes_digest "$unchanged_after_bytes_digest" \
     --arg expected_schema_digest "$reviewed_schema_digest" --arg actual_schema_digest "$schema_after_digest" \
     --argjson deploy_status "$deploy_status" --argjson function_postflight_status "$function_postflight_status" \
     --argjson schema_postflight_status "$schema_postflight_status" \
@@ -634,6 +717,8 @@ jq -n --arg audited_at "$(date -u +%Y-%m-%dT%H:%M:%SZ)" --arg app_id "$APP_ID" \
       actual_target_digest:(if ($actual_target_digest|length)==0 then null else $actual_target_digest end),
       expected_unchanged_digest:$expected_unchanged_digest,
       actual_unchanged_digest:(if ($actual_unchanged_digest|length)==0 then null else $actual_unchanged_digest end),
+      expected_unchanged_bytes_digest:$expected_unchanged_bytes_digest,
+      actual_unchanged_bytes_digest:(if ($actual_unchanged_bytes_digest|length)==0 then null else $actual_unchanged_bytes_digest end),
       expected_schema_digest:$expected_schema_digest,
       actual_schema_digest:(if ($actual_schema_digest|length)==0 then null else $actual_schema_digest end),
       deploy_status:$deploy_status,function_postflight_status:$function_postflight_status,
