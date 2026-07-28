@@ -133,8 +133,9 @@ The exact function delta is one addition (`notificationAction`), four updates
 digests. Deployment order is deliberate: `notificationAction`,
 `communityAction`, `gameRoomAction`, `deleteAccount`, then
 `pushNotificationAction`. The last function activates the reviewed bounded
-one-minute drain worker (`limit: 64`). This cutover does not create or publish a
-global announcement.
+five-minute drain worker (`limit: 64`), which is the minimum interval accepted
+by Base44 Production. This cutover does not create or publish a global
+announcement.
 
 A future, separately authorized Production execution would have this shape:
 
@@ -152,6 +153,45 @@ Step B performs a final schema fetch and full function pull before deployment.
 Its postflight requires an exact 17-function inventory, exact reviewed hashes
 for all five targets, unchanged before/after hashes for all twelve non-targets,
 and an unchanged Step A schema digest.
+
+### Partial Step B recovery (28 July 2026)
+
+The authorized Step B attempt for plan
+`4896ee8d3d852edd634f336da7ca919f6e3d627691bcf16aef5d6ce3359ac5c5`
+stopped after Base44 Production rejected the one-minute schedule in
+`pushNotificationAction`. Production now contains the reviewed Step B versions
+of `notificationAction`, `communityAction`, `gameRoomAction`, and
+`deleteAccount`; `pushNotificationAction` remains at its pre-Step-B version.
+The old five-function plan must not be rerun against this changed baseline.
+
+Prepare the dedicated push-only recovery plan with the read-only default:
+
+```sh
+./scripts/recover-base44-notification-push-function.sh
+```
+
+The recovery plan requires exactly 17 live functions and the exact 22-entity
+Step A schema. Its only allowed delta is `pushNotificationAction`; it preserves
+the other 16 function trees byte-for-byte. The retry drain uses Base44's
+minimum accepted interval of five minutes with a bounded batch of 64. A future,
+separately authorized recovery has this shape (always use the freshly prepared
+digest):
+
+```sh
+PLAN_DIGEST=$(jq -er .plan_digest \
+  .base44-cutover/notification-step-b-push-recovery/latest-plan.json)
+BASE44_CONFIRM_APP_ID=69a0e57fa939f578082f8091 \
+BASE44_CONFIRM_ACTION=SPYCLASH_NOTIFICATION_STEP_B_PUSH_RECOVERY \
+BASE44_CONFIRM_NOTIFICATION_PUSH_RECOVERY_PLAN_DIGEST="$PLAN_DIGEST" \
+./scripts/recover-base44-notification-push-function.sh \
+  --deploy --plan-digest "$PLAN_DIGEST"
+```
+
+Immediately before mutation, the recovery script re-pulls Production, verifies
+the reviewed baseline and schema, copies the reviewed payload into a fresh
+private directory, and re-hashes that copy. Postflight requires the target to
+match, all 16 non-target function trees to remain byte-identical, and the schema
+digest to remain unchanged.
 
 ## Evidence and recovery boundary
 

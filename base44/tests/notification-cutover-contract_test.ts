@@ -838,7 +838,7 @@ Deno.test("notification schema and worker activation match the reviewed contract
   assertEquals(automations.length, 1);
   assertEquals(automations[0].is_active, true);
   assertEquals(automations[0].repeat_unit, "minutes");
-  assertEquals(automations[0].repeat_interval, 1);
+  assertEquals(automations[0].repeat_interval, 5);
   assertEquals(
     (automations[0].function_args as Record<string, unknown>).limit,
     64,

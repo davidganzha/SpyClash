@@ -10,7 +10,7 @@
       "schedule_mode": "recurring",
       "schedule_type": "simple",
       "repeat_unit": "minutes",
-      "repeat_interval": 1,
+      "repeat_interval": 5,
       "ends_type": "never",
       "function_args": { "action": "drain", "limit": 64 }
     }
