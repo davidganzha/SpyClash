@@ -4,9 +4,11 @@ Prepared on 29 July 2026 for Apple ID `6793534085`, team
 `David Ganzha (3Z64QKNL54)`, bundle ID `com.spyclash.ios`, Base44 app
 `69a0e57fa939f578082f8091`, and `https://spyclash.com`.
 
-This checkpoint repairs the public Web bootstrap only. It has not been deployed
-to Base44 Production. Build 41 is not archived, uploaded, selected in App Store
-Connect, submitted to App Review, promoted through TestFlight, or released.
+This checkpoint repairs the public Web bootstrap only. The exact Web artifact
+was deployed to Base44 Production on 29 July 2026 and verified at
+`2026-07-29T07:43:40Z`. Build 41 is not archived, uploaded, selected in App
+Store Connect, submitted to App Review, promoted through TestFlight, or
+released.
 
 ## Incident
 
@@ -74,10 +76,31 @@ files. Verification passed:
 The SHA-256 of the canonical `hash  relative-path` manifest is:
 `5ffbf99c8a48f6c22aef439381cc470422cc2c87c05cae2bbc464ef08b9eb881`.
 
-## Required deployment gate
+## Production deployment and postflight
 
-After fresh authorization, deploy only this exact six-file artifact to the
-Base44 Production site of app `69a0e57fa939f578082f8091`. Do not change
-entities, schema, data, functions, secrets, auth configuration, iOS, or App
-Store Connect. Postflight must use a fresh browser context with no stored site
-data and prove that plain `https://spyclash.com` renders without URL parameters.
+After exact current-chat authorization, Base44 CLI `0.1.4` deployed only this
+six-file `dist` directory to the Production site of app
+`69a0e57fa939f578082f8091`. The CLI reported `Site deployed successfully` and
+resolved the canonical Base44 URL to `https://spy-game-zone.base44.app`.
+
+Postflight proved:
+
+- Plain `https://spyclash.com` rendered the SpyClash landing page without URL
+  parameters or `CONNECTION ERROR`
+- The live page references `assets/index-DGwF0ML3.js` and
+  `assets/index-0l8dwMq3.css`
+- Live JavaScript, CSS, both icons, and manifest match the reviewed candidate
+  byte-for-byte
+- The public-settings request for App ID `69a0e57fa939f578082f8091` returns
+  HTTP `200`
+- A URL attempting to replace `app_id`, `functions_version`, and
+  `app_base_url` still renders the landing page and does not produce a
+  connection error
+- Production functions pre/post: `17`, canonical names digest
+  `4dcdd53f18598bfa075b60ef3aa5a941b83261bbe33688e08e503983165f9f17`
+- Production schema pre/post: `22` entities, canonical schema digest
+  `1be1657ecc65e54e918dd2361f913bd881471f53d0f3cb2f67afb8d2560b811e`
+- Function inventory and schema match their pre-deployment state
+
+No entities, schema, data, functions, secrets, auth configuration, iOS, or App
+Store Connect state was changed by this site-only deployment.
