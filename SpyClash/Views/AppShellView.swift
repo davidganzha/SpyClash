@@ -85,6 +85,8 @@ struct AppShellView: View {
     @State private var primarySwipeOffset: CGFloat = 0
     @State private var primarySwipeTarget: AppTab?
     @State private var primarySwipeDirection: TabSwipeDirection?
+    @State private var primarySwipeProgress: CGFloat = 0
+    @State private var mountedPrimaryTabs: Set<AppTab> = []
 
     private static var initialCommandMenuPresentation: Bool {
 #if DEBUG
@@ -102,7 +104,10 @@ struct AppShellView: View {
         let isNotificationsRoute = appState.shellRoute == .notifications
         let dockSelection = Binding<AppTab>(
             get: { appState.selectedTab },
-            set: { appState.openMainTab($0) }
+            set: { tab in
+                mountedPrimaryTabs.insert(tab.dockRepresentative)
+                appState.openMainTab(tab)
+            }
         )
         let shouldShowShellChrome = !appState.isShellChromeSuppressed
         let shouldShowDock = (
@@ -125,6 +130,7 @@ struct AppShellView: View {
                             ) {
                                 appState.closeCommunity()
                             }
+                            .shellDockContentInset(visible: shouldShowDock)
                         } else if isNotificationsRoute {
                             NotificationsInboxView(
                                 store: appState.notificationInbox,
@@ -140,37 +146,15 @@ struct AppShellView: View {
                                 focusItemID: appState.notificationFocusItemID,
                                 focusRequestID: appState.notificationFocusRequestID
                             )
+                            .shellDockContentInset(visible: shouldShowDock)
+                        } else if AppTab.primaryCases.contains(contentTab) {
+                            primaryTabPager(
+                                contentTab: contentTab,
+                                reservesDock: shouldShowDock
+                            )
                         } else {
-                            GeometryReader { proxy in
-                                ZStack {
-                                    if let primarySwipeTarget,
-                                       let primarySwipeDirection {
-                                        primarySwipeTarget.makeContentView()
-                                            .frame(width: proxy.size.width, height: proxy.size.height)
-                                            .offset(
-                                                x: primarySwipeOffset + primarySwipeTargetOrigin(
-                                                    direction: primarySwipeDirection,
-                                                    width: proxy.size.width
-                                                )
-                                            )
-                                            .allowsHitTesting(false)
-                                    }
-
-                                    contentTab.makeContentView()
-                                        .frame(width: proxy.size.width, height: proxy.size.height)
-                                        .offset(x: primarySwipeOffset)
-                                }
-                                .clipped()
-                                .contentShape(Rectangle())
-                                .simultaneousGesture(
-                                    contentSwipeGesture(
-                                        contentTab: contentTab,
-                                        isCommunityRoute: false,
-                                        viewportWidth: proxy.size.width
-                                    ),
-                                    including: .all
-                                )
-                            }
+                            contentTab.makeContentView()
+                                .shellDockContentInset(visible: shouldShowDock)
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -184,13 +168,6 @@ struct AppShellView: View {
                         ),
                         including: .all
                     )
-                    .safeAreaInset(edge: .bottom, spacing: 0) {
-                        if shouldShowDock {
-                            Color.clear
-                                .frame(height: 76)
-                                .allowsHitTesting(false)
-                        }
-                    }
 
                     FloatingDock(
                         selection: dockSelection,
@@ -198,6 +175,8 @@ struct AppShellView: View {
                         communitySelection: communityTab,
                         isCommunity: isCommunityRoute,
                         communityAttentionCount: communityAttention.totalCount,
+                        primarySwipeTarget: primarySwipeTarget,
+                        primarySwipeProgress: primarySwipeProgress,
                         namespace: dockNamespace,
                         language: appState.language
                     ) { tab in
@@ -350,6 +329,56 @@ struct AppShellView: View {
         PushNotificationCoordinator.shared.synchronizeBadgeCount(count)
     }
 
+    private func primaryTabPager(
+        contentTab: AppTab,
+        reservesDock: Bool
+    ) -> some View {
+        let tabs = AppTab.primaryCases
+        let selectedIndex = tabs.firstIndex(of: contentTab) ?? 0
+
+        return GeometryReader { proxy in
+            let width = max(proxy.size.width, 1)
+
+            HStack(spacing: 0) {
+                ForEach(tabs) { tab in
+                    Group {
+                        if tab == contentTab || mountedPrimaryTabs.contains(tab) {
+                            tab.makeContentView()
+                        } else {
+                            Color.clear
+                        }
+                    }
+                    .frame(width: width)
+                    .frame(maxHeight: .infinity)
+                    .shellDockContentInset(visible: reservesDock)
+                    .disabled(primarySwipeDirection != nil)
+                    .allowsHitTesting(tab == contentTab && primarySwipeDirection == nil)
+                    .accessibilityHidden(tab != contentTab)
+                }
+            }
+            .frame(width: width * CGFloat(tabs.count), alignment: .leading)
+            .frame(maxHeight: .infinity)
+            .offset(x: (-CGFloat(selectedIndex) * width) + primarySwipeOffset)
+            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
+            .clipped()
+            .contentShape(Rectangle())
+            .simultaneousGesture(
+                contentSwipeGesture(
+                    contentTab: contentTab,
+                    isCommunityRoute: false,
+                    viewportWidth: width
+                ),
+                including: .all
+            )
+        }
+        .onAppear {
+            mountedPrimaryTabs.insert(contentTab)
+        }
+        .onChange(of: contentTab) { _, tab in
+            mountedPrimaryTabs.insert(tab)
+        }
+    }
+
     private func contentSwipeGesture(
         contentTab: AppTab,
         isCommunityRoute: Bool,
@@ -410,10 +439,13 @@ struct AppShellView: View {
         primarySwipeDirection = direction
         primarySwipeTarget = contentTab.primaryNeighbor(for: direction)
 
-        if primarySwipeTarget == nil {
-            primarySwipeOffset = translation.width * 0.12
-        } else {
+        if let primarySwipeTarget {
+            mountedPrimaryTabs.formUnion([contentTab, primarySwipeTarget])
             primarySwipeOffset = max(-viewportWidth, min(viewportWidth, translation.width))
+            primarySwipeProgress = min(abs(primarySwipeOffset) / max(viewportWidth, 1), 1)
+        } else {
+            primarySwipeOffset = translation.width * 0.12
+            primarySwipeProgress = 0
         }
     }
 
@@ -444,6 +476,7 @@ struct AppShellView: View {
         let destination = direction == .next ? -viewportWidth : viewportWidth
         withAnimation(reduceMotion ? .easeOut(duration: 0.12) : .smooth(duration: 0.24)) {
             primarySwipeOffset = destination
+            primarySwipeProgress = 1
         }
 
         DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.12 : 0.24)) {
@@ -453,6 +486,7 @@ struct AppShellView: View {
             withTransaction(transaction) {
                 appState.selectedTab = target
                 primarySwipeOffset = 0
+                primarySwipeProgress = 0
                 primarySwipeTarget = nil
                 primarySwipeDirection = nil
             }
@@ -470,16 +504,13 @@ struct AppShellView: View {
             && !ShellHorizontalControlHitTest.containsInteractiveHorizontalControl(at: startLocation)
     }
 
-    private func primarySwipeTargetOrigin(direction: TabSwipeDirection, width: CGFloat) -> CGFloat {
-        direction == .next ? width : -width
-    }
-
     private func resetPrimarySwipe(animated: Bool) {
         let animation: Animation? = animated
             ? (reduceMotion ? .easeOut(duration: 0.10) : .smooth(duration: 0.22))
             : nil
         withAnimation(animation) {
             primarySwipeOffset = 0
+            primarySwipeProgress = 0
         }
 
         if animated {
@@ -1922,12 +1953,26 @@ private struct DrawerCutShape: Shape {
     }
 }
 
+private extension View {
+    func shellDockContentInset(visible: Bool) -> some View {
+        safeAreaInset(edge: .bottom, spacing: 0) {
+            if visible {
+                Color.clear
+                    .frame(height: 76)
+                    .allowsHitTesting(false)
+            }
+        }
+    }
+}
+
 private struct FloatingDock: View {
     @Binding var selection: AppTab
     let tabs: [AppTab]
     let communitySelection: CommunityTab
     let isCommunity: Bool
     let communityAttentionCount: Int
+    let primarySwipeTarget: AppTab?
+    let primarySwipeProgress: CGFloat
     let namespace: Namespace.ID
     let language: AppLanguage
     let communityAction: (CommunityTab) -> Void
@@ -1940,9 +1985,10 @@ private struct FloatingDock: View {
                 } label: {
                     DockItem(
                         symbol: item.symbol,
-                        isSelected: item.isSelected,
+                        selectionAmount: item.selectionAmount,
                         inactiveOpacity: item.inactiveOpacity,
                         badgeCount: item.badgeCount,
+                        showsMatchedSelectionLine: isCommunity,
                         namespace: namespace,
                         accessibilityLabel: item.accessibilityLabel
                     )
@@ -1954,6 +2000,22 @@ private struct FloatingDock: View {
         .padding(.horizontal, 8)
         .frame(maxWidth: 348)
         .frame(height: 62)
+        .overlay(alignment: .bottomLeading) {
+            if !isCommunity {
+                Canvas { context, size in
+                    let contentWidth = max(size.width - 16, 1)
+                    let itemWidth = contentWidth / CGFloat(max(tabs.count, 1))
+                    let lineOrigin = 8 + (itemWidth * (primaryDockPosition + 0.5)) - 14
+                    context.fill(
+                        Path(CGRect(x: lineOrigin, y: 0, width: 28, height: 2)),
+                        with: .color(SpyTheme.red)
+                    )
+                }
+                .frame(height: 2)
+                .offset(y: -2)
+                .allowsHitTesting(false)
+            }
+        }
         .background {
             ZStack {
                 RoundedRectangle(cornerRadius: 15, style: .continuous)
@@ -1974,7 +2036,7 @@ private struct FloatingDock: View {
             return CommunityTab.allCases.map { tab in
                 ShellDockItem(
                     symbol: tab.symbol,
-                    isSelected: tab != .exit && communitySelection == tab,
+                    selectionAmount: tab != .exit && communitySelection == tab ? 1 : 0,
                     inactiveOpacity: tab == .exit ? 0.70 : 0.44,
                     badgeCount: tab == .network ? communityAttentionCount : 0,
                     accessibilityLabel: tab.accessibilityLabel(language: language)
@@ -1982,15 +2044,27 @@ private struct FloatingDock: View {
             }
         }
 
-        return tabs.map { tab in
+        return tabs.enumerated().map { index, tab in
             ShellDockItem(
                 symbol: tab.symbol,
-                isSelected: selection.dockRepresentative == tab,
+                selectionAmount: max(0, 1 - abs(primaryDockPosition - CGFloat(index))),
                 inactiveOpacity: 0.44,
                 badgeCount: 0,
                 accessibilityLabel: language.tabTitle(tab)
             )
         }
+    }
+
+    private var primaryDockPosition: CGFloat {
+        let selectedTab = selection.dockRepresentative
+        let selectedIndex = tabs.firstIndex(of: selectedTab) ?? 0
+        guard let primarySwipeTarget,
+              let targetIndex = tabs.firstIndex(of: primarySwipeTarget) else {
+            return CGFloat(selectedIndex)
+        }
+
+        return CGFloat(selectedIndex)
+            + (CGFloat(targetIndex - selectedIndex) * min(max(primarySwipeProgress, 0), 1))
     }
 
     private func handleTap(at index: Int) {
@@ -2000,14 +2074,16 @@ private struct FloatingDock: View {
             communityAction(CommunityTab.allCases[index])
         } else {
             guard tabs.indices.contains(index) else { return }
-            selection = tabs[index]
+            withAnimation(.smooth(duration: 0.24)) {
+                selection = tabs[index]
+            }
         }
     }
 }
 
 private struct ShellDockItem {
     let symbol: String
-    let isSelected: Bool
+    let selectionAmount: CGFloat
     let inactiveOpacity: Double
     let badgeCount: Int
     let accessibilityLabel: String
@@ -2015,22 +2091,33 @@ private struct ShellDockItem {
 
 private struct DockItem: View {
     let symbol: String
-    let isSelected: Bool
+    let selectionAmount: CGFloat
     let inactiveOpacity: Double
     let badgeCount: Int
+    let showsMatchedSelectionLine: Bool
     let namespace: Namespace.ID
     let accessibilityLabel: String
 
     var body: some View {
-        Image(systemName: symbol)
-            .font(.system(size: 25, weight: isSelected ? .bold : .medium))
-            .foregroundStyle(isSelected ? SpyTheme.red : Color.white.opacity(inactiveOpacity))
-            .scaleEffect(isSelected ? 1.12 : 1)
-            .offset(y: isSelected ? -1 : 0)
+        let amount = min(max(selectionAmount, 0), 1)
+
+        ZStack {
+            Image(systemName: symbol)
+                .font(.system(size: 25, weight: .medium))
+                .foregroundStyle(Color.white.opacity(inactiveOpacity))
+                .opacity(1 - amount)
+
+            Image(systemName: symbol)
+                .font(.system(size: 25, weight: .bold))
+                .foregroundStyle(SpyTheme.red)
+                .opacity(amount)
+        }
+            .scaleEffect(1 + (0.12 * amount))
+            .offset(y: -amount)
             .frame(maxWidth: .infinity)
             .frame(height: 58)
             .overlay(alignment: .bottom) {
-                if isSelected {
+                if showsMatchedSelectionLine, amount > 0.5 {
                     Rectangle()
                         .fill(SpyTheme.red)
                         .frame(width: 28, height: 2)
@@ -2049,7 +2136,12 @@ private struct DockItem: View {
             .contentTransition(.opacity)
             .animation(.easeOut(duration: 0.14), value: symbol)
             .animation(.easeOut(duration: 0.18), value: badgeCount)
-            .animation(.interpolatingSpring(mass: 1, stiffness: 420, damping: 26, initialVelocity: 0), value: isSelected)
+            .animation(
+                showsMatchedSelectionLine
+                    ? .interpolatingSpring(mass: 1, stiffness: 420, damping: 26, initialVelocity: 0)
+                    : nil,
+                value: amount
+            )
             .accessibilityLabel(accessibilityLabel)
             .accessibilityValue(badgeCount > 0 ? "\(badgeCount) pending items" : "")
     }
