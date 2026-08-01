@@ -82,6 +82,9 @@ struct AppShellView: View {
     @State private var communityAttention = CommunityAttentionSnapshot.empty
     @State private var communityNetworkState: CommunityState?
     @State private var communityAttentionRequestID: UUID?
+    @State private var primarySwipeOffset: CGFloat = 0
+    @State private var primarySwipeTarget: AppTab?
+    @State private var primarySwipeDirection: TabSwipeDirection?
 
     private static var initialCommandMenuPresentation: Bool {
 #if DEBUG
@@ -138,7 +141,36 @@ struct AppShellView: View {
                                 focusRequestID: appState.notificationFocusRequestID
                             )
                         } else {
-                            contentTab.makeContentView()
+                            GeometryReader { proxy in
+                                ZStack {
+                                    if let primarySwipeTarget,
+                                       let primarySwipeDirection {
+                                        primarySwipeTarget.makeContentView()
+                                            .frame(width: proxy.size.width, height: proxy.size.height)
+                                            .offset(
+                                                x: primarySwipeOffset + primarySwipeTargetOrigin(
+                                                    direction: primarySwipeDirection,
+                                                    width: proxy.size.width
+                                                )
+                                            )
+                                            .allowsHitTesting(false)
+                                    }
+
+                                    contentTab.makeContentView()
+                                        .frame(width: proxy.size.width, height: proxy.size.height)
+                                        .offset(x: primarySwipeOffset)
+                                }
+                                .clipped()
+                                .contentShape(Rectangle())
+                                .simultaneousGesture(
+                                    contentSwipeGesture(
+                                        contentTab: contentTab,
+                                        isCommunityRoute: false,
+                                        viewportWidth: proxy.size.width
+                                    ),
+                                    including: .all
+                                )
+                            }
                         }
                     }
                     .frame(maxWidth: .infinity, maxHeight: .infinity)
@@ -147,7 +179,8 @@ struct AppShellView: View {
                     .simultaneousGesture(
                         contentSwipeGesture(
                             contentTab: contentTab,
-                            isCommunityRoute: isCommunityRoute
+                            isCommunityRoute: isCommunityRoute,
+                            viewportWidth: nil
                         ),
                         including: .all
                     )
@@ -319,19 +352,145 @@ struct AppShellView: View {
 
     private func contentSwipeGesture(
         contentTab: AppTab,
-        isCommunityRoute: Bool
+        isCommunityRoute: Bool,
+        viewportWidth: CGFloat?
     ) -> some Gesture {
         DragGesture(
             minimumDistance: TabSwipeResolver.gestureMinimumDistance,
             coordinateSpace: .global
         )
+        .onChanged { value in
+            guard let viewportWidth, !isCommunityRoute else { return }
+            updatePrimarySwipe(
+                translation: value.translation,
+                startLocation: value.startLocation,
+                contentTab: contentTab,
+                viewportWidth: viewportWidth
+            )
+        }
         .onEnded { value in
+            if let viewportWidth, !isCommunityRoute {
+                finishPrimarySwipe(
+                    translation: value.translation,
+                    predictedTranslation: value.predictedEndTranslation,
+                    contentTab: contentTab,
+                    viewportWidth: viewportWidth
+                )
+                return
+            }
+
+            guard isCommunityRoute else { return }
+
             handleContentSwipe(
                 translation: value.translation,
                 startLocation: value.startLocation,
                 contentTab: contentTab,
                 isCommunityRoute: isCommunityRoute
             )
+        }
+    }
+
+    private func updatePrimarySwipe(
+        translation: CGSize,
+        startLocation: CGPoint,
+        contentTab: AppTab,
+        viewportWidth: CGFloat
+    ) {
+        guard AppTab.primaryCases.contains(contentTab),
+              canTrackPrimarySwipe(startLocation: startLocation) else {
+            resetPrimarySwipe(animated: false)
+            return
+        }
+
+        let horizontal = abs(translation.width)
+        let vertical = abs(translation.height)
+        guard horizontal > vertical * TabSwipeResolver.horizontalDominanceRatio else { return }
+
+        let direction: TabSwipeDirection = translation.width < 0 ? .next : .previous
+        primarySwipeDirection = direction
+        primarySwipeTarget = contentTab.primaryNeighbor(for: direction)
+
+        if primarySwipeTarget == nil {
+            primarySwipeOffset = translation.width * 0.12
+        } else {
+            primarySwipeOffset = max(-viewportWidth, min(viewportWidth, translation.width))
+        }
+    }
+
+    private func finishPrimarySwipe(
+        translation: CGSize,
+        predictedTranslation: CGSize,
+        contentTab: AppTab,
+        viewportWidth: CGFloat
+    ) {
+        guard let direction = primarySwipeDirection,
+              let target = primarySwipeTarget,
+              contentTab.primaryNeighbor(for: direction) == target else {
+            resetPrimarySwipe(animated: true)
+            return
+        }
+
+        let actualProgress = abs(primarySwipeOffset) / max(viewportWidth, 1)
+        let projectedProgress = abs(predictedTranslation.width) / max(viewportWidth, 1)
+        let projectedDirection: TabSwipeDirection = predictedTranslation.width < 0 ? .next : .previous
+        let shouldCommit = actualProgress >= 0.28
+            || (projectedDirection == direction && projectedProgress >= 0.42)
+
+        guard shouldCommit else {
+            resetPrimarySwipe(animated: true)
+            return
+        }
+
+        let destination = direction == .next ? -viewportWidth : viewportWidth
+        withAnimation(reduceMotion ? .easeOut(duration: 0.12) : .smooth(duration: 0.24)) {
+            primarySwipeOffset = destination
+        }
+
+        DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.12 : 0.24)) {
+            guard primarySwipeTarget == target else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                appState.selectedTab = target
+                primarySwipeOffset = 0
+                primarySwipeTarget = nil
+                primarySwipeDirection = nil
+            }
+            HapticManager.shared.fire(.tabSelection)
+        }
+    }
+
+    private func canTrackPrimarySwipe(startLocation: CGPoint) -> Bool {
+        !isCommandMenuPresented
+            && !showsBlockingRoomSyncOverlay
+            && !appState.isShellChromeSuppressed
+            && appState.presentedSheet == nil
+            && appState.shellRoute == .main
+            && !ShellTextInputActivity.isActive
+            && !ShellHorizontalControlHitTest.containsInteractiveHorizontalControl(at: startLocation)
+    }
+
+    private func primarySwipeTargetOrigin(direction: TabSwipeDirection, width: CGFloat) -> CGFloat {
+        direction == .next ? width : -width
+    }
+
+    private func resetPrimarySwipe(animated: Bool) {
+        let animation: Animation? = animated
+            ? (reduceMotion ? .easeOut(duration: 0.10) : .smooth(duration: 0.22))
+            : nil
+        withAnimation(animation) {
+            primarySwipeOffset = 0
+        }
+
+        if animated {
+            DispatchQueue.main.asyncAfter(deadline: .now() + (reduceMotion ? 0.10 : 0.22)) {
+                guard primarySwipeOffset == 0 else { return }
+                primarySwipeTarget = nil
+                primarySwipeDirection = nil
+            }
+        } else {
+            primarySwipeTarget = nil
+            primarySwipeDirection = nil
         }
     }
 
