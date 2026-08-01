@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct SpyBackground: View {
     var body: some View {
@@ -146,6 +147,7 @@ struct PageChrome<Content: View>: View {
     let status: String
     let showsPageTopEdge: Bool
     let topReserve: CGFloat
+    let scrollTarget: String?
     @ViewBuilder var content: Content
 
     init(
@@ -153,12 +155,14 @@ struct PageChrome<Content: View>: View {
         status: String,
         showsPageTopEdge: Bool = true,
         topReserve: CGFloat = 80,
+        scrollTarget: String? = nil,
         @ViewBuilder content: () -> Content
     ) {
         self.eyebrow = eyebrow
         self.status = status
         self.showsPageTopEdge = showsPageTopEdge
         self.topReserve = topReserve
+        self.scrollTarget = scrollTarget
         self.content = content()
     }
 
@@ -176,24 +180,42 @@ struct PageChrome<Content: View>: View {
                     Color.clear
                         .frame(height: topShellReserve)
 
-                    ScrollView(showsIndicators: false) {
-                        VStack(spacing: 0) {
-                            if !eyebrow.isEmpty {
-                                SpyPageStatusLine(eyebrow: eyebrow, status: status)
-                                    .spyWebEntrance(delay: 0.05, duration: 0.45, y: -10)
-                            }
+                    ScrollViewReader { proxy in
+                        ScrollView(showsIndicators: false) {
+                            VStack(spacing: 0) {
+                                if !eyebrow.isEmpty {
+                                    SpyPageStatusLine(eyebrow: eyebrow, status: status)
+                                        .spyWebEntrance(delay: 0.05, duration: 0.45, y: -10)
+                                }
 
-                            content
-                                .padding(.top, 6)
-                                .padding(.bottom, bottomContentPadding)
+                                content
+                                    .padding(.top, 6)
+                                    .padding(.bottom, bottomContentPadding)
+                            }
                         }
-                    }
-                    .overlay(alignment: .top) {
-                        if showsPageTopEdge {
-                            SpyPageTopEdge()
+                        .scrollDismissesKeyboard(.interactively)
+                        .onChange(of: scrollTarget) { _, target in
+                            scrollToTarget(target, proxy: proxy)
+                        }
+                        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { _ in
+                            scrollToTarget(scrollTarget, proxy: proxy)
+                        }
+                        .overlay(alignment: .top) {
+                            if showsPageTopEdge {
+                                SpyPageTopEdge()
+                            }
                         }
                     }
                 }
+            }
+        }
+    }
+
+    private func scrollToTarget(_ target: String?, proxy: ScrollViewProxy) {
+        guard let target else { return }
+        DispatchQueue.main.async {
+            withAnimation(.smooth(duration: 0.28)) {
+                proxy.scrollTo(target, anchor: .bottom)
             }
         }
     }

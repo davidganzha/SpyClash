@@ -180,7 +180,11 @@ struct GameView: View {
     }
 
     private var standardGameSurface: some View {
-        PageChrome(eyebrow: copy.eyebrow, status: appState.activeRoom.map(roomStateLabel) ?? copy.standby) {
+        PageChrome(
+            eyebrow: copy.eyebrow,
+            status: appState.activeRoom.map(roomStateLabel) ?? copy.standby,
+            scrollTarget: focusedOnlineSetupField == .theme ? onlineIntelScrollTarget : nil
+        ) {
             VStack(alignment: .leading, spacing: 18) {
                 Group {
                     if let room = appState.activeRoom {
@@ -445,6 +449,7 @@ struct GameView: View {
                                 .spyWebEntrance(delay: 0.16, duration: 0.42, y: 14)
                         )
                     )
+                    .id(onlineIntelScrollTarget)
                 } else {
                     onlineSetupSlot(
                         .intel,
@@ -489,6 +494,10 @@ struct GameView: View {
 
     private var onlineSetupHasActiveCapture: Bool {
         focusedOnlineSetupField != nil || isDraggingOnlineDuration
+    }
+
+    private var onlineIntelScrollTarget: String {
+        "online-room-intel-panel"
     }
 
     private func dismissOnlineSetupCapture() {
