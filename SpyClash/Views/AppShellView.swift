@@ -1982,7 +1982,7 @@ private struct WebPullDownCommandMenu: View {
                         attentionCount: communityAttentionCount + notificationUnreadCount,
                         action: openHomeRoot
                     )
-                    .frame(width: min(proxy.size.width - 112, 252), height: 80, alignment: .leading)
+                    .frame(height: 80, alignment: .leading)
                     .padding(.leading, 24)
                     .padding(.top, topInset)
                 }
@@ -2207,18 +2207,21 @@ private struct WebHeaderHomeButton: View {
     let action: () -> Void
 
     var body: some View {
-        Button(action: action) {
-            VStack(alignment: .leading, spacing: 2) {
+        VStack(alignment: .leading, spacing: 2) {
+            Button(action: action) {
                 SpyWordmark(fontSize: 30)
-                SpyAppVersionMark()
+                    .fixedSize()
+                    .contentShape(Rectangle())
             }
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .leading)
-            .contentShape(Rectangle())
+            .buttonStyle(SpyWebPressStyle(pressedScale: 0.97))
+            .accessibilityLabel("Open SpyClash home")
+            .accessibilityValue(attentionCount > 0 ? "\(attentionCount) pending items" : "")
+            .accessibilityIdentifier("shell.header.home")
+
+            SpyAppVersionMark()
+                .allowsHitTesting(false)
         }
-        .buttonStyle(SpyWebPressStyle(pressedScale: 0.97))
-        .accessibilityLabel("Open SpyClash home")
-        .accessibilityValue(attentionCount > 0 ? "\(attentionCount) pending items" : "")
-        .accessibilityIdentifier("shell.header.home")
+        .fixedSize(horizontal: true, vertical: false)
     }
 }
 
