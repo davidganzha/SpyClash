@@ -1966,6 +1966,7 @@ private extension View {
 }
 
 private struct FloatingDock: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selection: AppTab
     let tabs: [AppTab]
     let communitySelection: CommunityTab
@@ -1985,7 +1986,8 @@ private struct FloatingDock: View {
                 } label: {
                     DockItem(
                         symbol: item.symbol,
-                        selectionAmount: item.selectionAmount,
+                        selectionPosition: item.selectionPosition,
+                        itemIndex: index,
                         inactiveOpacity: item.inactiveOpacity,
                         badgeCount: item.badgeCount,
                         showsMatchedSelectionLine: isCommunity,
@@ -1993,7 +1995,7 @@ private struct FloatingDock: View {
                         accessibilityLabel: item.accessibilityLabel
                     )
                 }
-                .buttonStyle(SpyWebPressStyle(pressedScale: 0.90))
+                .buttonStyle(SpyWebPressStyle(pressedScale: 0.96))
                 .accessibilityLabel(item.accessibilityLabel)
             }
         }
@@ -2002,15 +2004,11 @@ private struct FloatingDock: View {
         .frame(height: 62)
         .overlay(alignment: .bottomLeading) {
             if !isCommunity {
-                Canvas { context, size in
-                    let contentWidth = max(size.width - 16, 1)
-                    let itemWidth = contentWidth / CGFloat(max(tabs.count, 1))
-                    let lineOrigin = 8 + (itemWidth * (primaryDockPosition + 0.5)) - 14
-                    context.fill(
-                        Path(CGRect(x: lineOrigin, y: 0, width: 28, height: 2)),
-                        with: .color(SpyTheme.red)
-                    )
-                }
+                DockSelectionIndicator(
+                    position: primaryDockPosition,
+                    itemCount: tabs.count
+                )
+                .fill(SpyTheme.red)
                 .frame(height: 2)
                 .offset(y: -2)
                 .allowsHitTesting(false)
@@ -2022,21 +2020,26 @@ private struct FloatingDock: View {
                     .fill(.ultraThinMaterial)
 
                 RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(Color.black.opacity(0.72))
+                    .fill(Color.black.opacity(0.34))
+
+                RoundedRectangle(cornerRadius: 15, style: .continuous)
+                    .stroke(Color.white.opacity(0.075), lineWidth: 0.75)
             }
             .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
         }
         .shadow(color: .black.opacity(0.24), radius: 9, y: 5)
         .padding(.horizontal, 10)
         .padding(.bottom, 8)
+        .animation(dockSelectionAnimation, value: selection.dockRepresentative)
     }
 
     private var dockItems: [ShellDockItem] {
         if isCommunity {
+            let selectedIndex = CommunityTab.allCases.firstIndex(of: communitySelection) ?? 1
             return CommunityTab.allCases.map { tab in
                 ShellDockItem(
                     symbol: tab.symbol,
-                    selectionAmount: tab != .exit && communitySelection == tab ? 1 : 0,
+                    selectionPosition: CGFloat(selectedIndex),
                     inactiveOpacity: tab == .exit ? 0.70 : 0.44,
                     badgeCount: tab == .network ? communityAttentionCount : 0,
                     accessibilityLabel: tab.accessibilityLabel(language: language)
@@ -2047,7 +2050,7 @@ private struct FloatingDock: View {
         return tabs.enumerated().map { index, tab in
             ShellDockItem(
                 symbol: tab.symbol,
-                selectionAmount: max(0, 1 - abs(primaryDockPosition - CGFloat(index))),
+                selectionPosition: primaryDockPosition,
                 inactiveOpacity: 0.44,
                 badgeCount: 0,
                 accessibilityLabel: language.tabTitle(tab)
@@ -2067,6 +2070,12 @@ private struct FloatingDock: View {
             + (CGFloat(targetIndex - selectedIndex) * min(max(primarySwipeProgress, 0), 1))
     }
 
+    private var dockSelectionAnimation: Animation {
+        reduceMotion
+            ? .easeOut(duration: 0.10)
+            : .spring(response: 0.34, dampingFraction: 0.84)
+    }
+
     private func handleTap(at index: Int) {
         if isCommunity {
             guard CommunityTab.allCases.indices.contains(index) else { return }
@@ -2074,16 +2083,15 @@ private struct FloatingDock: View {
             communityAction(CommunityTab.allCases[index])
         } else {
             guard tabs.indices.contains(index) else { return }
-            withAnimation(.smooth(duration: 0.24)) {
-                selection = tabs[index]
-            }
+            HapticManager.shared.fire(.tabSelection)
+            selection = tabs[index]
         }
     }
 }
 
 private struct ShellDockItem {
     let symbol: String
-    let selectionAmount: CGFloat
+    let selectionPosition: CGFloat
     let inactiveOpacity: Double
     let badgeCount: Int
     let accessibilityLabel: String
@@ -2091,7 +2099,8 @@ private struct ShellDockItem {
 
 private struct DockItem: View {
     let symbol: String
-    let selectionAmount: CGFloat
+    let selectionPosition: CGFloat
+    let itemIndex: Int
     let inactiveOpacity: Double
     let badgeCount: Int
     let showsMatchedSelectionLine: Bool
@@ -2099,21 +2108,17 @@ private struct DockItem: View {
     let accessibilityLabel: String
 
     var body: some View {
-        let amount = min(max(selectionAmount, 0), 1)
+        let amount = selectionAmount
 
-        ZStack {
-            Image(systemName: symbol)
-                .font(.system(size: 25, weight: .medium))
-                .foregroundStyle(Color.white.opacity(inactiveOpacity))
-                .opacity(1 - amount)
-
-            Image(systemName: symbol)
-                .font(.system(size: 25, weight: .bold))
-                .foregroundStyle(SpyTheme.red)
-                .opacity(amount)
-        }
-            .scaleEffect(1 + (0.12 * amount))
-            .offset(y: -amount)
+        Image(systemName: symbol)
+            .font(.system(size: 25, weight: .semibold))
+            .modifier(
+                DockIconAppearance(
+                    selectionPosition: selectionPosition,
+                    itemIndex: CGFloat(itemIndex),
+                    inactiveOpacity: inactiveOpacity
+                )
+            )
             .frame(maxWidth: .infinity)
             .frame(height: 58)
             .overlay(alignment: .bottom) {
@@ -2144,6 +2149,58 @@ private struct DockItem: View {
             )
             .accessibilityLabel(accessibilityLabel)
             .accessibilityValue(badgeCount > 0 ? "\(badgeCount) pending items" : "")
+    }
+
+    private var selectionAmount: CGFloat {
+        min(max(1 - abs(selectionPosition - CGFloat(itemIndex)), 0), 1)
+    }
+}
+
+private struct DockSelectionIndicator: Shape {
+    var position: CGFloat
+    let itemCount: Int
+
+    nonisolated var animatableData: CGFloat {
+        get { position }
+        set { position = newValue }
+    }
+
+    func path(in rect: CGRect) -> Path {
+        guard itemCount > 0 else { return Path() }
+
+        let horizontalInset: CGFloat = 8
+        let indicatorWidth: CGFloat = 28
+        let contentWidth = max(rect.width - (horizontalInset * 2), 1)
+        let itemWidth = contentWidth / CGFloat(itemCount)
+        let originX = horizontalInset
+            + (itemWidth * (position + 0.5))
+            - (indicatorWidth * 0.5)
+
+        return Path(CGRect(x: originX, y: rect.minY, width: indicatorWidth, height: rect.height))
+    }
+}
+
+private struct DockIconAppearance: AnimatableModifier {
+    var selectionPosition: CGFloat
+    let itemIndex: CGFloat
+    let inactiveOpacity: Double
+
+    nonisolated var animatableData: CGFloat {
+        get { selectionPosition }
+        set { selectionPosition = newValue }
+    }
+
+    func body(content: Content) -> some View {
+        let amount = min(max(1 - abs(selectionPosition - itemIndex), 0), 1)
+        let red = 1 + ((CGFloat(229) / 255) - 1) * amount
+        let green = 1 + ((CGFloat(53) / 255) - 1) * amount
+        let blue = 1 + ((CGFloat(53) / 255) - 1) * amount
+        let opacity = inactiveOpacity + ((1 - inactiveOpacity) * Double(amount))
+
+        content
+            .foregroundStyle(Color(red: red, green: green, blue: blue).opacity(opacity))
+            .scaleEffect(1 + (0.085 * amount))
+            .offset(y: -0.8 * amount)
     }
 }
 
