@@ -22,6 +22,7 @@ struct HomeView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.spyEntranceMotionEnabled) private var entranceMotionEnabled
+    @Environment(\.spyEntrancePresentationActive) private var entrancePresentationActive
 
     @State private var joinCode = ""
     @State private var stage: HomeStage = .main
@@ -80,8 +81,15 @@ struct HomeView: View {
 #endif
         }
         .onChange(of: entranceMotionEnabled) { _, isEnabled in
-            guard isEnabled else { return }
+            guard isEnabled, entrancePresentationActive else { return }
             startHeroEntranceIfNeeded()
+        }
+        .onChange(of: entrancePresentationActive) { _, isActive in
+            if isActive {
+                startHeroEntranceIfNeeded()
+            } else {
+                resetHeroEntrance()
+            }
         }
         .onChange(of: appState.homeRootRequestID) { _, _ in
             resetToHomeRoot()
@@ -92,9 +100,17 @@ struct HomeView: View {
     }
 
     private func startHeroEntranceIfNeeded() {
-        guard entranceMotionEnabled, !revealHero else { return }
+        guard entranceMotionEnabled, entrancePresentationActive, !revealHero else { return }
         withAnimation(reduceMotion ? .easeOut(duration: 0.18) : .spring(response: 0.72, dampingFraction: 0.86).delay(0.08)) {
             revealHero = true
+        }
+    }
+
+    private func resetHeroEntrance() {
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            revealHero = false
         }
     }
 
@@ -945,6 +961,7 @@ private struct HomeLaserScanLayer: View {
 private struct HomeHeroTitle: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.spyEntranceMotionEnabled) private var entranceMotionEnabled
+    @Environment(\.spyEntrancePresentationActive) private var entrancePresentationActive
     @State private var isVisible = false
 
     let isModeHero: Bool
@@ -982,8 +999,16 @@ private struct HomeHeroTitle: View {
         .frame(maxWidth: .infinity)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(lineWords.flatMap { $0 }.joined(separator: " "))
-        .task(id: entranceMotionEnabled) {
-            guard entranceMotionEnabled, !isVisible else { return }
+        .task(id: entranceMotionEnabled && entrancePresentationActive) {
+            guard entranceMotionEnabled, entrancePresentationActive else {
+                var transaction = Transaction()
+                transaction.disablesAnimations = true
+                withTransaction(transaction) {
+                    isVisible = false
+                }
+                return
+            }
+            guard !isVisible else { return }
             await Task.yield()
             isVisible = true
         }

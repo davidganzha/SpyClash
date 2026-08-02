@@ -79,10 +79,19 @@ private struct SpyEntranceMotionEnabledKey: EnvironmentKey {
     static let defaultValue = true
 }
 
+private struct SpyEntrancePresentationActiveKey: EnvironmentKey {
+    static let defaultValue = true
+}
+
 extension EnvironmentValues {
     var spyEntranceMotionEnabled: Bool {
         get { self[SpyEntranceMotionEnabledKey.self] }
         set { self[SpyEntranceMotionEnabledKey.self] = newValue }
+    }
+
+    var spyEntrancePresentationActive: Bool {
+        get { self[SpyEntrancePresentationActiveKey.self] }
+        set { self[SpyEntrancePresentationActiveKey.self] = newValue }
     }
 }
 
@@ -99,6 +108,7 @@ struct SpyWebPressStyle: ButtonStyle {
 private struct SpyWebEntranceModifier: ViewModifier {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.spyEntranceMotionEnabled) private var entranceMotionEnabled
+    @Environment(\.spyEntrancePresentationActive) private var entrancePresentationActive
     @State private var isVisible = false
 
     let delay: Double
@@ -108,6 +118,8 @@ private struct SpyWebEntranceModifier: ViewModifier {
     let scale: CGFloat
 
     func body(content: Content) -> some View {
+        let shouldPresent = entranceMotionEnabled && entrancePresentationActive
+
         content
             .opacity(isVisible ? 1 : 0)
             .offset(
@@ -115,8 +127,16 @@ private struct SpyWebEntranceModifier: ViewModifier {
                 y: reduceMotion || isVisible ? 0 : y
             )
             .scaleEffect(reduceMotion || isVisible ? 1 : scale)
-            .task(id: entranceMotionEnabled) {
-                guard entranceMotionEnabled, !isVisible else { return }
+            .task(id: shouldPresent) {
+                guard shouldPresent else {
+                    var transaction = Transaction()
+                    transaction.disablesAnimations = true
+                    withTransaction(transaction) {
+                        isVisible = false
+                    }
+                    return
+                }
+                guard !isVisible else { return }
                 await Task.yield()
                 if reduceMotion {
                     isVisible = true

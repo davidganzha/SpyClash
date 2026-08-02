@@ -344,6 +344,10 @@ struct AppShellView: View {
                     Group {
                         if tab == contentTab || mountedPrimaryTabs.contains(tab) {
                             tab.makeContentView()
+                                .environment(
+                                    \.spyEntrancePresentationActive,
+                                    tab == contentTab || tab == primarySwipeTarget
+                                )
                         } else {
                             Color.clear
                         }
