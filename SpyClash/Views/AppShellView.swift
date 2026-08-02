@@ -1995,7 +1995,7 @@ private struct FloatingDock: View {
                         accessibilityLabel: item.accessibilityLabel
                     )
                 }
-                .buttonStyle(SpyWebPressStyle(pressedScale: 0.96))
+                .buttonStyle(DockPressStyle())
                 .accessibilityLabel(item.accessibilityLabel)
             }
         }
@@ -2073,7 +2073,7 @@ private struct FloatingDock: View {
     private var dockSelectionAnimation: Animation {
         reduceMotion
             ? .easeOut(duration: 0.10)
-            : .spring(response: 0.34, dampingFraction: 0.84)
+            : .timingCurve(0.22, 0.61, 0.36, 1, duration: 0.36)
     }
 
     private func handleTap(at index: Int) {
@@ -2095,6 +2095,28 @@ private struct ShellDockItem {
     let inactiveOpacity: Double
     let badgeCount: Int
     let accessibilityLabel: String
+}
+
+private struct DockPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .opacity(configuration.isPressed ? 0.94 : 1)
+            .animation(
+                reduceMotion
+                    ? .easeOut(duration: 0.06)
+                    : .timingCurve(
+                        0.22,
+                        0.61,
+                        0.36,
+                        1,
+                        duration: configuration.isPressed ? 0.12 : 0.26
+                    ),
+                value: configuration.isPressed
+            )
+    }
 }
 
 private struct DockItem: View {
@@ -2191,7 +2213,8 @@ private struct DockIconAppearance: AnimatableModifier {
     }
 
     func body(content: Content) -> some View {
-        let amount = min(max(1 - abs(selectionPosition - itemIndex), 0), 1)
+        let rawAmount = min(max(1 - abs(selectionPosition - itemIndex), 0), 1)
+        let amount = rawAmount * rawAmount * (3 - (2 * rawAmount))
         let red = 1 + ((CGFloat(229) / 255) - 1) * amount
         let green = 1 + ((CGFloat(53) / 255) - 1) * amount
         let blue = 1 + ((CGFloat(53) / 255) - 1) * amount
@@ -2199,8 +2222,8 @@ private struct DockIconAppearance: AnimatableModifier {
 
         content
             .foregroundStyle(Color(red: red, green: green, blue: blue).opacity(opacity))
-            .scaleEffect(1 + (0.085 * amount))
-            .offset(y: -0.8 * amount)
+            .scaleEffect(1 + (0.06 * amount))
+            .offset(y: -0.6 * amount)
     }
 }
 
