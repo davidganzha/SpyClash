@@ -1969,6 +1969,45 @@ private extension View {
     }
 }
 
+private struct DockGlassSurface: ViewModifier {
+    private let cornerRadius: CGFloat = 15
+
+    @ViewBuilder
+    func body(content: Content) -> some View {
+        if #available(iOS 26.0, *) {
+            content
+                .glassEffect(
+                    .clear,
+                    in: .rect(cornerRadius: cornerRadius)
+                )
+                .background(
+                    Color.black.opacity(0.30),
+                    in: RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                )
+                .overlay {
+                    RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                        .stroke(Color.white.opacity(0.09), lineWidth: 0.75)
+                }
+        } else {
+            content
+                .background {
+                    ZStack {
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(.ultraThinMaterial)
+                            .opacity(0.52)
+
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .fill(Color.black.opacity(0.30))
+
+                        RoundedRectangle(cornerRadius: cornerRadius, style: .continuous)
+                            .stroke(Color.white.opacity(0.075), lineWidth: 0.75)
+                    }
+                    .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
+                }
+        }
+    }
+}
+
 private struct FloatingDock: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Binding var selection: AppTab
@@ -2018,19 +2057,7 @@ private struct FloatingDock: View {
                 .allowsHitTesting(false)
             }
         }
-        .background {
-            ZStack {
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(.ultraThinMaterial)
-
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .fill(Color.black.opacity(0.34))
-
-                RoundedRectangle(cornerRadius: 15, style: .continuous)
-                    .stroke(Color.white.opacity(0.075), lineWidth: 0.75)
-            }
-            .clipShape(RoundedRectangle(cornerRadius: 15, style: .continuous))
-        }
+        .modifier(DockGlassSurface())
         .shadow(color: .black.opacity(0.24), radius: 9, y: 5)
         .padding(.horizontal, 10)
         .padding(.bottom, 8)
