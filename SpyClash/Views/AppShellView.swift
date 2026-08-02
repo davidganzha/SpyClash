@@ -2106,7 +2106,7 @@ private struct DockPressStyle: ButtonStyle {
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? 0.985 : 1)
+            .scaleEffect(configuration.isPressed ? 0.96 : 1)
             .opacity(configuration.isPressed ? 0.94 : 1)
             .animation(
                 reduceMotion
@@ -2116,7 +2116,7 @@ private struct DockPressStyle: ButtonStyle {
                         0.61,
                         0.36,
                         1,
-                        duration: configuration.isPressed ? 0.12 : 0.26
+                        duration: configuration.isPressed ? 0.14 : 0.30
                     ),
                 value: configuration.isPressed
             )
@@ -2226,8 +2226,8 @@ private struct DockIconAppearance: AnimatableModifier {
 
         content
             .foregroundStyle(Color(red: red, green: green, blue: blue).opacity(opacity))
-            .scaleEffect(1 + (0.06 * amount))
-            .offset(y: -0.6 * amount)
+            .scaleEffect(1 + (0.10 * amount))
+            .offset(y: -0.9 * amount)
     }
 }
 
