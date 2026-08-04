@@ -4021,7 +4021,17 @@ struct GameView: View {
     }
 
     private func roomPoolWordGrid(_ words: [String]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
+        LazyVGrid(
+            columns: [
+                GridItem(
+                    .adaptive(minimum: 118, maximum: 180),
+                    spacing: 8,
+                    alignment: .topLeading
+                )
+            ],
+            alignment: .leading,
+            spacing: 8
+        ) {
             ForEach(words, id: \.self) { word in
                 let isEnabled = !disabledRoomPoolWordKeys.contains(roomWordKey(word))
 
@@ -4029,14 +4039,15 @@ struct GameView: View {
                     toggleRoomPoolWord(word)
                 } label: {
                     Text(word.uppercased())
-                        .font(.system(size: 10, weight: .black, design: .default))
-                        .tracking(0.02)
+                        .font(.system(size: 12, weight: .black, design: .default))
+                        .tracking(0.01)
+                        .multilineTextAlignment(.leading)
+                        .fixedSize(horizontal: false, vertical: true)
                         .strikethrough(!isEnabled, color: SpyTheme.dim)
                         .foregroundStyle(isEnabled ? SpyTheme.bodyText : SpyTheme.dim.opacity(0.38))
-                        .spyFitted(scale: 0.50, alignment: .center)
-                        .padding(.horizontal, 8)
-                        .frame(height: 30)
-                        .frame(maxWidth: .infinity)
+                        .padding(.horizontal, 10)
+                        .padding(.vertical, 9)
+                        .frame(maxWidth: .infinity, minHeight: 48, alignment: .leading)
                         .background(isEnabled ? SpyTheme.control : SpyTheme.black)
                         .overlay(
                             Rectangle()
