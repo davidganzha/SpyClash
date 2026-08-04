@@ -192,10 +192,16 @@ enum RoomPollPolicy {
         activeRoomID: String?,
         isCancelled: Bool,
         hasActiveOperation: Bool,
+        didRoomSyncRevisionChange: Bool = false,
+        isLatestRefreshRequest: Bool = true,
         fetchedRoomExists: Bool
     ) -> RoomRefreshDisposition {
         guard !isCancelled, activeRoomID == monitoredRoomID else { return .stop }
-        guard !hasActiveOperation else { return .discardAndContinue }
+        guard !hasActiveOperation,
+              !didRoomSyncRevisionChange,
+              isLatestRefreshRequest else {
+            return .discardAndContinue
+        }
         return fetchedRoomExists ? .apply : .close
     }
 
@@ -393,6 +399,7 @@ final class AppState: NSObject {
     }
     var isShellChromeSuppressed = false
     private(set) var roomSyncOperation: RoomSyncOperation?
+    private(set) var roomSyncRevision = 0
     private(set) var roomConnectionState: RoomConnectionState = .synced
     var presentedSheet: AppSheet?
     var roomQRTarget: RoomQRTarget = .web
@@ -422,6 +429,7 @@ final class AppState: NSObject {
     @ObservationIgnored private var membershipExpiryTask: Task<Void, Never>?
     @ObservationIgnored private var accessActivationSyncTask: Task<Void, Never>?
     @ObservationIgnored private var activeRoomActivationRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var roomRefreshRequestRevision = 0
     @ObservationIgnored private var membershipRealtimeRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var radarInvitePolicySyncTask: Task<Void, Never>?
     @ObservationIgnored private var radarInvitePolicySyncRunID: UUID?
@@ -480,12 +488,19 @@ final class AppState: NSObject {
     func beginRoomSync(_ operation: RoomSyncOperation) -> Bool {
         guard roomSyncOperation == nil else { return false }
         roomSyncOperation = operation
+        roomSyncRevision &+= 1
         return true
     }
 
     func endRoomSync(_ operation: RoomSyncOperation) {
         guard roomSyncOperation == operation else { return }
         roomSyncOperation = nil
+        roomSyncRevision &+= 1
+    }
+
+    private func nextRoomRefreshRequestRevision() -> Int {
+        roomRefreshRequestRevision &+= 1
+        return roomRefreshRequestRevision
     }
 
     func showToast(
@@ -538,6 +553,8 @@ final class AppState: NSObject {
 
         while !Task.isCancelled, activeRoom?.id == roomID {
             if roomSyncOperation == nil {
+                let refreshRevision = roomSyncRevision
+                let refreshRequestRevision = nextRoomRefreshRequestRevision()
                 do {
                     let refreshedRoom = try await client.refreshRoom(id: roomID)
                     switch RoomPollPolicy.disposition(
@@ -545,6 +562,8 @@ final class AppState: NSObject {
                         activeRoomID: activeRoom?.id,
                         isCancelled: Task.isCancelled,
                         hasActiveOperation: roomSyncOperation != nil,
+                        didRoomSyncRevisionChange: roomSyncRevision != refreshRevision,
+                        isLatestRefreshRequest: roomRefreshRequestRevision == refreshRequestRevision,
                         fetchedRoomExists: refreshedRoom != nil
                     ) {
                     case .stop:
@@ -565,7 +584,9 @@ final class AppState: NSObject {
                     return
                 } catch {
                     guard !Task.isCancelled, activeRoom?.id == roomID else { return }
-                    guard roomSyncOperation == nil else { continue }
+                    guard roomSyncOperation == nil,
+                          roomSyncRevision == refreshRevision,
+                          roomRefreshRequestRevision == refreshRequestRevision else { continue }
                     if failureTracker.recordFailure(),
                        activeRoom?.id == roomID,
                        roomConnectionState != .reconnecting {
@@ -605,6 +626,8 @@ final class AppState: NSObject {
         activeRoomActivationRefreshTask?.cancel()
         activeRoomActivationRefreshTask = Task { @MainActor [weak self] in
             guard let self else { return }
+            let refreshRevision = self.roomSyncRevision
+            let refreshRequestRevision = self.nextRoomRefreshRequestRevision()
 
             var refreshedRoom: GameRoom?
             if let preferredRoomID {
@@ -620,7 +643,10 @@ final class AppState: NSObject {
                 }
             }
 
-            guard !Task.isCancelled, self.roomSyncOperation == nil else { return }
+            guard !Task.isCancelled,
+                  self.roomSyncOperation == nil,
+                  self.roomSyncRevision == refreshRevision,
+                  self.roomRefreshRequestRevision == refreshRequestRevision else { return }
 
             if let refreshedRoom,
                ["waiting", "ready_voting", "roulette", "playing"].contains(refreshedRoom.normalizedStatus),
@@ -1357,6 +1383,7 @@ final class AppState: NSObject {
         shellRoute = .main
         activeRoom = nil
         roomSyncOperation = nil
+        roomSyncRevision &+= 1
         activeRoomActivationRefreshTask?.cancel()
         activeRoomActivationRefreshTask = nil
         presentedSheet = nil

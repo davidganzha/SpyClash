@@ -147,6 +147,17 @@ final class OnlineRoundStateTests: XCTestCase {
         XCTAssertEqual(
             RoomPollPolicy.disposition(
                 monitoredRoomID: "room-1",
+                activeRoomID: "room-1",
+                isCancelled: false,
+                hasActiveOperation: false,
+                isLatestRefreshRequest: false,
+                fetchedRoomExists: true
+            ),
+            .discardAndContinue
+        )
+        XCTAssertEqual(
+            RoomPollPolicy.disposition(
+                monitoredRoomID: "room-1",
                 activeRoomID: "room-2",
                 isCancelled: false,
                 hasActiveOperation: false,
@@ -163,6 +174,17 @@ final class OnlineRoundStateTests: XCTestCase {
                 fetchedRoomExists: false
             ),
             .close
+        )
+        XCTAssertEqual(
+            RoomPollPolicy.disposition(
+                monitoredRoomID: "room-1",
+                activeRoomID: "room-1",
+                isCancelled: false,
+                hasActiveOperation: false,
+                didRoomSyncRevisionChange: true,
+                fetchedRoomExists: true
+            ),
+            .discardAndContinue
         )
     }
 
@@ -189,6 +211,90 @@ final class OnlineRoundStateTests: XCTestCase {
         XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 2, isApplicationActive: true), 4)
         XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 8, isApplicationActive: true), 8)
         XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 0, isApplicationActive: false), 5)
+    }
+}
+
+final class OnlineDurationSyncStateTests: XCTestCase {
+    func testReleaseClaimsLockBeforeAsyncRequestCanStart() throws {
+        var state = OnlineDurationSyncState()
+
+        let request = try XCTUnwrap(
+            state.begin(
+                roomID: "room-1",
+                requestedMinutes: 8,
+                confirmedDurationSeconds: 900
+            )
+        )
+
+        XCTAssertTrue(state.isLocked)
+        XCTAssertTrue(state.isCurrent(request))
+        XCTAssertFalse(state.acceptsRemoteUpdate(isDragging: false))
+    }
+
+    func testOnlyOneDurationMutationCanBePending() throws {
+        var state = OnlineDurationSyncState()
+        let first = try XCTUnwrap(
+            state.begin(
+                roomID: "room-1",
+                requestedMinutes: 8,
+                confirmedDurationSeconds: 900
+            )
+        )
+
+        XCTAssertNil(
+            state.begin(
+                roomID: "room-1",
+                requestedMinutes: 12,
+                confirmedDurationSeconds: 900
+            )
+        )
+        XCTAssertTrue(state.finish(first))
+        XCTAssertFalse(state.isLocked)
+        XCTAssertNotNil(
+            state.begin(
+                roomID: "room-1",
+                requestedMinutes: 12,
+                confirmedDurationSeconds: 480
+            )
+        )
+    }
+
+    func testDraggingAndPendingDurationRejectRemoteSnapshots() throws {
+        var state = OnlineDurationSyncState()
+        XCTAssertFalse(state.acceptsRemoteUpdate(isDragging: true))
+        XCTAssertTrue(state.acceptsRemoteUpdate(isDragging: false))
+
+        _ = try XCTUnwrap(
+            state.begin(
+                roomID: "room-1",
+                requestedMinutes: 8,
+                confirmedDurationSeconds: 900
+            )
+        )
+        XCTAssertFalse(state.acceptsRemoteUpdate(isDragging: false))
+    }
+
+    func testStaleCompletionCannotUnlockNewDurationMutation() throws {
+        var state = OnlineDurationSyncState()
+        let first = try XCTUnwrap(
+            state.begin(
+                roomID: "room-1",
+                requestedMinutes: 8,
+                confirmedDurationSeconds: 900
+            )
+        )
+        XCTAssertTrue(state.finish(first))
+
+        let second = try XCTUnwrap(
+            state.begin(
+                roomID: "room-1",
+                requestedMinutes: 12,
+                confirmedDurationSeconds: 480
+            )
+        )
+        XCTAssertFalse(state.finish(first))
+        XCTAssertTrue(state.isCurrent(second))
+        XCTAssertTrue(state.isLocked)
     }
 }
 

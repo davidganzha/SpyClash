@@ -21,7 +21,7 @@ struct GameView: View {
     @State private var copiedRoomCode = false
     @State private var showsThemeBuilder = false
     @State private var isUpdatingGameMode = false
-    @State private var isUpdatingDuration = false
+    @State private var onlineDurationSyncState = OnlineDurationSyncState()
     @State private var roomAccessPage = 0
     @State private var isRoomCodeVisible = false
     @State private var isRoomQRVisible = false
@@ -142,7 +142,19 @@ struct GameView: View {
             selectedGameMode = SpyGameMode(rawValue: rawMode.lowercased()) ?? .questions
         }
         .onChange(of: appState.activeRoom?.gameDurationSeconds) { _, seconds in
-            guard let seconds, !isUpdatingDuration, !isDraggingOnlineDuration else { return }
+            guard let seconds,
+                  !isDurationSyncActive,
+                  onlineDurationSyncState.acceptsRemoteUpdate(
+                      isDragging: isDraggingOnlineDuration
+                  ) else { return }
+            selectedDurationMinutes = Double(max(1, min(seconds / 60, 15)))
+        }
+        .onChange(of: isDurationSyncActive) { _, isActive in
+            guard !isActive,
+                  onlineDurationSyncState.acceptsRemoteUpdate(
+                      isDragging: isDraggingOnlineDuration
+                  ),
+                  let seconds = appState.activeRoom?.gameDurationSeconds else { return }
             selectedDurationMinutes = Double(max(1, min(seconds / 60, 15)))
         }
         .onAppear {
@@ -1281,7 +1293,7 @@ struct GameView: View {
             .contentShape(CutCornerShape(cut: 9))
         }
         .buttonStyle(SpyWebPressStyle())
-        .disabled(!isHost(room) || isUpdatingGameMode)
+        .disabled(!isHost(room) || isUpdatingGameMode || isDurationSyncActive)
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: isSelected)
         .accessibilityIdentifier("onlineRoom.mode.\(mode.rawValue)")
     }
@@ -1478,7 +1490,12 @@ struct GameView: View {
                     SpyActionLabel(title: copy.readyCheckAction, systemImage: "checkmark.seal", tracking: 0.02, lines: 2)
                 }
                 .buttonStyle(SpyButtonStyle(variant: .outline))
-                .disabled(isStarting || isGeneratingRoomTheme || !roomThemeSelectionIsReady)
+                .disabled(
+                    isStarting ||
+                        isGeneratingRoomTheme ||
+                        isDurationSyncActive ||
+                        !roomThemeSelectionIsReady
+                )
                 .opacity(roomThemeSelectionIsReady && !isGeneratingRoomTheme ? 1 : 0.34)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .accessibilityIdentifier("onlineRoom.readyCheck")
@@ -1538,15 +1555,18 @@ struct GameView: View {
                 }
 
                 SpyWebSlider(
-                    value: $selectedDurationMinutes,
+                    value: onlineDurationSliderValue,
                     range: 1...15,
                     step: 1,
                     onEditingChanged: { isEditing in
-                        guard !isEditing, isHost(room), !isUpdatingDuration else { return }
-                        let minutes = Int(selectedDurationMinutes)
-                        Task { await updateDuration(room, minutes: minutes) }
+                        guard !isEditing, isHost(room) else { return }
+                        beginDurationUpdate(
+                            room,
+                            minutes: Int(selectedDurationMinutes.rounded())
+                        )
                     },
                     onInteractionChanged: { isInteracting in
+                        if isInteracting, isDurationSyncActive { return }
                         isDraggingOnlineDuration = isInteracting
                     },
                     accessibilityIdentifier: "onlineRoom.durationSlider"
@@ -1754,8 +1774,8 @@ struct GameView: View {
             )
 
             HStack(spacing: 12) {
-                durationStepButton(systemImage: "minus", enabled: selectedDurationMinutes > 1 && !isUpdatingDuration) {
-                    Task { await updateDuration(room, minutes: Int(selectedDurationMinutes) - 1) }
+                durationStepButton(systemImage: "minus", enabled: selectedDurationMinutes > 1 && !isDurationSyncActive) {
+                    beginDurationUpdate(room, minutes: Int(selectedDurationMinutes) - 1)
                 }
                 .accessibilityIdentifier("onlineRoom.durationDecrease")
 
@@ -1774,8 +1794,8 @@ struct GameView: View {
                 }
                 .frame(height: 36)
 
-                durationStepButton(systemImage: "plus", enabled: selectedDurationMinutes < 15 && !isUpdatingDuration) {
-                    Task { await updateDuration(room, minutes: Int(selectedDurationMinutes) + 1) }
+                durationStepButton(systemImage: "plus", enabled: selectedDurationMinutes < 15 && !isDurationSyncActive) {
+                    beginDurationUpdate(room, minutes: Int(selectedDurationMinutes) + 1)
                 }
                 .accessibilityIdentifier("onlineRoom.durationIncrease")
             }
@@ -5139,9 +5159,17 @@ struct GameView: View {
     }
 
     private var isDurationSyncActive: Bool {
-        guard let operation = appState.roomSyncOperation else { return isUpdatingDuration }
-        if case .updatingDuration = operation { return true }
-        return isUpdatingDuration
+        onlineDurationSyncState.isLocked || appState.roomSyncOperation != nil
+    }
+
+    private var onlineDurationSliderValue: Binding<Double> {
+        Binding(
+            get: { selectedDurationMinutes },
+            set: { newValue in
+                guard !isDurationSyncActive else { return }
+                selectedDurationMinutes = newValue
+            }
+        )
     }
 
     private var roomThemeSelectionIsReady: Bool {
@@ -5992,44 +6020,79 @@ struct GameView: View {
         }
     }
 
-    private func updateDuration(_ room: GameRoom, minutes: Int) async {
+    private func beginDurationUpdate(_ room: GameRoom, minutes: Int) {
         let clampedMinutes = max(1, min(minutes, 15))
+        guard appState.roomSyncOperation == nil,
+              let request = onlineDurationSyncState.begin(
+                  roomID: room.id,
+                  requestedMinutes: clampedMinutes,
+                  confirmedDurationSeconds: room.gameDurationSeconds
+              ) else { return }
+
         let operation = RoomSyncOperation.updatingDuration(minutes: clampedMinutes)
-        guard appState.beginRoomSync(operation) else { return }
-        let previousMinutes = Double(max(1, min((room.gameDurationSeconds ?? Int(selectedDurationMinutes * 60)) / 60, 15)))
-        selectedDurationMinutes = Double(clampedMinutes)
-        isUpdatingDuration = true
+        guard appState.beginRoomSync(operation) else {
+            _ = onlineDurationSyncState.finish(request)
+            selectedDurationMinutes = Double(request.previousMinutes)
+            return
+        }
+
+        selectedDurationMinutes = Double(request.requestedMinutes)
+        isDraggingOnlineDuration = false
+        Task {
+            await updateDuration(room, request: request, operation: operation)
+        }
+    }
+
+    private func updateDuration(
+        _ room: GameRoom,
+        request: OnlineDurationSyncRequest,
+        operation: RoomSyncOperation
+    ) async {
         defer {
-            isUpdatingDuration = false
+            _ = onlineDurationSyncState.finish(request)
             appState.endRoomSync(operation)
         }
         await Task.yield()
 
         if appState.shouldUsePreviewData {
             var previewRoom = room
-            previewRoom.gameDurationSeconds = clampedMinutes * 60
+            previewRoom.gameDurationSeconds = request.requestedMinutes * 60
+            guard onlineDurationSyncState.isCurrent(request),
+                  appState.activeRoom?.id == request.roomID else { return }
             appState.activeRoom = previewRoom
+            selectedDurationMinutes = Double(request.requestedMinutes)
             status = durationSyncedStatus
             HapticManager.shared.fire(.tabSelection)
             return
         }
 
         do {
-            appState.activeRoom = try await appState.client.updateGameDuration(
+            let updatedRoom = try await appState.client.updateGameDuration(
                 room: room,
-                durationSeconds: clampedMinutes * 60
+                durationSeconds: request.requestedMinutes * 60
             )
-            selectedDurationMinutes = Double(max((appState.activeRoom?.gameDurationSeconds ?? clampedMinutes * 60) / 60, 1))
+            guard onlineDurationSyncState.isCurrent(request),
+                  appState.activeRoom?.id == request.roomID else { return }
+            appState.activeRoom = updatedRoom
+            selectedDurationMinutes = Double(
+                max(
+                    (updatedRoom.gameDurationSeconds ?? request.requestedMinutes * 60) / 60,
+                    1
+                )
+            )
             status = durationSyncedStatus
             HapticManager.shared.fire(.tabSelection)
         } catch {
-            selectedDurationMinutes = previousMinutes
+            guard onlineDurationSyncState.isCurrent(request),
+                  appState.activeRoom?.id == request.roomID else { return }
+            selectedDurationMinutes = Double(request.previousMinutes)
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func beginReadyCheck(_ room: GameRoom) async {
+        guard !isDurationSyncActive else { return }
         if appState.shouldUsePreviewData {
             appState.activeRoom = GameRoom.previewRoom(status: "ready_voting")
             status = copy.readyCheckSent
@@ -6924,6 +6987,64 @@ private enum RoomWordCountMode: String, CaseIterable, Identifiable {
 private enum RoomThemeOperation {
     case generate
     case expand
+}
+
+struct OnlineDurationSyncRequest: Equatable, Sendable {
+    let id: UUID
+    let roomID: String
+    let requestedMinutes: Int
+    let previousMinutes: Int
+}
+
+struct OnlineDurationSyncState: Equatable, Sendable {
+    private(set) var pendingRequest: OnlineDurationSyncRequest?
+
+    var isLocked: Bool {
+        pendingRequest != nil
+    }
+
+    func acceptsRemoteUpdate(isDragging: Bool) -> Bool {
+        !isDragging && pendingRequest == nil
+    }
+
+    mutating func begin(
+        roomID: String,
+        requestedMinutes: Int,
+        confirmedDurationSeconds: Int?,
+        requestID: UUID = UUID()
+    ) -> OnlineDurationSyncRequest? {
+        guard pendingRequest == nil else { return nil }
+
+        let requestedMinutes = Self.clampedMinutes(requestedMinutes)
+        let previousMinutes = Self.clampedMinutes(
+            (confirmedDurationSeconds ?? 900) / 60
+        )
+        guard requestedMinutes != previousMinutes else { return nil }
+
+        let request = OnlineDurationSyncRequest(
+            id: requestID,
+            roomID: roomID,
+            requestedMinutes: requestedMinutes,
+            previousMinutes: previousMinutes
+        )
+        pendingRequest = request
+        return request
+    }
+
+    func isCurrent(_ request: OnlineDurationSyncRequest) -> Bool {
+        pendingRequest?.id == request.id
+    }
+
+    @discardableResult
+    mutating func finish(_ request: OnlineDurationSyncRequest) -> Bool {
+        guard isCurrent(request) else { return false }
+        pendingRequest = nil
+        return true
+    }
+
+    private static func clampedMinutes(_ minutes: Int) -> Int {
+        max(1, min(minutes, 15))
+    }
 }
 
 enum RoomWordPoolFilter {
