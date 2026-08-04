@@ -10,6 +10,7 @@ import {
   assertExactRoomLeaseCoverage,
   assertRoomWriteLeases,
   assertRoomWriterLeaseForUser,
+  recoverRoomLeaveAfterLeaseContention,
   retryRoomMembershipChangeBeforeAction,
   withRoomWriteLeases,
 } from "./room-write-lifecycle.ts";
@@ -299,7 +300,9 @@ async function updateRoomWithRetry(
       continue;
     }
 
-    await assertRoomPersistenceBoundary(base44);
+    if (options.allowLifecycleBlockedCleanup !== true) {
+      await assertRoomPersistenceBoundary(base44);
+    }
     await base44.asServiceRole.entities.GameRoom.update(latest.id, patch);
     latest = await fetchRoom(base44, latest.id);
     if (!latest) {
@@ -351,8 +354,10 @@ async function endRoomLiveActivitiesBeforeDelete(base44, room) {
   }
 }
 
-async function deleteRoom(base44, room) {
-  await assertRoomPersistenceBoundary(base44);
+async function deleteRoom(base44, room, options = {}) {
+  if (options.allowLifecycleBlockedCleanup !== true) {
+    await assertRoomPersistenceBoundary(base44);
+  }
   const latest = await fetchRoom(base44, room.id);
   if (!latest) return { success: true };
   assertRoomMutationOpen(latest);
@@ -360,7 +365,9 @@ async function deleteRoom(base44, room) {
   // the ephemeral room is removed. If that boundary cannot be confirmed, keep
   // the room so a caller retry can still produce a real ActivityKit `end`.
   await endRoomLiveActivitiesBeforeDelete(base44, latest);
-  await assertRoomPersistenceBoundary(base44);
+  if (options.allowLifecycleBlockedCleanup !== true) {
+    await assertRoomPersistenceBoundary(base44);
+  }
   await deleteRoomAndVerify({
     roomID: latest.id,
     deleteByID: (roomID) =>
@@ -1364,7 +1371,7 @@ async function submitSpyGuess(base44, room, user, body) {
   });
 }
 
-async function leaveRoom(base44, room, user) {
+async function leaveRoom(base44, room, user, options = {}) {
   if (leaveAlreadyComplete(room, user.email)) return { success: true };
 
   const hostLeaving = clean(room.host_email).toLocaleLowerCase() ===
@@ -1373,7 +1380,7 @@ async function leaveRoom(base44, room, user) {
     ["roulette", "playing"].includes(normalizedStatus(room)) &&
     !clean(room.game_started_at);
   if (hostLeaving && !leavingDuringPreTimer) {
-    return await deleteRoom(base44, room);
+    return await deleteRoom(base44, room, options);
   }
 
   return await updateRoomWithRetry(
@@ -1430,6 +1437,8 @@ async function leaveRoom(base44, room, user) {
       };
     },
     (latest) => !playerInRoom(latest, user.email),
+    6,
+    options,
   );
 }
 
@@ -1850,7 +1859,30 @@ Deno.serve(async (req) => {
           },
         });
       },
-    });
+    }).catch((error) =>
+      recoverRoomLeaveAfterLeaseContention({
+        action,
+        error,
+        recoverLeave: async () => {
+          const recoveryRoom = await fetchRoom(base44, room.id);
+          if (!recoveryRoom || leaveAlreadyComplete(recoveryRoom, user.email)) {
+            return { success: true };
+          }
+          requirePlayer(recoveryRoom, user);
+          console.warn(
+            "leave_room continuing through an active identity lease",
+            { room_id: clean(recoveryRoom.id) },
+          );
+          // Leaving is a monotonic cleanup: it only removes the actor's room
+          // references, or deletes the room when the host exits. It is safe to
+          // complete after normal lease acquisition retries are exhausted and
+          // never creates or rewrites billing identity data.
+          return await leaveRoom(base44, recoveryRoom, user, {
+            allowLifecycleBlockedCleanup: true,
+          });
+        },
+      })
+    );
     if (result?.id) await dispatchRoomPushBestEffort(base44, result, action);
     return Response.json(result?.id ? roomForClient(result, user) : result);
   } catch (error) {

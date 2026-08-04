@@ -176,9 +176,35 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   const lease = leasedAction.indexOf("return await withRoomWriteLeases({");
   const refetch = leasedAction.indexOf("const latestRoom = await fetchRoom");
   const dispatch = leasedAction.indexOf("return await executeRoomAction(");
+  const recovery = leasedAction.indexOf("recoverLeave: async () =>");
+  const cleanup = leasedAction.indexOf(
+    "allowLifecycleBlockedCleanup: true",
+  );
   assert(
-    lease >= 0 && lease < refetch && refetch < dispatch,
-    "competing completions must serialize, refetch, then dispatch",
+    lease >= 0 && lease < refetch && refetch < dispatch &&
+      dispatch < recovery && recovery < cleanup,
+    "normal actions must serialize before the leave-only cleanup recovery",
+  );
+  assertEquals(
+    source.match(/allowLifecycleBlockedCleanup: true/g)?.length,
+    1,
+    "only the explicit leave recovery may bypass an active writer lease",
+  );
+
+  const lifecycleSource = await Deno.readTextFile(
+    new URL("./room-write-lifecycle.ts", import.meta.url),
+  );
+  const leaveRecovery = lifecycleSource.slice(
+    lifecycleSource.indexOf(
+      "export async function recoverRoomLeaveAfterLeaseContention",
+    ),
+    lifecycleSource.indexOf("function boundedAttemptCount"),
+  );
+  assertStringIncludes(leaveRecovery, 'input.action === "leave_room"');
+  assertStringIncludes(leaveRecovery, 'error.code === "active_lease"');
+  assert(
+    !leaveRecovery.includes("deletion_in_progress"),
+    "leave recovery must not bypass account deletion",
   );
 
   const finalizeCase = source.slice(

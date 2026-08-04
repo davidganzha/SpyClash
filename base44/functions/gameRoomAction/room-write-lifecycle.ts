@@ -99,6 +99,18 @@ function retryableLeaseAcquisitionError(
     (error.code === "active_lease" || error.code === "cas_contention");
 }
 
+export async function recoverRoomLeaveAfterLeaseContention<T>(input: {
+  action: string;
+  error: unknown;
+  recoverLeave: () => Promise<T>;
+}): Promise<T> {
+  const canRecover = input.action === "leave_room" &&
+    input.error instanceof BillingIdentityLifecycleError &&
+    input.error.code === "active_lease";
+  if (!canRecover) throw input.error;
+  return await input.recoverLeave();
+}
+
 function boundedAttemptCount(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value)) {
     return ROOM_WRITE_LEASE_ATTEMPTS;
