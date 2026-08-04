@@ -30,6 +30,7 @@ import {
   gameDurationMinutes,
   gameDurationSeconds,
 } from "@/lib/gameRoomSync";
+import { shouldAcceptOnlineRoomSnapshot } from "@/lib/onlineGamePresentation";
 
 
 function SyncStatusBanner({ state, t }) {
@@ -61,10 +62,44 @@ function pickFromBuiltIn(locale) {
   return { word, category: cat, pool };
 }
 
+function lobbyRevision(room) {
+  const revision = Number(room?.lobby_revision);
+  return Number.isInteger(revision) && revision > 0 ? revision : 0;
+}
+
+function buildAuthoritativeGameData(room) {
+  if (lobbyRevision(room) === 0) return null;
+
+  const requestedCount = Number(room?.lobby_word_count);
+  const selectedPool = (Array.isArray(room?.lobby_word_pool) ? room.lobby_word_pool : [])
+    .filter((entry) => entry?.enabled === true && String(entry?.word || "").trim())
+    .slice(0, Number.isInteger(requestedCount) && requestedCount >= 0 ? requestedCount : 0)
+    .map((entry) => ({ word: entry.word, enabled: true }));
+  const durationSeconds = Number(room?.game_duration_seconds);
+  const mode = room?.game_mode;
+
+  if (
+    selectedPool.length < 2 ||
+    !Number.isInteger(durationSeconds) ||
+    durationSeconds <= 0 ||
+    (mode !== "questions" && mode !== "associations")
+  ) {
+    return null;
+  }
+
+  return {
+    word: selectedPool[Math.floor(Math.random() * selectedPool.length)].word,
+    category: room.lobby_category || room.lobby_source_name || "CLASSIC",
+    finalPool: selectedPool,
+    gameMode: mode,
+    durationSeconds,
+  };
+}
+
 
 
 export default function Room() {
-  const { t, locale } = useLanguage();
+  const { t, locale, lang } = useLanguage();
   const { hasResolvedMembership } = useMembership();
   const [room, setRoom] = useState(null);
   const [user, setUser] = useState(null);
@@ -79,11 +114,9 @@ export default function Room() {
   const [generatedCategory, setGeneratedCategory] = useState("");
   const [wordCount, setWordCount] = useState(25);
   const [gameDuration, setGameDuration] = useState(10);
-  const [showRoulette, setShowRoulette] = useState(false);
   const [rouletteTarget, setRouletteTarget] = useState(null);
   const [selectedPackId, setSelectedPackId] = useState(null);
   const [userPacks, setUserPacks] = useState([]);
-  const [gameMode, setGameMode] = useState("questions"); // "questions" | "associations"
   const [showSavePackDialog, setShowSavePackDialog] = useState(false);
   const [themeAnalyzed, setThemeAnalyzed] = useState(false);
   const [themeMaxWords, setThemeMaxWords] = useState(100);
@@ -96,6 +129,7 @@ export default function Room() {
   const lockTimerRef = useRef(null);
   const rouletteCompletionKeyRef = useRef(null);
   const durationUpdateTimerRef = useRef(null);
+  const roomRef = useRef(null);
   const spoilerDots = useMemo(() => Array.from({ length: 70 }).map((_, i) => ({
     id: i,
     left: Math.random() * 100,
@@ -112,11 +146,26 @@ export default function Room() {
   const quota = useGlobalQuota();
   const { increment } = quota;
 
-  // Sync gameMode from room
   const syncedGameMode = room?.game_mode || "questions";
 
   const getRoomId = () => new URLSearchParams(window.location.search).get("id");
-  const id = getRoomId();
+
+  const acceptsRoomSnapshot = (nextRoom) => {
+    const currentRoom = roomRef.current;
+    if (currentRoom?.id && nextRoom?.id !== currentRoom.id) {
+      return nextRoom?.id === getRoomId();
+    }
+    if (!shouldAcceptOnlineRoomSnapshot(currentRoom, nextRoom)) return false;
+    if (!currentRoom || currentRoom.id !== nextRoom.id) return true;
+    return lobbyRevision(nextRoom) >= lobbyRevision(currentRoom);
+  };
+
+  const applyRoomSnapshot = (nextRoom) => {
+    if (!acceptsRoomSnapshot(nextRoom)) return false;
+    roomRef.current = nextRoom;
+    setRoom(nextRoom);
+    return true;
+  };
 
   useEffect(() => {
     if (!hasResolvedMembership) return;
@@ -145,12 +194,6 @@ export default function Room() {
     let room = await getGameRoom(id);
     if (!room) {navigate(createPageUrl("Home"));return;}
 
-    // Auto-restore finished room to waiting if players still there
-    if (room.status === "finished" && room.host_email === u.email && (room.players || []).length > 0) {
-      room = await runGameRoomAction("reset_room_for_replay", id);
-    }
-
-    const alreadyIn = (room.players || []).some((p) => p.email === u.email);
     if (room.status === "waiting") {
       const displayName = u.display_name || u.full_name || u.email.split("@")[0];
       const avatar = accountAvatarForDisplay(u.avatar);
@@ -162,8 +205,11 @@ export default function Room() {
     }
     const finalRoom = room;
     prevPlayersRef.current = finalRoom.players || [];
-    setRoom(finalRoom);
-    if (finalRoom.status === "playing") {navigate(createPageUrl("Game") + `?id=${id}`);return;}
+    applyRoomSnapshot(finalRoom);
+    if (["playing", "finished"].includes(finalRoom.status)) {
+      navigate(createPageUrl("Game") + `?id=${id}`);
+      return;
+    }
 
     unsubRef.current = subscribeGameRoom(id, async (evt) => {
       if (evt.id !== id) return;
@@ -175,6 +221,7 @@ export default function Room() {
       let newRoom = evt.data;
       if (!newRoom) newRoom = await getGameRoom(id);
       if (!newRoom) return;
+      if (!acceptsRoomSnapshot(newRoom)) return;
 
       const prevPlayers = prevPlayersRef.current;
       const newPlayers = newRoom.players || [];
@@ -191,9 +238,8 @@ export default function Room() {
       });
       prevPlayersRef.current = newPlayers;
 
-      setRoom(newRoom);
+      applyRoomSnapshot(newRoom);
       setSyncState("connected");
-      console.log('Room updated via realtime channel, game_mode:', newRoom.game_mode);
       if (newRoom.status === "playing") {
         gameToast(t('room_toast_game_starting'), "round", "🎯");
         sounds.roundStart();
@@ -210,7 +256,8 @@ export default function Room() {
 
   const handleToggleReady = async () => {
     if (!room || !user) return;
-    await runGameRoomAction("toggle_ready", room.id);
+    const updated = await runGameRoomAction("toggle_ready", room.id);
+    applyRoomSnapshot(updated);
   };
 
   // Single-step: generate words directly, derive real max from actual result
@@ -323,6 +370,10 @@ export default function Room() {
   };
 
   const buildGameData = () => {
+    if (lobbyRevision(room) > 0) {
+      return buildAuthoritativeGameData(room);
+    }
+
     let word, category, finalPool;
 
     // Priority 1: custom AI-generated theme pool
@@ -376,17 +427,18 @@ export default function Room() {
       ready_players: [], current_answer: "",
       question_phase: "asking", player_feedback: playerFeedback,
       word_pool: data.finalPool, vote_requests: [], eliminated_emails: [],
-      game_duration_seconds: gameDurationSeconds(gameDuration),
-      game_mode: syncedGameMode
+      game_duration_seconds: data.durationSeconds || gameDurationSeconds(gameDuration),
+      game_mode: data.gameMode || syncedGameMode
     };
     try {
       const armedRoom = await runGameRoomAction("arm_roulette", room.id, {
         roulette_target_email: players[firstAskerIdx].email,
+        expected_lobby_revision: lobbyRevision(room),
         plan: updateData,
       });
       rouletteCompletionKeyRef.current = null;
       setRouletteTarget({ email: players[firstAskerIdx].email });
-      setRoom(armedRoom);
+      applyRoomSnapshot(armedRoom);
     } catch (error) {
       console.error("Failed to arm synchronized roulette", error);
       setThemeError(error?.message || t('room_start_failed'));
@@ -409,9 +461,11 @@ export default function Room() {
         refreshRoom: getGameRoom,
         completeStart: (currentRoom) => runGameRoomAction("complete_game_start", currentRoom.id),
       });
-      setRoom(completedRoom);
+      applyRoomSnapshot(completedRoom);
       if (completedRoom?.status === "playing") {
         navigate(createPageUrl("Game") + `?id=${completedRoom.id}`);
+      } else if (completedRoom?.status === "roulette") {
+        rouletteCompletionKeyRef.current = null;
       }
     } catch (error) {
       rouletteCompletionKeyRef.current = null;
@@ -437,17 +491,17 @@ export default function Room() {
   };
 
   const updateGameMode = async (newMode) => {
-    if (!room) return;
+    if (!room || lobbyRevision(room) > 0) return;
     try {
       const updated = await runGameRoomAction("update_game_mode", room.id, { mode: newMode });
-      setRoom(updated);
+      applyRoomSnapshot(updated);
     } catch (err) {
       console.error('Failed to update game mode:', err);
     }
   };
 
   const updateGameDuration = (minutes) => {
-    if (!room) return;
+    if (!room || lobbyRevision(room) > 0) return;
     const normalizedMinutes = gameDurationMinutes({
       game_duration_seconds: gameDurationSeconds(minutes),
     });
@@ -459,7 +513,7 @@ export default function Room() {
         const updated = await runGameRoomAction("update_game_duration", room.id, {
           game_duration_seconds: gameDurationSeconds(normalizedMinutes),
         });
-        setRoom(updated);
+        applyRoomSnapshot(updated);
       } catch (error) {
         console.error("Failed to synchronize game duration", error);
         setGameDuration(gameDurationMinutes(room));
@@ -472,10 +526,22 @@ export default function Room() {
     if (!room || room.host_email !== user?.email) return;
     try {
       const updated = await runGameRoomAction("return_to_waiting", room.id);
-      setRoom(updated);
+      applyRoomSnapshot(updated);
     } catch (error) {
       console.error("Failed to return room to waiting", error);
       gameToast(error?.message || t('room_return_waiting_failed'), "warning", "⚠️");
+    }
+  };
+
+  const handleBeginReadyCheck = async () => {
+    if (!room || room.host_email !== user?.email) return;
+    if (lobbyRevision(room) > 0 && !buildAuthoritativeGameData(room)) return;
+    try {
+      const updated = await runGameRoomAction("begin_ready_check", room.id);
+      applyRoomSnapshot(updated);
+    } catch (error) {
+      console.error("Failed to begin ready check", error);
+      gameToast(error?.message || t('room_start_failed'), "warning", "⚠️");
     }
   };
 
@@ -491,10 +557,18 @@ export default function Room() {
 
 
   const isHost = room.host_email === user.email;
+  const authoritativeLobby = lobbyRevision(room) > 0;
   const players = room.players || [];
   const readyPlayers = room.ready_players || [];
   const allReady = players.length >= 3 && readyPlayers.length === players.length;
   const userReady = readyPlayers.includes(user?.email);
+  const nonHostWordPool = lobbyRevision(room) > 0
+    ? (Array.isArray(room.lobby_word_pool) ? room.lobby_word_pool : [])
+    : (Array.isArray(room.lobby_word_pool) && room.lobby_word_pool.length > 0
+      ? room.lobby_word_pool
+      : (room.word_pool || []));
+  const authoritativeLobbyReady = !authoritativeLobby || Boolean(buildAuthoritativeGameData(room));
+  const canPrepareMission = players.length >= 3 && authoritativeLobbyReady;
 
   const centerInViewport = (el) => {
     if (!el) return;
@@ -553,7 +627,13 @@ export default function Room() {
         <div style={{ position: "relative", background: "#0a0a0a", border: "1px solid #1e1e1e" }}>
           <div style={{ position: "absolute", top: 0, left: 0, width: 14, height: 14, borderTop: "1px solid #e53535", borderLeft: "1px solid #e53535" }} />
           <div style={{ position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderBottom: "1px solid #e53535", borderRight: "1px solid #e53535" }} />
-          <RouletteSpinner players={players} targetEmail={targetEmail} onDone={handleRouletteDone} />
+          <RouletteSpinner
+            players={players}
+            targetEmail={targetEmail}
+            startedAt={room.intro_started_at}
+            language={lang}
+            onDone={handleRouletteDone}
+          />
         </div>
       </div>
       </>);
@@ -613,7 +693,7 @@ export default function Room() {
         {isHost && allReady &&
           <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
           className="btn-red" style={{ width: "100%", fontSize: 12, padding: "15px 0" }}
-          onClick={handleStartRoulette} disabled={starting}>
+          onClick={handleStartRoulette} disabled={starting || !authoritativeLobbyReady}>
             {starting ? t('room_starting') : t('room_start_btn')}
           </motion.button>
           }
@@ -755,14 +835,15 @@ export default function Room() {
             map(({ mode, label, icon }) => {
               const active = syncedGameMode === mode;
               return (
-                <motion.button key={mode} whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
+                <motion.button key={mode} whileHover={authoritativeLobby ? {} : { scale: 1.02 }} whileTap={authoritativeLobby ? {} : { scale: 0.98 }}
                 onClick={() => updateGameMode(mode)}
+                disabled={authoritativeLobby}
                 style={{
                   padding: "14px 0", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
                   background: active ? "#e53535" : "transparent",
                   border: `1px solid ${active ? "#e53535" : "#333"}`,
-                  borderRadius: 8, cursor: "pointer", transition: "all 0.2s",
-                  color: active ? "#fff" : "#666"
+                  borderRadius: 8, cursor: authoritativeLobby ? "default" : "pointer", transition: "all 0.2s",
+                  color: active ? "#fff" : "#666", opacity: authoritativeLobby ? 0.72 : 1
                 }}>
                   <span style={{ fontSize: 20, color: active ? "rgba(255,255,255,0.7)" : "#555" }}>{icon}</span>
                   <span style={{ fontSize: 11, letterSpacing: 2, fontFamily: "monospace", fontWeight: 700 }}>{label}</span>
@@ -821,7 +902,27 @@ export default function Room() {
       </motion.div>
 
       {/* Host controls — Theme card (glass) */}
-      {isHost &&
+      {isHost && authoritativeLobby &&
+        <motion.div className="dim-on-theme-focus" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
+        style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
+          <div style={{ ...sectionLabel, color: "#4ade80" }}>
+            <span>✓</span> {locale.language === 'ru' ? "ПАРАМЕТРЫ СИНХРОНИЗИРОВАНЫ" : "LOBBY SETTINGS SYNCED"}
+          </div>
+          <div style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: 18, fontWeight: 700, letterSpacing: 1.5, color: "#eee", marginBottom: 6 }}>
+            {(room.lobby_category || room.lobby_source_name || room.lobby_theme || "CLASSIC").toUpperCase()}
+          </div>
+          <div style={{ color: "#666", fontSize: 10, lineHeight: 1.6, letterSpacing: 1, marginBottom: nonHostWordPool.length > 0 ? 14 : 0 }}>
+            {locale.language === 'ru'
+              ? "Параметры получены из общей комнаты и используются без частичных изменений, чтобы сохранить синхронизацию."
+              : "These settings came from the shared room and are kept together to preserve synchronization."}
+          </div>
+          {nonHostWordPool.length > 0 && (
+            <WordPoolManager pool={nonHostWordPool} isHost={false} onUpdate={() => {}} />
+          )}
+        </motion.div>
+        }
+
+      {isHost && !authoritativeLobby &&
         <motion.div className="dim-on-theme-focus theme-block" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
         style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
@@ -1005,6 +1106,7 @@ export default function Room() {
             <div style={{ position: "absolute", top: "50%", left: 0, height: 2, transform: "translateY(-50%)", background: "#e53535", width: `${(gameDuration - 1) / (15 - 1) * 100}%`, pointerEvents: "none", boxShadow: "0 0 8px rgba(229,53,53,0.6)" }} />
             <input type="range" min={1} max={15} step={1} value={gameDuration}
             onChange={(e) => updateGameDuration(Number(e.target.value))}
+            disabled={authoritativeLobby}
             className="spy-slider" style={{ position: "relative", zIndex: 1 }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#2a2a2a", fontFamily: "monospace", marginTop: 6 }}>
@@ -1026,10 +1128,10 @@ export default function Room() {
         
       
 
-      {!isHost && room.word_pool && room.word_pool.length > 0 &&
+      {!isHost && nonHostWordPool.length > 0 &&
          <motion.div className="dim-on-theme-focus" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.15 }}
          style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
-          <WordPoolManager pool={room.word_pool} isHost={false} onUpdate={() => {}} />
+          <WordPoolManager pool={nonHostWordPool} isHost={false} onUpdate={() => {}} />
         </motion.div>
         }
 
@@ -1038,18 +1140,18 @@ export default function Room() {
         style={{ display: "flex", flexDirection: "column", gap: 10 }}>
         {isHost ?
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
-            <motion.button whileHover={players.length >= 3 ? { scale: 1.01 } : {}} whileTap={players.length >= 3 ? { scale: 0.99 } : {}}
+            <motion.button whileHover={canPrepareMission ? { scale: 1.01 } : {}} whileTap={canPrepareMission ? { scale: 0.99 } : {}}
             className="btn-outline"
-            style={{ fontSize: 11, padding: "16px 0", opacity: players.length >= 3 ? 1 : 0.35, cursor: players.length >= 3 ? "pointer" : "not-allowed", borderRadius: 10, clipPath: "none", letterSpacing: 3 }}
-            onClick={() => runGameRoomAction("begin_ready_check", room.id)}
-            disabled={players.length < 3 || starting}>
+            style={{ fontSize: 11, padding: "16px 0", opacity: canPrepareMission ? 1 : 0.35, cursor: canPrepareMission ? "pointer" : "not-allowed", borderRadius: 10, clipPath: "none", letterSpacing: 3 }}
+            onClick={handleBeginReadyCheck}
+            disabled={!canPrepareMission || starting}>
               {t('room_ready_vote_btn')}
             </motion.button>
-            <motion.button whileHover={players.length >= 3 ? { scale: 1.01, boxShadow: "0 0 30px rgba(229,53,53,0.5)" } : {}} whileTap={players.length >= 3 ? { scale: 0.99 } : {}}
+            <motion.button whileHover={canPrepareMission ? { scale: 1.01, boxShadow: "0 0 30px rgba(229,53,53,0.5)" } : {}} whileTap={canPrepareMission ? { scale: 0.99 } : {}}
             className="btn-red"
-            style={{ fontSize: 11, padding: "16px 0", opacity: players.length >= 3 ? 1 : 0.35, cursor: players.length >= 3 ? "pointer" : "not-allowed", borderRadius: 10, clipPath: "none", letterSpacing: 3, boxShadow: players.length >= 3 ? "0 0 20px rgba(229,53,53,0.3)" : "none" }}
+            style={{ fontSize: 11, padding: "16px 0", opacity: canPrepareMission ? 1 : 0.35, cursor: canPrepareMission ? "pointer" : "not-allowed", borderRadius: 10, clipPath: "none", letterSpacing: 3, boxShadow: canPrepareMission ? "0 0 20px rgba(229,53,53,0.3)" : "none" }}
             onClick={handleStartRoulette}
-            disabled={players.length < 3 || starting || validating}>
+            disabled={!canPrepareMission || starting || validating}>
               {starting ? t('room_starting') : `🎯 ${t('room_start_btn')}`}
             </motion.button>
           </div> :

@@ -11,6 +11,7 @@ import PageChrome from "@/components/PageChrome";
 import {
   createGameRoom,
   getActiveGameRoom,
+  getGameRoom,
   joinGameRoom,
   leaveGameRoom,
 } from "@/lib/gameRoomActions";
@@ -111,7 +112,11 @@ export default function Home() {
       if (u) {
         const savedRoomId = localStorage.getItem("spy_active_room_id");
         const checkRoom = async () => {
-          const found = await getActiveGameRoom(savedRoomId);
+          let found = null;
+          if (savedRoomId) {
+            found = await getGameRoom(savedRoomId).catch(() => null);
+          }
+          if (!found) found = await getActiveGameRoom();
           if (found) localStorage.setItem("spy_active_room_id", found.id);
           else localStorage.removeItem("spy_active_room_id");
           setActiveRoom(found || null);
@@ -360,7 +365,7 @@ export default function Home() {
                     </div>
                     <div style={{ display: "flex", gap: 10 }}>
                       <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} className="btn-red" style={{ flex: 1, fontSize: 12, padding: "14px 0" }}
-                        onClick={() => navigate(activeRoom.status === "playing" ? createPageUrl("Game") + `?id=${activeRoom.id}` : createPageUrl("Room") + `?id=${activeRoom.id}`)}>
+                        onClick={() => navigate(["playing", "finished"].includes(activeRoom.status) ? createPageUrl("Game") + `?id=${activeRoom.id}` : createPageUrl("Room") + `?id=${activeRoom.id}`)}>
                         {t('home_return')}
                       </motion.button>
                       <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} className="btn-ghost" style={{ fontSize: 12, padding: "14px 16px" }}
