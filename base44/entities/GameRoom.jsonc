@@ -1,0 +1,173 @@
+{
+  "name": "GameRoom",
+  "type": "object",
+  "properties": {
+    "code": {
+      "type": "string",
+      "description": "6-char join code"
+    },
+    "host_email": {
+      "type": "string"
+    },
+    "status": {
+      "type": "string",
+      "enum": [
+        "waiting",
+        "ready_voting",
+        "roulette",
+        "playing",
+        "finished"
+      ],
+      "default": "waiting"
+    },
+    "players": {
+      "type": "array",
+      "description": "Array of player objects {email, name, avatar}",
+      "items": {
+        "type": "object"
+      }
+    },
+    "spectators": {
+      "type": "array",
+      "description": "Array of emails of players who were eliminated but game continues \u2014 they watch only",
+      "items": {
+        "type": "string"
+      }
+    },
+    "ready_players": {
+      "type": "array",
+      "description": "Array of emails of players who are ready",
+      "items": {
+        "type": "string"
+      }
+    },
+    "cards_read": {
+      "type": "array",
+      "description": "Array of emails of players who have read their role card",
+      "items": {
+        "type": "string"
+      }
+    },
+    "spy_email": {
+      "type": "string"
+    },
+    "word": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "spy_guess": {
+      "type": "string"
+    },
+    "detective_votes": {
+      "type": "array",
+      "description": "Array of {voter_email, voted_for_email}",
+      "items": {
+        "type": "object"
+      }
+    },
+    "vote_requests": {
+      "type": "array",
+      "description": "Array of emails of players who voted to START the vote",
+      "items": {
+        "type": "string"
+      }
+    },
+    "winner": {
+      "type": "string",
+      "enum": [
+        "detectives",
+        "spy",
+        ""
+      ],
+      "default": ""
+    },
+    "round_number": {
+      "type": "number",
+      "default": 1
+    },
+    "current_asker_email": {
+      "type": "string"
+    },
+    "current_answerer_email": {
+      "type": "string"
+    },
+    "current_answer": {
+      "type": "string"
+    },
+    "current_answer_feedback": {
+      "type": "string",
+      "enum": [
+        "like",
+        "dislike",
+        null
+      ]
+    },
+    "player_feedback": {
+      "type": "array",
+      "description": "Array of {email, likes, dislikes}",
+      "items": {
+        "type": "object"
+      }
+    },
+    "questions_in_round": {
+      "type": "number",
+      "default": 0
+    },
+    "question_phase": {
+      "type": "string",
+      "enum": [
+        "asking",
+        "answering",
+        "countdown",
+        "results"
+      ],
+      "default": "asking"
+    },
+    "eliminated_emails": {
+      "type": "array",
+      "items": {
+        "type": "string"
+      }
+    },
+    "word_pool": {
+      "type": "array",
+      "description": "List of words for this game: [{word, enabled}]",
+      "items": {
+        "type": "object"
+      }
+    },
+    "game_started_at": {
+      "type": "string",
+      "description": "ISO timestamp when all cards were read and game timer started"
+    },
+    "game_duration_seconds": {
+      "type": "number",
+      "default": 900,
+      "description": "Total game duration in seconds (default 15 min)"
+    },
+    "countdown_started_at": {
+      "type": "string",
+      "description": "ISO timestamp when the between-questions countdown started"
+    },
+    "roulette_target_email": {
+      "type": "string",
+      "description": "Email of the player selected by roulette to go first"
+    },
+    "game_mode": {
+      "type": "string",
+      "enum": [
+        "questions",
+        "associations"
+      ],
+      "default": "questions",
+      "description": "Game mode: questions or associations"
+    }
+  },
+  "required": [
+    "code",
+    "host_email",
+    "status"
+  ]
+}

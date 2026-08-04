@@ -1,0 +1,44 @@
+{
+  "name": "GameHistory",
+  "type": "object",
+  "properties": {
+    "player_email": {
+      "type": "string"
+    },
+    "room_code": {
+      "type": "string"
+    },
+    "role": {
+      "type": "string",
+      "enum": [
+        "spy",
+        "detective"
+      ]
+    },
+    "word": {
+      "type": "string"
+    },
+    "category": {
+      "type": "string"
+    },
+    "winner": {
+      "type": "string",
+      "enum": [
+        "detectives",
+        "spy"
+      ]
+    },
+    "player_count": {
+      "type": "number"
+    },
+    "won": {
+      "type": "boolean"
+    }
+  },
+  "required": [
+    "player_email",
+    "room_code",
+    "role",
+    "winner"
+  ]
+}

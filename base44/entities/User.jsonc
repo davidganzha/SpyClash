@@ -1,0 +1,51 @@
+{
+  "name": "User",
+  "type": "object",
+  "properties": {
+    "role": {
+      "type": "string",
+      "enum": [
+        "admin",
+        "user"
+      ],
+      "default": "user"
+    },
+    "display_name": {
+      "type": "string",
+      "description": "Player display name"
+    },
+    "avatar": {
+      "type": "string",
+      "description": "Avatar emoji or image url"
+    },
+    "games_played": {
+      "type": "number",
+      "default": 0
+    },
+    "games_won": {
+      "type": "number",
+      "default": 0
+    },
+    "language": {
+      "type": "string",
+      "enum": [
+        "ru",
+        "en"
+      ],
+      "default": "en",
+      "description": "User's preferred language"
+    },
+    "ai_generations_today": {
+      "type": "number",
+      "default": 0,
+      "description": "AI generations used today (resets daily)"
+    },
+    "last_ai_generation_date": {
+      "type": "string",
+      "description": "ISO date of last AI generation (for daily reset)"
+    }
+  },
+  "required": [
+    "role"
+  ]
+}

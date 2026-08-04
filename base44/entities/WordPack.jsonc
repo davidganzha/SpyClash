@@ -1,0 +1,35 @@
+{
+  "name": "WordPack",
+  "type": "object",
+  "properties": {
+    "name": {
+      "type": "string",
+      "description": "Pack display name"
+    },
+    "category": {
+      "type": "string",
+      "description": "Category label shown in game"
+    },
+    "words": {
+      "type": "array",
+      "description": "Array of word strings",
+      "items": {
+        "type": "string"
+      }
+    },
+    "owner_email": {
+      "type": "string",
+      "description": "Email of the user who created this pack"
+    },
+    "is_public": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether this pack is visible to everyone"
+    }
+  },
+  "required": [
+    "name",
+    "words",
+    "owner_email"
+  ]
+}
