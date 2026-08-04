@@ -178,10 +178,12 @@ struct RadarInviteView: View {
     private func invite(_ peer: RadarNearbyPeer) {
         HapticManager.shared.fire(.buttonPress)
         Task { @MainActor in
-            let result = await radar.invite(peer, to: room)
+            let result = await radar.toggleInvitation(peer, to: room)
             switch result {
             case .sent:
                 HapticManager.shared.fire(.navigation)
+            case .cancelled:
+                HapticManager.shared.fire(.buttonPress)
             case .blocked:
                 HapticManager.shared.fire(.notification(.error))
             case .unavailable:
@@ -208,7 +210,7 @@ private enum NearbySpyCardState: Equatable {
     case blocked
     case unavailable
 
-    var isActionable: Bool { self == .available }
+    var isActionable: Bool { self == .available || self == .waiting }
 }
 
 struct NearbySpyIDCard: View {
@@ -626,19 +628,19 @@ struct NearbySpyIDCard: View {
 
     private var stateDetail: String {
         switch (language, cardState) {
-        case (.ru, .waiting): "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО"
+        case (.ru, .waiting): "НАЖМИ ЕЩЁ РАЗ, ЧТОБЫ ОТМЕНИТЬ"
         case (.ru, .declined): "МОЖНО ПРИГЛАСИТЬ ПОЗЖЕ"
         case (.ru, .accepted): "ПОДКЛЮЧАЕМ К ИГРЕ"
         case (.ru, .inGame): "ПРИГЛАСИТЬ НЕЛЬЗЯ"
         case (.ru, .blocked): "ИГРОК ОТКЛЮЧИЛ ИХ В НАСТРОЙКАХ"
         case (.ru, .unavailable): "ПОПРОБУЙ ЕЩЁ РАЗ"
-        case (.es, .waiting): "INVITACIÓN ENVIADA"
+        case (.es, .waiting): "TOCA OTRA VEZ PARA CANCELAR"
         case (.es, .declined): "PUEDES INVITAR MÁS TARDE"
         case (.es, .accepted): "CONECTANDO A LA PARTIDA"
         case (.es, .inGame): "NO SE PUEDE INVITAR"
         case (.es, .blocked): "DESACTIVADAS EN AJUSTES"
         case (.es, .unavailable): "INTÉNTALO DE NUEVO"
-        case (_, .waiting): "INVITATION SENT"
+        case (_, .waiting): "TAP AGAIN TO CANCEL"
         case (_, .declined): "YOU CAN INVITE AGAIN LATER"
         case (_, .accepted): "CONNECTING TO THE GAME"
         case (_, .inGame): "UNAVAILABLE TO INVITE"

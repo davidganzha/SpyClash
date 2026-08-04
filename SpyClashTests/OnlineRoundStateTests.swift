@@ -365,6 +365,109 @@ final class RadarCameraAssistanceGateTests: XCTestCase {
     }
 }
 
+final class RadarInvitationInteractionPolicyTests: XCTestCase {
+    func testSecondTapCancelsOnlyPendingInvitation() {
+        XCTAssertEqual(
+            RadarInvitationInteractionPolicy.action(
+                invitePolicy: .ask,
+                availability: .available,
+                invitationState: nil
+            ),
+            .send
+        )
+        XCTAssertEqual(
+            RadarInvitationInteractionPolicy.action(
+                invitePolicy: .ask,
+                availability: .available,
+                invitationState: .waiting
+            ),
+            .cancel
+        )
+        XCTAssertEqual(
+            RadarInvitationInteractionPolicy.action(
+                invitePolicy: .ask,
+                availability: .available,
+                invitationState: .accepted
+            ),
+            .none
+        )
+    }
+
+    func testUnavailablePlayersCannotSendOrCancelInvitation() {
+        XCTAssertEqual(
+            RadarInvitationInteractionPolicy.action(
+                invitePolicy: .blocked,
+                availability: .available,
+                invitationState: nil
+            ),
+            .none
+        )
+        XCTAssertEqual(
+            RadarInvitationInteractionPolicy.action(
+                invitePolicy: .ask,
+                availability: .inGame,
+                invitationState: .waiting
+            ),
+            .none
+        )
+    }
+
+    func testLiveAvailabilityReconcilesCardState() {
+        XCTAssertEqual(
+            RadarInvitationInteractionPolicy.state(
+                after: .inGame,
+                currentState: .waiting
+            ),
+            .inGame
+        )
+        XCTAssertNil(
+            RadarInvitationInteractionPolicy.state(
+                after: .available,
+                currentState: .inGame
+            )
+        )
+        XCTAssertEqual(
+            RadarInvitationInteractionPolicy.state(
+                after: .available,
+                currentState: .declined
+            ),
+            .declined
+        )
+    }
+
+    func testCancellationMustMatchInvitationAndSender() {
+        let invitation = RadarIncomingInvitation(
+            roomCode: "ABC123",
+            hostCallSign: "Host",
+            hostAvatar: "🕵️",
+            wireInvitationID: "invite-1",
+            sourcePeerID: "peer-1"
+        )
+
+        XCTAssertTrue(
+            RadarInvitationCancellationPolicy.matches(
+                invitation: invitation,
+                invitationID: "invite-1",
+                sourcePeerID: "peer-1"
+            )
+        )
+        XCTAssertFalse(
+            RadarInvitationCancellationPolicy.matches(
+                invitation: invitation,
+                invitationID: "invite-2",
+                sourcePeerID: "peer-1"
+            )
+        )
+        XCTAssertFalse(
+            RadarInvitationCancellationPolicy.matches(
+                invitation: invitation,
+                invitationID: "invite-1",
+                sourcePeerID: "peer-2"
+            )
+        )
+    }
+}
+
 final class NavigationSwipeTests: XCTestCase {
     func testResolverMapsHorizontalSwipeDirection() {
         XCTAssertEqual(

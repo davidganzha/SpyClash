@@ -167,8 +167,51 @@ enum RadarScanState: Equatable {
 
 enum RadarInviteDispatchResult: Equatable {
     case sent
+    case cancelled
     case blocked
     case unavailable
+}
+
+enum RadarInvitationTapAction: Equatable {
+    case send
+    case cancel
+    case none
+}
+
+enum RadarInvitationInteractionPolicy {
+    static func action(
+        invitePolicy: RadarInvitePolicy,
+        availability: RadarPlayerAvailability,
+        invitationState: RadarOutgoingInvitationState?
+    ) -> RadarInvitationTapAction {
+        guard invitePolicy != .blocked, availability == .available else { return .none }
+        if invitationState == .waiting { return .cancel }
+        guard invitationState == nil else { return .none }
+        return .send
+    }
+
+    static func state(
+        after availability: RadarPlayerAvailability,
+        currentState: RadarOutgoingInvitationState?
+    ) -> RadarOutgoingInvitationState? {
+        switch availability {
+        case .inGame:
+            return .inGame
+        case .available:
+            return currentState == .inGame ? nil : currentState
+        }
+    }
+}
+
+enum RadarInvitationCancellationPolicy {
+    static func matches(
+        invitation: RadarIncomingInvitation?,
+        invitationID: String,
+        sourcePeerID: String
+    ) -> Bool {
+        invitation?.wireInvitationID == invitationID
+            && invitation?.sourcePeerID == sourcePeerID
+    }
 }
 
 private enum RadarWireKind: String, Codable {
@@ -176,6 +219,8 @@ private enum RadarWireKind: String, Codable {
     case nearbyToken = "nearby_token"
     case roomInvite = "room_invite"
     case roomInviteResponse = "room_invite_response"
+    case roomInviteCancel = "room_invite_cancel"
+    case availabilityUpdate = "availability_update"
 }
 
 private enum RadarWireInviteResponse: String, Codable {
@@ -201,6 +246,7 @@ private struct RadarWireMessage: Codable {
     let hostWinRate: Int?
     let invitationID: String?
     let inviteResponse: RadarWireInviteResponse?
+    let availability: String?
 
     static var rangingRequest: RadarWireMessage {
         RadarWireMessage(
@@ -218,7 +264,8 @@ private struct RadarWireMessage: Codable {
             hostGamesPlayed: nil,
             hostWinRate: nil,
             invitationID: nil,
-            inviteResponse: nil
+            inviteResponse: nil,
+            availability: nil
         )
     }
 
@@ -238,7 +285,8 @@ private struct RadarWireMessage: Codable {
             hostGamesPlayed: nil,
             hostWinRate: nil,
             invitationID: nil,
-            inviteResponse: nil
+            inviteResponse: nil,
+            availability: nil
         )
     }
 
@@ -270,7 +318,8 @@ private struct RadarWireMessage: Codable {
             hostGamesPlayed: hostGamesPlayed,
             hostWinRate: hostWinRate,
             invitationID: invitationID,
-            inviteResponse: nil
+            inviteResponse: nil,
+            availability: nil
         )
     }
 
@@ -293,7 +342,50 @@ private struct RadarWireMessage: Codable {
             hostGamesPlayed: nil,
             hostWinRate: nil,
             invitationID: invitationID,
-            inviteResponse: response
+            inviteResponse: response,
+            availability: nil
+        )
+    }
+
+    static func roomInviteCancellation(invitationID: String) -> RadarWireMessage {
+        RadarWireMessage(
+            version: 1,
+            kind: .roomInviteCancel,
+            token: nil,
+            roomCode: nil,
+            hostCallSign: nil,
+            hostAvatar: nil,
+            hostSpyID: nil,
+            hostSpyCardTheme: nil,
+            hostSpyCardAccent: nil,
+            hostSpyCardBadge: nil,
+            hostRating: nil,
+            hostGamesPlayed: nil,
+            hostWinRate: nil,
+            invitationID: invitationID,
+            inviteResponse: nil,
+            availability: nil
+        )
+    }
+
+    static func availabilityUpdate(_ availability: RadarPlayerAvailability) -> RadarWireMessage {
+        RadarWireMessage(
+            version: 1,
+            kind: .availabilityUpdate,
+            token: nil,
+            roomCode: nil,
+            hostCallSign: nil,
+            hostAvatar: nil,
+            hostSpyID: nil,
+            hostSpyCardTheme: nil,
+            hostSpyCardAccent: nil,
+            hostSpyCardBadge: nil,
+            hostRating: nil,
+            hostGamesPlayed: nil,
+            hostWinRate: nil,
+            invitationID: nil,
+            inviteResponse: nil,
+            availability: availability.rawValue
         )
     }
 }
@@ -442,9 +534,11 @@ final class RadarNearbyService: NSObject {
         // advertised busy state for every nearby host.
         availabilityRebuildTask?.cancel()
         availabilityRebuildTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.broadcastLocalAvailability()
             try? await Task.sleep(for: .milliseconds(650))
             guard !Task.isCancelled else { return }
-            self?.rebuildTransportIfNeeded()
+            self.rebuildTransportIfNeeded()
         }
     }
 
@@ -545,7 +639,28 @@ final class RadarNearbyService: NSObject {
         }
     }
 
-    func invite(_ peer: RadarNearbyPeer, to room: GameRoom) async -> RadarInviteDispatchResult {
+    func toggleInvitation(
+        _ peer: RadarNearbyPeer,
+        to room: GameRoom
+    ) async -> RadarInviteDispatchResult {
+        switch RadarInvitationInteractionPolicy.action(
+            invitePolicy: peer.invitePolicy,
+            availability: peer.availability,
+            invitationState: outgoingInvitationStates[peer.id]
+        ) {
+        case .cancel:
+            cancelInvitation(for: peer.id)
+            return .cancelled
+        case .send:
+            return await invite(peer, to: room)
+        case .none:
+            return peer.availability == .inGame || peer.invitePolicy == .blocked
+                ? .blocked
+                : .unavailable
+        }
+    }
+
+    private func invite(_ peer: RadarNearbyPeer, to room: GameRoom) async -> RadarInviteDispatchResult {
         guard peer.invitePolicy != .blocked else {
             return .blocked
         }
@@ -608,6 +723,58 @@ final class RadarNearbyService: NSObject {
         browser.invitePeer(peerID, to: multipeerSession, withContext: context, timeout: 15)
         scheduleInvitationTimeout(for: peer.id, invitationID: invitationID)
         return .sent
+    }
+
+    private func cancelInvitation(for peerID: String) {
+        guard let invitationID = pendingInvitationIDs.removeValue(forKey: peerID) else {
+            if outgoingInvitationStates[peerID] == .waiting {
+                outgoingInvitationStates[peerID] = nil
+            }
+            return
+        }
+
+        pendingRoomInvites[peerID] = nil
+        outgoingInvitationStates[peerID] = nil
+
+#if DEBUG
+        if usesPreviewRangingPeers { return }
+#endif
+
+        guard let remotePeerID = discoveredPeerIDs[peerID] else { return }
+        let cancellation = RadarWireMessage.roomInviteCancellation(
+            invitationID: invitationID
+        )
+
+        Task { @MainActor [weak self] in
+            await self?.deliverInvitationCancellation(
+                cancellation,
+                to: remotePeerID
+            )
+        }
+    }
+
+    private func deliverInvitationCancellation(
+        _ cancellation: RadarWireMessage,
+        to remotePeerID: MCPeerID
+    ) async {
+        // A room invitation can already be accepted at the transport layer
+        // while MCSession is still connecting. Keep cancellation local and
+        // immediate, then retry delivery until that encrypted session becomes
+        // writable. The browser context is the fallback when no session forms.
+        for _ in 0..<14 {
+            if await send(cancellation, to: remotePeerID) { return }
+            try? await Task.sleep(for: .milliseconds(120))
+        }
+
+        guard let browser,
+              let multipeerSession,
+              let context = encoded(cancellation) else { return }
+        browser.invitePeer(
+            remotePeerID,
+            to: multipeerSession,
+            withContext: context,
+            timeout: 5
+        )
     }
 
     func invitationState(for peerID: String) -> RadarOutgoingInvitationState? {
@@ -716,6 +883,11 @@ final class RadarNearbyService: NSObject {
     }
 
     private func schedulePreviewResponse(for peerID: String, invitationID: String) {
+        if ProcessInfo.processInfo.arguments.contains(
+            "--spyclash-preview-radar-hold-pending"
+        ) {
+            return
+        }
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .milliseconds(1_150))
             guard let self, self.pendingInvitationIDs[peerID] == invitationID else { return }
@@ -863,9 +1035,7 @@ final class RadarNearbyService: NSObject {
         } else {
             peers.append(peer)
         }
-        if availability == .available, outgoingInvitationStates[id] == .inGame {
-            outgoingInvitationStates[id] = nil
-        }
+        reconcileInvitationState(for: id, availability: availability)
         if policy != .blocked, outgoingInvitationStates[id] == .blocked {
             outgoingInvitationStates[id] = nil
         }
@@ -962,7 +1132,11 @@ final class RadarNearbyService: NSObject {
             invitationHandler(true, multipeerSession)
             handleRoomInvite(message, from: peerID)
 
-        case .nearbyToken:
+        case .roomInviteCancel:
+            handleRoomInviteCancellation(message, from: peerID)
+            invitationHandler(false, nil)
+
+        case .nearbyToken, .availabilityUpdate:
             invitationHandler(false, nil)
 
         case .roomInviteResponse:
@@ -986,9 +1160,15 @@ final class RadarNearbyService: NSObject {
             connectingPeerIDs.remove(id)
             rangingInviteAttempts[id] = nil
             ensureRangingSession(for: peerID)
-            if let pendingInvite = pendingRoomInvites.removeValue(forKey: id) {
-                Task { @MainActor [weak self] in
-                    _ = await self?.send(pendingInvite, to: peerID)
+            let pendingInvite = pendingRoomInvites.removeValue(forKey: id)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                _ = await self.send(
+                    .availabilityUpdate(self.localAvailability),
+                    to: peerID
+                )
+                if let pendingInvite {
+                    _ = await self.send(pendingInvite, to: peerID)
                 }
             }
 
@@ -1115,6 +1295,12 @@ final class RadarNearbyService: NSObject {
             guard let invitationID = message.invitationID,
                   let response = message.inviteResponse else { return }
             applyInviteResponse(response, from: peerID.displayName, invitationID: invitationID)
+        case .roomInviteCancel:
+            handleRoomInviteCancellation(message, from: peerID)
+        case .availabilityUpdate:
+            guard let rawAvailability = message.availability,
+                  let availability = RadarPlayerAvailability(rawValue: rawAvailability) else { return }
+            updateAvailability(for: peerID.displayName, availability: availability)
         case .rangingRequest:
             break
         }
@@ -1216,6 +1402,19 @@ final class RadarNearbyService: NSObject {
         case .blocked:
             break
         }
+    }
+
+    private func handleRoomInviteCancellation(
+        _ message: RadarWireMessage,
+        from peerID: MCPeerID
+    ) {
+        guard let invitationID = message.invitationID,
+              RadarInvitationCancellationPolicy.matches(
+                  invitation: incomingInvitation,
+                  invitationID: invitationID,
+                  sourcePeerID: peerID.displayName
+              ) else { return }
+        incomingInvitation = nil
     }
 
     private func sendInviteResponse(
@@ -1362,6 +1561,14 @@ final class RadarNearbyService: NSObject {
         configuration.isCameraAssistanceEnabled = canUseCameraAssistance
         if canUseCameraAssistance, let spatialARSession = ensureSpatialARSession() {
             nearbySession.setARSession(spatialARSession)
+        }
+    }
+
+    private func broadcastLocalAvailability() async {
+        guard let multipeerSession else { return }
+        let message = RadarWireMessage.availabilityUpdate(localAvailability)
+        for peerID in multipeerSession.connectedPeers {
+            _ = await send(message, to: peerID)
         }
     }
 
@@ -1655,6 +1862,51 @@ final class RadarNearbyService: NSObject {
             distanceMeters: distance,
             horizontalAngleRadians: angle,
             relativePosition: relativePosition
+        )
+    }
+
+    private func updateAvailability(
+        for id: String,
+        availability: RadarPlayerAvailability
+    ) {
+        guard let index = peers.firstIndex(where: { $0.id == id }) else { return }
+        let peer = peers[index]
+        guard peer.availability != availability else {
+            reconcileInvitationState(for: id, availability: availability)
+            return
+        }
+
+        peers[index] = RadarNearbyPeer(
+            id: peer.id,
+            spyID: peer.spyID,
+            spyCardTheme: peer.spyCardTheme,
+            spyCardAccent: peer.spyCardAccent,
+            spyCardBadge: peer.spyCardBadge,
+            callSign: peer.callSign,
+            avatar: peer.avatar,
+            invitePolicy: peer.invitePolicy,
+            availability: availability,
+            source: peer.source,
+            precisionState: peer.precisionState,
+            directionState: peer.directionState,
+            distanceMeters: peer.distanceMeters,
+            horizontalAngleRadians: peer.horizontalAngleRadians,
+            relativePosition: peer.relativePosition
+        )
+        reconcileInvitationState(for: id, availability: availability)
+    }
+
+    private func reconcileInvitationState(
+        for peerID: String,
+        availability: RadarPlayerAvailability
+    ) {
+        if availability == .inGame {
+            pendingInvitationIDs[peerID] = nil
+            pendingRoomInvites[peerID] = nil
+        }
+        outgoingInvitationStates[peerID] = RadarInvitationInteractionPolicy.state(
+            after: availability,
+            currentState: outgoingInvitationStates[peerID]
         )
     }
 

@@ -927,12 +927,14 @@ struct GameView: View {
         HapticManager.shared.fire(.buttonPress)
 
         Task { @MainActor in
-            let result = await roomRadar.invite(peer, to: room)
+            let result = await roomRadar.toggleInvitation(peer, to: room)
             guard roomAccessPage == 2, appState.activeRoom?.id == room.id else { return }
 
             switch result {
             case .sent:
                 HapticManager.shared.fire(.navigation)
+            case .cancelled:
+                HapticManager.shared.fire(.buttonPress)
             case .blocked:
                 HapticManager.shared.fire(.notification(.error))
             case .unavailable:
