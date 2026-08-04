@@ -1558,12 +1558,15 @@ struct GameView: View {
                     value: onlineDurationSliderValue,
                     range: 1...15,
                     step: 1,
-                    onEditingChanged: { isEditing in
-                        guard !isEditing, isHost(room) else { return }
+                    onCommit: { committedValue in
+                        guard isHost(room) else { return }
                         beginDurationUpdate(
                             room,
-                            minutes: Int(selectedDurationMinutes.rounded())
+                            minutes: Int(committedValue.rounded())
                         )
+                    },
+                    onCancel: {
+                        reconcileOnlineDuration(roomID: room.id)
                     },
                     onInteractionChanged: { isInteracting in
                         if isInteracting, isDurationSyncActive { return }
@@ -6022,11 +6025,26 @@ struct GameView: View {
 
     private func beginDurationUpdate(_ room: GameRoom, minutes: Int) {
         let clampedMinutes = max(1, min(minutes, 15))
-        guard appState.roomSyncOperation == nil,
-              let request = onlineDurationSyncState.begin(
-                  roomID: room.id,
+        guard !onlineDurationSyncState.isLocked,
+              let currentRoom = appState.activeRoom,
+              currentRoom.id == room.id else { return }
+
+        let confirmedMinutes = max(
+            1,
+            min((currentRoom.gameDurationSeconds ?? 900) / 60, 15)
+        )
+        guard appState.roomSyncOperation == nil else {
+            selectedDurationMinutes = Double(confirmedMinutes)
+            return
+        }
+        guard clampedMinutes != confirmedMinutes else {
+            selectedDurationMinutes = Double(confirmedMinutes)
+            return
+        }
+        guard let request = onlineDurationSyncState.begin(
+                  roomID: currentRoom.id,
                   requestedMinutes: clampedMinutes,
-                  confirmedDurationSeconds: room.gameDurationSeconds
+                  confirmedDurationSeconds: currentRoom.gameDurationSeconds
               ) else { return }
 
         let operation = RoomSyncOperation.updatingDuration(minutes: clampedMinutes)
@@ -6039,8 +6057,15 @@ struct GameView: View {
         selectedDurationMinutes = Double(request.requestedMinutes)
         isDraggingOnlineDuration = false
         Task {
-            await updateDuration(room, request: request, operation: operation)
+            await updateDuration(currentRoom, request: request, operation: operation)
         }
+    }
+
+    private func reconcileOnlineDuration(roomID: String) {
+        guard let currentRoom = appState.activeRoom,
+              currentRoom.id == roomID,
+              let seconds = currentRoom.gameDurationSeconds else { return }
+        selectedDurationMinutes = Double(max(1, min(seconds / 60, 15)))
     }
 
     private func updateDuration(

@@ -298,6 +298,41 @@ final class OnlineDurationSyncStateTests: XCTestCase {
     }
 }
 
+final class SpySliderInteractionStateTests: XCTestCase {
+    func testTouchCancelRestoresInitialValueWithoutCommit() throws {
+        var interaction = SpySliderInteractionState()
+
+        XCTAssertTrue(interaction.begin(at: 15))
+        interaction.track(9)
+
+        XCTAssertEqual(try XCTUnwrap(interaction.cancel()), 15)
+        XCTAssertFalse(interaction.isEditing)
+        XCTAssertNil(interaction.lastTrackedValue)
+        XCTAssertNil(interaction.commit(9))
+    }
+
+    func testTouchUpCommitsExactFinalNativeValue() throws {
+        var interaction = SpySliderInteractionState()
+
+        XCTAssertTrue(interaction.begin(at: 15))
+        interaction.track(9)
+
+        XCTAssertEqual(try XCTUnwrap(interaction.commit(8)), 8)
+        XCTAssertFalse(interaction.isEditing)
+        XCTAssertNil(interaction.cancel())
+    }
+
+    func testAccessibilityValueChangeCommitsWithoutTouchLifecycle() {
+        var interaction = SpySliderInteractionState()
+
+        XCTAssertTrue(interaction.commitsValueChangeImmediately(isTracking: false))
+        XCTAssertFalse(interaction.commitsValueChangeImmediately(isTracking: true))
+
+        XCTAssertTrue(interaction.begin(at: 15))
+        XCTAssertFalse(interaction.commitsValueChangeImmediately(isTracking: false))
+    }
+}
+
 final class RadarCameraAssistanceGateTests: XCTestCase {
     func testCameraAssistanceRequiresExplicitAuthorizedRadarIntent() {
         XCTAssertTrue(

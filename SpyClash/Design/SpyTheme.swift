@@ -660,6 +660,8 @@ struct SpyWebSlider: View {
     var maxMarker: Double?
     var maxLabel: String? = nil
     var onEditingChanged: ((Bool) -> Void)? = nil
+    var onCommit: ((Double) -> Void)? = nil
+    var onCancel: (() -> Void)? = nil
     var onInteractionChanged: ((Bool) -> Void)? = nil
     var accessibilityIdentifier: String? = nil
 
@@ -687,6 +689,8 @@ struct SpyWebSlider: View {
                 isEnabled: isEnabled,
                 accessibilityIdentifier: accessibilityIdentifier,
                 onEditingChanged: onEditingChanged,
+                onCommit: onCommit,
+                onCancel: onCancel,
                 onInteractionChanged: onInteractionChanged
             )
             .frame(height: 32)
@@ -710,6 +714,8 @@ private struct SpyNativeSlider: UIViewRepresentable {
     let isEnabled: Bool
     let accessibilityIdentifier: String?
     let onEditingChanged: ((Bool) -> Void)?
+    let onCommit: ((Double) -> Void)?
+    let onCancel: (() -> Void)?
     let onInteractionChanged: ((Bool) -> Void)?
 
     func makeCoordinator() -> Coordinator {
@@ -724,7 +730,12 @@ private struct SpyNativeSlider: UIViewRepresentable {
         slider.addTarget(
             context.coordinator,
             action: #selector(Coordinator.touchFinished(_:)),
-            for: [.touchUpInside, .touchUpOutside, .touchCancel]
+            for: [.touchUpInside, .touchUpOutside]
+        )
+        slider.addTarget(
+            context.coordinator,
+            action: #selector(Coordinator.touchCancelled(_:)),
+            for: .touchCancel
         )
         return slider
     }
@@ -745,12 +756,12 @@ private struct SpyNativeSlider: UIViewRepresentable {
         }
 
         if !isEnabled {
-            context.coordinator.finishInteraction()
+            context.coordinator.cancelInteraction(slider)
         }
     }
 
     static func dismantleUIView(_ slider: UISlider, coordinator: Coordinator) {
-        coordinator.finishInteraction()
+        coordinator.cancelInteraction(slider)
     }
 
     private func clamped(_ candidate: Double) -> Double {
@@ -760,17 +771,15 @@ private struct SpyNativeSlider: UIViewRepresentable {
     @MainActor
     final class Coordinator: NSObject {
         var parent: SpyNativeSlider
-        private var isEditing = false
-        private var lastTrackedSnappedValue: Double?
+        private var interaction = SpySliderInteractionState()
 
         init(parent: SpyNativeSlider) {
             self.parent = parent
         }
 
         @objc func touchDown(_ slider: UISlider) {
-            guard !isEditing, parent.isEnabled else { return }
-            isEditing = true
-            lastTrackedSnappedValue = snappedValue(for: parent.value)
+            guard parent.isEnabled,
+                  interaction.begin(at: snappedValue(for: parent.value)) else { return }
             parent.onInteractionChanged?(true)
             parent.onEditingChanged?(true)
         }
@@ -782,29 +791,48 @@ private struct SpyNativeSlider: UIViewRepresentable {
                 slider.setValue(Float(snappedValue), animated: false)
             }
 
-            if isEditing,
+            if interaction.isEditing,
                slider.isTracking,
                parent.isEnabled,
-               let previousValue = lastTrackedSnappedValue,
+               let previousValue = interaction.lastTrackedValue,
                abs(previousValue - snappedValue) > 0.0001 {
-                lastTrackedSnappedValue = snappedValue
                 HapticManager.shared.fire(.tabSelection)
             }
 
+            interaction.track(snappedValue)
             parent.value = snappedValue
             slider.accessibilityValue = "\(Int(snappedValue.rounded()))"
+
+            if interaction.commitsValueChangeImmediately(isTracking: slider.isTracking),
+               parent.isEnabled {
+                parent.onCommit?(snappedValue)
+            }
         }
 
         @objc func touchFinished(_ slider: UISlider) {
-            finishInteraction()
-        }
+            guard let committedValue = interaction.commit(
+                snappedValue(for: Double(slider.value))
+            ) else { return }
 
-        func finishInteraction() {
-            lastTrackedSnappedValue = nil
-            guard isEditing else { return }
-            isEditing = false
+            slider.setValue(Float(committedValue), animated: false)
+            parent.value = committedValue
+            parent.onCommit?(committedValue)
             parent.onInteractionChanged?(false)
             parent.onEditingChanged?(false)
+        }
+
+        @objc func touchCancelled(_ slider: UISlider) {
+            cancelInteraction(slider)
+        }
+
+        func cancelInteraction(_ slider: UISlider) {
+            guard let restoredValue = interaction.cancel() else { return }
+            slider.setValue(Float(restoredValue), animated: false)
+            slider.accessibilityValue = "\(Int(restoredValue.rounded()))"
+            parent.value = restoredValue
+            parent.onInteractionChanged?(false)
+            parent.onEditingChanged?(false)
+            parent.onCancel?()
         }
 
         private func snappedValue(for rawValue: Double) -> Double {
@@ -813,6 +841,48 @@ private struct SpyNativeSlider: UIViewRepresentable {
             let stepIndex = ((rawValue - lowerBound) / parent.step).rounded()
             return min(max(lowerBound + (stepIndex * parent.step), lowerBound), upperBound)
         }
+    }
+}
+
+struct SpySliderInteractionState: Equatable {
+    private(set) var initialValue: Double?
+    private(set) var lastTrackedValue: Double?
+
+    var isEditing: Bool {
+        initialValue != nil
+    }
+
+    mutating func begin(at value: Double) -> Bool {
+        guard !isEditing else { return false }
+        initialValue = value
+        lastTrackedValue = value
+        return true
+    }
+
+    mutating func track(_ value: Double) {
+        guard isEditing else { return }
+        lastTrackedValue = value
+    }
+
+    func commitsValueChangeImmediately(isTracking: Bool) -> Bool {
+        !isEditing && !isTracking
+    }
+
+    mutating func commit(_ value: Double) -> Double? {
+        guard isEditing else { return nil }
+        reset()
+        return value
+    }
+
+    mutating func cancel() -> Double? {
+        guard let initialValue else { return nil }
+        reset()
+        return initialValue
+    }
+
+    private mutating func reset() {
+        initialValue = nil
+        lastTrackedValue = nil
     }
 }
 
