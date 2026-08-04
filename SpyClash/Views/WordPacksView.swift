@@ -383,6 +383,7 @@ struct WordPacksView: View {
             withAnimation(SpyMotion.page) {
                 packs.removeAll { $0.id == pack.id }
             }
+            appState.markWordPacksChanged()
             deleteTarget = nil
             showDeleteConfirmation = false
             status = ""
@@ -773,6 +774,7 @@ private struct WordPackEditorSheet: View {
                     ownerEmail: email
                 )
             }
+            appState.markWordPacksChanged()
             HapticManager.shared.fire(.milestone)
             dismiss()
         } catch {

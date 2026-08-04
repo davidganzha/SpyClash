@@ -41,7 +41,7 @@ struct RadarInviteView: View {
             }
         }
         .task {
-            radar.startScanning()
+            radar.startScanning(requestCameraAccess: true)
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                 scanPulse = true

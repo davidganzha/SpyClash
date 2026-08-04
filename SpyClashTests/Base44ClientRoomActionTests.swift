@@ -56,6 +56,53 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertEqual(body["access_token"] as? String, "test-token")
     }
 
+    func testSavedPackExclusionsAreFrozenIntoStartPlanAndTransport() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let disabledKeys = Set([RoomWordPoolFilter.key("removed")])
+        let activeWords = RoomWordPoolFilter.activeWords(
+            [" keep-a ", "removed", "KEEP-A", "keep-b"],
+            excluding: disabledKeys
+        )
+        XCTAssertEqual(activeWords, ["keep-a", "keep-b"])
+
+        let pack = WordPack(
+            id: "pack-1",
+            name: "Fresh pack",
+            category: "TEST",
+            words: activeWords,
+            ownerEmail: "operative@example.com",
+            isPublic: false
+        )
+        let client = makeClient()
+        let room = GameRoom.previewRoom(status: "waiting")
+        let plan = try client.makeGameStartPlan(
+            room: room,
+            wordPacks: [pack],
+            selectedPackID: pack.id,
+            gameMode: .questions,
+            durationSeconds: 600
+        )
+
+        _ = try await client.armRoulette(room: room, plan: plan)
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        let planBody = try XCTUnwrap(body["plan"] as? [String: Any])
+        let secretWord = try XCTUnwrap(planBody["secret_word"] as? String)
+        let pool = try XCTUnwrap(planBody["word_pool"] as? [[String: Any]])
+        let transportedWords = try pool.map { try XCTUnwrap($0["word"] as? String) }
+
+        XCTAssertEqual(Set(transportedWords), Set(activeWords))
+        XCTAssertTrue(pool.allSatisfy { ($0["enabled"] as? Bool) == true })
+        XCTAssertTrue(activeWords.contains(secretWord))
+        XCTAssertFalse(transportedWords.contains("removed"))
+    }
+
     func testRadarInvitePolicyUsesAuthenticatedCommunityActionContract() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in

@@ -123,6 +123,13 @@ struct GameView: View {
                 }
             }
         }
+        .task(id: appState.wordPacksRevision) {
+            guard appState.wordPacksRevision > 0,
+                  let room = appState.activeRoom,
+                  configuredRoomID == room.id,
+                  ["waiting", "ready_voting"].contains(room.normalizedStatus) else { return }
+            await loadLobbyWordPacks(force: true)
+        }
         .task(id: expiredRoomTaskKey) {
             guard let room = appState.activeRoom,
                   room.normalizedStatus == "playing",
@@ -563,7 +570,7 @@ struct GameView: View {
             roomQRSheenProgress = -1
             roomQRIsLifted = false
             if roomAccessPage == 2 {
-                roomRadar.startScanning()
+                roomRadar.startScanning(requestCameraAccess: true)
             }
         }
         .onChange(of: room.id) { _, _ in
@@ -890,7 +897,7 @@ struct GameView: View {
             roomRadar.stopScanning()
         }
         if nextPage == 2 {
-            roomRadar.startScanning()
+            roomRadar.startScanning(requestCameraAccess: true)
         }
     }
 
@@ -5187,11 +5194,11 @@ struct GameView: View {
     }
 
     private func roomWordKey(_ word: String) -> String {
-        word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        RoomWordPoolFilter.key(word)
     }
 
     private func activeRoomWords(_ words: [String]) -> [String] {
-        words.roomCleanWords.filter { !disabledRoomPoolWordKeys.contains(roomWordKey($0)) }
+        RoomWordPoolFilter.activeWords(words, excluding: disabledRoomPoolWordKeys)
     }
 
     private func toggleRoomPoolWord(_ word: String) {
@@ -5873,6 +5880,7 @@ struct GameView: View {
             lobbyWordPacks.append(saved)
             lobbyWordPacks.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             lobbyPackLoadState = .loaded
+            appState.markWordPacksChanged()
             status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO")
             HapticManager.shared.fire(.milestone)
         } catch {
@@ -6171,7 +6179,12 @@ struct GameView: View {
         isStarting = true
         defer { isStarting = false }
         do {
-            if lobbyPackLoadState != .loaded {
+            if case .saved = roomWordSource {
+                // Saved packs can be edited from another mounted tab or device.
+                // Always reconcile the authoritative snapshot immediately before
+                // freezing the mission plan, while preserving lobby exclusions.
+                await loadLobbyWordPacks(force: true)
+            } else if lobbyPackLoadState != .loaded {
                 await loadLobbyWordPacks()
             }
             guard roomThemeSelectionIsReady, let selectedPackID else {
@@ -6911,6 +6924,24 @@ private enum RoomWordCountMode: String, CaseIterable, Identifiable {
 private enum RoomThemeOperation {
     case generate
     case expand
+}
+
+enum RoomWordPoolFilter {
+    static func key(_ rawValue: String) -> String {
+        rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
+    static func activeWords(_ words: [String], excluding disabledKeys: Set<String>) -> [String] {
+        var seen = Set<String>()
+        return words.compactMap { rawValue in
+            let word = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            guard !word.isEmpty else { return nil }
+            let normalizedKey = key(word)
+            guard seen.insert(normalizedKey).inserted,
+                  !disabledKeys.contains(normalizedKey) else { return nil }
+            return word
+        }
+    }
 }
 
 private struct RoomPoolSnapshot {

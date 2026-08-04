@@ -1,4 +1,5 @@
 import Foundation
+import AVFoundation
 import XCTest
 @testable import SpyClash
 
@@ -130,6 +131,96 @@ final class OnlineRoundStateTests: XCTestCase {
         XCTAssertFalse(tracker.recordFailure())
         XCTAssertFalse(tracker.recordFailure())
         XCTAssertTrue(tracker.recordFailure())
+    }
+
+    func testRoomMonitorDiscardsInFlightSnapshotWithoutStoppingDuringLocalOperation() {
+        XCTAssertEqual(
+            RoomPollPolicy.disposition(
+                monitoredRoomID: "room-1",
+                activeRoomID: "room-1",
+                isCancelled: false,
+                hasActiveOperation: true,
+                fetchedRoomExists: true
+            ),
+            .discardAndContinue
+        )
+        XCTAssertEqual(
+            RoomPollPolicy.disposition(
+                monitoredRoomID: "room-1",
+                activeRoomID: "room-2",
+                isCancelled: false,
+                hasActiveOperation: false,
+                fetchedRoomExists: true
+            ),
+            .stop
+        )
+        XCTAssertEqual(
+            RoomPollPolicy.disposition(
+                monitoredRoomID: "room-1",
+                activeRoomID: "room-1",
+                isCancelled: false,
+                hasActiveOperation: false,
+                fetchedRoomExists: false
+            ),
+            .close
+        )
+    }
+
+    func testRoomPollPolicyUsesResponsiveCadenceAndBoundedFailureBackoff() {
+        XCTAssertEqual(
+            RoomPollPolicy.delaySeconds(
+                roomStatus: "waiting",
+                consecutiveFailures: 0,
+                isApplicationActive: true
+            ),
+            1,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            RoomPollPolicy.delaySeconds(
+                roomStatus: "playing",
+                consecutiveFailures: 0,
+                isApplicationActive: true
+            ),
+            1.2,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 1, isApplicationActive: true), 2)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 2, isApplicationActive: true), 4)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 8, isApplicationActive: true), 8)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 0, isApplicationActive: false), 5)
+    }
+}
+
+final class RadarCameraAssistanceGateTests: XCTestCase {
+    func testCameraAssistanceRequiresExplicitAuthorizedRadarIntent() {
+        XCTAssertTrue(
+            RadarCameraAssistanceGate.canEnable(
+                hasExplicitRadarIntent: true,
+                wantsScanning: true,
+                authorizationStatus: .authorized,
+                supportsCameraAssistance: true,
+                supportsWorldTracking: true
+            )
+        )
+        XCTAssertFalse(
+            RadarCameraAssistanceGate.canEnable(
+                hasExplicitRadarIntent: false,
+                wantsScanning: true,
+                authorizationStatus: .authorized,
+                supportsCameraAssistance: true,
+                supportsWorldTracking: true
+            )
+        )
+        XCTAssertFalse(
+            RadarCameraAssistanceGate.canEnable(
+                hasExplicitRadarIntent: true,
+                wantsScanning: true,
+                authorizationStatus: .notDetermined,
+                supportsCameraAssistance: true,
+                supportsWorldTracking: true
+            )
+        )
     }
 }
 

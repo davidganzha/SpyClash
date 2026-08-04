@@ -97,6 +97,10 @@ struct LocalGameView: View {
                 consumeLocalSetupRequestIfNeeded()
                 await loadPacks()
             }
+            .task(id: appState.wordPacksRevision) {
+                guard appState.wordPacksRevision > 0 else { return }
+                await loadPacks()
+            }
             .onAppear {
                 withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
                     localPreviewPulse = true
@@ -3199,6 +3203,7 @@ struct LocalGameView: View {
             )
             packs.append(saved)
             packs.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
+            appState.markWordPacksChanged()
             status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO")
             HapticManager.shared.fire(.milestone)
             persistLocalSettings()

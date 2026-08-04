@@ -54,6 +54,7 @@ import {
   validatedGameDuration,
   validatedGameMode,
 } from "./room-interaction-safety.ts";
+import { hasValidEnabledStartWordPool } from "./start-word-pool-policy.ts";
 
 function jsonError(message, status = 400) {
   return Response.json({ error: message }, { status });
@@ -882,9 +883,7 @@ function validatedStartPatch(room, payload) {
       { status: 400 },
     );
   }
-  if (
-    wordPool.length < 2 || !wordPool.some((entry) => entry.word === secretWord)
-  ) {
+  if (!hasValidEnabledStartWordPool(wordPool, secretWord)) {
     throw Object.assign(new Error("Word pool is invalid"), { status: 400 });
   }
 

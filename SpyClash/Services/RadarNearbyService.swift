@@ -1,4 +1,5 @@
 import Foundation
+@preconcurrency import AVFoundation
 import Observation
 @preconcurrency import ARKit
 @preconcurrency import MultipeerConnectivity
@@ -297,6 +298,22 @@ private struct RadarWireMessage: Codable {
     }
 }
 
+enum RadarCameraAssistanceGate {
+    static func canEnable(
+        hasExplicitRadarIntent: Bool,
+        wantsScanning: Bool,
+        authorizationStatus: AVAuthorizationStatus,
+        supportsCameraAssistance: Bool,
+        supportsWorldTracking: Bool
+    ) -> Bool {
+        hasExplicitRadarIntent
+            && wantsScanning
+            && authorizationStatus == .authorized
+            && supportsCameraAssistance
+            && supportsWorldTracking
+    }
+}
+
 @MainActor
 @Observable
 final class RadarNearbyService: NSObject {
@@ -331,6 +348,8 @@ final class RadarNearbyService: NSObject {
     private var localAvailability: RadarPlayerAvailability = .available
     private var isApplicationActive = false
     private var wantsScanning = false
+    private var wantsCameraAssistance = false
+    private var cameraAuthorizationRequestID: UUID?
     private var localPeerID: MCPeerID?
     private var multipeerSession: MCSession?
     private var advertiser: MCNearbyServiceAdvertiser?
@@ -439,14 +458,21 @@ final class RadarNearbyService: NSObject {
             supportsPreciseDistance = NISession.deviceCapabilities.supportsPreciseDistanceMeasurement
             supportsDirectionMeasurement = NISession.deviceCapabilities.supportsDirectionMeasurement
             supportsCameraAssistance = NISession.deviceCapabilities.supportsCameraAssistance
+            if wantsCameraAssistance {
+                requestCameraAuthorizationForExplicitRadarUse()
+            }
             rebuildTransportIfNeeded()
         } else {
             stopTransport(clearPeers: true)
         }
     }
 
-    func startScanning() {
+    func startScanning(requestCameraAccess: Bool = false) {
         wantsScanning = true
+        wantsCameraAssistance = requestCameraAccess
+        if requestCameraAccess {
+            requestCameraAuthorizationForExplicitRadarUse()
+        }
         refreshIdleTimerProtection()
         debugLog("scan requested active=\(isApplicationActive) identity=\(identity != nil)")
         guard isApplicationActive, identity != nil else {
@@ -467,6 +493,8 @@ final class RadarNearbyService: NSObject {
 
     func stopScanning() {
         wantsScanning = false
+        wantsCameraAssistance = false
+        cameraAuthorizationRequestID = nil
         browser?.stopBrowsingForPeers()
         browser = nil
         multipeerSession?.disconnect()
@@ -480,7 +508,41 @@ final class RadarNearbyService: NSObject {
         browsedPeerIDs.removeAll()
         peers.removeAll()
         scanState = .idle
+        stopSpatialARSession()
         refreshIdleTimerProtection()
+    }
+
+    private func requestCameraAuthorizationForExplicitRadarUse() {
+        guard isApplicationActive,
+              wantsScanning,
+              wantsCameraAssistance,
+              supportsCameraAssistance,
+              ARWorldTrackingConfiguration.isSupported else { return }
+
+        switch AVCaptureDevice.authorizationStatus(for: .video) {
+        case .authorized:
+            refreshRangingConfigurationsForScanning()
+        case .notDetermined:
+            guard cameraAuthorizationRequestID == nil else { return }
+            let requestID = UUID()
+            cameraAuthorizationRequestID = requestID
+            AVCaptureDevice.requestAccess(for: .video) { [weak self] granted in
+                Task { @MainActor [weak self] in
+                    guard let self,
+                          self.cameraAuthorizationRequestID == requestID else { return }
+                    self.cameraAuthorizationRequestID = nil
+                    guard granted,
+                          self.isApplicationActive,
+                          self.wantsScanning,
+                          self.wantsCameraAssistance else { return }
+                    self.refreshRangingConfigurationsForScanning()
+                }
+            }
+        case .denied, .restricted:
+            stopSpatialARSession()
+        @unknown default:
+            stopSpatialARSession()
+        }
     }
 
     func invite(_ peer: RadarNearbyPeer, to room: GameRoom) async -> RadarInviteDispatchResult {
@@ -1290,9 +1352,13 @@ final class RadarNearbyService: NSObject {
         // receive the camera permission prompt. Passive nearby players still
         // participate in UWB ranging without activating their camera.
         let canUseCameraAssistance = allowCameraAssistance
-            && wantsScanning
-            && supportsCameraAssistance
-            && ARWorldTrackingConfiguration.isSupported
+            && RadarCameraAssistanceGate.canEnable(
+                hasExplicitRadarIntent: wantsCameraAssistance,
+                wantsScanning: wantsScanning,
+                authorizationStatus: AVCaptureDevice.authorizationStatus(for: .video),
+                supportsCameraAssistance: supportsCameraAssistance,
+                supportsWorldTracking: ARWorldTrackingConfiguration.isSupported
+            )
         configuration.isCameraAssistanceEnabled = canUseCameraAssistance
         if canUseCameraAssistance, let spatialARSession = ensureSpatialARSession() {
             nearbySession.setARSession(spatialARSession)

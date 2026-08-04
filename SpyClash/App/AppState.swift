@@ -179,6 +179,46 @@ struct RoomRefreshFailureTracker {
     }
 }
 
+enum RoomRefreshDisposition: Equatable {
+    case stop
+    case discardAndContinue
+    case apply
+    case close
+}
+
+enum RoomPollPolicy {
+    static func disposition(
+        monitoredRoomID: String,
+        activeRoomID: String?,
+        isCancelled: Bool,
+        hasActiveOperation: Bool,
+        fetchedRoomExists: Bool
+    ) -> RoomRefreshDisposition {
+        guard !isCancelled, activeRoomID == monitoredRoomID else { return .stop }
+        guard !hasActiveOperation else { return .discardAndContinue }
+        return fetchedRoomExists ? .apply : .close
+    }
+
+    static func delaySeconds(
+        roomStatus: String?,
+        consecutiveFailures: Int,
+        isApplicationActive: Bool
+    ) -> Double {
+        guard isApplicationActive else { return 5 }
+
+        if consecutiveFailures > 0 {
+            return min(pow(2, Double(min(consecutiveFailures, 3))), 8)
+        }
+
+        switch roomStatus?.lowercased() {
+        case "waiting", "ready_voting", "roulette":
+            return 1
+        default:
+            return 1.2
+        }
+    }
+}
+
 enum AppToastKind: Equatable {
     case success
     case warning
@@ -300,6 +340,7 @@ final class AppState: NSObject {
     }
     var isRestoring = true
     var isBusy = false
+    private(set) var isApplicationActive = false
     private(set) var isAppleAuthorizationPending = false
     var authPhase: AuthPhase = .email
     var authError: String? {
@@ -335,6 +376,7 @@ final class AppState: NSObject {
     var notificationFocusItemID: String?
     var notificationFocusRequestID = 0
     var localSetupRequestID = 0
+    private(set) var wordPacksRevision = 0
     var activeRoom: GameRoom? {
         didSet {
             if activeRoom == nil {
@@ -498,23 +540,32 @@ final class AppState: NSObject {
             if roomSyncOperation == nil {
                 do {
                     let refreshedRoom = try await client.refreshRoom(id: roomID)
-                    guard !Task.isCancelled,
-                          activeRoom?.id == roomID,
-                          roomSyncOperation == nil else { return }
-
-                    if let refreshedRoom {
+                    switch RoomPollPolicy.disposition(
+                        monitoredRoomID: roomID,
+                        activeRoomID: activeRoom?.id,
+                        isCancelled: Task.isCancelled,
+                        hasActiveOperation: roomSyncOperation != nil,
+                        fetchedRoomExists: refreshedRoom != nil
+                    ) {
+                    case .stop:
+                        return
+                    case .discardAndContinue:
+                        break
+                    case .apply:
+                        guard let refreshedRoom else { break }
                         activeRoom = refreshedRoom
                         if failureTracker.recordSuccess() {
                             markRoomSyncRecoveredIfNeeded()
                         }
-                    } else {
+                    case .close:
                         closeActiveRoomAfterRefresh(roomID: roomID)
                         return
                     }
                 } catch is CancellationError {
                     return
                 } catch {
-                    guard !Task.isCancelled else { return }
+                    guard !Task.isCancelled, activeRoom?.id == roomID else { return }
+                    guard roomSyncOperation == nil else { continue }
                     if failureTracker.recordFailure(),
                        activeRoom?.id == roomID,
                        roomConnectionState != .reconnecting {
@@ -529,7 +580,12 @@ final class AppState: NSObject {
             }
 
             do {
-                try await Task.sleep(for: .seconds(3))
+                let delay = RoomPollPolicy.delaySeconds(
+                    roomStatus: activeRoom?.normalizedStatus,
+                    consecutiveFailures: failureTracker.consecutiveFailures,
+                    isApplicationActive: isApplicationActive
+                )
+                try await Task.sleep(for: .seconds(delay))
             } catch {
                 return
             }
@@ -1683,7 +1739,12 @@ final class AppState: NSObject {
     }
 
     func setRadarApplicationActive(_ isActive: Bool) {
+        isApplicationActive = isActive
         radarNearby.setApplicationActive(isActive)
+    }
+
+    func markWordPacksChanged() {
+        wordPacksRevision &+= 1
     }
 
     @discardableResult

@@ -65,6 +65,15 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   );
   assertStringIncludes(source, "preTimerMembershipTransitionPatch({");
 
+  const startValidation = source.slice(
+    source.indexOf("function validatedStartPatch"),
+    source.indexOf("async function armRoulette"),
+  );
+  assertStringIncludes(
+    startValidation,
+    "hasValidEnabledStartWordPool(wordPool, secretWord)",
+  );
+
   const roomDelete = source.slice(
     source.indexOf("async function deleteRoom"),
     source.indexOf("function randomRoomCode"),
