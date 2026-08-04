@@ -4,6 +4,12 @@ import {
   safeCommunityDisplayName,
   safeCommunityTextForDisplay,
 } from "./content-safety.ts";
+import {
+  canonicalizeLobbyState,
+  LOBBY_SCHEMA_VERSION,
+  lobbyRevision,
+  type LobbyWordPoolEntry,
+} from "./lobby-state-policy.ts";
 
 function clean(value: unknown): string {
   return String(value ?? "").trim();
@@ -23,6 +29,91 @@ function safeObjectList(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
     ? value.filter((item) => item && typeof item === "object")
     : [];
+}
+
+type ProjectedLobbyState = {
+  lobby_schema_version: number;
+  lobby_revision: number;
+  lobby_word_source: string;
+  lobby_source_pack_id: string;
+  lobby_source_name: string;
+  lobby_theme: string;
+  lobby_category: string;
+  lobby_word_count: number;
+  lobby_word_count_mode: string;
+  lobby_word_pool: LobbyWordPoolEntry[];
+};
+
+function projectedLobbyState(
+  room: Record<string, any>,
+  viewer: Record<string, any>,
+): ProjectedLobbyState {
+  const status = clean(room?.status || "waiting").toLowerCase();
+  const lobbyVisible = status === "waiting" || status === "ready_voting";
+  const viewerIsHost = Boolean(normalizedEmail(viewer?.email)) &&
+    normalizedEmail(viewer?.email) === normalizedEmail(room?.host_email);
+  const common = {
+    lobby_schema_version: Math.max(
+      LOBBY_SCHEMA_VERSION,
+      Math.floor(Number(room?.lobby_schema_version) || 0),
+    ),
+    lobby_revision: lobbyRevision(room),
+  };
+  if (!lobbyVisible) {
+    return {
+      ...common,
+      lobby_word_source: "none",
+      lobby_source_pack_id: "",
+      lobby_source_name: "",
+      lobby_theme: "",
+      lobby_category: "",
+      lobby_word_count: 0,
+      lobby_word_count_mode: "recommended",
+      lobby_word_pool: [],
+    };
+  }
+
+  try {
+    const state = canonicalizeLobbyState({
+      game_mode: room?.game_mode || "questions",
+      game_duration_seconds: room?.game_duration_seconds || 900,
+      lobby_word_source: room?.lobby_word_source || "none",
+      lobby_source_pack_id: room?.lobby_source_pack_id || "",
+      lobby_source_name: room?.lobby_source_name || "",
+      lobby_theme: room?.lobby_theme || "",
+      lobby_category: room?.lobby_category || "",
+      lobby_word_count: room?.lobby_word_count ?? 0,
+      lobby_word_count_mode: room?.lobby_word_count_mode || "recommended",
+      lobby_word_pool: Array.isArray(room?.lobby_word_pool)
+        ? room.lobby_word_pool
+        : [],
+    });
+    return {
+      ...common,
+      lobby_word_source: state.lobby_word_source,
+      lobby_source_pack_id: viewerIsHost ? state.lobby_source_pack_id : "",
+      lobby_source_name: state.lobby_source_name,
+      lobby_theme: state.lobby_theme,
+      lobby_category: state.lobby_category,
+      lobby_word_count: state.lobby_word_count,
+      lobby_word_count_mode: state.lobby_word_count_mode,
+      lobby_word_pool: state.lobby_word_pool,
+    };
+  } catch {
+    // A malformed legacy row must fail closed instead of leaking unmediated
+    // text. Mode/duration and polling still work while the host resubmits it.
+    return {
+      ...common,
+      lobby_word_source: "none",
+      lobby_source_pack_id: "",
+      lobby_source_name: "",
+      lobby_theme: "",
+      lobby_category: "",
+      lobby_word_count: 0,
+      lobby_word_count_mode: "recommended",
+      lobby_word_pool: [],
+    };
+  }
 }
 
 export function shouldRedactRoomSecret(
@@ -64,6 +155,7 @@ export function projectRoomForClient(
       enabled: entry.enabled !== false,
     }))
     .filter((entry) => entry.word);
+  const lobbyState = projectedLobbyState(room, viewer);
 
   return {
     id: clean(room.id),
@@ -113,6 +205,7 @@ export function projectRoomForClient(
     countdown_started_at: clean(room.countdown_started_at),
     roulette_target_email: clean(room.roulette_target_email),
     game_mode: clean(room.game_mode || "questions"),
+    ...lobbyState,
     created_date: clean(room.created_date),
     updated_date: clean(room.updated_date),
   };

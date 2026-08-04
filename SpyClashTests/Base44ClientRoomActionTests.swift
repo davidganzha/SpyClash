@@ -103,6 +103,134 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertFalse(transportedWords.contains("removed"))
     }
 
+    func testGameRoomDecodesAuthoritativeLobbyProjection() throws {
+        let room = try JSONDecoder().decode(
+            GameRoom.self,
+            from: Data(
+                #"{"id":"room-1","code":"ABC123","lobby_schema_version":1,"lobby_revision":7,"lobby_word_source":"ai","lobby_source_pack_id":"pack-1","lobby_source_name":"Night Ops","lobby_theme":"espionage","lobby_category":"COVERT","lobby_word_count":42,"lobby_word_count_mode":"custom","lobby_word_pool":[{"id":"word-1","word":"Embassy","enabled":false},{"id":"word-2","word":"Cipher"}]}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(room.lobbySchemaVersion, 1)
+        XCTAssertEqual(room.lobbyRevision, 7)
+        XCTAssertEqual(room.lobbyWordSource, "ai")
+        XCTAssertEqual(room.lobbySourcePackID, "pack-1")
+        XCTAssertEqual(room.lobbySourceName, "Night Ops")
+        XCTAssertEqual(room.lobbyTheme, "espionage")
+        XCTAssertEqual(room.lobbyCategory, "COVERT")
+        XCTAssertEqual(room.lobbyWordCount, 42)
+        XCTAssertEqual(room.lobbyWordCountMode, "custom")
+        XCTAssertEqual(room.lobbyWordPool?.map(\.id), ["word-1", "word-2"])
+        XCTAssertEqual(room.lobbyWordPool?.map(\.enabled), [false, true])
+    }
+
+    func testLobbyStatePayloadEncodesExactBackendKeys() throws {
+        let payload = LobbyStatePayload(
+            gameMode: .associations,
+            gameDurationSeconds: 300,
+            lobbyWordSource: .manual,
+            lobbySourcePackID: nil,
+            lobbySourceName: "Hand-picked",
+            lobbyTheme: nil,
+            lobbyCategory: "CUSTOM",
+            lobbyWordCount: 2,
+            lobbyWordCountMode: .custom,
+            lobbyWordPool: [
+                LobbyWordPoolEntry(id: "word-1", word: "Embassy"),
+                LobbyWordPoolEntry(word: "Cipher", enabled: false)
+            ]
+        )
+
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(payload)) as? [String: Any]
+        )
+
+        XCTAssertEqual(object["game_mode"] as? String, "associations")
+        XCTAssertEqual(object["game_duration_seconds"] as? Int, 300)
+        XCTAssertEqual(object["lobby_word_source"] as? String, "manual")
+        XCTAssertNil(object["lobby_source_pack_id"])
+        XCTAssertEqual(object["lobby_source_name"] as? String, "Hand-picked")
+        XCTAssertNil(object["lobby_theme"])
+        XCTAssertEqual(object["lobby_category"] as? String, "CUSTOM")
+        XCTAssertEqual(object["lobby_word_count"] as? Int, 2)
+        XCTAssertEqual(object["lobby_word_count_mode"] as? String, "custom")
+
+        let words = try XCTUnwrap(object["lobby_word_pool"] as? [[String: Any]])
+        XCTAssertEqual(words.count, 2)
+        XCTAssertEqual(words[0]["id"] as? String, "word-1")
+        XCTAssertEqual(words[0]["word"] as? String, "Embassy")
+        XCTAssertEqual(words[0]["enabled"] as? Bool, true)
+        XCTAssertNil(words[1]["id"])
+        XCTAssertEqual(words[1]["enabled"] as? Bool, false)
+    }
+
+    func testUpdateLobbyStateSendsRevisionedMutationEnvelope() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        let room = GameRoom.previewRoom(status: "waiting")
+        let state = LobbyStatePayload(
+            gameMode: .questions,
+            gameDurationSeconds: 900,
+            lobbyWordSource: .saved,
+            lobbySourcePackID: "pack-1",
+            lobbySourceName: "Classic",
+            lobbyTheme: nil,
+            lobbyCategory: "CLASSIC",
+            lobbyWordCount: 25,
+            lobbyWordCountMode: .recommended,
+            lobbyWordPool: [LobbyWordPoolEntry(id: "word-1", word: "Embassy")]
+        )
+
+        _ = try await client.updateLobbyState(
+            room: room,
+            mutationID: "mutation-7",
+            expectedRevision: 6,
+            state: state
+        )
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        XCTAssertEqual(body["action"] as? String, "update_lobby_state")
+        XCTAssertEqual(body["room_id"] as? String, room.id)
+        XCTAssertEqual(body["access_token"] as? String, "test-token")
+        XCTAssertEqual(body["mutation_id"] as? String, "mutation-7")
+        XCTAssertEqual(body["expected_revision"] as? Int, 6)
+        let encodedState = try XCTUnwrap(body["state"] as? [String: Any])
+        XCTAssertEqual(encodedState["game_mode"] as? String, "questions")
+        XCTAssertEqual(encodedState["lobby_source_pack_id"] as? String, "pack-1")
+    }
+
+    func testArmRouletteSendsExpectedLobbyRevision() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        var room = GameRoom.previewRoom(status: "waiting")
+        room.lobbyRevision = 12
+        let plan = try client.makeGameStartPlan(
+            room: room,
+            wordPacks: [],
+            selectedPackID: nil,
+            gameMode: .questions,
+            durationSeconds: 900
+        )
+
+        _ = try await client.armRoulette(room: room, plan: plan)
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        XCTAssertEqual(body["action"] as? String, "arm_roulette")
+        XCTAssertEqual(body["expected_lobby_revision"] as? Int, 12)
+    }
+
     func testRadarInvitePolicyUsesAuthenticatedCommunityActionContract() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in

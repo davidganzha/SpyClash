@@ -198,3 +198,76 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   assertStringIncludes(replayVote, 'normalizedStatus(room) !== "finished"');
   assertStringIncludes(replayVote, 'normalizedStatus(latest) !== "finished"');
 });
+
+Deno.test("authoritative lobby snapshots are revisioned, frozen into start, and preserved for replay", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./main.ts", import.meta.url),
+  );
+  const schema = JSON.parse(
+    await Deno.readTextFile(
+      new URL("../../entities/GameRoom.jsonc", import.meta.url),
+    ),
+  );
+  for (
+    const field of [
+      "lobby_schema_version",
+      "lobby_revision",
+      "lobby_word_source",
+      "lobby_source_pack_id",
+      "lobby_source_name",
+      "lobby_theme",
+      "lobby_category",
+      "lobby_word_count",
+      "lobby_word_count_mode",
+      "lobby_word_pool",
+      "lobby_last_mutation_id",
+      "lobby_last_mutation_fingerprint",
+    ]
+  ) {
+    assert(field in schema.properties, `${field} must exist in GameRoom`);
+  }
+  assertEquals(schema.properties.lobby_revision.default, 0);
+  assertEquals(schema.properties.lobby_word_pool.maxItems, 200);
+
+  const update = source.slice(
+    source.indexOf("async function updateLobbyState"),
+    source.indexOf("function validatedStartPatch"),
+  );
+  assertStringIncludes(
+    update,
+    'assertLobbySettingsAccess(room, user, "lobby")',
+  );
+  assertStringIncludes(update, "validateLobbyMutation({");
+  assertStringIncludes(update, "updateRoomWithRetry(");
+  assertStringIncludes(update, "assertLobbySettingsAccess(latest, user");
+  assertStringIncludes(update, "lobbyMutationPatch(latest, mutation)");
+  assertStringIncludes(update, "roomHasLobbyMutation(latest, mutation)");
+  assertStringIncludes(update, "fanoutGameRoomSignalsBestEffort({");
+
+  const start = source.slice(
+    source.indexOf("async function armRoulette"),
+    source.indexOf("async function enqueueCommittedGameStart"),
+  );
+  const authoritative = start.indexOf("authoritativeStartPayload(");
+  const validation = start.indexOf("validatedStartPatch(room, startPayload)");
+  const commit = start.indexOf("return await updateRoom(base44, room");
+  assert(
+    authoritative >= 0 && authoritative < validation && validation < commit,
+    "arm_roulette must derive and validate the authoritative lobby before committing roulette",
+  );
+  assertStringIncludes(start, "body?.expected_lobby_revision");
+
+  const replay = source.slice(
+    source.indexOf("async function resetRoomForReplay"),
+    source.indexOf("async function updateGameMode"),
+  );
+  assertStringIncludes(replay, "hasAuthoritativeLobbyState(room)");
+  assertStringIncludes(replay, "word_pool: []");
+  assertEquals(
+    replay.includes("lobby_word_pool: []"),
+    false,
+    "replay resets only the frozen gameplay pool",
+  );
+
+  assertStringIncludes(source, 'case "update_lobby_state":');
+});

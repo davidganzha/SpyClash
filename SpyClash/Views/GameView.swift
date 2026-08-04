@@ -20,8 +20,7 @@ struct GameView: View {
     @State private var isResettingRoom = false
     @State private var copiedRoomCode = false
     @State private var showsThemeBuilder = false
-    @State private var isUpdatingGameMode = false
-    @State private var onlineDurationSyncState = OnlineDurationSyncState()
+    @State private var appliedLobbyRevision = -1
     @State private var roomAccessPage = 0
     @State private var isRoomCodeVisible = false
     @State private var isRoomQRVisible = false
@@ -40,6 +39,7 @@ struct GameView: View {
     @State private var lobbyWordPacks: [WordPack] = []
     @State private var roomTheme = ""
     @State private var roomGeneratedPack: GeneratedWordPack?
+    @State private var roomGeneratedLobbySource = LobbyWordSource.ai
     @State private var roomThemeFallbackSource = RoomWordSource.none
     @State private var roomThemeError = ""
     @State private var roomWordCount = 25.0
@@ -138,24 +138,37 @@ struct GameView: View {
             await finalizeExpiredRoomIfNeeded(room)
         }
         .onChange(of: appState.activeRoom?.gameMode) { _, rawMode in
-            guard let rawMode else { return }
+            guard let rawMode, !appState.lobbySettingsSyncState.hasOptimisticChanges else { return }
             selectedGameMode = SpyGameMode(rawValue: rawMode.lowercased()) ?? .questions
         }
         .onChange(of: appState.activeRoom?.gameDurationSeconds) { _, seconds in
             guard let seconds,
-                  !isDurationSyncActive,
-                  onlineDurationSyncState.acceptsRemoteUpdate(
-                      isDragging: isDraggingOnlineDuration
-                  ) else { return }
+                  !isDraggingOnlineDuration,
+                  !appState.lobbySettingsSyncState.hasOptimisticChanges else { return }
             selectedDurationMinutes = Double(max(1, min(seconds / 60, 15)))
         }
-        .onChange(of: isDurationSyncActive) { _, isActive in
-            guard !isActive,
-                  onlineDurationSyncState.acceptsRemoteUpdate(
-                      isDragging: isDraggingOnlineDuration
-                  ),
-                  let seconds = appState.activeRoom?.gameDurationSeconds else { return }
-            selectedDurationMinutes = Double(max(1, min(seconds / 60, 15)))
+        .onChange(of: appState.activeRoom?.lobbyRevision) { _, _ in
+            guard let room = appState.activeRoom else { return }
+            applyAuthoritativeLobbyState(from: room)
+        }
+        .onChange(of: appState.lobbySettingsRollbackEpoch) { _, _ in
+            guard let room = appState.activeRoom else { return }
+            applyAuthoritativeLobbyState(from: room, force: true)
+        }
+        .onChange(of: appState.lobbySettingsSyncState.hasOptimisticChanges) { wasActive, isActive in
+            guard wasActive, !isActive, let room = appState.activeRoom else { return }
+            applyAuthoritativeLobbyState(from: room, force: true)
+        }
+        .onChange(of: appState.lobbySettingsSyncFailure) { _, message in
+            guard let message else { return }
+            if let room = appState.activeRoom {
+                applyAuthoritativeLobbyState(from: room, force: true)
+            }
+            appState.showToast(
+                userFacingStatus(message) ?? message,
+                kind: .error
+            )
+            HapticManager.shared.fire(.notification(.error))
         }
         .onAppear {
             updateOnlineShellChromeSuppression()
@@ -486,6 +499,7 @@ struct GameView: View {
                     )
                 )
             }
+            .disabled(isStarting)
         }
         .frame(maxWidth: 480)
         .frame(maxWidth: .infinity)
@@ -512,7 +526,7 @@ struct GameView: View {
     }
 
     private var onlineSetupHasActiveCapture: Bool {
-        focusedOnlineSetupField != nil || isDraggingOnlineDuration
+        focusedOnlineSetupField != nil
     }
 
     private var onlineIntelScrollTarget: String {
@@ -525,10 +539,6 @@ struct GameView: View {
     }
 
     private var focusedOnlineSetupPanel: OnlineSetupPanel? {
-        if isDraggingOnlineDuration {
-            return .timing
-        }
-
         switch focusedOnlineSetupField {
         case .theme:
             return .intel
@@ -1295,7 +1305,7 @@ struct GameView: View {
             .contentShape(CutCornerShape(cut: 9))
         }
         .buttonStyle(SpyWebPressStyle())
-        .disabled(!isHost(room) || isUpdatingGameMode || isDurationSyncActive)
+        .disabled(!isHost(room) || isSelected)
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: isSelected)
         .accessibilityIdentifier("onlineRoom.mode.\(mode.rawValue)")
     }
@@ -1465,18 +1475,34 @@ struct GameView: View {
                     systemImage: "paintpalette.fill",
                     title: localized(en: "THEME", ru: "ТЕМА", es: "TEMA")
                 )
-                HStack(spacing: 12) {
-                    SpySpinner(size: 18, accent: SpyTheme.red)
+                if roomHasAuthoritativeLobbySelection(room) {
                     VStack(alignment: .leading, spacing: 4) {
-                        Text(copy.waitingForHost)
-                            .font(.system(size: 11, weight: .black, design: .monospaced))
-                            .foregroundStyle(SpyTheme.muted)
-                        Text(copy.waitingForHostSignal)
-                            .font(.system(size: 10, weight: .semibold, design: .default))
-                            .foregroundStyle(SpyTheme.dim)
+                        Text((room.lobbySourceName?.nilIfBlank ?? room.lobbyTheme?.nilIfBlank ?? copy.waitingForHost).uppercased())
+                            .font(.system(size: 14, weight: .black, design: .monospaced))
+                            .foregroundStyle(.white)
                             .fixedSize(horizontal: false, vertical: true)
+                        if let category = room.lobbyCategory?.nilIfBlank {
+                            Text(category.uppercased())
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .foregroundStyle(SpyTheme.dim)
+                        }
                     }
-                    Spacer()
+
+                    roomPoolPreview
+                } else {
+                    HStack(spacing: 12) {
+                        SpySpinner(size: 18, accent: SpyTheme.red)
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(copy.waitingForHost)
+                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .foregroundStyle(SpyTheme.muted)
+                            Text(copy.waitingForHostSignal)
+                                .font(.system(size: 10, weight: .semibold, design: .default))
+                                .foregroundStyle(SpyTheme.dim)
+                                .fixedSize(horizontal: false, vertical: true)
+                        }
+                        Spacer()
+                    }
                 }
             }
         }
@@ -1495,7 +1521,7 @@ struct GameView: View {
                 .disabled(
                     isStarting ||
                         isGeneratingRoomTheme ||
-                        isDurationSyncActive ||
+                        appState.lobbySettingsSyncState.hasOptimisticChanges ||
                         !roomThemeSelectionIsReady
                 )
                 .opacity(roomThemeSelectionIsReady && !isGeneratingRoomTheme ? 1 : 0.34)
@@ -1568,17 +1594,20 @@ struct GameView: View {
                         )
                     },
                     onCancel: {
-                        reconcileOnlineDuration(roomID: room.id)
+                        isDraggingOnlineDuration = false
+                        if !appState.lobbySettingsSyncState.hasOptimisticChanges,
+                           let currentRoom = appState.activeRoom {
+                            selectedDurationMinutes = Double(
+                                max(1, min((currentRoom.gameDurationSeconds ?? 900) / 60, 15))
+                            )
+                        }
                     },
                     onInteractionChanged: { isInteracting in
-                        if isInteracting, isDurationSyncActive { return }
                         isDraggingOnlineDuration = isInteracting
                     },
                     accessibilityIdentifier: "onlineRoom.durationSlider"
                 )
-                .opacity(isDurationSyncActive ? 0.34 : 1)
-                .disabled(!isHost(room) || isDurationSyncActive)
-                .animation(reduceMotion ? nil : .easeOut(duration: 0.16), value: isDurationSyncActive)
+                .disabled(!isHost(room))
             }
         }
     }
@@ -1779,7 +1808,7 @@ struct GameView: View {
             )
 
             HStack(spacing: 12) {
-                durationStepButton(systemImage: "minus", enabled: selectedDurationMinutes > 1 && !isDurationSyncActive) {
+                durationStepButton(systemImage: "minus", enabled: selectedDurationMinutes > 1) {
                     beginDurationUpdate(room, minutes: Int(selectedDurationMinutes) - 1)
                 }
                 .accessibilityIdentifier("onlineRoom.durationDecrease")
@@ -1799,7 +1828,7 @@ struct GameView: View {
                 }
                 .frame(height: 36)
 
-                durationStepButton(systemImage: "plus", enabled: selectedDurationMinutes < 15 && !isDurationSyncActive) {
+                durationStepButton(systemImage: "plus", enabled: selectedDurationMinutes < 15) {
                     beginDurationUpdate(room, minutes: Int(selectedDurationMinutes) + 1)
                 }
                 .accessibilityIdentifier("onlineRoom.durationIncrease")
@@ -1924,7 +1953,7 @@ struct GameView: View {
         let canStart = hasMinimumPlayers
             && roomThemeSelectionIsReady
             && !isGeneratingRoomTheme
-            && !isDurationSyncActive
+            && !appState.lobbySettingsSyncState.hasOptimisticChanges
 
         return VStack(spacing: 0) {
             if isHost(room) {
@@ -2343,7 +2372,7 @@ struct GameView: View {
             .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
         }
         .buttonStyle(SpyWebPressStyle())
-        .disabled(selected || isStarting || isUpdatingGameMode)
+        .disabled(selected || isStarting)
         .accessibilityIdentifier("onlineRoom.mode.\(mode.rawValue)")
     }
 
@@ -3571,7 +3600,7 @@ struct GameView: View {
                     .foregroundStyle(focusedOnlineSetupField == .theme ? SpyTheme.red : SpyTheme.dim)
                     .frame(width: 18)
 
-                TextField("", text: $roomTheme, prompt: Text(roomThemePlaceholder).foregroundStyle(SpyTheme.dim))
+                TextField("", text: roomThemeDraftBinding, prompt: Text(roomThemePlaceholder).foregroundStyle(SpyTheme.dim))
                     .textInputAutocapitalization(.words)
                     .autocorrectionDisabled()
                     .submitLabel(.done)
@@ -3588,7 +3617,7 @@ struct GameView: View {
                 if roomHasCustomTheme {
                     Button {
                         withAnimation(.smooth(duration: 0.20)) {
-                            roomTheme = ""
+                            setRoomThemeDraft("")
                         }
                     } label: {
                         Image(systemName: "xmark.circle.fill")
@@ -3619,11 +3648,8 @@ struct GameView: View {
                 selectedTheme: roomTheme,
                 accessibilityIdentifier: "onlineRoom.themeSuggestions"
             ) { suggestion in
-                roomTheme = suggestion
+                setRoomThemeDraft(suggestion)
             }
-        }
-        .onChange(of: roomTheme) { previousTheme, currentTheme in
-            updateRoomThemeDraft(from: previousTheme, to: currentTheme)
         }
     }
 
@@ -3636,6 +3662,7 @@ struct GameView: View {
                         withAnimation(.smooth(duration: 0.18)) {
                             roomWordCountMode = mode
                         }
+                        scheduleLobbyStateSync(debounce: .milliseconds(120))
                     } label: {
                         VStack(spacing: 3) {
                             Text(roomWordCountModeTitle(mode))
@@ -3671,7 +3698,14 @@ struct GameView: View {
                             .spyFitted(scale: 0.66, alignment: .trailing)
                     }
 
-                    SpyWebSlider(value: $roomCustomWordCount, range: 10...80, step: 1)
+                    SpyWebSlider(
+                        value: $roomCustomWordCount,
+                        range: 10...80,
+                        step: 1,
+                        onCommit: { _ in
+                            scheduleLobbyStateSync(debounce: .milliseconds(160))
+                        }
+                    )
                 }
                 .padding(12)
                 .background(SpyTheme.dark)
@@ -3882,7 +3916,10 @@ struct GameView: View {
                 value: $roomWordCount,
                 range: lowerBound...upperBound,
                 step: 1,
-                accent: SpyTheme.red
+                accent: SpyTheme.red,
+                onCommit: { _ in
+                    scheduleLobbyStateSync(debounce: .milliseconds(120))
+                }
             )
             .disabled(lowerBound == upperBound)
         }
@@ -4028,6 +4065,7 @@ struct GameView: View {
                 let isEnabled = !disabledRoomPoolWordKeys.contains(roomWordKey(word))
 
                 Button {
+                    guard let room = appState.activeRoom, isHost(room) else { return }
                     toggleRoomPoolWord(word)
                 } label: {
                     Text(word.uppercased())
@@ -4047,6 +4085,7 @@ struct GameView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(SpyWebPressStyle())
+                .disabled(appState.activeRoom.map { !isHost($0) } ?? true)
                 .accessibilityLabel(word)
                 .accessibilityValue(
                     isEnabled
@@ -5163,21 +5202,31 @@ struct GameView: View {
         roomThemeOperation != nil
     }
 
-    private var isDurationSyncActive: Bool {
-        onlineDurationSyncState.isLocked || appState.roomSyncOperation != nil
-    }
-
     private var onlineDurationSliderValue: Binding<Double> {
         Binding(
             get: { selectedDurationMinutes },
             set: { newValue in
-                guard !isDurationSyncActive else { return }
                 selectedDurationMinutes = newValue
             }
         )
     }
 
+    private var roomThemeDraftBinding: Binding<String> {
+        Binding(
+            get: { roomTheme },
+            set: { setRoomThemeDraft($0) }
+        )
+    }
+
     private var roomThemeSelectionIsReady: Bool {
+        if !appState.lobbySettingsSyncState.hasOptimisticChanges,
+           let room = appState.activeRoom,
+           roomHasAuthoritativeLobbySelection(room) {
+            let enabledCount = (room.lobbyWordPool ?? []).filter(\.enabled).count
+            let selectedCount = min(max(room.lobbyWordCount ?? enabledCount, 0), enabledCount)
+            return selectedCount >= 2
+        }
+
         if roomHasCustomTheme {
             return roomWordSource == .generated && roomGeneratedWords.count >= 2
         }
@@ -5242,6 +5291,7 @@ struct GameView: View {
             disabledRoomPoolWordKeys.insert(key)
         }
         HapticManager.shared.fire(.tabSelection)
+        scheduleLobbyStateSync(debounce: .milliseconds(90))
     }
 
     private var roomGeneratedWords: [String] {
@@ -5249,6 +5299,30 @@ struct GameView: View {
     }
 
     private var lobbyWordPacksForStart: [WordPack] {
+        if !appState.lobbySettingsSyncState.hasOptimisticChanges,
+           let room = appState.activeRoom,
+           roomHasAuthoritativeLobbySelection(room) {
+            let enabled = (room.lobbyWordPool ?? [])
+                .filter(\.enabled)
+                .map(\.word)
+                .roomCleanWords
+            let selected = Array(enabled.prefix(max(room.lobbyWordCount ?? enabled.count, 0)))
+            let id = room.lobbySourcePackID?.nilIfBlank ?? "authoritative-lobby"
+            let name = room.lobbySourceName?.nilIfBlank
+                ?? room.lobbyCategory?.nilIfBlank
+                ?? room.lobbyTheme?.nilIfBlank
+                ?? "Lobby"
+            let pack = WordPack(
+                id: id,
+                name: name,
+                category: room.lobbyCategory?.nilIfBlank ?? name,
+                words: selected,
+                ownerEmail: appState.user?.email,
+                isPublic: false
+            )
+            return [pack] + lobbyWordPacks.filter { $0.id != id }
+        }
+
         if roomWordSource == .generated, let pack = generatedRoomWordPack {
             return [pack] + lobbyWordPacks.filter { $0.id != pack.id }
         }
@@ -5256,6 +5330,29 @@ struct GameView: View {
         if case let .saved(id) = roomWordSource,
            var pack = lobbyWordPacks.first(where: { $0.id == id }) {
             pack.words = activeRoomWords(pack.words ?? [])
+            return [pack] + lobbyWordPacks.filter { $0.id != id }
+        }
+
+        if let room = appState.activeRoom,
+           roomHasAuthoritativeLobbySelection(room) {
+            let enabled = (room.lobbyWordPool ?? [])
+                .filter(\.enabled)
+                .map(\.word)
+                .roomCleanWords
+            let selected = Array(enabled.prefix(max(room.lobbyWordCount ?? enabled.count, 0)))
+            let id = room.lobbySourcePackID?.nilIfBlank ?? "authoritative-lobby"
+            let name = room.lobbySourceName?.nilIfBlank
+                ?? room.lobbyCategory?.nilIfBlank
+                ?? room.lobbyTheme?.nilIfBlank
+                ?? "Lobby"
+            let pack = WordPack(
+                id: id,
+                name: name,
+                category: room.lobbyCategory?.nilIfBlank ?? name,
+                words: selected,
+                ownerEmail: appState.user?.email,
+                isPublic: false
+            )
             return [pack] + lobbyWordPacks.filter { $0.id != id }
         }
 
@@ -5281,9 +5378,12 @@ struct GameView: View {
         if roomWordSource == .generated, let roomGeneratedPack {
             let words = roomGeneratedPack.words.roomCleanWords
             let inGameCount = min(max(Int(roomWordCount), 0), activeRoomWords(words).count)
+            let source = roomGeneratedLobbySource == .manual
+                ? localized(en: "MANUAL", ru: "ВРУЧНУЮ", es: "MANUAL")
+                : localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO")
             return RoomPoolSnapshot(
                 category: roomGeneratedPack.category.nilIfBlank ?? roomTheme.nilIfBlank ?? "CUSTOM",
-                source: localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO"),
+                source: source,
                 words: words,
                 countLabel: localized(
                     en: "\(inGameCount)/\(words.count) IN GAME",
@@ -5294,7 +5394,10 @@ struct GameView: View {
             )
         }
 
-        if case let .saved(id) = roomWordSource,
+        if let room = appState.activeRoom,
+           isHost(room),
+           (appState.lobbySettingsSyncState.hasOptimisticChanges || !roomHasAuthoritativeLobbySelection(room)),
+           case let .saved(id) = roomWordSource,
            let pack = lobbyWordPacks.first(where: { $0.id == id }) {
             let words = pack.words?.roomCleanWords ?? []
             let inGameCount = activeRoomWords(words).count
@@ -5308,6 +5411,38 @@ struct GameView: View {
                     es: "\(inGameCount)/\(words.count) EN JUEGO"
                 ),
                 emptyMessage: localized(en: "This pack is empty. Choose another source.", ru: "Этот пак пуст. Выбери другой источник.", es: "Este pack esta vacio. Elige otra fuente.")
+            )
+        }
+
+        if let room = appState.activeRoom,
+           roomHasAuthoritativeLobbySelection(room) {
+            let words = (room.lobbyWordPool ?? []).map(\.word).roomCleanWords
+            let enabledCount = (room.lobbyWordPool ?? []).filter(\.enabled).count
+            let selectedCount = min(max(room.lobbyWordCount ?? enabledCount, 0), enabledCount)
+            let source: String
+            switch LobbyWordSource(rawValue: room.lobbyWordSource ?? "none") ?? .none {
+            case .ai:
+                source = localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO")
+            case .saved:
+                source = localized(en: "WORD PACK", ru: "WORDPACK", es: "WORDPACK")
+            case .manual:
+                source = localized(en: "MANUAL", ru: "ВРУЧНУЮ", es: "MANUAL")
+            case .none:
+                source = copy.waitingForHost
+            }
+            return RoomPoolSnapshot(
+                category: room.lobbyCategory?.nilIfBlank
+                    ?? room.lobbySourceName?.nilIfBlank
+                    ?? room.lobbyTheme?.nilIfBlank
+                    ?? "CUSTOM",
+                source: source,
+                words: words,
+                countLabel: localized(
+                    en: "\(selectedCount)/\(words.count) IN GAME",
+                    ru: "\(selectedCount)/\(words.count) В ИГРЕ",
+                    es: "\(selectedCount)/\(words.count) EN JUEGO"
+                ),
+                emptyMessage: copy.waitingForHostSignal
             )
         }
 
@@ -5667,6 +5802,15 @@ struct GameView: View {
         return "\(minutes):\(remainder < 10 ? "0" : "")\(remainder)"
     }
 
+    private func setRoomThemeDraft(_ currentTheme: String) {
+        let previousTheme = roomTheme
+        guard previousTheme != currentTheme else { return }
+        roomTheme = currentTheme
+        roomGeneratedLobbySource = .ai
+        updateRoomThemeDraft(from: previousTheme, to: currentTheme)
+        scheduleLobbyStateSync(debounce: .milliseconds(260))
+    }
+
     private func updateRoomThemeDraft(from previousTheme: String, to currentTheme: String) {
         let previousValue = previousTheme.trimmingCharacters(in: .whitespacesAndNewlines)
         let currentValue = currentTheme.trimmingCharacters(in: .whitespacesAndNewlines)
@@ -5701,6 +5845,7 @@ struct GameView: View {
         roomThemeError = ""
         showsAllRoomPoolWords = false
         disabledRoomPoolWordKeys.removeAll()
+        scheduleLobbyStateSync(debounce: .milliseconds(80))
     }
 
     private var resolvedRoomFallbackSource: RoomWordSource {
@@ -5710,7 +5855,12 @@ struct GameView: View {
 
     private func generateRoomTheme(usingInitialTarget: Bool) async {
         let theme = roomTheme.trimmingCharacters(in: .whitespacesAndNewlines)
-        guard !theme.isEmpty, roomThemeOperation == nil else { return }
+        guard let operationRoom = appState.activeRoom,
+              isHost(operationRoom),
+              operationRoom.normalizedStatus == "waiting",
+              !theme.isEmpty,
+              roomThemeOperation == nil else { return }
+        let operationRoomID = operationRoom.id
         let requestID = UUID()
 
         let targetCount: Int
@@ -5747,7 +5897,11 @@ struct GameView: View {
                 remaining: generated.aiRemaining
             )
 
-            guard roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
+            guard let currentRoom = appState.activeRoom,
+                  currentRoom.id == operationRoomID,
+                  isHost(currentRoom),
+                  currentRoom.normalizedStatus == "waiting",
+                  roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
 
             let words = generated.words.roomCleanWords
             guard words.count >= 2 else {
@@ -5769,6 +5923,7 @@ struct GameView: View {
                 aiRemaining: generated.aiRemaining
             )
             roomGeneratedPack = cleanGenerated
+            roomGeneratedLobbySource = .ai
             disabledRoomPoolWordKeys.removeAll()
             if usingInitialTarget {
                 roomWordCount = Double(min(words.count, roomWordCountMode == .custom ? Int(roomCustomWordCount) : max(25, min(words.count, 100))))
@@ -5777,10 +5932,12 @@ struct GameView: View {
             }
             roomWordSource = .generated
             showsAllRoomPoolWords = false
+            scheduleLobbyStateSync(debounce: .milliseconds(80))
             status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO")
             HapticManager.shared.fire(.milestone)
         } catch {
-            guard roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
+            guard appState.activeRoom?.id == operationRoomID,
+                  roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
             roomThemeError = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
@@ -5792,7 +5949,13 @@ struct GameView: View {
         let current = currentPack?.words.roomCleanWords ?? []
         let selectedWordCount = Int(roomWordCount)
         let wasUsingEntirePool = selectedWordCount >= current.count
-        guard !theme.isEmpty, current.count >= 2, roomThemeOperation == nil else { return }
+        guard let operationRoom = appState.activeRoom,
+              isHost(operationRoom),
+              operationRoom.normalizedStatus == "waiting",
+              !theme.isEmpty,
+              current.count >= 2,
+              roomThemeOperation == nil else { return }
+        let operationRoomID = operationRoom.id
         let requestID = UUID()
 
         let additionalCount = min(50, 200 - current.count)
@@ -5824,7 +5987,11 @@ struct GameView: View {
                 remaining: generated.aiRemaining
             )
 
-            guard roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
+            guard let currentRoom = appState.activeRoom,
+                  currentRoom.id == operationRoomID,
+                  isHost(currentRoom),
+                  currentRoom.normalizedStatus == "waiting",
+                  roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
 
             var seen = Set(current.map { $0.lowercased() })
             let additions = generated.words.roomCleanWords.filter { seen.insert($0.lowercased()).inserted }
@@ -5847,6 +6014,7 @@ struct GameView: View {
                 aiGenerationsToday: generated.aiGenerationsToday,
                 aiRemaining: generated.aiRemaining
             )
+            roomGeneratedLobbySource = .ai
             disabledRoomPoolWordKeys = disabledRoomPoolWordKeys.filter { key in
                 merged.contains { roomWordKey($0) == key }
             }
@@ -5857,10 +6025,12 @@ struct GameView: View {
             )
             roomWordSource = .generated
             showsAllRoomPoolWords = false
+            scheduleLobbyStateSync(debounce: .milliseconds(80))
             status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO")
             HapticManager.shared.fire(.milestone)
         } catch {
-            guard roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
+            guard appState.activeRoom?.id == operationRoomID,
+                  roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
             roomThemeError = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
@@ -5922,8 +6092,168 @@ struct GameView: View {
         }
     }
 
+    private func roomHasAuthoritativeLobbySelection(_ room: GameRoom) -> Bool {
+        let source = LobbyWordSource(rawValue: room.lobbyWordSource ?? "none") ?? .none
+        return source != .none ||
+            !(room.lobbyWordPool ?? []).isEmpty ||
+            room.lobbyTheme?.nilIfBlank != nil
+    }
+
+    private func applyAuthoritativeLobbyState(from room: GameRoom, force: Bool = false) {
+        let revision = max(room.lobbyRevision ?? 0, 0)
+        guard force || revision >= appliedLobbyRevision else { return }
+        guard force || !isHost(room) || !appState.lobbySettingsSyncState.hasOptimisticChanges else { return }
+
+        selectedGameMode = room.gameModeValue
+        if !isDraggingOnlineDuration {
+            selectedDurationMinutes = Double(max(1, min((room.gameDurationSeconds ?? 900) / 60, 15)))
+        }
+
+        guard (room.lobbySchemaVersion ?? 0) >= 1 || revision > 0 else {
+            appliedLobbyRevision = max(appliedLobbyRevision, revision)
+            return
+        }
+
+        let source = LobbyWordSource(rawValue: room.lobbyWordSource ?? "none") ?? .none
+        let entries = room.lobbyWordPool ?? []
+        let words = entries.map(\.word).roomCleanWords
+        roomTheme = room.lobbyTheme ?? ""
+        roomWordCountMode = LobbyWordCountMode(rawValue: room.lobbyWordCountMode ?? "recommended") == .custom
+            ? .custom
+            : .recommended
+        let authoritativeCount = max(min(room.lobbyWordCount ?? words.count, 200), 0)
+        roomWordCount = Double(authoritativeCount)
+        if roomWordCountMode == .custom {
+            roomCustomWordCount = Double(max(min(authoritativeCount, 80), 10))
+        }
+        disabledRoomPoolWordKeys = Set(
+            entries.filter { !$0.enabled }.map { roomWordKey($0.word) }
+        )
+        showsAllRoomPoolWords = false
+        roomThemeFallbackSource = .none
+
+        switch source {
+        case .ai, .manual:
+            roomWordSource = .generated
+            roomGeneratedLobbySource = source
+            roomGeneratedPack = words.isEmpty
+                ? nil
+                : GeneratedWordPack(
+                    name: room.lobbySourceName,
+                    category: room.lobbyCategory?.nilIfBlank
+                        ?? room.lobbyTheme?.nilIfBlank
+                        ?? "CUSTOM",
+                    words: words,
+                    aiLimit: nil,
+                    aiGenerationsToday: nil
+                )
+        case .saved:
+            roomWordSource = .saved(
+                room.lobbySourcePackID?.nilIfBlank ?? "remote:\(room.id)"
+            )
+            roomGeneratedLobbySource = .ai
+            roomGeneratedPack = nil
+        case .none:
+            roomWordSource = .none
+            roomGeneratedLobbySource = .ai
+            roomGeneratedPack = nil
+        }
+
+        appliedLobbyRevision = revision
+    }
+
+    private func currentLobbyStatePayload(for room: GameRoom) -> LobbyStatePayload {
+        let source: LobbyWordSource
+        let sourcePackID: String?
+        let sourceName: String?
+        let category: String?
+        let rawWords: [String]
+
+        switch roomWordSource {
+        case .none:
+            source = .none
+            sourcePackID = nil
+            sourceName = nil
+            category = roomTheme.nilIfBlank
+            rawWords = []
+        case .generated:
+            source = roomGeneratedLobbySource == .manual ? .manual : .ai
+            sourcePackID = nil
+            sourceName = roomGeneratedPack?.name?.nilIfBlank
+                ?? roomGeneratedPack?.category.nilIfBlank
+                ?? roomTheme.nilIfBlank
+            category = roomGeneratedPack?.category.nilIfBlank ?? roomTheme.nilIfBlank
+            rawWords = LobbyDraftPoolPolicy.generatedPayloadWords(
+                localWords: roomGeneratedPack?.words,
+                priorAuthoritativeWords: (room.lobbyWordPool ?? []).map(\.word)
+            ).roomCleanWords
+        case let .saved(id):
+            source = .saved
+            sourcePackID = id.hasPrefix("remote:") ? room.lobbySourcePackID : id
+            let pack = lobbyWordPacks.first(where: { $0.id == id })
+            sourceName = pack?.name.nilIfBlank ?? room.lobbySourceName?.nilIfBlank
+            category = pack?.category?.nilIfBlank ?? room.lobbyCategory?.nilIfBlank
+            rawWords = pack?.words?.roomCleanWords
+                ?? (room.lobbyWordPool ?? []).map(\.word).roomCleanWords
+        }
+
+        var existingIDsByWordKey: [String: String] = [:]
+        for entry in room.lobbyWordPool ?? [] {
+            if let id = entry.serverID?.nilIfBlank {
+                existingIDsByWordKey[roomWordKey(entry.word)] = id
+            }
+        }
+        let pool = Array(rawWords.prefix(200)).map { word in
+            LobbyWordPoolEntry(
+                id: existingIDsByWordKey[roomWordKey(word)],
+                word: word,
+                enabled: !disabledRoomPoolWordKeys.contains(roomWordKey(word))
+            )
+        }
+        let enabledCount = pool.filter(\.enabled).count
+        let selectedCount: Int
+        switch source {
+        case .ai, .manual:
+            selectedCount = pool.isEmpty && roomWordCountMode == .custom
+                ? Int(roomCustomWordCount)
+                : min(max(Int(roomWordCount), 0), enabledCount)
+        case .saved:
+            selectedCount = enabledCount
+        case .none:
+            selectedCount = roomWordCountMode == .custom ? Int(roomCustomWordCount) : 0
+        }
+
+        return LobbyStatePayload(
+            gameMode: selectedGameMode,
+            gameDurationSeconds: max(60, min(Int(selectedDurationMinutes.rounded()) * 60, 900)),
+            lobbyWordSource: source,
+            lobbySourcePackID: sourcePackID,
+            lobbySourceName: sourceName,
+            lobbyTheme: roomTheme.nilIfBlank,
+            lobbyCategory: category,
+            lobbyWordCount: max(0, min(selectedCount, 200)),
+            lobbyWordCountMode: roomWordCountMode == .custom ? .custom : .recommended,
+            lobbyWordPool: pool
+        )
+    }
+
+    private func scheduleLobbyStateSync(debounce: Duration = .milliseconds(160)) {
+        guard let room = appState.activeRoom,
+              isHost(room),
+              room.normalizedStatus == "waiting" else { return }
+
+        let state = currentLobbyStatePayload(for: room)
+        appState.enqueueLobbySettings(
+            roomID: room.id,
+            state: state,
+            confirmedState: appState.authoritativeLobbyStatePayload(from: room),
+            debounce: debounce
+        )
+    }
+
     private func configureLobby(_ room: GameRoom) async {
         if configuredRoomID != room.id {
+            appliedLobbyRevision = -1
             configuredRoomID = room.id
             selectedGameMode = room.gameModeValue
             selectedDurationMinutes = Double(max((room.gameDurationSeconds ?? 900) / 60, 1))
@@ -5934,6 +6264,7 @@ struct GameView: View {
             roomWordSource = .none
             roomTheme = ""
             roomGeneratedPack = nil
+            roomGeneratedLobbySource = .ai
             roomThemeError = ""
             roomWordCount = 25
             roomCustomWordCount = 25
@@ -5942,6 +6273,7 @@ struct GameView: View {
             disabledRoomPoolWordKeys.removeAll()
             pendingStartPlan = nil
             rouletteCompletionKey = nil
+            applyAuthoritativeLobbyState(from: room, force: true)
         }
 
         if appState.shouldUsePreviewData {
@@ -5974,152 +6306,73 @@ struct GameView: View {
             return
         }
 
+        let requestRoomID = appState.activeRoom?.id
+        let payloadBeforeReload = appState.activeRoom.flatMap { room -> LobbyStatePayload? in
+            guard isHost(room), room.normalizedStatus == "waiting" else { return nil }
+            return currentLobbyStatePayload(for: room)
+        }
         lobbyPackLoadState = .loading
         do {
-            lobbyWordPacks = try await appState.client.wordPacks(ownerEmail: email)
-            if case let .saved(id) = roomWordSource,
+            let loadedPacks = try await appState.client.wordPacks(ownerEmail: email)
+            guard appState.activeRoom?.id == requestRoomID else { return }
+            lobbyWordPacks = loadedPacks
+            let mayValidateSelectedPack = appState.activeRoom.map {
+                isHost($0) && $0.normalizedStatus == "waiting"
+            } ?? false
+            if mayValidateSelectedPack,
+               case let .saved(id) = roomWordSource,
                !lobbyWordPacks.contains(where: { $0.id == id }) {
                 roomWordSource = .none
                 showsAllRoomPoolWords = false
                 disabledRoomPoolWordKeys.removeAll()
-            } else if case let .saved(id) = roomWordSource,
+            } else if mayValidateSelectedPack,
+                      case let .saved(id) = roomWordSource,
                       let selectedPack = lobbyWordPacks.first(where: { $0.id == id }) {
                 let availableKeys = Set((selectedPack.words ?? []).roomCleanWords.map(roomWordKey))
                 disabledRoomPoolWordKeys.formIntersection(availableKeys)
             }
             lobbyPackLoadState = .loaded
+            if let room = appState.activeRoom,
+               let payloadBeforeReload,
+               !currentLobbyStatePayload(for: room)
+                .equivalentForLobbySync(to: payloadBeforeReload) {
+                scheduleLobbyStateSync(debounce: .milliseconds(80))
+            }
         } catch {
             lobbyPackLoadState = .failed(error.localizedDescription)
         }
     }
 
     private func updateMode(_ room: GameRoom, mode: SpyGameMode) async {
-        let operation = RoomSyncOperation.updatingMode(mode)
-        guard appState.beginRoomSync(operation) else { return }
-        let previousMode = selectedGameMode
+        guard let currentRoom = appState.activeRoom,
+              currentRoom.id == room.id,
+              isHost(currentRoom),
+              currentRoom.normalizedStatus == "waiting" else { return }
         selectedGameMode = mode
-        isUpdatingGameMode = true
-        defer {
-            isUpdatingGameMode = false
-            appState.endRoomSync(operation)
-        }
+        scheduleLobbyStateSync(debounce: .milliseconds(90))
         await Task.yield()
-
-        if appState.shouldUsePreviewData {
-            var previewRoom = room
-            previewRoom.gameMode = mode.rawValue
-            appState.activeRoom = previewRoom
-            status = copy.modeSynced
-            HapticManager.shared.fire(.notification(.success))
-            return
-        }
-        do {
-            appState.activeRoom = try await appState.client.updateGameMode(room: room, mode: mode)
-            selectedGameMode = appState.activeRoom?.gameModeValue ?? mode
-            status = copy.modeSynced
-            HapticManager.shared.fire(.notification(.success))
-        } catch {
-            selectedGameMode = previousMode
-            status = error.localizedDescription.uppercased()
-            HapticManager.shared.fire(.notification(.error))
-        }
     }
 
     private func beginDurationUpdate(_ room: GameRoom, minutes: Int) {
         let clampedMinutes = max(1, min(minutes, 15))
-        guard !onlineDurationSyncState.isLocked,
-              let currentRoom = appState.activeRoom,
-              currentRoom.id == room.id else { return }
-
-        let confirmedMinutes = max(
-            1,
-            min((currentRoom.gameDurationSeconds ?? 900) / 60, 15)
-        )
-        guard appState.roomSyncOperation == nil else {
-            selectedDurationMinutes = Double(confirmedMinutes)
-            return
-        }
-        guard clampedMinutes != confirmedMinutes else {
-            selectedDurationMinutes = Double(confirmedMinutes)
-            return
-        }
-        guard let request = onlineDurationSyncState.begin(
-                  roomID: currentRoom.id,
-                  requestedMinutes: clampedMinutes,
-                  confirmedDurationSeconds: currentRoom.gameDurationSeconds
-              ) else { return }
-
-        let operation = RoomSyncOperation.updatingDuration(minutes: clampedMinutes)
-        guard appState.beginRoomSync(operation) else {
-            _ = onlineDurationSyncState.finish(request)
-            selectedDurationMinutes = Double(request.previousMinutes)
-            return
-        }
-
-        selectedDurationMinutes = Double(request.requestedMinutes)
-        isDraggingOnlineDuration = false
-        Task {
-            await updateDuration(currentRoom, request: request, operation: operation)
-        }
-    }
-
-    private func reconcileOnlineDuration(roomID: String) {
         guard let currentRoom = appState.activeRoom,
-              currentRoom.id == roomID,
-              let seconds = currentRoom.gameDurationSeconds else { return }
-        selectedDurationMinutes = Double(max(1, min(seconds / 60, 15)))
-    }
+              currentRoom.id == room.id,
+              isHost(currentRoom),
+              currentRoom.normalizedStatus == "waiting" else { return }
 
-    private func updateDuration(
-        _ room: GameRoom,
-        request: OnlineDurationSyncRequest,
-        operation: RoomSyncOperation
-    ) async {
-        defer {
-            _ = onlineDurationSyncState.finish(request)
-            appState.endRoomSync(operation)
-        }
-        await Task.yield()
-
-        if appState.shouldUsePreviewData {
-            var previewRoom = room
-            previewRoom.gameDurationSeconds = request.requestedMinutes * 60
-            guard onlineDurationSyncState.isCurrent(request),
-                  appState.activeRoom?.id == request.roomID else { return }
-            appState.activeRoom = previewRoom
-            selectedDurationMinutes = Double(request.requestedMinutes)
-            status = durationSyncedStatus
-            HapticManager.shared.fire(.tabSelection)
-            return
-        }
-
-        do {
-            let updatedRoom = try await appState.client.updateGameDuration(
-                room: room,
-                durationSeconds: request.requestedMinutes * 60
-            )
-            guard onlineDurationSyncState.isCurrent(request),
-                  appState.activeRoom?.id == request.roomID else { return }
-            appState.activeRoom = updatedRoom
-            selectedDurationMinutes = Double(
-                max(
-                    (updatedRoom.gameDurationSeconds ?? request.requestedMinutes * 60) / 60,
-                    1
-                )
-            )
-            status = durationSyncedStatus
-            HapticManager.shared.fire(.tabSelection)
-        } catch {
-            guard onlineDurationSyncState.isCurrent(request),
-                  appState.activeRoom?.id == request.roomID else { return }
-            selectedDurationMinutes = Double(request.previousMinutes)
-            status = error.localizedDescription.uppercased()
-            HapticManager.shared.fire(.notification(.error))
-        }
+        selectedDurationMinutes = Double(clampedMinutes)
+        isDraggingOnlineDuration = false
+        scheduleLobbyStateSync(debounce: .milliseconds(140))
     }
 
     private func beginReadyCheck(_ room: GameRoom) async {
-        guard !isDurationSyncActive else { return }
+        guard let currentRoom = appState.activeRoom,
+              currentRoom.id == room.id,
+              isHost(currentRoom),
+              currentRoom.normalizedStatus == "waiting",
+              !isStarting,
+              !appState.lobbySettingsSyncState.hasOptimisticChanges else { return }
+        let operationUserID = appState.user?.id
         if appState.shouldUsePreviewData {
             appState.activeRoom = GameRoom.previewRoom(status: "ready_voting")
             status = copy.readyCheckSent
@@ -6129,7 +6382,10 @@ struct GameView: View {
         isStarting = true
         defer { isStarting = false }
         do {
-            appState.activeRoom = try await appState.client.beginReadyCheck(room: room)
+            let updatedRoom = try await appState.client.beginReadyCheck(room: currentRoom)
+            guard appState.user?.id == operationUserID,
+                  appState.activeRoom?.id == currentRoom.id else { return }
+            appState.activeRoom = updatedRoom
             status = copy.readyCheckSent
             HapticManager.shared.fire(.notification(.success))
         } catch {
@@ -6249,7 +6505,7 @@ struct GameView: View {
 
     private func start(_ room: GameRoom) async {
         guard appState.user?.email != nil else { return }
-        guard !isDurationSyncActive else { return }
+        guard !appState.lobbySettingsSyncState.hasOptimisticChanges else { return }
         guard roomThemeSelectionIsReady, !isGeneratingRoomTheme else {
             status = localized(
                 en: "SELECT A DECK OR GENERATE THE THEME WORDS BEFORE STARTING",
@@ -6269,14 +6525,9 @@ struct GameView: View {
         isStarting = true
         defer { isStarting = false }
         do {
-            if case .saved = roomWordSource {
-                // Saved packs can be edited from another mounted tab or device.
-                // Always reconcile the authoritative snapshot immediately before
-                // freezing the mission plan, while preserving lobby exclusions.
-                await loadLobbyWordPacks(force: true)
-            } else if lobbyPackLoadState != .loaded {
-                await loadLobbyWordPacks()
-            }
+            let confirmedRoom = try await appState.confirmedLobbyRoom(
+                roomID: room.id
+            )
             guard roomThemeSelectionIsReady, let selectedPackID else {
                 throw Base44Error(
                     message: localized(
@@ -6289,15 +6540,25 @@ struct GameView: View {
             }
             let packs = lobbyWordPacksForStart
             let plan = try appState.client.makeGameStartPlan(
-                room: room,
+                room: confirmedRoom,
                 wordPacks: packs,
                 selectedPackID: selectedPackID,
                 gameMode: selectedGameMode,
                 durationSeconds: Int(selectedDurationMinutes * 60),
-                forcedAskerEmail: room.rouletteTargetEmail
+                forcedAskerEmail: confirmedRoom.rouletteTargetEmail
             )
             pendingStartPlan = plan
-            appState.activeRoom = try await appState.client.armRoulette(room: room, plan: plan)
+            let operationUserID = appState.user?.id
+            let armedRoom = try await appState.client.armRoulette(
+                room: confirmedRoom,
+                plan: plan
+            )
+            guard appState.user?.id == operationUserID,
+                  appState.activeRoom?.id == confirmedRoom.id else {
+                pendingStartPlan = nil
+                return
+            }
+            appState.activeRoom = armedRoom
             status = copy.rouletteArmed
             revealRole = false
             HapticManager.shared.fire(.notification(.success))
@@ -7016,73 +7277,35 @@ private enum RoomThemeOperation {
     case expand
 }
 
-struct OnlineDurationSyncRequest: Equatable, Sendable {
-    let id: UUID
-    let roomID: String
-    let requestedMinutes: Int
-    let previousMinutes: Int
-}
-
-struct OnlineDurationSyncState: Equatable, Sendable {
-    private(set) var pendingRequest: OnlineDurationSyncRequest?
-
-    var isLocked: Bool {
-        pendingRequest != nil
-    }
-
-    func acceptsRemoteUpdate(isDragging: Bool) -> Bool {
-        !isDragging && pendingRequest == nil
-    }
-
-    mutating func begin(
-        roomID: String,
-        requestedMinutes: Int,
-        confirmedDurationSeconds: Int?,
-        requestID: UUID = UUID()
-    ) -> OnlineDurationSyncRequest? {
-        guard pendingRequest == nil else { return nil }
-
-        let requestedMinutes = Self.clampedMinutes(requestedMinutes)
-        let previousMinutes = Self.clampedMinutes(
-            (confirmedDurationSeconds ?? 900) / 60
-        )
-        guard requestedMinutes != previousMinutes else { return nil }
-
-        let request = OnlineDurationSyncRequest(
-            id: requestID,
-            roomID: roomID,
-            requestedMinutes: requestedMinutes,
-            previousMinutes: previousMinutes
-        )
-        pendingRequest = request
-        return request
-    }
-
-    func isCurrent(_ request: OnlineDurationSyncRequest) -> Bool {
-        pendingRequest?.id == request.id
-    }
-
-    @discardableResult
-    mutating func finish(_ request: OnlineDurationSyncRequest) -> Bool {
-        guard isCurrent(request) else { return false }
-        pendingRequest = nil
-        return true
-    }
-
-    private static func clampedMinutes(_ minutes: Int) -> Int {
-        max(1, min(minutes, 15))
+enum LobbyDraftPoolPolicy {
+    /// A missing local pack means the current theme draft invalidated its pool.
+    /// The room snapshot can still contain words from a saved pack or an older
+    /// theme, so reusing it here would relabel stale words as the new AI draft.
+    static func generatedPayloadWords(
+        localWords: [String]?,
+        priorAuthoritativeWords _: [String]
+    ) -> [String] {
+        localWords ?? []
     }
 }
 
 enum RoomWordPoolFilter {
+    static func canonicalWord(_ rawValue: String) -> String {
+        rawValue
+            .precomposedStringWithCompatibilityMapping
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+    }
+
     static func key(_ rawValue: String) -> String {
-        rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        canonicalWord(rawValue)
+            .lowercased(with: Locale(identifier: "en_US_POSIX"))
     }
 
     static func activeWords(_ words: [String], excluding disabledKeys: Set<String>) -> [String] {
         var seen = Set<String>()
         return words.compactMap { rawValue in
-            let word = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let word = canonicalWord(rawValue)
             guard !word.isEmpty else { return nil }
             let normalizedKey = key(word)
             guard seen.insert(normalizedKey).inserted,
@@ -7104,9 +7327,9 @@ private extension Array where Element == String {
     var roomCleanWords: [String] {
         var seen = Set<String>()
         return compactMap { raw in
-            let word = raw.trimmingCharacters(in: .whitespacesAndNewlines)
+            let word = RoomWordPoolFilter.canonicalWord(raw)
             guard !word.isEmpty else { return nil }
-            let key = word.lowercased()
+            let key = RoomWordPoolFilter.key(word)
             guard seen.insert(key).inserted else { return nil }
             return word
         }

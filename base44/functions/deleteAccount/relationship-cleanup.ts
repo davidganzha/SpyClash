@@ -78,6 +78,7 @@ export async function deleteAccountRelationshipRecords(input: {
   liveActivityStore: any;
   pushEventStore: any;
   notificationReceiptStore: any;
+  gameRoomSignalStore: any;
   userID: string;
   tombstoneUserID: string;
 }): Promise<void> {
@@ -140,6 +141,9 @@ export async function deleteAccountRelationshipRecords(input: {
     actor_user_id: input.userID,
   });
   await deleteAllMatching(input.notificationReceiptStore, {
+    user_id: input.userID,
+  });
+  await deleteAllMatching(input.gameRoomSignalStore, {
     user_id: input.userID,
   });
 }

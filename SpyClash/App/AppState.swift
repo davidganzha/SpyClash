@@ -187,6 +187,13 @@ enum RoomRefreshDisposition: Equatable {
 }
 
 enum RoomPollPolicy {
+    static func acceptsSnapshot(
+        currentLobbyRevision: Int?,
+        fetchedLobbyRevision: Int?
+    ) -> Bool {
+        max(fetchedLobbyRevision ?? 0, 0) >= max(currentLobbyRevision ?? 0, 0)
+    }
+
     static func disposition(
         monitoredRoomID: String,
         activeRoomID: String?,
@@ -222,6 +229,213 @@ enum RoomPollPolicy {
         default:
             return 1.2
         }
+    }
+}
+
+struct LobbyLatestWinsIntent: Equatable {
+    let mutationID: UUID
+    let roomID: String
+    let state: LobbyStatePayload
+    let retryCount: Int
+}
+
+struct LobbyLatestWinsRequest: Equatable {
+    let intent: LobbyLatestWinsIntent
+    let expectedRevision: Int
+}
+
+struct LobbyLatestWinsState: Equatable {
+    private(set) var confirmedRevision = 0
+    private(set) var pendingIntent: LobbyLatestWinsIntent?
+    private(set) var inFlightRequest: LobbyLatestWinsRequest?
+
+    var hasOptimisticChanges: Bool {
+        pendingIntent != nil || inFlightRequest != nil
+    }
+
+    var hasPendingIntent: Bool {
+        pendingIntent != nil
+    }
+
+    func latestStateMatches(roomID: String, state: LobbyStatePayload) -> Bool {
+        if let pendingIntent {
+            return pendingIntent.roomID == roomID && pendingIntent.state == state
+        }
+        if let inFlightRequest {
+            return inFlightRequest.intent.roomID == roomID && inFlightRequest.intent.state == state
+        }
+        return false
+    }
+
+    mutating func reset(confirmedRevision: Int) {
+        self.confirmedRevision = max(confirmedRevision, 0)
+        pendingIntent = nil
+        inFlightRequest = nil
+    }
+
+    mutating func reconcile(confirmedRevision: Int) {
+        self.confirmedRevision = max(self.confirmedRevision, confirmedRevision)
+    }
+
+    mutating func enqueue(
+        roomID: String,
+        state: LobbyStatePayload,
+        mutationID: UUID = UUID()
+    ) {
+        pendingIntent = LobbyLatestWinsIntent(
+            mutationID: mutationID,
+            roomID: roomID,
+            state: state,
+            retryCount: 0
+        )
+    }
+
+    @discardableResult
+    mutating func enqueueLatest(
+        roomID: String,
+        state: LobbyStatePayload,
+        confirmedState: LobbyStatePayload?,
+        mutationID: UUID = UUID()
+    ) -> Bool {
+        if let pendingIntent,
+           pendingIntent.roomID == roomID,
+           pendingIntent.state.equivalentForLobbySync(to: state) {
+            return false
+        }
+
+        if let inFlightRequest,
+           inFlightRequest.intent.roomID == roomID,
+           inFlightRequest.intent.state.equivalentForLobbySync(to: state) {
+            pendingIntent = nil
+            return false
+        }
+
+        if inFlightRequest == nil,
+           let confirmedState,
+           confirmedState.equivalentForLobbySync(to: state) {
+            pendingIntent = nil
+            return false
+        }
+
+        pendingIntent = LobbyLatestWinsIntent(
+            mutationID: mutationID,
+            roomID: roomID,
+            state: state,
+            retryCount: 0
+        )
+        return true
+    }
+
+    mutating func beginNext() -> LobbyLatestWinsRequest? {
+        guard inFlightRequest == nil, let intent = pendingIntent else { return nil }
+        pendingIntent = nil
+        let request = LobbyLatestWinsRequest(
+            intent: intent,
+            expectedRevision: confirmedRevision
+        )
+        inFlightRequest = request
+        return request
+    }
+
+    @discardableResult
+    mutating func finish(
+        _ request: LobbyLatestWinsRequest,
+        confirmedRevision: Int
+    ) -> Bool {
+        guard inFlightRequest == request else { return false }
+        inFlightRequest = nil
+        reconcile(confirmedRevision: confirmedRevision)
+        return pendingIntent == nil
+    }
+
+    @discardableResult
+    mutating func fail(
+        _ request: LobbyLatestWinsRequest,
+        retry: Bool,
+        maximumRetries: Int = 2
+    ) -> Bool {
+        guard inFlightRequest == request else { return false }
+        inFlightRequest = nil
+        guard retry,
+              request.intent.retryCount < maximumRetries,
+              pendingIntent == nil else { return false }
+        pendingIntent = LobbyLatestWinsIntent(
+            mutationID: request.intent.mutationID,
+            roomID: request.intent.roomID,
+            state: request.intent.state,
+            retryCount: request.intent.retryCount + 1
+        )
+        return true
+    }
+}
+
+extension LobbyStatePayload {
+    func equivalentForLobbySync(to other: LobbyStatePayload) -> Bool {
+        gameMode == other.gameMode &&
+            gameDurationSeconds == other.gameDurationSeconds &&
+            lobbyWordSource == other.lobbyWordSource &&
+            canonicalLobbyText(lobbySourcePackID) == canonicalLobbyText(other.lobbySourcePackID) &&
+            canonicalLobbyText(lobbySourceName) == canonicalLobbyText(other.lobbySourceName) &&
+            canonicalLobbyText(lobbyTheme) == canonicalLobbyText(other.lobbyTheme) &&
+            canonicalLobbyText(lobbyCategory) == canonicalLobbyText(other.lobbyCategory) &&
+            lobbyWordCount == other.lobbyWordCount &&
+            lobbyWordCountMode == other.lobbyWordCountMode &&
+            lobbyWordPool.count == other.lobbyWordPool.count &&
+            zip(lobbyWordPool, other.lobbyWordPool).allSatisfy { lhs, rhs in
+                canonicalLobbyWordKey(lhs.word) == canonicalLobbyWordKey(rhs.word) &&
+                    lhs.enabled == rhs.enabled
+            }
+    }
+
+    private func canonicalLobbyText(_ value: String?) -> String {
+        (value ?? "")
+            .precomposedStringWithCompatibilityMapping
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private func canonicalLobbyWordKey(_ value: String) -> String {
+        value
+            .precomposedStringWithCompatibilityMapping
+            .split(whereSeparator: \.isWhitespace)
+            .joined(separator: " ")
+            .lowercased(with: Locale(identifier: "en_US_POSIX"))
+    }
+}
+
+private struct LobbySettingsSyncScope: Equatable {
+    let userID: String
+    let roomID: String
+}
+
+enum LobbySyncRetryPolicy {
+    static func isRevisionConflict(_ error: Error) -> Bool {
+        guard let base44Error = error as? Base44Error,
+              base44Error.statusCode == 409 else { return false }
+        return base44Error.code?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() == "lobby_revision_conflict"
+    }
+
+    static func isRetryable(_ error: Error) -> Bool {
+        if error is CancellationError { return false }
+        if let base44Error = error as? Base44Error {
+            if base44Error.retryable { return true }
+            guard let statusCode = base44Error.statusCode else { return false }
+            return [408, 425, 429].contains(statusCode) || (500...599).contains(statusCode)
+        }
+        guard let urlError = error as? URLError else { return false }
+        return [
+            .timedOut,
+            .cannotFindHost,
+            .cannotConnectToHost,
+            .networkConnectionLost,
+            .dnsLookupFailed,
+            .notConnectedToInternet,
+            .internationalRoamingOff,
+            .callIsActive,
+            .dataNotAllowed,
+            .secureConnectionFailed
+        ].contains(urlError.code)
     }
 }
 
@@ -313,6 +527,7 @@ final class AppState: NSObject {
     /// observed in the full-access protocol.
     let storeKit: StoreKitManager?
     let membershipRealtime: MembershipRealtimeService
+    let gameRoomRealtime: GameRoomRealtimeService
     let radarNearby: RadarNearbyService
     var user: SpyUser? {
         didSet {
@@ -320,6 +535,11 @@ final class AppState: NSObject {
             let accountChanged = previousUserID != user?.id
             reconcileRadarInvitePolicy(for: user, accountChanged: accountChanged)
             radarNearby.setActiveRoom(activeRoom)
+            // `user` can be reassigned after a same-account token rotation.
+            // Reconcile before the account-change early return so the socket
+            // never keeps authenticating with the previous token.
+            reconcileGameRoomRealtimeSubscription()
+            reconcileLobbySettingsSyncScope(from: activeRoom, to: activeRoom)
             guard accountChanged else { return }
             // Account-scoped access belongs to exactly one SpyClash account.
             // Clear it synchronously before the replacement account renders.
@@ -388,8 +608,14 @@ final class AppState: NSObject {
             if activeRoom == nil {
                 isHomeLandingPresentationRequested = false
             }
+            reconcileLobbySettingsSyncScope(from: oldValue, to: activeRoom)
             if oldValue?.id != activeRoom?.id {
                 roomConnectionState = .synced
+                reconcileGameRoomRealtimeSubscription()
+            } else {
+                lobbySettingsSyncState.reconcile(
+                    confirmedRevision: activeRoom?.lobbyRevision ?? 0
+                )
             }
             persistActiveRoomReference(activeRoom)
             radarNearby.setActiveRoom(activeRoom)
@@ -401,6 +627,10 @@ final class AppState: NSObject {
     private(set) var roomSyncOperation: RoomSyncOperation?
     private(set) var roomSyncRevision = 0
     private(set) var roomConnectionState: RoomConnectionState = .synced
+    private(set) var lobbySettingsSyncState = LobbyLatestWinsState()
+    private(set) var lobbySettingsSyncFailure: String?
+    private(set) var lobbySettingsSyncRoomID: String?
+    private(set) var lobbySettingsRollbackEpoch = 0
     var presentedSheet: AppSheet?
     var roomQRTarget: RoomQRTarget = .web
     var language: AppLanguage = .stored {
@@ -430,7 +660,16 @@ final class AppState: NSObject {
     @ObservationIgnored private var accessActivationSyncTask: Task<Void, Never>?
     @ObservationIgnored private var activeRoomActivationRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var roomRefreshRequestRevision = 0
+    @ObservationIgnored private var lobbySettingsSyncWorker: Task<Void, Never>?
+    @ObservationIgnored private var lobbySettingsSyncGeneration = UUID()
+    @ObservationIgnored private var lobbySettingsSyncRunID: UUID?
+    @ObservationIgnored private var lobbySettingsSyncScope: LobbySettingsSyncScope?
+    @ObservationIgnored private var lobbySettingsSyncUserID: String?
     @ObservationIgnored private var membershipRealtimeRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var gameRoomRealtimeRefreshTask: Task<Void, Never>?
+    @ObservationIgnored private var pendingGameRoomRealtimeRevision = 0
+    @ObservationIgnored private var gameRoomRealtimeCatchUpRequested = false
+    @ObservationIgnored private var gameRoomRealtimeGeneration = UUID()
     @ObservationIgnored private var radarInvitePolicySyncTask: Task<Void, Never>?
     @ObservationIgnored private var radarInvitePolicySyncRunID: UUID?
     private var pendingRadarInvitePolicy: RadarInvitePolicy?
@@ -453,6 +692,7 @@ final class AppState: NSObject {
             ? nil
             : StoreKitManager(client: client)
         self.membershipRealtime = MembershipRealtimeService()
+        self.gameRoomRealtime = GameRoomRealtimeService()
         self.radarNearby = radarNearby
         super.init()
 
@@ -461,6 +701,12 @@ final class AppState: NSObject {
         }
         membershipRealtime.onMembershipSignal = { [weak self] in
             self?.handleMembershipRealtimeSignal()
+        }
+        gameRoomRealtime.onSignal = { [weak self] signal in
+            self?.handleGameRoomRealtimeSignal(signal)
+        }
+        gameRoomRealtime.onCatchUp = { [weak self] in
+            self?.handleGameRoomRealtimeCatchUp()
         }
         radarNearby.onAutomaticInvitation = { [weak self] invitation in
             self?.handleAutomaticRadarInvitation(invitation)
@@ -496,6 +742,397 @@ final class AppState: NSObject {
         guard roomSyncOperation == operation else { return }
         roomSyncOperation = nil
         roomSyncRevision &+= 1
+        if gameRoomRealtimeCatchUpRequested ||
+            pendingGameRoomRealtimeRevision > (activeRoom?.lobbyRevision ?? 0) {
+            scheduleGameRoomRealtimeRefresh()
+        }
+    }
+
+    func enqueueLobbySettings(
+        roomID: String,
+        state: LobbyStatePayload,
+        confirmedState: LobbyStatePayload?,
+        debounce: Duration
+    ) {
+        guard let scope = lobbySettingsSyncScope,
+              scope.roomID == roomID,
+              scope.userID == user?.id,
+              let room = activeRoom,
+              room.id == roomID,
+              room.normalizedStatus == "waiting",
+              room.hostEmail == user?.email else { return }
+
+        lobbySettingsSyncState.reconcile(
+            confirmedRevision: room.lobbyRevision ?? 0
+        )
+        _ = lobbySettingsSyncState.enqueueLatest(
+            roomID: roomID,
+            state: state,
+            confirmedState: confirmedState
+        )
+        lobbySettingsSyncFailure = nil
+        if lobbySettingsSyncState.hasPendingIntent {
+            startLobbySettingsWorker(debounce: debounce)
+        }
+    }
+
+    func hasUnconfirmedLobbySettings(for roomID: String) -> Bool {
+        lobbySettingsSyncRoomID == roomID &&
+            lobbySettingsSyncState.hasOptimisticChanges
+    }
+
+    func confirmedLobbyRoom(
+        roomID: String,
+        allowedStatuses: Set<String> = ["waiting", "ready_voting"]
+    ) async throws -> GameRoom {
+        for _ in 0..<8 {
+            guard activeRoom?.id == roomID,
+                  activeRoom?.hostEmail == user?.email else {
+                throw Base44Error(message: "Lobby room changed.", statusCode: 409)
+            }
+            if let worker = lobbySettingsSyncWorker {
+                await worker.value
+                continue
+            }
+            if lobbySettingsSyncState.hasPendingIntent {
+                startLobbySettingsWorker(debounce: .zero)
+                continue
+            }
+            break
+        }
+
+        if let lobbySettingsSyncFailure {
+            throw Base44Error(message: lobbySettingsSyncFailure)
+        }
+        guard let room = activeRoom,
+              room.id == roomID,
+              room.hostEmail == user?.email,
+              allowedStatuses.contains(room.normalizedStatus),
+              !lobbySettingsSyncState.hasOptimisticChanges else {
+            throw Base44Error(
+                message: "Lobby settings are still synchronizing.",
+                statusCode: 409
+            )
+        }
+        return room
+    }
+
+    func authoritativeLobbyStatePayload(from room: GameRoom) -> LobbyStatePayload? {
+        guard (room.lobbySchemaVersion ?? 0) >= 1 || (room.lobbyRevision ?? 0) > 0 else {
+            return nil
+        }
+        return LobbyStatePayload(
+            gameMode: room.gameModeValue,
+            gameDurationSeconds: max(60, min(room.gameDurationSeconds ?? 900, 900)),
+            lobbyWordSource: LobbyWordSource(rawValue: room.lobbyWordSource ?? "none") ?? .none,
+            lobbySourcePackID: room.lobbySourcePackID?.nilIfBlank,
+            lobbySourceName: room.lobbySourceName?.nilIfBlank,
+            lobbyTheme: room.lobbyTheme?.nilIfBlank,
+            lobbyCategory: room.lobbyCategory?.nilIfBlank,
+            lobbyWordCount: max(0, min(room.lobbyWordCount ?? 0, 200)),
+            lobbyWordCountMode: LobbyWordCountMode(
+                rawValue: room.lobbyWordCountMode ?? "recommended"
+            ) ?? .recommended,
+            lobbyWordPool: (room.lobbyWordPool ?? []).map {
+                LobbyWordPoolEntry(
+                    id: $0.serverID,
+                    word: $0.word,
+                    enabled: $0.enabled
+                )
+            }
+        )
+    }
+
+    private func reconcileLobbySettingsSyncScope(
+        from previousRoom: GameRoom?,
+        to room: GameRoom?
+    ) {
+        let desiredScope: LobbySettingsSyncScope?
+        if let user,
+           let room,
+           room.normalizedStatus == "waiting",
+           room.hostEmail == user.email {
+            desiredScope = LobbySettingsSyncScope(
+                userID: user.id,
+                roomID: room.id
+            )
+        } else {
+            desiredScope = nil
+        }
+
+        let contextChanged = lobbySettingsSyncUserID != user?.id ||
+            lobbySettingsSyncRoomID != room?.id
+        guard contextChanged || desiredScope != lobbySettingsSyncScope else {
+            lobbySettingsSyncState.reconcile(
+                confirmedRevision: room?.lobbyRevision ?? 0
+            )
+            return
+        }
+
+        lobbySettingsSyncGeneration = UUID()
+        lobbySettingsSyncWorker?.cancel()
+        lobbySettingsSyncWorker = nil
+        lobbySettingsSyncRunID = nil
+        lobbySettingsSyncScope = desiredScope
+        lobbySettingsSyncUserID = user?.id
+        lobbySettingsSyncRoomID = room?.id
+        lobbySettingsSyncState.reset(
+            confirmedRevision: room?.lobbyRevision ?? 0
+        )
+        lobbySettingsSyncFailure = nil
+        lobbySettingsRollbackEpoch &+= 1
+    }
+
+    private func startLobbySettingsWorker(debounce: Duration) {
+        guard lobbySettingsSyncWorker == nil,
+              lobbySettingsSyncState.hasPendingIntent,
+              let scope = lobbySettingsSyncScope else { return }
+
+        let generation = lobbySettingsSyncGeneration
+        let runID = UUID()
+        lobbySettingsSyncRunID = runID
+        lobbySettingsSyncWorker = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                try await Task.sleep(for: debounce)
+            } catch {
+                self.finishLobbySettingsWorker(
+                    scope: scope,
+                    generation: generation,
+                    runID: runID
+                )
+                return
+            }
+            await self.runLobbySettingsWorker(
+                scope: scope,
+                generation: generation,
+                runID: runID
+            )
+        }
+    }
+
+    private func runLobbySettingsWorker(
+        scope: LobbySettingsSyncScope,
+        generation: UUID,
+        runID: UUID
+    ) async {
+        defer {
+            finishLobbySettingsWorker(
+                scope: scope,
+                generation: generation,
+                runID: runID
+            )
+        }
+
+        while !Task.isCancelled,
+              lobbySettingsWorkerIsCurrent(
+                  scope: scope,
+                  generation: generation,
+                  runID: runID
+              ),
+              let request = lobbySettingsSyncState.beginNext() {
+            guard let room = activeRoom,
+                  room.id == scope.roomID,
+                  room.normalizedStatus == "waiting",
+                  room.hostEmail == user?.email else {
+                _ = lobbySettingsSyncState.fail(request, retry: false)
+                lobbySettingsRollbackEpoch &+= 1
+                return
+            }
+
+#if DEBUG
+            if shouldUsePreviewData {
+                var previewRoom = room
+                applyLobbyPayload(
+                    request.intent.state,
+                    to: &previewRoom,
+                    revision: request.expectedRevision + 1
+                )
+                _ = lobbySettingsSyncState.finish(
+                    request,
+                    confirmedRevision: request.expectedRevision + 1
+                )
+                guard lobbySettingsWorkerIsCurrent(
+                    scope: scope,
+                    generation: generation,
+                    runID: runID
+                ) else { return }
+                activeRoom = previewRoom
+                lobbySettingsSyncFailure = nil
+                continue
+            }
+#endif
+
+            do {
+                let updatedRoom = try await client.updateLobbyState(
+                    room: room,
+                    mutationID: request.intent.mutationID.uuidString.lowercased(),
+                    expectedRevision: request.expectedRevision,
+                    state: request.intent.state
+                )
+                guard lobbySettingsWorkerIsCurrent(
+                    scope: scope,
+                    generation: generation,
+                    runID: runID
+                ),
+                      updatedRoom.id == scope.roomID,
+                      let updatedRevision = updatedRoom.lobbyRevision,
+                      updatedRevision > request.expectedRevision else {
+                    throw Base44Error(
+                        message: "Lobby update was not confirmed.",
+                        statusCode: 502,
+                        retryable: true
+                    )
+                }
+
+                _ = lobbySettingsSyncState.finish(
+                    request,
+                    confirmedRevision: updatedRevision
+                )
+                guard lobbySettingsWorkerIsCurrent(
+                    scope: scope,
+                    generation: generation,
+                    runID: runID
+                ) else { return }
+                if updatedRevision >= (activeRoom?.lobbyRevision ?? 0) {
+                    activeRoom = updatedRoom
+                }
+                lobbySettingsSyncFailure = nil
+            } catch is CancellationError {
+                _ = lobbySettingsSyncState.fail(request, retry: false)
+                return
+            } catch {
+                guard lobbySettingsWorkerIsCurrent(
+                    scope: scope,
+                    generation: generation,
+                    runID: runID
+                ) else { return }
+
+                let base44Error = error as? Base44Error
+                let shouldRefresh = base44Error?.statusCode == 409
+                let retryable = LobbySyncRetryPolicy.isRevisionConflict(error) ||
+                    LobbySyncRetryPolicy.isRetryable(error)
+                let willRetry = lobbySettingsSyncState.fail(
+                    request,
+                    retry: retryable
+                )
+
+                if shouldRefresh,
+                   let refreshed = try? await client.refreshRoom(id: scope.roomID),
+                   lobbySettingsWorkerIsCurrent(
+                       scope: scope,
+                       generation: generation,
+                       runID: runID
+                   ) {
+                    lobbySettingsSyncState.reconcile(
+                        confirmedRevision: refreshed.lobbyRevision ?? 0
+                    )
+                    if RoomPollPolicy.acceptsSnapshot(
+                        currentLobbyRevision: activeRoom?.lobbyRevision,
+                        fetchedLobbyRevision: refreshed.lobbyRevision
+                    ) {
+                        activeRoom = refreshed
+                    }
+                }
+
+                guard lobbySettingsWorkerIsCurrent(
+                    scope: scope,
+                    generation: generation,
+                    runID: runID
+                ) else { return }
+
+                if willRetry {
+                    do {
+                        let retryCount = request.intent.retryCount + 1
+                        try await Task.sleep(
+                            for: retryCount == 1 ? .milliseconds(180) : .milliseconds(450)
+                        )
+                    } catch {
+                        return
+                    }
+                    continue
+                }
+
+                if retryable,
+                   !lobbySettingsSyncState.hasOptimisticChanges,
+                   let reconciled = try? await client.refreshRoom(id: scope.roomID),
+                   lobbySettingsWorkerIsCurrent(
+                       scope: scope,
+                       generation: generation,
+                       runID: runID
+                   ) {
+                    let wasCommitted = (reconciled.lobbyRevision ?? 0) > request.expectedRevision &&
+                        authoritativeLobbyStatePayload(from: reconciled)?
+                            .equivalentForLobbySync(to: request.intent.state) == true
+                    lobbySettingsSyncState.reconcile(
+                        confirmedRevision: reconciled.lobbyRevision ?? 0
+                    )
+                    if RoomPollPolicy.acceptsSnapshot(
+                        currentLobbyRevision: activeRoom?.lobbyRevision,
+                        fetchedLobbyRevision: reconciled.lobbyRevision
+                    ) {
+                        activeRoom = reconciled
+                    }
+                    if wasCommitted {
+                        lobbySettingsSyncFailure = nil
+                        continue
+                    }
+                }
+
+                if !lobbySettingsSyncState.hasOptimisticChanges {
+                    lobbySettingsSyncFailure = error.localizedDescription
+                    lobbySettingsRollbackEpoch &+= 1
+                }
+            }
+        }
+    }
+
+    private func finishLobbySettingsWorker(
+        scope: LobbySettingsSyncScope,
+        generation: UUID,
+        runID: UUID
+    ) {
+        guard lobbySettingsSyncScope == scope,
+              lobbySettingsSyncGeneration == generation,
+              lobbySettingsSyncRunID == runID else { return }
+        lobbySettingsSyncWorker = nil
+        lobbySettingsSyncRunID = nil
+        if lobbySettingsSyncState.hasPendingIntent {
+            startLobbySettingsWorker(debounce: .milliseconds(90))
+        }
+    }
+
+    private func lobbySettingsWorkerIsCurrent(
+        scope: LobbySettingsSyncScope,
+        generation: UUID,
+        runID: UUID
+    ) -> Bool {
+        lobbySettingsSyncScope == scope &&
+            lobbySettingsSyncGeneration == generation &&
+            lobbySettingsSyncRunID == runID &&
+            user?.id == scope.userID &&
+            activeRoom?.id == scope.roomID &&
+            activeRoom?.normalizedStatus == "waiting" &&
+            activeRoom?.hostEmail == user?.email
+    }
+
+    private func applyLobbyPayload(
+        _ payload: LobbyStatePayload,
+        to room: inout GameRoom,
+        revision: Int
+    ) {
+        room.gameMode = payload.gameMode.rawValue
+        room.gameDurationSeconds = payload.gameDurationSeconds
+        room.lobbySchemaVersion = 1
+        room.lobbyRevision = revision
+        room.lobbyWordSource = payload.lobbyWordSource.rawValue
+        room.lobbySourcePackID = payload.lobbySourcePackID
+        room.lobbySourceName = payload.lobbySourceName
+        room.lobbyTheme = payload.lobbyTheme
+        room.lobbyCategory = payload.lobbyCategory
+        room.lobbyWordCount = payload.lobbyWordCount
+        room.lobbyWordCountMode = payload.lobbyWordCountMode.rawValue
+        room.lobbyWordPool = payload.lobbyWordPool
     }
 
     private func nextRoomRefreshRequestRevision() -> Int {
@@ -572,7 +1209,12 @@ final class AppState: NSObject {
                         break
                     case .apply:
                         guard let refreshedRoom else { break }
-                        activeRoom = refreshedRoom
+                        if RoomPollPolicy.acceptsSnapshot(
+                            currentLobbyRevision: activeRoom?.lobbyRevision,
+                            fetchedLobbyRevision: refreshedRoom.lobbyRevision
+                        ) {
+                            activeRoom = refreshedRoom
+                        }
                         if failureTracker.recordSuccess() {
                             markRoomSyncRecoveredIfNeeded()
                         }
@@ -651,7 +1293,12 @@ final class AppState: NSObject {
             if let refreshedRoom,
                ["waiting", "ready_voting", "roulette", "playing"].contains(refreshedRoom.normalizedStatus),
                refreshedRoom.containsPlayer(email: self.user?.email) {
-                self.activeRoom = refreshedRoom
+                if self.activeRoom?.id != refreshedRoom.id || RoomPollPolicy.acceptsSnapshot(
+                    currentLobbyRevision: self.activeRoom?.lobbyRevision,
+                    fetchedLobbyRevision: refreshedRoom.lobbyRevision
+                ) {
+                    self.activeRoom = refreshedRoom
+                }
                 self.selectedTab = .game
                 self.markRoomSyncRecoveredIfNeeded()
             } else if let currentRoomID = self.activeRoom?.id,
@@ -1677,6 +2324,145 @@ final class AppState: NSObject {
         }
     }
 
+    private func reconcileGameRoomRealtimeSubscription() {
+        gameRoomRealtimeGeneration = UUID()
+        gameRoomRealtimeRefreshTask?.cancel()
+        gameRoomRealtimeRefreshTask = nil
+        pendingGameRoomRealtimeRevision = 0
+        gameRoomRealtimeCatchUpRequested = false
+
+        guard let user,
+              let token = client.currentAccessToken,
+              let roomID = activeRoom?.id else {
+            gameRoomRealtime.stop()
+            return
+        }
+
+        gameRoomRealtime.start(
+            appID: Base44Client.appID,
+            token: token,
+            userID: user.id,
+            roomID: roomID
+        )
+    }
+
+    private func handleGameRoomRealtimeSignal(_ signal: GameRoomRealtimeSignal) {
+        guard activeRoom?.id == signal.roomID else { return }
+        pendingGameRoomRealtimeRevision = max(
+            pendingGameRoomRealtimeRevision,
+            signal.lobbyRevision
+        )
+        scheduleGameRoomRealtimeRefresh()
+    }
+
+    private func handleGameRoomRealtimeCatchUp() {
+        guard activeRoom != nil else { return }
+        gameRoomRealtimeCatchUpRequested = true
+        scheduleGameRoomRealtimeRefresh()
+    }
+
+    private func scheduleGameRoomRealtimeRefresh() {
+#if DEBUG
+        guard !shouldUsePreviewData else { return }
+#endif
+        guard user != nil, activeRoom != nil,
+              gameRoomRealtimeRefreshTask == nil else { return }
+
+        let generation = gameRoomRealtimeGeneration
+        gameRoomRealtimeRefreshTask = Task { @MainActor [weak self] in
+            await self?.runGameRoomRealtimeRefresh(generation: generation)
+        }
+    }
+
+    private func runGameRoomRealtimeRefresh(generation: UUID) async {
+        var shouldRescheduleAfterRun = false
+        defer {
+            if generation == gameRoomRealtimeGeneration {
+                gameRoomRealtimeRefreshTask = nil
+                if roomSyncOperation == nil,
+                   shouldRescheduleAfterRun || gameRoomRealtimeCatchUpRequested {
+                    scheduleGameRoomRealtimeRefresh()
+                }
+            }
+        }
+
+        do {
+            try await Task.sleep(for: .milliseconds(110))
+        } catch {
+            return
+        }
+
+        var staleReadAttempts = 0
+        while !Task.isCancelled, generation == gameRoomRealtimeGeneration {
+            // Do not spin while a serialized room mutation owns the refresh
+            // lane. `endRoomSync` restarts one bounded catch-up batch.
+            guard roomSyncOperation == nil else { return }
+            guard let roomID = activeRoom?.id else { return }
+
+            let requiredRevision = pendingGameRoomRealtimeRevision
+            let isCatchUp = gameRoomRealtimeCatchUpRequested
+            gameRoomRealtimeCatchUpRequested = false
+            if !isCatchUp,
+               requiredRevision <= (activeRoom?.lobbyRevision ?? 0) {
+                pendingGameRoomRealtimeRevision = 0
+                return
+            }
+            pendingGameRoomRealtimeRevision = 0
+
+            let refreshedRoom: GameRoom?
+            do {
+                refreshedRoom = try await client.refreshRoom(id: roomID)
+            } catch is CancellationError {
+                return
+            } catch {
+                // Park the wake-up revision instead of recursively spinning on
+                // a failing endpoint. Polling, reconnect catch-up, activation,
+                // or a later signal will make another bounded attempt.
+                pendingGameRoomRealtimeRevision = max(
+                    pendingGameRoomRealtimeRevision,
+                    requiredRevision
+                )
+                shouldRescheduleAfterRun =
+                    pendingGameRoomRealtimeRevision > requiredRevision ||
+                    gameRoomRealtimeCatchUpRequested
+                return
+            }
+
+            guard !Task.isCancelled,
+                  generation == gameRoomRealtimeGeneration,
+                  activeRoom?.id == roomID,
+                  roomSyncOperation == nil,
+                  let refreshedRoom else { return }
+
+            let fetchedRevision = refreshedRoom.lobbyRevision ?? 0
+            let currentRevision = activeRoom?.lobbyRevision ?? 0
+            if fetchedRevision >= currentRevision {
+                activeRoom = refreshedRoom
+            }
+
+            let newestRequiredRevision = max(
+                requiredRevision,
+                pendingGameRoomRealtimeRevision
+            )
+            guard fetchedRevision < newestRequiredRevision else {
+                pendingGameRoomRealtimeRevision = 0
+                return
+            }
+
+            pendingGameRoomRealtimeRevision = newestRequiredRevision
+            staleReadAttempts += 1
+            // A malicious or corrupted future revision must not cause an HTTP
+            // storm. Keep it parked and let the regular poll remain the
+            // correctness fallback after three stale reads.
+            guard staleReadAttempts < 3 else { return }
+            do {
+                try await Task.sleep(for: .milliseconds(140 * staleReadAttempts))
+            } catch {
+                return
+            }
+        }
+    }
+
     private func presentFullAccessUnlock() {
         fullAccessUnlockPresentationID = UUID()
     }
@@ -1768,6 +2554,9 @@ final class AppState: NSObject {
     func setRadarApplicationActive(_ isActive: Bool) {
         isApplicationActive = isActive
         radarNearby.setApplicationActive(isActive)
+        if isActive {
+            gameRoomRealtime.resume()
+        }
     }
 
     func markWordPacksChanged() {
@@ -2396,6 +3185,14 @@ final class AppState: NSObject {
                 playerCount: previewPlayerCount ?? 3
             )
             : nil
+        if var previewRoom = activeRoom,
+           let previewDurationMinutes = previewArgumentValue(
+               prefix: "--spyclash-preview-duration-minutes=",
+               in: arguments
+           ).flatMap(Int.init) {
+            previewRoom.gameDurationSeconds = min(max(previewDurationMinutes, 5), 15) * 60
+            activeRoom = previewRoom
+        }
         roomSyncOperation = previewRoomSyncOperation(from: arguments)
         pendingJoinCode = nil
         deepLinkStatus = nil

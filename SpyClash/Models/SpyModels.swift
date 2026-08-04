@@ -2664,6 +2664,81 @@ struct WordPoolEntry: Codable, Hashable, Identifiable {
     }
 }
 
+enum LobbyWordSource: String, Codable, CaseIterable, Hashable {
+    case none
+    case saved
+    case ai
+    case manual
+}
+
+enum LobbyWordCountMode: String, Codable, CaseIterable, Hashable {
+    case recommended
+    case custom
+}
+
+struct LobbyWordPoolEntry: Codable, Hashable, Identifiable {
+    private(set) var serverID: String?
+    var word: String
+    var enabled: Bool
+
+    var id: String {
+        serverID?.nilIfBlank ?? word
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case serverID = "id"
+        case word
+        case enabled
+    }
+
+    init(id: String? = nil, word: String, enabled: Bool = true) {
+        serverID = id
+        self.word = word
+        self.enabled = enabled
+    }
+
+    init(from decoder: Decoder) throws {
+        if let single = try? decoder.singleValueContainer(),
+           let rawWord = try? single.decode(String.self) {
+            serverID = nil
+            word = rawWord
+            enabled = true
+            return
+        }
+
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        serverID = try container.decodeIfPresent(String.self, forKey: .serverID)
+        word = try container.decode(String.self, forKey: .word)
+        enabled = try container.decodeIfPresent(Bool.self, forKey: .enabled) ?? true
+    }
+}
+
+struct LobbyStatePayload: Codable, Hashable {
+    var gameMode: SpyGameMode
+    var gameDurationSeconds: Int
+    var lobbyWordSource: LobbyWordSource
+    var lobbySourcePackID: String?
+    var lobbySourceName: String?
+    var lobbyTheme: String?
+    var lobbyCategory: String?
+    var lobbyWordCount: Int
+    var lobbyWordCountMode: LobbyWordCountMode
+    var lobbyWordPool: [LobbyWordPoolEntry]
+
+    enum CodingKeys: String, CodingKey {
+        case gameMode = "game_mode"
+        case gameDurationSeconds = "game_duration_seconds"
+        case lobbyWordSource = "lobby_word_source"
+        case lobbySourcePackID = "lobby_source_pack_id"
+        case lobbySourceName = "lobby_source_name"
+        case lobbyTheme = "lobby_theme"
+        case lobbyCategory = "lobby_category"
+        case lobbyWordCount = "lobby_word_count"
+        case lobbyWordCountMode = "lobby_word_count_mode"
+        case lobbyWordPool = "lobby_word_pool"
+    }
+}
+
 struct PlayerFeedback: Codable, Hashable {
     let email: String
     let likes: Int
@@ -2697,6 +2772,16 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var currentAnswerFeedback: String?
     var gameMode: String?
     var wordPool: [WordPoolEntry]?
+    var lobbySchemaVersion: Int?
+    var lobbyRevision: Int?
+    var lobbyWordSource: String?
+    var lobbySourcePackID: String?
+    var lobbySourceName: String?
+    var lobbyTheme: String?
+    var lobbyCategory: String?
+    var lobbyWordCount: Int?
+    var lobbyWordCountMode: String?
+    var lobbyWordPool: [LobbyWordPoolEntry]?
     var rouletteTargetEmail: String?
     var spyGuess: String?
     var eliminatedEmails: [String]?
@@ -2802,6 +2887,16 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case currentAnswerFeedback = "current_answer_feedback"
         case gameMode = "game_mode"
         case wordPool = "word_pool"
+        case lobbySchemaVersion = "lobby_schema_version"
+        case lobbyRevision = "lobby_revision"
+        case lobbyWordSource = "lobby_word_source"
+        case lobbySourcePackID = "lobby_source_pack_id"
+        case lobbySourceName = "lobby_source_name"
+        case lobbyTheme = "lobby_theme"
+        case lobbyCategory = "lobby_category"
+        case lobbyWordCount = "lobby_word_count"
+        case lobbyWordCountMode = "lobby_word_count_mode"
+        case lobbyWordPool = "lobby_word_pool"
         case rouletteTargetEmail = "roulette_target_email"
         case spyGuess = "spy_guess"
         case eliminatedEmails = "eliminated_emails"
@@ -2968,6 +3063,16 @@ extension GameRoom {
                 WordPoolEntry(word: "Rooftop"),
                 WordPoolEntry(word: "Checkpoint")
             ],
+            lobbySchemaVersion: 1,
+            lobbyRevision: 0,
+            lobbyWordSource: "none",
+            lobbySourcePackID: nil,
+            lobbySourceName: nil,
+            lobbyTheme: nil,
+            lobbyCategory: nil,
+            lobbyWordCount: 0,
+            lobbyWordCountMode: "recommended",
+            lobbyWordPool: [],
             rouletteTargetEmail: players[0].email,
             spyGuess: nil,
             eliminatedEmails: [],

@@ -102,3 +102,78 @@ Deno.test("finished projection reveals the resolved spy and word", () => {
   assertEquals(projected.word, "Embassy");
   assertEquals(projected.secret_word, "Embassy");
 });
+
+Deno.test("waiting lobby projection synchronizes the safe draft but keeps source identity host-only", () => {
+  const room = {
+    id: "room-1",
+    code: "ABC123",
+    host_email: "host@example.com",
+    status: "waiting",
+    players: [],
+    game_mode: "associations",
+    game_duration_seconds: 300,
+    lobby_schema_version: 1,
+    lobby_revision: 4,
+    lobby_word_source: "saved",
+    lobby_source_pack_id: "pack-private-1",
+    lobby_source_name: "City pack",
+    lobby_theme: "Cities",
+    lobby_category: "Places",
+    lobby_word_count: 2,
+    lobby_word_count_mode: "custom",
+    lobby_word_pool: [
+      { id: "embassy", word: "Embassy", enabled: true },
+      { id: "harbor", word: "Harbor", enabled: false },
+    ],
+    lobby_last_mutation_id: "hidden-mutation",
+    lobby_last_mutation_fingerprint: "hidden-fingerprint",
+  };
+
+  const guest = projectRoomForClient(room, { email: "guest@example.com" });
+  assert(guest);
+  assertEquals(guest.lobby_revision, 4);
+  assertEquals(guest.lobby_word_source, "saved");
+  assertEquals(guest.lobby_source_pack_id, "");
+  assertEquals(guest.lobby_word_count_mode, "custom");
+  assertEquals(guest.lobby_word_pool, [
+    { id: "embassy", word: "Embassy", enabled: true },
+    { id: "harbor", word: "Harbor", enabled: false },
+  ]);
+  assertEquals("lobby_last_mutation_id" in guest, false);
+  assertEquals("lobby_last_mutation_fingerprint" in guest, false);
+
+  const host = projectRoomForClient(room, { email: "HOST@example.com" });
+  assertEquals(host?.lobby_source_pack_id, "pack-private-1");
+});
+
+Deno.test("active-room projection retains only the lobby revision and redacts the draft", () => {
+  const projected = projectRoomForClient(
+    {
+      id: "room-1",
+      code: "ABC123",
+      host_email: "host@example.com",
+      status: "roulette",
+      players: [],
+      lobby_schema_version: 1,
+      lobby_revision: 9,
+      lobby_word_source: "ai",
+      lobby_theme: "Secret theme",
+      lobby_category: "Secret category",
+      lobby_word_count: 2,
+      lobby_word_count_mode: "custom",
+      lobby_word_pool: [
+        { id: "one", word: "Disabled draft word", enabled: false },
+        { id: "two", word: "Selected word", enabled: true },
+      ],
+    },
+    { email: "host@example.com" },
+  );
+  assert(projected);
+  assertEquals(projected.lobby_schema_version, 1);
+  assertEquals(projected.lobby_revision, 9);
+  assertEquals(projected.lobby_word_source, "none");
+  assertEquals(projected.lobby_theme, "");
+  assertEquals(projected.lobby_category, "");
+  assertEquals(projected.lobby_word_count, 0);
+  assertEquals(projected.lobby_word_pool, []);
+});

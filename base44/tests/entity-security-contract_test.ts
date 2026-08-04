@@ -44,6 +44,7 @@ const expectedEntityNames = [
   "Friendship",
   "GameHistory",
   "GameRoom",
+  "GameRoomSignal",
   "LiveActivityRegistration",
   "MembershipGrant",
   "NotificationAnnouncement",
@@ -165,7 +166,7 @@ function assertAdminOnlyPolicy(
   );
 }
 
-Deno.test("all 22 canonical entity schemas are explicit and parseable", async () => {
+Deno.test("all 23 canonical entity schemas are explicit and parseable", async () => {
   const all = await schemas();
   assertEquals([...all.keys()].sort(), expectedEntityNames);
 
@@ -224,6 +225,28 @@ Deno.test("GameHistory authorizes only owner reads while all writes stay server-
     assert(policyAllows(fieldPolicy.write, {}, admin));
     assert(!policyAllows(fieldPolicy.write, {}, owner));
   }
+});
+
+Deno.test("GameRoomSignal exposes only the caller's wake-up row and keeps writes server-owned", async () => {
+  const signal = (await schemas()).get("GameRoomSignal");
+  assert(signal?.rls);
+  const ownerRow = {
+    user_id: owner.id,
+    room_id: "room-1",
+    lobby_revision: 7,
+    state: "active",
+  };
+  assert(policyAllows(signal.rls.read, ownerRow, owner));
+  assert(!policyAllows(signal.rls.read, ownerRow, outsider));
+  assert(policyAllows(signal.rls.read, ownerRow, admin));
+  for (const operation of ["create", "update", "delete"] as const) {
+    assertAdminOnlyPolicy(signal, operation);
+  }
+  assertEquals(signal.properties.state.enum, ["active", "closed"]);
+  assertEquals(
+    Object.keys(signal.properties).sort(),
+    ["lobby_revision", "room_id", "state", "user_id"],
+  );
 });
 
 Deno.test("MembershipGrant exposes only the caller's grant and hides support labels", async () => {
@@ -325,7 +348,20 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
       "intro_started_at",
       "game_paused_at",
       "game_paused_total_seconds",
+      "lobby_schema_version",
+      "lobby_revision",
+      "lobby_word_source",
+      "lobby_source_pack_id",
+      "lobby_source_name",
+      "lobby_theme",
+      "lobby_category",
+      "lobby_word_count",
+      "lobby_word_count_mode",
+      "lobby_word_pool",
+      "lobby_last_mutation_id",
+      "lobby_last_mutation_fingerprint",
     ],
+    GameRoomSignal: ["user_id", "room_id", "lobby_revision", "state"],
     RoomInvite: ["notification_event_id"],
     WordPack: ["owner_user_id"],
     AppStoreAccount: ["reservation_state"],

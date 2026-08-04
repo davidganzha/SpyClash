@@ -1,0 +1,39 @@
+{
+  "name": "GameRoomSignal",
+  "description": "Per-participant realtime wake-up hint for an authoritative lobby revision. Clients fetch the mediated room projection after observing a signal; no room secret or raw lobby payload is stored here.",
+  "type": "object",
+  "properties": {
+    "user_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Stable authenticated recipient id."
+    },
+    "room_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Room whose projected state should be refreshed."
+    },
+    "lobby_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Latest committed authoritative lobby revision known to the signal writer."
+    },
+    "state": {
+      "type": "string",
+      "enum": ["active", "closed"],
+      "description": "Whether the client should refresh an active room or discard a closed-room subscription."
+    }
+  },
+  "required": ["user_id", "room_id", "lobby_revision", "state"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "data.user_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

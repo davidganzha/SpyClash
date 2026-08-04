@@ -212,89 +212,335 @@ final class OnlineRoundStateTests: XCTestCase {
         XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 8, isApplicationActive: true), 8)
         XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 0, isApplicationActive: false), 5)
     }
+
+    func testRoomPollPolicyRejectsLobbySnapshotOlderThanCurrentRevision() {
+        XCTAssertFalse(
+            RoomPollPolicy.acceptsSnapshot(
+                currentLobbyRevision: 9,
+                fetchedLobbyRevision: 8
+            )
+        )
+        XCTAssertTrue(
+            RoomPollPolicy.acceptsSnapshot(
+                currentLobbyRevision: 9,
+                fetchedLobbyRevision: 9
+            )
+        )
+        XCTAssertTrue(
+            RoomPollPolicy.acceptsSnapshot(
+                currentLobbyRevision: nil,
+                fetchedLobbyRevision: nil
+            )
+        )
+    }
 }
 
-final class OnlineDurationSyncStateTests: XCTestCase {
-    func testReleaseClaimsLockBeforeAsyncRequestCanStart() throws {
-        var state = OnlineDurationSyncState()
+final class LobbyLatestWinsStateTests: XCTestCase {
+    func testNewDurationIntentDoesNotWaitForPriorRequestToFinish() throws {
+        var state = LobbyLatestWinsState()
+        state.reset(confirmedRevision: 4)
+        state.enqueue(roomID: "room-1", state: payload(duration: 480))
+        let first = try XCTUnwrap(state.beginNext())
 
-        let request = try XCTUnwrap(
-            state.begin(
-                roomID: "room-1",
-                requestedMinutes: 8,
-                confirmedDurationSeconds: 900
-            )
-        )
+        state.enqueue(roomID: "room-1", state: payload(duration: 720))
 
-        XCTAssertTrue(state.isLocked)
-        XCTAssertTrue(state.isCurrent(request))
-        XCTAssertFalse(state.acceptsRemoteUpdate(isDragging: false))
+        XCTAssertTrue(state.hasOptimisticChanges)
+        XCTAssertFalse(state.finish(first, confirmedRevision: 5))
+        let second = try XCTUnwrap(state.beginNext())
+        XCTAssertEqual(second.expectedRevision, 5)
+        XCTAssertEqual(second.intent.state.gameDurationSeconds, 720)
+        XCTAssertTrue(state.finish(second, confirmedRevision: 6))
+        XCTAssertFalse(state.hasOptimisticChanges)
     }
 
-    func testOnlyOneDurationMutationCanBePending() throws {
-        var state = OnlineDurationSyncState()
-        let first = try XCTUnwrap(
-            state.begin(
+    func testPendingIntentCoalescesToLatestModeAndDuration() throws {
+        var state = LobbyLatestWinsState()
+        state.enqueue(roomID: "room-1", state: payload(duration: 300))
+        state.enqueue(
+            roomID: "room-1",
+            state: payload(duration: 600, mode: .associations)
+        )
+
+        let request = try XCTUnwrap(state.beginNext())
+        XCTAssertEqual(request.intent.state.gameDurationSeconds, 600)
+        XCTAssertEqual(request.intent.state.gameMode, .associations)
+    }
+
+    func testIdenticalLatestPayloadIsRecognizedWithoutCreatingRevisionChurn() throws {
+        var state = LobbyLatestWinsState()
+        let current = payload(duration: 300)
+
+        state.enqueue(roomID: "room-1", state: current)
+        XCTAssertTrue(state.latestStateMatches(roomID: "room-1", state: current))
+
+        _ = try XCTUnwrap(state.beginNext())
+        XCTAssertTrue(state.latestStateMatches(roomID: "room-1", state: current))
+        XCTAssertFalse(
+            state.latestStateMatches(
                 roomID: "room-1",
-                requestedMinutes: 8,
-                confirmedDurationSeconds: 900
+                state: payload(duration: 360)
             )
         )
+    }
+
+    func testConflictRetryKeepsMutationIdentityAndUsesFreshRevision() throws {
+        var state = LobbyLatestWinsState()
+        state.reset(confirmedRevision: 7)
+        state.enqueue(roomID: "room-1", state: payload(duration: 360))
+        let first = try XCTUnwrap(state.beginNext())
+
+        XCTAssertTrue(state.fail(first, retry: true))
+        state.reconcile(confirmedRevision: 9)
+        let retry = try XCTUnwrap(state.beginNext())
+
+        XCTAssertEqual(retry.intent.mutationID, first.intent.mutationID)
+        XCTAssertEqual(retry.expectedRevision, 9)
+        XCTAssertEqual(retry.intent.retryCount, 1)
+    }
+
+    func testPendingIntentClearsWhenUserReturnsToConfirmedState() {
+        var state = LobbyLatestWinsState()
+        let confirmed = payload(duration: 300)
+
+        XCTAssertTrue(
+            state.enqueueLatest(
+                roomID: "room-1",
+                state: payload(duration: 600),
+                confirmedState: confirmed
+            )
+        )
+        XCTAssertFalse(
+            state.enqueueLatest(
+                roomID: "room-1",
+                state: confirmed,
+                confirmedState: confirmed
+            )
+        )
+        XCTAssertFalse(state.hasOptimisticChanges)
+    }
+
+    func testReturningToInflightStateDropsNewerPendingIntent() throws {
+        var state = LobbyLatestWinsState()
+        let inflightState = payload(duration: 300)
+        state.enqueue(roomID: "room-1", state: inflightState)
+        _ = try XCTUnwrap(state.beginNext())
+
+        _ = state.enqueueLatest(
+            roomID: "room-1",
+            state: payload(duration: 600),
+            confirmedState: payload(duration: 900)
+        )
+        XCTAssertTrue(state.hasPendingIntent)
+
+        XCTAssertFalse(
+            state.enqueueLatest(
+                roomID: "room-1",
+                state: inflightState,
+                confirmedState: payload(duration: 900)
+            )
+        )
+        XCTAssertFalse(state.hasPendingIntent)
+        XCTAssertTrue(state.hasOptimisticChanges)
+    }
+
+    func testServerWordIDsDoNotCreateSemanticLobbyChange() {
+        var local = payload(duration: 300)
+        local.lobbyWordSource = .manual
+        local.lobbyWordCount = 2
+        local.lobbyWordPool = [
+            LobbyWordPoolEntry(word: "  Cafe\u{301}   Noir ", enabled: true),
+            LobbyWordPoolEntry(word: "Cipher", enabled: false)
+        ]
+        var server = local
+        server.lobbyWordPool = [
+            LobbyWordPoolEntry(id: "lw_1", word: "Café Noir", enabled: true),
+            LobbyWordPoolEntry(id: "lw_2", word: "Cipher", enabled: false)
+        ]
+
+        XCTAssertTrue(local.equivalentForLobbySync(to: server))
+    }
+
+    private func payload(
+        duration: Int,
+        mode: SpyGameMode = .questions
+    ) -> LobbyStatePayload {
+        LobbyStatePayload(
+            gameMode: mode,
+            gameDurationSeconds: duration,
+            lobbyWordSource: .none,
+            lobbySourcePackID: nil,
+            lobbySourceName: nil,
+            lobbyTheme: nil,
+            lobbyCategory: nil,
+            lobbyWordCount: 0,
+            lobbyWordCountMode: .recommended,
+            lobbyWordPool: []
+        )
+    }
+}
+
+final class LobbySyncRetryPolicyTests: XCTestCase {
+    func testOnlyTypedLobbyConflictTriggersRevisionRefresh() {
+        XCTAssertTrue(
+            LobbySyncRetryPolicy.isRevisionConflict(
+                Base44Error(
+                    message: "Room changed",
+                    statusCode: 409,
+                    code: "lobby_revision_conflict"
+                )
+            )
+        )
+        XCTAssertFalse(
+            LobbySyncRetryPolicy.isRevisionConflict(
+                Base44Error(
+                    message: "Ready voting started",
+                    statusCode: 409,
+                    code: "room_status_conflict"
+                )
+            )
+        )
+    }
+
+    func testTransientNetworkLossAndServerFailureAreRetryable() {
+        XCTAssertTrue(
+            LobbySyncRetryPolicy.isRetryable(
+                URLError(.networkConnectionLost)
+            )
+        )
+        XCTAssertTrue(
+            LobbySyncRetryPolicy.isRetryable(
+                Base44Error(message: "Unavailable", statusCode: 503)
+            )
+        )
+        XCTAssertFalse(
+            LobbySyncRetryPolicy.isRetryable(
+                Base44Error(message: "Invalid", statusCode: 422)
+            )
+        )
+        XCTAssertFalse(
+            LobbySyncRetryPolicy.isRetryable(
+                URLError(.cancelled)
+            )
+        )
+    }
+}
+
+final class LobbyDraftPoolPolicyTests: XCTestCase {
+    func testInvalidatedGeneratedDraftDoesNotReusePreviousAuthoritativePool() {
+        XCTAssertEqual(
+            LobbyDraftPoolPolicy.generatedPayloadWords(
+                localWords: nil,
+                priorAuthoritativeWords: ["Embassy", "Cipher"]
+            ),
+            []
+        )
+        XCTAssertEqual(
+            LobbyDraftPoolPolicy.generatedPayloadWords(
+                localWords: ["Orbit", "Comet"],
+                priorAuthoritativeWords: ["Embassy", "Cipher"]
+            ),
+            ["Orbit", "Comet"]
+        )
+    }
+}
+
+final class GameRoomRealtimeSignalParserTests: XCTestCase {
+    func testAcceptsOnlyExactUserRoomAndEntityEnvelope() throws {
+        let entityRoom = "entities:app-1:GameRoomSignal"
+        let event: [String: Any] = [
+            "type": "update",
+            "id": "signal-1",
+            "data": [
+                "user_id": "user-1",
+                "room_id": "room-1",
+                "lobby_revision": 8,
+                "state": "active"
+            ]
+        ]
+        let encoded = try JSONSerialization.data(withJSONObject: event)
+        let envelope: [String: Any] = [
+            "room": entityRoom,
+            "data": try XCTUnwrap(String(data: encoded, encoding: .utf8))
+        ]
+
+        XCTAssertEqual(
+            GameRoomRealtimeSignalParser.parse(
+                payload: [envelope],
+                expectedEntityRoom: entityRoom,
+                expectedUserID: "user-1",
+                expectedRoomID: "room-1"
+            ),
+            GameRoomRealtimeSignal(roomID: "room-1", lobbyRevision: 8, state: "active")
+        )
+        XCTAssertNil(
+            GameRoomRealtimeSignalParser.parse(
+                payload: [envelope],
+                expectedEntityRoom: entityRoom,
+                expectedUserID: "user-2",
+                expectedRoomID: "room-1"
+            )
+        )
+        XCTAssertNil(
+            GameRoomRealtimeSignalParser.parse(
+                payload: [envelope],
+                expectedEntityRoom: entityRoom,
+                expectedUserID: "user-1",
+                expectedRoomID: "room-2"
+            )
+        )
+    }
+
+    func testRejectsMalformedOrNonPositiveRevision() throws {
+        let entityRoom = "entities:app-1:GameRoomSignal"
+        let event: [String: Any] = [
+            "type": "update",
+            "data": [
+                "user_id": "user-1",
+                "room_id": "room-1",
+                "lobby_revision": 0,
+                "state": "active"
+            ]
+        ]
+        let encoded = try JSONSerialization.data(withJSONObject: event)
+        let envelope: [String: Any] = [
+            "room": entityRoom,
+            "data": try XCTUnwrap(String(data: encoded, encoding: .utf8))
+        ]
 
         XCTAssertNil(
-            state.begin(
-                roomID: "room-1",
-                requestedMinutes: 12,
-                confirmedDurationSeconds: 900
+            GameRoomRealtimeSignalParser.parse(
+                payload: [envelope],
+                expectedEntityRoom: entityRoom,
+                expectedUserID: "user-1",
+                expectedRoomID: "room-1"
             )
         )
-        XCTAssertTrue(state.finish(first))
-        XCTAssertFalse(state.isLocked)
-        XCTAssertNotNil(
-            state.begin(
-                roomID: "room-1",
-                requestedMinutes: 12,
-                confirmedDurationSeconds: 480
+        XCTAssertNil(
+            GameRoomRealtimeSignalParser.parse(
+                payload: [["room": entityRoom, "data": "not-json"]],
+                expectedEntityRoom: entityRoom,
+                expectedUserID: "user-1",
+                expectedRoomID: "room-1"
             )
         )
-    }
 
-    func testDraggingAndPendingDurationRejectRemoteSnapshots() throws {
-        var state = OnlineDurationSyncState()
-        XCTAssertFalse(state.acceptsRemoteUpdate(isDragging: true))
-        XCTAssertTrue(state.acceptsRemoteUpdate(isDragging: false))
-
-        _ = try XCTUnwrap(
-            state.begin(
-                roomID: "room-1",
-                requestedMinutes: 8,
-                confirmedDurationSeconds: 900
+        var oversizedEvent = event
+        var oversizedData = try XCTUnwrap(oversizedEvent["data"] as? [String: Any])
+        oversizedData["lobby_revision"] = 1e20
+        oversizedEvent["data"] = oversizedData
+        let oversizedEncoded = try JSONSerialization.data(withJSONObject: oversizedEvent)
+        let oversizedEnvelope: [String: Any] = [
+            "room": entityRoom,
+            "data": try XCTUnwrap(String(data: oversizedEncoded, encoding: .utf8))
+        ]
+        XCTAssertNil(
+            GameRoomRealtimeSignalParser.parse(
+                payload: [oversizedEnvelope],
+                expectedEntityRoom: entityRoom,
+                expectedUserID: "user-1",
+                expectedRoomID: "room-1"
             )
         )
-        XCTAssertFalse(state.acceptsRemoteUpdate(isDragging: false))
-    }
-
-    func testStaleCompletionCannotUnlockNewDurationMutation() throws {
-        var state = OnlineDurationSyncState()
-        let first = try XCTUnwrap(
-            state.begin(
-                roomID: "room-1",
-                requestedMinutes: 8,
-                confirmedDurationSeconds: 900
-            )
-        )
-        XCTAssertTrue(state.finish(first))
-
-        let second = try XCTUnwrap(
-            state.begin(
-                roomID: "room-1",
-                requestedMinutes: 12,
-                confirmedDurationSeconds: 480
-            )
-        )
-        XCTAssertFalse(state.finish(first))
-        XCTAssertTrue(state.isCurrent(second))
-        XCTAssertTrue(state.isLocked)
     }
 }
 

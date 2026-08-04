@@ -5,9 +5,9 @@ import {
   gameDurationPatch,
   gameModePatch,
   leaveAlreadyComplete,
-  roomHasParticipantIdentity,
   roomHasGameDuration,
   roomHasGameMode,
+  roomHasParticipantIdentity,
   validatedGameDuration,
   validatedGameMode,
 } from "./room-interaction-safety.ts";
@@ -76,7 +76,7 @@ Deno.test("only the host may change waiting-lobby settings", () => {
   );
   assertEquals(status(nonHost), 403);
 
-  for (const setting of ["mode", "duration"] as const) {
+  for (const setting of ["mode", "duration", "lobby"] as const) {
     const activeGame = assertThrows(
       () =>
         assertLobbySettingsAccess(

@@ -20,6 +20,20 @@ const entitiesURL = new URL("../entities/", import.meta.url);
 const functionsURL = new URL("../functions/", import.meta.url);
 const expectedStepZeroSchemaDigest =
   "f09988b0e0b5c5e93a55c4738e47ba20b160bd536ee0cacd65337fa05fd674af";
+const postNotificationLobbyFields = [
+  "lobby_schema_version",
+  "lobby_revision",
+  "lobby_word_source",
+  "lobby_source_pack_id",
+  "lobby_source_name",
+  "lobby_theme",
+  "lobby_category",
+  "lobby_word_count",
+  "lobby_word_count_mode",
+  "lobby_word_pool",
+  "lobby_last_mutation_id",
+  "lobby_last_mutation_fingerprint",
+];
 
 const expectedEntities = [
   "AiGenerationQuota",
@@ -34,6 +48,7 @@ const expectedEntities = [
   "Friendship",
   "GameHistory",
   "GameRoom",
+  "GameRoomSignal",
   "LiveActivityRegistration",
   "MembershipGrant",
   "NotificationAnnouncement",
@@ -146,6 +161,16 @@ async function makeFixture(): Promise<{
   });
   await Deno.writeTextFile(log, "");
   return { root, bin, home, log };
+}
+
+async function pinHistoricalNotificationEntityFixture(root: string) {
+  await Deno.remove(`${root}/base44/entities/game-room-signal.jsonc`);
+  const roomPath = `${root}/base44/entities/GameRoom.jsonc`;
+  const room = JSON.parse(await Deno.readTextFile(roomPath));
+  for (const field of postNotificationLobbyFields) {
+    delete room.properties[field];
+  }
+  await writePrivateJSON(roomPath, room);
 }
 
 async function writeFakeNetworkCommands(
@@ -262,6 +287,7 @@ Deno.test("notification cutover scripts are valid Bash", async () => {
 Deno.test("Step A read-only prepare builds the exact 20 to 22 candidate without a mutation", async () => {
   const fixture = await makeFixture();
   try {
+    await pinHistoricalNotificationEntityFixture(fixture.root);
     await Deno.copyFile(
       schemaScriptURL,
       `${fixture.root}/scripts/cutover-base44-notification-schema.sh`,
@@ -426,6 +452,7 @@ Deno.test("Step A read-only prepare builds the exact 20 to 22 candidate without 
 Deno.test("Step B read-only prepare binds exact Step A evidence and the 16 to 17 source delta", async () => {
   const fixture = await makeFixture();
   try {
+    await pinHistoricalNotificationEntityFixture(fixture.root);
     await Deno.copyFile(
       functionScriptURL,
       `${fixture.root}/scripts/cutover-base44-notification-functions.sh`,
@@ -734,7 +761,7 @@ Deno.test("Step B binds 16 to 17 sources and preserves all non-targets", async (
   assertEquals(source.includes("sites deploy"), false);
 });
 
-Deno.test("canonical notification inventory is exactly 22 entities and 17 functions", async () => {
+Deno.test("canonical inventory is exactly 23 entities and 17 functions", async () => {
   const entityNames: string[] = [];
   for await (const entry of Deno.readDir(entitiesURL)) {
     if (!entry.isFile || !entry.name.endsWith(".jsonc")) continue;

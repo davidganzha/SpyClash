@@ -10,7 +10,7 @@ function statusError(message: string, status: number, code?: string): Error {
 }
 
 export type SpyClashGameMode = "questions" | "associations";
-export type LobbySetting = "mode" | "duration";
+export type LobbySetting = "mode" | "duration" | "lobby";
 
 export function roomHasParticipantIdentity(
   room: Record<string, unknown> | null | undefined,
@@ -50,10 +50,13 @@ export function assertLobbySettingsAccess(
     throw statusError("Host access required", 403);
   }
   if (clean(room?.status || "waiting").toLowerCase() !== "waiting") {
+    const message = setting === "mode"
+      ? "Game mode can only change in the lobby"
+      : setting === "duration"
+      ? "Duration can only change in the lobby"
+      : "Lobby state can only change while waiting";
     throw statusError(
-      setting === "mode"
-        ? "Game mode can only change in the lobby"
-        : "Duration can only change in the lobby",
+      message,
       409,
     );
   }

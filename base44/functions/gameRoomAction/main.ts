@@ -55,6 +55,15 @@ import {
   validatedGameMode,
 } from "./room-interaction-safety.ts";
 import { hasValidEnabledStartWordPool } from "./start-word-pool-policy.ts";
+import {
+  assertAuthoritativeLobbyReady,
+  authoritativeStartPayload,
+  hasAuthoritativeLobbyState,
+  lobbyMutationPatch,
+  roomHasLobbyMutation,
+  validateLobbyMutation,
+} from "./lobby-state-policy.ts";
+import { fanoutGameRoomSignalsBestEffort } from "./game-room-signal.ts";
 
 function jsonError(message, status = 400) {
   return Response.json({ error: message }, { status });
@@ -601,6 +610,18 @@ async function createRoom(base44, user, body) {
     participant_user_ids: [clean(user.id)],
     game_mode: "questions",
     game_duration_seconds: 900,
+    lobby_schema_version: 1,
+    lobby_revision: 0,
+    lobby_word_source: "none",
+    lobby_source_pack_id: "",
+    lobby_source_name: "",
+    lobby_theme: "",
+    lobby_category: "",
+    lobby_word_count: 0,
+    lobby_word_count_mode: "recommended",
+    lobby_word_pool: [],
+    lobby_last_mutation_id: "",
+    lobby_last_mutation_fingerprint: "",
     intro_started_at: null,
     game_started_at: null,
     game_paused_at: null,
@@ -682,6 +703,7 @@ async function beginReadyCheck(base44, room, user) {
       status: 400,
     });
   }
+  assertAuthoritativeLobbyReady(room);
   return await updateRoom(base44, room, {
     status: "ready_voting",
     ready_players: [],
@@ -759,6 +781,12 @@ async function resetRoomForReplay(base44, room, user, body) {
       { status: 409, code: "replay_before_terminal_commit" },
     );
   }
+  const legacyLobbySettings = hasAuthoritativeLobbyState(room) ? {} : {
+    game_mode: clean(body?.game_mode) || clean(room.game_mode) || "questions",
+    game_duration_seconds: Number(
+      body?.game_duration_seconds || room.game_duration_seconds || 900,
+    ),
+  };
   return await updateRoom(base44, room, {
     status: "waiting",
     spy_email: "",
@@ -792,10 +820,7 @@ async function resetRoomForReplay(base44, room, user, body) {
     game_started_event_id: "",
     game_finished_event_id: "",
     countdown_started_at: null,
-    game_mode: clean(body?.game_mode) || clean(room.game_mode) || "questions",
-    game_duration_seconds: Number(
-      body?.game_duration_seconds || room.game_duration_seconds || 900,
-    ),
+    ...legacyLobbySettings,
   });
 }
 
@@ -825,6 +850,32 @@ async function updateGameDuration(base44, room, user, body) {
     },
     (latest) => roomHasGameDuration(latest, durationSeconds),
   );
+}
+
+async function updateLobbyState(base44, room, user, body) {
+  assertLobbySettingsAccess(room, user, "lobby");
+  const mutation = validateLobbyMutation({
+    mutation_id: body?.mutation_id,
+    expected_revision: body?.expected_revision,
+    state: body?.state,
+  });
+  const updated = await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) => {
+      assertLobbySettingsAccess(latest, user, "lobby");
+      return lobbyMutationPatch(latest, mutation);
+    },
+    (latest) => roomHasLobbyMutation(latest, mutation),
+  );
+
+  await fanoutGameRoomSignalsBestEffort({
+    store: base44.asServiceRole.entities.GameRoomSignal,
+    room: updated,
+    logError: (message, error) =>
+      console.error(message, error?.message || error),
+  });
+  return updated;
 }
 
 function validatedStartPatch(room, payload) {
@@ -940,7 +991,12 @@ async function armRoulette(base44, room, user, body) {
     });
   }
 
-  const startPatch = validatedStartPatch(room, body?.plan || {});
+  const startPayload = authoritativeStartPayload(
+    room,
+    body?.plan || {},
+    body?.expected_lobby_revision,
+  );
+  const startPatch = validatedStartPatch(room, startPayload);
   return await updateRoom(base44, room, {
     ...startPatch,
     ...serverIntroStartPatch(),
@@ -1596,6 +1652,8 @@ async function executeRoomAction(base44, action, room, user, body) {
       return await updateGameMode(base44, room, user, body);
     case "update_game_duration":
       return await updateGameDuration(base44, room, user, body);
+    case "update_lobby_state":
+      return await updateLobbyState(base44, room, user, body);
     case "arm_roulette":
       return await armRoulette(base44, room, user, body);
     case "complete_game_start":

@@ -109,6 +109,66 @@
       "type": "string",
       "enum": ["questions", "associations"],
       "default": "questions"
+    },
+    "lobby_schema_version": {
+      "type": "integer",
+      "minimum": 1,
+      "default": 1,
+      "description": "Version of the additive authoritative lobby-state contract."
+    },
+    "lobby_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Server-incremented revision for atomic host lobby snapshots."
+    },
+    "lobby_word_source": {
+      "type": "string",
+      "enum": ["none", "saved", "ai", "manual"],
+      "default": "none"
+    },
+    "lobby_source_pack_id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Optional source-pack identity. Exposed only to the host by gameRoomAction projection."
+    },
+    "lobby_source_name": { "type": "string", "maxLength": 120 },
+    "lobby_theme": { "type": "string", "maxLength": 120 },
+    "lobby_category": { "type": "string", "maxLength": 120 },
+    "lobby_word_count": {
+      "type": "integer",
+      "minimum": 0,
+      "maximum": 200,
+      "default": 0
+    },
+    "lobby_word_count_mode": {
+      "type": "string",
+      "enum": ["recommended", "custom"],
+      "default": "recommended"
+    },
+    "lobby_word_pool": {
+      "type": "array",
+      "maxItems": 200,
+      "items": { "type": "object" },
+      "description": "Server-canonical lobby draft entries {id, word, enabled}; separate from the frozen gameplay word_pool."
+    },
+    "lobby_last_mutation_id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Latest host mutation id used for bounded idempotent replay.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "lobby_last_mutation_fingerprint": {
+      "type": "string",
+      "maxLength": 64,
+      "description": "Internal fingerprint binding the latest mutation id to its canonical snapshot.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
     }
   },
   "required": ["code", "host_email", "status"],

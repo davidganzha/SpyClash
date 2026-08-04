@@ -349,6 +349,21 @@ final class Base44Client {
         )
     }
 
+    func updateLobbyState(
+        room: GameRoom,
+        mutationID: String,
+        expectedRevision: Int,
+        state: LobbyStatePayload
+    ) async throws -> GameRoom {
+        try await roomAction(
+            "update_lobby_state",
+            roomID: room.id,
+            mutationID: mutationID,
+            expectedRevision: expectedRevision,
+            state: state
+        )
+    }
+
     func makeGameStartPlan(
         room: GameRoom,
         wordPacks: [WordPack],
@@ -408,7 +423,8 @@ final class Base44Client {
             "arm_roulette",
             roomID: room.id,
             plan: plan.payload,
-            rouletteTargetEmail: plan.rouletteTargetEmail
+            rouletteTargetEmail: plan.rouletteTargetEmail,
+            expectedLobbyRevision: room.lobbyRevision
         )
     }
 
@@ -1297,7 +1313,11 @@ final class Base44Client {
         rouletteTargetEmail: String? = nil,
         targetEmail: String? = nil,
         guess: String? = nil,
-        winner: String? = nil
+        winner: String? = nil,
+        mutationID: String? = nil,
+        expectedRevision: Int? = nil,
+        state: LobbyStatePayload? = nil,
+        expectedLobbyRevision: Int? = nil
     ) async throws -> GameRoom {
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
@@ -1323,7 +1343,11 @@ final class Base44Client {
                 rouletteTargetEmail: rouletteTargetEmail,
                 targetEmail: targetEmail,
                 guess: guess,
-                winner: winner
+                winner: winner,
+                mutationID: mutationID,
+                expectedRevision: expectedRevision,
+                state: state,
+                expectedLobbyRevision: expectedLobbyRevision
             ),
             includeAuthorization: false
         )
@@ -1916,6 +1940,10 @@ private struct GameRoomActionPayload: Encodable {
     let targetEmail: String?
     let guess: String?
     let winner: String?
+    let mutationID: String?
+    let expectedRevision: Int?
+    let state: LobbyStatePayload?
+    let expectedLobbyRevision: Int?
 
     init(
         action: String,
@@ -1930,7 +1958,11 @@ private struct GameRoomActionPayload: Encodable {
         rouletteTargetEmail: String? = nil,
         targetEmail: String? = nil,
         guess: String? = nil,
-        winner: String? = nil
+        winner: String? = nil,
+        mutationID: String? = nil,
+        expectedRevision: Int? = nil,
+        state: LobbyStatePayload? = nil,
+        expectedLobbyRevision: Int? = nil
     ) {
         self.action = action
         self.accessToken = accessToken
@@ -1945,6 +1977,10 @@ private struct GameRoomActionPayload: Encodable {
         self.targetEmail = targetEmail
         self.guess = guess
         self.winner = winner
+        self.mutationID = mutationID
+        self.expectedRevision = expectedRevision
+        self.state = state
+        self.expectedLobbyRevision = expectedLobbyRevision
     }
 
     enum CodingKeys: String, CodingKey {
@@ -1961,6 +1997,10 @@ private struct GameRoomActionPayload: Encodable {
         case targetEmail = "target_email"
         case guess
         case winner
+        case mutationID = "mutation_id"
+        case expectedRevision = "expected_revision"
+        case state
+        case expectedLobbyRevision = "expected_lobby_revision"
     }
 }
 
