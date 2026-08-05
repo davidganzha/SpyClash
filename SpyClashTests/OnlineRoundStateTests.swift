@@ -515,6 +515,166 @@ final class LobbySyncFeedbackStateTests: XCTestCase {
     }
 }
 
+final class WaitingStartActionModeTests: XCTestCase {
+    func testSyncSequenceBlocksStartUntilConfirmationDwellEnds() {
+        let confirmationID = UUID()
+
+        XCTAssertEqual(
+            mode(feedbackPhase: .hidden),
+            .action
+        )
+        XCTAssertEqual(
+            mode(feedbackPhase: .syncing, hasOptimisticChanges: true),
+            .syncing
+        )
+        XCTAssertEqual(
+            mode(feedbackPhase: .serverConfirmed(confirmationID)),
+            .serverConfirmed(confirmationID)
+        )
+        XCTAssertTrue(WaitingStartActionMode.syncing.blocksStart)
+        XCTAssertTrue(WaitingStartActionMode.serverConfirmed(confirmationID).blocksStart)
+        XCTAssertFalse(WaitingStartActionMode.action.blocksStart)
+    }
+
+    func testNewEditImmediatelyReplacesSavedStateWithSyncing() {
+        let resolved = mode(
+            feedbackPhase: .serverConfirmed(UUID()),
+            isEditingLobbySlider: true
+        )
+
+        XCTAssertEqual(resolved, .syncing)
+        XCTAssertTrue(resolved.blocksStart)
+    }
+
+    func testFailureReplacesStartAndRemainsBlocked() {
+        let resolved = mode(
+            feedbackPhase: .syncing,
+            hasSyncFailure: true
+        )
+
+        XCTAssertEqual(resolved, .failed)
+        XCTAssertTrue(resolved.blocksStart)
+    }
+
+    func testReadyLobbyWithoutAuthoritativeConfirmationShowsSyncing() {
+        XCTAssertEqual(
+            mode(
+                feedbackPhase: .hidden,
+                requiresServerConfirmation: true,
+                isServerConfirmed: false
+            ),
+            .syncing
+        )
+        XCTAssertEqual(
+            mode(
+                feedbackPhase: .serverConfirmed(UUID()),
+                requiresServerConfirmation: true,
+                isServerConfirmed: false
+            ),
+            .syncing
+        )
+    }
+
+    private func mode(
+        feedbackPhase: LobbySyncFeedbackPhase,
+        isEditingLobbySlider: Bool = false,
+        hasOptimisticChanges: Bool = false,
+        hasSyncFailure: Bool = false,
+        requiresServerConfirmation: Bool = false,
+        isServerConfirmed: Bool = true
+    ) -> WaitingStartActionMode {
+        WaitingStartActionMode.resolve(
+            feedbackPhase: feedbackPhase,
+            isEditingLobbySlider: isEditingLobbySlider,
+            hasOptimisticChanges: hasOptimisticChanges,
+            hasSyncFailure: hasSyncFailure,
+            requiresServerConfirmation: requiresServerConfirmation,
+            isServerConfirmed: isServerConfirmed
+        )
+    }
+}
+
+final class LobbyStartGateTests: XCTestCase {
+    func testRequiresPositiveRevisionAndMatchingAuthoritativeState() {
+        let confirmed = payload(duration: 600)
+
+        XCTAssertFalse(isConfirmed(revision: 0, authoritative: confirmed, local: confirmed))
+        XCTAssertTrue(isConfirmed(revision: 4, authoritative: confirmed, local: confirmed))
+        XCTAssertFalse(
+            isConfirmed(
+                revision: 4,
+                authoritative: confirmed,
+                local: payload(duration: 720)
+            )
+        )
+    }
+
+    func testEditingPendingAndFailureEachBlockStart() {
+        let confirmed = payload(duration: 600)
+
+        XCTAssertFalse(
+            isConfirmed(
+                revision: 4,
+                authoritative: confirmed,
+                local: confirmed,
+                isEditingLobbySlider: true
+            )
+        )
+        XCTAssertFalse(
+            isConfirmed(
+                revision: 4,
+                authoritative: confirmed,
+                local: confirmed,
+                hasOptimisticChanges: true
+            )
+        )
+        XCTAssertFalse(
+            isConfirmed(
+                revision: 4,
+                authoritative: confirmed,
+                local: confirmed,
+                hasSyncFailure: true
+            )
+        )
+    }
+
+    private func isConfirmed(
+        revision: Int,
+        authoritative: LobbyStatePayload?,
+        local: LobbyStatePayload,
+        isEditingLobbySlider: Bool = false,
+        hasOptimisticChanges: Bool = false,
+        hasSyncFailure: Bool = false
+    ) -> Bool {
+        LobbyStartGate.isServerConfirmed(
+            roomRevision: revision,
+            authoritativeState: authoritative,
+            localState: local,
+            hasOptimisticChanges: hasOptimisticChanges,
+            hasSyncFailure: hasSyncFailure,
+            isEditingLobbySlider: isEditingLobbySlider
+        )
+    }
+
+    private func payload(duration: Int) -> LobbyStatePayload {
+        LobbyStatePayload(
+            gameMode: .questions,
+            gameDurationSeconds: duration,
+            lobbyWordSource: .manual,
+            lobbySourcePackID: nil,
+            lobbySourceName: "Manual",
+            lobbyTheme: "Cities",
+            lobbyCategory: "Cities",
+            lobbyWordCount: 2,
+            lobbyWordCountMode: .custom,
+            lobbyWordPool: [
+                LobbyWordPoolEntry(word: "Kyiv", enabled: true),
+                LobbyWordPoolEntry(word: "London", enabled: true)
+            ]
+        )
+    }
+}
+
 final class LobbySyncRetryPolicyTests: XCTestCase {
     func testOnlyTypedLobbyConflictTriggersRevisionRefresh() {
         XCTAssertTrue(

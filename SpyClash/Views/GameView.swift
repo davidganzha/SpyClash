@@ -12,6 +12,61 @@ enum LobbySyncFeedbackPhase: Equatable {
     }
 }
 
+enum WaitingStartActionMode: Equatable {
+    case action
+    case syncing
+    case serverConfirmed(UUID)
+    case failed
+
+    var blocksStart: Bool {
+        self != .action
+    }
+
+    static func resolve(
+        feedbackPhase: LobbySyncFeedbackPhase,
+        isEditingLobbySlider: Bool,
+        hasOptimisticChanges: Bool,
+        hasSyncFailure: Bool,
+        requiresServerConfirmation: Bool,
+        isServerConfirmed: Bool
+    ) -> WaitingStartActionMode {
+        if isEditingLobbySlider || hasOptimisticChanges {
+            return .syncing
+        }
+        if hasSyncFailure {
+            return .failed
+        }
+        if feedbackPhase == .syncing {
+            return .syncing
+        }
+        if requiresServerConfirmation, !isServerConfirmed {
+            return .syncing
+        }
+        if case let .serverConfirmed(confirmationID) = feedbackPhase {
+            return .serverConfirmed(confirmationID)
+        }
+        return .action
+    }
+}
+
+enum LobbyStartGate {
+    static func isServerConfirmed(
+        roomRevision: Int?,
+        authoritativeState: LobbyStatePayload?,
+        localState: LobbyStatePayload,
+        hasOptimisticChanges: Bool,
+        hasSyncFailure: Bool,
+        isEditingLobbySlider: Bool
+    ) -> Bool {
+        guard (roomRevision ?? 0) > 0,
+              let authoritativeState,
+              !hasOptimisticChanges,
+              !hasSyncFailure,
+              !isEditingLobbySlider else { return false }
+        return authoritativeState.equivalentForLobbySync(to: localState)
+    }
+}
+
 struct LobbySyncFeedbackSnapshot: Equatable {
     let roomID: String?
     let hasOptimisticChanges: Bool
@@ -120,6 +175,7 @@ struct GameView: View {
     @State private var pendingStartPlan: GameStartPlan?
     @State private var rouletteCompletionKey: String?
     @State private var isDraggingOnlineDuration = false
+    @State private var isDraggingOnlineWordCount = false
     @State private var lobbySyncFeedbackState = LobbySyncFeedbackState()
     @FocusState private var focusedOnlineSetupField: OnlineSetupField?
 
@@ -160,26 +216,6 @@ struct GameView: View {
 
     var body: some View {
         typeErasedRootSurface
-        .overlay(alignment: .bottomLeading) {
-            if let room = appState.activeRoom,
-               isHost(room),
-               showsWaitingFooter(for: room),
-               lobbySyncFeedbackState.phase != .hidden {
-                lobbySyncFeedbackBadge
-                    .padding(.leading, 18)
-                    .padding(.bottom, 78)
-                    .transition(
-                        reduceMotion
-                            ? .opacity
-                            : .move(edge: .bottom).combined(with: .opacity)
-                    )
-                    .allowsHitTesting(false)
-            }
-        }
-        .animation(
-            reduceMotion ? nil : .smooth(duration: 0.22),
-            value: lobbySyncFeedbackState.phase
-        )
         .onChange(of: lobbySyncFeedbackSnapshot, initial: true) { _, snapshot in
             lobbySyncFeedbackState.update(snapshot)
         }
@@ -403,66 +439,74 @@ struct GameView: View {
         )
     }
 
-    @ViewBuilder
-    private var lobbySyncFeedbackBadge: some View {
-        switch lobbySyncFeedbackState.phase {
-        case .hidden:
-            EmptyView()
+    private var isEditingLobbySlider: Bool {
+        isDraggingOnlineDuration || isDraggingOnlineWordCount
+    }
 
+    private func waitingStartActionMode(for room: GameRoom) -> WaitingStartActionMode {
+        WaitingStartActionMode.resolve(
+            feedbackPhase: lobbySyncFeedbackState.phase,
+            isEditingLobbySlider: isEditingLobbySlider,
+            hasOptimisticChanges: appState.lobbySettingsSyncState.hasOptimisticChanges,
+            hasSyncFailure: appState.lobbySettingsSyncFailure != nil,
+            requiresServerConfirmation: roomThemeSelectionIsReady,
+            isServerConfirmed: lobbyStateIsServerConfirmed(for: room)
+        )
+    }
+
+    private func waitingStartActionTitle(for mode: WaitingStartActionMode) -> String {
+        switch mode {
+        case .action:
+            return isStarting
+                ? localized(en: "ARMING", ru: "ЗАПУСК", es: "INICIANDO")
+                : copy.startNow
         case .syncing:
-            lobbySyncFeedbackPill(
-                label: localized(
-                    en: "SYNCING WITH SERVER…",
-                    ru: "СИНХРОНИЗАЦИЯ С СЕРВЕРОМ…",
-                    es: "SINCRONIZANDO CON EL SERVIDOR…"
-                ),
-                accent: SpyTheme.red,
-                isLoading: true
+            return localized(
+                en: "SYNCING WITH SERVER…",
+                ru: "СИНХРОНИЗАЦИЯ С СЕРВЕРОМ…",
+                es: "SINCRONIZANDO CON EL SERVIDOR…"
             )
-
         case .serverConfirmed:
-            lobbySyncFeedbackPill(
-                label: localized(
-                    en: "SAVED ON SERVER",
-                    ru: "СОХРАНЕНО НА СЕРВЕРЕ",
-                    es: "GUARDADO EN EL SERVIDOR"
-                ),
-                accent: SpyTheme.green,
-                isLoading: false
+            return localized(
+                en: "SAVED ON SERVER",
+                ru: "СОХРАНЕНО НА СЕРВЕРЕ",
+                es: "GUARDADO EN EL SERVIDOR"
+            )
+        case .failed:
+            return localized(
+                en: "SERVER SYNC FAILED",
+                ru: "СИНХРОНИЗАЦИЯ НЕ УДАЛАСЬ",
+                es: "FALLO DE SINCRONIZACION"
             )
         }
     }
 
-    private func lobbySyncFeedbackPill(
-        label: String,
-        accent: Color,
-        isLoading: Bool
-    ) -> some View {
-        HStack(spacing: 7) {
-            if isLoading {
-                SpySpinner(size: 12, accent: accent)
-                    .accessibilityHidden(true)
-            } else {
-                Image(systemName: "checkmark.circle.fill")
-                    .font(.system(size: 12, weight: .black))
-                    .foregroundStyle(accent)
-                    .accessibilityHidden(true)
-            }
-
-            Text(label)
-                .font(.system(size: 8, weight: .black, design: .monospaced))
-                .tracking(0.08)
-                .foregroundStyle(.white.opacity(0.88))
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
+    private func waitingStartActionDetail(
+        for mode: WaitingStartActionMode,
+        room: GameRoom
+    ) -> String {
+        switch mode {
+        case .action:
+            return roomStartActionDetail(room)
+        case .syncing:
+            return localized(
+                en: "START AFTER CONFIRMATION",
+                ru: "СТАРТ ПОСЛЕ ПОДТВЕРЖДЕНИЯ",
+                es: "INICIA TRAS CONFIRMACION"
+            )
+        case .serverConfirmed:
+            return localized(
+                en: "READY TO START",
+                ru: "ГОТОВО К ЗАПУСКУ",
+                es: "LISTO PARA INICIAR"
+            )
+        case .failed:
+            return localized(
+                en: "CHANGE A SETTING TO RETRY",
+                ru: "ИЗМЕНИ ПАРАМЕТР И ПОВТОРИ",
+                es: "CAMBIA UN AJUSTE Y REINTENTA"
+            )
         }
-        .padding(.horizontal, 10)
-        .frame(minHeight: 30)
-        .background(SpyTheme.panelDeep.opacity(0.98), in: CutCornerShape(cut: 6))
-        .overlay(CutCornerShape(cut: 6).stroke(accent.opacity(0.38), lineWidth: 1))
-        .shadow(color: accent.opacity(0.12), radius: 7, y: 3)
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(label)
     }
 
     private func updateOnlineShellChromeSuppression() {
@@ -700,6 +744,7 @@ struct GameView: View {
         .onDisappear {
             focusedOnlineSetupField = nil
             isDraggingOnlineDuration = false
+            isDraggingOnlineWordCount = false
         }
         .task(id: room.id) {
             await configureLobby(room)
@@ -728,6 +773,7 @@ struct GameView: View {
     private func dismissOnlineSetupCapture() {
         focusedOnlineSetupField = nil
         isDraggingOnlineDuration = false
+        isDraggingOnlineWordCount = false
     }
 
     private var focusedOnlineSetupPanel: OnlineSetupPanel? {
@@ -1710,13 +1756,8 @@ struct GameView: View {
                     SpyActionLabel(title: copy.readyCheckAction, systemImage: "checkmark.seal", tracking: 0.02, lines: 2)
                 }
                 .buttonStyle(SpyButtonStyle(variant: .outline))
-                .disabled(
-                    isStarting ||
-                        isGeneratingRoomTheme ||
-                        appState.lobbySettingsSyncState.hasOptimisticChanges ||
-                        !roomThemeSelectionIsReady
-                )
-                .opacity(roomThemeSelectionIsReady && !isGeneratingRoomTheme ? 1 : 0.34)
+                .disabled(isStarting || !lobbySetupCanAdvance(room))
+                .opacity(lobbySetupCanAdvance(room) ? 1 : 0.34)
                 .transition(.move(edge: .top).combined(with: .opacity))
                 .accessibilityIdentifier("onlineRoom.readyCheck")
             } else {
@@ -2141,11 +2182,10 @@ struct GameView: View {
     }
 
     private func waitingActionBar(_ room: GameRoom) -> some View {
-        let hasMinimumPlayers = room.playersList.count >= 3
-        let canStart = hasMinimumPlayers
-            && roomThemeSelectionIsReady
-            && !isGeneratingRoomTheme
-            && !appState.lobbySettingsSyncState.hasOptimisticChanges
+        let actionMode = waitingStartActionMode(for: room)
+        let actionTitle = waitingStartActionTitle(for: actionMode)
+        let actionDetail = waitingStartActionDetail(for: actionMode, room: room)
+        let canStart = lobbySetupCanAdvance(room)
 
         return VStack(spacing: 0) {
             if isHost(room) {
@@ -2171,18 +2211,18 @@ struct GameView: View {
                     Button {
                         Task { await start(room) }
                     } label: {
-                        startActionBarLabel(
-                            title: isStarting
-                                ? localized(en: "ARMING", ru: "ЗАПУСК", es: "INICIANDO")
-                                : copy.startNow,
-                            detail: roomStartActionDetail(room),
+                        WaitingStartActionLabel(
+                            mode: actionMode,
+                            title: actionTitle,
+                            detail: actionDetail,
                             isEnabled: canStart
                         )
                     }
                     .buttonStyle(WaitingFooterPressStyle())
                     .frame(maxWidth: .infinity)
                     .disabled(!canStart || isStarting)
-                    .accessibilityHint(roomStartActionDetail(room))
+                    .accessibilityLabel(actionTitle)
+                    .accessibilityHint(actionDetail)
                     .accessibilityIdentifier("onlineRoom.startNow")
                 }
             } else {
@@ -2254,33 +2294,6 @@ struct GameView: View {
                 .frame(width: 14, height: 14)
         }
         .shadow(color: SpyTheme.red.opacity(0.10), radius: 12, y: 4)
-        .contentShape(CutCornerShape(cut: 9))
-    }
-
-    private func startActionBarLabel(title: String, detail: String, isEnabled: Bool) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: "play.fill")
-                .font(.system(size: 14, weight: .black))
-                .frame(width: 18)
-            VStack(alignment: .leading, spacing: 2) {
-                Text(title)
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.58)
-                Text(detail)
-                    .font(.system(size: 7, weight: .bold, design: .monospaced))
-                    .foregroundStyle(isEnabled ? Color.white.opacity(0.72) : SpyTheme.dim)
-                    .lineLimit(2)
-                    .minimumScaleFactor(0.54)
-            }
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(isEnabled ? Color.white : SpyTheme.red.opacity(0.48))
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, minHeight: 58)
-        .background(isEnabled ? SpyTheme.red : SpyTheme.red.opacity(0.035), in: CutCornerShape(cut: 9))
-        .overlay(CutCornerShape(cut: 9).stroke(SpyTheme.red.opacity(isEnabled ? 1 : 0.24), lineWidth: 1))
-        .shadow(color: isEnabled ? SpyTheme.red.opacity(0.18) : .clear, radius: 12, y: 4)
         .contentShape(CutCornerShape(cut: 9))
     }
 
@@ -3896,6 +3909,9 @@ struct GameView: View {
                         step: 1,
                         onCommit: { _ in
                             scheduleLobbyStateSync(debounce: .milliseconds(160))
+                        },
+                        onInteractionChanged: { isInteracting in
+                            isDraggingOnlineWordCount = isInteracting
                         }
                     )
                 }
@@ -4111,6 +4127,9 @@ struct GameView: View {
                 accent: SpyTheme.red,
                 onCommit: { _ in
                     scheduleLobbyStateSync(debounce: .milliseconds(120))
+                },
+                onInteractionChanged: { isInteracting in
+                    isDraggingOnlineWordCount = isInteracting
                 }
             )
             .disabled(lowerBound == upperBound)
@@ -5435,6 +5454,26 @@ struct GameView: View {
         }
     }
 
+    private func lobbyStateIsServerConfirmed(for room: GameRoom) -> Bool {
+        guard configuredRoomID == room.id else { return false }
+        return LobbyStartGate.isServerConfirmed(
+            roomRevision: room.lobbyRevision,
+            authoritativeState: appState.authoritativeLobbyStatePayload(from: room),
+            localState: currentLobbyStatePayload(for: room),
+            hasOptimisticChanges: appState.lobbySettingsSyncState.hasOptimisticChanges,
+            hasSyncFailure: appState.lobbySettingsSyncFailure != nil,
+            isEditingLobbySlider: isEditingLobbySlider
+        )
+    }
+
+    private func lobbySetupCanAdvance(_ room: GameRoom) -> Bool {
+        room.playersList.count >= 3 &&
+            roomThemeSelectionIsReady &&
+            !isGeneratingRoomTheme &&
+            lobbyStateIsServerConfirmed(for: room) &&
+            !waitingStartActionMode(for: room).blocksStart
+    }
+
     private func roomStartActionDetail(_ room: GameRoom) -> String {
         if room.playersList.count < 3 {
             return copy.minimumOperatives(room.playersList.count)
@@ -5455,6 +5494,13 @@ struct GameView: View {
             case .saved:
                 return localized(en: "THIS DECK NEEDS MORE WORDS", ru: "В КОЛОДЕ НЕДОСТАТОЧНО СЛОВ", es: "ESTE PACK NECESITA MAS PALABRAS")
             }
+        }
+        if !lobbyStateIsServerConfirmed(for: room) {
+            return localized(
+                en: "WAITING FOR SERVER CONFIRMATION",
+                ru: "ЖДЁМ ПОДТВЕРЖДЕНИЕ СЕРВЕРА",
+                es: "ESPERANDO CONFIRMACION DEL SERVIDOR"
+            )
         }
         return localized(en: "START NOW", ru: "НАЧАТЬ СРАЗУ", es: "INICIAR AHORA")
     }
@@ -6328,13 +6374,15 @@ struct GameView: View {
         let entries = room.lobbyWordPool ?? []
         let words = entries.map(\.word).roomCleanWords
         roomTheme = room.lobbyTheme ?? ""
-        roomWordCountMode = LobbyWordCountMode(rawValue: room.lobbyWordCountMode ?? "recommended") == .custom
-            ? .custom
-            : .recommended
-        let authoritativeCount = max(min(room.lobbyWordCount ?? words.count, 200), 0)
-        roomWordCount = Double(authoritativeCount)
-        if roomWordCountMode == .custom {
-            roomCustomWordCount = Double(max(min(authoritativeCount, 80), 10))
+        if !isDraggingOnlineWordCount {
+            roomWordCountMode = LobbyWordCountMode(rawValue: room.lobbyWordCountMode ?? "recommended") == .custom
+                ? .custom
+                : .recommended
+            let authoritativeCount = max(min(room.lobbyWordCount ?? words.count, 200), 0)
+            roomWordCount = Double(authoritativeCount)
+            if roomWordCountMode == .custom {
+                roomCustomWordCount = Double(max(min(authoritativeCount, 80), 10))
+            }
         }
         disabledRoomPoolWordKeys = Set(
             entries.filter { !$0.enabled }.map { roomWordKey($0.word) }
@@ -6483,6 +6531,8 @@ struct GameView: View {
             disabledRoomPoolWordKeys.removeAll()
             pendingStartPlan = nil
             rouletteCompletionKey = nil
+            isDraggingOnlineDuration = false
+            isDraggingOnlineWordCount = false
             applyAuthoritativeLobbyState(from: room, force: true)
         }
 
@@ -6581,7 +6631,7 @@ struct GameView: View {
               isHost(currentRoom),
               currentRoom.normalizedStatus == "waiting",
               !isStarting,
-              !appState.lobbySettingsSyncState.hasOptimisticChanges else { return }
+              lobbySetupCanAdvance(currentRoom) else { return }
         let operationUserID = appState.user?.id
         if appState.shouldUsePreviewData {
             appState.activeRoom = GameRoom.previewRoom(status: "ready_voting")
@@ -6714,7 +6764,18 @@ struct GameView: View {
     }
 
     private func start(_ room: GameRoom) async {
+        guard !isStarting else { return }
         guard appState.user?.email != nil else { return }
+        guard !waitingStartActionMode(for: room).blocksStart else { return }
+        guard lobbyStateIsServerConfirmed(for: room) else {
+            status = localized(
+                en: "WAIT FOR LOBBY SETTINGS TO BE SAVED ON THE SERVER",
+                ru: "ДОЖДИСЬ СОХРАНЕНИЯ НАСТРОЕК ЛОББИ НА СЕРВЕРЕ",
+                es: "ESPERA A QUE LOS AJUSTES SE GUARDEN EN EL SERVIDOR"
+            )
+            HapticManager.shared.fire(.notification(.warning))
+            return
+        }
         guard !appState.lobbySettingsSyncState.hasOptimisticChanges else { return }
         guard roomThemeSelectionIsReady, !isGeneratingRoomTheme else {
             status = localized(
@@ -7391,6 +7452,161 @@ private struct RoomCodeSpoilerField: View {
         .shadow(color: .white.opacity(0.34), radius: 4)
         .allowsHitTesting(false)
         .accessibilityHidden(true)
+    }
+}
+
+private struct WaitingStartActionLabel: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let mode: WaitingStartActionMode
+    let title: String
+    let detail: String
+    let isEnabled: Bool
+
+    var body: some View {
+        ZStack {
+            replacementContent
+        }
+        .frame(maxWidth: .infinity, minHeight: 58)
+        .contentShape(CutCornerShape(cut: 9))
+        .animation(
+            reduceMotion ? nil : .smooth(duration: 0.24),
+            value: mode
+        )
+        .accessibilityElement(children: .ignore)
+    }
+
+    @ViewBuilder
+    private var replacementContent: some View {
+        switch mode {
+        case .action:
+            actionContent
+                .transition(replacementTransition)
+
+        case .syncing:
+            statusContent(
+                accent: SpyTheme.red,
+                systemImage: nil,
+                showsSpinner: true
+            )
+            .transition(replacementTransition)
+
+        case .serverConfirmed:
+            statusContent(
+                accent: SpyTheme.green,
+                systemImage: "checkmark.circle.fill",
+                showsSpinner: false
+            )
+            .transition(replacementTransition)
+
+        case .failed:
+            statusContent(
+                accent: SpyTheme.amber,
+                systemImage: "exclamationmark.triangle.fill",
+                showsSpinner: false
+            )
+            .transition(replacementTransition)
+        }
+    }
+
+    private var actionContent: some View {
+        HStack(spacing: 9) {
+            Image(systemName: "play.fill")
+                .font(.system(size: 14, weight: .black))
+                .frame(width: 18)
+
+            textContent(
+                titleColor: isEnabled ? .white : SpyTheme.red.opacity(0.48),
+                detailColor: isEnabled ? Color.white.opacity(0.72) : SpyTheme.dim,
+                titleSize: 9
+            )
+
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(isEnabled ? Color.white : SpyTheme.red.opacity(0.48))
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: 58)
+        .background(
+            isEnabled ? SpyTheme.red : SpyTheme.red.opacity(0.035),
+            in: CutCornerShape(cut: 9)
+        )
+        .overlay(
+            CutCornerShape(cut: 9)
+                .stroke(SpyTheme.red.opacity(isEnabled ? 1 : 0.24), lineWidth: 1)
+        )
+        .shadow(color: isEnabled ? SpyTheme.red.opacity(0.18) : .clear, radius: 12, y: 4)
+    }
+
+    private func statusContent(
+        accent: Color,
+        systemImage: String?,
+        showsSpinner: Bool
+    ) -> some View {
+        HStack(spacing: 9) {
+            Group {
+                if showsSpinner {
+                    SpySpinner(size: 14, accent: accent)
+                } else if let systemImage {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 14, weight: .black))
+                        .foregroundStyle(accent)
+                }
+            }
+            .frame(width: 18)
+            .accessibilityHidden(true)
+
+            textContent(
+                titleColor: Color.white.opacity(0.94),
+                detailColor: Color.white.opacity(0.58),
+                titleSize: 8.4
+            )
+
+            Spacer(minLength: 0)
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: 58)
+        .background(
+            LinearGradient(
+                colors: [accent.opacity(0.16), Color.white.opacity(0.025)],
+                startPoint: .leading,
+                endPoint: .trailing
+            ),
+            in: CutCornerShape(cut: 9)
+        )
+        .overlay(CutCornerShape(cut: 9).stroke(accent.opacity(0.58), lineWidth: 1))
+        .overlay(alignment: .topLeading) {
+            CornerStroke(color: accent.opacity(0.84))
+                .frame(width: 14, height: 14)
+        }
+        .shadow(color: accent.opacity(0.12), radius: 12, y: 4)
+    }
+
+    private func textContent(
+        titleColor: Color,
+        detailColor: Color,
+        titleSize: CGFloat
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(title)
+                .font(.system(size: titleSize, weight: .black, design: .monospaced))
+                .foregroundStyle(titleColor)
+                .lineLimit(2)
+                .minimumScaleFactor(0.52)
+                .contentTransition(.opacity)
+
+            Text(detail)
+                .font(.system(size: 7, weight: .bold, design: .monospaced))
+                .foregroundStyle(detailColor)
+                .lineLimit(2)
+                .minimumScaleFactor(0.50)
+                .contentTransition(.opacity)
+        }
+    }
+
+    private var replacementTransition: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .opacity.combined(with: .scale(scale: 0.96))
     }
 }
 
