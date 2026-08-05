@@ -159,28 +159,7 @@ struct GameView: View {
     }
 
     var body: some View {
-        Group {
-            if let room = appState.activeRoom, showsImmersiveGameExperience(for: room) {
-                immersiveGameExperience(room)
-            } else {
-                standardGameSurface
-            }
-        }
-        .animation(reduceMotion ? nil : SpyMotion.page, value: roomSceneKey)
-        .safeAreaInset(edge: .bottom, spacing: 0) {
-            if let room = appState.activeRoom,
-               showsWaitingFooter(for: room),
-               !isOnlineTextInputFocused {
-                waitingActionBar(room)
-                    .transition(
-                        .asymmetric(
-                            insertion: .move(edge: .bottom).combined(with: .opacity),
-                            removal: .move(edge: .bottom).combined(with: .opacity)
-                        )
-                    )
-            }
-        }
-        .animation(reduceMotion ? nil : SpyMotion.page, value: waitingFooterSceneKey)
+        typeErasedRootSurface
         .overlay(alignment: .bottomLeading) {
             if let room = appState.activeRoom,
                isHost(room),
@@ -312,6 +291,36 @@ struct GameView: View {
                 .presentationCornerRadius(0)
             }
         }
+    }
+
+    // GameView contains a large legacy SwiftUI tree. Keeping that tree behind
+    // a concrete boundary prevents outer feedback modifiers from forcing the
+    // Swift runtime to instantiate one recursively deep generic metadata type.
+    private var typeErasedRootSurface: AnyView {
+        AnyView(
+            Group {
+                if let room = appState.activeRoom, showsImmersiveGameExperience(for: room) {
+                    immersiveGameExperience(room)
+                } else {
+                    standardGameSurface
+                }
+            }
+            .animation(reduceMotion ? nil : SpyMotion.page, value: roomSceneKey)
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                if let room = appState.activeRoom,
+                   showsWaitingFooter(for: room),
+                   !isOnlineTextInputFocused {
+                    waitingActionBar(room)
+                        .transition(
+                            .asymmetric(
+                                insertion: .move(edge: .bottom).combined(with: .opacity),
+                                removal: .move(edge: .bottom).combined(with: .opacity)
+                            )
+                        )
+                }
+            }
+            .animation(reduceMotion ? nil : SpyMotion.page, value: waitingFooterSceneKey)
+        )
     }
 
     private var standardGameSurface: some View {
