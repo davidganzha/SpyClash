@@ -308,6 +308,239 @@ final class Base44ClientRoomActionTests: XCTestCase {
         )
     }
 
+    func testRadarPresenceSnapshotRoundTripsAvailabilityPolicyAndRevision() throws {
+        let snapshot = RadarPresenceSnapshot(
+            availability: .inGame,
+            invitePolicy: .blocked,
+            revision: 42
+        )
+
+        let encoded = try JSONEncoder().encode(snapshot)
+        let decoded = try JSONDecoder().decode(RadarPresenceSnapshot.self, from: encoded)
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: encoded) as? [String: Any]
+        )
+
+        XCTAssertEqual(decoded, snapshot)
+        XCTAssertEqual(object["availability"] as? String, "in_game")
+        XCTAssertEqual(object["invitePolicy"] as? String, "blocked")
+        XCTAssertEqual(object["revision"] as? Int, 42)
+    }
+
+    func testRadarPresenceVersionRejectsStaleDiscoveryAfterLiveUpdate() {
+        XCTAssertTrue(
+            RadarPresenceVersionPolicy.shouldApply(incoming: 12, current: 11)
+        )
+        XCTAssertTrue(
+            RadarPresenceVersionPolicy.shouldApply(incoming: 12, current: 12)
+        )
+        XCTAssertFalse(
+            RadarPresenceVersionPolicy.shouldApply(incoming: 11, current: 12)
+        )
+        XCTAssertFalse(
+            RadarPresenceVersionPolicy.shouldApply(incoming: nil, current: 12)
+        )
+        XCTAssertTrue(
+            RadarPresenceVersionPolicy.shouldApply(incoming: nil, current: 0)
+        )
+    }
+
+    func testRadarPresenceTransitionsBlockAndUnblockExistingCard() {
+        XCTAssertEqual(
+            RadarInvitationInteractionPolicy.state(
+                after: .available,
+                invitePolicy: .blocked,
+                currentState: .waiting
+            ),
+            .blocked
+        )
+        XCTAssertNil(
+            RadarInvitationInteractionPolicy.state(
+                after: .available,
+                invitePolicy: .ask,
+                currentState: .blocked
+            )
+        )
+        XCTAssertNil(
+            RadarInvitationInteractionPolicy.state(
+                after: .available,
+                invitePolicy: .automatic,
+                currentState: .accepted
+            )
+        )
+        XCTAssertNil(
+            RadarInvitationInteractionPolicy.state(
+                after: .available,
+                invitePolicy: .automatic,
+                currentState: .inGame
+            )
+        )
+        XCTAssertEqual(
+            RadarInvitationInteractionPolicy.action(
+                invitePolicy: .automatic,
+                availability: .available,
+                invitationState: nil
+            ),
+            .send
+        )
+    }
+
+    func testRadarRoomInviteQueuesBehindPresenceConnectionAttempt() {
+        XCTAssertTrue(
+            RadarRoomInviteDeliveryPolicy.shouldQueueForActiveConnectionAttempt(
+                hasRangingAttempt: false,
+                hasPresenceAttempt: true,
+                isConnecting: false
+            )
+        )
+        XCTAssertTrue(
+            RadarRoomInviteDeliveryPolicy.shouldQueueForActiveConnectionAttempt(
+                hasRangingAttempt: false,
+                hasPresenceAttempt: false,
+                isConnecting: true
+            )
+        )
+        XCTAssertFalse(
+            RadarRoomInviteDeliveryPolicy.shouldQueueForActiveConnectionAttempt(
+                hasRangingAttempt: false,
+                hasPresenceAttempt: false,
+                isConnecting: false
+            )
+        )
+    }
+
+    func testBlockingRadarInvitesDismissesExistingIncomingCard() {
+        let radar = RadarNearbyService()
+        radar.presentForConfirmation(
+            RadarIncomingInvitation(
+                roomCode: "ABC123",
+                hostCallSign: "Host",
+                hostAvatar: "🕵️"
+            )
+        )
+
+        radar.setInvitePolicy(.blocked)
+        radar.presentForConfirmation(
+            RadarIncomingInvitation(
+                roomCode: "XYZ789",
+                hostCallSign: "Second Host",
+                hostAvatar: "🥷"
+            )
+        )
+
+        XCTAssertNil(radar.incomingInvitation)
+    }
+
+    func testRadarDoesNotResurrectUntrackedWireInvitation() {
+        let radar = RadarNearbyService()
+
+        radar.presentForConfirmation(
+            RadarIncomingInvitation(
+                roomCode: "ABC123",
+                hostCallSign: "Host",
+                hostAvatar: "🕵️",
+                wireInvitationID: "cancelled-invite",
+                sourcePeerID: "lost-peer"
+            )
+        )
+
+        XCTAssertNil(radar.incomingInvitation)
+    }
+
+    func testRadarProfileRefreshPreservesInviteButAccountChangeClearsIt() {
+        let radar = RadarNearbyService()
+        let originalUser = makeRadarUser(
+            id: "account-a",
+            avatar: "🕵️",
+            rating: 10,
+            policy: .ask
+        )
+        let refreshedUser = makeRadarUser(
+            id: "account-a",
+            avatar: "🥷",
+            rating: 25,
+            policy: .ask
+        )
+        let nextAccount = makeRadarUser(
+            id: "account-b",
+            avatar: "🕶️",
+            rating: 0,
+            policy: .ask
+        )
+        let invitation = RadarIncomingInvitation(
+            roomCode: "ABC123",
+            hostCallSign: "Host",
+            hostAvatar: "🕵️"
+        )
+
+        radar.configure(user: originalUser)
+        radar.presentForConfirmation(invitation)
+        radar.configure(user: refreshedUser)
+
+        XCTAssertEqual(radar.incomingInvitation, invitation)
+
+        radar.configure(user: nextAccount)
+
+        XCTAssertNil(radar.incomingInvitation)
+    }
+
+    func testRadarCombinedProfileAndBlockedPolicyRefreshDismissesInvite() {
+        let radar = RadarNearbyService()
+        radar.configure(
+            user: makeRadarUser(
+                id: "account-a",
+                avatar: "🕵️",
+                rating: 10,
+                policy: .ask
+            )
+        )
+        radar.presentForConfirmation(
+            RadarIncomingInvitation(
+                roomCode: "ABC123",
+                hostCallSign: "Host",
+                hostAvatar: "🕵️"
+            )
+        )
+
+        radar.configure(
+            user: makeRadarUser(
+                id: "account-a",
+                avatar: "🥷",
+                rating: 25,
+                policy: .blocked
+            )
+        )
+
+        XCTAssertNil(radar.incomingInvitation)
+        XCTAssertEqual(radar.invitePolicy, .blocked)
+    }
+
+    private func makeRadarUser(
+        id: String,
+        avatar: String,
+        rating: Int,
+        policy: RadarInvitePolicy
+    ) -> SpyUser {
+        SpyUser(
+            id: id,
+            email: "\(id)@example.com",
+            fullName: nil,
+            displayName: id,
+            avatar: avatar,
+            language: nil,
+            role: nil,
+            isVerified: nil,
+            rating: rating,
+            gamesPlayed: 3,
+            gamesWon: 2,
+            remoteSpyID: id == "account-a" ? "123456" : "654321",
+            spyCardTheme: nil,
+            spyCardAccent: nil,
+            spyCardBadge: nil,
+            radarInvitePolicy: policy.rawValue
+        )
+    }
+
     private func makeClient() -> Base44Client {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [MockURLProtocol.self]

@@ -6,7 +6,7 @@ import Observation
 @preconcurrency import NearbyInteraction
 import UIKit
 
-enum RadarInvitePolicy: String, CaseIterable, Identifiable {
+enum RadarInvitePolicy: String, CaseIterable, Identifiable, Codable {
     case ask
     case automatic
     case blocked
@@ -52,7 +52,7 @@ enum RadarTransportSource: String, Equatable {
     case web
 }
 
-enum RadarPlayerAvailability: String, Equatable {
+enum RadarPlayerAvailability: String, Equatable, Codable {
     case available
     case inGame = "in_game"
 }
@@ -192,14 +192,55 @@ enum RadarInvitationInteractionPolicy {
 
     static func state(
         after availability: RadarPlayerAvailability,
+        invitePolicy: RadarInvitePolicy,
         currentState: RadarOutgoingInvitationState?
     ) -> RadarOutgoingInvitationState? {
-        switch availability {
-        case .inGame:
+        if availability == .inGame {
             return .inGame
-        case .available:
-            return currentState == .inGame ? nil : currentState
         }
+        if invitePolicy == .blocked {
+            return .blocked
+        }
+        return currentState == .accepted
+            || currentState == .inGame
+            || currentState == .blocked
+            ? nil
+            : currentState
+    }
+
+    static func state(
+        after availability: RadarPlayerAvailability,
+        currentState: RadarOutgoingInvitationState?
+    ) -> RadarOutgoingInvitationState? {
+        state(
+            after: availability,
+            invitePolicy: .ask,
+            currentState: currentState
+        )
+    }
+}
+
+struct RadarPresenceSnapshot: Codable, Equatable {
+    let availability: RadarPlayerAvailability
+    let invitePolicy: RadarInvitePolicy
+    let revision: UInt64?
+}
+
+enum RadarPresenceVersionPolicy {
+    static func shouldApply(incoming: UInt64?, current: UInt64?) -> Bool {
+        guard let current else { return true }
+        guard let incoming else { return current == 0 }
+        return incoming >= current
+    }
+}
+
+enum RadarRoomInviteDeliveryPolicy {
+    static func shouldQueueForActiveConnectionAttempt(
+        hasRangingAttempt: Bool,
+        hasPresenceAttempt: Bool,
+        isConnecting: Bool
+    ) -> Bool {
+        hasRangingAttempt || hasPresenceAttempt || isConnecting
     }
 }
 
@@ -216,6 +257,7 @@ enum RadarInvitationCancellationPolicy {
 
 private enum RadarWireKind: String, Codable {
     case rangingRequest = "ranging_request"
+    case presenceSubscription = "presence_subscription"
     case nearbyToken = "nearby_token"
     case roomInvite = "room_invite"
     case roomInviteResponse = "room_invite_response"
@@ -228,6 +270,17 @@ private enum RadarWireInviteResponse: String, Codable {
     case declined
     case inGame = "in_game"
     case blocked
+}
+
+private struct RadarReceivedRoomInviteKey: Hashable {
+    let sourcePeerID: String
+    let invitationID: String
+}
+
+private enum RadarReceivedRoomInviteState {
+    case pending
+    case responded(RadarWireInviteResponse)
+    case cancelled
 }
 
 private struct RadarWireMessage: Codable {
@@ -247,6 +300,7 @@ private struct RadarWireMessage: Codable {
     let invitationID: String?
     let inviteResponse: RadarWireInviteResponse?
     let availability: String?
+    let presence: RadarPresenceSnapshot?
 
     static var rangingRequest: RadarWireMessage {
         RadarWireMessage(
@@ -265,7 +319,30 @@ private struct RadarWireMessage: Codable {
             hostWinRate: nil,
             invitationID: nil,
             inviteResponse: nil,
-            availability: nil
+            availability: nil,
+            presence: nil
+        )
+    }
+
+    static var presenceSubscription: RadarWireMessage {
+        RadarWireMessage(
+            version: 1,
+            kind: .presenceSubscription,
+            token: nil,
+            roomCode: nil,
+            hostCallSign: nil,
+            hostAvatar: nil,
+            hostSpyID: nil,
+            hostSpyCardTheme: nil,
+            hostSpyCardAccent: nil,
+            hostSpyCardBadge: nil,
+            hostRating: nil,
+            hostGamesPlayed: nil,
+            hostWinRate: nil,
+            invitationID: nil,
+            inviteResponse: nil,
+            availability: nil,
+            presence: nil
         )
     }
 
@@ -286,7 +363,8 @@ private struct RadarWireMessage: Codable {
             hostWinRate: nil,
             invitationID: nil,
             inviteResponse: nil,
-            availability: nil
+            availability: nil,
+            presence: nil
         )
     }
 
@@ -319,7 +397,8 @@ private struct RadarWireMessage: Codable {
             hostWinRate: hostWinRate,
             invitationID: invitationID,
             inviteResponse: nil,
-            availability: nil
+            availability: nil,
+            presence: nil
         )
     }
 
@@ -343,7 +422,8 @@ private struct RadarWireMessage: Codable {
             hostWinRate: nil,
             invitationID: invitationID,
             inviteResponse: response,
-            availability: nil
+            availability: nil,
+            presence: nil
         )
     }
 
@@ -364,11 +444,12 @@ private struct RadarWireMessage: Codable {
             hostWinRate: nil,
             invitationID: invitationID,
             inviteResponse: nil,
-            availability: nil
+            availability: nil,
+            presence: nil
         )
     }
 
-    static func availabilityUpdate(_ availability: RadarPlayerAvailability) -> RadarWireMessage {
+    static func presenceUpdate(_ presence: RadarPresenceSnapshot) -> RadarWireMessage {
         RadarWireMessage(
             version: 1,
             kind: .availabilityUpdate,
@@ -385,7 +466,8 @@ private struct RadarWireMessage: Codable {
             hostWinRate: nil,
             invitationID: nil,
             inviteResponse: nil,
-            availability: availability.rawValue
+            availability: presence.availability.rawValue,
+            presence: presence
         )
     }
 }
@@ -410,6 +492,12 @@ enum RadarCameraAssistanceGate {
 @Observable
 final class RadarNearbyService: NSObject {
     private static let serviceType = "spyclash-radar"
+    // MCSession supports eight participants including the local device. Keep
+    // one of the seven remote slots free for an explicit room invitation or
+    // ranging request; additional Radar cards use versioned Bonjour snapshots.
+    private static let maximumRemoteControlPeers = 6
+    private static let maximumRemoteSessionPeers = 7
+    private static let maximumRememberedRoomInvites = 64
     // Bump discovery independently from the wire-message version whenever the
     // Multipeer identity contract changes. This prevents cached Bonjour peers
     // from an older random-ID build appearing as duplicate live devices.
@@ -430,7 +518,9 @@ final class RadarNearbyService: NSObject {
             if let userID = identity?.userID {
                 invitePolicy.persist(for: userID)
             }
-            rebuildTransportIfNeeded()
+            guard !isApplyingIdentityConfiguration else { return }
+            advanceLocalPresenceRevision()
+            publishLocalPresence()
         }
     }
 
@@ -449,13 +539,26 @@ final class RadarNearbyService: NSObject {
     private var discoveredPeerIDs: [String: MCPeerID] = [:]
     private var browsedPeerIDs: Set<String> = []
     private var connectingPeerIDs: Set<String> = []
+    private var presenceControlPeerIDs: Set<String> = []
+    private var presenceInviteAttempts: [String: UUID] = [:]
+    private var presenceRetryCounts: [String: Int] = [:]
+    private var peerPresenceRevisions: [String: UInt64] = [:]
+    private var rangingControlPeerIDs: Set<String> = []
     private var rangingInviteAttempts: [String: UUID] = [:]
+    private var roomInviteConnectionAttempts: [String: String] = [:]
+    private var invitationTimeoutRunIDs: [String: UUID] = [:]
+    private var receivedRoomInvites: [RadarReceivedRoomInviteKey: RadarReceivedRoomInviteState] = [:]
+    private var receivedRoomInviteOrder: [RadarReceivedRoomInviteKey] = []
     private var pendingRoomInvites: [String: RadarWireMessage] = [:]
     private var pendingInvitationIDs: [String: String] = [:]
     private var rangingContexts: [String: RadarRangingContext] = [:]
     private var rangingPeerIDsBySession: [ObjectIdentifier: String] = [:]
     private var spatialARSession: ARSession?
-    @ObservationIgnored private var availabilityRebuildTask: Task<Void, Never>?
+    private var localPresenceRevision = RadarNearbyService.initialPresenceRevision()
+    private var isApplyingIdentityConfiguration = false
+    private var pendingLocalPresenceSnapshot: RadarPresenceSnapshot?
+    @ObservationIgnored private var presencePublishTask: Task<Void, Never>?
+    private var presencePublishRunID: UUID?
 #if DEBUG
     private var usesPreviewRangingPeers = false
 #endif
@@ -507,39 +610,68 @@ final class RadarNearbyService: NSObject {
             nextPolicy = .ask
         }
         let identityChanged = nextIdentity != identity
+        let accountChanged = nextIdentity?.userID != identity?.userID
         let policyChanged = nextPolicy != invitePolicy
         guard identityChanged || policyChanged else { return }
 
+        if !identityChanged {
+            setInvitePolicy(nextPolicy)
+            return
+        }
+
+        if accountChanged {
+            // Account changes invalidate every invitation tied to the previous
+            // account. Ordinary avatar/rating refreshes must preserve them.
+            incomingInvitation = nil
+            outgoingInvitationStates.removeAll()
+            pendingInvitationIDs.removeAll()
+            pendingRoomInvites.removeAll()
+            roomInviteConnectionAttempts.removeAll()
+            invitationTimeoutRunIDs.removeAll()
+            receivedRoomInvites.removeAll()
+            receivedRoomInviteOrder.removeAll()
+        }
         identity = nextIdentity
+        advanceLocalPresenceRevision()
         if policyChanged {
-            // The didSet rebuild uses the new identity and persists only to the
-            // current account's fallback key.
+            // The transport refresh below publishes identity and policy
+            // together. Suppress the normal policy-only refresh until the new
+            // local identity has been installed.
+            isApplyingIdentityConfiguration = true
             invitePolicy = nextPolicy
-        } else {
+            isApplyingIdentityConfiguration = false
+            if !accountChanged {
+                rejectIncomingInvitationForBlockedPolicyIfNeeded()
+            }
+        }
+        if accountChanged || multipeerSession == nil || localPeerID == nil {
             rebuildTransportIfNeeded()
+        } else if policyChanged {
+            publishLocalPresence()
+        } else {
+            restartAdvertisingIfPossible()
         }
     }
 
     func setInvitePolicy(_ policy: RadarInvitePolicy) {
         invitePolicy = policy
+        rejectIncomingInvitationForBlockedPolicyIfNeeded()
+    }
+
+    private func rejectIncomingInvitationForBlockedPolicyIfNeeded() {
+        guard invitePolicy == .blocked, let invitation = incomingInvitation else { return }
+        incomingInvitation = nil
+        Task { @MainActor [weak self] in
+            await self?.sendInviteResponse(.blocked, for: invitation)
+        }
     }
 
     func setActiveRoom(_ room: GameRoom?) {
         let nextAvailability: RadarPlayerAvailability = room == nil ? .available : .inGame
         guard nextAvailability != localAvailability else { return }
         localAvailability = nextAvailability
-
-        // Keep the current Multipeer session alive long enough to return an
-        // accepted response after a successful room join, then refresh the
-        // advertised busy state for every nearby host.
-        availabilityRebuildTask?.cancel()
-        availabilityRebuildTask = Task { @MainActor [weak self] in
-            guard let self else { return }
-            await self.broadcastLocalAvailability()
-            try? await Task.sleep(for: .milliseconds(650))
-            guard !Task.isCancelled else { return }
-            self.rebuildTransportIfNeeded()
-        }
+        advanceLocalPresenceRevision()
+        publishLocalPresence()
     }
 
     func setApplicationActive(_ isActive: Bool) {
@@ -598,8 +730,19 @@ final class RadarNearbyService: NSObject {
         pendingRoomInvites.removeAll()
         pendingInvitationIDs.removeAll()
         outgoingInvitationStates.removeAll()
+        presencePublishTask?.cancel()
+        presencePublishTask = nil
+        presencePublishRunID = nil
+        pendingLocalPresenceSnapshot = nil
         discoveredPeerIDs.removeAll()
         browsedPeerIDs.removeAll()
+        presenceControlPeerIDs.removeAll()
+        presenceInviteAttempts.removeAll()
+        presenceRetryCounts.removeAll()
+        peerPresenceRevisions.removeAll()
+        rangingControlPeerIDs.removeAll()
+        roomInviteConnectionAttempts.removeAll()
+        invitationTimeoutRunIDs.removeAll()
         peers.removeAll()
         scanState = .idle
         stopSpatialARSession()
@@ -702,7 +845,11 @@ final class RadarNearbyService: NSObject {
         )
 
         if multipeerSession.connectedPeers.contains(peerID) {
-            if await send(message, to: peerID) {
+            let sent = await send(message, to: peerID)
+            guard pendingInvitationIDs[peer.id] == invitationID else {
+                return .cancelled
+            }
+            if sent {
                 scheduleInvitationTimeout(for: peer.id, invitationID: invitationID)
                 return .sent
             }
@@ -710,19 +857,66 @@ final class RadarNearbyService: NSObject {
             return .unavailable
         }
 
-        if rangingInviteAttempts[peer.id] != nil {
+        if roomInviteConnectionAttempts[peer.id] != nil
+            || RadarRoomInviteDeliveryPolicy.shouldQueueForActiveConnectionAttempt(
+                hasRangingAttempt: rangingInviteAttempts[peer.id] != nil,
+                hasPresenceAttempt: presenceInviteAttempts[peer.id] != nil,
+                isConnecting: connectingPeerIDs.contains(peer.id)
+            ) {
+            roomInviteConnectionAttempts[peer.id] = invitationID
             pendingRoomInvites[peer.id] = message
             scheduleInvitationTimeout(for: peer.id, invitationID: invitationID)
             return .sent
         }
 
-        guard let browser, let context = encoded(message) else {
-            markInvitationUnavailable(for: peer.id, invitationID: invitationID)
-            return .unavailable
+        return beginDirectRoomInviteConnection(message, to: peerID)
+            ? .sent
+            : .unavailable
+    }
+
+    @discardableResult
+    private func beginDirectRoomInviteConnection(
+        _ message: RadarWireMessage,
+        to peerID: MCPeerID
+    ) -> Bool {
+        let id = peerID.displayName
+        guard let invitationID = message.invitationID,
+              pendingInvitationIDs[id] == invitationID else { return false }
+
+        pendingRoomInvites[id] = nil
+        guard let browser,
+              let multipeerSession,
+              let context = encoded(message) else {
+            markInvitationUnavailable(for: id, invitationID: invitationID)
+            return false
         }
-        browser.invitePeer(peerID, to: multipeerSession, withContext: context, timeout: 15)
-        scheduleInvitationTimeout(for: peer.id, invitationID: invitationID)
-        return .sent
+
+        if multipeerSession.connectedPeers.contains(peerID) {
+            scheduleInvitationTimeout(for: id, invitationID: invitationID)
+            Task { @MainActor [weak self] in
+                guard let self,
+                      self.pendingInvitationIDs[id] == invitationID else { return }
+                if !(await self.send(message, to: peerID)) {
+                    self.markInvitationUnavailable(for: id, invitationID: invitationID)
+                }
+            }
+            return true
+        }
+
+        guard hasAvailableRemoteSessionSlot(for: id) else {
+            debugLog("room invitation capacity reached peer=\(id)")
+            markInvitationUnavailable(for: id, invitationID: invitationID)
+            return false
+        }
+        roomInviteConnectionAttempts[id] = invitationID
+        browser.invitePeer(
+            peerID,
+            to: multipeerSession,
+            withContext: context,
+            timeout: 15
+        )
+        scheduleInvitationTimeout(for: id, invitationID: invitationID)
+        return true
     }
 
     private func cancelInvitation(for peerID: String) {
@@ -734,21 +928,46 @@ final class RadarNearbyService: NSObject {
         }
 
         pendingRoomInvites[peerID] = nil
+        invitationTimeoutRunIDs[peerID] = nil
+        if roomInviteConnectionAttempts[peerID] == invitationID {
+            roomInviteConnectionAttempts[peerID] = nil
+        }
         outgoingInvitationStates[peerID] = nil
 
 #if DEBUG
         if usesPreviewRangingPeers { return }
 #endif
 
-        guard let remotePeerID = discoveredPeerIDs[peerID] else { return }
+        guard let remotePeerID = discoveredPeerIDs[peerID] else {
+            clearStaleConnectingStateIfNeeded(for: peerID)
+            removePeerIfNoLongerReachable(peerID, ignoringStaleConnectingState: true)
+            return
+        }
         let cancellation = RadarWireMessage.roomInviteCancellation(
             invitationID: invitationID
         )
 
         Task { @MainActor [weak self] in
-            await self?.deliverInvitationCancellation(
+            guard let self else { return }
+            await self.deliverInvitationCancellation(
                 cancellation,
                 to: remotePeerID
+            )
+            // The fallback cancellation invitation has a five-second timeout.
+            // If Bonjour was already lost and MCSession never reports a final
+            // state, do not retain a ghost Radar card indefinitely.
+            try? await Task.sleep(for: .seconds(6))
+            self.clearStaleConnectingStateIfNeeded(for: peerID)
+            if let pendingInvite = self.pendingRoomInvites[peerID],
+               pendingInvite.invitationID == self.pendingInvitationIDs[peerID] {
+                self.beginDirectRoomInviteConnection(
+                    pendingInvite,
+                    to: remotePeerID
+                )
+            }
+            self.removePeerIfNoLongerReachable(
+                peerID,
+                ignoringStaleConnectingState: true
             )
         }
     }
@@ -782,12 +1001,23 @@ final class RadarNearbyService: NSObject {
     }
 
     func presentForConfirmation(_ invitation: RadarIncomingInvitation) {
+        guard canPresentIncomingInvitation(invitation) else { return }
+        guard invitePolicy != .blocked else {
+            Task { @MainActor [weak self] in
+                await self?.sendInviteResponse(.blocked, for: invitation)
+            }
+            return
+        }
         incomingInvitation = invitation
     }
 
     func acceptIncomingInvitation() async {
         guard let invitation = incomingInvitation else { return }
         incomingInvitation = nil
+        guard invitePolicy != .blocked else {
+            await sendInviteResponse(.blocked, for: invitation)
+            return
+        }
         await sendInviteResponse(.accepted, for: invitation)
     }
 
@@ -914,6 +1144,39 @@ final class RadarNearbyService: NSObject {
         )
         multipeerSession.delegate = self
 
+        localPeerID = peerID
+        self.multipeerSession = multipeerSession
+        restartAdvertisingIfPossible(identity: identity, peerID: peerID)
+
+        if wantsScanning {
+            startBrowserIfPossible()
+        }
+#if DEBUG
+        if usesPreviewRangingPeers {
+            applyPreviewRangingPeers()
+        }
+#endif
+    }
+
+    private func restartAdvertisingIfPossible() {
+        guard isApplicationActive,
+              let identity,
+              let localPeerID else {
+            advertiser?.delegate = nil
+            advertiser?.stopAdvertisingPeer()
+            advertiser = nil
+            return
+        }
+        restartAdvertisingIfPossible(identity: identity, peerID: localPeerID)
+    }
+
+    private func restartAdvertisingIfPossible(
+        identity: RadarLocalIdentity,
+        peerID: MCPeerID
+    ) {
+        advertiser?.delegate = nil
+        advertiser?.stopAdvertisingPeer()
+
         let advertiser = MCNearbyServiceAdvertiser(
             peer: peerID,
             discoveryInfo: [
@@ -926,26 +1189,15 @@ final class RadarNearbyService: NSObject {
                 "avatar": identity.avatar,
                 "policy": invitePolicy.rawValue,
                 "availability": localAvailability.rawValue,
+                "presence_rev": String(localPresenceRevision),
                 "source": RadarTransportSource.iphone.rawValue,
                 "precision": supportsPreciseDistance ? "1" : "0"
             ],
             serviceType: Self.serviceType
         )
         advertiser.delegate = self
-
-        localPeerID = peerID
-        self.multipeerSession = multipeerSession
         self.advertiser = advertiser
         advertiser.startAdvertisingPeer()
-
-        if wantsScanning {
-            startBrowserIfPossible()
-        }
-#if DEBUG
-        if usesPreviewRangingPeers {
-            applyPreviewRangingPeers()
-        }
-#endif
     }
 
     private func startBrowserIfPossible() {
@@ -964,6 +1216,10 @@ final class RadarNearbyService: NSObject {
     }
 
     private func stopTransport(clearPeers: Bool) {
+        presencePublishTask?.cancel()
+        presencePublishTask = nil
+        presencePublishRunID = nil
+        pendingLocalPresenceSnapshot = nil
         browser?.delegate = nil
         advertiser?.delegate = nil
         multipeerSession?.delegate = nil
@@ -978,8 +1234,17 @@ final class RadarNearbyService: NSObject {
         discoveredPeerIDs.removeAll()
         browsedPeerIDs.removeAll()
         connectingPeerIDs.removeAll()
+        presenceControlPeerIDs.removeAll()
+        presenceInviteAttempts.removeAll()
+        presenceRetryCounts.removeAll()
+        peerPresenceRevisions.removeAll()
+        rangingControlPeerIDs.removeAll()
         rangingInviteAttempts.removeAll()
+        roomInviteConnectionAttempts.removeAll()
+        invitationTimeoutRunIDs.removeAll()
         pendingRoomInvites.removeAll()
+        pendingInvitationIDs.removeAll()
+        outgoingInvitationStates.removeAll()
         if clearPeers {
             peers.removeAll()
         }
@@ -998,9 +1263,27 @@ final class RadarNearbyService: NSObject {
         let availability = RadarPlayerAvailability(
             rawValue: discoveryInfo?["availability"] ?? ""
         ) ?? .available
+        let presenceRevision = discoveryInfo?["presence_rev"].flatMap(UInt64.init)
         let source = RadarTransportSource(rawValue: discoveryInfo?["source"] ?? "") ?? .iphone
         let peerSupportsPrecision = discoveryInfo?["precision"] == "1"
         let previous = peers.first(where: { $0.id == id })
+
+        discoveredPeerIDs[id] = peerID
+        browsedPeerIDs.insert(id)
+        guard RadarPresenceVersionPolicy.shouldApply(
+            incoming: presenceRevision,
+            current: peerPresenceRevisions[id]
+        ) else {
+            debugLog("ignored stale discovery presence peer=\(id) revision=\(presenceRevision ?? 0)")
+            beginPresenceSubscription(with: peerID)
+            return
+        }
+        let normalizedPresenceRevision = presenceRevision ?? 0
+        if peerPresenceRevisions[id] != normalizedPresenceRevision {
+            presenceRetryCounts[id] = 0
+        }
+        peerPresenceRevisions[id] = normalizedPresenceRevision
+
         let precisionState: RadarPrecisionState = if !peerSupportsPrecision {
             .unsupported
         } else if previous?.precisionState == .measuring {
@@ -1028,37 +1311,191 @@ final class RadarNearbyService: NSObject {
             relativePosition: previous?.relativePosition
         )
 
-        discoveredPeerIDs[id] = peerID
-        browsedPeerIDs.insert(id)
         if let index = peers.firstIndex(where: { $0.id == id }) {
             peers[index] = peer
         } else {
             peers.append(peer)
         }
-        reconcileInvitationState(for: id, availability: availability)
-        if policy != .blocked, outgoingInvitationStates[id] == .blocked {
-            outgoingInvitationStates[id] = nil
-        }
+        reconcileInvitationState(
+            for: id,
+            availability: availability,
+            invitePolicy: policy
+        )
         peers.sort { $0.callSign.localizedCaseInsensitiveCompare($1.callSign) == .orderedAscending }
 
         // The current Nearby UI is a local SpyID directory, not a position
         // scope. Discovery and invitations do not need an active UWB/ARKit
         // session, so merely finding a card must never start the camera or
         // consume precision-ranging resources.
+        beginPresenceSubscription(with: peerID)
     }
 
     private func removeLostPeer(_ peerID: MCPeerID) {
         let id = peerID.displayName
         browsedPeerIDs.remove(id)
-        if multipeerSession?.connectedPeers.contains(peerID) == true {
+        if multipeerSession?.connectedPeers.contains(peerID) == true
+            || connectingPeerIDs.contains(id)
+            || presenceInviteAttempts[id] != nil
+            || rangingInviteAttempts[id] != nil
+            || roomInviteConnectionAttempts[id] != nil {
             return
         }
+        removeTerminalPeerState(id)
+    }
+
+    private func removeTerminalPeerState(_ id: String) {
+        browsedPeerIDs.remove(id)
         discoveredPeerIDs[id] = nil
+        connectingPeerIDs.remove(id)
+        presenceControlPeerIDs.remove(id)
+        presenceInviteAttempts[id] = nil
+        presenceRetryCounts[id] = nil
+        peerPresenceRevisions[id] = nil
+        rangingControlPeerIDs.remove(id)
         rangingInviteAttempts[id] = nil
+        roomInviteConnectionAttempts[id] = nil
+        invitationTimeoutRunIDs[id] = nil
+        pendingRoomInvites[id] = nil
         pendingInvitationIDs[id] = nil
         outgoingInvitationStates[id] = nil
+        if incomingInvitation?.sourcePeerID == id {
+            if let invitation = incomingInvitation {
+                removePendingReceivedRoomInvite(for: invitation)
+            }
+            incomingInvitation = nil
+        }
         stopRanging(with: id)
         peers.removeAll { $0.id == id }
+    }
+
+    @discardableResult
+    private func removePeerIfNoLongerReachable(
+        _ id: String,
+        ignoringStaleConnectingState: Bool = false
+    ) -> Bool {
+        let isConnected = multipeerSession?.connectedPeers.contains {
+            $0.displayName == id
+        } == true
+        guard !browsedPeerIDs.contains(id),
+              !isConnected,
+              presenceInviteAttempts[id] == nil,
+              rangingInviteAttempts[id] == nil,
+              roomInviteConnectionAttempts[id] == nil,
+              (ignoringStaleConnectingState || !connectingPeerIDs.contains(id)) else {
+            return false
+        }
+        removeTerminalPeerState(id)
+        return true
+    }
+
+    private func clearStaleConnectingStateIfNeeded(for id: String) {
+        let isConnected = multipeerSession?.connectedPeers.contains {
+            $0.displayName == id
+        } == true
+        let hasDirectRoomAttempt = roomInviteConnectionAttempts[id] != nil
+            && pendingRoomInvites[id] == nil
+        guard !isConnected,
+              presenceInviteAttempts[id] == nil,
+              rangingInviteAttempts[id] == nil,
+              !hasDirectRoomAttempt else { return }
+        connectingPeerIDs.remove(id)
+        refreshIdleTimerProtection()
+    }
+
+    private func beginPresenceSubscription(with peerID: MCPeerID) {
+        let id = peerID.displayName
+        guard wantsScanning,
+              browsedPeerIDs.contains(id),
+              let browser,
+              let multipeerSession else { return }
+
+        if multipeerSession.connectedPeers.contains(peerID) {
+            presenceControlPeerIDs.insert(id)
+            Task { @MainActor [weak self] in
+                guard let self else { return }
+                _ = await self.send(
+                    .presenceUpdate(self.localPresenceSnapshot),
+                    to: peerID
+                )
+            }
+            return
+        }
+
+        guard occupiedSessionPeerIDs.count < Self.maximumRemoteControlPeers else {
+            debugLog("presence control capacity reached peer=\(id); using discovery fallback")
+            return
+        }
+
+        guard !connectingPeerIDs.contains(id),
+              presenceInviteAttempts[id] == nil,
+              roomInviteConnectionAttempts[id] == nil,
+              (presenceRetryCounts[id] ?? 0) < 3,
+              let context = encoded(.presenceSubscription) else { return }
+
+        let attemptID = UUID()
+        presenceInviteAttempts[id] = attemptID
+        presenceRetryCounts[id, default: 0] += 1
+        debugLog("subscribing to presence peer=\(id) attempt=\(attemptID.uuidString.prefix(6))")
+        browser.invitePeer(
+            peerID,
+            to: multipeerSession,
+            withContext: context,
+            timeout: 10
+        )
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(11))
+            guard let self,
+                  self.presenceInviteAttempts[id] == attemptID else { return }
+            if let session = self.multipeerSession,
+               session.connectedPeers.contains(peerID) {
+                self.handleSessionState(.connected, peerID: peerID, session: session)
+                return
+            }
+            self.presenceInviteAttempts[id] = nil
+            self.clearStaleConnectingStateIfNeeded(for: id)
+            if !self.browsedPeerIDs.contains(id) {
+                self.removeTerminalPeerState(id)
+                return
+            }
+            if let pendingInvite = self.pendingRoomInvites[id] {
+                self.beginDirectRoomInviteConnection(pendingInvite, to: peerID)
+                return
+            }
+            self.schedulePresenceSubscriptionRetry(with: peerID)
+        }
+    }
+
+    private var occupiedSessionPeerIDs: Set<String> {
+        var peerIDs = Set(multipeerSession?.connectedPeers.map(\.displayName) ?? [])
+        peerIDs.formUnion(connectingPeerIDs)
+        peerIDs.formUnion(presenceInviteAttempts.keys)
+        peerIDs.formUnion(rangingInviteAttempts.keys)
+        peerIDs.formUnion(roomInviteConnectionAttempts.keys)
+        return peerIDs
+    }
+
+    private func hasAvailableRemoteSessionSlot(for id: String) -> Bool {
+        occupiedSessionPeerIDs.subtracting([id]).count
+            < Self.maximumRemoteSessionPeers
+    }
+
+    private func schedulePresenceSubscriptionRetry(with peerID: MCPeerID) {
+        let id = peerID.displayName
+        guard wantsScanning,
+              browsedPeerIDs.contains(id),
+              presenceInviteAttempts[id] == nil else { return }
+
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(for: .seconds(2))
+            guard let self,
+                  self.wantsScanning,
+                  self.browsedPeerIDs.contains(id),
+                  self.discoveredPeerIDs[id]?.displayName == id,
+                  !self.connectingPeerIDs.contains(id),
+                  self.presenceInviteAttempts[id] == nil else { return }
+            self.beginPresenceSubscription(with: peerID)
+        }
     }
 
     private func beginRangingHandshake(with peerID: MCPeerID) {
@@ -1070,6 +1507,8 @@ final class RadarNearbyService: NSObject {
               !multipeerSession.connectedPeers.contains(peerID),
               !connectingPeerIDs.contains(id),
               rangingInviteAttempts[id] == nil,
+              roomInviteConnectionAttempts[id] == nil,
+              hasAvailableRemoteSessionSlot(for: id),
               let context = encoded(.rangingRequest) else {
             debugLog("ranging handshake skipped peer=\(peerID.displayName) scanning=\(wantsScanning) localPrecision=\(supportsPreciseDistance)")
             return
@@ -1083,11 +1522,22 @@ final class RadarNearbyService: NSObject {
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(16))
             guard let self,
-                  self.rangingInviteAttempts[id] == attemptID,
-                  self.multipeerSession?.connectedPeers.contains(peerID) != true else {
+                  self.rangingInviteAttempts[id] == attemptID else { return }
+            if let session = self.multipeerSession,
+               session.connectedPeers.contains(peerID) {
+                self.handleSessionState(.connected, peerID: peerID, session: session)
                 return
             }
             self.rangingInviteAttempts[id] = nil
+            self.clearStaleConnectingStateIfNeeded(for: id)
+            if !self.browsedPeerIDs.contains(id) {
+                self.removeTerminalPeerState(id)
+                return
+            }
+            if let pendingInvite = self.pendingRoomInvites[id] {
+                self.beginDirectRoomInviteConnection(pendingInvite, to: peerID)
+                return
+            }
             self.scheduleRangingRetry(with: peerID)
         }
     }
@@ -1105,11 +1555,51 @@ final class RadarNearbyService: NSObject {
         }
 
         switch message.kind {
+        case .presenceSubscription:
+            let id = peerID.displayName
+            guard let multipeerSession else {
+                invitationHandler(false, nil)
+                return
+            }
+
+            if multipeerSession.connectedPeers.contains(peerID) {
+                presenceControlPeerIDs.insert(id)
+                Task { @MainActor [weak self] in
+                    guard let self else { return }
+                    _ = await self.send(
+                        .presenceUpdate(self.localPresenceSnapshot),
+                        to: peerID
+                    )
+                }
+                debugLog("rejected duplicate presence subscription peer=\(id) state=connected")
+                invitationHandler(false, nil)
+                return
+            }
+
+            let occupiedByOtherPeers = occupiedSessionPeerIDs.subtracting([id])
+            let isSimultaneousPresenceAttempt = presenceInviteAttempts[id] != nil
+            guard (!connectingPeerIDs.contains(id) || isSimultaneousPresenceAttempt),
+                  rangingInviteAttempts[id] == nil,
+                  roomInviteConnectionAttempts[id] == nil,
+                  occupiedByOtherPeers.count < Self.maximumRemoteControlPeers else {
+                debugLog("rejected presence subscription peer=\(id) state=busy-or-capacity")
+                invitationHandler(false, nil)
+                return
+            }
+
+            discoveredPeerIDs[id] = peerID
+            presenceControlPeerIDs.insert(id)
+            connectingPeerIDs.insert(id)
+            refreshIdleTimerProtection()
+            debugLog("accepted presence subscription peer=\(id)")
+            invitationHandler(true, multipeerSession)
+
         case .rangingRequest:
             debugLog("received ranging invitation peer=\(peerID.displayName)")
             guard invitePolicy != .blocked,
                   supportsPreciseDistance,
                   let multipeerSession,
+                  hasAvailableRemoteSessionSlot(for: peerID.displayName),
                   !connectingPeerIDs.contains(peerID.displayName),
                   !multipeerSession.connectedPeers.contains(peerID) else {
                 debugLog("rejected ranging invitation peer=\(peerID.displayName) policy=\(invitePolicy.rawValue) precision=\(supportsPreciseDistance)")
@@ -1117,13 +1607,15 @@ final class RadarNearbyService: NSObject {
                 return
             }
             discoveredPeerIDs[peerID.displayName] = peerID
+            rangingControlPeerIDs.insert(peerID.displayName)
             connectingPeerIDs.insert(peerID.displayName)
             refreshIdleTimerProtection()
             debugLog("accepted ranging invitation peer=\(peerID.displayName)")
             invitationHandler(true, multipeerSession)
 
         case .roomInvite:
-            guard let multipeerSession else {
+            guard let multipeerSession,
+                  hasAvailableRemoteSessionSlot(for: peerID.displayName) else {
                 invitationHandler(false, nil)
                 return
             }
@@ -1158,43 +1650,78 @@ final class RadarNearbyService: NSObject {
         switch state {
         case .connected:
             connectingPeerIDs.remove(id)
-            rangingInviteAttempts[id] = nil
-            ensureRangingSession(for: peerID)
-            let pendingInvite = pendingRoomInvites.removeValue(forKey: id)
+            let roomInvitationID = roomInviteConnectionAttempts.removeValue(forKey: id)
+            let hadRangingInviteAttempt = rangingInviteAttempts.removeValue(forKey: id) != nil
+            let hadPresenceInviteAttempt = presenceInviteAttempts.removeValue(forKey: id) != nil
+            let isPresenceControl = presenceControlPeerIDs.contains(id)
+                || hadPresenceInviteAttempt
+            if isPresenceControl {
+                presenceControlPeerIDs.insert(id)
+                presenceRetryCounts[id] = 0
+            }
+            if rangingControlPeerIDs.contains(id) || hadRangingInviteAttempt {
+                rangingControlPeerIDs.insert(id)
+                ensureRangingSession(for: peerID)
+            }
+            let pendingInvite = pendingRoomInvites[id]
+            if let invitationID = pendingInvite?.invitationID,
+               pendingInvitationIDs[id] == invitationID {
+                scheduleInvitationTimeout(for: id, invitationID: invitationID)
+            } else if let roomInvitationID,
+                      pendingInvitationIDs[id] == roomInvitationID {
+                scheduleInvitationTimeout(for: id, invitationID: roomInvitationID)
+            }
             Task { @MainActor [weak self] in
                 guard let self else { return }
                 _ = await self.send(
-                    .availabilityUpdate(self.localAvailability),
+                    .presenceUpdate(self.localPresenceSnapshot),
                     to: peerID
                 )
-                if let pendingInvite {
-                    _ = await self.send(pendingInvite, to: peerID)
+                if let pendingInvite,
+                   let invitationID = pendingInvite.invitationID,
+                   self.pendingInvitationIDs[id] == invitationID,
+                   self.pendingRoomInvites[id]?.invitationID == invitationID {
+                    let sent = await self.send(pendingInvite, to: peerID)
+                    guard self.pendingInvitationIDs[id] == invitationID,
+                          self.pendingRoomInvites[id]?.invitationID == invitationID else {
+                        return
+                    }
+                    if sent {
+                        self.pendingRoomInvites[id] = nil
+                    } else {
+                        self.beginDirectRoomInviteConnection(
+                            pendingInvite,
+                            to: peerID
+                        )
+                    }
                 }
             }
 
         case .notConnected:
             connectingPeerIDs.remove(id)
-            rangingInviteAttempts[id] = nil
+            let roomInvitationID = roomInviteConnectionAttempts.removeValue(forKey: id)
+            let hadRangingInviteAttempt = rangingInviteAttempts.removeValue(forKey: id) != nil
+            let wasRangingControl = rangingControlPeerIDs.remove(id) != nil
+                || hadRangingInviteAttempt
+            let hadPresenceInviteAttempt = presenceInviteAttempts.removeValue(forKey: id) != nil
+            let wasPresenceControl = presenceControlPeerIDs.remove(id) != nil
+                || hadPresenceInviteAttempt
             stopRanging(with: id)
             let pendingInvite = pendingRoomInvites.removeValue(forKey: id)
             if browsedPeerIDs.contains(id) {
                 updatePrecision(for: id, state: defaultPrecisionState(for: id), distance: nil, angle: nil)
-                if let pendingInvite,
-                   let browser,
-                   let multipeerSession,
-                   let context = encoded(pendingInvite) {
-                    browser.invitePeer(
-                        peerID,
-                        to: multipeerSession,
-                        withContext: context,
-                        timeout: 15
-                    )
-                } else {
+                if let pendingInvite {
+                    beginDirectRoomInviteConnection(pendingInvite, to: peerID)
+                } else if let roomInvitationID,
+                          pendingInvitationIDs[id] == roomInvitationID {
+                    markInvitationUnavailable(for: id, invitationID: roomInvitationID)
+                } else if wasPresenceControl {
+                    schedulePresenceSubscriptionRetry(with: peerID)
+                } else if wasRangingControl {
                     scheduleRangingRetry(with: peerID)
                 }
             } else {
-                discoveredPeerIDs[id] = nil
-                peers.removeAll { $0.id == id }
+                removeTerminalPeerState(id)
             }
 
         case .connecting:
@@ -1202,7 +1729,11 @@ final class RadarNearbyService: NSObject {
 
         @unknown default:
             connectingPeerIDs.remove(id)
+            presenceControlPeerIDs.remove(id)
+            presenceInviteAttempts[id] = nil
+            rangingControlPeerIDs.remove(id)
             rangingInviteAttempts[id] = nil
+            roomInviteConnectionAttempts[id] = nil
             stopRanging(with: id)
         }
         refreshIdleTimerProtection()
@@ -1212,7 +1743,8 @@ final class RadarNearbyService: NSObject {
         let id = peerID.displayName
         guard wantsScanning,
               browsedPeerIDs.contains(id),
-              rangingInviteAttempts[id] == nil else {
+              rangingInviteAttempts[id] == nil,
+              roomInviteConnectionAttempts[id] == nil else {
             return
         }
 
@@ -1285,8 +1817,15 @@ final class RadarNearbyService: NSObject {
         }
 
         switch message.kind {
+        case .presenceSubscription:
+            break
         case .nearbyToken:
-            debugLog("received NI token peer=\(peerID.displayName)")
+            let id = peerID.displayName
+            guard rangingControlPeerIDs.contains(id) else {
+                debugLog("ignored NI token without ranging intent peer=\(id)")
+                return
+            }
+            debugLog("received NI token peer=\(id)")
             guard let tokenData = message.token else { return }
             startRanging(with: tokenData, from: peerID)
         case .roomInvite:
@@ -1298,9 +1837,12 @@ final class RadarNearbyService: NSObject {
         case .roomInviteCancel:
             handleRoomInviteCancellation(message, from: peerID)
         case .availabilityUpdate:
-            guard let rawAvailability = message.availability,
-                  let availability = RadarPlayerAvailability(rawValue: rawAvailability) else { return }
-            updateAvailability(for: peerID.displayName, availability: availability)
+            if let presence = message.presence {
+                applyPresence(presence, for: peerID.displayName)
+            } else if let rawAvailability = message.availability,
+                      let availability = RadarPlayerAvailability(rawValue: rawAvailability) {
+                applyLegacyAvailability(availability, for: peerID.displayName)
+            }
         case .rangingRequest:
             break
         }
@@ -1357,7 +1899,27 @@ final class RadarNearbyService: NSObject {
         }
 
         let invitationID = message.invitationID ?? UUID().uuidString
+        let invitationKey = RadarReceivedRoomInviteKey(
+            sourcePeerID: peerID.displayName,
+            invitationID: invitationID
+        )
+        if let previousState = receivedRoomInvites[invitationKey] {
+            if case .responded(let response) = previousState {
+                Task { @MainActor [weak self] in
+                    await self?.sendInviteResponse(
+                        response,
+                        invitationID: invitationID,
+                        to: peerID
+                    )
+                }
+            }
+            debugLog("ignored duplicate room invitation peer=\(peerID.displayName) id=\(invitationID)")
+            return
+        }
+        setReceivedRoomInviteState(.pending, for: invitationKey)
+
         if invitePolicy == .blocked {
+            setReceivedRoomInviteState(.responded(.blocked), for: invitationKey)
             Task { @MainActor [weak self] in
                 await self?.sendInviteResponse(
                     .blocked,
@@ -1368,6 +1930,7 @@ final class RadarNearbyService: NSObject {
             return
         }
         if localAvailability == .inGame {
+            setReceivedRoomInviteState(.responded(.inGame), for: invitationKey)
             Task { @MainActor [weak self] in
                 await self?.sendInviteResponse(
                     .inGame,
@@ -1408,21 +1971,88 @@ final class RadarNearbyService: NSObject {
         _ message: RadarWireMessage,
         from peerID: MCPeerID
     ) {
-        guard let invitationID = message.invitationID,
-              RadarInvitationCancellationPolicy.matches(
-                  invitation: incomingInvitation,
-                  invitationID: invitationID,
-                  sourcePeerID: peerID.displayName
-              ) else { return }
-        incomingInvitation = nil
+        guard let invitationID = message.invitationID else { return }
+        let invitationKey = RadarReceivedRoomInviteKey(
+            sourcePeerID: peerID.displayName,
+            invitationID: invitationID
+        )
+        setReceivedRoomInviteState(.cancelled, for: invitationKey)
+        if RadarInvitationCancellationPolicy.matches(
+            invitation: incomingInvitation,
+            invitationID: invitationID,
+            sourcePeerID: peerID.displayName
+        ) {
+            incomingInvitation = nil
+        }
+    }
+
+    private func setReceivedRoomInviteState(
+        _ state: RadarReceivedRoomInviteState,
+        for key: RadarReceivedRoomInviteKey
+    ) {
+        if receivedRoomInvites[key] == nil {
+            receivedRoomInviteOrder.append(key)
+        }
+        receivedRoomInvites[key] = state
+        while receivedRoomInviteOrder.count > Self.maximumRememberedRoomInvites {
+            let protectedKey = currentIncomingRoomInviteKey
+            let expiredIndex = receivedRoomInviteOrder.firstIndex {
+                $0 != protectedKey
+            } ?? receivedRoomInviteOrder.startIndex
+            let expiredKey = receivedRoomInviteOrder.remove(at: expiredIndex)
+            receivedRoomInvites[expiredKey] = nil
+        }
+    }
+
+    private var currentIncomingRoomInviteKey: RadarReceivedRoomInviteKey? {
+        guard let invitation = incomingInvitation,
+              let sourcePeerID = invitation.sourcePeerID else { return nil }
+        return RadarReceivedRoomInviteKey(
+            sourcePeerID: sourcePeerID,
+            invitationID: invitation.wireInvitationID
+        )
+    }
+
+    private func canPresentIncomingInvitation(
+        _ invitation: RadarIncomingInvitation
+    ) -> Bool {
+        guard let sourcePeerID = invitation.sourcePeerID else { return true }
+        let key = RadarReceivedRoomInviteKey(
+            sourcePeerID: sourcePeerID,
+            invitationID: invitation.wireInvitationID
+        )
+        guard let state = receivedRoomInvites[key] else { return false }
+        if case .pending = state { return true }
+        return false
+    }
+
+    private func removePendingReceivedRoomInvite(
+        for invitation: RadarIncomingInvitation
+    ) {
+        guard let sourcePeerID = invitation.sourcePeerID else { return }
+        let key = RadarReceivedRoomInviteKey(
+            sourcePeerID: sourcePeerID,
+            invitationID: invitation.wireInvitationID
+        )
+        guard let state = receivedRoomInvites[key],
+              case .pending = state else { return }
+        receivedRoomInvites[key] = nil
+        receivedRoomInviteOrder.removeAll { $0 == key }
     }
 
     private func sendInviteResponse(
         _ response: RadarWireInviteResponse,
         for invitation: RadarIncomingInvitation
     ) async {
-        guard let sourcePeerID = invitation.sourcePeerID,
-              let peerID = discoveredPeerIDs[sourcePeerID] else { return }
+        guard let sourcePeerID = invitation.sourcePeerID else { return }
+        setReceivedRoomInviteState(
+            .responded(response),
+            for: RadarReceivedRoomInviteKey(
+                sourcePeerID: sourcePeerID,
+                invitationID: invitation.wireInvitationID
+            )
+        )
+        guard let peerID = discoveredPeerIDs[sourcePeerID] else { return }
         await sendInviteResponse(
             response,
             invitationID: invitation.wireInvitationID,
@@ -1457,6 +2087,10 @@ final class RadarNearbyService: NSObject {
         guard pendingInvitationIDs[peerID] == invitationID else { return }
         pendingInvitationIDs[peerID] = nil
         pendingRoomInvites[peerID] = nil
+        invitationTimeoutRunIDs[peerID] = nil
+        if roomInviteConnectionAttempts[peerID] == invitationID {
+            roomInviteConnectionAttempts[peerID] = nil
+        }
 
         switch response {
         case .accepted:
@@ -1464,8 +2098,7 @@ final class RadarNearbyService: NSObject {
             clearOrAdvanceInvitationState(
                 .accepted,
                 for: peerID,
-                after: .milliseconds(1_450),
-                replacement: .inGame
+                after: .milliseconds(1_450)
             )
         case .declined:
             outgoingInvitationStates[peerID] = .declined
@@ -1482,10 +2115,24 @@ final class RadarNearbyService: NSObject {
     }
 
     private func scheduleInvitationTimeout(for peerID: String, invitationID: String) {
+        let runID = UUID()
+        invitationTimeoutRunIDs[peerID] = runID
         Task { @MainActor [weak self] in
             try? await Task.sleep(for: .seconds(18))
-            guard let self, self.pendingInvitationIDs[peerID] == invitationID else { return }
-            self.markInvitationUnavailable(for: peerID, invitationID: invitationID)
+            guard let self,
+                  self.invitationTimeoutRunIDs[peerID] == runID else { return }
+            if self.pendingInvitationIDs[peerID] == invitationID {
+                self.markInvitationUnavailable(for: peerID, invitationID: invitationID)
+                return
+            }
+            self.invitationTimeoutRunIDs[peerID] = nil
+            guard self.roomInviteConnectionAttempts[peerID] == invitationID else { return }
+            self.roomInviteConnectionAttempts[peerID] = nil
+            self.clearStaleConnectingStateIfNeeded(for: peerID)
+            self.removePeerIfNoLongerReachable(
+                peerID,
+                ignoringStaleConnectingState: true
+            )
         }
     }
 
@@ -1493,6 +2140,17 @@ final class RadarNearbyService: NSObject {
         guard pendingInvitationIDs[peerID] == invitationID else { return }
         pendingInvitationIDs[peerID] = nil
         pendingRoomInvites[peerID] = nil
+        invitationTimeoutRunIDs[peerID] = nil
+        if roomInviteConnectionAttempts[peerID] == invitationID {
+            roomInviteConnectionAttempts[peerID] = nil
+        }
+        clearStaleConnectingStateIfNeeded(for: peerID)
+        if removePeerIfNoLongerReachable(
+            peerID,
+            ignoringStaleConnectingState: true
+        ) {
+            return
+        }
         outgoingInvitationStates[peerID] = .unavailable
         clearOrAdvanceInvitationState(
             .unavailable,
@@ -1564,9 +2222,47 @@ final class RadarNearbyService: NSObject {
         }
     }
 
-    private func broadcastLocalAvailability() async {
+    private var localPresenceSnapshot: RadarPresenceSnapshot {
+        RadarPresenceSnapshot(
+            availability: localAvailability,
+            invitePolicy: invitePolicy,
+            revision: localPresenceRevision
+        )
+    }
+
+    private func advanceLocalPresenceRevision() {
+        let wallClockRevision = Self.initialPresenceRevision()
+        localPresenceRevision = max(localPresenceRevision &+ 1, wallClockRevision)
+    }
+
+    private func publishLocalPresence() {
+        let snapshot = localPresenceSnapshot
+        restartAdvertisingIfPossible()
+        pendingLocalPresenceSnapshot = snapshot
+        guard presencePublishTask == nil else { return }
+        let runID = UUID()
+        presencePublishRunID = runID
+        presencePublishTask = Task { @MainActor [weak self] in
+            await self?.runLocalPresencePublishLoop(runID: runID)
+        }
+    }
+
+    private func runLocalPresencePublishLoop(runID: UUID) async {
+        defer {
+            if presencePublishRunID == runID {
+                presencePublishTask = nil
+                presencePublishRunID = nil
+            }
+        }
+        while !Task.isCancelled, let snapshot = pendingLocalPresenceSnapshot {
+            pendingLocalPresenceSnapshot = nil
+            await broadcastLocalPresence(snapshot)
+        }
+    }
+
+    private func broadcastLocalPresence(_ snapshot: RadarPresenceSnapshot) async {
         guard let multipeerSession else { return }
-        let message = RadarWireMessage.availabilityUpdate(localAvailability)
+        let message = RadarWireMessage.presenceUpdate(snapshot)
         for peerID in multipeerSession.connectedPeers {
             _ = await send(message, to: peerID)
         }
@@ -1865,16 +2561,32 @@ final class RadarNearbyService: NSObject {
         )
     }
 
-    private func updateAvailability(
-        for id: String,
-        availability: RadarPlayerAvailability
+    private func applyLegacyAvailability(
+        _ availability: RadarPlayerAvailability,
+        for id: String
     ) {
+        guard let peer = peers.first(where: { $0.id == id }) else { return }
+        applyPresence(
+            RadarPresenceSnapshot(
+                availability: availability,
+                invitePolicy: peer.invitePolicy,
+                revision: nil
+            ),
+            for: id
+        )
+    }
+
+    private func applyPresence(_ presence: RadarPresenceSnapshot, for id: String) {
         guard let index = peers.firstIndex(where: { $0.id == id }) else { return }
         let peer = peers[index]
-        guard peer.availability != availability else {
-            reconcileInvitationState(for: id, availability: availability)
+        guard RadarPresenceVersionPolicy.shouldApply(
+            incoming: presence.revision,
+            current: peerPresenceRevisions[id]
+        ) else {
+            debugLog("ignored stale wire presence peer=\(id) revision=\(presence.revision ?? 0)")
             return
         }
+        peerPresenceRevisions[id] = presence.revision ?? 0
 
         peers[index] = RadarNearbyPeer(
             id: peer.id,
@@ -1884,8 +2596,8 @@ final class RadarNearbyService: NSObject {
             spyCardBadge: peer.spyCardBadge,
             callSign: peer.callSign,
             avatar: peer.avatar,
-            invitePolicy: peer.invitePolicy,
-            availability: availability,
+            invitePolicy: presence.invitePolicy,
+            availability: presence.availability,
             source: peer.source,
             precisionState: peer.precisionState,
             directionState: peer.directionState,
@@ -1893,19 +2605,27 @@ final class RadarNearbyService: NSObject {
             horizontalAngleRadians: peer.horizontalAngleRadians,
             relativePosition: peer.relativePosition
         )
-        reconcileInvitationState(for: id, availability: availability)
+        reconcileInvitationState(
+            for: id,
+            availability: presence.availability,
+            invitePolicy: presence.invitePolicy
+        )
     }
 
     private func reconcileInvitationState(
         for peerID: String,
-        availability: RadarPlayerAvailability
+        availability: RadarPlayerAvailability,
+        invitePolicy: RadarInvitePolicy
     ) {
-        if availability == .inGame {
+        if availability == .inGame || invitePolicy == .blocked {
             pendingInvitationIDs[peerID] = nil
             pendingRoomInvites[peerID] = nil
+            // Keep an in-flight transport reservation until MCSession reports
+            // its terminal state or its invitation-specific timeout fires.
         }
         outgoingInvitationStates[peerID] = RadarInvitationInteractionPolicy.state(
             after: availability,
+            invitePolicy: invitePolicy,
             currentState: outgoingInvitationStates[peerID]
         )
     }
@@ -2110,6 +2830,10 @@ final class RadarNearbyService: NSObject {
         guard played > 0 else { return 0 }
         let won = min(max(0, gamesWon ?? 0), played)
         return Int((Double(won) / Double(played) * 100).rounded())
+    }
+
+    private static func initialPresenceRevision() -> UInt64 {
+        UInt64(max(0, Date().timeIntervalSince1970 * 1_000))
     }
 }
 
