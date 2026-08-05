@@ -253,6 +253,63 @@ final class LobbyLatestWinsStateTests: XCTestCase {
         XCTAssertFalse(state.hasOptimisticChanges)
     }
 
+    func testSuccessfulRequestRecordsServerConfirmedMutation() throws {
+        var state = LobbyLatestWinsState()
+        let mutationID = UUID()
+        state.reset(confirmedRevision: 4)
+        state.enqueue(
+            roomID: "room-1",
+            state: payload(duration: 480),
+            mutationID: mutationID
+        )
+        let request = try XCTUnwrap(state.beginNext())
+
+        XCTAssertTrue(state.finish(request, confirmedRevision: 5))
+        XCTAssertEqual(state.lastServerConfirmedMutationID, mutationID)
+    }
+
+    func testFailedRequestDoesNotRecordServerConfirmation() throws {
+        var state = LobbyLatestWinsState()
+        state.reset(confirmedRevision: 4)
+        state.enqueue(roomID: "room-1", state: payload(duration: 480))
+        let request = try XCTUnwrap(state.beginNext())
+
+        XCTAssertFalse(state.fail(request, retry: false))
+        XCTAssertNil(state.lastServerConfirmedMutationID)
+    }
+
+    func testUnadvancedRevisionDoesNotRecordServerConfirmation() throws {
+        var state = LobbyLatestWinsState()
+        state.reset(confirmedRevision: 4)
+        state.enqueue(roomID: "room-1", state: payload(duration: 480))
+        let request = try XCTUnwrap(state.beginNext())
+
+        XCTAssertFalse(state.finish(request, confirmedRevision: 4))
+        XCTAssertFalse(state.hasOptimisticChanges)
+        XCTAssertNil(state.lastServerConfirmedMutationID)
+    }
+
+    func testRecoveredCommittedRequestRecordsServerConfirmation() throws {
+        var state = LobbyLatestWinsState()
+        let mutationID = UUID()
+        state.reset(confirmedRevision: 4)
+        state.enqueue(
+            roomID: "room-1",
+            state: payload(duration: 480),
+            mutationID: mutationID
+        )
+        let request = try XCTUnwrap(state.beginNext())
+        _ = state.fail(request, retry: false)
+
+        XCTAssertTrue(
+            state.recordRecoveredServerConfirmation(
+                request,
+                confirmedRevision: 5
+            )
+        )
+        XCTAssertEqual(state.lastServerConfirmedMutationID, mutationID)
+    }
+
     func testPendingIntentCoalescesToLatestModeAndDuration() throws {
         var state = LobbyLatestWinsState()
         state.enqueue(roomID: "room-1", state: payload(duration: 300))
@@ -375,6 +432,85 @@ final class LobbyLatestWinsStateTests: XCTestCase {
             lobbyWordCount: 0,
             lobbyWordCountMode: .recommended,
             lobbyWordPool: []
+        )
+    }
+}
+
+final class LobbySyncFeedbackStateTests: XCTestCase {
+    func testPendingThenConfirmedShowsServerConfirmation() {
+        let mutationID = UUID()
+        var state = LobbySyncFeedbackState()
+
+        state.update(snapshot(pending: false, confirmationID: nil))
+        state.update(snapshot(pending: true, confirmationID: nil))
+        XCTAssertEqual(state.phase, .syncing)
+
+        state.update(snapshot(pending: false, confirmationID: mutationID))
+        XCTAssertEqual(state.phase, .serverConfirmed(mutationID))
+    }
+
+    func testPendingThenFailureDoesNotShowConfirmation() {
+        var state = LobbySyncFeedbackState()
+
+        state.update(snapshot(pending: false, confirmationID: nil))
+        state.update(snapshot(pending: true, confirmationID: nil))
+        state.update(snapshot(pending: false, confirmationID: nil))
+
+        XCTAssertEqual(state.phase, .hidden)
+    }
+
+    func testNewEditReplacesConfirmationAndFailedEditDoesNotRestoreIt() {
+        let firstMutationID = UUID()
+        var state = LobbySyncFeedbackState()
+
+        state.update(snapshot(pending: false, confirmationID: nil))
+        state.update(snapshot(pending: true, confirmationID: nil))
+        state.update(snapshot(pending: false, confirmationID: firstMutationID))
+        XCTAssertEqual(state.phase, .serverConfirmed(firstMutationID))
+
+        state.update(snapshot(pending: true, confirmationID: firstMutationID))
+        XCTAssertEqual(state.phase, .syncing)
+
+        state.update(snapshot(pending: false, confirmationID: firstMutationID))
+        XCTAssertEqual(state.phase, .hidden)
+    }
+
+    func testIntermediateConfirmationDoesNotBecomeSuccessAfterNewerEditFails() {
+        let intermediateMutationID = UUID()
+        var state = LobbySyncFeedbackState()
+
+        state.update(snapshot(pending: false, confirmationID: nil))
+        state.update(snapshot(pending: true, confirmationID: nil))
+        state.update(snapshot(pending: true, confirmationID: intermediateMutationID))
+        state.update(snapshot(pending: false, confirmationID: intermediateMutationID))
+
+        XCTAssertEqual(state.phase, .hidden)
+    }
+
+    func testOldDismissalCannotHideNewerServerConfirmation() {
+        let firstMutationID = UUID()
+        let secondMutationID = UUID()
+        var state = LobbySyncFeedbackState()
+
+        state.update(snapshot(pending: false, confirmationID: nil))
+        state.update(snapshot(pending: true, confirmationID: nil))
+        state.update(snapshot(pending: false, confirmationID: firstMutationID))
+        state.update(snapshot(pending: true, confirmationID: firstMutationID))
+        state.update(snapshot(pending: false, confirmationID: secondMutationID))
+
+        state.dismissServerConfirmation(firstMutationID)
+
+        XCTAssertEqual(state.phase, .serverConfirmed(secondMutationID))
+    }
+
+    private func snapshot(
+        pending: Bool,
+        confirmationID: UUID?
+    ) -> LobbySyncFeedbackSnapshot {
+        LobbySyncFeedbackSnapshot(
+            roomID: "room-1",
+            hasOptimisticChanges: pending,
+            lastServerConfirmedMutationID: confirmationID
         )
     }
 }

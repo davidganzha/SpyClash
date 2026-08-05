@@ -248,6 +248,7 @@ struct LobbyLatestWinsState: Equatable {
     private(set) var confirmedRevision = 0
     private(set) var pendingIntent: LobbyLatestWinsIntent?
     private(set) var inFlightRequest: LobbyLatestWinsRequest?
+    private(set) var lastServerConfirmedMutationID: UUID?
 
     var hasOptimisticChanges: Bool {
         pendingIntent != nil || inFlightRequest != nil
@@ -271,6 +272,7 @@ struct LobbyLatestWinsState: Equatable {
         self.confirmedRevision = max(confirmedRevision, 0)
         pendingIntent = nil
         inFlightRequest = nil
+        lastServerConfirmedMutationID = nil
     }
 
     mutating func reconcile(confirmedRevision: Int) {
@@ -344,8 +346,22 @@ struct LobbyLatestWinsState: Equatable {
     ) -> Bool {
         guard inFlightRequest == request else { return false }
         inFlightRequest = nil
+        guard confirmedRevision > request.expectedRevision else { return false }
         reconcile(confirmedRevision: confirmedRevision)
+        lastServerConfirmedMutationID = request.intent.mutationID
         return pendingIntent == nil
+    }
+
+    @discardableResult
+    mutating func recordRecoveredServerConfirmation(
+        _ request: LobbyLatestWinsRequest,
+        confirmedRevision: Int
+    ) -> Bool {
+        guard !hasOptimisticChanges,
+              confirmedRevision > request.expectedRevision else { return false }
+        reconcile(confirmedRevision: confirmedRevision)
+        lastServerConfirmedMutationID = request.intent.mutationID
+        return true
     }
 
     @discardableResult
@@ -1074,6 +1090,10 @@ final class AppState: NSObject {
                         activeRoom = reconciled
                     }
                     if wasCommitted {
+                        _ = lobbySettingsSyncState.recordRecoveredServerConfirmation(
+                            request,
+                            confirmedRevision: reconciled.lobbyRevision ?? 0
+                        )
                         lobbySettingsSyncFailure = nil
                         continue
                     }

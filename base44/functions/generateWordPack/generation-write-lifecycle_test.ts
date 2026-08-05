@@ -58,6 +58,141 @@ class MockLifecycleStore {
   }
 }
 
+function fakeLease() {
+  return {
+    recordID: "lifecycle-1",
+    subjectKey: "billing:user-1",
+    state: "active" as const,
+    leaseToken: "generation-lease",
+    leaseUntil: new Date(START.getTime() + 10 * 60 * 1_000).toISOString(),
+    revision: "generation-revision",
+  };
+}
+
+for (const code of ["active_lease", "cas_contention"] as const) {
+  Deno.test(`generation retries transient ${code} before running its action`, async () => {
+    const delays: number[] = [];
+    let acquireCalls = 0;
+    let actionCalls = 0;
+    let releaseCalls = 0;
+
+    const result = await withGenerationWriterLease({
+      lifecycleStore: new MockLifecycleStore(),
+      userID: "user-1",
+      nowFactory: () => START,
+      randomUUID: sequence("generation"),
+      acquire: () => {
+        acquireCalls += 1;
+        if (acquireCalls === 1) {
+          throw new BillingIdentityLifecycleError(
+            code,
+            "temporary identity contention",
+          );
+        }
+        return Promise.resolve(fakeLease());
+      },
+      release: () => {
+        releaseCalls += 1;
+        return Promise.resolve();
+      },
+      delay: (milliseconds) => {
+        delays.push(milliseconds);
+        return Promise.resolve();
+      },
+      action: () => {
+        actionCalls += 1;
+        return Promise.resolve("generated");
+      },
+    });
+
+    assertEquals(result, "generated");
+    assertEquals(acquireCalls, 2);
+    assertEquals(actionCalls, 1);
+    assertEquals(releaseCalls, 1);
+    assertEquals(delays, [180]);
+  });
+}
+
+Deno.test("generation stops after bounded transient lease retries", async () => {
+  const delays: number[] = [];
+  let acquireCalls = 0;
+  let actionCalls = 0;
+  let releaseCalls = 0;
+
+  const error = await assertRejects(
+    () =>
+      withGenerationWriterLease({
+        lifecycleStore: new MockLifecycleStore(),
+        userID: "user-1",
+        nowFactory: () => START,
+        randomUUID: sequence("generation"),
+        acquire: () => {
+          acquireCalls += 1;
+          throw new BillingIdentityLifecycleError(
+            "active_lease",
+            "Account identity is being updated.",
+          );
+        },
+        release: () => {
+          releaseCalls += 1;
+          return Promise.resolve();
+        },
+        delay: (milliseconds) => {
+          delays.push(milliseconds);
+          return Promise.resolve();
+        },
+        action: () => {
+          actionCalls += 1;
+          return Promise.resolve("generated");
+        },
+      }),
+    BillingIdentityLifecycleError,
+  );
+
+  assertEquals(error.code, "active_lease");
+  assertEquals(acquireCalls, 4);
+  assertEquals(actionCalls, 0);
+  assertEquals(releaseCalls, 0);
+  assertEquals(delays, [180, 520, 1_300]);
+});
+
+Deno.test("generation does not retry account deletion in progress", async () => {
+  const delays: number[] = [];
+  let acquireCalls = 0;
+  let actionCalls = 0;
+
+  const error = await assertRejects(
+    () =>
+      withGenerationWriterLease({
+        lifecycleStore: new MockLifecycleStore(),
+        userID: "user-1",
+        nowFactory: () => START,
+        randomUUID: sequence("generation"),
+        acquire: () => {
+          acquireCalls += 1;
+          throw new BillingIdentityLifecycleError(
+            "deletion_in_progress",
+            "Account deletion is in progress or already completed.",
+          );
+        },
+        delay: (milliseconds) => {
+          delays.push(milliseconds);
+          return Promise.resolve();
+        },
+        action: () => {
+          actionCalls += 1;
+          return Promise.resolve("generated");
+        },
+      }),
+    BillingIdentityLifecycleError,
+  );
+
+  assertEquals(error.code, "deletion_in_progress");
+  assertEquals(acquireCalls, 1);
+  assertEquals(actionCalls, 0);
+  assertEquals(delays, []);
+});
+
 Deno.test("generation side effect is rejected after its writer lease expires", async () => {
   const store = new MockLifecycleStore();
   let now = START;

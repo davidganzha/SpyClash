@@ -1,6 +1,73 @@
 import SwiftUI
 import UIKit
 
+enum LobbySyncFeedbackPhase: Equatable {
+    case hidden
+    case syncing
+    case serverConfirmed(UUID)
+
+    var serverConfirmationID: UUID? {
+        guard case let .serverConfirmed(id) = self else { return nil }
+        return id
+    }
+}
+
+struct LobbySyncFeedbackSnapshot: Equatable {
+    let roomID: String?
+    let hasOptimisticChanges: Bool
+    let lastServerConfirmedMutationID: UUID?
+}
+
+struct LobbySyncFeedbackState: Equatable {
+    private(set) var phase = LobbySyncFeedbackPhase.hidden
+    private var roomID: String?
+    private var lastObservedServerConfirmationID: UUID?
+
+    mutating func update(_ snapshot: LobbySyncFeedbackSnapshot) {
+        guard let snapshotRoomID = snapshot.roomID else {
+            reset()
+            return
+        }
+
+        guard roomID == snapshotRoomID else {
+            roomID = snapshotRoomID
+            lastObservedServerConfirmationID = snapshot.lastServerConfirmedMutationID
+            phase = snapshot.hasOptimisticChanges ? .syncing : .hidden
+            return
+        }
+
+        if snapshot.hasOptimisticChanges {
+            // A server-confirmed intermediate request must not turn into a
+            // success badge if a newer optimistic request later fails.
+            lastObservedServerConfirmationID = snapshot.lastServerConfirmedMutationID
+            phase = .syncing
+            return
+        }
+
+        if let confirmationID = snapshot.lastServerConfirmedMutationID,
+           confirmationID != lastObservedServerConfirmationID {
+            lastObservedServerConfirmationID = confirmationID
+            phase = .serverConfirmed(confirmationID)
+            return
+        }
+
+        if phase == .syncing {
+            phase = .hidden
+        }
+    }
+
+    mutating func dismissServerConfirmation(_ confirmationID: UUID) {
+        guard phase == .serverConfirmed(confirmationID) else { return }
+        phase = .hidden
+    }
+
+    private mutating func reset() {
+        roomID = nil
+        lastObservedServerConfirmationID = nil
+        phase = .hidden
+    }
+}
+
 struct GameView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -53,6 +120,7 @@ struct GameView: View {
     @State private var pendingStartPlan: GameStartPlan?
     @State private var rouletteCompletionKey: String?
     @State private var isDraggingOnlineDuration = false
+    @State private var lobbySyncFeedbackState = LobbySyncFeedbackState()
     @FocusState private var focusedOnlineSetupField: OnlineSetupField?
 
     private var copy: GameCopy {
@@ -113,6 +181,41 @@ struct GameView: View {
             }
         }
         .animation(reduceMotion ? nil : SpyMotion.page, value: waitingFooterSceneKey)
+        .overlay(alignment: .bottomLeading) {
+            if let room = appState.activeRoom,
+               isHost(room),
+               showsWaitingFooter(for: room),
+               lobbySyncFeedbackState.phase != .hidden {
+                lobbySyncFeedbackBadge
+                    .padding(.leading, 18)
+                    .padding(.bottom, 78)
+                    .transition(
+                        reduceMotion
+                            ? .opacity
+                            : .move(edge: .bottom).combined(with: .opacity)
+                    )
+                    .allowsHitTesting(false)
+            }
+        }
+        .animation(
+            reduceMotion ? nil : .smooth(duration: 0.22),
+            value: lobbySyncFeedbackState.phase
+        )
+        .onChange(of: lobbySyncFeedbackSnapshot, initial: true) { _, snapshot in
+            lobbySyncFeedbackState.update(snapshot)
+        }
+        .task(id: lobbySyncFeedbackState.phase.serverConfirmationID) {
+            guard let confirmationID = lobbySyncFeedbackState.phase.serverConfirmationID else { return }
+            do {
+                try await Task.sleep(for: .seconds(1.4))
+            } catch {
+                return
+            }
+            guard !Task.isCancelled else { return }
+            withAnimation(reduceMotion ? nil : .easeOut(duration: 0.18)) {
+                lobbySyncFeedbackState.dismissServerConfirmation(confirmationID)
+            }
+        }
         .task(id: appState.activeRoom?.id) {
             while !Task.isCancelled, appState.activeRoom != nil {
                 now = Date()
@@ -271,6 +374,86 @@ struct GameView: View {
 
     private var isOnlineTextInputFocused: Bool {
         focusedOnlineSetupField != nil
+    }
+
+    private var lobbySyncFeedbackSnapshot: LobbySyncFeedbackSnapshot {
+        let room = appState.activeRoom
+        let hostWaitingRoomID: String?
+        if let room,
+           room.normalizedStatus == "waiting",
+           isHost(room) {
+            hostWaitingRoomID = room.id
+        } else {
+            hostWaitingRoomID = nil
+        }
+
+        return LobbySyncFeedbackSnapshot(
+            roomID: hostWaitingRoomID,
+            hasOptimisticChanges: appState.lobbySettingsSyncState.hasOptimisticChanges,
+            lastServerConfirmedMutationID: appState.lobbySettingsSyncState.lastServerConfirmedMutationID
+        )
+    }
+
+    @ViewBuilder
+    private var lobbySyncFeedbackBadge: some View {
+        switch lobbySyncFeedbackState.phase {
+        case .hidden:
+            EmptyView()
+
+        case .syncing:
+            lobbySyncFeedbackPill(
+                label: localized(
+                    en: "SYNCING WITH SERVER…",
+                    ru: "СИНХРОНИЗАЦИЯ С СЕРВЕРОМ…",
+                    es: "SINCRONIZANDO CON EL SERVIDOR…"
+                ),
+                accent: SpyTheme.red,
+                isLoading: true
+            )
+
+        case .serverConfirmed:
+            lobbySyncFeedbackPill(
+                label: localized(
+                    en: "SAVED ON SERVER",
+                    ru: "СОХРАНЕНО НА СЕРВЕРЕ",
+                    es: "GUARDADO EN EL SERVIDOR"
+                ),
+                accent: SpyTheme.green,
+                isLoading: false
+            )
+        }
+    }
+
+    private func lobbySyncFeedbackPill(
+        label: String,
+        accent: Color,
+        isLoading: Bool
+    ) -> some View {
+        HStack(spacing: 7) {
+            if isLoading {
+                SpySpinner(size: 12, accent: accent)
+                    .accessibilityHidden(true)
+            } else {
+                Image(systemName: "checkmark.circle.fill")
+                    .font(.system(size: 12, weight: .black))
+                    .foregroundStyle(accent)
+                    .accessibilityHidden(true)
+            }
+
+            Text(label)
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .tracking(0.08)
+                .foregroundStyle(.white.opacity(0.88))
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+        }
+        .padding(.horizontal, 10)
+        .frame(minHeight: 30)
+        .background(SpyTheme.panelDeep.opacity(0.98), in: CutCornerShape(cut: 6))
+        .overlay(CutCornerShape(cut: 6).stroke(accent.opacity(0.38), lineWidth: 1))
+        .shadow(color: accent.opacity(0.12), radius: 7, y: 3)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(label)
     }
 
     private func updateOnlineShellChromeSuppression() {
@@ -5885,6 +6068,15 @@ struct GameView: View {
                     aiGenerationsToday: nil
                 )
             } else {
+                _ = try await appState.confirmedLobbyRoom(
+                    roomID: operationRoomID,
+                    allowedStatuses: ["waiting"]
+                )
+                guard let currentRoom = appState.activeRoom,
+                      currentRoom.id == operationRoomID,
+                      isHost(currentRoom),
+                      currentRoom.normalizedStatus == "waiting",
+                      roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
                     count: max(targetCount, 5),
@@ -5974,6 +6166,15 @@ struct GameView: View {
                     aiGenerationsToday: nil
                 )
             } else {
+                _ = try await appState.confirmedLobbyRoom(
+                    roomID: operationRoomID,
+                    allowedStatuses: ["waiting"]
+                )
+                guard let currentRoom = appState.activeRoom,
+                      currentRoom.id == operationRoomID,
+                      isHost(currentRoom),
+                      currentRoom.normalizedStatus == "waiting",
+                      roomTheme.trimmingCharacters(in: .whitespacesAndNewlines) == theme else { return }
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
                     count: additionalCount,
