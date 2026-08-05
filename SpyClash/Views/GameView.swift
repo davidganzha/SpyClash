@@ -50,6 +50,16 @@ enum WaitingStartActionMode: Equatable {
 }
 
 enum LobbyStartGate {
+    static func hasPrerequisites(
+        playerCount: Int,
+        isThemeSelectionReady: Bool,
+        isGeneratingRoomTheme: Bool
+    ) -> Bool {
+        playerCount >= 3 &&
+            isThemeSelectionReady &&
+            !isGeneratingRoomTheme
+    }
+
     static func isServerConfirmed(
         roomRevision: Int?,
         authoritativeState: LobbyStatePayload?,
@@ -489,12 +499,18 @@ struct GameView: View {
         case .action:
             return roomStartActionDetail(room)
         case .syncing:
+            guard lobbyStartPrerequisitesAreMet(room) else {
+                return roomStartActionDetail(room)
+            }
             return localized(
                 en: "START AFTER CONFIRMATION",
                 ru: "СТАРТ ПОСЛЕ ПОДТВЕРЖДЕНИЯ",
                 es: "INICIA TRAS CONFIRMACION"
             )
         case .serverConfirmed:
+            guard lobbyStartPrerequisitesAreMet(room) else {
+                return roomStartActionDetail(room)
+            }
             return localized(
                 en: "READY TO START",
                 ru: "ГОТОВО К ЗАПУСКУ",
@@ -2185,6 +2201,7 @@ struct GameView: View {
         let actionMode = waitingStartActionMode(for: room)
         let actionTitle = waitingStartActionTitle(for: actionMode)
         let actionDetail = waitingStartActionDetail(for: actionMode, room: room)
+        let usesAvailableAppearance = lobbyStartPrerequisitesAreMet(room)
         let canStart = lobbySetupCanAdvance(room)
 
         return VStack(spacing: 0) {
@@ -2215,7 +2232,7 @@ struct GameView: View {
                             mode: actionMode,
                             title: actionTitle,
                             detail: actionDetail,
-                            isEnabled: canStart
+                            usesAvailableAppearance: usesAvailableAppearance
                         )
                     }
                     .buttonStyle(WaitingFooterPressStyle())
@@ -5467,11 +5484,17 @@ struct GameView: View {
     }
 
     private func lobbySetupCanAdvance(_ room: GameRoom) -> Bool {
-        room.playersList.count >= 3 &&
-            roomThemeSelectionIsReady &&
-            !isGeneratingRoomTheme &&
+        lobbyStartPrerequisitesAreMet(room) &&
             lobbyStateIsServerConfirmed(for: room) &&
             !waitingStartActionMode(for: room).blocksStart
+    }
+
+    private func lobbyStartPrerequisitesAreMet(_ room: GameRoom) -> Bool {
+        LobbyStartGate.hasPrerequisites(
+            playerCount: room.playersList.count,
+            isThemeSelectionReady: roomThemeSelectionIsReady,
+            isGeneratingRoomTheme: isGeneratingRoomTheme
+        )
     }
 
     private func roomStartActionDetail(_ room: GameRoom) -> String {
@@ -7461,7 +7484,7 @@ private struct WaitingStartActionLabel: View {
     let mode: WaitingStartActionMode
     let title: String
     let detail: String
-    let isEnabled: Bool
+    let usesAvailableAppearance: Bool
 
     var body: some View {
         ZStack {
@@ -7516,25 +7539,32 @@ private struct WaitingStartActionLabel: View {
                 .frame(width: 18)
 
             textContent(
-                titleColor: isEnabled ? .white : SpyTheme.red.opacity(0.48),
-                detailColor: isEnabled ? Color.white.opacity(0.72) : SpyTheme.dim,
+                titleColor: usesAvailableAppearance ? .white : SpyTheme.red.opacity(0.48),
+                detailColor: usesAvailableAppearance ? Color.white.opacity(0.72) : SpyTheme.dim,
                 titleSize: 9
             )
 
             Spacer(minLength: 0)
         }
-        .foregroundStyle(isEnabled ? Color.white : SpyTheme.red.opacity(0.48))
+        .foregroundStyle(usesAvailableAppearance ? Color.white : SpyTheme.red.opacity(0.48))
         .padding(.horizontal, 12)
         .frame(maxWidth: .infinity, minHeight: 58)
         .background(
-            isEnabled ? SpyTheme.red : SpyTheme.red.opacity(0.035),
+            usesAvailableAppearance ? SpyTheme.red : SpyTheme.red.opacity(0.035),
             in: CutCornerShape(cut: 9)
         )
         .overlay(
             CutCornerShape(cut: 9)
-                .stroke(SpyTheme.red.opacity(isEnabled ? 1 : 0.24), lineWidth: 1)
+                .stroke(
+                    SpyTheme.red.opacity(usesAvailableAppearance ? 1 : 0.24),
+                    lineWidth: 1
+                )
         )
-        .shadow(color: isEnabled ? SpyTheme.red.opacity(0.18) : .clear, radius: 12, y: 4)
+        .shadow(
+            color: usesAvailableAppearance ? SpyTheme.red.opacity(0.18) : .clear,
+            radius: 12,
+            y: 4
+        )
     }
 
     private func statusContent(
@@ -7542,22 +7572,26 @@ private struct WaitingStartActionLabel: View {
         systemImage: String?,
         showsSpinner: Bool
     ) -> some View {
-        HStack(spacing: 9) {
+        let displayedAccent = usesAvailableAppearance ? accent : SpyTheme.dim
+
+        return HStack(spacing: 9) {
             Group {
                 if showsSpinner {
-                    SpySpinner(size: 14, accent: accent)
+                    SpySpinner(size: 14, accent: displayedAccent)
                 } else if let systemImage {
                     Image(systemName: systemImage)
                         .font(.system(size: 14, weight: .black))
-                        .foregroundStyle(accent)
+                        .foregroundStyle(displayedAccent)
                 }
             }
             .frame(width: 18)
             .accessibilityHidden(true)
 
             textContent(
-                titleColor: Color.white.opacity(0.94),
-                detailColor: Color.white.opacity(0.58),
+                titleColor: Color.white.opacity(usesAvailableAppearance ? 0.94 : 0.40),
+                detailColor: usesAvailableAppearance
+                    ? Color.white.opacity(0.58)
+                    : SpyTheme.dim.opacity(0.72),
                 titleSize: 8.4
             )
 
@@ -7567,18 +7601,30 @@ private struct WaitingStartActionLabel: View {
         .frame(maxWidth: .infinity, minHeight: 58)
         .background(
             LinearGradient(
-                colors: [accent.opacity(0.16), Color.white.opacity(0.025)],
+                colors: [
+                    displayedAccent.opacity(usesAvailableAppearance ? 0.16 : 0.055),
+                    Color.white.opacity(usesAvailableAppearance ? 0.025 : 0.012)
+                ],
                 startPoint: .leading,
                 endPoint: .trailing
             ),
             in: CutCornerShape(cut: 9)
         )
-        .overlay(CutCornerShape(cut: 9).stroke(accent.opacity(0.58), lineWidth: 1))
+        .overlay(
+            CutCornerShape(cut: 9)
+                .stroke(displayedAccent.opacity(usesAvailableAppearance ? 0.58 : 0.22), lineWidth: 1)
+        )
         .overlay(alignment: .topLeading) {
-            CornerStroke(color: accent.opacity(0.84))
+            CornerStroke(
+                color: displayedAccent.opacity(usesAvailableAppearance ? 0.84 : 0.30)
+            )
                 .frame(width: 14, height: 14)
         }
-        .shadow(color: accent.opacity(0.12), radius: 12, y: 4)
+        .shadow(
+            color: usesAvailableAppearance ? accent.opacity(0.12) : .clear,
+            radius: 12,
+            y: 4
+        )
     }
 
     private func textContent(

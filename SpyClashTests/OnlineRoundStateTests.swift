@@ -595,6 +595,37 @@ final class WaitingStartActionModeTests: XCTestCase {
 }
 
 final class LobbyStartGateTests: XCTestCase {
+    func testAvailableAppearanceRequiresAllStartPrerequisites() {
+        XCTAssertFalse(
+            LobbyStartGate.hasPrerequisites(
+                playerCount: 2,
+                isThemeSelectionReady: true,
+                isGeneratingRoomTheme: false
+            )
+        )
+        XCTAssertFalse(
+            LobbyStartGate.hasPrerequisites(
+                playerCount: 3,
+                isThemeSelectionReady: false,
+                isGeneratingRoomTheme: false
+            )
+        )
+        XCTAssertFalse(
+            LobbyStartGate.hasPrerequisites(
+                playerCount: 3,
+                isThemeSelectionReady: true,
+                isGeneratingRoomTheme: true
+            )
+        )
+        XCTAssertTrue(
+            LobbyStartGate.hasPrerequisites(
+                playerCount: 3,
+                isThemeSelectionReady: true,
+                isGeneratingRoomTheme: false
+            )
+        )
+    }
+
     func testRequiresPositiveRevisionAndMatchingAuthoritativeState() {
         let confirmed = payload(duration: 600)
 
