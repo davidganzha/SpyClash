@@ -29,7 +29,6 @@ struct HomeView: View {
     @State private var statusText = ""
     @State private var statusKind: HomeStatusKind?
     @State private var isLoading = false
-    @State private var isClosingRoom = false
     @State private var tutorialMode: TutorialMode?
     @State private var isQRScannerPresented = false
     @State private var idlePulse = false
@@ -751,13 +750,10 @@ struct HomeView: View {
             Task { await closeActiveRoom(room) }
         } label: {
             VStack(spacing: 5) {
-                Image(systemName: isClosingRoom ? "antenna.radiowaves.left.and.right" : "rectangle.portrait.and.arrow.right")
+                Image(systemName: "rectangle.portrait.and.arrow.right")
                     .font(.system(size: 15, weight: .black))
-                    .symbolEffect(.pulse, options: isClosingRoom ? .repeating : .default, value: isClosingRoom)
 
-                Text(isClosingRoom
-                    ? localized(en: "LEAVING", ru: "ВЫХОД", es: "SALIENDO")
-                    : localized(en: "LEAVE", ru: "ВЫЙТИ", es: "SALIR"))
+                Text(localized(en: "LEAVE", ru: "ВЫЙТИ", es: "SALIR"))
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .tracking(0.06)
                     .spyFitted(scale: 0.65, alignment: .center)
@@ -770,7 +766,6 @@ struct HomeView: View {
             .contentShape(CutCornerShape(cut: 10))
         }
         .buttonStyle(SpyWebPressStyle())
-        .disabled(isClosingRoom)
     }
 
     private func publishHomeToast(_ message: String) {
@@ -800,6 +795,7 @@ struct HomeView: View {
         await Task.yield()
         do {
             let room = try await appState.client.createRoom(for: user)
+            appState.allowRoomActivation(room.id)
             withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
                 appState.activeRoom = room
                 appState.selectedTab = .game
@@ -827,6 +823,7 @@ struct HomeView: View {
         do {
             let code = joinCode
             let room = try await appState.client.join(code: code, user: user)
+            appState.allowRoomActivation(room.id)
             appState.activeRoom = room
             appState.selectedTab = .game
             statusText = copy.roomReady(room.code)
@@ -840,38 +837,13 @@ struct HomeView: View {
     }
 
     private func closeActiveRoom(_ room: GameRoom) async {
-        guard let user = appState.user else {
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                appState.activeRoom = nil
-                stage = .main
-            }
-            return
+        withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
+            appState.leaveRoomImmediately(room)
+            stage = .main
         }
-
-        let operation = isHost(room) ? RoomSyncOperation.closingRoom : .leavingRoom
-        guard appState.beginRoomSync(operation) else { return }
-        isClosingRoom = true
-        defer {
-            isClosingRoom = false
-            appState.endRoomSync(operation)
-        }
-        await Task.yield()
-
-        do {
-            try await appState.client.leaveRoom(room: room, user: user)
-            withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
-                appState.activeRoom = nil
-                appState.selectedTab = .home
-                stage = .main
-            }
-            statusText = isHost(room) ? localized(en: "ROOM CLOSED", ru: "КОМНАТА ЗАКРЫТА", es: "SALA CERRADA") : localized(en: "LEFT ROOM", ru: "ВЫШЕЛ ИЗ КОМНАТЫ", es: "SALA ABANDONADA")
-            statusKind = .success
-            HapticManager.shared.fire(.notification(.success))
-        } catch {
-            statusText = error.localizedDescription.uppercased()
-            statusKind = .error
-            HapticManager.shared.fire(.notification(.error))
-        }
+        statusText = isHost(room) ? localized(en: "ROOM CLOSED", ru: "КОМНАТА ЗАКРЫТА", es: "SALA CERRADA") : localized(en: "LEFT ROOM", ru: "ВЫШЕЛ ИЗ КОМНАТЫ", es: "SALA ABANDONADA")
+        statusKind = .success
+        HapticManager.shared.fire(.notification(.success))
     }
 
     private func closeRoomMenuTitle(_ room: GameRoom) -> String {

@@ -617,6 +617,9 @@ final class AppState: NSObject {
     private(set) var wordPacksRevision = 0
     var activeRoom: GameRoom? {
         didSet {
+            if let room = activeRoom, isDismissedRoom(room.id) {
+                activeRoom = nil
+            }
             if activeRoom == nil {
                 isHomeLandingPresentationRequested = false
             }
@@ -693,7 +696,10 @@ final class AppState: NSObject {
     @ObservationIgnored private var liveActivityLifecycleTask: Task<Void, Never>?
     @ObservationIgnored private var pendingMatchRoomID: String?
     @ObservationIgnored private var isOpeningPendingMatch = false
+    @ObservationIgnored private var dismissedRoomExitAttemptedID: String?
     private static let activeRoomIDStorageKey = "spyclash.activeRoomID"
+    private static let dismissedRoomIDStorageKey = "spyclash.dismissedRoomID"
+    private static let dismissedRoomOwnerStorageKey = "spyclash.dismissedRoomOwnerID"
 
     override init() {
         let client = Base44Client()
@@ -757,6 +763,60 @@ final class AppState: NSObject {
         if gameRoomRealtimeCatchUpRequested ||
             pendingGameRoomRealtimeRevision > (activeRoom?.lobbyRevision ?? 0) {
             scheduleGameRoomRealtimeRefresh()
+        }
+    }
+
+    func leaveRoomImmediately(_ room: GameRoom) {
+        if let ownerID = user?.id {
+            UserDefaults.standard.set(room.id, forKey: Self.dismissedRoomIDStorageKey)
+            UserDefaults.standard.set(ownerID, forKey: Self.dismissedRoomOwnerStorageKey)
+        }
+
+        roomSyncOperation = nil
+        roomSyncRevision &+= 1
+        _ = nextRoomRefreshRequestRevision()
+        activeRoom = nil
+        selectedTab = .home
+
+#if DEBUG
+        guard !shouldUsePreviewData else { return }
+#endif
+        retryDismissedRoomExitIfNeeded()
+    }
+
+    func allowRoomActivation(_ roomID: String) {
+        guard isDismissedRoom(roomID) else { return }
+        UserDefaults.standard.removeObject(forKey: Self.dismissedRoomIDStorageKey)
+        UserDefaults.standard.removeObject(forKey: Self.dismissedRoomOwnerStorageKey)
+        if dismissedRoomExitAttemptedID == roomID {
+            dismissedRoomExitAttemptedID = nil
+        }
+    }
+
+    private func isDismissedRoom(_ roomID: String) -> Bool {
+        guard let ownerID = user?.id,
+              UserDefaults.standard.string(forKey: Self.dismissedRoomOwnerStorageKey) == ownerID else {
+            return false
+        }
+        return UserDefaults.standard.string(forKey: Self.dismissedRoomIDStorageKey) == roomID
+    }
+
+    private func retryDismissedRoomExitIfNeeded() {
+#if DEBUG
+        guard !shouldUsePreviewData else { return }
+#endif
+        guard let roomID = UserDefaults.standard
+            .string(forKey: Self.dismissedRoomIDStorageKey),
+              isDismissedRoom(roomID),
+              dismissedRoomExitAttemptedID != roomID else { return }
+        dismissedRoomExitAttemptedID = roomID
+        Task { @MainActor [weak self] in
+            do {
+                try await self?.client.leaveRoom(roomID: roomID)
+            } catch {
+                guard self?.dismissedRoomExitAttemptedID == roomID else { return }
+                self?.dismissedRoomExitAttemptedID = nil
+            }
         }
     }
 
@@ -1276,6 +1336,7 @@ final class AppState: NSObject {
         guard !shouldUsePreviewData else { return }
 #endif
         guard user != nil, roomSyncOperation == nil else { return }
+        retryDismissedRoomExitIfNeeded()
 
         let preferredRoomID = activeRoom?.id ?? UserDefaults.standard
             .string(forKey: Self.activeRoomIDStorageKey)?
@@ -1307,6 +1368,7 @@ final class AppState: NSObject {
                   self.roomRefreshRequestRevision == refreshRequestRevision else { return }
 
             if let refreshedRoom,
+               !self.isDismissedRoom(refreshedRoom.id),
                ["waiting", "ready_voting", "roulette", "playing"].contains(refreshedRoom.normalizedStatus),
                refreshedRoom.containsPlayer(email: self.user?.email) {
                 if self.activeRoom?.id != refreshedRoom.id || RoomPollPolicy.acceptsSnapshot(
@@ -1567,6 +1629,7 @@ final class AppState: NSObject {
             user = try await client.currentUser()
             reconcileLanguagePreference(with: user?.language)
             await synchronizeAccess()
+            retryDismissedRoomExitIfNeeded()
             await restoreActiveRoomIfPossible()
         } catch is CancellationError {
             // A newer authentication attempt replaced this restore. Its own
@@ -2640,7 +2703,9 @@ final class AppState: NSObject {
         }
 
         do {
-            activeRoom = try await client.join(code: code, user: user)
+            let room = try await client.join(code: code, user: user)
+            allowRoomActivation(room.id)
+            activeRoom = room
             selectedTab = .game
             shellRoute = .main
             presentedSheet = nil
@@ -2850,6 +2915,7 @@ final class AppState: NSObject {
         }
 
         guard let room,
+              !isDismissedRoom(room.id),
               ["waiting", "ready_voting", "roulette", "playing"].contains(room.normalizedStatus),
               room.containsPlayer(email: user.email) else {
             if storedRoomID != nil {

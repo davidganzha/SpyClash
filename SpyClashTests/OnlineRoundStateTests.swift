@@ -123,6 +123,28 @@ final class OnlineRoundStateTests: XCTestCase {
             )
         )
         XCTAssertTrue(room.canStopAssociationSpin(for: speaker.email, isHost: false))
+        XCTAssertEqual(room.associationSpinSettlementDelay(for: speaker.email), 2.0)
+        XCTAssertTrue(
+            room.canStopAssociationSpin(
+                for: room.playersList[0].email,
+                isHost: false
+            ),
+            "Every active client must be able to recover a stuck spin."
+        )
+        XCTAssertEqual(room.associationSpinSettlementDelay(for: room.playersList[0].email), 3.5)
+        XCTAssertEqual(room.associationSpinSettlementDelay(for: room.playersList[1].email), 5.0)
+        XCTAssertFalse(room.canStopAssociationSpin(for: "outside@example.com", isHost: false))
+        XCTAssertNil(room.associationSpinSettlementDelay(for: "outside@example.com"))
+
+        room.spectators = [room.playersList[0].email]
+        XCTAssertFalse(
+            room.canStopAssociationSpin(
+                for: room.playersList[0].email,
+                isHost: true
+            ),
+            "Spectators cannot mutate the round."
+        )
+        XCTAssertNil(room.associationSpinSettlementDelay(for: room.playersList[0].email))
     }
 
     func testMalformedLegacyAssociationStateFallsBackToIdle() {

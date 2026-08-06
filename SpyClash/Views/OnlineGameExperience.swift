@@ -2012,9 +2012,10 @@ struct OnlineActiveGameScene: View {
         guard let eventID = associationSpinEventID,
               !room.isGamePaused,
               !isRoundTransitioning,
-              handledAssociationSpinEventID != eventID else { return }
+              handledAssociationSpinEventID != eventID,
+              let delay = room.associationSpinSettlementDelay(for: currentUserEmail) else { return }
         do {
-            try await Task.sleep(for: .seconds(2))
+            try await Task.sleep(for: .seconds(delay))
         } catch {
             return
         }

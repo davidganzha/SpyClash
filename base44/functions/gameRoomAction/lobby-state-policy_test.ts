@@ -300,6 +300,36 @@ Deno.test("authoritative start requires a current revision and two selected word
   assertEquals(errorCode(incomplete), "lobby_word_pool_incomplete");
 });
 
+Deno.test("authoritative start repairs a secret word outside the selected pool", () => {
+  const room = {
+    lobby_revision: 4,
+    ...state({
+      lobby_word_count: 2,
+      lobby_word_pool: [
+        { word: "Bulgaria", enabled: true },
+        { word: "Romania", enabled: true },
+      ],
+    }),
+  };
+
+  const payload = authoritativeStartPayload(
+    room,
+    {
+      word: "Embassy",
+      secret_word: "Embassy",
+      word_pool: [{ word: "Embassy", enabled: true }],
+    },
+    4,
+  );
+
+  assertEquals(payload.word, "Bulgaria");
+  assertEquals(payload.secret_word, "Bulgaria");
+  assertEquals(payload.word_pool, [
+    { word: "Bulgaria", enabled: true },
+    { word: "Romania", enabled: true },
+  ]);
+});
+
 Deno.test("legacy revision zero keeps the existing client start contract", () => {
   const payload = { game_mode: "questions", word_pool: [{ word: "Legacy" }] };
   assertEquals(hasAuthoritativeLobbyState({ lobby_revision: 0 }), false);

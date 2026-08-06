@@ -7229,20 +7229,29 @@ struct GameView: View {
         isAdvancing = true
         defer { isAdvancing = false }
 
-        do {
-            guard let currentRoom = try await appState.client.refreshRoom(id: room.id),
-                  currentRoom.canStopAssociationSpin(
-                    for: appState.user?.email,
-                    isHost: isHost(currentRoom)
-                  ) else {
+        let retryDelays = [350, 800]
+        for attempt in 0...retryDelays.count {
+            do {
+                guard let currentRoom = appState.activeRoom,
+                      currentRoom.id == room.id,
+                      currentRoom.canStopAssociationSpin(
+                        for: appState.user?.email,
+                        isHost: isHost(currentRoom)
+                      ) else {
+                    return
+                }
+                appState.activeRoom = try await appState.client.stopAssociationSpin(room: currentRoom)
                 return
+            } catch is CancellationError {
+                return
+            } catch {
+                guard attempt < retryDelays.count else {
+                    status = error.localizedDescription.uppercased()
+                    HapticManager.shared.fire(.notification(.error))
+                    return
+                }
+                try? await Task.sleep(for: .milliseconds(retryDelays[attempt]))
             }
-            appState.activeRoom = try await appState.client.stopAssociationSpin(room: currentRoom)
-        } catch is CancellationError {
-            return
-        } catch {
-            status = error.localizedDescription.uppercased()
-            HapticManager.shared.fire(.notification(.error))
         }
     }
 
@@ -7500,27 +7509,10 @@ struct GameView: View {
     }
 
     private func leaveRoom(_ room: GameRoom) async {
-        if appState.shouldUsePreviewData {
-            leaveLocally()
-            return
-        }
-        guard let user = appState.user else {
-            leaveLocally()
-            return
-        }
-
-        let operation = isHost(room) ? RoomSyncOperation.closingRoom : .leavingRoom
-        guard appState.beginRoomSync(operation) else { return }
-        defer { appState.endRoomSync(operation) }
-        await Task.yield()
-
-        do {
-            try await appState.client.leaveRoom(room: room, user: user)
-            leaveLocally()
-        } catch {
-            status = error.localizedDescription.uppercased()
-            HapticManager.shared.fire(.notification(.error))
-        }
+        appState.leaveRoomImmediately(room)
+        HapticManager.shared.fire(.buttonPress)
+        status = ""
+        revealRole = false
     }
 
     private func leaveLocally(providesFeedback: Bool = true) {

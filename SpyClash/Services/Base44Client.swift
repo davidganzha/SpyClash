@@ -379,7 +379,11 @@ final class Base44Client {
 
         let shuffledPlayers = players.shuffled()
         let spy = shuffledPlayers.randomElement() ?? shuffledPlayers[0]
-        let mission = Self.pickMissionWord(from: wordPacks, selectedPackID: selectedPackID)
+        let mission = try Self.pickMissionWord(
+            for: room,
+            from: wordPacks,
+            selectedPackID: selectedPackID
+        )
         let asker = forcedAskerEmail.flatMap { email in
             shuffledPlayers.first { $0.email == email }
         } ?? shuffledPlayers[0]
@@ -505,13 +509,17 @@ final class Base44Client {
     }
 
     func leaveRoom(room: GameRoom, user: SpyUser) async throws {
+        try await leaveRoom(roomID: room.id)
+    }
+
+    func leaveRoom(roomID: String) async throws {
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/functions/gameRoomAction",
             method: "POST",
-            body: GameRoomActionPayload(action: "leave_room", accessToken: token, roomID: room.id),
+            body: GameRoomActionPayload(action: "leave_room", accessToken: token, roomID: roomID),
             includeAuthorization: false
         )
     }
@@ -1380,9 +1388,34 @@ final class Base44Client {
     }
 
     private static func pickMissionWord(
+        for room: GameRoom,
         from packs: [WordPack],
         selectedPackID: String?
-    ) -> (word: String, category: String, pool: [WordPoolEntry]) {
+    ) throws -> (word: String, category: String, pool: [WordPoolEntry]) {
+        if (room.lobbyRevision ?? 0) > 0 {
+            let enabledWords = (room.lobbyWordPool ?? [])
+                .filter(\.enabled)
+                .map(\.word)
+                .cleanMissionWords
+            let requestedCount = max(min(room.lobbyWordCount ?? 0, 200), 0)
+            let words = Array(enabledWords.prefix(requestedCount))
+            guard words.count >= 2 else {
+                throw Base44Error(
+                    message: "Select at least two enabled lobby words before starting.",
+                    statusCode: 409
+                )
+            }
+            let category = room.lobbyCategory?.nilIfBlank
+                ?? room.lobbySourceName?.nilIfBlank
+                ?? "CLASSIC"
+            let pool = words.map { WordPoolEntry(word: $0, enabled: true) }
+            return (
+                word: words.randomElement() ?? words[0],
+                category: category,
+                pool: pool
+            )
+        }
+
         if let selectedPackID,
            let pack = packs.first(where: { $0.id == selectedPackID }),
            let words = pack.words?.cleanMissionWords,

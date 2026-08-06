@@ -1203,16 +1203,10 @@ async function startAssociation(base44, room, user) {
 
 async function stopAssociationSpin(base44, room, user) {
   requirePlayer(room, user);
-  if (
-    clean(room.host_email) !== clean(user.email) &&
-    clean(room.current_asker_email) !== clean(user.email)
-  ) {
-    throw Object.assign(
-      new Error("Only the host or current speaker can stop the spin"),
-      {
-        status: 403,
-      },
-    );
+  if (!activePlayers(room).some((player) => player.email === user.email)) {
+    throw Object.assign(new Error("Only active players can stop the spin"), {
+      status: 403,
+    });
   }
   const state = parseAssociationState(room.current_answer);
   if (!state.spinning) return room;

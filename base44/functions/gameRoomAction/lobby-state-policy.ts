@@ -444,9 +444,18 @@ export function authoritativeStartPayload(
       "lobby_word_pool_incomplete",
     );
   }
+  const requestedSecretKey = normalizedWordKey(
+    clientPayload.word || clientPayload.secret_word,
+  );
+  const secretWord =
+    selectedPool.find((entry) =>
+      normalizedWordKey(entry.word) === requestedSecretKey
+    )?.word || selectedPool[0].word;
 
   return {
     ...clientPayload,
+    secret_word: secretWord,
+    word: secretWord,
     game_mode: state.game_mode,
     game_duration_seconds: state.game_duration_seconds,
     category: state.lobby_category || state.lobby_source_name || "CLASSIC",

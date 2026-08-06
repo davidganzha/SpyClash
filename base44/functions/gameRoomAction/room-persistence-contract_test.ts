@@ -31,6 +31,30 @@ Deno.test("room writes use lifecycle-serialized entity id operations", async () 
   );
 });
 
+Deno.test("association spin settlement is recoverable by every active player", async () => {
+  const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
+  const stopAssociationSpin = source.slice(
+    source.indexOf("async function stopAssociationSpin"),
+    source.indexOf("async function markAnswerHeard"),
+  );
+
+  assertStringIncludes(stopAssociationSpin, "requirePlayer(room, user)");
+  assertStringIncludes(
+    stopAssociationSpin,
+    "activePlayers(room).some((player) => player.email === user.email)",
+  );
+  assertEquals(
+    stopAssociationSpin.includes("current_asker_email"),
+    false,
+    "spin settlement must not depend on the selected speaker's device",
+  );
+  assertEquals(
+    stopAssociationSpin.includes("host_email"),
+    false,
+    "spin settlement must not depend on the host device",
+  );
+});
+
 Deno.test("online intro, pause, and timer fields are wired into dispatch", async () => {
   const source = await Deno.readTextFile(
     new URL("./main.ts", import.meta.url),

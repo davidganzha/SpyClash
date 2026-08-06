@@ -95,15 +95,40 @@ extension GameRoom {
         return .markAnswerHeard
     }
 
-    func canStopAssociationSpin(for userEmail: String?, isHost: Bool) -> Bool {
+    func canStopAssociationSpin(for userEmail: String?, isHost _: Bool) -> Bool {
         guard normalizedStatus == "playing",
               !isGamePaused,
               gameModeValue == .associations,
-              associationRoundState.spinning,
-              containsPlayer(email: userEmail) else {
+              associationRoundState.spinning else {
             return false
         }
-        return isHost || Self.normalizedPlayerEmail(currentAskerEmail) == Self.normalizedPlayerEmail(userEmail)
+        return associationSpinSettlementDelay(for: userEmail) != nil
+    }
+
+    func associationSpinSettlementDelay(for userEmail: String?) -> TimeInterval? {
+        guard let normalizedUserEmail = Self.normalizedPlayerEmail(userEmail) else {
+            return nil
+        }
+        let activeEmails = activePlayers.compactMap {
+            Self.normalizedPlayerEmail($0.email)
+        }
+        guard activeEmails.contains(normalizedUserEmail) else { return nil }
+
+        var prioritizedEmails: [String] = []
+        func addCandidate(_ email: String?) {
+            guard let normalized = Self.normalizedPlayerEmail(email),
+                  activeEmails.contains(normalized),
+                  !prioritizedEmails.contains(normalized) else { return }
+            prioritizedEmails.append(normalized)
+        }
+        addCandidate(currentAskerEmail)
+        addCandidate(hostEmail)
+        activeEmails.forEach { addCandidate($0) }
+
+        guard let rank = prioritizedEmails.firstIndex(of: normalizedUserEmail) else {
+            return nil
+        }
+        return 2 + Double(rank) * 1.5
     }
 
     func countdownRemaining(

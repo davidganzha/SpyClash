@@ -32,6 +32,29 @@ final class Base44ClientRoomActionTests: XCTestCase {
         )
     }
 
+    func testRoomIDLeaveWrapperSendsImmediateCleanupAction() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 204,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data())
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        try await client.leaveRoom(roomID: "room-dismissed")
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        XCTAssertEqual(body["action"] as? String, "leave_room")
+        XCTAssertEqual(body["room_id"] as? String, "room-dismissed")
+        XCTAssertEqual(body["access_token"] as? String, "test-token")
+    }
+
     func testActiveRoomSendsPreferredIDAndDecodesNull() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in
@@ -101,6 +124,49 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertTrue(pool.allSatisfy { ($0["enabled"] as? Bool) == true })
         XCTAssertTrue(activeWords.contains(secretWord))
         XCTAssertFalse(transportedWords.contains("removed"))
+    }
+
+    func testAuthoritativeGeneratedLobbyDrivesStartPlanDespiteLocalPackID() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        var room = GameRoom.previewRoom(status: "waiting")
+        room.lobbyRevision = 7
+        room.lobbyWordSource = "ai"
+        room.lobbySourcePackID = nil
+        room.lobbySourceName = "World map"
+        room.lobbyCategory = "COUNTRIES"
+        room.lobbyWordCount = 2
+        room.lobbyWordPool = [
+            LobbyWordPoolEntry(word: "Bulgaria"),
+            LobbyWordPoolEntry(word: "Removed", enabled: false),
+            LobbyWordPoolEntry(word: "Romania"),
+            LobbyWordPoolEntry(word: "Moldova")
+        ]
+
+        let plan = try client.makeGameStartPlan(
+            room: room,
+            wordPacks: [],
+            selectedPackID: "generated",
+            gameMode: .questions,
+            durationSeconds: 900
+        )
+        _ = try await client.armRoulette(room: room, plan: plan)
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        let planBody = try XCTUnwrap(body["plan"] as? [String: Any])
+        let secretWord = try XCTUnwrap(planBody["secret_word"] as? String)
+        let pool = try XCTUnwrap(planBody["word_pool"] as? [[String: Any]])
+        let transportedWords = try pool.map { try XCTUnwrap($0["word"] as? String) }
+
+        XCTAssertEqual(transportedWords, ["Bulgaria", "Romania"])
+        XCTAssertTrue(transportedWords.contains(secretWord))
+        XCTAssertEqual(planBody["category"] as? String, "COUNTRIES")
     }
 
     func testGameRoomDecodesAuthoritativeLobbyProjection() throws {
@@ -216,6 +282,11 @@ final class Base44ClientRoomActionTests: XCTestCase {
         let client = makeClient()
         var room = GameRoom.previewRoom(status: "waiting")
         room.lobbyRevision = 12
+        room.lobbyWordCount = 2
+        room.lobbyWordPool = [
+            LobbyWordPoolEntry(word: "Embassy"),
+            LobbyWordPoolEntry(word: "Cipher")
+        ]
         let plan = try client.makeGameStartPlan(
             room: room,
             wordPacks: [],
