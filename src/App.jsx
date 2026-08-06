@@ -24,6 +24,7 @@ import Welcome from './pages/Welcome';
 import PrivacyPolicy from './pages/PrivacyPolicy';
 import Support from './pages/Support';
 import TermsOfService from './pages/TermsOfService';
+import WebReleaseNotice from '@/components/WebReleaseNotice';
 
 const { Pages, Layout } = pagesConfig;
 const PUBLIC_PAGE_NAMES = new Set(['PrivacyPolicy', 'Support', 'TermsOfService']);
@@ -75,6 +76,7 @@ const AppShell = () => {
 
   return (
     <>
+      <WebReleaseNotice />
       <AnimatedRoutes />
       <BottomNav />
     </>
