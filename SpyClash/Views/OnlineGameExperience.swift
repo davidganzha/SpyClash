@@ -857,6 +857,12 @@ private struct IntroCardDeck: View {
 
 // MARK: - Role reveal and ready gate
 
+enum OnlineRoleRevealInteractionPolicy {
+    static func canToggleRoleCard(isConfirmed _: Bool, isConfirming: Bool) -> Bool {
+        !isConfirming
+    }
+}
+
 struct OnlineRoleRevealScene: View {
     let room: GameRoom
     let language: AppLanguage
@@ -953,7 +959,7 @@ struct OnlineRoleRevealScene: View {
 
                             Spacer(minLength: 10)
 
-                            Button(action: revealIfNeeded) {
+                            Button(action: toggleReveal) {
                                 MissionRoleCard(
                                     role: displayedRole,
                                     category: room.category,
@@ -965,7 +971,7 @@ struct OnlineRoleRevealScene: View {
                                 )
                                 .frame(width: cardWidth)
                             }
-                            .buttonStyle(SpyWebPressStyle(pressedScale: isRevealed ? 1 : 0.98))
+                            .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
                             .scaleEffect(hasEntered ? 1 : 0.78)
                             .offset(y: hasEntered ? 0 : 86)
                             .rotation3DEffect(
@@ -973,7 +979,12 @@ struct OnlineRoleRevealScene: View {
                                 axis: (x: 1, y: 0.08, z: 0),
                                 perspective: 0.66
                             )
-                            .disabled(isRevealed || isCurrentPlayerConfirmed)
+                            .disabled(
+                                !OnlineRoleRevealInteractionPolicy.canToggleRoleCard(
+                                    isConfirmed: isCurrentPlayerConfirmed,
+                                    isConfirming: isConfirming
+                                )
+                            )
                             .accessibilityElement(children: .ignore)
                             .accessibilityLabel(
                                 displayedRole.onlineAccessibilityLabel(
@@ -983,7 +994,7 @@ struct OnlineRoleRevealScene: View {
                                 )
                             )
                             .accessibilityValue(isRevealed ? copy.revealed : copy.concealed)
-                            .accessibilityHint(isRevealed || isCurrentPlayerConfirmed ? "" : copy.tapToReveal)
+                            .accessibilityHint(isRevealed ? copy.tapToConceal : copy.tapToReveal)
                             .accessibilityIdentifier("onlineExperience.roleCard")
 
                             Spacer(minLength: 10)
@@ -1088,8 +1099,11 @@ struct OnlineRoleRevealScene: View {
         }
     }
 
-    private func revealIfNeeded() {
-        guard !isRevealed, !isCurrentPlayerConfirmed else { return }
+    private func toggleReveal() {
+        guard OnlineRoleRevealInteractionPolicy.canToggleRoleCard(
+            isConfirmed: isCurrentPlayerConfirmed,
+            isConfirming: isConfirming
+        ) else { return }
         onReveal()
     }
 
@@ -2199,6 +2213,7 @@ private struct OnlineExperienceCopy {
     var revealed: String { text("Revealed", "Revelada", "Открыта") }
     var concealed: String { text("Concealed", "Oculta", "Закрыта") }
     var tapToReveal: String { text("TAP TO REVEAL", "TOCA PARA REVELAR", "НАЖМИ, ЧТОБЫ ОТКРЫТЬ") }
+    var tapToConceal: String { text("TAP TO CONCEAL", "TOCA PARA OCULTAR", "НАЖМИ, ЧТОБЫ СКРЫТЬ") }
 
     var gameStarting: String { text("// THE GAME BEGINS", "// EL JUEGO EMPIEZA", "// ИГРА НАЧИНАЕТСЯ") }
     var introAccessibility: String { text("The game begins. Cards are dealt. The spy is among you.", "El juego comienza. Las cartas están repartidas. El espía está entre ustedes.", "Игра начинается. Карты розданы. Шпион среди вас.") }

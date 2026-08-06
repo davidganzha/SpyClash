@@ -4,6 +4,24 @@ import XCTest
 @testable import SpyClash
 
 final class OnlineRoundStateTests: XCTestCase {
+    func testConfirmedPlayerCanReopenRoleCardWhileWaitingForOthers() {
+        XCTAssertTrue(
+            OnlineRoleRevealInteractionPolicy.canToggleRoleCard(
+                isConfirmed: true,
+                isConfirming: false
+            )
+        )
+    }
+
+    func testRoleCardDoesNotToggleWhileConfirmationIsInFlight() {
+        XCTAssertFalse(
+            OnlineRoleRevealInteractionPolicy.canToggleRoleCard(
+                isConfirmed: false,
+                isConfirming: true
+            )
+        )
+    }
+
     func testPreviewRoomUsesCurrentSixCharacterRoomCodeContract() {
         let room = GameRoom.previewRoom(status: "waiting")
 

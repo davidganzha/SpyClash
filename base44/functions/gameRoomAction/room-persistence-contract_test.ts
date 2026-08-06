@@ -176,9 +176,34 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   const lease = leasedAction.indexOf("return await withRoomWriteLeases({");
   const refetch = leasedAction.indexOf("const latestRoom = await fetchRoom");
   const dispatch = leasedAction.indexOf("return await executeRoomAction(");
+  const recovery = leasedAction.indexOf("recover: async () =>");
+  const recoveryBypass = leasedAction.indexOf(
+    "allowActiveIdentityLeaseRecovery: true",
+  );
   assert(
-    lease >= 0 && lease < refetch && refetch < dispatch,
-    "competing completions must serialize, refetch, then dispatch",
+    lease >= 0 && lease < refetch && refetch < dispatch &&
+      dispatch < recovery && recovery < recoveryBypass,
+    "normal actions must serialize before bounded safe-action recovery",
+  );
+  assertEquals(
+    source.match(/allowActiveIdentityLeaseRecovery: true/g)?.length,
+    1,
+    "only the explicit safe-action recovery may bypass a writer lease",
+  );
+
+  const lifecycleSource = await Deno.readTextFile(
+    new URL("./room-write-lifecycle.ts", import.meta.url),
+  );
+  const safeRecovery = lifecycleSource.slice(
+    lifecycleSource.indexOf("const ACTIVE_LEASE_RECOVERY_ACTIONS"),
+    lifecycleSource.indexOf("function boundedAttemptCount"),
+  );
+  assertStringIncludes(safeRecovery, '"leave_room"');
+  assertStringIncludes(safeRecovery, '"mark_role_card_read"');
+  assertStringIncludes(safeRecovery, 'input.error.code === "active_lease"');
+  assert(
+    !safeRecovery.includes("deletion_in_progress"),
+    "safe-action recovery must not bypass account deletion",
   );
 
   const finalizeCase = source.slice(

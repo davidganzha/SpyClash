@@ -10,6 +10,7 @@ import {
   assertExactRoomLeaseCoverage,
   assertRoomWriteLeases,
   assertRoomWriterLeaseForUser,
+  recoverSafeRoomActionAfterActiveIdentityLease,
   retryRoomMembershipChangeBeforeAction,
   withRoomWriteLeases,
 } from "./room-write-lifecycle.ts";
@@ -308,8 +309,16 @@ async function updateRoomWithRetry(
       continue;
     }
 
-    await assertRoomPersistenceBoundary(base44);
+    if (options.allowActiveIdentityLeaseRecovery !== true) {
+      await assertRoomPersistenceBoundary(base44);
+    }
     await base44.asServiceRole.entities.GameRoom.update(latest.id, patch);
+    if (options.allowActiveIdentityLeaseRecovery === true) {
+      // Recovery writes are not protected by the participant lease set. Give
+      // overlapping monotonic acknowledgements/removals a chance to settle so
+      // the bounded retry can merge rather than lose a concurrent update.
+      await delay(45 + attempt * 35);
+    }
     latest = await fetchRoom(base44, latest.id);
     if (!latest) {
       throw Object.assign(new Error("Room not found"), { status: 404 });
@@ -360,8 +369,10 @@ async function endRoomLiveActivitiesBeforeDelete(base44, room) {
   }
 }
 
-async function deleteRoom(base44, room) {
-  await assertRoomPersistenceBoundary(base44);
+async function deleteRoom(base44, room, options = {}) {
+  if (options.allowActiveIdentityLeaseRecovery !== true) {
+    await assertRoomPersistenceBoundary(base44);
+  }
   const latest = await fetchRoom(base44, room.id);
   if (!latest) return { success: true };
   assertRoomMutationOpen(latest);
@@ -369,7 +380,9 @@ async function deleteRoom(base44, room) {
   // the ephemeral room is removed. If that boundary cannot be confirmed, keep
   // the room so a caller retry can still produce a real ActivityKit `end`.
   await endRoomLiveActivitiesBeforeDelete(base44, latest);
-  await assertRoomPersistenceBoundary(base44);
+  if (options.allowActiveIdentityLeaseRecovery !== true) {
+    await assertRoomPersistenceBoundary(base44);
+  }
   await deleteRoomAndVerify({
     roomID: latest.id,
     deleteByID: (roomID) =>
@@ -1072,7 +1085,7 @@ async function completeGameStart(base44, room, user) {
   return committed;
 }
 
-async function markRoleCardRead(base44, room, user) {
+async function markRoleCardRead(base44, room, user, options = {}) {
   requirePlayer(room, user);
   const updatedReadRoom = await updateRoomWithRetry(
     base44,
@@ -1083,6 +1096,8 @@ async function markRoleCardRead(base44, room, user) {
         clean(email).toLocaleLowerCase() ===
           clean(user.email).toLocaleLowerCase()
       ),
+    6,
+    options,
   );
 
   const allCardsRead = players(updatedReadRoom).length > 0 &&
@@ -1420,7 +1435,7 @@ async function submitSpyGuess(base44, room, user, body) {
   });
 }
 
-async function leaveRoom(base44, room, user) {
+async function leaveRoom(base44, room, user, options = {}) {
   if (leaveAlreadyComplete(room, user.email)) return { success: true };
 
   const hostLeaving = clean(room.host_email).toLocaleLowerCase() ===
@@ -1429,7 +1444,7 @@ async function leaveRoom(base44, room, user) {
     ["roulette", "playing"].includes(normalizedStatus(room)) &&
     !clean(room.game_started_at);
   if (hostLeaving && !leavingDuringPreTimer) {
-    return await deleteRoom(base44, room);
+    return await deleteRoom(base44, room, options);
   }
 
   return await updateRoomWithRetry(
@@ -1486,6 +1501,8 @@ async function leaveRoom(base44, room, user) {
       };
     },
     (latest) => !playerInRoom(latest, user.email),
+    6,
+    options,
   );
 }
 
@@ -1908,7 +1925,51 @@ Deno.serve(async (req) => {
           },
         });
       },
-    });
+    }).catch((error) =>
+      recoverSafeRoomActionAfterActiveIdentityLease({
+        action,
+        error,
+        recover: async () => {
+          const recoveryRoom = await fetchRoom(base44, room.id);
+          if (!recoveryRoom) {
+            if (action === "leave_room") return { success: true };
+            throw Object.assign(new Error("Room not found"), { status: 404 });
+          }
+          if (
+            action === "leave_room" &&
+            leaveAlreadyComplete(recoveryRoom, user.email)
+          ) {
+            return { success: true };
+          }
+          requirePlayer(recoveryRoom, user);
+          console.warn(
+            `${action} continuing through an active identity lease`,
+            { room_id: clean(recoveryRoom.id) },
+          );
+
+          // These actions only add the actor's acknowledgement or remove the
+          // actor's room references. They can be retried and merged without
+          // creating or rewriting billing identity data.
+          const recoveryOptions = {
+            allowActiveIdentityLeaseRecovery: true,
+          };
+          if (action === "leave_room") {
+            return await leaveRoom(
+              base44,
+              recoveryRoom,
+              user,
+              recoveryOptions,
+            );
+          }
+          return await markRoleCardRead(
+            base44,
+            recoveryRoom,
+            user,
+            recoveryOptions,
+          );
+        },
+      })
+    );
     if (result?.id) await dispatchRoomPushBestEffort(base44, result, action);
     return Response.json(result?.id ? roomForClient(result, user) : result);
   } catch (error) {

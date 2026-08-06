@@ -99,6 +99,23 @@ function retryableLeaseAcquisitionError(
     (error.code === "active_lease" || error.code === "cas_contention");
 }
 
+const ACTIVE_LEASE_RECOVERY_ACTIONS = new Set([
+  "leave_room",
+  "mark_role_card_read",
+]);
+
+export async function recoverSafeRoomActionAfterActiveIdentityLease<T>(input: {
+  action: string;
+  error: unknown;
+  recover: () => Promise<T>;
+}): Promise<T> {
+  const canRecover = ACTIVE_LEASE_RECOVERY_ACTIONS.has(input.action) &&
+    input.error instanceof BillingIdentityLifecycleError &&
+    input.error.code === "active_lease";
+  if (!canRecover) throw input.error;
+  return await input.recover();
+}
+
 function boundedAttemptCount(value: number | undefined): number {
   if (value === undefined || !Number.isFinite(value)) {
     return ROOM_WRITE_LEASE_ATTEMPTS;

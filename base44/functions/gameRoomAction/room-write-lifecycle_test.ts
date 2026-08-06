@@ -6,6 +6,7 @@ import {
 import {
   assertExactRoomLeaseCoverage,
   assertRoomWriterLeaseForUser,
+  recoverSafeRoomActionAfterActiveIdentityLease,
   retryRoomMembershipChangeBeforeAction,
   uniqueStableUserIDs,
   withRoomWriteLeases,
@@ -350,6 +351,77 @@ Deno.test("exhausted room lease contention never invokes the action", async () =
   assertEquals(actionCalls, 0);
   assertEquals(delays, [25, 50, 100, 200, 400]);
 });
+
+for (const action of ["leave_room", "mark_role_card_read"] as const) {
+  Deno.test(`${action} recovers after an active identity lease`, async () => {
+    let recoveryCalls = 0;
+
+    const result = await recoverSafeRoomActionAfterActiveIdentityLease({
+      action,
+      error: new BillingIdentityLifecycleError(
+        "active_lease",
+        "Account identity is being updated.",
+      ),
+      recover: () => {
+        recoveryCalls += 1;
+        return Promise.resolve(`${action}-recovered`);
+      },
+    });
+
+    assertEquals(result, `${action}-recovered`);
+    assertEquals(recoveryCalls, 1);
+  });
+}
+
+Deno.test("other room actions remain blocked by an active identity lease", async () => {
+  let recoveryCalls = 0;
+  const leaseError = new BillingIdentityLifecycleError(
+    "active_lease",
+    "Account identity is being updated.",
+  );
+
+  const error = await assertRejects(
+    () =>
+      recoverSafeRoomActionAfterActiveIdentityLease({
+        action: "pause_game",
+        error: leaseError,
+        recover: () => {
+          recoveryCalls += 1;
+          return Promise.resolve("unsafe");
+        },
+      }),
+    BillingIdentityLifecycleError,
+  );
+
+  assertEquals(error, leaseError);
+  assertEquals(recoveryCalls, 0);
+});
+
+for (const action of ["leave_room", "mark_role_card_read"] as const) {
+  Deno.test(`${action} recovery does not bypass account deletion`, async () => {
+    let recoveryCalls = 0;
+    const deletionError = new BillingIdentityLifecycleError(
+      "deletion_in_progress",
+      "Account deletion is in progress or already completed.",
+    );
+
+    const error = await assertRejects(
+      () =>
+        recoverSafeRoomActionAfterActiveIdentityLease({
+          action,
+          error: deletionError,
+          recover: () => {
+            recoveryCalls += 1;
+            return Promise.resolve("unsafe");
+          },
+        }),
+      BillingIdentityLifecycleError,
+    );
+
+    assertEquals(error, deletionError);
+    assertEquals(recoveryCalls, 0);
+  });
+}
 
 Deno.test("partial lease release failure aborts acquisition retry", async () => {
   let acquireCalls = 0;
