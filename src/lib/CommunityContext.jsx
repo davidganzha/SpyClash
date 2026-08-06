@@ -7,6 +7,7 @@ import {
 import {
   communityAttentionCount,
   communityPollIntervalMilliseconds,
+  shouldPauseCommunityPolling,
 } from "@/lib/communityProtocol";
 
 const CommunityContext = createContext(null);
@@ -67,13 +68,18 @@ export function CommunityProvider({ children }) {
       return undefined;
     }
 
-    void refresh().catch(() => {});
+    if (!shouldPauseCommunityPolling(window.location.pathname)) {
+      void refresh().catch(() => {});
+    }
     let timer = null;
     let disposed = false;
     const schedule = () => {
       if (disposed) return;
       timer = window.setTimeout(async () => {
-        if (document.visibilityState !== "hidden") {
+        if (
+          document.visibilityState !== "hidden"
+          && !shouldPauseCommunityPolling(window.location.pathname)
+        ) {
           await refresh({ silent: true }).catch(() => {});
         }
         schedule();

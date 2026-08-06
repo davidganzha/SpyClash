@@ -150,8 +150,8 @@ export function associationSpinSettlementDelayMs(room, userEmail) {
 
   const rank = prioritizedEmails.indexOf(viewerEmail);
   if (rank < 0) return null;
-  const minimumDelay = 1_000;
-  const maximumDelay = 3_000;
+  const minimumDelay = 500;
+  const maximumDelay = 1_500;
   if (prioritizedEmails.length === 1) return minimumDelay;
   const step = (maximumDelay - minimumDelay) / (prioritizedEmails.length - 1);
   return minimumDelay + rank * step;
@@ -319,13 +319,22 @@ export function countdownRemainingSeconds(
 
 /**
  * Rejects delayed realtime/poll responses that predate the room currently on
- * screen. Base44's projected updated_date is the shared ordering signal; when
- * either side has no valid timestamp we keep compatibility with legacy rows.
+ * screen. The monotonic room revision is authoritative. Legacy rooms fall
+ * back to Base44's projected updated_date rather than freezing in place.
  */
 export function shouldAcceptOnlineRoomSnapshot(currentRoom, nextRoom) {
   if (!nextRoom?.id) return false;
   if (!currentRoom?.id) return true;
   if (clean(currentRoom.id) !== clean(nextRoom.id)) return false;
+
+  const currentRevision = Number(currentRoom.room_revision);
+  const nextRevision = Number(nextRoom.room_revision);
+  if (
+    Number.isSafeInteger(currentRevision) && currentRevision >= 0
+    && Number.isSafeInteger(nextRevision) && nextRevision >= 0
+  ) {
+    return nextRevision >= currentRevision;
+  }
 
   const currentUpdatedAt = Date.parse(clean(currentRoom.updated_date));
   const nextUpdatedAt = Date.parse(clean(nextRoom.updated_date));

@@ -112,6 +112,12 @@ export function subscribeGameRoom(roomId, onEvent, options = {}) {
   const config = typeof options === "number" ? { intervalMs: options } : options;
   const intervalMs = config?.intervalMs ?? ROOM_POLL_FALLBACK_INTERVAL_MILLISECONDS;
   const userId = config?.userId ?? null;
+  const currentRoomRevision = () => {
+    const value = typeof config?.currentRoomRevision === "function"
+      ? config.currentRoomRevision()
+      : config?.currentRoomRevision;
+    return value ?? null;
+  };
   const subscribeSignals = config?.subscribeSignals
     || ((callback) => base44.entities.GameRoomSignal.subscribe(callback));
   let cancelled = false;
@@ -155,7 +161,9 @@ export function subscribeGameRoom(roomId, onEvent, options = {}) {
       if (recovered) {
         onEvent({ id: roomId, type: "sync", state: "connected" });
       }
-      const revision = room.updated_date || JSON.stringify(room);
+      const revision = Number.isInteger(Number(room.room_revision))
+        ? `room:${Number(room.room_revision)}`
+        : room.updated_date || JSON.stringify(room);
       if (revision !== lastUpdated) {
         lastUpdated = revision;
         onEvent({ id: roomId, type: "update", data: room });
@@ -211,7 +219,11 @@ export function subscribeGameRoom(roomId, onEvent, options = {}) {
   }
   try {
     unsubscribeSignals = subscribeSignals((event) => {
-      if (!shouldRefreshForGameRoomSignal(event, { roomId, userId })) return;
+      if (!shouldRefreshForGameRoomSignal(event, {
+        roomId,
+        userId,
+        currentRoomRevision: currentRoomRevision(),
+      })) return;
       const state = String(event?.data?.state || "active").toLocaleLowerCase();
       if (state === "closed") {
         cancelled = true;

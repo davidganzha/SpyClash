@@ -1,7 +1,7 @@
 export const ONLINE_GAME_INTRO_MILLISECONDS = 8_000;
 export const ONLINE_GAME_INTRO_GRACE_MILLISECONDS = 250;
 export const POST_GAME_GUESS_SECONDS = 30;
-export const ROOM_POLL_FALLBACK_INTERVAL_MILLISECONDS = 8_000;
+export const ROOM_POLL_FALLBACK_INTERVAL_MILLISECONDS = 30_000;
 export const ROOM_POLL_MAX_INTERVAL_MILLISECONDS = 30_000;
 export const ROOM_POLL_ERROR_THRESHOLD = 2;
 
@@ -13,7 +13,18 @@ function normalizedIdentifier(value) {
   return String(value ?? "").trim();
 }
 
-export function shouldRefreshForGameRoomSignal(event, { roomId, userId = null }) {
+function normalizedRevision(value) {
+  if (value === null || value === undefined || String(value).trim() === "") {
+    return null;
+  }
+  const revision = Number(value);
+  return Number.isSafeInteger(revision) && revision >= 0 ? revision : null;
+}
+
+export function shouldRefreshForGameRoomSignal(
+  event,
+  { roomId, userId = null, currentRoomRevision = null },
+) {
   if (!["create", "update"].includes(String(event?.type || "").toLocaleLowerCase())) {
     return false;
   }
@@ -22,7 +33,20 @@ export function shouldRefreshForGameRoomSignal(event, { roomId, userId = null })
     return false;
   }
   const expectedUserId = normalizedIdentifier(userId);
-  return !expectedUserId || normalizedIdentifier(signal.user_id) === expectedUserId;
+  if (expectedUserId && normalizedIdentifier(signal.user_id) !== expectedUserId) {
+    return false;
+  }
+
+  const signalRevision = normalizedRevision(signal.room_revision);
+  const currentRevision = normalizedRevision(currentRoomRevision);
+  if (
+    String(signal.state || "active").toLocaleLowerCase() !== "closed"
+    && signalRevision !== null
+    && currentRevision !== null && currentRevision >= signalRevision
+  ) {
+    return false;
+  }
+  return true;
 }
 
 function parsedTimestamp(value) {

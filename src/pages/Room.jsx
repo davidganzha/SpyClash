@@ -245,6 +245,9 @@ export default function Room() {
         sounds.roundStart();
         navigate(createPageUrl("Game") + `?id=${id}`);
       }
+    }, {
+      userId: u.id,
+      currentRoomRevision: () => roomRef.current?.room_revision,
     });
 
   };

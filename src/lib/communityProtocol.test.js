@@ -8,6 +8,7 @@ import {
   isExactSpyIDQuery,
   joinCommunityRoomInvite,
   relationshipForProfile,
+  shouldPauseCommunityPolling,
 } from "./communityProtocol.js";
 
 test("communityAction request carries the app ID header and body token without Authorization", () => {
@@ -31,10 +32,13 @@ test("communityAction request carries the app ID header and body token without A
 });
 
 test("community polling yields capacity to active room traffic", () => {
-  assert.equal(communityPollIntervalMilliseconds("/Game?id=room-1"), 60_000);
-  assert.equal(communityPollIntervalMilliseconds("/Room"), 60_000);
+  assert.equal(communityPollIntervalMilliseconds("/Game?id=room-1"), 5_000);
+  assert.equal(communityPollIntervalMilliseconds("/Room"), 5_000);
   assert.equal(communityPollIntervalMilliseconds("/Community"), 10_000);
   assert.equal(communityPollIntervalMilliseconds("/Home"), 30_000);
+  assert.equal(shouldPauseCommunityPolling("/Game?id=room-1"), true);
+  assert.equal(shouldPauseCommunityPolling("/ROOM"), true);
+  assert.equal(shouldPauseCommunityPolling("/Home"), false);
 });
 
 test("community selectors count actionable items and resolve profile relationships", () => {

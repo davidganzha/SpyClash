@@ -223,9 +223,9 @@ test("association spin can be settled by any active player without inventing a r
   assert.equal(spy.canStopAssociationSpin, true);
   assert.equal(observer.canStopAssociationSpin, false);
   assert.equal(spectator.canStopAssociationSpin, false);
-  assert.equal(associationSpinSettlementDelayMs(room, "third@example.com"), 1_000);
-  assert.equal(associationSpinSettlementDelayMs(room, "detective@example.com"), 2_000);
-  assert.equal(associationSpinSettlementDelayMs(room, "spy@example.com"), 3_000);
+  assert.equal(associationSpinSettlementDelayMs(room, "third@example.com"), 500);
+  assert.equal(associationSpinSettlementDelayMs(room, "detective@example.com"), 1_000);
+  assert.equal(associationSpinSettlementDelayMs(room, "spy@example.com"), 1_500);
   assert.equal(associationSpinSettlementDelayMs(room, "outside@example.com"), null);
   assert.equal(
     associationSpinSettlementDelayMs({ ...room, spectators: ["spy@example.com"] }, "spy@example.com"),
@@ -276,4 +276,16 @@ test("room snapshot ordering rejects stale and cross-room updates", () => {
     id: "room-1",
   }), true);
   assert.equal(shouldAcceptOnlineRoomSnapshot(current, null), false);
+
+  const revisioned = { id: "room-1", room_revision: 9 };
+  assert.equal(shouldAcceptOnlineRoomSnapshot(revisioned, {
+    id: "room-1",
+    room_revision: 8,
+    updated_date: "2099-01-01T00:00:00.000Z",
+  }), false);
+  assert.equal(shouldAcceptOnlineRoomSnapshot(revisioned, {
+    id: "room-1",
+    room_revision: 10,
+    updated_date: "2000-01-01T00:00:00.000Z",
+  }), true);
 });

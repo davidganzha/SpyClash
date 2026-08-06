@@ -320,7 +320,10 @@ export default function Game() {
 
       applyRoom(fresh);
       setSyncState("connected");
-    }, { userId: currentUser.id });
+    }, {
+      userId: currentUser.id,
+      currentRoomRevision: () => roomRef.current?.room_revision,
+    });
   };
 
   useEffect(() => {

@@ -123,11 +123,11 @@ test("duration helpers enforce the shared one-to-fifteen minute contract", () =>
 });
 
 test("room polling uses bounded backoff and slows down in the background", () => {
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0 }), 8_000);
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 1 }), 16_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0 }), 30_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 1 }), 30_000);
   assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 2 }), 30_000);
   assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 20 }), 30_000);
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0, hidden: true }), 20_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0, hidden: true }), 30_000);
 });
 
 test("room realtime wakeups are scoped to the current room and participant", () => {
@@ -148,4 +148,22 @@ test("room realtime wakeups are scoped to the current room and participant", () 
     type: "delete",
     data: { room_id: "room-1", user_id: "user-1", state: "closed" },
   }, expected), false);
+  assert.equal(shouldRefreshForGameRoomSignal({
+    type: "update",
+    data: {
+      room_id: "room-1",
+      user_id: "user-1",
+      room_revision: 14,
+      state: "active",
+    },
+  }, { ...expected, currentRoomRevision: 14 }), false);
+  assert.equal(shouldRefreshForGameRoomSignal({
+    type: "update",
+    data: {
+      room_id: "room-1",
+      user_id: "user-1",
+      room_revision: 15,
+      state: "active",
+    },
+  }, { ...expected, currentRoomRevision: 14 }), true);
 });

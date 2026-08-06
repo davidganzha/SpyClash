@@ -52,9 +52,14 @@ export function communityAttentionCount(state) {
 
 export function communityPollIntervalMilliseconds(pathname) {
   const path = String(pathname || "").split(/[?#]/u, 1)[0].toLocaleLowerCase();
-  if (path === "/game" || path === "/room") return 60_000;
+  if (path === "/game" || path === "/room") return 5_000;
   if (path === "/community") return 10_000;
   return 30_000;
+}
+
+export function shouldPauseCommunityPolling(pathname) {
+  const path = String(pathname || "").split(/[?#]/u, 1)[0].toLocaleLowerCase();
+  return path === "/game" || path === "/room";
 }
 
 export function relationshipForProfile(state, userId) {
