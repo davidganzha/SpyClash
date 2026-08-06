@@ -9,6 +9,7 @@ import {
 import "./OnlineGameExperience.css";
 
 const localize = (lang, en, ru) => (lang === "ru" ? ru : en);
+const normalizedEmail = (value) => String(value ?? "").trim().toLocaleLowerCase();
 
 function Wordmark() {
   return (
@@ -41,6 +42,7 @@ function MissionRoleCard({
   lang,
   accessibilityId,
   buttonRef = undefined,
+  disabled = false,
 }) {
   const role = presentation.viewerRole;
   const isDetective = role === "detective";
@@ -73,6 +75,7 @@ function MissionRoleCard({
         isSpy ? "is-spy" : "is-detective",
       ].filter(Boolean).join(" ")}
       onClick={onToggle}
+      disabled={disabled}
       aria-pressed={revealed}
       aria-label={revealed ? revealedAccessibilityLabel : t("game_tap_to_reveal")}
       data-testid={accessibilityId}
@@ -364,7 +367,12 @@ export function OnlineRoleRevealScene({
     () => deriveOnlineGamePresentation(room, user.email),
     [room, user.email],
   );
-  const currentPlayer = (room.players || []).find((player) => player.email === user.email);
+  const userEmail = normalizedEmail(user.email);
+  const currentPlayer = (room.players || []).find(
+    (player) => normalizedEmail(player.email) === userEmail,
+  );
+  const cardReaderEmails = new Set((room.cards_read || []).map(normalizedEmail));
+  const spectatorEmails = new Set((room.spectators || []).map(normalizedEmail));
   const confirmed = presentation.hasReadRoleCard || presentation.isSpectator;
 
   return (
@@ -392,7 +400,8 @@ export function OnlineRoleRevealScene({
               category={room.category}
               revealed={revealed}
               hero
-              onToggle={() => { if (!confirmed && !revealed) onReveal(); }}
+              onToggle={onReveal}
+              disabled={confirming}
               t={t}
               lang={lang}
               accessibilityId="onlineExperience.roleCard"
@@ -405,14 +414,15 @@ export function OnlineRoleRevealScene({
                 <div className="oge-read-title">
                   {localize(
                     lang,
-                    `WAITING ${presentation.cardsReadCount || (room.cards_read || []).length} / ${(room.players || []).length}`,
-                    `ОЖИДАЕМ ${(room.cards_read || []).length} / ${(room.players || []).length}`,
+                    `WAITING ${presentation.cardsReadCount} / ${(room.players || []).length}`,
+                    `ОЖИДАЕМ ${presentation.cardsReadCount} / ${(room.players || []).length}`,
                   )}
                 </div>
                 <div className="oge-read-roster" data-testid="onlineExperience.cardsReadRoster">
                   {(room.players || []).map((player) => {
-                    const checked = (room.cards_read || []).includes(player.email)
-                      || (room.spectators || []).includes(player.email);
+                    const playerEmail = normalizedEmail(player.email);
+                    const checked = cardReaderEmails.has(playerEmail)
+                      || spectatorEmails.has(playerEmail);
                     return (
                       <span key={player.email} className={`oge-read-avatar${checked ? " is-read" : ""}`}>
                         {player.avatar || "•"}

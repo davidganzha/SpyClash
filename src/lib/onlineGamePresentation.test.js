@@ -95,6 +95,17 @@ test("playing room remains in role gate until every card and server timer are co
   assert.equal(noTimer.roundCommand, null);
 });
 
+test("role-card acknowledgements ignore email case and surrounding whitespace", () => {
+  const presentation = deriveOnlineGamePresentation(activeRoom({
+    cards_read: [" DETECTIVE@EXAMPLE.COM ", "Spy@Example.com"],
+  }), "detective@example.com");
+
+  assert.equal(presentation.hasReadRoleCard, true);
+  assert.equal(presentation.cardsReadCount, 2);
+  assert.equal(presentation.allRoleCardsRead, false);
+  assert.equal(presentation.subphase, "role_gate");
+});
+
 test("question command belongs only to the current asker and is case insensitive", () => {
   const room = activeRoom();
   assert.equal(onlineRoundCommand(room, " DETECTIVE@EXAMPLE.COM "), "mark_answer_heard");

@@ -359,14 +359,17 @@ export default function Game() {
   const presentation = useMemo(() => {
     if (!room || !user) return {};
     const players = room.players || [];
-    const spectators = room.spectators || [];
-    const cardsRead = room.cards_read || [];
+    const spectatorEmails = new Set((room.spectators || []).map(normalizedEmail));
+    const cardReaderEmails = new Set((room.cards_read || []).map(normalizedEmail));
+    const userEmail = normalizedEmail(user.email);
+    const spyEmail = normalizedEmail(room.spy_email);
     return {
-      allCardsRead: players.length > 0 && players.every((player) => cardsRead.includes(player.email)),
-      isSpy: Boolean(room.spy_email) && room.spy_email === user.email,
-      isDetective: Boolean(room.spy_email) && room.spy_email !== user.email && !spectators.includes(user.email),
-      isSpectator: spectators.includes(user.email),
-      spyPlayer: players.find((player) => player.email === room.spy_email),
+      allCardsRead: players.length > 0
+        && players.every((player) => cardReaderEmails.has(normalizedEmail(player.email))),
+      isSpy: Boolean(spyEmail) && spyEmail === userEmail,
+      isDetective: Boolean(spyEmail) && spyEmail !== userEmail && !spectatorEmails.has(userEmail),
+      isSpectator: spectatorEmails.has(userEmail),
+      spyPlayer: players.find((player) => normalizedEmail(player.email) === spyEmail),
     };
   }, [room, user]);
 
@@ -487,7 +490,11 @@ export default function Game() {
 
   const handleCardRead = useCallback(async () => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || (currentRoom.cards_read || []).includes(user?.email)) return;
+    const userEmail = normalizedEmail(user?.email);
+    if (
+      !currentRoom
+      || (currentRoom.cards_read || []).some((email) => normalizedEmail(email) === userEmail)
+    ) return;
     const updated = await runSynchronizedAction("mark_role_card_read");
     if (updated) setRevealed(false);
   }, [runSynchronizedAction, user?.email]);
@@ -619,7 +626,7 @@ export default function Game() {
           syncState={syncState}
           onReveal={() => {
             soundsRef.current.cardFlip();
-            setRevealed(true);
+            setRevealed((value) => !value);
           }}
           onConfirm={handleCardRead}
           onLeave={handleLeave}
