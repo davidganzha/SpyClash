@@ -18,6 +18,12 @@ import {
 import { normalizeRoomCode } from "@/lib/roomLinks";
 import { useMembership } from "@/lib/MembershipContext";
 import { accountAvatarForDisplay } from "@/lib/avatars";
+import {
+  clearPendingRoomExit,
+  markRoomExitPending,
+  pendingRoomExitId,
+  roomExitIsPending,
+} from "@/lib/roomExit";
 
 
 export default function Home() {
@@ -99,6 +105,7 @@ export default function Home() {
               roomCode: pendingJoin,
               player: { name: displayName, avatar },
             });
+            clearPendingRoomExit(room.id);
             localStorage.setItem("spy_active_room_id", room.id);
             navigate(createPageUrl("Room") + `?id=${room.id}`);
             return;
@@ -111,12 +118,21 @@ export default function Home() {
       }
       if (u) {
         const savedRoomId = localStorage.getItem("spy_active_room_id");
+        const dismissedRoomId = pendingRoomExitId();
+        if (dismissedRoomId) {
+          void leaveGameRoom(dismissedRoomId)
+            .then(() => clearPendingRoomExit(dismissedRoomId))
+            .catch(() => {});
+        }
         const checkRoom = async () => {
           let found = null;
           if (savedRoomId) {
             found = await getGameRoom(savedRoomId).catch(() => null);
           }
           if (!found) found = await getActiveGameRoom();
+          if (found && (found.id === dismissedRoomId || roomExitIsPending(found.id))) {
+            found = null;
+          }
           if (found) localStorage.setItem("spy_active_room_id", found.id);
           else localStorage.removeItem("spy_active_room_id");
           setActiveRoom(found || null);
@@ -138,11 +154,14 @@ export default function Home() {
     }).catch(() => setUser(null)).finally(() => setLoading(false));
   }, [hasResolvedMembership]);
 
-  const handleLeaveActiveRoom = async () => {
+  const handleLeaveActiveRoom = () => {
     if (!activeRoom || !user) { setActiveRoom(null); localStorage.removeItem("spy_active_room_id"); return; }
-    await leaveGameRoom(activeRoom.id).catch(() => {});
-    localStorage.removeItem("spy_active_room_id");
+    const roomId = activeRoom.id;
+    markRoomExitPending(roomId);
     setActiveRoom(null);
+    void leaveGameRoom(roomId)
+      .then(() => clearPendingRoomExit(roomId))
+      .catch(() => {});
   };
 
   const handleCreate = async () => {
@@ -181,6 +200,7 @@ export default function Home() {
         roomCode: codeToUse,
         player: { name: displayName, avatar },
       });
+      clearPendingRoomExit(room.id);
       localStorage.setItem("spy_active_room_id", room.id);
       navigate(createPageUrl("Room") + `?id=${room.id}`);
     } catch (error) {

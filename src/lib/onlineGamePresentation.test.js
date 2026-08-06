@@ -2,6 +2,7 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  associationSpinSettlementDelayMs,
   countdownRemainingSeconds,
   deriveOnlineGamePresentation,
   onlineRoundCommand,
@@ -201,7 +202,7 @@ test("association host starts an idle round and only current speaker advances it
   assert.equal(onlineRoundCommand(speakingRoom, "detective@example.com"), null);
 });
 
-test("association spin exposes stop capability without inventing a round command", () => {
+test("association spin can be settled by any active player without inventing a round command", () => {
   const room = activeRoom({
     game_mode: "associations",
     current_asker_email: "third@example.com",
@@ -210,11 +211,26 @@ test("association spin exposes stop capability without inventing a round command
   const speaker = deriveOnlineGamePresentation(room, "third@example.com");
   const host = deriveOnlineGamePresentation(room, "detective@example.com");
   const spy = deriveOnlineGamePresentation(room, "spy@example.com");
+  const observer = deriveOnlineGamePresentation(room, "outside@example.com");
+  const spectator = deriveOnlineGamePresentation({
+    ...room,
+    spectators: ["spy@example.com"],
+  }, "spy@example.com");
 
   assert.equal(speaker.roundCommand, null);
   assert.equal(speaker.canStopAssociationSpin, true);
   assert.equal(host.canStopAssociationSpin, true);
-  assert.equal(spy.canStopAssociationSpin, false);
+  assert.equal(spy.canStopAssociationSpin, true);
+  assert.equal(observer.canStopAssociationSpin, false);
+  assert.equal(spectator.canStopAssociationSpin, false);
+  assert.equal(associationSpinSettlementDelayMs(room, "third@example.com"), 2_000);
+  assert.equal(associationSpinSettlementDelayMs(room, "detective@example.com"), 3_500);
+  assert.equal(associationSpinSettlementDelayMs(room, "spy@example.com"), 5_000);
+  assert.equal(associationSpinSettlementDelayMs(room, "outside@example.com"), null);
+  assert.equal(
+    associationSpinSettlementDelayMs({ ...room, spectators: ["spy@example.com"] }, "spy@example.com"),
+    null,
+  );
 });
 
 test("legacy countdown advances immediately while explicit durations remain parseable", () => {

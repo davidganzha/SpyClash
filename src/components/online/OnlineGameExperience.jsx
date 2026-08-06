@@ -524,19 +524,33 @@ export function OnlineActiveGameScene({
     if (!associationState.spinning || !presentation.canStopAssociationSpin || timeExpired) return undefined;
     const key = `${room.id}:${room.round_number || 1}:${room.current_asker_email || "pending"}:${room.current_answer}`;
     if (handledAssociationSpin.current === key) return undefined;
-    const timer = window.setTimeout(() => {
+    let cancelled = false;
+    let timer = null;
+    const attemptStop = () => {
+      if (cancelled) return;
       if (handledAssociationSpin.current === key) return;
       handledAssociationSpin.current = key;
-      Promise.resolve(onStopAssociationSpin()).then((updated) => {
-        if (!updated && handledAssociationSpin.current === key) {
-          handledAssociationSpin.current = null;
-        }
-      });
-    }, 2200);
-    return () => window.clearTimeout(timer);
+      Promise.resolve()
+        .then(onStopAssociationSpin)
+        .catch(() => null)
+        .then((updated) => {
+          if (cancelled || updated) return;
+          if (handledAssociationSpin.current === key) handledAssociationSpin.current = null;
+          timer = window.setTimeout(attemptStop, 1_500);
+        });
+    };
+    timer = window.setTimeout(
+      attemptStop,
+      presentation.associationSpinSettlementDelayMs ?? 2_000,
+    );
+    return () => {
+      cancelled = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [
     associationState.spinning,
     onStopAssociationSpin,
+    presentation.associationSpinSettlementDelayMs,
     presentation.canStopAssociationSpin,
     room.current_answer,
     room.current_asker_email,

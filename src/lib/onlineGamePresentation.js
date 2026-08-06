@@ -119,12 +119,37 @@ function canStopAssociationSpin(room, userEmail, presentationState) {
     || presentationState.isPaused
     || presentationState.gameMode !== "associations"
     || !presentationState.associationState.spinning
-    || !presentationState.isPlayer) {
+    || !presentationState.isPlayer
+    || presentationState.isSpectator) {
     return false;
   }
 
-  return presentationState.isHost
-    || normalizedEmail(room?.current_asker_email) === normalizedEmail(userEmail);
+  // Any active client may settle this idempotent presentation-only phase.
+  // Restricting it to the host/current speaker leaves the whole room spinning
+  // forever when either device is backgrounded or temporarily offline.
+  return true;
+}
+
+export function associationSpinSettlementDelayMs(room, userEmail) {
+  const viewerEmail = normalizedEmail(userEmail);
+  const activeEmails = activePlayersForRoom(room).map((player) =>
+    normalizedEmail(player.email)
+  );
+  if (!viewerEmail || !activeEmails.includes(viewerEmail)) return null;
+
+  const prioritizedEmails = [];
+  const addCandidate = (email) => {
+    const normalized = normalizedEmail(email);
+    if (activeEmails.includes(normalized) && !prioritizedEmails.includes(normalized)) {
+      prioritizedEmails.push(normalized);
+    }
+  };
+  addCandidate(room?.current_asker_email);
+  addCandidate(room?.host_email);
+  activeEmails.forEach(addCandidate);
+
+  const rank = prioritizedEmails.indexOf(viewerEmail);
+  return rank < 0 ? null : 2_000 + rank * 1_500;
 }
 
 /**
@@ -256,9 +281,13 @@ export function deriveOnlineGamePresentation(room, userEmail) {
     roundCommand: onlineRoundCommand(room, userEmail),
   };
 
+  const canSettleAssociationSpin = canStopAssociationSpin(room, userEmail, state);
   return {
     ...state,
-    canStopAssociationSpin: canStopAssociationSpin(room, userEmail, state),
+    canStopAssociationSpin: canSettleAssociationSpin,
+    associationSpinSettlementDelayMs: canSettleAssociationSpin
+      ? associationSpinSettlementDelayMs(room, userEmail)
+      : null,
   };
 }
 

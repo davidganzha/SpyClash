@@ -19,6 +19,7 @@ import {
 } from "@/lib/gameRoomActions";
 import { gameTimerSnapshot } from "@/lib/gameRoomSync";
 import { shouldAcceptOnlineRoomSnapshot } from "@/lib/onlineGamePresentation";
+import { exitRoomImmediately } from "@/lib/roomExit";
 import { createPageUrl } from "@/utils";
 
 const ROUND_ACTIONS = new Set([
@@ -179,7 +180,7 @@ function WinnerScreen({
               {t("game_waiting_others")}
             </div>
           )}
-          <button type="button" className="btn-ghost" onClick={onLeave} disabled={Boolean(busyAction)} style={{ width: "100%" }}>
+          <button type="button" className="btn-ghost" onClick={onLeave} style={{ width: "100%" }}>
             {t("game_leave_room")}
           </button>
         </div>
@@ -211,6 +212,7 @@ export default function Game() {
   const timerRef = useRef(null);
   const guessTimerRef = useRef(null);
   const actionInFlightRef = useRef(null);
+  const leavingRef = useRef(false);
   const finalizingExpiredRef = useRef(false);
 
   const getRoomId = () => new URLSearchParams(window.location.search).get("id");
@@ -460,21 +462,21 @@ export default function Game() {
     navigate(createPageUrl("Room") + `?id=${room.id}`, { replace: true });
   }, [navigate, room?.id, room?.status, room?.winner]);
 
-  const handleLeave = useCallback(async () => {
+  const handleLeave = useCallback(() => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || actionInFlightRef.current) return;
-    actionInFlightRef.current = "leave_room";
-    setBusyAction("leave_room");
+    if (!currentRoom || leavingRef.current) return;
+    leavingRef.current = true;
     try {
-      await leaveGameRoom(currentRoom.id);
-      localStorage.removeItem("spy_active_room_id");
-      navigate(createPageUrl("Home"));
-    } catch (error) {
-      gameToast(error?.message || "Unable to leave room", "warning", "⚠️");
-    } finally {
-      actionInFlightRef.current = null;
-      setBusyAction(null);
+      unsubRef.current?.();
+    } catch {
+      // Leaving locally must not depend on realtime cleanup.
     }
+    unsubRef.current = null;
+    void exitRoomImmediately({
+      roomId: currentRoom.id,
+      leaveRoom: leaveGameRoom,
+      navigateHome: () => navigate(createPageUrl("Home"), { replace: true }),
+    });
   }, [navigate]);
 
   const handleCardRead = useCallback(async () => {
