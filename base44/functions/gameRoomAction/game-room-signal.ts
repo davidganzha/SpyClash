@@ -4,14 +4,17 @@ export type GameRoomSignalRecord = {
   user_id: string;
   room_id: string;
   lobby_revision: number;
+  room_revision: number;
   room_updated_at?: string;
   state: GameRoomSignalState;
 };
 
 export type GameRoomSignalStore = {
-  filter(query: Record<string, unknown>): Promise<Record<string, unknown>[]>;
   create(data: GameRoomSignalRecord): Promise<unknown>;
-  update(id: string, data: GameRoomSignalRecord): Promise<unknown>;
+  updateMany(
+    filter: Record<string, unknown>,
+    update: Record<string, unknown>,
+  ): Promise<{ updated?: number }>;
 };
 
 function clean(value: unknown): string {
@@ -52,53 +55,31 @@ export function signalRecordsForRoom(
     user_id: userID,
     room_id: roomID,
     lobby_revision: revision(room?.lobby_revision),
-    ...(timestamp(roomUpdatedAt) > 0
-      ? { room_updated_at: roomUpdatedAt }
-      : {}),
+    room_revision: revision(room?.room_revision),
+    ...(timestamp(roomUpdatedAt) > 0 ? { room_updated_at: roomUpdatedAt } : {}),
     state,
   }));
-}
-
-async function updateExistingSignals(
-  store: GameRoomSignalStore,
-  existing: Record<string, unknown>[],
-  signal: GameRoomSignalRecord,
-): Promise<"updated" | "unchanged"> {
-  const writable = existing.filter((row) => clean(row?.id));
-  const updates = writable.filter((row) => {
-    const existingRevision = revision(row?.lobby_revision);
-    if (existingRevision > signal.lobby_revision) return false;
-    return existingRevision < signal.lobby_revision ||
-      timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at) ||
-      (existingRevision === signal.lobby_revision &&
-        clean(row?.state) !== signal.state);
-  });
-  if (!updates.length) return "unchanged";
-  await Promise.all(
-    updates.map((row) => store.update(clean(row.id), signal)),
-  );
-  return "updated";
 }
 
 export async function upsertGameRoomSignal(
   store: GameRoomSignalStore,
   signal: GameRoomSignalRecord,
-): Promise<"created" | "updated" | "unchanged"> {
+  options: { allowCreate?: boolean } = {},
+): Promise<"created" | "updated" | "missing"> {
   const query = { user_id: signal.user_id, room_id: signal.room_id };
-  const existing = await store.filter(query) || [];
-  if (existing.length) {
-    return await updateExistingSignals(store, existing, signal);
-  }
+  const updated = await store.updateMany(query, { $set: signal });
+  if (Number(updated?.updated) > 0) return "updated";
+  if (options.allowCreate === false) return "missing";
 
   try {
     await store.create(signal);
     return "created";
   } catch (createError) {
-    // Base44 entities do not expose a portable unique-upsert operation. If two
-    // fanouts race, re-read the logical key and converge every duplicate row.
-    const raced = await store.filter(query) || [];
-    if (!raced.length) throw createError;
-    return await updateExistingSignals(store, raced, signal);
+    // A concurrent initial fanout may have created the logical row. Updating
+    // the key again converges every duplicate without a read-before-write loop.
+    const raced = await store.updateMany(query, { $set: signal });
+    if (Number(raced?.updated) > 0) return "updated";
+    throw createError;
   }
 }
 
@@ -106,11 +87,16 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
   store: GameRoomSignalStore;
   room: Record<string, unknown>;
   state?: GameRoomSignalState;
+  allowCreate?: boolean;
   logError?: (message: string, error: unknown) => void;
 }): Promise<{ attempted: number; succeeded: number; failed: number }> {
   const signals = signalRecordsForRoom(input.room, input.state || "active");
   const settled = await Promise.allSettled(
-    signals.map((signal) => upsertGameRoomSignal(input.store, signal)),
+    signals.map((signal) =>
+      upsertGameRoomSignal(input.store, signal, {
+        allowCreate: input.allowCreate !== false,
+      })
+    ),
   );
   const failures = settled.filter((result) => result.status === "rejected");
   for (const failure of failures) {

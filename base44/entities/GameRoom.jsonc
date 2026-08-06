@@ -122,6 +122,21 @@
       "default": 0,
       "description": "Server-incremented revision for atomic host lobby snapshots."
     },
+    "room_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "default": 0,
+      "description": "Monotonic CAS revision for every shared room-state mutation."
+    },
+    "room_last_write_token": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Internal response-loss reconciliation token for the latest room write.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
     "lobby_word_source": {
       "type": "string",
       "enum": ["none", "saved", "ai", "manual"],

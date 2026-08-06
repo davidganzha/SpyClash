@@ -12,14 +12,7 @@ class MemorySignalStore implements GameRoomSignalStore {
   nextID = 1;
   failUsers = new Set<string>();
   createRaceRow: Record<string, unknown> | null = null;
-
-  filter(query: Record<string, unknown>) {
-    return Promise.resolve(
-      this.rows.filter((row) =>
-        Object.entries(query).every(([key, value]) => row[key] === value)
-      ),
-    );
-  }
+  updateManyCalls = 0;
 
   create(data: GameRoomSignalRecord) {
     if (this.createRaceRow) {
@@ -35,14 +28,25 @@ class MemorySignalStore implements GameRoomSignalStore {
     return Promise.resolve(row);
   }
 
-  update(id: string, data: GameRoomSignalRecord) {
-    if (this.failUsers.has(data.user_id)) {
+  updateMany(
+    query: Record<string, unknown>,
+    update: Record<string, any>,
+  ) {
+    this.updateManyCalls += 1;
+    const signal = update.$set as GameRoomSignalRecord;
+    if (this.failUsers.has(signal.user_id)) {
       return Promise.reject(new Error("unavailable"));
     }
-    const index = this.rows.findIndex((row) => row.id === id);
-    if (index < 0) return Promise.reject(new Error("missing signal"));
-    this.rows[index] = { id, ...data };
-    return Promise.resolve(this.rows[index]);
+    let updated = 0;
+    this.rows = this.rows.map((row) => {
+      const matches = Object.entries(query).every(([key, value]) =>
+        row[key] === value
+      );
+      if (!matches) return row;
+      updated += 1;
+      return { ...row, ...signal };
+    });
+    return Promise.resolve({ updated });
   }
 }
 
@@ -50,6 +54,7 @@ const signal: GameRoomSignalRecord = {
   user_id: "user-1",
   room_id: "room-1",
   lobby_revision: 4,
+  room_revision: 12,
   room_updated_at: "2026-08-06T12:00:00.000Z",
   state: "active",
 };
@@ -59,6 +64,7 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
     signalRecordsForRoom({
       id: "room-1",
       lobby_revision: 7,
+      room_revision: 21,
       updated_date: "2026-08-06T12:00:01.000Z",
       participant_user_ids: ["user-1", "user-2", "user-1"],
       players: [
@@ -73,6 +79,7 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
         user_id: "user-1",
         room_id: "room-1",
         lobby_revision: 7,
+        room_revision: 21,
         room_updated_at: "2026-08-06T12:00:01.000Z",
         state: "active",
       },
@@ -80,6 +87,7 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
         user_id: "user-2",
         room_id: "room-1",
         lobby_revision: 7,
+        room_revision: 21,
         room_updated_at: "2026-08-06T12:00:01.000Z",
         state: "active",
       },
@@ -87,6 +95,7 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
         user_id: "user-3",
         room_id: "room-1",
         lobby_revision: 7,
+        room_revision: 21,
         room_updated_at: "2026-08-06T12:00:01.000Z",
         state: "active",
       },
@@ -94,43 +103,16 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
   );
 });
 
-Deno.test("signal upsert creates, advances, and never downgrades a newer revision", async () => {
+Deno.test("signal upsert uses one write for an existing participant row", async () => {
   const store = new MemorySignalStore();
   assertEquals(await upsertGameRoomSignal(store, signal), "created");
-  assertEquals(await upsertGameRoomSignal(store, signal), "unchanged");
+  const callsAfterCreate = store.updateManyCalls;
   assertEquals(
-    await upsertGameRoomSignal(store, { ...signal, lobby_revision: 5 }),
+    await upsertGameRoomSignal(store, { ...signal, room_revision: 13 }),
     "updated",
   );
-  assertEquals(
-    await upsertGameRoomSignal(store, { ...signal, lobby_revision: 3 }),
-    "unchanged",
-  );
-  assertEquals(
-    await upsertGameRoomSignal(store, {
-      ...signal,
-      lobby_revision: 3,
-      room_updated_at: "2026-08-06T12:00:10.000Z",
-    }),
-    "unchanged",
-  );
-  assertEquals(store.rows[0].lobby_revision, 5);
-});
-
-Deno.test("signal advances when gameplay changes without a lobby revision", async () => {
-  const store = new MemorySignalStore();
-  assertEquals(await upsertGameRoomSignal(store, signal), "created");
-  assertEquals(
-    await upsertGameRoomSignal(store, {
-      ...signal,
-      room_updated_at: "2026-08-06T12:00:01.000Z",
-    }),
-    "updated",
-  );
-  assertEquals(
-    store.rows[0].room_updated_at,
-    "2026-08-06T12:00:01.000Z",
-  );
+  assertEquals(store.updateManyCalls, callsAfterCreate + 1);
+  assertEquals(store.rows[0].room_revision, 13);
 });
 
 Deno.test("signal upsert converges after a create race", async () => {
@@ -138,7 +120,7 @@ Deno.test("signal upsert converges after a create race", async () => {
   store.createRaceRow = {
     id: "signal-raced",
     ...signal,
-    lobby_revision: 2,
+    room_revision: 2,
   };
   assertEquals(await upsertGameRoomSignal(store, signal), "updated");
   assertEquals(store.rows, [{ id: "signal-raced", ...signal }]);
@@ -153,6 +135,7 @@ Deno.test("signal fanout is best effort so polling remains a fallback", async ()
     room: {
       id: "room-1",
       lobby_revision: 8,
+      room_revision: 22,
       participant_user_ids: ["user-1", "user-2"],
     },
     logError: (message) => errors.push(message),
@@ -160,4 +143,14 @@ Deno.test("signal fanout is best effort so polling remains a fallback", async ()
   assertEquals(result, { attempted: 2, succeeded: 1, failed: 1 });
   assertEquals(errors, ["room signal fanout deferred"]);
   assertEquals(store.rows.map((row) => row.user_id), ["user-1"]);
+});
+
+Deno.test("rapid gameplay never recreates a signal removed by account cleanup", async () => {
+  const store = new MemorySignalStore();
+  assertEquals(
+    await upsertGameRoomSignal(store, signal, { allowCreate: false }),
+    "missing",
+  );
+  assertEquals(store.rows, []);
+  assertEquals(store.updateManyCalls, 1);
 });

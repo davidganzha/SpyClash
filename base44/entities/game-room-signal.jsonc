@@ -18,6 +18,11 @@
       "minimum": 0,
       "description": "Latest committed authoritative lobby revision known to the signal writer."
     },
+    "room_revision": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Latest monotonic shared-room revision represented by this signal."
+    },
     "room_updated_at": {
       "type": "string",
       "format": "date-time",

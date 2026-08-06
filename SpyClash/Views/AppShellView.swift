@@ -71,6 +71,15 @@ private enum ShellHorizontalControlHitTest {
     }
 }
 
+enum ShellSupplementaryRefreshPolicy {
+    static func shouldRun(activeRoomStatus: String?) -> Bool {
+        let status = activeRoomStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return status != "roulette" && status != "playing"
+    }
+}
+
 struct AppShellView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -267,6 +276,9 @@ struct AppShellView: View {
                 return
             }
             guard scenePhase == .active else { return }
+            guard ShellSupplementaryRefreshPolicy.shouldRun(
+                activeRoomStatus: appState.activeRoom?.normalizedStatus
+            ) else { return }
 
 #if DEBUG
             if let previewCount = communityAttentionPreviewCount {
@@ -283,6 +295,9 @@ struct AppShellView: View {
                 return
             }
             guard scenePhase == .active else { return }
+            guard ShellSupplementaryRefreshPolicy.shouldRun(
+                activeRoomStatus: appState.activeRoom?.normalizedStatus
+            ) else { return }
 
 #if DEBUG
             if appState.shouldUsePreviewData {
@@ -302,13 +317,19 @@ struct AppShellView: View {
     private var communityAttentionMonitorID: String {
         let userID = appState.user?.id ?? "signed-out"
         let activity = scenePhase == .active ? "active" : "inactive"
-        return "\(userID):\(activity)"
+        let traffic = ShellSupplementaryRefreshPolicy.shouldRun(
+            activeRoomStatus: appState.activeRoom?.normalizedStatus
+        ) ? "supplementary" : "gameplay"
+        return "\(userID):\(activity):\(traffic)"
     }
 
     private var notificationInboxMonitorID: String {
         let userID = appState.user?.id ?? "signed-out"
         let activity = scenePhase == .active ? "active" : "inactive"
-        return "\(userID):\(activity):notifications"
+        let traffic = ShellSupplementaryRefreshPolicy.shouldRun(
+            activeRoomStatus: appState.activeRoom?.normalizedStatus
+        ) ? "supplementary" : "gameplay"
+        return "\(userID):\(activity):\(traffic):notifications"
     }
 
     private func monitorNotificationInbox() async {

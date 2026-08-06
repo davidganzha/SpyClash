@@ -224,7 +224,7 @@ enum RoomPollPolicy {
         }
 
         _ = roomStatus
-        return 8
+        return 30
     }
 }
 
@@ -761,7 +761,8 @@ final class AppState: NSObject {
         roomSyncOperation = nil
         roomSyncRevision &+= 1
         if gameRoomRealtimeCatchUpRequested ||
-            pendingGameRoomRealtimeRevision > (activeRoom?.lobbyRevision ?? 0) {
+            pendingGameRoomRealtimeRevision >
+            (activeRoom?.roomRevision ?? activeRoom?.lobbyRevision ?? 0) {
             scheduleGameRoomRealtimeRefresh()
         }
     }
@@ -1100,8 +1101,8 @@ final class AppState: NSObject {
                         confirmedRevision: refreshed.lobbyRevision ?? 0
                     )
                     if RoomPollPolicy.acceptsSnapshot(
-                        currentLobbyRevision: activeRoom?.lobbyRevision,
-                        fetchedLobbyRevision: refreshed.lobbyRevision
+                        currentLobbyRevision: activeRoom?.roomRevision ?? activeRoom?.lobbyRevision,
+                        fetchedLobbyRevision: refreshed.roomRevision ?? refreshed.lobbyRevision
                     ) {
                         activeRoom = refreshed
                     }
@@ -1140,8 +1141,8 @@ final class AppState: NSObject {
                         confirmedRevision: reconciled.lobbyRevision ?? 0
                     )
                     if RoomPollPolicy.acceptsSnapshot(
-                        currentLobbyRevision: activeRoom?.lobbyRevision,
-                        fetchedLobbyRevision: reconciled.lobbyRevision
+                        currentLobbyRevision: activeRoom?.roomRevision ?? activeRoom?.lobbyRevision,
+                        fetchedLobbyRevision: reconciled.roomRevision ?? reconciled.lobbyRevision
                     ) {
                         activeRoom = reconciled
                     }
@@ -1286,8 +1287,8 @@ final class AppState: NSObject {
                     case .apply:
                         guard let refreshedRoom else { break }
                         if RoomPollPolicy.acceptsSnapshot(
-                            currentLobbyRevision: activeRoom?.lobbyRevision,
-                            fetchedLobbyRevision: refreshedRoom.lobbyRevision
+                            currentLobbyRevision: activeRoom?.roomRevision ?? activeRoom?.lobbyRevision,
+                            fetchedLobbyRevision: refreshedRoom.roomRevision ?? refreshedRoom.lobbyRevision
                         ) {
                             activeRoom = refreshedRoom
                         }
@@ -1372,8 +1373,8 @@ final class AppState: NSObject {
                ["waiting", "ready_voting", "roulette", "playing"].contains(refreshedRoom.normalizedStatus),
                refreshedRoom.containsPlayer(email: self.user?.email) {
                 if self.activeRoom?.id != refreshedRoom.id || RoomPollPolicy.acceptsSnapshot(
-                    currentLobbyRevision: self.activeRoom?.lobbyRevision,
-                    fetchedLobbyRevision: refreshedRoom.lobbyRevision
+                    currentLobbyRevision: self.activeRoom?.roomRevision ?? self.activeRoom?.lobbyRevision,
+                    fetchedLobbyRevision: refreshedRoom.roomRevision ?? refreshedRoom.lobbyRevision
                 ) {
                     self.activeRoom = refreshedRoom
                 }
@@ -2429,9 +2430,14 @@ final class AppState: NSObject {
         guard activeRoom?.id == signal.roomID else { return }
         pendingGameRoomRealtimeRevision = max(
             pendingGameRoomRealtimeRevision,
-            signal.lobbyRevision
+            signal.roomRevision ?? signal.lobbyRevision
         )
-        gameRoomRealtimeCatchUpRequested = true
+        // Versioned signals can be compared with an action response already
+        // installed in activeRoom. Legacy signals need a forced read because
+        // their lobby revision does not advance during gameplay.
+        if signal.roomRevision == nil {
+            gameRoomRealtimeCatchUpRequested = true
+        }
         scheduleGameRoomRealtimeRefresh()
     }
 
@@ -2483,7 +2489,7 @@ final class AppState: NSObject {
             let isCatchUp = gameRoomRealtimeCatchUpRequested
             gameRoomRealtimeCatchUpRequested = false
             if !isCatchUp,
-               requiredRevision <= (activeRoom?.lobbyRevision ?? 0) {
+               requiredRevision <= (activeRoom?.roomRevision ?? activeRoom?.lobbyRevision ?? 0) {
                 pendingGameRoomRealtimeRevision = 0
                 return
             }
@@ -2514,8 +2520,8 @@ final class AppState: NSObject {
                   roomSyncOperation == nil,
                   let refreshedRoom else { return }
 
-            let fetchedRevision = refreshedRoom.lobbyRevision ?? 0
-            let currentRevision = activeRoom?.lobbyRevision ?? 0
+            let fetchedRevision = refreshedRoom.roomRevision ?? refreshedRoom.lobbyRevision ?? 0
+            let currentRevision = activeRoom?.roomRevision ?? activeRoom?.lobbyRevision ?? 0
             if fetchedRevision >= currentRevision {
                 activeRoom = refreshedRoom
             }

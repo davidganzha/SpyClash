@@ -84,6 +84,7 @@ final class MembershipRealtimeService {
 struct GameRoomRealtimeSignal: Equatable, Sendable {
     let roomID: String
     let lobbyRevision: Int
+    let roomRevision: Int?
     let roomUpdatedAt: String?
     let state: String
 }
@@ -113,9 +114,20 @@ enum GameRoomRealtimeSignalParser {
             return nil
         }
 
+        let roomRevision: Int?
+        if eventData.keys.contains("room_revision") {
+            guard let parsed = nonNegativeInteger(eventData["room_revision"]) else {
+                return nil
+            }
+            roomRevision = parsed
+        } else {
+            roomRevision = nil
+        }
+
         return GameRoomRealtimeSignal(
             roomID: expectedRoomID,
             lobbyRevision: revision,
+            roomRevision: roomRevision,
             roomUpdatedAt: (eventData["room_updated_at"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .nilIfBlank,

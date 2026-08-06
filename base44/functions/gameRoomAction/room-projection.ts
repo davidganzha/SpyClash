@@ -205,6 +205,10 @@ export function projectRoomForClient(
     countdown_started_at: clean(room.countdown_started_at),
     roulette_target_email: clean(room.roulette_target_email),
     game_mode: clean(room.game_mode || "questions"),
+    room_revision: Math.max(
+      0,
+      Math.floor(Number(room.room_revision) || 0),
+    ),
     ...lobbyState,
     created_date: clean(room.created_date),
     updated_date: clean(room.updated_date),

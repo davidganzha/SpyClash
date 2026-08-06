@@ -2774,6 +2774,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var wordPool: [WordPoolEntry]?
     var lobbySchemaVersion: Int?
     var lobbyRevision: Int?
+    var roomRevision: Int?
     var lobbyWordSource: String?
     var lobbySourcePackID: String?
     var lobbySourceName: String?
@@ -2889,6 +2890,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case wordPool = "word_pool"
         case lobbySchemaVersion = "lobby_schema_version"
         case lobbyRevision = "lobby_revision"
+        case roomRevision = "room_revision"
         case lobbyWordSource = "lobby_word_source"
         case lobbySourcePackID = "lobby_source_pack_id"
         case lobbySourceName = "lobby_source_name"
@@ -3065,6 +3067,7 @@ extension GameRoom {
             ],
             lobbySchemaVersion: 1,
             lobbyRevision: 0,
+            roomRevision: 0,
             lobbyWordSource: "none",
             lobbySourcePackID: nil,
             lobbySourceName: nil,

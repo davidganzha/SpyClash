@@ -14,6 +14,22 @@ const expectedFinalDigest =
   "f09988b0e0b5c5e93a55c4738e47ba20b160bd536ee0cacd65337fa05fd674af";
 const expectedHistoricalPlan =
   "a55997ac76faa1c166fc3d68b4df644a961d4f41c04ad9cfd16ef345e4b4127a";
+const postHistoricalGameRoomFields = [
+  "room_revision",
+  "room_last_write_token",
+  "lobby_schema_version",
+  "lobby_revision",
+  "lobby_word_source",
+  "lobby_source_pack_id",
+  "lobby_source_name",
+  "lobby_theme",
+  "lobby_category",
+  "lobby_word_count",
+  "lobby_word_count_mode",
+  "lobby_word_pool",
+  "lobby_last_mutation_id",
+  "lobby_last_mutation_fingerprint",
+];
 
 function assertBefore(source: string, earlier: string, later: string) {
   const earlierIndex = source.indexOf(earlier);
@@ -82,7 +98,11 @@ Deno.test("notification Step 0 pins the incident snapshot and approved Step 6 ta
 
 Deno.test("checked-in schemas still derive the exact approved 20-entity target", async () => {
   const schemas = (await readLocalSchemas()).filter((schema) =>
-    !["NotificationAnnouncement", "NotificationReadReceipt"].includes(
+    ![
+      "GameRoomSignal",
+      "NotificationAnnouncement",
+      "NotificationReadReceipt",
+    ].includes(
       String(schema.name),
     )
   );
@@ -137,6 +157,12 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
     type: "string",
   };
   user.required = ["role"];
+
+  const room = schemas.find((schema) => schema.name === "GameRoom")!;
+  const roomProperties = room.properties as Record<string, unknown>;
+  for (const field of postHistoricalGameRoomFields) {
+    delete roomProperties[field];
+  }
   schemas.sort((left, right) => {
     const leftName = String(left.name);
     const rightName = String(right.name);

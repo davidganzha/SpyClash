@@ -123,7 +123,7 @@ final class OnlineRoundStateTests: XCTestCase {
             )
         )
         XCTAssertTrue(room.canStopAssociationSpin(for: speaker.email, isHost: false))
-        XCTAssertEqual(room.associationSpinSettlementDelay(for: speaker.email), 1.0)
+        XCTAssertEqual(room.associationSpinSettlementDelay(for: speaker.email), 0.5)
         XCTAssertTrue(
             room.canStopAssociationSpin(
                 for: room.playersList[0].email,
@@ -131,8 +131,8 @@ final class OnlineRoundStateTests: XCTestCase {
             ),
             "Every active client must be able to recover a stuck spin."
         )
-        XCTAssertEqual(room.associationSpinSettlementDelay(for: room.playersList[0].email), 2.0)
-        XCTAssertEqual(room.associationSpinSettlementDelay(for: room.playersList[1].email), 3.0)
+        XCTAssertEqual(room.associationSpinSettlementDelay(for: room.playersList[0].email), 1.0)
+        XCTAssertEqual(room.associationSpinSettlementDelay(for: room.playersList[1].email), 1.5)
         XCTAssertFalse(room.canStopAssociationSpin(for: "outside@example.com", isHost: false))
         XCTAssertNil(room.associationSpinSettlementDelay(for: "outside@example.com"))
 
@@ -235,7 +235,7 @@ final class OnlineRoundStateTests: XCTestCase {
                 consecutiveFailures: 0,
                 isApplicationActive: true
             ),
-            8,
+            30,
             accuracy: 0.001
         )
         XCTAssertEqual(
@@ -244,7 +244,7 @@ final class OnlineRoundStateTests: XCTestCase {
                 consecutiveFailures: 0,
                 isApplicationActive: true
             ),
-            8,
+            30,
             accuracy: 0.001
         )
         XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 1, isApplicationActive: true), 16)
@@ -271,6 +271,23 @@ final class OnlineRoundStateTests: XCTestCase {
                 currentLobbyRevision: nil,
                 fetchedLobbyRevision: nil
             )
+        )
+    }
+}
+
+final class ShellSupplementaryRefreshPolicyTests: XCTestCase {
+    func testSupplementaryNetworkTrafficStopsForRealtimeGameplay() {
+        XCTAssertFalse(
+            ShellSupplementaryRefreshPolicy.shouldRun(activeRoomStatus: "roulette")
+        )
+        XCTAssertFalse(
+            ShellSupplementaryRefreshPolicy.shouldRun(activeRoomStatus: "PLAYING")
+        )
+        XCTAssertTrue(
+            ShellSupplementaryRefreshPolicy.shouldRun(activeRoomStatus: "waiting")
+        )
+        XCTAssertTrue(
+            ShellSupplementaryRefreshPolicy.shouldRun(activeRoomStatus: nil)
         )
     }
 }
@@ -1054,6 +1071,7 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
                 "user_id": "user-1",
                 "room_id": "room-1",
                 "lobby_revision": 8,
+                "room_revision": 14,
                 "room_updated_at": "2026-08-06T12:00:00.000Z",
                 "state": "active"
             ]
@@ -1074,6 +1092,7 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
             GameRoomRealtimeSignal(
                 roomID: "room-1",
                 lobbyRevision: 8,
+                roomRevision: 14,
                 roomUpdatedAt: "2026-08-06T12:00:00.000Z",
                 state: "active"
             )
@@ -1123,6 +1142,7 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
             GameRoomRealtimeSignal(
                 roomID: "room-1",
                 lobbyRevision: 0,
+                roomRevision: nil,
                 roomUpdatedAt: nil,
                 state: "active"
             )

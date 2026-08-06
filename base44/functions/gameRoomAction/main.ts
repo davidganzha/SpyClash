@@ -67,6 +67,11 @@ import {
 import { fanoutGameRoomSignalsBestEffort } from "./game-room-signal.ts";
 import { questionAdvancePatch } from "./question-round-policy.ts";
 import { shouldSynchronizeLiveActivity } from "./room-push-policy.ts";
+import {
+  isRoomWriteCASConflict,
+  roomWriteRevision,
+  writeRoomWithCAS,
+} from "./room-write-cas.ts";
 
 function jsonError(message, status = 400, details = {}) {
   const code = clean(details?.code);
@@ -230,6 +235,7 @@ async function fetchRoomByCode(base44, roomCode) {
 }
 
 async function assertRoomPersistenceBoundary(base44) {
+  if (base44.__spyclashFastRoomWriteContext === true) return;
   const context = base44.__spyclashRoomWriteLeaseContext;
   if (!context) {
     throw Object.assign(
@@ -271,29 +277,16 @@ function assertRoomMutationOpen(room, allowPendingTerminal = false) {
 }
 
 async function updateRoom(base44, room, data, options = {}) {
-  await assertRoomPersistenceBoundary(base44);
-  const latest = await fetchRoom(base44, room.id);
-  if (!latest) {
-    throw Object.assign(new Error("Room not found"), { status: 404 });
+  if (options.allowActiveIdentityLeaseRecovery !== true) {
+    await assertRoomPersistenceBoundary(base44);
   }
-  assertRoomMutationOpen(latest, options.allowPendingTerminal === true);
-
-  // Every room mutation already holds writer leases for the complete,
-  // re-fetched participant set. Base44's system `updated_date` cannot be used
-  // as an updateMany CAS predicate: production returns zero updated rows even
-  // when the record has not changed. That made the mandatory legacy
-  // participant-id backfill fail before mode, duration, or leave could run.
-  // Serialize with the verified leases, write by stable entity id, then
-  // re-read the persisted record for the next transition.
-  await base44.asServiceRole.entities.GameRoom.update(latest.id, data);
-  const persisted = await fetchRoom(base44, latest.id);
-  if (!persisted) {
-    throw Object.assign(new Error("Room not found after update"), {
-      status: 404,
-      code: "room_write_missing",
-    });
-  }
-  return persisted;
+  assertRoomMutationOpen(room, options.allowPendingTerminal === true);
+  return await writeRoomWithCAS({
+    store: base44.asServiceRole.entities.GameRoom,
+    room,
+    patch: data,
+    read: (roomID) => fetchRoom(base44, roomID),
+  });
 }
 
 async function updateRoomWithRetry(
@@ -307,9 +300,11 @@ async function updateRoomWithRetry(
   let latest = room;
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    latest = await fetchRoom(base44, latest.id);
-    if (!latest) {
-      throw Object.assign(new Error("Room not found"), { status: 404 });
+    if (attempt > 0) {
+      latest = await fetchRoom(base44, latest.id);
+      if (!latest) {
+        throw Object.assign(new Error("Room not found"), { status: 404 });
+      }
     }
     assertRoomMutationOpen(latest, options.allowPendingTerminal === true);
 
@@ -320,19 +315,14 @@ async function updateRoomWithRetry(
       continue;
     }
 
-    if (options.allowActiveIdentityLeaseRecovery !== true) {
-      await assertRoomPersistenceBoundary(base44);
-    }
-    await base44.asServiceRole.entities.GameRoom.update(latest.id, patch);
-    if (options.allowActiveIdentityLeaseRecovery === true) {
-      // Recovery writes are not protected by the participant lease set. Give
-      // overlapping monotonic acknowledgements/removals a chance to settle so
-      // the bounded retry can merge rather than lose a concurrent update.
-      await delay(45 + attempt * 35);
-    }
-    latest = await fetchRoom(base44, latest.id);
-    if (!latest) {
-      throw Object.assign(new Error("Room not found"), { status: 404 });
+    try {
+      latest = await updateRoom(base44, latest, patch, options);
+    } catch (error) {
+      if (!isRoomWriteCASConflict(error) || attempt === attempts - 1) {
+        throw error;
+      }
+      await delay(20 + attempt * 35);
+      continue;
     }
 
     if (!verify || verify(latest)) {
@@ -499,11 +489,18 @@ async function claimTerminalIntent(
       requestedWinner,
       requestedPatch,
     );
-    await assertRoomPersistenceBoundary(base44);
-    await base44.asServiceRole.entities.GameRoom.update(latest.id, {
-      terminal_intent: intent,
-    });
-    const claimed = await fetchRoom(base44, latest.id);
+    let claimed;
+    try {
+      claimed = await updateRoom(base44, latest, {
+        terminal_intent: intent,
+      }, { allowPendingTerminal: true });
+    } catch (error) {
+      if (isRoomWriteCASConflict(error) && attempt < attempts - 1) {
+        await delay(20 + attempt * 35);
+        continue;
+      }
+      throw error;
+    }
     const persisted = terminalIntentFromRoom(claimed);
     if (!claimed || !persisted) {
       throw Object.assign(
@@ -636,6 +633,8 @@ async function createRoom(base44, user, body) {
     game_duration_seconds: 900,
     lobby_schema_version: 1,
     lobby_revision: 0,
+    room_revision: 0,
+    room_last_write_token: `created:${crypto.randomUUID()}`,
     lobby_word_source: "none",
     lobby_source_pack_id: "",
     lobby_source_name: "",
@@ -1560,6 +1559,45 @@ async function backfillRoomParticipantUserIDs(base44, room, userIDs) {
   });
 }
 
+async function backfillRoomWriteRevision(base44, room) {
+  if (roomWriteRevision(room) !== null) return room;
+  await assertRoomPersistenceBoundary(base44);
+  const writeToken = `migrated:${crypto.randomUUID()}`;
+  await base44.asServiceRole.entities.GameRoom.update(room.id, {
+    room_revision: 0,
+    room_last_write_token: writeToken,
+  });
+  return {
+    ...room,
+    room_revision: 0,
+    room_last_write_token: writeToken,
+  };
+}
+
+const FAST_ROOM_ACTIONS = new Set([
+  "mark_role_card_read",
+  "pause_game",
+  "resume_game",
+  "advance_question",
+  "advance_association",
+  "start_association",
+  "stop_association_spin",
+  "mark_answer_heard",
+  "continue_round",
+  "request_vote",
+]);
+
+function canUseFastRoomAction(action, room, user) {
+  if (!FAST_ROOM_ACTIONS.has(action)) return false;
+  if (roomWriteRevision(room) === null) return false;
+  if (!roomHasParticipantIdentity(room, user)) return false;
+  if (
+    (action === "mark_role_card_read" || action === "request_vote") &&
+    shouldSpyWin(room)
+  ) return false;
+  return true;
+}
+
 function activeRoomStatus(room) {
   return ["waiting", "ready_voting", "roulette", "playing"].includes(
     normalizedStatus(room),
@@ -1689,12 +1727,20 @@ async function executeRoomAction(base44, action, room, user, body) {
   }
 }
 
-async function executeRoomActionWithSignal(base44, action, room, user, body) {
+async function executeRoomActionWithSignal(
+  base44,
+  action,
+  room,
+  user,
+  body,
+  options = {},
+) {
   const result = await executeRoomAction(base44, action, room, user, body);
   if (result?.id) {
     await fanoutGameRoomSignalsBestEffort({
       store: base44.asServiceRole.entities.GameRoomSignal,
       room: result,
+      allowCreate: options.allowSignalCreate !== false,
       logError: (message, error) =>
         console.error(message, error?.message || error),
     });
@@ -1849,127 +1895,158 @@ Deno.serve(async (req) => {
 
     if (action !== "join_room") requirePlayer(room, user);
 
-    const result = await retryRoomMembershipChangeBeforeAction({
-      attempt: async (markActionStarted) => {
-        // Rebuild the acquisition set for every pre-action membership retry.
-        // This is what lets two QR/code joins serialize instead of rejecting
-        // the slower joiner with a user-visible 409.
-        const acquisitionRoom = await fetchRoom(base44, room.id);
-        if (!acquisitionRoom) {
-          if (action === "leave_room") return { success: true };
-          throw Object.assign(new Error("Room not found"), { status: 404 });
-        }
-        if (
-          action === "leave_room" &&
-          leaveAlreadyComplete(acquisitionRoom, user.email)
-        ) {
-          return { success: true };
-        }
-        if (action !== "join_room") requirePlayer(acquisitionRoom, user);
-
-        const userIDs = await roomLifecycleUserIDs(
+    const fastRoomAction = canUseFastRoomAction(action, room, user);
+    const startedAt = performance.now();
+    let result;
+    if (fastRoomAction) {
+      base44.__spyclashFastRoomWriteContext = true;
+      try {
+        result = await executeRoomActionWithSignal(
           base44,
-          acquisitionRoom,
+          action,
+          room,
           user,
+          body,
+          { allowSignalCreate: false },
         );
-        return await withRoomWriteLeases({
-          lifecycleStore:
-            base44.asServiceRole.entities.BillingIdentityLifecycle,
-          userIDs,
-          action: async (context) => {
-            base44.__spyclashRoomWriteLeaseContext = context;
-            try {
-              // The pre-lease room is only an acquisition hint. Refetch under
-              // the leases and require exact participant coverage. If another
-              // join/leave won first, the outer bounded retry releases these
-              // leases, refetches membership, and tries once more safely.
-              const latestRoom = await fetchRoom(base44, room.id);
-              if (!latestRoom) {
-                if (action === "leave_room") return { success: true };
-                throw Object.assign(new Error("Room not found"), {
-                  status: 404,
-                });
-              }
-              if (
-                action === "leave_room" &&
-                leaveAlreadyComplete(latestRoom, user.email)
-              ) {
-                return { success: true };
-              }
-              const latestParticipantUserIDs = await roomParticipantUserIDs(
-                base44,
-                latestRoom,
-                user,
-              );
-              const latestUserIDs = uniqueStrings([
-                ...latestParticipantUserIDs,
-                user.id,
-              ]);
-              assertExactRoomLeaseCoverage(context, latestUserIDs);
-              const migratedRoom = await backfillRoomParticipantUserIDs(
-                base44,
-                latestRoom,
-                latestParticipantUserIDs,
-              );
-              markActionStarted();
-              return await executeRoomActionWithSignal(
-                base44,
-                action,
-                migratedRoom,
-                user,
-                body,
-              );
-            } finally {
-              delete base44.__spyclashRoomWriteLeaseContext;
-            }
-          },
-        });
-      },
-    }).catch((error) =>
-      recoverSafeRoomActionAfterActiveIdentityLease({
-        action,
-        error,
-        recover: async () => {
-          const recoveryRoom = await fetchRoom(base44, room.id);
-          if (!recoveryRoom) {
+      } finally {
+        delete base44.__spyclashFastRoomWriteContext;
+      }
+    } else {
+      result = await retryRoomMembershipChangeBeforeAction({
+        attempt: async (markActionStarted) => {
+          // Rebuild the acquisition set for every pre-action membership retry.
+          // This is what lets two QR/code joins serialize instead of rejecting
+          // the slower joiner with a user-visible 409.
+          const acquisitionRoom = await fetchRoom(base44, room.id);
+          if (!acquisitionRoom) {
             if (action === "leave_room") return { success: true };
             throw Object.assign(new Error("Room not found"), { status: 404 });
           }
           if (
             action === "leave_room" &&
-            leaveAlreadyComplete(recoveryRoom, user.email)
+            leaveAlreadyComplete(acquisitionRoom, user.email)
           ) {
             return { success: true };
           }
-          requirePlayer(recoveryRoom, user);
-          console.warn(
-            `${action} continuing through an active identity lease`,
-            { room_id: clean(recoveryRoom.id) },
-          );
+          if (action !== "join_room") requirePlayer(acquisitionRoom, user);
 
-          // These actions only add the actor's acknowledgement or remove the
-          // actor's room references. They can be retried and merged without
-          // creating or rewriting billing identity data.
-          const recoveryOptions = {
-            allowActiveIdentityLeaseRecovery: true,
-          };
-          if (action === "leave_room") {
-            return await leaveRoom(
+          const userIDs = await roomLifecycleUserIDs(
+            base44,
+            acquisitionRoom,
+            user,
+          );
+          return await withRoomWriteLeases({
+            lifecycleStore:
+              base44.asServiceRole.entities.BillingIdentityLifecycle,
+            userIDs,
+            action: async (context) => {
+              base44.__spyclashRoomWriteLeaseContext = context;
+              try {
+                // The pre-lease room is only an acquisition hint. Refetch under
+                // the leases and require exact participant coverage. If another
+                // join/leave won first, the outer bounded retry releases these
+                // leases, refetches membership, and tries once more safely.
+                const latestRoom = await fetchRoom(base44, room.id);
+                if (!latestRoom) {
+                  if (action === "leave_room") return { success: true };
+                  throw Object.assign(new Error("Room not found"), {
+                    status: 404,
+                  });
+                }
+                if (
+                  action === "leave_room" &&
+                  leaveAlreadyComplete(latestRoom, user.email)
+                ) {
+                  return { success: true };
+                }
+                const latestParticipantUserIDs = await roomParticipantUserIDs(
+                  base44,
+                  latestRoom,
+                  user,
+                );
+                const latestUserIDs = uniqueStrings([
+                  ...latestParticipantUserIDs,
+                  user.id,
+                ]);
+                assertExactRoomLeaseCoverage(context, latestUserIDs);
+                const revisionMigratedRoom = await backfillRoomWriteRevision(
+                  base44,
+                  latestRoom,
+                );
+                const migratedRoom = await backfillRoomParticipantUserIDs(
+                  base44,
+                  revisionMigratedRoom,
+                  latestParticipantUserIDs,
+                );
+                markActionStarted();
+                return await executeRoomActionWithSignal(
+                  base44,
+                  action,
+                  migratedRoom,
+                  user,
+                  body,
+                );
+              } finally {
+                delete base44.__spyclashRoomWriteLeaseContext;
+              }
+            },
+          });
+        },
+      }).catch((error) =>
+        recoverSafeRoomActionAfterActiveIdentityLease({
+          action,
+          error,
+          recover: async () => {
+            const recoveryRoom = await fetchRoom(base44, room.id);
+            if (!recoveryRoom) {
+              if (action === "leave_room") return { success: true };
+              throw Object.assign(new Error("Room not found"), { status: 404 });
+            }
+            if (
+              action === "leave_room" &&
+              leaveAlreadyComplete(recoveryRoom, user.email)
+            ) {
+              return { success: true };
+            }
+            requirePlayer(recoveryRoom, user);
+            console.warn(
+              `${action} continuing through an active identity lease`,
+              { room_id: clean(recoveryRoom.id) },
+            );
+
+            // These actions only add the actor's acknowledgement or remove the
+            // actor's room references. They can be retried and merged without
+            // creating or rewriting billing identity data.
+            const recoveryOptions = {
+              allowActiveIdentityLeaseRecovery: true,
+            };
+            if (action === "leave_room") {
+              return await leaveRoom(
+                base44,
+                recoveryRoom,
+                user,
+                recoveryOptions,
+              );
+            }
+            return await markRoleCardRead(
               base44,
               recoveryRoom,
               user,
               recoveryOptions,
             );
-          }
-          return await markRoleCardRead(
-            base44,
-            recoveryRoom,
-            user,
-            recoveryOptions,
-          );
-        },
-      })
-    );
+          },
+        })
+      );
+    }
+    if (fastRoomAction) {
+      console.info("gameRoomAction fast-path timing", {
+        action,
+        room_id: clean(room.id),
+        duration_ms: Math.round(performance.now() - startedAt),
+        room_revision: roomWriteRevision(result),
+      });
+    }
     if (result?.id) await dispatchRoomPushBestEffort(base44, result, action);
     return Response.json(result?.id ? roomForClient(result, user) : result);
   } catch (error) {

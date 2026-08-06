@@ -234,6 +234,8 @@ Deno.test("GameRoomSignal exposes only the caller's wake-up row and keeps writes
     user_id: owner.id,
     room_id: "room-1",
     lobby_revision: 7,
+    room_revision: 12,
+    room_updated_at: "2026-08-06T12:00:00.000Z",
     state: "active",
   };
   assert(policyAllows(signal.rls.read, ownerRow, owner));
@@ -245,7 +247,14 @@ Deno.test("GameRoomSignal exposes only the caller's wake-up row and keeps writes
   assertEquals(signal.properties.state.enum, ["active", "closed"]);
   assertEquals(
     Object.keys(signal.properties).sort(),
-    ["lobby_revision", "room_id", "state", "user_id"],
+    [
+      "lobby_revision",
+      "room_id",
+      "room_revision",
+      "room_updated_at",
+      "state",
+      "user_id",
+    ],
   );
 });
 

@@ -1,12 +1,15 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
 
-Deno.test("room writes use lifecycle-serialized entity id operations", async () => {
+Deno.test("room writes use a custom monotonic CAS instead of system timestamps", async () => {
   const source = await Deno.readTextFile(
     new URL("./main.ts", import.meta.url),
   );
+  const casSource = await Deno.readTextFile(
+    new URL("./room-write-cas.ts", import.meta.url),
+  );
 
   assert(
-    !source.includes("entities.GameRoom.updateMany("),
+    !casSource.includes("updated_date"),
     "GameRoom must not CAS against Base44's system updated_date field",
   );
   assert(
@@ -15,7 +18,11 @@ Deno.test("room writes use lifecycle-serialized entity id operations", async () 
   );
   assertStringIncludes(
     source,
-    "entities.GameRoom.update(latest.id",
+    "writeRoomWithCAS({",
+  );
+  assertStringIncludes(
+    casSource,
+    "{ id: roomID, room_revision: expectedRevision }",
   );
   assertStringIncludes(
     source,
@@ -196,10 +203,11 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   );
 
   const leasedAction = source.slice(
-    source.indexOf(
-      "const result = await retryRoomMembershipChangeBeforeAction",
-    ),
+    source.indexOf("const fastRoomAction = canUseFastRoomAction"),
     source.indexOf("if (result?.id) await dispatchRoomPushBestEffort"),
+  );
+  const fastDispatch = leasedAction.indexOf(
+    "result = await executeRoomActionWithSignal(",
   );
   const lease = leasedAction.indexOf("return await withRoomWriteLeases({");
   const refetch = leasedAction.indexOf("const latestRoom = await fetchRoom");
@@ -211,9 +219,10 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     "allowActiveIdentityLeaseRecovery: true",
   );
   assert(
-    lease >= 0 && lease < refetch && refetch < dispatch &&
+    fastDispatch >= 0 && fastDispatch < lease && lease < refetch &&
+      refetch < dispatch &&
       dispatch < recovery && recovery < recoveryBypass,
-    "normal actions must serialize before bounded safe-action recovery",
+    "rapid gameplay must bypass identity leases while lifecycle writes remain serialized",
   );
   assertEquals(
     source.match(/allowActiveIdentityLeaseRecovery: true/g)?.length,

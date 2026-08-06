@@ -21,6 +21,8 @@ const functionsURL = new URL("../functions/", import.meta.url);
 const expectedStepZeroSchemaDigest =
   "f09988b0e0b5c5e93a55c4738e47ba20b160bd536ee0cacd65337fa05fd674af";
 const postNotificationLobbyFields = [
+  "room_revision",
+  "room_last_write_token",
   "lobby_schema_version",
   "lobby_revision",
   "lobby_word_source",
