@@ -7,14 +7,18 @@ import {
   roomPollDelayMilliseconds,
   shouldRefreshForGameRoomSignal,
 } from "@/lib/gameRoomSync";
-import { dispatchGameRoomAction } from "@/lib/gameRoomTransport";
+import {
+  dispatchGameRoomAction,
+  isRetryableRoomActionConflict,
+} from "@/lib/gameRoomTransport";
 
 export class GameRoomActionError extends Error {
-  constructor(message, status, code = null) {
+  constructor(message, status, code = null, retryable = false) {
     super(message);
     this.name = "GameRoomActionError";
     this.status = status;
     this.code = code;
+    this.retryable = retryable;
   }
 }
 
@@ -58,6 +62,7 @@ export async function performGameRoomAction(body, runtime = {}) {
       error?.message || "Room action failed",
       Number(error?.status) || 500,
       error?.code || null,
+      error?.retryable === true,
     );
   }
 }
@@ -93,7 +98,14 @@ export async function leaveGameRoom(roomId) {
 }
 
 export async function runGameRoomAction(action, roomId, fields = {}) {
-  return await performGameRoomAction({ action, room_id: roomId, ...fields });
+  const payload = { action, room_id: roomId, ...fields };
+  try {
+    return await performGameRoomAction(payload);
+  } catch (error) {
+    if (!isRetryableRoomActionConflict(error)) throw error;
+    await new Promise((resolve) => setTimeout(resolve, 250));
+    return await performGameRoomAction(payload);
+  }
 }
 
 export function subscribeGameRoom(roomId, onEvent, options = {}) {

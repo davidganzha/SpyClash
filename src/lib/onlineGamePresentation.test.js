@@ -223,9 +223,9 @@ test("association spin can be settled by any active player without inventing a r
   assert.equal(spy.canStopAssociationSpin, true);
   assert.equal(observer.canStopAssociationSpin, false);
   assert.equal(spectator.canStopAssociationSpin, false);
-  assert.equal(associationSpinSettlementDelayMs(room, "third@example.com"), 2_000);
-  assert.equal(associationSpinSettlementDelayMs(room, "detective@example.com"), 3_500);
-  assert.equal(associationSpinSettlementDelayMs(room, "spy@example.com"), 5_000);
+  assert.equal(associationSpinSettlementDelayMs(room, "third@example.com"), 1_000);
+  assert.equal(associationSpinSettlementDelayMs(room, "detective@example.com"), 2_000);
+  assert.equal(associationSpinSettlementDelayMs(room, "spy@example.com"), 3_000);
   assert.equal(associationSpinSettlementDelayMs(room, "outside@example.com"), null);
   assert.equal(
     associationSpinSettlementDelayMs({ ...room, spectators: ["spy@example.com"] }, "spy@example.com"),

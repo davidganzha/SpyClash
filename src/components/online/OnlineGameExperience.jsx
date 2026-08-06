@@ -530,14 +530,9 @@ export function OnlineActiveGameScene({
       if (cancelled) return;
       if (handledAssociationSpin.current === key) return;
       handledAssociationSpin.current = key;
-      Promise.resolve()
+      void Promise.resolve()
         .then(onStopAssociationSpin)
-        .catch(() => null)
-        .then((updated) => {
-          if (cancelled || updated) return;
-          if (handledAssociationSpin.current === key) handledAssociationSpin.current = null;
-          timer = window.setTimeout(attemptStop, 1_500);
-        });
+        .catch(() => null);
     };
     timer = window.setTimeout(
       attemptStop,

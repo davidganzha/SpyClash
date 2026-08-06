@@ -149,7 +149,12 @@ export function associationSpinSettlementDelayMs(room, userEmail) {
   activeEmails.forEach(addCandidate);
 
   const rank = prioritizedEmails.indexOf(viewerEmail);
-  return rank < 0 ? null : 2_000 + rank * 1_500;
+  if (rank < 0) return null;
+  const minimumDelay = 1_000;
+  const maximumDelay = 3_000;
+  if (prioritizedEmails.length === 1) return minimumDelay;
+  const step = (maximumDelay - minimumDelay) / (prioritizedEmails.length - 1);
+  return minimumDelay + rank * step;
 }
 
 /**

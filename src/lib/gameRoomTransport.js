@@ -6,6 +6,12 @@ function failureCode(error) {
   return error?.code || error?.data?.code || error?.response?.data?.code || null;
 }
 
+function failureRetryable(error) {
+  return error?.retryable === true
+    || error?.data?.retryable === true
+    || error?.response?.data?.retryable === true;
+}
+
 function failureMessage(error) {
   return error?.data?.error
     || error?.response?.data?.error
@@ -17,7 +23,15 @@ function normalizedFailure(error) {
   return Object.assign(new Error(failureMessage(error)), {
     status: failureStatus(error),
     code: failureCode(error),
+    retryable: failureRetryable(error),
   });
+}
+
+export function isRetryableRoomActionConflict(error) {
+  const code = String(error?.code || "").trim().toLowerCase();
+  return Number(error?.status) === 409
+    && error?.retryable === true
+    && ["active_lease", "cas_contention"].includes(code);
 }
 
 export async function dispatchGameRoomAction({
@@ -52,6 +66,7 @@ export async function dispatchGameRoomAction({
     throw Object.assign(new Error(payload?.error || "Room action failed"), {
       status: response.status,
       code: payload?.code || null,
+      retryable: payload?.retryable === true,
     });
   }
 

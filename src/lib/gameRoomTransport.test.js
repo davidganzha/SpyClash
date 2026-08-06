@@ -1,7 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
 
-import { dispatchGameRoomAction } from "./gameRoomTransport.js";
+import {
+  dispatchGameRoomAction,
+  isRetryableRoomActionConflict,
+} from "./gameRoomTransport.js";
 
 test("cookie or SDK sessions invoke gameRoomAction when no storage token exists", async () => {
   const calls = [];
@@ -73,5 +76,45 @@ test("SDK room failures preserve status and server code", async () => {
     (error) => error.status === 401
       && error.code === "auth_required"
       && error.message === "Authentication required",
+  );
+});
+
+test("only typed pre-action lease conflicts are retryable", () => {
+  assert.equal(isRetryableRoomActionConflict({
+    status: 409,
+    code: "active_lease",
+    retryable: true,
+  }), true);
+  assert.equal(isRetryableRoomActionConflict({
+    status: 409,
+    code: "active_lease",
+    retryable: false,
+  }), false);
+  assert.equal(isRetryableRoomActionConflict({
+    status: 409,
+    code: "lobby_revision_conflict",
+    retryable: true,
+  }), false);
+});
+
+test("body-token failures preserve retryability metadata", async () => {
+  await assert.rejects(
+    dispatchGameRoomAction({
+      body: { action: "mark_answer_heard" },
+      accessToken: "token-123",
+      endpoint: "/functions/gameRoomAction",
+      headers: {},
+      invoke: async () => null,
+      request: async () => ({
+        ok: false,
+        status: 409,
+        json: async () => ({
+          error: "Account identity is being updated.",
+          code: "active_lease",
+          retryable: true,
+        }),
+      }),
+    }),
+    (error) => isRetryableRoomActionConflict(error),
   );
 });
