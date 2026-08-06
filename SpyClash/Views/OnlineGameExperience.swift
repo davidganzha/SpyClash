@@ -1145,6 +1145,7 @@ struct OnlineActiveGameScene: View {
     let roundCommand: OnlineRoundCommand?
     let isRoundTransitioning: Bool
     let canStopAssociationSpin: Bool
+    let showsVoteRequest: Bool
     let canRequestVote: Bool
     let canSpyGuess: Bool
     let canCastVote: Bool
@@ -1174,6 +1175,7 @@ struct OnlineActiveGameScene: View {
         roundCommand: OnlineRoundCommand?,
         isRoundTransitioning: Bool,
         canStopAssociationSpin: Bool,
+        showsVoteRequest: Bool,
         canRequestVote: Bool,
         canSpyGuess: Bool,
         canCastVote: Bool = true,
@@ -1198,6 +1200,7 @@ struct OnlineActiveGameScene: View {
         self.roundCommand = roundCommand
         self.isRoundTransitioning = isRoundTransitioning
         self.canStopAssociationSpin = canStopAssociationSpin
+        self.showsVoteRequest = showsVoteRequest
         self.canRequestVote = canRequestVote
         self.canSpyGuess = canSpyGuess
         self.canCastVote = canCastVote
@@ -1231,7 +1234,6 @@ struct OnlineActiveGameScene: View {
                                     .padding(.top, 4)
 
                                 centralStage(
-                                    at: timeline.date,
                                     maxCardWidth: min(205, max(164, (proxy.size.height - 480) * 0.76)),
                                     maxVotingHeight: min(284, max(180, proxy.size.height * 0.31))
                                 )
@@ -1418,11 +1420,7 @@ struct OnlineActiveGameScene: View {
         .accessibilityIdentifier("onlineExperience.players")
     }
 
-    private func centralStage(
-        at date: Date,
-        maxCardWidth: CGFloat,
-        maxVotingHeight: CGFloat
-    ) -> some View {
+    private func centralStage(maxCardWidth: CGFloat, maxVotingHeight: CGFloat) -> some View {
         ZStack {
             VStack(spacing: 12) {
                 if room.onlineRoundPhase != .results {
@@ -1443,7 +1441,7 @@ struct OnlineActiveGameScene: View {
                 }
 
                 if !room.isVotingActive {
-                    roundStage(at: date, maxHeight: maxVotingHeight)
+                    roundStage(maxHeight: maxVotingHeight)
                 }
             }
             .opacity(room.isVotingActive ? 0 : 1)
@@ -1456,47 +1454,14 @@ struct OnlineActiveGameScene: View {
     }
 
     @ViewBuilder
-    private func roundStage(at date: Date, maxHeight: CGFloat) -> some View {
+    private func roundStage(maxHeight: CGFloat) -> some View {
         if room.onlineRoundPhase == .results {
             roundResultsStage(maxHeight: maxHeight)
         } else if room.gameModeValue == .associations {
             associationStage
-        } else if room.onlineRoundPhase == .countdown {
-            countdownStage(at: date)
         } else {
             activePairStrip
         }
-    }
-
-    private func countdownStage(at date: Date) -> some View {
-        let remaining = Int(ceil(room.countdownRemaining(at: date)))
-
-        return VStack(spacing: 8) {
-            Text(copy.nextQuestionIn)
-                .font(.system(size: 8, weight: .bold, design: .monospaced))
-                .tracking(1.8)
-                .foregroundStyle(SpyTheme.dim)
-
-            Text(String(max(remaining, 0)))
-                .font(SpyTheme.brandFont(size: 54))
-                .tracking(2)
-                .foregroundStyle(SpyTheme.red)
-                .monospacedDigit()
-                .contentTransition(.numericText(countsDown: true))
-
-            Text(copy.waitForNextTurn)
-                .font(.system(size: 9, weight: .bold, design: .monospaced))
-                .tracking(1.1)
-                .foregroundStyle(Color.white.opacity(0.52))
-        }
-        .frame(maxWidth: .infinity, minHeight: 118)
-        .background(Color.black.opacity(0.76), in: CutCornerShape(cut: 9))
-        .overlay {
-            CutCornerShape(cut: 9)
-                .stroke(SpyTheme.red.opacity(0.42), lineWidth: 1)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("onlineExperience.questionCountdown")
     }
 
     private var associationStage: some View {
@@ -1784,14 +1749,15 @@ struct OnlineActiveGameScene: View {
                 }
                 .buttonStyle(OnlineCinematicButtonStyle(variant: .primary))
                 .accessibilityIdentifier("onlineExperience.action.spyGuess")
-            } else if canRequestVote && !room.isVotingActive && !suppressesFallbackPrimaryAction {
+            } else if showsVoteRequest && !room.isVotingActive && !suppressesFallbackPrimaryAction {
                 Button(action: requestVote) {
                     HStack(spacing: 9) {
                         Image(systemName: "person.3.fill")
-                        Text(copy.startVote)
+                        Text(copy.startVoteProgress(room.activeVoteRequests.count, room.voteThreshold))
                     }
                 }
                 .buttonStyle(OnlineCinematicButtonStyle(variant: .primary))
+                .disabled(!canRequestVote)
                 .accessibilityIdentifier("onlineExperience.action.vote")
             }
 
@@ -1803,11 +1769,12 @@ struct OnlineActiveGameScene: View {
                     action: toggleRole
                 )
 
-                if canRequestVote && !room.isVotingActive && !showsRoundResults && (roundCommand != nil || canSpyGuess) {
+                if showsVoteRequest && !room.isVotingActive && !showsRoundResults && (roundCommand != nil || canSpyGuess) {
                     secondaryCommand(
-                        title: copy.vote,
+                        title: copy.voteProgress(room.activeVoteRequests.count, room.voteThreshold),
                         systemImage: "person.3.fill",
                         accessibilityID: "onlineExperience.action.vote",
+                        isDisabled: !canRequestVote,
                         action: requestVote
                     )
                 }
@@ -1840,6 +1807,7 @@ struct OnlineActiveGameScene: View {
         title: String,
         systemImage: String,
         accessibilityID: String,
+        isDisabled: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -1854,6 +1822,7 @@ struct OnlineActiveGameScene: View {
             }
         }
         .buttonStyle(OnlineCinematicButtonStyle(variant: .secondary))
+        .disabled(isDisabled)
         .accessibilityIdentifier(accessibilityID)
     }
 
@@ -2255,9 +2224,15 @@ private struct OnlineExperienceCopy {
     }
     var guessWord: String { text("GUESS THE WORD", "ADIVINAR PALABRA", "УГАДАТЬ СЛОВО") }
     var startVote: String { text("START VOTE", "INICIAR VOTACIÓN", "НАЧАТЬ ГОЛОСОВАНИЕ") }
+    func startVoteProgress(_ count: Int, _ threshold: Int) -> String {
+        "\(startVote) \(min(max(count, 0), max(threshold, 0)))/\(max(threshold, 0))"
+    }
     var hideCard: String { text("HIDE CARD", "OCULTAR TARJETA", "СКРЫТЬ КАРТУ") }
     var showCard: String { text("SHOW CARD", "MOSTRAR TARJETA", "ПОКАЗАТЬ КАРТУ") }
     var vote: String { text("VOTE", "VOTAR", "ГОЛОСОВАНИЕ") }
+    func voteProgress(_ count: Int, _ threshold: Int) -> String {
+        "\(vote) \(min(max(count, 0), max(threshold, 0)))/\(max(threshold, 0))"
+    }
     var guess: String { text("GUESS", "ADIVINAR", "УГАДАТЬ") }
 
     var paused: String { text("PAUSED", "PAUSA", "ПАУЗА") }

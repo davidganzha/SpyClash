@@ -18,6 +18,11 @@
       "minimum": 0,
       "description": "Latest committed authoritative lobby revision known to the signal writer."
     },
+    "room_updated_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "System timestamp of the latest committed room state represented by this wake-up signal."
+    },
     "state": {
       "type": "string",
       "enum": ["active", "closed"],

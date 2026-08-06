@@ -99,7 +99,7 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   assertStringIncludes(pushDispatchSource, "internalPushSecret(");
   assertStringIncludes(
     pushDispatchSource,
-    'clean(room.status) === "playing"',
+    'action === "complete_game_start"',
   );
 
   const leaveAction = source.slice(
@@ -175,7 +175,9 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   );
   const lease = leasedAction.indexOf("return await withRoomWriteLeases({");
   const refetch = leasedAction.indexOf("const latestRoom = await fetchRoom");
-  const dispatch = leasedAction.indexOf("return await executeRoomAction(");
+  const dispatch = leasedAction.indexOf(
+    "return await executeRoomActionWithSignal(",
+  );
   const recovery = leasedAction.indexOf("recover: async () =>");
   const recoveryBypass = leasedAction.indexOf(
     "allowActiveIdentityLeaseRecovery: true",
@@ -267,7 +269,8 @@ Deno.test("authoritative lobby snapshots are revisioned, frozen into start, and 
   assertStringIncludes(update, "assertLobbySettingsAccess(latest, user");
   assertStringIncludes(update, "lobbyMutationPatch(latest, mutation)");
   assertStringIncludes(update, "roomHasLobbyMutation(latest, mutation)");
-  assertStringIncludes(update, "fanoutGameRoomSignalsBestEffort({");
+  assertEquals(update.includes("fanoutGameRoomSignalsBestEffort({"), false);
+  assertStringIncludes(source, "async function executeRoomActionWithSignal");
 
   const start = source.slice(
     source.indexOf("async function armRoulette"),

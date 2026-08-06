@@ -61,7 +61,7 @@ Deno.test("game event fans out once per stable participant id", async () => {
       record.inbox_projection_version === 1 &&
       record.inbox_kind === "game_started" &&
       record.inbox_action_deep_link === "spyclash://game?room_id=room-1" &&
-      record.inbox_visible === true && Boolean(record.inbox_committed_at)
+      record.inbox_visible === false && Boolean(record.inbox_committed_at)
     ),
     true,
   );

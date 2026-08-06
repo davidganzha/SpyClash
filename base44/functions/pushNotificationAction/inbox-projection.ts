@@ -8,8 +8,6 @@ import {
 export const PERSONAL_INBOX_EVENT_TYPES = [
   "friend_request",
   "room_invite",
-  "game_started",
-  "game_finished",
 ] as const;
 
 export function isPersonalInboxEvent(event: PushEvent): boolean {

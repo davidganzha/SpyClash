@@ -188,7 +188,7 @@ export async function repairCommittedRoomPushEvents(input: {
           room_id: clean(input.room.id),
           match_id: event.matchID,
           ...gameInboxProjection(event.eventType, clean(input.room.id), now),
-          inbox_visible: true,
+          inbox_visible: false,
           inbox_committed_at: now.toISOString(),
           state: "pending",
           attempt_count: 0,

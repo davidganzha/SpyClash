@@ -184,20 +184,37 @@ Deno.test("missing source never becomes a visible phantom", async () => {
   assertEquals(Boolean(eventStore.records[0].inbox_committed_at), true);
 });
 
-Deno.test("game finish stays hidden until room status and event marker commit", async () => {
-  const eventStore = new Store([{
-    id: "finish-before-commit",
-    state: "failed",
-    event_type: "game_finished",
-    source_event_id: "finish-event",
-    actor_user_id: "actor",
-    recipient_user_id: "recipient",
-    room_id: "room-1",
-    match_id: "match-1",
-    lease_token: "",
-    revision: "revision",
-    created_at: "2026-07-26T00:00:00.000Z",
-  }]);
+Deno.test("game lifecycle events are excluded from legacy inbox backfill", async () => {
+  const eventStore = new Store([
+    {
+      id: "start-push-only",
+      state: "delivered",
+      event_type: "game_started",
+      source_event_id: "start-event",
+      recipient_user_id: "recipient",
+      room_id: "room-1",
+      match_id: "match-1",
+      lease_token: "",
+      revision: "revision-start",
+      inbox_visible: true,
+      inbox_committed_at: null,
+      created_at: "2026-07-26T00:00:00.000Z",
+    },
+    {
+      id: "finish-push-only",
+      state: "delivered",
+      event_type: "game_finished",
+      source_event_id: "finish-event",
+      recipient_user_id: "recipient",
+      room_id: "room-1",
+      match_id: "match-1",
+      lease_token: "",
+      revision: "revision-finish",
+      inbox_visible: true,
+      inbox_committed_at: null,
+      created_at: "2026-07-26T00:00:01.000Z",
+    },
+  ]);
   const app = {
     asServiceRole: {
       entities: {
@@ -205,13 +222,7 @@ Deno.test("game finish stays hidden until room status and event marker commit", 
         BillingIdentityLifecycle: new Store(),
         Friendship: new Store(),
         RoomInvite: new Store(),
-        GameRoom: new Store([{
-          id: "room-1",
-          status: "playing",
-          match_id: "match-1",
-          participant_user_ids: ["recipient"],
-          game_finished_event_id: "",
-        }]),
+        GameRoom: new Store(),
         User: new Store(),
       },
     },
@@ -221,51 +232,14 @@ Deno.test("game finish stays hidden until room status and event marker commit", 
     deadlineEpochMs: Date.now() + 10_000,
     now: new Date("2026-07-27T12:00:00.000Z"),
   });
-  assertEquals(result.visible, 0);
-  assertEquals(result.hidden, 1);
-  assertEquals(eventStore.records[0].inbox_visible, false);
-  assertEquals(Boolean(eventStore.records[0].inbox_committed_at), true);
-});
-
-Deno.test("committed game finish becomes visible", async () => {
-  const eventStore = new Store([{
-    id: "finish-committed",
-    state: "failed",
-    event_type: "game_finished",
-    source_event_id: "finish-event",
-    actor_user_id: "actor",
-    recipient_user_id: "recipient",
-    room_id: "room-1",
-    match_id: "match-1",
-    lease_token: "",
-    revision: "revision",
-    created_at: "2026-07-26T00:00:00.000Z",
-  }]);
-  const app = {
-    asServiceRole: {
-      entities: {
-        PushNotificationEvent: eventStore,
-        BillingIdentityLifecycle: new Store(),
-        Friendship: new Store(),
-        RoomInvite: new Store(),
-        GameRoom: new Store([{
-          id: "room-1",
-          status: "finished",
-          match_id: "match-1",
-          participant_user_ids: ["recipient"],
-          game_finished_event_id: "finish-event",
-        }]),
-        User: new Store(),
-      },
-    },
-  };
-  const result = await backfillLegacyInboxProjections({
-    base44: app,
-    deadlineEpochMs: Date.now() + 10_000,
-    now: new Date("2026-07-27T12:00:00.000Z"),
+  assertEquals(result, {
+    selected: 0,
+    visible: 0,
+    hidden: 0,
+    deferred: 0,
+    errors: 0,
   });
-  assertEquals(result.visible, 1);
-  assertEquals(eventStore.records[0].inbox_visible, true);
+  assertEquals(eventStore.records.every((row) => row.inbox_visible), true);
 });
 
 Deno.test("one poisoned source row does not abort independent backfill rows", async () => {
@@ -504,8 +478,6 @@ Deno.test("more than one poison batch rotates durably so later and recovered row
         $in: [
           "friend_request",
           "room_invite",
-          "game_started",
-          "game_finished",
         ],
       },
       $or: [

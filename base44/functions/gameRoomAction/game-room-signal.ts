@@ -4,6 +4,7 @@ export type GameRoomSignalRecord = {
   user_id: string;
   room_id: string;
   lobby_revision: number;
+  room_updated_at?: string;
   state: GameRoomSignalState;
 };
 
@@ -22,6 +23,11 @@ function revision(value: unknown): number {
   return Number.isInteger(candidate) && candidate >= 0 ? candidate : 0;
 }
 
+function timestamp(value: unknown): number {
+  const parsed = Date.parse(clean(value));
+  return Number.isFinite(parsed) ? parsed : 0;
+}
+
 function unique(values: unknown[]): string[] {
   return [...new Set(values.map(clean).filter(Boolean))];
 }
@@ -33,6 +39,7 @@ export function signalRecordsForRoom(
   const roomID = clean(room?.id);
   if (!roomID) return [];
   const players = Array.isArray(room?.players) ? room.players : [];
+  const roomUpdatedAt = clean(room?.updated_date);
   const participantIDs = unique([
     ...(Array.isArray(room?.participant_user_ids)
       ? room.participant_user_ids
@@ -45,6 +52,9 @@ export function signalRecordsForRoom(
     user_id: userID,
     room_id: roomID,
     lobby_revision: revision(room?.lobby_revision),
+    ...(timestamp(roomUpdatedAt) > 0
+      ? { room_updated_at: roomUpdatedAt }
+      : {}),
     state,
   }));
 }
@@ -57,7 +67,9 @@ async function updateExistingSignals(
   const writable = existing.filter((row) => clean(row?.id));
   const updates = writable.filter((row) => {
     const existingRevision = revision(row?.lobby_revision);
+    if (existingRevision > signal.lobby_revision) return false;
     return existingRevision < signal.lobby_revision ||
+      timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at) ||
       (existingRevision === signal.lobby_revision &&
         clean(row?.state) !== signal.state);
   });
@@ -103,7 +115,7 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
   const failures = settled.filter((result) => result.status === "rejected");
   for (const failure of failures) {
     input.logError?.(
-      "lobby signal fanout deferred",
+      "room signal fanout deferred",
       (failure as PromiseRejectedResult).reason,
     );
   }

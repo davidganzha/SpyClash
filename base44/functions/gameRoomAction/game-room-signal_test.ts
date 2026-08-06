@@ -50,6 +50,7 @@ const signal: GameRoomSignalRecord = {
   user_id: "user-1",
   room_id: "room-1",
   lobby_revision: 4,
+  room_updated_at: "2026-08-06T12:00:00.000Z",
   state: "active",
 };
 
@@ -58,6 +59,7 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
     signalRecordsForRoom({
       id: "room-1",
       lobby_revision: 7,
+      updated_date: "2026-08-06T12:00:01.000Z",
       participant_user_ids: ["user-1", "user-2", "user-1"],
       players: [
         { user_id: "user-2", email: "hidden@example.com" },
@@ -71,18 +73,21 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
         user_id: "user-1",
         room_id: "room-1",
         lobby_revision: 7,
+        room_updated_at: "2026-08-06T12:00:01.000Z",
         state: "active",
       },
       {
         user_id: "user-2",
         room_id: "room-1",
         lobby_revision: 7,
+        room_updated_at: "2026-08-06T12:00:01.000Z",
         state: "active",
       },
       {
         user_id: "user-3",
         room_id: "room-1",
         lobby_revision: 7,
+        room_updated_at: "2026-08-06T12:00:01.000Z",
         state: "active",
       },
     ],
@@ -101,7 +106,31 @@ Deno.test("signal upsert creates, advances, and never downgrades a newer revisio
     await upsertGameRoomSignal(store, { ...signal, lobby_revision: 3 }),
     "unchanged",
   );
+  assertEquals(
+    await upsertGameRoomSignal(store, {
+      ...signal,
+      lobby_revision: 3,
+      room_updated_at: "2026-08-06T12:00:10.000Z",
+    }),
+    "unchanged",
+  );
   assertEquals(store.rows[0].lobby_revision, 5);
+});
+
+Deno.test("signal advances when gameplay changes without a lobby revision", async () => {
+  const store = new MemorySignalStore();
+  assertEquals(await upsertGameRoomSignal(store, signal), "created");
+  assertEquals(
+    await upsertGameRoomSignal(store, {
+      ...signal,
+      room_updated_at: "2026-08-06T12:00:01.000Z",
+    }),
+    "updated",
+  );
+  assertEquals(
+    store.rows[0].room_updated_at,
+    "2026-08-06T12:00:01.000Z",
+  );
 });
 
 Deno.test("signal upsert converges after a create race", async () => {
@@ -129,6 +158,6 @@ Deno.test("signal fanout is best effort so polling remains a fallback", async ()
     logError: (message) => errors.push(message),
   });
   assertEquals(result, { attempted: 2, succeeded: 1, failed: 1 });
-  assertEquals(errors, ["lobby signal fanout deferred"]);
+  assertEquals(errors, ["room signal fanout deferred"]);
   assertEquals(store.rows.map((row) => row.user_id), ["user-1"]);
 });

@@ -245,19 +245,15 @@ final class PushNotificationCoordinator {
 
     private func invalidateInboxIfNeeded(userInfo: [AnyHashable: Any]) {
         let type = Self.notificationType(from: userInfo)
-        guard [
-            "friend_request",
-            "room_invite",
-            "game_started",
-            "game_update",
-            "game_turn",
-            "game_ended",
-            "game_finished",
-            "global_announcement"
-        ].contains(type) else {
+        guard Self.shouldInvalidateInbox(for: type) else {
             return
         }
         inboxInvalidationHandler?()
+    }
+
+    static func shouldInvalidateInbox(for notificationType: String) -> Bool {
+        ["friend_request", "room_invite", "global_announcement"]
+            .contains(notificationType)
     }
 
     @discardableResult

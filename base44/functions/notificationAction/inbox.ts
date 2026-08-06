@@ -44,8 +44,6 @@ export const INBOX_QUERY_LIMITS = {
 const PERSONAL_EVENT_TYPES = new Set([
   "friend_request",
   "room_invite",
-  "game_started",
-  "game_finished",
 ]);
 
 async function allMatching(

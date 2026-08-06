@@ -108,7 +108,7 @@ extension GameRoom {
 
     func countdownRemaining(
         at date: Date,
-        duration: TimeInterval = 5
+        duration: TimeInterval = 0
     ) -> TimeInterval {
         guard onlineRoundPhase == .countdown else { return 0 }
         guard let startedAt = OnlineRoundTimestamp.date(from: countdownStartedAt) else {

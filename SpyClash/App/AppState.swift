@@ -217,18 +217,14 @@ enum RoomPollPolicy {
         consecutiveFailures: Int,
         isApplicationActive: Bool
     ) -> Double {
-        guard isApplicationActive else { return 5 }
+        guard isApplicationActive else { return 20 }
 
         if consecutiveFailures > 0 {
-            return min(pow(2, Double(min(consecutiveFailures, 3))), 8)
+            return min(8 * pow(2, Double(min(consecutiveFailures, 2))), 30)
         }
 
-        switch roomStatus?.lowercased() {
-        case "waiting", "ready_voting", "roulette":
-            return 1
-        default:
-            return 1.2
-        }
+        _ = roomStatus
+        return 8
     }
 }
 
@@ -2372,6 +2368,7 @@ final class AppState: NSObject {
             pendingGameRoomRealtimeRevision,
             signal.lobbyRevision
         )
+        gameRoomRealtimeCatchUpRequested = true
         scheduleGameRoomRealtimeRefresh()
     }
 

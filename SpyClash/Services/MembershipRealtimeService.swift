@@ -84,6 +84,7 @@ final class MembershipRealtimeService {
 struct GameRoomRealtimeSignal: Equatable, Sendable {
     let roomID: String
     let lobbyRevision: Int
+    let roomUpdatedAt: String?
     let state: String
 }
 
@@ -106,7 +107,7 @@ enum GameRoomRealtimeSignalParser {
               let eventData = event["data"] as? [String: Any],
               eventData["user_id"] as? String == expectedUserID,
               eventData["room_id"] as? String == expectedRoomID,
-              let revision = positiveInteger(eventData["lobby_revision"]),
+              let revision = nonNegativeInteger(eventData["lobby_revision"]),
               let state = eventData["state"] as? String,
               ["active", "closed"].contains(state) else {
             return nil
@@ -115,18 +116,21 @@ enum GameRoomRealtimeSignalParser {
         return GameRoomRealtimeSignal(
             roomID: expectedRoomID,
             lobbyRevision: revision,
+            roomUpdatedAt: (eventData["room_updated_at"] as? String)?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfBlank,
             state: state
         )
     }
 
-    private static func positiveInteger(_ value: Any?) -> Int? {
+    private static func nonNegativeInteger(_ value: Any?) -> Int? {
         let revision: Int?
         switch value {
         case let number as NSNumber:
             guard CFGetTypeID(number) != CFBooleanGetTypeID() else { return nil }
             let candidate = number.doubleValue
             revision = candidate.isFinite &&
-                    candidate >= 1 &&
+                    candidate >= 0 &&
                     candidate <= Double(maximumAcceptedRevision) &&
                     candidate.rounded(.towardZero) == candidate
                 ? Int(candidate)
@@ -137,7 +141,7 @@ enum GameRoomRealtimeSignalParser {
             revision = nil
         }
         guard let revision,
-              (1...maximumAcceptedRevision).contains(revision) else { return nil }
+              (0...maximumAcceptedRevision).contains(revision) else { return nil }
         return revision
     }
 }

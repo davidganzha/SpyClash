@@ -50,13 +50,13 @@ final class OnlineRoundStateTests: XCTestCase {
         )
     }
 
-    func testCountdownUsesServerTimestampAndOnlyAskerAdvances() {
+    func testLegacyCountdownAdvancesImmediatelyAndOnlyAskerAdvances() {
         var room = GameRoom.previewRoom(status: "playing")
         let startedAt = Date(timeIntervalSince1970: 1_000)
         room.questionPhase = "countdown"
         room.countdownStartedAt = ISO8601DateFormatter().string(from: startedAt)
 
-        XCTAssertEqual(room.countdownRemaining(at: startedAt.addingTimeInterval(2)), 3, accuracy: 0.001)
+        XCTAssertEqual(room.countdownRemaining(at: startedAt.addingTimeInterval(2)), 0, accuracy: 0.001)
         XCTAssertTrue(
             room.shouldAdvanceQuestionAfterCountdown(
                 for: room.currentAskerEmail,
@@ -206,14 +206,14 @@ final class OnlineRoundStateTests: XCTestCase {
         )
     }
 
-    func testRoomPollPolicyUsesResponsiveCadenceAndBoundedFailureBackoff() {
+    func testRoomPollPolicyUsesRealtimeFallbackCadenceAndBoundedFailureBackoff() {
         XCTAssertEqual(
             RoomPollPolicy.delaySeconds(
                 roomStatus: "waiting",
                 consecutiveFailures: 0,
                 isApplicationActive: true
             ),
-            1,
+            8,
             accuracy: 0.001
         )
         XCTAssertEqual(
@@ -222,13 +222,13 @@ final class OnlineRoundStateTests: XCTestCase {
                 consecutiveFailures: 0,
                 isApplicationActive: true
             ),
-            1.2,
+            8,
             accuracy: 0.001
         )
-        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 1, isApplicationActive: true), 2)
-        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 2, isApplicationActive: true), 4)
-        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 8, isApplicationActive: true), 8)
-        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 0, isApplicationActive: false), 5)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 1, isApplicationActive: true), 16)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 2, isApplicationActive: true), 30)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 8, isApplicationActive: true), 30)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 0, isApplicationActive: false), 20)
     }
 
     func testRoomPollPolicyRejectsLobbySnapshotOlderThanCurrentRevision() {
@@ -1007,6 +1007,7 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
                 "user_id": "user-1",
                 "room_id": "room-1",
                 "lobby_revision": 8,
+                "room_updated_at": "2026-08-06T12:00:00.000Z",
                 "state": "active"
             ]
         ]
@@ -1023,7 +1024,12 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
                 expectedUserID: "user-1",
                 expectedRoomID: "room-1"
             ),
-            GameRoomRealtimeSignal(roomID: "room-1", lobbyRevision: 8, state: "active")
+            GameRoomRealtimeSignal(
+                roomID: "room-1",
+                lobbyRevision: 8,
+                roomUpdatedAt: "2026-08-06T12:00:00.000Z",
+                state: "active"
+            )
         )
         XCTAssertNil(
             GameRoomRealtimeSignalParser.parse(
@@ -1043,7 +1049,7 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
         )
     }
 
-    func testRejectsMalformedOrNonPositiveRevision() throws {
+    func testAcceptsZeroAndRejectsMalformedOrNegativeRevision() throws {
         let entityRoom = "entities:app-1:GameRoomSignal"
         let event: [String: Any] = [
             "type": "update",
@@ -1060,12 +1066,18 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
             "data": try XCTUnwrap(String(data: encoded, encoding: .utf8))
         ]
 
-        XCTAssertNil(
+        XCTAssertEqual(
             GameRoomRealtimeSignalParser.parse(
                 payload: [envelope],
                 expectedEntityRoom: entityRoom,
                 expectedUserID: "user-1",
                 expectedRoomID: "room-1"
+            ),
+            GameRoomRealtimeSignal(
+                roomID: "room-1",
+                lobbyRevision: 0,
+                roomUpdatedAt: nil,
+                state: "active"
             )
         )
         XCTAssertNil(
@@ -1089,6 +1101,24 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
         XCTAssertNil(
             GameRoomRealtimeSignalParser.parse(
                 payload: [oversizedEnvelope],
+                expectedEntityRoom: entityRoom,
+                expectedUserID: "user-1",
+                expectedRoomID: "room-1"
+            )
+        )
+
+        var negativeEvent = event
+        var negativeData = try XCTUnwrap(negativeEvent["data"] as? [String: Any])
+        negativeData["lobby_revision"] = -1
+        negativeEvent["data"] = negativeData
+        let negativeEncoded = try JSONSerialization.data(withJSONObject: negativeEvent)
+        let negativeEnvelope: [String: Any] = [
+            "room": entityRoom,
+            "data": try XCTUnwrap(String(data: negativeEncoded, encoding: .utf8))
+        ]
+        XCTAssertNil(
+            GameRoomRealtimeSignalParser.parse(
+                payload: [negativeEnvelope],
                 expectedEntityRoom: entityRoom,
                 expectedUserID: "user-1",
                 expectedRoomID: "room-1"

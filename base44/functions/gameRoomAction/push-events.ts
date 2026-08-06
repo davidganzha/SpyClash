@@ -146,7 +146,7 @@ export async function enqueueGamePushEvents(input: {
       randomUUID,
     });
     if (committed < stableUserIDs(input.room).length) {
-      throw new Error("game_inbox_commit_incomplete");
+      throw new Error("game_push_commit_incomplete");
     }
   }
 }
@@ -172,7 +172,7 @@ export async function commitGamePushEvents(input: {
   const randomUUID = input.randomUUID || (() => crypto.randomUUID());
   let committed = 0;
   for (const event of events) {
-    if (event.inbox_visible === true && clean(event.inbox_committed_at)) {
+    if (event.inbox_visible !== true && clean(event.inbox_committed_at)) {
       committed += 1;
       continue;
     }
@@ -190,7 +190,7 @@ export async function commitGamePushEvents(input: {
             clean(event.room_id),
             new Date(now),
           ),
-          inbox_visible: true,
+          inbox_visible: false,
           inbox_committed_at: now,
           revision: randomUUID(),
           updated_at: now,

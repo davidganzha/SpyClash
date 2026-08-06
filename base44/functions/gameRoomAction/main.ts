@@ -65,6 +65,7 @@ import {
   validateLobbyMutation,
 } from "./lobby-state-policy.ts";
 import { fanoutGameRoomSignalsBestEffort } from "./game-room-signal.ts";
+import { questionAdvancePatch } from "./question-round-policy.ts";
 
 function jsonError(message, status = 400) {
   return Response.json({ error: message }, { status });
@@ -598,12 +599,12 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
     eventType: "game_finished",
     sourceEventID: finishedEventID,
   });
-  const expectedInboxRecipients = uniqueStrings([
+  const expectedPushRecipients = uniqueStrings([
     ...(finished.participant_user_ids || []),
     ...players(finished).map((player) => player.user_id),
   ]).length;
-  if (committed < expectedInboxRecipients) {
-    throw Object.assign(new Error("Game finish inbox commit failed"), {
+  if (committed < expectedPushRecipients) {
+    throw Object.assign(new Error("Game finish push commit failed"), {
       status: 503,
     });
   }
@@ -872,7 +873,7 @@ async function updateLobbyState(base44, room, user, body) {
     expected_revision: body?.expected_revision,
     state: body?.state,
   });
-  const updated = await updateRoomWithRetry(
+  return await updateRoomWithRetry(
     base44,
     room,
     (latest) => {
@@ -881,14 +882,6 @@ async function updateLobbyState(base44, room, user, body) {
     },
     (latest) => roomHasLobbyMutation(latest, mutation),
   );
-
-  await fanoutGameRoomSignalsBestEffort({
-    store: base44.asServiceRole.entities.GameRoomSignal,
-    room: updated,
-    logError: (message, error) =>
-      console.error(message, error?.message || error),
-  });
-  return updated;
 }
 
 function validatedStartPatch(room, payload) {
@@ -1145,34 +1138,7 @@ async function advanceQuestion(base44, room, user) {
     );
   }
   const active = activePlayers(room);
-  if (active.length < 2) {
-    throw Object.assign(new Error("Need at least 2 active operatives"), {
-      status: 400,
-    });
-  }
-
-  const nextQuestions = Number(room.questions_in_round || 0) + 1;
-  if (nextQuestions >= 8) {
-    return await updateRoom(base44, room, { question_phase: "results" });
-  }
-
-  const currentAnswererIndex = Math.max(
-    0,
-    active.findIndex((player) => player.email === room.current_answerer_email),
-  );
-  const nextAskerIndex = currentAnswererIndex;
-  let nextAnswererIndex = (currentAnswererIndex + 1) % active.length;
-  if (nextAnswererIndex === nextAskerIndex) {
-    nextAnswererIndex = (nextAnswererIndex + 1) % active.length;
-  }
-
-  return await updateRoom(base44, room, {
-    current_asker_email: active[nextAskerIndex].email,
-    current_answerer_email: active[nextAnswererIndex].email,
-    questions_in_round: nextQuestions,
-    current_answer: "",
-    question_phase: "asking",
-  });
+  return await updateRoom(base44, room, questionAdvancePatch(room, active));
 }
 
 async function advanceAssociation(base44, room, user) {
@@ -1276,10 +1242,7 @@ async function markAnswerHeard(base44, room, user) {
       },
     );
   }
-  return await updateRoom(base44, room, {
-    question_phase: "countdown",
-    countdown_started_at: new Date().toISOString(),
-  });
+  return await advanceQuestion(base44, room, user);
 }
 
 async function continueRound(base44, room, user) {
@@ -1722,6 +1685,28 @@ async function executeRoomAction(base44, action, room, user, body) {
   }
 }
 
+async function executeRoomActionWithSignal(base44, action, room, user, body) {
+  const result = await executeRoomAction(base44, action, room, user, body);
+  if (result?.id) {
+    await fanoutGameRoomSignalsBestEffort({
+      store: base44.asServiceRole.entities.GameRoomSignal,
+      room: result,
+      logError: (message, error) =>
+        console.error(message, error?.message || error),
+    });
+  }
+  return result;
+}
+
+const GAME_FINISH_ACTIONS = new Set([
+  "mark_role_card_read",
+  "request_vote",
+  "cast_detective_vote",
+  "submit_spy_guess",
+  "finalize_expired_room",
+  "finish_room",
+]);
+
 async function dispatchRoomPushBestEffort(base44, room, action) {
   const internalSecret = internalPushSecret(
     Deno.env.get("PUSH_INTERNAL_SECRET"),
@@ -1729,11 +1714,15 @@ async function dispatchRoomPushBestEffort(base44, room, action) {
   if (!internalSecret || !room?.id) return;
   const sourceEventIDs = [];
   if (
-    clean(room.status) === "playing" && clean(room.game_started_event_id)
+    action === "complete_game_start" && clean(room.status) === "playing" &&
+    clean(room.game_started_event_id)
   ) {
     sourceEventIDs.push(clean(room.game_started_event_id));
   }
-  if (clean(room.status) === "finished" && clean(room.game_finished_event_id)) {
+  if (
+    GAME_FINISH_ACTIONS.has(action) && clean(room.status) === "finished" &&
+    clean(room.game_finished_event_id)
+  ) {
     sourceEventIDs.push(clean(room.game_finished_event_id));
   }
   try {
@@ -1825,7 +1814,14 @@ Deno.serve(async (req) => {
         action: async (context) => {
           base44.__spyclashRoomWriteLeaseContext = context;
           try {
-            return await createRoom(base44, user, body);
+            const created = await createRoom(base44, user, body);
+            await fanoutGameRoomSignalsBestEffort({
+              store: base44.asServiceRole.entities.GameRoomSignal,
+              room: created,
+              logError: (message, error) =>
+                console.error(message, error?.message || error),
+            });
+            return created;
           } finally {
             delete base44.__spyclashRoomWriteLeaseContext;
           }
@@ -1912,7 +1908,7 @@ Deno.serve(async (req) => {
                 latestParticipantUserIDs,
               );
               markActionStarted();
-              return await executeRoomAction(
+              return await executeRoomActionWithSignal(
                 base44,
                 action,
                 migratedRoom,

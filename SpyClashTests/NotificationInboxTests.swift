@@ -4,6 +4,14 @@ import XCTest
 
 @MainActor
 final class NotificationInboxModelTests: XCTestCase {
+    func testTransientGamePushesDoNotInvalidateInbox() {
+        XCTAssertTrue(PushNotificationCoordinator.shouldInvalidateInbox(for: "friend_request"))
+        XCTAssertTrue(PushNotificationCoordinator.shouldInvalidateInbox(for: "room_invite"))
+        XCTAssertTrue(PushNotificationCoordinator.shouldInvalidateInbox(for: "global_announcement"))
+        XCTAssertFalse(PushNotificationCoordinator.shouldInvalidateInbox(for: "game_started"))
+        XCTAssertFalse(PushNotificationCoordinator.shouldInvalidateInbox(for: "game_finished"))
+    }
+
     func testItemAndUnreadContractDecodeSnakeCase() throws {
         let data = Data(
             #"""

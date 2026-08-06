@@ -699,6 +699,7 @@ struct GameView: View {
                     for: appState.user?.email,
                     isHost: isHost(room)
                 ) && !isTimeExpired(room),
+                showsVoteRequest: shouldShowVoteRequest(room),
                 canRequestVote: canCurrentUserRequestVote(room),
                 canSpyGuess: canCurrentUserGuess(room),
                 canCastVote: canCurrentUserCastVote(room),
@@ -769,12 +770,18 @@ struct GameView: View {
     }
 
     private func canCurrentUserRequestVote(_ room: GameRoom) -> Bool {
-        !room.isGamePaused &&
+        shouldShowVoteRequest(room) &&
+            !isRequestingVote &&
+            !hasCurrentUserRequestedVote(room)
+    }
+
+    private func shouldShowVoteRequest(_ room: GameRoom) -> Bool {
+        guard let userEmail = appState.user?.email else { return false }
+        return !room.isGamePaused &&
             !isTimeExpired(room) &&
             !room.isVotingActive &&
-            !isRequestingVote &&
             !isCurrentUserSpectator(room) &&
-            !hasCurrentUserRequestedVote(room)
+            room.activePlayers.contains { emailsMatch($0.email, userEmail) }
     }
 
     private func canCurrentUserGuess(_ room: GameRoom) -> Bool {
@@ -6144,7 +6151,7 @@ struct GameView: View {
 
     private func hasCurrentUserRequestedVote(_ room: GameRoom) -> Bool {
         guard let email = appState.user?.email else { return false }
-        return room.voteRequestsList.contains(email)
+        return room.voteRequestsList.contains { emailsMatch($0, email) }
     }
 
     private func myVote(in room: GameRoom) -> VoteRecord? {
@@ -7147,30 +7154,28 @@ struct GameView: View {
         defer { isAdvancing = false }
 
         do {
-            guard let currentRoom = try await appState.client.refreshRoom(id: room.id) else {
-                throw Base44Error(message: "Room is no longer available.", statusCode: 404)
-            }
-            let currentCommand = currentRoom.onlineRoundCommand(
+            let currentCommand = room.onlineRoundCommand(
                 for: appState.user?.email,
-                isHost: isHost(currentRoom),
+                isHost: isHost(room),
                 isTransitioning: false
             )
             guard currentCommand == command else {
-                appState.activeRoom = currentRoom
                 return
             }
 
             switch command {
             case .markAnswerHeard:
-                appState.activeRoom = try await appState.client.markAnswerHeard(room: currentRoom)
+                appState.activeRoom = try await appState.client.markAnswerHeard(room: room)
             case .continueRound:
-                appState.activeRoom = try await appState.client.continueRound(room: currentRoom)
+                appState.activeRoom = try await appState.client.continueRound(room: room)
             case .startAssociation:
-                appState.activeRoom = try await appState.client.startAssociation(room: currentRoom)
+                appState.activeRoom = try await appState.client.startAssociation(room: room)
             case .advanceAssociation:
-                appState.activeRoom = try await appState.client.advanceAssociation(room: currentRoom)
+                appState.activeRoom = try await appState.client.advanceAssociation(room: room)
             }
-            status = onlineRoundSuccessStatus(command)
+            if command != .markAnswerHeard {
+                status = onlineRoundSuccessStatus(command)
+            }
             HapticManager.shared.fire(.notification(.success))
         } catch is CancellationError {
             return
@@ -7196,13 +7201,11 @@ struct GameView: View {
         defer { isAdvancing = false }
 
         do {
-            guard let currentRoom = try await appState.client.refreshRoom(id: room.id),
-                  currentRoom.onlineRoundPhase == .countdown,
-                  emailsMatch(currentRoom.currentAskerEmail, appState.user?.email) else {
+            guard room.onlineRoundPhase == .countdown,
+                  emailsMatch(room.currentAskerEmail, appState.user?.email) else {
                 return
             }
-            appState.activeRoom = try await appState.client.advanceQuestion(room: currentRoom)
-            status = copy.questionSent
+            appState.activeRoom = try await appState.client.advanceQuestion(room: room)
             HapticManager.shared.fire(.notification(.success))
         } catch is CancellationError {
             return
@@ -7247,8 +7250,22 @@ struct GameView: View {
         var previewRoom = room
         switch command {
         case .markAnswerHeard:
-            previewRoom.questionPhase = "countdown"
-            previewRoom.countdownStartedAt = ISO8601DateFormatter().string(from: Date())
+            let active = previewRoom.activePlayers
+            let currentAnswererIndex = max(
+                0,
+                active.firstIndex { emailsMatch($0.email, previewRoom.currentAnswererEmail) } ?? 0
+            )
+            let nextCount = (previewRoom.questionsInRound ?? 0) + 1
+            if nextCount >= 8 {
+                previewRoom.questionPhase = "results"
+            } else if active.count >= 2 {
+                previewRoom.currentAskerEmail = active[currentAnswererIndex].email
+                previewRoom.currentAnswererEmail = active[(currentAnswererIndex + 1) % active.count].email
+                previewRoom.questionsInRound = nextCount
+                previewRoom.currentAnswer = ""
+                previewRoom.questionPhase = "asking"
+            }
+            previewRoom.countdownStartedAt = nil
         case .continueRound:
             previewRoom.questionPhase = "asking"
             previewRoom.countdownStartedAt = nil
@@ -7277,7 +7294,9 @@ struct GameView: View {
             previewRoom.currentAnswer = state.encodedValue
         }
         appState.activeRoom = previewRoom
-        status = onlineRoundSuccessStatus(command)
+        if command != .markAnswerHeard {
+            status = onlineRoundSuccessStatus(command)
+        }
     }
 
     private func onlineRoundSuccessStatus(_ command: OnlineRoundCommand) -> String {
@@ -7406,7 +7425,11 @@ struct GameView: View {
         guard !room.isGamePaused, !isTimeExpired(room) else { return }
         guard let user = appState.user else { return }
         if appState.shouldUsePreviewData {
-            status = copy.voteRequestedStatus
+            var previewRoom = room
+            if !previewRoom.voteRequestsList.contains(where: { emailsMatch($0, user.email) }) {
+                previewRoom.voteRequests = previewRoom.voteRequestsList + [user.email]
+            }
+            appState.activeRoom = previewRoom
             HapticManager.shared.fire(.notification(.success))
             return
         }
@@ -7414,7 +7437,6 @@ struct GameView: View {
         defer { isRequestingVote = false }
         do {
             appState.activeRoom = try await appState.client.requestVote(room: room, user: user)
-            status = copy.voteRequestedStatus
             HapticManager.shared.fire(.notification(.success))
         } catch {
             status = error.localizedDescription.uppercased()

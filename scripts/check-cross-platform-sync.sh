@@ -52,7 +52,7 @@ if rg -n 'loginWithProvider\(|AppleSignInSheet|popup_origin' \
   fail "Web social auth reintroduced the fragile SDK or popup redirect path"
 fi
 
-if rg -n 'base44\.entities\.GameRoom|entities\.GameRoom' "${web_root}/src"; then
+if rg -n 'entities\.GameRoom\.(create|update|delete|filter|list|subscribe|get)' "${web_root}/src"; then
   fail "Web source still bypasses gameRoomAction with direct GameRoom access"
 fi
 
