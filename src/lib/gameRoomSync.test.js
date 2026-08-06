@@ -8,6 +8,7 @@ import {
   gameDurationSeconds,
   gameTimerSnapshot,
   roomPollDelayMilliseconds,
+  shouldRefreshForGameRoomSignal,
 } from "./gameRoomSync.js";
 
 test("room requests send both supported app-id headers", () => {
@@ -122,9 +123,29 @@ test("duration helpers enforce the shared one-to-fifteen minute contract", () =>
 });
 
 test("room polling uses bounded backoff and slows down in the background", () => {
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0 }), 1_200);
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 1 }), 2_400);
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 3 }), 8_000);
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 20 }), 8_000);
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0, hidden: true }), 5_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0 }), 8_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 1 }), 16_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 2 }), 30_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 20 }), 30_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0, hidden: true }), 20_000);
+});
+
+test("room realtime wakeups are scoped to the current room and participant", () => {
+  const expected = { roomId: "room-1", userId: "user-1" };
+  assert.equal(shouldRefreshForGameRoomSignal({
+    type: "update",
+    data: { room_id: "room-1", user_id: "user-1", state: "active" },
+  }, expected), true);
+  assert.equal(shouldRefreshForGameRoomSignal({
+    type: "create",
+    data: { room_id: "room-2", user_id: "user-1", state: "active" },
+  }, expected), false);
+  assert.equal(shouldRefreshForGameRoomSignal({
+    type: "update",
+    data: { room_id: "room-1", user_id: "user-2", state: "active" },
+  }, expected), false);
+  assert.equal(shouldRefreshForGameRoomSignal({
+    type: "delete",
+    data: { room_id: "room-1", user_id: "user-1", state: "closed" },
+  }, expected), false);
 });

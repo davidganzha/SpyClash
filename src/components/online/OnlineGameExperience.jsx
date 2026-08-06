@@ -172,18 +172,6 @@ function QuestionStage({ room, t }) {
   );
 }
 
-function CountdownStage({ seconds, t, lang }) {
-  return (
-    <div className="oge-countdown-stage" data-testid="onlineExperience.questionCountdown">
-      <span className="oge-stage-kicker">{t("qr_next_question")}</span>
-      <span className="oge-countdown-value">{Math.max(0, Math.ceil(seconds))}</span>
-      <span className="oge-stage-message">
-        {localize(lang, "SYNCHRONIZING ALL OPERATIVES", "СИНХРОНИЗАЦИЯ ИГРОКОВ")}
-      </span>
-    </div>
-  );
-}
-
 function ExpiredStage({ presentation, guessTimeLeft, t, lang }) {
   const safeGuessTime = Math.max(0, Math.ceil(Number(guessTimeLeft) || 0));
   const spyCanAct = presentation.viewerRole === "spy" && !presentation.isSpectator;
@@ -295,7 +283,7 @@ function VotingStage({ presentation, userEmail, onCastVote, busyAction, lang }) 
   );
 }
 
-function RoundStage({ room, presentation, countdown, timeExpired, guessTimeLeft, onCastVote, busyAction, t, lang }) {
+function RoundStage({ room, presentation, timeExpired, guessTimeLeft, onCastVote, busyAction, t, lang }) {
   if (timeExpired) {
     return (
       <ExpiredStage
@@ -320,9 +308,6 @@ function RoundStage({ room, presentation, countdown, timeExpired, guessTimeLeft,
   if (presentation.roundPhase === "results") return <ResultsStage room={room} t={t} />;
   if (presentation.gameMode === "associations") {
     return <AssociationStage room={room} state={presentation.associationState} lang={lang} />;
-  }
-  if (presentation.roundPhase === "countdown") {
-    return <CountdownStage seconds={countdown} t={t} lang={lang} />;
   }
   return <QuestionStage room={room} t={t} />;
 }
@@ -567,12 +552,14 @@ export function OnlineActiveGameScene({
     && !presentation.isSpectator
     && hasEnabledWords
     && !isPaused;
-  const canRequestVote = presentation.isPlayer
+  const showsVoteRequest = presentation.isPlayer
     && !presentation.isSpectator
-    && !presentation.hasRequestedVote
     && !presentation.isVotingActive
     && !isPaused
     && !timeExpired;
+  const canRequestVote = showsVoteRequest && !presentation.hasRequestedVote;
+  const voteRequestTitle = `${localize(lang, "START VOTE", "НАЧАТЬ ГОЛОСОВАНИЕ")} ${presentation.activeVoteRequests.length}/${presentation.voteThreshold}`;
+  const secondaryVoteTitle = `${localize(lang, "VOTE", "ГОЛОСОВАНИЕ")} ${presentation.activeVoteRequests.length}/${presentation.voteThreshold}`;
   const suppressFallback = presentation.roundPhase === "results"
     || presentation.roundPhase === "countdown"
     || presentation.isVotingActive
@@ -588,11 +575,16 @@ export function OnlineActiveGameScene({
       ? { action: command, title: roundCommandTitle, handler: () => onRoundAction(command) }
       : canSpyGuess && !suppressFallback
         ? spyGuessAction
-        : canRequestVote && !suppressFallback
-          ? { action: "request_vote", title: localize(lang, "START VOTE", "НАЧАТЬ ГОЛОСОВАНИЕ"), handler: onRequestVote }
+        : showsVoteRequest && !suppressFallback
+          ? {
+            action: "request_vote",
+            title: voteRequestTitle,
+            handler: onRequestVote,
+            disabled: !canRequestVote,
+          }
           : null;
   const showRoleControl = true;
-  const showSecondaryVote = canRequestVote
+  const showSecondaryVote = showsVoteRequest
     && !suppressFallback
     && primaryAction?.action !== "request_vote";
   const showSecondaryGuess = !timeExpired && canSpyGuess
@@ -693,7 +685,6 @@ export function OnlineActiveGameScene({
               <RoundStage
                 room={room}
                 presentation={{ ...presentation, associationState }}
-                countdown={countdown}
                 timeExpired={timeExpired}
                 guessTimeLeft={guessTimeLeft}
                 onCastVote={onCastVote}
@@ -710,7 +701,7 @@ export function OnlineActiveGameScene({
             <ActionButton
               primary
               onClick={primaryAction.handler}
-              disabled={Boolean(busyAction)}
+              disabled={Boolean(busyAction) || Boolean(primaryAction.disabled)}
               testId={
                 primaryAction.action === "request_vote"
                   ? "onlineExperience.action.vote"
@@ -731,8 +722,12 @@ export function OnlineActiveGameScene({
               </ActionButton>
             )}
             {showSecondaryVote && (
-              <ActionButton onClick={onRequestVote} disabled={Boolean(busyAction)} testId="onlineExperience.action.vote">
-                {localize(lang, "VOTE", "ГОЛОСОВАНИЕ")}
+              <ActionButton
+                onClick={onRequestVote}
+                disabled={Boolean(busyAction) || !canRequestVote}
+                testId="onlineExperience.action.vote"
+              >
+                {secondaryVoteTitle}
               </ActionButton>
             )}
             {showSecondaryGuess && (

@@ -3,6 +3,7 @@ import test from "node:test";
 
 import {
   communityAttentionCount,
+  communityPollIntervalMilliseconds,
   createCommunityRequest,
   isExactSpyIDQuery,
   joinCommunityRoomInvite,
@@ -27,6 +28,13 @@ test("communityAction request carries the app ID header and body token without A
     friendship_id: "friend-1",
     access_token: "token-456",
   });
+});
+
+test("community polling yields capacity to active room traffic", () => {
+  assert.equal(communityPollIntervalMilliseconds("/Game?id=room-1"), 60_000);
+  assert.equal(communityPollIntervalMilliseconds("/Room"), 60_000);
+  assert.equal(communityPollIntervalMilliseconds("/Community"), 10_000);
+  assert.equal(communityPollIntervalMilliseconds("/Home"), 30_000);
 });
 
 test("community selectors count actionable items and resolve profile relationships", () => {

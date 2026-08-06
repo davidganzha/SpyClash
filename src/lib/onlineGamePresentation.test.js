@@ -217,22 +217,22 @@ test("association spin exposes stop capability without inventing a round command
   assert.equal(spy.canStopAssociationSpin, false);
 });
 
-test("server-clock countdown reports fractional remaining time and safe fallbacks", () => {
+test("legacy countdown advances immediately while explicit durations remain parseable", () => {
   const room = activeRoom({
     question_phase: "countdown",
     countdown_started_at: "2026-08-04T10:00:00.000Z",
   });
   assert.equal(
     countdownRemainingSeconds(room, Date.parse("2026-08-04T10:00:02.000Z")),
-    3,
+    0,
   );
   assert.equal(
-    countdownRemainingSeconds(room, Date.parse("2026-08-04T10:00:02.500Z")),
+    countdownRemainingSeconds(room, Date.parse("2026-08-04T10:00:02.500Z"), 5),
     2.5,
   );
   assert.equal(
     countdownRemainingSeconds({ ...room, countdown_started_at: "bad timestamp" }),
-    5,
+    0,
   );
   assert.equal(countdownRemainingSeconds(activeRoom()), 0);
 });

@@ -4,10 +4,12 @@ import {
   getCommunityState,
   retryPendingRoomInviteCleanups,
 } from "@/lib/communityActions";
-import { communityAttentionCount } from "@/lib/communityProtocol";
+import {
+  communityAttentionCount,
+  communityPollIntervalMilliseconds,
+} from "@/lib/communityProtocol";
 
 const CommunityContext = createContext(null);
-const POLL_INTERVAL_MS = 5_000;
 
 export function CommunityProvider({ children }) {
   const { isAuthenticated, user } = useAuth();
@@ -66,12 +68,22 @@ export function CommunityProvider({ children }) {
     }
 
     void refresh().catch(() => {});
-    const timer = window.setInterval(() => {
-      if (document.visibilityState !== "hidden") {
-        void refresh({ silent: true }).catch(() => {});
-      }
-    }, POLL_INTERVAL_MS);
-    return () => window.clearInterval(timer);
+    let timer = null;
+    let disposed = false;
+    const schedule = () => {
+      if (disposed) return;
+      timer = window.setTimeout(async () => {
+        if (document.visibilityState !== "hidden") {
+          await refresh({ silent: true }).catch(() => {});
+        }
+        schedule();
+      }, communityPollIntervalMilliseconds(window.location.pathname));
+    };
+    schedule();
+    return () => {
+      disposed = true;
+      if (timer) window.clearTimeout(timer);
+    };
   }, [isAuthenticated, user?.id, refresh]);
 
   const value = useMemo(() => ({

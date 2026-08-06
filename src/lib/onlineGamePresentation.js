@@ -268,12 +268,12 @@ export function deriveOnlineGamePresentation(room, userEmail) {
 export function countdownRemainingSeconds(
   room,
   nowMs = Date.now(),
-  durationSeconds = 5,
+  durationSeconds = 0,
 ) {
   if (normalizedRoundPhase(room) !== "countdown") return 0;
 
   const duration = Number(durationSeconds);
-  const safeDuration = Number.isFinite(duration) ? Math.max(duration, 0) : 5;
+  const safeDuration = Number.isFinite(duration) ? Math.max(duration, 0) : 0;
   const startedAt = Date.parse(clean(room?.countdown_started_at));
   const currentTime = Number(nowMs);
   if (!Number.isFinite(startedAt) || !Number.isFinite(currentTime)) {

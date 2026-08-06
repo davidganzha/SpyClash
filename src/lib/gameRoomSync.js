@@ -1,11 +1,28 @@
 export const ONLINE_GAME_INTRO_MILLISECONDS = 8_000;
 export const ONLINE_GAME_INTRO_GRACE_MILLISECONDS = 250;
 export const POST_GAME_GUESS_SECONDS = 30;
-export const ROOM_POLL_MAX_INTERVAL_MILLISECONDS = 8_000;
+export const ROOM_POLL_FALLBACK_INTERVAL_MILLISECONDS = 8_000;
+export const ROOM_POLL_MAX_INTERVAL_MILLISECONDS = 30_000;
 export const ROOM_POLL_ERROR_THRESHOLD = 2;
 
 function normalizedStatus(room) {
   return String(room?.status ?? "").trim().toLowerCase();
+}
+
+function normalizedIdentifier(value) {
+  return String(value ?? "").trim();
+}
+
+export function shouldRefreshForGameRoomSignal(event, { roomId, userId = null }) {
+  if (!["create", "update"].includes(String(event?.type || "").toLocaleLowerCase())) {
+    return false;
+  }
+  const signal = event?.data;
+  if (!signal || normalizedIdentifier(signal.room_id) !== normalizedIdentifier(roomId)) {
+    return false;
+  }
+  const expectedUserId = normalizedIdentifier(userId);
+  return !expectedUserId || normalizedIdentifier(signal.user_id) === expectedUserId;
 }
 
 function parsedTimestamp(value) {
@@ -40,15 +57,18 @@ export function gameDurationSeconds(minutes) {
 }
 
 export function roomPollDelayMilliseconds({
-  baseIntervalMilliseconds = 1_200,
+  baseIntervalMilliseconds = ROOM_POLL_FALLBACK_INTERVAL_MILLISECONDS,
   consecutiveFailures = 0,
   hidden = false,
   maxIntervalMilliseconds = ROOM_POLL_MAX_INTERVAL_MILLISECONDS,
 } = {}) {
-  const base = Math.max(250, Number(baseIntervalMilliseconds) || 1_200);
+  const base = Math.max(
+    250,
+    Number(baseIntervalMilliseconds) || ROOM_POLL_FALLBACK_INTERVAL_MILLISECONDS,
+  );
   const exponent = Math.max(0, Math.min(6, Math.floor(Number(consecutiveFailures) || 0)));
   const backedOff = base * (2 ** exponent);
-  const visibilityFloor = hidden ? 5_000 : 0;
+  const visibilityFloor = hidden ? 20_000 : 0;
   return Math.min(
     Math.max(base, Number(maxIntervalMilliseconds) || ROOM_POLL_MAX_INTERVAL_MILLISECONDS),
     Math.max(backedOff, visibilityFloor),

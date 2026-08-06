@@ -297,17 +297,6 @@ export default function Game() {
           soundsRef.current.roundStart();
         }
 
-        const oldRequests = previous.vote_requests || [];
-        (fresh.vote_requests || []).forEach((email) => {
-          if (!oldRequests.includes(email) && email !== currentUser.email) {
-            const player = (fresh.players || []).find((candidate) => candidate.email === email);
-            if (player) {
-              gameToast(`${player.name} ${t("toast_wants_vote")}`, "vote", "🗳️");
-              soundsRef.current.alert();
-            }
-          }
-        });
-
         const activeVoteState = (candidateRoom) => {
           const spectators = new Set(candidateRoom.spectators || []);
           const active = (candidateRoom.players || []).filter((player) => !spectators.has(player.email));
@@ -329,7 +318,7 @@ export default function Game() {
 
       applyRoom(fresh);
       setSyncState("connected");
-    });
+    }, { userId: currentUser.id });
   };
 
   useEffect(() => {

@@ -2,8 +2,10 @@ import { appParams } from "@/lib/app-params";
 import { base44 } from "@/api/base44Client";
 import {
   buildGameRoomActionHeaders,
+  ROOM_POLL_FALLBACK_INTERVAL_MILLISECONDS,
   ROOM_POLL_ERROR_THRESHOLD,
   roomPollDelayMilliseconds,
+  shouldRefreshForGameRoomSignal,
 } from "@/lib/gameRoomSync";
 import { dispatchGameRoomAction } from "@/lib/gameRoomTransport";
 
@@ -94,11 +96,17 @@ export async function runGameRoomAction(action, roomId, fields = {}) {
   return await performGameRoomAction({ action, room_id: roomId, ...fields });
 }
 
-export function subscribeGameRoom(roomId, onEvent, intervalMs = 1_200) {
+export function subscribeGameRoom(roomId, onEvent, options = {}) {
+  const config = typeof options === "number" ? { intervalMs: options } : options;
+  const intervalMs = config?.intervalMs ?? ROOM_POLL_FALLBACK_INTERVAL_MILLISECONDS;
+  const userId = config?.userId ?? null;
+  const subscribeSignals = config?.subscribeSignals
+    || ((callback) => base44.entities.GameRoomSignal.subscribe(callback));
   let cancelled = false;
   let inFlight = false;
   let lastUpdated = null;
   let timer = null;
+  let unsubscribeSignals = null;
   let consecutiveFailures = 0;
   let pendingImmediatePoll = false;
 
@@ -170,20 +178,45 @@ export function subscribeGameRoom(roomId, onEvent, intervalMs = 1_200) {
     }
   };
 
-  const handleVisibilityChange = () => {
-    if (cancelled || isHidden()) return;
+  const requestImmediatePoll = () => {
+    if (cancelled) return;
     if (timer) clearTimeout(timer);
     timer = null;
+    if (inFlight) {
+      pendingImmediatePoll = true;
+      return;
+    }
     void poll();
+  };
+
+  const handleVisibilityChange = () => {
+    if (cancelled || isHidden()) return;
+    requestImmediatePoll();
   };
 
   if (typeof document !== "undefined") {
     document.addEventListener("visibilitychange", handleVisibilityChange);
   }
+  try {
+    unsubscribeSignals = subscribeSignals((event) => {
+      if (!shouldRefreshForGameRoomSignal(event, { roomId, userId })) return;
+      const state = String(event?.data?.state || "active").toLocaleLowerCase();
+      if (state === "closed") {
+        cancelled = true;
+        if (timer) clearTimeout(timer);
+        onEvent({ id: roomId, type: "delete", data: null });
+        return;
+      }
+      requestImmediatePoll();
+    });
+  } catch (error) {
+    console.warn("Game room realtime unavailable; using fallback polling", error);
+  }
   void poll();
   return () => {
     cancelled = true;
     if (timer) clearTimeout(timer);
+    unsubscribeSignals?.();
     if (typeof document !== "undefined") {
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     }

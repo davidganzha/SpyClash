@@ -50,6 +50,13 @@ export function communityAttentionCount(state) {
   return friendRequests + roomInvites;
 }
 
+export function communityPollIntervalMilliseconds(pathname) {
+  const path = String(pathname || "").split(/[?#]/u, 1)[0].toLocaleLowerCase();
+  if (path === "/game" || path === "/room") return 60_000;
+  if (path === "/community") return 10_000;
+  return 30_000;
+}
+
 export function relationshipForProfile(state, userId) {
   const resolvedUserId = String(userId || "");
   for (const group of ["friends", "incoming", "outgoing", "blocked"]) {
