@@ -32,6 +32,32 @@ final class Base44ClientRoomActionTests: XCTestCase {
         )
     }
 
+    func testRoundActionRetriesOneTypedPreActionLeaseConflict() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if try recorder.requestBodies().count == 1 {
+                let response = HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 409,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                let payload = #"{"error":"Account identity is being updated.","code":"active_lease","retryable":true}"#
+                return (response, Data(payload.utf8))
+            }
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        let room = GameRoom.previewRoom(status: "playing")
+
+        _ = try await client.markAnswerHeard(room: room)
+
+        XCTAssertEqual(try recorder.requestBodies().count, 2)
+    }
+
     func testRoomIDLeaveWrapperSendsImmediateCleanupAction() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in

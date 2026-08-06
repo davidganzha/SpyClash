@@ -125,6 +125,10 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     pushDispatchSource,
     'action === "complete_game_start"',
   );
+  assertStringIncludes(
+    pushDispatchSource,
+    "shouldSynchronizeLiveActivity(action, room)",
+  );
 
   const leaveAction = source.slice(
     source.indexOf("async function leaveRoom"),

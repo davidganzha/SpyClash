@@ -66,9 +66,19 @@ import {
 } from "./lobby-state-policy.ts";
 import { fanoutGameRoomSignalsBestEffort } from "./game-room-signal.ts";
 import { questionAdvancePatch } from "./question-round-policy.ts";
+import { shouldSynchronizeLiveActivity } from "./room-push-policy.ts";
 
-function jsonError(message, status = 400) {
-  return Response.json({ error: message }, { status });
+function jsonError(message, status = 400, details = {}) {
+  const code = clean(details?.code);
+  const retryable = details?.retryable === true;
+  return Response.json({
+    error: message,
+    ...(code ? { code } : {}),
+    ...(retryable ? { retryable: true } : {}),
+  }, {
+    status,
+    headers: retryable ? { "retry-after": "1" } : undefined,
+  });
 }
 
 function clean(value) {
@@ -1727,7 +1737,7 @@ async function dispatchRoomPushBestEffort(base44, room, action) {
         internal_secret: internalSecret,
       });
     }
-    if (clean(room.match_id)) {
+    if (shouldSynchronizeLiveActivity(action, room)) {
       await base44.asServiceRole.functions.invoke("pushNotificationAction", {
         action: "sync_live_activity",
         room_id: clean(room.id),
@@ -1967,6 +1977,7 @@ Deno.serve(async (req) => {
     return jsonError(
       error?.message || "Internal error",
       lifecycleHTTPStatus(error),
+      { code: error?.code, retryable: error?.retryable },
     );
   }
 });

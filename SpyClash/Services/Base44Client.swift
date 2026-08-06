@@ -1331,34 +1331,47 @@ final class Base44Client {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
 
-        // Provider/SSO tokens are valid Base44 identity tokens, but the
-        // functions gateway can reject them before the function runs. Pass
-        // the token inside the encrypted HTTPS body, then let the backend
-        // verify it directly with Base44 (the same flow as autoRegisterUser).
-        return try await request(
-            "/apps/\(Self.appID)/functions/gameRoomAction",
-            method: "POST",
-            body: GameRoomActionPayload(
-                action: action,
-                accessToken: token,
-                roomID: roomID,
-                roomCode: roomCode,
-                player: player,
-                mode: mode?.rawValue,
-                gameMode: gameMode?.rawValue,
-                gameDurationSeconds: gameDurationSeconds,
-                plan: plan,
-                rouletteTargetEmail: rouletteTargetEmail,
-                targetEmail: targetEmail,
-                guess: guess,
-                winner: winner,
-                mutationID: mutationID,
-                expectedRevision: expectedRevision,
-                state: state,
-                expectedLobbyRevision: expectedLobbyRevision
-            ),
-            includeAuthorization: false
+        let payload = GameRoomActionPayload(
+            action: action,
+            accessToken: token,
+            roomID: roomID,
+            roomCode: roomCode,
+            player: player,
+            mode: mode?.rawValue,
+            gameMode: gameMode?.rawValue,
+            gameDurationSeconds: gameDurationSeconds,
+            plan: plan,
+            rouletteTargetEmail: rouletteTargetEmail,
+            targetEmail: targetEmail,
+            guess: guess,
+            winner: winner,
+            mutationID: mutationID,
+            expectedRevision: expectedRevision,
+            state: state,
+            expectedLobbyRevision: expectedLobbyRevision
         )
+        let retryDelays = [250]
+        var attempt = 0
+
+        while true {
+            try Task.checkCancellation()
+            guard self.token == token else { throw CancellationError() }
+            do {
+                // Provider/SSO tokens are valid Base44 identity tokens, but the
+                // functions gateway can reject them before the function runs.
+                return try await request(
+                    "/apps/\(Self.appID)/functions/gameRoomAction",
+                    method: "POST",
+                    body: payload,
+                    includeAuthorization: false
+                )
+            } catch let error as Base44Error
+                where error.isRetryableRoomActionConflict && attempt < retryDelays.count {
+                let delay = retryDelays[attempt]
+                attempt += 1
+                try await Task.sleep(for: .milliseconds(delay))
+            }
+        }
     }
 
     private func wordPackAction<T: Decodable>(
@@ -1877,6 +1890,14 @@ struct Base44Error: LocalizedError {
         return normalized.contains("could not be verified")
             || normalized.contains("room membership changed")
             || normalized.contains("room changed; retry")
+    }
+
+    var isRetryableRoomActionConflict: Bool {
+        guard statusCode == 409, retryable else { return false }
+        let normalizedCode = code?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return normalizedCode == "active_lease" || normalizedCode == "cas_contention"
     }
 }
 

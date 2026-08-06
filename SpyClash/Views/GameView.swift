@@ -7229,29 +7229,22 @@ struct GameView: View {
         isAdvancing = true
         defer { isAdvancing = false }
 
-        let retryDelays = [350, 800]
-        for attempt in 0...retryDelays.count {
-            do {
-                guard let currentRoom = appState.activeRoom,
-                      currentRoom.id == room.id,
-                      currentRoom.canStopAssociationSpin(
-                        for: appState.user?.email,
-                        isHost: isHost(currentRoom)
-                      ) else {
-                    return
-                }
-                appState.activeRoom = try await appState.client.stopAssociationSpin(room: currentRoom)
+        do {
+            guard let currentRoom = appState.activeRoom,
+                  currentRoom.id == room.id,
+                  currentRoom.canStopAssociationSpin(
+                    for: appState.user?.email,
+                    isHost: isHost(currentRoom)
+                  ) else {
                 return
-            } catch is CancellationError {
-                return
-            } catch {
-                guard attempt < retryDelays.count else {
-                    status = error.localizedDescription.uppercased()
-                    HapticManager.shared.fire(.notification(.error))
-                    return
-                }
-                try? await Task.sleep(for: .milliseconds(retryDelays[attempt]))
             }
+            appState.activeRoom = try await appState.client.stopAssociationSpin(room: currentRoom)
+        } catch is CancellationError {
+            return
+        } catch {
+            // Ranked active clients provide the bounded fallback sequence. A
+            // failed automatic settlement must not create a local retry storm.
+            return
         }
     }
 

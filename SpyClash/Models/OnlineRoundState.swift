@@ -128,7 +128,11 @@ extension GameRoom {
         guard let rank = prioritizedEmails.firstIndex(of: normalizedUserEmail) else {
             return nil
         }
-        return 2 + Double(rank) * 1.5
+        let minimumDelay: TimeInterval = 1
+        let maximumDelay: TimeInterval = 3
+        guard prioritizedEmails.count > 1 else { return minimumDelay }
+        let step = (maximumDelay - minimumDelay) / Double(prioritizedEmails.count - 1)
+        return minimumDelay + Double(rank) * step
     }
 
     func countdownRemaining(

@@ -123,7 +123,7 @@ final class OnlineRoundStateTests: XCTestCase {
             )
         )
         XCTAssertTrue(room.canStopAssociationSpin(for: speaker.email, isHost: false))
-        XCTAssertEqual(room.associationSpinSettlementDelay(for: speaker.email), 2.0)
+        XCTAssertEqual(room.associationSpinSettlementDelay(for: speaker.email), 1.0)
         XCTAssertTrue(
             room.canStopAssociationSpin(
                 for: room.playersList[0].email,
@@ -131,8 +131,8 @@ final class OnlineRoundStateTests: XCTestCase {
             ),
             "Every active client must be able to recover a stuck spin."
         )
-        XCTAssertEqual(room.associationSpinSettlementDelay(for: room.playersList[0].email), 3.5)
-        XCTAssertEqual(room.associationSpinSettlementDelay(for: room.playersList[1].email), 5.0)
+        XCTAssertEqual(room.associationSpinSettlementDelay(for: room.playersList[0].email), 2.0)
+        XCTAssertEqual(room.associationSpinSettlementDelay(for: room.playersList[1].email), 3.0)
         XCTAssertFalse(room.canStopAssociationSpin(for: "outside@example.com", isHost: false))
         XCTAssertNil(room.associationSpinSettlementDelay(for: "outside@example.com"))
 
@@ -955,6 +955,31 @@ final class LobbyPresentationPolicyTests: XCTestCase {
 }
 
 final class LobbySyncRetryPolicyTests: XCTestCase {
+    func testOnlyTypedPreActionLeaseConflictsRetryRoomActions() {
+        XCTAssertTrue(
+            Base44Error(
+                message: "Account identity is being updated.",
+                statusCode: 409,
+                code: "active_lease",
+                retryable: true
+            ).isRetryableRoomActionConflict
+        )
+        XCTAssertFalse(
+            Base44Error(
+                message: "Account identity is being updated.",
+                statusCode: 409
+            ).isRetryableRoomActionConflict
+        )
+        XCTAssertFalse(
+            Base44Error(
+                message: "Room changed",
+                statusCode: 409,
+                code: "lobby_revision_conflict",
+                retryable: true
+            ).isRetryableRoomActionConflict
+        )
+    }
+
     func testOnlyTypedLobbyConflictTriggersRevisionRefresh() {
         XCTAssertTrue(
             LobbySyncRetryPolicy.isRevisionConflict(
