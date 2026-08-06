@@ -706,6 +706,214 @@ final class LobbyStartGateTests: XCTestCase {
     }
 }
 
+final class LobbyPresentationPolicyTests: XCTestCase {
+    func testPoolPreviewIsHiddenOnlyWhenTotalPoolIsEmpty() {
+        XCTAssertFalse(
+            LobbyPresentationPolicy.shouldShowPoolPreview(totalWordCount: 0)
+        )
+        XCTAssertTrue(
+            LobbyPresentationPolicy.shouldShowPoolPreview(totalWordCount: 4)
+        )
+    }
+
+    func testOnlyNewRemoteGuestRevisionAnimates() {
+        XCTAssertTrue(
+            shouldAnimate(appliedRevision: 7, incomingRevision: 8)
+        )
+        XCTAssertFalse(
+            shouldAnimate(isHost: true, appliedRevision: 7, incomingRevision: 8)
+        )
+        XCTAssertFalse(
+            shouldAnimate(reduceMotion: true, appliedRevision: 7, incomingRevision: 8)
+        )
+        XCTAssertFalse(
+            shouldAnimate(isConfiguredRoom: false, appliedRevision: 7, incomingRevision: 8)
+        )
+        XCTAssertFalse(
+            shouldAnimate(isEditingLobbySlider: true, appliedRevision: 7, incomingRevision: 8)
+        )
+        XCTAssertFalse(
+            shouldAnimate(appliedRevision: -1, incomingRevision: 8)
+        )
+        XCTAssertFalse(
+            shouldAnimate(appliedRevision: 8, incomingRevision: 8)
+        )
+        XCTAssertFalse(
+            shouldAnimate(appliedRevision: 9, incomingRevision: 8)
+        )
+    }
+
+    func testAnyActiveSliderDefersWholeAuthoritativeSnapshot() {
+        XCTAssertFalse(
+            LobbyPresentationPolicy.shouldDeferAuthoritativeUpdate(
+                isDraggingDuration: false,
+                isDraggingWordCount: false
+            )
+        )
+        XCTAssertTrue(
+            LobbyPresentationPolicy.shouldDeferAuthoritativeUpdate(
+                isDraggingDuration: true,
+                isDraggingWordCount: false
+            )
+        )
+        XCTAssertTrue(
+            LobbyPresentationPolicy.shouldDeferAuthoritativeUpdate(
+                isDraggingDuration: false,
+                isDraggingWordCount: true
+            )
+        )
+    }
+
+    func testDeferredAuthoritativeUpdateLatchesForcedRollbackUntilApplied() {
+        var deferred = DeferredLobbyUpdateState()
+
+        deferred.record(force: false)
+        XCTAssertTrue(deferred.isPending)
+        XCTAssertFalse(deferred.requiresForce)
+
+        deferred.record(force: true)
+        XCTAssertTrue(deferred.isPending)
+        XCTAssertTrue(deferred.requiresForce)
+
+        deferred.record(force: false)
+        XCTAssertTrue(deferred.requiresForce)
+
+        deferred.clear()
+        XCTAssertFalse(deferred.isPending)
+        XCTAssertFalse(deferred.requiresForce)
+    }
+
+    func testUnrelatedModeAndDurationUpdateDoesNotCollapseExpandedPool() {
+        let original = payload(
+            mode: .questions,
+            duration: 300,
+            theme: "Cities"
+        )
+        let settingsOnlyUpdate = payload(
+            mode: .associations,
+            duration: 600,
+            theme: "Cities"
+        )
+        let differentPool = payload(
+            mode: .associations,
+            duration: 600,
+            theme: "Marvel"
+        )
+
+        XCTAssertFalse(shouldResetExpandedPool(from: original, to: settingsOnlyUpdate))
+        XCTAssertTrue(shouldResetExpandedPool(from: original, to: differentPool))
+    }
+
+    func testPoolExpansionStaysOpenButSameThemeReplacementCollapses() {
+        let original = payload(
+            mode: .questions,
+            duration: 300,
+            theme: "Cities"
+        )
+        var expanded = original
+        expanded.lobbyWordPool.append(
+            LobbyWordPoolEntry(word: "Bratislava", enabled: true)
+        )
+        var replacement = original
+        replacement.lobbyWordPool = [
+            LobbyWordPoolEntry(word: "Paris", enabled: true),
+            LobbyWordPoolEntry(word: "Madrid", enabled: true)
+        ]
+
+        XCTAssertFalse(shouldResetExpandedPool(from: original, to: expanded))
+        XCTAssertTrue(shouldResetExpandedPool(from: original, to: replacement))
+    }
+
+    func testSavedPackAndGeneratedSourceChangesCollapseExpandedPool() {
+        var savedA = payload(
+            mode: .questions,
+            duration: 300,
+            theme: "Cities"
+        )
+        savedA.lobbyWordSource = .saved
+        savedA.lobbySourcePackID = "pack-a"
+        var savedB = savedA
+        savedB.lobbySourcePackID = "pack-b"
+        var ai = savedA
+        ai.lobbyWordSource = .ai
+        ai.lobbySourcePackID = nil
+
+        XCTAssertTrue(shouldResetExpandedPool(from: savedA, to: savedB))
+        XCTAssertTrue(shouldResetExpandedPool(from: savedA, to: ai))
+    }
+
+    func testPresentationSnapshotCarriesWholeLobbyRevision() {
+        let state = payload(
+            mode: .associations,
+            duration: 720,
+            theme: "Marvel"
+        )
+        let snapshot = LobbyPresentationSnapshot(
+            roomID: "room-1",
+            revision: 12,
+            state: state
+        )
+
+        XCTAssertEqual(snapshot.revision, 12)
+        XCTAssertEqual(snapshot.state.gameMode, .associations)
+        XCTAssertEqual(snapshot.state.gameDurationSeconds, 720)
+        XCTAssertEqual(snapshot.state.lobbyWordCount, 2)
+        XCTAssertEqual(snapshot.state.lobbyWordPool.map(\.word), ["Kyiv", "London"])
+    }
+
+    private func shouldAnimate(
+        isHost: Bool = false,
+        reduceMotion: Bool = false,
+        isConfiguredRoom: Bool = true,
+        isEditingLobbySlider: Bool = false,
+        appliedRevision: Int,
+        incomingRevision: Int
+    ) -> Bool {
+        LobbyPresentationPolicy.shouldAnimateRemoteUpdate(
+            isHost: isHost,
+            reduceMotion: reduceMotion,
+            isConfiguredRoom: isConfiguredRoom,
+            isEditingLobbySlider: isEditingLobbySlider,
+            appliedRevision: appliedRevision,
+            incomingRevision: incomingRevision
+        )
+    }
+
+    private func payload(
+        mode: SpyGameMode,
+        duration: Int,
+        theme: String
+    ) -> LobbyStatePayload {
+        LobbyStatePayload(
+            gameMode: mode,
+            gameDurationSeconds: duration,
+            lobbyWordSource: .manual,
+            lobbySourcePackID: nil,
+            lobbySourceName: theme,
+            lobbyTheme: theme,
+            lobbyCategory: theme,
+            lobbyWordCount: 2,
+            lobbyWordCountMode: .custom,
+            lobbyWordPool: [
+                LobbyWordPoolEntry(word: "Kyiv", enabled: true),
+                LobbyWordPoolEntry(word: "London", enabled: false)
+            ]
+        )
+    }
+
+    private func shouldResetExpandedPool(
+        from current: LobbyStatePayload,
+        to incoming: LobbyStatePayload
+    ) -> Bool {
+        LobbyPresentationPolicy.shouldResetExpandedPool(
+            current: LobbyPoolIdentity(state: current),
+            incoming: LobbyPoolIdentity(state: incoming),
+            currentWordKeys: Set(current.lobbyWordPool.map { $0.word.lowercased() }),
+            incomingWordKeys: Set(incoming.lobbyWordPool.map { $0.word.lowercased() })
+        )
+    }
+}
+
 final class LobbySyncRetryPolicyTests: XCTestCase {
     func testOnlyTypedLobbyConflictTriggersRevisionRefresh() {
         XCTAssertTrue(
@@ -872,6 +1080,49 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
 }
 
 final class SpySliderInteractionStateTests: XCTestCase {
+    func testOnlyOptedInNonTrackingRemoteTransactionAnimatesSlider() {
+        XCTAssertTrue(
+            SpySliderProgrammaticUpdatePolicy.shouldAnimate(
+                isTracking: false,
+                allowsAnimation: true,
+                transactionHasAnimation: true,
+                reduceMotion: false
+            )
+        )
+        XCTAssertFalse(
+            SpySliderProgrammaticUpdatePolicy.shouldAnimate(
+                isTracking: true,
+                allowsAnimation: true,
+                transactionHasAnimation: true,
+                reduceMotion: false
+            )
+        )
+        XCTAssertFalse(
+            SpySliderProgrammaticUpdatePolicy.shouldAnimate(
+                isTracking: false,
+                allowsAnimation: false,
+                transactionHasAnimation: true,
+                reduceMotion: false
+            )
+        )
+        XCTAssertFalse(
+            SpySliderProgrammaticUpdatePolicy.shouldAnimate(
+                isTracking: false,
+                allowsAnimation: true,
+                transactionHasAnimation: false,
+                reduceMotion: false
+            )
+        )
+        XCTAssertFalse(
+            SpySliderProgrammaticUpdatePolicy.shouldAnimate(
+                isTracking: false,
+                allowsAnimation: true,
+                transactionHasAnimation: true,
+                reduceMotion: true
+            )
+        )
+    }
+
     func testTouchCancelRestoresInitialValueWithoutCommit() throws {
         var interaction = SpySliderInteractionState()
 
@@ -1162,8 +1413,8 @@ final class NavigationSwipeTests: XCTestCase {
         XCTAssertFalse(state.accepts(requestID))
     }
 
-    func testExplicitHomeRootShowsLandingWithoutDiscardingActiveRoom() {
-        XCTAssertTrue(
+    func testActiveRoomPreviewWinsOverExplicitHomeRootPresentation() {
+        XCTAssertFalse(
             HomeRootPresentationPolicy.showsLandingActions(
                 hasActiveRoom: true,
                 explicitlyRequested: true
@@ -1173,6 +1424,12 @@ final class NavigationSwipeTests: XCTestCase {
             HomeRootPresentationPolicy.showsLandingActions(
                 hasActiveRoom: true,
                 explicitlyRequested: false
+            )
+        )
+        XCTAssertTrue(
+            HomeRootPresentationPolicy.showsLandingActions(
+                hasActiveRoom: false,
+                explicitlyRequested: true
             )
         )
         XCTAssertEqual(

@@ -8,9 +8,9 @@ enum HomeRootPrimaryAction: Equatable {
 struct HomeRootPresentationPolicy {
     static func showsLandingActions(
         hasActiveRoom: Bool,
-        explicitlyRequested: Bool
+        explicitlyRequested _: Bool
     ) -> Bool {
-        !hasActiveRoom || explicitlyRequested
+        !hasActiveRoom
     }
 
     static func primaryAction(hasActiveRoom: Bool) -> HomeRootPrimaryAction {

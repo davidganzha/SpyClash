@@ -659,6 +659,7 @@ struct SpyWebSlider: View {
     var accent: Color = SpyTheme.red
     var maxMarker: Double?
     var maxLabel: String? = nil
+    var animatesProgrammaticChanges = false
     var onEditingChanged: ((Bool) -> Void)? = nil
     var onCommit: ((Double) -> Void)? = nil
     var onCancel: (() -> Void)? = nil
@@ -687,6 +688,7 @@ struct SpyWebSlider: View {
                 step: max(step, 0.0001),
                 tint: isMaxZone ? SpyTheme.amber : accent,
                 isEnabled: isEnabled,
+                animatesProgrammaticChanges: animatesProgrammaticChanges,
                 accessibilityIdentifier: accessibilityIdentifier,
                 onEditingChanged: onEditingChanged,
                 onCommit: onCommit,
@@ -712,6 +714,7 @@ private struct SpyNativeSlider: UIViewRepresentable {
     let step: Double
     let tint: Color
     let isEnabled: Bool
+    let animatesProgrammaticChanges: Bool
     let accessibilityIdentifier: String?
     let onEditingChanged: ((Bool) -> Void)?
     let onCommit: ((Double) -> Void)?
@@ -751,8 +754,19 @@ private struct SpyNativeSlider: UIViewRepresentable {
         slider.accessibilityValue = "\(Int(value.rounded()))"
         slider.accessibilityIdentifier = accessibilityIdentifier
 
-        if !slider.isTracking {
-            slider.setValue(Float(clamped(value)), animated: false)
+        let targetValue = Float(clamped(value))
+        if !slider.isTracking,
+           abs(slider.value - targetValue) > 0.0001 {
+            slider.setValue(
+                targetValue,
+                animated: SpySliderProgrammaticUpdatePolicy.shouldAnimate(
+                    isTracking: slider.isTracking,
+                    allowsAnimation: animatesProgrammaticChanges,
+                    transactionHasAnimation: context.transaction.animation != nil &&
+                        !context.transaction.disablesAnimations,
+                    reduceMotion: UIAccessibility.isReduceMotionEnabled
+                )
+            )
         }
 
         if !isEnabled {
@@ -841,6 +855,20 @@ private struct SpyNativeSlider: UIViewRepresentable {
             let stepIndex = ((rawValue - lowerBound) / parent.step).rounded()
             return min(max(lowerBound + (stepIndex * parent.step), lowerBound), upperBound)
         }
+    }
+}
+
+enum SpySliderProgrammaticUpdatePolicy {
+    static func shouldAnimate(
+        isTracking: Bool,
+        allowsAnimation: Bool,
+        transactionHasAnimation: Bool,
+        reduceMotion: Bool
+    ) -> Bool {
+        !isTracking &&
+            allowsAnimation &&
+            transactionHasAnimation &&
+            !reduceMotion
     }
 }
 
