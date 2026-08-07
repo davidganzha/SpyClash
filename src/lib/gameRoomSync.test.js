@@ -123,11 +123,11 @@ test("duration helpers enforce the shared one-to-fifteen minute contract", () =>
 });
 
 test("room polling uses bounded backoff and slows down in the background", () => {
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0 }), 30_000);
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 1 }), 30_000);
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 2 }), 30_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0 }), 2_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 1 }), 4_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 2 }), 8_000);
   assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 20 }), 30_000);
-  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0, hidden: true }), 30_000);
+  assert.equal(roomPollDelayMilliseconds({ consecutiveFailures: 0, hidden: true }), 20_000);
 });
 
 test("room realtime wakeups are scoped to the current room and participant", () => {
