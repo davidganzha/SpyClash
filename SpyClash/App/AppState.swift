@@ -219,12 +219,8 @@ enum RoomPollPolicy {
     ) -> Double {
         guard isApplicationActive else { return 20 }
 
-        if consecutiveFailures > 0 {
-            return min(8 * pow(2, Double(min(consecutiveFailures, 2))), 30)
-        }
-
         _ = roomStatus
-        return 30
+        return min(2 * pow(2, Double(min(consecutiveFailures, 4))), 30)
     }
 }
 

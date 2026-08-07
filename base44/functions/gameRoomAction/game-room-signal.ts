@@ -10,11 +10,9 @@ export type GameRoomSignalRecord = {
 };
 
 export type GameRoomSignalStore = {
+  filter(query: Record<string, unknown>): Promise<Record<string, unknown>[]>;
   create(data: GameRoomSignalRecord): Promise<unknown>;
-  updateMany(
-    filter: Record<string, unknown>,
-    update: Record<string, unknown>,
-  ): Promise<{ updated?: number }>;
+  update(id: string, data: GameRoomSignalRecord): Promise<unknown>;
 };
 
 function clean(value: unknown): string {
@@ -64,21 +62,43 @@ export function signalRecordsForRoom(
 export async function upsertGameRoomSignal(
   store: GameRoomSignalStore,
   signal: GameRoomSignalRecord,
-  options: { allowCreate?: boolean } = {},
-): Promise<"created" | "updated" | "missing"> {
+  options: {
+    allowCreate?: boolean;
+    existingRows?: Record<string, unknown>[];
+  } = {},
+): Promise<"created" | "updated" | "unchanged" | "missing"> {
   const query = { user_id: signal.user_id, room_id: signal.room_id };
-  const updated = await store.updateMany(query, { $set: signal });
-  if (Number(updated?.updated) > 0) return "updated";
+  const existing = options.existingRows ?? await store.filter(query) ?? [];
+  const writable = existing.filter((row) => clean(row?.id));
+  const updates = writable.filter((row) => {
+    const existingRoomRevision = revision(row?.room_revision);
+    const existingLobbyRevision = revision(row?.lobby_revision);
+    if (existingRoomRevision > signal.room_revision) return false;
+    if (existingRoomRevision < signal.room_revision) return true;
+    if (existingLobbyRevision > signal.lobby_revision) return false;
+    return existingLobbyRevision < signal.lobby_revision ||
+      timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at) ||
+      clean(row?.state) !== signal.state;
+  });
+  if (updates.length) {
+    await Promise.all(
+      updates.map((row) => store.update(clean(row.id), signal)),
+    );
+    return "updated";
+  }
+  if (writable.length) return "unchanged";
   if (options.allowCreate === false) return "missing";
 
   try {
     await store.create(signal);
     return "created";
   } catch (createError) {
-    // A concurrent initial fanout may have created the logical row. Updating
-    // the key again converges every duplicate without a read-before-write loop.
-    const raced = await store.updateMany(query, { $set: signal });
-    if (Number(raced?.updated) > 0) return "updated";
+    const raced = await store.filter(query) ?? [];
+    const racedResult = await upsertGameRoomSignal(store, signal, {
+      allowCreate: false,
+      existingRows: raced,
+    });
+    if (racedResult !== "missing") return racedResult;
     throw createError;
   }
 }
@@ -91,18 +111,39 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
   logError?: (message: string, error: unknown) => void;
 }): Promise<{ attempted: number; succeeded: number; failed: number }> {
   const signals = signalRecordsForRoom(input.room, input.state || "active");
+  if (!signals.length) return { attempted: 0, succeeded: 0, failed: 0 };
+
+  let existing: Record<string, unknown>[];
+  try {
+    existing = await input.store.filter({ room_id: signals[0].room_id }) ?? [];
+  } catch (error) {
+    input.logError?.("room signal fanout deferred", error);
+    return {
+      attempted: signals.length,
+      succeeded: 0,
+      failed: signals.length,
+    };
+  }
   const settled = await Promise.allSettled(
     signals.map((signal) =>
       upsertGameRoomSignal(input.store, signal, {
         allowCreate: input.allowCreate !== false,
+        existingRows: existing.filter((row) =>
+          clean(row?.user_id) === signal.user_id &&
+          clean(row?.room_id) === signal.room_id
+        ),
       })
     ),
   );
-  const failures = settled.filter((result) => result.status === "rejected");
+  const failures = settled.filter((result) =>
+    result.status === "rejected" || result.value === "missing"
+  );
   for (const failure of failures) {
     input.logError?.(
       "room signal fanout deferred",
-      (failure as PromiseRejectedResult).reason,
+      failure.status === "rejected"
+        ? failure.reason
+        : new Error("room signal row missing"),
     );
   }
   return {

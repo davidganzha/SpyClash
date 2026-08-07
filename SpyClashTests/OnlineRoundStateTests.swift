@@ -235,7 +235,7 @@ final class OnlineRoundStateTests: XCTestCase {
                 consecutiveFailures: 0,
                 isApplicationActive: true
             ),
-            30,
+            2,
             accuracy: 0.001
         )
         XCTAssertEqual(
@@ -244,11 +244,11 @@ final class OnlineRoundStateTests: XCTestCase {
                 consecutiveFailures: 0,
                 isApplicationActive: true
             ),
-            30,
+            2,
             accuracy: 0.001
         )
-        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 1, isApplicationActive: true), 16)
-        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 2, isApplicationActive: true), 30)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 1, isApplicationActive: true), 4)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 2, isApplicationActive: true), 8)
         XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 8, isApplicationActive: true), 30)
         XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 0, isApplicationActive: false), 20)
     }

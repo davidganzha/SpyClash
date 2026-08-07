@@ -12,7 +12,17 @@ class MemorySignalStore implements GameRoomSignalStore {
   nextID = 1;
   failUsers = new Set<string>();
   createRaceRow: Record<string, unknown> | null = null;
-  updateManyCalls = 0;
+  filterCalls = 0;
+  updateCalls = 0;
+
+  filter(query: Record<string, unknown>) {
+    this.filterCalls += 1;
+    return Promise.resolve(
+      this.rows.filter((row) =>
+        Object.entries(query).every(([key, value]) => row[key] === value)
+      ),
+    );
+  }
 
   create(data: GameRoomSignalRecord) {
     if (this.createRaceRow) {
@@ -28,25 +38,15 @@ class MemorySignalStore implements GameRoomSignalStore {
     return Promise.resolve(row);
   }
 
-  updateMany(
-    query: Record<string, unknown>,
-    update: Record<string, any>,
-  ) {
-    this.updateManyCalls += 1;
-    const signal = update.$set as GameRoomSignalRecord;
+  update(id: string, signal: GameRoomSignalRecord) {
+    this.updateCalls += 1;
     if (this.failUsers.has(signal.user_id)) {
       return Promise.reject(new Error("unavailable"));
     }
-    let updated = 0;
-    this.rows = this.rows.map((row) => {
-      const matches = Object.entries(query).every(([key, value]) =>
-        row[key] === value
-      );
-      if (!matches) return row;
-      updated += 1;
-      return { ...row, ...signal };
-    });
-    return Promise.resolve({ updated });
+    const index = this.rows.findIndex((row) => row.id === id);
+    if (index < 0) return Promise.reject(new Error("missing"));
+    this.rows[index] = { ...this.rows[index], ...signal };
+    return Promise.resolve(this.rows[index]);
   }
 }
 
@@ -106,12 +106,12 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
 Deno.test("signal upsert uses one write for an existing participant row", async () => {
   const store = new MemorySignalStore();
   assertEquals(await upsertGameRoomSignal(store, signal), "created");
-  const callsAfterCreate = store.updateManyCalls;
+  const callsAfterCreate = store.updateCalls;
   assertEquals(
     await upsertGameRoomSignal(store, { ...signal, room_revision: 13 }),
     "updated",
   );
-  assertEquals(store.updateManyCalls, callsAfterCreate + 1);
+  assertEquals(store.updateCalls, callsAfterCreate + 1);
   assertEquals(store.rows[0].room_revision, 13);
 });
 
@@ -145,6 +145,27 @@ Deno.test("signal fanout is best effort so polling remains a fallback", async ()
   assertEquals(store.rows.map((row) => row.user_id), ["user-1"]);
 });
 
+Deno.test("signal fanout reads the room rows once and emits addressable updates", async () => {
+  const store = new MemorySignalStore();
+  store.rows = [
+    { id: "signal-1", ...signal, user_id: "user-1", room_revision: 20 },
+    { id: "signal-2", ...signal, user_id: "user-2", room_revision: 20 },
+  ];
+  const result = await fanoutGameRoomSignalsBestEffort({
+    store,
+    room: {
+      id: "room-1",
+      lobby_revision: 8,
+      room_revision: 22,
+      participant_user_ids: ["user-1", "user-2"],
+    },
+  });
+  assertEquals(result, { attempted: 2, succeeded: 2, failed: 0 });
+  assertEquals(store.filterCalls, 1);
+  assertEquals(store.updateCalls, 2);
+  assertEquals(store.rows.map((row) => row.room_revision), [22, 22]);
+});
+
 Deno.test("rapid gameplay never recreates a signal removed by account cleanup", async () => {
   const store = new MemorySignalStore();
   assertEquals(
@@ -152,5 +173,6 @@ Deno.test("rapid gameplay never recreates a signal removed by account cleanup", 
     "missing",
   );
   assertEquals(store.rows, []);
-  assertEquals(store.updateManyCalls, 1);
+  assertEquals(store.filterCalls, 1);
+  assertEquals(store.updateCalls, 0);
 });
