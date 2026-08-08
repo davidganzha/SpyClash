@@ -4,7 +4,7 @@ import { useGlobalQuota } from "@/hooks/useGlobalQuota";
 import { Check, Copy, QrCode } from "lucide-react";
 import { base44 } from "@/api/base44Client";
 import { createPageUrl } from "@/utils";
-import { Link, useNavigate } from "react-router-dom";
+import { Link, useLocation, useNavigate } from "react-router-dom";
 import { motion, AnimatePresence } from "framer-motion";
 import GlitchText from "../components/ui/GlitchText";
 import WordPoolManager from "../components/WordPoolManager";
@@ -30,6 +30,18 @@ import {
   gameDurationMinutes,
   gameDurationSeconds,
 } from "@/lib/gameRoomSync";
+import {
+  createLobbySyncController,
+  lobbyControlsFromRoom,
+  lobbyRevision,
+  lobbyStateFromRoom,
+  lobbyStatesEquivalent,
+  lobbyThemeInputAfterHydration,
+  materializePlayableLobbyState,
+  normalizeLobbyThemeInput,
+  normalizeLobbyState,
+  roomScopeMatches,
+} from "@/lib/lobbySync";
 import { shouldAcceptOnlineRoomSnapshot } from "@/lib/onlineGamePresentation";
 
 
@@ -60,11 +72,6 @@ function pickFromBuiltIn(locale) {
   const word = words[Math.floor(Math.random() * words.length)];
   const pool = words.map((w) => ({ word: w, enabled: true }));
   return { word, category: cat, pool };
-}
-
-function lobbyRevision(room) {
-  const revision = Number(room?.lobby_revision);
-  return Number.isInteger(revision) && revision > 0 ? revision : 0;
 }
 
 function buildAuthoritativeGameData(room) {
@@ -107,6 +114,7 @@ export default function Room() {
   const [syncState, setSyncState] = useState("connected");
   const [copied, setCopied] = useState(false);
   const [customTheme, setCustomTheme] = useState("");
+  const [themeInput, setThemeInput] = useState("");
   const [themeError, setThemeError] = useState("");
   const [validating, setValidating] = useState(false);
   const [wordPool, setWordPool] = useState([]);
@@ -114,6 +122,8 @@ export default function Room() {
   const [generatedCategory, setGeneratedCategory] = useState("");
   const [wordCount, setWordCount] = useState(25);
   const [gameDuration, setGameDuration] = useState(10);
+  const [selectedGameMode, setSelectedGameMode] = useState("questions");
+  const [wordSource, setWordSource] = useState("none");
   const [rouletteTarget, setRouletteTarget] = useState(null);
   const [selectedPackId, setSelectedPackId] = useState(null);
   const [userPacks, setUserPacks] = useState([]);
@@ -125,11 +135,22 @@ export default function Room() {
   const [codeSpoiled, setCodeSpoiled] = useState(false);
   const [qrFlipped, setQrFlipped] = useState(true);
   const [roomAccessPage, setRoomAccessPage] = useState(0);
+  const [lobbySyncPhase, setLobbySyncPhase] = useState("idle");
+  const [lobbySyncError, setLobbySyncError] = useState("");
   const scrollReturnRef = useRef(null);
   const lockTimerRef = useRef(null);
   const rouletteCompletionKeyRef = useRef(null);
-  const durationUpdateTimerRef = useRef(null);
   const roomRef = useRef(null);
+  const userRef = useRef(null);
+  const roomScopeGenerationRef = useRef(0);
+  const themeInputEditingRef = useRef({ active: false, dirty: false });
+  const lobbyDraftRef = useRef(null);
+  const lobbyDraftVersionRef = useRef(0);
+  const lobbySyncControllerRef = useRef(null);
+  const applyRoomSnapshotRef = useRef(
+    /** @type {(...args: any[]) => boolean} */ (() => false)
+  );
+  const fallbackBuiltInRef = useRef(null);
   const spoilerDots = useMemo(() => Array.from({ length: 70 }).map((_, i) => ({
     id: i,
     left: Math.random() * 100,
@@ -140,17 +161,63 @@ export default function Room() {
     dy: (Math.random() - 0.5) * 30
   })), []);
   const navigate = useNavigate();
+  const location = useLocation();
   const unsubRef = useRef(null);
   const prevPlayersRef = useRef([]);
   const sounds = useGameSounds();
   const quota = useGlobalQuota();
   const { increment } = quota;
 
-  const syncedGameMode = room?.game_mode || "questions";
+  const syncedGameMode = selectedGameMode;
+
+  if (!lobbySyncControllerRef.current) {
+    lobbySyncControllerRef.current = createLobbySyncController({
+      updateLobbyState: ({ roomID, mutationID, expectedRevision, state }) =>
+        runGameRoomAction("update_lobby_state", roomID, {
+          mutation_id: mutationID,
+          expected_revision: expectedRevision,
+          state,
+        }),
+      refreshRoom: getGameRoom,
+      onConfirmedRoom: (confirmedRoom) => {
+        applyRoomSnapshotRef.current(confirmedRoom, {
+          forceLobbyHydration: true,
+          skipLobbyReconcile: true,
+        });
+      },
+      onRollback: (authoritativeRoom, error) => {
+        const applied = applyRoomSnapshotRef.current(authoritativeRoom, {
+          forceLobbyHydration: true,
+          skipLobbyReconcile: true,
+        });
+        if (!applied) return;
+        const message = error?.message || "Lobby settings were reloaded";
+        setThemeError(message);
+        gameToast(message, "warning", "⚠️");
+      },
+      onPhaseChange: (phase) => {
+        setLobbySyncPhase(phase.optimistic ? "syncing" : phase.error ? "error" : "synced");
+        setLobbySyncError(phase.error?.message || "");
+      },
+    });
+  }
 
   const getRoomId = () => new URLSearchParams(window.location.search).get("id");
+  const requestedRoomID = new URLSearchParams(location.search).get("id");
+
+  const captureRoomScope = () => ({
+    generation: roomScopeGenerationRef.current,
+    roomID: roomRef.current?.id || null,
+  });
+
+  const isRoomScopeCurrent = (scope) => roomScopeMatches(scope, {
+    generation: roomScopeGenerationRef.current,
+    requestedRoomID: getRoomId(),
+    roomID: roomRef.current?.id,
+  });
 
   const acceptsRoomSnapshot = (nextRoom) => {
+    if (!nextRoom?.id || nextRoom.id !== getRoomId()) return false;
     const currentRoom = roomRef.current;
     if (currentRoom?.id && nextRoom?.id !== currentRoom.id) {
       return nextRoom?.id === getRoomId();
@@ -160,58 +227,205 @@ export default function Room() {
     return lobbyRevision(nextRoom) >= lobbyRevision(currentRoom);
   };
 
-  const applyRoomSnapshot = (nextRoom) => {
+  const applyLobbyControls = (controls) => {
+    if (!lobbyDraftRef.current || !lobbyStatesEquivalent(lobbyDraftRef.current, controls.state)) {
+      lobbyDraftVersionRef.current += 1;
+    }
+    lobbyDraftRef.current = controls.state;
+    setSelectedGameMode(controls.gameMode);
+    setGameDuration(controls.gameDuration);
+    setWordSource(controls.wordSource);
+    setSelectedPackId(controls.selectedPackId);
+    setCustomTheme(controls.customTheme);
+    setThemeInput((currentInput) => lobbyThemeInputAfterHydration(
+      currentInput,
+      controls.customTheme,
+      themeInputEditingRef.current.active,
+    ));
+    setGeneratedCategory(controls.generatedCategory);
+    setWordPool(controls.wordPool);
+    generatedPoolRef.current = controls.wordPool;
+    setWordCount(controls.wordCount);
+    setWordCountMode(controls.wordCountMode);
+    setCustomWordCount(controls.customWordCount);
+    setThemeMaxWords(controls.themeMaxWords);
+    setThemeAnalyzed(controls.themeAnalyzed);
+  };
+
+  const hydrateLobbyControls = (nextRoom) => {
+    applyLobbyControls(lobbyControlsFromRoom(nextRoom));
+  };
+
+  const applyRoomSnapshot = (nextRoom, options = {}) => {
     if (!acceptsRoomSnapshot(nextRoom)) return false;
+    const controller = lobbySyncControllerRef.current;
+    const controllerState = controller.snapshot();
+    const isWritableLobby = nextRoom.status === "waiting" &&
+      nextRoom.host_email === userRef.current?.email;
+    let scopeReset = false;
+    if (isWritableLobby &&
+      (controllerState.disposed || controllerState.roomID !== nextRoom.id)) {
+      controller.reset(nextRoom);
+      scopeReset = true;
+    } else if (!isWritableLobby &&
+      (!controllerState.disposed || controllerState.roomID ||
+        controllerState.optimistic || controllerState.error)) {
+      controller.reset(null);
+      scopeReset = true;
+    }
+    if (!isWritableLobby) {
+      themeInputEditingRef.current = { active: false, dirty: false };
+    }
     roomRef.current = nextRoom;
     setRoom(nextRoom);
+    const reconciled = isWritableLobby && !scopeReset && !options.skipLobbyReconcile
+      ? controller.reconcile(nextRoom)
+      : false;
+    const shouldHydrate = options.forceLobbyHydration || scopeReset ||
+      !isWritableLobby || reconciled;
+    if (shouldHydrate) hydrateLobbyControls(nextRoom);
     return true;
+  };
+  applyRoomSnapshotRef.current = applyRoomSnapshot;
+
+  const currentLobbyDraft = () => lobbyDraftRef.current || lobbyStateFromRoom(roomRef.current || {});
+
+  const enqueueLobbySnapshot = (state, debounceMilliseconds = 140) => {
+    const currentRoom = roomRef.current;
+    const controller = lobbySyncControllerRef.current;
+    const controllerState = controller.snapshot();
+    if (!currentRoom || currentRoom.status !== "waiting" ||
+      currentRoom.host_email !== userRef.current?.email) {
+      return false;
+    }
+    if (controllerState.disposed || controllerState.roomID !== currentRoom.id) return false;
+    const normalized = normalizeLobbyState(state);
+    applyLobbyControls(lobbyControlsFromRoom({
+      ...currentRoom,
+      ...normalized,
+    }));
+    controller.enqueue(normalized, { debounceMilliseconds });
+    return true;
+  };
+
+  const builtInLobbyState = (baseState = currentLobbyDraft()) => {
+    if (!fallbackBuiltInRef.current) fallbackBuiltInRef.current = pickFromBuiltIn(locale);
+    const selection = fallbackBuiltInRef.current;
+    const pool = selection.pool.slice(0, 200);
+    return materializePlayableLobbyState(baseState, {
+      category: selection.category,
+      pool,
+    });
+  };
+
+  const playableLobbyState = (state) => {
+    const normalized = normalizeLobbyState(state);
+    const enabled = normalized.lobby_word_pool.filter((entry) => entry.enabled).length;
+    if (enabled >= 2 || normalized.lobby_theme || normalized.lobby_word_source !== "none") {
+      return normalized;
+    }
+    return builtInLobbyState(normalized);
   };
 
   useEffect(() => {
     if (!hasResolvedMembership) return;
-    const id = new URLSearchParams(window.location.search).get("id");
+    const id = requestedRoomID;
+    const scopeGeneration = roomScopeGenerationRef.current + 1;
+    roomScopeGenerationRef.current = scopeGeneration;
+    let mounted = true;
+    const isCurrent = () => mounted &&
+      roomScopeGenerationRef.current === scopeGeneration &&
+      getRoomId() === id;
+
+    unsubRef.current?.();
+    unsubRef.current = null;
+    lobbySyncControllerRef.current.reset(null);
+    roomRef.current = null;
+    userRef.current = null;
+    lobbyDraftRef.current = null;
+    fallbackBuiltInRef.current = null;
+    generatedPoolRef.current = [];
+    prevPlayersRef.current = [];
+    lobbyDraftVersionRef.current += 1;
+    themeInputEditingRef.current = { active: false, dirty: false };
+    rouletteCompletionKeyRef.current = null;
+    setRoom(null);
+    setUser(null);
+    setStarting(false);
+    setValidating(false);
+    setThemeError("");
+    setLobbySyncError("");
+    setLobbySyncPhase("idle");
+    setSyncState("connected");
+    setRouletteTarget(null);
+    setShowSavePackDialog(false);
+    setThemeInput("");
+    setCustomTheme("");
     if (id) localStorage.setItem("spy_active_room_id", id);
 
-    let mounted = true;
     base44.auth.me().then((u) => {
-      if (!mounted) return;
+      if (!isCurrent()) return;
       if (!u) {base44.auth.redirectToLogin(window.location.href);return;}
+      userRef.current = u;
       setUser(u);
-      loadRoom(u);
+      void loadRoom(u, id, isCurrent).catch((error) => {
+        if (!isCurrent()) return;
+        console.error("Failed to load room", error);
+        gameToast(error?.message || t('room_sync_reconnecting'), "warning", "⚠️");
+        navigate(createPageUrl("Home"));
+      });
       // Load user's word packs for selector
-      listWordPacks().then(setUserPacks).catch(() => {});
-    }).catch(() => navigate(createPageUrl("Home")));
+      listWordPacks().then((packs) => {
+        if (isCurrent()) setUserPacks(packs);
+      }).catch(() => {});
+    }).catch(() => {
+      if (isCurrent()) navigate(createPageUrl("Home"));
+    });
     return () => {
       mounted = false;
+      if (roomScopeGenerationRef.current === scopeGeneration) {
+        roomScopeGenerationRef.current += 1;
+      }
       unsubRef.current?.();
-      if (durationUpdateTimerRef.current) clearTimeout(durationUpdateTimerRef.current);
+      unsubRef.current = null;
+      lobbySyncControllerRef.current?.dispose();
+      roomRef.current = null;
+      userRef.current = null;
+      lobbyDraftRef.current = null;
+      fallbackBuiltInRef.current = null;
     };
-  }, [hasResolvedMembership]);
+  }, [hasResolvedMembership, requestedRoomID]);
 
-  const loadRoom = async (u) => {
-    const id = getRoomId();
-    if (!id) {navigate(createPageUrl("Home"));return;}
+  const loadRoom = async (u, id, isCurrent) => {
+    if (!id) {
+      if (isCurrent()) navigate(createPageUrl("Home"));
+      return;
+    }
     let room = await getGameRoom(id);
+    if (!isCurrent()) return;
     if (!room) {navigate(createPageUrl("Home"));return;}
 
     if (room.status === "waiting") {
       const displayName = u.display_name || u.full_name || u.email.split("@")[0];
       const avatar = accountAvatarForDisplay(u.avatar);
       room = await joinGameRoom({ roomId: id, player: { name: displayName, avatar } });
-    }
-    // Initialize game_mode if not set
-    if (!room.game_mode) {
-      room = await runGameRoomAction("update_game_mode", id, { mode: "questions" });
+      if (!isCurrent()) return;
     }
     const finalRoom = room;
     prevPlayersRef.current = finalRoom.players || [];
-    applyRoomSnapshot(finalRoom);
+    fallbackBuiltInRef.current = null;
+    const applied = applyRoomSnapshot(finalRoom, {
+      forceLobbyHydration: true,
+      skipLobbyReconcile: true,
+    });
+    if (!applied || !isCurrent()) return;
     if (["playing", "finished"].includes(finalRoom.status)) {
       navigate(createPageUrl("Game") + `?id=${id}`);
       return;
     }
 
     unsubRef.current = subscribeGameRoom(id, async (evt) => {
+      if (!isCurrent()) return;
       if (evt.id !== id) return;
       if (evt.type === "sync") {
         setSyncState(evt.state);
@@ -220,6 +434,7 @@ export default function Room() {
       if (evt.type === "delete") {navigate(createPageUrl("Home"));return;}
       let newRoom = evt.data;
       if (!newRoom) newRoom = await getGameRoom(id);
+      if (!isCurrent()) return;
       if (!newRoom) return;
       if (!acceptsRoomSnapshot(newRoom)) return;
 
@@ -252,20 +467,123 @@ export default function Room() {
 
   };
 
-  useEffect(() => {
-    if (!room?.game_duration_seconds) return;
-    setGameDuration(gameDurationMinutes(room));
-  }, [room?.game_duration_seconds]);
-
   const handleToggleReady = async () => {
-    if (!room || !user) return;
-    const updated = await runGameRoomAction("toggle_ready", room.id);
+    const scope = captureRoomScope();
+    const sourceRoom = roomRef.current;
+    if (!sourceRoom || !userRef.current || !isRoomScopeCurrent(scope)) return;
+    const updated = await runGameRoomAction("toggle_ready", sourceRoom.id);
+    if (!isRoomScopeCurrent(scope)) return;
     applyRoomSnapshot(updated);
+  };
+
+  const generatedLobbyState = ({ pool, category, count }) => normalizeLobbyState({
+    ...currentLobbyDraft(),
+    lobby_word_source: "ai",
+    lobby_source_pack_id: "",
+    lobby_source_name: category,
+    lobby_theme: customTheme.trim(),
+    lobby_category: category,
+    lobby_word_count: count,
+    lobby_word_count_mode: wordCountMode,
+    lobby_word_pool: pool,
+  });
+
+  const handleThemeChange = (value) => {
+    setThemeError("");
+    fallbackBuiltInRef.current = null;
+    const theme = normalizeLobbyThemeInput(value);
+    if (!theme) {
+      enqueueLobbySnapshot(builtInLobbyState({
+        ...currentLobbyDraft(),
+        lobby_word_source: "none",
+        lobby_source_pack_id: "",
+        lobby_source_name: "",
+        lobby_theme: "",
+        lobby_category: "",
+        lobby_word_count: 0,
+        lobby_word_pool: [],
+      }), 180);
+      return;
+    }
+
+    enqueueLobbySnapshot({
+      ...currentLobbyDraft(),
+      lobby_word_source: "none",
+      lobby_source_pack_id: "",
+      lobby_source_name: "",
+      lobby_theme: theme,
+      lobby_category: theme,
+      lobby_word_count: wordCountMode === "custom" ? customWordCount : 0,
+      lobby_word_count_mode: wordCountMode,
+      lobby_word_pool: [],
+    }, 180);
+  };
+
+  const handleThemeInputChange = (value) => {
+    themeInputEditingRef.current = { active: true, dirty: true };
+    setThemeInput(value);
+    handleThemeChange(value);
+  };
+
+  const handleThemeInputFocus = (element) => {
+    themeInputEditingRef.current = { active: true, dirty: false };
+    centerInViewport(element.closest('.theme-block'));
+  };
+
+  const handleThemeInputBlur = () => {
+    const wasDirty = themeInputEditingRef.current.dirty;
+    themeInputEditingRef.current = { active: false, dirty: false };
+    if (wasDirty) {
+      const normalized = normalizeLobbyThemeInput(themeInput);
+      setThemeInput(normalized);
+      handleThemeChange(normalized);
+    } else {
+      const controls = lobbyControlsFromRoom({
+        ...roomRef.current,
+        ...currentLobbyDraft(),
+      });
+      setThemeInput(controls.customTheme);
+    }
+    restoreScroll();
+  };
+
+  const handleWordCountModeChange = (mode) => {
+    const draft = currentLobbyDraft();
+    const enabledCount = draft.lobby_word_pool.filter((entry) => entry.enabled).length;
+    enqueueLobbySnapshot({
+      ...draft,
+      lobby_word_count_mode: mode,
+      lobby_word_count: mode === "custom" ? customWordCount : enabledCount,
+    }, 100);
+  };
+
+  const handleCustomWordCountChange = (value) => {
+    const count = Math.max(5, Math.min(Number(value) || 5, 80));
+    enqueueLobbySnapshot({
+      ...currentLobbyDraft(),
+      lobby_word_count_mode: "custom",
+      lobby_word_count: count,
+    }, 120);
+  };
+
+  const handleSelectedWordCountChange = (value) => {
+    const draft = currentLobbyDraft();
+    const enabledCount = draft.lobby_word_pool.filter((entry) => entry.enabled).length;
+    enqueueLobbySnapshot({
+      ...draft,
+      lobby_word_count: Math.max(
+        0,
+        Math.min(Number(value) || 0, enabledCount, 200),
+      ),
+    }, 100);
   };
 
   // Single-step: generate words directly, derive real max from actual result
   const handleAnalyze = async () => {
     if (!customTheme.trim()) return;
+    const scope = captureRoomScope();
+    if (!isRoomScopeCurrent(scope)) return;
+    const requestVersion = lobbyDraftVersionRef.current;
     setValidating(true);
     setThemeError("");
     // Target depends on mode: recommended = 100 (model picks real count), custom = user-chosen exact count
@@ -275,30 +593,43 @@ export default function Room() {
       result = await generateWordPool(customTheme.trim(), target);
     } catch (error) {
       console.error("AI theme analysis failed", error);
-      setThemeError(locale.language === 'ru'
-        ? "AI-генерация временно недоступна."
-        : "AI generation is temporarily unavailable.");
+      if (!isRoomScopeCurrent(scope)) return;
+      if (requestVersion === lobbyDraftVersionRef.current) {
+        setThemeError(locale.language === 'ru'
+          ? "AI-генерация временно недоступна."
+          : "AI generation is temporarily unavailable.");
+      }
       setValidating(false);
       return;
     }
+    if (!isRoomScopeCurrent(scope)) return;
     setValidating(false);
     if (!result?.words?.length || result.words.length < 5) {
-      setThemeError(locale.language === 'ru' ? "Не удалось распознать тему. Попробуй другую." : "Couldn't recognize this theme. Try another.");
+      if (requestVersion === lobbyDraftVersionRef.current) {
+        setThemeError(locale.language === 'ru' ? "Не удалось распознать тему. Попробуй другую." : "Couldn't recognize this theme. Try another.");
+      }
       return;
     }
     const realMax = result.words.length;
     const pool = result.words.map((w) => ({ word: w, enabled: true }));
-    generatedPoolRef.current = pool;
-    setThemeMaxWords(realMax);
-    setWordCount(realMax);
-    setWordPool(pool);
-    setGeneratedCategory(result.display_category || customTheme.trim());
-    setThemeAnalyzed(true);
     increment(result);
+    if (!isRoomScopeCurrent(scope) || requestVersion !== lobbyDraftVersionRef.current) return;
+    const category = result.display_category || customTheme.trim();
+    const selectedCount = wordCountMode === "custom"
+      ? Math.min(customWordCount, realMax)
+      : realMax;
+    enqueueLobbySnapshot(generatedLobbyState({
+      pool,
+      category,
+      count: selectedCount,
+    }), 80);
   };
 
   const generateTheme = async () => {
     if (!customTheme.trim()) return;
+    const scope = captureRoomScope();
+    if (!isRoomScopeCurrent(scope)) return;
+    const requestVersion = lobbyDraftVersionRef.current;
     setValidating(true);
     setThemeError("");
     let result;
@@ -306,31 +637,39 @@ export default function Room() {
       result = await generateWordPool(customTheme.trim(), wordCount);
     } catch (error) {
       console.error("AI theme generation failed", error);
-      setThemeError(locale.language === 'ru'
-        ? "AI-генерация временно недоступна."
-        : "AI generation is temporarily unavailable.");
+      if (!isRoomScopeCurrent(scope)) return;
+      if (requestVersion === lobbyDraftVersionRef.current) {
+        setThemeError(locale.language === 'ru'
+          ? "AI-генерация временно недоступна."
+          : "AI generation is temporarily unavailable.");
+      }
       setValidating(false);
       return;
     }
+    if (!isRoomScopeCurrent(scope)) return;
     setValidating(false);
     if (!result?.words?.length) {
-      setThemeError(t('room_theme_error_empty'));
+      if (requestVersion === lobbyDraftVersionRef.current) {
+        setThemeError(t('room_theme_error_empty'));
+      }
       return;
     }
     const pool = result.words.slice(0, wordCount).map((w) => ({ word: w, enabled: true }));
-    generatedPoolRef.current = pool;
-    setWordPool(pool);
-    setGeneratedCategory(result.display_category || customTheme.trim());
-    if (pool.length < themeMaxWords) {
-      setThemeMaxWords(Math.max(10, pool.length));
-      setWordCount(pool.length);
-    }
     increment(result);
+    if (!isRoomScopeCurrent(scope) || requestVersion !== lobbyDraftVersionRef.current) return;
+    enqueueLobbySnapshot(generatedLobbyState({
+      pool,
+      category: result.display_category || customTheme.trim(),
+      count: Math.min(wordCount, pool.length),
+    }), 80);
   };
 
   // Squeeze more words beyond current max
   const pushMax = async () => {
     if (!customTheme.trim() || validating) return;
+    const scope = captureRoomScope();
+    if (!isRoomScopeCurrent(scope)) return;
+    const requestVersion = lobbyDraftVersionRef.current;
     setValidating(true);
     setThemeError("");
     const currentPool = wordPool.length ? wordPool : generatedPoolRef.current;
@@ -345,36 +684,96 @@ export default function Room() {
       result = await generateWordPool(customTheme.trim(), additionalCount, currentWords);
     } catch (error) {
       console.error("AI theme expansion failed", error);
-      setThemeError(locale.language === 'ru'
-        ? "AI-генерация временно недоступна."
-        : "AI generation is temporarily unavailable.");
+      if (!isRoomScopeCurrent(scope)) return;
+      if (requestVersion === lobbyDraftVersionRef.current) {
+        setThemeError(locale.language === 'ru'
+          ? "AI-генерация временно недоступна."
+          : "AI generation is temporarily unavailable.");
+      }
       setValidating(false);
       return;
     }
+    if (!isRoomScopeCurrent(scope)) return;
     setValidating(false);
     if (!result?.words?.length) return;
     const existingLower = new Set(currentWords.map((w) => w.toLowerCase()));
     const additions = result.words.filter((w) => !existingLower.has(w.toLowerCase()));
     if (additions.length === 0) {
-      setThemeError(locale.language === 'ru' ? "Больше уникальных слов найти не удалось." : "Couldn't find more unique words.");
+      if (requestVersion === lobbyDraftVersionRef.current) {
+        setThemeError(locale.language === 'ru' ? "Больше уникальных слов найти не удалось." : "Couldn't find more unique words.");
+      }
       return;
     }
     const newPool = [...currentPool, ...additions.map((w) => ({ word: w, enabled: true }))].slice(0, 200);
-    generatedPoolRef.current = newPool;
-    setWordPool(newPool);
-    setThemeMaxWords(newPool.length);
-    setWordCount(newPool.length);
     increment(result);
+    if (!isRoomScopeCurrent(scope) || requestVersion !== lobbyDraftVersionRef.current) return;
+    enqueueLobbySnapshot(generatedLobbyState({
+      pool: newPool,
+      category: generatedCategory || customTheme.trim(),
+      count: newPool.length,
+    }), 80);
   };
 
   const handlePoolUpdate = (updated) => {
-    setWordPool(updated);
-    if (customTheme.trim()) generatedPoolRef.current = updated;
+    const draft = currentLobbyDraft();
+    const previousPool = draft.lobby_word_pool;
+    const sameWords = previousPool.length === updated.length && previousPool.every((entry, index) =>
+      entry.word.normalize("NFKC").trim().toLocaleLowerCase() ===
+        String(updated[index]?.word || "").normalize("NFKC").trim().toLocaleLowerCase()
+    );
+    const previousEnabledCount = previousPool.filter((entry) => entry.enabled).length;
+    const enabledCount = updated.filter((entry) => entry?.enabled !== false).length;
+    const selectedAll = draft.lobby_word_count >= previousEnabledCount;
+    const source = sameWords && draft.lobby_word_source !== "none"
+      ? draft.lobby_word_source
+      : "manual";
+    enqueueLobbySnapshot({
+      ...draft,
+      lobby_word_source: source,
+      lobby_source_pack_id: source === "saved" ? draft.lobby_source_pack_id : "",
+      lobby_word_count: selectedAll
+        ? enabledCount
+        : Math.min(draft.lobby_word_count, enabledCount),
+      lobby_word_pool: updated,
+    }, 100);
   };
 
-  const buildGameData = () => {
-    if (lobbyRevision(room) > 0) {
-      return buildAuthoritativeGameData(room);
+  const handleWordPackSelect = (packID, selectedPack = null) => {
+    setThemeError("");
+    if (!packID) {
+      fallbackBuiltInRef.current = pickFromBuiltIn(locale);
+      enqueueLobbySnapshot(builtInLobbyState(), 80);
+      return;
+    }
+
+    const pack = selectedPack || userPacks.find((candidate) => candidate.id === packID);
+    if (!pack) {
+      setThemeError(locale.language === 'ru'
+        ? "Не удалось загрузить WordPack. Попробуй снова."
+        : "Could not load this WordPack. Try again.");
+      return;
+    }
+    const pool = (pack.words || []).map((entry) => ({
+      word: typeof entry === "string" ? entry : entry?.word,
+      enabled: typeof entry === "object" ? entry?.enabled !== false : true,
+    })).filter((entry) => String(entry.word || "").trim());
+    const category = pack.category || pack.name || "WORDPACK";
+    enqueueLobbySnapshot({
+      ...currentLobbyDraft(),
+      lobby_word_source: "saved",
+      lobby_source_pack_id: pack.id,
+      lobby_source_name: pack.name || category,
+      lobby_theme: "",
+      lobby_category: category,
+      lobby_word_count: pool.filter((entry) => entry.enabled).length,
+      lobby_word_count_mode: "recommended",
+      lobby_word_pool: pool,
+    }, 80);
+  };
+
+  const buildGameData = (sourceRoom = roomRef.current) => {
+    if (lobbyRevision(sourceRoom) > 0) {
+      return buildAuthoritativeGameData(sourceRoom);
     }
 
     let word, category, finalPool;
@@ -409,12 +808,64 @@ export default function Room() {
     return { word, category, finalPool };
   };
 
+  const waitForConfirmedLobbyRoom = async (scope) => {
+    if (!isRoomScopeCurrent(scope)) return null;
+    const controller = lobbySyncControllerRef.current;
+    const controllerState = controller.snapshot();
+    if (controllerState.disposed || controllerState.roomID !== scope.roomID) return null;
+    const initialRoom = roomRef.current;
+    const mustMaterializeDefault = initialRoom?.status === "waiting" &&
+      lobbyRevision(initialRoom) === 0 &&
+      !controller.hasOptimisticChanges();
+    if (mustMaterializeDefault) {
+      enqueueLobbySnapshot(playableLobbyState(currentLobbyDraft()), 0);
+    }
+    controller.flush();
+    const sync = await controller.waitForIdle();
+    if (!isRoomScopeCurrent(scope)) return null;
+    const confirmedRoom = roomRef.current;
+    if (
+      sync.error ||
+      controller.hasOptimisticChanges() ||
+      !confirmedRoom ||
+      confirmedRoom.id !== scope.roomID ||
+      confirmedRoom.status !== "waiting" ||
+      confirmedRoom.host_email !== userRef.current?.email ||
+      (mustMaterializeDefault && lobbyRevision(confirmedRoom) === 0)
+    ) {
+      const message = sync.error?.message ||
+        (locale.language === 'ru'
+          ? "Настройки лобби ещё не синхронизированы."
+          : "Lobby settings are not synchronized yet.");
+      setThemeError(message);
+      return null;
+    }
+    return confirmedRoom;
+  };
+
   const handleStartRoulette = async () => {
-    if (!room) return;
+    const scope = captureRoomScope();
+    const sourceRoom = roomRef.current;
+    if (!sourceRoom || !["waiting", "ready_voting"].includes(sourceRoom.status) ||
+      sourceRoom.host_email !== userRef.current?.email || !isRoomScopeCurrent(scope)) return;
     setStarting(true);
-    const data = buildGameData();
+    const confirmedRoom = sourceRoom.status === "waiting"
+      ? await waitForConfirmedLobbyRoom(scope)
+      : sourceRoom;
+    if (!isRoomScopeCurrent(scope)) return;
+    if (!confirmedRoom) {setStarting(false);return;}
+    if (lobbyRevision(confirmedRoom) === 0) {
+      const message = locale.language === 'ru'
+        ? "Вернись в лобби, чтобы синхронизировать параметры игры."
+        : "Return to the lobby to synchronize the game settings.";
+      setThemeError(message);
+      gameToast(message, "warning", "⚠️");
+      setStarting(false);
+      return;
+    }
+    const data = buildGameData(confirmedRoom);
     if (!data) {setThemeError(t('room_theme_error_empty'));setStarting(false);return;}
-    const players = room.players || [];
+    const players = confirmedRoom.players || [];
     if (players.length < 3) {setThemeError(t('room_theme_error_min'));setStarting(false);return;}
     const spyIdx = Math.floor(Math.random() * players.length);
     const spyEmail = players[spyIdx].email;
@@ -434,54 +885,68 @@ export default function Room() {
       game_mode: data.gameMode || syncedGameMode
     };
     try {
-      const armedRoom = await runGameRoomAction("arm_roulette", room.id, {
+      const armedRoom = await runGameRoomAction("arm_roulette", confirmedRoom.id, {
         roulette_target_email: players[firstAskerIdx].email,
-        expected_lobby_revision: lobbyRevision(room),
+        expected_lobby_revision: lobbyRevision(confirmedRoom),
         plan: updateData,
       });
+      if (!isRoomScopeCurrent(scope)) return;
+      if (!applyRoomSnapshot(armedRoom)) {
+        setStarting(false);
+        return;
+      }
       rouletteCompletionKeyRef.current = null;
       setRouletteTarget({ email: players[firstAskerIdx].email });
-      applyRoomSnapshot(armedRoom);
     } catch (error) {
       console.error("Failed to arm synchronized roulette", error);
+      if (!isRoomScopeCurrent(scope)) return;
       setThemeError(error?.message || t('room_start_failed'));
       setStarting(false);
     }
   };
 
   const handleRouletteDone = async () => {
-    if (!room || !user || room.status !== "roulette") return;
-    if (!(room.players || []).some((player) => player.email === user.email)) return;
+    const scope = captureRoomScope();
+    const sourceRoom = roomRef.current;
+    const currentUser = userRef.current;
+    if (!sourceRoom || !currentUser || sourceRoom.status !== "roulette" ||
+      !isRoomScopeCurrent(scope)) return;
+    if (!(sourceRoom.players || []).some((player) => player.email === currentUser.email)) return;
 
-    const completionKey = `${room.id}:${room.intro_started_at || room.roulette_target_email || "intro"}`;
+    const completionKey = `${sourceRoom.id}:${sourceRoom.intro_started_at || sourceRoom.roulette_target_email || "intro"}`;
     if (rouletteCompletionKeyRef.current === completionKey) return;
     rouletteCompletionKeyRef.current = completionKey;
     setStarting(true);
 
     try {
       const completedRoom = await completeGameStartAfterIntro({
-        room,
+        room: sourceRoom,
         refreshRoom: getGameRoom,
         completeStart: (currentRoom) => runGameRoomAction("complete_game_start", currentRoom.id),
       });
-      applyRoomSnapshot(completedRoom);
+      if (!isRoomScopeCurrent(scope)) return;
+      if (!applyRoomSnapshot(completedRoom)) return;
       if (completedRoom?.status === "playing") {
         navigate(createPageUrl("Game") + `?id=${completedRoom.id}`);
       } else if (completedRoom?.status === "roulette") {
         rouletteCompletionKeyRef.current = null;
       }
     } catch (error) {
+      if (!isRoomScopeCurrent(scope)) return;
       rouletteCompletionKeyRef.current = null;
       console.error("Failed to complete synchronized roulette", error);
       gameToast(error?.message || t('room_start_failed'), "warning", "⚠️");
     } finally {
-      setStarting(false);
+      if (isRoomScopeCurrent(scope)) setStarting(false);
     }
   };
 
   const handleLeave = async () => {
-    if (!room || !user) return;
-    await leaveGameRoom(room.id);
+    const scope = captureRoomScope();
+    const sourceRoom = roomRef.current;
+    if (!sourceRoom || !userRef.current || !isRoomScopeCurrent(scope)) return;
+    await leaveGameRoom(sourceRoom.id);
+    if (!isRoomScopeCurrent(scope)) return;
     localStorage.removeItem("spy_active_room_id");
     localStorage.setItem("spy_return_to_online", "1");
     navigate(createPageUrl("Home"));
@@ -493,58 +958,61 @@ export default function Room() {
     setTimeout(() => setCopied(false), 2000);
   };
 
-  const updateGameMode = async (newMode) => {
-    if (!room || lobbyRevision(room) > 0) return;
-    try {
-      const updated = await runGameRoomAction("update_game_mode", room.id, { mode: newMode });
-      applyRoomSnapshot(updated);
-    } catch (err) {
-      console.error('Failed to update game mode:', err);
-    }
+  const updateGameMode = (newMode) => {
+    enqueueLobbySnapshot(playableLobbyState({
+      ...currentLobbyDraft(),
+      game_mode: newMode,
+    }), 90);
   };
 
   const updateGameDuration = (minutes) => {
-    if (!room || lobbyRevision(room) > 0) return;
     const normalizedMinutes = gameDurationMinutes({
       game_duration_seconds: gameDurationSeconds(minutes),
     });
-    setGameDuration(normalizedMinutes);
-    if (durationUpdateTimerRef.current) clearTimeout(durationUpdateTimerRef.current);
-
-    durationUpdateTimerRef.current = setTimeout(async () => {
-      try {
-        const updated = await runGameRoomAction("update_game_duration", room.id, {
-          game_duration_seconds: gameDurationSeconds(normalizedMinutes),
-        });
-        applyRoomSnapshot(updated);
-      } catch (error) {
-        console.error("Failed to synchronize game duration", error);
-        setGameDuration(gameDurationMinutes(room));
-        gameToast(t('room_duration_sync_failed'), "warning", "⚠️");
-      }
-    }, 250);
+    enqueueLobbySnapshot(playableLobbyState({
+      ...currentLobbyDraft(),
+      game_duration_seconds: gameDurationSeconds(normalizedMinutes),
+    }), 140);
   };
 
   const handleReturnToWaiting = async () => {
-    if (!room || room.host_email !== user?.email) return;
+    const scope = captureRoomScope();
+    const sourceRoom = roomRef.current;
+    if (!sourceRoom || sourceRoom.host_email !== userRef.current?.email ||
+      !isRoomScopeCurrent(scope)) return;
     try {
-      const updated = await runGameRoomAction("return_to_waiting", room.id);
+      const updated = await runGameRoomAction("return_to_waiting", sourceRoom.id);
+      if (!isRoomScopeCurrent(scope)) return;
       applyRoomSnapshot(updated);
     } catch (error) {
+      if (!isRoomScopeCurrent(scope)) return;
       console.error("Failed to return room to waiting", error);
       gameToast(error?.message || t('room_return_waiting_failed'), "warning", "⚠️");
     }
   };
 
   const handleBeginReadyCheck = async () => {
-    if (!room || room.host_email !== user?.email) return;
-    if (lobbyRevision(room) > 0 && !buildAuthoritativeGameData(room)) return;
+    const scope = captureRoomScope();
+    if (!roomRef.current || roomRef.current.host_email !== userRef.current?.email ||
+      !isRoomScopeCurrent(scope)) return;
+    setStarting(true);
     try {
-      const updated = await runGameRoomAction("begin_ready_check", room.id);
+      const confirmedRoom = await waitForConfirmedLobbyRoom(scope);
+      if (!isRoomScopeCurrent(scope)) return;
+      if (!confirmedRoom) return;
+      if (lobbyRevision(confirmedRoom) > 0 && !buildAuthoritativeGameData(confirmedRoom)) {
+        setThemeError(t('room_theme_error_empty'));
+        return;
+      }
+      const updated = await runGameRoomAction("begin_ready_check", confirmedRoom.id);
+      if (!isRoomScopeCurrent(scope)) return;
       applyRoomSnapshot(updated);
     } catch (error) {
+      if (!isRoomScopeCurrent(scope)) return;
       console.error("Failed to begin ready check", error);
       gameToast(error?.message || t('room_start_failed'), "warning", "⚠️");
+    } finally {
+      if (isRoomScopeCurrent(scope)) setStarting(false);
     }
   };
 
@@ -571,7 +1039,11 @@ export default function Room() {
       ? room.lobby_word_pool
       : (room.word_pool || []));
   const authoritativeLobbyReady = !authoritativeLobby || Boolean(buildAuthoritativeGameData(room));
-  const canPrepareMission = players.length >= 3 && authoritativeLobbyReady;
+  const lobbySyncBusy = lobbySyncPhase === "syncing" ||
+    lobbySyncControllerRef.current.hasOptimisticChanges();
+  const lobbySyncFailed = lobbySyncPhase === "error";
+  const canPrepareMission = players.length >= 3 && authoritativeLobbyReady &&
+    !lobbySyncBusy && !lobbySyncFailed;
 
   const centerInViewport = (el) => {
     if (!el) return;
@@ -696,7 +1168,8 @@ export default function Room() {
         {isHost && allReady &&
           <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
           className="btn-red" style={{ width: "100%", fontSize: 12, padding: "15px 0" }}
-          onClick={handleStartRoulette} disabled={starting || !authoritativeLobbyReady}>
+          onClick={handleStartRoulette}
+          disabled={starting || !authoritativeLobbyReady || lobbySyncBusy || lobbySyncFailed}>
             {starting ? t('room_starting') : t('room_start_btn')}
           </motion.button>
           }
@@ -838,15 +1311,15 @@ export default function Room() {
             map(({ mode, label, icon }) => {
               const active = syncedGameMode === mode;
               return (
-                <motion.button key={mode} whileHover={authoritativeLobby ? {} : { scale: 1.02 }} whileTap={authoritativeLobby ? {} : { scale: 0.98 }}
+                <motion.button key={mode} whileHover={starting ? {} : { scale: 1.02 }} whileTap={starting ? {} : { scale: 0.98 }}
                 onClick={() => updateGameMode(mode)}
-                disabled={authoritativeLobby}
+                disabled={starting}
                 style={{
                   padding: "14px 0", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 6,
                   background: active ? "#e53535" : "transparent",
                   border: `1px solid ${active ? "#e53535" : "#333"}`,
-                  borderRadius: 8, cursor: authoritativeLobby ? "default" : "pointer", transition: "all 0.2s",
-                  color: active ? "#fff" : "#666", opacity: authoritativeLobby ? 0.72 : 1
+                  borderRadius: 8, cursor: starting ? "default" : "pointer", transition: "all 0.2s",
+                  color: active ? "#fff" : "#666", opacity: starting ? 0.72 : 1
                 }}>
                   <span style={{ fontSize: 20, color: active ? "rgba(255,255,255,0.7)" : "#555" }}>{icon}</span>
                   <span style={{ fontSize: 11, letterSpacing: 2, fontFamily: "monospace", fontWeight: 700 }}>{label}</span>
@@ -908,24 +1381,28 @@ export default function Room() {
       {isHost && authoritativeLobby &&
         <motion.div className="dim-on-theme-focus" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.08 }}
         style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
-          <div style={{ ...sectionLabel, color: "#4ade80" }}>
-            <span>✓</span> {locale.language === 'ru' ? "ПАРАМЕТРЫ СИНХРОНИЗИРОВАНЫ" : "LOBBY SETTINGS SYNCED"}
+          <div style={{
+            ...sectionLabel,
+            color: lobbySyncFailed ? "#e53535" : lobbySyncBusy ? "#fbbf24" : "#4ade80",
+          }}>
+            <span>{lobbySyncFailed ? "!" : lobbySyncBusy ? "↻" : "✓"}</span>{" "}
+            {lobbySyncFailed
+              ? (locale.language === 'ru' ? "ОШИБКА СИНХРОНИЗАЦИИ" : "LOBBY SYNC FAILED")
+              : lobbySyncBusy
+                ? (locale.language === 'ru' ? "СИНХРОНИЗАЦИЯ..." : "SYNCING LOBBY...")
+                : (locale.language === 'ru' ? "ПАРАМЕТРЫ СИНХРОНИЗИРОВАНЫ" : "LOBBY SETTINGS SYNCED")}
           </div>
           <div style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: 18, fontWeight: 700, letterSpacing: 1.5, color: "#eee", marginBottom: 6 }}>
             {(room.lobby_category || room.lobby_source_name || room.lobby_theme || "CLASSIC").toUpperCase()}
           </div>
-          <div style={{ color: "#666", fontSize: 10, lineHeight: 1.6, letterSpacing: 1, marginBottom: nonHostWordPool.length > 0 ? 14 : 0 }}>
-            {locale.language === 'ru'
-              ? "Параметры получены из общей комнаты и используются без частичных изменений, чтобы сохранить синхронизацию."
-              : "These settings came from the shared room and are kept together to preserve synchronization."}
+          <div style={{ color: "#666", fontSize: 10, lineHeight: 1.6, letterSpacing: 1 }}>
+            {wordSource.toUpperCase()} · REV {lobbyRevision(room)}
           </div>
-          {nonHostWordPool.length > 0 && (
-            <WordPoolManager pool={nonHostWordPool} isHost={false} onUpdate={() => {}} />
-          )}
+          {lobbySyncError && <div style={{ color: "#e53535", fontSize: 10, marginTop: 8 }}>{lobbySyncError}</div>}
         </motion.div>
         }
 
-      {isHost && !authoritativeLobby &&
+      {isHost &&
         <motion.div className="dim-on-theme-focus theme-block" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.1 }}
         style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
           <div style={{ display: "flex", alignItems: "center", marginBottom: 10 }}>
@@ -934,10 +1411,11 @@ export default function Room() {
           <input
             className="theme-input"
             placeholder={t('room_theme_placeholder')}
-            value={customTheme}
-            onChange={(e) => {setCustomTheme(e.target.value);setWordPool([]);generatedPoolRef.current = [];setThemeError("");setThemeAnalyzed(false);setThemeMaxWords(100);}}
-            onFocus={(e) => centerInViewport(e.target.closest('.theme-block'))}
-            onBlur={restoreScroll}
+            value={themeInput}
+            onChange={(e) => handleThemeInputChange(e.target.value)}
+            disabled={starting}
+            onFocus={(e) => handleThemeInputFocus(e.target)}
+            onBlur={handleThemeInputBlur}
             style={{ marginBottom: 10, fontSize: 14 }} />
 
           {/* Word count mode selector — visible when typing theme */}
@@ -950,7 +1428,7 @@ export default function Room() {
               ].map(({ mode, label, hint }) => {
                 const active = wordCountMode === mode;
                 return (
-                  <button key={mode} onClick={() => setWordCountMode(mode)}
+                  <button key={mode} onClick={() => handleWordCountModeChange(mode)} disabled={starting}
                     style={{
                       padding: "10px 0", display: "flex", flexDirection: "column", alignItems: "center", gap: 3,
                       background: active ? "rgba(229,53,53,0.1)" : "transparent",
@@ -975,7 +1453,8 @@ export default function Room() {
                 <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 2, transform: "translateY(-50%)", background: "#1a1a1a", pointerEvents: "none" }} />
                 <div style={{ position: "absolute", top: "50%", left: 0, height: 2, transform: "translateY(-50%)", background: "#e53535", width: `${(customWordCount - 5) / 75 * 100}%`, pointerEvents: "none" }} />
                 <input type="range" min={5} max={80} step={1} value={customWordCount}
-                  onChange={(e) => setCustomWordCount(Number(e.target.value))}
+                  onChange={(e) => handleCustomWordCountChange(Number(e.target.value))}
+                  disabled={starting}
                   className="spy-slider" style={{ position: "relative", zIndex: 1 }} />
               </div>
             </div>
@@ -987,7 +1466,7 @@ export default function Room() {
           <motion.button whileHover={customTheme.trim() ? { scale: 1.01 } : {}} whileTap={customTheme.trim() ? { scale: 0.99 } : {}}
           className="btn-outline"
           onClick={themeAnalyzed ? wordCount > themeMaxWords ? pushMax : generateTheme : handleAnalyze}
-          disabled={validating || !customTheme.trim()}
+          disabled={starting || validating || !customTheme.trim()}
           style={{
             fontSize: 11, width: "100%", opacity: customTheme.trim() ? 1 : 0.4, marginBottom: 10, borderRadius: 10, clipPath: "none",
             ...(wordCount > themeMaxWords ? { color: "#fbbf24", borderColor: "#fbbf24", background: "rgba(251,191,36,0.05)" } : {})
@@ -1007,7 +1486,8 @@ export default function Room() {
           <div style={{ marginBottom: 12 }}>
               <WordPackSelector
               selectedPackId={selectedPackId}
-              onSelect={(id) => setSelectedPackId(id)} />
+              disabled={starting}
+              onSelect={handleWordPackSelect} />
             
             </div>
           }
@@ -1053,7 +1533,8 @@ export default function Room() {
                     pointerEvents: "none", transition: "color 0.15s", lineHeight: 1, whiteSpace: "nowrap"
                   }}>+MAX</div>
                     <input type="range" min={10} max={sliderMax} step={1} value={wordCount}
-                  onChange={(e) => {setWordCount(Number(e.target.value));setWordPool([]);}}
+                  onChange={(e) => handleSelectedWordCountChange(Number(e.target.value))}
+                  disabled={starting}
                   className={`spy-slider${inMaxZone ? " max-zone" : ""}`} style={{ position: "relative", zIndex: 1 }} />
                   </div>);
 
@@ -1067,7 +1548,7 @@ export default function Room() {
           {wordPool.length > 0 &&
           <motion.div initial={{ opacity: 0, y: 8 }} animate={{ opacity: 1, y: 0 }}
           style={{ marginTop: 14, padding: 16, background: "#060606", border: "1px solid #1a1a1a" }}>
-              <WordPoolManager pool={wordPool} isHost={isHost} onUpdate={handlePoolUpdate} />
+              <WordPoolManager pool={wordPool} isHost={isHost && !starting} onUpdate={handlePoolUpdate} />
             </motion.div>
           }
 
@@ -1109,7 +1590,7 @@ export default function Room() {
             <div style={{ position: "absolute", top: "50%", left: 0, height: 2, transform: "translateY(-50%)", background: "#e53535", width: `${(gameDuration - 1) / (15 - 1) * 100}%`, pointerEvents: "none", boxShadow: "0 0 8px rgba(229,53,53,0.6)" }} />
             <input type="range" min={1} max={15} step={1} value={gameDuration}
             onChange={(e) => updateGameDuration(Number(e.target.value))}
-            disabled={authoritativeLobby}
+            disabled={starting}
             className="spy-slider" style={{ position: "relative", zIndex: 1 }} />
           </div>
           <div style={{ display: "flex", justifyContent: "space-between", fontSize: 10, color: "#2a2a2a", fontFamily: "monospace", marginTop: 6 }}>

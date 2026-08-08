@@ -5,7 +5,7 @@ import { createPageUrl } from "@/utils";
 import { useLanguage } from "@/components/LanguageContext";
 import { listWordPacks } from "@/lib/wordPackActions";
 
-export default function WordPackSelector({ onSelect, selectedPackId }) {
+export default function WordPackSelector({ onSelect, selectedPackId, disabled = false }) {
   const { t } = useLanguage();
   const [packs, setPacks] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -48,7 +48,8 @@ export default function WordPackSelector({ onSelect, selectedPackId }) {
       <>
           <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
             <button
-            onClick={() => onSelect(null)}
+            onClick={() => onSelect(null, null)}
+            disabled={disabled}
             style={{ padding: "6px 12px", fontSize: 11, letterSpacing: 1, fontFamily: "monospace", cursor: "pointer",
               background: !selectedPackId ? "rgba(229,53,53,0.1)" : "#080808",
               border: `1px solid ${!selectedPackId ? "rgba(229,53,53,0.4)" : "#1a1a1a"}`,
@@ -57,7 +58,8 @@ export default function WordPackSelector({ onSelect, selectedPackId }) {
             </button>
             {packs.map((p) =>
           <button key={p.id}
-          onClick={() => onSelect(p.id)}
+          onClick={() => onSelect(p.id, p)}
+          disabled={disabled}
           style={{ padding: "6px 12px", fontSize: 11, letterSpacing: 1, fontFamily: "monospace", cursor: "pointer",
             background: selectedPackId === p.id ? "rgba(229,53,53,0.1)" : "#080808",
             border: `1px solid ${selectedPackId === p.id ? "rgba(229,53,53,0.4)" : "#1a1a1a"}`,
