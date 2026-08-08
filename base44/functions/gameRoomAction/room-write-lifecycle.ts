@@ -6,10 +6,19 @@ import {
   billingIdentitySubjectKey,
   releaseBillingWriterLease,
 } from "./billing-identity-lifecycle.ts";
+import { committedGameStartIdentity } from "./committed-game-start-repair.ts";
 
 const ROOM_WRITE_LEASE_ATTEMPTS = 6;
 const ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS = [25, 50, 100, 200, 400];
 const ROOM_WRITE_LEASE_RELEASE_ATTEMPTS = 3;
+const COMPLETE_GAME_START_RECONCILIATION_BACKOFF_MILLISECONDS = [
+  0,
+  50,
+  100,
+  200,
+  400,
+  800,
+];
 
 type AcquireRoomWriterLease = (
   lifecycleStore: any,
@@ -99,10 +108,10 @@ function retryableLeaseAcquisitionError(
     (error.code === "active_lease" || error.code === "cas_contention");
 }
 
-const ACTIVE_LEASE_RECOVERY_ACTIONS = new Set([
-  "leave_room",
-  "mark_role_card_read",
-]);
+// Only actions that cannot change room membership may bypass an active writer
+// lease. Membership changes must serialize with committed-start reconciliation
+// so its identity-bearing outbox and signal recipients remain authoritative.
+const ACTIVE_LEASE_RECOVERY_ACTIONS = new Set(["mark_role_card_read"]);
 
 export async function recoverSafeRoomActionAfterActiveIdentityLease<T>(input: {
   action: string;
@@ -114,6 +123,45 @@ export async function recoverSafeRoomActionAfterActiveIdentityLease<T>(input: {
     input.error.code === "active_lease";
   if (!canRecover) throw input.error;
   return await input.recover();
+}
+
+export async function reconcileCommittedGameStartAfterActiveIdentityLease<
+  T,
+  Result,
+>(input: {
+  action: string;
+  error: unknown;
+  refetch: () => Promise<T | null | undefined>;
+  assertParticipant: (room: T) => void | Promise<void>;
+  repair: (room: T) => Promise<Result>;
+  delay?: RoomWriteLeaseDelay;
+}): Promise<Result> {
+  const canReconcile = input.action === "complete_game_start" &&
+    input.error instanceof BillingIdentityLifecycleError &&
+    input.error.code === "active_lease";
+  if (!canReconcile) throw input.error;
+
+  const delay = input.delay ?? defaultRoomWriteLeaseDelay;
+  let committedRoom: T | null = null;
+  for (
+    const milliseconds
+      of COMPLETE_GAME_START_RECONCILIATION_BACKOFF_MILLISECONDS
+  ) {
+    try {
+      if (milliseconds > 0) await delay(milliseconds);
+      const room: any = await input.refetch();
+      if (committedGameStartIdentity(room)) {
+        committedRoom = room as T;
+        break;
+      }
+    } catch {
+      // A bounded later read may still observe the winner's committed room.
+    }
+  }
+
+  if (!committedRoom) throw input.error;
+  await input.assertParticipant(committedRoom);
+  return await input.repair(committedRoom);
 }
 
 function boundedAttemptCount(value: number | undefined): number {

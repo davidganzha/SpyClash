@@ -229,6 +229,80 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     1,
     "only the explicit safe-action recovery may bypass a writer lease",
   );
+  assertStringIncludes(
+    leasedAction,
+    "reconcileCommittedGameStartAfterActiveIdentityLease({",
+  );
+  assert(
+    leasedAction.indexOf(
+      "reconcileCommittedGameStartAfterActiveIdentityLease({",
+    ) <
+      recovery,
+    "game start must reconcile by read before any safe-action write bypass",
+  );
+  assertStringIncludes(
+    leasedAction,
+    "assertParticipant: (candidate) => requirePlayer(candidate, user)",
+  );
+  assertStringIncludes(
+    leasedAction,
+    "repairDetectedCommittedGameStart(base44, candidate, user)",
+  );
+
+  const committedStartRepair = source.slice(
+    source.indexOf("async function repairDetectedCommittedGameStart"),
+    source.indexOf("async function markRoleCardRead"),
+  );
+  const freshLeaseAdapter = committedStartRepair.indexOf(
+    "withFreshLeases: (userIDs, repair)",
+  );
+  const freshLeases = committedStartRepair.indexOf("withRoomWriteLeases({");
+  const exactCoverage = committedStartRepair.indexOf(
+    "assertExactRoomLeaseCoverage(context, userIDs)",
+  );
+  const idempotentReconcile = committedStartRepair.indexOf(
+    "completeGameStart(base44, candidate, user)",
+  );
+  const activeLeaseAssertion = committedStartRepair.indexOf(
+    "assertRoomWriteLeases(context)",
+  );
+  const signalRepair = committedStartRepair.indexOf(
+    "fanoutGameRoomSignalsBestEffort({",
+  );
+  assert(
+    freshLeaseAdapter >= 0 && freshLeaseAdapter < freshLeases &&
+      freshLeases < exactCoverage && exactCoverage < activeLeaseAssertion &&
+      activeLeaseAssertion < idempotentReconcile &&
+      idempotentReconcile < signalRepair,
+    "committed start repair must reacquire exact leases before enqueue and signal fanout",
+  );
+
+  const committedRepairSource = await Deno.readTextFile(
+    new URL("./committed-game-start-repair.ts", import.meta.url),
+  );
+  const protectedRepair = committedRepairSource.slice(
+    committedRepairSource.indexOf(
+      "export async function repairCommittedGameStartWithFreshLeases",
+    ),
+  );
+  const protectedLease = protectedRepair.indexOf(
+    "return await input.withFreshLeases(",
+  );
+  const protectedReconcile = protectedRepair.indexOf(
+    "const reconciledRoom = await input.reconcile(migratedRoom)",
+  );
+  const protectedActiveLease = protectedRepair.indexOf(
+    "await input.assertLeasesActive(context)",
+  );
+  const protectedFanout = protectedRepair.indexOf(
+    "await input.fanout(finalRoom)",
+  );
+  assert(
+    protectedLease >= 0 && protectedLease < protectedReconcile &&
+      protectedReconcile < protectedActiveLease &&
+      protectedActiveLease < protectedFanout,
+    "enqueue reconciliation and signal repair must execute inside the fresh lease callback",
+  );
 
   const lifecycleSource = await Deno.readTextFile(
     new URL("./room-write-lifecycle.ts", import.meta.url),
@@ -237,13 +311,32 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     lifecycleSource.indexOf("const ACTIVE_LEASE_RECOVERY_ACTIONS"),
     lifecycleSource.indexOf("function boundedAttemptCount"),
   );
-  assertStringIncludes(safeRecovery, '"leave_room"');
+  assertEquals(
+    safeRecovery.includes('"leave_room"'),
+    false,
+    "membership-changing leave must not bypass participant writer leases",
+  );
   assertStringIncludes(safeRecovery, '"mark_role_card_read"');
   assertStringIncludes(safeRecovery, 'input.error.code === "active_lease"');
   assert(
     !safeRecovery.includes("deletion_in_progress"),
     "safe-action recovery must not bypass account deletion",
   );
+
+  const errorHandler = source.slice(
+    source.lastIndexOf("} catch (error) {"),
+  );
+  assertStringIncludes(
+    errorHandler,
+    "const status = lifecycleHTTPStatus(error)",
+  );
+  assertStringIncludes(errorHandler, "action: actionForLog");
+  assertStringIncludes(errorHandler, "room_id: roomIDForLog");
+  assertStringIncludes(errorHandler, "code: safeLogLabel(error?.code)");
+  assertStringIncludes(errorHandler, "status,");
+  assertEquals(errorHandler.includes("accessToken"), false);
+  assertEquals(errorHandler.includes("user.email"), false);
+  assertEquals(errorHandler.includes("error?.message || error"), false);
 
   const finalizeCase = source.slice(
     source.indexOf('case "finalize_expired_room":'),

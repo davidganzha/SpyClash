@@ -6,6 +6,10 @@ command. Obtain a fresh, explicit confirmation immediately before every
 Production mutation and stop before the next numbered mutation if that
 confirmation has not been given.
 
+Never use `base44 eject` to inspect or back up this existing app. Eject creates
+a separate Base44 application namespace and can immediately deploy a stale
+copy. Use the app-ID-pinned `functions pull` backup flow below instead.
+
 The canonical local set contains 20 entities. Base44's built-in `User` entity
 keeps its platform-owned self-read/self-update security. The other 19 entities
 declare complete RLS. Seventeen are service-role/admin-only; `GameHistory` and

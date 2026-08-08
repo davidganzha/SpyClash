@@ -7,9 +7,14 @@ import {
 } from "./content-safety.ts";
 import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
 import {
+  committedGameStartIdentity,
+  repairCommittedGameStartWithFreshLeases,
+} from "./committed-game-start-repair.ts";
+import {
   assertExactRoomLeaseCoverage,
   assertRoomWriteLeases,
   assertRoomWriterLeaseForUser,
+  reconcileCommittedGameStartAfterActiveIdentityLease,
   recoverSafeRoomActionAfterActiveIdentityLease,
   retryRoomMembershipChangeBeforeAction,
   withRoomWriteLeases,
@@ -88,6 +93,11 @@ function jsonError(message, status = 400, details = {}) {
 
 function clean(value) {
   return String(value || "").trim();
+}
+
+function safeLogLabel(value) {
+  const label = clean(value);
+  return /^[a-z0-9_-]{1,64}$/i.test(label) ? label : null;
 }
 
 function delay(ms) {
@@ -1087,6 +1097,67 @@ async function completeGameStart(base44, room, user) {
   return committed;
 }
 
+async function repairDetectedCommittedGameStart(base44, detectedRoom, user) {
+  const expected = committedGameStartIdentity(detectedRoom);
+  if (!expected) {
+    throw Object.assign(
+      new Error("The committed game start could not be confirmed."),
+      { status: 503, code: "game_start_commit_unconfirmed" },
+    );
+  }
+
+  return await repairCommittedGameStartWithFreshLeases({
+    expected,
+    refetch: () => fetchRoom(base44, detectedRoom.id),
+    assertParticipant: (candidate) => requirePlayer(candidate, user),
+    lifecycleUserIDs: (candidate) =>
+      roomLifecycleUserIDs(base44, candidate, user),
+    withFreshLeases: (userIDs, repair) =>
+      withRoomWriteLeases({
+        lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+        userIDs,
+        action: async (context) => {
+          base44.__spyclashRoomWriteLeaseContext = context;
+          try {
+            return await repair(context);
+          } finally {
+            delete base44.__spyclashRoomWriteLeaseContext;
+          }
+        },
+      }),
+    currentUserIDs: async (candidate) =>
+      uniqueStrings([
+        ...await roomParticipantUserIDs(base44, candidate, user),
+        user.id,
+      ]),
+    assertExactLeaseCoverage: (context, userIDs) =>
+      assertExactRoomLeaseCoverage(context, userIDs),
+    assertLeasesActive: (context) => assertRoomWriteLeases(context),
+    migrate: async (candidate, userIDs) => {
+      const revisionMigratedRoom = await backfillRoomWriteRevision(
+        base44,
+        candidate,
+      );
+      return await backfillRoomParticipantUserIDs(
+        base44,
+        revisionMigratedRoom,
+        userIDs,
+      );
+    },
+    // The exact persisted match/event identity is checked immediately before
+    // this call, so this can only take completeGameStart's idempotent branch.
+    reconcile: (candidate) => completeGameStart(base44, candidate, user),
+    fanout: async (candidate) => {
+      await fanoutGameRoomSignalsBestEffort({
+        store: base44.asServiceRole.entities.GameRoomSignal,
+        room: candidate,
+        logError: (message, error) =>
+          console.error(message, error?.message || error),
+      });
+    },
+  });
+}
+
 async function markRoleCardRead(base44, room, user, options = {}) {
   requirePlayer(room, user);
   const updatedReadRoom = await updateRoomWithRetry(
@@ -1808,6 +1879,8 @@ function lifecycleHTTPStatus(error) {
 }
 
 Deno.serve(async (req) => {
+  let actionForLog = null;
+  let roomIDForLog = null;
   try {
     const body = await req.json().catch(() => ({}));
     const accessToken = clean(body?.access_token);
@@ -1845,6 +1918,7 @@ Deno.serve(async (req) => {
 
     const action = clean(body?.action);
     const roomId = clean(body?.room_id);
+    actionForLog = safeLogLabel(action);
 
     if (!action) return jsonError("Missing action");
 
@@ -1883,6 +1957,7 @@ Deno.serve(async (req) => {
     const room = roomId
       ? await fetchRoom(base44, roomId)
       : await fetchRoomByCode(base44, body?.room_code || body?.code);
+    roomIDForLog = safeLogLabel(room?.id);
 
     if (action === "leave_room" && leaveAlreadyComplete(room, user.email)) {
       return Response.json({ success: true });
@@ -1993,21 +2068,24 @@ Deno.serve(async (req) => {
             },
           });
         },
-      }).catch((error) =>
-        recoverSafeRoomActionAfterActiveIdentityLease({
+      }).catch((error) => {
+        if (action === "complete_game_start") {
+          return reconcileCommittedGameStartAfterActiveIdentityLease({
+            action,
+            error,
+            refetch: () => fetchRoom(base44, room.id),
+            assertParticipant: (candidate) => requirePlayer(candidate, user),
+            repair: (candidate) =>
+              repairDetectedCommittedGameStart(base44, candidate, user),
+          });
+        }
+        return recoverSafeRoomActionAfterActiveIdentityLease({
           action,
           error,
           recover: async () => {
             const recoveryRoom = await fetchRoom(base44, room.id);
             if (!recoveryRoom) {
-              if (action === "leave_room") return { success: true };
               throw Object.assign(new Error("Room not found"), { status: 404 });
-            }
-            if (
-              action === "leave_room" &&
-              leaveAlreadyComplete(recoveryRoom, user.email)
-            ) {
-              return { success: true };
             }
             requirePlayer(recoveryRoom, user);
             console.warn(
@@ -2015,20 +2093,12 @@ Deno.serve(async (req) => {
               { room_id: clean(recoveryRoom.id) },
             );
 
-            // These actions only add the actor's acknowledgement or remove the
-            // actor's room references. They can be retried and merged without
-            // creating or rewriting billing identity data.
+            // This recovery is intentionally limited to the actor's
+            // acknowledgement. Membership-changing actions must wait for the
+            // participant leases held by committed-start reconciliation.
             const recoveryOptions = {
               allowActiveIdentityLeaseRecovery: true,
             };
-            if (action === "leave_room") {
-              return await leaveRoom(
-                base44,
-                recoveryRoom,
-                user,
-                recoveryOptions,
-              );
-            }
             return await markRoleCardRead(
               base44,
               recoveryRoom,
@@ -2036,8 +2106,8 @@ Deno.serve(async (req) => {
               recoveryOptions,
             );
           },
-        })
-      );
+        });
+      });
     }
     if (fastRoomAction) {
       console.info("gameRoomAction fast-path timing", {
@@ -2050,10 +2120,16 @@ Deno.serve(async (req) => {
     if (result?.id) await dispatchRoomPushBestEffort(base44, result, action);
     return Response.json(result?.id ? roomForClient(result, user) : result);
   } catch (error) {
-    console.error("gameRoomAction error:", error?.message || error);
+    const status = lifecycleHTTPStatus(error);
+    console.error("gameRoomAction error", {
+      action: actionForLog,
+      room_id: roomIDForLog,
+      code: safeLogLabel(error?.code),
+      status,
+    });
     return jsonError(
       error?.message || "Internal error",
-      lifecycleHTTPStatus(error),
+      status,
       { code: error?.code, retryable: error?.retryable },
     );
   }

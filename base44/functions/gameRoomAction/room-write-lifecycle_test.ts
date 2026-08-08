@@ -6,6 +6,7 @@ import {
 import {
   assertExactRoomLeaseCoverage,
   assertRoomWriterLeaseForUser,
+  reconcileCommittedGameStartAfterActiveIdentityLease,
   recoverSafeRoomActionAfterActiveIdentityLease,
   retryRoomMembershipChangeBeforeAction,
   uniqueStableUserIDs,
@@ -352,26 +353,48 @@ Deno.test("exhausted room lease contention never invokes the action", async () =
   assertEquals(delays, [25, 50, 100, 200, 400]);
 });
 
-for (const action of ["leave_room", "mark_role_card_read"] as const) {
-  Deno.test(`${action} recovers after an active identity lease`, async () => {
-    let recoveryCalls = 0;
+Deno.test("mark_role_card_read recovers after an active identity lease", async () => {
+  let recoveryCalls = 0;
 
-    const result = await recoverSafeRoomActionAfterActiveIdentityLease({
-      action,
-      error: new BillingIdentityLifecycleError(
-        "active_lease",
-        "Account identity is being updated.",
-      ),
-      recover: () => {
-        recoveryCalls += 1;
-        return Promise.resolve(`${action}-recovered`);
-      },
-    });
-
-    assertEquals(result, `${action}-recovered`);
-    assertEquals(recoveryCalls, 1);
+  const result = await recoverSafeRoomActionAfterActiveIdentityLease({
+    action: "mark_role_card_read",
+    error: new BillingIdentityLifecycleError(
+      "active_lease",
+      "Account identity is being updated.",
+    ),
+    recover: () => {
+      recoveryCalls += 1;
+      return Promise.resolve("mark_role_card_read-recovered");
+    },
   });
-}
+
+  assertEquals(result, "mark_role_card_read-recovered");
+  assertEquals(recoveryCalls, 1);
+});
+
+Deno.test("leave_room never bypasses an active identity lease", async () => {
+  let recoveryCalls = 0;
+  const leaseError = new BillingIdentityLifecycleError(
+    "active_lease",
+    "Account identity is being updated.",
+  );
+
+  const error = await assertRejects(
+    () =>
+      recoverSafeRoomActionAfterActiveIdentityLease({
+        action: "leave_room",
+        error: leaseError,
+        recover: () => {
+          recoveryCalls += 1;
+          return Promise.resolve("unsafe");
+        },
+      }),
+    BillingIdentityLifecycleError,
+  );
+
+  assertEquals(error, leaseError);
+  assertEquals(recoveryCalls, 0);
+});
 
 Deno.test("other room actions remain blocked by an active identity lease", async () => {
   let recoveryCalls = 0;
@@ -395,6 +418,146 @@ Deno.test("other room actions remain blocked by an active identity lease", async
 
   assertEquals(error, leaseError);
   assertEquals(recoveryCalls, 0);
+});
+
+Deno.test("complete game start reconciles only after committed start identity is visible", async () => {
+  const leaseError = new BillingIdentityLifecycleError(
+    "active_lease",
+    "Account identity is being updated.",
+  );
+  const rooms = [
+    { id: "room-1", status: "roulette" },
+    { id: "room-1", status: "playing", match_id: "match-1" },
+    {
+      id: "room-1",
+      status: "playing",
+      match_id: "match-1",
+      game_started_event_id: "start-1",
+    },
+  ];
+  const delays: number[] = [];
+  let refetchCalls = 0;
+  let participantChecks = 0;
+  let repairCalls = 0;
+
+  const result = await reconcileCommittedGameStartAfterActiveIdentityLease({
+    action: "complete_game_start",
+    error: leaseError,
+    delay: (milliseconds) => {
+      delays.push(milliseconds);
+      return Promise.resolve();
+    },
+    refetch: () => Promise.resolve(rooms[refetchCalls++]),
+    assertParticipant: () => {
+      participantChecks += 1;
+    },
+    repair: (room) => {
+      repairCalls += 1;
+      return Promise.resolve(room);
+    },
+  });
+
+  assertEquals(result, rooms[2]);
+  assertEquals(refetchCalls, 3);
+  assertEquals(delays, [50, 100]);
+  assertEquals(participantChecks, 1);
+  assertEquals(repairCalls, 1);
+});
+
+Deno.test("incomplete game start reconciliation is bounded and rethrows the lease error", async () => {
+  const leaseError = new BillingIdentityLifecycleError(
+    "active_lease",
+    "Account identity is being updated.",
+  );
+  const delays: number[] = [];
+  let refetchCalls = 0;
+  let participantChecks = 0;
+  let repairCalls = 0;
+
+  const error = await assertRejects(
+    () =>
+      reconcileCommittedGameStartAfterActiveIdentityLease({
+        action: "complete_game_start",
+        error: leaseError,
+        delay: (milliseconds) => {
+          delays.push(milliseconds);
+          return Promise.resolve();
+        },
+        refetch: () => {
+          refetchCalls += 1;
+          return Promise.resolve({
+            id: "room-1",
+            status: "playing",
+            match_id: "match-1",
+            game_started_event_id: "",
+          });
+        },
+        assertParticipant: () => {
+          participantChecks += 1;
+        },
+        repair: (room) => {
+          repairCalls += 1;
+          return Promise.resolve(room);
+        },
+      }),
+    BillingIdentityLifecycleError,
+  );
+
+  assertEquals(error, leaseError);
+  assertEquals(refetchCalls, 6);
+  assertEquals(delays, [50, 100, 200, 400, 800]);
+  assertEquals(participantChecks, 0);
+  assertEquals(repairCalls, 0);
+});
+
+Deno.test("game start reconciliation never bypasses non-lease lifecycle errors", async () => {
+  const blockedErrors: Array<{ action: string; error: unknown }> = [
+    {
+      action: "pause_game",
+      error: new BillingIdentityLifecycleError(
+        "active_lease",
+        "Account identity is being updated.",
+      ),
+    },
+    {
+      action: "complete_game_start",
+      error: new BillingIdentityLifecycleError(
+        "deletion_in_progress",
+        "Account deletion is in progress or already completed.",
+      ),
+    },
+    {
+      action: "complete_game_start",
+      error: Object.assign(new Error("untyped"), { code: "active_lease" }),
+    },
+  ];
+
+  for (const blocked of blockedErrors) {
+    let delayCalls = 0;
+    let refetchCalls = 0;
+    const error = await assertRejects(() =>
+      reconcileCommittedGameStartAfterActiveIdentityLease({
+        ...blocked,
+        delay: () => {
+          delayCalls += 1;
+          return Promise.resolve();
+        },
+        refetch: () => {
+          refetchCalls += 1;
+          return Promise.resolve({
+            status: "playing",
+            match_id: "match-1",
+            game_started_event_id: "start-1",
+          });
+        },
+        assertParticipant: () => Promise.resolve(),
+        repair: (room) => Promise.resolve(room),
+      })
+    );
+    assertEquals(error, blocked.error);
+    assertEquals(delayCalls, 0);
+    assertEquals(refetchCalls, 0);
+  }
 });
 
 for (const action of ["leave_room", "mark_role_card_read"] as const) {

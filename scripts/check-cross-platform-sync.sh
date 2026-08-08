@@ -4,11 +4,14 @@ set -euo pipefail
 
 project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 web_root="${project_root}/.web-reference/spyclash-web"
+canonical_app_id="69a0e57fa939f578082f8091"
+root_app_config="${project_root}/base44/.app.jsonc"
 ios_client="${project_root}/SpyClash/Services/Base44Client.swift"
 ios_model="${project_root}/SpyClash/Models/SpyModels.swift"
 backend="${project_root}/base44/functions/gameRoomAction/main.ts"
 community_backend="${project_root}/base44/functions/communityAction/main.ts"
 web_auth_transport="${web_root}/src/lib/socialAuth.js"
+web_app_policy="${web_root}/src/lib/appParamsPolicy.js"
 
 fail() {
   echo "cross-platform sync check failed: $*" >&2
@@ -16,10 +19,19 @@ fail() {
 }
 
 [[ -d "${web_root}/src" ]] || fail "missing canonical Web checkout at ${web_root}"
+[[ -f "${root_app_config}" ]] || fail "missing canonical Base44 app binding"
 [[ -f "${ios_client}" ]] || fail "missing iOS Base44 client"
 [[ -f "${backend}" ]] || fail "missing canonical gameRoomAction backend"
 [[ -f "${community_backend}" ]] || fail "missing canonical communityAction backend"
 [[ -f "${web_auth_transport}" ]] || fail "missing canonical Web social-auth transport"
+[[ -f "${web_app_policy}" ]] || fail "missing canonical Web app identity policy"
+
+rg -q --fixed-strings "\"id\": \"${canonical_app_id}\"" "${root_app_config}" \
+  || fail "repository is not linked to the canonical SpyClash Base44 app"
+rg -q --fixed-strings "static let appID = \"${canonical_app_id}\"" "${ios_client}" \
+  || fail "iOS is not pinned to the canonical SpyClash Base44 app"
+rg -q --fixed-strings "SPYCLASH_BASE44_APP_ID = \"${canonical_app_id}\"" "${web_app_policy}" \
+  || fail "Web is not pinned to the canonical SpyClash Base44 app"
 
 required_auth_functions=(
   appleAuthBroker
@@ -63,8 +75,7 @@ required_shared_actions=(
   leave_room
   begin_ready_check
   toggle_ready
-  update_game_mode
-  update_game_duration
+  update_lobby_state
   arm_roulette
   complete_game_start
   mark_role_card_read
@@ -91,6 +102,20 @@ for action in "${required_shared_actions[@]}"; do
     || fail "iOS does not implement ${action}"
   rg -q --fixed-strings "\"${action}\"" "${web_root}/src" \
     || fail "Web does not implement ${action}"
+done
+
+# iOS still supports these narrow legacy writes for compatibility with rooms
+# created before atomic lobby snapshots. Web must use update_lobby_state only.
+legacy_ios_lobby_actions=(
+  update_game_mode
+  update_game_duration
+)
+
+for action in "${legacy_ios_lobby_actions[@]}"; do
+  rg -q --fixed-strings "\"${action}\"" "${backend}" \
+    || fail "backend does not expose legacy ${action}"
+  rg -q --fixed-strings "\"${action}\"" "${ios_client}" "${project_root}/SpyClash/Views" \
+    || fail "iOS does not implement legacy ${action}"
 done
 
 for field in intro_started_at game_started_at game_duration_seconds game_paused_at game_paused_total_seconds question_phase; do

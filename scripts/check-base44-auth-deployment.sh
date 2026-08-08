@@ -16,7 +16,11 @@ app_id="$(sed -n 's/^[[:space:]]*"id"[[:space:]]*:[[:space:]]*"\([^"]*\)".*/\1/p
 [[ "${app_id}" == "${expected_app_id}" ]] \
   || fail "linked app ${app_id:-unknown} is not the reviewed SpyClash app"
 
-remote_functions="$(cd "${root}" && npx base44 functions list 2>&1)"
+remote_functions="$({
+  cd "${root}"
+  env -u BASE44_APP_ID -u BASE44_PROJECTS_BASE44_APP_ID \
+    npx base44 --app-id "${app_id}" functions list 2>&1
+})"
 required_functions=(
   appleAuthBroker
   appleAuthCallback
