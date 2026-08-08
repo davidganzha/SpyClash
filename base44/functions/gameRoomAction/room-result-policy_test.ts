@@ -2,6 +2,7 @@ import { assertEquals, assertThrows } from "jsr:@std/assert@1";
 import {
   assertIntroCompletionAccess,
   assertRankedTerminalRoom,
+  assertServerRankedFinishSource,
   buildTerminalIntent,
   deriveExpiredGameWinner,
   historyRecordsForMatch,
@@ -13,6 +14,7 @@ import {
   serverIntroStartPatch,
   terminalIntentFromRoom,
 } from "./room-result-policy.ts";
+import { resolvedDetectiveVoteCastTransition } from "./detective-vote-policy.ts";
 
 function startedRoom(overrides: Record<string, unknown> = {}) {
   return {
@@ -50,20 +52,69 @@ Deno.test("create-room to finish-room leaderboard farming is rejected", () => {
   assertEquals((error as Error & { status?: number }).status, 409);
 });
 
-Deno.test("finish-room ignores claimed winner and derives elapsed timeout", () => {
+Deno.test("0:00 immediately derives the spy winner from server time", () => {
   const room = startedRoom();
   assertThrows(
-    () => deriveExpiredGameWinner(room, Date.parse("2026-07-14T12:01:29Z")),
+    () =>
+      deriveExpiredGameWinner(
+        room,
+        Date.parse("2026-07-14T12:00:59.999Z"),
+      ),
     Error,
     "deadline has not elapsed",
   );
   assertEquals(
-    deriveExpiredGameWinner(room, Date.parse("2026-07-14T12:01:30Z")),
-    "detectives",
+    deriveExpiredGameWinner(room, Date.parse("2026-07-14T12:01:00.000Z")),
+    "spy",
   );
   assertRankedTerminalRoom(
-    { ...room, status: "finished", winner: "detectives" },
-    "detectives",
+    { ...room, status: "finished", winner: "spy" },
+    "spy",
+  );
+});
+
+Deno.test("three-player innocent ejection persists a recoverable spy terminal in one CAS", () => {
+  const room: Record<string, any> = startedRoom({
+    vote_requests: ["a@example.com", "b@example.com"],
+    detective_votes: [{
+      voter_email: "b@example.com",
+      voted_for_email: "a@example.com",
+    }],
+    spectators: [],
+    eliminated_emails: [],
+  });
+  const resolution = resolvedDetectiveVoteCastTransition(
+    room.players.map((player: { email: string }) => player.email),
+    room.vote_requests,
+    room.detective_votes,
+    "c@example.com",
+    "a@example.com",
+    room.spy_email,
+    room.spectators,
+    room.eliminated_emails,
+  );
+  assertEquals(resolution.terminal_winner, "spy");
+  const postEjectionRoom = { ...room, ...resolution.patch };
+  assertServerRankedFinishSource(postEjectionRoom);
+  const intent = buildTerminalIntent(
+    postEjectionRoom,
+    resolution.terminal_winner,
+    resolution.terminal_patch,
+    "2026-07-14T12:00:20.000Z",
+  );
+  const committed = { ...postEjectionRoom, terminal_intent: intent };
+
+  assertEquals(committed.spectators, ["a@example.com"]);
+  assertEquals(committed.eliminated_emails, ["a@example.com"]);
+  assertEquals(committed.detective_votes, []);
+  assertEquals(committed.vote_requests, []);
+  assertEquals(terminalIntentFromRoom(committed)?.winner, "spy");
+
+  // A process may fail after the atomic CAS. Reconciliation of its persisted
+  // intent still produces a valid finished spy result with no second ejection.
+  assertRankedTerminalRoom(
+    { ...committed, status: "finished", winner: intent.winner },
+    intent.winner,
   );
 });
 
@@ -287,7 +338,7 @@ Deno.test("paused time extends ranked expiry and an active pause freezes it", ()
     () =>
       deriveExpiredGameWinner(
         resumed,
-        Date.parse("2026-07-14T12:01:59.999Z"),
+        Date.parse("2026-07-14T12:01:29.999Z"),
       ),
     Error,
     "deadline has not elapsed",
@@ -295,9 +346,9 @@ Deno.test("paused time extends ranked expiry and an active pause freezes it", ()
   assertEquals(
     deriveExpiredGameWinner(
       resumed,
-      Date.parse("2026-07-14T12:02:00.000Z"),
+      Date.parse("2026-07-14T12:01:30.000Z"),
     ),
-    "detectives",
+    "spy",
   );
 
   const paused = startedRoom({
@@ -323,9 +374,9 @@ Deno.test("legacy started room without pause fields remains unpaused", () => {
   assertEquals(
     deriveExpiredGameWinner(
       legacy,
-      Date.parse("2026-07-14T12:01:30.000Z"),
+      Date.parse("2026-07-14T12:01:00.000Z"),
     ),
-    "detectives",
+    "spy",
   );
 });
 

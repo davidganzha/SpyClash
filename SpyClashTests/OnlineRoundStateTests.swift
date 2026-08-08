@@ -4,6 +4,40 @@ import XCTest
 @testable import SpyClash
 
 final class OnlineRoundStateTests: XCTestCase {
+    func testTutorialVoteCopyExplainsNMinusOneAndAutomaticCancellationInEveryLanguageAndMode() throws {
+        for language in AppLanguage.allCases {
+            let expectedFragments: (suspect: String, cancellation: String) = switch language {
+            case .en: ("same suspect", "server cancels automatically")
+            case .es: ("mismo sospechoso", "servidor cancela automáticamente")
+            case .ru: ("одного подозреваемого", "сервер автоматически отменит")
+            }
+
+            for mode in TutorialMode.allCases {
+                let instruction = try XCTUnwrap(
+                    language.tutorialSteps(for: mode).first { $0.text.contains("N−1") },
+                    "Missing N−1 tutorial instruction for \(language.rawValue)/\(mode.rawValue)"
+                )
+                XCTAssertTrue(instruction.text.localizedCaseInsensitiveContains(expectedFragments.suspect))
+                XCTAssertTrue(instruction.text.localizedCaseInsensitiveContains(expectedFragments.cancellation))
+            }
+        }
+    }
+
+    func testLocalTimerAwardsSpyOnTickThatReachesZeroWithoutGuessGrace() {
+        XCTAssertEqual(
+            LocalGameDeadlinePolicy.outcome(afterTickFrom: 2),
+            .continuePlaying(remainingSeconds: 1)
+        )
+        XCTAssertEqual(
+            LocalGameDeadlinePolicy.outcome(afterTickFrom: 1),
+            .spyWins
+        )
+        XCTAssertEqual(
+            LocalGameDeadlinePolicy.outcome(afterTickFrom: 0),
+            .spyWins
+        )
+    }
+
     func testConfirmedPlayerCanReopenRoleCardWhileWaitingForOthers() {
         XCTAssertTrue(
             OnlineRoleRevealInteractionPolicy.canToggleRoleCard(
@@ -27,6 +61,859 @@ final class OnlineRoundStateTests: XCTestCase {
 
         XCTAssertEqual(room.code.count, 6)
         XCTAssertTrue(room.code.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) })
+    }
+
+    func testExclusionRequiresEveryOtherActivePlayer() {
+        var room = GameRoom.previewRoom(status: "playing", playerCount: 6)
+
+        XCTAssertEqual(room.activePlayers.count, 6)
+        XCTAssertEqual(room.exclusionVoteThreshold, 5)
+
+        room.spectators = [room.playersList[5].email]
+        XCTAssertEqual(room.activePlayers.count, 5)
+        XCTAssertEqual(room.exclusionVoteThreshold, 4)
+    }
+
+    func testOnlineTimerExpiresExactlyAtZeroWithoutGuessGrace() {
+        var room = GameRoom.previewRoom(status: "playing")
+        let start = Date(timeIntervalSince1970: 1_000)
+        room.gameStartedAt = ISO8601DateFormatter().string(from: start)
+        room.gameDurationSeconds = 300
+
+        let beforeDeadline = OnlineTimerSnapshot(
+            room: room,
+            now: start.addingTimeInterval(299.2)
+        )
+        XCTAssertEqual(beforeDeadline.displayedSeconds, 1)
+        XCTAssertFalse(beforeDeadline.isExpired)
+
+        let atDeadline = OnlineTimerSnapshot(
+            room: room,
+            now: start.addingTimeInterval(300)
+        )
+        XCTAssertEqual(atDeadline.displayedSeconds, 0)
+        XCTAssertTrue(atDeadline.isExpired)
+    }
+
+    func testPausedOnlineTimerDoesNotExpirePastWallClockDeadline() {
+        var room = GameRoom.previewRoom(status: "playing")
+        let start = Date(timeIntervalSince1970: 1_000)
+        room.gameStartedAt = ISO8601DateFormatter().string(from: start)
+        room.gameDurationSeconds = 300
+        room.gamePausedAt = ISO8601DateFormatter().string(from: start.addingTimeInterval(120))
+
+        let snapshot = OnlineTimerSnapshot(
+            room: room,
+            now: start.addingTimeInterval(600)
+        )
+        XCTAssertEqual(snapshot.displayedSeconds, 180)
+        XCTAssertFalse(snapshot.isExpired)
+    }
+
+    func testExpiredRoomFinalizationScopeRequiresSameExpiredActiveMatch() throws {
+        var room = GameRoom.previewRoom(status: "playing")
+        let start = Date(timeIntervalSince1970: 1_000)
+        room.gameStartedAt = ISO8601DateFormatter().string(from: start)
+        room.gameDurationSeconds = 60
+        let scope = try XCTUnwrap(OnlineRoomMatchScope(room: room))
+
+        XCTAssertTrue(
+            ExpiredRoomFinalizationRetryPolicy.canAttempt(
+                scope: scope,
+                room: room,
+                now: start.addingTimeInterval(60)
+            )
+        )
+
+        room.gamePausedAt = ISO8601DateFormatter().string(from: start.addingTimeInterval(30))
+        XCTAssertFalse(
+            ExpiredRoomFinalizationRetryPolicy.canAttempt(
+                scope: scope,
+                room: room,
+                now: start.addingTimeInterval(90)
+            )
+        )
+
+        room.gamePausedAt = nil
+        room.matchID = "replacement-match"
+        XCTAssertFalse(
+            ExpiredRoomFinalizationRetryPolicy.canAttempt(
+                scope: scope,
+                room: room,
+                now: start.addingTimeInterval(90)
+            )
+        )
+    }
+
+    func testExpiredRoomFinalizationRetriesClockSkewAndTemporaryFailuresOnly() {
+        XCTAssertTrue(
+            ExpiredRoomFinalizationRetryPolicy.isRetryable(
+                Base44Error(
+                    message: "The server game deadline has not elapsed.",
+                    statusCode: 409,
+                    code: "invalid_ranked_terminal"
+                )
+            )
+        )
+        XCTAssertTrue(
+            ExpiredRoomFinalizationRetryPolicy.isRetryable(
+                Base44Error(message: "Temporary failure", statusCode: 503)
+            )
+        )
+        XCTAssertTrue(
+            ExpiredRoomFinalizationRetryPolicy.isRetryable(
+                Base44Error(
+                    message: "Terminal reconciliation pending",
+                    statusCode: 409,
+                    code: "terminal_reconciliation_pending"
+                )
+            )
+        )
+        XCTAssertFalse(
+            ExpiredRoomFinalizationRetryPolicy.isRetryable(
+                Base44Error(
+                    message: "Participant missing",
+                    statusCode: 409,
+                    code: "participant_missing"
+                )
+            )
+        )
+        XCTAssertFalse(
+            ExpiredRoomFinalizationRetryPolicy.isRetryable(
+                Base44Error(message: "Invalid request", statusCode: 422)
+            )
+        )
+    }
+
+    func testExpiredRoomFinalizationBackoffHasCappedLongTailWithoutTerminalStop() {
+        let delays = ExpiredRoomFinalizationRetryPolicy.retryDelaysMilliseconds
+
+        XCTAssertEqual(delays, [250, 500, 1_000, 2_000, 4_000, 6_000, 8_000])
+        XCTAssertEqual(delays.reduce(0, +), 21_750)
+        XCTAssertEqual(
+            ExpiredRoomFinalizationRetryPolicy.delayMilliseconds(
+                afterFailedAttempt: delays.count
+            ),
+            8_000
+        )
+        XCTAssertEqual(
+            ExpiredRoomFinalizationRetryPolicy.delayMilliseconds(
+                afterFailedAttempt: 10_000
+            ),
+            8_000
+        )
+    }
+
+    func testExpiredRoomFinalizationRetriesStaleCandidateOverNewerExpiredRoom() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        let now = start.addingTimeInterval(61)
+        var current = GameRoom.previewRoom(status: "playing")
+        current.gameStartedAt = ISO8601DateFormatter().string(from: start)
+        current.gameDurationSeconds = 60
+        current.roomRevision = 12
+        let scope = try XCTUnwrap(OnlineRoomMatchScope(room: current))
+
+        var staleCandidate = current
+        staleCandidate.status = "finished"
+        staleCandidate.winner = "spy"
+        staleCandidate.roomRevision = 11
+
+        XCTAssertEqual(
+            ExpiredRoomFinalizationRetryPolicy.disposition(
+                for: staleCandidate,
+                over: current,
+                scope: scope,
+                now: now
+            ),
+            .retryCurrent
+        )
+
+        var terminalCurrent = current
+        terminalCurrent.status = "finished"
+        terminalCurrent.winner = "spy"
+        XCTAssertEqual(
+            ExpiredRoomFinalizationRetryPolicy.disposition(
+                for: staleCandidate,
+                over: terminalCurrent,
+                scope: scope,
+                now: now
+            ),
+            .stop
+        )
+    }
+
+    func testAuthoritativeRoomPolicyRejectsLowerRevisionVoteAndExpiryResponses() throws {
+        var voteCurrent = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        voteCurrent.roomRevision = 12
+        var staleVoteResponse = voteCurrent
+        staleVoteResponse.roomRevision = 11
+        let voteScope = try XCTUnwrap(OnlineRoomMatchScope(room: voteCurrent))
+
+        XCTAssertFalse(
+            OnlineAuthoritativeRoomPolicy.canAdopt(
+                candidate: staleVoteResponse,
+                over: voteCurrent,
+                scope: voteScope
+            )
+        )
+
+        var expiryCurrent = GameRoom.previewRoom(status: "playing")
+        expiryCurrent.roomRevision = 8
+        var staleExpiryResponse = expiryCurrent
+        staleExpiryResponse.status = "finished"
+        staleExpiryResponse.winner = "spy"
+        staleExpiryResponse.roomRevision = 7
+        let expiryScope = try XCTUnwrap(OnlineRoomMatchScope(room: expiryCurrent))
+
+        XCTAssertFalse(
+            OnlineAuthoritativeRoomPolicy.canAdopt(
+                candidate: staleExpiryResponse,
+                over: expiryCurrent,
+                scope: expiryScope
+            )
+        )
+    }
+
+    func testAuthoritativeRoomPolicyAcceptsEqualAndNewerScopedResponses() throws {
+        var current = GameRoom.previewRoom(status: "playing")
+        current.roomRevision = 20
+        let scope = try XCTUnwrap(OnlineRoomMatchScope(room: current))
+
+        var equal = current
+        equal.status = "finished"
+        equal.winner = "spy"
+        XCTAssertTrue(
+            OnlineAuthoritativeRoomPolicy.canAdopt(
+                candidate: equal,
+                over: current,
+                scope: scope
+            )
+        )
+
+        var newer = equal
+        newer.roomRevision = 21
+        XCTAssertTrue(
+            OnlineAuthoritativeRoomPolicy.canAdopt(
+                candidate: newer,
+                over: current,
+                scope: scope
+            )
+        )
+    }
+
+    func testTerminalRealtimeRevisionCannotBeRolledBackByOlderPlayingResponse() throws {
+        var terminalCurrent = GameRoom.previewRoom(status: "playing")
+        terminalCurrent.status = "finished"
+        terminalCurrent.winner = "spy"
+        terminalCurrent.roomRevision = 31
+        let scope = try XCTUnwrap(OnlineRoomMatchScope(room: terminalCurrent))
+
+        var stalePlayingResponse = terminalCurrent
+        stalePlayingResponse.status = "playing"
+        stalePlayingResponse.winner = nil
+        stalePlayingResponse.roomRevision = 30
+
+        XCTAssertFalse(
+            OnlineAuthoritativeRoomPolicy.canAdopt(
+                candidate: stalePlayingResponse,
+                over: terminalCurrent,
+                scope: scope
+            )
+        )
+    }
+
+    func testDetectiveVoteResponseRecognizesAuthoritativeCancellation() {
+        let previous = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        var authoritative = previous
+        authoritative.voteRequests = []
+        authoritative.detectiveVotes = []
+
+        XCTAssertEqual(
+            DetectiveVoteResponsePolicy.classify(
+                previous: previous,
+                authoritative: authoritative
+            ),
+            .cancelled
+        )
+    }
+
+    func testDetectiveVoteInactiveReconciliationRequiresExactTypedConflict() {
+        XCTAssertTrue(
+            DetectiveVoteResponsePolicy.shouldReconcileInactiveVote(
+                Base44Error(
+                    message: "Detective voting is no longer active.",
+                    statusCode: 409,
+                    code: "detective_vote_inactive"
+                )
+            )
+        )
+        XCTAssertFalse(
+            DetectiveVoteResponsePolicy.shouldReconcileInactiveVote(
+                Base44Error(
+                    message: "Detective voting is no longer active.",
+                    statusCode: 409
+                )
+            )
+        )
+        XCTAssertFalse(
+            DetectiveVoteResponsePolicy.shouldReconcileInactiveVote(
+                Base44Error(
+                    message: "Participant missing.",
+                    statusCode: 409,
+                    code: "participant_missing"
+                )
+            )
+        )
+    }
+
+    func testDetectiveVoteRoundChangedReconciliationRequiresExactActionAndCode() {
+        let changed = Base44Error(
+            message: "The detective vote round changed.",
+            statusCode: 409,
+            code: "detective_vote_round_changed"
+        )
+        XCTAssertTrue(
+            DetectiveVoteRoundChangedPolicy.shouldReconcile(
+                action: "cast_detective_vote",
+                error: changed
+            )
+        )
+        XCTAssertFalse(
+            DetectiveVoteRoundChangedPolicy.shouldReconcile(
+                action: "request_vote",
+                error: changed
+            )
+        )
+        XCTAssertFalse(
+            DetectiveVoteRoundChangedPolicy.shouldReconcile(
+                action: "cast_detective_vote",
+                error: Base44Error(
+                    message: "The detective vote round changed.",
+                    statusCode: 409
+                )
+            )
+        )
+        XCTAssertFalse(
+            DetectiveVoteRoundChangedPolicy.shouldReconcile(
+                action: "cast_detective_vote",
+                error: Base44Error(
+                    message: "Conflict",
+                    statusCode: 409,
+                    code: "cas_contention",
+                    retryable: true
+                )
+            )
+        )
+    }
+
+    func testDetectiveVoteRoundChangedFeedbackIsSilentForRoundBButReportsCancellation() {
+        var roundA = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        roundA.detectiveVoteRoundID = "vote-round-a"
+
+        var roundB = roundA
+        roundB.detectiveVoteRoundID = "vote-round-b"
+        XCTAssertEqual(
+            DetectiveVoteRoundChangedPolicy.feedback(
+                previous: roundA,
+                authoritative: roundB
+            ),
+            .silent
+        )
+
+        var cancelled = roundA
+        cancelled.detectiveVoteRoundID = nil
+        cancelled.voteRequests = []
+        cancelled.detectiveVotes = []
+        XCTAssertEqual(
+            DetectiveVoteRoundChangedPolicy.feedback(
+                previous: roundA,
+                authoritative: cancelled
+            ),
+            .cancelled
+        )
+
+        var ejected = cancelled
+        ejected.spectators = [roundA.playersList[1].email]
+        XCTAssertEqual(
+            DetectiveVoteRoundChangedPolicy.feedback(
+                previous: roundA,
+                authoritative: ejected
+            ),
+            .silent
+        )
+
+        var finished = cancelled
+        finished.status = "finished"
+        finished.winner = "detectives"
+        XCTAssertEqual(
+            DetectiveVoteRoundChangedPolicy.feedback(
+                previous: roundA,
+                authoritative: finished
+            ),
+            .silent
+        )
+    }
+
+    func testDetectiveVoteConflictRecoveryRequiresExactTypedRetryableConflict() {
+        XCTAssertTrue(
+            DetectiveVoteConflictRecoveryPolicy.isRecoverableConflict(
+                Base44Error(
+                    message: "Lease busy",
+                    statusCode: 409,
+                    code: "active_lease",
+                    retryable: true
+                )
+            )
+        )
+        XCTAssertTrue(
+            DetectiveVoteConflictRecoveryPolicy.isRecoverableConflict(
+                Base44Error(
+                    message: "CAS busy",
+                    statusCode: 409,
+                    code: "cas_contention",
+                    retryable: true
+                )
+            )
+        )
+        XCTAssertFalse(
+            DetectiveVoteConflictRecoveryPolicy.isRecoverableConflict(
+                Base44Error(
+                    message: "Lease busy",
+                    statusCode: 409,
+                    code: "active_lease",
+                    retryable: false
+                )
+            )
+        )
+        XCTAssertFalse(
+            DetectiveVoteConflictRecoveryPolicy.isRecoverableConflict(
+                Base44Error(message: "Conflict", statusCode: 409, retryable: true)
+            )
+        )
+        XCTAssertFalse(
+            DetectiveVoteConflictRecoveryPolicy.isRecoverableConflict(CancellationError())
+        )
+    }
+
+    func testGameRoomDecodesAuthoritativeVoteRoundAndPendingTerminalFlag() throws {
+        let payload = #"""
+        {
+            "id":"room-1",
+            "code":"ABC123",
+            "detective_vote_round_id":"vote-round-a",
+            "terminal_reconciliation_pending":true
+        }
+        """#
+
+        let room = try JSONDecoder().decode(GameRoom.self, from: Data(payload.utf8))
+
+        XCTAssertEqual(room.detectiveVoteRoundID, "vote-round-a")
+        XCTAssertEqual(room.terminalReconciliationPending, true)
+    }
+
+    func testDetectiveVoteConflictRecoveryRejectsWrongMatchScope() throws {
+        let previous = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        let actor = try XCTUnwrap(previous.playersList.first?.email)
+        let target = try XCTUnwrap(previous.playersList.dropFirst().first?.email)
+        let cast = try XCTUnwrap(
+            DetectiveVoteCastScope(
+                room: previous,
+                actorEmail: actor,
+                targetEmail: target
+            )
+        )
+        var wrongMatch = previous
+        wrongMatch.matchID = "replacement-match"
+
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: previous,
+                authoritative: wrongMatch,
+                cast: cast,
+                now: Date()
+            ),
+            .reject
+        )
+    }
+
+    func testDetectiveVoteConflictRecoveryAcceptsPersistedExactVoteAndCancellation() throws {
+        let previous = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        let actor = try XCTUnwrap(previous.playersList.first?.email)
+        let target = try XCTUnwrap(previous.playersList.dropFirst().first?.email)
+        let cast = try XCTUnwrap(
+            DetectiveVoteCastScope(
+                room: previous,
+                actorEmail: actor.uppercased(),
+                targetEmail: target.uppercased()
+            )
+        )
+
+        var persisted = previous
+        persisted.detectiveVotes = [
+            VoteRecord(voterEmail: actor.lowercased(), votedForEmail: target.lowercased())
+        ]
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: previous,
+                authoritative: persisted,
+                cast: cast,
+                now: Date()
+            ),
+            .persisted
+        )
+
+        var cancelled = previous
+        cancelled.voteRequests = []
+        cancelled.detectiveVotes = []
+        cancelled.detectiveVoteRoundID = nil
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: previous,
+                authoritative: cancelled,
+                cast: cast,
+                now: Date()
+            ),
+            .cancelled
+        )
+    }
+
+    func testDetectiveVoteConflictRecoveryAcceptsEjectionFinishAndDeadline() throws {
+        let start = Date(timeIntervalSince1970: 1_000)
+        var previous = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        previous.gameStartedAt = ISO8601DateFormatter().string(from: start)
+        previous.gameDurationSeconds = 60
+        let actor = try XCTUnwrap(previous.playersList.first?.email)
+        let target = try XCTUnwrap(previous.playersList.dropFirst().first?.email)
+        let cast = try XCTUnwrap(
+            DetectiveVoteCastScope(
+                room: previous,
+                actorEmail: actor,
+                targetEmail: target
+            )
+        )
+
+        var ejected = previous
+        ejected.spectators = [target.uppercased()]
+        ejected.detectiveVoteRoundID = nil
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: previous,
+                authoritative: ejected,
+                cast: cast,
+                now: start.addingTimeInterval(30)
+            ),
+            .ejected
+        )
+
+        var finished = previous
+        finished.status = "finished"
+        finished.winner = "detectives"
+        finished.detectiveVoteRoundID = nil
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: previous,
+                authoritative: finished,
+                cast: cast,
+                now: start.addingTimeInterval(30)
+            ),
+            .finished
+        )
+
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: previous,
+                authoritative: previous,
+                cast: cast,
+                now: start.addingTimeInterval(60)
+            ),
+            .deadline
+        )
+    }
+
+    func testDetectiveVoteConflictRecoveryNeverRetriesIntoReopenedVoteRound() throws {
+        var roundA = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        roundA.detectiveVoteRoundID = "vote-round-a"
+        let actor = try XCTUnwrap(roundA.playersList.first?.email)
+        let target = try XCTUnwrap(roundA.playersList.dropFirst().first?.email)
+        let cast = try XCTUnwrap(
+            DetectiveVoteCastScope(
+                room: roundA,
+                actorEmail: actor,
+                targetEmail: target
+            )
+        )
+
+        var roundB = roundA
+        roundB.detectiveVoteRoundID = "vote-round-b"
+        roundB.detectiveVotes = []
+
+        XCTAssertFalse(cast.matchesVoteRound(roundB))
+        XCTAssertTrue(cast.hasChangedVoteRound(roundB))
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: roundA,
+                authoritative: roundB,
+                cast: cast,
+                now: Date()
+            ),
+            .superseded
+        )
+    }
+
+    func testDetectiveVoteConflictRecoveryTreatsBlankRoundWithNewRequestsAsSuperseded() throws {
+        var roundA = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        roundA.detectiveVoteRoundID = "vote-round-a"
+        let actor = try XCTUnwrap(roundA.playersList.first?.email)
+        let target = try XCTUnwrap(roundA.playersList.dropFirst().first?.email)
+        let cast = try XCTUnwrap(
+            DetectiveVoteCastScope(
+                room: roundA,
+                actorEmail: actor,
+                targetEmail: target
+            )
+        )
+
+        var roundBRequestPhase = roundA
+        roundBRequestPhase.detectiveVoteRoundID = nil
+        roundBRequestPhase.detectiveVotes = []
+        roundBRequestPhase.voteRequests = [roundA.playersList[2].email]
+
+        XCTAssertTrue(cast.hasMissingVoteRound(roundBRequestPhase))
+        XCTAssertFalse(cast.hasChangedVoteRound(roundBRequestPhase))
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: roundA,
+                authoritative: roundBRequestPhase,
+                cast: cast,
+                now: Date()
+            ),
+            .superseded
+        )
+        XCTAssertEqual(
+            DetectiveVoteRoundChangedPolicy.feedback(
+                previous: roundA,
+                authoritative: roundBRequestPhase
+            ),
+            .silent
+        )
+    }
+
+    func testDetectiveVoteDirectSuccessDispositionOnlyRecordsPersistedVote() throws {
+        var roundA = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        roundA.detectiveVoteRoundID = "vote-round-a"
+        let actor = try XCTUnwrap(roundA.playersList.first?.email)
+        let target = try XCTUnwrap(roundA.playersList.dropFirst().first?.email)
+        let cast = try XCTUnwrap(
+            DetectiveVoteCastScope(
+                room: roundA,
+                actorEmail: actor,
+                targetEmail: target
+            )
+        )
+
+        var persisted = roundA
+        persisted.detectiveVotes = [
+            VoteRecord(voterEmail: actor, votedForEmail: target)
+        ]
+        XCTAssertEqual(
+            DetectiveVoteDirectSuccessPolicy.disposition(
+                previous: roundA,
+                authoritative: persisted,
+                cast: cast,
+                now: Date()
+            ),
+            .recorded
+        )
+
+        var cancelled = roundA
+        cancelled.detectiveVoteRoundID = nil
+        cancelled.voteRequests = []
+        cancelled.detectiveVotes = []
+        XCTAssertEqual(
+            DetectiveVoteDirectSuccessPolicy.disposition(
+                previous: roundA,
+                authoritative: cancelled,
+                cast: cast,
+                now: Date()
+            ),
+            .cancelled
+        )
+
+        var roundBRequestPhase = roundA
+        roundBRequestPhase.detectiveVoteRoundID = nil
+        roundBRequestPhase.detectiveVotes = []
+        roundBRequestPhase.voteRequests = [roundA.playersList[2].email]
+        XCTAssertEqual(
+            DetectiveVoteDirectSuccessPolicy.disposition(
+                previous: roundA,
+                authoritative: roundBRequestPhase,
+                cast: cast,
+                now: Date()
+            ),
+            .adoptSilently
+        )
+
+        XCTAssertEqual(
+            DetectiveVoteDirectSuccessPolicy.disposition(
+                previous: roundA,
+                authoritative: roundA,
+                cast: cast,
+                now: Date()
+            ),
+            .reconcile
+        )
+    }
+
+    func testDetectiveVoteConflictRecoveryWaitsForPendingTerminalBeforeExactVote() throws {
+        let previous = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        let actor = try XCTUnwrap(previous.playersList.first?.email)
+        let target = try XCTUnwrap(previous.playersList.dropFirst().first?.email)
+        let cast = try XCTUnwrap(
+            DetectiveVoteCastScope(
+                room: previous,
+                actorEmail: actor,
+                targetEmail: target
+            )
+        )
+
+        var pending = previous
+        pending.terminalReconciliationPending = true
+        pending.detectiveVotes = [
+            VoteRecord(voterEmail: actor, votedForEmail: target)
+        ]
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: previous,
+                authoritative: pending,
+                cast: cast,
+                now: Date()
+            ),
+            .retry
+        )
+
+        pending.status = "finished"
+        pending.winner = "detectives"
+        pending.terminalReconciliationPending = false
+        pending.detectiveVoteRoundID = nil
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: previous,
+                authoritative: pending,
+                cast: cast,
+                now: Date()
+            ),
+            .finished
+        )
+    }
+
+    func testDetectiveVoteConflictRecoveryRetriesAbsentVoteUntilCappedExhaustion() throws {
+        let previous = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        let actor = try XCTUnwrap(previous.playersList.first?.email)
+        let target = try XCTUnwrap(previous.playersList.dropFirst().first?.email)
+        let cast = try XCTUnwrap(
+            DetectiveVoteCastScope(
+                room: previous,
+                actorEmail: actor,
+                targetEmail: target
+            )
+        )
+
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: previous,
+                authoritative: previous,
+                cast: cast,
+                now: Date()
+            ),
+            .retry
+        )
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.retryDelaysMilliseconds,
+            [250, 500, 1_000, 2_000, 4_000, 8_000, 8_000, 8_000]
+        )
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.delayMilliseconds(beforeRetry: 7),
+            8_000
+        )
+        XCTAssertNil(
+            DetectiveVoteConflictRecoveryPolicy.delayMilliseconds(beforeRetry: 8)
+        )
+    }
+
+    func testDetectiveVoteResponseDoesNotMislabelExclusionOrTerminalResultAsCancellation() {
+        let previous = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        let excludedEmail = previous.activePlayers[0].email
+
+        var exclusion = previous
+        exclusion.voteRequests = []
+        exclusion.detectiveVotes = []
+        exclusion.spectators = [excludedEmail]
+        exclusion.eliminatedEmails = [excludedEmail]
+        XCTAssertEqual(
+            DetectiveVoteResponsePolicy.classify(
+                previous: previous,
+                authoritative: exclusion
+            ),
+            .recorded
+        )
+
+        var caseVariantExclusion = previous
+        caseVariantExclusion.voteRequests = []
+        caseVariantExclusion.detectiveVotes = []
+        caseVariantExclusion.spectators = [excludedEmail.uppercased()]
+        XCTAssertEqual(
+            DetectiveVoteResponsePolicy.classify(
+                previous: previous,
+                authoritative: caseVariantExclusion
+            ),
+            .recorded
+        )
+
+        var terminal = previous
+        terminal.status = "finished"
+        terminal.winner = "detectives"
+        terminal.voteRequests = []
+        terminal.detectiveVotes = []
+        XCTAssertEqual(
+            DetectiveVoteResponsePolicy.classify(
+                previous: previous,
+                authoritative: terminal
+            ),
+            .recorded
+        )
+    }
+
+    func testOnlineVoteIdentityPolicyExcludesSelfAndEliminatedEmailsCaseInsensitively() throws {
+        let room = GameRoom.previewRoom(status: "voting")
+        let currentPlayer = try XCTUnwrap(room.activePlayers.first)
+        let eliminatedPlayer = try XCTUnwrap(room.activePlayers.last)
+
+        let candidates = OnlineVoteIdentityPolicy.candidates(
+            from: room.activePlayers,
+            currentUserEmail: "  \(currentPlayer.email.uppercased())  ",
+            eliminatedEmails: [eliminatedPlayer.email.uppercased()]
+        )
+
+        XCTAssertFalse(candidates.contains { $0.email == currentPlayer.email })
+        XCTAssertFalse(candidates.contains { $0.email == eliminatedPlayer.email })
+        XCTAssertEqual(candidates.map(\.email), [room.activePlayers[1].email])
+    }
+
+    func testOnlineVoteIdentityPolicyFindsCurrentVoteCaseInsensitively() throws {
+        let room = GameRoom.previewRoom(status: "voting")
+        let currentPlayer = try XCTUnwrap(room.activePlayers.first)
+        let vote = VoteRecord(
+            voterEmail: currentPlayer.email.uppercased(),
+            votedForEmail: room.activePlayers[1].email
+        )
+
+        XCTAssertEqual(
+            OnlineVoteIdentityPolicy.currentUserVote(
+                in: [vote],
+                currentUserEmail: " \(currentPlayer.email) "
+            ),
+            vote
+        )
     }
 
     func testQuestionAskerConfirmsBeforeAdvance() {

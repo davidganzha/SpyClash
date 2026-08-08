@@ -120,7 +120,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
             [
                 TutorialStep(icon: "🎭", title: "Роли", text: "В начале игры каждый тайно читает свою карточку роли. Детективы видят секретное слово и категорию. Шпион ничего не видит — только список слов, из которых нужно будет угадать."),
                 TutorialStep(icon: "❓", title: "Вопросы и ответы", text: "Игроки ходят по кругу: один задаёт вопрос, другой отвечает вслух. Когда спрашивающий услышал ответ — он нажимает «Ответ услышан» и ход переходит дальше. Вопросы должны намекать на слово, но не раскрывать его шпиону."),
-                TutorialStep(icon: "🗳️", title: "Голосование за шпиона", text: "Любой игрок может запросить голосование. Когда достаточно игроков соглашаются — все голосуют за того, кого считают шпионом. Большинство угадало шпиона — детективы победили!"),
+                TutorialStep(icon: "🗳️", title: "Голосование за шпиона", text: "Любой игрок может запросить голосование. Для исключения нужны N−1 голосов за одного подозреваемого — от всех остальных активных игроков. Сервер автоматически отменит голосование, как только такой результат станет невозможен."),
                 TutorialStep(icon: "🎯", title: "Угадывание шпиона", text: "Шпион может в любой момент нажать «Угадать досрочно» и выбрать слово из списка. Угадал — шпион побеждает! Ошибся — детективы побеждают немедленно.")
             ]
         case (.ru, .associations):
@@ -128,13 +128,13 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 TutorialStep(icon: "🎭", title: "Роли", text: "В начале каждый тайно читает свою карточку роли. Детективы видят секретное слово. Шпион ничего не видит — вместо слова у него «???»."),
                 TutorialStep(icon: "🎰", title: "Барабан", text: "Хост запускает барабан — он случайно выбирает игрока. Этот игрок должен назвать вслух ОДНО слово-ассоциацию к секретному слову, затем нажать «Ответил»."),
                 TutorialStep(icon: "🔄", title: "Без повторов", text: "Каждый игрок говорит по одному разу за раунд. Когда все высказались — начинается следующий раунд с новым случайным порядком."),
-                TutorialStep(icon: "🎯", title: "Найди шпиона", text: "Услышав ассоциации, проголосуйте за того, кто, по-вашему, шпион. Шпион может угадать секретное слово в любой момент и победить!")
+                TutorialStep(icon: "🎯", title: "Найди шпиона", text: "Услышав ассоциации, голосуйте за подозреваемого. Для исключения нужны N−1 голосов за одного подозреваемого — от всех остальных активных игроков; сервер автоматически отменит голосование, как только такой результат станет невозможен. Шпион может угадать слово в любой момент и победить!")
             ]
         case (.es, .questions):
             [
                 TutorialStep(icon: "🎭", title: "Roles", text: "Al comenzar, cada persona lee su carta de rol en secreto. Los detectives ven la palabra secreta y la categoría. El espía solo ve la lista de palabras entre las que tendrá que adivinar."),
                 TutorialStep(icon: "❓", title: "Preguntas y respuestas", text: "Los jugadores avanzan en círculo: una persona pregunta y otra responde en voz alta. Al oír la respuesta, pulsa «Respuesta recibida» para continuar. Da pistas sin revelar la palabra al espía."),
-                TutorialStep(icon: "🗳️", title: "Votar al espía", text: "Cualquier jugador puede solicitar una votación. Cuando suficientes jugadores aceptan, todos señalan a quien creen que es el espía. Si la mayoría acierta, ganan los detectives."),
+                TutorialStep(icon: "🗳️", title: "Votar al espía", text: "Cualquier jugador puede solicitar una votación. La expulsión requiere N−1 votos contra el mismo sospechoso, de todos los demás jugadores activos. El servidor cancela automáticamente cuando ese resultado ya es imposible."),
                 TutorialStep(icon: "🎯", title: "Adivinar la palabra", text: "El espía puede intentar adivinar la palabra en cualquier momento. Si acierta, gana. Si falla, los detectives ganan de inmediato.")
             ]
         case (.es, .associations):
@@ -142,13 +142,13 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 TutorialStep(icon: "🎭", title: "Roles", text: "Al comenzar, cada persona lee su carta de rol en secreto. Los detectives ven la palabra secreta. El espía solo ve «???»."),
                 TutorialStep(icon: "🎰", title: "La ruleta", text: "El anfitrión activa la ruleta para elegir un jugador. Esa persona dice en voz alta UNA asociación con la palabra secreta y después pulsa «Respondido»."),
                 TutorialStep(icon: "🔄", title: "Sin repetir", text: "Cada jugador habla una vez por ronda. Cuando todos han participado, comienza otra ronda con un orden aleatorio nuevo."),
-                TutorialStep(icon: "🎯", title: "Encuentra al espía", text: "Escucha las asociaciones y vota por quien creas que es el espía. El espía puede adivinar la palabra secreta en cualquier momento para ganar.")
+                TutorialStep(icon: "🎯", title: "Encuentra al espía", text: "Escucha las asociaciones y vota por el sospechoso. La expulsión requiere N−1 votos contra el mismo sospechoso, de todos los demás jugadores activos; el servidor cancela automáticamente cuando ese resultado ya es imposible. El espía puede adivinar la palabra en cualquier momento para ganar.")
             ]
         case (.en, .questions):
             [
                 TutorialStep(icon: "🎭", title: "Roles", text: "At game start everyone secretly reads their role card. Detectives see the secret word and category. The Spy sees nothing — only the word list to guess from later."),
                 TutorialStep(icon: "❓", title: "Q&A", text: "Players go in a circle: one asks a question, another answers out loud. When the asker has heard the answer, they press 'Answer Received' to move on. Questions should hint at the word without revealing it to the spy."),
-                TutorialStep(icon: "🗳️", title: "Voting for the Spy", text: "Any player can request a vote. Once enough players agree, everyone votes for who they think is the spy. If the majority picks the spy — detectives win!"),
+                TutorialStep(icon: "🗳️", title: "Voting for the Spy", text: "Any player can request a vote. Exclusion requires N−1 votes for the same suspect, from every other active player. The server cancels automatically as soon as that result becomes impossible."),
                 TutorialStep(icon: "🎯", title: "Spy's Guess", text: "The spy can press 'Guess Word Early' at any time and pick from the word list. Guess correctly — spy wins! Wrong guess — detectives win immediately.")
             ]
         case (.en, .associations):
@@ -156,7 +156,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 TutorialStep(icon: "🎭", title: "Roles", text: "At game start everyone secretly reads their role card. Detectives see the secret word. The Spy sees nothing — only '???' instead of the word."),
                 TutorialStep(icon: "🎰", title: "The Drum", text: "The host spins the drum — it randomly picks a player. That player must say ONE word associated with the secret word out loud, then press 'Answered'."),
                 TutorialStep(icon: "🔄", title: "No Repeats", text: "Each player speaks once per round. When everyone has given an association — a new round begins automatically with a fresh random order."),
-                TutorialStep(icon: "🎯", title: "Find the Spy", text: "After hearing associations, vote for who you think is the spy. The spy can guess the secret word at any time to win!")
+                TutorialStep(icon: "🎯", title: "Find the Spy", text: "After hearing associations, vote for the suspect. Exclusion requires N−1 votes for the same suspect, from every other active player; the server cancels automatically as soon as that result becomes impossible. The spy can guess the word at any time to win!")
             ]
         }
     }
@@ -1185,7 +1185,6 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 missionTimer: "// MISSION TIMER",
                 timeUp: "TIME UP",
                 liveStatus: "LIVE",
-                callFinalVote: "CALL THE FINAL VOTE",
                 timerHintLive: "ASK, DEFLECT, WATCH FOR PATTERNS",
                 roleCard: "// ROLE CARD",
                 tapEyeToReveal: "TAP EYE TO REVEAL",
@@ -1315,7 +1314,6 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 missionTimer: "// TIMER MISION",
                 timeUp: "TIEMPO AGOTADO",
                 liveStatus: "LIVE",
-                callFinalVote: "LLAMA VOTO FINAL",
                 timerHintLive: "PREGUNTA, DESVIA, BUSCA PATRONES",
                 roleCard: "// CARTA DE ROL",
                 tapEyeToReveal: "TOCA EL OJO PARA VER",
@@ -1445,7 +1443,6 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 missionTimer: "// ТАЙМЕР МИССИИ",
                 timeUp: "ВРЕМЯ ВЫШЛО",
                 liveStatus: "В ИГРЕ",
-                callFinalVote: "ЗОВИ ФИНАЛЬНЫЙ ГОЛОС",
                 timerHintLive: "СПРАШИВАЙ, УВОДИ, ЛОВИ ПАТТЕРНЫ",
                 roleCard: "// КАРТА РОЛИ",
                 tapEyeToReveal: "НАЖМИ НА ГЛАЗ",
@@ -2035,7 +2032,6 @@ struct GameCopy: Hashable {
     let missionTimer: String
     let timeUp: String
     let liveStatus: String
-    let callFinalVote: String
     let timerHintLive: String
     let roleCard: String
     let tapEyeToReveal: String
@@ -2792,6 +2788,8 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var spectators: [String]?
     var voteRequests: [String]?
     var detectiveVotes: [VoteRecord]?
+    var detectiveVoteRoundID: String?
+    var terminalReconciliationPending: Bool?
 
     var normalizedStatus: String {
         (status ?? "waiting").lowercased()
@@ -2839,6 +2837,12 @@ struct GameRoom: Codable, Identifiable, Hashable {
         let count = activePlayers.count
         guard count > 0 else { return 0 }
         return Int(ceil(Double(count) * 0.51))
+    }
+
+    /// A suspect is excluded only when every other active player votes for them.
+    /// The backend remains authoritative for resolving or cancelling the ballot.
+    var exclusionVoteThreshold: Int {
+        max(activePlayers.count - 1, 0)
     }
 
     var isVotingActive: Bool {
@@ -2908,6 +2912,8 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case spectators
         case voteRequests = "vote_requests"
         case detectiveVotes = "detective_votes"
+        case detectiveVoteRoundID = "detective_vote_round_id"
+        case terminalReconciliationPending = "terminal_reconciliation_pending"
     }
 }
 
@@ -3031,6 +3037,9 @@ extension GameRoom {
         }
 
         let startedAt = ISO8601DateFormatter().string(from: Date().addingTimeInterval(-132))
+        let detectiveVoteRoundID = ["voting", "vote"].contains(normalizedStatus)
+            ? "preview-detective-vote-round-1"
+            : nil
 
         return GameRoom(
             id: "preview-room-\(status)",
@@ -3084,7 +3093,9 @@ extension GameRoom {
             readyPlayers: readyPlayers,
             spectators: [],
             voteRequests: voteRequests,
-            detectiveVotes: detectiveVotes
+            detectiveVotes: detectiveVotes,
+            detectiveVoteRoundID: detectiveVoteRoundID,
+            terminalReconciliationPending: false
         )
     }
 }

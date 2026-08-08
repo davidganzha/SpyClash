@@ -6,12 +6,27 @@ project_root="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 web_root="${project_root}/.web-reference/spyclash-web"
 canonical_app_id="69a0e57fa939f578082f8091"
 root_app_config="${project_root}/base44/.app.jsonc"
+game_room_entity="${project_root}/base44/entities/GameRoom.jsonc"
 ios_client="${project_root}/SpyClash/Services/Base44Client.swift"
 ios_model="${project_root}/SpyClash/Models/SpyModels.swift"
+ios_game_view="${project_root}/SpyClash/Views/GameView.swift"
+ios_local_game_view="${project_root}/SpyClash/Views/LocalGameView.swift"
+ios_online_experience="${project_root}/SpyClash/Views/OnlineGameExperience.swift"
 backend="${project_root}/base44/functions/gameRoomAction/main.ts"
+backend_timer_policy="${project_root}/base44/functions/gameRoomAction/game-timer-policy.ts"
+backend_result_policy="${project_root}/base44/functions/gameRoomAction/room-result-policy.ts"
+backend_vote_policy="${project_root}/base44/functions/gameRoomAction/detective-vote-policy.ts"
+backend_vote_lease_recovery="${project_root}/base44/functions/gameRoomAction/detective-vote-lease-recovery.ts"
+backend_room_projection="${project_root}/base44/functions/gameRoomAction/room-projection.ts"
 community_backend="${project_root}/base44/functions/communityAction/main.ts"
 web_auth_transport="${web_root}/src/lib/socialAuth.js"
 web_app_policy="${web_root}/src/lib/appParamsPolicy.js"
+web_game_page="${web_root}/src/pages/Game.jsx"
+web_local_game_page="${web_root}/src/pages/LocalGame.jsx"
+web_game_sync="${web_root}/src/lib/gameRoomSync.js"
+web_local_game_rules="${web_root}/src/lib/localGameRules.js"
+web_online_presentation="${web_root}/src/lib/onlineGamePresentation.js"
+web_detective_vote_retry="${web_root}/src/lib/detectiveVoteRetry.js"
 
 fail() {
   echo "cross-platform sync check failed: $*" >&2
@@ -20,11 +35,26 @@ fail() {
 
 [[ -d "${web_root}/src" ]] || fail "missing canonical Web checkout at ${web_root}"
 [[ -f "${root_app_config}" ]] || fail "missing canonical Base44 app binding"
+[[ -f "${game_room_entity}" ]] || fail "missing canonical GameRoom entity"
 [[ -f "${ios_client}" ]] || fail "missing iOS Base44 client"
+[[ -f "${ios_game_view}" ]] || fail "missing iOS game view"
+[[ -f "${ios_local_game_view}" ]] || fail "missing iOS local game view"
+[[ -f "${ios_online_experience}" ]] || fail "missing iOS online experience"
 [[ -f "${backend}" ]] || fail "missing canonical gameRoomAction backend"
+[[ -f "${backend_timer_policy}" ]] || fail "missing canonical game timer policy"
+[[ -f "${backend_result_policy}" ]] || fail "missing canonical room result policy"
+[[ -f "${backend_vote_policy}" ]] || fail "missing canonical detective vote policy"
+[[ -f "${backend_vote_lease_recovery}" ]] || fail "missing detective vote lease recovery"
+[[ -f "${backend_room_projection}" ]] || fail "missing canonical room projection"
 [[ -f "${community_backend}" ]] || fail "missing canonical communityAction backend"
 [[ -f "${web_auth_transport}" ]] || fail "missing canonical Web social-auth transport"
 [[ -f "${web_app_policy}" ]] || fail "missing canonical Web app identity policy"
+[[ -f "${web_game_page}" ]] || fail "missing canonical Web game page"
+[[ -f "${web_local_game_page}" ]] || fail "missing canonical Web local game page"
+[[ -f "${web_game_sync}" ]] || fail "missing canonical Web game timer policy"
+[[ -f "${web_local_game_rules}" ]] || fail "missing canonical Web local-game rules"
+[[ -f "${web_online_presentation}" ]] || fail "missing canonical Web online presentation"
+[[ -f "${web_detective_vote_retry}" ]] || fail "missing canonical Web detective-vote retry helper"
 
 rg -q --fixed-strings "\"id\": \"${canonical_app_id}\"" "${root_app_config}" \
   || fail "repository is not linked to the canonical SpyClash Base44 app"
@@ -123,6 +153,93 @@ for field in intro_started_at game_started_at game_duration_seconds game_paused_
   rg -q --fixed-strings "${field}" "${ios_model}" || fail "iOS model is missing ${field}"
   rg -q --fixed-strings "${field}" "${web_root}/src" || fail "Web is missing ${field}"
 done
+
+# Timer expiry and detective exclusion are one shared server-owned contract.
+# Guard every shipped client against silently restoring the retired 30-second
+# guess phase or the old plurality/majority exclusion rule.
+if rg -n 'POST_GAME_GUESS_SECONDS|postGameGuessSecondsRemaining|guessRemainingSeconds' \
+  "${backend}" \
+  "${backend_timer_policy}" \
+  "${backend_result_policy}" \
+  "${ios_model}" \
+  "${ios_game_view}" \
+  "${ios_online_experience}" \
+  "${web_game_page}" \
+  "${web_local_game_page}" \
+  "${web_game_sync}" \
+  "${web_local_game_rules}"; then
+  fail "retired post-game guess grace was reintroduced"
+fi
+
+rg -q --fixed-strings 'return "spy";' "${backend_result_policy}" \
+  || fail "backend does not award the spy at the authoritative timer deadline"
+rg -q --fixed-strings 'previewRoom.winner = "spy"' "${ios_game_view}" \
+  || fail "iOS preview does not award the spy at timer zero"
+rg -q --fixed-strings 'LocalGameDeadlinePolicy.outcome' "${ios_local_game_view}" \
+  || fail "iOS local game does not route timer zero through the deadline policy"
+rg -q --fixed-strings 'finishLocalGameAtDeadline()' "${ios_local_game_view}" \
+  || fail "iOS local game does not finish at timer zero"
+rg -q --fixed-strings 'winner = .spy' "${ios_local_game_view}" \
+  || fail "iOS local game does not award the spy at timer zero"
+if rg -n 'beginSpyGuess\(' "${ios_local_game_view}"; then
+  fail "iOS local game reintroduced the retired post-deadline guess transition"
+fi
+rg -q --fixed-strings 'winner: "spy"' "${web_local_game_rules}" \
+  || fail "Web local game does not award the spy at timer zero"
+
+rg -q --fixed-strings 'activeEmails.length - 1' "${backend_vote_policy}" \
+  || fail "backend detective exclusion is not pinned to N-1"
+rg -q --fixed-strings 'reconcileDetectiveVoteCastAfterActiveIdentityLease' "${backend}" \
+  || fail "backend does not reconcile detective votes after lifecycle lease contention"
+rg -q --fixed-strings 'var exclusionVoteThreshold' "${ios_model}" \
+  || fail "iOS does not expose the N-1 detective exclusion threshold"
+rg -q --fixed-strings 'Math.max(activePlayers.length - 1, 0)' "${web_online_presentation}" \
+  || fail "Web does not expose the N-1 detective exclusion threshold"
+
+# Every detective ballot is bound to one server-issued round. The room
+# projection and both clients must preserve that identity through conflict
+# recovery, including the server's pending-terminal reconciliation signal.
+rg -q --fixed-strings '"detective_vote_round_id": {' "${game_room_entity}" \
+  || fail "GameRoom entity is missing detective_vote_round_id"
+
+rg -q --fixed-strings 'room?.detective_vote_round_id' "${backend}" \
+  || fail "backend does not bind detective votes to detective_vote_round_id"
+rg -q --fixed-strings 'body?.expected_vote_round_id' "${backend}" \
+  || fail "backend does not validate expected_vote_round_id"
+rg -q --fixed-strings 'code: "terminal_reconciliation_pending"' "${backend}" \
+  || fail "backend does not expose terminal_reconciliation_pending"
+rg -q --fixed-strings 'detective_vote_round_id: clean(room.detective_vote_round_id)' \
+  "${backend_room_projection}" \
+  || fail "room projection omits detective_vote_round_id"
+rg -q --fixed-strings 'terminal_reconciliation_pending: terminalReconciliationPending(room)' \
+  "${backend_room_projection}" \
+  || fail "room projection omits terminal_reconciliation_pending"
+
+rg -q --fixed-strings 'case detectiveVoteRoundID = "detective_vote_round_id"' "${ios_model}" \
+  || fail "iOS model is missing detective_vote_round_id"
+rg -q --fixed-strings 'case terminalReconciliationPending = "terminal_reconciliation_pending"' \
+  "${ios_model}" \
+  || fail "iOS model is missing terminal_reconciliation_pending"
+rg -q --fixed-strings 'case expectedDetectiveVoteRoundID = "expected_vote_round_id"' "${ios_client}" \
+  || fail "iOS client payload is missing expected_vote_round_id"
+rg -q --fixed-strings 'expectedVoteRoundID: castScope.voteRoundID' "${ios_game_view}" \
+  || fail "iOS GameView does not send the active detective vote round"
+rg -q --fixed-strings 'authoritative.terminalReconciliationPending == true' "${ios_game_view}" \
+  || fail "iOS GameView does not handle terminal_reconciliation_pending"
+
+rg -q --fixed-strings 'room?.detective_vote_round_id' "${web_detective_vote_retry}" \
+  || fail "Web detective-vote helper is missing detective_vote_round_id"
+rg -q --fixed-strings 'room?.terminal_reconciliation_pending === true' \
+  "${web_detective_vote_retry}" \
+  || fail "Web detective-vote helper does not handle terminal_reconciliation_pending"
+rg -q --fixed-strings 'recoverDetectiveVoteCastConflict' "${web_detective_vote_retry}" "${web_game_page}" \
+  || fail "Web Game is not wired to detective-vote conflict recovery"
+rg -q --fixed-strings 'currentRoom.detective_vote_round_id' "${web_game_page}" \
+  || fail "Web Game does not read detective_vote_round_id"
+rg -q --fixed-strings 'expected_vote_round_id: voteRoundID' "${web_game_page}" \
+  || fail "Web Game does not send expected_vote_round_id"
+rg -q --fixed-strings 'expected_vote_round_id: expectedVoteRoundID' "${web_game_page}" \
+  || fail "Web detective-vote retry does not preserve expected_vote_round_id"
 
 rg -q --fixed-strings '/functions/gameRoomAction' "${web_root}/src/lib/gameRoomActions.js" \
   || fail "Web room transport is not routed through gameRoomAction"

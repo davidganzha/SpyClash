@@ -1,6 +1,41 @@
 import Foundation
 import SwiftUI
 
+enum OnlineVoteIdentityPolicy {
+    static func candidates(
+        from activePlayers: [Player],
+        currentUserEmail: String?,
+        eliminatedEmails: [String]
+    ) -> [Player] {
+        let currentUser = normalized(currentUserEmail)
+        let eliminated = Set(eliminatedEmails.compactMap(normalized))
+
+        return activePlayers.filter { player in
+            guard let candidate = normalized(player.email) else { return false }
+            return candidate != currentUser && !eliminated.contains(candidate)
+        }
+    }
+
+    static func currentUserVote(
+        in votes: [VoteRecord],
+        currentUserEmail: String?
+    ) -> VoteRecord? {
+        guard let currentUser = normalized(currentUserEmail) else { return nil }
+        return votes.first { normalized($0.voterEmail) == currentUser }
+    }
+
+    static func matches(_ left: String?, _ right: String?) -> Bool {
+        guard let left = normalized(left), let right = normalized(right) else { return false }
+        return left == right
+    }
+
+    private static func normalized(_ email: String?) -> String? {
+        guard let email else { return nil }
+        let normalized = email.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        return normalized.isEmpty ? nil : normalized
+    }
+}
+
 // MARK: - Shared online role card
 
 enum MissionRoleCardContent: Equatable {
@@ -1286,10 +1321,10 @@ struct OnlineActiveGameScene: View {
         let timer = OnlineTimerSnapshot(room: room, now: date)
 
         return VStack(spacing: 6) {
-            Text(copy.playingRound(max(room.roundNumber ?? 1, 1)))
+            Text(timer.isExpired ? copy.spyWinsAtDeadline : copy.playingRound(max(room.roundNumber ?? 1, 1)))
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .tracking(2.4)
-                .foregroundStyle(SpyTheme.dim)
+                .foregroundStyle(timer.isExpired ? SpyTheme.red : SpyTheme.dim)
 
             Text(timer.formatted)
                 .font(SpyTheme.brandFont(size: 58))
@@ -1660,10 +1695,31 @@ struct OnlineActiveGameScene: View {
                 .tracking(1.2)
                 .foregroundStyle(.white)
 
+            VStack(spacing: 3) {
+                Text(
+                    copy.exclusionRequirement(
+                        required: room.exclusionVoteThreshold,
+                        total: room.activePlayers.count
+                    )
+                )
+                .foregroundStyle(SpyTheme.red)
+
+                Text(copy.impossibleVoteCancels)
+                    .foregroundStyle(SpyTheme.dim)
+            }
+            .font(.system(size: 8, weight: .bold, design: .monospaced))
+            .tracking(0.8)
+            .multilineTextAlignment(.center)
+            .lineLimit(2)
+            .minimumScaleFactor(0.64)
+
             ScrollView(.vertical, showsIndicators: votingCandidates.count > 6) {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ForEach(votingCandidates) { candidate in
-                    let selected = myVote?.votedForEmail == candidate.email
+                    let selected = OnlineVoteIdentityPolicy.matches(
+                        myVote?.votedForEmail,
+                        candidate.email
+                    )
                     Button {
                         castVote(candidate.email)
                     } label: {
@@ -2025,15 +2081,18 @@ struct OnlineActiveGameScene: View {
     }
 
     private var votingCandidates: [Player] {
-        let eliminated = Set(room.eliminatedEmails ?? [])
-        return room.activePlayers.filter {
-            !eliminated.contains($0.email) && $0.email != currentUserEmail
-        }
+        OnlineVoteIdentityPolicy.candidates(
+            from: room.activePlayers,
+            currentUserEmail: currentUserEmail,
+            eliminatedEmails: room.eliminatedEmails ?? []
+        )
     }
 
     private var myVote: VoteRecord? {
-        guard let currentUserEmail else { return nil }
-        return room.detectiveVotesList.first { $0.voterEmail == currentUserEmail }
+        OnlineVoteIdentityPolicy.currentUserVote(
+            in: room.detectiveVotesList,
+            currentUserEmail: currentUserEmail
+        )
     }
 
     private func accessibilityKey(_ value: String) -> String {
@@ -2045,15 +2104,17 @@ struct OnlineActiveGameScene: View {
 
 // MARK: - Timing, accessibility, and copy
 
-private struct OnlineTimerSnapshot {
+struct OnlineTimerSnapshot {
     let remaining: TimeInterval
     let progress: CGFloat
+    let hasDeadline: Bool
 
     init(room: GameRoom, now: Date) {
         let duration = TimeInterval(max(room.gameDurationSeconds ?? 0, 0))
         guard duration > 0, let startedAt = OnlineExperienceClock.date(from: room.gameStartedAt) else {
             remaining = duration
             progress = duration > 0 ? 1 : 0
+            hasDeadline = false
             return
         }
 
@@ -2062,11 +2123,20 @@ private struct OnlineTimerSnapshot {
         let elapsed = max(referenceDate.timeIntervalSince(startedAt) - pausedTotal, 0)
         remaining = max(duration - elapsed, 0)
         progress = CGFloat(min(max(remaining / duration, 0), 1))
+        hasDeadline = true
     }
 
     var formatted: String {
-        let seconds = Int(ceil(remaining))
+        let seconds = displayedSeconds
         return String(format: "%02d:%02d", seconds / 60, seconds % 60)
+    }
+
+    var displayedSeconds: Int {
+        max(Int(ceil(remaining)), 0)
+    }
+
+    var isExpired: Bool {
+        hasDeadline && remaining <= 0
     }
 
     var isCritical: Bool {
@@ -2224,6 +2294,7 @@ private struct OnlineExperienceCopy {
         text("ASSOCIATIONS", "ASOCIACIONES", "АССОЦИАЦИИ") + "  \(spoken)/\(max(total, 0))"
     }
     var guessWord: String { text("GUESS THE WORD", "ADIVINAR PALABRA", "УГАДАТЬ СЛОВО") }
+    var spyWinsAtDeadline: String { text("TIME EXPIRED — SPY WINS", "TIEMPO AGOTADO — GANA EL ESPÍA", "ВРЕМЯ ВЫШЛО — ШПИОН ПОБЕДИЛ") }
     var startVote: String { text("START VOTE", "INICIAR VOTACIÓN", "НАЧАТЬ ГОЛОСОВАНИЕ") }
     func startVoteProgress(_ count: Int, _ threshold: Int) -> String {
         "\(startVote) \(min(max(count, 0), max(threshold, 0)))/\(max(threshold, 0))"
@@ -2235,6 +2306,22 @@ private struct OnlineExperienceCopy {
         "\(vote) \(min(max(count, 0), max(threshold, 0)))/\(max(threshold, 0))"
     }
     var guess: String { text("GUESS", "ADIVINAR", "УГАДАТЬ") }
+
+    func exclusionRequirement(required: Int, total: Int) -> String {
+        text(
+            "EXCLUSION REQUIRES \(required) OF \(total) VOTES FOR ONE SUSPECT",
+            "LA EXCLUSIÓN REQUIERE \(required) DE \(total) VOTOS POR UN SOSPECHOSO",
+            "ДЛЯ ИСКЛЮЧЕНИЯ НУЖНО \(required) ИЗ \(total) ГОЛОСОВ ЗА ОДНОГО ИГРОКА"
+        )
+    }
+
+    var impossibleVoteCancels: String {
+        text(
+            "THE SERVER CANCELS THE VOTE WHEN THAT RESULT BECOMES IMPOSSIBLE",
+            "EL SERVIDOR CANCELA LA VOTACIÓN CUANDO ESE RESULTADO YA ES IMPOSIBLE",
+            "СЕРВЕР ОТМЕНИТ ГОЛОСОВАНИЕ, КОГДА ТАКОЙ РЕЗУЛЬТАТ СТАНЕТ НЕВОЗМОЖЕН"
+        )
+    }
 
     var paused: String { text("PAUSED", "PAUSA", "ПАУЗА") }
     var timerStopped: String { text("THE TIMER IS STOPPED", "EL TEMPORIZADOR ESTÁ DETENIDO", "ТАЙМЕР ОСТАНОВЛЕН") }

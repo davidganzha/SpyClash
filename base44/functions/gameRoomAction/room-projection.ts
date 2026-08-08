@@ -10,6 +10,8 @@ import {
   lobbyRevision,
   type LobbyWordPoolEntry,
 } from "./lobby-state-policy.ts";
+import { terminalIntentFromRoom } from "./room-result-policy.ts";
+import { isDetectiveVotingActive } from "./detective-vote-policy.ts";
 
 function clean(value: unknown): string {
   return String(value ?? "").trim();
@@ -29,6 +31,17 @@ function safeObjectList(value: unknown): Record<string, unknown>[] {
   return Array.isArray(value)
     ? value.filter((item) => item && typeof item === "object")
     : [];
+}
+
+function terminalReconciliationPending(room: Record<string, any>): boolean {
+  if (clean(room?.status || "waiting").toLocaleLowerCase() === "finished") {
+    return false;
+  }
+  try {
+    return Boolean(terminalIntentFromRoom(room));
+  } catch {
+    return false;
+  }
 }
 
 type ProjectedLobbyState = {
@@ -156,6 +169,14 @@ export function projectRoomForClient(
     }))
     .filter((entry) => entry.word);
   const lobbyState = projectedLobbyState(room, viewer);
+  const projectedSpectators = safeEmailList(room.spectators);
+  const spectatorKeys = new Set(projectedSpectators.map(normalizedEmail));
+  const activeEmails = safeObjectList(room.players)
+    .map((player) => clean(player.email))
+    .filter((email) => email && !spectatorKeys.has(normalizedEmail(email)));
+  const persistedVoteRequests = safeEmailList(room.vote_requests);
+  const legacyUnscopedActiveVote = !clean(room.detective_vote_round_id) &&
+    isDetectiveVotingActive(activeEmails, persistedVoteRequests);
 
   return {
     id: clean(room.id),
@@ -168,7 +189,7 @@ export function projectRoomForClient(
       name: safeCommunityDisplayName(player.name),
       avatar: safeCommunityAvatar(player.avatar),
     })).filter((player) => player.email),
-    spectators: safeEmailList(room.spectators),
+    spectators: projectedSpectators,
     ready_players: safeEmailList(room.ready_players),
     cards_read: safeEmailList(room.cards_read),
     spy_email: revealSpyIdentity ? clean(room.spy_email) : "",
@@ -176,8 +197,12 @@ export function projectRoomForClient(
     secret_word: redacted ? "CLASSIFIED" : safeWord,
     category: safeCommunityTextForDisplay(room.category, "CLASSIC"),
     spy_guess: safeCommunityTextForDisplay(room.spy_guess, ""),
-    detective_votes: safeObjectList(room.detective_votes),
-    vote_requests: safeEmailList(room.vote_requests),
+    detective_votes: legacyUnscopedActiveVote
+      ? []
+      : safeObjectList(room.detective_votes),
+    vote_requests: legacyUnscopedActiveVote ? [] : persistedVoteRequests,
+    detective_vote_round_id: clean(room.detective_vote_round_id),
+    terminal_reconciliation_pending: terminalReconciliationPending(room),
     winner: clean(room.winner),
     round_number: Number(room.round_number || 1),
     current_asker_email: clean(room.current_asker_email),

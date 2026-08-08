@@ -49,6 +49,12 @@
     "spy_guess": { "type": "string" },
     "detective_votes": { "type": "array", "items": { "type": "object" } },
     "vote_requests": { "type": "array", "items": { "type": "string" } },
+    "detective_vote_round_id": {
+      "type": "string",
+      "maxLength": 128,
+      "default": "",
+      "description": "Server-issued identity for the currently active detective ballot; cleared atomically when that ballot settles."
+    },
     "winner": {
       "type": "string",
       "enum": ["detectives", "spy", ""],

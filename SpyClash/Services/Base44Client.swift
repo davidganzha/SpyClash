@@ -533,8 +533,18 @@ final class Base44Client {
         try await roomAction("request_vote", roomID: room.id)
     }
 
-    func castDetectiveVote(room: GameRoom, user: SpyUser, targetEmail: String) async throws -> GameRoom {
-        try await roomAction("cast_detective_vote", roomID: room.id, targetEmail: targetEmail)
+    func castDetectiveVote(
+        room: GameRoom,
+        user: SpyUser,
+        targetEmail: String,
+        expectedVoteRoundID: String
+    ) async throws -> GameRoom {
+        try await roomAction(
+            "cast_detective_vote",
+            roomID: room.id,
+            targetEmail: targetEmail,
+            expectedDetectiveVoteRoundID: expectedVoteRoundID
+        )
     }
 
     func submitSpyGuess(room: GameRoom, user: SpyUser, guess: String) async throws -> GameRoom {
@@ -1360,6 +1370,7 @@ final class Base44Client {
         targetEmail: String? = nil,
         guess: String? = nil,
         winner: String? = nil,
+        expectedDetectiveVoteRoundID: String? = nil,
         mutationID: String? = nil,
         expectedRevision: Int? = nil,
         state: LobbyStatePayload? = nil,
@@ -1383,6 +1394,7 @@ final class Base44Client {
             targetEmail: targetEmail,
             guess: guess,
             winner: winner,
+            expectedDetectiveVoteRoundID: expectedDetectiveVoteRoundID,
             mutationID: mutationID,
             expectedRevision: expectedRevision,
             state: state,
@@ -2050,6 +2062,7 @@ private struct GameRoomActionPayload: Encodable {
     let targetEmail: String?
     let guess: String?
     let winner: String?
+    let expectedDetectiveVoteRoundID: String?
     let mutationID: String?
     let expectedRevision: Int?
     let state: LobbyStatePayload?
@@ -2069,6 +2082,7 @@ private struct GameRoomActionPayload: Encodable {
         targetEmail: String? = nil,
         guess: String? = nil,
         winner: String? = nil,
+        expectedDetectiveVoteRoundID: String? = nil,
         mutationID: String? = nil,
         expectedRevision: Int? = nil,
         state: LobbyStatePayload? = nil,
@@ -2087,6 +2101,7 @@ private struct GameRoomActionPayload: Encodable {
         self.targetEmail = targetEmail
         self.guess = guess
         self.winner = winner
+        self.expectedDetectiveVoteRoundID = expectedDetectiveVoteRoundID
         self.mutationID = mutationID
         self.expectedRevision = expectedRevision
         self.state = state
@@ -2107,6 +2122,7 @@ private struct GameRoomActionPayload: Encodable {
         case targetEmail = "target_email"
         case guess
         case winner
+        case expectedDetectiveVoteRoundID = "expected_vote_round_id"
         case mutationID = "mutation_id"
         case expectedRevision = "expected_revision"
         case state

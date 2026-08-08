@@ -101,6 +101,63 @@ Deno.test("finished projection reveals the resolved spy and word", () => {
   assertEquals(projected.spy_email, "spy@example.com");
   assertEquals(projected.word, "Embassy");
   assertEquals(projected.secret_word, "Embassy");
+  assertEquals(projected.terminal_reconciliation_pending, false);
+});
+
+Deno.test("projection exposes only a boolean for pending terminal reconciliation", () => {
+  const projected = projectRoomForClient(
+    {
+      id: "room-1",
+      match_id: "match-1",
+      code: "ABC123",
+      status: "playing",
+      players: [{ email: "detective@example.com" }],
+      detective_vote_round_id: "round-a",
+      terminal_intent: {
+        match_id: "match-1",
+        winner: "detectives",
+        decided_at: "2026-08-08T12:00:00.000Z",
+        detective_votes: [{
+          voter_email: "detective@example.com",
+          voted_for_email: "spy@example.com",
+        }],
+      },
+    },
+    { email: "detective@example.com" },
+  );
+  assert(projected);
+  assertEquals(projected.terminal_reconciliation_pending, true);
+  assertEquals(projected.detective_vote_round_id, "round-a");
+  assertEquals("terminal_intent" in projected, false);
+});
+
+Deno.test("legacy active ballot without a round id projects inactive for safe reinitialization", () => {
+  const players = ["p1", "p2", "p3", "p4", "p5", "p6"].map((email) => ({
+    email,
+  }));
+  const activeLegacy = projectRoomForClient({
+    id: "room-1",
+    match_id: "match-1",
+    status: "playing",
+    players,
+    detective_vote_round_id: "",
+    vote_requests: ["p1", "p2", "p3", "p4"],
+    detective_votes: [{ voter_email: "p1", voted_for_email: "p2" }],
+  }, { email: "p1" });
+  assert(activeLegacy);
+  assertEquals(activeLegacy.vote_requests, []);
+  assertEquals(activeLegacy.detective_votes, []);
+
+  const preThreshold = projectRoomForClient({
+    id: "room-1",
+    match_id: "match-1",
+    status: "playing",
+    players,
+    detective_vote_round_id: "",
+    vote_requests: ["p1", "p2", "p3"],
+    detective_votes: [],
+  }, { email: "p1" });
+  assertEquals(preThreshold?.vote_requests, ["p1", "p2", "p3"]);
 });
 
 Deno.test("waiting lobby projection synchronizes the safe draft but keeps source identity host-only", () => {

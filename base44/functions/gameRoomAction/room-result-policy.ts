@@ -1,6 +1,4 @@
 import { gameActiveElapsedSeconds } from "./game-timer-policy.ts";
-
-const POST_GAME_GUESS_SECONDS = 30;
 export const ONLINE_GAME_INTRO_SECONDS = 8;
 
 type Room = Record<string, any>;
@@ -194,7 +192,7 @@ export function assertRankedTerminalRoom(
   room: Room,
   winnerValue: unknown,
 ): void {
-  const winner = normalizedWinner(winnerValue);
+  normalizedWinner(winnerValue);
   if (status(room) !== "finished") {
     throw invalidTerminal("Only a finished room can be archived.");
   }
@@ -478,22 +476,22 @@ export function preTimerMembershipTransitionPatch(
 
 /**
  * Legacy clients still send `finish_room` after the synchronized game timer.
- * The server ignores their claimed winner and derives the only permitted
- * timeout result from server-owned room timestamps.
+ * The server ignores their claimed winner. Reaching the authoritative 0:00
+ * boundary ends the match immediately in the spy's favour.
  */
 export function deriveExpiredGameWinner(
   room: Room,
   nowMilliseconds = Date.now(),
-): "detectives" {
+): "spy" {
   const { durationSeconds } = assertStartedRankedRoom(room);
   const activeElapsedSeconds = gameActiveElapsedSeconds(room, nowMilliseconds);
   if (
     !Number.isFinite(nowMilliseconds) ||
-    activeElapsedSeconds < durationSeconds + POST_GAME_GUESS_SECONDS
+    activeElapsedSeconds < durationSeconds
   ) {
     throw invalidTerminal("The server game deadline has not elapsed.");
   }
-  return "detectives";
+  return "spy";
 }
 
 export function rejectRetiredResultRecording(): never {

@@ -41,6 +41,7 @@ import {
   assertGameActionAllowedByDeadline,
   assertGameActionAllowedWhilePaused,
   finishGamePauseTransitionPatch,
+  hasGameTimerElapsed,
   pauseGameTransitionPatch,
   resumeGameTransitionPatch,
 } from "./game-timer-policy.ts";
@@ -77,6 +78,16 @@ import {
   roomWriteRevision,
   writeRoomWithCAS,
 } from "./room-write-cas.ts";
+import {
+  bindDetectiveVoteRoundIdentity,
+  canonicalDetectiveVotes,
+  detectiveVoteLeavePatch,
+  detectiveVoteRequestTransition,
+  isDetectiveVotingActive,
+  resolvedDetectiveVoteCastTransition,
+} from "./detective-vote-policy.ts";
+import { commitDetectiveVoteCastWithRetry } from "./detective-vote-write.ts";
+import { reconcileDetectiveVoteCastAfterActiveIdentityLease } from "./detective-vote-lease-recovery.ts";
 
 function jsonError(message, status = 400, details = {}) {
   const code = clean(details?.code);
@@ -131,6 +142,46 @@ function voteRequests(room) {
 
 function detectiveVotes(room) {
   return Array.isArray(room?.detective_votes) ? room.detective_votes : [];
+}
+
+function detectiveVoteRoundID(room) {
+  return clean(room?.detective_vote_round_id);
+}
+
+function explicitExpectedVoteRoundID(body) {
+  // `expected_vote_round_id` is canonical. The longer alias is accepted only
+  // during the rollout so an already-built client candidate is not stranded.
+  return clean(
+    body?.expected_vote_round_id || body?.expected_detective_vote_round_id,
+  );
+}
+
+function detectiveVotingActive(room) {
+  const activeEmails = activePlayers(room).map((player) => player.email);
+  return normalizedStatus(room) === "playing" &&
+    isDetectiveVotingActive(activeEmails, voteRequests(room));
+}
+
+function detectiveVoteCastEnteredActiveRound(
+  room,
+  actorEmailValue,
+  targetEmailValue,
+  explicitExpectedRoundIDValue,
+) {
+  if (!detectiveVotingActive(room)) return false;
+  const actorEmail = clean(actorEmailValue).toLocaleLowerCase();
+  const targetEmail = clean(targetEmailValue).toLocaleLowerCase();
+  if (!actorEmail || !targetEmail || actorEmail === targetEmail) return false;
+  const activeEmails = new Set(
+    activePlayers(room).map((player) =>
+      clean(player.email).toLocaleLowerCase()
+    ),
+  );
+  const currentRoundID = detectiveVoteRoundID(room);
+  const explicitExpectedRoundID = clean(explicitExpectedRoundIDValue);
+  return (!explicitExpectedRoundID ||
+    explicitExpectedRoundID === currentRoundID) &&
+    activeEmails.has(actorEmail) && activeEmails.has(targetEmail);
 }
 
 function readyPlayers(room) {
@@ -503,6 +554,7 @@ async function claimTerminalIntent(
     try {
       claimed = await updateRoom(base44, latest, {
         terminal_intent: intent,
+        detective_vote_round_id: "",
       }, { allowPendingTerminal: true });
     } catch (error) {
       if (isRoomWriteCASConflict(error) && attempt < attempts - 1) {
@@ -558,6 +610,7 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
     ...finishedPausePatch,
     status: "finished",
     winner: claimed.intent.winner,
+    detective_vote_round_id: "",
     game_finished_event_id: finishedEventID,
   };
   // The immutable CAS-claimed terminal intent is persisted first. A retry can
@@ -588,6 +641,9 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
         }
         return {
           ...pausePatch,
+          ...(detectiveVoteRoundID(latest)
+            ? { detective_vote_round_id: "" }
+            : {}),
           ...(clean(latest.game_finished_event_id) === finishedEventID
             ? {}
             : { game_finished_event_id: finishedEventID }),
@@ -598,6 +654,7 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
         ...pausePatch,
         status: "finished",
         winner: intent.winner,
+        detective_vote_round_id: "",
         game_finished_event_id: finishedEventID,
       };
     },
@@ -660,6 +717,7 @@ async function createRoom(base44, user, body) {
     game_paused_at: null,
     game_paused_total_seconds: 0,
     ready_players: [],
+    detective_vote_round_id: "",
     winner: "",
   });
   return created;
@@ -828,6 +886,7 @@ async function resetRoomForReplay(base44, room, user, body) {
     category: "",
     spy_guess: "",
     detective_votes: [],
+    detective_vote_round_id: "",
     winner: "",
     cards_read: [],
     vote_requests: [],
@@ -1089,6 +1148,7 @@ async function completeGameStart(base44, room, user) {
     cards_read: [],
     vote_requests: [],
     detective_votes: [],
+    detective_vote_round_id: "",
     spectators: [],
     eliminated_emails: [],
     winner: "",
@@ -1352,12 +1412,24 @@ async function requestVote(base44, room, user) {
     base44,
     room,
     (latest) => {
-      const requests = voteRequests(latest);
-      return requests.includes(user.email)
-        ? {}
-        : { vote_requests: uniqueStrings([...requests, user.email]) };
+      const transition = detectiveVoteRequestTransition(
+        activePlayers(latest).map((player) => player.email),
+        voteRequests(latest),
+        user.email,
+        detectiveVoteRoundID(latest),
+        () => crypto.randomUUID(),
+      );
+      return transition.patch;
     },
-    (latest) => voteRequests(latest).includes(user.email),
+    (latest) => {
+      const requested = voteRequests(latest).some((email) =>
+        clean(email).toLocaleLowerCase() ===
+          clean(user.email).toLocaleLowerCase()
+      );
+      return requested &&
+        (!detectiveVotingActive(latest) ||
+          Boolean(detectiveVoteRoundID(latest)));
+    },
   );
 }
 
@@ -1365,6 +1437,37 @@ async function castDetectiveVote(base44, room, user, body) {
   requirePlayer(room, user);
   const active = activePlayers(room);
   const targetEmail = clean(body?.target_email);
+  const explicitExpectedRoundID = explicitExpectedVoteRoundID(body);
+  const serverCapturedRoundID = clean(body?.__server_vote_cast_round_id);
+  const boundRoundID = explicitExpectedRoundID || serverCapturedRoundID;
+  const requestStartedDuringThisVote =
+    body?.__server_vote_cast_started_active === true &&
+    clean(body?.__server_vote_cast_match_id) === clean(room?.match_id) &&
+    Boolean(boundRoundID);
+
+  if (shouldSpyWin(room)) {
+    return await finishRoom(base44, room, "spy");
+  }
+  if (!detectiveVotingActive(room)) {
+    if (normalizedStatus(room) === "playing" && hasGameTimerElapsed(room)) {
+      return await finishRoom(
+        base44,
+        room,
+        deriveExpiredGameWinner(room),
+      );
+    }
+    if (requestStartedDuringThisVote) {
+      // This request entered while the same match's vote was active, then
+      // waited behind the room lifecycle lease while another final cast
+      // atomically cancelled or resolved it. Return that authoritative room;
+      // a genuinely later stale request never receives this server-owned hint.
+      return room;
+    }
+    throw Object.assign(new Error("Detective voting is no longer active"), {
+      status: 409,
+      code: "detective_vote_inactive",
+    });
+  }
 
   if (!active.some((player) => player.email === user.email)) {
     throw Object.assign(new Error("Spectators cannot vote"), { status: 403 });
@@ -1383,75 +1486,107 @@ async function castDetectiveVote(base44, room, user, body) {
     });
   }
 
-  if (shouldSpyWin(room)) {
-    return await finishRoom(base44, room, "spy");
-  }
-
-  const votedRoom = await updateRoomWithRetry(
-    base44,
-    room,
-    (latest) => {
-      const votes = detectiveVotes(latest).filter((vote) =>
-        vote.voter_email !== user.email
+  const votedRoom = await commitDetectiveVoteCastWithRetry({
+    initialRoom: room,
+    buildPatch: (latest) => {
+      if (normalizedStatus(latest) !== "playing") {
+        throw Object.assign(new Error("Detective voting is no longer active"), {
+          status: 409,
+          code: "detective_vote_inactive",
+        });
+      }
+      const roundBinding = bindDetectiveVoteRoundIdentity(
+        detectiveVoteRoundID(latest),
+        explicitExpectedRoundID,
+        serverCapturedRoundID,
+        detectiveVotingActive(latest),
       );
-      votes.push({ voter_email: user.email, voted_for_email: targetEmail });
-      return { detective_votes: votes };
+      assertGameActionAllowedWhilePaused(latest, "cast_detective_vote");
+      const nowMilliseconds = Date.now();
+      if (hasGameTimerElapsed(latest, nowMilliseconds)) {
+        const winner = deriveExpiredGameWinner(latest, nowMilliseconds);
+        return {
+          detective_votes: [],
+          vote_requests: [],
+          detective_vote_round_id: "",
+          terminal_intent: buildTerminalIntent(latest, winner),
+        };
+      }
+      assertGameActionAllowedByDeadline(
+        latest,
+        "cast_detective_vote",
+        nowMilliseconds,
+      );
+      const latestActiveEmails = activePlayers(latest).map((player) =>
+        player.email
+      );
+      const resolution = resolvedDetectiveVoteCastTransition(
+        latestActiveEmails,
+        voteRequests(latest),
+        detectiveVotes(latest),
+        user.email,
+        targetEmail,
+        latest.spy_email,
+        spectators(latest),
+        Array.isArray(latest?.eliminated_emails)
+          ? latest.eliminated_emails
+          : [],
+      );
+      const patch = { ...resolution.patch };
+      if (
+        roundBinding.initialize &&
+        resolution.decision.outcome === "continue" &&
+        !Object.prototype.hasOwnProperty.call(
+          patch,
+          "detective_vote_round_id",
+        )
+      ) {
+        patch.detective_vote_round_id = roundBinding.roundID;
+      }
+      if (resolution.terminal_winner) {
+        patch.terminal_intent = buildTerminalIntent(
+          { ...latest, ...patch },
+          resolution.terminal_winner,
+          resolution.terminal_patch,
+        );
+      }
+      return patch;
     },
-    (latest) =>
-      detectiveVotes(latest).some(
-        (vote) =>
-          vote.voter_email === user.email &&
-          vote.voted_for_email === targetEmail,
-      ),
-  );
-
-  const activeAfterVote = activePlayers(votedRoom);
-  const activeEmails = new Set(activeAfterVote.map((player) => player.email));
-  const votes = detectiveVotes(votedRoom).filter(
-    (vote) =>
-      activeEmails.has(vote.voter_email) &&
-      activeEmails.has(vote.voted_for_email),
-  );
-
-  if (votes.length < activeAfterVote.length) {
-    return votedRoom;
-  }
-
-  const counts = new Map();
-  for (const vote of votes) {
-    counts.set(
-      vote.voted_for_email,
-      (counts.get(vote.voted_for_email) || 0) + 1,
-    );
-  }
-
-  const accused = [...counts.entries()].sort((lhs, rhs) => {
-    if (lhs[1] === rhs[1]) return lhs[0].localeCompare(rhs[0]);
-    return rhs[1] - lhs[1];
-  })[0]?.[0];
-
-  if (accused === votedRoom.spy_email) {
-    return await finishRoom(base44, votedRoom, "detectives", {
-      detective_votes: votes,
-    });
-  }
-
-  const nextSpectators = spectators(votedRoom);
-  if (accused && !nextSpectators.includes(accused)) {
-    nextSpectators.push(accused);
-  }
-
-  const updated = await updateRoom(base44, votedRoom, {
-    detective_votes: [],
-    vote_requests: [],
-    spectators: nextSpectators,
+    write: (latest, patch) => updateRoom(base44, latest, patch),
+    read: (roomID) => fetchRoom(base44, roomID),
+    isConflict: isRoomWriteCASConflict,
+    isSettledAfterConflict: (latest) => {
+      if (
+        normalizedStatus(latest) === "finished" ||
+        pendingTerminalIntent(latest)
+      ) {
+        return true;
+      }
+      const latestRoundID = detectiveVoteRoundID(latest);
+      if (latestRoundID && latestRoundID !== boundRoundID) return false;
+      // A concurrent cancellation/ejection is settled before the deadline.
+      // At/after 0:00 this request must instead retry and atomically persist the
+      // spy terminal, never return a merely closed playing room.
+      if (hasGameTimerElapsed(latest)) return false;
+      const latestActiveEmails = activePlayers(latest).map((player) =>
+        player.email
+      );
+      const latestVotes = canonicalDetectiveVotes(
+        latestActiveEmails,
+        detectiveVotes(latest),
+      );
+      return !isDetectiveVotingActive(
+        latestActiveEmails,
+        voteRequests(latest),
+      ) && latestVotes.length === 0;
+    },
+    delay,
   });
 
-  if (shouldSpyWin(updated)) {
-    return await finishRoom(base44, updated, "spy");
-  }
-
-  return updated;
+  const terminal = pendingTerminalIntent(votedRoom);
+  return terminal
+    ? await finishRoom(base44, votedRoom, terminal.winner)
+    : votedRoom;
 }
 
 async function submitSpyGuess(base44, room, user, body) {
@@ -1489,6 +1624,13 @@ async function leaveRoom(base44, room, user, options = {}) {
     room,
     (latest) => {
       const leavingEmail = clean(user.email).toLocaleLowerCase();
+      const leavingVotePatch = detectiveVoteLeavePatch(
+        activePlayers(latest).map((player) => player.email),
+        voteRequests(latest),
+        detectiveVotes(latest),
+        user.email,
+        detectiveVoteRoundID(latest),
+      );
       const nextPlayers = players(latest).filter((player) =>
         clean(player.email).toLocaleLowerCase() !== leavingEmail
       );
@@ -1515,14 +1657,7 @@ async function leaveRoom(base44, room, user, options = {}) {
         eliminated_emails: uniqueStrings(latest?.eliminated_emails).filter((
           email,
         ) => clean(email).toLocaleLowerCase() !== leavingEmail),
-        vote_requests: voteRequests(latest).filter((email) =>
-          clean(email).toLocaleLowerCase() !== leavingEmail
-        ),
-        detective_votes: detectiveVotes(latest).filter(
-          (vote) =>
-            clean(vote.voter_email).toLocaleLowerCase() !== leavingEmail &&
-            clean(vote.voted_for_email).toLocaleLowerCase() !== leavingEmail,
-        ),
+        ...leavingVotePatch,
         player_feedback:
           (Array.isArray(latest?.player_feedback) ? latest.player_feedback : [])
             .filter((feedback) =>
@@ -1726,7 +1861,13 @@ async function executeRoomAction(base44, action, room, user, body) {
   }
 
   assertGameActionAllowedWhilePaused(room, action);
-  assertGameActionAllowedByDeadline(room, action);
+  // A cast owns a dedicated CAS retry. It rechecks the deadline against every
+  // refreshed revision and persists a spy terminal if that retry crosses 0:00.
+  // Checking only this pre-retry snapshot could either surface a false 409 or
+  // allow a later refreshed vote to claim detectives after the deadline.
+  if (action !== "cast_detective_vote") {
+    assertGameActionAllowedByDeadline(room, action);
+  }
 
   switch (action) {
     case "join_room":
@@ -1970,8 +2111,36 @@ Deno.serve(async (req) => {
 
     if (action !== "join_room") requirePlayer(room, user);
 
+    // Capture whether this exact server request entered during an active vote
+    // before it can wait behind lifecycle leases. Client-supplied values are
+    // overwritten, so only a genuinely concurrent request can reconcile a
+    // vote that another final cast settles while this request is waiting.
+    const actionBody = action === "cast_detective_vote"
+      ? (() => {
+        const explicitRoundID = explicitExpectedVoteRoundID(body);
+        const enteredActiveRound = detectiveVoteCastEnteredActiveRound(
+          room,
+          user.email,
+          body?.target_email,
+          explicitRoundID,
+        );
+        const currentRoundID = detectiveVoteRoundID(room);
+        return {
+          ...body,
+          __server_vote_cast_started_active: enteredActiveRound,
+          __server_vote_cast_match_id: clean(room.match_id),
+          // Legacy clients omit the expected id. An already-active room from
+          // before this field existed is lazily assigned one; the same captured
+          // value is committed with the cast CAS or invalidated by a winner.
+          __server_vote_cast_round_id: currentRoundID ||
+            (enteredActiveRound && !explicitRoundID ? crypto.randomUUID() : ""),
+        };
+      })()
+      : body;
+
     const fastRoomAction = canUseFastRoomAction(action, room, user);
     const startedAt = performance.now();
+    let readOnlyCastLeaseRecovery = false;
     let result;
     if (fastRoomAction) {
       base44.__spyclashFastRoomWriteContext = true;
@@ -1981,7 +2150,7 @@ Deno.serve(async (req) => {
           action,
           room,
           user,
-          body,
+          actionBody,
           { allowSignalCreate: false },
         );
       } finally {
@@ -2060,7 +2229,7 @@ Deno.serve(async (req) => {
                   action,
                   migratedRoom,
                   user,
-                  body,
+                  actionBody,
                 );
               } finally {
                 delete base44.__spyclashRoomWriteLeaseContext;
@@ -2069,6 +2238,27 @@ Deno.serve(async (req) => {
           });
         },
       }).catch((error) => {
+        if (action === "cast_detective_vote") {
+          return reconcileDetectiveVoteCastAfterActiveIdentityLease({
+            action,
+            error,
+            requestEnteredActiveVote:
+              actionBody?.__server_vote_cast_started_active === true,
+            expectedMatchID: actionBody?.__server_vote_cast_match_id,
+            expectedRoundID: explicitExpectedVoteRoundID(actionBody) ||
+              actionBody?.__server_vote_cast_round_id,
+            actorEmail: user.email,
+            targetEmail: actionBody?.target_email,
+            refetch: () => fetchRoom(base44, room.id),
+            assertParticipant: (candidate) => requirePlayer(candidate, user),
+            delay,
+          }).then((recoveredRoom) => {
+            // Reconciliation only observes the competing leased writer. Do not
+            // fan out or invoke push functions from this unleased request.
+            readOnlyCastLeaseRecovery = true;
+            return recoveredRoom;
+          });
+        }
         if (action === "complete_game_start") {
           return reconcileCommittedGameStartAfterActiveIdentityLease({
             action,
@@ -2117,7 +2307,9 @@ Deno.serve(async (req) => {
         room_revision: roomWriteRevision(result),
       });
     }
-    if (result?.id) await dispatchRoomPushBestEffort(base44, result, action);
+    if (result?.id && !readOnlyCastLeaseRecovery) {
+      await dispatchRoomPushBestEffort(base44, result, action);
+    }
     return Response.json(result?.id ? roomForClient(result, user) : result);
   } catch (error) {
     const status = lifecycleHTTPStatus(error);

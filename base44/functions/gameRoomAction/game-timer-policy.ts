@@ -139,7 +139,6 @@ export function assertGameActionAllowedByDeadline(
   room: Room,
   actionValue: unknown,
   nowMilliseconds = Date.now(),
-  postGameGuessSeconds = 30,
 ): void {
   if (
     clean(room?.status || "waiting").toLocaleLowerCase() !== "playing" ||
@@ -154,12 +153,6 @@ export function assertGameActionAllowedByDeadline(
   const elapsedSeconds = gameActiveElapsedSeconds(room, nowMilliseconds);
   if (elapsedSeconds < state.durationSeconds) return;
 
-  if (
-    action === "submit_spy_guess" &&
-    elapsedSeconds < state.durationSeconds + Math.max(0, postGameGuessSeconds)
-  ) {
-    return;
-  }
   if (["finalize_expired_room", "finish_room", "leave_room"].includes(action)) {
     return;
   }
@@ -169,6 +162,22 @@ export function assertGameActionAllowedByDeadline(
     409,
     "game_timer_elapsed",
   );
+}
+
+export function hasGameTimerElapsed(
+  room: Room,
+  nowMilliseconds = Date.now(),
+): boolean {
+  if (
+    clean(room?.status || "waiting").toLocaleLowerCase() !== "playing" ||
+    !clean(room?.game_started_at) ||
+    clean(room?.game_paused_at)
+  ) {
+    return false;
+  }
+  const state = timerState(room);
+  return gameActiveElapsedSeconds(room, nowMilliseconds) >=
+    state.durationSeconds;
 }
 
 export function gameActiveElapsedSeconds(

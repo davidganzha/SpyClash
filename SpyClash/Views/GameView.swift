@@ -77,6 +77,399 @@ enum LobbyStartGate {
     }
 }
 
+struct OnlineRoomMatchScope: Equatable {
+    let roomID: String
+    let matchID: String?
+    let gameStartedAt: String
+
+    init?(room: GameRoom) {
+        let roomID = Self.clean(room.id)
+        let gameStartedAt = Self.clean(room.gameStartedAt)
+        guard !roomID.isEmpty, !gameStartedAt.isEmpty else { return nil }
+        self.roomID = roomID
+        self.matchID = Self.optionalClean(room.matchID)
+        self.gameStartedAt = gameStartedAt
+    }
+
+    func matches(_ room: GameRoom) -> Bool {
+        Self.clean(room.id) == roomID &&
+            Self.optionalClean(room.matchID) == matchID &&
+            Self.clean(room.gameStartedAt) == gameStartedAt
+    }
+
+    private static func clean(_ value: String?) -> String {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+
+    private static func optionalClean(_ value: String?) -> String? {
+        let cleaned = clean(value)
+        return cleaned.isEmpty ? nil : cleaned
+    }
+}
+
+enum OnlineAuthoritativeRoomPolicy {
+    static func canAdopt(
+        candidate: GameRoom,
+        over current: GameRoom,
+        scope: OnlineRoomMatchScope
+    ) -> Bool {
+        scope.matches(current) &&
+            scope.matches(candidate) &&
+            RoomPollPolicy.acceptsSnapshot(
+                currentLobbyRevision: revision(of: current),
+                fetchedLobbyRevision: revision(of: candidate)
+            )
+    }
+
+    private static func revision(of room: GameRoom) -> Int? {
+        room.roomRevision ?? room.lobbyRevision
+    }
+}
+
+enum ExpiredRoomFinalizationCandidateDisposition: Equatable {
+    case adopt
+    case retryCurrent
+    case stop
+}
+
+enum ExpiredRoomFinalizationRetryPolicy {
+    /// The first attempt is immediate. Retry delay ramps across the first
+    /// failures, then stays capped so a recoverable outage cannot leave the
+    /// scoped room permanently parked at 0:00.
+    static let retryDelaysMilliseconds = [250, 500, 1_000, 2_000, 4_000, 6_000, 8_000]
+    static let warningAfterFailedAttempts = retryDelaysMilliseconds.count
+
+    static func delayMilliseconds(afterFailedAttempt failedAttempt: Int) -> Int {
+        let index = min(max(failedAttempt, 0), retryDelaysMilliseconds.count - 1)
+        return retryDelaysMilliseconds[index]
+    }
+
+    static func canAttempt(
+        scope: OnlineRoomMatchScope,
+        room: GameRoom,
+        now: Date
+    ) -> Bool {
+        scope.matches(room) &&
+            room.normalizedStatus == "playing" &&
+            !room.isGamePaused &&
+            OnlineTimerSnapshot(room: room, now: now).isExpired
+    }
+
+    static func disposition(
+        for candidate: GameRoom,
+        over current: GameRoom,
+        scope: OnlineRoomMatchScope,
+        now: Date
+    ) -> ExpiredRoomFinalizationCandidateDisposition {
+        if OnlineAuthoritativeRoomPolicy.canAdopt(
+            candidate: candidate,
+            over: current,
+            scope: scope
+        ) {
+            return .adopt
+        }
+        return canAttempt(scope: scope, room: current, now: now)
+            ? .retryCurrent
+            : .stop
+    }
+
+    static func isRetryable(_ error: Error) -> Bool {
+        if RequestCancellationPolicy.isCancellation(error) { return false }
+        if LobbySyncRetryPolicy.isRetryable(error) { return true }
+        guard let base44Error = error as? Base44Error,
+              base44Error.statusCode == 409 else { return false }
+
+        let code = base44Error.code?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        if let code, [
+            "active_lease",
+            "cas_contention",
+            "room_write_unverified",
+            "terminal_intent_conflict",
+            "terminal_intent_changed",
+            "terminal_state_conflict",
+            "terminal_reconciliation_pending"
+        ].contains(code) {
+            return true
+        }
+
+        let message = base44Error.message.lowercased()
+        return code == "invalid_ranked_terminal" &&
+            message.contains("deadline has not elapsed")
+    }
+}
+
+enum DetectiveVoteResponseTransition: Equatable {
+    case recorded
+    case cancelled
+}
+
+enum DetectiveVoteResponsePolicy {
+    static func classify(
+        previous: GameRoom,
+        authoritative: GameRoom
+    ) -> DetectiveVoteResponseTransition {
+        guard let scope = OnlineRoomMatchScope(room: previous),
+              scope.matches(authoritative),
+              previous.isVotingActive,
+              authoritative.normalizedStatus == "playing",
+              normalized(authoritative.winner).isEmpty,
+              activePlayerEmails(previous) == activePlayerEmails(authoritative),
+              authoritative.voteRequestsList.isEmpty,
+              authoritative.detectiveVotesList.isEmpty else {
+            return .recorded
+        }
+        return .cancelled
+    }
+
+    static func shouldReconcileInactiveVote(_ error: Error) -> Bool {
+        guard let base44Error = error as? Base44Error,
+              base44Error.statusCode == 409 else { return false }
+        return normalized(base44Error.code) == "detective_vote_inactive"
+    }
+
+    private static func activePlayerEmails(_ room: GameRoom) -> Set<String> {
+        let spectators = Set(room.spectatorsList.map(normalized).filter { !$0.isEmpty })
+        return Set(
+            room.playersList
+                .map { normalized($0.email) }
+                .filter { !$0.isEmpty && !spectators.contains($0) }
+        )
+    }
+
+    private static func normalized(_ value: String?) -> String {
+        value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+    }
+}
+
+enum DetectiveVoteRoundChangedFeedback: Equatable {
+    case cancelled
+    case silent
+}
+
+enum DetectiveVoteRoundChangedPolicy {
+    static func shouldReconcile(action: String, error: Error) -> Bool {
+        guard action == "cast_detective_vote",
+              let base44Error = error as? Base44Error,
+              base44Error.statusCode == 409 else { return false }
+        return normalized(base44Error.code) == "detective_vote_round_changed"
+    }
+
+    static func feedback(
+        previous: GameRoom,
+        authoritative: GameRoom
+    ) -> DetectiveVoteRoundChangedFeedback {
+        DetectiveVoteResponsePolicy.classify(
+            previous: previous,
+            authoritative: authoritative
+        ) == .cancelled ? .cancelled : .silent
+    }
+
+    private static func normalized(_ value: String?) -> String {
+        value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+    }
+}
+
+struct DetectiveVoteCastScope: Equatable {
+    let room: OnlineRoomMatchScope
+    let actorEmail: String
+    let targetEmail: String
+    let voteRoundID: String
+
+    init?(room: GameRoom, actorEmail: String, targetEmail: String) {
+        guard let roomScope = OnlineRoomMatchScope(room: room) else { return nil }
+        let actor = Self.normalized(actorEmail)
+        let target = Self.normalized(targetEmail)
+        let voteRoundID = room.detectiveVoteRoundID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let activePlayers = Self.activePlayerEmails(room)
+        guard !actor.isEmpty,
+              !target.isEmpty,
+              !voteRoundID.isEmpty,
+              actor != target,
+              activePlayers.contains(actor),
+              activePlayers.contains(target) else { return nil }
+        self.room = roomScope
+        self.actorEmail = actorEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.targetEmail = targetEmail.trimmingCharacters(in: .whitespacesAndNewlines)
+        self.voteRoundID = voteRoundID
+    }
+
+    func matchesActor(_ email: String?) -> Bool {
+        Self.normalized(email) == Self.normalized(actorEmail)
+    }
+
+    func matchesVoteRound(_ candidate: GameRoom) -> Bool {
+        Self.normalized(candidate.detectiveVoteRoundID) == Self.normalized(voteRoundID)
+    }
+
+    func hasChangedVoteRound(_ candidate: GameRoom) -> Bool {
+        let candidateRound = Self.normalized(candidate.detectiveVoteRoundID)
+        return !candidateRound.isEmpty && candidateRound != Self.normalized(voteRoundID)
+    }
+
+    func hasMissingVoteRound(_ candidate: GameRoom) -> Bool {
+        Self.normalized(candidate.detectiveVoteRoundID).isEmpty
+    }
+
+    fileprivate var actorKey: String { Self.normalized(actorEmail) }
+    fileprivate var targetKey: String { Self.normalized(targetEmail) }
+
+    fileprivate static func activePlayerEmails(_ room: GameRoom) -> Set<String> {
+        let spectators = Set(room.spectatorsList.map(normalized).filter { !$0.isEmpty })
+        return Set(
+            room.playersList
+                .map { normalized($0.email) }
+                .filter { !$0.isEmpty && !spectators.contains($0) }
+        )
+    }
+
+    fileprivate static func normalized(_ value: String?) -> String {
+        value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+    }
+}
+
+enum DetectiveVoteConflictResolution: Equatable {
+    case persisted
+    case cancelled
+    case superseded
+    case ejected
+    case finished
+    case deadline
+    case retry
+    case reject
+}
+
+enum DetectiveVoteConflictRecoveryPolicy {
+    static let retryDelaysMilliseconds = [
+        250, 500, 1_000, 2_000, 4_000, 8_000, 8_000, 8_000
+    ]
+
+    static func delayMilliseconds(beforeRetry retry: Int) -> Int? {
+        guard retryDelaysMilliseconds.indices.contains(retry) else { return nil }
+        return retryDelaysMilliseconds[retry]
+    }
+
+    static func isRecoverableConflict(_ error: Error) -> Bool {
+        guard !RequestCancellationPolicy.isCancellation(error),
+              let base44Error = error as? Base44Error,
+              base44Error.statusCode == 409,
+              base44Error.retryable else { return false }
+        let code = DetectiveVoteCastScope.normalized(base44Error.code)
+        return code == "active_lease" || code == "cas_contention"
+    }
+
+    static func resolution(
+        previous: GameRoom,
+        authoritative: GameRoom,
+        cast: DetectiveVoteCastScope,
+        now: Date
+    ) -> DetectiveVoteConflictResolution {
+        guard cast.room.matches(previous),
+              cast.room.matches(authoritative),
+              cast.matchesVoteRound(previous) else { return .reject }
+        if cast.hasChangedVoteRound(authoritative) {
+            return .superseded
+        }
+
+        let status = authoritative.normalizedStatus
+        if ["finished", "ended"].contains(status) ||
+            !DetectiveVoteCastScope.normalized(authoritative.winner).isEmpty {
+            return .finished
+        }
+        if authoritative.terminalReconciliationPending == true {
+            return .retry
+        }
+        if status == "playing",
+           OnlineTimerSnapshot(room: authoritative, now: now).isExpired {
+            return .deadline
+        }
+
+        let previousActive = DetectiveVoteCastScope.activePlayerEmails(previous)
+        let authoritativeActive = DetectiveVoteCastScope.activePlayerEmails(authoritative)
+        if previousActive != authoritativeActive {
+            return .ejected
+        }
+
+        if DetectiveVoteResponsePolicy.classify(
+            previous: previous,
+            authoritative: authoritative
+        ) == .cancelled {
+            return .cancelled
+        }
+
+        if cast.hasMissingVoteRound(authoritative) {
+            return .superseded
+        }
+
+        guard cast.matchesVoteRound(authoritative) else { return .reject }
+        let actorVotes = authoritative.detectiveVotesList.filter {
+            DetectiveVoteCastScope.normalized($0.voterEmail) == cast.actorKey
+        }
+        if actorVotes.contains(where: {
+            DetectiveVoteCastScope.normalized($0.votedForEmail) == cast.targetKey
+        }) {
+            return .persisted
+        }
+
+        guard
+              status == "playing",
+              !authoritative.isGamePaused,
+              authoritative.isVotingActive,
+              authoritativeActive.contains(cast.actorKey),
+              authoritativeActive.contains(cast.targetKey),
+              actorVotes.isEmpty else { return .reject }
+        return .retry
+    }
+}
+
+enum DetectiveVoteDirectSuccessDisposition: Equatable {
+    case recorded
+    case cancelled
+    case adoptSilently
+    case reconcile
+}
+
+enum DetectiveVoteDirectSuccessPolicy {
+    static func disposition(
+        previous: GameRoom,
+        authoritative: GameRoom,
+        cast: DetectiveVoteCastScope,
+        now: Date
+    ) -> DetectiveVoteDirectSuccessDisposition {
+        switch DetectiveVoteConflictRecoveryPolicy.resolution(
+            previous: previous,
+            authoritative: authoritative,
+            cast: cast,
+            now: now
+        ) {
+        case .persisted:
+            return .recorded
+        case .cancelled:
+            return .cancelled
+        case .superseded, .ejected, .finished, .deadline:
+            return .adoptSilently
+        case .retry, .reject:
+            return .reconcile
+        }
+    }
+}
+
+private enum DetectiveVoteConflictReconciliationOutcome {
+    case resolved
+    case retry
+    case stop
+    case rejected
+    case failed(Error)
+}
+
 struct LobbySyncFeedbackSnapshot: Equatable {
     let roomID: String?
     let hasOptimisticChanges: Bool
@@ -216,7 +609,6 @@ struct GameView: View {
     @State private var isCastingVote = false
     @State private var isMarkingCardRead = false
     @State private var isTogglingGamePause = false
-    @State private var isFinalizingExpiredRoom = false
     @State private var isTogglingReady = false
     @State private var lobbyPackLoadState = RoomPackLoadState.idle
     @State private var isSubmittingSpyGuess = false
@@ -385,6 +777,10 @@ struct GameView: View {
                   !room.isGamePaused else { return }
             await finalizeExpiredRoomIfNeeded(room)
         }
+        .onChange(of: activeRoomIsTimeExpired, initial: true) { _, isExpired in
+            guard isExpired else { return }
+            showSpyGuess = false
+        }
         .onChange(of: activeLobbyPresentationSnapshot) { _, snapshot in
             guard let snapshot,
                   let room = appState.activeRoom,
@@ -435,7 +831,7 @@ struct GameView: View {
             appState.showToast(userFacingStatus(message) ?? message, kind: .error)
         }
         .sheet(isPresented: $showSpyGuess) {
-            if let room = appState.activeRoom {
+            if let room = appState.activeRoom, !isTimeExpired(room) {
                 SpyGuessSheet(
                     room: room,
                     isSubmitting: isSubmittingSpyGuess,
@@ -536,7 +932,24 @@ struct GameView: View {
         guard let room = appState.activeRoom,
               room.normalizedStatus == "playing",
               room.gameStartedAt != nil else { return "inactive" }
-        return "\(room.id)-\(room.gameStartedAt ?? "")-\(room.isGamePaused)-\(isTimeExpired(room))"
+        let isExpired = isTimeExpired(room)
+        let terminalRevision = isExpired
+            ? String(room.roomRevision ?? room.lobbyRevision ?? 0)
+            : ""
+        return [
+            room.id,
+            room.matchID ?? "",
+            room.gameStartedAt ?? "",
+            String(room.isGamePaused),
+            String(isExpired),
+            terminalRevision
+        ].joined(separator: "|")
+    }
+
+    private var activeRoomIsTimeExpired: Bool {
+        guard let room = appState.activeRoom,
+              room.normalizedStatus == "playing" else { return false }
+        return isTimeExpired(room)
     }
 
     private var isOnlineTextInputFocused: Bool {
@@ -723,6 +1136,7 @@ struct GameView: View {
                     Task { await castVote(room, targetEmail: targetEmail) }
                 },
                 onSpyGuess: {
+                    guard canCurrentUserGuess(room) else { return }
                     showSpyGuess = true
                     HapticManager.shared.fire(.buttonPress)
                 },
@@ -789,7 +1203,7 @@ struct GameView: View {
             !isSubmittingSpyGuess &&
             !room.enabledWordPool.isEmpty &&
             currentUserIsSpy(room) &&
-            (!isTimeExpired(room) || postGameGuessSecondsRemaining(room) > 0) &&
+            !isTimeExpired(room) &&
             !isCurrentUserSpectator(room)
     }
 
@@ -3142,7 +3556,11 @@ struct GameView: View {
 
     @ViewBuilder
     private func webEarlySpyGuessPanel(_ room: GameRoom) -> some View {
-        if currentUserIsSpy(room), revealRole, !isCurrentUserSpectator(room), !room.enabledWordPool.isEmpty {
+        if currentUserIsSpy(room),
+           revealRole,
+           !isCurrentUserSpectator(room),
+           !room.enabledWordPool.isEmpty,
+           !isTimeExpired(room) {
             SpyPanel(accent: SpyTheme.red) {
                 VStack(alignment: .leading, spacing: 12) {
                     Text(webEarlyGuessTitle)
@@ -3178,6 +3596,18 @@ struct GameView: View {
                     .tracking(0.02)
                     .foregroundStyle(room.isVotingActive ? SpyTheme.red : SpyTheme.dim)
                     .spyFitted(lines: 2, scale: 0.68)
+
+                if room.isVotingActive {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(exclusionVoteRule(room))
+                            .foregroundStyle(SpyTheme.red)
+                        Text(exclusionVoteCancellationHint)
+                            .foregroundStyle(SpyTheme.dim)
+                    }
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .lineLimit(3)
+                    .minimumScaleFactor(0.64)
+                }
 
                 if !room.isVotingActive {
                     Text(webVoteDescription(room))
@@ -3227,7 +3657,7 @@ struct GameView: View {
                         .spyFitted(lines: 3, scale: 0.62)
 
                     VStack(spacing: 8) {
-                        ForEach(room.activePlayers.filter { $0.email != appState.user?.email }) { candidate in
+                        ForEach(votingCandidates(in: room)) { candidate in
                             Button {
                                 HapticManager.shared.fire(.buttonPress)
                                 Task { await castVote(room, targetEmail: candidate.email) }
@@ -3253,6 +3683,16 @@ struct GameView: View {
                     .tracking(0.02)
                     .foregroundStyle(SpyTheme.dim)
                     .spyFitted(lines: 2, scale: 0.68)
+
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(exclusionVoteRule(room))
+                        .foregroundStyle(SpyTheme.red)
+                    Text(exclusionVoteCancellationHint)
+                        .foregroundStyle(SpyTheme.dim)
+                }
+                .font(.system(size: 10, weight: .bold, design: .monospaced))
+                .lineLimit(3)
+                .minimumScaleFactor(0.64)
 
                 VStack(spacing: 8) {
                     ForEach(room.activePlayers) { player in
@@ -3333,7 +3773,7 @@ struct GameView: View {
 
     private func legacyPlayingControls(_ room: GameRoom) -> some View {
         VStack(spacing: 10) {
-            if currentUserIsSpy(room), !room.enabledWordPool.isEmpty {
+            if currentUserIsSpy(room), !room.enabledWordPool.isEmpty, !isTimeExpired(room) {
                 Button {
                     HapticManager.shared.fire(.buttonPress)
                     showSpyGuess = true
@@ -4550,7 +4990,7 @@ struct GameView: View {
                     .tracking(0.12)
                     .foregroundStyle(expired ? SpyTheme.red : .white)
                     .contentTransition(.numericText())
-                Text(expired ? copy.callFinalVote : copy.timerHintLive)
+                Text(expired ? copy.spyWins : copy.timerHintLive)
                     .font(SpyTheme.micro)
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
@@ -4782,7 +5222,11 @@ struct GameView: View {
                         .foregroundStyle(SpyTheme.dim)
                         .spyFitted(scale: 0.70)
                     Spacer()
-                    Text("\(room.activeVoteRequests.count)/\(room.voteThreshold)")
+                    Text(
+                        room.isVotingActive
+                            ? "\(room.exclusionVoteThreshold)/\(room.activePlayers.count)"
+                            : "\(room.activeVoteRequests.count)/\(room.voteThreshold)"
+                    )
                         .font(SpyTheme.micro)
                         .tracking(0.12)
                         .foregroundStyle(SpyTheme.red)
@@ -4793,6 +5237,18 @@ struct GameView: View {
                     .tracking(0.04)
                     .foregroundStyle(.white)
                     .spyFitted(lines: 2, scale: 0.58)
+
+                if room.isVotingActive {
+                    VStack(alignment: .leading, spacing: 4) {
+                        Text(exclusionVoteRule(room))
+                            .foregroundStyle(SpyTheme.red)
+                        Text(exclusionVoteCancellationHint)
+                            .foregroundStyle(SpyTheme.dim)
+                    }
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.66)
+                }
 
                 if !room.isVotingActive {
                     Text(copy.requestVoteHint)
@@ -4809,7 +5265,7 @@ struct GameView: View {
                         .foregroundStyle(SpyTheme.green)
                         .spyFitted(lines: 2, scale: 0.68)
                 } else {
-                    ForEach(room.activePlayers) { candidate in
+                    ForEach(votingCandidates(in: room)) { candidate in
                         Button {
                             HapticManager.shared.fire(.buttonPress)
                             Task { await castVote(room, targetEmail: candidate.email) }
@@ -5198,7 +5654,7 @@ struct GameView: View {
 
     private func playingControls(_ room: GameRoom) -> some View {
         VStack(spacing: 12) {
-            if currentUserIsSpy(room), !room.enabledWordPool.isEmpty {
+            if currentUserIsSpy(room), !room.enabledWordPool.isEmpty, !isTimeExpired(room) {
                 Button {
                     HapticManager.shared.fire(.buttonPress)
                     showSpyGuess = true
@@ -6111,9 +6567,49 @@ struct GameView: View {
         }
     }
 
+    private func exclusionVoteRule(_ room: GameRoom) -> String {
+        localized(
+            en: "Exclusion requires \(room.exclusionVoteThreshold) of \(room.activePlayers.count) votes for one suspect.",
+            ru: "Для исключения нужно \(room.exclusionVoteThreshold) из \(room.activePlayers.count) голосов за одного игрока.",
+            es: "La exclusion requiere \(room.exclusionVoteThreshold) de \(room.activePlayers.count) votos por un sospechoso."
+        )
+    }
+
+    private var exclusionVoteCancellationHint: String {
+        localized(
+            en: "The server cancels the vote as soon as that result becomes impossible.",
+            ru: "Сервер отменит голосование, как только такой результат станет невозможен.",
+            es: "El servidor cancela la votacion en cuanto ese resultado sea imposible."
+        )
+    }
+
+    private var detectiveVoteCancelledStatus: String {
+        localized(
+            en: "VOTE CANCELLED — THE REQUIRED RESULT IS NO LONGER POSSIBLE",
+            ru: "ГОЛОСОВАНИЕ ОТМЕНЕНО — НУЖНЫЙ РЕЗУЛЬТАТ УЖЕ НЕВОЗМОЖЕН",
+            es: "VOTACION CANCELADA — EL RESULTADO REQUERIDO YA NO ES POSIBLE"
+        )
+    }
+
+    private var detectiveVoteSyncDelayedStatus: String {
+        localized(
+            en: "VOTE RESULT SYNC IS DELAYED",
+            ru: "СИНХРОНИЗАЦИЯ ИТОГА ГОЛОСОВАНИЯ ЗАДЕРЖИВАЕТСЯ",
+            es: "LA SINCRONIZACION DEL RESULTADO DE LA VOTACION SE RETRASA"
+        )
+    }
+
     private func player(for email: String?, in room: GameRoom) -> Player? {
         guard let email else { return nil }
         return room.playersList.first { $0.email == email }
+    }
+
+    private func votingCandidates(in room: GameRoom) -> [Player] {
+        let eliminated = Set((room.eliminatedEmails ?? []).map { $0.lowercased() })
+        return room.activePlayers.filter { player in
+            !eliminated.contains(player.email.lowercased()) &&
+                !emailsMatch(player.email, appState.user?.email)
+        }
     }
 
     private func compactPlayerName(_ name: String) -> String {
@@ -6190,32 +6686,14 @@ struct GameView: View {
     }
 
     private func remainingSeconds(_ room: GameRoom) -> Int {
-        guard let duration = room.gameDurationSeconds,
-              let elapsed = elapsedGameSeconds(room) else {
-            return room.gameDurationSeconds ?? 0
-        }
-        return max(0, duration - elapsed)
-    }
-
-    private func elapsedGameSeconds(_ room: GameRoom) -> Int? {
-        guard let started = room.gameStartedAt,
-              let startDate = parseDate(started) else { return nil }
-        let effectiveNow = room.gamePausedAt.flatMap(parseDate) ?? now
-        let pausedSeconds = max(room.gamePausedTotalSeconds ?? 0, 0)
-        return max(Int(effectiveNow.timeIntervalSince(startDate)) - pausedSeconds, 0)
-    }
-
-    private func postGameGuessSecondsRemaining(_ room: GameRoom) -> Int {
-        guard let duration = room.gameDurationSeconds,
-              let elapsed = elapsedGameSeconds(room) else { return 30 }
-        return max(30 - max(elapsed - duration, 0), 0)
+        let timer = OnlineTimerSnapshot(room: room, now: now)
+        return timer.hasDeadline
+            ? timer.displayedSeconds
+            : max(room.gameDurationSeconds ?? 0, 0)
     }
 
     private func isTimeExpired(_ room: GameRoom) -> Bool {
-        guard room.gameStartedAt != nil, room.gameDurationSeconds != nil else {
-            return false
-        }
-        return remainingSeconds(room) == 0
+        OnlineTimerSnapshot(room: room, now: now).isExpired
     }
 
     private func parseDate(_ raw: String) -> Date? {
@@ -7394,40 +7872,161 @@ struct GameView: View {
     }
 
     private func finalizeExpiredRoomIfNeeded(_ room: GameRoom) async {
-        guard room.normalizedStatus == "playing",
-              room.gameStartedAt != nil,
-              !room.isGamePaused,
-              isTimeExpired(room),
-              !isFinalizingExpiredRoom else { return }
+        guard let scope = OnlineRoomMatchScope(room: room),
+              ExpiredRoomFinalizationRetryPolicy.canAttempt(
+                  scope: scope,
+                  room: room,
+                  now: Date()
+              ) else { return }
 
         if appState.shouldUsePreviewData {
+            var previewRoom = room
+            previewRoom.status = "finished"
+            previewRoom.winner = "spy"
+            previewRoom.questionPhase = nil
+            guard let currentRoom = appState.activeRoom,
+                  OnlineAuthoritativeRoomPolicy.canAdopt(
+                      candidate: previewRoom,
+                      over: currentRoom,
+                      scope: scope
+                  ) else { return }
+            showSpyGuess = false
+            appState.activeRoom = previewRoom
+            HapticManager.shared.fire(.notification(.success))
             return
         }
 
-        isFinalizingExpiredRoom = true
-        defer { isFinalizingExpiredRoom = false }
-        do {
-            let graceSeconds = postGameGuessSecondsRemaining(room)
-            if graceSeconds > 0 {
-                try await Task.sleep(for: .seconds(graceSeconds))
+        var failedAttempt = 0
+        while true {
+            do {
+                try Task.checkCancellation()
+            } catch {
+                return
             }
-            guard !Task.isCancelled,
-                  let currentRoom = appState.activeRoom,
-                  currentRoom.id == room.id,
-                  currentRoom.normalizedStatus == "playing",
-                  !currentRoom.isGamePaused,
-                  isTimeExpired(currentRoom) else { return }
-            appState.activeRoom = try await appState.client.finalizeExpiredRoom(room: currentRoom)
-        } catch is CancellationError {
-            return
-        } catch {
-            // Another participant may have already committed the terminal state.
-            if let refreshed = try? await appState.client.refreshRoom(id: room.id) {
-                appState.activeRoom = refreshed
-            } else {
-                status = error.localizedDescription.uppercased()
+
+            guard let currentRoom = appState.activeRoom,
+                  ExpiredRoomFinalizationRetryPolicy.canAttempt(
+                      scope: scope,
+                      room: currentRoom,
+                      now: Date()
+                  ) else { return }
+
+            let actionFailure: Error
+            var shouldRefresh = true
+            do {
+                let updated = try await appState.client.finalizeExpiredRoom(room: currentRoom)
+                guard !Task.isCancelled,
+                      let activeRoom = appState.activeRoom else { return }
+                switch ExpiredRoomFinalizationRetryPolicy.disposition(
+                    for: updated,
+                    over: activeRoom,
+                    scope: scope,
+                    now: Date()
+                ) {
+                case .adopt:
+                    appState.activeRoom = updated
+                    guard ExpiredRoomFinalizationRetryPolicy.canAttempt(
+                        scope: scope,
+                        room: updated,
+                        now: Date()
+                    ) else { return }
+                case .retryCurrent:
+                    shouldRefresh = false
+                case .stop:
+                    return
+                }
+                actionFailure = Base44Error(
+                    message: "The terminal room state is still pending.",
+                    statusCode: 409,
+                    code: "terminal_reconciliation_pending",
+                    retryable: true
+                )
+            } catch {
+                guard !Task.isCancelled,
+                      !RequestCancellationPolicy.isCancellation(error) else { return }
+                actionFailure = error
+            }
+
+            if shouldRefresh {
+                do {
+                    if let refreshed = try await appState.client.refreshRoom(id: scope.roomID) {
+                        guard !Task.isCancelled,
+                              let activeRoom = appState.activeRoom else { return }
+                        switch ExpiredRoomFinalizationRetryPolicy.disposition(
+                            for: refreshed,
+                            over: activeRoom,
+                            scope: scope,
+                            now: Date()
+                        ) {
+                        case .adopt:
+                            appState.activeRoom = refreshed
+                            guard ExpiredRoomFinalizationRetryPolicy.canAttempt(
+                                scope: scope,
+                                room: refreshed,
+                                now: Date()
+                            ) else { return }
+                        case .retryCurrent:
+                            break
+                        case .stop:
+                            return
+                        }
+                    } else {
+                        guard let activeRoom = appState.activeRoom,
+                              ExpiredRoomFinalizationRetryPolicy.canAttempt(
+                                  scope: scope,
+                                  room: activeRoom,
+                                  now: Date()
+                              ) else { return }
+                    }
+                } catch {
+                    guard !Task.isCancelled,
+                          !RequestCancellationPolicy.isCancellation(error) else { return }
+                    if ExpiredRoomFinalizationRetryPolicy.isRetryable(actionFailure) {
+                        guard ExpiredRoomFinalizationRetryPolicy.isRetryable(error) else {
+                            presentExpiredRoomFinalizationFailure(error)
+                            return
+                        }
+                    }
+                }
+            }
+
+            guard ExpiredRoomFinalizationRetryPolicy.isRetryable(actionFailure) else {
+                presentExpiredRoomFinalizationFailure(actionFailure)
+                return
+            }
+            if failedAttempt == ExpiredRoomFinalizationRetryPolicy.warningAfterFailedAttempts {
+                presentExpiredRoomFinalizationDelay()
+            }
+            let delay = ExpiredRoomFinalizationRetryPolicy.delayMilliseconds(
+                afterFailedAttempt: failedAttempt
+            )
+            failedAttempt += 1
+            do {
+                try await Task.sleep(for: .milliseconds(delay))
+            } catch {
+                return
             }
         }
+    }
+
+    private func presentExpiredRoomFinalizationFailure(_ error: Error) {
+        appState.showToast(
+            userFacingStatus(error.localizedDescription) ?? error.localizedDescription,
+            kind: .error
+        )
+        HapticManager.shared.fire(.notification(.error))
+    }
+
+    private func presentExpiredRoomFinalizationDelay() {
+        appState.showToast(
+            localized(
+                en: "RESULT SYNC IS DELAYED. KEEP THE ROOM OPEN",
+                ru: "СИНХРОНИЗАЦИЯ РЕЗУЛЬТАТА ЗАДЕРЖИВАЕТСЯ. НЕ ЗАКРЫВАЙ КОМНАТУ",
+                es: "LA SINCRONIZACION DEL RESULTADO SE RETRASA. MANTEN LA SALA ABIERTA"
+            ),
+            kind: .warning
+        )
+        HapticManager.shared.fire(.notification(.warning))
     }
 
     private func requestVote(_ room: GameRoom) async {
@@ -7456,7 +8055,11 @@ struct GameView: View {
     private func castVote(_ room: GameRoom, targetEmail: String) async {
         guard !room.isGamePaused, !isTimeExpired(room) else { return }
         guard let user = appState.user else { return }
-        guard targetEmail.caseInsensitiveCompare(user.email) != .orderedSame else { return }
+        guard let castScope = DetectiveVoteCastScope(
+            room: room,
+            actorEmail: user.email,
+            targetEmail: targetEmail
+        ) else { return }
         if appState.shouldUsePreviewData {
             status = copy.voteLockedStatus
             HapticManager.shared.fire(.notification(.success))
@@ -7464,19 +8067,369 @@ struct GameView: View {
         }
         isCastingVote = true
         defer { isCastingVote = false }
+        var retry = 0
+        while true {
+            guard !Task.isCancelled,
+                  castScope.matchesActor(appState.user?.email),
+                  let activeRoom = appState.activeRoom,
+                  castScope.room.matches(activeRoom) else { return }
+
+            switch DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: room,
+                authoritative: activeRoom,
+                cast: castScope,
+                now: Date()
+            ) {
+            case .persisted, .cancelled:
+                applyDetectiveVoteResponse(
+                    previous: room,
+                    authoritative: activeRoom,
+                    scope: castScope.room
+                )
+                return
+            case .superseded, .ejected, .finished, .deadline:
+                return
+            case .reject:
+                return
+            case .retry:
+                break
+            }
+
+            do {
+                let updated = try await appState.client.castDetectiveVote(
+                    room: room,
+                    user: user,
+                    targetEmail: castScope.targetEmail,
+                    expectedVoteRoundID: castScope.voteRoundID
+                )
+                guard !Task.isCancelled,
+                      let currentRoom = appState.activeRoom,
+                      OnlineAuthoritativeRoomPolicy.canAdopt(
+                          candidate: updated,
+                          over: currentRoom,
+                          scope: castScope.room
+                      ) else { return }
+
+                switch DetectiveVoteDirectSuccessPolicy.disposition(
+                    previous: room,
+                    authoritative: updated,
+                    cast: castScope,
+                    now: Date()
+                ) {
+                case .recorded, .cancelled:
+                    applyDetectiveVoteResponse(
+                        previous: room,
+                        authoritative: updated,
+                        scope: castScope.room
+                    )
+                    return
+                case .adoptSilently:
+                    guard let latestRoom = appState.activeRoom,
+                          OnlineAuthoritativeRoomPolicy.canAdopt(
+                              candidate: updated,
+                              over: latestRoom,
+                              scope: castScope.room
+                          ) else { return }
+                    appState.activeRoom = updated
+                    return
+                case .reconcile:
+                    guard let latestRoom = appState.activeRoom,
+                          OnlineAuthoritativeRoomPolicy.canAdopt(
+                              candidate: updated,
+                              over: latestRoom,
+                              scope: castScope.room
+                          ) else { return }
+                    appState.activeRoom = updated
+                    switch await reconcileDetectiveVoteConflict(
+                        previous: room,
+                        cast: castScope,
+                        refreshAfterReject: true
+                    ) {
+                    case .resolved, .stop:
+                        return
+                    case .failed(let refreshError):
+                        presentDetectiveVoteFailure(refreshError)
+                        return
+                    case .rejected:
+                        presentDetectiveVoteSyncDelayed()
+                        return
+                    case .retry:
+                        guard let delay = DetectiveVoteConflictRecoveryPolicy
+                            .delayMilliseconds(beforeRetry: retry) else {
+                            presentDetectiveVoteSyncDelayed()
+                            return
+                        }
+                        retry += 1
+                        do {
+                            try await Task.sleep(for: .milliseconds(delay))
+                        } catch {
+                            return
+                        }
+                    }
+                }
+            } catch {
+                guard !Task.isCancelled,
+                      !RequestCancellationPolicy.isCancellation(error) else { return }
+                if DetectiveVoteRoundChangedPolicy.shouldReconcile(
+                    action: "cast_detective_vote",
+                    error: error
+                ) {
+                    await reconcileChangedDetectiveVoteRound(
+                        previous: room,
+                        cast: castScope
+                    )
+                    return
+                }
+                if DetectiveVoteResponsePolicy.shouldReconcileInactiveVote(error) {
+                    await reconcileInactiveDetectiveVote(
+                        previous: room,
+                        cast: castScope
+                    )
+                    return
+                }
+                guard DetectiveVoteConflictRecoveryPolicy.isRecoverableConflict(error) else {
+                    presentDetectiveVoteFailure(error)
+                    return
+                }
+
+                switch await reconcileDetectiveVoteConflict(
+                    previous: room,
+                    cast: castScope
+                ) {
+                case .resolved, .stop:
+                    return
+                case .failed(let refreshError):
+                    presentDetectiveVoteFailure(refreshError)
+                    return
+                case .rejected:
+                    presentDetectiveVoteSyncDelayed()
+                    return
+                case .retry:
+                    guard let delay = DetectiveVoteConflictRecoveryPolicy
+                        .delayMilliseconds(beforeRetry: retry) else {
+                        presentDetectiveVoteSyncDelayed()
+                        return
+                    }
+                    retry += 1
+                    do {
+                        try await Task.sleep(for: .milliseconds(delay))
+                    } catch {
+                        return
+                    }
+                }
+            }
+        }
+    }
+
+    private func reconcileChangedDetectiveVoteRound(
+        previous: GameRoom,
+        cast: DetectiveVoteCastScope
+    ) async {
+        guard !Task.isCancelled,
+              cast.matchesActor(appState.user?.email),
+              let activeRoom = appState.activeRoom,
+              cast.room.matches(activeRoom) else { return }
         do {
-            appState.activeRoom = try await appState.client.castDetectiveVote(room: room, user: user, targetEmail: targetEmail)
+            guard let refreshed = try await appState.client.refreshRoom(id: cast.room.roomID) else {
+                return
+            }
+            guard !Task.isCancelled,
+                  cast.matchesActor(appState.user?.email),
+                  let currentRoom = appState.activeRoom,
+                  cast.room.matches(currentRoom) else { return }
+
+            let authoritative: GameRoom
+            if OnlineAuthoritativeRoomPolicy.canAdopt(
+                candidate: refreshed,
+                over: currentRoom,
+                scope: cast.room
+            ) {
+                authoritative = refreshed
+            } else if cast.room.matches(refreshed) {
+                authoritative = currentRoom
+            } else {
+                return
+            }
+
+            guard let latestRoom = appState.activeRoom,
+                  OnlineAuthoritativeRoomPolicy.canAdopt(
+                      candidate: authoritative,
+                      over: latestRoom,
+                      scope: cast.room
+                  ) else { return }
+            let feedback = DetectiveVoteRoundChangedPolicy.feedback(
+                previous: previous,
+                authoritative: authoritative
+            )
+            appState.activeRoom = authoritative
+            if feedback == .cancelled {
+                appState.showToast(detectiveVoteCancelledStatus, kind: .warning)
+                HapticManager.shared.fire(.notification(.warning))
+            }
+        } catch {
+            return
+        }
+    }
+
+    private func reconcileDetectiveVoteConflict(
+        previous: GameRoom,
+        cast: DetectiveVoteCastScope,
+        refreshAfterReject: Bool = false
+    ) async -> DetectiveVoteConflictReconciliationOutcome {
+        guard !Task.isCancelled,
+              cast.matchesActor(appState.user?.email),
+              let activeRoom = appState.activeRoom,
+              cast.room.matches(activeRoom) else { return .stop }
+        switch DetectiveVoteConflictRecoveryPolicy.resolution(
+            previous: previous,
+            authoritative: activeRoom,
+            cast: cast,
+            now: Date()
+        ) {
+        case .persisted, .cancelled:
+            applyDetectiveVoteResponse(
+                previous: previous,
+                authoritative: activeRoom,
+                scope: cast.room
+            )
+            return .resolved
+        case .superseded, .ejected, .finished, .deadline:
+            return .resolved
+        case .reject:
+            guard refreshAfterReject else { return .stop }
+        case .retry:
+            break
+        }
+        do {
+            guard let refreshed = try await appState.client.refreshRoom(id: cast.room.roomID) else {
+                return .retry
+            }
+            guard !Task.isCancelled,
+                  cast.matchesActor(appState.user?.email),
+                  let currentRoom = appState.activeRoom,
+                  cast.room.matches(currentRoom) else { return .stop }
+            guard cast.room.matches(refreshed) else { return .rejected }
+            if cast.hasChangedVoteRound(currentRoom) {
+                return .stop
+            }
+            if cast.hasChangedVoteRound(refreshed) {
+                guard OnlineAuthoritativeRoomPolicy.canAdopt(
+                    candidate: refreshed,
+                    over: currentRoom,
+                    scope: cast.room
+                ) else { return .stop }
+                appState.activeRoom = refreshed
+                return .resolved
+            }
+
+            let authoritative: GameRoom
+            if OnlineAuthoritativeRoomPolicy.canAdopt(
+                candidate: refreshed,
+                over: currentRoom,
+                scope: cast.room
+            ) {
+                authoritative = refreshed
+            } else if cast.room.matches(refreshed) {
+                authoritative = currentRoom
+            } else {
+                return .rejected
+            }
+
+            switch DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: previous,
+                authoritative: authoritative,
+                cast: cast,
+                now: Date()
+            ) {
+            case .persisted, .cancelled:
+                applyDetectiveVoteResponse(
+                    previous: previous,
+                    authoritative: authoritative,
+                    scope: cast.room
+                )
+                return .resolved
+            case .superseded, .ejected, .finished, .deadline:
+                guard let latestRoom = appState.activeRoom,
+                      OnlineAuthoritativeRoomPolicy.canAdopt(
+                          candidate: authoritative,
+                          over: latestRoom,
+                          scope: cast.room
+                      ) else { return .stop }
+                appState.activeRoom = authoritative
+                return .resolved
+            case .retry:
+                guard let latestRoom = appState.activeRoom,
+                      OnlineAuthoritativeRoomPolicy.canAdopt(
+                          candidate: authoritative,
+                          over: latestRoom,
+                          scope: cast.room
+                      ) else { return .stop }
+                appState.activeRoom = authoritative
+                return .retry
+            case .reject:
+                return .rejected
+            }
+        } catch {
+            guard !Task.isCancelled,
+                  !RequestCancellationPolicy.isCancellation(error) else { return .stop }
+            return LobbySyncRetryPolicy.isRetryable(error) ? .retry : .failed(error)
+        }
+    }
+
+    private func reconcileInactiveDetectiveVote(
+        previous: GameRoom,
+        cast: DetectiveVoteCastScope
+    ) async {
+        switch await reconcileDetectiveVoteConflict(previous: previous, cast: cast) {
+        case .retry, .rejected, .failed:
+            appState.showToast(detectiveVoteSyncDelayedStatus, kind: .warning)
+            HapticManager.shared.fire(.notification(.warning))
+        case .resolved, .stop:
+            return
+        }
+    }
+
+    private func presentDetectiveVoteFailure(_ error: Error) {
+        status = error.localizedDescription.uppercased()
+        HapticManager.shared.fire(.notification(.error))
+    }
+
+    private func presentDetectiveVoteSyncDelayed() {
+        appState.showToast(detectiveVoteSyncDelayedStatus, kind: .warning)
+        HapticManager.shared.fire(.notification(.warning))
+    }
+
+    private func applyDetectiveVoteResponse(
+        previous: GameRoom,
+        authoritative: GameRoom,
+        scope: OnlineRoomMatchScope
+    ) {
+        guard let currentRoom = appState.activeRoom,
+              OnlineAuthoritativeRoomPolicy.canAdopt(
+                  candidate: authoritative,
+                  over: currentRoom,
+                  scope: scope
+              ) else { return }
+        let transition = DetectiveVoteResponsePolicy.classify(
+            previous: previous,
+            authoritative: authoritative
+        )
+        appState.activeRoom = authoritative
+        switch transition {
+        case .recorded:
             status = copy.voteLockedStatus
             HapticManager.shared.fire(.notification(.success))
-        } catch {
-            status = error.localizedDescription.uppercased()
-            HapticManager.shared.fire(.notification(.error))
+        case .cancelled:
+            appState.showToast(detectiveVoteCancelledStatus, kind: .warning)
+            HapticManager.shared.fire(.notification(.warning))
         }
     }
 
     private func submitSpyGuess(_ room: GameRoom, word: String) async {
-        guard !room.isGamePaused else { return }
-        guard !isTimeExpired(room) || postGameGuessSecondsRemaining(room) > 0 else { return }
+        guard !room.isGamePaused, !isTimeExpired(room) else {
+            showSpyGuess = false
+            return
+        }
         guard let user = appState.user else { return }
         if appState.shouldUsePreviewData {
             showSpyGuess = false

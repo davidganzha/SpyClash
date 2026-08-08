@@ -62,6 +62,102 @@ Deno.test("association spin settlement is recoverable by every active player", a
   );
 });
 
+Deno.test("detective casts resolve N-1 voting from the latest CAS snapshot", async () => {
+  const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
+  const policy = await Deno.readTextFile(
+    new URL("./detective-vote-policy.ts", import.meta.url),
+  );
+  const castVote = source.slice(
+    source.indexOf("async function castDetectiveVote"),
+    source.indexOf("async function submitSpyGuess"),
+  );
+
+  assertStringIncludes(castVote, "commitDetectiveVoteCastWithRetry({");
+  assertStringIncludes(castVote, "buildPatch: (latest) => {");
+  assertStringIncludes(castVote, "activePlayers(latest)");
+  assertStringIncludes(castVote, "voteRequests(latest)");
+  assertStringIncludes(castVote, "detectiveVotes(latest)");
+  assertStringIncludes(castVote, "resolvedDetectiveVoteCastTransition(");
+  assertStringIncludes(castVote, "bindDetectiveVoteRoundIdentity(");
+  assertStringIncludes(castVote, "explicitExpectedRoundID");
+  assertStringIncludes(castVote, "serverCapturedRoundID");
+  assertStringIncludes(
+    castVote,
+    'assertGameActionAllowedWhilePaused(latest, "cast_detective_vote")',
+  );
+  assertStringIncludes(
+    castVote,
+    "hasGameTimerElapsed(latest, nowMilliseconds)",
+  );
+  assertStringIncludes(
+    castVote,
+    "deriveExpiredGameWinner(latest, nowMilliseconds)",
+  );
+  assertStringIncludes(castVote, "terminal_intent: buildTerminalIntent(");
+  assertStringIncludes(castVote, "{ ...latest, ...patch }");
+  assertStringIncludes(castVote, "isSettledAfterConflict: (latest) => {");
+  assertStringIncludes(
+    castVote,
+    "if (hasGameTimerElapsed(latest)) return false",
+  );
+  assertStringIncludes(castVote, "pendingTerminalIntent(votedRoom)");
+  assertStringIncludes(castVote, "requestStartedDuringThisVote");
+  assertStringIncludes(castVote, "return room;");
+  assertEquals(
+    castVote.includes("shouldSpyWin(updated)"),
+    false,
+    "innocent ejection and its possible spy terminal must share one CAS",
+  );
+  assertStringIncludes(policy, "resolvedDetectiveVoteCastTransition(");
+  assertStringIncludes(policy, "spectators,");
+  assertStringIncludes(policy, "eliminated_emails: eliminated");
+  assertStringIncludes(
+    policy,
+    'terminal_winner: spyRemainsActive && detectiveCount <= 1 ? "spy" : null',
+  );
+
+  const requestDispatch = source.slice(
+    source.indexOf("const room = roomId"),
+    source.indexOf("const elapsedMilliseconds = performance.now()"),
+  );
+  assertStringIncludes(
+    requestDispatch,
+    "__server_vote_cast_started_active: enteredActiveRound",
+  );
+  assertStringIncludes(
+    requestDispatch,
+    "__server_vote_cast_match_id: clean(room.match_id)",
+  );
+  assertStringIncludes(
+    requestDispatch,
+    "__server_vote_cast_round_id: currentRoundID ||",
+  );
+  assertStringIncludes(
+    requestDispatch,
+    "expectedRoundID: explicitExpectedVoteRoundID(actionBody) ||",
+  );
+  assertStringIncludes(
+    requestDispatch,
+    "migratedRoom,\n                  user,\n                  actionBody,",
+  );
+  assertStringIncludes(
+    requestDispatch,
+    "reconcileDetectiveVoteCastAfterActiveIdentityLease({",
+  );
+  assertStringIncludes(
+    requestDispatch,
+    "requestEnteredActiveVote:\n              actionBody?.__server_vote_cast_started_active === true",
+  );
+  assertStringIncludes(
+    requestDispatch,
+    "if (result?.id && !readOnlyCastLeaseRecovery)",
+  );
+  assertStringIncludes(
+    source,
+    'if (action !== "cast_detective_vote") {\n    assertGameActionAllowedByDeadline(room, action);',
+  );
+});
+
 Deno.test("online intro, pause, and timer fields are wired into dispatch", async () => {
   const source = await Deno.readTextFile(
     new URL("./main.ts", import.meta.url),
@@ -77,11 +173,13 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
       "intro_started_at",
       "game_paused_at",
       "game_paused_total_seconds",
+      "detective_vote_round_id",
     ]
   ) {
     assert(field in schema.properties, `${field} must exist in GameRoom`);
   }
   assertEquals(schema.properties.game_paused_total_seconds.default, 0);
+  assertEquals(schema.properties.detective_vote_round_id.default, "");
 
   assertStringIncludes(source, 'case "pause_game":');
   assertStringIncludes(source, 'case "resume_game":');
@@ -142,6 +240,8 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     source.indexOf("function activeRoomStatus"),
   );
   assertStringIncludes(leaveAction, "leavingDuringPreTimer");
+  assertStringIncludes(leaveAction, "detectiveVoteLeavePatch(");
+  assertStringIncludes(leaveAction, "...leavingVotePatch");
   assertStringIncludes(
     leaveAction,
     "{ host_email: clean(nextPlayers[0]?.email) }",

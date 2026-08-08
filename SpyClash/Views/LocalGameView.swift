@@ -1,5 +1,19 @@
 import SwiftUI
 
+enum LocalGameDeadlineOutcome: Equatable {
+    case continuePlaying(remainingSeconds: Int)
+    case spyWins
+}
+
+enum LocalGameDeadlinePolicy {
+    static func outcome(afterTickFrom currentSeconds: Int) -> LocalGameDeadlineOutcome {
+        let remainingSeconds = max(currentSeconds - 1, 0)
+        return remainingSeconds == 0
+            ? .spyWins
+            : .continuePlaying(remainingSeconds: remainingSeconds)
+    }
+}
+
 struct LocalGameView: View {
     @Environment(AppState.self) private var appState
 
@@ -3340,42 +3354,35 @@ struct LocalGameView: View {
         HapticManager.shared.fire(.milestone)
         timerTask?.cancel()
         timerTask = Task { @MainActor in
-            while !Task.isCancelled && secondsRemaining > 0 {
+            while !Task.isCancelled {
+                guard secondsRemaining > 0 else {
+                    finishLocalGameAtDeadline()
+                    return
+                }
                 try? await Task.sleep(for: .seconds(1))
                 guard !Task.isCancelled else { return }
-                secondsRemaining -= 1
-                if (1...3).contains(secondsRemaining) {
+                switch LocalGameDeadlinePolicy.outcome(afterTickFrom: secondsRemaining) {
+                case let .continuePlaying(remainingSeconds):
+                    secondsRemaining = remainingSeconds
+                case .spyWins:
+                    finishLocalGameAtDeadline()
+                    return
                 }
-            }
-            if !Task.isCancelled {
-                beginSpyGuess()
-                HapticManager.shared.fire(.notification(.warning))
             }
         }
     }
 
-    private func beginSpyGuess() {
-        guessSecondsRemaining = previewLocalGuessSeconds ?? 30
+    private func finishLocalGameAtDeadline() {
+        timerTask?.cancel()
+        secondsRemaining = 0
+        guessSecondsRemaining = 0
         showSpyGuessOptions = false
         pendingSpyGuess = nil
-        phase = .spyGuess
-        timerTask?.cancel()
-        timerTask = Task { @MainActor in
-            while !Task.isCancelled && guessSecondsRemaining > 0 {
-                try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
-                guessSecondsRemaining -= 1
-                if (1...3).contains(guessSecondsRemaining) {
-                }
-            }
-            if !Task.isCancelled {
-                spyGuess = nil
-                pendingSpyGuess = nil
-                winner = .detectives
-                phase = .results
-                HapticManager.shared.fire(.milestone)
-            }
-        }
+        accusedIndex = nil
+        spyGuess = nil
+        winner = .spy
+        phase = .results
+        HapticManager.shared.fire(.notification(.warning))
     }
 
     private func currentAsker(in session: LocalSession) -> LocalPlayer? {

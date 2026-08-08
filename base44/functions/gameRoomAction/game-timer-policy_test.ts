@@ -5,6 +5,7 @@ import {
   finishGamePauseTransitionPatch,
   gameActiveElapsedSeconds,
   gameTimerDeadlineMilliseconds,
+  hasGameTimerElapsed,
   PAUSE_BLOCKED_GAME_ACTIONS,
   pauseGameTransitionPatch,
   resumeGameTransitionPatch,
@@ -194,37 +195,39 @@ Deno.test("paused room blocks every gameplay mutation but not recovery", () => {
   }
 });
 
-Deno.test("elapsed timer allows only the spy guess grace and terminal recovery", () => {
+Deno.test("the exact 0:00 boundary closes every gameplay action immediately", () => {
   const room = playingRoom();
   const beforeDeadline = Date.parse("2026-07-21T12:00:59.999Z");
-  const duringGrace = Date.parse("2026-07-21T12:01:20.000Z");
-  const afterGrace = Date.parse("2026-07-21T12:01:30.000Z");
+  const deadline = Date.parse("2026-07-21T12:01:00.000Z");
 
-  assertEquals(
-    assertGameActionAllowedByDeadline(room, "request_vote", beforeDeadline),
-    undefined,
-  );
-  assertEquals(
-    assertGameActionAllowedByDeadline(room, "submit_spy_guess", duringGrace),
-    undefined,
-  );
+  assertEquals(hasGameTimerElapsed(room, beforeDeadline), false);
+  assertEquals(hasGameTimerElapsed(room, deadline), true);
+
+  for (
+    const action of ["request_vote", "cast_detective_vote", "submit_spy_guess"]
+  ) {
+    assertEquals(
+      assertGameActionAllowedByDeadline(room, action, beforeDeadline),
+      undefined,
+    );
+  }
   for (const action of ["finalize_expired_room", "finish_room", "leave_room"]) {
     assertEquals(
-      assertGameActionAllowedByDeadline(room, action, afterGrace),
+      assertGameActionAllowedByDeadline(room, action, deadline),
       undefined,
     );
   }
 
   for (
-    const [action, now] of [
-      ["advance_question", duringGrace],
-      ["request_vote", duringGrace],
-      ["cast_detective_vote", duringGrace],
-      ["submit_spy_guess", afterGrace],
-    ] as const
+    const action of [
+      "advance_question",
+      "request_vote",
+      "cast_detective_vote",
+      "submit_spy_guess",
+    ]
   ) {
     const error = assertThrows(
-      () => assertGameActionAllowedByDeadline(room, action, now),
+      () => assertGameActionAllowedByDeadline(room, action, deadline),
       Error,
       "timer has elapsed",
     );

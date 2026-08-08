@@ -4,6 +4,51 @@ import XCTest
 
 @MainActor
 final class Base44ClientRoomActionTests: XCTestCase {
+    func testCastDetectiveVoteSendsCapturedVoteRoundID() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        var room = GameRoom.previewRoom(status: "voting")
+        room.detectiveVoteRoundID = "vote-round-a"
+        let actor = try XCTUnwrap(room.playersList.first?.email)
+        let target = try XCTUnwrap(room.playersList.dropFirst().first?.email)
+        let user = SpyUser(
+            id: "actor",
+            email: actor,
+            fullName: nil,
+            displayName: nil,
+            avatar: nil,
+            language: nil,
+            role: nil,
+            isVerified: nil,
+            rating: nil,
+            gamesPlayed: nil,
+            gamesWon: nil,
+            remoteSpyID: nil,
+            spyCardTheme: nil,
+            spyCardAccent: nil,
+            spyCardBadge: nil,
+            radarInvitePolicy: nil
+        )
+
+        _ = try await makeClient().castDetectiveVote(
+            room: room,
+            user: user,
+            targetEmail: target,
+            expectedVoteRoundID: "vote-round-a"
+        )
+
+        let body = try XCTUnwrap(recorder.requestBodies().last)
+        XCTAssertEqual(body["action"] as? String, "cast_detective_vote")
+        XCTAssertEqual(body["target_email"] as? String, target)
+        XCTAssertEqual(body["expected_vote_round_id"] as? String, "vote-round-a")
+        XCTAssertNil(body["expected_detective_vote_round_id"])
+    }
+
     func testRoundWrappersSendServerActionNames() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in
