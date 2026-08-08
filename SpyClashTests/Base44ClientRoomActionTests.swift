@@ -58,6 +58,192 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertEqual(try recorder.requestBodies().count, 2)
     }
 
+    func testCompleteGameStartAdoptsAuthoritativePlayingRoomAfterConflictRetryExhausts() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let requestCount = try recorder.requestBodies().count
+            if requestCount <= 2 {
+                return MockURLProtocol.leaseConflictResponse(
+                    for: request,
+                    code: "active_lease",
+                    retryable: true
+                )
+            }
+            return MockURLProtocol.roomResponse(
+                for: request,
+                id: "preview-room-roulette",
+                status: "playing",
+                matchID: "match-committed"
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let room = GameRoom.previewRoom(status: "roulette")
+        let completed = try await makeClient().completeGameStart(room: room)
+
+        XCTAssertEqual(completed.id, room.id)
+        XCTAssertEqual(completed.normalizedStatus, "playing")
+        XCTAssertEqual(completed.matchID, "match-committed")
+        XCTAssertEqual(
+            try recorder.requestBodies().compactMap { $0["action"] as? String },
+            ["complete_game_start", "complete_game_start", "get_room"]
+        )
+    }
+
+    func testCompleteGameStartRethrowsOriginalConflictWhenAuthoritativeRoomIsStillRoulette() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let requestCount = try recorder.requestBodies().count
+            if requestCount <= 2 {
+                return MockURLProtocol.leaseConflictResponse(
+                    for: request,
+                    code: "cas_contention",
+                    retryable: true
+                )
+            }
+            return MockURLProtocol.roomResponse(
+                for: request,
+                id: "preview-room-roulette",
+                status: "roulette",
+                matchID: "match-not-committed"
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let room = GameRoom.previewRoom(status: "roulette")
+        do {
+            _ = try await makeClient().completeGameStart(room: room)
+            XCTFail("Expected the original typed conflict to be rethrown.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.statusCode, 409)
+            XCTAssertEqual(error.code, "cas_contention")
+            XCTAssertTrue(error.retryable)
+        }
+
+        XCTAssertEqual(
+            try recorder.requestBodies().compactMap { $0["action"] as? String },
+            ["complete_game_start", "complete_game_start", "get_room"]
+        )
+    }
+
+    func testCompleteGameStartDoesNotRetryOrReconcileNonRetryableConflict() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.leaseConflictResponse(
+                for: request,
+                code: "active_lease",
+                retryable: false
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let room = GameRoom.previewRoom(status: "roulette")
+        do {
+            _ = try await makeClient().completeGameStart(room: room)
+            XCTFail("Expected the non-retryable conflict to be rethrown.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.statusCode, 409)
+            XCTAssertEqual(error.code, "active_lease")
+            XCTAssertFalse(error.retryable)
+        }
+
+        XCTAssertEqual(
+            try recorder.requestBodies().compactMap { $0["action"] as? String },
+            ["complete_game_start"]
+        )
+    }
+
+    func testCompleteGameStartPreservesCancellationFromAuthoritativeRefresh() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if try recorder.requestBodies().count <= 2 {
+                return MockURLProtocol.leaseConflictResponse(
+                    for: request,
+                    code: "active_lease",
+                    retryable: true
+                )
+            }
+            throw URLError(.cancelled)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let room = GameRoom.previewRoom(status: "roulette")
+        do {
+            _ = try await makeClient().completeGameStart(room: room)
+            XCTFail("Expected cancellation from the reconciliation read.")
+        } catch {
+            XCTAssertTrue(RequestCancellationPolicy.isCancellation(error))
+        }
+
+        XCTAssertEqual(
+            try recorder.requestBodies().compactMap { $0["action"] as? String },
+            ["complete_game_start", "complete_game_start", "get_room"]
+        )
+    }
+
+    func testCompletedGameStartAdoptionRequiresSamePlayingRoomAndMatchIdentity() {
+        let playing = GameRoom.previewRoom(status: "playing")
+        XCTAssertTrue(
+            Base44Client.canAdoptCompletedGameStart(
+                playing,
+                expectedRoomID: playing.id
+            )
+        )
+        XCTAssertFalse(
+            Base44Client.canAdoptCompletedGameStart(
+                playing,
+                expectedRoomID: "different-room"
+            )
+        )
+
+        var missingMatch = playing
+        missingMatch.matchID = "  "
+        XCTAssertFalse(
+            Base44Client.canAdoptCompletedGameStart(
+                missingMatch,
+                expectedRoomID: missingMatch.id
+            )
+        )
+
+        var roulette = playing
+        roulette.status = "roulette"
+        XCTAssertFalse(
+            Base44Client.canAdoptCompletedGameStart(
+                roulette,
+                expectedRoomID: roulette.id
+            )
+        )
+    }
+
+    func testRequestCancellationPolicyRecognizesTaskTransportAndUnderlyingCancellation() {
+        XCTAssertTrue(RequestCancellationPolicy.isCancellation(CancellationError()))
+        XCTAssertTrue(RequestCancellationPolicy.isCancellation(URLError(.cancelled)))
+        XCTAssertTrue(
+            RequestCancellationPolicy.isCancellation(
+                NSError(
+                    domain: "SpyClashTests.Wrapper",
+                    code: 1,
+                    userInfo: [NSUnderlyingErrorKey: URLError(.cancelled)]
+                )
+            )
+        )
+        XCTAssertFalse(RequestCancellationPolicy.isCancellation(URLError(.timedOut)))
+        XCTAssertFalse(
+            RequestCancellationPolicy.isCancellation(
+                Base44Error(
+                    message: "Account identity is being updated.",
+                    statusCode: 409,
+                    code: "active_lease",
+                    retryable: true
+                )
+            )
+        )
+    }
+
     func testRoomIDLeaveWrapperSendsImmediateCleanupAction() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in
@@ -731,5 +917,48 @@ private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
         )!
         let payload = #"{"id":"room-1","code":"ABC123","status":"playing","players":[]}"#
         return (response, Data(payload.utf8))
+    }
+
+    static func roomResponse(
+        for request: URLRequest,
+        id: String,
+        status: String,
+        matchID: String?
+    ) -> (HTTPURLResponse, Data) {
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 200,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        var room: [String: Any] = [
+            "id": id,
+            "code": "ABC123",
+            "status": status,
+            "players": []
+        ]
+        if let matchID {
+            room["match_id"] = matchID
+        }
+        return (response, try! JSONSerialization.data(withJSONObject: room))
+    }
+
+    static func leaseConflictResponse(
+        for request: URLRequest,
+        code: String,
+        retryable: Bool
+    ) -> (HTTPURLResponse, Data) {
+        let response = HTTPURLResponse(
+            url: request.url!,
+            statusCode: 409,
+            httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        let payload: [String: Any] = [
+            "error": "Account identity is being updated.",
+            "code": code,
+            "retryable": retryable
+        ]
+        return (response, try! JSONSerialization.data(withJSONObject: payload))
     }
 }

@@ -7112,6 +7112,13 @@ struct GameView: View {
             revealRole = false
             HapticManager.shared.fire(.milestone)
         } catch {
+            if RequestCancellationPolicy.isCancellation(error) {
+                if appState.activeRoom?.id == room.id,
+                   appState.activeRoom?.normalizedStatus == "roulette" {
+                    rouletteCompletionKey = nil
+                }
+                return
+            }
             rouletteCompletionKey = nil
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))

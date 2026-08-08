@@ -433,11 +433,49 @@ final class Base44Client {
     }
 
     func completeGameStart(room: GameRoom, plan: GameStartPlan) async throws -> GameRoom {
-        try await roomAction("complete_game_start", roomID: room.id, plan: plan.payload)
+        try await completeGameStart(room: room, plan: plan.payload)
     }
 
     func completeGameStart(room: GameRoom) async throws -> GameRoom {
-        try await roomAction("complete_game_start", roomID: room.id)
+        try await completeGameStart(room: room, plan: nil)
+    }
+
+    private func completeGameStart(
+        room: GameRoom,
+        plan: StartGamePayload?
+    ) async throws -> GameRoom {
+        do {
+            return try await roomAction(
+                "complete_game_start",
+                roomID: room.id,
+                plan: plan
+            )
+        } catch let conflict as Base44Error
+            where conflict.isRetryableRoomActionConflict {
+            do {
+                if let authoritativeRoom = try await refreshRoom(id: room.id),
+                   Self.canAdoptCompletedGameStart(
+                       authoritativeRoom,
+                       expectedRoomID: room.id
+                   ) {
+                    return authoritativeRoom
+                }
+            } catch {
+                if RequestCancellationPolicy.isCancellation(error) {
+                    throw error
+                }
+            }
+            throw conflict
+        }
+    }
+
+    static func canAdoptCompletedGameStart(
+        _ room: GameRoom,
+        expectedRoomID: String
+    ) -> Bool {
+        room.id == expectedRoomID &&
+            room.normalizedStatus == "playing" &&
+            room.matchID?.nilIfBlank != nil
     }
 
     func startGame(room: GameRoom, wordPacks: [WordPack]) async throws -> GameRoom {
@@ -1898,6 +1936,24 @@ struct Base44Error: LocalizedError {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         return normalizedCode == "active_lease" || normalizedCode == "cas_contention"
+    }
+}
+
+enum RequestCancellationPolicy {
+    static func isCancellation(_ error: Error) -> Bool {
+        var candidate: Error? = error
+        for _ in 0..<4 {
+            guard let current = candidate else { return false }
+            if current is CancellationError { return true }
+
+            let nsError = current as NSError
+            if nsError.domain == NSURLErrorDomain,
+               nsError.code == NSURLErrorCancelled {
+                return true
+            }
+            candidate = nsError.userInfo[NSUnderlyingErrorKey] as? Error
+        }
+        return false
     }
 }
 
