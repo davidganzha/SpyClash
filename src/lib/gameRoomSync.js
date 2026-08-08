@@ -150,6 +150,14 @@ export function isGameIntroInProgressError(error) {
   return /intro.*(?:progress|started)|still in progress/i.test(String(error?.message ?? ""));
 }
 
+function isRecoverableGameIntroCompletionError(error) {
+  if (isGameIntroInProgressError(error)) return true;
+  const code = String(error?.code ?? "").trim().toLowerCase();
+  return Number(error?.status) === 409
+    && error?.retryable === true
+    && ["active_lease", "cas_contention"].includes(code);
+}
+
 const defaultSleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
 
 /**
@@ -183,7 +191,7 @@ export async function completeGameStartAfterIntro({
     try {
       return await completeStart(currentRoom);
     } catch (error) {
-      if (!isGameIntroInProgressError(error)) throw error;
+      if (!isRecoverableGameIntroCompletionError(error)) throw error;
       lastError = error;
 
       const retryRoom = await refreshRoom(currentRoom.id);

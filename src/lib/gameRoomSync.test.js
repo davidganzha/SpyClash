@@ -77,6 +77,98 @@ test("intro completion adopts another participant's idempotent completion", asyn
   assert.equal(completeCalls, 0);
 });
 
+test("intro completion adopts authoritative playing state after a typed active lease", async () => {
+  const roulette = {
+    id: "room-1",
+    status: "roulette",
+    intro_started_at: "2026-07-27T10:00:00.000Z",
+  };
+  const playing = { ...roulette, status: "playing" };
+  let refreshCalls = 0;
+  let completeCalls = 0;
+
+  const result = await completeGameStartAfterIntro({
+    room: roulette,
+    now: () => Date.parse("2026-07-27T10:00:09.000Z"),
+    refreshRoom: async () => {
+      refreshCalls += 1;
+      return refreshCalls === 1 ? roulette : playing;
+    },
+    completeStart: async () => {
+      completeCalls += 1;
+      throw Object.assign(new Error("Account identity is being updated."), {
+        status: 409,
+        code: "active_lease",
+        retryable: true,
+      });
+    },
+  });
+
+  assert.equal(result, playing);
+  assert.equal(completeCalls, 1);
+  assert.equal(refreshCalls, 2);
+});
+
+test("intro completion retries a typed CAS conflict while roulette remains authoritative", async () => {
+  const roulette = {
+    id: "room-1",
+    status: "roulette",
+    intro_started_at: "2026-07-27T10:00:00.000Z",
+  };
+  const sleeps = [];
+  let completeCalls = 0;
+
+  const result = await completeGameStartAfterIntro({
+    room: roulette,
+    now: () => Date.parse("2026-07-27T10:00:09.000Z"),
+    sleep: async (milliseconds) => sleeps.push(milliseconds),
+    refreshRoom: async () => roulette,
+    completeStart: async () => {
+      completeCalls += 1;
+      if (completeCalls === 1) {
+        throw Object.assign(new Error("Room write contention"), {
+          status: 409,
+          code: "cas_contention",
+          retryable: true,
+        });
+      }
+      return { ...roulette, status: "playing" };
+    },
+  });
+
+  assert.equal(result.status, "playing");
+  assert.equal(completeCalls, 2);
+  assert.deepEqual(sleeps, [300]);
+});
+
+test("intro completion keeps untyped and nonretryable lease conflicts visible", async () => {
+  const roulette = {
+    id: "room-1",
+    status: "roulette",
+    intro_started_at: "2026-07-27T10:00:00.000Z",
+  };
+  const failures = [
+    Object.assign(new Error("Untyped conflict"), { status: 409 }),
+    Object.assign(new Error("Nonretryable lease"), {
+      status: 409,
+      code: "active_lease",
+      retryable: false,
+    }),
+  ];
+
+  for (const failure of failures) {
+    await assert.rejects(
+      completeGameStartAfterIntro({
+        room: roulette,
+        now: () => Date.parse("2026-07-27T10:00:09.000Z"),
+        refreshRoom: async () => roulette,
+        completeStart: async () => { throw failure; },
+      }),
+      (error) => error === failure,
+    );
+  }
+});
+
 test("timer freezes on pause and subtracts accumulated pause after resume", () => {
   const baseRoom = {
     game_started_at: "2026-07-27T10:00:00.000Z",
