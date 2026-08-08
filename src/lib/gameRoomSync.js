@@ -1,6 +1,5 @@
 export const ONLINE_GAME_INTRO_MILLISECONDS = 8_000;
 export const ONLINE_GAME_INTRO_GRACE_MILLISECONDS = 250;
-export const POST_GAME_GUESS_SECONDS = 30;
 export const ROOM_POLL_FALLBACK_INTERVAL_MILLISECONDS = 2_000;
 export const ROOM_POLL_MAX_INTERVAL_MILLISECONDS = 30_000;
 export const ROOM_POLL_ERROR_THRESHOLD = 2;
@@ -108,7 +107,6 @@ export function gameTimerSnapshot(room, nowMilliseconds = Date.now()) {
       paused: Boolean(String(room?.game_paused_at ?? "").trim()),
       elapsedSeconds: 0,
       remainingSeconds: Number.isInteger(durationSeconds) ? Math.max(0, durationSeconds) : null,
-      guessRemainingSeconds: POST_GAME_GUESS_SECONDS,
     };
   }
 
@@ -120,14 +118,12 @@ export function gameTimerSnapshot(room, nowMilliseconds = Date.now()) {
     Math.floor((effectiveNow - startedAt) / 1_000) - pausedTotalSeconds,
   );
   const remainingSeconds = Math.max(0, durationSeconds - elapsedSeconds);
-  const overtimeSeconds = Math.max(0, elapsedSeconds - durationSeconds);
 
   return {
     valid: Number.isFinite(nowMilliseconds),
     paused: pausedAt !== null,
     elapsedSeconds,
     remainingSeconds,
-    guessRemainingSeconds: Math.max(0, POST_GAME_GUESS_SECONDS - overtimeSeconds),
   };
 }
 
@@ -148,6 +144,29 @@ export function isGameIntroInProgressError(error) {
   if (Number(error?.status) !== 409) return false;
   if (error?.code === "game_intro_in_progress") return true;
   return /intro.*(?:progress|started)|still in progress/i.test(String(error?.message ?? ""));
+}
+
+/**
+ * A concurrent detective vote may already have completed or cancelled the
+ * ballot before this client's cast reaches the server. Only this exact typed
+ * conflict is safe to reconcile as authoritative state instead of surfacing a
+ * generic action warning.
+ */
+export function isInactiveDetectiveVoteConflict(action, error) {
+  return action === "cast_detective_vote"
+    && Number(error?.status) === 409
+    && error?.code === "detective_vote_inactive";
+}
+
+export function isDetectiveVoteRoundChangedConflict(action, error) {
+  return action === "cast_detective_vote"
+    && Number(error?.status) === 409
+    && error?.code === "detective_vote_round_changed";
+}
+
+export function isAuthoritativeDetectiveVoteRefreshConflict(action, error) {
+  return isInactiveDetectiveVoteConflict(action, error)
+    || isDetectiveVoteRoundChangedConflict(action, error);
 }
 
 function isRecoverableGameIntroCompletionError(error) {

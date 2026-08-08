@@ -32,19 +32,19 @@ export const translations = {
       { icon: "🏠", code: "01", title: "Create or Join", desc: "Create a room or join with a 6-character code. You need at least 2 players to start." },
       { icon: "🎭", code: "02", title: "Get Your Role", desc: "One player is secretly the Spy. Everyone else are Detectives who know the secret word." },
       { icon: "❓", code: "03", title: "Questions & Answers", desc: "Players take turns asking each other questions about the secret word. When done listening — press 'Answer Received'." },
-      { icon: "🏆", code: "04", title: "Expose or Escape", desc: "Detectives vote to expose the spy. The spy can guess the secret word at any time to win!" }
+      { icon: "🏆", code: "04", title: "Expose or Escape", desc: "Detectives need N-1 votes on one suspect to expose the spy. If the timer reaches zero, the spy wins." }
     ],
     tutorial: [
       { icon: "🎭", title: "Roles", text: "At game start everyone secretly reads their role card. Detectives see the secret word and category. The Spy sees nothing — only the word list to guess from later." },
       { icon: "❓", title: "Q&A", text: "Players go in a circle: one asks a question, another answers out loud. When the asker has heard the answer, they press 'Answer Received' to move on. Questions should hint at the word without revealing it to the spy." },
-      { icon: "🗳️", title: "Voting for the Spy", text: "Any player can request a vote. Once enough players agree, everyone votes for who they think is the spy. If the majority picks the spy — detectives win!" },
+      { icon: "🗳️", title: "Voting for the Spy", text: "Any player can request a vote. To exclude someone, every other active player must vote for that same suspect (N-1 votes). If that result becomes impossible, voting ends automatically." },
       { icon: "🎯", title: "Spy's Guess", text: "The spy can press 'Guess Word Early' at any time and pick from the word list. Guess correctly — spy wins! Wrong guess — detectives win immediately." }
     ],
     tutorial_assoc: [
       { icon: "🎭", title: "Roles", text: "At game start everyone secretly reads their role card. Detectives see the secret word. The Spy sees nothing — only '???' instead of the word." },
       { icon: "🎰", title: "The Drum", text: "The host spins the drum — it randomly picks a player. That player must say ONE word associated with the secret word out loud, then press 'Answered'." },
       { icon: "🔄", title: "No Repeats", text: "Each player speaks once per round. When everyone has given an association — a new round begins automatically with a fresh random order." },
-      { icon: "🎯", title: "Find the Spy", text: "After hearing associations, vote for who you think is the spy. The spy can guess the secret word at any time to win!" }
+      { icon: "🎯", title: "Find the Spy", text: "After hearing associations, N-1 votes must point to one suspect to exclude them. The spy can guess the secret word before time runs out." }
     ],
     room_breadcrumb_home: "HOME",
     room_breadcrumb_lobby: "LOBBY",
@@ -106,9 +106,9 @@ export const translations = {
     game_spy_was: "SPY:",
     game_home_btn: "↩ Home",
     game_time_up: "TIME'S UP!",
-    game_time_spy_must_guess: "// SPY MUST GUESS",
+    game_time_spy_must_guess: "// SPY WINS AT ZERO",
     game_guess_btn: "🎯 GUESS THE WORD",
-    game_waiting_spy: "WAITING FOR SPY'S ANSWER...",
+    game_waiting_spy: "CONFIRMING SPY VICTORY...",
     game_time_left: "// TIME REMAINING",
     game_paused: "// GAME PAUSED",
     game_pause_btn: "PAUSE GAME",
@@ -135,7 +135,8 @@ export const translations = {
     toast_round_started: "Round started!",
     toast_wants_vote: "wants to start a vote",
     toast_voting_started: "Voting started!",
-    toast_time_up: "Time's up! The spy must guess the word!",
+    toast_voting_cancelled: "Voting cancelled: N-1 agreement is no longer possible.",
+    toast_time_up: "Time's up! The spy wins.",
     profile_title: "AGENT PROFILE",
     profile_id: "// AGENT IDENTIFICATION",
     profile_select_avatar: "SELECT AVATAR",
@@ -322,19 +323,19 @@ export const translations = {
       { icon: "🏠", code: "01", title: "Создай или зайди", desc: "Создай комнату или зайди по 6-символьному коду. Для старта нужно минимум 2 игрока." },
       { icon: "🎭", code: "02", title: "Получи роль", desc: "Один игрок тайно становится Шпионом. Остальные — Детективы, которые знают секретное слово." },
       { icon: "❓", code: "03", title: "Вопросы и ответы", desc: "Игроки по очереди задают вопросы о секретном слове. Услышал ответ — нажми «Ответ услышан»." },
-      { icon: "🏆", code: "04", title: "Разоблачи или сбеги", desc: "Детективы голосуют чтобы найти шпиона. Шпион может угадать секретное слово в любой момент и победить!" }
+      { icon: "🏆", code: "04", title: "Разоблачи или сбеги", desc: "Чтобы разоблачить шпиона, нужно N-1 голосов за одного игрока. Если таймер доходит до нуля, побеждает шпион." }
     ],
     tutorial: [
       { icon: "🎭", title: "Роли", text: "В начале игры каждый тайно читает свою карточку роли. Детективы видят секретное слово и категорию. Шпион ничего не видит — только список слов, из которых нужно будет угадать." },
       { icon: "❓", title: "Вопросы и ответы", text: "Игроки ходят по кругу: один задаёт вопрос, другой отвечает вслух. Когда спрашивающий услышал ответ — он нажимает «Ответ услышан» и ход переходит дальше. Вопросы должны намекать на слово, но не раскрывать его шпиону." },
-      { icon: "🗳️", title: "Голосование за шпиона", text: "Любой игрок может запросить голосование. Когда достаточно игроков соглашаются — все голосуют за того, кого считают шпионом. Большинство угадало шпиона — детективы победили!" },
+      { icon: "🗳️", title: "Голосование за шпиона", text: "Любой игрок может запросить голосование. Чтобы исключить игрока, все остальные активные игроки должны проголосовать за него (N-1 голосов). Если такой результат уже невозможен, голосование завершается автоматически." },
       { icon: "🎯", title: "Угадывание шпиона", text: "Шпион может в любой момент нажать «Угадать досрочно» и выбрать слово из списка. Угадал — шпион побеждает! Ошибся — детективы побеждают немедленно." }
     ],
     tutorial_assoc: [
       { icon: "🎭", title: "Роли", text: "В начале каждый тайно читает свою карточку роли. Детективы видят секретное слово. Шпион ничего не видит — вместо слова у него «???»." },
       { icon: "🎰", title: "Барабан", text: "Хост запускает барабан — он случайно выбирает игрока. Этот игрок должен назвать вслух ОДНО слово-ассоциацию к секретному слову, затем нажать «Ответил»." },
       { icon: "🔄", title: "Без повторов", text: "Каждый игрок говорит по одному разу за раунд. Когда все высказались — начинается следующий раунд с новым случайным порядком." },
-      { icon: "🎯", title: "Найди шпиона", text: "Услышав ассоциации, проголосуйте за того, кто, по-вашему, шпион. Шпион может угадать секретное слово в любой момент и победить!" }
+      { icon: "🎯", title: "Найди шпиона", text: "Услышав ассоциации, соберите N-1 голосов за одного подозреваемого, чтобы исключить его. Шпион может угадать слово до окончания времени." }
     ],
     room_breadcrumb_home: "ДОМОЙ",
     room_breadcrumb_lobby: "ЛОББИ",
@@ -396,9 +397,9 @@ export const translations = {
     game_spy_was: "ШПИОН:",
     game_home_btn: "↩ На главную",
     game_time_up: "ВРЕМЯ ВЫШЛО!",
-    game_time_spy_must_guess: "// ШПИОН ДОЛЖЕН УГАДАТЬ",
+    game_time_spy_must_guess: "// ПРИ 0:00 ПОБЕЖДАЕТ ШПИОН",
     game_guess_btn: "🎯 УГАДАТЬ СЛОВО",
-    game_waiting_spy: "ОЖИДАЕМ ОТВЕТА ШПИОНА...",
+    game_waiting_spy: "ПОДТВЕРЖДАЕМ ПОБЕДУ ШПИОНА...",
     game_time_left: "// ОСТАВШЕЕСЯ ВРЕМЯ",
     game_paused: "// ИГРА НА ПАУЗЕ",
     game_pause_btn: "ПОСТАВИТЬ НА ПАУЗУ",
@@ -425,7 +426,8 @@ export const translations = {
     toast_round_started: "Раунд начался!",
     toast_wants_vote: "хочет начать голосование",
     toast_voting_started: "Голосование началось!",
-    toast_time_up: "Время вышло! Шпион должен угадать слово!",
+    toast_voting_cancelled: "Голосование отменено: собрать N-1 голосов уже невозможно.",
+    toast_time_up: "Время вышло! Победил шпион.",
     profile_title: "ДОСЬЕ АГЕНТА",
     profile_id: "// ИДЕНТИФИКАЦИЯ АГЕНТА",
     profile_select_avatar: "ВЫБРАТЬ АВАТАР",

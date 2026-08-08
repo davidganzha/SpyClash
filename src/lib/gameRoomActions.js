@@ -102,7 +102,11 @@ export async function runGameRoomAction(action, roomId, fields = {}) {
   try {
     return await performGameRoomAction(payload);
   } catch (error) {
-    if (!isRetryableRoomActionConflict(error)) throw error;
+    // Detective casts use a room/match/actor/target-scoped authoritative
+    // refresh loop in Game.jsx. Do not perform this generic blind retry first.
+    if (action === "cast_detective_vote" || !isRetryableRoomActionConflict(error)) {
+      throw error;
+    }
     await new Promise((resolve) => setTimeout(resolve, 250));
     return await performGameRoomAction(payload);
   }

@@ -14,6 +14,7 @@ import SaveAsWordPackDialog from "@/components/SaveAsWordPackDialog";
 import { useGlobalQuota } from "@/hooks/useGlobalQuota";
 import { generateWordPool } from "@/utils/wordPoolAI";
 import { ACCOUNT_AVATARS } from "@/lib/avatars";
+import { localGameTimeoutOutcome } from "@/lib/localGameRules";
 import { listWordPacks } from "@/lib/wordPackActions";
 
 const MAX_LOCAL_PLAYERS = 10;
@@ -101,11 +102,8 @@ export default function LocalGame() {
   const [timeExpired, setTimeExpired] = useState(false);
   const [timerRef, setTimerRef] = useState(null);
   const [showSpyGuess, setShowSpyGuess] = useState(false);
-  const [guessTimeLeft, setGuessTimeLeft] = useState(null);
   const [winner, setWinner] = useState(null); // "spy" | "detectives"
   const [spyGuess, setSpyGuess] = useState(null);
-  const [voteTarget, setVoteTarget] = useState(null); // email/idx voted out
-  const [showVote, setShowVote] = useState(false);
   const [showRoulette, setShowRoulette] = useState(false);
   const [rouletteTarget, setRouletteTarget] = useState(null);
   const [currentAskerIdx, setCurrentAskerIdx] = useState(0);
@@ -312,8 +310,6 @@ export default function LocalGame() {
         setTimeExpired(false);
         setWinner(null);
         setSpyGuess(null);
-        setVoteTarget(null);
-        setShowVote(false);
         // For associations mode — shuffle order and show roulette for first
         if (gameMode === "associations") {
           const shuffled = [...Array(gameData.players.length).keys()].sort(() => Math.random() - 0.5);
@@ -331,19 +327,14 @@ export default function LocalGame() {
           setTimeLeft(remaining);
           if (remaining <= 0) {
             clearInterval(ref);
-            setTimeExpired(true);
-            sounds.alert();
-            let guessLeft = 30;
-            setGuessTimeLeft(guessLeft);
-            const gRef = setInterval(() => {
-              guessLeft -= 1;
-              setGuessTimeLeft(guessLeft);
-              if (guessLeft <= 0) {
-                clearInterval(gRef);
-                setWinner("detectives");
-                setPhase("finished");
-              }
-            }, 1000);
+            setTimerRef(null);
+            const outcome = localGameTimeoutOutcome();
+            setTimeLeft(outcome.timeLeft);
+            setTimeExpired(outcome.timeExpired);
+            setShowSpyGuess(outcome.showSpyGuess);
+            setWinner(outcome.winner);
+            setPhase(outcome.phase);
+            sounds.win();
           }
         }, 1000);
         setTimerRef(ref);
@@ -352,21 +343,6 @@ export default function LocalGame() {
         setCardsReadCount((c) => c + 1);
       }
     }, 700); // wait for flip-back animation (0.65s)
-  };
-
-  // ── VOTE ────────────────────────────────────────────────────────────────────
-  const handleVoteOut = (idx) => {
-    if (timerRef) clearInterval(timerRef);
-    const player = gameData.players[idx];
-    setVoteTarget(idx);
-    if (player.isSpy) {
-      setWinner("detectives");
-      sounds.win();
-    } else {
-      setWinner("spy");
-      sounds.lose();
-    }
-    setPhase("finished");
   };
 
   // ── SPY GUESS ──────────────────────────────────────────────────────────────
@@ -388,7 +364,6 @@ export default function LocalGame() {
     setTimeLeft(null);
     setTimeExpired(false);
     setWinner(null);
-    setGuessTimeLeft(null);
   };
 
   const formatTime = (s) => {
@@ -1074,8 +1049,6 @@ export default function LocalGame() {
   // ════════════════════════════════════════════════════════════════════════════
   // RENDER: PLAYING
   // ════════════════════════════════════════════════════════════════════════════
-  const spyPlayer = gameData.players[gameData.spyIdx];
-
   if (showSpyGuess) {
     return (
       <AnimatePresence>
@@ -1085,40 +1058,6 @@ export default function LocalGame() {
           onClose={() => setShowSpyGuess(false)} />
         
       </AnimatePresence>);
-
-  }
-
-  if (timeExpired && !showSpyGuess && phase !== "finished") {
-    return (
-      <div style={{ maxWidth: 480, margin: "0 auto", padding: "40px 20px 80px", textAlign: "center" }}>
-        <motion.div initial={{ scale: 0 }} animate={{ scale: 1 }} style={{ fontSize: 60, marginBottom: 20 }}>⏰</motion.div>
-        <motion.h2 initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-        style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: 36, fontWeight: 700, letterSpacing: 3, color: "#e53535", marginBottom: 20 }}>
-          {t('game_time_up')}
-        </motion.h2>
-
-        {guessTimeLeft !== null &&
-        <motion.div initial={{ opacity: 0, scale: 0.9 }} animate={{ opacity: 1, scale: 1 }}
-        style={{ marginBottom: 24, padding: "12px 24px", background: guessTimeLeft <= 10 ? "rgba(229,53,53,0.12)" : "rgba(255,255,255,0.04)", border: `1px solid ${guessTimeLeft <= 10 ? "rgba(229,53,53,0.5)" : "#2a2a2a"}`, display: "inline-block" }}>
-            <div style={{ fontSize: 10, letterSpacing: 3, color: "#555", marginBottom: 4 }}>{t('game_spy_has')}</div>
-            <div style={{ fontSize: 42, fontWeight: 700, fontFamily: "monospace", color: guessTimeLeft <= 10 ? "#e53535" : "#eee", letterSpacing: 2 }}>{guessTimeLeft}s</div>
-            <div style={{ fontSize: 10, letterSpacing: 3, color: "#555", marginTop: 4 }}>{t('game_to_guess')}</div>
-          </motion.div>
-        }
-
-        <div style={{ fontSize: 13, color: "#555", marginBottom: 20 }}>
-          {lang === "ru" ? "Передайте телефон шпиону:" : "Pass phone to the spy:"}
-        </div>
-        <div style={{ fontSize: 32, marginBottom: 8 }}>{spyPlayer.avatar}</div>
-        <div style={{ fontSize: 18, color: "#eee", letterSpacing: 1, marginBottom: 24 }}>{spyPlayer.name.toUpperCase()}</div>
-
-        <motion.button whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
-        className="btn-red"
-        onClick={() => setShowSpyGuess(true)}
-        style={{ width: "100%", fontSize: 14, padding: "16px 0" }}>
-          {t('game_guess_btn')}
-        </motion.button>
-      </div>);
 
   }
 

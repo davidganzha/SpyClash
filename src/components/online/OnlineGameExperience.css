@@ -709,6 +709,28 @@
   overflow-y: auto;
 }
 
+.oge-vote-rule {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  margin-bottom: 10px;
+  padding: 9px 10px;
+  border: 1px solid rgba(229, 53, 53, 0.28);
+  background: rgba(229, 53, 53, 0.045);
+  color: #777;
+  font-size: 8px;
+  line-height: 1.45;
+  letter-spacing: 0.8px;
+}
+
+.oge-vote-rule strong {
+  color: var(--oge-red);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 22px;
+  letter-spacing: 1px;
+}
+
 .oge-vote-candidate {
   display: grid;
   min-width: 0;

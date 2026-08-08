@@ -5,6 +5,7 @@ import {
   associationSpinSettlementDelayMs,
   countdownRemainingSeconds,
   deriveOnlineGamePresentation,
+  onlineVotingTransition,
   onlineRoundCommand,
   parseAssociationRoundState,
   shouldAcceptOnlineRoomSnapshot,
@@ -147,11 +148,66 @@ test("active-player votes derive threshold, viewer vote, and voting subphase", (
     "SPY@example.com",
   ]);
   assert.equal(presentation.voteThreshold, 2);
+  assert.equal(presentation.exclusionVoteThreshold, 1);
   assert.equal(presentation.isVotingActive, true);
   assert.equal(presentation.subphase, "voting");
   assert.equal(presentation.myVote?.voted_for_email, "spy@example.com");
   assert.equal(presentation.hasRequestedVote, true);
   assert.equal(presentation.roundCommand, null);
+});
+
+test("six-player exclusion presentation requires N-1 votes without resolving votes client-side", () => {
+  const sixPlayers = Array.from({ length: 6 }, (_, index) => ({
+    email: `player-${index + 1}@example.com`,
+    name: `Player ${index + 1}`,
+    avatar: String(index + 1),
+  }));
+  const room = activeRoom({
+    players: sixPlayers,
+    cards_read: sixPlayers.map((player) => player.email),
+    spy_email: sixPlayers[5].email,
+    vote_requests: sixPlayers.slice(0, 4).map((player) => player.email),
+    detective_votes: [
+      { voter_email: sixPlayers[0].email, voted_for_email: sixPlayers[5].email },
+      { voter_email: sixPlayers[1].email, voted_for_email: sixPlayers[5].email },
+      { voter_email: sixPlayers[2].email, voted_for_email: sixPlayers[5].email },
+    ],
+  });
+
+  const presentation = deriveOnlineGamePresentation(room, sixPlayers[0].email);
+  assert.equal(presentation.voteThreshold, 4);
+  assert.equal(presentation.exclusionVoteThreshold, 5);
+  assert.equal(presentation.isVotingActive, true);
+  assert.equal(presentation.subphase, "voting");
+});
+
+test("voting transition reports only authoritative cancellation with unchanged active players", () => {
+  const voting = activeRoom({
+    vote_requests: players.map((player) => player.email),
+    detective_votes: [
+      { voter_email: players[0].email, voted_for_email: players[1].email },
+      { voter_email: players[1].email, voted_for_email: players[0].email },
+    ],
+  });
+  const cancelled = { ...voting, vote_requests: [], detective_votes: [] };
+  assert.equal(
+    onlineVotingTransition(voting, cancelled, players[0].email),
+    "cancelled",
+  );
+  assert.equal(
+    onlineVotingTransition(cancelled, cancelled, players[0].email),
+    null,
+  );
+
+  const excluded = {
+    ...cancelled,
+    spectators: [players[2].email],
+  };
+  assert.equal(onlineVotingTransition(voting, excluded, players[0].email), null);
+  assert.equal(
+    onlineVotingTransition(voting, { ...cancelled, status: "finished" }, players[0].email),
+    null,
+  );
 });
 
 test("results can continue from any room player but never from an observer", () => {

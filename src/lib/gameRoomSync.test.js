@@ -7,6 +7,9 @@ import {
   gameDurationMinutes,
   gameDurationSeconds,
   gameTimerSnapshot,
+  isAuthoritativeDetectiveVoteRefreshConflict,
+  isDetectiveVoteRoundChangedConflict,
+  isInactiveDetectiveVoteConflict,
   roomPollDelayMilliseconds,
   shouldRefreshForGameRoomSignal,
 } from "./gameRoomSync.js";
@@ -193,7 +196,7 @@ test("timer freezes on pause and subtracts accumulated pause after resume", () =
   assert.equal(resumed.remainingSeconds, 500);
 });
 
-test("post-game guess countdown uses the same pause-aware active clock", () => {
+test("timer clamps at zero without creating a post-game guess phase", () => {
   const snapshot = gameTimerSnapshot({
     game_started_at: "2026-07-27T10:00:00.000Z",
     game_duration_seconds: 60,
@@ -203,7 +206,67 @@ test("post-game guess countdown uses the same pause-aware active clock", () => {
 
   assert.equal(snapshot.elapsedSeconds, 70);
   assert.equal(snapshot.remainingSeconds, 0);
-  assert.equal(snapshot.guessRemainingSeconds, 20);
+  assert.equal("guessRemainingSeconds" in snapshot, false);
+});
+
+test("only the exact typed inactive detective-vote conflict is reconciled", () => {
+  const inactiveVote = {
+    status: 409,
+    code: "detective_vote_inactive",
+  };
+
+  assert.equal(
+    isInactiveDetectiveVoteConflict("cast_detective_vote", inactiveVote),
+    true,
+  );
+
+  const visibleFailures = [
+    ["cast_detective_vote", { status: 409 }],
+    ["cast_detective_vote", { status: 409, code: "cas_contention" }],
+    ["cast_detective_vote", { status: 409, code: "DETECTIVE_VOTE_INACTIVE" }],
+    ["cast_detective_vote", { status: 400, code: "detective_vote_inactive" }],
+    ["request_vote", inactiveVote],
+  ];
+
+  for (const [action, error] of visibleFailures) {
+    assert.equal(isInactiveDetectiveVoteConflict(action, error), false);
+  }
+});
+
+test("only an exact cast round-change conflict is silently refreshed", () => {
+  const changed = { status: 409, code: "detective_vote_round_changed" };
+  assert.equal(
+    isDetectiveVoteRoundChangedConflict("cast_detective_vote", changed),
+    true,
+  );
+  for (const [action, error] of [
+    ["request_vote", changed],
+    ["cast_detective_vote", { ...changed, status: 400 }],
+    ["cast_detective_vote", { ...changed, code: "active_lease" }],
+    ["cast_detective_vote", { status: 409 }],
+  ]) {
+    assert.equal(isDetectiveVoteRoundChangedConflict(action, error), false);
+  }
+});
+
+test("post-retry inactive and round-change conflicts both refresh authoritatively", () => {
+  for (const code of ["detective_vote_inactive", "detective_vote_round_changed"]) {
+    assert.equal(
+      isAuthoritativeDetectiveVoteRefreshConflict("cast_detective_vote", {
+        status: 409,
+        code,
+      }),
+      true,
+    );
+  }
+  assert.equal(
+    isAuthoritativeDetectiveVoteRefreshConflict("cast_detective_vote", {
+      status: 409,
+      code: "active_lease",
+      retryable: true,
+    }),
+    false,
+  );
 });
 
 test("duration helpers enforce the shared one-to-fifteen minute contract", () => {

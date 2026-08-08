@@ -14,11 +14,22 @@ import { useGameSounds } from "../components/useGameSounds";
 import {
   getGameRoom,
   leaveGameRoom,
+  performGameRoomAction,
   runGameRoomAction,
   subscribeGameRoom,
 } from "@/lib/gameRoomActions";
-import { gameTimerSnapshot } from "@/lib/gameRoomSync";
-import { shouldAcceptOnlineRoomSnapshot } from "@/lib/onlineGamePresentation";
+import {
+  isRetryableDetectiveVoteCastConflict,
+  recoverDetectiveVoteCastConflict,
+} from "@/lib/detectiveVoteRetry";
+import {
+  gameTimerSnapshot,
+  isAuthoritativeDetectiveVoteRefreshConflict,
+} from "@/lib/gameRoomSync";
+import {
+  onlineVotingTransition,
+  shouldAcceptOnlineRoomSnapshot,
+} from "@/lib/onlineGamePresentation";
 import { exitRoomImmediately } from "@/lib/roomExit";
 import { createPageUrl } from "@/utils";
 
@@ -204,13 +215,12 @@ export default function Game() {
   const [busyAction, setBusyAction] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null);
   const [timeExpired, setTimeExpired] = useState(false);
-  const [guessTimeLeft, setGuessTimeLeft] = useState(null);
 
   const roomRef = useRef(null);
   const prevRoomRef = useRef(null);
   const unsubRef = useRef(null);
   const timerRef = useRef(null);
-  const guessTimerRef = useRef(null);
+  const expirationRetryTimerRef = useRef(null);
   const actionInFlightRef = useRef(null);
   const leavingRef = useRef(false);
   const finalizingExpiredRef = useRef(false);
@@ -226,7 +236,6 @@ export default function Game() {
     if (snapshot.valid) {
       setTimeLeft(snapshot.remainingSeconds);
       setTimeExpired(snapshot.remainingSeconds === 0);
-      setGuessTimeLeft(snapshot.guessRemainingSeconds);
     }
     return true;
   }, []);
@@ -236,19 +245,107 @@ export default function Game() {
     if (!currentRoom || actionInFlightRef.current) return null;
     actionInFlightRef.current = action;
     setBusyAction(action);
+    const adoptAuthoritativeVoteRefresh = async (label) => {
+      try {
+        const refreshed = await getGameRoom(currentRoom.id);
+        if (
+          refreshed?.id === currentRoom.id
+          && String(refreshed.match_id || "") === String(currentRoom.match_id || "")
+        ) {
+          const latestRoom = roomRef.current;
+          if (
+            latestRoom?.id === currentRoom.id
+            && !shouldAcceptOnlineRoomSnapshot(latestRoom, refreshed)
+          ) return latestRoom;
+
+          const votingTransition = onlineVotingTransition(
+            latestRoom || currentRoom,
+            refreshed,
+            user?.email,
+          );
+          if (applyRoom(refreshed)) {
+            if (votingTransition === "cancelled") {
+              gameToast(t("toast_voting_cancelled"), "warning", "✕");
+            }
+            return refreshed;
+          }
+        }
+      } catch (refreshError) {
+        console.error(`Failed to reconcile ${label}`, refreshError);
+      }
+      // These typed conflicts describe an expected stale race. Realtime/polling
+      // remains authoritative if this bounded refresh itself is unavailable;
+      // do not replace that with a generic yellow action error.
+      return roomRef.current?.id === currentRoom.id ? roomRef.current : null;
+    };
     try {
       const updated = await runGameRoomAction(action, currentRoom.id, fields);
-      if (updated?.id && !applyRoom(updated)) return null;
+      if (updated?.id) {
+        const latestRoom = roomRef.current || currentRoom;
+        const votingTransition = onlineVotingTransition(
+          latestRoom,
+          updated,
+          user?.email,
+        );
+        if (!applyRoom(updated)) return null;
+        if (votingTransition === "cancelled") {
+          gameToast(t("toast_voting_cancelled"), "warning", "✕");
+        }
+      }
       return updated;
     } catch (error) {
-      console.error(`Failed room action: ${action}`, error);
-      gameToast(error?.message || "Room action failed", "warning", "⚠️");
+      let visibleError = error;
+      if (isAuthoritativeDetectiveVoteRefreshConflict(action, error)) {
+        return await adoptAuthoritativeVoteRefresh("detective vote state");
+      }
+      if (isRetryableDetectiveVoteCastConflict(action, error)) {
+        try {
+          const recovered = await recoverDetectiveVoteCastConflict({
+            action,
+            error,
+            room: currentRoom,
+            actorEmail: user?.email,
+            targetEmail: fields?.target_email,
+            refreshRoom: getGameRoom,
+            castVote: ({ roomId, targetEmail, expectedVoteRoundID }) =>
+              performGameRoomAction({
+                action: "cast_detective_vote",
+                room_id: roomId,
+                target_email: targetEmail,
+                expected_vote_round_id: expectedVoteRoundID,
+              }),
+          });
+          const latestRoom = roomRef.current;
+          if (
+            latestRoom?.id === currentRoom.id
+            && !shouldAcceptOnlineRoomSnapshot(latestRoom, recovered)
+          ) return latestRoom;
+          const votingTransition = onlineVotingTransition(
+            latestRoom || currentRoom,
+            recovered,
+            user?.email,
+          );
+          if (applyRoom(recovered)) {
+            if (votingTransition === "cancelled") {
+              gameToast(t("toast_voting_cancelled"), "warning", "✕");
+            }
+            return recovered;
+          }
+        } catch (recoveryError) {
+          visibleError = recoveryError;
+        }
+      }
+      if (isAuthoritativeDetectiveVoteRefreshConflict(action, visibleError)) {
+        return await adoptAuthoritativeVoteRefresh("detective vote retry state");
+      }
+      console.error(`Failed room action: ${action}`, visibleError);
+      gameToast(visibleError?.message || "Room action failed", "warning", "⚠️");
       return null;
     } finally {
       actionInFlightRef.current = null;
       setBusyAction(null);
     }
-  }, [applyRoom]);
+  }, [applyRoom, t, user?.email]);
 
   const loadRoom = async (currentUser) => {
     const id = getRoomId();
@@ -299,16 +396,12 @@ export default function Game() {
           soundsRef.current.roundStart();
         }
 
-        const activeVoteState = (candidateRoom) => {
-          const spectators = new Set(candidateRoom.spectators || []);
-          const active = (candidateRoom.players || []).filter((player) => !spectators.has(player.email));
-          const requests = (candidateRoom.vote_requests || []).filter((email) => !spectators.has(email));
-          const threshold = Math.ceil(active.length * 0.51);
-          return threshold > 0 && requests.length >= threshold;
-        };
-        if (!activeVoteState(previous) && activeVoteState(fresh)) {
+        const votingTransition = onlineVotingTransition(previous, fresh, currentUser.email);
+        if (votingTransition === "started") {
           gameToast(t("toast_voting_started"), "warning", "🗳️");
           soundsRef.current.alert();
+        } else if (votingTransition === "cancelled") {
+          gameToast(t("toast_voting_cancelled"), "warning", "✕");
         }
       }
 
@@ -346,7 +439,7 @@ export default function Game() {
       disposed = true;
       unsubRef.current?.();
       if (timerRef.current) clearInterval(timerRef.current);
-      if (guessTimerRef.current) clearInterval(guessTimerRef.current);
+      if (expirationRetryTimerRef.current) clearInterval(expirationRetryTimerRef.current);
     };
   }, []);
 
@@ -411,15 +504,10 @@ export default function Game() {
     if (!timeExpired || room?.status === "finished") return undefined;
     if (!room?.game_started_at || !room?.game_duration_seconds) return undefined;
 
-    const tick = async () => {
+    const finalize = async () => {
       const currentRoom = roomRef.current || room;
-      const snapshot = gameTimerSnapshot(currentRoom);
-      if (!snapshot.valid) return;
-      setGuessTimeLeft(snapshot.guessRemainingSeconds);
-
       if (
-        snapshot.guessRemainingSeconds === 0
-        && currentRoom.status !== "finished"
+        currentRoom.status !== "finished"
         && (currentRoom.players || []).some(
           (player) => normalizedEmail(player.email) === normalizedEmail(user?.email),
         )
@@ -437,11 +525,11 @@ export default function Game() {
       }
     };
 
-    void tick();
-    if (guessTimerRef.current) clearInterval(guessTimerRef.current);
-    guessTimerRef.current = setInterval(() => void tick(), 500);
+    void finalize();
+    if (expirationRetryTimerRef.current) clearInterval(expirationRetryTimerRef.current);
+    expirationRetryTimerRef.current = setInterval(() => void finalize(), 500);
     return () => {
-      if (guessTimerRef.current) clearInterval(guessTimerRef.current);
+      if (expirationRetryTimerRef.current) clearInterval(expirationRetryTimerRef.current);
     };
   }, [
     applyRoom,
@@ -455,8 +543,8 @@ export default function Game() {
   ]);
 
   useEffect(() => {
-    if (isGamePaused) setShowSpyGuess(false);
-  }, [isGamePaused]);
+    if (isGamePaused || timeExpired) setShowSpyGuess(false);
+  }, [isGamePaused, timeExpired]);
 
   useEffect(() => {
     if (!room) return;
@@ -551,7 +639,12 @@ export default function Game() {
     );
     if (alreadyVoted) return;
     soundsRef.current.vote();
-    await runSynchronizedAction("cast_detective_vote", { target_email: targetEmail });
+    const voteRoundID = String(currentRoom.detective_vote_round_id || "").trim();
+    if (!voteRoundID) return;
+    await runSynchronizedAction("cast_detective_vote", {
+      target_email: targetEmail,
+      expected_vote_round_id: voteRoundID,
+    });
   }, [runSynchronizedAction, timeExpired, user?.email]);
 
   const handleTogglePause = useCallback(async () => {
@@ -568,6 +661,7 @@ export default function Game() {
       !currentRoom
       || currentRoom.status !== "playing"
       || currentRoom.game_paused_at
+      || timeExpired
       || normalizedEmail(currentRoom.spy_email) !== viewerEmail
       || (currentRoom.spectators || []).map(normalizedEmail).includes(viewerEmail)
     ) return;
@@ -575,7 +669,7 @@ export default function Game() {
     if (!updated) return;
     soundsRef.current[updated.winner === "spy" ? "win" : "lose"]();
     setShowSpyGuess(false);
-  }, [runSynchronizedAction, user?.email]);
+  }, [runSynchronizedAction, timeExpired, user?.email]);
 
   const handleVoteReplay = useCallback(async () => {
     await runSynchronizedAction("vote_play_again");
@@ -652,7 +746,6 @@ export default function Game() {
         revealed={revealed}
         timeLeft={timeLeft ?? gameTimerSnapshot(room).remainingSeconds}
         timeExpired={timeExpired}
-        guessTimeLeft={guessTimeLeft}
         syncState={syncState}
         busyAction={busyAction}
         onToggleRole={() => {

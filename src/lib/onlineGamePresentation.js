@@ -80,11 +80,45 @@ function voteState(room, userEmail) {
     activePlayers,
     activeVoteRequests,
     voteThreshold,
+    exclusionVoteThreshold: Math.max(activePlayers.length - 1, 0),
     isVotingActive: voteThreshold > 0 && activeVoteRequests.length >= voteThreshold,
     myVote: myVote ? { ...myVote } : null,
     hasRequestedVote: Boolean(viewerEmail)
       && activeVoteRequests.some((email) => normalizedEmail(email) === viewerEmail),
   };
+}
+
+function equalActivePlayerSets(left, right) {
+  const leftEmails = left.map((player) => normalizedEmail(player.email)).sort();
+  const rightEmails = right.map((player) => normalizedEmail(player.email)).sort();
+  return leftEmails.length === rightEmails.length
+    && leftEmails.every((email, index) => email === rightEmails[index]);
+}
+
+/**
+ * Describes only an authoritative room-state transition. It deliberately does
+ * not attempt to predict whether the remaining ballots can satisfy N-1.
+ */
+export function onlineVotingTransition(previousRoom, nextRoom, userEmail) {
+  if (normalizedStatus(previousRoom) !== "playing" || normalizedStatus(nextRoom) !== "playing") {
+    return null;
+  }
+
+  const previous = voteState(previousRoom, userEmail);
+  const next = voteState(nextRoom, userEmail);
+  if (!previous.isVotingActive && next.isVotingActive) return "started";
+
+  const nextVotes = Array.isArray(nextRoom?.detective_votes) ? nextRoom.detective_votes : [];
+  if (
+    previous.isVotingActive
+    && !next.isVotingActive
+    && next.activeVoteRequests.length === 0
+    && nextVotes.length === 0
+    && equalActivePlayerSets(previous.activePlayers, next.activePlayers)
+  ) {
+    return "cancelled";
+  }
+  return null;
 }
 
 function roleGateState(room) {
@@ -277,6 +311,7 @@ export function deriveOnlineGamePresentation(room, userEmail) {
     activePlayers: votes.activePlayers,
     activeVoteRequests: votes.activeVoteRequests,
     voteThreshold: votes.voteThreshold,
+    exclusionVoteThreshold: votes.exclusionVoteThreshold,
     isVotingActive: votes.isVotingActive,
     myVote: votes.myVote,
     hasRequestedVote: votes.hasRequestedVote,

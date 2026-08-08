@@ -172,18 +172,14 @@ function QuestionStage({ room, t }) {
   );
 }
 
-function ExpiredStage({ presentation, guessTimeLeft, t, lang }) {
-  const safeGuessTime = Math.max(0, Math.ceil(Number(guessTimeLeft) || 0));
-  const spyCanAct = presentation.viewerRole === "spy" && !presentation.isSpectator;
+function ExpiredStage({ t, lang }) {
   return (
     <div className="oge-expired-stage" data-testid="onlineExperience.timeExpired" role="status" aria-live="polite">
       <span className="oge-expired-icon" aria-hidden="true">⏱</span>
       <span className="oge-stage-kicker">// {t("game_time_up")}</span>
-      <span className="oge-expired-value">{safeGuessTime}s</span>
+      <span className="oge-expired-value">{localize(lang, "SPY WINS", "ПОБЕДА ШПИОНА")}</span>
       <span className="oge-stage-message">
-        {spyCanAct
-          ? localize(lang, "FINAL CHANCE TO GUESS", "ПОСЛЕДНИЙ ШАНС УГАДАТЬ")
-          : t("game_waiting_spy")}
+        {localize(lang, "CONFIRMING RESULT…", "ПОДТВЕРЖДАЕМ РЕЗУЛЬТАТ…")}
       </span>
     </div>
   );
@@ -256,6 +252,16 @@ function VotingStage({ presentation, userEmail, onCastVote, busyAction, lang }) 
   return (
     <div className="oge-voting-stage" data-testid="onlineExperience.votingCandidates">
       <div className="oge-stage-title">{localize(lang, "CHOOSE A SUSPECT", "ВЫБЕРИ ПОДОЗРЕВАЕМОГО")}</div>
+      <div className="oge-vote-rule" data-testid="onlineExperience.voteRule">
+        <strong>{presentation.exclusionVoteThreshold}/{presentation.activePlayers.length}</strong>
+        <span>
+          {localize(
+            lang,
+            `To exclude a player, ${presentation.exclusionVoteThreshold} votes must point to the same suspect. If that becomes impossible, the server cancels the vote.`,
+            `Чтобы исключить игрока, ${presentation.exclusionVoteThreshold} голосов должны быть за одного подозреваемого. Если это становится невозможно, сервер отменяет голосование.`,
+          )}
+        </span>
+      </div>
       <div className="oge-vote-grid">
         {candidates.map((candidate) => {
           const selected = presentation.myVote?.voted_for_email === candidate.email;
@@ -276,23 +282,16 @@ function VotingStage({ presentation, userEmail, onCastVote, busyAction, lang }) 
       </div>
       <div className="oge-vote-hint">
         {presentation.myVote
-          ? localize(lang, "VOTE RECORDED", "ГОЛОС ПРИНЯТ")
+          ? localize(lang, "VOTE RECORDED · WAITING FOR SERVER", "ГОЛОС ПРИНЯТ · ОЖИДАЕМ СЕРВЕР")
           : localize(lang, "THE VOTE IS FINAL", "ГОЛОС НЕЛЬЗЯ ИЗМЕНИТЬ")}
       </div>
     </div>
   );
 }
 
-function RoundStage({ room, presentation, timeExpired, guessTimeLeft, onCastVote, busyAction, t, lang }) {
+function RoundStage({ room, presentation, timeExpired, onCastVote, busyAction, t, lang }) {
   if (timeExpired) {
-    return (
-      <ExpiredStage
-        presentation={presentation}
-        guessTimeLeft={guessTimeLeft}
-        t={t}
-        lang={lang}
-      />
-    );
+    return <ExpiredStage t={t} lang={lang} />;
   }
   if (presentation.isVotingActive) {
     return (
@@ -445,7 +444,6 @@ export function OnlineActiveGameScene({
   revealed,
   timeLeft,
   timeExpired,
-  guessTimeLeft,
   syncState,
   busyAction,
   onToggleRole,
@@ -560,7 +558,8 @@ export function OnlineActiveGameScene({
   const canSpyGuess = presentation.viewerRole === "spy"
     && !presentation.isSpectator
     && hasEnabledWords
-    && !isPaused;
+    && !isPaused
+    && !timeExpired;
   const showsVoteRequest = presentation.isPlayer
     && !presentation.isSpectator
     && !presentation.isVotingActive
@@ -579,7 +578,7 @@ export function OnlineActiveGameScene({
     handler: onSpyGuess,
   };
   const primaryAction = timeExpired
-    ? (canSpyGuess ? spyGuessAction : null)
+    ? null
     : command
       ? { action: command, title: roundCommandTitle, handler: () => onRoundAction(command) }
       : canSpyGuess && !suppressFallback
@@ -592,7 +591,7 @@ export function OnlineActiveGameScene({
             disabled: !canRequestVote,
           }
           : null;
-  const showRoleControl = true;
+  const showRoleControl = !timeExpired;
   const showSecondaryVote = showsVoteRequest
     && !suppressFallback
     && primaryAction?.action !== "request_vote";
@@ -695,7 +694,6 @@ export function OnlineActiveGameScene({
                 room={room}
                 presentation={{ ...presentation, associationState }}
                 timeExpired={timeExpired}
-                guessTimeLeft={guessTimeLeft}
                 onCastVote={onCastVote}
                 busyAction={busyAction}
                 t={t}
