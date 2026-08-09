@@ -306,19 +306,10 @@ struct HomeView: View {
     private var playModeActions: some View {
         VStack(spacing: 14) {
             webChoiceCard(
-                title: localized(en: "LOCAL", ru: "ЛОКАЛЬНО", es: "LOCAL"),
-                subtitle: localized(en: "One device · pass & play", ru: "Один телефон, передаёте по кругу", es: "Un telefono · pasar y jugar"),
-                icon: "📱",
-                compact: true
-            ) {
-                HapticManager.shared.fire(.tabSelection)
-                appState.openLocalSetup()
-            }
-
-            webChoiceCard(
                 title: localized(en: "ONLINE", ru: "ОНЛАЙН", es: "ONLINE"),
                 subtitle: localized(en: "Each player on their own device", ru: "Каждый на своём телефоне", es: "Cada jugador en su telefono"),
                 icon: "📡",
+                badge: localized(en: "RECOMMENDED", ru: "РЕКОМЕНДОВАНО", es: "RECOMENDADO"),
                 highlighted: true,
                 compact: true
             ) {
@@ -326,6 +317,16 @@ struct HomeView: View {
                 withAnimation(SpyMotion.page) {
                     stage = .onlineMode
                 }
+            }
+
+            webChoiceCard(
+                title: localized(en: "LOCAL", ru: "ЛОКАЛЬНО", es: "LOCAL"),
+                subtitle: localized(en: "One device · pass & play", ru: "Один телефон, передаёте по кругу", es: "Un telefono · pasar y jugar"),
+                icon: "📱",
+                compact: true
+            ) {
+                HapticManager.shared.fire(.tabSelection)
+                appState.openLocalSetup()
             }
 
             webGhostButton(title: localized(en: "Cancel", ru: "Отмена", es: "Cancelar"), systemImage: "chevron.left") {
@@ -473,6 +474,7 @@ struct HomeView: View {
         title: String,
         subtitle: String,
         icon: String,
+        badge: String? = nil,
         highlighted: Bool = false,
         compact: Bool = false,
         action: @escaping () -> Void
@@ -480,13 +482,24 @@ struct HomeView: View {
         Button(action: action) {
             HStack(spacing: 18) {
                 Text(icon)
-                    .font(.system(size: compact ? 36 : 44))
-                    .frame(width: compact ? 42 : 48)
+                    .font(.system(size: compact ? 40 : 44))
+                    .frame(width: compact ? 46 : 48)
                     .accessibilityHidden(true)
 
-                VStack(alignment: .leading, spacing: compact ? 4 : 6) {
+                VStack(alignment: .leading, spacing: compact ? 5 : 6) {
+                    if let badge {
+                        Text(badge)
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .tracking(0.06)
+                            .foregroundStyle(SpyTheme.red)
+                            .padding(.horizontal, 7)
+                            .padding(.vertical, 3)
+                            .background(SpyTheme.red.opacity(0.10), in: Capsule())
+                            .overlay(Capsule().stroke(SpyTheme.red.opacity(0.42), lineWidth: 1))
+                    }
+
                     Text(title)
-                        .font(.system(size: compact ? 20 : 22, weight: .black, design: .default))
+                        .font(.system(size: compact ? 21 : 22, weight: .black, design: .default))
                         .tracking(title.count > 10 ? 0.04 : 0.16)
                         .foregroundStyle(.white)
                         .spyFitted(lines: 2, scale: 0.66)
@@ -494,7 +507,7 @@ struct HomeView: View {
                         .layoutPriority(2)
 
                     Text(subtitle)
-                        .font(.system(size: 12, weight: .semibold, design: .default))
+                        .font(.system(size: 13, weight: .semibold, design: .default))
                         .tracking(0.02)
                         .foregroundStyle(SpyTheme.dim)
                         .spyFitted(lines: 2, scale: 0.72)
@@ -508,8 +521,8 @@ struct HomeView: View {
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, compact ? 20 : 24)
-            .padding(.vertical, compact ? 18 : 24)
-            .frame(maxWidth: .infinity, minHeight: compact ? 82 : 102)
+            .padding(.vertical, compact ? 19 : 24)
+            .frame(maxWidth: .infinity, minHeight: compact ? 94 : 102)
             .background((highlighted ? SpyTheme.red.opacity(0.06) : SpyTheme.control), in: CutCornerShape(cut: 14))
             .overlay(CutCornerShape(cut: 14).stroke(highlighted ? SpyTheme.red.opacity(0.50) : SpyTheme.strokeStrong, lineWidth: 1))
             .overlay(alignment: .topLeading) {

@@ -935,21 +935,21 @@ struct LocalGameView: View {
         Button(action: action) {
             HStack(spacing: 5) {
                 Text(title.uppercased())
-                    .font(.system(size: 10.5, weight: .black, design: .default))
+                    .font(.system(size: 12, weight: .black, design: .default))
                     .tracking(0.02)
-                    .spyFitted(scale: 0.56, alignment: .center)
+                    .spyFitted(lines: 2, scale: 0.68, alignment: .center)
 
                 if let subtitle {
                     Text("(\(subtitle))")
-                        .font(.system(size: 9, weight: .black, design: .default))
+                        .font(.system(size: 10, weight: .black, design: .default))
                         .foregroundStyle(SpyTheme.dim)
                         .lineLimit(1)
                 }
             }
             .foregroundStyle(isSelected ? SpyTheme.red : SpyTheme.muted)
-            .padding(.horizontal, 10)
+            .padding(.horizontal, 12)
             .frame(maxWidth: .infinity)
-            .frame(minHeight: 44)
+            .frame(minHeight: 52)
             .background(isSelected ? SpyTheme.red.opacity(0.06) : SpyTheme.dark)
             .overlay(Rectangle().stroke(isSelected ? SpyTheme.red.opacity(0.50) : SpyTheme.strokeStrong, lineWidth: 1))
             .contentShape(Rectangle())
@@ -1162,15 +1162,15 @@ struct LocalGameView: View {
                 } label: {
                     HStack(alignment: .center, spacing: 10) {
                         Text("📦")
-                            .font(.system(size: 20))
+                            .font(.system(size: 24))
                         VStack(alignment: .leading, spacing: 4) {
                             Text(localized(en: "You don't have any word packs yet.", ru: "У тебя пока нет word packs.", es: "Aun no tienes word packs."))
-                                .font(.system(size: 11, weight: .bold, design: .default))
+                                .font(.system(size: 12, weight: .bold, design: .default))
                                 .tracking(0.02)
                                 .foregroundStyle(SpyTheme.dim)
                                 .spyFitted(lines: 2, scale: 0.62)
                             Text(localized(en: "+ Create first pack →", ru: "+ Создать первый пак →", es: "+ Crear primer pack →"))
-                                .font(.system(size: 11, weight: .black, design: .monospaced))
+                                .font(.system(size: 12, weight: .black, design: .monospaced))
                                 .tracking(0.02)
                                 .foregroundStyle(SpyTheme.red)
                                 .spyFitted(lines: 2, scale: 0.62)
@@ -1185,12 +1185,12 @@ struct LocalGameView: View {
                 .buttonStyle(SpyWebPressStyle())
             } else {
                 Text("\(localized(en: "WORD PACKS", ru: "WORD PACKS", es: "WORD PACKS")) \(packs.count)")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .tracking(0.02)
                     .foregroundStyle(SpyTheme.dim)
                     .spyFitted(scale: 0.62)
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 6)], spacing: 6) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 8)], spacing: 8) {
                     localPackChip(
                         title: localized(en: "RANDOM", ru: "СЛУЧАЙНО", es: "AZAR"),
                         subtitle: nil,
@@ -1213,7 +1213,7 @@ struct LocalGameView: View {
                 if selectedPackID != "builtin",
                    let selected = packs.first(where: { $0.id == selectedPackID }) {
                     Text("\(localized(en: "Selected", ru: "Выбрано", es: "Seleccionado")) \(selected.name) · \(selected.words?.localCleanWords.count ?? 0) \(copy.wordsSuffix)")
-                        .font(.system(size: 10, weight: .bold, design: .default))
+                        .font(.system(size: 11, weight: .bold, design: .default))
                         .tracking(0.02)
                         .foregroundStyle(SpyTheme.dim)
                         .spyFitted(lines: 2, scale: 0.62)

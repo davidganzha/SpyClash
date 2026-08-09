@@ -4687,7 +4687,7 @@ struct GameView: View {
                 HStack(spacing: 10) {
                     SpySpinner(size: 16, accent: SpyTheme.red)
                     Text(localized(en: "LOADING WORD PACKS", ru: "ЗАГРУЗКА КОЛОД", es: "CARGANDO PACKS"))
-                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
                         .tracking(0.04)
                         .foregroundStyle(SpyTheme.dim)
                 }
@@ -4698,10 +4698,10 @@ struct GameView: View {
             } else if let roomPackLoadError {
                 VStack(alignment: .leading, spacing: 9) {
                     Text(localized(en: "COULDN'T LOAD YOUR DECKS", ru: "НЕ УДАЛОСЬ ЗАГРУЗИТЬ КОЛОДЫ", es: "NO SE PUDIERON CARGAR LOS PACKS"))
-                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
                         .foregroundStyle(SpyTheme.red)
                     Text(roomPackLoadError)
-                        .font(.system(size: 9, weight: .semibold, design: .default))
+                        .font(.system(size: 10, weight: .semibold, design: .default))
                         .foregroundStyle(SpyTheme.dim)
                         .lineLimit(2)
                     Button {
@@ -4711,7 +4711,7 @@ struct GameView: View {
                             localized(en: "TRY AGAIN", ru: "ПОВТОРИТЬ", es: "REINTENTAR"),
                             systemImage: "arrow.clockwise"
                         )
-                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
                         .foregroundStyle(SpyTheme.red)
                         .frame(maxWidth: .infinity, minHeight: 38)
                         .background(SpyTheme.red.opacity(0.06), in: CutCornerShape(cut: 7))
@@ -4745,12 +4745,12 @@ struct GameView: View {
                 .accessibilityIdentifier("onlineRoom.noSavedWordPacks")
             } else {
                 Text("\(localized(en: "WORD PACKS", ru: "КОЛОДЫ", es: "PACKS")) \(lobbyWordPacks.count)")
-                    .font(.system(size: 11, weight: .bold, design: .monospaced))
+                    .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .tracking(0.02)
                     .foregroundStyle(SpyTheme.dim)
                     .spyFitted(scale: 0.62)
 
-                LazyVGrid(columns: [GridItem(.adaptive(minimum: 104), spacing: 6)], spacing: 6) {
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 8)], spacing: 8) {
                     roomPackOption(
                         id: nil,
                         title: localized(en: "Not selected.", ru: "Не выбрано.", es: "No seleccionado."),
@@ -4791,21 +4791,21 @@ struct GameView: View {
         return Button(action: action) {
             HStack(spacing: 8) {
                 Image(systemName: systemImage)
-                    .font(.system(size: 12, weight: .black))
+                    .font(.system(size: 14, weight: .black))
                     .foregroundStyle(isSelected ? .white : SpyTheme.red)
-                    .frame(width: 16)
+                    .frame(width: 18)
 
                 VStack(alignment: .leading, spacing: 2) {
                     Text(title.uppercased())
-                        .font(.system(size: 9.5, weight: .black, design: .monospaced))
+                        .font(.system(size: 11, weight: .black, design: .monospaced))
                         .tracking(0.02)
                         .foregroundStyle(isSelected ? .white : SpyTheme.muted)
                         .lineLimit(2)
-                        .minimumScaleFactor(0.54)
+                        .minimumScaleFactor(0.65)
 
                     if let subtitle {
                         Text("\(subtitle) \(copy.wordsSuffix)")
-                            .font(.system(size: 8, weight: .black, design: .monospaced))
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
                             .tracking(0.02)
                             .foregroundStyle(isSelected ? .white.opacity(0.70) : SpyTheme.dim)
                             .lineLimit(1)
@@ -4815,8 +4815,8 @@ struct GameView: View {
 
                 Spacer(minLength: 0)
             }
-            .padding(.horizontal, 10)
-            .frame(maxWidth: .infinity, minHeight: 44, alignment: .leading)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
             .background(isSelected ? SpyTheme.red : SpyTheme.dark, in: CutCornerShape(cut: 8))
             .overlay(
                 CutCornerShape(cut: 8)
