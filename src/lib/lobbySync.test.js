@@ -17,6 +17,8 @@ function lobbyState(overrides = {}) {
   return normalizeLobbyState({
     game_mode: "questions",
     game_duration_seconds: 600,
+    lobby_spy_count: 1,
+    spies_know_each_other: false,
     lobby_word_source: "manual",
     lobby_source_pack_id: "",
     lobby_source_name: "Cities",
@@ -65,6 +67,8 @@ test("authoritative room hydration preserves the complete lobby snapshot", () =>
   const state = lobbyState({
     game_mode: "associations",
     game_duration_seconds: 720,
+    lobby_spy_count: 2,
+    spies_know_each_other: true,
     lobby_word_source: "saved",
     lobby_source_pack_id: "pack-7",
     lobby_source_name: "Capitals",
@@ -82,6 +86,8 @@ test("authoritative room hydration preserves the complete lobby snapshot", () =>
 
   assert.equal(controls.gameMode, "associations");
   assert.equal(controls.gameDuration, 12);
+  assert.equal(controls.spyCount, 2);
+  assert.equal(controls.spiesKnowEachOther, true);
   assert.equal(controls.wordSource, "saved");
   assert.equal(controls.selectedPackId, "pack-7");
   assert.equal(controls.customTheme, "");
@@ -160,6 +166,8 @@ test("a revision-zero default becomes a complete playable fallback snapshot", ()
 
   assert.equal(materialized.game_mode, "associations");
   assert.equal(materialized.game_duration_seconds, 480);
+  assert.equal(materialized.lobby_spy_count, 1);
+  assert.equal(materialized.spies_know_each_other, false);
   assert.equal(materialized.lobby_word_source, "manual");
   assert.equal(materialized.lobby_category, "Cities");
   assert.equal(materialized.lobby_word_count, 2);
@@ -170,11 +178,13 @@ test("a revision-zero default becomes a complete playable fallback snapshot", ()
     "lobby_category",
     "lobby_source_name",
     "lobby_source_pack_id",
+    "lobby_spy_count",
     "lobby_theme",
     "lobby_word_count",
     "lobby_word_count_mode",
     "lobby_word_pool",
     "lobby_word_source",
+    "spies_know_each_other",
   ]);
 });
 
@@ -217,11 +227,13 @@ test("every write is expanded to the complete canonical lobby snapshot", async (
     "lobby_category",
     "lobby_source_name",
     "lobby_source_pack_id",
+    "lobby_spy_count",
     "lobby_theme",
     "lobby_word_count",
     "lobby_word_count_mode",
     "lobby_word_pool",
     "lobby_word_source",
+    "spies_know_each_other",
   ]);
   assert.equal(calls[0].mutationID, "full-snapshot-id");
   assert.equal(calls[0].expectedRevision, 1);

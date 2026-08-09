@@ -28,6 +28,10 @@ function activeRoom(overrides = {}) {
     game_started_at: "2026-08-04T10:00:00.000Z",
     game_paused_at: "",
     spy_email: "spy@example.com",
+    spy_emails: ["spy@example.com"],
+    lobby_spy_count: 1,
+    spies_know_each_other: false,
+    exclusion_vote_threshold: 2,
     secret_word: "Embassy",
     word: "Embassy",
     game_mode: "questions",
@@ -148,7 +152,7 @@ test("active-player votes derive threshold, viewer vote, and voting subphase", (
     "SPY@example.com",
   ]);
   assert.equal(presentation.voteThreshold, 2);
-  assert.equal(presentation.exclusionVoteThreshold, 1);
+  assert.equal(presentation.exclusionVoteThreshold, 2);
   assert.equal(presentation.isVotingActive, true);
   assert.equal(presentation.subphase, "voting");
   assert.equal(presentation.myVote?.voted_for_email, "spy@example.com");
@@ -166,6 +170,8 @@ test("six-player exclusion presentation requires N-1 votes without resolving vot
     players: sixPlayers,
     cards_read: sixPlayers.map((player) => player.email),
     spy_email: sixPlayers[5].email,
+    spy_emails: [sixPlayers[5].email],
+    exclusion_vote_threshold: 5,
     vote_requests: sixPlayers.slice(0, 4).map((player) => player.email),
     detective_votes: [
       { voter_email: sixPlayers[0].email, voted_for_email: sixPlayers[5].email },
@@ -179,6 +185,57 @@ test("six-player exclusion presentation requires N-1 votes without resolving vot
   assert.equal(presentation.exclusionVoteThreshold, 5);
   assert.equal(presentation.isVotingActive, true);
   assert.equal(presentation.subphase, "voting");
+});
+
+test("multi-spy membership and N-S threshold come only from the viewer projection", () => {
+  const sixPlayers = Array.from({ length: 6 }, (_, index) => ({
+    email: `player-${index + 1}@example.com`,
+    name: `Player ${index + 1}`,
+  }));
+  const room = activeRoom({
+    players: sixPlayers,
+    cards_read: sixPlayers.map((player) => player.email),
+    lobby_spy_count: 2,
+    spy_email: sixPlayers[4].email,
+    spy_emails: [sixPlayers[4].email, sixPlayers[5].email],
+    spies_know_each_other: true,
+    exclusion_vote_threshold: 4,
+  });
+
+  const spy = deriveOnlineGamePresentation(room, sixPlayers[4].email);
+  assert.equal(spy.viewerRole, "spy");
+  assert.equal(spy.spyCount, 2);
+  assert.equal(spy.exclusionVoteThreshold, 4);
+  assert.equal(spy.isRanked, false);
+  assert.deepEqual(spy.spyTeammates.map((player) => player.email), [sixPlayers[5].email]);
+
+  const detectiveProjection = {
+    ...room,
+    spy_email: "",
+    spy_emails: [],
+  };
+  const detective = deriveOnlineGamePresentation(detectiveProjection, sixPlayers[0].email);
+  assert.equal(detective.viewerRole, "detective");
+  assert.deepEqual(detective.spyTeammates, []);
+});
+
+test("server exclusion threshold wins over any client-side N-1 derivation", () => {
+  const presentation = deriveOnlineGamePresentation(activeRoom({
+    exclusion_vote_threshold: 1,
+  }), "detective@example.com");
+  assert.equal(presentation.exclusionVoteThreshold, 1);
+});
+
+test("eliminated players are not active and cannot receive round commands", () => {
+  const room = activeRoom({ eliminated_emails: ["detective@example.com"] });
+  const presentation = deriveOnlineGamePresentation(room, "detective@example.com");
+  assert.equal(presentation.isPlayer, true);
+  assert.equal(presentation.isActivePlayer, false);
+  assert.equal(presentation.roundCommand, null);
+  assert.deepEqual(
+    presentation.activePlayers.map((player) => player.email),
+    ["spy@example.com", "third@example.com"],
+  );
 });
 
 test("voting transition reports only authoritative cancellation with unchanged active players", () => {

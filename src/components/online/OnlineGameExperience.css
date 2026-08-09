@@ -229,6 +229,7 @@
 }
 
 .oge-operative {
+  position: relative;
   display: grid;
   flex: 0 0 62px;
   grid-template-rows: 38px auto 1px;
@@ -279,6 +280,22 @@
   text-align: center;
   text-overflow: ellipsis;
   white-space: nowrap;
+}
+
+.oge-operative-role {
+  position: absolute;
+  top: 0;
+  right: 4px;
+  display: grid;
+  width: 15px;
+  height: 15px;
+  place-items: center;
+  border: 1px solid var(--oge-red);
+  background: #120303;
+  color: var(--oge-red);
+  font-family: "Rajdhani", sans-serif;
+  font-size: 9px;
+  font-weight: 700;
 }
 
 .oge-operative.is-eliminated .oge-operative-name {
@@ -482,6 +499,31 @@
   font-size: clamp(8px, 2.3vw, 11px);
   line-height: 1.55;
   text-align: center;
+}
+
+.oge-role-teammates {
+  display: grid;
+  width: 100%;
+  gap: 5px;
+  margin-top: 7%;
+  color: #777;
+  font-size: clamp(7px, 2vw, 9px);
+  line-height: 1.35;
+  letter-spacing: 1px;
+  text-align: center;
+}
+
+.oge-role-teammates strong {
+  color: var(--oge-red);
+  font-weight: 700;
+  letter-spacing: 1.5px;
+}
+
+.oge-role-teammates > span {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: center;
+  gap: 4px 8px;
 }
 
 .oge-stage {

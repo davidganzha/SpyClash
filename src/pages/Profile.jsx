@@ -8,6 +8,7 @@ import Reveal from "@/components/Reveal";
 import DeleteAccountSection from "@/components/DeleteAccountSection";
 import PageChrome from "@/components/PageChrome";
 import { loadPlayerGameHistory } from "@/lib/gameHistory";
+import { isRankedOnlineGameHistory } from "@/lib/gameHistoryPolicy";
 import {
   ACCOUNT_AVATARS,
   accountAvatarForDisplay,
@@ -215,11 +216,12 @@ export default function Profile() {
   };
 
   const stats = useMemo(() => {
-    const wins = history.filter((item) => item.won).length;
-    const losses = history.length - wins;
-    const winRate = history.length ? Math.round((wins / history.length) * 100) : 0;
-    const spyGames = history.filter((item) => item.role === "spy");
-    const detectiveGames = history.filter((item) => item.role === "detective");
+    const rankedHistory = history.filter(isRankedOnlineGameHistory);
+    const wins = rankedHistory.filter((item) => item.won).length;
+    const losses = rankedHistory.length - wins;
+    const winRate = rankedHistory.length ? Math.round((wins / rankedHistory.length) * 100) : 0;
+    const spyGames = rankedHistory.filter((item) => item.role === "spy");
+    const detectiveGames = rankedHistory.filter((item) => item.role === "detective");
     const spyWinRate = spyGames.length
       ? Math.round((spyGames.filter((item) => item.won).length / spyGames.length) * 100)
       : 0;
@@ -232,7 +234,7 @@ export default function Profile() {
       losses,
       winRate,
       cards: [
-        { label: t("profile_missions"), value: history.length, color: "#fff" },
+        { label: t("profile_missions"), value: rankedHistory.length, color: "#fff" },
         { label: t("profile_wins"), value: wins, color: "#4ade80" },
         { label: lang === "ru" ? "ПРОЦЕНТ ПОБЕД" : "WIN RATE", value: `${winRate}%`, color: "#4ade80" },
         { label: lang === "ru" ? "ШПИОН" : "SPY WIN RATE", value: `${spyWinRate}%`, color: "#e53535" },
@@ -300,7 +302,7 @@ export default function Profile() {
           avatar={avatar}
           badge={badge}
           displayName={String(displayName || "OPERATIVE").toUpperCase()}
-          games={history.length}
+          games={history.filter(isRankedOnlineGameHistory).length}
           rating={rating}
           spyID={spyID}
           theme={theme}
@@ -515,6 +517,9 @@ export default function Profile() {
                     </div>
                     <div style={{ color: "#3f3f3f", fontSize: 8, letterSpacing: 1.5 }}>
                       {item.category?.toUpperCase()} · {item.player_count}P
+                      {(item.ranked === false || Number(item.spy_count) > 1) && (
+                        <span style={{ color: "#fbbf24" }}> · {t("history_unranked")}</span>
+                      )}
                     </div>
                   </div>
                   <div

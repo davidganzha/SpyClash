@@ -1,3 +1,10 @@
+import {
+  isRankedSpyRoom,
+  isSpyEmailForRoom,
+  projectedSpyTeammates,
+  publicSpyCount,
+} from "./multiSpyRules.js";
+
 const ASSOCIATION_STATE_MAX_LENGTH = 64 * 1024;
 const ASSOCIATION_SPOKEN_LIMIT = 64;
 const CLASSIFIED_WORD = "classified";
@@ -47,7 +54,11 @@ function normalizedEmailSet(value) {
 
 function activePlayersForRoom(room) {
   const spectators = normalizedEmailSet(room?.spectators);
-  return roomPlayers(room).filter((player) => !spectators.has(normalizedEmail(player.email)));
+  const eliminated = normalizedEmailSet(room?.eliminated_emails);
+  return roomPlayers(room).filter((player) => {
+    const email = normalizedEmail(player.email);
+    return !spectators.has(email) && !eliminated.has(email);
+  });
 }
 
 function activeVoteRequestsForRoom(room, activePlayers) {
@@ -71,6 +82,12 @@ function voteState(room, userEmail) {
     : 0;
   const viewerEmail = normalizedEmail(userEmail);
   const votes = Array.isArray(room?.detective_votes) ? room.detective_votes : [];
+  const serverExclusionThreshold = Number(room?.exclusion_vote_threshold);
+  const exclusionVoteThreshold = Number.isInteger(serverExclusionThreshold)
+    && serverExclusionThreshold >= 0
+    && serverExclusionThreshold <= activePlayers.length
+    ? serverExclusionThreshold
+    : Math.max(activePlayers.length - 1, 0);
   const myVote = votes.find((vote) =>
     vote && typeof vote === "object" && !Array.isArray(vote)
       && normalizedEmail(vote.voter_email) === viewerEmail
@@ -80,7 +97,7 @@ function voteState(room, userEmail) {
     activePlayers,
     activeVoteRequests,
     voteThreshold,
-    exclusionVoteThreshold: Math.max(activePlayers.length - 1, 0),
+    exclusionVoteThreshold,
     isVotingActive: voteThreshold > 0 && activeVoteRequests.length >= voteThreshold,
     myVote: myVote ? { ...myVote } : null,
     hasRequestedVote: Boolean(viewerEmail)
@@ -234,12 +251,16 @@ export function onlineRoundCommand(room, userEmail) {
   const players = roomPlayers(room);
   const isPlayer = Boolean(viewerEmail)
     && players.some((player) => normalizedEmail(player.email) === viewerEmail);
+  const activeEmails = new Set(activePlayersForRoom(room).map((player) =>
+    normalizedEmail(player.email)
+  ));
+  const isActivePlayer = isPlayer && activeEmails.has(viewerEmail);
   const isPaused = Boolean(clean(room?.game_paused_at));
   const votes = voteState(room, userEmail);
   const roleGate = roleGateState(room);
   const subphase = onlineSubphase(room, votes.isVotingActive, roleGate);
 
-  if (subphase !== "active" || isPaused || !isPlayer) return null;
+  if (subphase !== "active" || isPaused || !isActivePlayer) return null;
 
   const roundPhase = normalizedRoundPhase(room);
   if (roundPhase === "results") return "continue_round";
@@ -275,8 +296,11 @@ export function deriveOnlineGamePresentation(room, userEmail) {
   const isSpectator = Boolean(viewerEmail) && spectatorEmails.has(viewerEmail);
   const isHost = Boolean(viewerEmail)
     && normalizedEmail(room?.host_email) === viewerEmail;
-  const isSpy = isPlayer && !isSpectator
-    && normalizedEmail(room?.spy_email) === viewerEmail;
+  const isSpy = isPlayer && !isSpectator && isSpyEmailForRoom(room, viewerEmail);
+  const activeEmails = new Set(activePlayersForRoom(room).map((player) =>
+    normalizedEmail(player.email)
+  ));
+  const isActivePlayer = isPlayer && activeEmails.has(viewerEmail);
   const viewerRole = isSpectator
     ? "spectator"
     : isSpy
@@ -300,6 +324,7 @@ export function deriveOnlineGamePresentation(room, userEmail) {
     isPaused,
     viewerRole,
     isPlayer,
+    isActivePlayer,
     isHost,
     isSpy,
     isSpectator,
@@ -315,6 +340,9 @@ export function deriveOnlineGamePresentation(room, userEmail) {
     isVotingActive: votes.isVotingActive,
     myVote: votes.myVote,
     hasRequestedVote: votes.hasRequestedVote,
+    spyCount: publicSpyCount(room),
+    spyTeammates: projectedSpyTeammates(room, viewerEmail),
+    isRanked: isRankedSpyRoom(room),
     gameMode,
     roundPhase,
     associationState,

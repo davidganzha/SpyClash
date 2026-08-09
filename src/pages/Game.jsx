@@ -27,9 +27,16 @@ import {
   isAuthoritativeDetectiveVoteRefreshConflict,
 } from "@/lib/gameRoomSync";
 import {
+  deriveOnlineGamePresentation,
   onlineVotingTransition,
   shouldAcceptOnlineRoomSnapshot,
 } from "@/lib/onlineGamePresentation";
+import {
+  isRankedSpyRoom,
+  isSpyEmailForRoom,
+  publicSpyCount,
+  resultSpyPlayers,
+} from "@/lib/multiSpyRules";
 import { exitRoomImmediately } from "@/lib/roomExit";
 import { createPageUrl } from "@/utils";
 
@@ -87,7 +94,7 @@ function WinnerScreen({
   user,
   isSpy,
   isDetective,
-  spyPlayer,
+  spyPlayers,
   syncState,
   busyAction,
   onVoteReplay,
@@ -102,6 +109,8 @@ function WinnerScreen({
   const isHost = room.host_email === user.email;
   const iWon = (isSpy && room.winner === "spy")
     || (isDetective && room.winner === "detectives");
+  const spyCount = publicSpyCount(room);
+  const pluralSpies = spyCount > 1;
 
   return (
     <>
@@ -124,7 +133,9 @@ function WinnerScreen({
           transition={{ delay: 0.2 }}
           style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: "clamp(34px, 9vw, 48px)", fontWeight: 700, letterSpacing: 4, marginBottom: 8, color: "#e53535" }}
         >
-          {room.winner === "spy" ? t("game_spy_won") : t("game_detectives_won")}
+          {room.winner === "spy"
+            ? t(pluralSpies ? "game_spies_won" : "game_spy_won")
+            : t("game_detectives_won")}
         </motion.h1>
         <motion.p
           initial={{ opacity: 0 }}
@@ -146,14 +157,25 @@ function WinnerScreen({
           <div style={{ color: "#555", fontSize: 10, letterSpacing: 3, marginTop: 8 }}>{room.category?.toUpperCase()}</div>
           {room.spy_guess && room.spy_guess !== "REVEALED" && (
             <div style={{ marginTop: 14, fontSize: 11, color: "#777", letterSpacing: 1 }}>
-              {t("game_spy_guessed")} <strong style={{ color: room.spy_guess === (room.word || room.secret_word) ? "#4ade80" : "#e53535" }}>{room.spy_guess}</strong>
+              {t(pluralSpies ? "game_spy_team_guessed" : "game_spy_guessed")} <strong style={{ color: room.spy_guess === (room.word || room.secret_word) ? "#4ade80" : "#e53535" }}>{room.spy_guess}</strong>
             </div>
           )}
         </motion.div>
 
         <div style={{ color: "#666", fontSize: 11, letterSpacing: 2, marginBottom: 24 }}>
-          {t("game_spy_was")} <strong style={{ color: "#aaa" }}>{spyPlayer?.avatar} {spyPlayer?.name?.toUpperCase() || "UNKNOWN"}</strong>
+          {t(pluralSpies ? "game_spies_were" : "game_spy_was")}{" "}
+          <strong style={{ color: "#aaa" }}>
+            {(spyPlayers || []).length > 0
+              ? spyPlayers.map((player) => `${player.avatar || "•"} ${String(player.name || "UNKNOWN").toUpperCase()}`).join(" · ")
+              : "UNKNOWN"}
+          </strong>
         </div>
+
+        {!isRankedSpyRoom(room) && (
+          <div style={{ color: "#fbbf24", fontSize: 10, letterSpacing: 2, marginBottom: 18 }}>
+            // {t("game_unranked_match")}
+          </div>
+        )}
 
         <div style={{ width: "min(100%, 440px)", padding: 20, background: "#0a0a0a", border: "1px solid #1e1e1e" }}>
           <div style={{ fontSize: 11, letterSpacing: 2, color: "#666", marginBottom: 12 }}>
@@ -449,14 +471,14 @@ export default function Game() {
     const spectatorEmails = new Set((room.spectators || []).map(normalizedEmail));
     const cardReaderEmails = new Set((room.cards_read || []).map(normalizedEmail));
     const userEmail = normalizedEmail(user.email);
-    const spyEmail = normalizedEmail(room.spy_email);
+    const online = deriveOnlineGamePresentation(room, user.email);
     return {
       allCardsRead: players.length > 0
         && players.every((player) => cardReaderEmails.has(normalizedEmail(player.email))),
-      isSpy: Boolean(spyEmail) && spyEmail === userEmail,
-      isDetective: Boolean(spyEmail) && spyEmail !== userEmail && !spectatorEmails.has(userEmail),
+      isSpy: online.viewerRole === "spy",
+      isDetective: online.viewerRole === "detective",
       isSpectator: spectatorEmails.has(userEmail),
-      spyPlayer: players.find((player) => normalizedEmail(player.email) === spyEmail),
+      spyPlayers: resultSpyPlayers(room),
     };
   }, [room, user]);
 
@@ -464,7 +486,7 @@ export default function Game() {
     allCardsRead = false,
     isSpy = false,
     isDetective = false,
-    spyPlayer,
+    spyPlayers = [],
   } = presentation;
   const isGamePaused = Boolean(String(room?.game_paused_at ?? "").trim());
 
@@ -662,8 +684,9 @@ export default function Game() {
       || currentRoom.status !== "playing"
       || currentRoom.game_paused_at
       || timeExpired
-      || normalizedEmail(currentRoom.spy_email) !== viewerEmail
+      || !isSpyEmailForRoom(currentRoom, viewerEmail)
       || (currentRoom.spectators || []).map(normalizedEmail).includes(viewerEmail)
+      || (currentRoom.eliminated_emails || []).map(normalizedEmail).includes(viewerEmail)
     ) return;
     const updated = await runSynchronizedAction("submit_spy_guess", { guess: guessedWord });
     if (!updated) return;
@@ -689,7 +712,7 @@ export default function Game() {
         user={user}
         isSpy={isSpy}
         isDetective={isDetective}
-        spyPlayer={spyPlayer}
+        spyPlayers={spyPlayers}
         syncState={syncState}
         busyAction={busyAction}
         onVoteReplay={handleVoteReplay}

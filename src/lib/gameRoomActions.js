@@ -11,6 +11,10 @@ import {
   dispatchGameRoomAction,
   isRetryableRoomActionConflict,
 } from "@/lib/gameRoomTransport";
+import {
+  withMultiSpyActionCapability,
+  withMultiSpyPlayerCapability,
+} from "@/lib/multiSpyRules";
 
 export class GameRoomActionError extends Error {
   constructor(message, status, code = null, retryable = false) {
@@ -42,6 +46,7 @@ function storedAccessToken() {
  * The optional runtime is intentionally test-only dependency injection.
  */
 export async function performGameRoomAction(body, runtime = {}) {
+  const capableBody = withMultiSpyActionCapability(body);
   const accessToken = runtime.accessToken !== undefined
     ? runtime.accessToken
     : storedAccessToken();
@@ -49,7 +54,7 @@ export async function performGameRoomAction(body, runtime = {}) {
   const headers = buildGameRoomActionHeaders(appParams);
   try {
     return await dispatchGameRoomAction({
-      body,
+      body: capableBody,
       accessToken,
       endpoint: `/api/apps/${appParams.appId}/functions/gameRoomAction`,
       headers,
@@ -90,7 +95,10 @@ export async function getLeaderboard() {
 }
 
 export async function createGameRoom({ player }) {
-  return await performGameRoomAction({ action: "create_room", player });
+  return await performGameRoomAction({
+    action: "create_room",
+    player: withMultiSpyPlayerCapability(player),
+  });
 }
 
 export async function leaveGameRoom(roomId) {
@@ -259,7 +267,7 @@ export async function joinGameRoom({ roomId = null, roomCode = null, player }) {
     action: "join_room",
     room_id: roomId,
     room_code: roomCode,
-    player,
+    player: withMultiSpyPlayerCapability(player),
   });
   if (!payload?.id) {
     throw new GameRoomActionError("Unable to join room", 502);

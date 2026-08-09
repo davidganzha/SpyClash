@@ -2,13 +2,18 @@ const LEGACY_ONLINE_ROOM_CODE = /^[A-Z0-9]{6}$/;
 
 export function isOnlineGameHistory(record) {
   const matchType = String(record?.match_type || "").trim().toLowerCase();
-  if (matchType) return matchType === "online" && record?.ranked !== false;
-  if (record?.ranked === false) return false;
+  if (matchType) return matchType === "online";
 
   // GameHistory predates match_type. Legacy records came from six-character
   // online room codes; local pass-and-play never created GameHistory rows.
   const roomCode = String(record?.room_code || "").trim().toUpperCase();
   return LEGACY_ONLINE_ROOM_CODE.test(roomCode);
+}
+
+export function isRankedOnlineGameHistory(record) {
+  if (!isOnlineGameHistory(record) || record?.ranked === false) return false;
+  const spyCount = Number(record?.spy_count ?? 1);
+  return !Number.isInteger(spyCount) || spyCount <= 1;
 }
 
 export function mergePlayerGameHistory(streams, limit = null) {

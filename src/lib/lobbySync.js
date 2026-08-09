@@ -2,6 +2,7 @@ const LOBBY_WORD_SOURCES = new Set(["none", "saved", "ai", "manual"]);
 const LOBBY_WORD_COUNT_MODES = new Set(["recommended", "custom"]);
 const LOBBY_GAME_MODES = new Set(["questions", "associations"]);
 const MAX_LOBBY_WORDS = 200;
+const MAX_LOBBY_SPIES = 3;
 const DEFAULT_RETRY_DELAYS_MILLISECONDS = [180, 450];
 
 /** @typedef {Record<string, any>} LobbyRoom */
@@ -58,6 +59,8 @@ export function normalizeLobbyState(value = {}) {
   return {
     game_mode: LOBBY_GAME_MODES.has(gameMode) ? gameMode : "questions",
     game_duration_seconds: boundedInteger(value.game_duration_seconds, 900, 60, 900),
+    lobby_spy_count: boundedInteger(value.lobby_spy_count, 1, 1, MAX_LOBBY_SPIES),
+    spies_know_each_other: value.spies_know_each_other === true,
     lobby_word_source: LOBBY_WORD_SOURCES.has(wordSource) ? wordSource : "none",
     lobby_source_pack_id: clean(value.lobby_source_pack_id),
     lobby_source_name: clean(value.lobby_source_name),
@@ -75,6 +78,8 @@ export function lobbyStateFromRoom(room = {}) {
   return normalizeLobbyState({
     game_mode: room.game_mode || "questions",
     game_duration_seconds: room.game_duration_seconds || 900,
+    lobby_spy_count: room.lobby_spy_count ?? 1,
+    spies_know_each_other: room.spies_know_each_other === true,
     lobby_word_source: room.lobby_word_source || "none",
     lobby_source_pack_id: room.lobby_source_pack_id || "",
     lobby_source_name: room.lobby_source_name || "",
@@ -149,6 +154,8 @@ export function lobbyControlsFromRoom(room = {}) {
     state,
     gameMode: state.game_mode,
     gameDuration: Math.max(1, Math.min(15, Math.round(state.game_duration_seconds / 60))),
+    spyCount: state.lobby_spy_count,
+    spiesKnowEachOther: state.spies_know_each_other,
     wordSource: source,
     selectedPackId: source === "saved" ? state.lobby_source_pack_id || null : null,
     customTheme: source === "saved" ? "" : state.lobby_theme,

@@ -6,6 +6,7 @@ import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import { joinGameRoom } from "@/lib/gameRoomActions";
+import { isClientUpdateRequiredError } from "@/lib/multiSpyRules";
 import { roomCodeFromPayload } from "@/lib/roomLinks";
 import { decodeQRCodeFrame, drawVideoCenterCrop } from "@/lib/qrFrameDecoder";
 import { accountAvatarForDisplay } from "@/lib/avatars";
@@ -74,7 +75,9 @@ export default function QRScan() {
         base44.auth.redirectToLogin(createPageUrl("Home"));
         return;
       }
-      alert(joinError?.status === 404 ? t('qr_scan_room_not_found') : (joinError?.message || t('qr_scan_room_not_found')));
+      alert(isClientUpdateRequiredError(joinError)
+        ? t("room_update_required")
+        : joinError?.status === 404 ? t('qr_scan_room_not_found') : (joinError?.message || t('qr_scan_room_not_found')));
       navigate(createPageUrl("Home"));
     }
   }, [navigate, t]);

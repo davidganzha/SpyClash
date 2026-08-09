@@ -43,6 +43,12 @@ import {
   roomScopeMatches,
 } from "@/lib/lobbySync";
 import { shouldAcceptOnlineRoomSnapshot } from "@/lib/onlineGamePresentation";
+import {
+  isClientUpdateRequiredError,
+  isAllowedSpyCount,
+  maxSpyCountForPlayerCount,
+  normalizeSpyCount,
+} from "@/lib/multiSpyRules";
 
 
 function SyncStatusBanner({ state, t }) {
@@ -122,6 +128,8 @@ export default function Room() {
   const [generatedCategory, setGeneratedCategory] = useState("");
   const [wordCount, setWordCount] = useState(25);
   const [gameDuration, setGameDuration] = useState(10);
+  const [selectedSpyCount, setSelectedSpyCount] = useState(1);
+  const [spiesKnowEachOther, setSpiesKnowEachOther] = useState(false);
   const [selectedGameMode, setSelectedGameMode] = useState("questions");
   const [wordSource, setWordSource] = useState("none");
   const [rouletteTarget, setRouletteTarget] = useState(null);
@@ -234,6 +242,8 @@ export default function Room() {
     lobbyDraftRef.current = controls.state;
     setSelectedGameMode(controls.gameMode);
     setGameDuration(controls.gameDuration);
+    setSelectedSpyCount(controls.spyCount);
+    setSpiesKnowEachOther(controls.spiesKnowEachOther);
     setWordSource(controls.wordSource);
     setSelectedPackId(controls.selectedPackId);
     setCustomTheme(controls.customTheme);
@@ -371,6 +381,11 @@ export default function Room() {
       void loadRoom(u, id, isCurrent).catch((error) => {
         if (!isCurrent()) return;
         console.error("Failed to load room", error);
+        if (isClientUpdateRequiredError(error)) {
+          alert(t("room_update_required"));
+          navigate(createPageUrl("Home"));
+          return;
+        }
         gameToast(error?.message || t('room_sync_reconnecting'), "warning", "⚠️");
         navigate(createPageUrl("Home"));
       });
@@ -867,13 +882,16 @@ export default function Room() {
     if (!data) {setThemeError(t('room_theme_error_empty'));setStarting(false);return;}
     const players = confirmedRoom.players || [];
     if (players.length < 3) {setThemeError(t('room_theme_error_min'));setStarting(false);return;}
-    const spyIdx = Math.floor(Math.random() * players.length);
-    const spyEmail = players[spyIdx].email;
+    if (!isAllowedSpyCount(players.length, confirmedRoom.lobby_spy_count ?? 1)) {
+      setThemeError(t("room_spy_count_invalid"));
+      setStarting(false);
+      return;
+    }
     const firstAskerIdx = Math.floor(Math.random() * players.length);
     let firstAnswererIdx = (firstAskerIdx + 1) % players.length;
     const playerFeedback = players.map((p) => ({ email: p.email, likes: 0, dislikes: 0 }));
     const updateData = {
-      status: "playing", spy_email: spyEmail,
+      status: "playing",
       word: data.word, category: data.category, spy_guess: "", detective_votes: [], winner: "",
       current_asker_email: players[firstAskerIdx].email,
       current_answerer_email: players[firstAnswererIdx].email,
@@ -975,6 +993,21 @@ export default function Room() {
     }), 140);
   };
 
+  const updateSpyCount = (value) => {
+    const playerCount = (roomRef.current?.players || []).length;
+    enqueueLobbySnapshot({
+      ...currentLobbyDraft(),
+      lobby_spy_count: normalizeSpyCount(value, playerCount),
+    }, 90);
+  };
+
+  const updateSpiesKnowEachOther = (value) => {
+    enqueueLobbySnapshot({
+      ...currentLobbyDraft(),
+      spies_know_each_other: value === true,
+    }, 90);
+  };
+
   const handleReturnToWaiting = async () => {
     const scope = captureRoomScope();
     const sourceRoom = roomRef.current;
@@ -1030,6 +1063,8 @@ export default function Room() {
   const isHost = room.host_email === user.email;
   const authoritativeLobby = lobbyRevision(room) > 0;
   const players = room.players || [];
+  const maxSpyCount = maxSpyCountForPlayerCount(players.length);
+  const spyCountIsValid = isAllowedSpyCount(players.length, selectedSpyCount);
   const readyPlayers = room.ready_players || [];
   const allReady = players.length >= 3 && readyPlayers.length === players.length;
   const userReady = readyPlayers.includes(user?.email);
@@ -1042,7 +1077,7 @@ export default function Room() {
   const lobbySyncBusy = lobbySyncPhase === "syncing" ||
     lobbySyncControllerRef.current.hasOptimisticChanges();
   const lobbySyncFailed = lobbySyncPhase === "error";
-  const canPrepareMission = players.length >= 3 && authoritativeLobbyReady &&
+  const canPrepareMission = players.length >= 3 && spyCountIsValid && authoritativeLobbyReady &&
     !lobbySyncBusy && !lobbySyncFailed;
 
   const centerInViewport = (el) => {
@@ -1345,6 +1380,61 @@ export default function Room() {
           </div>
         </motion.div>
         }
+
+      {/* Public multi-spy setup. Host writes; every other client renders the authoritative value. */}
+      <motion.div className="dim-on-theme-focus" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
+        style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
+        <div style={{ ...sectionLabel, marginBottom: 8 }}>
+          <span>🕵️</span> {t("room_spy_count_label")}
+          {!isHost && <span style={{ marginLeft: "auto", color: "#555", fontSize: 9 }}>{t("room_host_controls")}</span>}
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+          <span style={{ color: "#666", fontSize: 10, letterSpacing: 1 }}>{t("room_spy_count_hint")}</span>
+          <strong style={{ color: "#e53535", fontFamily: "'Rajdhani', sans-serif", fontSize: 26 }}>{selectedSpyCount}</strong>
+        </div>
+        <div style={{ position: "relative", paddingBottom: 4 }}>
+          <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 2, transform: "translateY(-50%)", background: "#1a1a1a", pointerEvents: "none" }} />
+          <div style={{ position: "absolute", top: "50%", left: 0, height: 2, transform: "translateY(-50%)", background: "#e53535", width: `${maxSpyCount > 1 ? ((Math.min(selectedSpyCount, maxSpyCount) - 1) / (maxSpyCount - 1)) * 100 : 0}%`, pointerEvents: "none" }} />
+          <input
+            type="range"
+            min={1}
+            max={maxSpyCount}
+            step={1}
+            value={Math.min(selectedSpyCount, maxSpyCount)}
+            onChange={(event) => updateSpyCount(Number(event.target.value))}
+            disabled={!isHost || starting || maxSpyCount === 1}
+            aria-label={t("room_spy_count_label")}
+            className="spy-slider"
+            style={{ position: "relative", zIndex: 1, opacity: !isHost || maxSpyCount === 1 ? 0.45 : 1 }}
+          />
+        </div>
+        <div style={{ display: "flex", justifyContent: "space-between", color: "#444", fontFamily: "monospace", fontSize: 9, marginTop: 6 }}>
+          <span>1</span><span>{maxSpyCount}</span>
+        </div>
+        {!spyCountIsValid && (
+          <div role="alert" style={{ color: "#fbbf24", fontSize: 10, marginTop: 10 }}>{t("room_spy_count_invalid")}</div>
+        )}
+        <button
+          type="button"
+          role="switch"
+          aria-checked={spiesKnowEachOther}
+          onClick={() => updateSpiesKnowEachOther(!spiesKnowEachOther)}
+          disabled={!isHost || starting}
+          style={{
+            width: "100%", marginTop: 16, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12,
+            border: `1px solid ${spiesKnowEachOther ? "rgba(229,53,53,0.65)" : "#242424"}`,
+            background: spiesKnowEachOther ? "rgba(229,53,53,0.08)" : "#080808",
+            color: isHost ? "#aaa" : "#666", cursor: isHost ? "pointer" : "default", textAlign: "left",
+          }}>
+          <span aria-hidden="true" style={{ color: spiesKnowEachOther ? "#e53535" : "#555", fontSize: 18 }}>
+            {spiesKnowEachOther ? "●" : "○"}
+          </span>
+          <span style={{ display: "grid", gap: 3 }}>
+            <strong style={{ color: spiesKnowEachOther ? "#fff" : "#888", fontSize: 10, letterSpacing: 1.5 }}>{t("room_spies_know_label")}</strong>
+            <span style={{ fontSize: 9, lineHeight: 1.4 }}>{t(spiesKnowEachOther ? "room_spies_know_on" : "room_spies_know_off")}</span>
+          </span>
+        </button>
+      </motion.div>
 
       {/* Players */}
       <motion.div className="dim-on-theme-focus" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}

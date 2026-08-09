@@ -14,10 +14,29 @@ import SaveAsWordPackDialog from "@/components/SaveAsWordPackDialog";
 import { useGlobalQuota } from "@/hooks/useGlobalQuota";
 import { generateWordPool } from "@/utils/wordPoolAI";
 import { ACCOUNT_AVATARS } from "@/lib/avatars";
-import { localGameTimeoutOutcome } from "@/lib/localGameRules";
+import { localGameTimeoutOutcome, pickLocalSpyIndices } from "@/lib/localGameRules";
+import {
+  isAllowedSpyCount,
+  maxSpyCountForPlayerCount,
+  normalizeSpyCount,
+} from "@/lib/multiSpyRules";
 import { listWordPacks } from "@/lib/wordPackActions";
 
 const MAX_LOCAL_PLAYERS = 10;
+
+function initialLocalRoster(savedSettings) {
+  const names = Array.isArray(savedSettings?.playerNames)
+    ? savedSettings.playerNames.slice(0, MAX_LOCAL_PLAYERS).map((name) => String(name ?? ""))
+    : [];
+  const avatars = Array.isArray(savedSettings?.playerAvatars)
+    ? savedSettings.playerAvatars.slice(0, MAX_LOCAL_PLAYERS)
+    : [];
+  while (names.length < 3) names.push("");
+  return {
+    names,
+    avatars: names.map((_, index) => avatars[index] || ACCOUNT_AVATARS[index % ACCOUNT_AVATARS.length]),
+  };
+}
 
 function pickWord(locale) {
   const cats = Object.keys(locale.builtInCategories);
@@ -46,10 +65,18 @@ export default function LocalGame() {
   const savedSettings = (() => {
     try {return JSON.parse(localStorage.getItem("spy_local_settings") || "{}");} catch {return {};}
   })();
+  const initialRoster = initialLocalRoster(savedSettings);
 
-  const [playerNames, setPlayerNames] = useState(savedSettings.playerNames || ["", ""]);
-  const [playerAvatars, setPlayerAvatars] = useState(savedSettings.playerAvatars || [ACCOUNT_AVATARS[0], ACCOUNT_AVATARS[1]]);
+  const [playerNames, setPlayerNames] = useState(initialRoster.names);
+  const [playerAvatars, setPlayerAvatars] = useState(initialRoster.avatars);
   const [gameDuration, setGameDuration] = useState(savedSettings.gameDuration || 10);
+  const [spyCount, setSpyCount] = useState(() => normalizeSpyCount(
+    savedSettings.spyCount ?? 1,
+    initialRoster.names.length,
+  ));
+  const [spiesKnowEachOther, setSpiesKnowEachOther] = useState(
+    savedSettings.spiesKnowEachOther === true,
+  );
 
   // word pool state (mirrors Room.jsx)
   const [customTheme, setCustomTheme] = useState(savedSettings.customTheme || "");
@@ -68,8 +95,13 @@ export default function LocalGame() {
 
   // Persist settings to localStorage whenever they change
   useEffect(() => {
-    localStorage.setItem("spy_local_settings", JSON.stringify({ playerNames, playerAvatars, gameDuration, customTheme, selectedPackId, wordCount, gameMode, wordCountMode, customWordCount }));
-  }, [playerNames, playerAvatars, gameDuration, customTheme, selectedPackId, wordCount, gameMode, wordCountMode, customWordCount]);
+    localStorage.setItem("spy_local_settings", JSON.stringify({ playerNames, playerAvatars, gameDuration, spyCount, spiesKnowEachOther, customTheme, selectedPackId, wordCount, gameMode, wordCountMode, customWordCount }));
+  }, [playerNames, playerAvatars, gameDuration, spyCount, spiesKnowEachOther, customTheme, selectedPackId, wordCount, gameMode, wordCountMode, customWordCount]);
+
+  useEffect(() => {
+    const clamped = normalizeSpyCount(spyCount, playerNames.length);
+    if (clamped !== spyCount) setSpyCount(clamped);
+  }, [playerNames.length, spyCount]);
   const [userPacks, setUserPacks] = useState([]);
 
   useEffect(() => {
@@ -92,7 +124,7 @@ export default function LocalGame() {
   }, [selectedPackId, userPacks, customTheme]);
 
   // game state
-  const [gameData, setGameData] = useState(null); // { word, category, pool, spyIdx, players }
+  const [gameData, setGameData] = useState(null); // { word, category, pool, spyIndices, players }
   const [cardPhaseIdx, setCardPhaseIdx] = useState(0); // which player is currently looking at card
   const [revealed, setRevealed] = useState(false);
   const [cardsReadCount, setCardsReadCount] = useState(0);
@@ -123,7 +155,7 @@ export default function LocalGame() {
     setPlayerAvatars((a) => [...a, availableAvatars[a.length % availableAvatars.length]]);
   };
   const removePlayer = (i) => {
-    if (playerNames.length <= 2) return;
+    if (playerNames.length <= 3) return;
     setPlayerNames((n) => n.filter((_, idx) => idx !== i));
     setPlayerAvatars((a) => a.filter((_, idx) => idx !== i));
   };
@@ -286,10 +318,15 @@ export default function LocalGame() {
       return; // User needs to press again to confirm
     }
 
-    const spyIdx = Math.floor(Math.random() * names.length);
-    const players = names.map((name, i) => ({ name, avatar: playerAvatars[i], isSpy: i === spyIdx }));
+    if (!isAllowedSpyCount(names.length, spyCount)) {
+      setThemeError(t("room_spy_count_invalid"));
+      return;
+    }
+    const spyIndices = pickLocalSpyIndices(names.length, spyCount);
+    const spyIndexSet = new Set(spyIndices);
+    const players = names.map((name, i) => ({ name, avatar: playerAvatars[i], isSpy: spyIndexSet.has(i) }));
     const dealOrder = [...Array(names.length).keys()];
-    setGameData({ word: data.word, category: data.category, pool: data.pool, spyIdx, players, dealOrder, gameMode });
+    setGameData({ word: data.word, category: data.category, pool: data.pool, spyIndices, players, dealOrder, gameMode, spiesKnowEachOther });
     setCardPhaseIdx(0);
     setRevealed(false);
     setCardsReadCount(0);
@@ -347,6 +384,7 @@ export default function LocalGame() {
 
   // ── SPY GUESS ──────────────────────────────────────────────────────────────
   const handleSpyGuess = (guessedWord) => {
+    if (phase !== "playing" || winner) return;
     if (timerRef) clearInterval(timerRef);
     const correct = guessedWord === gameData.word;
     const w = correct ? "spy" : "detectives";
@@ -428,7 +466,9 @@ export default function LocalGame() {
   // ════════════════════════════════════════════════════════════════════════════
   if (phase === "setup") {
     const themeNeedsGenerate = customTheme.trim() && wordPool.length === 0;
-    const canStart = playerNames.length >= 2 && !themeNeedsGenerate;
+    const maxLocalSpies = maxSpyCountForPlayerCount(playerNames.length);
+    const spyCountIsValid = isAllowedSpyCount(playerNames.length, spyCount);
+    const canStart = playerNames.length >= 3 && spyCountIsValid && !themeNeedsGenerate;
     const glassStyle = {
       background: "rgba(255,255,255,0.04)",
       border: "1px solid rgba(255,255,255,0.10)",
@@ -531,7 +571,7 @@ export default function LocalGame() {
                 placeholder={lang === "ru" ? `Игрок ${i + 1}` : `Player ${i + 1}`}
                 style={{ flex: 1, fontSize: 14, background: "rgba(255,255,255,0.05) !important", border: "1px solid rgba(255,255,255,0.10) !important", borderRadius: 8 }} />
               
-                {playerNames.length > 2 &&
+                {playerNames.length > 3 &&
               <button onClick={() => removePlayer(i)} className="btn-outline"
               style={{ padding: "6px 10px", fontSize: 12 }}>
                     ✕
@@ -546,6 +586,55 @@ export default function LocalGame() {
               + {lang === "ru" ? "ДОБАВИТЬ ИГРОКА" : "ADD PLAYER"}
             </button> :
           null}
+        </div>
+
+        {/* Local multi-spy setup uses the same approved count bands as Online. */}
+        <div className="dim-on-theme-focus" style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
+          <div style={sectionLabel}>
+            <span>🕵️</span> {t("room_spy_count_label")}
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", alignItems: "baseline", marginBottom: 12 }}>
+            <span style={{ color: "#666", fontSize: 10, letterSpacing: 1 }}>{t("room_spy_count_hint")}</span>
+            <strong style={{ color: "#e53535", fontFamily: "'Rajdhani', sans-serif", fontSize: 26 }}>{spyCount}</strong>
+          </div>
+          <div style={{ position: "relative", paddingBottom: 4 }}>
+            <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 2, transform: "translateY(-50%)", background: "#1a1a1a", pointerEvents: "none" }} />
+            <div style={{ position: "absolute", top: "50%", left: 0, height: 2, transform: "translateY(-50%)", background: "#e53535", width: `${maxLocalSpies > 1 ? ((spyCount - 1) / (maxLocalSpies - 1)) * 100 : 0}%`, pointerEvents: "none" }} />
+            <input
+              type="range"
+              min={1}
+              max={maxLocalSpies}
+              step={1}
+              value={Math.min(spyCount, maxLocalSpies)}
+              onChange={(event) => setSpyCount(normalizeSpyCount(Number(event.target.value), playerNames.length))}
+              disabled={maxLocalSpies === 1}
+              aria-label={t("room_spy_count_label")}
+              className="lspy-slider"
+              style={{ position: "relative", zIndex: 1, opacity: maxLocalSpies === 1 ? 0.45 : 1 }}
+            />
+          </div>
+          <div style={{ display: "flex", justifyContent: "space-between", color: "#444", fontFamily: "monospace", fontSize: 9, marginTop: 6 }}>
+            <span>1</span><span>{maxLocalSpies}</span>
+          </div>
+          <button
+            type="button"
+            role="switch"
+            aria-checked={spiesKnowEachOther}
+            onClick={() => setSpiesKnowEachOther((value) => !value)}
+            style={{
+              width: "100%", marginTop: 16, padding: "12px 14px", display: "flex", alignItems: "center", gap: 12,
+              border: `1px solid ${spiesKnowEachOther ? "rgba(229,53,53,0.65)" : "#242424"}`,
+              background: spiesKnowEachOther ? "rgba(229,53,53,0.08)" : "#080808",
+              color: "#aaa", cursor: "pointer", textAlign: "left",
+            }}>
+            <span aria-hidden="true" style={{ color: spiesKnowEachOther ? "#e53535" : "#555", fontSize: 18 }}>
+              {spiesKnowEachOther ? "●" : "○"}
+            </span>
+            <span style={{ display: "grid", gap: 3 }}>
+              <strong style={{ color: spiesKnowEachOther ? "#fff" : "#888", fontSize: 10, letterSpacing: 1.5 }}>{t("room_spies_know_label")}</strong>
+              <span style={{ fontSize: 9, lineHeight: 1.4 }}>{t(spiesKnowEachOther ? "room_spies_know_on" : "room_spies_know_off")}</span>
+            </span>
+          </button>
         </div>
 
         {/* Theme / Word Pack */}
@@ -822,6 +911,9 @@ export default function LocalGame() {
     const currentPlayerIdx = dealOrder[cardPhaseIdx];
     const currentPlayer = gameData.players[currentPlayerIdx];
     const isSpy = currentPlayer.isSpy;
+    const spyTeammates = isSpy && gameData.spiesKnowEachOther
+      ? gameData.players.filter((player, index) => player.isSpy && index !== currentPlayerIdx)
+      : [];
     const total = gameData.players.length;
 
     return (
@@ -963,6 +1055,14 @@ export default function LocalGame() {
                   <div style={{ color: "#888", fontSize: 12, letterSpacing: 0.5, lineHeight: 1.9 }}>
                     {t('game_spy_hint').split('\n').map((l, i) => <span key={i}>{l}{i === 0 && <br />}</span>)}
                   </div>
+                  {spyTeammates.length > 0 && (
+                    <div style={{ marginTop: 12, color: "#777", fontSize: 9, lineHeight: 1.6, letterSpacing: 1 }}>
+                      <strong style={{ display: "block", marginBottom: 4, color: "#e53535", letterSpacing: 1.5 }}>{t("game_spy_teammates")}</strong>
+                      {spyTeammates.map((player) => (
+                        <span key={player.name} style={{ display: "block" }}>{player.avatar || "•"} {player.name.toUpperCase()}</span>
+                      ))}
+                    </div>
+                  )}
                 </>
                 }
             </div>
@@ -993,7 +1093,10 @@ export default function LocalGame() {
   // RENDER: FINISHED
   // ════════════════════════════════════════════════════════════════════════════
   if (phase === "finished") {
-    const spyPlayer = gameData.players[gameData.spyIdx];
+    const spyPlayers = (gameData.spyIndices || [])
+      .map((index) => gameData.players[index])
+      .filter(Boolean);
+    const pluralSpies = spyPlayers.length > 1;
     return (
       <>
         {showSpyGuess &&
@@ -1009,7 +1112,7 @@ export default function LocalGame() {
 
           <motion.h1 initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.2 }}
           style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: 44, fontWeight: 700, letterSpacing: 4, marginBottom: 8, color: "#e53535" }}>
-            {winner === "spy" ? t('game_spy_won') : t('game_detectives_won')}
+            {winner === "spy" ? t(pluralSpies ? 'game_spies_won' : 'game_spy_won') : t('game_detectives_won')}
           </motion.h1>
 
           <motion.div initial={{ opacity: 0, y: 20 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.3 }}
@@ -1021,14 +1124,17 @@ export default function LocalGame() {
             <div translate="no" lang="zxx" style={{ color: "#333", fontSize: 10, letterSpacing: 3, marginTop: 6 }}>{gameData.category?.toUpperCase()}</div>
             {spyGuess &&
             <div style={{ marginTop: 12, fontSize: 11, color: "#555" }}>
-                {t('game_spy_guessed')} <strong style={{ color: spyGuess === gameData.word ? "#4ade80" : "#e53535" }}>{spyGuess}</strong>
+                {t(pluralSpies ? 'game_spy_team_guessed' : 'game_spy_guessed')} <strong style={{ color: spyGuess === gameData.word ? "#4ade80" : "#e53535" }}>{spyGuess}</strong>
               </div>
             }
           </motion.div>
 
           <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} transition={{ delay: 0.4 }}
           style={{ color: "#444", fontSize: 12, letterSpacing: 2, marginBottom: 28 }}>
-            {t('game_spy_was')} <strong style={{ color: "#888" }}>{spyPlayer.avatar} {spyPlayer.name.toUpperCase()}</strong>
+            {t(pluralSpies ? 'game_spies_were' : 'game_spy_was')}{" "}
+            <strong style={{ color: "#888" }}>
+              {spyPlayers.map((player) => `${player.avatar || "•"} ${player.name.toUpperCase()}`).join(" · ")}
+            </strong>
           </motion.div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>

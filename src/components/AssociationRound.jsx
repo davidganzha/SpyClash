@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLanguage } from "@/components/LanguageContext";
 import { runGameRoomAction } from "@/lib/gameRoomActions";
+import { isSpyEmailForRoom } from "@/lib/multiSpyRules";
 
 // current_answer is reused to store JSON: { spoken: ["email1", "email2", ...], spinning: bool }
 function parseAssocState(room) {
@@ -28,7 +29,7 @@ export default function AssociationRound({ room, user, disabled = false }) {
 
   const currentPlayer = players.find(p => p.email === room?.current_asker_email);
   const isCurrentPlayer = room?.current_asker_email === user?.email;
-  const isSpy = room?.spy_email === user?.email;
+  const isSpy = isSpyEmailForRoom(room, user?.email);
   const roundNumber = room?.round_number || 1;
   const isHost = room?.host_email === user?.email;
 

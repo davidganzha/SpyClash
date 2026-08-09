@@ -29,22 +29,22 @@ export const translations = {
     tut_done: "GOT IT! →",
     tut_header: "// TUTORIAL",
     steps: [
-      { icon: "🏠", code: "01", title: "Create or Join", desc: "Create a room or join with a 6-character code. You need at least 2 players to start." },
-      { icon: "🎭", code: "02", title: "Get Your Role", desc: "One player is secretly the Spy. Everyone else are Detectives who know the secret word." },
+      { icon: "🏠", code: "01", title: "Create or Join", desc: "Create a room or join with a 6-character code. You need at least 3 players to start." },
+      { icon: "🎭", code: "02", title: "Get Your Role", desc: "The host chooses one to three spies. The server secretly deals the roles." },
       { icon: "❓", code: "03", title: "Questions & Answers", desc: "Players take turns asking each other questions about the secret word. When done listening — press 'Answer Received'." },
-      { icon: "🏆", code: "04", title: "Expose or Escape", desc: "Detectives need N-1 votes on one suspect to expose the spy. If the timer reaches zero, the spy wins." }
+      { icon: "🏆", code: "04", title: "Expose or Escape", desc: "The required votes equal active players minus active spies. Detectives must expose every spy." }
     ],
     tutorial: [
       { icon: "🎭", title: "Roles", text: "At game start everyone secretly reads their role card. Detectives see the secret word and category. The Spy sees nothing — only the word list to guess from later." },
       { icon: "❓", title: "Q&A", text: "Players go in a circle: one asks a question, another answers out loud. When the asker has heard the answer, they press 'Answer Received' to move on. Questions should hint at the word without revealing it to the spy." },
-      { icon: "🗳️", title: "Voting for the Spy", text: "Any player can request a vote. To exclude someone, every other active player must vote for that same suspect (N-1 votes). If that result becomes impossible, voting ends automatically." },
-      { icon: "🎯", title: "Spy's Guess", text: "The spy can press 'Guess Word Early' at any time and pick from the word list. Guess correctly — spy wins! Wrong guess — detectives win immediately." }
+      { icon: "🗳️", title: "Voting for the Spy", text: "Any active player can request a vote. The server shows the required threshold: active players minus active spies. If that result becomes impossible, voting ends automatically." },
+      { icon: "🎯", title: "Spy Team's Guess", text: "The active spy team has one shared attempt. A correct guess wins; a wrong first guess gives detectives the victory." }
     ],
     tutorial_assoc: [
       { icon: "🎭", title: "Roles", text: "At game start everyone secretly reads their role card. Detectives see the secret word. The Spy sees nothing — only '???' instead of the word." },
       { icon: "🎰", title: "The Drum", text: "The host spins the drum — it randomly picks a player. That player must say ONE word associated with the secret word out loud, then press 'Answered'." },
       { icon: "🔄", title: "No Repeats", text: "Each player speaks once per round. When everyone has given an association — a new round begins automatically with a fresh random order." },
-      { icon: "🎯", title: "Find the Spy", text: "After hearing associations, N-1 votes must point to one suspect to exclude them. The spy can guess the secret word before time runs out." }
+      { icon: "🎯", title: "Find the Spies", text: "The server shows how many votes are required to exclude a suspect. Detectives must expose every spy before time runs out." }
     ],
     room_breadcrumb_home: "HOME",
     room_breadcrumb_lobby: "LOBBY",
@@ -64,7 +64,15 @@ export const translations = {
     room_generate: "GENERATE",
     room_regenerate: "✓ REGENERATE",
     room_theme_error_empty: "❌ Enable at least one word",
-    room_theme_error_min: "❌ Need at least 2 players",
+    room_theme_error_min: "❌ Need at least 3 players",
+    room_spy_count_label: "// NUMBER OF SPIES",
+    room_spy_count_hint: "Available count depends on the number of players",
+    room_spy_count_invalid: "The selected spy count is no longer valid for this roster.",
+    room_spies_know_label: "SPIES KNOW EACH OTHER",
+    room_spies_know_on: "Spy role cards reveal their teammates.",
+    room_spies_know_off: "Each spy sees only their own role.",
+    room_host_controls: "HOST CONTROL",
+    room_update_required: "Update SpyClash to join this multi-spy room.",
     room_empty_theme: "Leave empty — a random theme will be chosen",
     room_ready_vote_btn: "READINESS VOTE",
     room_start_btn: "🎰 START",
@@ -98,12 +106,17 @@ export const translations = {
     game_waiting_others: "✓ You're ready. Waiting for others...",
     game_cards_read: "// CARDS READ",
     game_spy_won: "SPY WON",
+    game_spies_won: "SPIES WON",
     game_detectives_won: "DETECTIVES WON",
     game_mission_success: "// MISSION ACCOMPLISHED",
     game_mission_fail: "// MISSION FAILED",
     game_spy_reveal_label: "// SECRET WORD",
     game_spy_guessed: "Spy guessed:",
+    game_spy_team_guessed: "Spy team guessed:",
     game_spy_was: "SPY:",
+    game_spies_were: "SPIES:",
+    game_spy_teammates: "YOUR SPY TEAM",
+    game_unranked_match: "UNRANKED MULTI-SPY MATCH",
     game_home_btn: "↩ Home",
     game_time_up: "TIME'S UP!",
     game_time_spy_must_guess: "// SPY WINS AT ZERO",
@@ -135,7 +148,7 @@ export const translations = {
     toast_round_started: "Round started!",
     toast_wants_vote: "wants to start a vote",
     toast_voting_started: "Voting started!",
-    toast_voting_cancelled: "Voting cancelled: N-1 agreement is no longer possible.",
+    toast_voting_cancelled: "Voting cancelled: the required votes are no longer possible.",
     toast_time_up: "Time's up! The spy wins.",
     profile_title: "AGENT PROFILE",
     profile_id: "// AGENT IDENTIFICATION",
@@ -164,6 +177,8 @@ export const translations = {
     history_spy: "🕵️ SPY",
     history_detective: "🔍 DETECTIVE",
     history_players: "players · Code:",
+    history_unranked: "UNRANKED",
+    history_spies: "spies",
     history_win: "✓ WIN",
     history_loss: "✗ LOSS",
     history_back: "← Back to Profile",
@@ -320,22 +335,22 @@ export const translations = {
     tut_done: "ПОНЯЛ! →",
     tut_header: "// ТУТОРИАЛ",
     steps: [
-      { icon: "🏠", code: "01", title: "Создай или зайди", desc: "Создай комнату или зайди по 6-символьному коду. Для старта нужно минимум 2 игрока." },
-      { icon: "🎭", code: "02", title: "Получи роль", desc: "Один игрок тайно становится Шпионом. Остальные — Детективы, которые знают секретное слово." },
+      { icon: "🏠", code: "01", title: "Создай или зайди", desc: "Создай комнату или зайди по 6-символьному коду. Для старта нужно минимум 3 игрока." },
+      { icon: "🎭", code: "02", title: "Получи роль", desc: "Хост выбирает от одного до трёх шпионов, а сервер тайно раздаёт роли." },
       { icon: "❓", code: "03", title: "Вопросы и ответы", desc: "Игроки по очереди задают вопросы о секретном слове. Услышал ответ — нажми «Ответ услышан»." },
-      { icon: "🏆", code: "04", title: "Разоблачи или сбеги", desc: "Чтобы разоблачить шпиона, нужно N-1 голосов за одного игрока. Если таймер доходит до нуля, побеждает шпион." }
+      { icon: "🏆", code: "04", title: "Разоблачи или сбеги", desc: "Порог равен числу активных игроков минус число активных шпионов. Детективы должны раскрыть всех шпионов." }
     ],
     tutorial: [
       { icon: "🎭", title: "Роли", text: "В начале игры каждый тайно читает свою карточку роли. Детективы видят секретное слово и категорию. Шпион ничего не видит — только список слов, из которых нужно будет угадать." },
       { icon: "❓", title: "Вопросы и ответы", text: "Игроки ходят по кругу: один задаёт вопрос, другой отвечает вслух. Когда спрашивающий услышал ответ — он нажимает «Ответ услышан» и ход переходит дальше. Вопросы должны намекать на слово, но не раскрывать его шпиону." },
-      { icon: "🗳️", title: "Голосование за шпиона", text: "Любой игрок может запросить голосование. Чтобы исключить игрока, все остальные активные игроки должны проголосовать за него (N-1 голосов). Если такой результат уже невозможен, голосование завершается автоматически." },
-      { icon: "🎯", title: "Угадывание шпиона", text: "Шпион может в любой момент нажать «Угадать досрочно» и выбрать слово из списка. Угадал — шпион побеждает! Ошибся — детективы побеждают немедленно." }
+      { icon: "🗳️", title: "Голосование за шпиона", text: "Любой активный игрок может запросить голосование. Сервер показывает порог: активные игроки минус активные шпионы. Если набрать его уже невозможно, голосование завершается автоматически." },
+      { icon: "🎯", title: "Догадка команды шпионов", text: "У активных шпионов одна общая попытка. Правильный ответ приносит победу, первая ошибка — победу детективам." }
     ],
     tutorial_assoc: [
       { icon: "🎭", title: "Роли", text: "В начале каждый тайно читает свою карточку роли. Детективы видят секретное слово. Шпион ничего не видит — вместо слова у него «???»." },
       { icon: "🎰", title: "Барабан", text: "Хост запускает барабан — он случайно выбирает игрока. Этот игрок должен назвать вслух ОДНО слово-ассоциацию к секретному слову, затем нажать «Ответил»." },
       { icon: "🔄", title: "Без повторов", text: "Каждый игрок говорит по одному разу за раунд. Когда все высказались — начинается следующий раунд с новым случайным порядком." },
-      { icon: "🎯", title: "Найди шпиона", text: "Услышав ассоциации, соберите N-1 голосов за одного подозреваемого, чтобы исключить его. Шпион может угадать слово до окончания времени." }
+      { icon: "🎯", title: "Найди шпионов", text: "Сервер показывает нужное число голосов для исключения подозреваемого. Детективы должны раскрыть всех шпионов до конца времени." }
     ],
     room_breadcrumb_home: "ДОМОЙ",
     room_breadcrumb_lobby: "ЛОББИ",
@@ -355,7 +370,15 @@ export const translations = {
     room_generate: "СОЗДАТЬ",
     room_regenerate: "✓ СОЗДАТЬ ЕЩЁ РАЗ",
     room_theme_error_empty: "❌ Включи хотя бы одно слово",
-    room_theme_error_min: "❌ Нужно хотя бы 2 игрока",
+    room_theme_error_min: "❌ Нужно хотя бы 3 игрока",
+    room_spy_count_label: "// КОЛИЧЕСТВО ШПИОНОВ",
+    room_spy_count_hint: "Доступное количество зависит от числа игроков",
+    room_spy_count_invalid: "Выбранное количество шпионов больше не подходит для этого состава.",
+    room_spies_know_label: "ШПИОНЫ ЗНАЮТ ДРУГ ДРУГА",
+    room_spies_know_on: "На карточках шпионов показаны их сообщники.",
+    room_spies_know_off: "Каждый шпион видит только свою роль.",
+    room_host_controls: "ВЫБИРАЕТ ХОСТ",
+    room_update_required: "Обновите SpyClash, чтобы войти в комнату с несколькими шпионами.",
     room_empty_theme: "Оставь пустым — будет выбрана случайная тема",
     room_ready_vote_btn: "ГОЛОСОВАНИЕ ГОТОВНОСТИ",
     room_start_btn: "🎰 СТАРТ",
@@ -389,12 +412,17 @@ export const translations = {
     game_waiting_others: "✓ Ты готов. Ожидаем других...",
     game_cards_read: "// ПРОЧИТАЛИ КАРТОЧКУ",
     game_spy_won: "ШПИОН ПОБЕДИЛ",
+    game_spies_won: "ШПИОНЫ ПОБЕДИЛИ",
     game_detectives_won: "ДЕТЕКТИВЫ ПОБЕДИЛИ",
     game_mission_success: "// МИССИЯ ВЫПОЛНЕНА",
     game_mission_fail: "// МИССИЯ ПРОВАЛЕНА",
     game_spy_reveal_label: "// СЕКРЕТНОЕ СЛОВО",
     game_spy_guessed: "Шпион угадал:",
+    game_spy_team_guessed: "Команда шпионов ответила:",
     game_spy_was: "ШПИОН:",
+    game_spies_were: "ШПИОНЫ:",
+    game_spy_teammates: "ТВОЯ КОМАНДА ШПИОНОВ",
+    game_unranked_match: "НЕРЕЙТИНГОВЫЙ МАТЧ С НЕСКОЛЬКИМИ ШПИОНАМИ",
     game_home_btn: "↩ На главную",
     game_time_up: "ВРЕМЯ ВЫШЛО!",
     game_time_spy_must_guess: "// ПРИ 0:00 ПОБЕЖДАЕТ ШПИОН",
@@ -426,7 +454,7 @@ export const translations = {
     toast_round_started: "Раунд начался!",
     toast_wants_vote: "хочет начать голосование",
     toast_voting_started: "Голосование началось!",
-    toast_voting_cancelled: "Голосование отменено: собрать N-1 голосов уже невозможно.",
+    toast_voting_cancelled: "Голосование отменено: набрать нужное число голосов уже невозможно.",
     toast_time_up: "Время вышло! Победил шпион.",
     profile_title: "ДОСЬЕ АГЕНТА",
     profile_id: "// ИДЕНТИФИКАЦИЯ АГЕНТА",
@@ -455,6 +483,8 @@ export const translations = {
     history_spy: "🕵️ ШПИОН",
     history_detective: "🔍 ДЕТЕКТИВ",
     history_players: "игроков · Код:",
+    history_unranked: "БЕЗ РЕЙТИНГА",
+    history_spies: "шпиона",
     history_win: "✓ ПОБЕДА",
     history_loss: "✗ ПОРАЖЕНИЕ",
     history_back: "← Назад в профиль",
@@ -581,6 +611,33 @@ export const translations = {
       "Животные": ["Лев", "Собака", "Кошка", "Слон", "Тигр", "Медведь", "Волк", "Лошадь", "Обезьяна", "Кролик", "Жираф", "Крокодил", "Пингвин", "Дельфин", "Орёл", "Змея", "Лиса", "Панда", "Горилла", "Кенгуру", "Попугай", "Гепард", "Бегемот", "Олень", "Сова"]
     }
   }
+};
+
+// Spanish currently inherits the established English catalogue. Keep the
+// multi-spy acceptance surface translated while the remaining ES catalogue is
+// completed incrementally.
+translations.en.language = "en";
+translations.ru.language = "ru";
+translations.es = {
+  ...translations.en,
+  language: "es",
+  room_theme_error_min: "❌ Se necesitan al menos 3 jugadores",
+  room_spy_count_label: "// NÚMERO DE ESPÍAS",
+  room_spy_count_hint: "La cantidad disponible depende del número de jugadores",
+  room_spy_count_invalid: "La cantidad de espías ya no es válida para este grupo.",
+  room_spies_know_label: "LOS ESPÍAS SE CONOCEN",
+  room_spies_know_on: "Las cartas de espía muestran a sus compañeros.",
+  room_spies_know_off: "Cada espía solo ve su propio rol.",
+  room_host_controls: "CONTROL DEL ANFITRIÓN",
+  room_update_required: "Actualiza SpyClash para entrar en esta sala con varios espías.",
+  game_spies_won: "LOS ESPÍAS GANARON",
+  game_spy_team_guessed: "El equipo de espías respondió:",
+  game_spies_were: "ESPÍAS:",
+  game_spy_teammates: "TU EQUIPO DE ESPÍAS",
+  game_unranked_match: "PARTIDA MULTIESPÍA SIN CLASIFICACIÓN",
+  history_unranked: "SIN CLASIFICACIÓN",
+  history_spies: "espías",
+  toast_voting_cancelled: "Votación cancelada: ya no se pueden reunir los votos necesarios.",
 };
 
 export function getT(lang = "en") {

@@ -57,11 +57,14 @@ function MissionRoleCard({
     : role === "spectator"
       ? localize(lang, "Observe the mission. Your role is read-only.", "Наблюдай за миссией. Ты не участвуешь в раунде.")
       : null;
+  const teammateNames = (presentation.spyTeammates || [])
+    .map((player) => String(player?.name || "AGENT").toUpperCase());
   const revealedAccessibilityLabel = [
     roleTitle,
     presentation.secretWord,
     category ? `${t("game_category_label")} ${String(category).toUpperCase()}` : null,
     roleHint,
+    teammateNames.length > 0 ? `${t("game_spy_teammates")}: ${teammateNames.join(", ")}` : null,
   ].filter(Boolean).join(". ");
 
   return (
@@ -94,6 +97,14 @@ function MissionRoleCard({
             <span className="oge-role-word">{presentation.secretWord}</span>
           )}
           {roleHint && <span className="oge-role-hint">{roleHint}</span>}
+          {isSpy && teammateNames.length > 0 && (
+            <span className="oge-role-teammates" data-testid="onlineExperience.spyTeammates">
+              <strong>{t("game_spy_teammates")}</strong>
+              <span>{(presentation.spyTeammates || []).map((player) => (
+                <span key={player.email}>{player.avatar || "•"} {String(player.name || "AGENT").toUpperCase()}</span>
+              ))}</span>
+            </span>
+          )}
           <span className="oge-role-category">
             {category ? `${t("game_category_label")} ${String(category).toUpperCase()}` : "// CLASSIFIED"}
           </span>
@@ -120,14 +131,16 @@ function HeaderControl({ label, children, onClick, disabled = false, testId }) {
 }
 
 function OperativeRail({ room, userEmail }) {
-  const eliminated = new Set(room.eliminated_emails || []);
+  const eliminated = new Set((room.eliminated_emails || []).map(normalizedEmail));
+  const revealedSpies = new Set((room.revealed_spy_emails || []).map(normalizedEmail));
   return (
     <div className="oge-operative-rail" data-testid="onlineExperience.players">
       {(room.players || []).map((player) => {
         const isCurrent = player.email === userEmail;
         const isTurn = player.email === room.current_asker_email
           || player.email === room.current_answerer_email;
-        const isEliminated = eliminated.has(player.email);
+        const isEliminated = eliminated.has(normalizedEmail(player.email));
+        const isRevealedSpy = revealedSpies.has(normalizedEmail(player.email));
         return (
           <div
             key={player.email}
@@ -140,6 +153,7 @@ function OperativeRail({ room, userEmail }) {
           >
             <span className="oge-operative-avatar">{player.avatar || player.name?.slice(0, 1) || "•"}</span>
             <span className="oge-operative-name">{String(player.name || "AGENT").toUpperCase()}</span>
+            {isRevealedSpy && <span className="oge-operative-role">S</span>}
             <span className="oge-operative-line" />
           </div>
         );
@@ -172,12 +186,14 @@ function QuestionStage({ room, t }) {
   );
 }
 
-function ExpiredStage({ t, lang }) {
+function ExpiredStage({ t, lang, pluralSpies }) {
   return (
     <div className="oge-expired-stage" data-testid="onlineExperience.timeExpired" role="status" aria-live="polite">
       <span className="oge-expired-icon" aria-hidden="true">⏱</span>
       <span className="oge-stage-kicker">// {t("game_time_up")}</span>
-      <span className="oge-expired-value">{localize(lang, "SPY WINS", "ПОБЕДА ШПИОНА")}</span>
+      <span className="oge-expired-value">
+        {pluralSpies ? t("game_spies_won") : localize(lang, "SPY WINS", "ПОБЕДА ШПИОНА")}
+      </span>
       <span className="oge-stage-message">
         {localize(lang, "CONFIRMING RESULT…", "ПОДТВЕРЖДАЕМ РЕЗУЛЬТАТ…")}
       </span>
@@ -248,7 +264,7 @@ function VotingStage({ presentation, userEmail, onCastVote, busyAction, lang }) 
     const email = String(player.email || "").trim().toLocaleLowerCase();
     return email && email !== viewerEmail && !eliminated.has(email);
   });
-  const canCastVote = presentation.isPlayer && !presentation.isSpectator;
+  const canCastVote = presentation.isActivePlayer && !presentation.isSpectator;
   return (
     <div className="oge-voting-stage" data-testid="onlineExperience.votingCandidates">
       <div className="oge-stage-title">{localize(lang, "CHOOSE A SUSPECT", "ВЫБЕРИ ПОДОЗРЕВАЕМОГО")}</div>
@@ -291,7 +307,7 @@ function VotingStage({ presentation, userEmail, onCastVote, busyAction, lang }) 
 
 function RoundStage({ room, presentation, timeExpired, onCastVote, busyAction, t, lang }) {
   if (timeExpired) {
-    return <ExpiredStage t={t} lang={lang} />;
+    return <ExpiredStage t={t} lang={lang} pluralSpies={presentation.spyCount > 1} />;
   }
   if (presentation.isVotingActive) {
     return (
@@ -556,11 +572,13 @@ export function OnlineActiveGameScene({
   const roundCommandTitle = commandCopy(command, t, lang);
   const hasEnabledWords = (room.word_pool || []).some((entry) => entry?.enabled !== false);
   const canSpyGuess = presentation.viewerRole === "spy"
+    && presentation.isActivePlayer
     && !presentation.isSpectator
     && hasEnabledWords
     && !isPaused
     && !timeExpired;
   const showsVoteRequest = presentation.isPlayer
+    && presentation.isActivePlayer
     && !presentation.isSpectator
     && !presentation.isVotingActive
     && !isPaused

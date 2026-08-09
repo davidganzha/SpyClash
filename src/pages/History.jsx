@@ -95,6 +95,11 @@ export default function History() {
                     <div style={{ fontSize: 10, color: "#333", letterSpacing: 1 }}>
                       {h.player_count} {t('history_players')} <span style={{ fontFamily: "monospace", color: "#555" }}>{h.room_code}</span>
                     </div>
+                    {(h.ranked === false || Number(h.spy_count) > 1) && (
+                      <div style={{ marginTop: 6, color: "#fbbf24", fontSize: 9, letterSpacing: 1.4 }}>
+                        {t("history_unranked")} · {Math.max(2, Number(h.spy_count) || 2)} {t("history_spies")}
+                      </div>
+                    )}
                   </div>
 
                   <div style={{ textAlign: "right" }}>

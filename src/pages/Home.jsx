@@ -15,6 +15,7 @@ import {
   joinGameRoom,
   leaveGameRoom,
 } from "@/lib/gameRoomActions";
+import { isClientUpdateRequiredError } from "@/lib/multiSpyRules";
 import { normalizeRoomCode } from "@/lib/roomLinks";
 import { useMembership } from "@/lib/MembershipContext";
 import { accountAvatarForDisplay } from "@/lib/avatars";
@@ -111,7 +112,9 @@ export default function Home() {
             return;
           } catch (error) {
             setJoinCode(pendingJoin);
-            setJoinError(error?.status === 404 ? t('home_room_not_found') : (error?.message || t('home_room_not_found')));
+            setJoinError(isClientUpdateRequiredError(error)
+              ? t("room_update_required")
+              : error?.status === 404 ? t('home_room_not_found') : (error?.message || t('home_room_not_found')));
             setView("join");
           }
         }
@@ -209,7 +212,9 @@ export default function Home() {
         base44.auth.redirectToLogin(createPageUrl("Home"));
         return;
       }
-      setJoinError(error?.status === 404 ? t('home_room_not_found') : (error?.message || t('home_room_already_started')));
+      setJoinError(isClientUpdateRequiredError(error)
+        ? t("room_update_required")
+        : error?.status === 404 ? t('home_room_not_found') : (error?.message || t('home_room_already_started')));
     } finally {
       setJoining(false);
     }
