@@ -8,6 +8,7 @@ enum AppleNativeAuthPhase {
 @MainActor
 @Observable
 final class Base44Client {
+    static let multiSpyCapability = "multi_spy_v1"
     static let appID = "69a0e57fa939f578082f8091"
     static let appBaseURL = URL(string: "https://spyclash.com")!
 
@@ -282,17 +283,26 @@ final class Base44Client {
     }
 
     func createRoom(for user: SpyUser) async throws -> GameRoom {
-        let player = Player(email: user.email, name: user.callSign, avatar: user.avatar ?? "🕵️")
+        let player = capablePlayer(for: user)
         return try await roomAction("create_room", player: player)
     }
 
     func join(room: GameRoom, user: SpyUser) async throws -> GameRoom {
-        let player = Player(email: user.email, name: user.callSign, avatar: user.avatar ?? "🕵️")
+        let player = capablePlayer(for: user)
         return try await roomAction("join_room", roomID: room.id, player: player)
     }
 
+    /// Re-joining a restored waiting room is intentionally idempotent. Besides
+    /// confirming membership, it upgrades a player record created by an older
+    /// client with the capabilities supported by this build before the lobby is
+    /// exposed for host mutations.
+    func resumeWaitingRoom(_ room: GameRoom, user: SpyUser) async throws -> GameRoom {
+        guard room.normalizedStatus == "waiting" else { return room }
+        return try await join(room: room, user: user)
+    }
+
     func join(code: String, user: SpyUser) async throws -> GameRoom {
-        let player = Player(email: user.email, name: user.callSign, avatar: user.avatar ?? "🕵️")
+        let player = capablePlayer(for: user)
         let normalizedCode = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         let retryDelays = [250, 650]
 
@@ -310,6 +320,15 @@ final class Base44Client {
         }
 
         throw Base44Error(message: "Room join failed after retry.", statusCode: 409)
+    }
+
+    private func capablePlayer(for user: SpyUser) -> Player {
+        Player(
+            email: user.email,
+            name: user.callSign,
+            avatar: user.avatar ?? "🕵️",
+            clientCapabilities: [Self.multiSpyCapability]
+        )
     }
 
     func beginReadyCheck(room: GameRoom) async throws -> GameRoom {
@@ -378,7 +397,6 @@ final class Base44Client {
         }
 
         let shuffledPlayers = players.shuffled()
-        let spy = shuffledPlayers.randomElement() ?? shuffledPlayers[0]
         let mission = try Self.pickMissionWord(
             for: room,
             from: wordPacks,
@@ -396,7 +414,6 @@ final class Base44Client {
             rouletteTargetEmail: asker.email,
             payload: StartGamePayload(
                 status: "playing",
-                spyEmail: spy.email,
                 secretWord: mission.word,
                 word: mission.word,
                 category: mission.category,
@@ -650,7 +667,7 @@ final class Base44Client {
                         skip: skip
                     )
                     history.append(contentsOf: page.filter { record in
-                        seenIDs.insert(record.id).inserted && record.isOnlineCompetitiveMatch
+                        seenIDs.insert(record.id).inserted && record.isOnlineHistoryMatch
                     })
                     guard page.count == pageSize else { break }
                     skip += page.count
@@ -1383,6 +1400,7 @@ final class Base44Client {
         let payload = GameRoomActionPayload(
             action: action,
             accessToken: token,
+            clientCapabilities: [Self.multiSpyCapability],
             roomID: roomID,
             roomCode: roomCode,
             player: player,
@@ -1495,14 +1513,6 @@ final class Base44Client {
         let pool = fallbackMissionWords.map { WordPoolEntry(word: $0.word, enabled: true) }
         let mission = fallbackMissionWords.randomElement() ?? (word: "Embassy", category: "CLASSIC")
         return (word: mission.word, category: mission.category, pool: pool)
-    }
-
-    private func shouldSpyWin(room: GameRoom) -> Bool {
-        guard let spyEmail = room.spyEmail?.nilIfBlank else { return false }
-        let active = room.activePlayers
-        guard active.contains(where: { $0.email == spyEmail }) else { return false }
-        let detectiveCount = active.filter { $0.email != spyEmail }.count
-        return detectiveCount <= 1
     }
 
     private static func parseAssociationState(_ raw: String?) -> AssociationState {
@@ -1949,6 +1959,20 @@ struct Base44Error: LocalizedError {
             .lowercased()
         return normalizedCode == "active_lease" || normalizedCode == "cas_contention"
     }
+
+    var isClientUpdateRequired: Bool {
+        statusCode == 426 || normalizedCode == "client_update_required"
+    }
+
+    var isSpyCountInvalidForPlayerCount: Bool {
+        normalizedCode == "spy_count_invalid_for_player_count"
+    }
+
+    private var normalizedCode: String {
+        code?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+    }
 }
 
 enum RequestCancellationPolicy {
@@ -1998,7 +2022,6 @@ private struct CreateRoomPayload: Encodable {
 
 fileprivate struct StartGamePayload: Encodable, Hashable {
     let status: String
-    let spyEmail: String
     let secretWord: String
     let word: String
     let category: String
@@ -2023,7 +2046,6 @@ fileprivate struct StartGamePayload: Encodable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case status
-        case spyEmail = "spy_email"
         case secretWord = "secret_word"
         case word
         case category
@@ -2051,6 +2073,7 @@ fileprivate struct StartGamePayload: Encodable, Hashable {
 private struct GameRoomActionPayload: Encodable {
     let action: String
     let accessToken: String
+    let clientCapabilities: [String]?
     let roomID: String?
     let roomCode: String?
     let player: Player?
@@ -2071,6 +2094,7 @@ private struct GameRoomActionPayload: Encodable {
     init(
         action: String,
         accessToken: String,
+        clientCapabilities: [String]? = ["multi_spy_v1"],
         roomID: String? = nil,
         roomCode: String? = nil,
         player: Player? = nil,
@@ -2090,6 +2114,7 @@ private struct GameRoomActionPayload: Encodable {
     ) {
         self.action = action
         self.accessToken = accessToken
+        self.clientCapabilities = clientCapabilities
         self.roomID = roomID
         self.roomCode = roomCode
         self.player = player
@@ -2111,6 +2136,7 @@ private struct GameRoomActionPayload: Encodable {
     enum CodingKeys: String, CodingKey {
         case action
         case accessToken = "access_token"
+        case clientCapabilities = "client_capabilities"
         case roomID = "room_id"
         case roomCode = "room_code"
         case player

@@ -804,7 +804,7 @@ struct HomeView: View {
             statusKind = .success
             HapticManager.shared.fire(.milestone)
         } catch {
-            statusText = error.localizedDescription.uppercased()
+            statusText = roomErrorMessage(error)
             statusKind = .error
             HapticManager.shared.fire(.notification(.error))
         }
@@ -830,10 +830,21 @@ struct HomeView: View {
             statusKind = .success
             HapticManager.shared.fire(.milestone)
         } catch {
-            statusText = error.localizedDescription.uppercased()
+            statusText = roomErrorMessage(error)
             statusKind = .error
             HapticManager.shared.fire(.notification(.error))
         }
+    }
+
+    private func roomErrorMessage(_ error: Error) -> String {
+        if let base44Error = error as? Base44Error, base44Error.isClientUpdateRequired {
+            return localized(
+                en: "UPDATE SPYCLASH TO JOIN THIS MULTI-SPY ROOM",
+                ru: "ОБНОВИ SPYCLASH, ЧТОБЫ ВОЙТИ В КОМНАТУ С НЕСКОЛЬКИМИ ШПИОНАМИ",
+                es: "ACTUALIZA SPYCLASH PARA ENTRAR EN ESTA SALA MULTIESPIA"
+            )
+        }
+        return error.localizedDescription.uppercased()
     }
 
     private func closeActiveRoom(_ room: GameRoom) async {

@@ -120,43 +120,43 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
             [
                 TutorialStep(icon: "🎭", title: "Роли", text: "В начале игры каждый тайно читает свою карточку роли. Детективы видят секретное слово и категорию. Шпион ничего не видит — только список слов, из которых нужно будет угадать."),
                 TutorialStep(icon: "❓", title: "Вопросы и ответы", text: "Игроки ходят по кругу: один задаёт вопрос, другой отвечает вслух. Когда спрашивающий услышал ответ — он нажимает «Ответ услышан» и ход переходит дальше. Вопросы должны намекать на слово, но не раскрывать его шпиону."),
-                TutorialStep(icon: "🗳️", title: "Голосование за шпиона", text: "Любой игрок может запросить голосование. Для исключения нужны N−1 голосов за одного подозреваемого — от всех остальных активных игроков. Сервер автоматически отменит голосование, как только такой результат станет невозможен."),
-                TutorialStep(icon: "🎯", title: "Угадывание шпиона", text: "Шпион может в любой момент нажать «Угадать досрочно» и выбрать слово из списка. Угадал — шпион побеждает! Ошибся — детективы побеждают немедленно.")
+                TutorialStep(icon: "🗳️", title: "Голосование за шпиона", text: "Любой игрок может запросить голосование. Для исключения нужны N−S голосов за одного подозреваемого, где N — активные игроки, а S — активные шпионы. При одном шпионе это прежние N−1. Сервер автоматически отменит голосование, как только такой результат станет невозможен."),
+                TutorialStep(icon: "🎯", title: "Угадывание шпиона", text: "Команда шпионов делит одну общую попытку: любой шпион может нажать «Угадать досрочно» и выбрать слово. Верно — шпионы побеждают; ошибка сразу отдаёт победу детективам.")
             ]
         case (.ru, .associations):
             [
                 TutorialStep(icon: "🎭", title: "Роли", text: "В начале каждый тайно читает свою карточку роли. Детективы видят секретное слово. Шпион ничего не видит — вместо слова у него «???»."),
                 TutorialStep(icon: "🎰", title: "Барабан", text: "Хост запускает барабан — он случайно выбирает игрока. Этот игрок должен назвать вслух ОДНО слово-ассоциацию к секретному слову, затем нажать «Ответил»."),
                 TutorialStep(icon: "🔄", title: "Без повторов", text: "Каждый игрок говорит по одному разу за раунд. Когда все высказались — начинается следующий раунд с новым случайным порядком."),
-                TutorialStep(icon: "🎯", title: "Найди шпиона", text: "Услышав ассоциации, голосуйте за подозреваемого. Для исключения нужны N−1 голосов за одного подозреваемого — от всех остальных активных игроков; сервер автоматически отменит голосование, как только такой результат станет невозможен. Шпион может угадать слово в любой момент и победить!")
+                TutorialStep(icon: "🎯", title: "Найди шпиона", text: "Услышав ассоциации, голосуйте за подозреваемого. Для исключения нужны N−S голосов за одного подозреваемого, где N — активные игроки, а S — активные шпионы; при одном шпионе это N−1. Сервер автоматически отменит невозможное голосование. У команды шпионов одна общая попытка угадать слово!")
             ]
         case (.es, .questions):
             [
                 TutorialStep(icon: "🎭", title: "Roles", text: "Al comenzar, cada persona lee su carta de rol en secreto. Los detectives ven la palabra secreta y la categoría. El espía solo ve la lista de palabras entre las que tendrá que adivinar."),
                 TutorialStep(icon: "❓", title: "Preguntas y respuestas", text: "Los jugadores avanzan en círculo: una persona pregunta y otra responde en voz alta. Al oír la respuesta, pulsa «Respuesta recibida» para continuar. Da pistas sin revelar la palabra al espía."),
-                TutorialStep(icon: "🗳️", title: "Votar al espía", text: "Cualquier jugador puede solicitar una votación. La expulsión requiere N−1 votos contra el mismo sospechoso, de todos los demás jugadores activos. El servidor cancela automáticamente cuando ese resultado ya es imposible."),
-                TutorialStep(icon: "🎯", title: "Adivinar la palabra", text: "El espía puede intentar adivinar la palabra en cualquier momento. Si acierta, gana. Si falla, los detectives ganan de inmediato.")
+                TutorialStep(icon: "🗳️", title: "Votar al espía", text: "Cualquier jugador puede solicitar una votación. La expulsión requiere N−S votos contra el mismo sospechoso: N son los jugadores activos y S los espías activos. Con un espía sigue siendo N−1. El servidor cancela automáticamente cuando el resultado ya es imposible."),
+                TutorialStep(icon: "🎯", title: "Adivinar la palabra", text: "El equipo de espías comparte un solo intento: cualquier espía puede elegir una palabra. Si acierta, ganan los espías; si falla, los detectives ganan de inmediato.")
             ]
         case (.es, .associations):
             [
                 TutorialStep(icon: "🎭", title: "Roles", text: "Al comenzar, cada persona lee su carta de rol en secreto. Los detectives ven la palabra secreta. El espía solo ve «???»."),
                 TutorialStep(icon: "🎰", title: "La ruleta", text: "El anfitrión activa la ruleta para elegir un jugador. Esa persona dice en voz alta UNA asociación con la palabra secreta y después pulsa «Respondido»."),
                 TutorialStep(icon: "🔄", title: "Sin repetir", text: "Cada jugador habla una vez por ronda. Cuando todos han participado, comienza otra ronda con un orden aleatorio nuevo."),
-                TutorialStep(icon: "🎯", title: "Encuentra al espía", text: "Escucha las asociaciones y vota por el sospechoso. La expulsión requiere N−1 votos contra el mismo sospechoso, de todos los demás jugadores activos; el servidor cancela automáticamente cuando ese resultado ya es imposible. El espía puede adivinar la palabra en cualquier momento para ganar.")
+                TutorialStep(icon: "🎯", title: "Encuentra al espía", text: "Escucha las asociaciones y vota por el sospechoso. La expulsión requiere N−S votos contra el mismo sospechoso, donde N son los jugadores activos y S los espías activos; con un espía sigue siendo N−1. El servidor cancela automáticamente cuando el resultado ya es imposible. El equipo de espías comparte un solo intento para adivinar la palabra.")
             ]
         case (.en, .questions):
             [
                 TutorialStep(icon: "🎭", title: "Roles", text: "At game start everyone secretly reads their role card. Detectives see the secret word and category. The Spy sees nothing — only the word list to guess from later."),
                 TutorialStep(icon: "❓", title: "Q&A", text: "Players go in a circle: one asks a question, another answers out loud. When the asker has heard the answer, they press 'Answer Received' to move on. Questions should hint at the word without revealing it to the spy."),
-                TutorialStep(icon: "🗳️", title: "Voting for the Spy", text: "Any player can request a vote. Exclusion requires N−1 votes for the same suspect, from every other active player. The server cancels automatically as soon as that result becomes impossible."),
-                TutorialStep(icon: "🎯", title: "Spy's Guess", text: "The spy can press 'Guess Word Early' at any time and pick from the word list. Guess correctly — spy wins! Wrong guess — detectives win immediately.")
+                TutorialStep(icon: "🗳️", title: "Voting for the Spy", text: "Any player can request a vote. Exclusion requires N−S votes for the same suspect, where N is the active player count and S the active spy count. With one spy this remains N−1. The server cancels automatically as soon as that result becomes impossible."),
+                TutorialStep(icon: "🎯", title: "Spy's Guess", text: "The spy team shares one attempt: any spy can press 'Guess Word Early' and choose a word. A correct guess wins for all spies; a wrong guess gives detectives the win immediately.")
             ]
         case (.en, .associations):
             [
                 TutorialStep(icon: "🎭", title: "Roles", text: "At game start everyone secretly reads their role card. Detectives see the secret word. The Spy sees nothing — only '???' instead of the word."),
                 TutorialStep(icon: "🎰", title: "The Drum", text: "The host spins the drum — it randomly picks a player. That player must say ONE word associated with the secret word out loud, then press 'Answered'."),
                 TutorialStep(icon: "🔄", title: "No Repeats", text: "Each player speaks once per round. When everyone has given an association — a new round begins automatically with a fresh random order."),
-                TutorialStep(icon: "🎯", title: "Find the Spy", text: "After hearing associations, vote for the suspect. Exclusion requires N−1 votes for the same suspect, from every other active player; the server cancels automatically as soon as that result becomes impossible. The spy can guess the word at any time to win!")
+                TutorialStep(icon: "🎯", title: "Find the Spy", text: "After hearing associations, vote for the suspect. Exclusion requires N−S votes for the same suspect, where N is the active player count and S the active spy count; with one spy this remains N−1. The server cancels automatically as soon as that result becomes impossible. The spy team shares one attempt to guess the word.")
             ]
         }
     }
@@ -1241,7 +1241,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 spyGuessLocked: "SPY GUESS LOCKED",
                 spyGuessEyebrow: "// SPY GUESS",
                 chooseWord: "CHOOSE THE WORD",
-                spyGuessHint: "A correct guess ends the match for the spy. A wrong guess hands the file to the detectives."
+                spyGuessHint: "The spy team shares one attempt. A correct guess wins for all spies; a wrong guess hands the file to the detectives."
             )
         case .es:
             GameCopy(
@@ -1370,7 +1370,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 spyGuessLocked: "INTENTO DEL ESPIA BLOQUEADO",
                 spyGuessEyebrow: "// INTENTO DEL ESPIA",
                 chooseWord: "ELIGE LA PALABRA",
-                spyGuessHint: "Un acierto termina la partida para el espia. Un error entrega el archivo a detectives."
+                spyGuessHint: "El equipo de espias comparte un intento. Un acierto da la victoria a todos; un error entrega el archivo a detectives."
             )
         case .ru:
             GameCopy(
@@ -1499,7 +1499,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 spyGuessLocked: "ДОГАДКА ШПИОНА ЗАФИКСИРОВАНА",
                 spyGuessEyebrow: "// ДОГАДКА ШПИОНА",
                 chooseWord: "ВЫБЕРИ СЛОВО",
-                spyGuessHint: "Верная догадка завершит матч в пользу шпиона. Ошибка отдаст дело детективам."
+                spyGuessHint: "У команды шпионов одна общая попытка. Верная догадка даёт победу всем шпионам; ошибка отдаёт дело детективам."
             )
         }
     }
@@ -2598,6 +2598,18 @@ struct Player: Codable, Hashable, Identifiable {
     let email: String
     var name: String
     var avatar: String
+    var clientCapabilities: [String]? = nil
+
+    enum CodingKeys: String, CodingKey {
+        case email
+        case name
+        case avatar
+        case clientCapabilities = "client_capabilities"
+    }
+
+    var supportsMultiSpyV1: Bool {
+        clientCapabilities?.contains("multi_spy_v1") == true
+    }
 }
 
 struct VoteRecord: Codable, Hashable, Identifiable {
@@ -2712,6 +2724,8 @@ struct LobbyWordPoolEntry: Codable, Hashable, Identifiable {
 struct LobbyStatePayload: Codable, Hashable {
     var gameMode: SpyGameMode
     var gameDurationSeconds: Int
+    var spyCount: Int = 1
+    var spiesKnowEachOther: Bool = false
     var lobbyWordSource: LobbyWordSource
     var lobbySourcePackID: String?
     var lobbySourceName: String?
@@ -2724,6 +2738,8 @@ struct LobbyStatePayload: Codable, Hashable {
     enum CodingKeys: String, CodingKey {
         case gameMode = "game_mode"
         case gameDurationSeconds = "game_duration_seconds"
+        case spyCount = "lobby_spy_count"
+        case spiesKnowEachOther = "spies_know_each_other"
         case lobbyWordSource = "lobby_word_source"
         case lobbySourcePackID = "lobby_source_pack_id"
         case lobbySourceName = "lobby_source_name"
@@ -2732,6 +2748,50 @@ struct LobbyStatePayload: Codable, Hashable {
         case lobbyWordCount = "lobby_word_count"
         case lobbyWordCountMode = "lobby_word_count_mode"
         case lobbyWordPool = "lobby_word_pool"
+    }
+
+    init(
+        gameMode: SpyGameMode,
+        gameDurationSeconds: Int,
+        spyCount: Int = 1,
+        spiesKnowEachOther: Bool = false,
+        lobbyWordSource: LobbyWordSource,
+        lobbySourcePackID: String?,
+        lobbySourceName: String?,
+        lobbyTheme: String?,
+        lobbyCategory: String?,
+        lobbyWordCount: Int,
+        lobbyWordCountMode: LobbyWordCountMode,
+        lobbyWordPool: [LobbyWordPoolEntry]
+    ) {
+        self.gameMode = gameMode
+        self.gameDurationSeconds = gameDurationSeconds
+        self.spyCount = min(max(spyCount, 1), 3)
+        self.spiesKnowEachOther = spiesKnowEachOther
+        self.lobbyWordSource = lobbyWordSource
+        self.lobbySourcePackID = lobbySourcePackID
+        self.lobbySourceName = lobbySourceName
+        self.lobbyTheme = lobbyTheme
+        self.lobbyCategory = lobbyCategory
+        self.lobbyWordCount = lobbyWordCount
+        self.lobbyWordCountMode = lobbyWordCountMode
+        self.lobbyWordPool = lobbyWordPool
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        gameMode = try container.decode(SpyGameMode.self, forKey: .gameMode)
+        gameDurationSeconds = try container.decode(Int.self, forKey: .gameDurationSeconds)
+        spyCount = min(max(try container.decodeIfPresent(Int.self, forKey: .spyCount) ?? 1, 1), 3)
+        spiesKnowEachOther = try container.decodeIfPresent(Bool.self, forKey: .spiesKnowEachOther) ?? false
+        lobbyWordSource = try container.decode(LobbyWordSource.self, forKey: .lobbyWordSource)
+        lobbySourcePackID = try container.decodeIfPresent(String.self, forKey: .lobbySourcePackID)
+        lobbySourceName = try container.decodeIfPresent(String.self, forKey: .lobbySourceName)
+        lobbyTheme = try container.decodeIfPresent(String.self, forKey: .lobbyTheme)
+        lobbyCategory = try container.decodeIfPresent(String.self, forKey: .lobbyCategory)
+        lobbyWordCount = try container.decode(Int.self, forKey: .lobbyWordCount)
+        lobbyWordCountMode = try container.decode(LobbyWordCountMode.self, forKey: .lobbyWordCountMode)
+        lobbyWordPool = try container.decode([LobbyWordPoolEntry].self, forKey: .lobbyWordPool)
     }
 }
 
@@ -2749,6 +2809,11 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var status: String?
     var players: [Player]?
     var spyEmail: String?
+    var spyEmails: [String]?
+    var revealedSpyEmails: [String]?
+    var lobbySpyCount: Int?
+    var spiesKnowEachOther: Bool?
+    var serverExclusionVoteThreshold: Int?
     var secretWord: String?
     var word: String?
     var category: String?
@@ -2823,6 +2888,51 @@ struct GameRoom: Codable, Identifiable, Hashable {
         playersList.filter { !spectatorsList.contains($0.email) }
     }
 
+    /// The server projects either the viewer's own spy identity, the full team
+    /// when teammate knowledge is enabled, or every role after the match.
+    /// Legacy rooms fall back to the original scalar field.
+    var spyEmailsList: [String] {
+        var seen = Set<String>()
+        let projected = (spyEmails ?? []) + [spyEmail].compactMap { $0 }
+        return projected.compactMap { rawValue in
+            let trimmed = rawValue.trimmingCharacters(in: .whitespacesAndNewlines)
+            let key = trimmed.lowercased()
+            guard !trimmed.isEmpty, seen.insert(key).inserted else { return nil }
+            return trimmed
+        }
+    }
+
+    var spyPlayers: [Player] {
+        let spyKeys = Set(spyEmailsList.map { $0.lowercased() })
+        return playersList.filter { spyKeys.contains($0.email.lowercased()) }
+    }
+
+    var revealedSpyPlayers: [Player] {
+        let revealedKeys = Set((revealedSpyEmails ?? []).map { $0.lowercased() })
+        return playersList.filter { revealedKeys.contains($0.email.lowercased()) }
+    }
+
+    func isSpy(email: String?) -> Bool {
+        guard let email = email?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !email.isEmpty else { return false }
+        return spyEmailsList.contains { $0.lowercased() == email }
+    }
+
+    static func maximumSpyCount(forPlayerCount playerCount: Int) -> Int {
+        guard playerCount >= 3 else { return 1 }
+        return min(3, max(1, playerCount / 3))
+    }
+
+    var maximumLobbySpyCount: Int {
+        Self.maximumSpyCount(forPlayerCount: playersList.count)
+    }
+
+    var lobbySpyCountValue: Int {
+        min(max(lobbySpyCount ?? 1, 1), 3)
+    }
+
     var voteRequestsList: [String] {
         voteRequests ?? []
     }
@@ -2839,10 +2949,14 @@ struct GameRoom: Codable, Identifiable, Hashable {
         return Int(ceil(Double(count) * 0.51))
     }
 
-    /// A suspect is excluded only when every other active player votes for them.
-    /// The backend remains authoritative for resolving or cancelling the ballot.
+    /// The backend is authoritative. Multi-spy rooms must never infer the old
+    /// N-1 threshold on-device because their threshold is N-S.
     var exclusionVoteThreshold: Int {
-        max(activePlayers.count - 1, 0)
+        if let serverExclusionVoteThreshold {
+            return max(serverExclusionVoteThreshold, 0)
+        }
+        guard lobbySpyCountValue == 1, spyEmailsList.count <= 1 else { return 0 }
+        return max(activePlayers.count - 1, 0)
     }
 
     var isVotingActive: Bool {
@@ -2857,8 +2971,15 @@ struct GameRoom: Codable, Identifiable, Hashable {
         cardsRead ?? []
     }
 
+    var activeCardsReadList: [String] {
+        let readEmails = Set(cardsReadList.map { $0.lowercased() })
+        return activePlayers.compactMap { player in
+            readEmails.contains(player.email.lowercased()) ? player.email : nil
+        }
+    }
+
     var allRoleCardsRead: Bool {
-        !playersList.isEmpty && playersList.allSatisfy { cardsReadList.contains($0.email) }
+        !activePlayers.isEmpty && activeCardsReadList.count == activePlayers.count
     }
 
     var isGamePaused: Bool {
@@ -2873,6 +2994,11 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case status
         case players
         case spyEmail = "spy_email"
+        case spyEmails = "spy_emails"
+        case revealedSpyEmails = "revealed_spy_emails"
+        case lobbySpyCount = "lobby_spy_count"
+        case spiesKnowEachOther = "spies_know_each_other"
+        case serverExclusionVoteThreshold = "exclusion_vote_threshold"
         case secretWord = "secret_word"
         case word
         case category
@@ -3049,6 +3175,11 @@ extension GameRoom {
             status: status,
             players: players,
             spyEmail: spyEmail,
+            spyEmails: [spyEmail],
+            revealedSpyEmails: status == "finished" ? [spyEmail] : [],
+            lobbySpyCount: 1,
+            spiesKnowEachOther: false,
+            serverExclusionVoteThreshold: max(players.count - 1, 0),
             secretWord: "Briefcase",
             word: "Briefcase",
             category: "Black Ops",
@@ -3074,7 +3205,7 @@ extension GameRoom {
                 WordPoolEntry(word: "Rooftop"),
                 WordPoolEntry(word: "Checkpoint")
             ],
-            lobbySchemaVersion: 1,
+            lobbySchemaVersion: 2,
             lobbyRevision: 0,
             roomRevision: 0,
             lobbyWordSource: "none",
@@ -3236,6 +3367,7 @@ struct GameHistory: Codable, Identifiable, Hashable {
     var category: String?
     var winner: String?
     var playerCount: Int?
+    var spyCount: Int?
     var createdDate: String?
     var matchType: String? = nil
     var ranked: Bool? = nil
@@ -3250,20 +3382,18 @@ struct GameHistory: Codable, Identifiable, Hashable {
         case category
         case winner
         case playerCount = "player_count"
+        case spyCount = "spy_count"
         case createdDate = "created_date"
         case matchType = "match_type"
         case ranked
     }
 
-    var isOnlineCompetitiveMatch: Bool {
+    var isOnlineHistoryMatch: Bool {
         let normalizedType = matchType?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? ""
         if !normalizedType.isEmpty {
-            return normalizedType == "online" && ranked != false
-        }
-        if ranked == false {
-            return false
+            return normalizedType == "online"
         }
 
         let normalizedCode = roomCode?
@@ -3274,6 +3404,10 @@ struct GameHistory: Codable, Identifiable, Hashable {
                 CharacterSet.uppercaseLetters.contains($0)
                     || CharacterSet.decimalDigits.contains($0)
             }
+    }
+
+    var isOnlineCompetitiveMatch: Bool {
+        isOnlineHistoryMatch && ranked != false && (spyCount ?? 1) <= 1
     }
 }
 

@@ -336,6 +336,47 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertEqual(body["access_token"] as? String, "test-token")
     }
 
+    func testResumeWaitingRoomUsesIdempotentJoinToUpgradePlayerCapability() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        let user = makeRadarUser(id: "restored-host", avatar: "🕵️", rating: 0, policy: .ask)
+        let waitingRoom = GameRoom.previewRoom(status: "waiting")
+
+        _ = try await client.resumeWaitingRoom(waitingRoom, user: user)
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        XCTAssertEqual(body["action"] as? String, "join_room")
+        XCTAssertEqual(body["room_id"] as? String, waitingRoom.id)
+        XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1"])
+        let player = try XCTUnwrap(body["player"] as? [String: Any])
+        XCTAssertEqual(player["email"] as? String, user.email)
+        XCTAssertEqual(player["client_capabilities"] as? [String], ["multi_spy_v1"])
+    }
+
+    func testResumeNonWaitingRoomDoesNotMutateMembership() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        let user = makeRadarUser(id: "active-player", avatar: "🕵️", rating: 0, policy: .ask)
+        let playingRoom = GameRoom.previewRoom(status: "playing")
+
+        let returned = try await client.resumeWaitingRoom(playingRoom, user: user)
+
+        XCTAssertEqual(returned, playingRoom)
+        XCTAssertTrue(try recorder.requestBodies().isEmpty)
+    }
+
     func testSavedPackExclusionsAreFrozenIntoStartPlanAndTransport() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in
@@ -451,6 +492,8 @@ final class Base44ClientRoomActionTests: XCTestCase {
         let payload = LobbyStatePayload(
             gameMode: .associations,
             gameDurationSeconds: 300,
+            spyCount: 3,
+            spiesKnowEachOther: true,
             lobbyWordSource: .manual,
             lobbySourcePackID: nil,
             lobbySourceName: "Hand-picked",
@@ -470,6 +513,9 @@ final class Base44ClientRoomActionTests: XCTestCase {
 
         XCTAssertEqual(object["game_mode"] as? String, "associations")
         XCTAssertEqual(object["game_duration_seconds"] as? Int, 300)
+        XCTAssertEqual(object["lobby_spy_count"] as? Int, 3)
+        XCTAssertEqual(object["spies_know_each_other"] as? Bool, true)
+        XCTAssertNil(object["spy_count"])
         XCTAssertEqual(object["lobby_word_source"] as? String, "manual")
         XCTAssertNil(object["lobby_source_pack_id"])
         XCTAssertEqual(object["lobby_source_name"] as? String, "Hand-picked")
@@ -500,6 +546,8 @@ final class Base44ClientRoomActionTests: XCTestCase {
         let state = LobbyStatePayload(
             gameMode: .questions,
             gameDurationSeconds: 900,
+            spyCount: 2,
+            spiesKnowEachOther: false,
             lobbyWordSource: .saved,
             lobbySourcePackID: "pack-1",
             lobbySourceName: "Classic",
@@ -523,9 +571,36 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertEqual(body["access_token"] as? String, "test-token")
         XCTAssertEqual(body["mutation_id"] as? String, "mutation-7")
         XCTAssertEqual(body["expected_revision"] as? Int, 6)
+        XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1"])
         let encodedState = try XCTUnwrap(body["state"] as? [String: Any])
         XCTAssertEqual(encodedState["game_mode"] as? String, "questions")
         XCTAssertEqual(encodedState["lobby_source_pack_id"] as? String, "pack-1")
+        XCTAssertEqual(encodedState["lobby_spy_count"] as? Int, 2)
+        XCTAssertEqual(encodedState["spies_know_each_other"] as? Bool, false)
+        XCTAssertNil(encodedState["spy_count"])
+    }
+
+    func testCreateAndJoinAdvertiseMultiSpyCapabilityInsidePlayerAndTopLevel() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        let user = makeRadarUser(id: "multi-spy", avatar: "🥷", rating: 0, policy: .ask)
+
+        _ = try await client.createRoom(for: user)
+        _ = try await client.join(code: "ABC123", user: user)
+
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(bodies.compactMap { $0["action"] as? String }, ["create_room", "join_room"])
+        for body in bodies {
+            XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1"])
+            let player = try XCTUnwrap(body["player"] as? [String: Any])
+            XCTAssertEqual(player["client_capabilities"] as? [String], ["multi_spy_v1"])
+        }
     }
 
     func testArmRouletteSendsExpectedLobbyRevision() async throws {
@@ -557,6 +632,9 @@ final class Base44ClientRoomActionTests: XCTestCase {
         let body = try XCTUnwrap(recorder.requestBodies().first)
         XCTAssertEqual(body["action"] as? String, "arm_roulette")
         XCTAssertEqual(body["expected_lobby_revision"] as? Int, 12)
+        XCTAssertEqual(body["client_capabilities"] as? [String], ["multi_spy_v1"])
+        let planBody = try XCTUnwrap(body["plan"] as? [String: Any])
+        XCTAssertNil(planBody["spy_email"], "The backend, not iOS, must assign spy identities.")
     }
 
     func testRadarInvitePolicyUsesAuthenticatedCommunityActionContract() async throws {

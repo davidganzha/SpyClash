@@ -122,7 +122,9 @@ struct HistoryView: View {
     }
 
     private var metricsHistory: [GameHistory] {
-        sortedHistory
+        appState.shouldUsePreviewData
+            ? sortedHistory
+            : sortedHistory.filter(\.isOnlineCompetitiveMatch)
     }
 
     private var summaryGamesLabel: String {
@@ -264,6 +266,12 @@ struct HistoryView: View {
                     HStack(spacing: 8) {
                         Text("\(item.playerCount ?? 0) \(copy.operatives)")
                         Text("//")
+                        if let spyCount = item.spyCount, spyCount > 1 {
+                            Text("\(spyCount) \(localized(en: "SPIES", ru: "ШПИОНА", es: "ESPIAS"))")
+                            Text("//")
+                            Text(localized(en: "UNRANKED", ru: "БЕЗ РЕЙТИНГА", es: "SIN CLASIFICACION"))
+                            Text("//")
+                        }
                         Text(item.roomCode?.uppercased() ?? copy.roomFallback)
                     }
                     .font(.system(size: 10, weight: .medium, design: .monospaced))

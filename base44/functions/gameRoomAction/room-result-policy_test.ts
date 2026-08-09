@@ -380,7 +380,7 @@ Deno.test("legacy started room without pause fields remains unpaused", () => {
   );
 });
 
-Deno.test("valid reveal leave starts timer once when all remaining cards are read", () => {
+Deno.test("reveal leave abandons even an all-read frozen assignment", () => {
   const room = startedRoom({
     game_started_at: null,
     intro_started_at: "2026-07-14T11:59:50.000Z",
@@ -394,15 +394,11 @@ Deno.test("valid reveal leave starts timer once when all remaining cards are rea
     room,
     "2026-07-14T12:05:00.000Z",
   );
-  assertEquals(first, {
-    current_asker_email: "a@example.com",
-    roulette_target_email: "a@example.com",
-    cards_read: ["a@example.com", "b@example.com", "c@example.com"],
-    ready_players: [],
-    game_started_at: "2026-07-14T12:05:00.000Z",
-    game_paused_at: null,
-    game_paused_total_seconds: 0,
-  });
+  assertEquals(first.status, "waiting");
+  assertEquals(first.spy_email, "");
+  assertEquals(first.spy_emails, []);
+  assertEquals(first.cards_read, []);
+  assertEquals(first.game_started_at, null);
   assertEquals(
     preTimerMembershipTransitionPatch(
       { ...room, ...first },
@@ -412,7 +408,7 @@ Deno.test("valid reveal leave starts timer once when all remaining cards are rea
   );
 });
 
-Deno.test("reveal leave keeps a valid table waiting for unread cards", () => {
+Deno.test("reveal leave with unread cards returns to waiting for a redeal", () => {
   const room = startedRoom({
     game_started_at: null,
     cards_read: ["a@example.com", "b@example.com"],
@@ -420,17 +416,13 @@ Deno.test("reveal leave keeps a valid table waiting for unread cards", () => {
     current_answerer_email: "b@example.com",
     roulette_target_email: "a@example.com",
   });
-  assertEquals(preTimerMembershipTransitionPatch(room), {});
-
-  const finalAck = roleCardReadTransitionPatch(
-    room,
-    "c@example.com",
-    "2026-07-14T12:06:00.000Z",
-  );
-  assertEquals(finalAck.game_started_at, "2026-07-14T12:06:00.000Z");
+  const patch = preTimerMembershipTransitionPatch(room);
+  assertEquals(patch.status, "waiting");
+  assertEquals(patch.cards_read, []);
+  assertEquals(patch.match_id, "");
 });
 
-Deno.test("pre-timer membership removes stale card acknowledgements", () => {
+Deno.test("pre-timer membership clears every card acknowledgement", () => {
   const room = startedRoom({
     game_started_at: null,
     cards_read: [
@@ -442,12 +434,13 @@ Deno.test("pre-timer membership removes stale card acknowledgements", () => {
     current_answerer_email: "b@example.com",
     roulette_target_email: "a@example.com",
   });
-  assertEquals(preTimerMembershipTransitionPatch(room), {
-    cards_read: ["a@example.com", "b@example.com"],
-  });
+  const patch = preTimerMembershipTransitionPatch(room);
+  assertEquals(patch.status, "waiting");
+  assertEquals(patch.cards_read, []);
+  assertEquals(patch.spy_emails, []);
 });
 
-Deno.test("roulette leave repairs a valid plan without starting the timer", () => {
+Deno.test("roulette leave discards the plan without starting the timer", () => {
   const room = startedRoom({
     status: "roulette",
     game_started_at: null,
@@ -458,11 +451,10 @@ Deno.test("roulette leave repairs a valid plan without starting the timer", () =
     roulette_target_email: "departed@example.com",
   });
   const patch = preTimerMembershipTransitionPatch(room);
-  assertEquals(patch, {
-    current_asker_email: "a@example.com",
-    roulette_target_email: "a@example.com",
-  });
-  assertEquals("game_started_at" in patch, false);
+  assertEquals(patch.status, "waiting");
+  assertEquals(patch.current_asker_email, "");
+  assertEquals(patch.roulette_target_email, "");
+  assertEquals(patch.game_started_at, null);
 });
 
 Deno.test("invalid reveal membership fails closed without a false timer", () => {

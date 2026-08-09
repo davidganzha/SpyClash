@@ -16,6 +16,7 @@ backend="${project_root}/base44/functions/gameRoomAction/main.ts"
 backend_timer_policy="${project_root}/base44/functions/gameRoomAction/game-timer-policy.ts"
 backend_result_policy="${project_root}/base44/functions/gameRoomAction/room-result-policy.ts"
 backend_vote_policy="${project_root}/base44/functions/gameRoomAction/detective-vote-policy.ts"
+backend_multi_spy_policy="${project_root}/base44/functions/gameRoomAction/multi-spy-policy.ts"
 backend_vote_lease_recovery="${project_root}/base44/functions/gameRoomAction/detective-vote-lease-recovery.ts"
 backend_room_projection="${project_root}/base44/functions/gameRoomAction/room-projection.ts"
 community_backend="${project_root}/base44/functions/communityAction/main.ts"
@@ -27,6 +28,7 @@ web_game_sync="${web_root}/src/lib/gameRoomSync.js"
 web_local_game_rules="${web_root}/src/lib/localGameRules.js"
 web_online_presentation="${web_root}/src/lib/onlineGamePresentation.js"
 web_detective_vote_retry="${web_root}/src/lib/detectiveVoteRetry.js"
+web_multi_spy_rules="${web_root}/src/lib/multiSpyRules.js"
 
 fail() {
   echo "cross-platform sync check failed: $*" >&2
@@ -44,6 +46,7 @@ fail() {
 [[ -f "${backend_timer_policy}" ]] || fail "missing canonical game timer policy"
 [[ -f "${backend_result_policy}" ]] || fail "missing canonical room result policy"
 [[ -f "${backend_vote_policy}" ]] || fail "missing canonical detective vote policy"
+[[ -f "${backend_multi_spy_policy}" ]] || fail "missing canonical multi-spy policy"
 [[ -f "${backend_vote_lease_recovery}" ]] || fail "missing detective vote lease recovery"
 [[ -f "${backend_room_projection}" ]] || fail "missing canonical room projection"
 [[ -f "${community_backend}" ]] || fail "missing canonical communityAction backend"
@@ -55,6 +58,7 @@ fail() {
 [[ -f "${web_local_game_rules}" ]] || fail "missing canonical Web local-game rules"
 [[ -f "${web_online_presentation}" ]] || fail "missing canonical Web online presentation"
 [[ -f "${web_detective_vote_retry}" ]] || fail "missing canonical Web detective-vote retry helper"
+[[ -f "${web_multi_spy_rules}" ]] || fail "missing canonical Web multi-spy rules"
 
 rg -q --fixed-strings "\"id\": \"${canonical_app_id}\"" "${root_app_config}" \
   || fail "repository is not linked to the canonical SpyClash Base44 app"
@@ -187,14 +191,54 @@ fi
 rg -q --fixed-strings 'winner: "spy"' "${web_local_game_rules}" \
   || fail "Web local game does not award the spy at timer zero"
 
-rg -q --fixed-strings 'activeEmails.length - 1' "${backend_vote_policy}" \
-  || fail "backend detective exclusion is not pinned to N-1"
+# Full exclusion generalizes legacy N-1 to N-S for a server-owned active spy
+# count. The one-spy case remains exactly N-1; clients consume the projected
+# threshold and never infer hidden roles locally.
+rg -q --fixed-strings 'activeEmails.length - activeSpyCount' "${backend_vote_policy}" \
+  || fail "backend detective exclusion is not pinned to N-S"
 rg -q --fixed-strings 'reconcileDetectiveVoteCastAfterActiveIdentityLease' "${backend}" \
   || fail "backend does not reconcile detective votes after lifecycle lease contention"
 rg -q --fixed-strings 'var exclusionVoteThreshold' "${ios_model}" \
-  || fail "iOS does not expose the N-1 detective exclusion threshold"
-rg -q --fixed-strings 'Math.max(activePlayers.length - 1, 0)' "${web_online_presentation}" \
-  || fail "Web does not expose the N-1 detective exclusion threshold"
+  || fail "iOS does not expose the server detective exclusion threshold"
+rg -q --fixed-strings 'serverExclusionVoteThreshold' "${ios_model}" \
+  || fail "iOS does not consume exclusion_vote_threshold"
+rg -q --fixed-strings 'room?.exclusion_vote_threshold' "${web_online_presentation}" \
+  || fail "Web does not consume exclusion_vote_threshold"
+
+# Multi-spy is one additive, backward-compatible contract. The host owns the
+# public lobby count; the server samples identities once and projections keep
+# the team private unless the teammate switch or terminal reveal permits it.
+for field in lobby_spy_count spies_know_each_other spy_emails; do
+  rg -q --fixed-strings "\"${field}\"" "${game_room_entity}" \
+    || fail "GameRoom entity is missing ${field}"
+  rg -q --fixed-strings "${field}" "${backend}" "${backend_multi_spy_policy}" "${backend_room_projection}" \
+    || fail "backend multi-spy contract is missing ${field}"
+  rg -q --fixed-strings "${field}" "${ios_model}" "${ios_client}" "${ios_game_view}" \
+    || fail "iOS multi-spy contract is missing ${field}"
+  rg -q --fixed-strings "${field}" "${web_root}/src" \
+    || fail "Web multi-spy contract is missing ${field}"
+done
+
+rg -q --fixed-strings 'MAX_SPY_COUNT = 3' "${backend_multi_spy_policy}" \
+  || fail "backend multi-spy hard maximum is not three"
+rg -q --fixed-strings 'min(3, max(1, playerCount / 3))' "${ios_model}" \
+  || fail "iOS does not enforce the approved spy-count bands"
+rg -q --fixed-strings 'MAX_SPIES = 3' "${web_multi_spy_rules}" \
+  || fail "Web multi-spy hard maximum is not three"
+rg -q --fixed-strings 'serverSpyAssignment(room)' "${backend}" \
+  || fail "backend does not own online spy assignment"
+rg -q --fixed-strings 'MULTI_SPY_CAPABILITY = "multi_spy_v1"' "${backend_multi_spy_policy}" \
+  || fail "backend does not gate legacy clients from multi-spy rooms"
+rg -q --fixed-strings 'multiSpyCapability = "multi_spy_v1"' "${ios_client}" \
+  || fail "iOS does not advertise multi_spy_v1"
+rg -q --fixed-strings 'MULTI_SPY_CLIENT_CAPABILITY = "multi_spy_v1"' "${web_multi_spy_rules}" \
+  || fail "Web does not advertise multi_spy_v1"
+rg -q --fixed-strings 'revealed_spy_emails' "${backend_room_projection}" "${ios_model}" "${web_root}/src" \
+  || fail "cross-platform ejected-spy reveal contract is incomplete"
+
+if rg -n 'spyIdx|plan\.spy_email|spy_email:\s*spy' "${web_root}/src/pages/Room.jsx"; then
+  fail "Web reintroduced client-owned online spy assignment"
+fi
 
 # Every detective ballot is bound to one server-issued round. The room
 # projection and both clients must preserve that identity through conflict

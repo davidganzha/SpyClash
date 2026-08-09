@@ -4,7 +4,7 @@ import XCTest
 @testable import SpyClash
 
 final class OnlineRoundStateTests: XCTestCase {
-    func testTutorialVoteCopyExplainsNMinusOneAndAutomaticCancellationInEveryLanguageAndMode() throws {
+    func testTutorialVoteCopyExplainsNMinusSAndAutomaticCancellationInEveryLanguageAndMode() throws {
         for language in AppLanguage.allCases {
             let expectedFragments: (suspect: String, cancellation: String) = switch language {
             case .en: ("same suspect", "server cancels automatically")
@@ -14,8 +14,8 @@ final class OnlineRoundStateTests: XCTestCase {
 
             for mode in TutorialMode.allCases {
                 let instruction = try XCTUnwrap(
-                    language.tutorialSteps(for: mode).first { $0.text.contains("N−1") },
-                    "Missing N−1 tutorial instruction for \(language.rawValue)/\(mode.rawValue)"
+                    language.tutorialSteps(for: mode).first { $0.text.contains("N−S") },
+                    "Missing N−S tutorial instruction for \(language.rawValue)/\(mode.rawValue)"
                 )
                 XCTAssertTrue(instruction.text.localizedCaseInsensitiveContains(expectedFragments.suspect))
                 XCTAssertTrue(instruction.text.localizedCaseInsensitiveContains(expectedFragments.cancellation))
@@ -36,6 +36,91 @@ final class OnlineRoundStateTests: XCTestCase {
             LocalGameDeadlinePolicy.outcome(afterTickFrom: 0),
             .spyWins
         )
+    }
+
+    func testLocalAccusationCatchesAnyAssignedSpyRatherThanOnlyThePrimarySpy() {
+        let spyFlags = [true, false, true, false, true, false]
+
+        XCTAssertTrue(LocalGameAccusationPolicy.caughtSpy(at: 0, spyFlags: spyFlags))
+        XCTAssertTrue(LocalGameAccusationPolicy.caughtSpy(at: 2, spyFlags: spyFlags))
+        XCTAssertTrue(LocalGameAccusationPolicy.caughtSpy(at: 4, spyFlags: spyFlags))
+        XCTAssertFalse(LocalGameAccusationPolicy.caughtSpy(at: 1, spyFlags: spyFlags))
+        XCTAssertFalse(LocalGameAccusationPolicy.caughtSpy(at: 99, spyFlags: spyFlags))
+    }
+
+    func testLocalMultiSpyAccusationContinuesUntilLastSpyOrParity() {
+        let spyFlags = [true, true, false, false, false, false]
+
+        XCTAssertEqual(
+            LocalGameAccusationPolicy.outcome(accusing: 0, spyFlags: spyFlags),
+            .continuePlaying,
+            "Eliminating one of two spies must not award detectives the match"
+        )
+        XCTAssertEqual(
+            LocalGameAccusationPolicy.outcome(accusing: 2, spyFlags: spyFlags),
+            .continuePlaying,
+            "A wrong accusation must continue while spies have not reached parity"
+        )
+        XCTAssertEqual(
+            LocalGameAccusationPolicy.outcome(
+                accusing: 3,
+                spyFlags: spyFlags,
+                eliminatedIndices: [2]
+            ),
+            .spyWins,
+            "After the second detective is eliminated, two spies reach parity with two detectives"
+        )
+        XCTAssertEqual(
+            LocalGameAccusationPolicy.outcome(
+                accusing: 1,
+                spyFlags: spyFlags,
+                eliminatedIndices: [0]
+            ),
+            .detectivesWin,
+            "Detectives win only after the last active spy is eliminated"
+        )
+        XCTAssertEqual(
+            LocalGameAccusationPolicy.outcome(
+                accusing: 0,
+                spyFlags: spyFlags,
+                eliminatedIndices: [0]
+            ),
+            .invalidAccusation
+        )
+    }
+
+    func testLocalSpyAssignmentSamplesUniqueInRangeIdentitiesAtApprovedCount() {
+        for _ in 0..<100 {
+            let indices = LocalSpyAssignmentPolicy.randomSpyIndices(
+                playerCount: 9,
+                requestedSpyCount: 3
+            )
+            XCTAssertEqual(indices.count, 3)
+            XCTAssertEqual(Set(indices).count, 3)
+            XCTAssertTrue(indices.allSatisfy { (0..<9).contains($0) })
+        }
+
+        XCTAssertEqual(
+            LocalSpyAssignmentPolicy.randomSpyIndices(playerCount: 6, requestedSpyCount: 3).count,
+            2
+        )
+        XCTAssertTrue(
+            LocalSpyAssignmentPolicy.randomSpyIndices(playerCount: 2, requestedSpyCount: 1).isEmpty
+        )
+    }
+
+    func testRoleCardGateCountsOnlyCurrentActivePlayers() throws {
+        var room = GameRoom.previewRoom(status: "playing", playerCount: 6)
+        let spectator = try XCTUnwrap(room.playersList.last)
+        room.spectators = [spectator.email]
+        room.cardsRead = room.activePlayers.map { $0.email.uppercased() }
+
+        XCTAssertEqual(room.activeCardsReadList.count, 5)
+        XCTAssertTrue(room.allRoleCardsRead)
+
+        room.cardsRead = [spectator.email] + room.activePlayers.dropLast().map(\.email)
+        XCTAssertEqual(room.activeCardsReadList.count, 4)
+        XCTAssertFalse(room.allRoleCardsRead)
     }
 
     func testConfirmedPlayerCanReopenRoleCardWhileWaitingForOthers() {
@@ -63,15 +148,105 @@ final class OnlineRoundStateTests: XCTestCase {
         XCTAssertTrue(room.code.allSatisfy { $0.isASCII && ($0.isLetter || $0.isNumber) })
     }
 
-    func testExclusionRequiresEveryOtherActivePlayer() {
+    func testExclusionUsesAuthoritativeServerThreshold() {
         var room = GameRoom.previewRoom(status: "playing", playerCount: 6)
 
         XCTAssertEqual(room.activePlayers.count, 6)
         XCTAssertEqual(room.exclusionVoteThreshold, 5)
 
         room.spectators = [room.playersList[5].email]
+        room.serverExclusionVoteThreshold = 4
         XCTAssertEqual(room.activePlayers.count, 5)
         XCTAssertEqual(room.exclusionVoteThreshold, 4)
+    }
+
+    func testMultiSpyRoomNeverComputesLegacyNMinusOneThresholdLocally() {
+        var room = GameRoom.previewRoom(status: "playing", playerCount: 6)
+        room.lobbySpyCount = 2
+        room.spyEmails = Array(room.playersList.prefix(2).map(\.email))
+        room.serverExclusionVoteThreshold = 4
+
+        XCTAssertEqual(room.exclusionVoteThreshold, 4)
+
+        room.serverExclusionVoteThreshold = nil
+        XCTAssertEqual(room.exclusionVoteThreshold, 0)
+    }
+
+    func testSpyCountRangeIsCappedAtOneSpyPerThreePlayersAndThreeHardMaximum() {
+        let expected: [(players: Int, maximum: Int)] = [
+            (3, 1), (5, 1),
+            (6, 2), (8, 2),
+            (9, 3), (12, 3), (30, 3)
+        ]
+
+        for sample in expected {
+            XCTAssertEqual(
+                GameRoom.maximumSpyCount(forPlayerCount: sample.players),
+                sample.maximum,
+                "Unexpected maximum for \(sample.players) players"
+            )
+        }
+    }
+
+    func testSpyMembershipUsesProjectedArrayWithLegacyScalarFallback() throws {
+        let players = #"[{"email":"one@example.com","name":"One","avatar":"1"},{"email":"two@example.com","name":"Two","avatar":"2"},{"email":"three@example.com","name":"Three","avatar":"3"}]"#
+        let multi = try JSONDecoder().decode(
+            GameRoom.self,
+            from: Data("{\"id\":\"multi\",\"code\":\"ABC123\",\"players\":\(players),\"spy_email\":\"one@example.com\",\"spy_emails\":[\"one@example.com\",\"two@example.com\"],\"lobby_spy_count\":2,\"spies_know_each_other\":true,\"exclusion_vote_threshold\":1}".utf8)
+        )
+
+        XCTAssertEqual(multi.spyEmailsList, ["one@example.com", "two@example.com"])
+        XCTAssertTrue(multi.isSpy(email: "one@example.com"))
+        XCTAssertTrue(multi.isSpy(email: "TWO@example.com"))
+        XCTAssertFalse(multi.isSpy(email: "three@example.com"))
+        XCTAssertEqual(multi.spyPlayers.map(\.email), ["one@example.com", "two@example.com"])
+        XCTAssertEqual(multi.exclusionVoteThreshold, 1)
+
+        let legacy = try JSONDecoder().decode(
+            GameRoom.self,
+            from: Data("{\"id\":\"legacy\",\"code\":\"ABC123\",\"players\":\(players),\"spy_email\":\"three@example.com\"}".utf8)
+        )
+        XCTAssertEqual(legacy.spyEmailsList, ["three@example.com"])
+        XCTAssertTrue(legacy.isSpy(email: "three@example.com"))
+        XCTAssertEqual(legacy.exclusionVoteThreshold, 2)
+    }
+
+    func testLobbyStateDefaultsLegacySnapshotsToOneHiddenTeamSpy() throws {
+        let data = Data(#"{"game_mode":"questions","game_duration_seconds":900,"lobby_word_source":"none","lobby_word_count":0,"lobby_word_count_mode":"recommended","lobby_word_pool":[]}"#.utf8)
+
+        let payload = try JSONDecoder().decode(LobbyStatePayload.self, from: data)
+
+        XCTAssertEqual(payload.spyCount, 1)
+        XCTAssertFalse(payload.spiesKnowEachOther)
+    }
+
+    func testTypedMultiSpyErrorsExposeUpdateAndRosterFailures() {
+        XCTAssertTrue(
+            Base44Error(
+                message: "Update required",
+                statusCode: 426,
+                code: "client_update_required"
+            ).isClientUpdateRequired
+        )
+        XCTAssertTrue(
+            Base44Error(
+                message: "Invalid count",
+                statusCode: 400,
+                code: "spy_count_invalid_for_player_count"
+            ).isSpyCountInvalidForPlayerCount
+        )
+    }
+
+    func testUnrankedMultiSpyMatchRemainsVisibleInOnlineHistoryButNotCompetitiveStats() throws {
+        let records = try JSONDecoder().decode(
+            [GameHistory].self,
+            from: Data(
+                #"[{"id":"multi","room_code":"ABC123","match_type":"online","ranked":false,"spy_count":2},{"id":"ranked","room_code":"DEF456","match_type":"online","ranked":true,"spy_count":1},{"id":"local","room_code":"LOCAL","match_type":"local","ranked":false,"spy_count":2}]"#.utf8
+            )
+        )
+
+        XCTAssertEqual(records.filter(\.isOnlineHistoryMatch).map(\.id), ["multi", "ranked"])
+        XCTAssertEqual(records.filter(\.isOnlineCompetitiveMatch).map(\.id), ["ranked"])
     }
 
     func testOnlineTimerExpiresExactlyAtZeroWithoutGuessGrace() {
@@ -1359,6 +1534,17 @@ final class LobbyLatestWinsStateTests: XCTestCase {
         ]
 
         XCTAssertTrue(local.equivalentForLobbySync(to: server))
+    }
+
+    func testSpyCountAndTeammateKnowledgeAreSemanticLobbyChanges() {
+        let baseline = payload(duration: 300)
+        var twoSpies = baseline
+        twoSpies.spyCount = 2
+        var knownTeammates = baseline
+        knownTeammates.spiesKnowEachOther = true
+
+        XCTAssertFalse(baseline.equivalentForLobbySync(to: twoSpies))
+        XCTAssertFalse(baseline.equivalentForLobbySync(to: knownTeammates))
     }
 
     private func payload(

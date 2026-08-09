@@ -21,6 +21,11 @@ const functionsURL = new URL("../functions/", import.meta.url);
 const expectedStepZeroSchemaDigest =
   "f09988b0e0b5c5e93a55c4738e47ba20b160bd536ee0cacd65337fa05fd674af";
 const postNotificationLobbyFields = [
+  "spy_emails",
+  "lobby_spy_count",
+  "spies_know_each_other",
+  "incompatible_player_emails",
+  "departed_player_emails",
   "room_revision",
   "room_last_write_token",
   "lobby_schema_version",
@@ -173,6 +178,10 @@ async function pinHistoricalNotificationEntityFixture(root: string) {
     delete room.properties[field];
   }
   await writePrivateJSON(roomPath, room);
+  const historyPath = `${root}/base44/entities/GameHistory.jsonc`;
+  const history = JSON.parse(await Deno.readTextFile(historyPath));
+  delete history.properties.spy_count;
+  await writePrivateJSON(historyPath, history);
 }
 
 async function writeFakeNetworkCommands(

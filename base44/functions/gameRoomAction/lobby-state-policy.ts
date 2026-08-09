@@ -1,6 +1,6 @@
 import { requireSafeCommunityText } from "./content-safety.ts";
 
-export const LOBBY_SCHEMA_VERSION = 1;
+export const LOBBY_SCHEMA_VERSION = 2;
 export const MAX_LOBBY_WORDS = 200;
 
 export type LobbyGameMode = "questions" | "associations";
@@ -16,6 +16,8 @@ export type LobbyWordPoolEntry = {
 export type CanonicalLobbyState = {
   game_mode: LobbyGameMode;
   game_duration_seconds: number;
+  lobby_spy_count: number;
+  spies_know_each_other: boolean;
   lobby_word_source: LobbyWordSource;
   lobby_source_pack_id: string;
   lobby_source_name: string;
@@ -177,6 +179,30 @@ function validatedGameDuration(value: unknown): number {
   return duration;
 }
 
+function validatedSpyCount(value: unknown): number {
+  const count = Number(value ?? 1);
+  if (!Number.isSafeInteger(count) || count < 1 || count > 3) {
+    throw policyError(
+      "Spy count must be between 1 and 3",
+      400,
+      "lobby_spy_count_invalid",
+    );
+  }
+  return count;
+}
+
+function validatedBoolean(value: unknown, fallback: boolean): boolean {
+  if (value === undefined || value === null) return fallback;
+  if (typeof value !== "boolean") {
+    throw policyError(
+      "Spy teammate knowledge must be boolean",
+      400,
+      "lobby_state_invalid",
+    );
+  }
+  return value;
+}
+
 function validatedWordSource(value: unknown): LobbyWordSource {
   const source = clean(value);
   if (
@@ -229,6 +255,11 @@ export function canonicalizeLobbyState(
     game_duration_seconds: validatedGameDuration(
       state.game_duration_seconds,
     ),
+    lobby_spy_count: validatedSpyCount(state.lobby_spy_count),
+    spies_know_each_other: validatedBoolean(
+      state.spies_know_each_other,
+      false,
+    ),
     lobby_word_source: validatedWordSource(state.lobby_word_source),
     lobby_source_pack_id: validatedOpaqueID(
       state.lobby_source_pack_id,
@@ -270,6 +301,8 @@ export function lobbyStateFromRoom(
   return canonicalizeLobbyState({
     game_mode: room?.game_mode || "questions",
     game_duration_seconds: room?.game_duration_seconds || 900,
+    lobby_spy_count: room?.lobby_spy_count ?? 1,
+    spies_know_each_other: room?.spies_know_each_other ?? false,
     lobby_word_source: room?.lobby_word_source || "none",
     lobby_source_pack_id: room?.lobby_source_pack_id || "",
     lobby_source_name: room?.lobby_source_name || "",
@@ -356,6 +389,8 @@ export function lobbyMutationPatch(
     lobby_revision: currentRevision + 1,
     game_mode: mutation.state.game_mode,
     game_duration_seconds: mutation.state.game_duration_seconds,
+    lobby_spy_count: mutation.state.lobby_spy_count,
+    spies_know_each_other: mutation.state.spies_know_each_other,
     lobby_word_source: mutation.state.lobby_word_source,
     lobby_source_pack_id: mutation.state.lobby_source_pack_id,
     lobby_source_name: mutation.state.lobby_source_name,

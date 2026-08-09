@@ -14,12 +14,62 @@ enum LocalGameDeadlinePolicy {
     }
 }
 
+enum LocalGameAccusationPolicy {
+    enum Outcome: Equatable {
+        case continuePlaying
+        case spyWins
+        case detectivesWin
+        case invalidAccusation
+    }
+
+    static func caughtSpy(at index: Int, spyFlags: [Bool]) -> Bool {
+        guard spyFlags.indices.contains(index) else { return false }
+        return spyFlags[index]
+    }
+
+    /// Local pass-and-play follows the same elimination rule as Online: every
+    /// accused active player leaves the round, regardless of role. Detectives
+    /// win only after the last spy is gone; spies win when they reach parity.
+    static func outcome(
+        accusing index: Int,
+        spyFlags: [Bool],
+        eliminatedIndices: Set<Int> = []
+    ) -> Outcome {
+        guard spyFlags.indices.contains(index), !eliminatedIndices.contains(index) else {
+            return .invalidAccusation
+        }
+
+        let remainingIndices = spyFlags.indices.filter {
+            $0 != index && !eliminatedIndices.contains($0)
+        }
+        let remainingSpies = remainingIndices.filter { spyFlags[$0] }.count
+        let remainingDetectives = remainingIndices.count - remainingSpies
+
+        if remainingSpies == 0 { return .detectivesWin }
+        if remainingSpies >= remainingDetectives { return .spyWins }
+        return .continuePlaying
+    }
+}
+
+enum LocalSpyAssignmentPolicy {
+    static func randomSpyIndices(playerCount: Int, requestedSpyCount: Int) -> [Int] {
+        guard playerCount >= 3 else { return [] }
+        let count = min(
+            max(requestedSpyCount, 1),
+            GameRoom.maximumSpyCount(forPlayerCount: playerCount)
+        )
+        return Array((0..<playerCount).shuffled().prefix(count)).sorted()
+    }
+}
+
 struct LocalGameView: View {
     @Environment(AppState.self) private var appState
 
-    @State private var players = ["", ""]
-    @State private var avatars = ["🕵️", "👤"]
+    @State private var players = ["", "", ""]
+    @State private var avatars = ["🕵️", "👤", "🤖"]
     @State private var duration = 10.0
+    @State private var spyCount = 1.0
+    @State private var spiesKnowEachOther = false
     @State private var wordCount = 25.0
     @State private var mode = LocalMode.questions
     @State private var selectedPackID = "builtin"
@@ -41,7 +91,7 @@ struct LocalGameView: View {
     @State private var localPoolDraft: LocalPoolDraft?
     @State private var localNewPoolWord = ""
     @State private var disabledPoolWordKeys: Set<String> = []
-    @State private var playerIDs = [UUID(), UUID()]
+    @State private var playerIDs = [UUID(), UUID(), UUID()]
     @State private var armedPlayerID: UUID?
     @State private var draggingPlayerID: UUID?
     @State private var draggingPlayerIndex: Int?
@@ -61,6 +111,7 @@ struct LocalGameView: View {
     @State private var pendingSpyGuess: String?
     @State private var questionIndex = 0
     @State private var accusedIndex: Int?
+    @State private var eliminatedPlayerIndices: Set<Int> = []
     @State private var winner: LocalWinner?
     @State private var timerTask: Task<Void, Never>?
     @State private var associationOrder: [Int] = []
@@ -121,9 +172,14 @@ struct LocalGameView: View {
                 }
                 updateLocalShellChromeSuppression()
             }
-            .onChange(of: players) { _, _ in persistLocalSettings() }
+            .onChange(of: players) { _, _ in
+                spyCount = min(spyCount, Double(localMaximumSpyCount))
+                persistLocalSettings()
+            }
             .onChange(of: avatars) { _, _ in persistLocalSettings() }
             .onChange(of: duration) { _, _ in persistLocalSettings() }
+            .onChange(of: spyCount) { _, _ in persistLocalSettings() }
+            .onChange(of: spiesKnowEachOther) { _, _ in persistLocalSettings() }
             .onChange(of: wordCount) { _, _ in persistLocalSettings() }
             .onChange(of: mode) { _, _ in persistLocalSettings() }
             .onChange(of: selectedPackID) { _, _ in persistLocalSettings() }
@@ -231,6 +287,9 @@ struct LocalGameView: View {
                 }
                 localSetupSlot(.mode) {
                     localModePanel
+                }
+                localSetupSlot(.roles) {
+                    localSpySettingsPanel
                 }
                 localSetupSlot(.timing) {
                     localTimingPanel
@@ -381,6 +440,93 @@ struct LocalGameView: View {
                 HStack(spacing: 10) {
                     localModeOption(.questions, symbol: "?")
                     localModeOption(.associations, symbol: "💭")
+                }
+            }
+        }
+    }
+
+    private var localMaximumSpyCount: Int {
+        GameRoom.maximumSpyCount(forPlayerCount: players.count)
+    }
+
+    private var localSpySettingsPanel: some View {
+        let selectedCount = min(max(Int(spyCount.rounded()), 1), localMaximumSpyCount)
+
+        return localSetupPanel(accent: selectedCount > 1 ? SpyTheme.red : SpyTheme.muted) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    sectionHeader(
+                        systemImage: "person.crop.circle.badge.questionmark",
+                        title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS")
+                    )
+                    Spacer()
+                    Text("\(selectedCount)")
+                        .font(.system(size: 24, weight: .black, design: .monospaced))
+                        .foregroundStyle(selectedCount > 1 ? SpyTheme.red : .white)
+                        .contentTransition(.numericText())
+                        .accessibilityHidden(true)
+                }
+
+                SpyWebSlider(
+                    value: Binding(
+                        get: { Double(selectedCount) },
+                        set: { newValue in
+                            spyCount = Double(
+                                min(max(Int(newValue.rounded()), 1), localMaximumSpyCount)
+                            )
+                        }
+                    ),
+                    range: 1...Double(localMaximumSpyCount),
+                    step: 1,
+                    accessibilityLabel: localized(
+                        en: "Number of spies",
+                        ru: "Количество шпионов",
+                        es: "Numero de espias"
+                    ),
+                    accessibilityIdentifier: "localGame.spyCountSlider"
+                )
+                .disabled(localMaximumSpyCount == 1)
+
+                HStack {
+                    Text("1")
+                    Spacer()
+                    Text("\(localMaximumSpyCount)")
+                }
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(SpyTheme.dim)
+                .accessibilityHidden(true)
+
+                Toggle(isOn: $spiesKnowEachOther) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(localized(
+                            en: "SPIES KNOW EACH OTHER",
+                            ru: "ШПИОНЫ ЗНАЮТ ДРУГ ДРУГА",
+                            es: "LOS ESPIAS SE CONOCEN"
+                        ))
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
+                        Text(localized(
+                            en: "Off by default. Teammates appear only after the spy reveals their card.",
+                            ru: "По умолчанию выключено. Сообщники видны только после открытия карты шпиона.",
+                            es: "Desactivado por defecto. Los aliados aparecen solo al revelar la carta."
+                        ))
+                        .font(.system(size: 9, weight: .semibold, design: .default))
+                        .foregroundStyle(SpyTheme.dim)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .tint(SpyTheme.red)
+                .accessibilityIdentifier("localGame.spiesKnowEachOtherToggle")
+
+                if selectedCount > 1 {
+                    Text(localized(
+                        en: "ALL SPIES SHARE ONE WIN AND ONE GUESS",
+                        ru: "У ВСЕХ ШПИОНОВ ОБЩАЯ ПОБЕДА И ОДНА ПОПЫТКА",
+                        es: "TODOS LOS ESPIAS COMPARTEN VICTORIA Y UN INTENTO"
+                    ))
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(SpyTheme.amber)
+                    .fixedSize(horizontal: false, vertical: true)
                 }
             }
         }
@@ -1865,6 +2011,7 @@ struct LocalGameView: View {
                     session: session,
                     revealed: cardRevealed,
                     copy: copy,
+                    language: appState.language,
                     dontShow: localized(en: "DON'T SHOW OTHERS", ru: "НЕ ПОКАЗЫВАЙ ДРУГИМ", es: "NO MUESTRES A OTROS")
                 )
                     .onTapGesture {
@@ -2020,16 +2167,17 @@ struct LocalGameView: View {
     }
 
     private func localAgentStrip(_ session: LocalSession) -> some View {
-        localCompactPanel(accent: SpyTheme.muted) {
+        let activeIndices = activeLocalPlayerIndices(in: session)
+        return localCompactPanel(accent: SpyTheme.muted) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("\(localized(en: "AGENTS", ru: "АГЕНТЫ", es: "AGENTES")) (\(session.players.count))")
+                Text("\(localized(en: "AGENTS", ru: "АГЕНТЫ", es: "AGENTES")) (\(activeIndices.count))")
                     .font(.system(size: 10, weight: .black, design: .monospaced))
                     .tracking(0.08)
                     .foregroundStyle(SpyTheme.dim)
                     .spyFitted(scale: 0.66)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 6)], spacing: 6) {
-                    ForEach(session.players.indices, id: \.self) { index in
+                    ForEach(activeIndices, id: \.self) { index in
                         localAgentChip(session.players[index])
                     }
                 }
@@ -2115,7 +2263,7 @@ struct LocalGameView: View {
                     }
 
                     HStack(spacing: 4) {
-                        ForEach(session.players.indices, id: \.self) { index in
+                        ForEach(activeLocalPlayerIndices(in: session), id: \.self) { index in
                             let orderedIndex = associationOrder[safe: associationStep] ?? -1
                             Circle()
                                 .fill(index == orderedIndex ? SpyTheme.red : SpyTheme.stroke)
@@ -2130,9 +2278,11 @@ struct LocalGameView: View {
 
     private func localAssociationRoulette(_ session: LocalSession) -> some View {
         TimelineView(.animation) { timeline in
-            let count = max(session.players.count, 1)
+            let activeIndices = activeLocalPlayerIndices(in: session)
+            let count = max(activeIndices.count, 1)
             let tick = Int(timeline.date.timeIntervalSinceReferenceDate * 12) % count
-            let previewPlayer = session.players[safe: tick] ?? currentAsker(in: session)
+            let previewIndex = activeIndices[safe: tick]
+            let previewPlayer = previewIndex.flatMap { session.players[safe: $0] } ?? currentAsker(in: session)
 
             VStack(spacing: 12) {
                 Text(localized(en: "ASSOCIATION ROULETTE", ru: "РУЛЕТКА АССОЦИАЦИЙ", es: "RULETA DE ASOCIACIONES"))
@@ -2266,7 +2416,7 @@ struct LocalGameView: View {
     @ViewBuilder
     private var spyGuessView: some View {
         if let session {
-            let spyPlayer = session.players[safe: session.spyIndex]
+            let spyPlayers = activeLocalSpyPlayers(in: session)
             ZStack {
                 VStack(spacing: 20) {
                     Text("⏰")
@@ -2283,23 +2433,33 @@ struct LocalGameView: View {
 
                     localGuessCountdown
 
-                    if let spyPlayer {
+                    if !spyPlayers.isEmpty {
                         VStack(spacing: 8) {
-                            Text(localized(en: "Pass phone to the spy:", ru: "Передай телефон шпиону:", es: "Pasa el telefono al espia:"))
+                            Text(
+                                session.spiesKnowEachOther
+                                    ? localized(en: "Pass phone to the spy team:", ru: "Передай телефон команде шпионов:", es: "Pasa el telefono al equipo de espias:")
+                                    : localized(en: "Pass the phone to any spy.", ru: "Передай телефон любому шпиону.", es: "Pasa el telefono a cualquier espia.")
+                            )
                                 .font(.system(size: 13, weight: .semibold, design: .default))
                                 .foregroundStyle(SpyTheme.dim)
                                 .multilineTextAlignment(.center)
                                 .spyFitted(lines: 2, scale: 0.66, alignment: .center)
 
-                            Text(spyPlayer.avatar)
-                                .font(.system(size: 32))
-
-                            Text(spyPlayer.name.uppercased())
-                                .font(.system(size: 18, weight: .black, design: .default))
-                                .tracking(0.04)
-                                .foregroundStyle(.white)
-                                .multilineTextAlignment(.center)
-                                .spyFitted(lines: 2, scale: 0.58, alignment: .center)
+                            if session.spiesKnowEachOther {
+                                HStack(spacing: 10) {
+                                    ForEach(spyPlayers) { spyPlayer in
+                                        VStack(spacing: 3) {
+                                            Text(spyPlayer.avatar)
+                                                .font(.system(size: 28))
+                                            Text(spyPlayer.name.uppercased())
+                                                .font(.system(size: 10, weight: .black, design: .monospaced))
+                                                .foregroundStyle(.white)
+                                                .lineLimit(1)
+                                                .minimumScaleFactor(0.56)
+                                        }
+                                    }
+                                }
+                            }
                         }
                     }
 
@@ -2333,8 +2493,13 @@ struct LocalGameView: View {
     }
 
     private var localGuessCountdown: some View {
-        VStack(spacing: 4) {
-            Text(localized(en: "SPY HAS", ru: "У ШПИОНА", es: "EL ESPIA TIENE"))
+        let activeSpyCount = session.map { activeLocalSpyPlayers(in: $0).count } ?? 1
+        return VStack(spacing: 4) {
+            Text(
+                activeSpyCount > 1
+                    ? localized(en: "SPY TEAM HAS", ru: "У КОМАНДЫ ШПИОНОВ", es: "EL EQUIPO DE ESPIAS TIENE")
+                    : localized(en: "SPY HAS", ru: "У ШПИОНА", es: "EL ESPIA TIENE")
+            )
                 .font(SpyTheme.micro)
                 .tracking(0.08)
                 .foregroundStyle(SpyTheme.dim)
@@ -2468,7 +2633,7 @@ struct LocalGameView: View {
                             .tracking(0.04)
                             .foregroundStyle(.white)
                             .spyFitted(lines: 2, scale: 0.58)
-                        ForEach(session.players.indices, id: \.self) { index in
+                        ForEach(activeLocalPlayerIndices(in: session), id: \.self) { index in
                             Button {
                                 resolveAccusation(index, session: session)
                             } label: {
@@ -2500,7 +2665,7 @@ struct LocalGameView: View {
                     .symbolEffect(.bounce, value: winner.title(copy))
                     .transition(.scale(scale: 0.35).combined(with: .opacity))
 
-                Text(winner.title(copy))
+                Text(localWinnerTitle(winner, session: session))
                     .font(.system(size: 44, weight: .black, design: .default))
                     .tracking(0.10)
                     .foregroundStyle(SpyTheme.red)
@@ -2510,13 +2675,20 @@ struct LocalGameView: View {
 
                 localResultWordPanel(session)
 
-                if let spy = session.players[safe: session.spyIndex] {
-                    Text("\(localized(en: "SPY WAS", ru: "ШПИОНОМ БЫЛ", es: "EL ESPIA ERA")) \(spy.avatar) \(spy.name.uppercased())")
-                        .font(.system(size: 12, weight: .bold, design: .default))
-                        .tracking(0.08)
-                        .foregroundStyle(SpyTheme.dim)
-                        .multilineTextAlignment(.center)
-                        .spyFitted(lines: 2, scale: 0.58, alignment: .center)
+                if !session.spyPlayers.isEmpty {
+                    VStack(spacing: 6) {
+                        Text(localized(en: "SPIES WERE", ru: "ШПИОНАМИ БЫЛИ", es: "LOS ESPIAS ERAN"))
+                            .font(.system(size: 9, weight: .black, design: .monospaced))
+                            .tracking(0.08)
+                            .foregroundStyle(SpyTheme.dim)
+                        ForEach(session.spyPlayers) { spy in
+                            Text("\(spy.avatar) \(spy.name.uppercased())")
+                                .font(.system(size: 12, weight: .bold, design: .default))
+                                .tracking(0.06)
+                                .foregroundStyle(SpyTheme.red)
+                        }
+                    }
+                    .multilineTextAlignment(.center)
                 }
 
                 VStack(spacing: 10) {
@@ -2576,7 +2748,7 @@ struct LocalGameView: View {
                     .spyFitted(lines: 2, scale: 0.58, alignment: .center)
 
                 if let spyGuess {
-                    Text("\(localized(en: "SPY GUESSED", ru: "ШПИОН УГАДАЛ", es: "EL ESPIA DIJO")) \(spyGuess.uppercased())")
+                    Text("\(localSpyGuessResultLabel(session)) \(spyGuess.uppercased())")
                         .font(SpyTheme.micro)
                         .tracking(0.04)
                         .foregroundStyle(localWordKey(spyGuess) == localWordKey(session.word) ? SpyTheme.green : SpyTheme.red)
@@ -2820,6 +2992,7 @@ struct LocalGameView: View {
                 HStack(spacing: 10) {
                     localConfigTile(title: copy.categoryLabel, value: session.category.uppercased())
                     localConfigTile(title: localized(en: "OPERATIVES", ru: "ИГРОКИ", es: "AGENTES"), value: "\(session.players.count)")
+                    localConfigTile(title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS"), value: "\(session.spyPlayers.count)")
                 }
 
                 if revealRoles {
@@ -2840,11 +3013,12 @@ struct LocalGameView: View {
     }
 
     private func localSessionPlayerRow(_ player: LocalPlayer, index: Int, session: LocalSession, revealRoles: Bool) -> some View {
-        let activeIndex = questionIndex % max(session.players.count, 1)
-        let answerIndex = (questionIndex + 1) % max(session.players.count, 1)
-        let isAsker = session.mode == .questions && index == activeIndex
-        let isAnswerer = session.mode == .questions && index == answerIndex
-        let isSpeaker = session.mode == .associations && index == activeIndex
+        let isEliminated = eliminatedPlayerIndices.contains(index)
+        let askerID = currentAsker(in: session)?.id
+        let answererID = currentAnswerer(in: session)?.id
+        let isAsker = !isEliminated && session.mode == .questions && player.id == askerID
+        let isAnswerer = !isEliminated && session.mode == .questions && player.id == answererID
+        let isSpeaker = !isEliminated && session.mode == .associations && player.id == askerID
         let isActive = isAsker || isAnswerer || isSpeaker
 
         return HStack(spacing: 10) {
@@ -2861,7 +3035,11 @@ struct LocalGameView: View {
                     .foregroundStyle(.white)
                     .spyFitted(scale: 0.54)
 
-                Text(revealRoles ? (player.isSpy ? copy.spyLabel : copy.youAreDetective) : localPlayerStatus(index: index, session: session))
+                Text(
+                    revealRoles
+                        ? (player.isSpy ? copy.spyLabel : copy.youAreDetective)
+                        : localPlayerStatus(index: index, session: session)
+                )
                     .font(.system(size: 9, weight: .black, design: .default))
                     .tracking(0.02)
                     .foregroundStyle(revealRoles ? (player.isSpy ? SpyTheme.red : SpyTheme.green) : (isActive ? SpyTheme.red : SpyTheme.dim))
@@ -2872,6 +3050,13 @@ struct LocalGameView: View {
 
             if revealRoles {
                 localBadge(player.isSpy ? copy.spyLabel : localized(en: "CLEAR", ru: "ЧИСТ", es: "LIMPIO"), color: player.isSpy ? SpyTheme.red : SpyTheme.green)
+            } else if isEliminated {
+                localBadge(
+                    player.isSpy
+                        ? localized(en: "SPY OUT", ru: "ШПИОН ВЫБЫЛ", es: "ESPIA FUERA")
+                        : localized(en: "DETECTIVE OUT", ru: "ДЕТЕКТИВ ВЫБЫЛ", es: "DETECTIVE FUERA"),
+                    color: player.isSpy ? SpyTheme.red : SpyTheme.green
+                )
             } else if isAsker {
                 localBadge(copy.asker, color: SpyTheme.red)
             } else if isAnswerer {
@@ -2889,18 +3074,22 @@ struct LocalGameView: View {
     }
 
     private func localPlayerStatus(index: Int, session: LocalSession) -> String {
-        guard !session.players.isEmpty else { return copy.pending }
-        let activeIndex = questionIndex % session.players.count
-        let answerIndex = (questionIndex + 1) % session.players.count
+        guard session.players.indices.contains(index) else { return copy.pending }
+        if eliminatedPlayerIndices.contains(index) {
+            return session.players[index].isSpy
+                ? localized(en: "SPY — EXCLUDED", ru: "ШПИОН — ИСКЛЮЧЁН", es: "ESPIA — EXCLUIDO")
+                : localized(en: "DETECTIVE — EXCLUDED", ru: "ДЕТЕКТИВ — ИСКЛЮЧЁН", es: "DETECTIVE — EXCLUIDO")
+        }
+        let player = session.players[index]
 
         if session.mode == .associations {
-            return index == activeIndex
+            return player.id == currentAsker(in: session)?.id
                 ? localized(en: "ASSOCIATION TURN", ru: "ХОД АССОЦИАЦИИ", es: "TURNO DE ASOCIACION")
                 : copy.pending
         }
 
-        if index == activeIndex { return copy.asker }
-        if index == answerIndex { return copy.answer }
+        if player.id == currentAsker(in: session)?.id { return copy.asker }
+        if player.id == currentAnswerer(in: session)?.id { return copy.answer }
         return copy.pending
     }
 
@@ -3231,8 +3420,12 @@ struct LocalGameView: View {
         let names = players.enumerated().map { index, name in
             name.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank ?? "\(copy.fallbackPlayer) \(index + 1)"
         }
-        guard names.count >= 2 else {
-            status = copy.needTwoOperatives
+        guard names.count >= 3 else {
+            status = localized(
+                en: "NEED AT LEAST 3 OPERATIVES",
+                ru: "НУЖНО МИНИМУМ 3 ОПЕРАТИВНИКА",
+                es: "NECESITAS AL MENOS 3 OPERATIVOS"
+            )
             HapticManager.shared.fire(.notification(.warning))
             return
         }
@@ -3269,21 +3462,31 @@ struct LocalGameView: View {
             HapticManager.shared.fire(.notification(.warning))
             return
         }
-        let spyIndex = Int.random(in: names.indices)
+        let selectedSpyCount = min(
+            max(Int(spyCount.rounded()), 1),
+            GameRoom.maximumSpyCount(forPlayerCount: names.count)
+        )
+        let spyIndices = LocalSpyAssignmentPolicy.randomSpyIndices(
+            playerCount: names.count,
+            requestedSpyCount: selectedSpyCount
+        )
+        let spyIndexSet = Set(spyIndices)
         let localPlayers = names.enumerated().map { index, name in
-            LocalPlayer(name: name, avatar: avatars[safe: index] ?? "🕵️", isSpy: index == spyIndex)
+            LocalPlayer(name: name, avatar: avatars[safe: index] ?? "🕵️", isSpy: spyIndexSet.contains(index))
         }
 
         timerTask?.cancel()
         session = LocalSession(
             word: word.word,
             category: word.category,
-            spyIndex: spyIndex,
+            spyIndices: spyIndices,
             pool: word.pool,
             players: localPlayers,
-            mode: mode
+            mode: mode,
+            spiesKnowEachOther: spiesKnowEachOther
         )
-        resetAssociationFlow(playerCount: localPlayers.count, mode: mode)
+        eliminatedPlayerIndices = []
+        resetAssociationFlow(playerIndices: Array(localPlayers.indices), mode: mode)
         revealIndex = 0
         cardRevealed = false
         guessSecondsRemaining = previewLocalGuessSeconds ?? 30
@@ -3347,8 +3550,10 @@ struct LocalGameView: View {
 
     private func beginPlaying() {
         secondsRemaining = Int(duration * 60)
-        if let session, session.mode == .associations, associationOrder.count != session.players.count {
-            resetAssociationFlow(playerCount: session.players.count, mode: session.mode)
+        if let session,
+           session.mode == .associations,
+           associationOrder.count != activeLocalPlayerIndices(in: session).count {
+            resetAssociationFlow(playerIndices: activeLocalPlayerIndices(in: session), mode: session.mode)
         }
         phase = .playing
         HapticManager.shared.fire(.milestone)
@@ -3385,53 +3590,69 @@ struct LocalGameView: View {
         HapticManager.shared.fire(.notification(.warning))
     }
 
+    private func activeLocalPlayerIndices(in session: LocalSession) -> [Int] {
+        session.players.indices.filter { !eliminatedPlayerIndices.contains($0) }
+    }
+
+    private func activeLocalSpyPlayers(in session: LocalSession) -> [LocalPlayer] {
+        activeLocalPlayerIndices(in: session).compactMap { index in
+            guard let player = session.players[safe: index], player.isSpy else { return nil }
+            return player
+        }
+    }
+
     private func currentAsker(in session: LocalSession) -> LocalPlayer? {
+        let activeIndices = activeLocalPlayerIndices(in: session)
+        guard !activeIndices.isEmpty else { return nil }
         if session.mode == .associations {
-            let fallbackIndex = questionIndex % max(session.players.count, 1)
+            let fallbackIndex = activeIndices[questionIndex % activeIndices.count]
             let orderedIndex = associationOrder[safe: associationStep] ?? fallbackIndex
             return session.players[safe: orderedIndex]
         }
 
-        return session.players[safe: questionIndex % session.players.count]
+        return session.players[safe: activeIndices[questionIndex % activeIndices.count]]
     }
 
     private func currentAnswerer(in session: LocalSession) -> LocalPlayer? {
-        guard !session.players.isEmpty else { return nil }
-        return session.players[safe: (questionIndex + 1) % session.players.count]
+        let activeIndices = activeLocalPlayerIndices(in: session)
+        guard !activeIndices.isEmpty else { return nil }
+        return session.players[safe: activeIndices[(questionIndex + 1) % activeIndices.count]]
     }
 
     private func nextQuestion(in session: LocalSession) {
+        let activeIndices = activeLocalPlayerIndices(in: session)
+        guard !activeIndices.isEmpty else { return }
         if session.mode == .associations {
-            advanceAssociationSpeaker(playerCount: session.players.count)
+            advanceAssociationSpeaker(playerIndices: activeIndices)
             HapticManager.shared.fire(.tabSelection)
             return
         }
 
-        questionIndex = (questionIndex + 1) % max(session.players.count, 1)
+        questionIndex = (questionIndex + 1) % activeIndices.count
         HapticManager.shared.fire(.tabSelection)
     }
 
-    private func resetAssociationFlow(playerCount: Int, mode: LocalMode) {
-        guard mode == .associations, playerCount > 0 else {
+    private func resetAssociationFlow(playerIndices: [Int], mode: LocalMode) {
+        guard mode == .associations, !playerIndices.isEmpty else {
             associationOrder = []
             associationStep = 0
             associationRouletteDone = true
             return
         }
 
-        associationOrder = shuffledAssociationOrder(playerCount: playerCount, avoidingFirst: nil)
+        associationOrder = shuffledAssociationOrder(playerIndices: playerIndices, avoidingFirst: nil)
         associationStep = 0
         associationRouletteDone = false
     }
 
-    private func advanceAssociationSpeaker(playerCount: Int) {
-        guard playerCount > 0 else { return }
+    private func advanceAssociationSpeaker(playerIndices: [Int]) {
+        guard !playerIndices.isEmpty else { return }
 
         questionIndex += 1
         let nextStep = associationStep + 1
         if nextStep >= associationOrder.count {
             let last = associationOrder.last
-            associationOrder = shuffledAssociationOrder(playerCount: playerCount, avoidingFirst: last)
+            associationOrder = shuffledAssociationOrder(playerIndices: playerIndices, avoidingFirst: last)
             associationStep = 0
         } else {
             associationStep = nextStep
@@ -3439,9 +3660,9 @@ struct LocalGameView: View {
         associationRouletteDone = false
     }
 
-    private func shuffledAssociationOrder(playerCount: Int, avoidingFirst avoidedFirst: Int?) -> [Int] {
-        guard playerCount > 0 else { return [] }
-        var shuffled = Array(0..<playerCount).shuffled()
+    private func shuffledAssociationOrder(playerIndices: [Int], avoidingFirst avoidedFirst: Int?) -> [Int] {
+        guard !playerIndices.isEmpty else { return [] }
+        var shuffled = playerIndices.shuffled()
         if let avoidedFirst, shuffled.count > 1, shuffled.first == avoidedFirst {
             shuffled.swapAt(0, 1)
         }
@@ -3451,11 +3672,49 @@ struct LocalGameView: View {
     private func resolveAccusation(_ index: Int, session: LocalSession) {
         accusedIndex = index
         spyGuess = nil
-        winner = index == session.spyIndex ? .detectives : .spy
-        phase = .results
-        HapticManager.shared.fire(
-            .notification(index == session.spyIndex ? .success : .warning)
+        let outcome = LocalGameAccusationPolicy.outcome(
+            accusing: index,
+            spyFlags: session.players.map(\.isSpy),
+            eliminatedIndices: eliminatedPlayerIndices
         )
+
+        guard outcome != .invalidAccusation else { return }
+        eliminatedPlayerIndices.insert(index)
+
+        switch outcome {
+        case .continuePlaying:
+            accusedIndex = nil
+            questionIndex = 0
+            resetAssociationFlow(
+                playerIndices: activeLocalPlayerIndices(in: session),
+                mode: session.mode
+            )
+            phase = .playing
+            status = session.players[index].isSpy
+                ? localized(
+                    en: "SPY EXCLUDED — ROUND CONTINUES",
+                    ru: "ШПИОН ИСКЛЮЧЁН — ИГРА ПРОДОЛЖАЕТСЯ",
+                    es: "ESPIA EXCLUIDO — LA PARTIDA CONTINUA"
+                )
+                : localized(
+                    en: "DETECTIVE EXCLUDED — ROUND CONTINUES",
+                    ru: "ДЕТЕКТИВ ИСКЛЮЧЁН — ИГРА ПРОДОЛЖАЕТСЯ",
+                    es: "DETECTIVE EXCLUIDO — LA PARTIDA CONTINUA"
+                )
+            HapticManager.shared.fire(.notification(.success))
+        case .spyWins:
+            timerTask?.cancel()
+            winner = .spy
+            phase = .results
+            HapticManager.shared.fire(.notification(.warning))
+        case .detectivesWin:
+            timerTask?.cancel()
+            winner = .detectives
+            phase = .results
+            HapticManager.shared.fire(.notification(.success))
+        case .invalidAccusation:
+            break
+        }
     }
 
     private func resolveSpyGuess(_ word: String, session: LocalSession) {
@@ -3485,7 +3744,8 @@ struct LocalGameView: View {
         spyGuess = nil
         pendingSpyGuess = nil
         showSpyGuessOptions = false
-        resetAssociationFlow(playerCount: 0, mode: .questions)
+        eliminatedPlayerIndices = []
+        resetAssociationFlow(playerIndices: [], mode: .questions)
         appState.isShellChromeSuppressed = false
     }
 
@@ -3583,11 +3843,35 @@ struct LocalGameView: View {
         return "\(minutes):\(remainder < 10 ? "0" : "")\(remainder)"
     }
 
+    private func localWinnerTitle(_ winner: LocalWinner, session: LocalSession) -> String {
+        guard winner == .spy, session.spyPlayers.count > 1 else {
+            return winner.title(copy)
+        }
+        return localized(
+            en: "SPIES WIN",
+            ru: "ШПИОНЫ ПОБЕДИЛИ",
+            es: "GANAN LOS ESPIAS"
+        )
+    }
+
+    private func localSpyGuessResultLabel(_ session: LocalSession) -> String {
+        guard session.spyPlayers.count > 1 else {
+            return localized(en: "SPY GUESSED", ru: "ШПИОН УГАДАЛ", es: "EL ESPIA DIJO")
+        }
+        return localized(
+            en: "SPY TEAM GUESSED",
+            ru: "КОМАНДА ШПИОНОВ ВЫБРАЛА",
+            es: "EL EQUIPO DE ESPIAS DIJO"
+        )
+    }
+
     private func persistLocalSettings() {
         let settings = LocalGameSettings(
             players: players,
             avatars: avatars,
             duration: duration,
+            spyCount: Int(spyCount.rounded()),
+            spiesKnowEachOther: spiesKnowEachOther,
             wordCount: wordCount,
             mode: mode.rawValue,
             selectedPackID: selectedPackID,
@@ -3608,10 +3892,17 @@ struct LocalGameView: View {
             return
         }
 
-        players = settings.players.count >= 2 ? settings.players : players
+        players = settings.players.count >= 3 ? settings.players : players
         avatars = settings.avatars.count == players.count ? settings.avatars : players.indices.map { localAvatars[$0 % localAvatars.count] }
         playerIDs = players.map { _ in UUID() }
         duration = min(max(settings.duration, 1), 15)
+        spyCount = Double(
+            min(
+                max(settings.spyCount ?? 1, 1),
+                GameRoom.maximumSpyCount(forPlayerCount: players.count)
+            )
+        )
+        spiesKnowEachOther = settings.spiesKnowEachOther ?? false
         wordCount = min(max(settings.wordCount, 2), Double(localThemeGenerationLimit))
         mode = settings.mode == "classic" ? .associations : (LocalMode(rawValue: settings.mode) ?? .questions)
         selectedPackID = settings.selectedPackID
@@ -3672,10 +3963,11 @@ struct LocalGameView: View {
         let preview = LocalSession(
             word: basePreview.word,
             category: basePreview.category,
-            spyIndex: basePreview.spyIndex,
+            spyIndices: basePreview.spyIndices,
             pool: basePreview.pool,
             players: basePreview.players,
-            mode: previewLocalMode ?? basePreview.mode
+            mode: previewLocalMode ?? basePreview.mode,
+            spiesKnowEachOther: basePreview.spiesKnowEachOther
         )
 
         players = preview.players.map(\.name)
@@ -3686,7 +3978,8 @@ struct LocalGameView: View {
         builtinPreviewCategory = preview.category
         clearLocalPoolDraft()
         session = preview
-        resetAssociationFlow(playerCount: preview.players.count, mode: preview.mode)
+        eliminatedPlayerIndices = []
+        resetAssociationFlow(playerIndices: Array(preview.players.indices), mode: preview.mode)
         revealIndex = min(1, preview.players.count - 1)
         cardRevealed = false
         secondsRemaining = previewLocalDurationSeconds ?? 422
@@ -3749,6 +4042,7 @@ private struct RoleRevealCard: View {
     let session: LocalSession
     let revealed: Bool
     let copy: LocalGameCopy
+    let language: AppLanguage
     let dontShow: String
 
     private var roleAccent: Color {
@@ -3776,7 +4070,8 @@ private struct RoleRevealCard: View {
         .frame(maxWidth: 300)
         .aspectRatio(0.75, contentMode: .fit)
         .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
-        .accessibilityLabel(revealed ? (player.isSpy ? copy.youAreSpy : copy.youAreDetective) : copy.tapToReveal)
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(accessibilityRoleLabel)
         .animation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.65), value: revealed)
     }
 
@@ -3876,6 +4171,23 @@ private struct RoleRevealCard: View {
                         .foregroundStyle(.white.opacity(0.74))
                         .multilineTextAlignment(.center)
                         .spyFitted(lines: 3, scale: 0.70, alignment: .center)
+
+                    if session.spiesKnowEachOther, !spyTeammates.isEmpty {
+                        VStack(spacing: 4) {
+                            Text(spyTeamTitle)
+                                .font(.system(size: 8, weight: .black, design: .monospaced))
+                                .tracking(0.08)
+                                .foregroundStyle(SpyTheme.red)
+                            ForEach(spyTeammates) { teammate in
+                                Text("\(teammate.avatar) \(teammate.name.uppercased())")
+                                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.56)
+                            }
+                        }
+                        .padding(.top, 10)
+                    }
                 } else {
                     Text(copy.secretWord)
                         .font(SpyTheme.micro)
@@ -3903,6 +4215,27 @@ private struct RoleRevealCard: View {
                 .stroke(player.isSpy ? SpyTheme.red : Color.white.opacity(0.16), lineWidth: 2)
         )
         .shadow(color: player.isSpy ? SpyTheme.red.opacity(0.26) : .black.opacity(0.80), radius: 40)
+    }
+
+    private var spyTeammates: [LocalPlayer] {
+        session.spyPlayers.filter { $0.id != player.id }
+    }
+
+    private var spyTeamTitle: String {
+        switch language {
+        case .en: "SPY TEAM"
+        case .es: "EQUIPO DE ESPIAS"
+        case .ru: "КОМАНДА ШПИОНОВ"
+        }
+    }
+
+    private var accessibilityRoleLabel: String {
+        guard revealed else { return copy.tapToReveal }
+        guard player.isSpy else { return copy.youAreDetective }
+        guard session.spiesKnowEachOther, !spyTeammates.isEmpty else { return copy.youAreSpy }
+
+        let teammateNames = spyTeammates.map(\.name).joined(separator: ", ")
+        return "\(copy.youAreSpy). \(spyTeamTitle): \(teammateNames)"
     }
 
     private func cardPip(rotated: Bool) -> some View {
@@ -4082,10 +4415,15 @@ private struct LocalPlayer: Identifiable, Hashable {
 private struct LocalSession: Equatable {
     let word: String
     let category: String
-    let spyIndex: Int
+    let spyIndices: [Int]
     let pool: [String]
     let players: [LocalPlayer]
     let mode: LocalMode
+    let spiesKnowEachOther: Bool
+
+    var spyPlayers: [LocalPlayer] {
+        players.filter(\.isSpy)
+    }
 }
 
 #if DEBUG
@@ -4094,14 +4432,15 @@ private extension LocalSession {
         LocalSession(
             word: "Metro",
             category: "NIGHT CITY",
-            spyIndex: 1,
+            spyIndices: [1],
             pool: ["Metro", "Rooftop", "Taxi", "Stadium", "Signal", "Market", "Tunnel", "Harbor"],
             players: [
                 LocalPlayer(name: "Red Raven", avatar: "🕵️", isSpy: false),
                 LocalPlayer(name: "Ghost", avatar: "👤", isSpy: true),
                 LocalPlayer(name: "Signal", avatar: "🔥", isSpy: false)
             ],
-            mode: .questions
+            mode: .questions,
+            spiesKnowEachOther: false
         )
     }
 }
@@ -4130,6 +4469,7 @@ private enum LocalSetupField: Hashable {
 private enum LocalSetupPanel: Hashable {
     case mission
     case mode
+    case roles
     case players
     case intel
     case timing
@@ -4162,6 +4502,8 @@ private struct LocalGameSettings: Codable {
     let players: [String]
     let avatars: [String]
     let duration: Double
+    let spyCount: Int?
+    let spiesKnowEachOther: Bool?
     let wordCount: Double
     let mode: String
     let selectedPackID: String

@@ -226,11 +226,79 @@ Deno.test("active-room projection retains only the lobby revision and redacts th
     { email: "host@example.com" },
   );
   assert(projected);
-  assertEquals(projected.lobby_schema_version, 1);
+  assertEquals(projected.lobby_schema_version, 2);
   assertEquals(projected.lobby_revision, 9);
   assertEquals(projected.lobby_word_source, "none");
   assertEquals(projected.lobby_theme, "");
   assertEquals(projected.lobby_category, "");
   assertEquals(projected.lobby_word_count, 0);
   assertEquals(projected.lobby_word_pool, []);
+});
+
+Deno.test("multi-spy projection keeps every role private unless teammate knowledge is enabled", () => {
+  const players = Array.from({ length: 6 }, (_, index) => ({
+    email: `p${index + 1}@example.com`,
+    name: `P${index + 1}`,
+    client_capabilities: ["multi_spy_v1"],
+  }));
+  const base = {
+    id: "multi-room",
+    code: "MULTI1",
+    host_email: players[0].email,
+    status: "playing",
+    players,
+    spectators: [],
+    eliminated_emails: [],
+    lobby_spy_count: 2,
+    spies_know_each_other: false,
+    spy_emails: [players[0].email, players[1].email],
+    spy_email: players[0].email,
+    word: "Embassy",
+    game_mode: "questions",
+  };
+
+  const secondSpy = projectRoomForClient(base, { email: players[1].email })!;
+  assertEquals(secondSpy.spy_email, players[1].email);
+  assertEquals(secondSpy.spy_emails, [players[1].email]);
+  assertEquals(secondSpy.word, "CLASSIFIED");
+  assertEquals(secondSpy.exclusion_vote_threshold, 4);
+
+  const teamAware = projectRoomForClient(
+    { ...base, spies_know_each_other: true },
+    { email: players[1].email },
+  )!;
+  assertEquals(teamAware.spy_email, players[1].email);
+  assertEquals(teamAware.spy_emails, [players[0].email, players[1].email]);
+
+  const detective = projectRoomForClient(base, { email: players[2].email })!;
+  assertEquals(detective.spy_email, "");
+  assertEquals(detective.spy_emails, []);
+  assertEquals(detective.word, "Embassy");
+});
+
+Deno.test("ejected spy role is revealed while living teammates remain private", () => {
+  const room = {
+    id: "multi-room",
+    code: "MULTI2",
+    host_email: "d1@example.com",
+    status: "playing",
+    players: [
+      { email: "s1@example.com" },
+      { email: "s2@example.com" },
+      { email: "d1@example.com" },
+      { email: "d2@example.com" },
+      { email: "d3@example.com" },
+      { email: "d4@example.com" },
+    ],
+    spectators: ["s1@example.com"],
+    eliminated_emails: ["s1@example.com"],
+    lobby_spy_count: 2,
+    spy_emails: ["s1@example.com", "s2@example.com"],
+    spy_email: "s1@example.com",
+    word: "Embassy",
+  };
+  const projected = projectRoomForClient(room, { email: "d1@example.com" })!;
+  assertEquals(projected.revealed_spy_emails, ["s1@example.com"]);
+  assertEquals(projected.spy_emails, []);
+  assertEquals(projected.exclusion_vote_threshold, 4);
 });

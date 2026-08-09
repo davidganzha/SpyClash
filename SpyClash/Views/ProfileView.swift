@@ -857,11 +857,11 @@ struct ProfileView: View {
     }
 
     private var winCount: Int {
-        history.filter { $0.won == true }.count
+        competitiveHistory.filter { $0.won == true }.count
     }
 
     private var gamesCount: Int {
-        history.count
+        competitiveHistory.count
     }
 
     private var winRate: Int {
@@ -870,7 +870,7 @@ struct ProfileView: View {
     }
 
     private var rating: Int {
-        history.reduce(0) { partial, item in
+        competitiveHistory.reduce(0) { partial, item in
             if item.won == true {
                 partial + (item.role == "detective" ? 30 : 60)
             } else {
@@ -888,11 +888,17 @@ struct ProfileView: View {
     }
 
     private var spyGames: Int {
-        history.filter { $0.role == "spy" }.count
+        competitiveHistory.filter { $0.role == "spy" }.count
     }
 
     private var detectiveGames: Int {
-        history.filter { $0.role == "detective" }.count
+        competitiveHistory.filter { $0.role == "detective" }.count
+    }
+
+    private var competitiveHistory: [GameHistory] {
+        appState.shouldUsePreviewData
+            ? history
+            : history.filter(\.isOnlineCompetitiveMatch)
     }
 
     private func stat(_ title: String, _ value: String) -> some View {

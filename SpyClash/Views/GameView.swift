@@ -528,9 +528,10 @@ enum LobbyPresentationPolicy {
 
     static func shouldDeferAuthoritativeUpdate(
         isDraggingDuration: Bool,
-        isDraggingWordCount: Bool
+        isDraggingWordCount: Bool,
+        isDraggingSpyCount: Bool = false
     ) -> Bool {
-        isDraggingDuration || isDraggingWordCount
+        isDraggingDuration || isDraggingWordCount || isDraggingSpyCount
     }
 
     static func shouldResetExpandedPool(
@@ -631,6 +632,8 @@ struct GameView: View {
     @State private var now = Date()
     @State private var selectedGameMode = SpyGameMode.questions
     @State private var selectedDurationMinutes = 15.0
+    @State private var selectedSpyCount = 1.0
+    @State private var selectedSpiesKnowEachOther = false
     @State private var roomWordSource = RoomWordSource.none
     @State private var lobbyWordPacks: [WordPack] = []
     @State private var roomTheme = ""
@@ -650,6 +653,7 @@ struct GameView: View {
     @State private var rouletteCompletionKey: String?
     @State private var isDraggingOnlineDuration = false
     @State private var isDraggingOnlineWordCount = false
+    @State private var isDraggingOnlineSpyCount = false
     @State private var deferredLobbyUpdate = DeferredLobbyUpdateState()
     @State private var lobbySyncFeedbackState = LobbySyncFeedbackState()
     @FocusState private var focusedOnlineSetupField: OnlineSetupField?
@@ -689,6 +693,8 @@ struct GameView: View {
         let state = appState.authoritativeLobbyStatePayload(from: room) ?? LobbyStatePayload(
             gameMode: room.gameModeValue,
             gameDurationSeconds: max(60, min(room.gameDurationSeconds ?? 900, 900)),
+            spyCount: room.lobbySpyCountValue,
+            spiesKnowEachOther: room.spiesKnowEachOther ?? false,
             lobbyWordSource: .none,
             lobbySourcePackID: nil,
             lobbySourceName: nil,
@@ -711,7 +717,7 @@ struct GameView: View {
             isHost: isHost(room),
             reduceMotion: reduceMotion,
             isConfiguredRoom: configuredRoomID == room.id,
-            isEditingLobbySlider: isDraggingOnlineDuration || isDraggingOnlineWordCount,
+            isEditingLobbySlider: isDraggingOnlineDuration || isDraggingOnlineWordCount || isDraggingOnlineSpyCount,
             appliedRevision: appliedLobbyRevision,
             incomingRevision: snapshot.revision
         ) else { return nil }
@@ -725,6 +731,15 @@ struct GameView: View {
     private func displayedDurationMinutes(for room: GameRoom) -> Double {
         guard !isHost(room) else { return selectedDurationMinutes }
         return Double(max(1, min((room.gameDurationSeconds ?? 900) / 60, 15)))
+    }
+
+    private func displayedSpyCount(for room: GameRoom) -> Int {
+        guard isHost(room) else { return room.lobbySpyCountValue }
+        return min(max(Int(selectedSpyCount.rounded()), 1), room.maximumLobbySpyCount)
+    }
+
+    private func displayedSpiesKnowEachOther(for room: GameRoom) -> Bool {
+        isHost(room) ? selectedSpiesKnowEachOther : (room.spiesKnowEachOther ?? false)
     }
 
     private var isLoadingLobbyPacks: Bool {
@@ -786,6 +801,9 @@ struct GameView: View {
                   let room = appState.activeRoom,
                   room.id == snapshot.roomID else { return }
             applyAuthoritativeLobbyState(from: room)
+        }
+        .onChange(of: appState.activeRoom?.playersList.count) { _, _ in
+            reconcileSpyCountForRosterChange()
         }
         .onChange(of: appState.lobbySettingsRollbackEpoch) { _, _ in
             guard let room = appState.activeRoom else { return }
@@ -975,7 +993,7 @@ struct GameView: View {
     }
 
     private var isEditingLobbySlider: Bool {
-        isDraggingOnlineDuration || isDraggingOnlineWordCount
+        isDraggingOnlineDuration || isDraggingOnlineWordCount || isDraggingOnlineSpyCount
     }
 
     private func waitingStartActionMode(for room: GameRoom) -> WaitingStartActionMode {
@@ -1245,6 +1263,13 @@ struct GameView: View {
                     )
                 )
                 onlineSetupSlot(
+                    .roles,
+                    content: AnyView(
+                        onlineSpySettingsPanel(room)
+                            .spyWebEntrance(delay: 0.06, duration: 0.42, y: 14)
+                    )
+                )
+                onlineSetupSlot(
                     .timing,
                     content: AnyView(
                         onlineTimingPanel(room)
@@ -1294,6 +1319,7 @@ struct GameView: View {
             focusedOnlineSetupField = nil
             isDraggingOnlineDuration = false
             isDraggingOnlineWordCount = false
+            isDraggingOnlineSpyCount = false
         }
         .task(id: room.id) {
             await configureLobby(room)
@@ -2101,6 +2127,113 @@ struct GameView: View {
         .disabled(!isHost(room) || isSelected)
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: isSelected)
         .accessibilityIdentifier("onlineRoom.mode.\(mode.rawValue)")
+    }
+
+    private func onlineSpySettingsPanel(_ room: GameRoom) -> some View {
+        let spyCount = displayedSpyCount(for: room)
+        let maximum = room.maximumLobbySpyCount
+        let isMultiSpy = spyCount > 1
+        let presentationSnapshot = lobbyPresentationSnapshot(for: room)
+
+        return onlineSetupPanel(accent: isMultiSpy ? SpyTheme.red : SpyTheme.muted) {
+            VStack(alignment: .leading, spacing: 14) {
+                HStack(alignment: .firstTextBaseline) {
+                    onlineSectionHeader(
+                        systemImage: "person.crop.circle.badge.questionmark",
+                        title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS")
+                    )
+                    Spacer()
+                    Text("\(spyCount)")
+                        .font(.system(size: 24, weight: .black, design: .monospaced))
+                        .foregroundStyle(isMultiSpy ? SpyTheme.red : .white)
+                        .contentTransition(.numericText())
+                        .accessibilityHidden(true)
+                }
+
+                SpyWebSlider(
+                    value: onlineSpyCountSliderValue(for: room),
+                    range: 1...Double(maximum),
+                    step: 1,
+                    animatesProgrammaticChanges: !isHost(room),
+                    onCommit: { committedValue in
+                        guard isHost(room) else { return }
+                        beginSpyCountUpdate(room, count: Int(committedValue.rounded()))
+                    },
+                    onCancel: {
+                        isDraggingOnlineSpyCount = false
+                        if !appState.lobbySettingsSyncState.hasOptimisticChanges,
+                           let currentRoom = appState.activeRoom {
+                            selectedSpyCount = Double(currentRoom.lobbySpyCountValue)
+                        }
+                    },
+                    onInteractionChanged: { isInteracting in
+                        isDraggingOnlineSpyCount = isInteracting
+                        if !isInteracting {
+                            reconcileAuthoritativeLobbyStateAfterSliderInteraction()
+                        }
+                    },
+                    accessibilityLabel: localized(
+                        en: "Number of spies",
+                        ru: "Количество шпионов",
+                        es: "Numero de espias"
+                    ),
+                    accessibilityIdentifier: "onlineRoom.spyCountSlider"
+                )
+                .disabled(!isHost(room) || maximum == 1)
+
+                HStack {
+                    Text("1")
+                    Spacer()
+                    Text("\(maximum)")
+                }
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .foregroundStyle(SpyTheme.dim)
+                .accessibilityHidden(true)
+
+                Toggle(
+                    isOn: Binding(
+                        get: { displayedSpiesKnowEachOther(for: room) },
+                        set: { newValue in
+                            guard isHost(room) else { return }
+                            updateSpiesKnowEachOther(room, enabled: newValue)
+                        }
+                    )
+                ) {
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(localized(
+                            en: "SPIES KNOW EACH OTHER",
+                            ru: "ШПИОНЫ ЗНАЮТ ДРУГ ДРУГА",
+                            es: "LOS ESPIAS SE CONOCEN"
+                        ))
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
+                        Text(localized(
+                            en: "Off by default. Teammates appear only on a revealed spy card.",
+                            ru: "По умолчанию выключено. Сообщники видны только на открытой карте шпиона.",
+                            es: "Desactivado por defecto. Los aliados solo aparecen al revelar la carta."
+                        ))
+                        .font(.system(size: 9, weight: .semibold, design: .default))
+                        .foregroundStyle(SpyTheme.dim)
+                        .fixedSize(horizontal: false, vertical: true)
+                    }
+                }
+                .tint(SpyTheme.red)
+                .disabled(!isHost(room))
+                .accessibilityIdentifier("onlineRoom.spiesKnowEachOtherToggle")
+
+                if isMultiSpy {
+                    Text(localized(
+                        en: "MULTI-SPY MATCH · UNRANKED",
+                        ru: "НЕСКОЛЬКО ШПИОНОВ · БЕЗ РЕЙТИНГА",
+                        es: "PARTIDA MULTIESPIA · SIN CLASIFICACION"
+                    ))
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .tracking(0.04)
+                    .foregroundStyle(SpyTheme.amber)
+                }
+            }
+        }
+        .animation(remoteLobbyUpdateAnimation(for: room), value: presentationSnapshot)
     }
 
     private func onlinePlayersPanel(_ room: GameRoom) -> some View {
@@ -3415,7 +3548,7 @@ struct GameView: View {
     }
 
     private func webSpectatorBanner(_ room: GameRoom) -> some View {
-        let spy = player(for: room.spyEmail, in: room)
+        let spies = room.spyPlayers
 
         return VStack(spacing: 7) {
             Text(copy.spectatorMode)
@@ -3424,7 +3557,7 @@ struct GameView: View {
                 .foregroundStyle(SpyTheme.dim)
                 .spyFitted(scale: 0.68, alignment: .center)
 
-            Text(copy.spyResult(spy?.name ?? copy.pending))
+            Text(spyTeamResult(spies))
                 .font(.system(size: 13, weight: .semibold, design: .default))
                 .foregroundStyle(SpyTheme.red)
                 .spyFitted(lines: 2, scale: 0.62, alignment: .center)
@@ -3803,7 +3936,7 @@ struct GameView: View {
     private func webCardRevealPhase(_ room: GameRoom) -> some View {
         let email = appState.user?.email
         let isSpectator = email.map { room.spectatorsList.contains($0) } ?? false
-        let isSpy = email == room.spyEmail
+        let isSpy = room.isSpy(email: email)
         let currentRead = currentUserHasReadCard(room)
 
         return VStack(spacing: 24) {
@@ -3963,14 +4096,14 @@ struct GameView: View {
     private func webCardsReadPanel(_ room: GameRoom) -> some View {
         SpyPanel(accent: SpyTheme.muted) {
             VStack(alignment: .leading, spacing: 14) {
-                Text("\(webCardsReadTitle) \(room.cardsReadList.count)/\(room.playersList.count)")
+                Text("\(webCardsReadTitle) \(room.activeCardsReadList.count)/\(room.activePlayers.count)")
                     .font(.system(size: 11, weight: .bold, design: .default))
                     .tracking(0.04)
                     .foregroundStyle(SpyTheme.dim)
                     .spyFitted(lines: 2, scale: 0.70)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 112), spacing: 8)], spacing: 8) {
-                    ForEach(room.playersList) { player in
+                    ForEach(room.activePlayers) { player in
                         let isRead = room.cardsReadList.contains(player.email)
                         HStack(spacing: 6) {
                             Text(player.avatar)
@@ -4035,7 +4168,7 @@ struct GameView: View {
                         .tracking(0.12)
                         .foregroundStyle(SpyTheme.dim)
                         .spyKicker()
-                    Text(room.winner == "spy" ? copy.spyWins : copy.detectivesWin)
+                    Text(room.winner == "spy" ? spyVictoryTitle(room) : copy.detectivesWin)
                         .font(.system(size: 34, weight: .black, design: .default))
                         .tracking(0.04)
                         .foregroundStyle(room.winner == "spy" ? SpyTheme.red : SpyTheme.green)
@@ -4045,8 +4178,8 @@ struct GameView: View {
                         .tracking(0.12)
                         .foregroundStyle(.white)
                         .spyFitted(lines: 2, scale: 0.58)
-                    if let spy = player(for: room.spyEmail, in: room) {
-                        Text(copy.spyResult(spy.name))
+                    if !room.spyPlayers.isEmpty {
+                        Text(spyTeamResult(room.spyPlayers))
                             .font(SpyTheme.micro)
                             .tracking(0.12)
                             .foregroundStyle(SpyTheme.dim)
@@ -4990,7 +5123,7 @@ struct GameView: View {
                     .tracking(0.12)
                     .foregroundStyle(expired ? SpyTheme.red : .white)
                     .contentTransition(.numericText())
-                Text(expired ? copy.spyWins : copy.timerHintLive)
+                Text(expired ? spyVictoryTitle(room) : copy.timerHintLive)
                     .font(SpyTheme.micro)
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
@@ -5002,7 +5135,7 @@ struct GameView: View {
     private func rolePanel(_ room: GameRoom) -> some View {
         let email = appState.user?.email
         let isSpectator = email.map { room.spectatorsList.contains($0) } ?? false
-        let isSpy = email == room.spyEmail
+        let isSpy = room.isSpy(email: email)
 
         return SpyPanel(accent: isSpectator ? SpyTheme.dim : (isSpy ? SpyTheme.red : SpyTheme.green)) {
             VStack(alignment: .leading, spacing: 16) {
@@ -5076,8 +5209,8 @@ struct GameView: View {
     }
 
     private func roleReadinessPanel(_ room: GameRoom) -> some View {
-        let readCount = room.cardsReadList.count
-        let total = max(room.playersList.count, 1)
+        let readCount = room.activeCardsReadList.count
+        let total = max(room.activePlayers.count, 1)
         let progress = Double(readCount) / Double(total)
         let currentRead = currentUserHasReadCard(room)
 
@@ -5090,7 +5223,7 @@ struct GameView: View {
                         .foregroundStyle(SpyTheme.dim)
                         .spyFitted(scale: 0.70)
                     Spacer()
-                        Text("\(readCount)/\(room.playersList.count)")
+                        Text("\(readCount)/\(room.activePlayers.count)")
                             .font(SpyTheme.micro)
                             .tracking(0.12)
                         .foregroundStyle(currentRead ? SpyTheme.green : SpyTheme.amber)
@@ -5114,7 +5247,7 @@ struct GameView: View {
                 .frame(height: 6)
                 .overlay(Rectangle().stroke(SpyTheme.stroke))
 
-                ForEach(room.playersList) { player in
+                ForEach(room.activePlayers) { player in
                     HStack(spacing: 10) {
                         Image(systemName: room.cardsReadList.contains(player.email) ? "checkmark.seal.fill" : "circle.dotted")
                             .font(.system(size: 16, weight: .bold))
@@ -6058,6 +6191,18 @@ struct GameView: View {
         )
     }
 
+    private func onlineSpyCountSliderValue(for room: GameRoom) -> Binding<Double> {
+        Binding(
+            get: { Double(displayedSpyCount(for: room)) },
+            set: { newValue in
+                guard isHost(room) else { return }
+                selectedSpyCount = Double(
+                    min(max(Int(newValue.rounded()), 1), room.maximumLobbySpyCount)
+                )
+            }
+        )
+    }
+
     private var roomThemeDraftBinding: Binding<String> {
         Binding(
             get: { roomTheme },
@@ -6604,6 +6749,24 @@ struct GameView: View {
         return room.playersList.first { $0.email == email }
     }
 
+    private func spyTeamResult(_ spies: [Player]) -> String {
+        guard !spies.isEmpty else { return copy.spyResult(copy.pending) }
+        if spies.count == 1 {
+            return copy.spyResult(spies[0].name)
+        }
+        let names = spies.map { $0.name.uppercased() }.joined(separator: ", ")
+        return "\(localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS")): \(names)"
+    }
+
+    private func spyVictoryTitle(_ room: GameRoom) -> String {
+        guard room.lobbySpyCountValue > 1 else { return copy.spyWins }
+        return localized(
+            en: "SPIES WIN",
+            ru: "ШПИОНЫ ПОБЕДИЛИ",
+            es: "GANAN LOS ESPIAS"
+        )
+    }
+
     private func votingCandidates(in room: GameRoom) -> [Player] {
         let eliminated = Set((room.eliminatedEmails ?? []).map { $0.lowercased() })
         return room.activePlayers.filter { player in
@@ -6632,7 +6795,7 @@ struct GameView: View {
     }
 
     private func currentUserIsSpy(_ room: GameRoom) -> Bool {
-        appState.user?.email == room.spyEmail
+        room.isSpy(email: appState.user?.email)
     }
 
     private func allPlayersReady(_ room: GameRoom) -> Bool {
@@ -7033,7 +7196,8 @@ struct GameView: View {
         let revision = max(room.lobbyRevision ?? 0, 0)
         guard !LobbyPresentationPolicy.shouldDeferAuthoritativeUpdate(
             isDraggingDuration: isDraggingOnlineDuration,
-            isDraggingWordCount: isDraggingOnlineWordCount
+            isDraggingWordCount: isDraggingOnlineWordCount,
+            isDraggingSpyCount: isDraggingOnlineSpyCount
         ) else {
             deferredLobbyUpdate.record(force: force)
             return
@@ -7050,6 +7214,8 @@ struct GameView: View {
 
         selectedGameMode = room.gameModeValue
         selectedDurationMinutes = Double(max(1, min((room.gameDurationSeconds ?? 900) / 60, 15)))
+        selectedSpyCount = Double(min(room.lobbySpyCountValue, room.maximumLobbySpyCount))
+        selectedSpiesKnowEachOther = room.spiesKnowEachOther ?? false
 
         guard let authoritativeState = appState.authoritativeLobbyStatePayload(from: room) else {
             appliedLobbyRevision = max(appliedLobbyRevision, revision)
@@ -7124,6 +7290,7 @@ struct GameView: View {
     private func reconcileAuthoritativeLobbyStateAfterSliderInteraction() {
         guard !isDraggingOnlineDuration,
               !isDraggingOnlineWordCount,
+              !isDraggingOnlineSpyCount,
               !appState.lobbySettingsSyncState.hasOptimisticChanges,
               let room = appState.activeRoom else { return }
         let force = deferredLobbyUpdate.requiresForce ||
@@ -7198,6 +7365,8 @@ struct GameView: View {
         return LobbyStatePayload(
             gameMode: selectedGameMode,
             gameDurationSeconds: max(60, min(Int(selectedDurationMinutes.rounded()) * 60, 900)),
+            spyCount: min(max(Int(selectedSpyCount.rounded()), 1), room.maximumLobbySpyCount),
+            spiesKnowEachOther: selectedSpiesKnowEachOther,
             lobbyWordSource: source,
             lobbySourcePackID: sourcePackID,
             lobbySourceName: sourceName,
@@ -7229,6 +7398,8 @@ struct GameView: View {
             configuredRoomID = room.id
             selectedGameMode = room.gameModeValue
             selectedDurationMinutes = Double(max((room.gameDurationSeconds ?? 900) / 60, 1))
+            selectedSpyCount = Double(min(room.lobbySpyCountValue, room.maximumLobbySpyCount))
+            selectedSpiesKnowEachOther = room.spiesKnowEachOther ?? false
             roomAccessPage = 0
             isRoomCodeVisible = false
             isRoomQRVisible = false
@@ -7339,6 +7510,37 @@ struct GameView: View {
         reconcileAuthoritativeLobbyStateAfterSliderInteraction()
         selectedDurationMinutes = Double(clampedMinutes)
         scheduleLobbyStateSync(debounce: .milliseconds(140))
+    }
+
+    private func beginSpyCountUpdate(_ room: GameRoom, count: Int) {
+        guard let currentRoom = appState.activeRoom,
+              currentRoom.id == room.id,
+              isHost(currentRoom),
+              currentRoom.normalizedStatus == "waiting" else { return }
+
+        isDraggingOnlineSpyCount = false
+        let clampedCount = min(max(count, 1), currentRoom.maximumLobbySpyCount)
+        selectedSpyCount = Double(clampedCount)
+        scheduleLobbyStateSync(debounce: .milliseconds(90))
+        reconcileAuthoritativeLobbyStateAfterSliderInteraction()
+    }
+
+    private func updateSpiesKnowEachOther(_ room: GameRoom, enabled: Bool) {
+        guard let currentRoom = appState.activeRoom,
+              currentRoom.id == room.id,
+              isHost(currentRoom),
+              currentRoom.normalizedStatus == "waiting" else { return }
+        selectedSpiesKnowEachOther = enabled
+        scheduleLobbyStateSync(debounce: .milliseconds(90))
+        HapticManager.shared.fire(.tabSelection)
+    }
+
+    private func reconcileSpyCountForRosterChange() {
+        guard let room = appState.activeRoom,
+              room.normalizedStatus == "waiting",
+              isHost(room) else { return }
+        let maximum = room.maximumLobbySpyCount
+        selectedSpyCount = Double(min(room.lobbySpyCountValue, maximum))
     }
 
     private func beginReadyCheck(_ room: GameRoom) async {
@@ -7812,7 +8014,7 @@ struct GameView: View {
                 cardsRead.append(user.email)
             }
             previewRoom.cardsRead = cardsRead
-            if previewRoom.playersList.allSatisfy({ cardsRead.contains($0.email) }) {
+            if previewRoom.allRoleCardsRead {
                 previewRoom.gameStartedAt = ISO8601DateFormatter().string(from: Date())
                 previewRoom.gamePausedAt = nil
                 previewRoom.gamePausedTotalSeconds = 0
@@ -8866,6 +9068,7 @@ private enum OnlineSetupField: Hashable {
 private enum OnlineSetupPanel: Hashable {
     case mission
     case mode
+    case roles
     case timing
     case players
     case intel

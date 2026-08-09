@@ -664,6 +664,7 @@ struct SpyWebSlider: View {
     var onCommit: ((Double) -> Void)? = nil
     var onCancel: (() -> Void)? = nil
     var onInteractionChanged: ((Bool) -> Void)? = nil
+    var accessibilityLabel: String? = nil
     var accessibilityIdentifier: String? = nil
 
     var body: some View {
@@ -689,6 +690,7 @@ struct SpyWebSlider: View {
                 tint: isMaxZone ? SpyTheme.amber : accent,
                 isEnabled: isEnabled,
                 animatesProgrammaticChanges: animatesProgrammaticChanges,
+                accessibilityLabel: accessibilityLabel,
                 accessibilityIdentifier: accessibilityIdentifier,
                 onEditingChanged: onEditingChanged,
                 onCommit: onCommit,
@@ -715,6 +717,7 @@ private struct SpyNativeSlider: UIViewRepresentable {
     let tint: Color
     let isEnabled: Bool
     let animatesProgrammaticChanges: Bool
+    let accessibilityLabel: String?
     let accessibilityIdentifier: String?
     let onEditingChanged: ((Bool) -> Void)?
     let onCommit: ((Double) -> Void)?
@@ -750,7 +753,7 @@ private struct SpyNativeSlider: UIViewRepresentable {
         slider.maximumValue = Float(range.upperBound)
         slider.minimumTrackTintColor = UIColor(tint)
         slider.isEnabled = isEnabled
-        slider.accessibilityLabel = "Slider"
+        slider.accessibilityLabel = accessibilityLabel ?? "Slider"
         slider.accessibilityValue = "\(Int(value.rounded()))"
         slider.accessibilityIdentifier = accessibilityIdentifier
 

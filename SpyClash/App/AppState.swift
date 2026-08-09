@@ -381,6 +381,8 @@ extension LobbyStatePayload {
     func equivalentForLobbySync(to other: LobbyStatePayload) -> Bool {
         gameMode == other.gameMode &&
             gameDurationSeconds == other.gameDurationSeconds &&
+            spyCount == other.spyCount &&
+            spiesKnowEachOther == other.spiesKnowEachOther &&
             lobbyWordSource == other.lobbyWordSource &&
             canonicalLobbyText(lobbySourcePackID) == canonicalLobbyText(other.lobbySourcePackID) &&
             canonicalLobbyText(lobbySourceName) == canonicalLobbyText(other.lobbySourceName) &&
@@ -893,6 +895,8 @@ final class AppState: NSObject {
         return LobbyStatePayload(
             gameMode: room.gameModeValue,
             gameDurationSeconds: max(60, min(room.gameDurationSeconds ?? 900, 900)),
+            spyCount: room.lobbySpyCountValue,
+            spiesKnowEachOther: room.spiesKnowEachOther ?? false,
             lobbyWordSource: LobbyWordSource(rawValue: room.lobbyWordSource ?? "none") ?? .none,
             lobbySourcePackID: room.lobbySourcePackID?.nilIfBlank,
             lobbySourceName: room.lobbySourceName?.nilIfBlank,
@@ -1153,7 +1157,21 @@ final class AppState: NSObject {
                 }
 
                 if !lobbySettingsSyncState.hasOptimisticChanges {
-                    lobbySettingsSyncFailure = error.localizedDescription
+                    if base44Error?.isSpyCountInvalidForPlayerCount == true {
+                        lobbySettingsSyncFailure = switch language {
+                        case .en: "THE SPY COUNT WAS REDUCED FOR THE CURRENT ROSTER"
+                        case .es: "SE REDUJO EL NUMERO DE ESPIAS PARA LOS JUGADORES ACTUALES"
+                        case .ru: "КОЛИЧЕСТВО ШПИОНОВ УМЕНЬШЕНО ПОД ТЕКУЩИЙ СОСТАВ"
+                        }
+                    } else if base44Error?.isClientUpdateRequired == true {
+                        lobbySettingsSyncFailure = switch language {
+                        case .en: "UPDATE SPYCLASH TO USE MULTI-SPY ROOMS"
+                        case .es: "ACTUALIZA SPYCLASH PARA USAR SALAS MULTIESPIA"
+                        case .ru: "ОБНОВИ SPYCLASH ДЛЯ КОМНАТ С НЕСКОЛЬКИМИ ШПИОНАМИ"
+                        }
+                    } else {
+                        lobbySettingsSyncFailure = error.localizedDescription
+                    }
                     lobbySettingsRollbackEpoch &+= 1
                 }
             }
@@ -1196,7 +1214,9 @@ final class AppState: NSObject {
     ) {
         room.gameMode = payload.gameMode.rawValue
         room.gameDurationSeconds = payload.gameDurationSeconds
-        room.lobbySchemaVersion = 1
+        room.lobbySpyCount = payload.spyCount
+        room.spiesKnowEachOther = payload.spiesKnowEachOther
+        room.lobbySchemaVersion = 2
         room.lobbyRevision = revision
         room.lobbyWordSource = payload.lobbyWordSource.rawValue
         room.lobbySourcePackID = payload.lobbySourcePackID
@@ -1355,6 +1375,25 @@ final class AppState: NSObject {
                 } catch {
                     // A network failure is not evidence that the room closed.
                     // The existing monitor will continue its bounded retries.
+                    return
+                }
+            }
+
+            guard !Task.isCancelled,
+                  self.roomSyncOperation == nil,
+                  self.roomSyncRevision == refreshRevision,
+                  self.roomRefreshRequestRevision == refreshRequestRevision else { return }
+
+            if let candidate = refreshedRoom,
+               candidate.normalizedStatus == "waiting",
+               candidate.containsPlayer(email: self.user?.email),
+               let user = self.user {
+                do {
+                    refreshedRoom = try await self.client.resumeWaitingRoom(candidate, user: user)
+                } catch {
+                    // Do not expose a pre-upgrade waiting-room snapshot. A later
+                    // activation or the room monitor can safely retry the
+                    // idempotent membership/capability refresh.
                     return
                 }
             }
@@ -2716,7 +2755,16 @@ final class AppState: NSObject {
             HapticManager.shared.fire(.milestone)
             return true
         } catch {
-            deepLinkStatus = error.localizedDescription.uppercased()
+            if let base44Error = error as? Base44Error,
+               base44Error.isClientUpdateRequired {
+                deepLinkStatus = switch language {
+                case .en: "UPDATE SPYCLASH TO JOIN THIS MULTI-SPY ROOM"
+                case .es: "ACTUALIZA SPYCLASH PARA ENTRAR EN ESTA SALA MULTIESPIA"
+                case .ru: "ОБНОВИ SPYCLASH, ЧТОБЫ ВОЙТИ В КОМНАТУ С НЕСКОЛЬКИМИ ШПИОНАМИ"
+                }
+            } else {
+                deepLinkStatus = error.localizedDescription.uppercased()
+            }
             HapticManager.shared.fire(.notification(.error))
             return false
         }
@@ -2916,7 +2964,7 @@ final class AppState: NSObject {
             room = try? await client.activeRoom(preferredRoomID: storedRoomID)
         }
 
-        guard let room,
+        guard var room,
               !isDismissedRoom(room.id),
               ["waiting", "ready_voting", "roulette", "playing"].contains(room.normalizedStatus),
               room.containsPlayer(email: user.email) else {
@@ -2924,6 +2972,16 @@ final class AppState: NSObject {
                 clearStoredActiveRoom()
             }
             return
+        }
+
+        if room.normalizedStatus == "waiting" {
+            do {
+                room = try await client.resumeWaitingRoom(room, user: user)
+            } catch {
+                // Waiting-room mutations must not be enabled from a stale
+                // player record that predates this client's capability token.
+                return
+            }
         }
 
         activeRoom = room

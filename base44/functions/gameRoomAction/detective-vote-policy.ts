@@ -86,12 +86,17 @@ function uniqueCanonicalStrings(values: readonly unknown[]): string[] {
   return [...canonical.values()];
 }
 
+function canonicalSpyKeys(value: unknown): Set<string> {
+  const values = Array.isArray(value) ? value : [value];
+  return new Set(values.map(normalizedEmail).filter(Boolean));
+}
+
 export function detectiveVoteRequestThreshold(
   activeCountValue: unknown,
 ): number {
   const activeCount = Number(activeCountValue);
   if (!Number.isSafeInteger(activeCount) || activeCount <= 0) return 0;
-  // Opening a vote remains a simple majority decision. The stricter N-1 rule
+  // Opening a vote remains a simple majority decision. The stricter N-S rule
   // below applies only to the final accusation/ejection itself.
   return Math.ceil(activeCount * 0.51);
 }
@@ -344,19 +349,28 @@ export function appendImmutableDetectiveVote(
 }
 
 /**
- * An accusation succeeds only with N-1 votes from the current active table.
+ * An accusation succeeds with N-S votes from the current active table, where
+ * S is the number of active spies. With one spy this is exactly legacy N-1.
  * Uncast votes are treated as immutable future choices, and a remaining voter
  * cannot be counted as a possible vote for themselves. Once no candidate can
- * mathematically reach N-1, the round is cancelled immediately.
+ * mathematically reach N-S, the round is cancelled immediately.
  */
 export function detectiveVoteRoundDecision(
   activeEmailValues: readonly unknown[],
   rawVotes: readonly VoteRecord[],
+  spyEmailValues?: unknown,
 ): DetectiveVoteRoundDecision {
   const active = canonicalActiveEmailMap(activeEmailValues);
   const activeEmails = [...active.values()];
   const votes = canonicalDetectiveVotes(activeEmails, rawVotes);
-  const threshold = activeEmails.length > 1 ? activeEmails.length - 1 : 1;
+  const activeKeys = new Set(activeEmails.map(normalizedEmail));
+  const suppliedSpyKeys = canonicalSpyKeys(spyEmailValues);
+  const activeSpyCount = spyEmailValues === undefined
+    ? Math.min(1, activeEmails.length)
+    : [...suppliedSpyKeys].filter((email) => activeKeys.has(email)).length;
+  const threshold = activeEmails.length > 0
+    ? Math.max(1, activeEmails.length - activeSpyCount)
+    : 1;
   const countByCandidate = new Map<string, number>();
   for (const vote of votes) {
     const candidateKey = normalizedEmail(vote.voted_for_email);
@@ -411,7 +425,7 @@ export function detectiveVoteRoundDecision(
 
 /**
  * Builds the single CAS patch for a cast from one latest room snapshot.
- * Cancellation clears both arrays atomically. A successful N-1 accusation
+ * Cancellation clears both arrays atomically. A successful N-S accusation
  * keeps its request gate and immutable vote table until the existing
  * retry-safe terminal/ejection transition clears them. That persisted decision
  * can therefore be reconciled after a process failure following this CAS.
@@ -422,6 +436,7 @@ export function detectiveVoteCastTransition(
   rawVotes: readonly VoteRecord[],
   voterEmailValue: unknown,
   targetEmailValue: unknown,
+  spyEmailValues?: unknown,
 ): DetectiveVoteCastTransition {
   if (!isDetectiveVotingActive(activeEmailValues, voteRequestValues)) {
     throw voteError(
@@ -434,6 +449,7 @@ export function detectiveVoteCastTransition(
   const persistedDecision = detectiveVoteRoundDecision(
     activeEmailValues,
     rawVotes,
+    spyEmailValues,
   );
   if (persistedDecision.outcome === "eject") {
     return {
@@ -452,6 +468,7 @@ export function detectiveVoteCastTransition(
   const decision = detectiveVoteRoundDecision(
     activeEmailValues,
     appended.votes,
+    spyEmailValues,
   );
   if (!appended.added) return { decision, added: false, patch: {} };
   if (decision.outcome === "cancel") {
@@ -480,10 +497,9 @@ export function detectiveVoteCastTransition(
 }
 
 /**
- * Converts an N-1 vote into one durable room CAS. A spy accusation carries a
- * detectives terminal source. An innocent accusation atomically moves that
- * player to the eliminated spectator set; if only one detective then remains,
- * the same patch also carries a spy terminal source.
+ * Converts an N-S vote into one durable room CAS. Every ejected role moves to
+ * the eliminated spectator set. Detectives win only when the last active spy
+ * is gone; the spy team wins whenever the remaining active teams reach parity.
  */
 export function resolvedDetectiveVoteCastTransition(
   activeEmailValues: readonly unknown[],
@@ -491,7 +507,7 @@ export function resolvedDetectiveVoteCastTransition(
   rawVotes: readonly VoteRecord[],
   voterEmailValue: unknown,
   targetEmailValue: unknown,
-  spyEmailValue: unknown,
+  spyEmailValues: unknown,
   spectatorEmailValues: readonly unknown[],
   eliminatedEmailValues: readonly unknown[],
 ): ResolvedDetectiveVoteCastTransition {
@@ -501,6 +517,7 @@ export function resolvedDetectiveVoteCastTransition(
     rawVotes,
     voterEmailValue,
     targetEmailValue,
+    spyEmailValues,
   );
   if (transition.decision.outcome !== "eject") {
     return {
@@ -512,19 +529,7 @@ export function resolvedDetectiveVoteCastTransition(
 
   const accused = transition.decision.ejected_email;
   const accusedKey = normalizedEmail(accused);
-  const spyKey = normalizedEmail(spyEmailValue);
-  if (spyKey && accusedKey === spyKey) {
-    return {
-      ...transition,
-      patch: {
-        detective_votes: transition.decision.votes,
-        vote_requests: [],
-        detective_vote_round_id: "",
-      },
-      terminal_winner: "detectives",
-      terminal_patch: { detective_votes: transition.decision.votes },
-    };
-  }
+  const spyKeys = canonicalSpyKeys(spyEmailValues);
 
   const spectators = uniqueCanonicalStrings([
     ...spectatorEmailValues,
@@ -536,20 +541,32 @@ export function resolvedDetectiveVoteCastTransition(
   ]);
   const remainingActive = canonicalActiveEmailMap(activeEmailValues);
   remainingActive.delete(accusedKey);
-  const spyRemainsActive = Boolean(spyKey && remainingActive.has(spyKey));
-  const detectiveCount =
-    [...remainingActive.keys()].filter((email) => email !== spyKey).length;
+  const activeSpyCount =
+    [...remainingActive.keys()].filter((email) => spyKeys.has(email)).length;
+  const activeDetectiveCount = Math.max(
+    0,
+    remainingActive.size - activeSpyCount,
+  );
+  const terminalWinner: "spy" | "detectives" | null = activeSpyCount === 0
+    ? "detectives"
+    : activeSpyCount >= activeDetectiveCount
+    ? "spy"
+    : null;
 
   return {
     ...transition,
     patch: {
-      detective_votes: [],
+      detective_votes: terminalWinner === "detectives"
+        ? transition.decision.votes
+        : [],
       vote_requests: [],
       spectators,
       eliminated_emails: eliminated,
       detective_vote_round_id: "",
     },
-    terminal_winner: spyRemainsActive && detectiveCount <= 1 ? "spy" : null,
-    terminal_patch: {},
+    terminal_winner: terminalWinner,
+    terminal_patch: terminalWinner === "detectives"
+      ? { detective_votes: transition.decision.votes }
+      : {},
   };
 }

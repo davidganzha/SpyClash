@@ -12,6 +12,13 @@ import {
 } from "./lobby-state-policy.ts";
 import { terminalIntentFromRoom } from "./room-result-policy.ts";
 import { isDetectiveVotingActive } from "./detective-vote-policy.ts";
+import {
+  canonicalClientCapabilities,
+  canonicalSpyEmails,
+  exclusionVoteThreshold,
+  lobbySpyCount,
+  spiesKnowEachOther,
+} from "./multi-spy-policy.ts";
 
 function clean(value: unknown): string {
   return String(value ?? "").trim();
@@ -47,6 +54,8 @@ function terminalReconciliationPending(room: Record<string, any>): boolean {
 type ProjectedLobbyState = {
   lobby_schema_version: number;
   lobby_revision: number;
+  lobby_spy_count: number;
+  spies_know_each_other: boolean;
   lobby_word_source: string;
   lobby_source_pack_id: string;
   lobby_source_name: string;
@@ -71,6 +80,8 @@ function projectedLobbyState(
       Math.floor(Number(room?.lobby_schema_version) || 0),
     ),
     lobby_revision: lobbyRevision(room),
+    lobby_spy_count: lobbySpyCount(room),
+    spies_know_each_other: spiesKnowEachOther(room),
   };
   if (!lobbyVisible) {
     return {
@@ -90,6 +101,8 @@ function projectedLobbyState(
     const state = canonicalizeLobbyState({
       game_mode: room?.game_mode || "questions",
       game_duration_seconds: room?.game_duration_seconds || 900,
+      lobby_spy_count: room?.lobby_spy_count ?? 1,
+      spies_know_each_other: room?.spies_know_each_other ?? false,
       lobby_word_source: room?.lobby_word_source || "none",
       lobby_source_pack_id: room?.lobby_source_pack_id || "",
       lobby_source_name: room?.lobby_source_name || "",
@@ -133,8 +146,9 @@ export function shouldRedactRoomSecret(
   room: Record<string, any>,
   viewer: Record<string, any>,
 ): boolean {
-  return Boolean(normalizedEmail(viewer?.email)) &&
-    normalizedEmail(viewer?.email) === normalizedEmail(room?.spy_email) &&
+  const viewerKey = normalizedEmail(viewer?.email);
+  const spyKeys = new Set(canonicalSpyEmails(room).map(normalizedEmail));
+  return Boolean(viewerKey) && spyKeys.has(viewerKey) &&
     clean(room?.status || "waiting").toLowerCase() !== "finished";
 }
 
@@ -145,8 +159,25 @@ function maySeeSpyIdentity(
   if (clean(room?.status || "waiting").toLowerCase() === "finished") {
     return true;
   }
-  return Boolean(normalizedEmail(viewer?.email)) &&
-    normalizedEmail(viewer?.email) === normalizedEmail(room?.spy_email);
+  const viewerKey = normalizedEmail(viewer?.email);
+  return Boolean(viewerKey) &&
+    canonicalSpyEmails(room).some((email) =>
+      normalizedEmail(email) === viewerKey
+    );
+}
+
+function projectedSpyEmails(
+  room: Record<string, any>,
+  viewer: Record<string, any>,
+): string[] {
+  const spies = canonicalSpyEmails(room);
+  if (clean(room?.status || "waiting").toLowerCase() === "finished") {
+    return spies;
+  }
+  const viewerKey = normalizedEmail(viewer?.email);
+  const viewerSpy = spies.find((email) => normalizedEmail(email) === viewerKey);
+  if (!viewerSpy) return [];
+  return spiesKnowEachOther(room) ? spies : [viewerSpy];
 }
 
 export function projectRoomForClient(
@@ -156,6 +187,15 @@ export function projectRoomForClient(
   if (!room) return room;
   const redacted = shouldRedactRoomSecret(room, viewer);
   const revealSpyIdentity = maySeeSpyIdentity(room, viewer);
+  const visibleSpyEmails = projectedSpyEmails(room, viewer);
+  const viewerSpyEmail =
+    canonicalSpyEmails(room).find((email) =>
+      normalizedEmail(email) === normalizedEmail(viewer?.email)
+    ) || "";
+  const legacySpyEmail = clean(room?.status || "waiting").toLowerCase() ===
+      "finished"
+    ? canonicalSpyEmails(room)[0] || clean(room.spy_email)
+    : viewerSpyEmail;
   const safeWord = safeCommunityTextForDisplay(
     room.word || room.secret_word,
     "CLASSIFIED",
@@ -188,11 +228,26 @@ export function projectRoomForClient(
       email: clean(player.email),
       name: safeCommunityDisplayName(player.name),
       avatar: safeCommunityAvatar(player.avatar),
+      client_capabilities: canonicalClientCapabilities(
+        player.client_capabilities,
+      ),
     })).filter((player) => player.email),
     spectators: projectedSpectators,
     ready_players: safeEmailList(room.ready_players),
     cards_read: safeEmailList(room.cards_read),
-    spy_email: revealSpyIdentity ? clean(room.spy_email) : "",
+    // Keep the singular legacy field personalized so any spy still recognizes
+    // their own role while new clients consume the canonical list.
+    spy_email: revealSpyIdentity ? legacySpyEmail : "",
+    spy_emails: visibleSpyEmails,
+    revealed_spy_emails:
+      clean(room?.status || "waiting").toLowerCase() === "finished"
+        ? canonicalSpyEmails(room)
+        : canonicalSpyEmails(room).filter((email) =>
+          safeEmailList(room.eliminated_emails).some((eliminated) =>
+            normalizedEmail(eliminated) === normalizedEmail(email)
+          )
+        ),
+    exclusion_vote_threshold: exclusionVoteThreshold(room),
     word: redacted ? "CLASSIFIED" : safeWord,
     secret_word: redacted ? "CLASSIFIED" : safeWord,
     category: safeCommunityTextForDisplay(room.category, "CLASSIC"),

@@ -34,7 +34,7 @@ Deno.test("room writes use a custom monotonic CAS instead of system timestamps",
   );
   assertStringIncludes(
     source,
-    'action === "leave_room" && leaveAlreadyComplete(room, user.email)',
+    'action === "leave_room" && roomLeaveAlreadyComplete(room, user.email)',
   );
 });
 
@@ -62,7 +62,81 @@ Deno.test("association spin settlement is recoverable by every active player", a
   );
 });
 
-Deno.test("detective casts resolve N-1 voting from the latest CAS snapshot", async () => {
+Deno.test("waiting rejoin refreshes capability while explicit active departure stays hidden", async () => {
+  const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
+  const projection = await Deno.readTextFile(
+    new URL("./room-projection.ts", import.meta.url),
+  );
+  const schema = JSON.parse(
+    await Deno.readTextFile(
+      new URL("../../entities/GameRoom.jsonc", import.meta.url),
+    ),
+  );
+
+  const join = source.slice(
+    source.indexOf("async function joinRoom"),
+    source.indexOf("async function beginReadyCheck"),
+  );
+  assertStringIncludes(join, "playerFromUser(user, body)");
+  assertStringIncludes(join, "mergePlayers(players(latest), player)");
+  assertStringIncludes(join, "playerSupportsMultiSpy(player)");
+  assertStringIncludes(join, "departed_player_emails:");
+  assertStringIncludes(join, "roomHasDepartedPlayer(latest, user.email)");
+  assertStringIncludes(join, 'normalizedStatus(latest) !== "waiting"');
+
+  const activeLookup = source.slice(
+    source.indexOf("function roomIsVisibleToActiveParticipant"),
+    source.indexOf("async function executeRoomAction"),
+  );
+  assertStringIncludes(
+    activeLookup,
+    "!roomHasDepartedPlayer(room, user.email)",
+  );
+
+  const replay = source.slice(
+    source.indexOf("async function resetRoomForReplay"),
+    source.indexOf("async function updateGameMode"),
+  );
+  assertStringIncludes(replay, "const replayPlayers = players(room).filter(");
+  assertStringIncludes(replay, "departed_player_emails: []");
+  assertStringIncludes(
+    replay,
+    "...lobbyMembershipClampPatch(room, replayPlayers.length)",
+  );
+
+  const departurePolicy = await Deno.readTextFile(
+    new URL("./multi-spy-policy.ts", import.meta.url),
+  );
+  const activeDeparture = departurePolicy.slice(
+    departurePolicy.indexOf("export function activeDepartureTransition"),
+  );
+  assertStringIncludes(activeDeparture, "departed_player_emails: departed");
+  assertEquals(
+    activeDeparture.includes("cards_read:"),
+    false,
+    "post-start departure must preserve historical card acknowledgements",
+  );
+
+  assert("departed_player_emails" in schema.properties);
+  assertEquals(
+    schema.properties.departed_player_emails.rls.read.user_condition.role,
+    "admin",
+  );
+  assertEquals(
+    projection.includes("departed_player_emails"),
+    false,
+    "explicit departure tombstones are server-only",
+  );
+  const deleteAccount = await Deno.readTextFile(
+    new URL("../deleteAccount/main.ts", import.meta.url),
+  );
+  assertStringIncludes(
+    deleteAccount,
+    "list(room.departed_player_emails).includes(email)",
+  );
+});
+
+Deno.test("detective casts resolve N-S voting from the latest CAS snapshot", async () => {
   const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
   const policy = await Deno.readTextFile(
     new URL("./detective-vote-policy.ts", import.meta.url),
@@ -78,6 +152,7 @@ Deno.test("detective casts resolve N-1 voting from the latest CAS snapshot", asy
   assertStringIncludes(castVote, "voteRequests(latest)");
   assertStringIncludes(castVote, "detectiveVotes(latest)");
   assertStringIncludes(castVote, "resolvedDetectiveVoteCastTransition(");
+  assertStringIncludes(castVote, "canonicalSpyEmails(latest)");
   assertStringIncludes(castVote, "bindDetectiveVoteRoundIdentity(");
   assertStringIncludes(castVote, "explicitExpectedRoundID");
   assertStringIncludes(castVote, "serverCapturedRoundID");
@@ -111,10 +186,8 @@ Deno.test("detective casts resolve N-1 voting from the latest CAS snapshot", asy
   assertStringIncludes(policy, "resolvedDetectiveVoteCastTransition(");
   assertStringIncludes(policy, "spectators,");
   assertStringIncludes(policy, "eliminated_emails: eliminated");
-  assertStringIncludes(
-    policy,
-    'terminal_winner: spyRemainsActive && detectiveCount <= 1 ? "spy" : null',
-  );
+  assertStringIncludes(policy, "activeSpyCount >= activeDetectiveCount");
+  assertStringIncludes(policy, 'activeSpyCount === 0\n    ? "detectives"');
 
   const requestDispatch = source.slice(
     source.indexOf("const room = roomId"),
@@ -156,6 +229,29 @@ Deno.test("detective casts resolve N-1 voting from the latest CAS snapshot", asy
     source,
     'if (action !== "cast_detective_vote") {\n    assertGameActionAllowedByDeadline(room, action);',
   );
+});
+
+Deno.test("multi-spy history is retained for every role but excluded from rankings", async () => {
+  const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
+  const schema = JSON.parse(
+    await Deno.readTextFile(
+      new URL("../../entities/GameHistory.jsonc", import.meta.url),
+    ),
+  );
+  const archive = source.slice(
+    source.indexOf("async function archiveRoomResult"),
+    source.indexOf("async function claimTerminalIntent"),
+  );
+  assertStringIncludes(archive, "const spyEmails = canonicalSpyEmails(room)");
+  assertStringIncludes(
+    archive,
+    "const isSpy = spyKeys.has(clean(player.email).toLocaleLowerCase())",
+  );
+  assertStringIncludes(archive, "ranked: spyEmails.length === 1");
+  assertStringIncludes(archive, "spy_count: spyEmails.length");
+  assertStringIncludes(archive, 'role: isSpy ? "spy" : "detective"');
+  assert("spy_count" in schema.properties);
+  assertEquals(schema.properties.spy_count.maximum, 3);
 });
 
 Deno.test("online intro, pause, and timer fields are wired into dispatch", async () => {
@@ -303,8 +399,10 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   );
 
   const leasedAction = source.slice(
-    source.indexOf("const fastRoomAction = canUseFastRoomAction"),
-    source.indexOf("if (result?.id) await dispatchRoomPushBestEffort"),
+    source.indexOf(
+      "const fastRoomAction = !actorCapabilityRefreshNeeded(",
+    ),
+    source.indexOf("if (result?.id && !readOnlyCastLeaseRecovery)"),
   );
   const fastDispatch = leasedAction.indexOf(
     "result = await executeRoomActionWithSignal(",
@@ -324,6 +422,12 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
       dispatch < recovery && recovery < recoveryBypass,
     "rapid gameplay must bypass identity leases while lifecycle writes remain serialized",
   );
+  assertStringIncludes(
+    leasedAction,
+    "actionBody,\n    ) && canUseFastRoomAction(action, room, user)",
+  );
+  assertStringIncludes(source, '"mark_role_card_read",');
+  assertStringIncludes(source, '"request_vote",');
   assertEquals(
     source.match(/allowActiveIdentityLeaseRecovery: true/g)?.length,
     1,
@@ -469,6 +573,9 @@ Deno.test("authoritative lobby snapshots are revisioned, frozen into start, and 
     const field of [
       "lobby_schema_version",
       "lobby_revision",
+      "lobby_spy_count",
+      "spies_know_each_other",
+      "spy_emails",
       "lobby_word_source",
       "lobby_source_pack_id",
       "lobby_source_name",
@@ -484,6 +591,9 @@ Deno.test("authoritative lobby snapshots are revisioned, frozen into start, and 
     assert(field in schema.properties, `${field} must exist in GameRoom`);
   }
   assertEquals(schema.properties.lobby_revision.default, 0);
+  assertEquals(schema.properties.lobby_schema_version.default, 2);
+  assertEquals(schema.properties.lobby_spy_count.maximum, 3);
+  assertEquals(schema.properties.spies_know_each_other.default, false);
   assertEquals(schema.properties.lobby_word_pool.maxItems, 200);
 
   const update = source.slice(
@@ -497,8 +607,14 @@ Deno.test("authoritative lobby snapshots are revisioned, frozen into start, and 
   assertStringIncludes(update, "validateLobbyMutation({");
   assertStringIncludes(update, "updateRoomWithRetry(");
   assertStringIncludes(update, "assertLobbySettingsAccess(latest, user");
-  assertStringIncludes(update, "lobbyMutationPatch(latest, mutation)");
-  assertStringIncludes(update, "roomHasLobbyMutation(latest, mutation)");
+  assertStringIncludes(
+    update,
+    "lobbyMutationPatch(latest, effectiveMutation)",
+  );
+  assertStringIncludes(
+    update,
+    "roomHasLobbyMutation(latest, effectiveMutation)",
+  );
   assertEquals(update.includes("fanoutGameRoomSignalsBestEffort({"), false);
   assertStringIncludes(source, "async function executeRoomActionWithSignal");
 
@@ -507,10 +623,16 @@ Deno.test("authoritative lobby snapshots are revisioned, frozen into start, and 
     source.indexOf("async function enqueueCommittedGameStart"),
   );
   const authoritative = start.indexOf("authoritativeStartPayload(");
-  const validation = start.indexOf("validatedStartPatch(room, startPayload)");
+  const assignment = start.indexOf(
+    "const assignment = serverSpyAssignment(room)",
+  );
+  const validation = start.indexOf(
+    "validatedStartPatch(room, startPayload, assignment)",
+  );
   const commit = start.indexOf("return await updateRoom(base44, room");
   assert(
-    authoritative >= 0 && authoritative < validation && validation < commit,
+    authoritative >= 0 && authoritative < assignment &&
+      assignment < validation && validation < commit,
     "arm_roulette must derive and validate the authoritative lobby before committing roulette",
   );
   assertStringIncludes(start, "body?.expected_lobby_revision");

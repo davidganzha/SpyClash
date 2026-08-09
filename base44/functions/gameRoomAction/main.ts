@@ -88,6 +88,27 @@ import {
 } from "./detective-vote-policy.ts";
 import { commitDetectiveVoteCastWithRetry } from "./detective-vote-write.ts";
 import { reconcileDetectiveVoteCastAfterActiveIdentityLease } from "./detective-vote-lease-recovery.ts";
+import {
+  activeDepartureTransition,
+  assertActiveSpyGuesser,
+  assertMultiSpyCapableRoster,
+  canonicalClientCapabilities,
+  canonicalSpyEmails,
+  compatibleRosterForSpyCount,
+  departedPlayerEmails,
+  lobbyMembershipClampPatch,
+  lobbySpyCount,
+  playerCapabilityRefreshNeeded,
+  playerSupportsMultiSpy,
+  refreshedPlayerCapabilities,
+  roomClientRequiresMultiSpyUpdate,
+  roomHasDepartedPlayer,
+  serverSpyAssignment,
+  spiesKnowEachOther,
+  spyGuessWinner,
+  spyTeamTerminalWinner,
+  validatedLobbySpyCount,
+} from "./multi-spy-policy.ts";
 
 function jsonError(message, status = 400, details = {}) {
   const code = clean(details?.code);
@@ -201,8 +222,21 @@ function playerInRoom(room, email) {
   return players(room).some((player) => player.email === email);
 }
 
+function roomHasPlayerCapabilities(room, email, capabilities) {
+  const actorKey = clean(email).toLocaleLowerCase();
+  const actor = players(room).find((player) =>
+    clean(player?.email).toLocaleLowerCase() === actorKey
+  );
+  return Boolean(actor) && JSON.stringify(
+        canonicalClientCapabilities(actor?.client_capabilities),
+      ) === JSON.stringify(canonicalClientCapabilities(capabilities));
+}
+
 function playerFromUser(user, body = {}) {
   const incoming = body?.player || {};
+  const clientCapabilities = canonicalClientCapabilities(
+    incoming?.client_capabilities ?? body?.client_capabilities,
+  );
   return {
     user_id: clean(user.id),
     email: user.email,
@@ -210,6 +244,7 @@ function playerFromUser(user, body = {}) {
       clean(incoming.name) || clean(user.display_name) || clean(user.full_name),
     ),
     avatar: safeCommunityAvatar(clean(incoming.avatar) || clean(user.avatar)),
+    client_capabilities: clientCapabilities,
   };
 }
 
@@ -251,15 +286,71 @@ function displayWord(room) {
 }
 
 function shouldSpyWin(room) {
-  const spyEmail = clean(room?.spy_email);
-  if (!spyEmail) return false;
+  return spyTeamTerminalWinner(room) === "spy";
+}
 
-  const active = activePlayers(room);
-  if (!active.some((player) => player.email === spyEmail)) return false;
+function clientUpdateRequiredError() {
+  return Object.assign(
+    new Error("Update SpyClash to continue in this multi-spy room"),
+    { status: 426, code: "client_update_required" },
+  );
+}
 
-  const detectiveCount =
-    active.filter((player) => player.email !== spyEmail).length;
-  return detectiveCount <= 1;
+function assertRoomClientCompatible(room, user) {
+  if (roomClientRequiresMultiSpyUpdate(room, user?.email)) {
+    throw clientUpdateRequiredError();
+  }
+}
+
+function roomLeaveAlreadyComplete(room, email) {
+  if (!room) return true;
+  if (pendingTerminalIntent(room)) return false;
+  if (roomHasDepartedPlayer(room, email)) return true;
+  return leaveAlreadyComplete(room, email);
+}
+
+function submittedClientCapabilities(body) {
+  const incoming = body?.player || {};
+  if (Object.prototype.hasOwnProperty.call(body || {}, "client_capabilities")) {
+    return body.client_capabilities;
+  }
+  if (Object.prototype.hasOwnProperty.call(incoming, "client_capabilities")) {
+    return incoming.client_capabilities;
+  }
+  return null;
+}
+
+function actorCapabilityRefreshNeeded(room, user, body) {
+  const submitted = submittedClientCapabilities(body);
+  return submitted !== null && normalizedStatus(room) === "waiting" &&
+    playerCapabilityRefreshNeeded(players(room), user.email, submitted);
+}
+
+async function refreshActorCapabilities(base44, room, user, body) {
+  const submitted = submittedClientCapabilities(body);
+  if (submitted === null || normalizedStatus(room) !== "waiting") return room;
+  const expectedCapabilities = canonicalClientCapabilities(submitted);
+  return await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) => {
+      const refreshed = refreshedPlayerCapabilities(
+        players(latest),
+        user.email,
+        expectedCapabilities,
+      );
+      return refreshed.changed ? { players: refreshed.players } : {};
+    },
+    (latest) => {
+      const actor = players(latest).find((player) =>
+        clean(player.email).toLocaleLowerCase() ===
+          clean(user.email).toLocaleLowerCase()
+      );
+      return Boolean(actor) && JSON.stringify(
+            canonicalClientCapabilities(actor.client_capabilities),
+          ) === JSON.stringify(expectedCapabilities);
+    },
+  );
 }
 
 function parseAssociationState(raw) {
@@ -481,6 +572,10 @@ async function archiveRoomResult(base44, room, winner) {
   const roomPlayers = players(room);
   assertRankedTerminalRoom(room, winner);
   const matchIdentity = rankedMatchIdentity(room);
+  const spyEmails = canonicalSpyEmails(room);
+  const spyKeys = new Set(
+    spyEmails.map((email) => clean(email).toLocaleLowerCase()),
+  );
 
   const queried = await base44.asServiceRole.entities.GameHistory.filter({
     match_id: matchIdentity.id,
@@ -503,7 +598,7 @@ async function archiveRoomResult(base44, room, winner) {
       archivedEmails.has(player.email)
     ) continue;
 
-    const isSpy = player.email === room.spy_email;
+    const isSpy = spyKeys.has(clean(player.email).toLocaleLowerCase());
     const won = winner === "spy" ? isSpy : !isSpy;
     // Re-prove the exact player's live lifecycle lease immediately before
     // creating their retained history row. This prevents a deleteAccount race
@@ -515,12 +610,13 @@ async function archiveRoomResult(base44, room, winner) {
       player_email: player.email,
       room_code: room.code,
       match_type: "online",
-      ranked: true,
+      ranked: spyEmails.length === 1,
       role: isSpy ? "spy" : "detective",
       word: displayWord(room) || "CLASSIFIED",
       category: clean(room.category) || "CLASSIC",
       winner,
       player_count: roomPlayers.length,
+      spy_count: spyEmails.length,
       won,
     });
   }
@@ -698,7 +794,13 @@ async function createRoom(base44, user, body) {
     participant_user_ids: [clean(user.id)],
     game_mode: "questions",
     game_duration_seconds: 900,
-    lobby_schema_version: 1,
+    lobby_spy_count: 1,
+    spies_know_each_other: false,
+    spy_emails: [],
+    spy_email: "",
+    incompatible_player_emails: [],
+    departed_player_emails: [],
+    lobby_schema_version: 2,
     lobby_revision: 0,
     room_revision: 0,
     room_last_write_token: `created:${crypto.randomUUID()}`,
@@ -726,6 +828,16 @@ async function createRoom(base44, user, body) {
 async function joinRoom(base44, room, user, body) {
   const player = playerFromUser(user, body);
   const alreadyJoined = playerInRoom(room, user.email);
+  const alreadyDeparted = roomHasDepartedPlayer(room, user.email);
+  if (lobbySpyCount(room) > 1 && !playerSupportsMultiSpy(player)) {
+    throw clientUpdateRequiredError();
+  }
+  if (alreadyDeparted && normalizedStatus(room) !== "waiting") {
+    throw Object.assign(
+      new Error("This operative already left the active mission"),
+      { status: 409, code: "room_departed" },
+    );
+  }
   if (!alreadyJoined && normalizedStatus(room) !== "waiting") {
     throw Object.assign(new Error("Room is no longer accepting operatives"), {
       status: 409,
@@ -738,6 +850,18 @@ async function joinRoom(base44, room, user, body) {
     base44,
     room,
     (latest) => {
+      if (lobbySpyCount(latest) > 1 && !playerSupportsMultiSpy(player)) {
+        throw clientUpdateRequiredError();
+      }
+      if (
+        roomHasDepartedPlayer(latest, user.email) &&
+        normalizedStatus(latest) !== "waiting"
+      ) {
+        throw Object.assign(
+          new Error("This operative already left the active mission"),
+          { status: 409, code: "room_departed" },
+        );
+      }
       if (playerInRoom(latest, user.email)) {
         const current = players(latest).find((candidate) =>
           candidate.email === user.email
@@ -746,15 +870,48 @@ async function joinRoom(base44, room, user, body) {
           ...(latest.participant_user_ids || []),
           user.id,
         ]);
+        const tombstonePresent = uniqueStrings(
+          latest?.incompatible_player_emails,
+        ).some((email) =>
+          clean(email).toLocaleLowerCase() ===
+            clean(user.email).toLocaleLowerCase()
+        );
+        const departedPresent = roomHasDepartedPlayer(latest, user.email);
         if (
           clean(current?.user_id) === clean(user.id) &&
           clean(current?.name) === clean(player.name) &&
           clean(current?.avatar) === clean(player.avatar) &&
-          participantIDs.length === (latest.participant_user_ids || []).length
+          JSON.stringify(
+              canonicalClientCapabilities(current?.client_capabilities),
+            ) ===
+            JSON.stringify(player.client_capabilities) &&
+          participantIDs.length ===
+            (latest.participant_user_ids || []).length &&
+          !tombstonePresent && !departedPresent
         ) return {};
         return {
           players: mergePlayers(players(latest), player),
           participant_user_ids: participantIDs,
+          spectators: spectators(latest).filter((email) =>
+            clean(email).toLocaleLowerCase() !==
+              clean(user.email).toLocaleLowerCase()
+          ),
+          eliminated_emails: uniqueStrings(latest?.eliminated_emails).filter(
+            (email) =>
+              clean(email).toLocaleLowerCase() !==
+                clean(user.email).toLocaleLowerCase(),
+          ),
+          departed_player_emails: departedPlayerEmails(latest).filter(
+            (email) =>
+              clean(email).toLocaleLowerCase() !==
+                clean(user.email).toLocaleLowerCase(),
+          ),
+          incompatible_player_emails: uniqueStrings(
+            latest?.incompatible_player_emails,
+          ).filter((email) =>
+            clean(email).toLocaleLowerCase() !==
+              clean(user.email).toLocaleLowerCase()
+          ),
         };
       }
       if (
@@ -771,13 +928,33 @@ async function joinRoom(base44, room, user, body) {
           ...(latest.participant_user_ids || []),
           user.id,
         ]),
+        incompatible_player_emails: uniqueStrings(
+          latest?.incompatible_player_emails,
+        ).filter((email) =>
+          clean(email).toLocaleLowerCase() !==
+            clean(user.email).toLocaleLowerCase()
+        ),
+        departed_player_emails: departedPlayerEmails(latest).filter((email) =>
+          clean(email).toLocaleLowerCase() !==
+            clean(user.email).toLocaleLowerCase()
+        ),
       };
     },
     // The player object is the authoritative membership record. The mirrored
     // participant_user_ids field is only an indexed lookup aid and can lag or
     // be omitted by field-level schema rules. Requiring both made a successful
     // player write surface as a false 409 on production.
-    (latest) => roomHasParticipantIdentity(latest, user),
+    (latest) =>
+      roomHasParticipantIdentity(latest, user) &&
+      !roomHasDepartedPlayer(latest, user.email) &&
+      !uniqueStrings(latest?.incompatible_player_emails).some((email) =>
+        clean(email).toLocaleLowerCase() ===
+          clean(user.email).toLocaleLowerCase()
+      ) && roomHasPlayerCapabilities(
+        latest,
+        user.email,
+        player.client_capabilities,
+      ),
   );
 }
 
@@ -794,6 +971,8 @@ async function beginReadyCheck(base44, room, user) {
       status: 400,
     });
   }
+  validatedLobbySpyCount(lobbySpyCount(room), players(room).length);
+  assertMultiSpyCapableRoster(room);
   assertAuthoritativeLobbyReady(room);
   return await updateRoom(base44, room, {
     status: "ready_voting",
@@ -878,9 +1057,34 @@ async function resetRoomForReplay(base44, room, user, body) {
       body?.game_duration_seconds || room.game_duration_seconds || 900,
     ),
   };
+  const departedKeys = new Set(
+    departedPlayerEmails(room).map((email) => clean(email).toLocaleLowerCase()),
+  );
+  const replayPlayers = players(room).filter((player) =>
+    !departedKeys.has(clean(player?.email).toLocaleLowerCase())
+  );
+  const removedUserIDs = new Set(
+    players(room).filter((player) =>
+      departedKeys.has(clean(player?.email).toLocaleLowerCase())
+    ).map((player) => clean(player?.user_id)).filter(Boolean),
+  );
+  const replayHost =
+    replayPlayers.some((player) =>
+        clean(player?.email).toLocaleLowerCase() ===
+          clean(room?.host_email).toLocaleLowerCase()
+      )
+      ? clean(room?.host_email)
+      : clean(replayPlayers[0]?.email);
   return await updateRoom(base44, room, {
     status: "waiting",
+    players: replayPlayers,
+    participant_user_ids: uniqueStrings(room?.participant_user_ids).filter(
+      (userID) => !removedUserIDs.has(clean(userID)),
+    ),
+    host_email: replayHost,
+    departed_player_emails: [],
     spy_email: "",
+    spy_emails: [],
     secret_word: "",
     word: "",
     category: "",
@@ -912,6 +1116,7 @@ async function resetRoomForReplay(base44, room, user, body) {
     game_started_event_id: "",
     game_finished_event_id: "",
     countdown_started_at: null,
+    ...lobbyMembershipClampPatch(room, replayPlayers.length),
     ...legacyLobbySettings,
   });
 }
@@ -946,26 +1151,89 @@ async function updateGameDuration(base44, room, user, body) {
 
 async function updateLobbyState(base44, room, user, body) {
   assertLobbySettingsAccess(room, user, "lobby");
-  const mutation = validateLobbyMutation({
+  const submittedState = body?.state && typeof body.state === "object" &&
+      !Array.isArray(body.state)
+    ? body.state
+    : {};
+  const requestedMutation = validateLobbyMutation({
     mutation_id: body?.mutation_id,
     expected_revision: body?.expected_revision,
-    state: body?.state,
+    state: {
+      ...submittedState,
+      lobby_spy_count: Object.prototype.hasOwnProperty.call(
+          submittedState,
+          "lobby_spy_count",
+        )
+        ? submittedState.lobby_spy_count
+        : lobbySpyCount(room),
+      spies_know_each_other: Object.prototype.hasOwnProperty.call(
+          submittedState,
+          "spies_know_each_other",
+        )
+        ? submittedState.spies_know_each_other
+        : spiesKnowEachOther(room),
+    },
   });
+  const requestedSpyCount = requestedMutation.state.lobby_spy_count;
+  let effectiveMutation = requestedMutation;
   return await updateRoomWithRetry(
     base44,
     room,
     (latest) => {
       assertLobbySettingsAccess(latest, user, "lobby");
-      return lobbyMutationPatch(latest, mutation);
+      const roster = compatibleRosterForSpyCount(
+        latest,
+        requestedSpyCount,
+      );
+      effectiveMutation = roster.effectiveSpyCount === requestedSpyCount
+        ? requestedMutation
+        : validateLobbyMutation({
+          mutation_id: body?.mutation_id,
+          expected_revision: body?.expected_revision,
+          state: {
+            ...requestedMutation.state,
+            lobby_spy_count: roster.effectiveSpyCount,
+          },
+        });
+      const removedKeys = new Set(
+        roster.removedEmails.map((email) => clean(email).toLocaleLowerCase()),
+      );
+      const removedUserIDs = new Set(
+        players(latest).filter((player) =>
+          removedKeys.has(clean(player?.email).toLocaleLowerCase())
+        ).map((player) => clean(player?.user_id)).filter(Boolean),
+      );
+      return {
+        ...lobbyMutationPatch(latest, effectiveMutation),
+        ...(roster.removedEmails.length
+          ? {
+            players: roster.players,
+            participant_user_ids: uniqueStrings(
+              latest?.participant_user_ids,
+            ).filter((userID) => !removedUserIDs.has(clean(userID))),
+            ready_players: readyPlayers(latest).filter((email) =>
+              !removedKeys.has(clean(email).toLocaleLowerCase())
+            ),
+            incompatible_player_emails: uniqueStrings([
+              ...uniqueStrings(latest?.incompatible_player_emails),
+              ...roster.removedEmails,
+            ]).slice(-12),
+          }
+          : {}),
+      };
     },
-    (latest) => roomHasLobbyMutation(latest, mutation),
+    (latest) =>
+      roomHasLobbyMutation(latest, effectiveMutation) &&
+      (effectiveMutation.state.lobby_spy_count <= 1 ||
+        players(latest).every(playerSupportsMultiSpy)),
   );
 }
 
-function validatedStartPatch(room, payload) {
+function validatedStartPatch(room, payload, assignment) {
   const roomPlayers = players(room);
   const emails = new Set(roomPlayers.map((player) => player.email));
-  const spyEmail = clean(payload?.spy_email);
+  const spyEmails = uniqueStrings(assignment?.spy_emails);
+  const spyEmail = clean(assignment?.spy_email);
   const askerEmail = clean(payload?.current_asker_email);
   const answererEmail = clean(payload?.current_answerer_email);
   const secretWord = requireSafeCommunityText(
@@ -989,9 +1257,14 @@ function validatedStartPatch(room, payload) {
       status: 400,
     });
   }
-  if (!emails.has(spyEmail)) {
-    throw Object.assign(new Error("Spy must be a room player"), {
+  if (
+    spyEmails.length !== lobbySpyCount(room) ||
+    spyEmail !== spyEmails[0] ||
+    spyEmails.some((email) => !emails.has(email))
+  ) {
+    throw Object.assign(new Error("Every spy must be a unique room player"), {
       status: 400,
+      code: "spy_assignment_invalid",
     });
   }
   if (
@@ -1024,6 +1297,7 @@ function validatedStartPatch(room, payload) {
 
   return {
     spy_email: spyEmail,
+    spy_emails: spyEmails,
     secret_word: secretWord,
     word: secretWord,
     category: requireSafeCommunityText(
@@ -1049,6 +1323,12 @@ async function armRoulette(base44, room, user, body) {
   requireHost(room, user);
   const roomPlayers = players(room);
   const status = normalizedStatus(room);
+  if (status === "roulette" && canonicalSpyEmails(room).length) {
+    // Validate the already-committed frozen assignment before treating a lost
+    // response as success. A partial/corrupt assignment must never be rerolled.
+    serverSpyAssignment(room);
+    return room;
+  }
   if (!["waiting", "ready_voting"].includes(status)) {
     throw Object.assign(new Error("Mission can only start from the lobby"), {
       status: 409,
@@ -1059,6 +1339,8 @@ async function armRoulette(base44, room, user, body) {
       status: 400,
     });
   }
+  validatedLobbySpyCount(lobbySpyCount(room), roomPlayers.length);
+  assertMultiSpyCapableRoster(room);
   if (
     status === "ready_voting" &&
     !roomPlayers.every((player) => readyPlayers(room).includes(player.email))
@@ -1080,7 +1362,8 @@ async function armRoulette(base44, room, user, body) {
     body?.plan || {},
     body?.expected_lobby_revision,
   );
-  const startPatch = validatedStartPatch(room, startPayload);
+  const assignment = serverSpyAssignment(room);
+  const startPatch = validatedStartPatch(room, startPayload, assignment);
   return await updateRoom(base44, room, {
     ...startPatch,
     ...serverIntroStartPatch(),
@@ -1526,7 +1809,7 @@ async function castDetectiveVote(base44, room, user, body) {
         detectiveVotes(latest),
         user.email,
         targetEmail,
-        latest.spy_email,
+        canonicalSpyEmails(latest),
         spectators(latest),
         Array.isArray(latest?.eliminated_emails)
           ? latest.eliminated_emails
@@ -1591,35 +1874,30 @@ async function castDetectiveVote(base44, room, user, body) {
 
 async function submitSpyGuess(base44, room, user, body) {
   requirePlayer(room, user);
-  if (user.email !== room.spy_email) {
-    throw Object.assign(new Error("Only the spy can guess the word"), {
-      status: 403,
-    });
-  }
+  assertActiveSpyGuesser(room, user.email);
 
   const guess = requireSafeCommunityText(clean(body?.guess), "Spy guess");
-  const correct = guess.localeCompare(displayWord(room), undefined, {
-    sensitivity: "accent",
-  }) === 0;
-  const winner = correct ? "spy" : "detectives";
+  const winner = spyGuessWinner(displayWord(room), guess);
   return await finishRoom(base44, room, winner, {
     spy_guess: guess,
   });
 }
 
 async function leaveRoom(base44, room, user, options = {}) {
-  if (leaveAlreadyComplete(room, user.email)) return { success: true };
+  if (roomLeaveAlreadyComplete(room, user.email)) return { success: true };
 
   const hostLeaving = clean(room.host_email).toLocaleLowerCase() ===
     clean(user.email).toLocaleLowerCase();
   const leavingDuringPreTimer =
     ["roulette", "playing"].includes(normalizedStatus(room)) &&
     !clean(room.game_started_at);
-  if (hostLeaving && !leavingDuringPreTimer) {
+  const leavingDuringActiveGame = normalizedStatus(room) === "playing" &&
+    Boolean(clean(room.game_started_at));
+  if (hostLeaving && !leavingDuringPreTimer && !leavingDuringActiveGame) {
     return await deleteRoom(base44, room, options);
   }
 
-  return await updateRoomWithRetry(
+  const updated = await updateRoomWithRetry(
     base44,
     room,
     (latest) => {
@@ -1631,6 +1909,27 @@ async function leaveRoom(base44, room, user, options = {}) {
         user.email,
         detectiveVoteRoundID(latest),
       );
+      const latestActiveGame = normalizedStatus(latest) === "playing" &&
+        Boolean(clean(latest.game_started_at));
+      if (latestActiveGame) {
+        const departure = activeDepartureTransition(latest, user.email);
+        const patch = {
+          ...departure.patch,
+          ...leavingVotePatch,
+          player_feedback: (Array.isArray(latest?.player_feedback)
+            ? latest.player_feedback
+            : []).filter((feedback) =>
+              clean(feedback?.email).toLocaleLowerCase() !== leavingEmail
+            ),
+        };
+        if (departure.terminalWinner) {
+          patch.terminal_intent = buildTerminalIntent(
+            { ...latest, ...patch },
+            departure.terminalWinner,
+          );
+        }
+        return patch;
+      }
       const nextPlayers = players(latest).filter((player) =>
         clean(player.email).toLocaleLowerCase() !== leavingEmail
       );
@@ -1666,16 +1965,23 @@ async function leaveRoom(base44, room, user, options = {}) {
       };
       return {
         ...membershipPatch,
+        ...lobbyMembershipClampPatch(latest, nextPlayers.length),
         ...preTimerMembershipTransitionPatch({
           ...latest,
           ...membershipPatch,
         }),
       };
     },
-    (latest) => !playerInRoom(latest, user.email),
+    (latest) =>
+      !playerInRoom(latest, user.email) ||
+      roomHasDepartedPlayer(latest, user.email),
     6,
     options,
   );
+  const terminal = pendingTerminalIntent(updated);
+  return terminal
+    ? await finishRoom(base44, updated, terminal.winner)
+    : updated;
 }
 
 async function userIDForEmail(base44, emailValue) {
@@ -1810,13 +2116,17 @@ function activeRoomStatus(room) {
   );
 }
 
+function roomIsVisibleToActiveParticipant(room, user) {
+  return playerInRoom(room, user.email) &&
+    !roomHasDepartedPlayer(room, user.email) && activeRoomStatus(room);
+}
+
 async function activeRoomForUser(base44, user, preferredRoomID) {
   if (preferredRoomID) {
     const preferred = await fetchRoom(base44, preferredRoomID);
-    if (
-      preferred && playerInRoom(preferred, user.email) &&
-      activeRoomStatus(preferred)
-    ) return preferred;
+    if (preferred && roomIsVisibleToActiveParticipant(preferred, user)) {
+      return preferred;
+    }
   }
 
   const candidates = [];
@@ -1838,7 +2148,7 @@ async function activeRoomForUser(base44, user, preferredRoomID) {
       all.findIndex((candidate) => clean(candidate.id) === clean(room.id)) ===
         index
     )
-    .filter((room) => playerInRoom(room, user.email) && activeRoomStatus(room))
+    .filter((room) => roomIsVisibleToActiveParticipant(room, user))
     .sort((left, right) =>
       Date.parse(clean(right.updated_date || right.created_date)) -
       Date.parse(clean(left.updated_date || left.created_date))
@@ -1858,6 +2168,10 @@ async function executeRoomAction(base44, action, room, user, body) {
     // before another mutation is allowed. The persisted intent, not this new
     // action's payload, remains the sole terminal source of truth.
     return await finishRoom(base44, room, terminal.winner);
+  }
+
+  if (action !== "join_room") {
+    room = await refreshActorCapabilities(base44, room, user, body);
   }
 
   assertGameActionAllowedWhilePaused(room, action);
@@ -2100,10 +2414,20 @@ Deno.serve(async (req) => {
       : await fetchRoomByCode(base44, body?.room_code || body?.code);
     roomIDForLog = safeLogLabel(room?.id);
 
-    if (action === "leave_room" && leaveAlreadyComplete(room, user.email)) {
+    if (action === "leave_room" && roomLeaveAlreadyComplete(room, user.email)) {
       return Response.json({ success: true });
     }
     if (!room) return jsonError("Room not found", 404);
+    if (
+      action !== "join_room" && action !== "leave_room" &&
+      roomHasDepartedPlayer(room, user.email)
+    ) {
+      throw Object.assign(new Error("This operative left the mission"), {
+        status: 403,
+        code: "room_departed",
+      });
+    }
+    if (action !== "join_room") assertRoomClientCompatible(room, user);
     if (action === "get_room") {
       requirePlayer(room, user);
       return Response.json(roomForClient(room, user));
@@ -2138,7 +2462,14 @@ Deno.serve(async (req) => {
       })()
       : body;
 
-    const fastRoomAction = canUseFastRoomAction(action, room, user);
+    // Capability refresh mutates the authenticated participant record and must
+    // use the full lifecycle lease path even when the gameplay action itself
+    // would normally qualify for an unleased fast CAS.
+    const fastRoomAction = !actorCapabilityRefreshNeeded(
+      room,
+      user,
+      actionBody,
+    ) && canUseFastRoomAction(action, room, user);
     const startedAt = performance.now();
     let readOnlyCastLeaseRecovery = false;
     let result;
@@ -2169,7 +2500,7 @@ Deno.serve(async (req) => {
           }
           if (
             action === "leave_room" &&
-            leaveAlreadyComplete(acquisitionRoom, user.email)
+            roomLeaveAlreadyComplete(acquisitionRoom, user.email)
           ) {
             return { success: true };
           }
@@ -2200,7 +2531,7 @@ Deno.serve(async (req) => {
                 }
                 if (
                   action === "leave_room" &&
-                  leaveAlreadyComplete(latestRoom, user.email)
+                  roomLeaveAlreadyComplete(latestRoom, user.email)
                 ) {
                   return { success: true };
                 }

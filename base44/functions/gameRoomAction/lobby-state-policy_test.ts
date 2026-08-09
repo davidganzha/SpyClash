@@ -65,6 +65,35 @@ Deno.test("optional lobby metadata safely canonicalizes to empty strings", () =>
   assertEquals(canonical.lobby_category, "");
 });
 
+Deno.test("lobby v2 carries spy count and teammate knowledge in the atomic fingerprint", () => {
+  const legacy = canonicalizeLobbyState(state());
+  assertEquals(legacy.lobby_spy_count, 1);
+  assertEquals(legacy.spies_know_each_other, false);
+
+  const mutation = validateLobbyMutation({
+    mutation_id: "multi-spy-settings",
+    expected_revision: 4,
+    state: state({
+      lobby_spy_count: 3,
+      spies_know_each_other: true,
+    }),
+  });
+  const patch = lobbyMutationPatch({ lobby_revision: 4 }, mutation);
+  assertEquals(patch.lobby_schema_version, 2);
+  assertEquals(patch.lobby_spy_count, 3);
+  assertEquals(patch.spies_know_each_other, true);
+
+  const different = validateLobbyMutation({
+    mutation_id: "different",
+    expected_revision: 4,
+    state: state({
+      lobby_spy_count: 2,
+      spies_know_each_other: true,
+    }),
+  });
+  assertNotEquals(different.fingerprint, mutation.fingerprint);
+});
+
 Deno.test("word pool canonicalizes Unicode and whitespace, deduplicates, and assigns stable ids", () => {
   const canonical = canonicalizeLobbyState(state({
     lobby_word_pool: [

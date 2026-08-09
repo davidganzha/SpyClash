@@ -57,6 +57,12 @@
     "player_count": {
       "type": "number"
     },
+    "spy_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3,
+      "description": "Frozen spy-team size used for this match."
+    },
     "won": {
       "type": "boolean"
     }

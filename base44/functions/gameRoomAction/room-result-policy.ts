@@ -1,4 +1,9 @@
 import { gameActiveElapsedSeconds } from "./game-timer-policy.ts";
+import {
+  canonicalSpyEmails,
+  lobbySpyCount,
+  maximumSpyCount,
+} from "./multi-spy-policy.ts";
 export const ONLINE_GAME_INTRO_SECONDS = 8;
 
 type Room = Record<string, any>;
@@ -163,9 +168,14 @@ function assertStartedRankedRoom(room: Room): {
     throw invalidTerminal("Ranked participant identity is inconsistent.");
   }
 
-  const spyEmail = clean(room?.spy_email).toLocaleLowerCase();
-  if (!spyEmail || !emails.has(spyEmail)) {
-    throw invalidTerminal("The ranked room has no authenticated spy.");
+  const spyEmails = canonicalSpyEmails(room).map(normalizedEmail);
+  if (
+    spyEmails.length !== lobbySpyCount(room) ||
+    spyEmails.length > maximumSpyCount(participants.length) ||
+    new Set(spyEmails).size !== spyEmails.length ||
+    spyEmails.some((email) => !emails.has(email))
+  ) {
+    throw invalidTerminal("The room has no valid authenticated spy team.");
   }
   if (!clean(room?.word || room?.secret_word)) {
     throw invalidTerminal("The ranked room has no server-approved word.");
@@ -349,6 +359,7 @@ function abandonedPreTimerMatchPatch(): Room {
   return {
     status: "waiting",
     spy_email: "",
+    spy_emails: [],
     secret_word: "",
     word: "",
     category: "",
@@ -359,6 +370,7 @@ function abandonedPreTimerMatchPatch(): Room {
     vote_requests: [],
     spectators: [],
     eliminated_emails: [],
+    departed_player_emails: [],
     ready_players: [],
     question_phase: "asking",
     questions_in_round: 0,
@@ -383,15 +395,13 @@ function abandonedPreTimerMatchPatch(): Room {
 }
 
 /**
- * Reconciles a post-leave snapshot while role cards are still being read.
- * A valid remaining ranked table keeps the assigned spy and starts the timer
- * exactly once when every remaining player has acknowledged their card. If the
- * spy left, fewer than three authenticated players remain, or identity mirrors
- * are inconsistent, the half-started match is cleared back to the lobby.
+ * Any departure during roulette or role-card reveal invalidates the frozen
+ * assignment. The match returns to waiting and the next start samples a fresh
+ * team exactly once; a partially revealed plan is never allowed to continue.
  */
 export function preTimerMembershipTransitionPatch(
   room: Room,
-  startedAt = new Date().toISOString(),
+  _startedAt = new Date().toISOString(),
 ): Room {
   const roomStatus = status(room);
   if (
@@ -399,79 +409,7 @@ export function preTimerMembershipTransitionPatch(
     clean(room?.game_started_at)
   ) return {};
 
-  const participants = rankedParticipants(room);
-  const userIDs = participants.map((player) => player.userID);
-  const emails = participants.map((player) => player.email);
-  const mirroredIDs =
-    (Array.isArray(room?.participant_user_ids) ? room.participant_user_ids : [])
-      .map(clean).filter(Boolean);
-  const spyEmail = normalizedEmail(room?.spy_email);
-  const validRankedTable = participants.length >= 3 &&
-    participants.every((player) => player.userID && player.email) &&
-    new Set(userIDs).size === participants.length &&
-    new Set(emails).size === participants.length &&
-    new Set(mirroredIDs).size === participants.length &&
-    userIDs.every((userID) => mirroredIDs.includes(userID)) &&
-    emails.includes(spyEmail) &&
-    Boolean(clean(room?.word || room?.secret_word));
-
-  if (!validRankedTable) return abandonedPreTimerMatchPatch();
-
-  const playersByEmail = new Map(
-    (Array.isArray(room?.players) ? room.players : []).map((player) => [
-      normalizedEmail(player?.email),
-      clean(player?.email),
-    ]),
-  );
-  const requestedAsker = normalizedEmail(room?.current_asker_email);
-  const askerEmail = playersByEmail.get(requestedAsker) ||
-    playersByEmail.get(emails[0]) || clean(room.players?.[0]?.email);
-  const requestedAnswerer = normalizedEmail(room?.current_answerer_email);
-  const answererEmail = requestedAnswerer !== normalizedEmail(askerEmail) &&
-      playersByEmail.has(requestedAnswerer)
-    ? playersByEmail.get(requestedAnswerer)
-    : (Array.isArray(room?.players) ? room.players : [])
-      .map((player) => clean(player?.email))
-      .find((email) => normalizedEmail(email) !== normalizedEmail(askerEmail));
-
-  const patch: Room = {};
-  if (clean(room?.current_asker_email) !== askerEmail) {
-    patch.current_asker_email = askerEmail;
-  }
-  if (clean(room?.current_answerer_email) !== answererEmail) {
-    patch.current_answerer_email = answererEmail;
-  }
-  if (!playersByEmail.has(normalizedEmail(room?.roulette_target_email))) {
-    patch.roulette_target_email = askerEmail;
-  }
-
-  const rawRead = (Array.isArray(room?.cards_read) ? room.cards_read : [])
-    .map(normalizedEmail).filter(Boolean);
-  const read = new Set(rawRead.filter((email) => emails.includes(email)));
-  const canonicalRead = (Array.isArray(room?.players) ? room.players : [])
-    .map((player) => clean(player?.email))
-    .filter((email) => read.has(normalizedEmail(email)));
-  if (
-    rawRead.length !== canonicalRead.length ||
-    rawRead.some((email, index) =>
-      email !== normalizedEmail(canonicalRead[index])
-    )
-  ) {
-    patch.cards_read = canonicalRead;
-  }
-  if (
-    roomStatus === "playing" && emails.every((email) => read.has(email))
-  ) {
-    patch.cards_read = canonicalRead;
-    patch.ready_players = [];
-    patch.game_started_at = validTimestamp(
-      startedAt,
-      "The game start timestamp is invalid.",
-    );
-    patch.game_paused_at = null;
-    patch.game_paused_total_seconds = 0;
-  }
-  return patch;
+  return abandonedPreTimerMatchPatch();
 }
 
 /**

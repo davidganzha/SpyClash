@@ -280,7 +280,7 @@ Deno.test("canonical votes discard self, inactive, and duplicate legacy rows", (
   );
 });
 
-Deno.test("cast transition clears both arrays atomically when N-1 becomes impossible", () => {
+Deno.test("cast transition clears both arrays atomically when N-S becomes impossible", () => {
   const transition = detectiveVoteCastTransition(
     active,
     openRequests,
@@ -301,7 +301,7 @@ Deno.test("cast transition clears both arrays atomically when N-1 becomes imposs
   });
 });
 
-Deno.test("persisted N-1 decision survives a post-CAS failure and retries", () => {
+Deno.test("persisted N-S decision survives a post-CAS failure and retries", () => {
   const transition = detectiveVoteCastTransition(
     active,
     openRequests,
@@ -431,4 +431,58 @@ Deno.test("innocent ejection with two detectives remaining is one atomic nonterm
     eliminated_emails: ["d1"],
     detective_vote_round_id: "",
   });
+});
+
+Deno.test("six-player two-spy accusation needs four votes and first spy ejection continues", () => {
+  const active = ["s1", "s2", "d1", "d2", "d3", "d4"];
+  const spies = ["s1", "s2"];
+  const threeVotes = detectiveVoteRoundDecision(active, [
+    vote("d1", "s1"),
+    vote("d2", "s1"),
+    vote("d3", "s1"),
+  ], spies);
+  assertEquals(threeVotes.outcome, "continue");
+  assertEquals(threeVotes.threshold, 4);
+
+  const transition = resolvedDetectiveVoteCastTransition(
+    active,
+    ["d1", "d2", "d3", "d4"],
+    threeVotes.votes,
+    "d4",
+    "s1",
+    spies,
+    [],
+    [],
+  );
+  assertEquals(transition.decision.outcome, "eject");
+  assertEquals(transition.decision.threshold, 4);
+  assertEquals(transition.terminal_winner, null);
+  assertEquals(transition.patch.spectators, ["s1"]);
+  assertEquals(transition.patch.eliminated_emails, ["s1"]);
+});
+
+Deno.test("last active spy ejection ends for detectives and nine/three needs six votes", () => {
+  const active = ["s3", "d1", "d2", "d3", "d4", "d5", "d6"];
+  const spies = ["s1", "s2", "s3"];
+  const existing = [
+    vote("d1", "s3"),
+    vote("d2", "s3"),
+    vote("d3", "s3"),
+    vote("d4", "s3"),
+    vote("d5", "s3"),
+  ];
+  const transition = resolvedDetectiveVoteCastTransition(
+    active,
+    ["d1", "d2", "d3", "d4"],
+    existing,
+    "d6",
+    "s3",
+    spies,
+    ["s1", "s2"],
+    ["s1", "s2"],
+  );
+  assertEquals(transition.decision.threshold, 6);
+  assertEquals(transition.decision.outcome, "eject");
+  assertEquals(transition.terminal_winner, "detectives");
+  assertEquals(transition.patch.spectators, ["s1", "s2", "s3"]);
 });

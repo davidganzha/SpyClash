@@ -15,6 +15,11 @@ const expectedFinalDigest =
 const expectedHistoricalPlan =
   "a55997ac76faa1c166fc3d68b4df644a961d4f41c04ad9cfd16ef345e4b4127a";
 const postHistoricalGameRoomFields = [
+  "spy_emails",
+  "lobby_spy_count",
+  "spies_know_each_other",
+  "incompatible_player_emails",
+  "departed_player_emails",
   "room_revision",
   "room_last_write_token",
   "lobby_schema_version",
@@ -163,6 +168,8 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
   for (const field of postHistoricalGameRoomFields) {
     delete roomProperties[field];
   }
+  const history = schemas.find((schema) => schema.name === "GameHistory")!;
+  delete (history.properties as Record<string, unknown>).spy_count;
   schemas.sort((left, right) => {
     const leftName = String(left.name);
     const rightName = String(right.name);

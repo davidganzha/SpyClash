@@ -44,6 +44,12 @@
     "ready_players": { "type": "array", "items": { "type": "string" } },
     "cards_read": { "type": "array", "items": { "type": "string" } },
     "spy_email": { "type": "string" },
+    "spy_emails": {
+      "type": "array",
+      "maxItems": 3,
+      "items": { "type": "string" },
+      "description": "Frozen server-selected spy team. Projected per viewer; legacy spy_email remains the primary identity."
+    },
     "word": { "type": "string" },
     "category": { "type": "string" },
     "spy_guess": { "type": "string" },
@@ -116,10 +122,42 @@
       "enum": ["questions", "associations"],
       "default": "questions"
     },
+    "lobby_spy_count": {
+      "type": "integer",
+      "minimum": 1,
+      "maximum": 3,
+      "default": 1,
+      "description": "Host-selected public spy count, constrained by the current player count."
+    },
+    "spies_know_each_other": {
+      "type": "boolean",
+      "default": false,
+      "description": "Whether active spies may see the rest of their team before the match finishes."
+    },
+    "incompatible_player_emails": {
+      "type": "array",
+      "maxItems": 12,
+      "items": { "type": "string" },
+      "description": "Bounded server tombstones used to return client_update_required after a host selects multiple spies.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "departed_player_emails": {
+      "type": "array",
+      "maxItems": 12,
+      "items": { "type": "string" },
+      "description": "Server-only identities of players who explicitly left an active match; distinguishes departure from role ejection.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
     "lobby_schema_version": {
       "type": "integer",
       "minimum": 1,
-      "default": 1,
+      "default": 2,
       "description": "Version of the additive authoritative lobby-state contract."
     },
     "lobby_revision": {

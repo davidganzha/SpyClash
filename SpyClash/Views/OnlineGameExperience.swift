@@ -70,6 +70,51 @@ enum MissionRoleCardSize: Equatable {
     }
 }
 
+private struct SpyTeammateDisclosure: View {
+    let teammates: [Player]
+    let language: AppLanguage
+    var compact = false
+
+    var body: some View {
+        VStack(spacing: compact ? 4 : 7) {
+            Text(title)
+                .font(.system(size: compact ? 7 : 8, weight: .black, design: .monospaced))
+                .tracking(compact ? 1.1 : 1.6)
+                .foregroundStyle(SpyTheme.red)
+
+            HStack(spacing: compact ? 6 : 9) {
+                ForEach(teammates) { teammate in
+                    HStack(spacing: 4) {
+                        Text(teammate.avatar)
+                        Text(teammate.name.uppercased())
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.58)
+                    }
+                    .font(.system(size: compact ? 8 : 10, weight: .black, design: .monospaced))
+                    .foregroundStyle(.white)
+                }
+            }
+        }
+        .padding(.horizontal, compact ? 9 : 12)
+        .padding(.vertical, compact ? 6 : 8)
+        .background(SpyTheme.red.opacity(0.08), in: CutCornerShape(cut: compact ? 5 : 7))
+        .overlay {
+            CutCornerShape(cut: compact ? 5 : 7)
+                .stroke(SpyTheme.red.opacity(0.34), lineWidth: 1)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityLabel("\(title): \(teammates.map(\.name).joined(separator: ", "))")
+    }
+
+    private var title: String {
+        switch language {
+        case .en: "SPY TEAM"
+        case .es: "EQUIPO DE ESPIAS"
+        case .ru: "КОМАНДА ШПИОНОВ"
+        }
+    }
+}
+
 struct MissionRoleCard: View {
     let role: MissionRoleCardContent
     let category: String?
@@ -601,7 +646,7 @@ struct OnlineGameIntroScene: View {
         .background(SpyTheme.black)
         .ignoresSafeArea()
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel(copy.introAccessibility)
+        .accessibilityLabel(copy.introAccessibility(spyCount: room.lobbySpyCountValue))
         .accessibilityIdentifier("onlineExperience.intro")
         .task(id: room.introStartedAt) {
             await playIntroHaptics()
@@ -712,7 +757,7 @@ struct OnlineGameIntroScene: View {
                 .accessibilityHidden(true)
 
             VStack(spacing: 0) {
-                Text(copy.spy)
+                Text(copy.spyTeam(spyCount: room.lobbySpyCountValue))
                     .foregroundStyle(SpyTheme.red)
                 Text(copy.amongYou)
                     .foregroundStyle(.white)
@@ -1032,6 +1077,14 @@ struct OnlineRoleRevealScene: View {
                             .accessibilityHint(isRevealed ? copy.tapToConceal : copy.tapToReveal)
                             .accessibilityIdentifier("onlineExperience.roleCard")
 
+                            if isRevealed, !revealedSpyTeammates.isEmpty {
+                                SpyTeammateDisclosure(
+                                    teammates: revealedSpyTeammates,
+                                    language: language
+                                )
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+
                             Spacer(minLength: 10)
 
                             bottomState
@@ -1161,6 +1214,15 @@ struct OnlineRoleRevealScene: View {
     private var displayedRole: MissionRoleCardContent {
         guard let currentUserEmail, !room.spectatorsList.contains(currentUserEmail) else { return .spectator }
         return role
+    }
+
+    private var revealedSpyTeammates: [Player] {
+        guard isRevealed,
+              room.spiesKnowEachOther == true,
+              room.isSpy(email: currentUserEmail) else { return [] }
+        return room.spyPlayers.filter {
+            !OnlineVoteIdentityPolicy.matches($0.email, currentUserEmail)
+        }
     }
 
     private var copy: OnlineExperienceCopy { OnlineExperienceCopy(language: language) }
@@ -1321,7 +1383,11 @@ struct OnlineActiveGameScene: View {
         let timer = OnlineTimerSnapshot(room: room, now: date)
 
         return VStack(spacing: 6) {
-            Text(timer.isExpired ? copy.spyWinsAtDeadline : copy.playingRound(max(room.roundNumber ?? 1, 1)))
+            Text(
+                timer.isExpired
+                    ? copy.spyWinsAtDeadline(spyCount: room.lobbySpyCountValue)
+                    : copy.playingRound(max(room.roundNumber ?? 1, 1))
+            )
                 .font(.system(size: 9, weight: .bold, design: .monospaced))
                 .tracking(2.4)
                 .foregroundStyle(timer.isExpired ? SpyTheme.red : SpyTheme.dim)
@@ -1410,6 +1476,9 @@ struct OnlineActiveGameScene: View {
                     let isCurrent = player.email == currentUserEmail
                     let isTurn = player.email == room.currentAskerEmail || player.email == room.currentAnswererEmail
                     let isEliminated = room.eliminatedEmails?.contains(player.email) ?? false
+                    let isRevealedSpy = room.revealedSpyEmails?.contains(where: {
+                        OnlineVoteIdentityPolicy.matches($0, player.email)
+                    }) == true
 
                     VStack(spacing: 4) {
                         ZStack {
@@ -1440,12 +1509,20 @@ struct OnlineActiveGameScene: View {
                             .lineLimit(1)
                             .frame(width: 64)
 
-                        Rectangle()
-                            .fill(isTurn ? SpyTheme.red : (isCurrent ? Color.white.opacity(0.58) : SpyTheme.stroke))
-                            .frame(width: isTurn ? 24 : 10, height: 1)
+                        if isRevealedSpy {
+                            Text(copy.spy)
+                                .font(.system(size: 7, weight: .black, design: .monospaced))
+                                .tracking(0.6)
+                                .foregroundStyle(SpyTheme.red)
+                        } else {
+                            Rectangle()
+                                .fill(isTurn ? SpyTheme.red : (isCurrent ? Color.white.opacity(0.58) : SpyTheme.stroke))
+                                .frame(width: isTurn ? 24 : 10, height: 1)
+                        }
                     }
                     .opacity(isEliminated ? 0.48 : 1)
                     .scaleEffect(isTurn ? 1.04 : 1)
+                    .accessibilityValue(isRevealedSpy ? copy.spy : "")
                 }
             }
             .padding(.horizontal, 16)
@@ -1459,20 +1536,31 @@ struct OnlineActiveGameScene: View {
         ZStack {
             VStack(spacing: 12) {
                 if room.onlineRoundPhase != .results {
-                    Button(action: onToggleRole) {
-                        MissionRoleCard(
-                            role: role,
-                            category: room.category,
-                            theme: cardTheme,
-                            accent: cardAccent,
-                            language: language,
-                            isRevealed: isRoleRevealed,
-                            size: .compact
-                        )
-                        .frame(width: maxCardWidth)
+                    VStack(spacing: 7) {
+                        Button(action: onToggleRole) {
+                            MissionRoleCard(
+                                role: role,
+                                category: room.category,
+                                theme: cardTheme,
+                                accent: cardAccent,
+                                language: language,
+                                isRevealed: isRoleRevealed,
+                                size: .compact
+                            )
+                            .frame(width: maxCardWidth)
+                        }
+                        .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
+                        .accessibilityIdentifier("onlineExperience.compactRoleCard")
+
+                        if isRoleRevealed, !revealedSpyTeammates.isEmpty {
+                            SpyTeammateDisclosure(
+                                teammates: revealedSpyTeammates,
+                                language: language,
+                                compact: true
+                            )
+                            .transition(.opacity)
+                        }
                     }
-                    .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
-                    .accessibilityIdentifier("onlineExperience.compactRoleCard")
                 }
 
                 if !room.isVotingActive {
@@ -1968,6 +2056,15 @@ struct OnlineActiveGameScene: View {
         return room.playersList.first { $0.email == email }
     }
 
+    private var revealedSpyTeammates: [Player] {
+        guard isRoleRevealed,
+              room.spiesKnowEachOther == true,
+              room.isSpy(email: currentUserEmail) else { return [] }
+        return room.spyPlayers.filter {
+            !OnlineVoteIdentityPolicy.matches($0.email, currentUserEmail)
+        }
+    }
+
     private var roundResultPlayers: [Player] {
         let eliminated = Set(room.eliminatedEmails ?? [])
         return room.playersList
@@ -2256,7 +2353,15 @@ private struct OnlineExperienceCopy {
     var tapToConceal: String { text("TAP TO CONCEAL", "TOCA PARA OCULTAR", "НАЖМИ, ЧТОБЫ СКРЫТЬ") }
 
     var gameStarting: String { text("// THE GAME BEGINS", "// EL JUEGO EMPIEZA", "// ИГРА НАЧИНАЕТСЯ") }
-    var introAccessibility: String { text("The game begins. Cards are dealt. The spy is among you.", "El juego comienza. Las cartas están repartidas. El espía está entre ustedes.", "Игра начинается. Карты розданы. Шпион среди вас.") }
+    func spyTeam(spyCount: Int) -> String {
+        spyCount > 1 ? text("SPIES", "ESPÍAS", "ШПИОНЫ") : spy
+    }
+
+    func introAccessibility(spyCount: Int) -> String {
+        spyCount > 1
+            ? text("The game begins. Cards are dealt. The spies are among you.", "El juego comienza. Las cartas están repartidas. Los espías están entre ustedes.", "Игра начинается. Карты розданы. Шпионы среди вас.")
+            : text("The game begins. Cards are dealt. The spy is among you.", "El juego comienza. Las cartas están repartidas. El espía está entre ustedes.", "Игра начинается. Карты розданы. Шпион среди вас.")
+    }
 
     var personalCard: String { text("// YOUR CARD", "// TU TARJETA", "// ТВОЯ КАРТА") }
     var cardViewed: String { text("I VIEWED THE CARD", "HE VISTO LA TARJETA", "КАРТОЧКУ ПРОСМОТРЕЛ") }
@@ -2294,7 +2399,11 @@ private struct OnlineExperienceCopy {
         text("ASSOCIATIONS", "ASOCIACIONES", "АССОЦИАЦИИ") + "  \(spoken)/\(max(total, 0))"
     }
     var guessWord: String { text("GUESS THE WORD", "ADIVINAR PALABRA", "УГАДАТЬ СЛОВО") }
-    var spyWinsAtDeadline: String { text("TIME EXPIRED — SPY WINS", "TIEMPO AGOTADO — GANA EL ESPÍA", "ВРЕМЯ ВЫШЛО — ШПИОН ПОБЕДИЛ") }
+    func spyWinsAtDeadline(spyCount: Int) -> String {
+        spyCount > 1
+            ? text("TIME EXPIRED — SPIES WIN", "TIEMPO AGOTADO — GANAN LOS ESPÍAS", "ВРЕМЯ ВЫШЛО — ШПИОНЫ ПОБЕДИЛИ")
+            : text("TIME EXPIRED — SPY WINS", "TIEMPO AGOTADO — GANA EL ESPÍA", "ВРЕМЯ ВЫШЛО — ШПИОН ПОБЕДИЛ")
+    }
     var startVote: String { text("START VOTE", "INICIAR VOTACIÓN", "НАЧАТЬ ГОЛОСОВАНИЕ") }
     func startVoteProgress(_ count: Int, _ threshold: Int) -> String {
         "\(startVote) \(min(max(count, 0), max(threshold, 0)))/\(max(threshold, 0))"

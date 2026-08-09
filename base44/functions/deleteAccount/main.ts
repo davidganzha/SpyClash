@@ -191,6 +191,9 @@ function roomReferencesEmail(room: Entity, email: string): boolean {
     ) ||
     list(room.player_feedback).some((feedback) => feedback?.email === email) ||
     list(room.eliminated_emails).includes(email) ||
+    list(room.departed_player_emails).includes(email) ||
+    list(room.spy_emails).includes(email) ||
+    list(room.incompatible_player_emails).includes(email) ||
     [
       room.spy_email,
       room.current_asker_email,
