@@ -445,6 +445,35 @@ export default function Home() {
           <motion.div key="play_mode" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22 }}
             style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 14 }}>
 
+            {/* Online — recommended */}
+            <motion.button
+              whileHover={{ scale: 1.02, filter: "drop-shadow(0 0 32px rgba(229,53,53,0.18))" }}
+              whileTap={{ scale: 0.98 }}
+              onClick={() => setView("online_mode")}
+              style={{
+                width: "100%", background: "rgba(229,53,53,0.06)", border: "1px solid rgba(229,53,53,0.5)",
+                cursor: "pointer", padding: "30px 28px", textAlign: "left",
+                position: "relative", transition: "filter 0.2s"
+              }}>
+              <div style={{ position: "absolute", top: 0, left: 0, width: 14, height: 14, borderTop: "1px solid #e53535", borderLeft: "1px solid #e53535" }} />
+              <div style={{ position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderBottom: "1px solid #e53535", borderRight: "1px solid #e53535" }} />
+              <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
+                <div style={{ fontSize: 48, flexShrink: 0 }}>📡</div>
+                <div>
+                  <div style={{ display: "inline-flex", padding: "4px 8px", marginBottom: 8, border: "1px solid rgba(229,53,53,0.45)", background: "rgba(229,53,53,0.10)", color: "#e53535", fontSize: 11, fontWeight: 800, letterSpacing: 1.2, fontFamily: "monospace" }}>
+                    {lang === "ru" ? "РЕКОМЕНДОВАНО" : lang === "es" ? "RECOMENDADO" : "RECOMMENDED"}
+                  </div>
+                  <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 24, letterSpacing: 4, color: "#fff", marginBottom: 6 }}>
+                    {lang === "ru" ? "ОНЛАЙН" : "ONLINE"}
+                  </div>
+                  <div style={{ fontSize: 13, color: "#777", letterSpacing: 1, lineHeight: 1.6 }}>
+                    {lang === "ru" ? "Каждый на своём телефоне" : "Each player on their own device"}
+                  </div>
+                </div>
+                <div style={{ marginLeft: "auto", color: "#e53535", fontSize: 22, flexShrink: 0 }}>›</div>
+              </div>
+            </motion.button>
+
             {/* Local */}
             <motion.button
               whileHover={{ scale: 1.02, borderColor: "#666", filter: "drop-shadow(0 0 24px rgba(255,255,255,0.06))" }}
@@ -452,49 +481,23 @@ export default function Home() {
               onClick={() => navigate(createPageUrl("LocalGame"))}
               style={{
                 width: "100%", background: "#0d0d0d", border: "1px solid #333",
-                cursor: "pointer", padding: "28px 28px", textAlign: "left",
+                cursor: "pointer", padding: "30px 28px", textAlign: "left",
                 position: "relative", transition: "border-color 0.2s, filter 0.2s",
                 clipPath: "polygon(0 0, calc(100% - 14px) 0, 100% 14px, 100% 100%, 14px 100%, 0 calc(100% - 14px))"
               }}>
               <div style={{ position: "absolute", top: 0, left: 0, width: 14, height: 14, borderTop: "1px solid #888", borderLeft: "1px solid #888" }} />
               <div style={{ position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderBottom: "1px solid #888", borderRight: "1px solid #888" }} />
               <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-                <div style={{ fontSize: 44, flexShrink: 0 }}>📱</div>
+                <div style={{ fontSize: 48, flexShrink: 0 }}>📱</div>
                 <div>
-                  <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 22, letterSpacing: 4, color: "#fff", marginBottom: 6 }}>
+                  <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 24, letterSpacing: 4, color: "#fff", marginBottom: 6 }}>
                     {lang === "ru" ? "ЛОКАЛЬНО" : "LOCAL"}
                   </div>
-                  <div style={{ fontSize: 12, color: "#666", letterSpacing: 1, lineHeight: 1.6 }}>
+                  <div style={{ fontSize: 13, color: "#777", letterSpacing: 1, lineHeight: 1.6 }}>
                     {lang === "ru" ? "Один телефон, передаёте по кругу" : "One device · pass & play"}
                   </div>
                 </div>
-                <div style={{ marginLeft: "auto", color: "#444", fontSize: 20, flexShrink: 0 }}>›</div>
-              </div>
-            </motion.button>
-
-            {/* Online */}
-            <motion.button
-              whileHover={{ scale: 1.02, filter: "drop-shadow(0 0 32px rgba(229,53,53,0.18))" }}
-              whileTap={{ scale: 0.98 }}
-              onClick={() => setView("online_mode")}
-              style={{
-                width: "100%", background: "rgba(229,53,53,0.06)", border: "1px solid rgba(229,53,53,0.5)",
-                cursor: "pointer", padding: "28px 28px", textAlign: "left",
-                position: "relative", transition: "filter 0.2s"
-              }}>
-              <div style={{ position: "absolute", top: 0, left: 0, width: 14, height: 14, borderTop: "1px solid #e53535", borderLeft: "1px solid #e53535" }} />
-              <div style={{ position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderBottom: "1px solid #e53535", borderRight: "1px solid #e53535" }} />
-              <div style={{ display: "flex", alignItems: "center", gap: 18 }}>
-                <div style={{ fontSize: 44, flexShrink: 0 }}>📡</div>
-                <div>
-                  <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 22, letterSpacing: 4, color: "#fff", marginBottom: 6 }}>
-                    {lang === "ru" ? "ОНЛАЙН" : "ONLINE"}
-                  </div>
-                  <div style={{ fontSize: 12, color: "#666", letterSpacing: 1, lineHeight: 1.6 }}>
-                    {lang === "ru" ? "Каждый на своём телефоне" : "Each player on their own device"}
-                  </div>
-                </div>
-                <div style={{ marginLeft: "auto", color: "#e53535", fontSize: 20, flexShrink: 0 }}>›</div>
+                <div style={{ marginLeft: "auto", color: "#555", fontSize: 22, flexShrink: 0 }}>›</div>
               </div>
             </motion.button>
 

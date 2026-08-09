@@ -27,30 +27,30 @@ export default function WordPackSelector({ onSelect, selectedPackId, disabled = 
       
 
       {loading ?
-      <div style={{ fontSize: 11, color: "#444", letterSpacing: 1, fontFamily: "monospace", marginBottom: 10 }}>{t('loading')}</div> :
+      <div style={{ fontSize: 12, color: "#555", letterSpacing: 1, fontFamily: "monospace", marginBottom: 10 }}>{t('loading')}</div> :
       packs.length === 0 ?
-      <div style={{ display: "flex", alignItems: "center", gap: 10, padding: "12px 14px", background: "#080808", border: "1px solid #1a1a1a", marginBottom: 10 }}>
-          <span style={{ fontSize: 20 }}>📦</span>
+      <div style={{ display: "flex", alignItems: "center", gap: 12, padding: "14px 16px", background: "#080808", border: "1px solid #1a1a1a", marginBottom: 10 }}>
+          <span style={{ fontSize: 24 }}>📦</span>
           <div>
-            <div style={{ fontSize: 11, color: "#555", letterSpacing: 0.5, marginBottom: 4 }}>{t('wp_page_empty')}</div>
-            <Link to={createPageUrl("WordPacks")} style={{ color: "#e53535", textDecoration: "none", fontSize: 11, letterSpacing: 1, fontFamily: "monospace" }}>
+            <div style={{ fontSize: 12, color: "#777", letterSpacing: 0.5, marginBottom: 5 }}>{t('wp_page_empty')}</div>
+            <Link to={createPageUrl("WordPacks")} style={{ color: "#e53535", textDecoration: "none", fontSize: 12, letterSpacing: 1, fontFamily: "monospace" }}>
               {t('wp_page_create_first')} →
             </Link>
           </div>
         </div> :
 
-      <div style={{ fontSize: 11, color: "#555", letterSpacing: 1, fontFamily: "monospace", marginBottom: 10 }}>
+      <div style={{ fontSize: 12, color: "#666", letterSpacing: 1, fontFamily: "monospace", marginBottom: 10 }}>
           {t('wp_selector_packs')} <strong style={{ color: "#888" }}>{packs.length}</strong>
         </div>
       }
 
       {packs.length > 0 &&
       <>
-          <div style={{ display: "flex", flexWrap: "wrap", gap: 6 }}>
+          <div style={{ display: "flex", flexWrap: "wrap", gap: 8 }}>
             <button
             onClick={() => onSelect(null, null)}
             disabled={disabled}
-            style={{ padding: "6px 12px", fontSize: 11, letterSpacing: 1, fontFamily: "monospace", cursor: "pointer",
+            style={{ minHeight: 42, padding: "9px 14px", fontSize: 12, letterSpacing: 1, fontFamily: "monospace", cursor: "pointer",
               background: !selectedPackId ? "rgba(229,53,53,0.1)" : "#080808",
               border: `1px solid ${!selectedPackId ? "rgba(229,53,53,0.4)" : "#1a1a1a"}`,
               color: !selectedPackId ? "#e53535" : "#555" }}>
@@ -60,7 +60,7 @@ export default function WordPackSelector({ onSelect, selectedPackId, disabled = 
           <button key={p.id}
           onClick={() => onSelect(p.id, p)}
           disabled={disabled}
-          style={{ padding: "6px 12px", fontSize: 11, letterSpacing: 1, fontFamily: "monospace", cursor: "pointer",
+          style={{ minHeight: 42, padding: "9px 14px", fontSize: 12, letterSpacing: 1, fontFamily: "monospace", cursor: "pointer",
             background: selectedPackId === p.id ? "rgba(229,53,53,0.1)" : "#080808",
             border: `1px solid ${selectedPackId === p.id ? "rgba(229,53,53,0.4)" : "#1a1a1a"}`,
             color: selectedPackId === p.id ? "#e53535" : "#888" }}>
@@ -69,7 +69,7 @@ export default function WordPackSelector({ onSelect, selectedPackId, disabled = 
           )}
           </div>
           {selected &&
-        <div style={{ marginTop: 8, fontSize: 10, color: "#555", letterSpacing: 1 }}>
+        <div style={{ marginTop: 10, fontSize: 12, color: "#666", letterSpacing: 0.8, lineHeight: 1.5 }}>
               {t('wp_selector_selected')} <strong style={{ color: "#888" }}>{selected.name}</strong> · {selected.words?.length} {t('wp_page_words_count')} · {selected.category || selected.name}
             </div>
         }
