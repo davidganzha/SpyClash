@@ -38,6 +38,38 @@ final class OnlineRoundStateTests: XCTestCase {
         )
     }
 
+    func testForgotCardReviewOnlyResumesTimerThatWasRunningInTheSameLiveRound() {
+        XCTAssertTrue(
+            LocalGameInterruptionPolicy.shouldResumeTimerAfterCardReview(
+                wasRunning: true,
+                phaseIsPlaying: true,
+                remainingSeconds: 42
+            )
+        )
+        XCTAssertFalse(
+            LocalGameInterruptionPolicy.shouldResumeTimerAfterCardReview(
+                wasRunning: false,
+                phaseIsPlaying: true,
+                remainingSeconds: 42
+            ),
+            "A card review opened from an already-paused game must leave it paused"
+        )
+        XCTAssertFalse(
+            LocalGameInterruptionPolicy.shouldResumeTimerAfterCardReview(
+                wasRunning: true,
+                phaseIsPlaying: false,
+                remainingSeconds: 42
+            )
+        )
+        XCTAssertFalse(
+            LocalGameInterruptionPolicy.shouldResumeTimerAfterCardReview(
+                wasRunning: true,
+                phaseIsPlaying: true,
+                remainingSeconds: 0
+            )
+        )
+    }
+
     func testLocalAccusationCatchesAnyAssignedSpyRatherThanOnlyThePrimarySpy() {
         let spyFlags = [true, false, true, false, true, false]
 

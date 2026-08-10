@@ -14,6 +14,16 @@ enum LocalGameDeadlinePolicy {
     }
 }
 
+enum LocalGameInterruptionPolicy {
+    static func shouldResumeTimerAfterCardReview(
+        wasRunning: Bool,
+        phaseIsPlaying: Bool,
+        remainingSeconds: Int
+    ) -> Bool {
+        wasRunning && phaseIsPlaying && remainingSeconds > 0
+    }
+}
+
 enum LocalGameAccusationPolicy {
     enum Outcome: Equatable {
         case continuePlaying
@@ -114,6 +124,9 @@ struct LocalGameView: View {
     @State private var eliminatedPlayerIndices: Set<Int> = []
     @State private var winner: LocalWinner?
     @State private var timerTask: Task<Void, Never>?
+    @State private var isLocalGamePaused = false
+    @State private var forgotCardRequest: LocalForgotCardRequest?
+    @State private var resumeTimerAfterCardReview = false
     @State private var associationOrder: [Int] = []
     @State private var associationStep = 0
     @State private var associationRouletteDone = true
@@ -155,6 +168,17 @@ struct LocalGameView: View {
     }
 
     var body: some View {
+        localLifecycleBody
+            .fullScreenCover(item: $forgotCardRequest, onDismiss: finishForgotCardReview) { request in
+                LocalForgotCardRecoveryView(
+                    request: request,
+                    copy: copy,
+                    language: appState.language
+                )
+            }
+    }
+
+    private var localLifecycleBody: some View {
         localBody
             .task {
                 restoreLocalSettings()
@@ -186,14 +210,26 @@ struct LocalGameView: View {
             .onChange(of: customTheme) { _, _ in persistLocalSettings() }
             .onChange(of: localWordCountMode) { _, _ in persistLocalSettings() }
             .onChange(of: localCustomWordCount) { _, _ in persistLocalSettings() }
-            .onChange(of: phase) { _, _ in updateLocalShellChromeSuppression() }
+            .onChange(of: phase) { _, newPhase in handleLocalPhaseChange(newPhase) }
             .onChange(of: appState.localSetupRequestID) { _, _ in consumeLocalSetupRequestIfNeeded() }
             .onChange(of: status) { _, message in publishLocalToast(message) }
             .onChange(of: localThemeError) { _, message in publishLocalThemeError(message) }
-            .onDisappear {
-                timerTask?.cancel()
-                appState.isShellChromeSuppressed = false
-            }
+            .onDisappear(perform: handleLocalDisappear)
+    }
+
+    private func handleLocalPhaseChange(_ newPhase: LocalPhase) {
+        updateLocalShellChromeSuppression()
+        guard newPhase != .playing else { return }
+        timerTask?.cancel()
+        timerTask = nil
+        isLocalGamePaused = false
+        forgotCardRequest = nil
+        resumeTimerAfterCardReview = false
+    }
+
+    private func handleLocalDisappear() {
+        timerTask?.cancel()
+        appState.isShellChromeSuppressed = false
     }
 
     @ViewBuilder
@@ -2054,13 +2090,18 @@ struct LocalGameView: View {
         if let session {
             VStack(alignment: .leading, spacing: 10) {
                 localPlayingHeader
-                localTimerStrip
-                localAgentStrip(session)
+                localTimerAndRecoveryControls
 
-                if session.mode == .questions {
-                    localActivePairCard(session)
+                if isLocalGamePaused {
+                    localPausedPanel
                 } else {
-                    localAssociationCard(session)
+                    localAgentStrip(session)
+
+                    if session.mode == .questions {
+                        localActivePairCard(session)
+                    } else {
+                        localAssociationCard(session)
+                    }
                 }
             }
             .frame(maxWidth: 480)
@@ -2148,10 +2189,12 @@ struct LocalGameView: View {
 
     private var localTimerStrip: some View {
         HStack(spacing: 12) {
-            Text(localized(en: "TIME LEFT", ru: "ОСТАЛОСЬ", es: "QUEDA"))
+            Text(isLocalGamePaused
+                ? localized(en: "PAUSED", ru: "ПАУЗА", es: "PAUSA")
+                : localized(en: "TIME LEFT", ru: "ОСТАЛОСЬ", es: "QUEDA"))
                 .font(.system(size: 10, weight: .black, design: .monospaced))
                 .tracking(0.08)
-                .foregroundStyle(SpyTheme.dim)
+                .foregroundStyle(isLocalGamePaused ? SpyTheme.red : SpyTheme.dim)
                 .spyFitted(scale: 0.66)
 
             Text(timeString(secondsRemaining))
@@ -2164,6 +2207,92 @@ struct LocalGameView: View {
         .frame(minHeight: 48)
         .background(SpyTheme.panelDeep)
         .overlay(Rectangle().stroke(SpyTheme.stroke, lineWidth: 1))
+    }
+
+    private var localTimerAndRecoveryControls: some View {
+        HStack(spacing: 8) {
+            localTimerStrip
+                .layoutPriority(1)
+
+            localRoundUtilityButton(
+                title: isLocalGamePaused
+                    ? localized(en: "RESUME", ru: "ИГРАТЬ", es: "SEGUIR")
+                    : localized(en: "PAUSE", ru: "ПАУЗА", es: "PAUSA"),
+                systemImage: isLocalGamePaused ? "play.fill" : "pause.fill",
+                accessibilityID: "localGame.pause"
+            ) {
+                toggleLocalGamePause()
+            }
+
+            localRoundUtilityButton(
+                title: localized(en: "CARD", ru: "КАРТА", es: "CARTA"),
+                systemImage: "rectangle.portrait.on.rectangle.portrait",
+                accessibilityID: "localGame.forgotCard"
+            ) {
+                beginForgotCardReview()
+            }
+        }
+    }
+
+    private func localRoundUtilityButton(
+        title: String,
+        systemImage: String,
+        accessibilityID: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            VStack(spacing: 3) {
+                Image(systemName: systemImage)
+                    .font(.system(size: 13, weight: .black))
+                Text(title)
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .tracking(0.04)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.68)
+            }
+            .foregroundStyle(SpyTheme.red)
+            .frame(width: 58, height: 48)
+            .background(SpyTheme.dark)
+            .overlay(Rectangle().stroke(SpyTheme.red.opacity(0.42), lineWidth: 1))
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SpyWebPressStyle())
+        .accessibilityIdentifier(accessibilityID)
+    }
+
+    private var localPausedPanel: some View {
+        localCompactPanel(accent: SpyTheme.red, fillHeight: true) {
+            VStack(spacing: 14) {
+                Image(systemName: "pause.fill")
+                    .font(.system(size: 34, weight: .black))
+                    .foregroundStyle(SpyTheme.red)
+
+                Text(localized(en: "GAME PAUSED", ru: "ИГРА НА ПАУЗЕ", es: "JUEGO EN PAUSA"))
+                    .font(.system(size: 20, weight: .black, design: .default))
+                    .tracking(0.08)
+                    .foregroundStyle(.white)
+                    .spyFitted(lines: 2, scale: 0.64, alignment: .center)
+
+                Text(localized(
+                    en: "The timer and round actions are stopped.",
+                    ru: "Таймер и игровые действия остановлены.",
+                    es: "El temporizador y las acciones estan detenidos."
+                ))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SpyTheme.dim)
+                .multilineTextAlignment(.center)
+
+                localCompactActionButton(
+                    title: localized(en: "RESUME GAME", ru: "ПРОДОЛЖИТЬ ИГРУ", es: "CONTINUAR JUEGO"),
+                    prefix: "▶",
+                    primary: true
+                ) {
+                    resumeLocalGame()
+                }
+            }
+            .frame(maxHeight: .infinity, alignment: .center)
+        }
+        .accessibilityIdentifier("localGame.paused")
     }
 
     private func localAgentStrip(_ session: LocalSession) -> some View {
@@ -3555,17 +3684,27 @@ struct LocalGameView: View {
            associationOrder.count != activeLocalPlayerIndices(in: session).count {
             resetAssociationFlow(playerIndices: activeLocalPlayerIndices(in: session), mode: session.mode)
         }
+        isLocalGamePaused = false
         phase = .playing
         HapticManager.shared.fire(.milestone)
+        startLocalTimerLoop()
+    }
+
+    private func startLocalTimerLoop() {
         timerTask?.cancel()
+        timerTask = nil
+        guard phase == .playing, !isLocalGamePaused, secondsRemaining > 0 else { return }
+
         timerTask = Task { @MainActor in
             while !Task.isCancelled {
-                guard secondsRemaining > 0 else {
-                    finishLocalGameAtDeadline()
+                guard phase == .playing, !isLocalGamePaused, secondsRemaining > 0 else {
+                    if phase == .playing, !isLocalGamePaused, secondsRemaining <= 0 {
+                        finishLocalGameAtDeadline()
+                    }
                     return
                 }
                 try? await Task.sleep(for: .seconds(1))
-                guard !Task.isCancelled else { return }
+                guard !Task.isCancelled, phase == .playing, !isLocalGamePaused else { return }
                 switch LocalGameDeadlinePolicy.outcome(afterTickFrom: secondsRemaining) {
                 case let .continuePlaying(remainingSeconds):
                     secondsRemaining = remainingSeconds
@@ -3577,8 +3716,60 @@ struct LocalGameView: View {
         }
     }
 
+    private func toggleLocalGamePause() {
+        if isLocalGamePaused {
+            resumeLocalGame()
+        } else {
+            pauseLocalGame()
+        }
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func pauseLocalGame() {
+        guard phase == .playing, !isLocalGamePaused else { return }
+        isLocalGamePaused = true
+        timerTask?.cancel()
+        timerTask = nil
+    }
+
+    private func resumeLocalGame() {
+        guard phase == .playing, isLocalGamePaused, secondsRemaining > 0 else { return }
+        isLocalGamePaused = false
+        startLocalTimerLoop()
+    }
+
+    private func beginForgotCardReview() {
+        guard phase == .playing, let session else { return }
+        let activeIndices = activeLocalPlayerIndices(in: session)
+        guard !activeIndices.isEmpty else { return }
+
+        resumeTimerAfterCardReview = !isLocalGamePaused
+        pauseLocalGame()
+        forgotCardRequest = LocalForgotCardRequest(
+            session: session,
+            activePlayerIndices: activeIndices
+        )
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func finishForgotCardReview() {
+        let shouldResume = LocalGameInterruptionPolicy.shouldResumeTimerAfterCardReview(
+            wasRunning: resumeTimerAfterCardReview,
+            phaseIsPlaying: phase == .playing,
+            remainingSeconds: secondsRemaining
+        )
+        resumeTimerAfterCardReview = false
+        if shouldResume {
+            resumeLocalGame()
+        }
+    }
+
     private func finishLocalGameAtDeadline() {
         timerTask?.cancel()
+        timerTask = nil
+        isLocalGamePaused = false
+        forgotCardRequest = nil
+        resumeTimerAfterCardReview = false
         secondsRemaining = 0
         guessSecondsRemaining = 0
         showSpyGuessOptions = false
@@ -4033,6 +4224,231 @@ struct LocalGameView: View {
             es
         default:
             en
+        }
+    }
+}
+
+private struct LocalForgotCardRequest: Identifiable {
+    let id = UUID()
+    let session: LocalSession
+    let activePlayerIndices: [Int]
+}
+
+private struct LocalForgotCardRecoveryView: View {
+    @Environment(\.dismiss) private var dismiss
+
+    let request: LocalForgotCardRequest
+    let copy: LocalGameCopy
+    let language: AppLanguage
+
+    @State private var selectedPlayerIndex: Int?
+    @State private var cardRevealed = false
+
+    var body: some View {
+        ZStack {
+            SpyBackground()
+
+            ScrollView {
+                VStack(spacing: 22) {
+                    header
+
+                    if let selectedPlayerIndex,
+                       let player = request.session.players[safe: selectedPlayerIndex] {
+                        selectedPlayerFlow(player: player)
+                    } else {
+                        playerPicker
+                    }
+                }
+                .padding(.horizontal, 20)
+                .padding(.top, 18)
+                .padding(.bottom, 28)
+                .frame(maxWidth: 480)
+                .frame(maxWidth: .infinity)
+            }
+        }
+        .interactiveDismissDisabled()
+        .accessibilityIdentifier("localGame.forgotCardRecovery")
+    }
+
+    private var header: some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 4) {
+                Text(localized(en: "PRIVATE CARD REVIEW", ru: "ПОВТОРНЫЙ ПРОСМОТР", es: "REVISION PRIVADA"))
+                    .font(.system(size: 17, weight: .black, design: .default))
+                    .tracking(0.08)
+                    .foregroundStyle(.white)
+                    .spyFitted(lines: 2, scale: 0.64)
+                Text(localized(en: "The game timer is paused", ru: "Игровой таймер остановлен", es: "El temporizador esta pausado"))
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .tracking(0.04)
+                    .foregroundStyle(SpyTheme.dim)
+            }
+
+            Spacer(minLength: 8)
+
+            Button {
+                dismiss()
+            } label: {
+                Image(systemName: "xmark")
+                    .font(.system(size: 13, weight: .black))
+                    .foregroundStyle(SpyTheme.muted)
+                    .frame(width: 44, height: 44)
+                    .background(SpyTheme.dark)
+                    .overlay(Rectangle().stroke(SpyTheme.strokeStrong, lineWidth: 1))
+            }
+            .buttonStyle(SpyWebPressStyle())
+            .accessibilityLabel(localized(en: "Close", ru: "Закрыть", es: "Cerrar"))
+        }
+    }
+
+    private var playerPicker: some View {
+        VStack(spacing: 18) {
+            VStack(spacing: 8) {
+                Image(systemName: "rectangle.portrait.on.rectangle.portrait")
+                    .font(.system(size: 30, weight: .black))
+                    .foregroundStyle(SpyTheme.red)
+
+                Text(localized(en: "WHO FORGOT THEIR CARD?", ru: "КТО ЗАБЫЛ КАРТУ?", es: "QUIEN OLVIDO SU CARTA?"))
+                    .font(.system(size: 20, weight: .black, design: .default))
+                    .tracking(0.06)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .spyFitted(lines: 2, scale: 0.62, alignment: .center)
+
+                Text(localized(
+                    en: "Choose a player, then pass them the phone. No role is shown on this screen.",
+                    ru: "Выбери игрока и передай ему телефон. На этом экране роль не показывается.",
+                    es: "Elige un jugador y pasale el telefono. Aqui no se muestra ningun rol."
+                ))
+                .font(.system(size: 11, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SpyTheme.dim)
+                .multilineTextAlignment(.center)
+                .lineSpacing(3)
+            }
+
+            LazyVGrid(columns: [GridItem(.adaptive(minimum: 132), spacing: 10)], spacing: 10) {
+                ForEach(request.activePlayerIndices, id: \.self) { index in
+                    if let player = request.session.players[safe: index] {
+                        Button {
+                            selectedPlayerIndex = index
+                            cardRevealed = false
+                            HapticManager.shared.fire(.tabSelection)
+                        } label: {
+                            HStack(spacing: 9) {
+                                Text(player.avatar)
+                                    .font(.system(size: 24))
+                                Text(player.name.uppercased())
+                                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                                    .tracking(0.04)
+                                    .foregroundStyle(.white)
+                                    .lineLimit(2)
+                                    .minimumScaleFactor(0.62)
+                                Spacer(minLength: 0)
+                            }
+                            .padding(.horizontal, 12)
+                            .frame(maxWidth: .infinity, minHeight: 56, alignment: .leading)
+                            .background(SpyTheme.dark)
+                            .overlay(Rectangle().stroke(SpyTheme.strokeStrong, lineWidth: 1))
+                            .contentShape(Rectangle())
+                        }
+                        .buttonStyle(SpyWebPressStyle())
+                        .accessibilityIdentifier("localGame.forgotCard.player.\(index)")
+                    }
+                }
+            }
+        }
+        .padding(18)
+        .background(SpyTheme.panelDeep)
+        .overlay(Rectangle().stroke(SpyTheme.stroke, lineWidth: 1))
+    }
+
+    private func selectedPlayerFlow(player: LocalPlayer) -> some View {
+        VStack(spacing: 20) {
+            if cardRevealed {
+                RoleRevealCard(
+                    player: player,
+                    session: request.session,
+                    revealed: true,
+                    copy: copy,
+                    language: language,
+                    dontShow: localized(en: "DON'T SHOW OTHERS", ru: "НЕ ПОКАЗЫВАЙ ДРУГИМ", es: "NO MUESTRES A OTROS")
+                )
+                .frame(maxWidth: 280)
+
+                Button {
+                    dismiss()
+                } label: {
+                    SpyActionLabel(
+                        title: localized(en: "I REMEMBER — CONTINUE", ru: "ВСПОМНИЛ — ПРОДОЛЖИТЬ", es: "RECORDADO — CONTINUAR"),
+                        systemImage: "checkmark",
+                        tracking: 0.04,
+                        lines: 2
+                    )
+                }
+                .buttonStyle(SpyButtonStyle(variant: .red))
+                .frame(maxWidth: 300)
+                .accessibilityIdentifier("localGame.forgotCard.done")
+            } else {
+                Spacer(minLength: 18)
+
+                Text(player.avatar)
+                    .font(.system(size: 58))
+
+                Text(player.name.uppercased())
+                    .font(.system(size: 26, weight: .black, design: .default))
+                    .tracking(0.08)
+                    .foregroundStyle(.white)
+                    .spyFitted(lines: 2, scale: 0.56, alignment: .center)
+
+                Text(localized(
+                    en: "PASS THE PHONE TO THIS PLAYER. They should continue alone.",
+                    ru: "ПЕРЕДАЙ ТЕЛЕФОН ЭТОМУ ИГРОКУ. Дальше смотрит только он.",
+                    es: "PASA EL TELEFONO A ESTE JUGADOR. Debe continuar a solas."
+                ))
+                .font(.system(size: 12, weight: .bold, design: .monospaced))
+                .foregroundStyle(SpyTheme.dim)
+                .multilineTextAlignment(.center)
+                .lineSpacing(4)
+
+                Button {
+                    withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.35)) {
+                        cardRevealed = true
+                    }
+                    HapticManager.shared.fire(.reveal)
+                } label: {
+                    SpyActionLabel(
+                        title: localized(en: "I'M READY — SHOW MY CARD", ru: "Я ГОТОВ — ПОКАЗАТЬ КАРТУ", es: "ESTOY LISTO — MOSTRAR CARTA"),
+                        systemImage: "eye.fill",
+                        tracking: 0.04,
+                        lines: 2
+                    )
+                }
+                .buttonStyle(SpyButtonStyle(variant: .red))
+                .frame(maxWidth: 320)
+                .accessibilityIdentifier("localGame.forgotCard.reveal")
+
+                Button {
+                    selectedPlayerIndex = nil
+                } label: {
+                    Text(localized(en: "CHOOSE ANOTHER PLAYER", ru: "ВЫБРАТЬ ДРУГОГО", es: "ELEGIR OTRO JUGADOR"))
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .tracking(0.06)
+                        .foregroundStyle(SpyTheme.muted)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(SpyWebPressStyle())
+
+                Spacer(minLength: 18)
+            }
+        }
+        .frame(maxWidth: .infinity)
+    }
+
+    private func localized(en: String, ru: String, es: String) -> String {
+        switch language {
+        case .ru: ru
+        case .es: es
+        default: en
         }
     }
 }
