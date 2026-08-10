@@ -5,6 +5,7 @@ import {
   localGameTimeoutOutcome,
   localTeamWinner,
   pickLocalSpyIndices,
+  shouldResumeLocalTimerAfterCardReview,
 } from "./localGameRules.js";
 
 test("local game ends immediately with a spy win at zero", () => {
@@ -44,4 +45,27 @@ test("plural team outcome waits for all spies and awards parity to spies", () =>
     activePlayerIndices: [0, 1, 2, 4],
     spyIndices: [4, 5],
   }), null);
+});
+
+test("private card review only resumes a timer that was running in the same live round", () => {
+  assert.equal(shouldResumeLocalTimerAfterCardReview({
+    wasRunning: true,
+    phase: "playing",
+    timeLeft: 42,
+  }), true);
+  assert.equal(shouldResumeLocalTimerAfterCardReview({
+    wasRunning: false,
+    phase: "playing",
+    timeLeft: 42,
+  }), false);
+  assert.equal(shouldResumeLocalTimerAfterCardReview({
+    wasRunning: true,
+    phase: "finished",
+    timeLeft: 42,
+  }), false);
+  assert.equal(shouldResumeLocalTimerAfterCardReview({
+    wasRunning: true,
+    phase: "playing",
+    timeLeft: 0,
+  }), false);
 });

@@ -14,7 +14,11 @@ import SaveAsWordPackDialog from "@/components/SaveAsWordPackDialog";
 import { useGlobalQuota } from "@/hooks/useGlobalQuota";
 import { generateWordPool } from "@/utils/wordPoolAI";
 import { ACCOUNT_AVATARS } from "@/lib/avatars";
-import { localGameTimeoutOutcome, pickLocalSpyIndices } from "@/lib/localGameRules";
+import {
+  localGameTimeoutOutcome,
+  pickLocalSpyIndices,
+  shouldResumeLocalTimerAfterCardReview,
+} from "@/lib/localGameRules";
 import {
   isAllowedSpyCount,
   maxSpyCountForPlayerCount,
@@ -36,6 +40,159 @@ function initialLocalRoster(savedSettings) {
     names,
     avatars: names.map((_, index) => avatars[index] || ACCOUNT_AVATARS[index % ACCOUNT_AVATARS.length]),
   };
+}
+
+function LocalUtilityButton({ icon, label, onClick, testId }) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      data-testid={testId}
+      aria-label={label}
+      style={{
+        width: 58,
+        height: 48,
+        padding: 0,
+        border: "1px solid rgba(229,53,53,0.42)",
+        background: "#080808",
+        color: "#e53535",
+        cursor: "pointer",
+        display: "flex",
+        flexDirection: "column",
+        alignItems: "center",
+        justifyContent: "center",
+        gap: 2,
+      }}>
+      <span aria-hidden="true" style={{ fontSize: 14, fontWeight: 800, lineHeight: 1 }}>{icon}</span>
+      <span style={{ maxWidth: 52, overflow: "hidden", textOverflow: "ellipsis", fontSize: 8, lineHeight: 1.1, fontWeight: 800, letterSpacing: 0.4, fontFamily: "monospace", whiteSpace: "nowrap" }}>
+        {label}
+      </span>
+    </button>
+  );
+}
+
+function ForgotCardRecovery({ gameData, lang, onClose, showSpyCategory, sounds, t }) {
+  const [selectedPlayerIndex, setSelectedPlayerIndex] = useState(null);
+  const [revealed, setRevealed] = useState(false);
+  const player = Number.isInteger(selectedPlayerIndex)
+    ? gameData?.players?.[selectedPlayerIndex]
+    : null;
+  const spyTeammates = player?.isSpy && gameData?.spiesKnowEachOther
+    ? gameData.players.filter((candidate, index) => candidate.isSpy && index !== selectedPlayerIndex)
+    : [];
+
+  const choosePlayer = (index) => {
+    setSelectedPlayerIndex(index);
+    setRevealed(false);
+    sounds.click();
+  };
+
+  return (
+    <div
+      data-testid="localGame.forgotCardRecovery"
+      style={{ position: "fixed", inset: 0, zIndex: 300, overflowY: "auto", background: "radial-gradient(circle at 50% 20%, rgba(229,53,53,0.08), transparent 38%), #050505", padding: "18px 20px 28px" }}>
+      <div style={{ width: "100%", maxWidth: 480, margin: "0 auto" }}>
+        <div style={{ display: "flex", alignItems: "center", gap: 12, marginBottom: 22 }}>
+          <div style={{ minWidth: 0, flex: 1 }}>
+            <div style={{ color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 18, fontWeight: 700, letterSpacing: 2 }}>
+              {localControlText(lang, "privateReview")}
+            </div>
+            <div style={{ marginTop: 4, color: "#555", fontSize: 10, letterSpacing: 1, fontFamily: "monospace" }}>
+              {localControlText(lang, "timerPaused")}
+            </div>
+          </div>
+          <button type="button" onClick={onClose} aria-label={localControlText(lang, "close")}
+            style={{ width: 44, height: 44, border: "1px solid #2a2a2a", background: "#080808", color: "#888", cursor: "pointer", fontSize: 16 }}>✕</button>
+        </div>
+
+        {!player ?
+          <div style={{ padding: "22px 18px", border: "1px solid #242424", background: "#0a0a0a", textAlign: "center" }}>
+            <div style={{ color: "#e53535", fontSize: 34, marginBottom: 12 }}>🂠</div>
+            <div style={{ color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: 2 }}>
+              {localControlText(lang, "whoForgot")}
+            </div>
+            <div style={{ maxWidth: 360, margin: "8px auto 20px", color: "#666", fontSize: 11, lineHeight: 1.6, fontFamily: "monospace" }}>
+              {localControlText(lang, "chooseHint")}
+            </div>
+            <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(132px, 1fr))", gap: 10 }}>
+              {gameData.players.map((candidate, index) => (
+                <button key={`${candidate.name}-${index}`} type="button" onClick={() => choosePlayer(index)}
+                  data-testid={`localGame.forgotCard.player.${index}`}
+                  style={{ minHeight: 56, padding: "8px 12px", border: "1px solid #2a2a2a", background: "#080808", color: "#fff", cursor: "pointer", display: "flex", alignItems: "center", gap: 9, textAlign: "left" }}>
+                  <span style={{ fontSize: 24 }}>{candidate.avatar}</span>
+                  <span style={{ minWidth: 0, overflow: "hidden", textOverflow: "ellipsis", fontSize: 11, fontWeight: 800, letterSpacing: 0.6, fontFamily: "monospace" }}>{candidate.name.toUpperCase()}</span>
+                </button>
+              ))}
+            </div>
+          </div> :
+          !revealed ?
+            <div style={{ minHeight: "calc(100dvh - 130px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 16 }}>
+              <div style={{ fontSize: 62 }}>{player.avatar}</div>
+              <div style={{ color: "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 28, fontWeight: 700, letterSpacing: 3 }}>{player.name.toUpperCase()}</div>
+              <div style={{ maxWidth: 350, color: "#666", fontSize: 12, lineHeight: 1.7, fontFamily: "monospace" }}>{localControlText(lang, "passPhone")}</div>
+              <button type="button" className="btn-red" data-testid="localGame.forgotCard.reveal"
+                onClick={() => { setRevealed(true); sounds.click(); }}
+                style={{ width: "100%", maxWidth: 320, minHeight: 52, marginTop: 6 }}>
+                ◉ {localControlText(lang, "showCard")}
+              </button>
+              <button type="button" className="btn-ghost" onClick={() => setSelectedPlayerIndex(null)} style={{ minHeight: 44 }}>
+                {localControlText(lang, "chooseAnother")}
+              </button>
+            </div> :
+            <div style={{ minHeight: "calc(100dvh - 130px)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 20 }}>
+              <div style={{ width: "100%", maxWidth: 300, aspectRatio: "3/4", borderRadius: 16, border: `2px solid ${player.isSpy ? "#e53535" : "#333"}`, background: player.isSpy ? "#0d0000" : "#050508", boxShadow: player.isSpy ? "0 0 40px rgba(229,53,53,0.25)" : "0 12px 48px rgba(0,0,0,0.9)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", padding: "28px 24px", boxSizing: "border-box" }}>
+                <div style={{ fontSize: 56, marginBottom: 10 }}>{player.isSpy ? "🕵️" : "🔍"}</div>
+                <div style={{ color: player.isSpy ? "#e53535" : "#fff", fontFamily: "'Rajdhani', sans-serif", fontSize: 22, fontWeight: 700, letterSpacing: 3, lineHeight: 1.2 }}>
+                  {player.isSpy ? t("game_you_are_spy") : t("game_you_are_detective")}
+                </div>
+                <div style={{ width: "60%", height: 1, margin: "14px 0", background: player.isSpy ? "rgba(229,53,53,0.4)" : "#1e1e1e" }} />
+                {player.isSpy ?
+                  <>
+                    {showSpyCategory && gameData.category && <div translate="no" lang="zxx" style={{ color: "#e53535", fontSize: 18, fontWeight: 700, letterSpacing: 1.5 }}>{gameData.category.toUpperCase()}</div>}
+                    <div style={{ marginTop: 12, color: "#888", fontSize: 12, lineHeight: 1.7 }}>{t("game_spy_hint")}</div>
+                    {spyTeammates.length > 0 &&
+                      <div style={{ marginTop: 14, color: "#fff", fontSize: 10, lineHeight: 1.7, fontFamily: "monospace" }}>
+                        <strong style={{ display: "block", color: "#e53535", letterSpacing: 1.2 }}>{t("game_spy_teammates")}</strong>
+                        {spyTeammates.map((teammate, index) => <span key={`${teammate.name}-${index}`} style={{ display: "block" }}>{teammate.avatar} {teammate.name.toUpperCase()}</span>)}
+                      </div>}
+                  </> :
+                  <>
+                    <div style={{ color: "#555", fontSize: 10, letterSpacing: 3, fontFamily: "monospace" }}>{t("game_secret_word_label")}</div>
+                    <div translate="no" lang="zxx" style={{ marginTop: 8, color: "#e53535", fontFamily: "'Rajdhani', sans-serif", fontSize: 34, fontWeight: 700, lineHeight: 1.1 }}>{gameData.word}</div>
+                    <div translate="no" lang="zxx" style={{ marginTop: 10, color: "#555", fontSize: 10, letterSpacing: 2, fontFamily: "monospace" }}>{gameData.category?.toUpperCase()}</div>
+                  </>}
+              </div>
+              <button type="button" className="btn-red" data-testid="localGame.forgotCard.done" onClick={onClose}
+                style={{ width: "100%", maxWidth: 300, minHeight: 52 }}>
+                ✓ {localControlText(lang, "remembered")}
+              </button>
+            </div>
+        }
+      </div>
+    </div>
+  );
+}
+
+function localControlText(lang, key) {
+  const copy = {
+    paused: { en: "PAUSED", ru: "ПАУЗА", es: "PAUSA" },
+    pause: { en: "PAUSE", ru: "ПАУЗА", es: "PAUSA" },
+    resume: { en: "RESUME", ru: "ИГРАТЬ", es: "SEGUIR" },
+    card: { en: "CARD", ru: "КАРТА", es: "CARTA" },
+    gamePaused: { en: "GAME PAUSED", ru: "ИГРА НА ПАУЗЕ", es: "JUEGO EN PAUSA" },
+    pausedHint: { en: "The timer and round actions are stopped.", ru: "Таймер и игровые действия остановлены.", es: "El temporizador y las acciones estan detenidos." },
+    resumeGame: { en: "RESUME GAME", ru: "ПРОДОЛЖИТЬ ИГРУ", es: "CONTINUAR JUEGO" },
+    privateReview: { en: "PRIVATE CARD REVIEW", ru: "ПОВТОРНЫЙ ПРОСМОТР", es: "REVISION PRIVADA" },
+    timerPaused: { en: "Game timer paused", ru: "Игровой таймер остановлен", es: "Temporizador pausado" },
+    close: { en: "Close", ru: "Закрыть", es: "Cerrar" },
+    whoForgot: { en: "WHO FORGOT THEIR CARD?", ru: "КТО ЗАБЫЛ КАРТУ?", es: "QUIEN OLVIDO SU CARTA?" },
+    chooseHint: { en: "Choose a player, then pass them the phone. No role is shown here.", ru: "Выбери игрока и передай ему телефон. Здесь роль не показывается.", es: "Elige un jugador y pasale el telefono. Aqui no se muestra ningun rol." },
+    passPhone: { en: "PASS THE PHONE TO THIS PLAYER. They should continue alone.", ru: "ПЕРЕДАЙ ТЕЛЕФОН ЭТОМУ ИГРОКУ. Дальше смотрит только он.", es: "PASA EL TELEFONO A ESTE JUGADOR. Debe continuar a solas." },
+    showCard: { en: "I'M READY — SHOW MY CARD", ru: "Я ГОТОВ — ПОКАЗАТЬ КАРТУ", es: "ESTOY LISTO — MOSTRAR CARTA" },
+    chooseAnother: { en: "CHOOSE ANOTHER PLAYER", ru: "ВЫБРАТЬ ДРУГОГО", es: "ELEGIR OTRO JUGADOR" },
+    remembered: { en: "I REMEMBER — CONTINUE", ru: "ВСПОМНИЛ — ПРОДОЛЖИТЬ", es: "RECORDADO — CONTINUAR" },
+  };
+  return copy[key]?.[lang] || copy[key]?.en || key;
 }
 
 function pickWord(locale) {
@@ -132,7 +289,11 @@ export default function LocalGame() {
   // playing state
   const [timeLeft, setTimeLeft] = useState(null);
   const [timeExpired, setTimeExpired] = useState(false);
-  const [timerRef, setTimerRef] = useState(null);
+  const [isPaused, setIsPaused] = useState(false);
+  const timerIntervalRef = useRef(null);
+  const timeLeftRef = useRef(null);
+  const resumeAfterCardReviewRef = useRef(false);
+  const [showForgotCard, setShowForgotCard] = useState(false);
   const [showSpyGuess, setShowSpyGuess] = useState(false);
   const [winner, setWinner] = useState(null); // "spy" | "detectives"
   const [spyGuess, setSpyGuess] = useState(null);
@@ -145,6 +306,89 @@ export default function LocalGame() {
   const [associationRouletteDone, setAssociationRouletteDone] = useState(false);
   const [associationOrder, setAssociationOrder] = useState([]); // shuffled order of player indices
   const [associationStep, setAssociationStep] = useState(0); // current position within order
+
+  useEffect(() => () => {
+    if (timerIntervalRef.current) clearInterval(timerIntervalRef.current);
+  }, []);
+
+  const clearLocalTimer = () => {
+    if (timerIntervalRef.current) {
+      clearInterval(timerIntervalRef.current);
+      timerIntervalRef.current = null;
+    }
+  };
+
+  const finishLocalGameAtDeadline = () => {
+    clearLocalTimer();
+    const outcome = localGameTimeoutOutcome();
+    timeLeftRef.current = outcome.timeLeft;
+    setTimeLeft(outcome.timeLeft);
+    setTimeExpired(outcome.timeExpired);
+    setShowSpyGuess(outcome.showSpyGuess);
+    setWinner(outcome.winner);
+    setIsPaused(false);
+    setShowForgotCard(false);
+    setPhase(outcome.phase);
+    sounds.win();
+  };
+
+  const startLocalTimer = (initialSeconds = timeLeftRef.current) => {
+    clearLocalTimer();
+    const normalized = Math.max(0, Math.floor(Number(initialSeconds) || 0));
+    timeLeftRef.current = normalized;
+    setTimeLeft(normalized);
+    if (normalized <= 0) {
+      finishLocalGameAtDeadline();
+      return;
+    }
+
+    timerIntervalRef.current = setInterval(() => {
+      const remaining = Math.max((timeLeftRef.current || 0) - 1, 0);
+      timeLeftRef.current = remaining;
+      setTimeLeft(remaining);
+      if (remaining <= 0) finishLocalGameAtDeadline();
+    }, 1000);
+  };
+
+  const pauseLocalGame = () => {
+    if (phase !== "playing" || isPaused) return;
+    clearLocalTimer();
+    setIsPaused(true);
+  };
+
+  const resumeLocalGame = () => {
+    if (phase !== "playing" || !isPaused || (timeLeftRef.current || 0) <= 0) return;
+    setIsPaused(false);
+    startLocalTimer();
+  };
+
+  const toggleLocalGamePause = () => {
+    sounds.click();
+    if (isPaused) resumeLocalGame();
+    else pauseLocalGame();
+  };
+
+  const openForgotCard = () => {
+    if (phase !== "playing" || !gameData) return;
+    resumeAfterCardReviewRef.current = !isPaused;
+    if (!isPaused) pauseLocalGame();
+    setShowForgotCard(true);
+    sounds.click();
+  };
+
+  const closeForgotCard = () => {
+    setShowForgotCard(false);
+    const shouldResume = shouldResumeLocalTimerAfterCardReview({
+      wasRunning: resumeAfterCardReviewRef.current,
+      phase,
+      timeLeft: timeLeftRef.current,
+    });
+    resumeAfterCardReviewRef.current = false;
+    if (shouldResume) {
+      setIsPaused(false);
+      startLocalTimer();
+    }
+  };
 
 
   // ── SETUP ──────────────────────────────────────────────────────────────────
@@ -343,8 +587,11 @@ export default function LocalGame() {
       if (next >= gameData.players.length) {
         // All cards read — start playing directly
         const durationSecs = gameDuration * 60;
+        timeLeftRef.current = durationSecs;
         setTimeLeft(durationSecs);
         setTimeExpired(false);
+        setIsPaused(false);
+        setShowForgotCard(false);
         setWinner(null);
         setSpyGuess(null);
         // For associations mode — shuffle order and show roulette for first
@@ -357,24 +604,7 @@ export default function LocalGame() {
         }
         setPhase("playing");
         sounds.roundStart();
-        // Start timer
-        let remaining = durationSecs;
-        const ref = setInterval(() => {
-          remaining -= 1;
-          setTimeLeft(remaining);
-          if (remaining <= 0) {
-            clearInterval(ref);
-            setTimerRef(null);
-            const outcome = localGameTimeoutOutcome();
-            setTimeLeft(outcome.timeLeft);
-            setTimeExpired(outcome.timeExpired);
-            setShowSpyGuess(outcome.showSpyGuess);
-            setWinner(outcome.winner);
-            setPhase(outcome.phase);
-            sounds.win();
-          }
-        }, 1000);
-        setTimerRef(ref);
+        startLocalTimer(durationSecs);
       } else {
         setCardPhaseIdx(next);
         setCardsReadCount((c) => c + 1);
@@ -385,22 +615,28 @@ export default function LocalGame() {
   // ── SPY GUESS ──────────────────────────────────────────────────────────────
   const handleSpyGuess = (guessedWord) => {
     if (phase !== "playing" || winner) return;
-    if (timerRef) clearInterval(timerRef);
+    clearLocalTimer();
     const correct = guessedWord === gameData.word;
     const w = correct ? "spy" : "detectives";
     setSpyGuess(guessedWord);
     setWinner(w);
     sounds[correct ? "win" : "lose"]();
     setShowSpyGuess(false);
+    setIsPaused(false);
+    setShowForgotCard(false);
     setPhase("finished");
   };
 
   // ── PLAY AGAIN ─────────────────────────────────────────────────────────────
   const playAgain = () => {
-    if (timerRef) clearInterval(timerRef);
+    clearLocalTimer();
     setPhase("setup");
+    timeLeftRef.current = null;
     setTimeLeft(null);
     setTimeExpired(false);
+    setIsPaused(false);
+    setShowForgotCard(false);
+    resumeAfterCardReviewRef.current = false;
     setWinner(null);
   };
 
@@ -1155,6 +1391,18 @@ export default function LocalGame() {
   // ════════════════════════════════════════════════════════════════════════════
   // RENDER: PLAYING
   // ════════════════════════════════════════════════════════════════════════════
+  if (showForgotCard) {
+    return (
+      <ForgotCardRecovery
+        gameData={gameData}
+        lang={lang}
+        onClose={closeForgotCard}
+        showSpyCategory={!customTheme.trim()}
+        sounds={sounds}
+        t={t} />
+    );
+  }
+
   if (showSpyGuess) {
     return (
       <AnimatePresence>
@@ -1175,7 +1423,7 @@ export default function LocalGame() {
         <div style={{ fontSize: 10, letterSpacing: 3, color: "#555", fontFamily: "monospace" }}>
           // {lang === "ru" ? "ИГРА" : "PLAYING"}
         </div>
-        <button className="btn-ghost" onClick={() => {if (timerRef) clearInterval(timerRef);setPhase("setup");}}
+        <button className="btn-ghost" onClick={playAgain}
         style={{ fontSize: 10, padding: "6px 12px" }}>
           ✕ {lang === "ru" ? "СТОП" : "STOP"}
         </button>
@@ -1184,14 +1432,44 @@ export default function LocalGame() {
       {/* Timer */}
       {timeLeft !== null && !timeExpired &&
       <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }}
-      style={{ padding: "8px 12px", background: "#080808", border: "1px solid #1e1e1e", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: 12, flexShrink: 0 }}>
-          <div style={{ fontSize: 10, letterSpacing: 2, color: "#555" }}>{t('game_time_left')}</div>
-          <div style={{ fontSize: 22, fontWeight: 700, color: timeLeft <= 60 ? "#e53535" : "#4ade80", fontFamily: "monospace", letterSpacing: 2 }}>
-            {formatTime(timeLeft)}
+        style={{ display: "grid", gridTemplateColumns: "minmax(0, 1fr) 58px 58px", gap: 8, flexShrink: 0 }}>
+          <div style={{ minWidth: 0, padding: "8px 10px", background: "#080808", border: "1px solid #1e1e1e", textAlign: "center", display: "flex", alignItems: "center", justifyContent: "center", gap: 10 }}>
+            <div style={{ fontSize: 9, letterSpacing: 1.5, color: isPaused ? "#e53535" : "#555", fontFamily: "monospace" }}>
+              {isPaused ? localControlText(lang, "paused") : t('game_time_left')}
+            </div>
+            <div style={{ fontSize: 21, fontWeight: 700, color: timeLeft <= 60 ? "#e53535" : "#4ade80", fontFamily: "monospace", letterSpacing: 1.5 }}>
+              {formatTime(timeLeft)}
+            </div>
           </div>
+
+          <LocalUtilityButton
+            icon={isPaused ? "▶" : "Ⅱ"}
+            label={localControlText(lang, isPaused ? "resume" : "pause")}
+            onClick={toggleLocalGamePause}
+            testId="localGame.pause" />
+
+          <LocalUtilityButton
+            icon="🂠"
+            label={localControlText(lang, "card")}
+            onClick={openForgotCard}
+            testId="localGame.forgotCard" />
         </motion.div>
       }
 
+      {isPaused ?
+      <div data-testid="localGame.paused" style={{ flex: 1, minHeight: 0, display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", textAlign: "center", gap: 14, background: "#0a0a0a", border: "1px solid #2a2a2a", padding: 20 }}>
+          <div style={{ fontSize: 36, color: "#e53535" }}>Ⅱ</div>
+          <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 22, letterSpacing: 3, color: "#fff" }}>
+            {localControlText(lang, "gamePaused")}
+          </div>
+          <div style={{ maxWidth: 300, fontSize: 11, lineHeight: 1.6, letterSpacing: 0.8, color: "#666", fontFamily: "monospace" }}>
+            {localControlText(lang, "pausedHint")}
+          </div>
+          <button className="btn-red" onClick={resumeLocalGame} style={{ width: "100%", maxWidth: 280, minHeight: 46 }}>
+            ▶ {localControlText(lang, "resumeGame")}
+          </button>
+        </div> :
+      <>
       {/* Players */}
       <div style={{ position: "relative", background: "#0a0a0a", border: "1px solid #1e1e1e", padding: "10px 12px", flexShrink: 0 }}>
         <div style={{ position: "absolute", top: 0, left: 0, width: 10, height: 10, borderTop: "1px solid #2a2a2a", borderLeft: "1px solid #2a2a2a" }} />
@@ -1322,6 +1600,9 @@ export default function LocalGame() {
             </>
         }
         </motion.div>
+      }
+
+      </>
       }
 
     </div>);

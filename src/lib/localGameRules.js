@@ -36,3 +36,11 @@ export function localGameTimeoutOutcome() {
     showSpyGuess: false,
   };
 }
+
+export function shouldResumeLocalTimerAfterCardReview({
+  wasRunning = false,
+  phase = "",
+  timeLeft = 0,
+} = {}) {
+  return wasRunning === true && phase === "playing" && Number(timeLeft) > 0;
+}
