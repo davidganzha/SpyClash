@@ -220,6 +220,13 @@ final class OnlineRoundStateTests: XCTestCase {
         }
     }
 
+    func testSpyCountChooserAppearsOnlyWhenRosterSupportsMultipleSpies() {
+        XCTAssertFalse(GameRoom.canChooseSpyCount(forPlayerCount: 3))
+        XCTAssertFalse(GameRoom.canChooseSpyCount(forPlayerCount: 5))
+        XCTAssertTrue(GameRoom.canChooseSpyCount(forPlayerCount: 6))
+        XCTAssertTrue(GameRoom.canChooseSpyCount(forPlayerCount: 9))
+    }
+
     func testSpyMembershipUsesProjectedArrayWithLegacyScalarFallback() throws {
         let players = #"[{"email":"one@example.com","name":"One","avatar":"1"},{"email":"two@example.com","name":"Two","avatar":"2"},{"email":"three@example.com","name":"Three","avatar":"3"}]"#
         let multi = try JSONDecoder().decode(

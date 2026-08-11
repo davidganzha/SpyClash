@@ -324,8 +324,10 @@ struct LocalGameView: View {
                 localSetupSlot(.mode) {
                     localModePanel
                 }
-                localSetupSlot(.roles) {
-                    localSpySettingsPanel
+                if GameRoom.canChooseSpyCount(forPlayerCount: players.count) {
+                    localSetupSlot(.roles) {
+                        localSpySettingsPanel
+                    }
                 }
                 localSetupSlot(.timing) {
                     localTimingPanel

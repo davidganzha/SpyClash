@@ -2925,8 +2925,16 @@ struct GameRoom: Codable, Identifiable, Hashable {
         return min(3, max(1, playerCount / 3))
     }
 
+    static func canChooseSpyCount(forPlayerCount playerCount: Int) -> Bool {
+        maximumSpyCount(forPlayerCount: playerCount) > 1
+    }
+
     var maximumLobbySpyCount: Int {
         Self.maximumSpyCount(forPlayerCount: playersList.count)
+    }
+
+    var canChooseLobbySpyCount: Bool {
+        Self.canChooseSpyCount(forPlayerCount: playersList.count)
     }
 
     var lobbySpyCountValue: Int {

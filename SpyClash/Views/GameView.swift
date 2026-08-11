@@ -1262,13 +1262,15 @@ struct GameView: View {
                             .spyWebEntrance(delay: 0.04, duration: 0.42, y: 14)
                     )
                 )
-                onlineSetupSlot(
-                    .roles,
-                    content: AnyView(
-                        onlineSpySettingsPanel(room)
-                            .spyWebEntrance(delay: 0.06, duration: 0.42, y: 14)
+                if room.canChooseLobbySpyCount {
+                    onlineSetupSlot(
+                        .roles,
+                        content: AnyView(
+                            onlineSpySettingsPanel(room)
+                                .spyWebEntrance(delay: 0.06, duration: 0.42, y: 14)
+                        )
                     )
-                )
+                }
                 onlineSetupSlot(
                     .timing,
                     content: AnyView(

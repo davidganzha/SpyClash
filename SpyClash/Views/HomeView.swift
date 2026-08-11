@@ -167,36 +167,47 @@ struct HomeView: View {
         )
         let showsActiveRoomPanel = roomActive && !showsLandingActions
         let compact = height < 760 || (showsLandingActions && stage != .main)
+        let isActionStage = showsLandingActions && stage != .main
+        let usesShortActionLayout = isActionStage && height < 620
+        let sceneSpacing: CGFloat = isActionStage ? 6 : (compact ? 12 : 18)
 
-        return VStack(spacing: compact ? 12 : 18) {
-            Color.clear
-                .frame(height: compact ? 8 : 18)
+        return ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: sceneSpacing) {
+                Color.clear
+                    .frame(height: isActionStage ? 4 : (compact ? 8 : 18))
 
-            hero(compact: compact || showsActiveRoomPanel)
-                .layoutPriority(1)
+                hero(
+                    compact: compact || showsActiveRoomPanel,
+                    usesShortActionLayout: usesShortActionLayout
+                )
+                    .layoutPriority(1)
 
-            if showsActiveRoomPanel {
-                activeRoomPanel
-                    .transition(.scale(scale: 0.94).combined(with: .opacity))
-            }
-
-            Color.clear
-                .frame(height: compact ? 6 : 12)
-
-            if showsLandingActions {
-                VStack(spacing: compact ? 10 : 12) {
-                    mainActions
-                        .frame(maxWidth: stage == .main ? 350 : 382)
-                        .id(stage)
-                        .animation(SpyMotion.page, value: stage)
+                if showsActiveRoomPanel {
+                    activeRoomPanel
+                        .transition(.scale(scale: 0.94).combined(with: .opacity))
                 }
-            }
 
-            Spacer(minLength: 76)
+                Color.clear
+                    .frame(height: isActionStage ? 0 : (compact ? 6 : 12))
+
+                if showsLandingActions {
+                    VStack(spacing: compact ? 10 : 12) {
+                        mainActions
+                            .frame(maxWidth: stage == .main ? 350 : 382)
+                            .id(stage)
+                            .animation(SpyMotion.page, value: stage)
+                    }
+                }
+
+                Spacer(minLength: 20)
+            }
+            .frame(maxWidth: 414)
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: height, alignment: .top)
+            .padding(.horizontal, 16)
         }
-        .frame(maxWidth: 414)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-        .padding(.horizontal, 16)
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+        .scrollDismissesKeyboard(.interactively)
     }
 
     private var homeTopBarReserve: some View {
@@ -210,9 +221,12 @@ struct HomeView: View {
         return copy.statusLabel(room.status).uppercased()
     }
 
-    private func hero(compact: Bool) -> some View {
+    private func hero(compact: Bool, usesShortActionLayout: Bool) -> some View {
         let isModeHero = appState.activeRoom == nil && (stage == .playMode || stage == .onlineMode)
         let showMainCopy = stage == .main || appState.activeRoom != nil
+        let usesCondensedActionLayout = compact && appState.activeRoom == nil && stage != .main
+        let heroFontSize: CGFloat = usesShortActionLayout ? 36 : (usesCondensedActionLayout ? 42 : (compact ? 48 : 58))
+        let heroHeight: CGFloat = usesShortActionLayout ? 96 : (usesCondensedActionLayout ? 168 : (compact ? 200 : 252))
 
         return VStack(spacing: compact ? 14 : 22) {
             if showMainCopy {
@@ -227,13 +241,14 @@ struct HomeView: View {
             ZStack {
                 HomeHeroTitle(
                     isModeHero: isModeHero,
-                    fontSize: compact ? 48 : 58
+                    fontSize: heroFontSize,
+                    usesCondensedLines: usesShortActionLayout
                 )
                 .shadow(color: .black.opacity(0.62), radius: 18, y: 8)
                 .shadow(color: SpyTheme.red.opacity(idlePulse ? 0.16 : 0.06), radius: idlePulse ? 28 : 14)
                 .scaleEffect(visualDrift ? 1.006 : 0.997)
             }
-            .frame(height: compact ? 200 : 252)
+            .frame(height: heroHeight)
 
             if showMainCopy && !compact {
                 Text(localized(
@@ -304,11 +319,11 @@ struct HomeView: View {
     }
 
     private var playModeActions: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
             webChoiceCard(
                 title: localized(en: "ONLINE", ru: "ОНЛАЙН", es: "ONLINE"),
                 subtitle: localized(en: "Each player on their own device", ru: "Каждый на своём телефоне", es: "Cada jugador en su telefono"),
-                icon: "📡",
+                icon: .emoji("📡"),
                 badge: localized(en: "RECOMMENDED", ru: "РЕКОМЕНДОВАНО", es: "RECOMENDADO"),
                 highlighted: true,
                 compact: true
@@ -322,7 +337,8 @@ struct HomeView: View {
             webChoiceCard(
                 title: localized(en: "LOCAL", ru: "ЛОКАЛЬНО", es: "LOCAL"),
                 subtitle: localized(en: "One device · pass & play", ru: "Один телефон, передаёте по кругу", es: "Un telefono · pasar y jugar"),
-                icon: "📱",
+                icon: .systemImage("iphone"),
+                prominence: .secondary,
                 compact: true
             ) {
                 HapticManager.shared.fire(.tabSelection)
@@ -340,7 +356,7 @@ struct HomeView: View {
     }
 
     private var onlineModeActions: some View {
-        VStack(spacing: 14) {
+        VStack(spacing: 10) {
                 Text(localized(en: "ONLINE MODE", ru: "РАЗНЫЕ УСТРОЙСТВА", es: "MODO ONLINE"))
                 .font(SpyTheme.micro)
                 .tracking(0.12)
@@ -351,7 +367,7 @@ struct HomeView: View {
             webChoiceCard(
                 title: localized(en: isLoading ? "CREATING ROOM" : "CREATE ROOM", ru: isLoading ? "СОЗДАЕМ КОМНАТУ" : "СОЗДАТЬ КОМНАТУ", es: isLoading ? "CREANDO SALA" : "CREAR SALA"),
                 subtitle: localized(en: "Start a new game session", ru: "Новая игровая сессия", es: "Iniciar una nueva sesion"),
-                icon: isLoading ? "⏳" : "➕",
+                icon: .emoji(isLoading ? "⏳" : "➕"),
                 highlighted: true,
                 compact: true
             ) {
@@ -362,7 +378,7 @@ struct HomeView: View {
             webChoiceCard(
                 title: localized(en: "ENTER ROOM", ru: "ВОЙТИ В КОМНАТУ", es: "ENTRAR A SALA"),
                 subtitle: localized(en: "Enter code or scan QR", ru: "Ввести код или сканировать QR", es: "Codigo o escanear QR"),
-                icon: "🚪",
+                icon: .emoji("🚪"),
                 compact: true
             ) {
                 HapticManager.shared.fire(.buttonPress)
@@ -473,20 +489,49 @@ struct HomeView: View {
     private func webChoiceCard(
         title: String,
         subtitle: String,
-        icon: String,
+        icon: HomeChoiceIcon,
         badge: String? = nil,
+        prominence: HomeChoiceProminence = .standard,
         highlighted: Bool = false,
         compact: Bool = false,
         action: @escaping () -> Void
     ) -> some View {
-        Button(action: action) {
-            HStack(spacing: 18) {
-                Text(icon)
-                    .font(.system(size: compact ? 40 : 44))
-                    .frame(width: compact ? 46 : 48)
-                    .accessibilityHidden(true)
+        let isSecondary = prominence == .secondary
+        let iconSize: CGFloat = compact ? (isSecondary ? 27 : 40) : 44
+        let iconWidth: CGFloat = compact ? (isSecondary ? 34 : 46) : 48
+        let titleSize: CGFloat = compact ? (isSecondary ? 17 : 21) : 22
+        let subtitleSize: CGFloat = isSecondary ? 11 : 13
+        let verticalPadding: CGFloat = compact ? (isSecondary ? 13 : 14) : 24
+        let minimumHeight: CGFloat = compact ? (isSecondary ? 72 : 88) : 102
+        let cardBackground = highlighted
+            ? SpyTheme.red.opacity(0.07)
+            : (isSecondary ? Color.white.opacity(0.015) : SpyTheme.control)
+        let cardStroke = highlighted
+            ? SpyTheme.red.opacity(0.56)
+            : (isSecondary ? SpyTheme.strokeDim.opacity(0.72) : SpyTheme.strokeStrong)
+        let cornerColor = highlighted
+            ? SpyTheme.red
+            : (isSecondary ? SpyTheme.strokeDim : Color(red: 136 / 255, green: 136 / 255, blue: 136 / 255))
 
-                VStack(alignment: .leading, spacing: compact ? 5 : 6) {
+        return Button(action: action) {
+            HStack(spacing: isSecondary ? 14 : 18) {
+                Group {
+                    switch icon {
+                    case let .emoji(value):
+                        Text(value)
+                            .font(.system(size: iconSize))
+                            .saturation(isSecondary ? 0 : 1)
+                            .opacity(isSecondary ? 0.48 : 1)
+                    case let .systemImage(name):
+                        Image(systemName: name)
+                            .font(.system(size: iconSize, weight: .medium))
+                            .foregroundStyle(isSecondary ? SpyTheme.dim : Color.white)
+                    }
+                }
+                .frame(width: iconWidth)
+                .accessibilityHidden(true)
+
+                VStack(alignment: .leading, spacing: isSecondary ? 3 : (compact ? 5 : 6)) {
                     if let badge {
                         Text(badge)
                             .font(.system(size: 10, weight: .black, design: .monospaced))
@@ -499,37 +544,38 @@ struct HomeView: View {
                     }
 
                     Text(title)
-                        .font(.system(size: compact ? 21 : 22, weight: .black, design: .default))
+                        .font(.system(size: titleSize, weight: isSecondary ? .bold : .black, design: .default))
                         .tracking(title.count > 10 ? 0.04 : 0.16)
-                        .foregroundStyle(.white)
+                        .foregroundStyle(isSecondary ? Color.white.opacity(0.70) : Color.white)
                         .spyFitted(lines: 2, scale: 0.66)
                         .allowsTightening(true)
                         .layoutPriority(2)
 
                     Text(subtitle)
-                        .font(.system(size: 13, weight: .semibold, design: .default))
+                        .font(.system(size: subtitleSize, weight: .semibold, design: .default))
                         .tracking(0.02)
-                        .foregroundStyle(SpyTheme.dim)
+                        .foregroundStyle(isSecondary ? Color.white.opacity(0.52) : SpyTheme.dim)
                         .spyFitted(lines: 2, scale: 0.72)
                 }
 
                 Spacer(minLength: 8)
 
                 Text("›")
-                    .font(.system(size: 24, weight: .bold, design: .default))
+                    .font(.system(size: isSecondary ? 20 : 24, weight: .bold, design: .default))
                     .foregroundStyle(highlighted ? SpyTheme.red : SpyTheme.dim)
+                    .opacity(isSecondary ? 0.60 : 1)
                     .accessibilityHidden(true)
             }
             .padding(.horizontal, compact ? 20 : 24)
-            .padding(.vertical, compact ? 19 : 24)
-            .frame(maxWidth: .infinity, minHeight: compact ? 94 : 102)
-            .background((highlighted ? SpyTheme.red.opacity(0.06) : SpyTheme.control), in: CutCornerShape(cut: 14))
-            .overlay(CutCornerShape(cut: 14).stroke(highlighted ? SpyTheme.red.opacity(0.50) : SpyTheme.strokeStrong, lineWidth: 1))
+            .padding(.vertical, verticalPadding)
+            .frame(maxWidth: .infinity, minHeight: minimumHeight)
+            .background(cardBackground, in: CutCornerShape(cut: 14))
+            .overlay(CutCornerShape(cut: 14).stroke(cardStroke, lineWidth: 1))
             .overlay(alignment: .topLeading) {
-                cornerMark(color: highlighted ? SpyTheme.red : Color(red: 136 / 255, green: 136 / 255, blue: 136 / 255))
+                cornerMark(color: cornerColor)
             }
             .overlay(alignment: .bottomTrailing) {
-                cornerMark(color: highlighted ? SpyTheme.red : Color(red: 136 / 255, green: 136 / 255, blue: 136 / 255))
+                cornerMark(color: cornerColor)
                     .rotationEffect(.degrees(180))
             }
             .contentShape(CutCornerShape(cut: 14))
@@ -962,11 +1008,18 @@ private struct HomeHeroTitle: View {
 
     let isModeHero: Bool
     let fontSize: CGFloat
+    let usesCondensedLines: Bool
 
     private var lineWords: [[String]] {
-        isModeHero
-            ? [["SELECT"], ["YOUR"], ["MODE"]]
-            : [["CAN", "YOU"], ["FIND", "THE"], ["SPY?"]]
+        if isModeHero {
+            return usesCondensedLines
+                ? [["SELECT", "YOUR"], ["MODE"]]
+                : [["SELECT"], ["YOUR"], ["MODE"]]
+        }
+        if usesCondensedLines {
+            return [["CAN", "YOU"], ["FIND", "THE", "SPY?"]]
+        }
+        return [["CAN", "YOU"], ["FIND", "THE"], ["SPY?"]]
     }
 
     var body: some View {
@@ -1045,6 +1098,16 @@ private enum HomeStage {
     case playMode
     case onlineMode
     case join
+}
+
+private enum HomeChoiceIcon {
+    case emoji(String)
+    case systemImage(String)
+}
+
+private enum HomeChoiceProminence: Equatable {
+    case standard
+    case secondary
 }
 
 private enum HomeSmallActionVariant {
