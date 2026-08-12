@@ -9,6 +9,7 @@ import {
   OnlineActiveGameScene,
   OnlineRoleRevealScene,
 } from "../components/online/OnlineGameExperience";
+import DetectiveVoteCancellationScene from "../components/online/DetectiveVoteCancellationScene";
 import SpyGuessModal from "../components/SpyGuessModal";
 import GlitchText from "../components/ui/GlitchText";
 import { useGameSounds } from "../components/useGameSounds";
@@ -33,6 +34,10 @@ import {
   shouldAcceptOnlineRoomSnapshot,
 } from "@/lib/onlineGamePresentation";
 import {
+  detectiveVoteCancellationWindow,
+  hasDetectiveVoteCancellationEvent,
+} from "@/lib/detectiveVoteCancellation";
+import {
   isRankedSpyRoom,
   isSpyEmailForRoom,
   publicSpyCount,
@@ -49,6 +54,9 @@ const ROUND_ACTIONS = new Set([
 ]);
 
 const normalizedEmail = (value) => String(value ?? "").trim().toLocaleLowerCase();
+
+const shouldShowLegacyVotingCancellationToast = (room) =>
+  !hasDetectiveVoteCancellationEvent(room);
 
 function SyncStatusBanner({ state, t }) {
   if (state === "connected") return null;
@@ -238,6 +246,7 @@ export default function Game() {
   const [busyAction, setBusyAction] = useState(null);
   const [timeLeft, setTimeLeft] = useState(null);
   const [timeExpired, setTimeExpired] = useState(false);
+  const [voteCancellationScene, setVoteCancellationScene] = useState(null);
 
   const roomRef = useRef(null);
   const prevRoomRef = useRef(null);
@@ -247,6 +256,9 @@ export default function Game() {
   const actionInFlightRef = useRef(null);
   const leavingRef = useRef(false);
   const finalizingExpiredRef = useRef(false);
+  const voteCancellationSeenRef = useRef(new Set());
+  const voteCancellationStartTimerRef = useRef(null);
+  const voteCancellationEndTimerRef = useRef(null);
 
   const getRoomId = () => new URLSearchParams(window.location.search).get("id");
 
@@ -287,7 +299,10 @@ export default function Game() {
             user?.email,
           );
           if (applyRoom(refreshed)) {
-            if (votingTransition === "cancelled") {
+            if (
+              votingTransition === "cancelled"
+              && shouldShowLegacyVotingCancellationToast(refreshed)
+            ) {
               gameToast(t("toast_voting_cancelled"), "warning", "✕");
             }
             return refreshed;
@@ -311,7 +326,10 @@ export default function Game() {
           user?.email,
         );
         if (!applyRoom(updated)) return null;
-        if (votingTransition === "cancelled") {
+        if (
+          votingTransition === "cancelled"
+          && shouldShowLegacyVotingCancellationToast(updated)
+        ) {
           gameToast(t("toast_voting_cancelled"), "warning", "✕");
         }
       }
@@ -349,7 +367,10 @@ export default function Game() {
             user?.email,
           );
           if (applyRoom(recovered)) {
-            if (votingTransition === "cancelled") {
+            if (
+              votingTransition === "cancelled"
+              && shouldShowLegacyVotingCancellationToast(recovered)
+            ) {
               gameToast(t("toast_voting_cancelled"), "warning", "✕");
             }
             return recovered;
@@ -423,7 +444,10 @@ export default function Game() {
         if (votingTransition === "started") {
           gameToast(t("toast_voting_started"), "warning", "🗳️");
           soundsRef.current.alert();
-        } else if (votingTransition === "cancelled") {
+        } else if (
+          votingTransition === "cancelled"
+          && shouldShowLegacyVotingCancellationToast(fresh)
+        ) {
           gameToast(t("toast_voting_cancelled"), "warning", "✕");
         }
       }
@@ -463,8 +487,55 @@ export default function Game() {
       unsubRef.current?.();
       if (timerRef.current) clearInterval(timerRef.current);
       if (expirationRetryTimerRef.current) clearInterval(expirationRetryTimerRef.current);
+      if (voteCancellationStartTimerRef.current) {
+        clearTimeout(voteCancellationStartTimerRef.current);
+      }
+      if (voteCancellationEndTimerRef.current) {
+        clearTimeout(voteCancellationEndTimerRef.current);
+      }
     };
   }, []);
+
+  useEffect(() => {
+    if (room?.status !== "playing") return;
+    const sceneWindow = detectiveVoteCancellationWindow(room);
+    if (!sceneWindow || voteCancellationSeenRef.current.has(sceneWindow.id)) return;
+
+    voteCancellationSeenRef.current.add(sceneWindow.id);
+    if (voteCancellationStartTimerRef.current) {
+      clearTimeout(voteCancellationStartTimerRef.current);
+      voteCancellationStartTimerRef.current = null;
+    }
+    if (voteCancellationEndTimerRef.current) {
+      clearTimeout(voteCancellationEndTimerRef.current);
+      voteCancellationEndTimerRef.current = null;
+    }
+
+    const present = () => {
+      voteCancellationStartTimerRef.current = null;
+      const nowMs = Date.now();
+      const remainingMs = sceneWindow.endsAtMs - nowMs;
+      if (remainingMs <= 0) return;
+
+      setVoteCancellationScene({
+        ...sceneWindow,
+        elapsedMs: Math.max(nowMs - sceneWindow.presentAtMs, 0),
+        remainingMs,
+      });
+      voteCancellationEndTimerRef.current = setTimeout(() => {
+        voteCancellationEndTimerRef.current = null;
+        setVoteCancellationScene((current) =>
+          current?.id === sceneWindow.id ? null : current
+        );
+      }, remainingMs);
+    };
+
+    if (sceneWindow.delayMs > 0) {
+      voteCancellationStartTimerRef.current = setTimeout(present, sceneWindow.delayMs);
+    } else {
+      present();
+    }
+  }, [room]);
 
   const presentation = useMemo(() => {
     if (!room || !user) return {};
@@ -570,6 +641,10 @@ export default function Game() {
   }, [isGamePaused, timeExpired]);
 
   useEffect(() => {
+    if (voteCancellationScene) setShowSpyGuess(false);
+  }, [voteCancellationScene]);
+
+  useEffect(() => {
     if (!room) return;
     const isCompleteResult = room.status === "finished" && Boolean(room.winner);
     if (room.status === "playing" || isCompleteResult) return;
@@ -607,35 +682,35 @@ export default function Game() {
   const handleRoundAction = useCallback(async (action) => {
     if (!ROUND_ACTIONS.has(action)) return;
     const currentRoom = roomRef.current;
-    if (!currentRoom || currentRoom.status !== "playing" || currentRoom.game_paused_at || timeExpired) return;
+    if (!currentRoom || voteCancellationScene || currentRoom.status !== "playing" || currentRoom.game_paused_at || timeExpired) return;
     return await runSynchronizedAction(action);
-  }, [runSynchronizedAction, timeExpired]);
+  }, [runSynchronizedAction, timeExpired, voteCancellationScene]);
 
   const handleAdvanceQuestion = useCallback(async () => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || currentRoom.status !== "playing" || currentRoom.game_paused_at || timeExpired) return null;
+    if (!currentRoom || voteCancellationScene || currentRoom.status !== "playing" || currentRoom.game_paused_at || timeExpired) return null;
     return await runSynchronizedAction("advance_question");
-  }, [runSynchronizedAction, timeExpired]);
+  }, [runSynchronizedAction, timeExpired, voteCancellationScene]);
 
   const handleStopAssociationSpin = useCallback(async () => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || currentRoom.status !== "playing" || currentRoom.game_paused_at || timeExpired) return null;
+    if (!currentRoom || voteCancellationScene || currentRoom.status !== "playing" || currentRoom.game_paused_at || timeExpired) return null;
     return await runSynchronizedAction("stop_association_spin");
-  }, [runSynchronizedAction, timeExpired]);
+  }, [runSynchronizedAction, timeExpired, voteCancellationScene]);
 
   const handleRequestVote = useCallback(async () => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || currentRoom.status !== "playing" || currentRoom.game_paused_at || timeExpired) return;
+    if (!currentRoom || voteCancellationScene || currentRoom.status !== "playing" || currentRoom.game_paused_at || timeExpired) return;
     const viewerEmail = normalizedEmail(user?.email);
     if ((currentRoom.spectators || []).map(normalizedEmail).includes(viewerEmail)) return;
     if ((currentRoom.vote_requests || []).map(normalizedEmail).includes(viewerEmail)) return;
     soundsRef.current.alert();
     await runSynchronizedAction("request_vote");
-  }, [runSynchronizedAction, timeExpired, user?.email]);
+  }, [runSynchronizedAction, timeExpired, user?.email, voteCancellationScene]);
 
   const handleCastVote = useCallback(async (targetEmail) => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || currentRoom.status !== "playing" || currentRoom.game_paused_at || timeExpired) return;
+    if (!currentRoom || voteCancellationScene || currentRoom.status !== "playing" || currentRoom.game_paused_at || timeExpired) return;
 
     const viewerEmail = normalizedEmail(user?.email);
     const target = normalizedEmail(targetEmail);
@@ -668,20 +743,21 @@ export default function Game() {
       target_email: targetEmail,
       expected_vote_round_id: voteRoundID,
     });
-  }, [runSynchronizedAction, timeExpired, user?.email]);
+  }, [runSynchronizedAction, timeExpired, user?.email, voteCancellationScene]);
 
   const handleTogglePause = useCallback(async () => {
     const currentRoom = roomRef.current;
-    if (!currentRoom || currentRoom.host_email !== user?.email || !currentRoom.game_started_at) return;
+    if (!currentRoom || voteCancellationScene || currentRoom.host_email !== user?.email || !currentRoom.game_started_at) return;
     const action = currentRoom.game_paused_at ? "resume_game" : "pause_game";
     await runSynchronizedAction(action);
-  }, [runSynchronizedAction, user?.email]);
+  }, [runSynchronizedAction, user?.email, voteCancellationScene]);
 
   const handleSpyGuess = useCallback(async (guessedWord) => {
     const currentRoom = roomRef.current;
     const viewerEmail = normalizedEmail(user?.email);
     if (
       !currentRoom
+      || voteCancellationScene
       || currentRoom.status !== "playing"
       || currentRoom.game_paused_at
       || timeExpired
@@ -693,7 +769,7 @@ export default function Game() {
     if (!updated) return;
     soundsRef.current[updated.winner === "spy" ? "win" : "lose"]();
     setShowSpyGuess(false);
-  }, [runSynchronizedAction, timeExpired, user?.email]);
+  }, [runSynchronizedAction, timeExpired, user?.email, voteCancellationScene]);
 
   const handleVoteReplay = useCallback(async () => {
     await runSynchronizedAction("vote_play_again");
@@ -745,6 +821,13 @@ export default function Game() {
           t={t}
           lang={lang}
         />
+        {voteCancellationScene && (
+          <DetectiveVoteCancellationScene
+            key={voteCancellationScene.id}
+            event={voteCancellationScene}
+            t={t}
+          />
+        )}
       </>
     );
   }
@@ -757,6 +840,13 @@ export default function Game() {
           onGuess={handleSpyGuess}
           onClose={() => setShowSpyGuess(false)}
         />
+        {voteCancellationScene && (
+          <DetectiveVoteCancellationScene
+            key={voteCancellationScene.id}
+            event={voteCancellationScene}
+            t={t}
+          />
+        )}
       </AnimatePresence>
     );
   }
@@ -787,6 +877,13 @@ export default function Game() {
         t={t}
         lang={lang}
       />
+      {voteCancellationScene && (
+        <DetectiveVoteCancellationScene
+          key={voteCancellationScene.id}
+          event={voteCancellationScene}
+          t={t}
+        />
+      )}
     </>
   );
 }

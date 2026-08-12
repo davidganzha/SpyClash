@@ -151,6 +151,9 @@ export const translations = {
     toast_wants_vote: "wants to start a vote",
     toast_voting_started: "Voting started!",
     toast_voting_cancelled: "Voting cancelled: the required votes are no longer possible.",
+    game_vote_cancel_scene_title: "OPINIONS ARE DIVIDED",
+    game_vote_cancel_scene_body: "No suspect can still receive enough votes.",
+    game_vote_cancel_scene_footer: "VOTING CANCELLED · GAME CONTINUES",
     toast_time_up: "Time's up! The spy wins.",
     profile_title: "AGENT PROFILE",
     profile_id: "// AGENT IDENTIFICATION",
@@ -464,6 +467,9 @@ export const translations = {
     toast_wants_vote: "хочет начать голосование",
     toast_voting_started: "Голосование началось!",
     toast_voting_cancelled: "Голосование отменено: набрать нужное число голосов уже невозможно.",
+    game_vote_cancel_scene_title: "МНЕНИЯ РАЗДЕЛИЛИСЬ",
+    game_vote_cancel_scene_body: "Ни один подозреваемый уже не сможет набрать достаточно голосов.",
+    game_vote_cancel_scene_footer: "ГОЛОСОВАНИЕ ОТМЕНЕНО · ИГРА ПРОДОЛЖАЕТСЯ",
     toast_time_up: "Время вышло! Победил шпион.",
     profile_title: "ДОСЬЕ АГЕНТА",
     profile_id: "// ИДЕНТИФИКАЦИЯ АГЕНТА",
@@ -658,6 +664,9 @@ translations.es = {
   history_unranked: "SIN CLASIFICACIÓN",
   history_spies: "espías",
   toast_voting_cancelled: "Votación cancelada: ya no se pueden reunir los votos necesarios.",
+  game_vote_cancel_scene_title: "OPINIONES DIVIDIDAS",
+  game_vote_cancel_scene_body: "Ningún sospechoso podrá reunir ya los votos suficientes.",
+  game_vote_cancel_scene_footer: "VOTACIÓN CANCELADA · LA PARTIDA CONTINÚA",
 };
 
 export const supportedLanguages = Object.freeze(["en", "ru", "uk", "es"]);
