@@ -70,8 +70,14 @@ enum MissionRoleCardSize: Equatable {
     }
 }
 
-private struct SpyTeammateDisclosure: View {
-    let teammates: [Player]
+struct SpyRoleCardIdentity: Identifiable, Equatable {
+    let id: String
+    let name: String
+    let avatar: String
+}
+
+struct SpyRoleCardTeammateStrip: View {
+    let teammates: [SpyRoleCardIdentity]
     let language: AppLanguage
     var compact = false
 
@@ -380,7 +386,7 @@ struct MissionRoleCard: View {
         role == .spy && isRevealed ? SpyTheme.red : accent
     }
 
-    private var copy: OnlineExperienceCopy { OnlineExperienceCopy(language: language) }
+    private var copy: SpyGameExperienceCopy { SpyGameExperienceCopy(language: language) }
 }
 
 private struct MissionCardFlipSide: @MainActor AnimatableModifier {
@@ -458,7 +464,7 @@ private struct MissionCardEdgeRails: View {
     }
 }
 
-private struct OnlineCinematicBackdrop: View {
+struct SpyCinematicBackdrop: View {
     var intensity: CGFloat = 1
 
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -555,7 +561,7 @@ private struct CinematicParticleField: View {
     }
 }
 
-private struct OnlineCinematicButtonStyle: ButtonStyle {
+struct SpyCinematicButtonStyle: ButtonStyle {
     enum Variant {
         case primary
         case secondary
@@ -563,6 +569,8 @@ private struct OnlineCinematicButtonStyle: ButtonStyle {
     }
 
     let variant: Variant
+
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -581,9 +589,12 @@ private struct OnlineCinematicButtonStyle: ButtonStyle {
                 radius: configuration.isPressed ? 4 : 10,
                 y: configuration.isPressed ? 2 : 5
             )
-            .scaleEffect(configuration.isPressed ? 0.975 : 1)
-            .offset(y: configuration.isPressed ? 1.5 : 0)
-            .animation(.spring(response: 0.28, dampingFraction: 0.72), value: configuration.isPressed)
+            .scaleEffect(reduceMotion ? 1 : (configuration.isPressed ? 0.975 : 1))
+            .offset(y: reduceMotion ? 0 : (configuration.isPressed ? 1.5 : 0))
+            .animation(
+                reduceMotion ? nil : .spring(response: 0.28, dampingFraction: 0.72),
+                value: configuration.isPressed
+            )
     }
 
     private var foreground: Color {
@@ -636,37 +647,32 @@ struct OnlineGameIntroScene: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     var body: some View {
-        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion || debugFixedProgress != nil)) { timeline in
-            GeometryReader { proxy in
-                introStage(
-                    size: proxy.size,
-                    progress: resolvedProgress(at: timeline.date)
-                )
-            }
-        }
-        .background(SpyTheme.black)
-        .ignoresSafeArea()
-        .accessibilityElement(children: .ignore)
-        .accessibilityLabel(copy.introAccessibility(spyCount: room.lobbySpyCountValue))
-        .accessibilityIdentifier("onlineExperience.intro")
-        .task(id: room.introStartedAt) {
-            await playIntroHaptics()
-        }
+        SpyGameIntroScene(
+            participants: room.playersList.map {
+                SpyGameIntroParticipant(id: $0.id, name: $0.name, avatar: $0.avatar)
+            },
+            spyCount: room.lobbySpyCountValue,
+            language: language,
+            startedAt: OnlineExperienceClock.date(from: room.introStartedAt) ?? .distantFuture,
+            duration: Self.totalDuration,
+            fixedProgress: debugFixedProgress,
+            accessibilityIdentifier: "onlineExperience.intro"
+        )
     }
 
     private func introStage(size: CGSize, progress: Double) -> some View {
         let deckPoint = CGPoint(x: size.width / 2, y: size.height * 0.65)
-        let warningProgress = OnlineExperienceMotion.segment(progress, from: 0.72, to: 0.84)
-        let warningExit = OnlineExperienceMotion.segment(progress, from: 0.90, to: 0.96)
+        let warningProgress = SpyExperienceMotion.segment(progress, from: 0.72, to: 0.84)
+        let warningExit = SpyExperienceMotion.segment(progress, from: 0.90, to: 0.96)
         let warningOpacity = warningProgress * (1 - warningExit)
         let dimmedOpacity = 1 - warningProgress * 0.88
-        let outro = OnlineExperienceMotion.segment(progress, from: 0.94, to: 1)
-        let deckReveal = OnlineExperienceMotion.spring(
-            OnlineExperienceMotion.segment(progress, from: 0.16, to: 0.34)
+        let outro = SpyExperienceMotion.segment(progress, from: 0.94, to: 1)
+        let deckReveal = SpyExperienceMotion.spring(
+            SpyExperienceMotion.segment(progress, from: 0.16, to: 0.34)
         )
 
         return ZStack {
-            OnlineCinematicBackdrop(intensity: CGFloat(0.72 + warningProgress * 0.34))
+            SpyCinematicBackdrop(intensity: CGFloat(0.72 + warningProgress * 0.34))
                 .opacity(dimmedOpacity + warningProgress * 0.28)
 
             VStack(spacing: 7) {
@@ -677,7 +683,7 @@ struct OnlineGameIntroScene: View {
                     .foregroundStyle(SpyTheme.dim)
             }
             .position(x: size.width / 2, y: max(68, size.height * 0.10))
-            .opacity(OnlineExperienceMotion.segment(progress, from: 0, to: 0.14))
+            .opacity(SpyExperienceMotion.segment(progress, from: 0, to: 0.14))
             .blur(radius: warningProgress * 5)
             .offset(y: -warningProgress * 10)
 
@@ -685,23 +691,23 @@ struct OnlineGameIntroScene: View {
                 let target = playerPosition(index: index, count: room.playersList.count, size: size)
                 let appearance = reduceMotion
                     ? 1
-                    : OnlineExperienceMotion.easeOut(
-                        OnlineExperienceMotion.segment(
+                    : SpyExperienceMotion.easeOut(
+                        SpyExperienceMotion.segment(
                             progress,
                             from: 0.11 + Double(index) * 0.018,
                             to: 0.29 + Double(index) * 0.018
                         )
                     )
                 let window = dealWindow(index: index, count: room.playersList.count)
-                let rawDeal = reduceMotion ? 1 : OnlineExperienceMotion.segment(progress, from: window.start, to: window.end)
-                let deal = reduceMotion ? 1 : OnlineExperienceMotion.spring(rawDeal)
-                let cardPoint = OnlineExperienceMotion.arcPoint(
+                let rawDeal = reduceMotion ? 1 : SpyExperienceMotion.segment(progress, from: window.start, to: window.end)
+                let deal = reduceMotion ? 1 : SpyExperienceMotion.spring(rawDeal)
+                let cardPoint = SpyExperienceMotion.arcPoint(
                     from: deckPoint,
                     to: CGPoint(x: target.x, y: target.y + 72),
                     progress: min(max(deal, 0), 1),
                     lift: 56 + abs(target.x - deckPoint.x) * 0.18
                 )
-                let landingPulse = OnlineExperienceMotion.pulse(rawDeal, center: 0.88, width: 0.18)
+                let landingPulse = SpyExperienceMotion.pulse(rawDeal, center: 0.88, width: 0.18)
 
                 IntroOperativeIdentity(
                     player: player,
@@ -739,7 +745,7 @@ struct OnlineGameIntroScene: View {
                 .position(deckPoint)
                 .scaleEffect(0.72 + 0.28 * deckReveal)
                 .rotation3DEffect(.degrees((1 - deckReveal) * 26), axis: (x: 1, y: 0, z: 0), perspective: 0.68)
-                .opacity(deckReveal * (1 - OnlineExperienceMotion.segment(progress, from: 0.68, to: 0.78)) * dimmedOpacity)
+                .opacity(deckReveal * (1 - SpyExperienceMotion.segment(progress, from: 0.68, to: 0.78)) * dimmedOpacity)
                 .shadow(color: SpyTheme.red.opacity(0.22), radius: 24, y: 14)
 
             Circle()
@@ -767,7 +773,7 @@ struct OnlineGameIntroScene: View {
             .tracking(2.5)
             .multilineTextAlignment(.center)
             .shadow(color: SpyTheme.red.opacity(0.28), radius: 30)
-            .scaleEffect(0.72 + 0.28 * OnlineExperienceMotion.spring(warningProgress))
+            .scaleEffect(0.72 + 0.28 * SpyExperienceMotion.spring(warningProgress))
             .blur(radius: (1 - warningProgress) * 14 + warningExit * 6)
             .opacity(warningOpacity)
             .position(x: size.width / 2, y: size.height * 0.49)
@@ -846,7 +852,7 @@ struct OnlineGameIntroScene: View {
 #endif
     }
 
-    private var copy: OnlineExperienceCopy { OnlineExperienceCopy(language: language) }
+    private var copy: SpyGameExperienceCopy { SpyGameExperienceCopy(language: language) }
 }
 
 private struct IntroOperativeIdentity: View {
@@ -991,7 +997,7 @@ struct OnlineRoleRevealScene: View {
             let cardWidth = min(286, proxy.size.width * 0.73, max(180, (proxy.size.height - 260) * 0.75))
 
             ZStack {
-                OnlineCinematicBackdrop(intensity: isRevealed ? 0.92 : 0.70)
+                SpyCinematicBackdrop(intensity: isRevealed ? 0.92 : 0.70)
 
                 VStack(spacing: 0) {
                     HStack(spacing: 12) {
@@ -1079,8 +1085,10 @@ struct OnlineRoleRevealScene: View {
                             .accessibilityIdentifier("onlineExperience.roleCard")
 
                             if isRevealed, !revealedSpyTeammates.isEmpty {
-                                SpyTeammateDisclosure(
-                                    teammates: revealedSpyTeammates,
+                                SpyRoleCardTeammateStrip(
+                                    teammates: revealedSpyTeammates.map {
+                                        SpyRoleCardIdentity(id: $0.id, name: $0.name, avatar: $0.avatar)
+                                    },
                                     language: language
                                 )
                                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -1177,7 +1185,7 @@ struct OnlineRoleRevealScene: View {
                     Text(copy.cardViewed)
                 }
             }
-            .buttonStyle(OnlineCinematicButtonStyle(variant: .primary))
+            .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
             .disabled(isConfirming)
             .accessibilityIdentifier("onlineExperience.confirmRole")
             .transition(.opacity.combined(with: .move(edge: .bottom)))
@@ -1226,7 +1234,7 @@ struct OnlineRoleRevealScene: View {
         }
     }
 
-    private var copy: OnlineExperienceCopy { OnlineExperienceCopy(language: language) }
+    private var copy: SpyGameExperienceCopy { SpyGameExperienceCopy(language: language) }
 }
 
 // MARK: - Active online game
@@ -1317,7 +1325,7 @@ struct OnlineActiveGameScene: View {
         TimelineView(.periodic(from: .now, by: 1)) { timeline in
             GeometryReader { proxy in
                 ZStack {
-                    OnlineCinematicBackdrop(intensity: room.isVotingActive ? 1.02 : 0.84)
+                    SpyCinematicBackdrop(intensity: room.isVotingActive ? 1.02 : 0.84)
 
                     VStack(spacing: 0) {
                         gameBrandHeader
@@ -1554,8 +1562,10 @@ struct OnlineActiveGameScene: View {
                         .accessibilityIdentifier("onlineExperience.compactRoleCard")
 
                         if isRoleRevealed, !revealedSpyTeammates.isEmpty {
-                            SpyTeammateDisclosure(
-                                teammates: revealedSpyTeammates,
+                            SpyRoleCardTeammateStrip(
+                                teammates: revealedSpyTeammates.map {
+                                    SpyRoleCardIdentity(id: $0.id, name: $0.name, avatar: $0.avatar)
+                                },
                                 language: language,
                                 compact: true
                             )
@@ -1882,7 +1892,7 @@ struct OnlineActiveGameScene: View {
                         Text(roundCommand.title(copy: copy))
                     }
                 }
-                .buttonStyle(OnlineCinematicButtonStyle(variant: .primary))
+                .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
                 .disabled(isRoundTransitioning)
                 .accessibilityIdentifier(roundCommand.accessibilityIdentifier)
             } else if canSpyGuess && !suppressesFallbackPrimaryAction {
@@ -1892,7 +1902,7 @@ struct OnlineActiveGameScene: View {
                         Text(copy.guessWord)
                     }
                 }
-                .buttonStyle(OnlineCinematicButtonStyle(variant: .primary))
+                .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
                 .accessibilityIdentifier("onlineExperience.action.spyGuess")
             } else if showsVoteRequest && !room.isVotingActive && !suppressesFallbackPrimaryAction {
                 Button(action: requestVote) {
@@ -1901,7 +1911,7 @@ struct OnlineActiveGameScene: View {
                         Text(copy.startVoteProgress(room.activeVoteRequests.count, room.voteThreshold))
                     }
                 }
-                .buttonStyle(OnlineCinematicButtonStyle(variant: .primary))
+                .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
                 .disabled(!canRequestVote)
                 .accessibilityIdentifier("onlineExperience.action.vote")
             }
@@ -1966,14 +1976,14 @@ struct OnlineActiveGameScene: View {
                     .minimumScaleFactor(0.62)
             }
         }
-        .buttonStyle(OnlineCinematicButtonStyle(variant: .secondary))
+        .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
         .disabled(isDisabled)
         .accessibilityIdentifier(accessibilityID)
     }
 
     private var pausedOverlay: some View {
         ZStack {
-            OnlineCinematicBackdrop(intensity: 1.12)
+            SpyCinematicBackdrop(intensity: 1.12)
 
             Color.black.opacity(0.72)
                 .ignoresSafeArea()
@@ -1998,7 +2008,7 @@ struct OnlineActiveGameScene: View {
                             Text(copy.resumeGame)
                         }
                     }
-                    .buttonStyle(OnlineCinematicButtonStyle(variant: .primary))
+                    .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
                     .frame(width: 250)
                     .padding(.top, 12)
                     .accessibilityIdentifier("onlineExperience.pauseResume")
@@ -2010,7 +2020,7 @@ struct OnlineActiveGameScene: View {
                         Text(isHost ? copy.closeGame : copy.leaveGame)
                     }
                 }
-                .buttonStyle(OnlineCinematicButtonStyle(variant: .secondary))
+                .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
                 .frame(width: 250)
                 .accessibilityIdentifier("onlineExperience.leave")
             }
@@ -2197,7 +2207,7 @@ struct OnlineActiveGameScene: View {
         value.map { $0.isLetter || $0.isNumber ? $0 : "_" }.reduce("") { $0 + String($1) }
     }
 
-    private var copy: OnlineExperienceCopy { OnlineExperienceCopy(language: language) }
+    private var copy: SpyGameExperienceCopy { SpyGameExperienceCopy(language: language) }
 }
 
 // MARK: - Timing, accessibility, and copy
@@ -2258,7 +2268,7 @@ private enum OnlineExperienceClock {
     }
 }
 
-private enum OnlineExperienceMotion {
+enum SpyExperienceMotion {
     static func segment(_ value: Double, from start: Double, to end: Double) -> Double {
         guard end > start else { return value >= end ? 1 : 0 }
         return min(max((value - start) / (end - start), 0), 1)
@@ -2313,7 +2323,7 @@ private extension MissionRoleCardContent {
         language: AppLanguage,
         revealed: Bool
     ) -> String {
-        let copy = OnlineExperienceCopy(language: language)
+        let copy = SpyGameExperienceCopy(language: language)
         guard revealed else { return copy.roleCard }
 
         switch self {
@@ -2324,14 +2334,14 @@ private extension MissionRoleCardContent {
             }
             return copy.spy
         case let .detective(word):
-            return word
+            return "\(copy.detective). \(copy.secretWord): \(word)"
         case .spectator:
             return copy.spectator
         }
     }
 }
 
-private struct OnlineExperienceCopy {
+struct SpyGameExperienceCopy {
     let language: AppLanguage
 
     private func text(_ en: String, _ es: String, _ ru: String, _ uk: String) -> String {
@@ -2344,6 +2354,8 @@ private struct OnlineExperienceCopy {
     }
 
     var spy: String { text("SPY", "ESPÍA", "ШПИОН", "ШПИГУН") }
+    var detective: String { text("DETECTIVE", "DETECTIVE", "ДЕТЕКТИВ", "ДЕТЕКТИВ") }
+    var secretWord: String { text("Secret word", "Palabra secreta", "Секретное слово", "Секретне слово") }
     var amongYou: String { text("AMONG YOU", "ENTRE USTEDES", "СРЕДИ ВАС", "СЕРЕД ВАС") }
     var theme: String { text("THEME", "TEMA", "ТЕМА", "ТЕМА") }
     var unknownTheme: String { text("UNKNOWN", "DESCONOCIDO", "НЕИЗВЕСТНО", "НЕВІДОМО") }
@@ -2442,7 +2454,7 @@ private struct OnlineExperienceCopy {
 }
 
 private extension OnlineRoundCommand {
-    func title(copy: OnlineExperienceCopy) -> String {
+    func title(copy: SpyGameExperienceCopy) -> String {
         switch self {
         case .markAnswerHeard:
             copy.answerReceived

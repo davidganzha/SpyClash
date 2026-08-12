@@ -10,6 +10,7 @@
 		0332FBE99D5419C0A04F460A /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 22A24EBF700A367D8B269698 /* InfoPlist.strings */; };
 		047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723E083EC43863E9B19D1DBD /* LeaderboardView.swift */; };
 		04ABFF97837288EEF867A306 /* SpyClashWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = EB074CEB86E78BFB857C6C47 /* SpyClashWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
+		0A99F706D2042A94AA6DC5DB /* LocalCinematicGameplayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D83FC09C66C9373238F2E95 /* LocalCinematicGameplayViews.swift */; };
 		1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22314E28DB2385F7A05ABC74 /* HistoryView.swift */; };
 		13D77822DD0A8C0C325DD829 /* Rajdhani-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */; };
 		1FBE45CC7EB218F58B3FF8B3 /* RadarNearbyService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1B9250197E503D48B2502EFF /* RadarNearbyService.swift */; };
@@ -26,6 +27,7 @@
 		536D944266FBEEDCB7840020 /* SpyClashMatchLiveActivity.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7478AB896B134807D6FA315E /* SpyClashMatchLiveActivity.swift */; };
 		557B3950F7F0642889A07BA5 /* SpyClashApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30EA0DF923F453AB3E7F360 /* SpyClashApp.swift */; };
 		5767CD1715E3A330461009CB /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */; };
+		5AB3D58F1CEC5AE0D4712E57 /* DetectiveVoteCancellationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = 719D1CED512E653A43A0FBDC /* DetectiveVoteCancellationOverlay.swift */; };
 		604A2B3BA5EA644CBDE1CD9B /* NotificationInboxStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2A55F10E69B0D74795D94C42 /* NotificationInboxStore.swift */; };
 		65B97F60EB8C89F0D594A552 /* WordPacksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */; };
 		6BEB09CD45546EB59A434FFF /* QRSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6E7B15464DD14D3E49671B /* QRSheets.swift */; };
@@ -36,6 +38,7 @@
 		7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 103786B1CACE81CF96C268EF /* AuthView.swift */; };
 		82D1D08C2F15D8C91C49A7A1 /* Rajdhani-OFL-1.1.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */; };
 		82D3EF58665CCD0D09A29F69 /* Base44ClientRoomActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */; };
+		8AAD0E7106FFD33A43390CC2 /* LocalPrivateDecisionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */; };
 		8D17771759D4330EBFEC4603 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 0F3E2F7BE3B86567F9077667 /* SocketIO */; };
 		94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75823698B8005677C73DFC1B /* AppState.swift */; };
 		98DA09BA0F4F02C29F67E3EA /* PushNotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B7F0D77CCD84E2E31D982D /* PushNotificationCoordinator.swift */; };
@@ -46,12 +49,12 @@
 		BA98E60B487B564CAA1C023C /* SpyClashWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760CBEBE89AEE2AA0F8A6E0E /* SpyClashWidgetsBundle.swift */; };
 		BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */; };
 		BD9EDC5A7F4F7334FFA8354D /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
+		BE763CD2921B74DCF33CB0EF /* SpyGameIntroScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */; };
 		C59197AFE6D361EBD8D48B44 /* NotificationInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */; };
 		CB22564E02BD266693DE55B4 /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */; };
 		D6B23D48649F5025143180FD /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
 		D881639D076EDA12A4605402 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */; };
 		D91C343CDDE1B6DD38511FD3 /* RadarInviteView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6DE93DA44796A2FB3D6F8F93 /* RadarInviteView.swift */; };
-		D3C2A1B0E9F84756C012AB35 /* DetectiveVoteCancellationOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3C2A1B0E9F84756C012AB34 /* DetectiveVoteCancellationOverlay.swift */; };
 		E003ECA92C61B98778CAC8EC /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5C87FEFE82151F2F7D6F6A /* GameView.swift */; };
 		E27A943CAA9C87A2F4E58CDB /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */; };
 		E354C5031FBE679050E0623D /* AppShellView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D09D5EDA02EAE3E217C67199 /* AppShellView.swift */; };
@@ -118,12 +121,15 @@
 		6B25DFE515749E670224D319 /* ProfileView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ProfileView.swift; sourceTree = "<group>"; };
 		6C95C9E321165129F2ED8668 /* SpyClash.storekit */ = {isa = PBXFileReference; path = SpyClash.storekit; sourceTree = "<group>"; };
 		6DE93DA44796A2FB3D6F8F93 /* RadarInviteView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = RadarInviteView.swift; sourceTree = "<group>"; };
+		719D1CED512E653A43A0FBDC /* DetectiveVoteCancellationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectiveVoteCancellationOverlay.swift; sourceTree = "<group>"; };
 		723E083EC43863E9B19D1DBD /* LeaderboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LeaderboardView.swift; sourceTree = "<group>"; };
 		7478AB896B134807D6FA315E /* SpyClashMatchLiveActivity.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashMatchLiveActivity.swift; sourceTree = "<group>"; };
 		75823698B8005677C73DFC1B /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		760CBEBE89AEE2AA0F8A6E0E /* SpyClashWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashWidgetsBundle.swift; sourceTree = "<group>"; };
 		79E0CCD1E46813B6962CBD4B /* GameRoomLiveActivityProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRoomLiveActivityProjection.swift; sourceTree = "<group>"; };
 		7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
+		7D83FC09C66C9373238F2E95 /* LocalCinematicGameplayViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCinematicGameplayViews.swift; sourceTree = "<group>"; };
+		7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyGameIntroScene.swift; sourceTree = "<group>"; };
 		86974FE98CF9350796FC28D3 /* SpyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyModels.swift; sourceTree = "<group>"; };
 		89A2672701BF2A5E11254E90 /* ru-UA */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ru-UA"; path = "ru-UA.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		8B5C87FEFE82151F2F7D6F6A /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
@@ -140,11 +146,11 @@
 		AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base44ClientRoomActionTests.swift; sourceTree = "<group>"; };
 		AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B7DA7D7405C80D4685A10F92 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPrivateDecisionViews.swift; sourceTree = "<group>"; };
 		CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsInboxView.swift; sourceTree = "<group>"; };
 		CE1AF213121DB5A761660563 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
 		D09D5EDA02EAE3E217C67199 /* AppShellView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppShellView.swift; sourceTree = "<group>"; };
 		D2F58B6A8B6D7F70B21AE0D8 /* CommunityView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityView.swift; sourceTree = "<group>"; };
-		D3C2A1B0E9F84756C012AB34 /* DetectiveVoteCancellationOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DetectiveVoteCancellationOverlay.swift; sourceTree = "<group>"; };
 		D30EA0DF923F453AB3E7F360 /* SpyClashApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashApp.swift; sourceTree = "<group>"; };
 		D67CB7923E19DDEA905468EC /* OnlineRoundState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineRoundState.swift; sourceTree = "<group>"; };
 		DA586ACEEC2D7E92F3621A49 /* AppTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTab.swift; sourceTree = "<group>"; };
@@ -223,12 +229,14 @@
 				D09D5EDA02EAE3E217C67199 /* AppShellView.swift */,
 				103786B1CACE81CF96C268EF /* AuthView.swift */,
 				D2F58B6A8B6D7F70B21AE0D8 /* CommunityView.swift */,
-				D3C2A1B0E9F84756C012AB34 /* DetectiveVoteCancellationOverlay.swift */,
+				719D1CED512E653A43A0FBDC /* DetectiveVoteCancellationOverlay.swift */,
 				8B5C87FEFE82151F2F7D6F6A /* GameView.swift */,
 				22314E28DB2385F7A05ABC74 /* HistoryView.swift */,
 				16DD679CA8E36033E9AD5D76 /* HomeView.swift */,
 				723E083EC43863E9B19D1DBD /* LeaderboardView.swift */,
+				7D83FC09C66C9373238F2E95 /* LocalCinematicGameplayViews.swift */,
 				8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */,
+				BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */,
 				CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */,
 				02196190F4444A14882CA7C3 /* OnlineGameExperience.swift */,
 				F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */,
@@ -236,6 +244,7 @@
 				FA6E7B15464DD14D3E49671B /* QRSheets.swift */,
 				6DE93DA44796A2FB3D6F8F93 /* RadarInviteView.swift */,
 				9065A7D0489C60903CBB7D5B /* SpyBackground.swift */,
+				7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */,
 				05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */,
 				CE1AF213121DB5A761660563 /* WelcomeView.swift */,
 				2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */,
@@ -492,7 +501,7 @@
 				7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */,
 				ECDAC86975194D2BEBB14885 /* Base44Client.swift in Sources */,
 				FC61757D64D5967B87F90D6B /* CommunityView.swift in Sources */,
-				D3C2A1B0E9F84756C012AB35 /* DetectiveVoteCancellationOverlay.swift in Sources */,
+				5AB3D58F1CEC5AE0D4712E57 /* DetectiveVoteCancellationOverlay.swift in Sources */,
 				2AE8379041D2415FE0005E5B /* GameRoomLiveActivityProjection.swift in Sources */,
 				E003ECA92C61B98778CAC8EC /* GameView.swift in Sources */,
 				6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */,
@@ -500,7 +509,9 @@
 				32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */,
 				E27A943CAA9C87A2F4E58CDB /* KeychainStore.swift in Sources */,
 				047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */,
+				0A99F706D2042A94AA6DC5DB /* LocalCinematicGameplayViews.swift in Sources */,
 				FE4AD779C9178990AE6FB3B2 /* LocalGameView.swift in Sources */,
+				8AAD0E7106FFD33A43390CC2 /* LocalPrivateDecisionViews.swift in Sources */,
 				BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */,
 				1FF4A5D102DD6D6DE4AA8143 /* NotificationInboxModels.swift in Sources */,
 				604A2B3BA5EA644CBDE1CD9B /* NotificationInboxStore.swift in Sources */,
@@ -517,6 +528,7 @@
 				557B3950F7F0642889A07BA5 /* SpyClashApp.swift in Sources */,
 				D6B23D48649F5025143180FD /* SpyClashMatchActivityAttributes.swift in Sources */,
 				2296623A2D3D1D8A43A1A4DC /* SpyClashMatchLiveActivityController.swift in Sources */,
+				BE763CD2921B74DCF33CB0EF /* SpyGameIntroScene.swift in Sources */,
 				2946A41A9575F0D1AEE2D809 /* SpyModels.swift in Sources */,
 				7D6221160001A1F896D98689 /* SpyOrbSceneView.swift in Sources */,
 				4BEBA1477C858A78FB3F338D /* SpyTheme.swift in Sources */,
@@ -704,7 +716,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 80;
+				CURRENT_PROJECT_VERSION = 81;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -762,7 +774,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 80;
+				CURRENT_PROJECT_VERSION = 81;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

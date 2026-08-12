@@ -98,10 +98,12 @@ extension EnvironmentValues {
 struct SpyWebPressStyle: ButtonStyle {
     var pressedScale: CGFloat = 0.98
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
-            .scaleEffect(configuration.isPressed ? pressedScale : 1)
-            .animation(SpyMotion.press, value: configuration.isPressed)
+            .scaleEffect(reduceMotion ? 1 : (configuration.isPressed ? pressedScale : 1))
+            .animation(reduceMotion ? nil : SpyMotion.press, value: configuration.isPressed)
     }
 }
 
@@ -198,6 +200,8 @@ struct SpyButtonStyle: ButtonStyle {
 
     let variant: Variant
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
             .font(.system(size: 12, weight: .black, design: .monospaced))
@@ -215,8 +219,8 @@ struct SpyButtonStyle: ButtonStyle {
             .clipShape(CutCornerShape(cut: 8))
             .contentShape(CutCornerShape(cut: 8))
             .shadow(color: shadow.opacity(configuration.isPressed ? 0.10 : 0.20), radius: configuration.isPressed ? 6 : 14, y: configuration.isPressed ? 2 : 7)
-            .scaleEffect(configuration.isPressed ? 0.98 : 1)
-            .animation(SpyMotion.press, value: configuration.isPressed)
+            .scaleEffect(reduceMotion ? 1 : (configuration.isPressed ? 0.98 : 1))
+            .animation(reduceMotion ? nil : SpyMotion.press, value: configuration.isPressed)
     }
 
     private var foreground: Color {

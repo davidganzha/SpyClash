@@ -22,6 +22,20 @@ enum LocalGameInterruptionPolicy {
     ) -> Bool {
         wasRunning && phaseIsPlaying && remainingSeconds > 0
     }
+
+    static func shouldPauseForBackground(
+        phaseIsPlaying: Bool,
+        isAlreadyPaused: Bool
+    ) -> Bool {
+        phaseIsPlaying && !isAlreadyPaused
+    }
+
+    static func shouldConcealRoleCard(
+        phaseIsCards: Bool,
+        isRevealed: Bool
+    ) -> Bool {
+        phaseIsCards && isRevealed
+    }
 }
 
 enum LocalGameAccusationPolicy {
@@ -76,6 +90,7 @@ struct LocalGameView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var players = ["", "", ""]
     @State private var avatars = ["🕵️", "👤", "🤖"]
@@ -114,6 +129,7 @@ struct LocalGameView: View {
 
     @State private var phase = LocalPhase.setup
     @State private var session: LocalSession?
+    @State private var introStartedAt: Date?
     @State private var revealIndex = 0
     @State private var cardRevealed = false
     @State private var secondsRemaining = 0
@@ -121,9 +137,17 @@ struct LocalGameView: View {
     @State private var showSpyGuessOptions = false
     @State private var spyGuess: String?
     @State private var pendingSpyGuess: String?
+    @State private var spyGuessHandoffConfirmed = false
+    @State private var spyGuessReturnSealed = false
     @State private var questionIndex = 0
     @State private var accusedIndex: Int?
     @State private var eliminatedPlayerIndices: Set<Int> = []
+    @State private var localVoteVoterOrder: [Int] = []
+    @State private var localVoteVoterCursor = 0
+    @State private var localPrivateVotes: [LocalPrivateVote] = []
+    @State private var localVoteStage = LocalPrivateVoteStage.handoff
+    @State private var pendingLocalVoteTargetIndex: Int?
+    @State private var localVoteCancellationEvent: DetectiveVoteCancellationEvent?
     @State private var winner: LocalWinner?
     @State private var timerTask: Task<Void, Never>?
     @State private var isLocalGamePaused = false
@@ -133,9 +157,26 @@ struct LocalGameView: View {
     @State private var associationStep = 0
     @State private var associationRouletteDone = true
     @State private var handledLocalSetupRequestID = 0
+    @State private var isConfirmingStop = false
+    @AccessibilityFocusState private var localAccessibilityFocus: LocalAccessibilityFocus?
 
     private var copy: LocalGameCopy {
         appState.language.localGame
+    }
+
+    private var localCardTheme: SpyCardThemeID {
+        SpyCardThemeID(rawValue: appState.user?.spyCardTheme ?? "") ?? .field
+    }
+
+    private var localCardAccent: Color {
+        switch SpyCardAccentID(rawValue: appState.user?.spyCardAccent ?? "") ?? .signalRed {
+        case .signalRed:
+            SpyTheme.red
+        case .clearanceAmber:
+            SpyTheme.amber
+        case .verifiedGreen:
+            SpyTheme.green
+        }
     }
 
     private var previewLocalDurationSeconds: Int? {
@@ -169,18 +210,74 @@ struct LocalGameView: View {
         }
     }
 
+    private var previewLocalIntroProgress: Double? {
+#if DEBUG
+        guard appState.shouldUsePreviewData,
+              let rawValue = previewArgumentValue(prefix: "--spyclash-preview-local-intro-progress="),
+              let value = Double(rawValue) else { return nil }
+        return min(max(value, 0), 1)
+#else
+        return nil
+#endif
+    }
+
     var body: some View {
-        localLifecycleBody
+        ZStack {
+            localLifecycleBody
+
+            if scenePhase != .active {
+                localPrivacyShield
+            }
+        }
+            .animation(nil, value: scenePhase)
             .fullScreenCover(item: $forgotCardRequest, onDismiss: finishForgotCardReview) { request in
                 LocalForgotCardRecoveryView(
                     request: request,
                     copy: copy,
-                    language: appState.language
+                    language: appState.language,
+                    cardTheme: localCardTheme,
+                    cardAccent: localCardAccent
                 )
             }
     }
 
     private var localLifecycleBody: some View {
+        localRuntimeObservationBody
+            .confirmationDialog(
+                localized(
+                    en: "Stop the game?",
+                    ru: "Остановить игру?",
+                    es: "¿Detener la partida?",
+                    uk: "Зупинити гру?"
+                ),
+                isPresented: $isConfirmingStop,
+                titleVisibility: .visible
+            ) {
+                Button(
+                    localized(
+                        en: "Stop game",
+                        ru: "Остановить игру",
+                        es: "Detener partida",
+                        uk: "Зупинити гру"
+                    ),
+                    role: .destructive,
+                    action: stopLocalGame
+                )
+                Button(
+                    localized(en: "Cancel", ru: "Отмена", es: "Cancelar", uk: "Скасувати"),
+                    role: .cancel
+                ) { }
+            } message: {
+                Text(localized(
+                    en: "The current local match and its progress will be lost.",
+                    ru: "Текущий локальный матч и его прогресс будут потеряны.",
+                    es: "La partida local actual y su progreso se perderán.",
+                    uk: "Поточний локальний матч і його прогрес буде втрачено."
+                ))
+            }
+    }
+
+    private var localTaskBody: some View {
         localBody
             .task {
                 restoreLocalSettings()
@@ -202,6 +299,10 @@ struct LocalGameView: View {
                 }
                 updateLocalShellChromeSuppression()
             }
+    }
+
+    private var localSettingsObservationBody: some View {
+        localTaskBody
             .onChange(of: players) { _, _ in
                 spyCount = min(spyCount, Double(localMaximumSpyCount))
                 persistLocalSettings()
@@ -212,11 +313,22 @@ struct LocalGameView: View {
             .onChange(of: spiesKnowEachOther) { _, _ in persistLocalSettings() }
             .onChange(of: wordCount) { _, _ in persistLocalSettings() }
             .onChange(of: mode) { _, _ in persistLocalSettings() }
+    }
+
+    private var localSourceObservationBody: some View {
+        localSettingsObservationBody
             .onChange(of: selectedPackID) { _, _ in persistLocalSettings() }
             .onChange(of: customTheme) { _, _ in persistLocalSettings() }
             .onChange(of: localWordCountMode) { _, _ in persistLocalSettings() }
             .onChange(of: localCustomWordCount) { _, _ in persistLocalSettings() }
+    }
+
+    private var localRuntimeObservationBody: some View {
+        localSourceObservationBody
             .onChange(of: phase) { _, newPhase in handleLocalPhaseChange(newPhase) }
+            .onChange(of: scenePhase) { _, newScenePhase in
+                handleLocalScenePhaseChange(newScenePhase)
+            }
             .onChange(of: appState.localSetupRequestID) { _, _ in consumeLocalSetupRequestIfNeeded() }
             .onChange(of: status) { _, message in publishLocalToast(message) }
             .onChange(of: localThemeError) { _, message in publishLocalThemeError(message) }
@@ -238,14 +350,97 @@ struct LocalGameView: View {
         appState.isShellChromeSuppressed = false
     }
 
-    @ViewBuilder
+    private func handleLocalScenePhaseChange(_ newScenePhase: ScenePhase) {
+        guard newScenePhase != .active else { return }
+
+        var transaction = Transaction()
+        transaction.disablesAnimations = true
+        withTransaction(transaction) {
+            if LocalGameInterruptionPolicy.shouldPauseForBackground(
+                phaseIsPlaying: phase == .playing,
+                isAlreadyPaused: isLocalGamePaused
+            ) {
+                pauseLocalGame()
+            }
+
+            if LocalGameInterruptionPolicy.shouldConcealRoleCard(
+                phaseIsCards: phase == .cards,
+                isRevealed: cardRevealed
+            ) {
+                cardRevealed = false
+            }
+
+            if forgotCardRequest != nil {
+                forgotCardRequest = nil
+                resumeTimerAfterCardReview = false
+            }
+
+            if phase == .spyGuess, spyGuessHandoffConfirmed {
+                showSpyGuessOptions = false
+                pendingSpyGuess = nil
+                spyGuessReturnSealed = true
+            }
+
+            if phase == .voting, localVoteStage == .ballot {
+                pendingLocalVoteTargetIndex = nil
+                localVoteStage = .handoff
+            }
+        }
+    }
+
+    private var localPrivacyShield: some View {
+        Color.black
+            .ignoresSafeArea()
+            .accessibilityHidden(true)
+            .allowsHitTesting(true)
+            .transition(.identity)
+            .transaction { transaction in
+                transaction.disablesAnimations = true
+            }
+            .zIndex(10_000)
+    }
+
     private var localBody: some View {
-        if phase == .cards {
+        ZStack {
+            localPhaseContent
+                .id(phase)
+                .transition(localPhaseTransition)
+        }
+        .animation(localPhaseAnimation, value: phase)
+    }
+
+    @ViewBuilder
+    private var localPhaseContent: some View {
+        if phase == .intro {
+            localIntroScene
+        } else if phase == .cards {
             cardsScene
         } else if phase.isGameProcess {
             localProcessScene
         } else {
             chromedLocalBody
+        }
+    }
+
+    private var localPhaseTransition: AnyTransition {
+        reduceMotion
+            ? .opacity
+            : .asymmetric(
+                insertion: .opacity.combined(with: .scale(scale: 0.985)),
+                removal: .opacity.combined(with: .scale(scale: 1.012))
+            )
+    }
+
+    private var localPhaseAnimation: Animation? {
+        reduceMotion
+            ? .easeOut(duration: 0.12)
+            : .timingCurve(0.22, 0.61, 0.36, 1, duration: 0.32)
+    }
+
+    private func setLocalPhase(_ next: LocalPhase) {
+        guard phase != next else { return }
+        withAnimation(localPhaseAnimation) {
+            phase = next
         }
     }
 
@@ -259,6 +454,8 @@ struct LocalGameView: View {
                 switch phase {
                 case .setup:
                     setupView
+                case .intro:
+                    EmptyView()
                 case .cards:
                     cardsView
                 case .playing:
@@ -291,31 +488,96 @@ struct LocalGameView: View {
 
     private var cardsScene: some View {
         ZStack {
-            Color.black.ignoresSafeArea()
+            SpyCinematicBackdrop(intensity: cardRevealed ? 0.92 : 0.70)
             cardsView
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(.opacity)
     }
 
+    @ViewBuilder
+    private var localIntroScene: some View {
+        if let session, let introStartedAt {
+            SpyGameIntroScene(
+                participants: session.players.map {
+                    SpyGameIntroParticipant(id: $0.id, name: $0.name, avatar: $0.avatar)
+                },
+                spyCount: session.spyIndices.count,
+                language: appState.language,
+                startedAt: introStartedAt,
+                duration: 8,
+                fixedProgress: previewLocalIntroProgress,
+                accessibilityIdentifier: "localGame.intro"
+            )
+            .task(id: introStartedAt) {
+                guard previewLocalIntroProgress == nil else { return }
+                try? await Task.sleep(for: .seconds(reduceMotion ? 3 : 8))
+                guard !Task.isCancelled, phase == .intro else { return }
+                setLocalPhase(.cards)
+            }
+            .transition(.opacity)
+        }
+    }
+
     private var localProcessScene: some View {
         GeometryReader { proxy in
             ZStack {
-                SpyBackground()
+                SpyCinematicBackdrop(
+                    intensity: phase == .voting || phase == .results ? 1.02 : 0.84
+                )
 
-                localProcessContent
-                    .padding(.horizontal, 16)
-                    .padding(.top, max(proxy.safeAreaInsets.top + 10, 32))
-                    .padding(.bottom, max(proxy.safeAreaInsets.bottom + 12, 20))
-                    .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                Group {
+                    if phase == .playing || phase == .voting || phase == .spyGuess {
+                        localProcessContent
+                            .padding(.top, proxy.safeAreaInsets.top)
+                            .padding(.bottom, proxy.safeAreaInsets.bottom)
+                    } else {
+                        localProcessContent
+                            .padding(.horizontal, 16)
+                            .padding(.top, max(proxy.safeAreaInsets.top + 10, 32))
+                            .padding(.bottom, max(proxy.safeAreaInsets.bottom + 12, 20))
+                    }
+                }
+                .id(phase)
+                .transition(localPhaseTransition)
+                .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+                .allowsHitTesting(localVoteCancellationEvent == nil)
+                .accessibilityHidden(localVoteCancellationEvent != nil)
+
+                if phase == .playing, isLocalGamePaused {
+                    LocalCinematicPausedOverlay(
+                        language: appState.language,
+                        onResume: resumeLocalGame,
+                        onShowCard: beginForgotCardReview,
+                        onStop: requestStopLocalGame
+                    )
+                    .transition(.opacity)
+                    .zIndex(20)
+                }
+
+                if let cancellationEvent = localVoteCancellationEvent {
+                    DetectiveVoteCancellationOverlay(
+                        event: cancellationEvent,
+                        languageCode: appState.language.rawValue
+                    )
+                    .task(id: cancellationEvent.id) {
+                        await finishLocalVoteCancellation(cancellationEvent)
+                    }
+                    .transition(.opacity)
+                    .zIndex(100)
+                }
             }
         }
+        .animation(reduceMotion ? nil : .spring(response: 0.48, dampingFraction: 0.84), value: isLocalGamePaused)
+        .animation(reduceMotion ? nil : .spring(response: 0.54, dampingFraction: 0.82), value: questionIndex)
         .transition(.opacity)
     }
 
     @ViewBuilder
     private var localProcessContent: some View {
         switch phase {
+        case .intro:
+            EmptyView()
         case .playing:
             playingView
         case .spyGuess:
@@ -2266,104 +2528,277 @@ struct LocalGameView: View {
     @ViewBuilder
     private var cardsView: some View {
         if let session, let player = session.players[safe: revealIndex] {
-            VStack(spacing: 0) {
-                Spacer(minLength: 14)
+            GeometryReader { proxy in
+                let cardWidth = min(286, proxy.size.width * 0.73, max(176, (proxy.size.height - 300) * 0.75))
 
-                VStack(spacing: 8) {
-                    Text("\(revealIndex + 1) / \(session.players.count)")
-                        .font(SpyTheme.micro)
-                        .tracking(0.14)
-                        .foregroundStyle(SpyTheme.dim)
-                        .spyFitted(scale: 0.70, alignment: .center)
-
-                    Text(player.avatar)
-                        .font(.system(size: 44))
-
-                    Text(player.name.uppercased())
-                        .font(.system(size: 26, weight: .black, design: .default))
-                        .tracking(0.08)
-                        .foregroundStyle(.white)
-                        .spyFitted(lines: 2, scale: 0.52, alignment: .center)
-
-                    if !cardRevealed {
-                        Text(copy.passPhone)
-                            .font(SpyTheme.micro)
-                            .tracking(0.10)
+                VStack(spacing: 0) {
+                    HStack(spacing: 12) {
+                        SpyWordmark(fontSize: 24)
+                        Spacer(minLength: 10)
+                        Text(String(format: "%02d / %02d", revealIndex + 1, session.players.count))
+                            .font(.system(size: 9, weight: .bold, design: .monospaced))
+                            .tracking(1.8)
                             .foregroundStyle(SpyTheme.dim)
-                            .multilineTextAlignment(.center)
-                            .spyFitted(lines: 2, scale: 0.66, alignment: .center)
-                            .transition(.opacity)
-                    }
-                }
-                .padding(.bottom, 28)
-                .id(revealIndex)
-                .transition(.opacity.combined(with: .move(edge: .top)))
+                            .contentTransition(.numericText())
 
-                RoleRevealCard(
-                    player: player,
-                    session: session,
-                    revealed: cardRevealed,
-                    copy: copy,
-                    language: appState.language,
-                    dontShow: localized(en: "DON'T SHOW OTHERS", ru: "НЕ ПОКАЗЫВАЙ ДРУГИМ", es: "NO MUESTRES A OTROS", uk: "НЕ ПОКАЗУЙ ІНШИМ")
-                )
-                    .onTapGesture {
-                        if !cardRevealed {
-                            revealCard()
+                        Button(action: requestStopLocalGame) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .black))
+                                .foregroundStyle(.white.opacity(0.88))
+                                .frame(width: 44, height: 44)
+                                .background(SpyTheme.control, in: CutCornerShape(cut: 7))
+                                .overlay {
+                                    CutCornerShape(cut: 7)
+                                        .stroke(SpyTheme.strokeStrong, lineWidth: 1)
+                                }
                         }
+                        .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+                        .accessibilityLabel(localized(
+                            en: "Stop game",
+                            ru: "Остановить игру",
+                            es: "Detener partida",
+                            uk: "Зупинити гру"
+                        ))
+                        .accessibilityIdentifier("localGame.cards.stop")
+                    }
+                    .padding(.horizontal, 22)
+                    .frame(height: 64)
+                    .background(Color.black.opacity(0.82))
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(SpyTheme.stroke).frame(height: 1)
                     }
 
-                if cardRevealed {
-                    Button {
-                        nextCard()
-                    } label: {
-                        SpyActionLabel(
-                            title: nextCardTitle(session),
-                            systemImage: nextCardIcon(session),
-                            tracking: 0.04,
-                            lines: 2
-                        )
+                    VStack(spacing: 0) {
+                        VStack(spacing: 4) {
+                            Text(copy.passPhone)
+                                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                                .tracking(1.8)
+                                .foregroundStyle(cardRevealed ? localCardAccent : SpyTheme.red)
+                                .multilineTextAlignment(.center)
+
+                            HStack(spacing: 8) {
+                                Text(player.avatar)
+                                    .font(.system(size: 24))
+                                Text(player.name.uppercased())
+                                    .font(SpyTheme.brandFont(size: 21))
+                                    .tracking(1.2)
+                                    .foregroundStyle(.white)
+                                    .lineLimit(1)
+                                    .minimumScaleFactor(0.56)
+                            }
+                        }
+                        .padding(.top, 16)
+                        .id(revealIndex)
+                        .spyWebEntrance(delay: 0.04, duration: 0.48, y: 10)
+
+                        Spacer(minLength: 8)
+
+                        Button {
+                            guard !cardRevealed else { return }
+                            revealCard()
+                        } label: {
+                            MissionRoleCard(
+                                role: localRoleContent(player: player, session: session),
+                                category: session.category,
+                                theme: localCardTheme,
+                                accent: localCardAccent,
+                                language: appState.language,
+                                isRevealed: cardRevealed,
+                                size: .hero
+                            )
+                            .dynamicTypeSize(...DynamicTypeSize.large)
+                            .frame(width: cardWidth)
+                        }
+                        .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
+                        .accessibilityHint(cardRevealed ? "" : copy.revealCard)
+                        .accessibilityIdentifier("localGame.roleCard")
+                        .id(revealIndex)
+                        .spyWebEntrance(delay: 0.08, duration: 0.62, y: 72, scale: 0.82)
+
+                        if cardRevealed {
+                            let teammates = localRoleTeammates(player: player, session: session)
+                            if !teammates.isEmpty {
+                                SpyRoleCardTeammateStrip(
+                                    teammates: teammates,
+                                    language: appState.language
+                                )
+                                .padding(.top, 8)
+                                .transition(.opacity.combined(with: .move(edge: .top)))
+                            }
+                        }
+
+                        Spacer(minLength: 8)
+
+                        Group {
+                            if cardRevealed {
+                                Button(action: nextCard) {
+                                    HStack(spacing: 9) {
+                                        Image(systemName: nextCardIcon(session))
+                                        Text(nextCardTitle(session))
+                                    }
+                                }
+                                .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
+                                .accessibilityIdentifier("localGame.nextRoleCard")
+                                .transition(.opacity.combined(with: .move(edge: .bottom)))
+                            } else {
+                                Color.clear
+                                    .frame(height: 58)
+                                    .accessibilityHidden(true)
+                            }
+                        }
+                        .frame(maxWidth: 320)
+
+                        cardProgressDots(session)
+                            .padding(.top, 12)
+                            .padding(.bottom, max(proxy.safeAreaInsets.bottom, 12))
                     }
-                    .buttonStyle(SpyButtonStyle(variant: .red))
-                    .frame(maxWidth: 300)
-                    .padding(.top, 28)
-                    .transition(.opacity.animation(.easeInOut(duration: 0.25).delay(0.50)))
+                    .padding(.horizontal, 22)
                 }
-
-                cardProgressDots(session)
-                    .padding(.top, 20)
-
-                Spacer(minLength: 20)
+                .frame(maxWidth: .infinity, maxHeight: .infinity)
             }
-            .padding(.horizontal, 24)
-            .frame(maxWidth: .infinity, maxHeight: .infinity)
-            .animation(.smooth(duration: 0.34), value: revealIndex)
-            .animation(.smooth(duration: 0.34), value: cardRevealed)
+            .animation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.82), value: revealIndex)
+            .animation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.82), value: cardRevealed)
         }
     }
 
     @ViewBuilder
     private var playingView: some View {
         if let session {
-            VStack(alignment: .leading, spacing: 10) {
-                localPlayingHeader
-                localTimerAndRecoveryControls
+            GeometryReader { proxy in
+                VStack(spacing: 0) {
+                    LocalCinematicHeader(
+                        language: appState.language,
+                        isPaused: isLocalGamePaused,
+                        onStop: requestStopLocalGame,
+                        onTogglePause: toggleLocalGamePause,
+                        onShowCard: beginForgotCardReview
+                    )
 
-                if isLocalGamePaused {
-                    localPausedPanel
-                } else {
-                    localAgentStrip(session)
+                    ScrollView(.vertical, showsIndicators: false) {
+                        VStack(spacing: 0) {
+                            LocalCinematicTimer(
+                                language: appState.language,
+                                secondsRemaining: secondsRemaining,
+                                totalSeconds: Int(duration * 60),
+                                turn: max(questionIndex + 1, 1)
+                            )
+                            .padding(.horizontal, 22)
+                            .padding(.top, 14)
 
-                    if session.mode == .questions {
-                        localActivePairCard(session)
-                    } else {
-                        localAssociationCard(session)
+                            LocalCinematicOperativeRail(
+                                participants: localCinematicParticipants(in: session),
+                                language: appState.language
+                            )
+                            .padding(.top, 4)
+
+                            VStack(spacing: 9) {
+                                Button(action: beginForgotCardReview) {
+                                    MissionRoleCard(
+                                        role: .detective(word: ""),
+                                        category: session.category,
+                                        theme: localCardTheme,
+                                        accent: localCardAccent,
+                                        language: appState.language,
+                                        isRevealed: false,
+                                        size: .compact
+                                    )
+                                    .dynamicTypeSize(...DynamicTypeSize.large)
+                                    .frame(
+                                        width: dynamicTypeSize.isAccessibilitySize
+                                            ? min(150, proxy.size.width * 0.42)
+                                            : min(170, max(104, (proxy.size.height - 500) * 0.62))
+                                    )
+                                }
+                                .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
+                                .accessibilityLabel(localized(
+                                    en: "Review a private role card",
+                                    ru: "Повторно посмотреть личную карту роли",
+                                    es: "Revisar una carta de rol privada",
+                                    uk: "Повторно переглянути приватну картку ролі"
+                                ))
+                                .accessibilityIdentifier("localGame.compactRoleCard")
+
+                                if session.mode == .questions {
+                                    localActivePairCard(session)
+                                } else {
+                                    localAssociationCard(session)
+                                }
+                            }
+                            .padding(.horizontal, 18)
+                            .padding(.vertical, 8)
+
+                            Spacer(minLength: 8)
+
+                            localRoundCommandArea(session)
+                                .padding(.horizontal, 16)
+                                .padding(.bottom, 8)
+                        }
+                        .frame(minHeight: max(proxy.size.height - 64, 0), alignment: .top)
                     }
+                    .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+                }
+                .opacity(isLocalGamePaused ? 0.16 : 1)
+                .allowsHitTesting(!isLocalGamePaused)
+                .accessibilityHidden(isLocalGamePaused)
+            }
+        }
+    }
+
+    private func localRoundCommandArea(_ session: LocalSession) -> some View {
+        let secondaryActions = dynamicTypeSize.isAccessibilitySize
+            ? AnyLayout(VStackLayout(spacing: 8))
+            : AnyLayout(HStackLayout(spacing: 8))
+
+        return VStack(spacing: 8) {
+            Button {
+                nextQuestion(in: session)
+            } label: {
+                HStack(spacing: 9) {
+                    Image(systemName: session.mode == .questions ? "arrow.triangle.2.circlepath" : "dice.fill")
+                    Text(localRoundAdvanceTitle(session))
                 }
             }
-            .frame(maxWidth: 480)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .top)
+            .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
+            .accessibilityIdentifier("localGame.action.nextTurn")
+
+            secondaryActions {
+                Button(action: startLocalVote) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "person.3.fill")
+                        Text(copy.callVote)
+                    }
+                }
+                .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
+                .accessibilityIdentifier("localGame.action.vote")
+
+                Button(action: startLocalSpyGuess) {
+                    HStack(spacing: 7) {
+                        Image(systemName: "scope")
+                        Text(localized(en: "PRIVATE ACTION", ru: "ПРИВАТНОЕ ДЕЙСТВИЕ", es: "ACCIÓN PRIVADA", uk: "ПРИВАТНА ДІЯ"))
+                    }
+                }
+                .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
+                .accessibilityIdentifier("localGame.action.spyGuess")
+            }
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("localGame.actionTray")
+    }
+
+    private func localRoundAdvanceTitle(_ session: LocalSession) -> String {
+        guard session.mode == .associations else {
+            return localized(
+                en: "NEXT PAIR",
+                ru: "СЛЕДУЮЩАЯ ПАРА",
+                es: "SIGUIENTE PAREJA",
+                uk: "НАСТУПНА ПАРА"
+            )
+        }
+
+        let startsNewRound = associationStep + 1 >= max(associationOrder.count, 1)
+        return startsNewRound
+            ? localized(en: "NEW ROUND", ru: "НОВЫЙ РАУНД", es: "NUEVA RONDA", uk: "НОВИЙ РАУНД")
+            : localized(en: "NEXT OPERATIVE", ru: "СЛЕДУЮЩИЙ ИГРОК", es: "SIGUIENTE AGENTE", uk: "НАСТУПНИЙ ГРАВЕЦЬ")
     }
 
     private func questionVectorPanel(_ session: LocalSession) -> some View {
@@ -2574,81 +3009,73 @@ struct LocalGameView: View {
     }
 
     private func localActivePairCard(_ session: LocalSession) -> some View {
-        localCompactPanel(accent: SpyTheme.red, fillHeight: true) {
-            VStack(spacing: 14) {
-                Text(localized(en: "ACTIVE PAIR", ru: "АКТИВНАЯ ПАРА", es: "PAREJA ACTIVA", uk: "АКТИВНА ПАРА"))
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .tracking(0.18)
-                    .foregroundStyle(SpyTheme.dim)
-                    .spyFitted(scale: 0.62, alignment: .center)
+        HStack(spacing: 10) {
+            localCinematicPairIdentity(
+                title: localized(en: "ASKS", ru: "СПРАШИВАЕТ", es: "PREGUNTA", uk: "ЗАПИТУЄ"),
+                player: currentAsker(in: session),
+                color: SpyTheme.red,
+                trailing: false
+            )
 
-                HStack(alignment: .center, spacing: 12) {
-                    localPairAgentCell(
-                        title: localized(en: "ASKS", ru: "СПРАШИВАЕТ", es: "PREGUNTA", uk: "ЗАПИТУЄ"),
-                        player: currentAsker(in: session),
-                        color: SpyTheme.red
-                    )
-
-                    Image(systemName: "arrow.right")
-                        .font(.system(size: 20, weight: .black))
-                        .foregroundStyle(SpyTheme.red)
-                        .symbolEffect(.pulse, value: questionIndex)
-
-                    localPairAgentCell(
-                        title: localized(en: "ANSWERS", ru: "ОТВЕЧАЕТ", es: "RESPONDE", uk: "ВІДПОВІДАЄ"),
-                        player: currentAnswerer(in: session),
-                        color: .white
-                    )
+            ZStack {
+                Rectangle()
+                    .fill(SpyTheme.red.opacity(0.72))
+                    .frame(width: 38, height: 1)
+                Group {
+                    if reduceMotion {
+                        Image(systemName: "chevron.right")
+                    } else {
+                        Image(systemName: "chevron.right")
+                            .symbolEffect(.pulse, value: questionIndex)
+                    }
                 }
-
-                localCompactActionButton(
-                    title: localized(en: "NEXT PAIR", ru: "СЛЕДУЮЩАЯ ПАРА", es: "SIGUIENTE PAREJA", uk: "НАСТУПНА ПАРА"),
-                    prefix: "↻",
-                    primary: false
-                ) {
-                    nextQuestion(in: session)
-                }
+                .font(.system(size: 10, weight: .black))
+                .foregroundStyle(SpyTheme.red)
+                .padding(.horizontal, 6)
+                .background(SpyTheme.control)
             }
-            .frame(maxHeight: .infinity, alignment: .center)
+
+            localCinematicPairIdentity(
+                title: localized(en: "ANSWERS", ru: "ОТВЕЧАЕТ", es: "RESPONDE", uk: "ВІДПОВІДАЄ"),
+                player: currentAnswerer(in: session),
+                color: .white,
+                trailing: true
+            )
         }
+        .padding(.horizontal, 14)
+        .frame(maxWidth: .infinity)
+        .frame(height: 76)
+        .background(Color.black.opacity(0.76), in: CutCornerShape(cut: 9))
+        .overlay(CutCornerShape(cut: 9).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("localGame.activePair")
     }
 
     private func localAssociationCard(_ session: LocalSession) -> some View {
         let speaker = currentAsker(in: session)
-        let isRoundEnd = associationStep + 1 >= max(associationOrder.count, 1)
 
-        return localCompactPanel(accent: SpyTheme.red, fillHeight: true) {
+        return Group {
             if !associationRouletteDone {
                 localAssociationRoulette(session)
             } else {
-                VStack(spacing: 12) {
+                VStack(spacing: 7) {
                     Text(localized(en: "SAYS ASSOCIATION", ru: "ГОВОРИТ АССОЦИАЦИЮ", es: "DICE ASOCIACION", uk: "НАЗИВАЄ АСОЦІАЦІЮ"))
-                        .font(.system(size: 9, weight: .black, design: .monospaced))
-                        .tracking(0.18)
+                        .font(.system(size: 8, weight: .black, design: .monospaced))
+                        .tracking(1.8)
                         .foregroundStyle(SpyTheme.dim)
                         .spyFitted(scale: 0.62, alignment: .center)
 
                     Text(speaker?.avatar ?? "🕵️")
-                        .font(.system(size: 54))
-                        .frame(height: 60)
+                        .font(.system(size: 38))
+                        .frame(height: 42)
                         .id(questionIndex)
-                        .transition(.scale.combined(with: .opacity))
+                        .transition(reduceMotion ? .opacity : .scale.combined(with: .opacity))
 
                     Text((speaker?.name ?? copy.pending).uppercased())
-                        .font(.system(size: 20, weight: .black, design: .default))
-                        .tracking(0.08)
-                        .foregroundStyle(SpyTheme.red)
+                        .font(SpyTheme.brandFont(size: 16))
+                        .tracking(1)
+                        .foregroundStyle(.white)
                         .spyFitted(lines: 2, scale: 0.58, alignment: .center)
-
-                    localCompactActionButton(
-                        title: isRoundEnd
-                            ? localized(en: "NEW ROUND", ru: "НОВЫЙ РАУНД", es: "NUEVA RONDA", uk: "НОВИЙ РАУНД")
-                            : localized(en: "NEXT PLAYER", ru: "СЛЕДУЮЩИЙ ИГРОК", es: "SIGUIENTE JUGADOR", uk: "НАСТУПНИЙ ГРАВЕЦЬ"),
-                        prefix: isRoundEnd ? "🎲" : "↻",
-                        primary: false
-                    ) {
-                        nextQuestion(in: session)
-                    }
 
                     HStack(spacing: 4) {
                         ForEach(activeLocalPlayerIndices(in: session), id: \.self) { index in
@@ -2659,33 +3086,85 @@ struct LocalGameView: View {
                         }
                     }
                 }
-                .frame(maxHeight: .infinity, alignment: .center)
             }
+        }
+        .frame(maxWidth: .infinity, minHeight: 116, maxHeight: 142)
+        .padding(.horizontal, 12)
+        .background(Color.black.opacity(0.76), in: CutCornerShape(cut: 9))
+        .overlay(CutCornerShape(cut: 9).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("localGame.associationState")
+    }
+
+    private func localCinematicPairIdentity(
+        title: String,
+        player: LocalPlayer?,
+        color: Color,
+        trailing: Bool
+    ) -> some View {
+        HStack(spacing: 8) {
+            if trailing {
+                localCinematicPairText(title: title, player: player, color: color, trailing: true)
+            }
+
+            Text(player?.avatar ?? "•")
+                .font(.system(size: 21))
+                .frame(width: 42, height: 42)
+                .background(SpyTheme.control, in: CutCornerShape(cut: 7))
+                .overlay(CutCornerShape(cut: 7).stroke(color.opacity(0.66), lineWidth: 1))
+
+            if !trailing {
+                localCinematicPairText(title: title, player: player, color: color, trailing: false)
+            }
+        }
+        .frame(maxWidth: .infinity, alignment: trailing ? .trailing : .leading)
+    }
+
+    private func localCinematicPairText(
+        title: String,
+        player: LocalPlayer?,
+        color: Color,
+        trailing: Bool
+    ) -> some View {
+        VStack(alignment: trailing ? .trailing : .leading, spacing: 3) {
+            Text(title)
+                .font(.system(size: 7, weight: .bold, design: .monospaced))
+                .tracking(1.1)
+                .foregroundStyle(color)
+            Text((player?.name ?? copy.pending).uppercased())
+                .font(SpyTheme.brandFont(size: 14))
+                .tracking(0.7)
+                .foregroundStyle(.white)
+                .lineLimit(1)
+                .minimumScaleFactor(0.58)
         }
     }
 
     private func localAssociationRoulette(_ session: LocalSession) -> some View {
-        TimelineView(.animation) { timeline in
+        TimelineView(.animation(minimumInterval: 1 / 12, paused: reduceMotion)) { timeline in
             let activeIndices = activeLocalPlayerIndices(in: session)
             let count = max(activeIndices.count, 1)
-            let tick = Int(timeline.date.timeIntervalSinceReferenceDate * 12) % count
+            let targetIndex = associationOrder[safe: associationStep]
+            let tick = reduceMotion
+                ? activeIndices.firstIndex(of: targetIndex ?? activeIndices.first ?? 0) ?? 0
+                : Int(timeline.date.timeIntervalSinceReferenceDate * 12) % count
             let previewIndex = activeIndices[safe: tick]
             let previewPlayer = previewIndex.flatMap { session.players[safe: $0] } ?? currentAsker(in: session)
 
-            VStack(spacing: 12) {
+            VStack(spacing: 7) {
                 Text(localized(en: "ASSOCIATION ROULETTE", ru: "РУЛЕТКА АССОЦИАЦИЙ", es: "RULETA DE ASOCIACIONES", uk: "РУЛЕТКА АСОЦІАЦІЙ"))
-                    .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .tracking(0.18)
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .tracking(1.8)
                     .foregroundStyle(SpyTheme.dim)
                     .spyFitted(scale: 0.62, alignment: .center)
 
                 Text(previewPlayer?.avatar ?? "🕵️")
-                    .font(.system(size: 58))
-                    .frame(height: 64)
-                    .shadow(color: SpyTheme.red.opacity(0.35), radius: 18)
+                    .font(.system(size: 40))
+                    .frame(height: 44)
+                    .shadow(color: SpyTheme.red.opacity(reduceMotion ? 0.18 : 0.35), radius: reduceMotion ? 8 : 18)
 
                 Text(localized(en: "SELECTING OPERATIVE", ru: "ВЫБОР ОПЕРАТИВНИКА", es: "ELIGIENDO OPERATIVO", uk: "ОБИРАЄМО ОПЕРАТИВНИКА"))
-                    .font(.system(size: 14, weight: .black, design: .default))
+                    .font(SpyTheme.brandFont(size: 14))
                     .tracking(0.10)
                     .foregroundStyle(SpyTheme.red)
                     .spyFitted(lines: 2, scale: 0.58, alignment: .center)
@@ -2695,15 +3174,18 @@ struct LocalGameView: View {
                         Capsule()
                             .fill(index == tick ? SpyTheme.red : SpyTheme.stroke)
                             .frame(width: index == tick ? 22 : 10, height: 5)
-                            .animation(.smooth(duration: 0.12), value: tick)
+                            .animation(reduceMotion ? nil : .smooth(duration: 0.12), value: tick)
                     }
                 }
             }
-            .frame(maxHeight: .infinity, alignment: .center)
-            .task(id: questionIndex) {
-                try? await Task.sleep(for: .milliseconds(1200))
-                guard !Task.isCancelled else { return }
-                withAnimation(.smooth(duration: 0.28)) {
+            .frame(maxWidth: .infinity, alignment: .center)
+            .task(id: "\(questionIndex)|\(isLocalGamePaused)|\(reduceMotion)") {
+                guard !isLocalGamePaused else { return }
+                if !reduceMotion {
+                    try? await Task.sleep(for: .milliseconds(1200))
+                }
+                guard !Task.isCancelled, !isLocalGamePaused, phase == .playing else { return }
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
                     associationRouletteDone = true
                 }
                 HapticManager.shared.fire(.notification(.success))
@@ -2804,102 +3286,141 @@ struct LocalGameView: View {
     @ViewBuilder
     private var spyGuessView: some View {
         if let session {
-            let spyPlayers = activeLocalSpyPlayers(in: session)
             ZStack {
-                VStack(spacing: 20) {
-                    Text("⏰")
-                        .font(.system(size: 60))
-                        .scaleEffect(guessSecondsRemaining <= 10 ? 1.05 : 1)
-                        .animation(.smooth(duration: 0.2), value: guessSecondsRemaining)
-
-                    Text(localized(en: "TIME'S UP!", ru: "ВРЕМЯ ВЫШЛО!", es: "TIEMPO TERMINADO", uk: "ЧАС ВИЙШОВ!"))
-                        .font(.system(size: 36, weight: .black, design: .default))
-                        .tracking(0.06)
-                        .foregroundStyle(SpyTheme.red)
-                        .multilineTextAlignment(.center)
-                        .spyFitted(lines: 2, scale: 0.56, alignment: .center)
-
-                    localGuessCountdown
-
-                    if !spyPlayers.isEmpty {
-                        VStack(spacing: 8) {
-                            Text(
-                                session.spiesKnowEachOther
-                                    ? localized(en: "Pass phone to the spy team:", ru: "Передай телефон команде шпионов:", es: "Pasa el telefono al equipo de espias:", uk: "Передай телефон команді шпигунів:")
-                                    : localized(en: "Pass the phone to any spy.", ru: "Передай телефон любому шпиону.", es: "Pasa el telefono a cualquier espia.", uk: "Передай телефон будь-якому шпигуну.")
-                            )
-                                .font(.system(size: 13, weight: .semibold, design: .default))
-                                .foregroundStyle(SpyTheme.dim)
-                                .multilineTextAlignment(.center)
-                                .spyFitted(lines: 2, scale: 0.66, alignment: .center)
-
-                            if session.spiesKnowEachOther {
-                                HStack(spacing: 10) {
-                                    ForEach(spyPlayers) { spyPlayer in
-                                        VStack(spacing: 3) {
-                                            Text(spyPlayer.avatar)
-                                                .font(.system(size: 28))
-                                            Text(spyPlayer.name.uppercased())
-                                                .font(.system(size: 10, weight: .black, design: .monospaced))
-                                                .foregroundStyle(.white)
-                                                .lineLimit(1)
-                                                .minimumScaleFactor(0.56)
-                                        }
-                                    }
+                VStack(spacing: 0) {
+                    HStack(spacing: 12) {
+                        SpyWordmark(fontSize: 22)
+                            .dynamicTypeSize(...DynamicTypeSize.large)
+                        Spacer(minLength: 8)
+                        Button(action: requestReturnFromSpyGuess) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .black))
+                                .foregroundStyle(.white.opacity(0.88))
+                                .frame(width: 44, height: 44)
+                                .background(SpyTheme.control, in: CutCornerShape(cut: 7))
+                                .overlay {
+                                    CutCornerShape(cut: 7).stroke(SpyTheme.strokeStrong, lineWidth: 1)
                                 }
-                            }
                         }
+                        .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+                        .accessibilityLabel(localized(en: "Close private action", ru: "Закрыть приватное действие", es: "Cerrar acción privada", uk: "Закрити приватну дію"))
+                        .accessibilityIdentifier("localGame.spyGuess.cancel")
+                    }
+                    .padding(.horizontal, 18)
+                    .frame(height: 64)
+                    .background(Color.black.opacity(0.84))
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(SpyTheme.stroke).frame(height: 1)
                     }
 
-                    Button {
-                        pendingSpyGuess = nil
-                        withAnimation(.smooth(duration: 0.22)) {
-                            showSpyGuessOptions = true
+                    Group {
+                        if spyGuessReturnSealed {
+                            LocalPrivateReturnView(
+                                language: appState.language,
+                                onContinue: finishSpyGuessReturn
+                            )
+                        } else if !spyGuessHandoffConfirmed {
+                            LocalSpyGuessHandoffView(
+                                language: appState.language,
+                                onContinue: confirmSpyGuessHandoff
+                            )
+                        } else {
+                            privateSpyGuessDecision(session)
                         }
-                        HapticManager.shared.fire(.buttonPress)
-                    } label: {
-                        SpyActionLabel(
-                            title: localized(en: "GUESS THE WORD", ru: "УГАДАТЬ СЛОВО", es: "ADIVINAR PALABRA", uk: "ВГАДАТИ СЛОВО"),
-                            systemImage: "scope",
-                            tracking: 0.02,
-                            lines: 2
-                        )
                     }
-                    .buttonStyle(SpyButtonStyle(variant: .red))
+                    .id(spyGuessPresentationID)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.985)))
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+                    .accessibilityHidden(showSpyGuessOptions)
+                    .allowsHitTesting(!showSpyGuessOptions)
                 }
-                .frame(maxWidth: 480)
-                .frame(maxWidth: .infinity)
-                .padding(.horizontal, 4)
-                .padding(.top, 18)
+                .animation(localPhaseAnimation, value: spyGuessPresentationID)
+                .privacySensitive()
 
                 if showSpyGuessOptions {
                     spyGuessModal(session)
                         .transition(.opacity.combined(with: .scale(scale: 0.96)))
                 }
             }
+            .accessibilityIdentifier("localGame.spyGuess")
+            .accessibilityAction(.escape, requestReturnFromSpyGuess)
         }
+    }
+
+    private var spyGuessPresentationID: String {
+        if spyGuessReturnSealed { return "sealed" }
+        return spyGuessHandoffConfirmed ? "private" : "handoff"
+    }
+
+    private func privateSpyGuessDecision(_ session: LocalSession) -> some View {
+        ScrollView(.vertical, showsIndicators: false) {
+            VStack(spacing: 18) {
+                Image(systemName: "scope")
+                    .font(.system(size: 54, weight: .black))
+                    .foregroundStyle(SpyTheme.red)
+                    .shadow(color: SpyTheme.red.opacity(0.34), radius: 24)
+                    .accessibilityHidden(true)
+
+                Text(localized(en: "SPY DECISION", ru: "РЕШЕНИЕ ШПИОНА", es: "DECISIÓN DEL ESPÍA", uk: "РІШЕННЯ ШПИГУНА"))
+                    .font(SpyTheme.brandFont(size: 38))
+                    .tracking(1.8)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(2)
+                    .minimumScaleFactor(0.56)
+                    .accessibilityHeading(.h1)
+
+                localGuessCountdown
+
+                Button {
+                    pendingSpyGuess = nil
+                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
+                        showSpyGuessOptions = true
+                    }
+                    HapticManager.shared.fire(.buttonPress)
+                } label: {
+                    SpyActionLabel(
+                        title: localized(en: "GUESS THE WORD", ru: "УГАДАТЬ СЛОВО", es: "ADIVINAR PALABRA", uk: "ВГАДАТИ СЛОВО"),
+                        systemImage: "scope",
+                        tracking: 0.02,
+                        lines: 2
+                    )
+                }
+                .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
+                .frame(maxWidth: 360)
+                .accessibilityFocused($localAccessibilityFocus, equals: .spyGuessLauncher)
+                .accessibilityIdentifier("localGame.spyGuess.open")
+            }
+            .frame(maxWidth: 480)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 20)
+            .padding(.vertical, 22)
+        }
+        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
     }
 
     private var localGuessCountdown: some View {
         let activeSpyCount = session.map { activeLocalSpyPlayers(in: $0).count } ?? 1
-        return VStack(spacing: 4) {
+        return VStack(spacing: 5) {
             Text(
                 activeSpyCount > 1
-                    ? localized(en: "SPY TEAM HAS", ru: "У КОМАНДЫ ШПИОНОВ", es: "EL EQUIPO DE ESPIAS TIENE", uk: "У КОМАНДИ ШПИГУНІВ Є")
-                    : localized(en: "SPY HAS", ru: "У ШПИОНА", es: "EL ESPIA TIENE", uk: "У ШПИГУНА Є")
+                    ? localized(en: "SPY TEAM GETS", ru: "У КОМАНДЫ ШПИОНОВ", es: "EL EQUIPO DE ESPÍAS TIENE", uk: "КОМАНДА ШПИГУНІВ МАЄ")
+                    : localized(en: "SPY GETS", ru: "У ШПИОНА", es: "EL ESPÍA TIENE", uk: "ШПИГУН МАЄ")
             )
                 .font(SpyTheme.micro)
                 .tracking(0.08)
                 .foregroundStyle(SpyTheme.dim)
                 .spyFitted(scale: 0.66, alignment: .center)
 
-            Text("\(guessSecondsRemaining)s")
-                .font(.system(size: 42, weight: .black, design: .monospaced))
-                .tracking(0.04)
-                .foregroundStyle(guessSecondsRemaining <= 10 ? SpyTheme.red : .white)
-                .contentTransition(.numericText())
+            Text(localized(en: "ONE FINAL GUESS", ru: "ОДНА ФИНАЛЬНАЯ ПОПЫТКА", es: "UN INTENTO FINAL", uk: "ОДНА ФІНАЛЬНА СПРОБА"))
+                .font(SpyTheme.brandFont(size: 24))
+                .tracking(1.2)
+                .foregroundStyle(SpyTheme.red)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.56)
 
-            Text(localized(en: "TO GUESS", ru: "ЧТОБЫ УГАДАТЬ", es: "PARA ADIVINAR", uk: "ЩОБ ВГАДАТИ"))
+            Text(localized(en: "A WRONG WORD ENDS THE GAME", ru: "ОШИБКА ЗАВЕРШАЕТ ИГРУ", es: "UN ERROR TERMINA LA PARTIDA", uk: "ПОМИЛКА ЗАВЕРШУЄ ГРУ"))
                 .font(SpyTheme.micro)
                 .tracking(0.08)
                 .foregroundStyle(SpyTheme.dim)
@@ -2907,8 +3428,10 @@ struct LocalGameView: View {
         }
         .padding(.horizontal, 24)
         .padding(.vertical, 12)
-        .background((guessSecondsRemaining <= 10 ? SpyTheme.red : Color.white).opacity(guessSecondsRemaining <= 10 ? 0.12 : 0.04))
-        .overlay(Rectangle().stroke((guessSecondsRemaining <= 10 ? SpyTheme.red : Color.white).opacity(guessSecondsRemaining <= 10 ? 0.5 : 0.12), lineWidth: 1))
+        .background(SpyTheme.red.opacity(0.08), in: CutCornerShape(cut: 8))
+        .overlay {
+            CutCornerShape(cut: 8).stroke(SpyTheme.red.opacity(0.42), lineWidth: 1)
+        }
     }
 
     private func spyGuessModal(_ session: LocalSession) -> some View {
@@ -2918,11 +3441,13 @@ struct LocalGameView: View {
 
             SpyPanel(accent: SpyTheme.red) {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(localized(en: "SPY GUESS", ru: "ДОГАДКА ШПИОНА", es: "INTENTO DEL ESPIA", uk: "ЗДОГАДКА ШПИГУНА"))
+                    Text(localized(en: "SPY ATTEMPT", ru: "ПОПЫТКА ШПИОНА", es: "INTENTO DEL ESPÍA", uk: "СПРОБА ШПИГУНА"))
                         .font(SpyTheme.micro)
                         .tracking(0.18)
                         .foregroundStyle(SpyTheme.red)
                         .spyKicker(lines: 2)
+                        .accessibilityHeading(.h1)
+                        .accessibilityFocused($localAccessibilityFocus, equals: .spyGuessModalTitle)
 
                     Text(localized(en: "CHOOSE THE SECRET WORD", ru: "ВЫБЕРИ СЕКРЕТНОЕ СЛОВО", es: "ELIGE LA PALABRA SECRETA", uk: "ОБЕРИ СЕКРЕТНЕ СЛОВО"))
                         .font(.system(size: 20, weight: .black, design: .default))
@@ -2949,16 +3474,13 @@ struct LocalGameView: View {
 
                     HStack(spacing: 10) {
                         Button {
-                            pendingSpyGuess = nil
-                            withAnimation(.smooth(duration: 0.18)) {
-                                showSpyGuessOptions = false
-                            }
-                            HapticManager.shared.fire(.buttonPress)
+                            closeSpyGuessOptions()
                         } label: {
                             Text(localized(en: "CANCEL", ru: "ОТМЕНА", es: "CANCELAR", uk: "СКАСУВАТИ"))
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(SpyButtonStyle(variant: .ghost))
+                        .accessibilityIdentifier("localGame.spyGuess.options.cancel")
 
                         Button {
                             guard let pendingSpyGuess else { return }
@@ -2971,6 +3493,7 @@ struct LocalGameView: View {
                         }
                         .buttonStyle(SpyButtonStyle(variant: .red))
                         .disabled(pendingSpyGuess == nil)
+                        .accessibilityIdentifier("localGame.spyGuess.options.confirm")
                     }
                     .font(.system(size: 11, weight: .black, design: .default))
                     .tracking(0.04)
@@ -2978,6 +3501,13 @@ struct LocalGameView: View {
             }
             .frame(maxWidth: 480)
             .padding(.horizontal, 4)
+        }
+        .accessibilityElement(children: .contain)
+        .accessibilityAddTraits(.isModal)
+        .accessibilityAction(.escape, closeSpyGuessOptions)
+        .task {
+            await Task.yield()
+            localAccessibilityFocus = .spyGuessModalTitle
         }
     }
 
@@ -3001,45 +3531,86 @@ struct LocalGameView: View {
                 .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle())
+        .accessibilityIdentifier("localGame.spyGuess.word.\(localWordKey(word))")
     }
 
     @ViewBuilder
     private var votingView: some View {
         if let session {
-            VStack(alignment: .leading, spacing: 18) {
-                localSessionPanel(session)
-
-                SpyPanel(accent: SpyTheme.red) {
-                    VStack(alignment: .leading, spacing: 16) {
-                        Text(copy.finalAccusation)
-                            .font(SpyTheme.micro)
-                            .tracking(0.12)
-                            .foregroundStyle(SpyTheme.dim)
-                            .spyKicker(lines: 2)
-                        Text(copy.whoIsSpy)
-                            .font(.system(size: 32, weight: .black, design: .default))
-                            .tracking(0.04)
-                            .foregroundStyle(.white)
-                            .spyFitted(lines: 2, scale: 0.58)
-                        ForEach(activeLocalPlayerIndices(in: session), id: \.self) { index in
-                            Button {
-                                resolveAccusation(index, session: session)
-                            } label: {
-                                HStack {
-                                    Text(session.players[index].avatar)
-                                        .font(.system(size: 22))
-                                    Text(session.players[index].name.uppercased())
-                                        .font(.system(size: 11, weight: .bold, design: .default))
-                                        .tracking(0.04)
-                                        .spyFitted(scale: 0.68)
-                                    Spacer()
-                                    Image(systemName: "scope")
+            GeometryReader { proxy in
+                VStack(spacing: 0) {
+                HStack(spacing: 12) {
+                    SpyWordmark(fontSize: 22)
+                        .dynamicTypeSize(...DynamicTypeSize.large)
+                    Spacer(minLength: 8)
+                    if localPrivateVotes.isEmpty {
+                        Button(action: cancelLocalVoteBeforeFirstCast) {
+                            Image(systemName: "xmark")
+                                .font(.system(size: 13, weight: .black))
+                                .foregroundStyle(.white.opacity(0.88))
+                                .frame(width: 44, height: 44)
+                                .background(SpyTheme.control, in: CutCornerShape(cut: 7))
+                                .overlay {
+                                    CutCornerShape(cut: 7).stroke(SpyTheme.strokeStrong, lineWidth: 1)
                                 }
-                            }
-                            .buttonStyle(SpyButtonStyle(variant: accusedIndex == index ? .red : .ghost))
                         }
+                        .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+                        .accessibilityLabel(localized(en: "Cancel voting", ru: "Отменить голосование", es: "Cancelar votación", uk: "Скасувати голосування"))
+                        .accessibilityIdentifier("localGame.voting.cancel")
+                    } else {
+                        Image(systemName: "lock.fill")
+                            .font(.system(size: 13, weight: .black))
+                            .foregroundStyle(SpyTheme.red)
+                            .frame(width: 44, height: 44)
+                            .accessibilityLabel(localized(en: "Voting is locked", ru: "Голосование зафиксировано", es: "La votación está fijada", uk: "Голосування зафіксовано"))
                     }
                 }
+                .padding(.horizontal, 18)
+                .frame(height: 64)
+                .background(Color.black.opacity(0.84))
+                .overlay(alignment: .bottom) {
+                    Rectangle().fill(SpyTheme.stroke).frame(height: 1)
+                }
+
+                LocalCinematicTimer(
+                    language: appState.language,
+                    secondsRemaining: secondsRemaining,
+                    totalSeconds: Int(duration * 60),
+                    turn: max(questionIndex + 1, 1)
+                )
+                .padding(.horizontal, 22)
+                .padding(.top, 12)
+
+                LocalCinematicOperativeRail(
+                    participants: localCinematicParticipants(in: session),
+                    language: appState.language
+                )
+                .padding(.top, 2)
+
+                if let voterIndex = localVoteVoterOrder[safe: localVoteVoterCursor] {
+                    LocalPrivateVoteView(
+                        participants: localVoteParticipants(in: session),
+                        voterIndex: voterIndex,
+                        votesCast: localPrivateVotes.count,
+                        threshold: localVoteThreshold(in: session),
+                        stage: localVoteStage,
+                        selectedTargetIndex: pendingLocalVoteTargetIndex,
+                        language: appState.language,
+                        onConfirmHandoff: confirmLocalVoteHandoff,
+                        onSelectTarget: selectLocalVoteTarget,
+                        onConfirmVote: { confirmLocalVote(in: session) }
+                    )
+                    .frame(maxHeight: .infinity)
+                }
+            }
+            .frame(width: proxy.size.width, height: proxy.size.height)
+            .privacySensitive()
+            .accessibilityIdentifier("localGame.voting")
+            .accessibilityAction(.escape) {
+                if localPrivateVotes.isEmpty {
+                    cancelLocalVoteBeforeFirstCast()
+                }
+            }
             }
         }
     }
@@ -3047,70 +3618,79 @@ struct LocalGameView: View {
     @ViewBuilder
     private var resultsView: some View {
         if let session, let winner {
-            VStack(spacing: 20) {
-                Text(winner == .spy ? "🕵️" : "🔍")
-                    .font(.system(size: 72))
-                    .symbolEffect(.bounce, value: winner.title(copy))
-                    .transition(.scale(scale: 0.35).combined(with: .opacity))
+            ScrollView(.vertical, showsIndicators: false) {
+                VStack(spacing: 18) {
+                    MissionRoleCard(
+                        role: winner == .spy ? .spy : .detective(word: session.word),
+                        category: session.category,
+                        theme: localCardTheme,
+                        accent: localCardAccent,
+                        language: appState.language,
+                        isRevealed: true,
+                        size: .compact
+                    )
+                    .dynamicTypeSize(...DynamicTypeSize.large)
+                    .frame(width: 146)
+                    .spyWebEntrance(delay: 0.04, duration: 0.56, y: 34, scale: 0.78)
 
-                Text(localWinnerTitle(winner, session: session))
-                    .font(.system(size: 44, weight: .black, design: .default))
-                    .tracking(0.10)
-                    .foregroundStyle(SpyTheme.red)
-                    .multilineTextAlignment(.center)
-                    .spyFitted(lines: 2, scale: 0.52, alignment: .center)
-                    .transition(.move(edge: .bottom).combined(with: .opacity))
+                    Text(localWinnerTitle(winner, session: session))
+                        .font(SpyTheme.brandFont(size: 44))
+                        .tracking(2.0)
+                        .foregroundStyle(winner == .spy ? SpyTheme.red : .white)
+                        .multilineTextAlignment(.center)
+                        .lineLimit(2)
+                        .minimumScaleFactor(0.52)
+                        .spyWebEntrance(delay: 0.10, duration: 0.52, y: 18)
 
-                localResultWordPanel(session)
+                    localResultWordPanel(session)
+                        .spyWebEntrance(delay: 0.16, duration: 0.50, y: 16)
 
-                if !session.spyPlayers.isEmpty {
-                    VStack(spacing: 6) {
-                        Text(localized(en: "SPIES WERE", ru: "ШПИОНАМИ БЫЛИ", es: "LOS ESPIAS ERAN", uk: "ШПИГУНАМИ БУЛИ"))
-                            .font(.system(size: 9, weight: .black, design: .monospaced))
-                            .tracking(0.08)
-                            .foregroundStyle(SpyTheme.dim)
-                        ForEach(session.spyPlayers) { spy in
-                            Text("\(spy.avatar) \(spy.name.uppercased())")
-                                .font(.system(size: 12, weight: .bold, design: .default))
-                                .tracking(0.06)
-                                .foregroundStyle(SpyTheme.red)
+                    if !session.spyPlayers.isEmpty {
+                        VStack(spacing: 6) {
+                            Text(localized(en: "SPIES WERE", ru: "ШПИОНАМИ БЫЛИ", es: "LOS ESPÍAS ERAN", uk: "ШПИГУНАМИ БУЛИ"))
+                                .font(.system(size: 9, weight: .black, design: .monospaced))
+                                .tracking(1.3)
+                                .foregroundStyle(SpyTheme.dim)
+                            ForEach(session.spyPlayers) { spy in
+                                Text("\(spy.avatar) \(spy.name.uppercased())")
+                                    .font(SpyTheme.brandFont(size: 15))
+                                    .tracking(0.9)
+                                    .foregroundStyle(SpyTheme.red)
+                            }
                         }
+                        .multilineTextAlignment(.center)
                     }
-                    .multilineTextAlignment(.center)
-                }
 
-                VStack(spacing: 10) {
-                    Button {
-                        startLocalGame()
-                    } label: {
-                        SpyActionLabel(
-                            title: localized(en: "PLAY AGAIN", ru: "СЫГРАТЬ ЕЩЁ", es: "JUGAR OTRA VEZ", uk: "ЗІГРАТИ ЩЕ РАЗ"),
-                            systemImage: "arrow.clockwise",
-                            tracking: 0.04,
-                            lines: 1
-                        )
-                    }
-                    .buttonStyle(SpyButtonStyle(variant: .red))
+                    VStack(spacing: 8) {
+                        Button(action: startLocalGame) {
+                            HStack(spacing: 9) {
+                                Image(systemName: "arrow.clockwise")
+                                Text(localized(en: "PLAY AGAIN", ru: "СЫГРАТЬ ЕЩЁ", es: "JUGAR OTRA VEZ", uk: "ЗІГРАТИ ЩЕ РАЗ"))
+                            }
+                        }
+                        .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
+                        .accessibilityIdentifier("localGame.results.playAgain")
 
-                    Button {
-                        reset()
-                        appState.selectedTab = .home
-                    } label: {
-                        SpyActionLabel(
-                            title: localized(en: "HOME", ru: "НА ГЛАВНУЮ", es: "INICIO", uk: "НА ГОЛОВНУ"),
-                            systemImage: "chevron.left",
-                            tracking: 0.04,
-                            lines: 1
-                        )
+                        Button {
+                            reset()
+                            appState.selectedTab = .home
+                        } label: {
+                            HStack(spacing: 9) {
+                                Image(systemName: "chevron.left")
+                                Text(localized(en: "HOME", ru: "НА ГЛАВНУЮ", es: "INICIO", uk: "НА ГОЛОВНУ"))
+                            }
+                        }
+                        .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
+                        .accessibilityIdentifier("localGame.results.home")
                     }
-                    .buttonStyle(SpyButtonStyle(variant: .ghost))
+                    .frame(maxWidth: 360)
                 }
-                .frame(maxWidth: 360)
+                .frame(maxWidth: 480)
+                .frame(maxWidth: .infinity, minHeight: 620, alignment: .center)
+                .padding(.horizontal, 4)
+                .padding(.vertical, 24)
             }
-            .frame(maxWidth: 480)
-            .frame(maxWidth: .infinity, maxHeight: .infinity, alignment: .center)
-            .padding(.horizontal, 4)
-            .padding(.vertical, 24)
+            .accessibilityIdentifier("localGame.results")
         }
     }
 
@@ -3147,11 +3727,11 @@ struct LocalGameView: View {
         }
         .padding(.horizontal, 40)
         .padding(.vertical, 24)
-        .background(SpyTheme.dark)
-        .overlay(
-            Rectangle()
-                .stroke(SpyTheme.stroke, lineWidth: 1)
-        )
+        .background(SpyTheme.dark, in: CutCornerShape(cut: 10))
+        .overlay {
+            CutCornerShape(cut: 10)
+                .stroke(SpyTheme.strokeStrong, lineWidth: 1)
+        }
         .overlay(alignment: .topLeading) {
             CornerStroke(color: SpyTheme.red)
                 .frame(width: 12, height: 12)
@@ -3897,20 +4477,56 @@ struct LocalGameView: View {
         accusedIndex = nil
         winner = nil
         spyGuess = nil
+        introStartedAt = nil
         status = ""
-        phase = .cards
+        introStartedAt = Date()
+        setLocalPhase(.intro)
         HapticManager.shared.fire(.milestone)
     }
 
     private func revealCard() {
-        withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.65)) {
+        withAnimation(
+            reduceMotion
+                ? .linear(duration: 0.01)
+                : .timingCurve(0.4, 0, 0.2, 1, duration: 0.68)
+        ) {
             cardRevealed = true
         }
         HapticManager.shared.fire(.reveal)
     }
 
+    private func localRoleContent(
+        player: LocalPlayer,
+        session: LocalSession
+    ) -> MissionRoleCardContent {
+        player.isSpy ? .spy : .detective(word: session.word)
+    }
+
+    private func localRoleTeammates(
+        player: LocalPlayer,
+        session: LocalSession
+    ) -> [SpyRoleCardIdentity] {
+        guard player.isSpy, session.spiesKnowEachOther else { return [] }
+        return session.spyPlayers
+            .filter { $0.id != player.id }
+            .map {
+                SpyRoleCardIdentity(
+                    id: $0.id.uuidString,
+                    name: $0.name,
+                    avatar: $0.avatar
+                )
+            }
+    }
+
     private func nextCardTitle(_ session: LocalSession) -> String {
-        revealIndex + 1 >= session.players.count ? copy.beginTimer : localized(en: "READ - NEXT", ru: "ПРОЧИТАЛ — ДАЛЬШЕ", es: "LEIDO - SIGUIENTE", uk: "ПРОЧИТАНО — ДАЛІ")
+        revealIndex + 1 >= session.players.count
+            ? copy.beginTimer
+            : localized(
+                en: "CARD VIEWED — NEXT",
+                ru: "КАРТА ПРОСМОТРЕНА — ДАЛЬШЕ",
+                es: "CARTA VISTA — SIGUIENTE",
+                uk: "КАРТКУ ПЕРЕГЛЯНУТО — ДАЛІ"
+            )
     }
 
     private func nextCardIcon(_ session: LocalSession) -> String {
@@ -3941,7 +4557,7 @@ struct LocalGameView: View {
         if revealIndex + 1 >= session.players.count {
             beginPlaying()
         } else {
-            withAnimation(.smooth(duration: 0.28)) {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
                 revealIndex += 1
                 cardRevealed = false
             }
@@ -3957,7 +4573,7 @@ struct LocalGameView: View {
             resetAssociationFlow(playerIndices: activeLocalPlayerIndices(in: session), mode: session.mode)
         }
         isLocalGamePaused = false
-        phase = .playing
+        setLocalPhase(.playing)
         HapticManager.shared.fire(.milestone)
         startLocalTimerLoop()
     }
@@ -3993,6 +4609,236 @@ struct LocalGameView: View {
             resumeLocalGame()
         } else {
             pauseLocalGame()
+        }
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func stopLocalGame() {
+        isConfirmingStop = false
+        timerTask?.cancel()
+        reset()
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func requestStopLocalGame() {
+        isConfirmingStop = true
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func startLocalVote() {
+        guard phase == .playing, let session else { return }
+        let activeIndices = activeLocalPlayerIndices(in: session)
+        guard activeIndices.count >= 2 else { return }
+
+        timerTask?.cancel()
+        timerTask = nil
+        localVoteVoterOrder = activeIndices
+        localVoteVoterCursor = 0
+        localPrivateVotes = []
+        localVoteStage = .handoff
+        pendingLocalVoteTargetIndex = nil
+        localVoteCancellationEvent = nil
+        setLocalPhase(.voting)
+        HapticManager.shared.fire(.milestone)
+    }
+
+    private func localVoteParticipants(in session: LocalSession) -> [LocalPrivateDecisionParticipant] {
+        localVoteVoterOrder.compactMap { index in
+            guard let player = session.players[safe: index] else { return nil }
+            return LocalPrivateDecisionParticipant(
+                index: index,
+                name: player.name,
+                avatar: player.avatar
+            )
+        }
+    }
+
+    private func localVoteThreshold(in session: LocalSession) -> Int {
+        LocalPrivateVotePolicy.threshold(
+            activeIndices: localVoteVoterOrder,
+            activeSpyIndices: Set(localVoteVoterOrder.filter { session.players[safe: $0]?.isSpy == true })
+        )
+    }
+
+    private func confirmLocalVoteHandoff() {
+        guard phase == .voting,
+              localVoteVoterOrder.indices.contains(localVoteVoterCursor),
+              localVoteStage == .handoff else { return }
+        pendingLocalVoteTargetIndex = nil
+        withAnimation(localPhaseAnimation) {
+            localVoteStage = .ballot
+        }
+        HapticManager.shared.fire(.navigation)
+    }
+
+    private func selectLocalVoteTarget(_ targetIndex: Int) {
+        guard phase == .voting,
+              localVoteStage == .ballot,
+              let voterIndex = localVoteVoterOrder[safe: localVoteVoterCursor],
+              voterIndex != targetIndex,
+              localVoteVoterOrder.contains(targetIndex) else { return }
+        pendingLocalVoteTargetIndex = targetIndex
+        HapticManager.shared.fire(.tabSelection)
+    }
+
+    private func confirmLocalVote(in session: LocalSession) {
+        guard phase == .voting,
+              localVoteStage == .ballot,
+              let voterIndex = localVoteVoterOrder[safe: localVoteVoterCursor],
+              let targetIndex = pendingLocalVoteTargetIndex,
+              let nextVotes = LocalPrivateVotePolicy.appendingImmutableVote(
+                voterIndex: voterIndex,
+                targetIndex: targetIndex,
+                activeIndices: localVoteVoterOrder,
+                existingVotes: localPrivateVotes
+              ) else {
+            HapticManager.shared.fire(.notification(.warning))
+            return
+        }
+
+        localPrivateVotes = nextVotes
+        pendingLocalVoteTargetIndex = nil
+
+        let decision = LocalPrivateVotePolicy.decision(
+            activeIndices: localVoteVoterOrder,
+            activeSpyIndices: Set(localVoteVoterOrder.filter { session.players[safe: $0]?.isSpy == true }),
+            votes: nextVotes
+        )
+
+        switch decision {
+        case let .eject(index, _):
+            clearLocalVoteRound()
+            resolveAccusation(index, session: session)
+        case .cancel:
+            presentLocalVoteCancellation()
+        case .continueVoting:
+            guard localVoteVoterCursor + 1 < localVoteVoterOrder.count else {
+                presentLocalVoteCancellation()
+                return
+            }
+            localVoteStage = .sealed
+            HapticManager.shared.fire(.notification(.success))
+            let expectedVoteCount = nextVotes.count
+            let expectedCursor = localVoteVoterCursor
+            Task { @MainActor in
+                try? await Task.sleep(for: .milliseconds(reduceMotion ? 450 : 900))
+                guard !Task.isCancelled,
+                      phase == .voting,
+                      localVoteCancellationEvent == nil,
+                      localVoteStage == .sealed,
+                      localPrivateVotes.count == expectedVoteCount,
+                      localVoteVoterCursor == expectedCursor else { return }
+                localVoteVoterCursor += 1
+                withAnimation(localPhaseAnimation) {
+                    localVoteStage = .handoff
+                }
+            }
+        }
+    }
+
+    private func cancelLocalVoteBeforeFirstCast() {
+        guard phase == .voting, localPrivateVotes.isEmpty else { return }
+        clearLocalVoteRound()
+        setLocalPhase(.playing)
+        startLocalTimerLoop()
+        HapticManager.shared.fire(.navigation)
+    }
+
+    private func presentLocalVoteCancellation() {
+        guard phase == .voting, localVoteCancellationEvent == nil else { return }
+        localVoteStage = .sealed
+        let roundID = UUID().uuidString
+        localVoteCancellationEvent = DetectiveVoteCancellationEvent(
+            roomID: "local",
+            eventID: roundID,
+            roundID: roundID,
+            presentAt: Date()
+        )
+        HapticManager.shared.fire(.notification(.warning))
+    }
+
+    @MainActor
+    private func finishLocalVoteCancellation(_ event: DetectiveVoteCancellationEvent) async {
+        let endAt = event.presentAt.addingTimeInterval(
+            DetectiveVoteCancellationPresentationPolicy.presentationDuration
+        )
+        let remaining = max(endAt.timeIntervalSinceNow, 0)
+        if remaining > 0 {
+            try? await Task.sleep(for: .seconds(remaining))
+        }
+        guard !Task.isCancelled, localVoteCancellationEvent?.id == event.id else { return }
+        clearLocalVoteRound()
+        setLocalPhase(.playing)
+        startLocalTimerLoop()
+    }
+
+    private func clearLocalVoteRound() {
+        localVoteCancellationEvent = nil
+        localVoteVoterOrder = []
+        localVoteVoterCursor = 0
+        localPrivateVotes = []
+        localVoteStage = .handoff
+        pendingLocalVoteTargetIndex = nil
+    }
+
+    private func startLocalSpyGuess() {
+        guard phase == .playing else { return }
+        timerTask?.cancel()
+        timerTask = nil
+        showSpyGuessOptions = false
+        pendingSpyGuess = nil
+        spyGuessHandoffConfirmed = false
+        spyGuessReturnSealed = false
+        setLocalPhase(.spyGuess)
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func confirmSpyGuessHandoff() {
+        guard phase == .spyGuess, !spyGuessReturnSealed else { return }
+        withAnimation(localPhaseAnimation) {
+            spyGuessHandoffConfirmed = true
+        }
+        HapticManager.shared.fire(.navigation)
+    }
+
+    private func requestReturnFromSpyGuess() {
+        guard phase == .spyGuess else { return }
+        if showSpyGuessOptions {
+            closeSpyGuessOptions()
+            return
+        }
+        guard spyGuessHandoffConfirmed else {
+            finishSpyGuessReturn()
+            return
+        }
+
+        showSpyGuessOptions = false
+        pendingSpyGuess = nil
+        withAnimation(localPhaseAnimation) {
+            spyGuessReturnSealed = true
+        }
+        HapticManager.shared.fire(.navigation)
+    }
+
+    private func finishSpyGuessReturn() {
+        guard phase == .spyGuess else { return }
+        showSpyGuessOptions = false
+        pendingSpyGuess = nil
+        spyGuessHandoffConfirmed = false
+        spyGuessReturnSealed = false
+        setLocalPhase(.playing)
+        startLocalTimerLoop()
+        HapticManager.shared.fire(.navigation)
+    }
+
+    private func closeSpyGuessOptions() {
+        pendingSpyGuess = nil
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.18)) {
+            showSpyGuessOptions = false
+        }
+        Task { @MainActor in
+            await Task.yield()
+            localAccessibilityFocus = .spyGuessLauncher
         }
         HapticManager.shared.fire(.buttonPress)
     }
@@ -4046,15 +4892,39 @@ struct LocalGameView: View {
         guessSecondsRemaining = 0
         showSpyGuessOptions = false
         pendingSpyGuess = nil
+        spyGuessHandoffConfirmed = false
+        spyGuessReturnSealed = false
+        clearLocalVoteRound()
         accusedIndex = nil
         spyGuess = nil
         winner = .spy
-        phase = .results
+        setLocalPhase(.results)
         HapticManager.shared.fire(.notification(.warning))
     }
 
     private func activeLocalPlayerIndices(in session: LocalSession) -> [Int] {
         session.players.indices.filter { !eliminatedPlayerIndices.contains($0) }
+    }
+
+    private func localCinematicParticipants(in session: LocalSession) -> [LocalCinematicParticipant] {
+        let askerID = currentAsker(in: session)?.id
+        let answererID = currentAnswerer(in: session)?.id
+
+        return session.players.enumerated().map { index, player in
+            let isEliminated = eliminatedPlayerIndices.contains(index)
+            let isActive = !isEliminated && (
+                player.id == askerID ||
+                    (session.mode == .questions && player.id == answererID)
+            )
+            return LocalCinematicParticipant(
+                id: player.id.uuidString,
+                name: player.name,
+                avatar: player.avatar,
+                isActive: isActive,
+                isEliminated: isEliminated,
+                isRevealedSpy: isEliminated && player.isSpy
+            )
+        }
     }
 
     private func activeLocalSpyPlayers(in session: LocalSession) -> [LocalPlayer] {
@@ -4152,7 +5022,8 @@ struct LocalGameView: View {
                 playerIndices: activeLocalPlayerIndices(in: session),
                 mode: session.mode
             )
-            phase = .playing
+            setLocalPhase(.playing)
+            startLocalTimerLoop()
             status = session.players[index].isSpy
                 ? localized(
                     en: "SPY EXCLUDED — ROUND CONTINUES",
@@ -4170,12 +5041,12 @@ struct LocalGameView: View {
         case .spyWins:
             timerTask?.cancel()
             winner = .spy
-            phase = .results
+            setLocalPhase(.results)
             HapticManager.shared.fire(.notification(.warning))
         case .detectivesWin:
             timerTask?.cancel()
             winner = .detectives
-            phase = .results
+            setLocalPhase(.results)
             HapticManager.shared.fire(.notification(.success))
         case .invalidAccusation:
             break
@@ -4183,12 +5054,18 @@ struct LocalGameView: View {
     }
 
     private func resolveSpyGuess(_ word: String, session: LocalSession) {
+        guard session.pool.contains(where: { localWordKey($0) == localWordKey(word) }) else {
+            HapticManager.shared.fire(.notification(.warning))
+            return
+        }
         timerTask?.cancel()
         spyGuess = word
         pendingSpyGuess = nil
         showSpyGuessOptions = false
+        spyGuessHandoffConfirmed = false
+        spyGuessReturnSealed = false
         winner = localWordKey(word) == localWordKey(session.word) ? .spy : .detectives
-        phase = .results
+        setLocalPhase(.results)
         HapticManager.shared.fire(
             .notification(winner == .spy ? .warning : .success)
         )
@@ -4196,8 +5073,11 @@ struct LocalGameView: View {
 
     private func reset() {
         timerTask?.cancel()
+        withAnimation(localPhaseAnimation) {
+            phase = .setup
+        }
         session = nil
-        phase = .setup
+        introStartedAt = nil
         revealIndex = 0
         cardRevealed = false
         secondsRemaining = 0
@@ -4209,6 +5089,9 @@ struct LocalGameView: View {
         spyGuess = nil
         pendingSpyGuess = nil
         showSpyGuessOptions = false
+        spyGuessHandoffConfirmed = false
+        spyGuessReturnSealed = false
+        clearLocalVoteRound()
         eliminatedPlayerIndices = []
         resetAssociationFlow(playerIndices: [], mode: .questions)
         appState.isShellChromeSuppressed = false
@@ -4453,12 +5336,26 @@ struct LocalGameView: View {
         guessSecondsRemaining = previewLocalGuessSeconds ?? 24
         showSpyGuessOptions = false
         pendingSpyGuess = nil
+        spyGuessHandoffConfirmed = false
+        spyGuessReturnSealed = false
+        localVoteVoterOrder = []
+        localVoteVoterCursor = 0
+        localPrivateVotes = []
+        localVoteStage = .handoff
+        pendingLocalVoteTargetIndex = nil
+        localVoteCancellationEvent = nil
+        isLocalGamePaused = false
+        forgotCardRequest = nil
+        resumeTimerAfterCardReview = false
         accusedIndex = nil
         winner = nil
         spyGuess = nil
         status = ""
 
         switch normalized {
+        case "intro", "roulette", "dealing":
+            phase = .intro
+            introStartedAt = Date()
         case "cards", "role", "role-hidden", "card":
             phase = .cards
         case "cards-revealed", "role-revealed", "card-revealed":
@@ -4467,10 +5364,70 @@ struct LocalGameView: View {
         case "playing", "active", "game":
             phase = .playing
             questionIndex = preview.mode == .associations ? 0 : 1
-        case "spyguess", "spy-guess", "guess":
+        case "paused", "playing-paused":
+            phase = .playing
+            questionIndex = preview.mode == .associations ? 0 : 1
+            isLocalGamePaused = true
+        case "spyguess", "spy-guess", "guess", "spyguess-handoff":
             phase = .spyGuess
-        case "voting", "vote":
+        case "spyguess-private", "spy-guess-private":
+            phase = .spyGuess
+            spyGuessHandoffConfirmed = true
+        case "spyguess-options", "spy-guess-options":
+            phase = .spyGuess
+            spyGuessHandoffConfirmed = true
+            showSpyGuessOptions = true
+        case "spyguess-sealed", "spy-guess-sealed":
+            phase = .spyGuess
+            spyGuessHandoffConfirmed = true
+            spyGuessReturnSealed = true
+        case "voting", "vote", "voting-handoff":
             phase = .voting
+            localVoteVoterOrder = Array(preview.players.indices)
+        case "voting-private", "vote-private":
+            phase = .voting
+            localVoteVoterOrder = Array(preview.players.indices)
+            localVoteStage = .ballot
+        case "voting-sealed", "vote-sealed":
+            phase = .voting
+            localVoteVoterOrder = Array(preview.players.indices)
+            localVoteStage = .sealed
+            localPrivateVotes = [LocalPrivateVote(voterIndex: 0, targetIndex: 1)]
+        case "voting-cancelled", "vote-cancelled":
+            phase = .voting
+            localVoteVoterOrder = Array(preview.players.indices)
+            localVoteStage = .sealed
+            let roundID = "preview-local-vote-round"
+            localVoteCancellationEvent = DetectiveVoteCancellationEvent(
+                roomID: "local-preview",
+                eventID: "preview-local-vote-cancelled",
+                roundID: roundID,
+                presentAt: Date()
+            )
+        case "forgot-card", "forgot-card-picker":
+            phase = .playing
+            isLocalGamePaused = true
+            forgotCardRequest = LocalForgotCardRequest(
+                session: preview,
+                activePlayerIndices: Array(preview.players.indices)
+            )
+        case "forgot-card-hidden":
+            phase = .playing
+            isLocalGamePaused = true
+            forgotCardRequest = LocalForgotCardRequest(
+                session: preview,
+                activePlayerIndices: Array(preview.players.indices),
+                previewSelectedPlayerIndex: 1
+            )
+        case "forgot-card-revealed":
+            phase = .playing
+            isLocalGamePaused = true
+            forgotCardRequest = LocalForgotCardRequest(
+                session: preview,
+                activePlayerIndices: Array(preview.players.indices),
+                previewSelectedPlayerIndex: 1,
+                previewCardRevealed: true
+            )
         case "results", "result", "detectives":
             phase = .results
             winner = .detectives
@@ -4528,21 +5485,44 @@ private struct LocalForgotCardRequest: Identifiable {
     let id = UUID()
     let session: LocalSession
     let activePlayerIndices: [Int]
+    var previewSelectedPlayerIndex: Int? = nil
+    var previewCardRevealed = false
 }
 
 private struct LocalForgotCardRecoveryView: View {
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     let request: LocalForgotCardRequest
     let copy: LocalGameCopy
     let language: AppLanguage
+    let cardTheme: SpyCardThemeID
+    let cardAccent: Color
 
     @State private var selectedPlayerIndex: Int?
     @State private var cardRevealed = false
+    @AccessibilityFocusState private var revealedCardFocused: Bool
+
+    init(
+        request: LocalForgotCardRequest,
+        copy: LocalGameCopy,
+        language: AppLanguage,
+        cardTheme: SpyCardThemeID,
+        cardAccent: Color
+    ) {
+        self.request = request
+        self.copy = copy
+        self.language = language
+        self.cardTheme = cardTheme
+        self.cardAccent = cardAccent
+        _selectedPlayerIndex = State(initialValue: request.previewSelectedPlayerIndex)
+        _cardRevealed = State(initialValue: request.previewCardRevealed)
+    }
 
     var body: some View {
         ZStack {
-            SpyBackground()
+            SpyCinematicBackdrop(intensity: cardRevealed ? 0.94 : 0.76)
 
             ScrollView {
                 VStack(spacing: 22) {
@@ -4561,9 +5541,32 @@ private struct LocalForgotCardRecoveryView: View {
                 .frame(maxWidth: 480)
                 .frame(maxWidth: .infinity)
             }
+
+            if scenePhase != .active {
+                Color.black
+                    .ignoresSafeArea()
+                    .accessibilityHidden(true)
+                    .allowsHitTesting(true)
+                    .transition(.identity)
+                    .transaction { transaction in
+                        transaction.disablesAnimations = true
+                    }
+                    .zIndex(10_000)
+            }
         }
+        .animation(nil, value: scenePhase)
         .interactiveDismissDisabled()
         .accessibilityIdentifier("localGame.forgotCardRecovery")
+        .onChange(of: scenePhase) { _, newScenePhase in
+            guard newScenePhase != .active else { return }
+            var transaction = Transaction()
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                cardRevealed = false
+                selectedPlayerIndex = nil
+                dismiss()
+            }
+        }
     }
 
     private var header: some View {
@@ -4661,67 +5664,73 @@ private struct LocalForgotCardRecoveryView: View {
 
     private func selectedPlayerFlow(player: LocalPlayer) -> some View {
         VStack(spacing: 20) {
-            if cardRevealed {
-                RoleRevealCard(
-                    player: player,
-                    session: request.session,
-                    revealed: true,
-                    copy: copy,
-                    language: language,
-                    dontShow: localized(en: "DON'T SHOW OTHERS", ru: "НЕ ПОКАЗЫВАЙ ДРУГИМ", es: "NO MUESTRES A OTROS", uk: "НЕ ПОКАЗУЙ ІНШИМ")
+            VStack(spacing: 7) {
+                Text(player.avatar)
+                    .font(.system(size: 34))
+                Text(player.name.uppercased())
+                    .font(SpyTheme.brandFont(size: 22))
+                    .tracking(1.2)
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.56)
+                Text(
+                    cardRevealed
+                        ? localized(en: "PRIVATE CARD", ru: "ЛИЧНАЯ КАРТА", es: "CARTA PRIVADA", uk: "ОСОБИСТА КАРТКА")
+                        : localized(en: "CONTINUE ALONE", ru: "ДАЛЬШЕ СМОТРИ ТОЛЬКО ТЫ", es: "CONTINUA A SOLAS", uk: "ДАЛІ ДИВИСЯ ЛИШЕ ТИ")
                 )
+                .font(.system(size: 8, weight: .bold, design: .monospaced))
+                .tracking(1.5)
+                .foregroundStyle(cardRevealed ? cardAccent : SpyTheme.dim)
+            }
+
+            Button {
+                guard !cardRevealed else { return }
+                revealForgottenCard()
+            } label: {
+                MissionRoleCard(
+                    role: player.isSpy ? .spy : .detective(word: request.session.word),
+                    category: request.session.category,
+                    theme: cardTheme,
+                    accent: cardAccent,
+                    language: language,
+                    isRevealed: cardRevealed,
+                    size: .hero
+                )
+                .dynamicTypeSize(...DynamicTypeSize.large)
                 .frame(maxWidth: 280)
+            }
+            .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
+            .accessibilityFocused($revealedCardFocused)
+            .accessibilityIdentifier("localGame.forgotCard.roleCard")
+
+            if cardRevealed {
+                let teammates = forgottenCardTeammates(player: player)
+                if !teammates.isEmpty {
+                    SpyRoleCardTeammateStrip(teammates: teammates, language: language)
+                        .transition(.opacity.combined(with: .move(edge: .top)))
+                }
 
                 Button {
                     dismiss()
                 } label: {
-                    SpyActionLabel(
-                        title: localized(en: "I REMEMBER — CONTINUE", ru: "ВСПОМНИЛ — ПРОДОЛЖИТЬ", es: "RECORDADO — CONTINUAR", uk: "ЗГАДАВ — ПРОДОВЖИТИ"),
-                        systemImage: "checkmark",
-                        tracking: 0.04,
-                        lines: 2
-                    )
+                    HStack(spacing: 9) {
+                        Image(systemName: "checkmark")
+                        Text(localized(en: "CARD VIEWED — CONTINUE", ru: "КАРТА ПРОСМОТРЕНА — ДАЛЬШЕ", es: "CARTA VISTA — CONTINUAR", uk: "КАРТКУ ПЕРЕГЛЯНУТО — ДАЛІ"))
+                    }
                 }
-                .buttonStyle(SpyButtonStyle(variant: .red))
-                .frame(maxWidth: 300)
+                .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
+                .frame(maxWidth: 320)
                 .accessibilityIdentifier("localGame.forgotCard.done")
             } else {
-                Spacer(minLength: 18)
-
-                Text(player.avatar)
-                    .font(.system(size: 58))
-
-                Text(player.name.uppercased())
-                    .font(.system(size: 26, weight: .black, design: .default))
-                    .tracking(0.08)
-                    .foregroundStyle(.white)
-                    .spyFitted(lines: 2, scale: 0.56, alignment: .center)
-
-                Text(localized(
-                    en: "PASS THE PHONE TO THIS PLAYER. They should continue alone.",
-                    ru: "ПЕРЕДАЙ ТЕЛЕФОН ЭТОМУ ИГРОКУ. Дальше смотрит только он.",
-                    es: "PASA EL TELEFONO A ESTE JUGADOR. Debe continuar a solas.",
-                    uk: "ПЕРЕДАЙ ТЕЛЕФОН ЦЬОМУ ГРАВЦЕВІ. Далі дивиться лише він."
-                ))
-                .font(.system(size: 12, weight: .bold, design: .monospaced))
-                .foregroundStyle(SpyTheme.dim)
-                .multilineTextAlignment(.center)
-                .lineSpacing(4)
-
                 Button {
-                    withAnimation(.timingCurve(0.4, 0, 0.2, 1, duration: 0.35)) {
-                        cardRevealed = true
-                    }
-                    HapticManager.shared.fire(.reveal)
+                    revealForgottenCard()
                 } label: {
-                    SpyActionLabel(
-                        title: localized(en: "I'M READY — SHOW MY CARD", ru: "Я ГОТОВ — ПОКАЗАТЬ КАРТУ", es: "ESTOY LISTO — MOSTRAR CARTA", uk: "Я ГОТОВИЙ — ПОКАЗАТИ КАРТКУ"),
-                        systemImage: "eye.fill",
-                        tracking: 0.04,
-                        lines: 2
-                    )
+                    HStack(spacing: 9) {
+                        Image(systemName: "eye.fill")
+                        Text(localized(en: "READY — REVEAL", ru: "ГОТОВО — ОТКРЫТЬ", es: "LISTO — REVELAR", uk: "ГОТОВО — ВІДКРИТИ"))
+                    }
                 }
-                .buttonStyle(SpyButtonStyle(variant: .red))
+                .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
                 .frame(maxWidth: 320)
                 .accessibilityIdentifier("localGame.forgotCard.reveal")
 
@@ -4736,10 +5745,35 @@ private struct LocalForgotCardRecoveryView: View {
                 }
                 .buttonStyle(SpyWebPressStyle())
 
-                Spacer(minLength: 18)
             }
         }
         .frame(maxWidth: .infinity)
+        .animation(reduceMotion ? nil : .spring(response: 0.52, dampingFraction: 0.82), value: cardRevealed)
+    }
+
+    private func revealForgottenCard() {
+        withAnimation(
+            reduceMotion
+                ? .linear(duration: 0.01)
+                : .timingCurve(0.42, 0, 0.20, 1, duration: 0.68)
+        ) {
+            cardRevealed = true
+        }
+        revealedCardFocused = true
+        HapticManager.shared.fire(.reveal)
+    }
+
+    private func forgottenCardTeammates(player: LocalPlayer) -> [SpyRoleCardIdentity] {
+        guard player.isSpy, request.session.spiesKnowEachOther else { return [] }
+        return request.session.spyPlayers
+            .filter { $0.id != player.id }
+            .map {
+                SpyRoleCardIdentity(
+                    id: $0.id.uuidString,
+                    name: $0.name,
+                    avatar: $0.avatar
+                )
+            }
     }
 
     private func localized(en: String, ru: String, es: String, uk: String) -> String {
@@ -5025,6 +6059,7 @@ private struct LocalGlitchText: View {
     let text: String
     var speedNanoseconds: UInt64 = 40_000_000
 
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @State private var displayed = ""
 
     private let glitchCharacters = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%")
@@ -5038,6 +6073,10 @@ private struct LocalGlitchText: View {
 
     @MainActor
     private func animate() async {
+        guard !reduceMotion else {
+            displayed = text
+            return
+        }
         displayed = ""
         let characters = Array(text)
 
@@ -5115,8 +6154,9 @@ private enum LocalMode: String, CaseIterable, Identifiable {
     }
 }
 
-private enum LocalPhase: Equatable {
+private enum LocalPhase: Hashable {
     case setup
+    case intro
     case cards
     case playing
     case spyGuess
@@ -5127,7 +6167,7 @@ private enum LocalPhase: Equatable {
         switch self {
         case .setup:
             false
-        case .cards, .playing, .spyGuess, .voting, .results:
+        case .intro, .cards, .playing, .spyGuess, .voting, .results:
             true
         }
     }
@@ -5135,6 +6175,7 @@ private enum LocalPhase: Equatable {
     func status(_ copy: LocalGameCopy) -> String {
         switch self {
         case .setup: copy.setupStatus
+        case .intro: copy.cardsStatus
         case .cards: copy.cardsStatus
         case .playing: copy.playingStatus
         case .spyGuess: copy.spyGuessStatus
@@ -5156,11 +6197,23 @@ private enum LocalWinner {
     }
 }
 
+private enum LocalAccessibilityFocus: Hashable {
+    case spyGuessLauncher
+    case spyGuessModalTitle
+}
+
 private struct LocalPlayer: Identifiable, Hashable {
-    let id = UUID()
+    let id: UUID
     let name: String
     let avatar: String
     let isSpy: Bool
+
+    init(id: UUID = UUID(), name: String, avatar: String, isSpy: Bool) {
+        self.id = id
+        self.name = name
+        self.avatar = avatar
+        self.isSpy = isSpy
+    }
 }
 
 private struct LocalSession: Equatable {
@@ -5186,9 +6239,24 @@ private extension LocalSession {
             spyIndices: [1],
             pool: ["Metro", "Rooftop", "Taxi", "Stadium", "Signal", "Market", "Tunnel", "Harbor"],
             players: [
-                LocalPlayer(name: "Red Raven", avatar: "🕵️", isSpy: false),
-                LocalPlayer(name: "Ghost", avatar: "👤", isSpy: true),
-                LocalPlayer(name: "Signal", avatar: "🔥", isSpy: false)
+                LocalPlayer(
+                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000001")!,
+                    name: "Red Raven",
+                    avatar: "🕵️",
+                    isSpy: false
+                ),
+                LocalPlayer(
+                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000002")!,
+                    name: "Ghost",
+                    avatar: "👤",
+                    isSpy: true
+                ),
+                LocalPlayer(
+                    id: UUID(uuidString: "00000000-0000-0000-0000-000000000003")!,
+                    name: "Signal",
+                    avatar: "🔥",
+                    isSpy: false
+                )
             ],
             mode: .questions,
             spiesKnowEachOther: false

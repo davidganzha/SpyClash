@@ -309,6 +309,27 @@ final class OnlineRoundStateTests: XCTestCase {
         )
     }
 
+    func testSharedGameIntroMotionKeepsTimelineAndCardArcDeterministic() {
+        XCTAssertEqual(SpyExperienceMotion.segment(-1, from: 0.2, to: 0.8), 0)
+        XCTAssertEqual(SpyExperienceMotion.segment(1.2, from: 0.2, to: 0.8), 1)
+        XCTAssertEqual(SpyExperienceMotion.segment(0.5, from: 0.2, to: 0.8), 0.5, accuracy: 0.0001)
+
+        let start = CGPoint(x: 20, y: 120)
+        let end = CGPoint(x: 180, y: 120)
+        XCTAssertEqual(
+            SpyExperienceMotion.arcPoint(from: start, to: end, progress: 0, lift: 60),
+            start
+        )
+        XCTAssertEqual(
+            SpyExperienceMotion.arcPoint(from: start, to: end, progress: 1, lift: 60),
+            end
+        )
+        XCTAssertLessThan(
+            SpyExperienceMotion.arcPoint(from: start, to: end, progress: 0.5, lift: 60).y,
+            start.y
+        )
+    }
+
     func testLocalLobbyPrimaryActionRequiresGenerationForUnpreparedCustomTheme() {
         let resolution = LocalLobbyPrimaryActionPolicy.resolve(
             hasCustomTheme: true,
@@ -392,6 +413,48 @@ final class OnlineRoundStateTests: XCTestCase {
         )
     }
 
+    func testLocalBackgroundInterruptionPausesOnlyRunningGameplay() {
+        XCTAssertTrue(
+            LocalGameInterruptionPolicy.shouldPauseForBackground(
+                phaseIsPlaying: true,
+                isAlreadyPaused: false
+            )
+        )
+        XCTAssertFalse(
+            LocalGameInterruptionPolicy.shouldPauseForBackground(
+                phaseIsPlaying: true,
+                isAlreadyPaused: true
+            )
+        )
+        XCTAssertFalse(
+            LocalGameInterruptionPolicy.shouldPauseForBackground(
+                phaseIsPlaying: false,
+                isAlreadyPaused: false
+            )
+        )
+    }
+
+    func testLocalBackgroundInterruptionConcealsOnlyAnOpenRoleCard() {
+        XCTAssertTrue(
+            LocalGameInterruptionPolicy.shouldConcealRoleCard(
+                phaseIsCards: true,
+                isRevealed: true
+            )
+        )
+        XCTAssertFalse(
+            LocalGameInterruptionPolicy.shouldConcealRoleCard(
+                phaseIsCards: true,
+                isRevealed: false
+            )
+        )
+        XCTAssertFalse(
+            LocalGameInterruptionPolicy.shouldConcealRoleCard(
+                phaseIsCards: false,
+                isRevealed: true
+            )
+        )
+    }
+
     func testLocalAccusationCatchesAnyAssignedSpyRatherThanOnlyThePrimarySpy() {
         let spyFlags = [true, false, true, false, true, false]
 
@@ -441,6 +504,111 @@ final class OnlineRoundStateTests: XCTestCase {
             ),
             .invalidAccusation
         )
+    }
+
+    func testLocalPrivateVoteUsesSameNMinusSThresholdAsOnline() {
+        let active = Array(0..<6)
+
+        XCTAssertEqual(
+            LocalPrivateVotePolicy.threshold(
+                activeIndices: active,
+                activeSpyIndices: [0]
+            ),
+            5
+        )
+        XCTAssertEqual(
+            LocalPrivateVotePolicy.threshold(
+                activeIndices: active,
+                activeSpyIndices: [0, 1]
+            ),
+            4
+        )
+    }
+
+    func testLocalPrivateVoteRejectsSelfVoteAndKeepsFirstVoteImmutable() throws {
+        let active = Array(0..<6)
+        XCTAssertNil(
+            LocalPrivateVotePolicy.appendingImmutableVote(
+                voterIndex: 2,
+                targetIndex: 2,
+                activeIndices: active,
+                existingVotes: []
+            )
+        )
+
+        let first = try XCTUnwrap(
+            LocalPrivateVotePolicy.appendingImmutableVote(
+                voterIndex: 2,
+                targetIndex: 0,
+                activeIndices: active,
+                existingVotes: []
+            )
+        )
+        XCTAssertEqual(first, [LocalPrivateVote(voterIndex: 2, targetIndex: 0)])
+        XCTAssertNil(
+            LocalPrivateVotePolicy.appendingImmutableVote(
+                voterIndex: 2,
+                targetIndex: 1,
+                activeIndices: active,
+                existingVotes: first
+            )
+        )
+    }
+
+    func testLocalPrivateVoteEjectsAtFiveOfSixWithOneSpy() {
+        let decision = LocalPrivateVotePolicy.decision(
+            activeIndices: Array(0..<6),
+            activeSpyIndices: [0],
+            votes: [1, 2, 3, 4, 5].map {
+                LocalPrivateVote(voterIndex: $0, targetIndex: 0)
+            }
+        )
+
+        XCTAssertEqual(decision, .eject(index: 0, threshold: 5))
+    }
+
+    func testLocalPrivateVoteCancelsEarlyWhenNoCandidateCanReachThreshold() {
+        let decision = LocalPrivateVotePolicy.decision(
+            activeIndices: Array(0..<6),
+            activeSpyIndices: [0],
+            votes: [
+                LocalPrivateVote(voterIndex: 1, targetIndex: 0),
+                LocalPrivateVote(voterIndex: 2, targetIndex: 0),
+                LocalPrivateVote(voterIndex: 3, targetIndex: 0),
+                LocalPrivateVote(voterIndex: 0, targetIndex: 1),
+                LocalPrivateVote(voterIndex: 4, targetIndex: 1)
+            ]
+        )
+
+        XCTAssertEqual(decision, .cancel(threshold: 5))
+    }
+
+    func testLocalPrivateVoteDoesNotCountCandidateAsTheirOwnRemainingVote() {
+        let decision = LocalPrivateVotePolicy.decision(
+            activeIndices: Array(0..<6),
+            activeSpyIndices: [1],
+            votes: [
+                LocalPrivateVote(voterIndex: 1, targetIndex: 0),
+                LocalPrivateVote(voterIndex: 2, targetIndex: 0),
+                LocalPrivateVote(voterIndex: 3, targetIndex: 0),
+                LocalPrivateVote(voterIndex: 4, targetIndex: 0),
+                LocalPrivateVote(voterIndex: 5, targetIndex: 1)
+            ]
+        )
+
+        XCTAssertEqual(decision, .cancel(threshold: 5))
+    }
+
+    func testLocalPrivateVoteEjectsAtFourOfSixWithTwoActiveSpies() {
+        let decision = LocalPrivateVotePolicy.decision(
+            activeIndices: Array(0..<6),
+            activeSpyIndices: [0, 1],
+            votes: [1, 2, 3, 4].map {
+                LocalPrivateVote(voterIndex: $0, targetIndex: 0)
+            }
+        )
+
+        XCTAssertEqual(decision, .eject(index: 0, threshold: 4))
     }
 
     func testLocalSpyAssignmentSamplesUniqueInRangeIdentitiesAtApprovedCount() {
