@@ -656,6 +656,8 @@ struct GameView: View {
     @State private var isDraggingOnlineSpyCount = false
     @State private var deferredLobbyUpdate = DeferredLobbyUpdateState()
     @State private var lobbySyncFeedbackState = LobbySyncFeedbackState()
+    @State private var detectiveVoteCancellationPresentation: DetectiveVoteCancellationEvent?
+    @State private var handledDetectiveVoteCancellationEventIDs: Set<String> = []
     @FocusState private var focusedOnlineSetupField: OnlineSetupField?
 
     private var copy: GameCopy {
@@ -753,6 +755,22 @@ struct GameView: View {
 
     var body: some View {
         typeErasedRootSurface
+        .disabled(detectiveVoteCancellationPresentation != nil)
+        .allowsHitTesting(detectiveVoteCancellationPresentation == nil)
+        .accessibilityHidden(detectiveVoteCancellationPresentation != nil)
+        .overlay {
+            if let detectiveVoteCancellationPresentation {
+                DetectiveVoteCancellationOverlay(
+                    event: detectiveVoteCancellationPresentation,
+                    languageCode: appState.language.rawValue
+                )
+                .transition(.identity)
+                .zIndex(100)
+            }
+        }
+        .task(id: detectiveVoteCancellationTaskKey) {
+            await presentDetectiveVoteCancellationIfNeeded()
+        }
         .onChange(of: lobbySyncFeedbackSnapshot, initial: true) { _, snapshot in
             lobbySyncFeedbackState.update(snapshot)
         }
@@ -968,6 +986,17 @@ struct GameView: View {
         guard let room = appState.activeRoom,
               room.normalizedStatus == "playing" else { return false }
         return isTimeExpired(room)
+    }
+
+    private var detectiveVoteCancellationTaskKey: String {
+        guard let room = appState.activeRoom else { return "inactive" }
+        return [
+            room.id,
+            room.detectiveVoteCancellationEventID ?? "",
+            room.detectiveVoteCancellationRoundID ?? "",
+            room.detectiveVoteCancellationPresentAt ?? "",
+            room.detectiveVoteCancellationReason ?? ""
+        ].joined(separator: "|")
     }
 
     private var isOnlineTextInputFocused: Bool {
@@ -1208,7 +1237,8 @@ struct GameView: View {
     }
 
     private func canCurrentUserRequestVote(_ room: GameRoom) -> Bool {
-        shouldShowVoteRequest(room) &&
+        detectiveVoteCancellationPresentation == nil &&
+            shouldShowVoteRequest(room) &&
             !isRequestingVote &&
             !hasCurrentUserRequestedVote(room)
     }
@@ -1223,7 +1253,8 @@ struct GameView: View {
     }
 
     private func canCurrentUserGuess(_ room: GameRoom) -> Bool {
-        !room.isGamePaused &&
+        detectiveVoteCancellationPresentation == nil &&
+            !room.isGamePaused &&
             !isSubmittingSpyGuess &&
             !room.enabledWordPool.isEmpty &&
             currentUserIsSpy(room) &&
@@ -1232,7 +1263,8 @@ struct GameView: View {
     }
 
     private func canCurrentUserCastVote(_ room: GameRoom) -> Bool {
-        !room.isGamePaused &&
+        detectiveVoteCancellationPresentation == nil &&
+            !room.isGamePaused &&
             !isTimeExpired(room) &&
             room.isVotingActive &&
             !isCastingVote &&
@@ -8322,8 +8354,71 @@ struct GameView: View {
         HapticManager.shared.fire(.notification(.warning))
     }
 
+    private func presentDetectiveVoteCancellationIfNeeded() async {
+        guard let room = appState.activeRoom,
+              let event = DetectiveVoteCancellationEvent(room: room),
+              let timing = DetectiveVoteCancellationPresentationPolicy.timing(
+                  for: event,
+                  now: Date(),
+                  handledEventIDs: handledDetectiveVoteCancellationEventIDs
+              ) else { return }
+
+        if timing.startDelay > 0 {
+            do {
+                try await Task.sleep(for: .seconds(timing.startDelay))
+            } catch {
+                return
+            }
+        }
+
+        guard !Task.isCancelled,
+              let currentRoom = appState.activeRoom,
+              let currentEvent = DetectiveVoteCancellationEvent(room: currentRoom),
+              currentEvent.id == event.id,
+              let currentTiming = DetectiveVoteCancellationPresentationPolicy.timing(
+                  for: currentEvent,
+                  now: Date(),
+                  handledEventIDs: handledDetectiveVoteCancellationEventIDs
+              ) else { return }
+
+        handledDetectiveVoteCancellationEventIDs.insert(event.id)
+        showSpyGuess = false
+        detectiveVoteCancellationPresentation = currentEvent
+        HapticManager.shared.fire(.notification(.warning))
+        UIAccessibility.post(
+            notification: .announcement,
+            argument: DetectiveVoteCancellationCopy
+                .localized(languageCode: appState.language.rawValue)
+                .accessibilityAnnouncement
+        )
+
+        defer {
+            if detectiveVoteCancellationPresentation?.id == event.id {
+                detectiveVoteCancellationPresentation = nil
+            }
+        }
+
+        let remainingDuration = currentTiming.endAt.timeIntervalSince(Date())
+        guard remainingDuration > 0 else { return }
+        do {
+            try await Task.sleep(for: .seconds(remainingDuration))
+        } catch {
+            return
+        }
+    }
+
+    private func presentLegacyDetectiveVoteCancellationFeedbackIfNeeded(
+        authoritative room: GameRoom
+    ) {
+        guard DetectiveVoteCancellationEvent(room: room) == nil else { return }
+        appState.showToast(detectiveVoteCancelledStatus, kind: .warning)
+        HapticManager.shared.fire(.notification(.warning))
+    }
+
     private func requestVote(_ room: GameRoom) async {
-        guard !room.isGamePaused, !isTimeExpired(room) else { return }
+        guard detectiveVoteCancellationPresentation == nil,
+              !room.isGamePaused,
+              !isTimeExpired(room) else { return }
         guard let user = appState.user else { return }
         if appState.shouldUsePreviewData {
             var previewRoom = room
@@ -8346,7 +8441,9 @@ struct GameView: View {
     }
 
     private func castVote(_ room: GameRoom, targetEmail: String) async {
-        guard !room.isGamePaused, !isTimeExpired(room) else { return }
+        guard detectiveVoteCancellationPresentation == nil,
+              !room.isGamePaused,
+              !isTimeExpired(room) else { return }
         guard let user = appState.user else { return }
         guard let castScope = DetectiveVoteCastScope(
             room: room,
@@ -8556,8 +8653,9 @@ struct GameView: View {
             )
             appState.activeRoom = authoritative
             if feedback == .cancelled {
-                appState.showToast(detectiveVoteCancelledStatus, kind: .warning)
-                HapticManager.shared.fire(.notification(.warning))
+                presentLegacyDetectiveVoteCancellationFeedbackIfNeeded(
+                    authoritative: authoritative
+                )
             }
         } catch {
             return
@@ -8713,13 +8811,16 @@ struct GameView: View {
             status = copy.voteLockedStatus
             HapticManager.shared.fire(.notification(.success))
         case .cancelled:
-            appState.showToast(detectiveVoteCancelledStatus, kind: .warning)
-            HapticManager.shared.fire(.notification(.warning))
+            presentLegacyDetectiveVoteCancellationFeedbackIfNeeded(
+                authoritative: authoritative
+            )
         }
     }
 
     private func submitSpyGuess(_ room: GameRoom, word: String) async {
-        guard !room.isGamePaused, !isTimeExpired(room) else {
+        guard detectiveVoteCancellationPresentation == nil,
+              !room.isGamePaused,
+              !isTimeExpired(room) else {
             showSpyGuess = false
             return
         }

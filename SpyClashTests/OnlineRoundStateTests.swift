@@ -140,6 +140,160 @@ final class OnlineRoundStateTests: XCTestCase {
         )
     }
 
+    func testGameRoomDecodesDurableDetectiveVoteCancellationEventAndLegacyDefaults() throws {
+        let decoder = JSONDecoder()
+        let room = try decoder.decode(
+            GameRoom.self,
+            from: Data(#"""
+            {
+                "id":"room-1",
+                "code":"ABC123",
+                "detective_vote_cancellation_event_id":"event-1",
+                "detective_vote_cancellation_round_id":"round-7",
+                "detective_vote_cancellation_present_at":"2033-05-18T03:33:20.600Z",
+                "detective_vote_cancellation_reason":"no_viable_candidate"
+            }
+            """#.utf8)
+        )
+
+        XCTAssertEqual(room.detectiveVoteCancellationEventID, "event-1")
+        XCTAssertEqual(room.detectiveVoteCancellationRoundID, "round-7")
+        XCTAssertEqual(
+            room.detectiveVoteCancellationPresentAt,
+            "2033-05-18T03:33:20.600Z"
+        )
+        XCTAssertEqual(room.detectiveVoteCancellationReason, "no_viable_candidate")
+        XCTAssertNotNil(DetectiveVoteCancellationEvent(room: room))
+
+        let legacyRoom = try decoder.decode(
+            GameRoom.self,
+            from: Data(#"{"id":"legacy","code":"OLD123"}"#.utf8)
+        )
+        XCTAssertNil(legacyRoom.detectiveVoteCancellationEventID)
+        XCTAssertNil(legacyRoom.detectiveVoteCancellationRoundID)
+        XCTAssertNil(legacyRoom.detectiveVoteCancellationPresentAt)
+        XCTAssertNil(legacyRoom.detectiveVoteCancellationReason)
+    }
+
+    func testDetectiveVoteCancellationTimingUsesSharedFuturePresentationDate() throws {
+        let now = Date(timeIntervalSince1970: 2_000_000_000)
+        let event = DetectiveVoteCancellationEvent(
+            roomID: "room-1",
+            eventID: "event-1",
+            roundID: "round-1",
+            presentAt: now.addingTimeInterval(0.6)
+        )
+
+        let timing = try XCTUnwrap(
+            DetectiveVoteCancellationPresentationPolicy.timing(
+                for: event,
+                now: now,
+                handledEventIDs: []
+            )
+        )
+
+        XCTAssertEqual(timing.startDelay, 0.6, accuracy: 0.001)
+        XCTAssertEqual(timing.elapsedAtStart, 0, accuracy: 0.001)
+        XCTAssertEqual(
+            timing.visibleDuration,
+            DetectiveVoteCancellationPresentationPolicy.presentationDuration,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            timing.endAt.timeIntervalSince(event.presentAt),
+            DetectiveVoteCancellationPresentationPolicy.presentationDuration,
+            accuracy: 0.001
+        )
+    }
+
+    func testDetectiveVoteCancellationTimingKeepsLateClientOnSharedEndDate() throws {
+        let presentAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let now = presentAt.addingTimeInterval(1.2)
+        let event = DetectiveVoteCancellationEvent(
+            roomID: "room-1",
+            eventID: "event-1",
+            roundID: "round-1",
+            presentAt: presentAt
+        )
+
+        let timing = try XCTUnwrap(
+            DetectiveVoteCancellationPresentationPolicy.timing(
+                for: event,
+                now: now,
+                handledEventIDs: []
+            )
+        )
+
+        XCTAssertEqual(timing.startDelay, 0, accuracy: 0.001)
+        XCTAssertEqual(timing.elapsedAtStart, 1.2, accuracy: 0.001)
+        XCTAssertEqual(timing.visibleDuration, 3.6, accuracy: 0.001)
+    }
+
+    func testDetectiveVoteCancellationTimingRejectsHandledStaleAndFarFutureEvents() {
+        let presentAt = Date(timeIntervalSince1970: 2_000_000_000)
+        let event = DetectiveVoteCancellationEvent(
+            roomID: "room-1",
+            eventID: "event-1",
+            roundID: "round-1",
+            presentAt: presentAt
+        )
+
+        XCTAssertNil(
+            DetectiveVoteCancellationPresentationPolicy.timing(
+                for: event,
+                now: presentAt,
+                handledEventIDs: [event.id]
+            )
+        )
+        XCTAssertNil(
+            DetectiveVoteCancellationPresentationPolicy.timing(
+                for: event,
+                now: presentAt.addingTimeInterval(
+                    DetectiveVoteCancellationPresentationPolicy.presentationDuration
+                ),
+                handledEventIDs: []
+            )
+        )
+        XCTAssertNil(
+            DetectiveVoteCancellationPresentationPolicy.timing(
+                for: event,
+                now: presentAt.addingTimeInterval(
+                    -DetectiveVoteCancellationPresentationPolicy.maximumFutureLead - 0.01
+                ),
+                handledEventIDs: []
+            )
+        )
+    }
+
+    func testDetectiveVoteCancellationCopyMatchesApprovedRussianAndAllLocales() {
+        let russian = DetectiveVoteCancellationCopy.localized(languageCode: "ru")
+        XCTAssertEqual(russian.title, "МНЕНИЯ РАЗДЕЛИЛИСЬ")
+        XCTAssertEqual(
+            russian.body,
+            "Ни один подозреваемый уже не сможет набрать достаточно голосов."
+        )
+        XCTAssertEqual(
+            russian.footer,
+            "ГОЛОСОВАНИЕ ОТМЕНЕНО · ИГРА ПРОДОЛЖАЕТСЯ"
+        )
+
+        let english = DetectiveVoteCancellationCopy.localized(languageCode: "en")
+        XCTAssertEqual(english.title, "OPINIONS ARE DIVIDED")
+        XCTAssertEqual(english.body, "No suspect can still receive enough votes.")
+        XCTAssertEqual(english.footer, "VOTING CANCELLED · GAME CONTINUES")
+
+        let spanish = DetectiveVoteCancellationCopy.localized(languageCode: "es-MX")
+        XCTAssertEqual(spanish.title, "OPINIONES DIVIDIDAS")
+        XCTAssertEqual(
+            spanish.body,
+            "Ningún sospechoso podrá reunir ya los votos suficientes."
+        )
+
+        let ukrainian = DetectiveVoteCancellationCopy.localized(languageCode: "uk-UA")
+        XCTAssertEqual(ukrainian.title, "ДУМКИ РОЗДІЛИЛИСЯ")
+        XCTAssertEqual(ukrainian.footer, "ГОЛОСУВАННЯ СКАСОВАНО · ГРА ТРИВАЄ")
+    }
+
     func testLocalTimerAwardsSpyOnTickThatReachesZeroWithoutGuessGrace() {
         XCTAssertEqual(
             LocalGameDeadlinePolicy.outcome(afterTickFrom: 2),

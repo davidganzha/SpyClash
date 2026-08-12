@@ -178,6 +178,29 @@ Deno.test("detective casts resolve N-S voting from the latest CAS snapshot", asy
   assertStringIncludes(castVote, "pendingTerminalIntent(votedRoom)");
   assertStringIncludes(castVote, "requestStartedDuringThisVote");
   assertStringIncludes(castVote, "return room;");
+  const cancellationIdentity = castVote.indexOf(
+    "const cancellationEventIdentity = {",
+  );
+  const voteCAS = castVote.indexOf("commitDetectiveVoteCastWithRetry({");
+  const cancellationSchedule = castVote.indexOf(
+    "scheduledDetectiveVoteCancellationEvent(",
+  );
+  assert(
+    cancellationIdentity >= 0 && cancellationIdentity < voteCAS,
+    "cancellation event identity must be allocated once before CAS retries",
+  );
+  assert(
+    cancellationSchedule > voteCAS,
+    "each CAS build must schedule present_at from its fresh attempt clock",
+  );
+  assertStringIncludes(castVote, "cancellationEventIdentity,");
+  assertStringIncludes(castVote, "nowMilliseconds,");
+  assertStringIncludes(castVote, "cancellationEvent,");
+  assertEquals(
+    castVote.slice(voteCAS).includes("eventID: crypto.randomUUID()"),
+    false,
+    "CAS attempts must reuse the request-scoped cancellation event id",
+  );
   assertEquals(
     castVote.includes("shouldSpyWin(updated)"),
     false,
@@ -270,12 +293,20 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
       "game_paused_at",
       "game_paused_total_seconds",
       "detective_vote_round_id",
+      "detective_vote_cancellation_event_id",
+      "detective_vote_cancellation_round_id",
+      "detective_vote_cancellation_present_at",
+      "detective_vote_cancellation_reason",
     ]
   ) {
     assert(field in schema.properties, `${field} must exist in GameRoom`);
   }
   assertEquals(schema.properties.game_paused_total_seconds.default, 0);
   assertEquals(schema.properties.detective_vote_round_id.default, "");
+  assertEquals(
+    schema.properties.detective_vote_cancellation_reason.enum,
+    ["", "no_viable_candidate"],
+  );
 
   assertStringIncludes(source, 'case "pause_game":');
   assertStringIncludes(source, 'case "resume_game":');
@@ -558,6 +589,38 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   );
   assertStringIncludes(replayVote, 'normalizedStatus(room) !== "finished"');
   assertStringIncludes(replayVote, 'normalizedStatus(latest) !== "finished"');
+});
+
+Deno.test("detective-vote cancellation events reset only at room and match lifecycle boundaries", async () => {
+  const source = await Deno.readTextFile(
+    new URL("./main.ts", import.meta.url),
+  );
+  const lifecycleSlices = [
+    source.slice(
+      source.indexOf("async function createRoom"),
+      source.indexOf("async function joinRoom"),
+    ),
+    source.slice(
+      source.indexOf("async function resetRoomForReplay"),
+      source.indexOf("async function updateGameMode"),
+    ),
+    source.slice(
+      source.indexOf("async function completeGameStart"),
+      source.indexOf("async function repairDetectedCommittedGameStart"),
+    ),
+  ];
+  const fields = [
+    "detective_vote_cancellation_event_id",
+    "detective_vote_cancellation_round_id",
+    "detective_vote_cancellation_present_at",
+    "detective_vote_cancellation_reason",
+  ];
+
+  for (const lifecycle of lifecycleSlices) {
+    for (const field of fields) {
+      assertStringIncludes(lifecycle, `${field}: ""`);
+    }
+  }
 });
 
 Deno.test("authoritative lobby snapshots are revisioned, frozen into start, and preserved for replay", async () => {

@@ -160,6 +160,35 @@ Deno.test("legacy active ballot without a round id projects inactive for safe re
   assertEquals(preThreshold?.vote_requests, ["p1", "p2", "p3"]);
 });
 
+Deno.test("durable detective-vote cancellation presentation projects to every participant", () => {
+  const projected = projectRoomForClient({
+    id: "room-1",
+    match_id: "match-1",
+    status: "playing",
+    players: [{ email: "p1" }, { email: "p2" }, { email: "p3" }],
+    detective_vote_round_id: "",
+    detective_vote_cancellation_event_id: "cancel-event-1",
+    detective_vote_cancellation_round_id: "round-7",
+    detective_vote_cancellation_present_at: "2026-08-12T12:00:03.000Z",
+    detective_vote_cancellation_reason: "no_viable_candidate",
+  }, { email: "p2" });
+
+  assert(projected);
+  assertEquals(
+    projected.detective_vote_cancellation_event_id,
+    "cancel-event-1",
+  );
+  assertEquals(projected.detective_vote_cancellation_round_id, "round-7");
+  assertEquals(
+    projected.detective_vote_cancellation_present_at,
+    "2026-08-12T12:00:03.000Z",
+  );
+  assertEquals(
+    projected.detective_vote_cancellation_reason,
+    "no_viable_candidate",
+  );
+});
+
 Deno.test("waiting lobby projection synchronizes the safe draft but keeps source identity host-only", () => {
   const room = {
     id: "room-1",

@@ -3333,6 +3333,10 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var voteRequests: [String]?
     var detectiveVotes: [VoteRecord]?
     var detectiveVoteRoundID: String?
+    var detectiveVoteCancellationEventID: String? = nil
+    var detectiveVoteCancellationRoundID: String? = nil
+    var detectiveVoteCancellationPresentAt: String? = nil
+    var detectiveVoteCancellationReason: String? = nil
     var terminalReconciliationPending: Bool?
 
     var normalizedStatus: String {
@@ -3526,6 +3530,10 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case voteRequests = "vote_requests"
         case detectiveVotes = "detective_votes"
         case detectiveVoteRoundID = "detective_vote_round_id"
+        case detectiveVoteCancellationEventID = "detective_vote_cancellation_event_id"
+        case detectiveVoteCancellationRoundID = "detective_vote_cancellation_round_id"
+        case detectiveVoteCancellationPresentAt = "detective_vote_cancellation_present_at"
+        case detectiveVoteCancellationReason = "detective_vote_cancellation_reason"
         case terminalReconciliationPending = "terminal_reconciliation_pending"
     }
 }

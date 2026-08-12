@@ -66,13 +66,25 @@ Deno.test("room CAS reconciles a response-lost committed write by token", async 
   const result = await writeRoomWithCAS({
     store,
     room: store.room,
-    patch: { current_asker_email: "next@example.com" },
+    patch: {
+      current_asker_email: "next@example.com",
+      detective_vote_cancellation_event_id: "cancel-event-1",
+      detective_vote_cancellation_present_at: "2026-08-12T12:00:03.800Z",
+    },
     read: () => Promise.resolve(store.room),
     randomUUID: () => "write-3",
   });
 
   assertEquals(result.room_revision, 3);
   assertEquals(result.current_asker_email, "next@example.com");
+  assertEquals(
+    result.detective_vote_cancellation_event_id,
+    "cancel-event-1",
+  );
+  assertEquals(
+    result.detective_vote_cancellation_present_at,
+    "2026-08-12T12:00:03.800Z",
+  );
 });
 
 Deno.test("legacy rooms are kept off the unleased fast path", () => {

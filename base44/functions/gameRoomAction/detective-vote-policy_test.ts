@@ -4,6 +4,7 @@ import {
   assertDetectiveVoteRoundIdentity,
   bindDetectiveVoteRoundIdentity,
   canonicalDetectiveVotes,
+  DETECTIVE_VOTE_CANCELLATION_PRESENT_LEAD_MILLISECONDS,
   detectiveVoteCastTransition,
   detectiveVoteLeavePatch,
   detectiveVoteRequestThreshold,
@@ -11,10 +12,16 @@ import {
   detectiveVoteRoundDecision,
   isDetectiveVotingActive,
   resolvedDetectiveVoteCastTransition,
+  scheduledDetectiveVoteCancellationEvent,
 } from "./detective-vote-policy.ts";
 
 const active = ["p1", "p2", "p3", "p4", "p5", "p6"];
 const openRequests = ["p1", "p2", "p3", "p4"];
+const cancellationEvent = {
+  eventID: "cancel-event-1",
+  roundID: "round-1",
+  presentAt: "2026-08-12T12:00:03.000Z",
+};
 
 function vote(voter: string, target: string) {
   return { voter_email: voter, voted_for_email: target };
@@ -280,7 +287,27 @@ Deno.test("canonical votes discard self, inactive, and duplicate legacy rows", (
   );
 });
 
-Deno.test("cast transition clears both arrays atomically when N-S becomes impossible", () => {
+Deno.test("cancellation scheduling keeps identity stable and refreshes the retry deadline", () => {
+  const identity = { eventID: "cancel-event-1", roundID: "round-1" };
+  const firstAttemptAt = Date.parse("2026-08-12T12:00:00.000Z");
+  const retryAttemptAt = firstAttemptAt + 725;
+  const first = scheduledDetectiveVoteCancellationEvent(
+    identity,
+    firstAttemptAt,
+  );
+  const retry = scheduledDetectiveVoteCancellationEvent(
+    identity,
+    retryAttemptAt,
+  );
+
+  assertEquals(DETECTIVE_VOTE_CANCELLATION_PRESENT_LEAD_MILLISECONDS, 3_000);
+  assertEquals(first.eventID, retry.eventID);
+  assertEquals(first.roundID, retry.roundID);
+  assertEquals(first.presentAt, "2026-08-12T12:00:03.000Z");
+  assertEquals(retry.presentAt, "2026-08-12T12:00:03.725Z");
+});
+
+Deno.test("cast transition persists cancellation presentation with the atomic ballot clear", () => {
   const transition = detectiveVoteCastTransition(
     active,
     openRequests,
@@ -292,13 +319,43 @@ Deno.test("cast transition clears both arrays atomically when N-S becomes imposs
     ],
     "p5",
     "p2",
+    undefined,
+    cancellationEvent,
   );
   assertEquals(transition.decision.outcome, "cancel");
   assertEquals(transition.patch, {
     detective_votes: [],
     vote_requests: [],
     detective_vote_round_id: "",
+    detective_vote_cancellation_event_id: "cancel-event-1",
+    detective_vote_cancellation_round_id: "round-1",
+    detective_vote_cancellation_present_at: "2026-08-12T12:00:03.000Z",
+    detective_vote_cancellation_reason: "no_viable_candidate",
   });
+});
+
+Deno.test("mathematical cancellation fails closed without valid presentation metadata", () => {
+  const error = assertThrows(
+    () =>
+      detectiveVoteCastTransition(
+        active,
+        openRequests,
+        [
+          vote("p2", "p1"),
+          vote("p3", "p1"),
+          vote("p4", "p1"),
+          vote("p1", "p2"),
+        ],
+        "p5",
+        "p2",
+      ),
+    Error,
+    "event could not be created",
+  );
+  assertEquals(
+    errorCode(error),
+    "detective_vote_cancellation_event_unavailable",
+  );
 });
 
 Deno.test("persisted N-S decision survives a post-CAS failure and retries", () => {

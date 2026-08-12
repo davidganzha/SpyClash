@@ -3370,6 +3370,16 @@ final class AppState: NSObject {
             previewRoom.gameDurationSeconds = min(max(previewDurationMinutes, 5), 15) * 60
             activeRoom = previewRoom
         }
+        if var previewRoom = activeRoom,
+           arguments.contains("--spyclash-preview-vote-cancellation") {
+            previewRoom.detectiveVoteCancellationEventID = "preview-vote-cancellation"
+            previewRoom.detectiveVoteCancellationRoundID = "preview-vote-round"
+            previewRoom.detectiveVoteCancellationPresentAt = ISO8601DateFormatter().string(
+                from: Date().addingTimeInterval(1)
+            )
+            previewRoom.detectiveVoteCancellationReason = DetectiveVoteCancellationEvent.supportedReason
+            activeRoom = previewRoom
+        }
         roomSyncOperation = previewRoomSyncOperation(from: arguments)
         pendingJoinCode = nil
         deepLinkStatus = nil

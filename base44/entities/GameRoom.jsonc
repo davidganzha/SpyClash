@@ -61,6 +61,29 @@
       "default": "",
       "description": "Server-issued identity for the currently active detective ballot; cleared atomically when that ballot settles."
     },
+    "detective_vote_cancellation_event_id": {
+      "type": "string",
+      "maxLength": 128,
+      "default": "",
+      "description": "Durable server-issued identity for the latest synchronized early ballot-cancellation presentation."
+    },
+    "detective_vote_cancellation_round_id": {
+      "type": "string",
+      "maxLength": 128,
+      "default": "",
+      "description": "Identity of the detective ballot cancelled by the latest cancellation event."
+    },
+    "detective_vote_cancellation_present_at": {
+      "type": "string",
+      "default": "",
+      "description": "Server ISO timestamp at which every client should present the latest cancellation event."
+    },
+    "detective_vote_cancellation_reason": {
+      "type": "string",
+      "enum": ["", "no_viable_candidate"],
+      "default": "",
+      "description": "Machine-readable reason for the latest synchronized detective-vote cancellation."
+    },
     "winner": {
       "type": "string",
       "enum": ["detectives", "spy", ""],

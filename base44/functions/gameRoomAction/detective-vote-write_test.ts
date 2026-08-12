@@ -1,4 +1,5 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
+import { scheduledDetectiveVoteCancellationEvent } from "./detective-vote-policy.ts";
 import { commitDetectiveVoteCastWithRetry } from "./detective-vote-write.ts";
 
 function conflict(): Error {
@@ -53,6 +54,68 @@ Deno.test("concurrent durable ejection intent reconciles after CAS loss", async 
     delay: async () => {},
   });
   assertEquals(result, decided);
+});
+
+Deno.test("CAS retry keeps the cancellation identity and refreshes present_at", async () => {
+  type TimedRoom = {
+    id: string;
+    revision: number;
+    voting: boolean;
+    detective_vote_cancellation_present_at?: string;
+  };
+  const identity = { eventID: "cancel-event-1", roundID: "round-1" };
+  const attemptTimes = [
+    Date.parse("2026-08-12T12:00:00.000Z"),
+    Date.parse("2026-08-12T12:00:00.800Z"),
+  ];
+  const initial: TimedRoom = { id: "room-1", revision: 1, voting: true };
+  const refreshed: TimedRoom = { id: "room-1", revision: 2, voting: true };
+  const attemptedPatches: Record<string, unknown>[] = [];
+  let builds = 0;
+  let writes = 0;
+
+  const result = await commitDetectiveVoteCastWithRetry({
+    initialRoom: initial,
+    buildPatch: () => {
+      const event = scheduledDetectiveVoteCancellationEvent(
+        identity,
+        attemptTimes[builds++],
+      );
+      return {
+        detective_vote_cancellation_event_id: event.eventID,
+        detective_vote_cancellation_round_id: event.roundID,
+        detective_vote_cancellation_present_at: event.presentAt,
+      };
+    },
+    write: async (latest, patch) => {
+      writes += 1;
+      attemptedPatches.push(patch);
+      if (writes === 1) throw conflict();
+      return { ...latest, ...patch, revision: 3 };
+    },
+    read: async () => refreshed,
+    isConflict: (error) =>
+      (error as { code?: string })?.code === "cas_contention",
+    isSettledAfterConflict: () => false,
+    delay: async () => {},
+  });
+
+  assertEquals(builds, 2);
+  assertEquals(writes, 2);
+  assertEquals(
+    attemptedPatches.map((patch) => patch.detective_vote_cancellation_event_id),
+    ["cancel-event-1", "cancel-event-1"],
+  );
+  assertEquals(
+    attemptedPatches.map((patch) =>
+      patch.detective_vote_cancellation_present_at
+    ),
+    ["2026-08-12T12:00:03.000Z", "2026-08-12T12:00:03.800Z"],
+  );
+  assertEquals(
+    result.detective_vote_cancellation_present_at,
+    "2026-08-12T12:00:03.800Z",
+  );
 });
 
 Deno.test("two concurrent innocent ejections converge on one authoritative revision", async () => {

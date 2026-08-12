@@ -5,6 +5,22 @@ export type CanonicalDetectiveVote = {
   voted_for_email: string;
 };
 
+export const DETECTIVE_VOTE_CANCELLATION_REASON =
+  "no_viable_candidate" as const;
+
+export const DETECTIVE_VOTE_CANCELLATION_PRESENT_LEAD_MILLISECONDS = 3_000;
+
+export type DetectiveVoteCancellationEventIdentity = {
+  eventID: string;
+  roundID: string;
+};
+
+export type DetectiveVoteCancellationEvent =
+  & DetectiveVoteCancellationEventIdentity
+  & {
+    presentAt: string;
+  };
+
 export type DetectiveVoteRoundDecision =
   | {
     outcome: "continue";
@@ -33,6 +49,11 @@ export type DetectiveVoteCastTransition = {
     detective_votes?: CanonicalDetectiveVote[];
     vote_requests?: string[];
     detective_vote_round_id?: string;
+    detective_vote_cancellation_event_id?: string;
+    detective_vote_cancellation_round_id?: string;
+    detective_vote_cancellation_present_at?: string;
+    detective_vote_cancellation_reason?:
+      typeof DETECTIVE_VOTE_CANCELLATION_REASON;
   };
 };
 
@@ -45,6 +66,11 @@ export type ResolvedDetectiveVoteCastTransition = {
     spectators?: string[];
     eliminated_emails?: string[];
     detective_vote_round_id?: string;
+    detective_vote_cancellation_event_id?: string;
+    detective_vote_cancellation_round_id?: string;
+    detective_vote_cancellation_present_at?: string;
+    detective_vote_cancellation_reason?:
+      typeof DETECTIVE_VOTE_CANCELLATION_REASON;
   };
   terminal_winner: "spy" | "detectives" | null;
   terminal_patch: {
@@ -62,6 +88,58 @@ function normalizedEmail(value: unknown): string {
 
 function voteError(message: string, status: number, code: string): Error {
   return Object.assign(new Error(message), { status, code });
+}
+
+export function scheduledDetectiveVoteCancellationEvent(
+  identity: DetectiveVoteCancellationEventIdentity,
+  nowMilliseconds = Date.now(),
+): DetectiveVoteCancellationEvent {
+  const eventID = clean(identity?.eventID);
+  const roundID = clean(identity?.roundID);
+  if (!eventID || !roundID || !Number.isFinite(nowMilliseconds)) {
+    throw voteError(
+      "Detective vote cancellation event could not be created",
+      503,
+      "detective_vote_cancellation_event_unavailable",
+    );
+  }
+  return {
+    eventID,
+    roundID,
+    presentAt: new Date(
+      nowMilliseconds +
+        DETECTIVE_VOTE_CANCELLATION_PRESENT_LEAD_MILLISECONDS,
+    ).toISOString(),
+  };
+}
+
+function detectiveVoteCancellationPatch(
+  event: DetectiveVoteCancellationEvent | undefined,
+): {
+  detective_vote_cancellation_event_id: string;
+  detective_vote_cancellation_round_id: string;
+  detective_vote_cancellation_present_at: string;
+  detective_vote_cancellation_reason: typeof DETECTIVE_VOTE_CANCELLATION_REASON;
+} {
+  const eventID = clean(event?.eventID);
+  const roundID = clean(event?.roundID);
+  const presentAt = clean(event?.presentAt);
+  if (
+    !eventID || !roundID || !presentAt ||
+    !Number.isFinite(Date.parse(presentAt))
+  ) {
+    throw voteError(
+      "Detective vote cancellation event could not be created",
+      503,
+      "detective_vote_cancellation_event_unavailable",
+    );
+  }
+  return {
+    detective_vote_cancellation_event_id: eventID,
+    detective_vote_cancellation_round_id: roundID,
+    detective_vote_cancellation_present_at: presentAt,
+    detective_vote_cancellation_reason: DETECTIVE_VOTE_CANCELLATION_REASON,
+  };
 }
 
 function canonicalActiveEmailMap(
@@ -437,6 +515,7 @@ export function detectiveVoteCastTransition(
   voterEmailValue: unknown,
   targetEmailValue: unknown,
   spyEmailValues?: unknown,
+  cancellationEvent?: DetectiveVoteCancellationEvent,
 ): DetectiveVoteCastTransition {
   if (!isDetectiveVotingActive(activeEmailValues, voteRequestValues)) {
     throw voteError(
@@ -479,6 +558,7 @@ export function detectiveVoteCastTransition(
         detective_votes: [],
         vote_requests: [],
         detective_vote_round_id: "",
+        ...detectiveVoteCancellationPatch(cancellationEvent),
       },
     };
   }
@@ -510,6 +590,7 @@ export function resolvedDetectiveVoteCastTransition(
   spyEmailValues: unknown,
   spectatorEmailValues: readonly unknown[],
   eliminatedEmailValues: readonly unknown[],
+  cancellationEvent?: DetectiveVoteCancellationEvent,
 ): ResolvedDetectiveVoteCastTransition {
   const transition = detectiveVoteCastTransition(
     activeEmailValues,
@@ -518,6 +599,7 @@ export function resolvedDetectiveVoteCastTransition(
     voterEmailValue,
     targetEmailValue,
     spyEmailValues,
+    cancellationEvent,
   );
   if (transition.decision.outcome !== "eject") {
     return {

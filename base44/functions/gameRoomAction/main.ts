@@ -85,6 +85,7 @@ import {
   detectiveVoteRequestTransition,
   isDetectiveVotingActive,
   resolvedDetectiveVoteCastTransition,
+  scheduledDetectiveVoteCancellationEvent,
 } from "./detective-vote-policy.ts";
 import { commitDetectiveVoteCastWithRetry } from "./detective-vote-write.ts";
 import { reconcileDetectiveVoteCastAfterActiveIdentityLease } from "./detective-vote-lease-recovery.ts";
@@ -820,6 +821,10 @@ async function createRoom(base44, user, body) {
     game_paused_total_seconds: 0,
     ready_players: [],
     detective_vote_round_id: "",
+    detective_vote_cancellation_event_id: "",
+    detective_vote_cancellation_round_id: "",
+    detective_vote_cancellation_present_at: "",
+    detective_vote_cancellation_reason: "",
     winner: "",
   });
   return created;
@@ -1091,6 +1096,10 @@ async function resetRoomForReplay(base44, room, user, body) {
     spy_guess: "",
     detective_votes: [],
     detective_vote_round_id: "",
+    detective_vote_cancellation_event_id: "",
+    detective_vote_cancellation_round_id: "",
+    detective_vote_cancellation_present_at: "",
+    detective_vote_cancellation_reason: "",
     winner: "",
     cards_read: [],
     vote_requests: [],
@@ -1432,6 +1441,10 @@ async function completeGameStart(base44, room, user) {
     vote_requests: [],
     detective_votes: [],
     detective_vote_round_id: "",
+    detective_vote_cancellation_event_id: "",
+    detective_vote_cancellation_round_id: "",
+    detective_vote_cancellation_present_at: "",
+    detective_vote_cancellation_reason: "",
     spectators: [],
     eliminated_emails: [],
     winner: "",
@@ -1769,6 +1782,14 @@ async function castDetectiveVote(base44, room, user, body) {
     });
   }
 
+  // Identity remains stable for this request, while each CAS attempt schedules
+  // from its own fresh server time. The winning attempt therefore commits the
+  // freshest presentation timestamp without ever minting a second event id.
+  const cancellationEventIdentity = {
+    eventID: crypto.randomUUID(),
+    roundID: boundRoundID,
+  };
+
   const votedRoom = await commitDetectiveVoteCastWithRetry({
     initialRoom: room,
     buildPatch: (latest) => {
@@ -1800,6 +1821,10 @@ async function castDetectiveVote(base44, room, user, body) {
         "cast_detective_vote",
         nowMilliseconds,
       );
+      const cancellationEvent = scheduledDetectiveVoteCancellationEvent(
+        cancellationEventIdentity,
+        nowMilliseconds,
+      );
       const latestActiveEmails = activePlayers(latest).map((player) =>
         player.email
       );
@@ -1814,6 +1839,7 @@ async function castDetectiveVote(base44, room, user, body) {
         Array.isArray(latest?.eliminated_emails)
           ? latest.eliminated_emails
           : [],
+        cancellationEvent,
       );
       const patch = { ...resolution.patch };
       if (

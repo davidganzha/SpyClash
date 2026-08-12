@@ -257,6 +257,19 @@ export function projectRoomForClient(
       : safeObjectList(room.detective_votes),
     vote_requests: legacyUnscopedActiveVote ? [] : persistedVoteRequests,
     detective_vote_round_id: clean(room.detective_vote_round_id),
+    detective_vote_cancellation_event_id: clean(
+      room.detective_vote_cancellation_event_id,
+    ),
+    detective_vote_cancellation_round_id: clean(
+      room.detective_vote_cancellation_round_id,
+    ),
+    detective_vote_cancellation_present_at: clean(
+      room.detective_vote_cancellation_present_at,
+    ),
+    detective_vote_cancellation_reason:
+      clean(room.detective_vote_cancellation_reason) === "no_viable_candidate"
+        ? "no_viable_candidate"
+        : "",
     terminal_reconciliation_pending: terminalReconciliationPending(room),
     winner: clean(room.winner),
     round_number: Number(room.round_number || 1),
