@@ -64,7 +64,7 @@ function FormPanel({ editing, t, aiTheme, setAiTheme, aiWordCount, setAiWordCoun
           {/* Word count slider */}
           <div style={{ padding: "10px 12px", background: "#080808", border: "1px solid #151515" }}>
             <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 8 }}>
-              <span style={{ fontSize: 10, letterSpacing: 2, color: "#555", fontFamily: "monospace" }}>WORDS TO GENERATE</span>
+              <span style={{ fontSize: 10, letterSpacing: 2, color: "#555", fontFamily: "monospace" }}>{t('wp_form_ai_count')}</span>
               <span style={{ fontSize: 16, fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, color: "#e53535" }}>{aiWordCount}</span>
             </div>
             <div style={{ position: "relative", paddingBottom: 2 }}>

@@ -8,8 +8,11 @@ import GoogleIcon from "@/components/GoogleIcon";
 import AppleIcon from "@/components/AppleIcon";
 import { appParams } from "@/lib/app-params";
 import { buildSocialLoginUrl } from "@/lib/socialAuth";
+import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 
 export default function Login() {
+  const { lang } = useLanguage();
   const prefilledEmail = React.useMemo(() => {
     try {
       return new URLSearchParams(window.location.search).get("email") || "";
@@ -36,7 +39,7 @@ export default function Login() {
       await base44.auth.loginViaEmailPassword(email, password);
       window.location.replace("/home");
     } catch (err) {
-      setError(err.message || "Invalid email or password");
+      setError(err.message || localize(lang, "Invalid email or password", "Неверная почта или пароль", "Неправильна електронна адреса або пароль"));
       setLoading(false);
     }
   };
@@ -65,14 +68,18 @@ export default function Login() {
   return (
     <AuthLayout
       icon={LogIn}
-      eyebrow={step === "email" ? "ACCESS TERMINAL" : "PASSPHRASE REQUIRED"}
-      title="Welcome Back"
-      subtitle={step === "email" ? "Authenticate to continue the mission" : "One final step"}
+      eyebrow={step === "email"
+        ? localize(lang, "ACCESS TERMINAL", "ТЕРМИНАЛ ДОСТУПА", "ТЕРМІНАЛ ДОСТУПУ")
+        : localize(lang, "PASSPHRASE REQUIRED", "ТРЕБУЕТСЯ ПАРОЛЬ", "ПОТРІБЕН ПАРОЛЬ")}
+      title={localize(lang, "Welcome Back", "С возвращением", "З поверненням")}
+      subtitle={step === "email"
+        ? localize(lang, "Authenticate to continue the mission", "Войдите, чтобы продолжить миссию", "Увійдіть, щоб продовжити місію")
+        : localize(lang, "One final step", "Последний шаг", "Останній крок")}
       footer={
         <>
-          No clearance yet?{" "}
+          {localize(lang, "No clearance yet?", "Ещё нет доступа?", "Ще немає доступу?")}{" "}
           <Link to="/register" className="auth-link" style={{ fontWeight: 700 }}>
-            REQUEST ACCESS →
+            {localize(lang, "REQUEST ACCESS →", "ЗАПРОСИТЬ ДОСТУП →", "ЗАПРОСИТИ ДОСТУП →")}
           </Link>
         </>
       }
@@ -91,23 +98,23 @@ export default function Login() {
             >
               <div className="auth-social-wrap" style={{ marginBottom: 22, display: "grid", gap: 10 }}>
                 <button type="button" className="auth-btn-outline auth-btn-apple" style={{ width: "100%", height: 50 }} onClick={() => handleSocialLogin("apple")}>
-                  <AppleIcon className="w-5 h-5" /> Continue with Apple
+                  <AppleIcon className="w-5 h-5" /> {localize(lang, "Continue with Apple", "Продолжить с Apple", "Продовжити з Apple")}
                 </button>
                 <button type="button" className="auth-btn-outline" style={{ width: "100%", height: 50 }} onClick={() => handleSocialLogin("google")}>
-                  <GoogleIcon className="w-5 h-5" /> Continue with Google
+                  <GoogleIcon className="w-5 h-5" /> {localize(lang, "Continue with Google", "Продолжить с Google", "Продовжити з Google")}
                 </button>
               </div>
 
               <div className="auth-divider" style={{ position: "relative", marginBottom: 20, textAlign: "center" }}>
                 <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: "#1e1e1e" }} />
                 <span style={{ position: "relative", background: "rgba(10,10,10,1)", padding: "0 14px", fontSize: 10, letterSpacing: 3, color: "#444", fontFamily: "monospace" }}>
-                  OR WITH EMAIL
+                  {localize(lang, "OR WITH EMAIL", "ИЛИ ПО ПОЧТЕ", "АБО ЗА ДОПОМОГОЮ ПОШТИ")}
                 </span>
               </div>
 
               <form onSubmit={handleEmailContinue} className="auth-form" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
-                  <label htmlFor="email" className="auth-label">// EMAIL</label>
+                  <label htmlFor="email" className="auth-label">// {localize(lang, "EMAIL", "ПОЧТА", "ЕЛЕКТРОННА ПОШТА")}</label>
                   <div style={{ position: "relative" }}>
                     <Mail style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", width: 16, height: 16, color: "#444" }} aria-hidden="true" />
                     <input
@@ -124,7 +131,7 @@ export default function Login() {
                   </div>
                 </div>
                 <button type="submit" className="auth-btn-red" disabled={!email} style={{ marginTop: 8 }}>
-                  CONTINUE <ArrowRight className="w-4 h-4" />
+                  {localize(lang, "CONTINUE", "ПРОДОЛЖИТЬ", "ПРОДОВЖИТИ")} <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
             </motion.div>
@@ -177,9 +184,9 @@ export default function Login() {
               <form onSubmit={handleSubmit} className="auth-form" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
                   <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center" }}>
-                    <label htmlFor="password" className="auth-label">// PASSPHRASE</label>
+                    <label htmlFor="password" className="auth-label">// {localize(lang, "PASSPHRASE", "ПАРОЛЬ", "ПАРОЛЬ")}</label>
                     <Link to="/forgot-password" className="auth-link" style={{ fontSize: 10, letterSpacing: 2, marginBottom: 8 }}>
-                      FORGOT?
+                      {localize(lang, "FORGOT?", "ЗАБЫЛИ?", "ЗАБУЛИ?")}
                     </Link>
                   </div>
                   <div style={{ position: "relative" }}>
@@ -198,7 +205,9 @@ export default function Login() {
                   </div>
                 </div>
                 <button type="submit" className="auth-btn-red" disabled={loading || !password} style={{ marginTop: 8 }}>
-                  {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> AUTHENTICATING...</> : <>INITIATE ENTRY <ArrowRight className="w-4 h-4" /></>}
+                  {loading
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> {localize(lang, "AUTHENTICATING...", "ПРОВЕРКА...", "ПЕРЕВІРКА...")}</>
+                    : <>{localize(lang, "INITIATE ENTRY", "ВОЙТИ", "УВІЙТИ")} <ArrowRight className="w-4 h-4" /></>}
                 </button>
               </form>
             </motion.div>

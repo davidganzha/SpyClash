@@ -4,6 +4,7 @@ import { useNavigate } from "react-router-dom";
 import { createPageUrl } from "@/utils";
 import { base44 } from "@/api/base44Client";
 import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 import SpyGuessModal from "@/components/SpyGuessModal";
 import GlitchText from "@/components/ui/GlitchText";
 import { useGameSounds } from "@/components/useGameSounds";
@@ -197,15 +198,18 @@ export default function LocalGame() {
       result = await generateWordPool(customTheme.trim(), target);
     } catch (error) {
       console.error("AI theme analysis failed", error);
-      setThemeError(lang === "ru"
-        ? "AI-генерация временно недоступна."
-        : "AI generation is temporarily unavailable.");
+      setThemeError(localize(
+        lang,
+        "AI generation is temporarily unavailable.",
+        "AI-генерация временно недоступна.",
+        "Генерація за допомогою ШІ тимчасово недоступна.",
+      ));
       setValidating(false);
       return;
     }
     setValidating(false);
     if (!result?.words?.length || result.words.length < 5) {
-      setThemeError(lang === "ru" ? "Не удалось распознать тему. Попробуй другую." : "Couldn't recognize this theme. Try another.");
+      setThemeError(localize(lang, "Couldn't recognize this theme. Try another.", "Не удалось распознать тему. Попробуй другую.", "Не вдалося розпізнати тему. Спробуйте іншу."));
       return;
     }
     const realMax = result.words.length; // actual count returned by the model
@@ -236,9 +240,12 @@ export default function LocalGame() {
       result = await generateWordPool(customTheme.trim(), additionalCount, currentWords);
     } catch (error) {
       console.error("AI theme expansion failed", error);
-      setThemeError(lang === "ru"
-        ? "AI-генерация временно недоступна."
-        : "AI generation is temporarily unavailable.");
+      setThemeError(localize(
+        lang,
+        "AI generation is temporarily unavailable.",
+        "AI-генерация временно недоступна.",
+        "Генерація за допомогою ШІ тимчасово недоступна.",
+      ));
       setValidating(false);
       return;
     }
@@ -248,7 +255,7 @@ export default function LocalGame() {
     const existingLower = new Set(currentWords.map((w) => w.toLowerCase()));
     const additions = result.words.filter((w) => !existingLower.has(w.toLowerCase()));
     if (additions.length === 0) {
-      setThemeError(lang === "ru" ? "Больше уникальных слов найти не удалось." : "Couldn't find more unique words.");
+      setThemeError(localize(lang, "Couldn't find more unique words.", "Больше уникальных слов найти не удалось.", "Не вдалося знайти більше унікальних слів."));
       return;
     }
     const newPool = [...currentPool, ...additions.map((w) => ({ word: w, enabled: true }))].slice(0, 200);
@@ -269,9 +276,12 @@ export default function LocalGame() {
       result = await generateWordPool(customTheme.trim(), wordCount);
     } catch (error) {
       console.error("AI theme generation failed", error);
-      setThemeError(lang === "ru"
-        ? "AI-генерация временно недоступна."
-        : "AI generation is temporarily unavailable.");
+      setThemeError(localize(
+        lang,
+        "AI generation is temporarily unavailable.",
+        "AI-генерация временно недоступна.",
+        "Генерація за допомогою ШІ тимчасово недоступна.",
+      ));
       setValidating(false);
       return;
     }
@@ -499,27 +509,30 @@ export default function LocalGame() {
         {/* Header block */}
         <div className="dim-on-theme-focus" style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
           <div style={{ fontSize: 11, letterSpacing: 4, color: "#888", marginBottom: 8, fontFamily: "monospace" }}>
-            🎮 HOME // <span style={{ color: "#fff", fontWeight: 700 }}>LOCAL GAME</span>
+            🎮 {localize(lang, "HOME", "ГЛАВНАЯ", "ГОЛОВНА")} // <span style={{ color: "#fff", fontWeight: 700 }}>{localize(lang, "LOCAL GAME", "ЛОКАЛЬНАЯ ИГРА", "ЛОКАЛЬНА ГРА")}</span>
           </div>
           <div style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: 26, fontWeight: 700, letterSpacing: 3, color: "#fff", marginBottom: 6 }}>
-            {lang === "ru" ? "ИГРА НА ОДНОМ ТЕЛЕФОНЕ" : "LOCAL GAME"}
+            {localize(lang, "LOCAL GAME", "ИГРА НА ОДНОМ ТЕЛЕФОНЕ", "ГРА НА ОДНОМУ ПРИСТРОЇ")}
           </div>
           <div style={{ color: "#666", fontSize: 12, letterSpacing: 0.5, lineHeight: 1.7 }}>
-            {lang === "ru" ?
-            "Все играют на одном устройстве. Телефон передаётся каждому игроку чтобы тайно прочитать карточку роли." :
-            "Everyone plays on one device. Pass the phone to each player to secretly read their role card."}
+            {localize(
+              lang,
+              "Everyone plays on one device. Pass the phone to each player to secretly read their role card.",
+              "Все играют на одном устройстве. Телефон передаётся каждому игроку чтобы тайно прочитать карточку роли.",
+              "Усі грають на одному пристрої. Передавайте телефон кожному гравцеві, щоб він таємно прочитав картку своєї ролі.",
+            )}
           </div>
         </div>
 
         {/* Game Mode */}
         <div className="dim-on-theme-focus" style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
           <div style={sectionLabel}>
-            <span>⚙️</span> {lang === "ru" ? "РЕЖИМ ИГРЫ" : "GAME MODE"}
+            <span>⚙️</span> {localize(lang, "GAME MODE", "РЕЖИМ ИГРЫ", "РЕЖИМ ГРИ")}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[
-            { mode: "questions", label: lang === "ru" ? "ВОПРОСЫ" : "QUESTIONS", icon: "?" },
-            { mode: "associations", label: lang === "ru" ? "АССОЦИАЦИИ" : "ASSOCIATIONS", icon: "💭" }].
+            { mode: "questions", label: localize(lang, "QUESTIONS", "ВОПРОСЫ", "ЗАПИТАННЯ"), icon: "?" },
+            { mode: "associations", label: localize(lang, "ASSOCIATIONS", "АССОЦИАЦИИ", "АСОЦІАЦІЇ"), icon: "💭" }].
             map(({ mode, label, icon }) => {
               const active = gameMode === mode;
               return (
@@ -543,7 +556,7 @@ export default function LocalGame() {
         {/* Players */}
         <div className="dim-on-theme-focus players-block" style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
           <div style={sectionLabel}>
-            <span>👥</span> {lang === "ru" ? "ИГРОКИ" : "PLAYERS"} ({playerNames.length})
+            <span>👥</span> {localize(lang, "PLAYERS", "ИГРОКИ", "ГРАВЦІ")} ({playerNames.length})
           </div>
           <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
             {playerNames.map((name, i) =>
@@ -568,7 +581,7 @@ export default function LocalGame() {
                 onChange={(e) => updateName(i, e.target.value)}
                 onFocus={(e) => centerInViewport(e.target.closest('.players-block'))}
                 onBlur={restoreScroll}
-                placeholder={lang === "ru" ? `Игрок ${i + 1}` : `Player ${i + 1}`}
+                placeholder={localize(lang, `Player ${i + 1}`, `Игрок ${i + 1}`, `Гравець ${i + 1}`)}
                 style={{ flex: 1, fontSize: 14, background: "rgba(255,255,255,0.05) !important", border: "1px solid rgba(255,255,255,0.10) !important", borderRadius: 8 }} />
               
                 {playerNames.length > 3 &&
@@ -583,7 +596,7 @@ export default function LocalGame() {
           {playerNames.length < maxPlayers ?
           <button onClick={addPlayer} className="btn-ghost"
           style={{ marginTop: 12, width: "100%", fontSize: 11, letterSpacing: 2, padding: "10px 0" }}>
-              + {lang === "ru" ? "ДОБАВИТЬ ИГРОКА" : "ADD PLAYER"}
+              + {localize(lang, "ADD PLAYER", "ДОБАВИТЬ ИГРОКА", "ДОДАТИ ГРАВЦЯ")}
             </button> :
           null}
         </div>
@@ -656,8 +669,8 @@ export default function LocalGame() {
           <div style={{ marginBottom: 10 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: wordCountMode === "custom" ? 10 : 0 }}>
               {[
-                { mode: "recommended", label: lang === "ru" ? "РЕКОМЕНДОВАНО" : "RECOMMENDED", hint: lang === "ru" ? "Авто" : "Auto" },
-                { mode: "custom", label: lang === "ru" ? "СВОЙ ВЫБОР" : "CUSTOM", hint: `${customWordCount}` }
+                { mode: "recommended", label: localize(lang, "RECOMMENDED", "РЕКОМЕНДОВАНО", "РЕКОМЕНДОВАНО"), hint: localize(lang, "Auto", "Авто", "Авто") },
+                { mode: "custom", label: localize(lang, "CUSTOM", "СВОЙ ВЫБОР", "ВЛАСНИЙ ВИБІР"), hint: `${customWordCount}` }
               ].map(({ mode, label, hint }) => {
                 const active = wordCountMode === mode;
                 return (
@@ -679,7 +692,7 @@ export default function LocalGame() {
             {wordCountMode === "custom" &&
             <div style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontSize: 10, letterSpacing: 2, color: "#888", fontFamily: "monospace" }}>// {lang === "ru" ? "КОЛИЧЕСТВО" : "COUNT"}</span>
+                <span style={{ fontSize: 10, letterSpacing: 2, color: "#888", fontFamily: "monospace" }}>// {localize(lang, "COUNT", "КОЛИЧЕСТВО", "КІЛЬКІСТЬ")}</span>
                 <span style={{ fontSize: 15, fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, color: "#e53535" }}>{customWordCount}<span style={{ color: "#444", fontSize: 10 }}> / 80</span></span>
               </div>
               <div style={{ position: "relative", paddingBottom: 4 }}>
@@ -702,15 +715,15 @@ export default function LocalGame() {
             fontSize: 11, width: "100%", opacity: customTheme.trim() ? 1 : 0.4, marginBottom: 10, borderRadius: 10, clipPath: "none",
             ...(wordCount > themeMaxWords ? { color: "#fbbf24", borderColor: "#fbbf24", background: "rgba(251,191,36,0.05)" } : {})
           }}>
-            {validating ? lang === "ru" ? "ГЕНЕРАЦИЯ..." : "GENERATING..." :
-            wordCount > themeMaxWords ? lang === "ru" ? "⚡ ВЫЖАТЬ БОЛЬШЕ" : "⚡ SQUEEZE MORE" :
+            {validating ? localize(lang, "GENERATING...", "ГЕНЕРАЦИЯ...", "ГЕНЕРАЦІЯ...") :
+            wordCount > themeMaxWords ? localize(lang, "⚡ SQUEEZE MORE", "⚡ ВЫЖАТЬ БОЛЬШЕ", "⚡ ЗНАЙТИ БІЛЬШЕ") :
             wordPool.length > 0 ? t('room_regenerate') :
-            themeAnalyzed ? lang === "ru" ? "✨ ГЕНЕРИРОВАТЬ" : "✨ GENERATE" :
-            lang === "ru" ? "✨ ГЕНЕРАЦИЯ" : "✨ GENERATE"}
+            themeAnalyzed ? localize(lang, "✨ GENERATE", "✨ ГЕНЕРИРОВАТЬ", "✨ ЗГЕНЕРУВАТИ") :
+            localize(lang, "✨ GENERATE", "✨ ГЕНЕРАЦИЯ", "✨ ЗГЕНЕРУВАТИ")}
           </motion.button>
           {themeError && <div style={{ marginBottom: 10, fontSize: 12, color: "#e53535" }}>{themeError}</div>}
           {wordPool.length > 0 && customTheme.trim() && <div style={{ fontSize: 9, color: "#444", letterSpacing: 0.5, marginBottom: 10, fontFamily: "monospace", lineHeight: 1.6 }}>
-           ⚠️ {lang === "ru" ? "AI может ошибаться. Проверь слова перед игрой." : "AI may make mistakes. Double-check words before playing."}
+           ⚠️ {localize(lang, "AI may make mistakes. Double-check words before playing.", "AI может ошибаться. Проверь слова перед игрой.", "ШІ може помилятися. Перевірте слова перед грою.")}
           </div>}
 
           {!customTheme.trim() &&
@@ -738,7 +751,7 @@ export default function LocalGame() {
                 </span>
               </div>
               <div style={{ fontSize: 9, color: "#555", fontFamily: "monospace", letterSpacing: 0.5, marginBottom: 8 }}>
-                {lang === "ru" ? `тема: ${generatedCategory} · макс ${themeMaxWords}` : `theme: ${generatedCategory} · max ${themeMaxWords}`}
+                {localize(lang, `theme: ${generatedCategory} · max ${themeMaxWords}`, `тема: ${generatedCategory} · макс ${themeMaxWords}`, `тема: ${generatedCategory} · макс. ${themeMaxWords}`)}
               </div>
               {/* Slider with +MAX as final position (themeMaxWords + 1) */}
               {(() => {
@@ -783,8 +796,8 @@ export default function LocalGame() {
             onUpdate={(updated) => {setWordPool(updated);if (customTheme.trim()) generatedPoolRef.current = updated;}}
             category={generatedCategory}
             icon="🎲"
-            label={lang === "ru" ? "СЛУЧАЙНАЯ ТЕМА" : "RANDOM THEME"}
-            actionLabel={`↺ ${lang === "ru" ? "ДРУГАЯ" : "REROLL"}`}
+            label={localize(lang, "RANDOM THEME", "СЛУЧАЙНАЯ ТЕМА", "ВИПАДКОВА ТЕМА")}
+            actionLabel={`↺ ${localize(lang, "REROLL", "ДРУГАЯ", "ІНША")}`}
             onAction={() => {
               const data = pickWord(locale);
               setWordPool(data.pool);
@@ -800,7 +813,7 @@ export default function LocalGame() {
             onUpdate={(updated) => {setWordPool(updated);if (customTheme.trim()) generatedPoolRef.current = updated;}}
             category={generatedCategory || customTheme.trim()}
             icon="✨"
-            label={lang === "ru" ? "СГЕНЕРИРОВАНО" : "GENERATED"} />
+            label={localize(lang, "GENERATED", "СГЕНЕРИРОВАНО", "ЗГЕНЕРОВАНО")} />
 
           }
 
@@ -812,7 +825,7 @@ export default function LocalGame() {
                 onUpdate={(updated) => {setWordPool(updated);if (customTheme.trim()) generatedPoolRef.current = updated;}}
                 category={pack?.category || pack?.name}
                 icon="📦"
-                label={lang === "ru" ? "WORDPACK" : "WORDPACK"}
+                label={localize(lang, "WORD PACK", "WORDPACK", "НАБІР СЛІВ")}
                 fast />);
 
 
@@ -833,13 +846,13 @@ export default function LocalGame() {
             }}
             onMouseEnter={(e) => {e.currentTarget.style.borderColor = "rgba(74,222,128,0.6)";e.currentTarget.style.background = "rgba(74,222,128,0.05)";}}
             onMouseLeave={(e) => {e.currentTarget.style.borderColor = "rgba(74,222,128,0.3)";e.currentTarget.style.background = "transparent";}}>
-              💾 {lang === "ru" ? "СОХРАНИТЬ КАК WORDPACK" : "SAVE AS WORDPACK"}
+              💾 {localize(lang, "SAVE AS WORD PACK", "СОХРАНИТЬ КАК WORDPACK", "ЗБЕРЕГТИ ЯК НАБІР СЛІВ")}
             </motion.button>
           }
 
           {!customTheme.trim() && !selectedPackId && wordPool.length === 0 &&
           <div style={{ fontSize: 11, color: "#555", letterSpacing: 0.5, marginTop: 6 }} className="hidden">
-              {lang === "ru" ? "Нажми «Раздать карточки» — случайная тема будет выбрана и показана" : "Press 'Deal Cards' — a random theme will be picked and shown"}
+              {localize(lang, "Press 'Deal Cards' — a random theme will be picked and shown", "Нажми «Раздать карточки» — случайная тема будет выбрана и показана", "Натисніть «Роздати картки» — випадкову тему буде обрано й показано")}
             </div>
           }
         </div>
@@ -874,15 +887,15 @@ export default function LocalGame() {
           disabled={!canStart}
           style={{ width: "100%", fontSize: 14, padding: "18px 0", marginBottom: 10, borderRadius: 10, letterSpacing: 4, clipPath: "none", boxShadow: canStart ? "0 0 20px rgba(229,53,53,0.3)" : "none", cursor: canStart ? "pointer" : "not-allowed" }}>
           🃏 {themeNeedsGenerate ?
-          lang === "ru" ? "СНАЧАЛА СГЕНЕРИРУЙ ТЕМУ" : "GENERATE THEME FIRST" :
+          localize(lang, "GENERATE THEME FIRST", "СНАЧАЛА СГЕНЕРИРУЙ ТЕМУ", "СПОЧАТКУ ЗГЕНЕРУЙТЕ ТЕМУ") :
           !customTheme.trim() && !selectedPackId && wordPool.length === 0 ?
-          lang === "ru" ? "СЛУЧАЙНАЯ ТЕМА" : "RANDOM & DEAL" :
-          lang === "ru" ? "РАЗДАТЬ КАРТОЧКИ" : "DEAL CARDS"}
+          localize(lang, "RANDOM & DEAL", "СЛУЧАЙНАЯ ТЕМА", "ВИПАДКОВА ТЕМА Й РОЗДАЧА") :
+          localize(lang, "DEAL CARDS", "РАЗДАТЬ КАРТОЧКИ", "РОЗДАТИ КАРТКИ")}
         </motion.button>
 
         <button onClick={() => {localStorage.setItem("spy_return_to_play_mode", "1");navigate(createPageUrl("Home"));}} className="btn-ghost dim-on-theme-focus"
         style={{ width: "100%", fontSize: 11, padding: "14px 0" }}>
-          ← {lang === "ru" ? "НАЗАД" : "BACK"}
+          ← {localize(lang, "BACK", "НАЗАД", "НАЗАД")}
         </button>
 
         <SaveAsWordPackDialog
@@ -973,7 +986,7 @@ export default function LocalGame() {
           </div>
           {!revealed &&
             <div style={{ fontSize: 11, color: "#555", letterSpacing: 2, marginTop: 6, fontFamily: "monospace" }}>
-              {lang === "ru" ? "👆 Передай телефон этому игроку" : "👆 Pass phone to this player"}
+              {localize(lang, "👆 Pass phone to this player", "👆 Передай телефон этому игроку", "👆 Передайте телефон цьому гравцеві")}
             </div>
             }
         </motion.div>
@@ -1074,7 +1087,7 @@ export default function LocalGame() {
           style={{ marginTop: 28, width: "100%", maxWidth: 300, pointerEvents: revealed ? "auto" : "none" }}>
           <button className="btn-red" onClick={handleCardRead}
             style={{ width: "100%", fontSize: 12, padding: "16px 0", borderRadius: 10, clipPath: "none", letterSpacing: 3 }}>
-            {cardPhaseIdx + 1 < total ? lang === "ru" ? `✓ ПРОЧИТАЛ — ДАЛЬШЕ` : `✓ READ — NEXT` : t('game_ready_btn')}
+            {cardPhaseIdx + 1 < total ? localize(lang, "✓ READ — NEXT", "✓ ПРОЧИТАЛ — ДАЛЬШЕ", "✓ ПРОЧИТАНО — ДАЛІ") : t('game_ready_btn')}
           </button>
         </motion.div>
 
@@ -1140,11 +1153,11 @@ export default function LocalGame() {
           <div style={{ display: "flex", flexDirection: "column", gap: 10 }}>
             <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
             className="btn-red" onClick={playAgain} style={{ fontSize: 12 }}>
-              🔁 {lang === "ru" ? "СЫГРАТЬ ЕЩЁ" : "PLAY AGAIN"}
+              🔁 {localize(lang, "PLAY AGAIN", "СЫГРАТЬ ЕЩЁ", "ЗІГРАТИ ЩЕ РАЗ")}
             </motion.button>
             <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
             className="btn-ghost" onClick={() => navigate(createPageUrl("Home"))} style={{ fontSize: 11 }}>
-              ← {lang === "ru" ? "НА ГЛАВНУЮ" : "HOME"}
+              ← {localize(lang, "HOME", "НА ГЛАВНУЮ", "НА ГОЛОВНУ")}
             </motion.button>
           </div>
         </div>
@@ -1173,11 +1186,11 @@ export default function LocalGame() {
       {/* Header */}
       <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", flexShrink: 0 }}>
         <div style={{ fontSize: 10, letterSpacing: 3, color: "#555", fontFamily: "monospace" }}>
-          // {lang === "ru" ? "ИГРА" : "PLAYING"}
+          // {localize(lang, "PLAYING", "ИГРА", "ГРА ТРИВАЄ")}
         </div>
         <button className="btn-ghost" onClick={() => {if (timerRef) clearInterval(timerRef);setPhase("setup");}}
         style={{ fontSize: 10, padding: "6px 12px" }}>
-          ✕ {lang === "ru" ? "СТОП" : "STOP"}
+          ✕ {localize(lang, "STOP", "СТОП", "ЗУПИНИТИ")}
         </button>
       </div>
 
@@ -1213,13 +1226,13 @@ export default function LocalGame() {
           <div style={{ position: "absolute", top: 0, left: 0, width: 10, height: 10, borderTop: "1px solid #e53535", borderLeft: "1px solid #e53535" }} />
           <div style={{ position: "absolute", bottom: 0, right: 0, width: 10, height: 10, borderBottom: "1px solid #e53535", borderRight: "1px solid #e53535" }} />
 
-          <div style={{ fontSize: 9, letterSpacing: 3, color: "#555", marginBottom: 14, textAlign: "center" }}>{lang === "ru" ? "АКТИВНАЯ ПАРА" : "ACTIVE PAIR"}</div>
+          <div style={{ fontSize: 9, letterSpacing: 3, color: "#555", marginBottom: 14, textAlign: "center" }}>{localize(lang, "ACTIVE PAIR", "АКТИВНАЯ ПАРА", "АКТИВНА ПАРА")}</div>
 
           <div style={{ display: "grid", gridTemplateColumns: "1fr auto 1fr", gap: 12, alignItems: "center" }}>
             {/* Asker */}
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 40, marginBottom: 6 }}>{gameData.players[currentAskerIdx].avatar}</div>
-              <div style={{ fontSize: 9, color: "#555", letterSpacing: 2, marginBottom: 4 }}>{lang === "ru" ? "СПРАШИВАЕТ" : "ASKS"}</div>
+              <div style={{ fontSize: 9, color: "#555", letterSpacing: 2, marginBottom: 4 }}>{localize(lang, "ASKS", "СПРАШИВАЕТ", "ЗАПИТУЄ")}</div>
               <div style={{ fontSize: 12, color: "#e53535", fontWeight: 700 }}>{gameData.players[currentAskerIdx].name.substring(0, 8)}</div>
             </div>
 
@@ -1230,7 +1243,7 @@ export default function LocalGame() {
             {/* Answerer */}
             <div style={{ textAlign: "center" }}>
               <div style={{ fontSize: 40, marginBottom: 6 }}>{gameData.players[currentAnswererIdx].avatar}</div>
-              <div style={{ fontSize: 9, color: "#555", letterSpacing: 2, marginBottom: 4 }}>{lang === "ru" ? "ОТВЕЧАЕТ" : "ANSWERS"}</div>
+              <div style={{ fontSize: 9, color: "#555", letterSpacing: 2, marginBottom: 4 }}>{localize(lang, "ANSWERS", "ОТВЕЧАЕТ", "ВІДПОВІДАЄ")}</div>
               <div style={{ fontSize: 12, color: "#fff", fontWeight: 700 }}>{gameData.players[currentAnswererIdx].name.substring(0, 8)}</div>
             </div>
           </div>
@@ -1249,7 +1262,7 @@ export default function LocalGame() {
           sounds.click();
         }}
         style={{ width: "100%", fontSize: 10, padding: "10px 0", marginTop: 14, borderRadius: 6, clipPath: "none" }}>
-            {lang === "ru" ? "↻ СЛЕДУЮЩАЯ ПАРА" : "↻ NEXT PAIR"}
+            {localize(lang, "↻ NEXT PAIR", "↻ СЛЕДУЮЩАЯ ПАРА", "↻ НАСТУПНА ПАРА")}
           </motion.button>
         </motion.div>
       }
@@ -1265,12 +1278,13 @@ export default function LocalGame() {
         <RouletteSpinner
           players={gameData.players.map((p, i) => ({ ...p, email: String(i) }))}
           targetEmail={String(associationIdx)}
+          language={lang}
           onDone={() => {setAssociationRouletteDone(true);sounds.roundStart?.();}} /> :
 
 
         <>
               <div style={{ fontSize: 9, letterSpacing: 3, color: "#555", marginBottom: 10, textAlign: "center" }}>
-                {lang === "ru" ? "ГОВОРИТ АССОЦИАЦИЮ" : "SAYS ASSOCIATION"}
+                {localize(lang, "SAYS ASSOCIATION", "ГОВОРИТ АССОЦИАЦИЮ", "НАЗИВАЄ АСОЦІАЦІЮ")}
               </div>
               <div style={{ textAlign: "center", marginBottom: 12 }}>
                 <motion.div key={associationIdx} initial={{ scale: 0.85, opacity: 0 }} animate={{ scale: 1, opacity: 1 }}
@@ -1305,8 +1319,8 @@ export default function LocalGame() {
           }}
           style={{ width: "100%", fontSize: 10, padding: "10px 0", borderRadius: 6, clipPath: "none" }}>
                 {associationStep + 1 >= associationOrder.length ?
-            lang === "ru" ? "🎲 НОВЫЙ РАУНД" : "🎲 NEW ROUND" :
-            lang === "ru" ? "↻ СЛЕДУЮЩИЙ ИГРОК" : "↻ NEXT PLAYER"}
+            localize(lang, "🎲 NEW ROUND", "🎲 НОВЫЙ РАУНД", "🎲 НОВИЙ РАУНД") :
+            localize(lang, "↻ NEXT PLAYER", "↻ СЛЕДУЮЩИЙ ИГРОК", "↻ НАСТУПНИЙ ГРАВЕЦЬ")}
               </motion.button>
 
               {/* Progress indicator */}

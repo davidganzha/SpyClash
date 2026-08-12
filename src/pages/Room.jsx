@@ -12,6 +12,7 @@ import RouletteSpinner from "../components/RouletteSpinner";
 import GameToastContainer, { gameToast } from "../components/GameToast";
 import { useGameSounds } from "../components/useGameSounds";
 import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 import QRInvite from "../components/QRInvite";
 import WordPackSelector from "../components/WordPackSelector";
 import SaveAsWordPackDialog from "../components/SaveAsWordPackDialog";
@@ -199,7 +200,7 @@ export default function Room() {
           skipLobbyReconcile: true,
         });
         if (!applied) return;
-        const message = error?.message || "Lobby settings were reloaded";
+        const message = error?.message || localize(lang, "Lobby settings were reloaded", "Настройки лобби загружены заново", "Налаштування лобі завантажено повторно");
         setThemeError(message);
         gameToast(message, "warning", "⚠️");
       },
@@ -610,9 +611,12 @@ export default function Room() {
       console.error("AI theme analysis failed", error);
       if (!isRoomScopeCurrent(scope)) return;
       if (requestVersion === lobbyDraftVersionRef.current) {
-        setThemeError(locale.language === 'ru'
-          ? "AI-генерация временно недоступна."
-          : "AI generation is temporarily unavailable.");
+        setThemeError(localize(
+          lang,
+          "AI generation is temporarily unavailable.",
+          "AI-генерация временно недоступна.",
+          "Генерація за допомогою ШІ тимчасово недоступна.",
+        ));
       }
       setValidating(false);
       return;
@@ -621,7 +625,7 @@ export default function Room() {
     setValidating(false);
     if (!result?.words?.length || result.words.length < 5) {
       if (requestVersion === lobbyDraftVersionRef.current) {
-        setThemeError(locale.language === 'ru' ? "Не удалось распознать тему. Попробуй другую." : "Couldn't recognize this theme. Try another.");
+        setThemeError(localize(lang, "Couldn't recognize this theme. Try another.", "Не удалось распознать тему. Попробуй другую.", "Не вдалося розпізнати тему. Спробуйте іншу."));
       }
       return;
     }
@@ -654,9 +658,12 @@ export default function Room() {
       console.error("AI theme generation failed", error);
       if (!isRoomScopeCurrent(scope)) return;
       if (requestVersion === lobbyDraftVersionRef.current) {
-        setThemeError(locale.language === 'ru'
-          ? "AI-генерация временно недоступна."
-          : "AI generation is temporarily unavailable.");
+        setThemeError(localize(
+          lang,
+          "AI generation is temporarily unavailable.",
+          "AI-генерация временно недоступна.",
+          "Генерація за допомогою ШІ тимчасово недоступна.",
+        ));
       }
       setValidating(false);
       return;
@@ -701,9 +708,12 @@ export default function Room() {
       console.error("AI theme expansion failed", error);
       if (!isRoomScopeCurrent(scope)) return;
       if (requestVersion === lobbyDraftVersionRef.current) {
-        setThemeError(locale.language === 'ru'
-          ? "AI-генерация временно недоступна."
-          : "AI generation is temporarily unavailable.");
+        setThemeError(localize(
+          lang,
+          "AI generation is temporarily unavailable.",
+          "AI-генерация временно недоступна.",
+          "Генерація за допомогою ШІ тимчасово недоступна.",
+        ));
       }
       setValidating(false);
       return;
@@ -715,7 +725,7 @@ export default function Room() {
     const additions = result.words.filter((w) => !existingLower.has(w.toLowerCase()));
     if (additions.length === 0) {
       if (requestVersion === lobbyDraftVersionRef.current) {
-        setThemeError(locale.language === 'ru' ? "Больше уникальных слов найти не удалось." : "Couldn't find more unique words.");
+        setThemeError(localize(lang, "Couldn't find more unique words.", "Больше уникальных слов найти не удалось.", "Не вдалося знайти більше унікальних слів."));
       }
       return;
     }
@@ -763,9 +773,12 @@ export default function Room() {
 
     const pack = selectedPack || userPacks.find((candidate) => candidate.id === packID);
     if (!pack) {
-      setThemeError(locale.language === 'ru'
-        ? "Не удалось загрузить WordPack. Попробуй снова."
-        : "Could not load this WordPack. Try again.");
+      setThemeError(localize(
+        lang,
+        "Could not load this WordPack. Try again.",
+        "Не удалось загрузить WordPack. Попробуй снова.",
+        "Не вдалося завантажити набір слів. Спробуйте ще раз.",
+      ));
       return;
     }
     const pool = (pack.words || []).map((entry) => ({
@@ -848,10 +861,12 @@ export default function Room() {
       confirmedRoom.host_email !== userRef.current?.email ||
       (mustMaterializeDefault && lobbyRevision(confirmedRoom) === 0)
     ) {
-      const message = sync.error?.message ||
-        (locale.language === 'ru'
-          ? "Настройки лобби ещё не синхронизированы."
-          : "Lobby settings are not synchronized yet.");
+      const message = sync.error?.message || localize(
+        lang,
+        "Lobby settings are not synchronized yet.",
+        "Настройки лобби ещё не синхронизированы.",
+        "Налаштування лобі ще не синхронізовано.",
+      );
       setThemeError(message);
       return null;
     }
@@ -870,9 +885,12 @@ export default function Room() {
     if (!isRoomScopeCurrent(scope)) return;
     if (!confirmedRoom) {setStarting(false);return;}
     if (lobbyRevision(confirmedRoom) === 0) {
-      const message = locale.language === 'ru'
-        ? "Вернись в лобби, чтобы синхронизировать параметры игры."
-        : "Return to the lobby to synchronize the game settings.";
+      const message = localize(
+        lang,
+        "Return to the lobby to synchronize the game settings.",
+        "Вернись в лобби, чтобы синхронизировать параметры игры.",
+        "Поверніться до лобі, щоб синхронізувати налаштування гри.",
+      );
       setThemeError(message);
       gameToast(message, "warning", "⚠️");
       setStarting(false);
@@ -1246,7 +1264,7 @@ export default function Room() {
         className="dim-on-theme-focus"
         initial={{ opacity: 0, y: 16 }}
         animate={{ opacity: 1, y: 0 }}
-        aria-label={locale.language === 'ru' ? "Доступ в комнату" : "Room access"}
+        aria-label={localize(lang, "Room access", "Доступ в комнату", "Доступ до кімнати")}
         style={{
           position: "relative",
           minHeight: 270,
@@ -1261,7 +1279,7 @@ export default function Room() {
 
         <div style={{ height: 42, padding: "0 18px", display: "flex", alignItems: "center", gap: 8, borderBottom: "1px solid #1d1d1d", fontFamily: "monospace", fontSize: 9, fontWeight: 700, letterSpacing: 1.4 }}>
           <span style={{ color: "#e53535" }}>//</span>
-          <span style={{ color: "rgba(255,255,255,0.58)" }}>{locale.language === 'ru' ? "ДОСТУП В КОМНАТУ" : "ROOM ACCESS"}</span>
+          <span style={{ color: "rgba(255,255,255,0.58)" }}>{localize(lang, "ROOM ACCESS", "ДОСТУП В КОМНАТУ", "ДОСТУП ДО КІМНАТИ")}</span>
           <span style={{ marginLeft: "auto", width: 6, height: 6, borderRadius: "50%", background: "#e53535", boxShadow: "0 0 6px rgba(229,53,53,.7)" }} />
           <span style={{ color: "rgba(255,255,255,0.42)" }}>{String(players.length).padStart(2, "0")}</span>
         </div>
@@ -1274,7 +1292,9 @@ export default function Room() {
               <button
                 type="button"
                 onClick={() => setCodeSpoiled(v => !v)}
-                aria-label={locale.language === 'ru' ? (codeSpoiled ? `Код комнаты ${room.code}. Скрыть` : "Показать код комнаты") : (codeSpoiled ? `Room code ${room.code}. Hide` : "Reveal room code")}
+                aria-label={codeSpoiled
+                  ? localize(lang, `Room code ${room.code}. Hide`, `Код комнаты ${room.code}. Скрыть`, `Код кімнати ${room.code}. Сховати`)
+                  : localize(lang, "Reveal room code", "Показать код комнаты", "Показати код кімнати")}
                 style={{ position: "relative", width: "100%", minHeight: 74, border: 0, background: "transparent", cursor: "pointer", padding: "4px 12px", color: "inherit" }}>
                 <motion.div animate={{ opacity: codeSpoiled ? 1 : 0, scale: codeSpoiled ? 1 : 0.9 }} transition={{ duration: 0.45, ease: [0.4, 0, 0.2, 1] }}>
                   <GlitchText key={codeSpoiled ? 'shown' : 'hidden'} text={room.code} style={{ fontSize: 42, fontWeight: 700, letterSpacing: 8, color: "#e53535", display: "block" }} speed={30} />
@@ -1293,7 +1313,9 @@ export default function Room() {
                 </AnimatePresence>
               </button>
               <div style={{ fontSize: 8.5, letterSpacing: 1.4, color: "#666", fontFamily: "monospace", marginBottom: 10 }}>
-                {codeSpoiled ? (locale.language === 'ru' ? "ТАП ЧТОБЫ СКРЫТЬ" : "TAP TO HIDE") : (locale.language === 'ru' ? "ТАП ЧТОБЫ ПОКАЗАТЬ" : "TAP TO REVEAL")}
+                {codeSpoiled
+                  ? localize(lang, "TAP TO HIDE", "ТАП ЧТОБЫ СКРЫТЬ", "НАТИСНІТЬ, ЩОБ СХОВАТИ")
+                  : localize(lang, "TAP TO REVEAL", "ТАП ЧТОБЫ ПОКАЗАТЬ", "НАТИСНІТЬ, ЩОБ ПОКАЗАТИ")}
               </div>
               <motion.button type="button" whileTap={{ scale: 0.96 }} onClick={copyCode}
                 style={{ minWidth: 184, height: 34, display: "flex", alignItems: "center", justifyContent: "center", gap: 8, background: copied ? "rgba(229,53,53,.11)" : "rgba(255,255,255,.035)", border: `1px solid ${copied ? "rgba(229,53,53,.72)" : "#292929"}`, color: copied ? "#e53535" : "#aaa", cursor: "pointer", fontSize: 9, letterSpacing: 1.8, fontFamily: "monospace", fontWeight: 700 }}>
@@ -1309,15 +1331,17 @@ export default function Room() {
                 onClick={() => setQrFlipped(v => !v)}
                 animate={{ rotateY: qrFlipped ? 180 : 0 }}
                 transition={{ duration: 0.58, ease: [0.4, 0, 0.2, 1] }}
-                aria-label={locale.language === 'ru' ? (qrFlipped ? "Показать QR комнаты" : "Скрыть QR комнаты") : (qrFlipped ? "Reveal room QR" : "Hide room QR")}
+                aria-label={qrFlipped
+                  ? localize(lang, "Reveal room QR", "Показать QR комнаты", "Показати QR-код кімнати")
+                  : localize(lang, "Hide room QR", "Скрыть QR комнаты", "Сховати QR-код кімнати")}
                 style={{ position: "relative", width: "100%", height: "100%", padding: 0, border: 0, background: "transparent", color: "inherit", cursor: "pointer", transformStyle: "preserve-3d" }}>
                 <div style={{ position: "absolute", inset: 0, backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", display: "flex", alignItems: "center", justifyContent: "center" }}>
                   <QRInvite roomId={room.id} roomCode={room.code} embedded />
                 </div>
                 <div style={{ position: "absolute", inset: 0, backfaceVisibility: "hidden", WebkitBackfaceVisibility: "hidden", transform: "rotateY(180deg)", display: "flex", flexDirection: "column", alignItems: "center", justifyContent: "center", gap: 8 }}>
                   <QrCode size={38} style={{ color: "#fff", opacity: 0.74 }} />
-                  <div style={{ fontSize: 13, letterSpacing: 3, color: "#aaa", fontFamily: "'Rajdhani', sans-serif", fontWeight: 700 }}>{locale.language === 'ru' ? "QR СКРЫТ" : "QR HIDDEN"}</div>
-                  <div style={{ fontSize: 9, letterSpacing: 1.8, color: "#555", fontFamily: "monospace" }}>{locale.language === 'ru' ? "ТАП ЧТОБЫ ПЕРЕВЕРНУТЬ" : "TAP TO FLIP"}</div>
+                  <div style={{ fontSize: 13, letterSpacing: 3, color: "#aaa", fontFamily: "'Rajdhani', sans-serif", fontWeight: 700 }}>{localize(lang, "QR HIDDEN", "QR СКРЫТ", "QR-КОД СХОВАНО")}</div>
+                  <div style={{ fontSize: 9, letterSpacing: 1.8, color: "#555", fontFamily: "monospace" }}>{localize(lang, "TAP TO FLIP", "ТАП ЧТОБЫ ПЕРЕВЕРНУТЬ", "НАТИСНІТЬ, ЩОБ ПЕРЕГОРНУТИ")}</div>
                 </div>
               </motion.button>
             </motion.div>
@@ -1326,7 +1350,9 @@ export default function Room() {
 
         <div style={{ position: "absolute", left: 0, right: 0, bottom: 9, display: "flex", alignItems: "center", justifyContent: "center", gap: 9, zIndex: 5 }}>
           {[0, 1].map((page) => (
-            <button key={page} type="button" onClick={() => setRoomAccessPage(page)} aria-label={page === 0 ? (locale.language === 'ru' ? "Страница кода" : "Code page") : (locale.language === 'ru' ? "Страница QR" : "QR page")}
+            <button key={page} type="button" onClick={() => setRoomAccessPage(page)} aria-label={page === 0
+              ? localize(lang, "Code page", "Страница кода", "Сторінка коду")
+              : localize(lang, "QR page", "Страница QR", "Сторінка QR")}
               style={{ width: roomAccessPage === page ? 18 : 6, height: 6, padding: 0, border: 0, borderRadius: 99, background: roomAccessPage === page ? "#e53535" : "#3a3a3a", cursor: "pointer", transition: "all .2s ease" }} />
           ))}
         </div>
@@ -1337,12 +1363,12 @@ export default function Room() {
         <motion.div className="dim-on-theme-focus" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
         style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
           <div style={sectionLabel}>
-            <span>⚙️</span> {locale.language === 'ru' ? "РЕЖИМ ИГРЫ" : "GAME MODE"}
+            <span>⚙️</span> {localize(lang, "GAME MODE", "РЕЖИМ ИГРЫ", "РЕЖИМ ГРИ")}
           </div>
           <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 10 }}>
             {[
-            { mode: "questions", label: locale.language === 'ru' ? "ВОПРОСЫ" : "QUESTIONS", icon: "?" },
-            { mode: "associations", label: locale.language === 'ru' ? "АССОЦИАЦИИ" : "ASSOCIATIONS", icon: "💭" }].
+            { mode: "questions", label: localize(lang, "QUESTIONS", "ВОПРОСЫ", "ЗАПИТАННЯ"), icon: "?" },
+            { mode: "associations", label: localize(lang, "ASSOCIATIONS", "АССОЦИАЦИИ", "АСОЦІАЦІЇ"), icon: "💭" }].
             map(({ mode, label, icon }) => {
               const active = syncedGameMode === mode;
               return (
@@ -1370,12 +1396,14 @@ export default function Room() {
         <motion.div className="dim-on-theme-focus" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.04 }}
         style={{ ...glassStyle, padding: "18px 24px", marginBottom: 14, textAlign: "center" }}>
           <div style={{ ...sectionLabel, justifyContent: "center", marginBottom: 10 }}>
-            <span>⚙️</span> {locale.language === 'ru' ? "РЕЖИМ" : "MODE"}
+            <span>⚙️</span> {localize(lang, "MODE", "РЕЖИМ", "РЕЖИМ")}
           </div>
           <div style={{ display: "flex", alignItems: "center", justifyContent: "center", gap: 8 }}>
             <span style={{ fontSize: 20 }}>{syncedGameMode === "questions" ? "❓" : "💭"}</span>
             <span style={{ fontSize: 16, fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, letterSpacing: 2, color: "#e53535" }}>
-              {syncedGameMode === "questions" ? locale.language === 'ru' ? "ВОПРОСЫ" : "QUESTIONS" : locale.language === 'ru' ? "АССОЦИАЦИИ" : "ASSOCIATIONS"}
+              {syncedGameMode === "questions"
+                ? localize(lang, "QUESTIONS", "ВОПРОСЫ", "ЗАПИТАННЯ")
+                : localize(lang, "ASSOCIATIONS", "АССОЦИАЦИИ", "АСОЦІАЦІЇ")}
             </span>
           </div>
         </motion.div>
@@ -1440,7 +1468,7 @@ export default function Room() {
       <motion.div className="dim-on-theme-focus" initial={{ opacity: 0, y: 16 }} animate={{ opacity: 1, y: 0 }} transition={{ delay: 0.05 }}
         style={{ ...glassStyle, padding: "20px 24px", marginBottom: 14 }}>
         <div style={sectionLabel}>
-          <span>👥</span> {locale.language === 'ru' ? "ИГРОКИ" : "PLAYERS"} ({players.length} / 3+)
+          <span>👥</span> {localize(lang, "PLAYERS", "ИГРОКИ", "ГРАВЦІ")} ({players.length} / 3+)
         </div>
         <div style={{ display: "flex", flexDirection: "column", gap: 8 }}>
           {players.map((p, i) =>
@@ -1477,10 +1505,10 @@ export default function Room() {
           }}>
             <span>{lobbySyncFailed ? "!" : lobbySyncBusy ? "↻" : "✓"}</span>{" "}
             {lobbySyncFailed
-              ? (locale.language === 'ru' ? "ОШИБКА СИНХРОНИЗАЦИИ" : "LOBBY SYNC FAILED")
+              ? localize(lang, "LOBBY SYNC FAILED", "ОШИБКА СИНХРОНИЗАЦИИ", "ПОМИЛКА СИНХРОНІЗАЦІЇ")
               : lobbySyncBusy
-                ? (locale.language === 'ru' ? "СИНХРОНИЗАЦИЯ..." : "SYNCING LOBBY...")
-                : (locale.language === 'ru' ? "ПАРАМЕТРЫ СИНХРОНИЗИРОВАНЫ" : "LOBBY SETTINGS SYNCED")}
+                ? localize(lang, "SYNCING LOBBY...", "СИНХРОНИЗАЦИЯ...", "СИНХРОНІЗАЦІЯ ЛОБІ...")
+                : localize(lang, "LOBBY SETTINGS SYNCED", "ПАРАМЕТРЫ СИНХРОНИЗИРОВАНЫ", "НАЛАШТУВАННЯ СИНХРОНІЗОВАНО")}
           </div>
           <div style={{ fontFamily: "'Rajdhani', sans-serif", fontSize: 18, fontWeight: 700, letterSpacing: 1.5, color: "#eee", marginBottom: 6 }}>
             {(room.lobby_category || room.lobby_source_name || room.lobby_theme || "CLASSIC").toUpperCase()}
@@ -1513,8 +1541,8 @@ export default function Room() {
           <div style={{ marginBottom: 10 }}>
             <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: 8, marginBottom: wordCountMode === "custom" ? 10 : 0 }}>
               {[
-                { mode: "recommended", label: locale.language === 'ru' ? "РЕКОМЕНДОВАНО" : "RECOMMENDED", hint: locale.language === 'ru' ? "Авто" : "Auto" },
-                { mode: "custom", label: locale.language === 'ru' ? "СВОЙ ВЫБОР" : "CUSTOM", hint: `${customWordCount}` }
+                { mode: "recommended", label: localize(lang, "RECOMMENDED", "РЕКОМЕНДОВАНО", "РЕКОМЕНДОВАНО"), hint: localize(lang, "Auto", "Авто", "Авто") },
+                { mode: "custom", label: localize(lang, "CUSTOM", "СВОЙ ВЫБОР", "ВЛАСНИЙ ВИБІР"), hint: `${customWordCount}` }
               ].map(({ mode, label, hint }) => {
                 const active = wordCountMode === mode;
                 return (
@@ -1536,7 +1564,7 @@ export default function Room() {
             {wordCountMode === "custom" &&
             <div style={{ background: "rgba(0,0,0,0.25)", border: "1px solid rgba(255,255,255,0.06)", borderRadius: 10, padding: "10px 14px" }}>
               <div style={{ display: "flex", justifyContent: "space-between", alignItems: "center", marginBottom: 6 }}>
-                <span style={{ fontSize: 10, letterSpacing: 2, color: "#888", fontFamily: "monospace" }}>// {locale.language === 'ru' ? "КОЛИЧЕСТВО" : "COUNT"}</span>
+                <span style={{ fontSize: 10, letterSpacing: 2, color: "#888", fontFamily: "monospace" }}>// {localize(lang, "COUNT", "КОЛИЧЕСТВО", "КІЛЬКІСТЬ")}</span>
                 <span style={{ fontSize: 15, fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, color: "#e53535" }}>{customWordCount}<span style={{ color: "#444", fontSize: 10 }}> / 80</span></span>
               </div>
               <div style={{ position: "relative", paddingBottom: 4 }}>
@@ -1561,11 +1589,11 @@ export default function Room() {
             fontSize: 11, width: "100%", opacity: customTheme.trim() ? 1 : 0.4, marginBottom: 10, borderRadius: 10, clipPath: "none",
             ...(wordCount > themeMaxWords ? { color: "#fbbf24", borderColor: "#fbbf24", background: "rgba(251,191,36,0.05)" } : {})
           }}>
-              {validating ? locale.language === 'ru' ? "АНАЛИЗ..." : "ANALYZING..." :
-            wordCount > themeMaxWords ? locale.language === 'ru' ? "⚡ ВЫЖАТЬ БОЛЬШЕ" : "⚡ SQUEEZE MORE" :
+              {validating ? localize(lang, "ANALYZING...", "АНАЛИЗ...", "АНАЛІЗ...") :
+            wordCount > themeMaxWords ? localize(lang, "⚡ SQUEEZE MORE", "⚡ ВЫЖАТЬ БОЛЬШЕ", "⚡ ЗНАЙТИ БІЛЬШЕ") :
             wordPool.length > 0 ? t('room_regenerate') :
-            themeAnalyzed ? locale.language === 'ru' ? "✨ ГЕНЕРИРОВАТЬ" : "✨ GENERATE" :
-            locale.language === 'ru' ? "🔍 АНАЛИЗ" : "🔍 ANALYZE"}
+            themeAnalyzed ? localize(lang, "✨ GENERATE", "✨ ГЕНЕРИРОВАТЬ", "✨ ЗГЕНЕРУВАТИ") :
+            localize(lang, "🔍 ANALYZE", "🔍 АНАЛИЗ", "🔍 АНАЛІЗУВАТИ")}
             </motion.button>
           }
           {themeError &&
@@ -1603,7 +1631,7 @@ export default function Room() {
                 </span>
               </div>
               <div style={{ fontSize: 9, color: "#666", fontFamily: "monospace", letterSpacing: 1, marginBottom: 10 }}>
-                {locale.language === 'ru' ? `тема: ${generatedCategory} · макс ${themeMaxWords}` : `theme: ${generatedCategory} · max ${themeMaxWords}`}
+                {localize(lang, `theme: ${generatedCategory} · max ${themeMaxWords}`, `тема: ${generatedCategory} · макс ${themeMaxWords}`, `тема: ${generatedCategory} · макс. ${themeMaxWords}`)}
               </div>
               {(() => {
               const sliderMax = themeMaxWords + 1;
@@ -1657,7 +1685,7 @@ export default function Room() {
             }}
             onMouseEnter={(e) => {e.currentTarget.style.borderColor = "rgba(74,222,128,0.6)";e.currentTarget.style.background = "rgba(74,222,128,0.05)";}}
             onMouseLeave={(e) => {e.currentTarget.style.borderColor = "rgba(74,222,128,0.3)";e.currentTarget.style.background = "transparent";}}>
-              💾 {locale.language === 'ru' ? "СОХРАНИТЬ КАК WORDPACK" : "SAVE AS WORDPACK"}
+              💾 {localize(lang, "SAVE AS WORD PACK", "СОХРАНИТЬ КАК WORDPACK", "ЗБЕРЕГТИ ЯК НАБІР СЛІВ")}
             </motion.button>
           }
         </motion.div>

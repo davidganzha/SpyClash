@@ -1,6 +1,6 @@
 import { createContext, useContext, useState, useEffect } from "react";
 import { base44 } from "@/api/base44Client";
-import { getT, translations } from "./i18n";
+import { getT, normalizeLanguage, translations } from "./i18n";
 
 export const LanguageContext = createContext({
   lang: "en",
@@ -11,7 +11,7 @@ export const LanguageContext = createContext({
 
 export function LanguageProvider({ children }) {
   const [lang, setLangState] = useState(() => {
-    return localStorage.getItem("spy_lang") || "en";
+    return normalizeLanguage(localStorage.getItem("spy_lang"));
   });
   const [ready, setReady] = useState(false);
 
@@ -20,24 +20,28 @@ export function LanguageProvider({ children }) {
     base44.auth.me().then(u => {
       if (u?.language && !localLang) {
         // Only use profile language if user hasn't explicitly set a local preference
-        setLangState(u.language);
-        localStorage.setItem("spy_lang", u.language);
+        const profileLanguage = normalizeLanguage(u.language);
+        setLangState(profileLanguage);
+        localStorage.setItem("spy_lang", profileLanguage);
       }
     }).catch(() => {}).finally(() => setReady(true));
   }, []);
 
   const setLang = (newLang, saveToProfile = false) => {
-    setLangState(newLang);
-    localStorage.setItem("spy_lang", newLang);
+    const normalized = normalizeLanguage(newLang);
+    setLangState(normalized);
+    localStorage.setItem("spy_lang", normalized);
     if (saveToProfile) {
-      base44.auth.updateMe({ language: newLang }).catch(() => {});
+      base44.auth.updateMe({ language: normalized }).catch(() => {});
     }
   };
 
   const t = getT(lang);
-  const locale = translations[lang] || translations.en;
+  const locale = translations[lang];
 
-
+  useEffect(() => {
+    document.documentElement.lang = lang;
+  }, [lang]);
 
   return (
     <LanguageContext.Provider value={{ lang, t, locale, setLang }}>

@@ -9,6 +9,7 @@ import {
 } from "lucide-react";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 import { useAuth } from "@/lib/AuthContext";
 import { useCommunity } from "@/lib/CommunityContext";
 
@@ -42,19 +43,19 @@ export default function BottomNav() {
     {
       to: createPageUrl("Home"),
       icon: HomeIcon,
-      label: lang === "ru" ? "ДОМОЙ" : "HOME",
+      label: localize(lang, "HOME", "ДОМОЙ", "ГОЛОВНА"),
       active: ["/", "/home"].includes(currentPath),
     },
     {
       to: createPageUrl("WordPacks"),
       icon: Package,
-      label: lang === "ru" ? "КОЛОДЫ" : "PACKS",
+      label: localize(lang, "PACKS", "КОЛОДЫ", "НАБОРИ"),
       active: currentPath === "/wordpacks",
     },
     {
       to: createPageUrl("Profile"),
       icon: UserIcon,
-      label: lang === "ru" ? "ПРОФИЛЬ" : "PROFILE",
+      label: localize(lang, "PROFILE", "ПРОФИЛЬ", "ПРОФІЛЬ"),
       active: currentPath === "/profile",
     },
   ];
@@ -62,20 +63,20 @@ export default function BottomNav() {
     {
       to: createPageUrl("Home"),
       icon: ArrowLeft,
-      label: lang === "ru" ? "НАЗАД" : "RETURN",
+      label: localize(lang, "RETURN", "НАЗАД", "НАЗАД"),
       active: false,
     },
     {
       to: createPageUrl("Community"),
       icon: Contact,
-      label: lang === "ru" ? "СЕТЬ" : "COMMUNITY",
+      label: localize(lang, "COMMUNITY", "СЕТЬ", "СПІЛЬНОТА"),
       active: true,
       badge: attentionCount,
     },
     {
       to: createPageUrl("Profile"),
       icon: UserIcon,
-      label: lang === "ru" ? "МОЙ ПРОФИЛЬ" : "MY PROFILE",
+      label: localize(lang, "MY PROFILE", "МОЙ ПРОФИЛЬ", "МІЙ ПРОФІЛЬ"),
       active: false,
     },
   ];
@@ -99,7 +100,7 @@ export default function BottomNav() {
       }}
     >
       <nav
-        aria-label={lang === "ru" ? "Основная навигация" : "Primary navigation"}
+        aria-label={localize(lang, "Primary navigation", "Основная навигация", "Основна навігація")}
         style={{
           pointerEvents: "auto",
           position: "relative",

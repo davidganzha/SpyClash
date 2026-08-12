@@ -1,3 +1,5 @@
+import ukTranslations from "./i18n.uk";
+
 export const translations = {
   en: {
     loading: "LOADING...",
@@ -195,10 +197,14 @@ export const translations = {
     qr_next_question: "// NEXT QUESTION IN",
     qr_being_asked: "// YOU'RE BEING QUESTIONED",
     qr_asks_you: "is asking you a question",
+    qr_gives_word: "is giving you an association prompt",
     qr_listen: "LISTEN AND ANSWER OUT LOUD...",
+    qr_say_association: "SAY YOUR ASSOCIATION OUT LOUD...",
     qr_your_turn: "// YOUR TURN — ASK A QUESTION",
     qr_ask_agent: "ASK A QUESTION TO AGENT:",
+    qr_give_word: "GIVE AN ASSOCIATION TO:",
     qr_answer_received_btn: "✓ ANSWER RECEIVED",
+    qr_word_given_btn: "✓ ASSOCIATION GIVEN",
     qr_question_num: "// QUESTION",
     qr_asks: "ASKS",
     qr_answers: "ANSWERS",
@@ -233,6 +239,7 @@ export const translations = {
     wp_form_new: "// NEW PACK",
     wp_form_edit: "// EDIT PACK",
     wp_form_ai_label: "// AI GENERATION",
+    wp_form_ai_count: "WORDS TO GENERATE",
     wp_form_ai_placeholder: "Theme in any language (Marvel, CIS Countries...)",
     wp_form_ai_btn: "✦ GENERATE",
     wp_form_ai_hint: "AI will detect language automatically and create a word list",
@@ -280,6 +287,7 @@ export const translations = {
     game_secret_word_short: "Secret word:",
     game_spy_badge: "SPY",
     game_wrong_spectating: "is now spectating",
+    game_unknown: "UNKNOWN",
     wp_edit_btn: "EDIT",
     wp_ai_service_unavailable: "AI generation is temporarily unavailable (503). Try again in a moment.",
     wp_ai_generation_failed: "AI generation failed. Please try again.",
@@ -293,6 +301,7 @@ export const translations = {
     qr_scan_invalid_format: "Invalid QR code format",
     qr_scan_no_code: "QR code does not contain a room code",
     qr_scan_room_not_found: "Room not found",
+    close: "CLOSE",
     builtInCategories: {
       "Countries": ["France", "Japan", "Brazil", "USA", "Russia", "Germany", "China", "Italy", "Spain", "India", "Australia", "Mexico", "Canada", "England", "Egypt", "Argentina", "South Korea", "Turkey", "Greece", "Sweden", "Thailand", "Portugal", "Netherlands", "Poland", "Switzerland"],
       "Dishes": ["Pizza", "Burger", "Sushi", "Pasta", "Tacos", "Hot Dog", "Pancakes", "Steak", "Salad", "Soup", "Sandwich", "Fried Chicken", "Ice Cream", "Cake", "Waffles", "Omelette", "Porridge", "Kebab", "Croissant", "Dumplings", "Curry", "Ramen", "Lasagna", "Shawarma", "Cheesecake"],
@@ -501,10 +510,14 @@ export const translations = {
     qr_next_question: "// СЛЕДУЮЩИЙ ВОПРОС ЧЕРЕЗ",
     qr_being_asked: "// ТЕБЯ СПРАШИВАЮТ",
     qr_asks_you: "задаёт тебе вопрос",
+    qr_gives_word: "даёт тебе слово для ассоциации",
     qr_listen: "СЛУШАЙ И ОТВЕЧАЙ ВСЛУХ...",
+    qr_say_association: "НАЗОВИ АССОЦИАЦИЮ ВСЛУХ...",
     qr_your_turn: "// ТВОЙ ХОД — ЗАДАЙ ВОПРОС",
     qr_ask_agent: "ЗАДАЙ ВОПРОС АГЕНТУ:",
+    qr_give_word: "НАЗОВИ АССОЦИАЦИЮ ДЛЯ:",
     qr_answer_received_btn: "✓ ОТВЕТ ПОЛУЧЕН",
+    qr_word_given_btn: "✓ АССОЦИАЦИЯ НАЗВАНА",
     qr_question_num: "// ВОПРОС",
     qr_asks: "СПРАШИВАЕТ",
     qr_answers: "ОТВЕЧАЕТ",
@@ -539,6 +552,7 @@ export const translations = {
     wp_form_new: "// НОВЫЙ ПАКЕТ",
     wp_form_edit: "// РЕДАКТИРОВАТЬ ПАКЕТ",
     wp_form_ai_label: "// ГЕНЕРАЦИЯ ЧЕРЕЗ ИИ",
+    wp_form_ai_count: "СЛОВ ДЛЯ ГЕНЕРАЦИИ",
     wp_form_ai_placeholder: "Тема на любом языке (Marvel, Страны СНГ...)",
     wp_form_ai_btn: "✦ СОЗДАТЬ",
     wp_form_ai_hint: "ИИ автоматически определит язык и создаст список слов",
@@ -586,6 +600,7 @@ export const translations = {
     game_secret_word_short: "Секр. слово:",
     game_spy_badge: "ШПИ",
     game_wrong_spectating: "теперь наблюдает",
+    game_unknown: "НЕИЗВЕСТНО",
     wp_edit_btn: "РЕД.",
     wp_ai_service_unavailable: "AI-генерация временно недоступна (503). Попробуйте ещё раз через несколько секунд.",
     wp_ai_generation_failed: "Не удалось выполнить AI-генерацию. Попробуйте ещё раз.",
@@ -599,6 +614,7 @@ export const translations = {
     qr_scan_invalid_format: "Неверный формат QR-кода",
     qr_scan_no_code: "QR-код не содержит код комнаты",
     qr_scan_room_not_found: "Комната не найдена",
+    close: "ЗАКРЫТЬ",
     builtInCategories: {
       "Страны": ["Франция", "Япония", "Бразилия", "США", "Россия", "Германия", "Китай", "Италия", "Испания", "Индия", "Австралия", "Мексика", "Канада", "Англия", "Египет", "Аргентина", "Южная Корея", "Турция", "Греция", "Швеция", "Таиланд", "Португалия", "Нидерланды", "Польша", "Швейцария"],
       "Блюда": ["Пицца", "Бургер", "Суши", "Паста", "Тако", "Хот-дог", "Блины", "Стейк", "Салат", "Суп", "Бутерброд", "Жареная курица", "Мороженое", "Торт", "Вафли", "Омлет", "Каша", "Шашлык", "Круассан", "Пельмени", "Карри", "Борщ", "Лазанья", "Шаурма", "Чизкейк"],
@@ -618,6 +634,10 @@ export const translations = {
 // completed incrementally.
 translations.en.language = "en";
 translations.ru.language = "ru";
+translations.uk = {
+  ...ukTranslations,
+  language: "uk",
+};
 translations.es = {
   ...translations.en,
   language: "es",
@@ -640,10 +660,25 @@ translations.es = {
   toast_voting_cancelled: "Votación cancelada: ya no se pueden reunir los votos necesarios.",
 };
 
+export const supportedLanguages = Object.freeze(["en", "ru", "uk", "es"]);
+
+export function normalizeLanguage(lang) {
+  const primarySubtag = String(lang || "").trim().toLowerCase().split(/[-_]/, 1)[0];
+  return supportedLanguages.includes(primarySubtag) ? primarySubtag : "en";
+}
+
 export function getT(lang = "en") {
-  const locale = translations[lang] || translations.en;
+  const locale = translations[normalizeLanguage(lang)];
   return (key) => {
     const val = locale[key] ?? translations.en[key];
     return val !== undefined ? val : key;
   };
+}
+
+export function localize(lang, english, russian, ukrainian, spanish = english) {
+  const normalized = normalizeLanguage(lang);
+  if (normalized === "uk") return ukrainian;
+  if (normalized === "ru") return russian;
+  if (normalized === "es") return spanish;
+  return english;
 }

@@ -30,7 +30,9 @@
       "type": "string",
       "enum": [
         "ru",
-        "en"
+        "en",
+        "es",
+        "uk"
       ],
       "default": "en",
       "description": "User's preferred language"

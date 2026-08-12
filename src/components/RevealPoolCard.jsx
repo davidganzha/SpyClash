@@ -1,6 +1,7 @@
 import { useState, useRef } from "react";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 import { useWaveScroll } from "@/hooks/useWaveScroll";
 
 /**
@@ -26,7 +27,7 @@ export default function RevealPoolCard({
   useWaveScroll(pool.length, { delayPerItem: stepDelay, containerRef: gridRef });
 
   const enabled = pool.filter(w => w.enabled !== false).length;
-  const defaultLabel = lang === "ru" ? "ТЕМА" : "THEME";
+  const defaultLabel = localize(lang, "THEME", "ТЕМА", "ТЕМА");
 
   const handleAdd = () => {
     const val = newWordInput.trim();
@@ -62,7 +63,7 @@ export default function RevealPoolCard({
 
       {/* Stats */}
       <div style={{ padding: "8px 16px 0", fontSize: 10, color: "#555", fontFamily: "monospace", letterSpacing: 1 }}>
-        {enabled}/{pool.length} {lang === "ru" ? "активных" : "active"} · {lang === "ru" ? "нажми чтобы вычеркнуть" : "tap to cross out"}
+        {enabled}/{pool.length} {localize(lang, "active", "активных", "активних")} · {localize(lang, "tap to cross out", "нажми чтобы вычеркнуть", "натисніть, щоб викреслити")}
       </div>
 
       {/* Words grid */}
@@ -104,14 +105,14 @@ export default function RevealPoolCard({
         <input
           value={newWordInput}
           onChange={e => setNewWordInput(e.target.value)}
-          placeholder={lang === "ru" ? "Добавить слово..." : "Add word..."}
+          placeholder={localize(lang, "Add word...", "Добавить слово...", "Додати слово...")}
           onKeyDown={e => { if (e.key === "Enter") handleAdd(); }}
           style={{ flex: 1, fontSize: 14, padding: "10px 14px", borderRadius: 8, minHeight: 44 }}
         />
         <button className="btn-outline"
           style={{ fontSize: 12, padding: "10px 16px", borderRadius: 8, clipPath: "none", flexShrink: 0, minHeight: 44, minWidth: 72, touchAction: "manipulation" }}
           onClick={handleAdd}>
-          + ADD
+          {localize(lang, "+ ADD", "+ ДОБАВИТЬ", "+ ДОДАТИ")}
         </button>
       </div>
     </motion.div>

@@ -1,6 +1,9 @@
 import { motion, AnimatePresence } from "framer-motion";
+import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 
 export default function RoundManager({ room, user, onAnswerHeard }) {
+  const { lang } = useLanguage();
   if (!room) return null;
 
   const currentAsker = room.players?.find(p => p.email === room.current_asker_email);
@@ -55,7 +58,7 @@ export default function RoundManager({ room, user, onAnswerHeard }) {
                 marginBottom: 32,
               }}
             >
-              ЗАДАЕТ ВАМ ВОПРОС...
+              {localize(lang, "IS ASKING YOU A QUESTION...", "ЗАДАЁТ ВАМ ВОПРОС...", "СТАВИТЬ ВАМ ЗАПИТАННЯ...")}
             </div>
           </div>
         </motion.div>
@@ -78,7 +81,7 @@ export default function RoundManager({ room, user, onAnswerHeard }) {
           <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between" }}>
             <div>
               <div style={{ fontSize: 10, color: "#e53535", letterSpacing: 3, marginBottom: 8 }}>
-                // ВЫ ЗАДАЕТЕ ВОПРОС
+                // {localize(lang, "YOU ARE ASKING", "ВЫ ЗАДАЁТЕ ВОПРОС", "ВИ СТАВИТЕ ЗАПИТАННЯ")}
               </div>
               <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
                 <span style={{ fontSize: 32 }}>{currentAnswerer?.avatar || "🕵️"}</span>
@@ -94,7 +97,7 @@ export default function RoundManager({ room, user, onAnswerHeard }) {
               onClick={onAnswerHeard}
               style={{ fontSize: 12, padding: "12px 24px", whiteSpace: "nowrap" }}
             >
-              Ответ получен
+              {localize(lang, "ANSWER RECEIVED", "ОТВЕТ ПОЛУЧЕН", "ВІДПОВІДЬ ОТРИМАНО")}
             </motion.button>
           </div>
           <div
@@ -105,7 +108,7 @@ export default function RoundManager({ room, user, onAnswerHeard }) {
               letterSpacing: 2,
             }}
           >
-            ВОПРОСОВ В РАУНДЕ: {room.questions_in_round || 0}/4
+            {localize(lang, "QUESTIONS THIS ROUND", "ВОПРОСОВ В РАУНДЕ", "ЗАПИТАНЬ У РАУНДІ")}: {room.questions_in_round || 0}/4
           </div>
         </motion.div>
       )}

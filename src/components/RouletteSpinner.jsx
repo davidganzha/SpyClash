@@ -11,18 +11,32 @@ const COPY = {
     spy: "SPY",
     amongYou: "AMONG YOU",
     accessibility: "The game begins. Cards are dealt. The spy is among you.",
+    roulette: "// FIRST MOVE ROULETTE",
+    startsFirst: "✓ STARTS FIRST",
   },
   es: {
     gameStarting: "// EL JUEGO EMPIEZA",
     spy: "ESPÍA",
     amongYou: "ENTRE USTEDES",
     accessibility: "El juego comienza. Las cartas están repartidas. El espía está entre ustedes.",
+    roulette: "// RULETA DEL PRIMER TURNO",
+    startsFirst: "✓ EMPIEZA PRIMERO",
   },
   ru: {
     gameStarting: "// ИГРА НАЧИНАЕТСЯ",
     spy: "ШПИОН",
     amongYou: "СРЕДИ ВАС",
     accessibility: "Игра начинается. Карты розданы. Шпион среди вас.",
+    roulette: "// РУЛЕТКА ПЕРВОГО ХОДА",
+    startsFirst: "✓ НАЧИНАЕТ ПЕРВЫМ",
+  },
+  uk: {
+    gameStarting: "// ГРА ПОЧИНАЄТЬСЯ",
+    spy: "ШПИГУН",
+    amongYou: "СЕРЕД ВАС",
+    accessibility: "Гра починається. Картки роздано. Шпигун серед вас.",
+    roulette: "// РУЛЕТКА ПЕРШОГО ХОДУ",
+    startsFirst: "✓ ХОДИТЬ ПЕРШИМ",
   },
 };
 
@@ -91,7 +105,7 @@ function RoleCardBack({ deck = false }) {
   );
 }
 
-function LegacyRouletteSpinner({ players, targetEmail, onDone }) {
+function LegacyRouletteSpinner({ players, targetEmail, language, onDone }) {
   const [currentIndex, setCurrentIndex] = useState(0);
   const [done, setDone] = useState(false);
 
@@ -125,10 +139,11 @@ function LegacyRouletteSpinner({ players, targetEmail, onDone }) {
   }, []);
 
   const current = players[currentIndex];
+  const copy = COPY[language] || COPY.en;
 
   return (
     <div style={{ textAlign: "center", padding: "32px 20px" }}>
-      <div style={{ fontSize: 10, letterSpacing: 4, color: RED, marginBottom: 24 }}>// РУЛЕТКА ПЕРВОГО ХОДА</div>
+      <div style={{ fontSize: 10, letterSpacing: 4, color: RED, marginBottom: 24 }}>{copy.roulette}</div>
 
       <motion.div
         key={currentIndex}
@@ -164,7 +179,7 @@ function LegacyRouletteSpinner({ players, targetEmail, onDone }) {
             animate={{ opacity: 1, y: 0 }}
             style={{ fontSize: 11, color: GREEN, letterSpacing: 3, fontFamily: "monospace" }}
           >
-            ✓ НАЧИНАЕТ ПЕРВЫМ
+            {copy.startsFirst}
           </motion.div>
         )}
       </AnimatePresence>
@@ -696,7 +711,7 @@ export default function RouletteSpinner({
   const hasSynchronizedStart = Number.isFinite(Date.parse(String(startedAt ?? "").trim()));
 
   if (!hasSynchronizedStart) {
-    return <LegacyRouletteSpinner players={players} targetEmail={targetEmail} onDone={onDone} />;
+    return <LegacyRouletteSpinner players={players} targetEmail={targetEmail} language={language} onDone={onDone} />;
   }
 
   return (

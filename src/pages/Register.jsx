@@ -10,8 +10,11 @@ import AppleIcon from "@/components/AppleIcon";
 import { appParams } from "@/lib/app-params";
 import { buildSocialLoginUrl } from "@/lib/socialAuth";
 import { toast } from "@/components/ui/use-toast";
+import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 
 export default function Register() {
+  const { lang } = useLanguage();
   const [step, setStep] = useState("email"); // "email" | "password" | "otp"
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -31,7 +34,7 @@ export default function Register() {
     e.preventDefault();
     setError("");
     if (password !== confirmPassword) {
-      setError("Passphrases do not match");
+      setError(localize(lang, "Passphrases do not match", "Пароли не совпадают", "Паролі не збігаються"));
       return;
     }
     setLoading(true);
@@ -39,7 +42,7 @@ export default function Register() {
       await base44.auth.register({ email, password });
       setStep("otp");
     } catch (err) {
-      setError(err.message || "Registration failed");
+      setError(err.message || localize(lang, "Registration failed", "Не удалось зарегистрироваться", "Не вдалося зареєструватися"));
     } finally {
       setLoading(false);
     }
@@ -60,7 +63,7 @@ export default function Register() {
       // No token returned — send user to login page (email is now verified)
       window.location.href = `/login?email=${encodeURIComponent(email)}`;
     } catch (err) {
-      setError(err.message || "Invalid verification code");
+      setError(err.message || localize(lang, "Invalid verification code", "Неверный код подтверждения", "Неправильний код підтвердження"));
       setLoading(false);
     }
   };
@@ -69,9 +72,12 @@ export default function Register() {
     setError("");
     try {
       await base44.auth.resendOtp(email);
-      toast({ title: "Code sent", description: "Check your email for the new code." });
+      toast({
+        title: localize(lang, "Code sent", "Код отправлен", "Код надіслано"),
+        description: localize(lang, "Check your email for the new code.", "Проверьте почту — там новый код.", "Перевірте пошту — там новий код."),
+      });
     } catch (err) {
-      setError(err.message || "Failed to resend code");
+      setError(err.message || localize(lang, "Failed to resend code", "Не удалось отправить код повторно", "Не вдалося надіслати код повторно"));
     }
   };
 
@@ -93,12 +99,20 @@ export default function Register() {
   const stepOrder = { email: 0, password: 1, otp: 2 };
   const direction = stepOrder[step];
 
-  const eyebrowMap = { email: "NEW OPERATIVE", password: "SET PASSPHRASE", otp: "VERIFICATION REQUIRED" };
-  const titleMap = { email: "Join the Network", password: "Create Passphrase", otp: "Confirm Identity" };
+  const eyebrowMap = {
+    email: localize(lang, "NEW OPERATIVE", "НОВЫЙ ОПЕРАТИВНИК", "НОВИЙ ОПЕРАТИВНИК"),
+    password: localize(lang, "SET PASSPHRASE", "ЗАДАЙТЕ ПАРОЛЬ", "СТВОРІТЬ ПАРОЛЬ"),
+    otp: localize(lang, "VERIFICATION REQUIRED", "ТРЕБУЕТСЯ ПОДТВЕРЖДЕНИЕ", "ПОТРІБНЕ ПІДТВЕРДЖЕННЯ"),
+  };
+  const titleMap = {
+    email: localize(lang, "Join the Network", "Присоединиться к сети", "Приєднатися до мережі"),
+    password: localize(lang, "Create Passphrase", "Создать пароль", "Створити пароль"),
+    otp: localize(lang, "Confirm Identity", "Подтвердить личность", "Підтвердити особу"),
+  };
   const subtitleMap = {
-    email: "Create credentials to enter the game",
-    password: "Choose a secure key",
-    otp: `Transmission sent to ${email}`,
+    email: localize(lang, "Create credentials to enter the game", "Создайте данные для входа в игру", "Створіть дані для входу до гри"),
+    password: localize(lang, "Choose a secure key", "Выберите надёжный ключ", "Оберіть надійний ключ"),
+    otp: localize(lang, `Transmission sent to ${email}`, `Сообщение отправлено на ${email}`, `Повідомлення надіслано на ${email}`),
   };
   const iconMap = { email: UserPlus, password: Lock, otp: Mail };
 
@@ -132,9 +146,9 @@ export default function Register() {
       footer={
         step === "email" ? (
           <>
-            Already cleared?{" "}
+            {localize(lang, "Already cleared?", "Доступ уже есть?", "Доступ уже є?")}{" "}
             <Link to="/login" className="auth-link" style={{ fontWeight: 700 }}>
-              LOG IN →
+              {localize(lang, "LOG IN →", "ВОЙТИ →", "УВІЙТИ →")}
             </Link>
           </>
         ) : null
@@ -154,23 +168,23 @@ export default function Register() {
             >
               <div className="auth-social-wrap" style={{ marginBottom: 22, display: "grid", gap: 10 }}>
                 <button type="button" className="auth-btn-outline auth-btn-apple" style={{ width: "100%", height: 50 }} onClick={() => handleSocialLogin("apple")}>
-                  <AppleIcon className="w-5 h-5" /> Continue with Apple
+                  <AppleIcon className="w-5 h-5" /> {localize(lang, "Continue with Apple", "Продолжить с Apple", "Продовжити з Apple")}
                 </button>
                 <button type="button" className="auth-btn-outline" style={{ width: "100%", height: 50 }} onClick={() => handleSocialLogin("google")}>
-                  <GoogleIcon className="w-5 h-5" /> Continue with Google
+                  <GoogleIcon className="w-5 h-5" /> {localize(lang, "Continue with Google", "Продолжить с Google", "Продовжити з Google")}
                 </button>
               </div>
 
               <div className="auth-divider" style={{ position: "relative", marginBottom: 20, textAlign: "center" }}>
                 <div style={{ position: "absolute", top: "50%", left: 0, right: 0, height: 1, background: "#1e1e1e" }} />
                 <span style={{ position: "relative", background: "rgba(10,10,10,1)", padding: "0 14px", fontSize: 10, letterSpacing: 3, color: "#444", fontFamily: "monospace" }}>
-                  OR WITH EMAIL
+                  {localize(lang, "OR WITH EMAIL", "ИЛИ ПО ПОЧТЕ", "АБО ЗА ДОПОМОГОЮ ПОШТИ")}
                 </span>
               </div>
 
               <form onSubmit={handleEmailContinue} className="auth-form" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
-                  <label htmlFor="email" className="auth-label">// EMAIL</label>
+                  <label htmlFor="email" className="auth-label">// {localize(lang, "EMAIL", "ПОЧТА", "ЕЛЕКТРОННА ПОШТА")}</label>
                   <div style={{ position: "relative" }}>
                     <Mail style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", width: 16, height: 16, color: "#444" }} aria-hidden="true" />
                     <input
@@ -187,7 +201,7 @@ export default function Register() {
                   </div>
                 </div>
                 <button type="submit" className="auth-btn-red" disabled={!email} style={{ marginTop: 8 }}>
-                  CONTINUE <ArrowRight className="w-4 h-4" />
+                  {localize(lang, "CONTINUE", "ПРОДОЛЖИТЬ", "ПРОДОВЖИТИ")} <ArrowRight className="w-4 h-4" />
                 </button>
               </form>
             </motion.div>
@@ -213,7 +227,7 @@ export default function Register() {
 
               <form onSubmit={handleRegister} className="auth-form" style={{ display: "flex", flexDirection: "column", gap: 16 }}>
                 <div>
-                  <label htmlFor="password" className="auth-label">// PASSPHRASE</label>
+                  <label htmlFor="password" className="auth-label">// {localize(lang, "PASSPHRASE", "ПАРОЛЬ", "ПАРОЛЬ")}</label>
                   <div style={{ position: "relative" }}>
                     <Lock style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", width: 16, height: 16, color: "#444" }} aria-hidden="true" />
                     <input
@@ -230,7 +244,7 @@ export default function Register() {
                   </div>
                 </div>
                 <div>
-                  <label htmlFor="confirm" className="auth-label">// CONFIRM PASSPHRASE</label>
+                  <label htmlFor="confirm" className="auth-label">// {localize(lang, "CONFIRM PASSPHRASE", "ПОВТОРИТЕ ПАРОЛЬ", "ПОВТОРІТЬ ПАРОЛЬ")}</label>
                   <div style={{ position: "relative" }}>
                     <Lock style={{ position: "absolute", left: 14, top: "50%", transform: "translateY(-50%)", width: 16, height: 16, color: "#444" }} aria-hidden="true" />
                     <input
@@ -246,7 +260,9 @@ export default function Register() {
                   </div>
                 </div>
                 <button type="submit" className="auth-btn-red" disabled={loading || !password || !confirmPassword} style={{ marginTop: 8 }}>
-                  {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> RECRUITING...</> : <>JOIN THE NETWORK <ArrowRight className="w-4 h-4" /></>}
+                  {loading
+                    ? <><Loader2 className="w-4 h-4 animate-spin" /> {localize(lang, "RECRUITING...", "РЕГИСТРАЦИЯ...", "РЕЄСТРАЦІЯ...")}</>
+                    : <>{localize(lang, "JOIN THE NETWORK", "ПРИСОЕДИНИТЬСЯ", "ПРИЄДНАТИСЯ ДО МЕРЕЖІ")} <ArrowRight className="w-4 h-4" /></>}
                 </button>
               </form>
             </motion.div>
@@ -268,7 +284,7 @@ export default function Register() {
                 </div>
               )}
               <div style={{ textAlign: "center", marginBottom: 8 }}>
-                <span className="auth-label">// 6-DIGIT KEY</span>
+                <span className="auth-label">// {localize(lang, "6-DIGIT KEY", "6-ЗНАЧНЫЙ КОД", "6-ЗНАЧНИЙ КОД")}</span>
               </div>
               <div style={{ display: "flex", justifyContent: "center", marginBottom: 24 }}>
                 <InputOTP maxLength={6} value={otpCode} onChange={setOtpCode} autoFocus autoComplete="one-time-code">
@@ -283,12 +299,14 @@ export default function Register() {
                 </InputOTP>
               </div>
               <button type="button" className="auth-btn-red" onClick={handleVerify} disabled={loading || otpCode.length < 6}>
-                {loading ? <><Loader2 className="w-4 h-4 animate-spin" /> VERIFYING...</> : "VERIFY & ENTER"}
+                {loading
+                  ? <><Loader2 className="w-4 h-4 animate-spin" /> {localize(lang, "VERIFYING...", "ПРОВЕРКА...", "ПЕРЕВІРКА...")}</>
+                  : localize(lang, "VERIFY & ENTER", "ПОДТВЕРДИТЬ И ВОЙТИ", "ПІДТВЕРДИТИ Й УВІЙТИ")}
               </button>
               <p style={{ textAlign: "center", fontSize: 11, color: "#555", marginTop: 18, fontFamily: "monospace", letterSpacing: 1 }}>
-                No transmission?{" "}
+                {localize(lang, "No transmission?", "Письмо не пришло?", "Лист не надійшов?")}{" "}
                 <button type="button" onClick={handleResend} className="auth-link" style={{ background: "none", border: "none", cursor: "pointer", padding: 0, fontWeight: 700, fontSize: 11 }}>
-                  RESEND
+                  {localize(lang, "RESEND", "ОТПРАВИТЬ СНОВА", "НАДІСЛАТИ ЗНОВУ")}
                 </button>
               </p>
             </motion.div>

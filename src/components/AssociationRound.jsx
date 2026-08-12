@@ -1,6 +1,7 @@
 import { useState, useEffect, useRef } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 import { runGameRoomAction } from "@/lib/gameRoomActions";
 import { isSpyEmailForRoom } from "@/lib/multiSpyRules";
 
@@ -111,7 +112,7 @@ export default function AssociationRound({ room, user, disabled = false }) {
         <div style={{ position: "absolute", top: 0, left: 0, width: 12, height: 12, borderTop: "1px solid #e53535", borderLeft: "1px solid #e53535" }} />
         <div style={{ position: "absolute", bottom: 0, right: 0, width: 12, height: 12, borderBottom: "1px solid #e53535", borderRight: "1px solid #e53535" }} />
         <div style={{ fontSize: 10, letterSpacing: 3, color: "#555", marginBottom: 20 }}>
-          {lang === "ru" ? "РЕЖИМ АССОЦИАЦИЙ" : "ASSOCIATION MODE"}
+          {localize(lang, "ASSOCIATION MODE", "РЕЖИМ АССОЦИАЦИЙ", "РЕЖИМ АСОЦІАЦІЙ")}
         </div>
         {!isSpy && (
           <div style={{ padding: "10px 16px", background: "rgba(229,53,53,0.08)", border: "1px solid rgba(229,53,53,0.2)", marginBottom: 20, fontSize: 22, fontWeight: 700, color: "#e53535", fontFamily: "monospace", letterSpacing: 4 }}>
@@ -123,11 +124,11 @@ export default function AssociationRound({ room, user, disabled = false }) {
             onClick={handleStartSpin} disabled={submitting || disabled}
             className="btn-red"
             style={{ width: "100%", fontSize: 12, padding: "14px 0" }}>
-            {submitting ? "..." : (lang === "ru" ? "▶ ЗАПУСТИТЬ БАРАБАН" : "▶ SPIN THE DRUM")}
+            {submitting ? "..." : localize(lang, "▶ SPIN THE DRUM", "▶ ЗАПУСТИТЬ БАРАБАН", "▶ ЗАПУСТИТИ БАРАБАН")}
           </motion.button>
         ) : (
           <div style={{ color: "#444", fontSize: 12, letterSpacing: 2, fontFamily: "monospace" }}>
-            {lang === "ru" ? "ЖДЁМ ХОСТА..." : "WAITING FOR HOST..."}
+            {localize(lang, "WAITING FOR HOST...", "ЖДЁМ ХОСТА...", "ОЧІКУЄМО НА ВЕДУЧОГО...")}
           </div>
         )}
       </div>
@@ -139,7 +140,7 @@ export default function AssociationRound({ room, user, disabled = false }) {
       {/* Round indicator */}
       <div style={{ textAlign: "center", marginBottom: 16 }}>
         <span style={{ fontSize: 10, letterSpacing: 4, color: "#555", fontFamily: "monospace" }}>
-          {lang === "ru" ? `РАУНД ${roundNumber}` : `ROUND ${roundNumber}`}
+          {localize(lang, `ROUND ${roundNumber}`, `РАУНД ${roundNumber}`, `РАУНД ${roundNumber}`)}
         </span>
         {spokenEmails.length > 0 && (
           <span style={{ fontSize: 10, letterSpacing: 2, color: "#333", fontFamily: "monospace", marginLeft: 12 }}>
@@ -155,8 +156,8 @@ export default function AssociationRound({ room, user, disabled = false }) {
 
         <div style={{ fontSize: 10, letterSpacing: 3, color: localSpinning ? "#555" : "#e53535", marginBottom: 16, transition: "color 0.3s" }}>
           {localSpinning
-            ? (lang === "ru" ? "КРУТИМ..." : "SPINNING...")
-            : (lang === "ru" ? "ТВОЙ ХОД" : "YOUR TURN")}
+            ? localize(lang, "SPINNING...", "КРУТИМ...", "БАРАБАН ОБЕРТАЄТЬСЯ...")
+            : localize(lang, "YOUR TURN", "ТВОЙ ХОД", "ВАШ ХІД")}
         </div>
 
         <AnimatePresence mode="wait">
@@ -171,7 +172,7 @@ export default function AssociationRound({ room, user, disabled = false }) {
               {displayPlayer?.name?.toUpperCase() || "—"}
               {displayPlayer?.email === user?.email && !localSpinning && (
                 <span style={{ fontSize: 12, color: "#e53535", marginLeft: 8, letterSpacing: 2 }}>
-                  {lang === "ru" ? "(ТЫ)" : "(YOU)"}
+                  {localize(lang, "(YOU)", "(ТЫ)", "(ВИ)")}
                 </span>
               )}
             </div>
@@ -213,7 +214,7 @@ export default function AssociationRound({ room, user, disabled = false }) {
           onClick={handleAssociationGiven} disabled={submitting || disabled}
           className="btn-red"
           style={{ width: "100%", fontSize: 13, padding: "16px 0", letterSpacing: 3 }}>
-          {submitting ? "..." : (lang === "ru" ? "✓ ОТВЕТИЛ" : "✓ ANSWERED")}
+          {submitting ? "..." : localize(lang, "✓ ANSWERED", "✓ ОТВЕТИЛ", "✓ ВІДПОВІВ")}
         </motion.button>
       )}
 
@@ -221,7 +222,12 @@ export default function AssociationRound({ room, user, disabled = false }) {
       {!isCurrentPlayer && !localSpinning && (
         <motion.div animate={{ opacity: [1, 0.4, 1] }} transition={{ duration: 2, repeat: Infinity }}
           style={{ textAlign: "center", color: "#444", fontSize: 11, letterSpacing: 2, fontFamily: "monospace", padding: "12px 0" }}>
-          {lang === "ru" ? `ЖДЁМ ${currentPlayer?.name?.toUpperCase() || ""}...` : `WAITING FOR ${currentPlayer?.name?.toUpperCase() || ""}...`}
+          {localize(
+            lang,
+            `WAITING FOR ${currentPlayer?.name?.toUpperCase() || ""}...`,
+            `ЖДЁМ ${currentPlayer?.name?.toUpperCase() || ""}...`,
+            `ОЧІКУЄМО НА ${currentPlayer?.name?.toUpperCase() || ""}...`,
+          )}
         </motion.div>
       )}
     </div>

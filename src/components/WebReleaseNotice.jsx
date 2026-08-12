@@ -5,10 +5,11 @@ import {
   reloadForWebRelease,
   WEB_RELEASE_CHECK_INTERVAL_MILLISECONDS,
 } from "@/lib/webRelease";
+import { localize, normalizeLanguage } from "@/components/i18n";
 
 function preferredLanguage() {
   try {
-    return localStorage.getItem("spy_lang") === "ru" ? "ru" : "en";
+    return normalizeLanguage(localStorage.getItem("spy_lang"));
   } catch {
     return "en";
   }
@@ -44,7 +45,7 @@ export default function WebReleaseNotice() {
 
   if (!updateAvailable) return null;
 
-  const russian = preferredLanguage() === "ru";
+  const language = preferredLanguage();
   return (
     <div
       role="status"
@@ -71,7 +72,7 @@ export default function WebReleaseNotice() {
       }}
     >
       <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: 1.2 }}>
-        {russian ? "// ДОСТУПНО ОБНОВЛЕНИЕ" : "// UPDATE AVAILABLE"}
+        {localize(language, "// UPDATE AVAILABLE", "// ДОСТУПНО ОБНОВЛЕНИЕ", "// ДОСТУПНЕ ОНОВЛЕННЯ")}
       </span>
       <button
         type="button"
@@ -96,7 +97,7 @@ export default function WebReleaseNotice() {
         }}
       >
         <RefreshCw size={14} aria-hidden="true" />
-        {russian ? "ОБНОВИТЬ" : "RELOAD"}
+        {localize(language, "RELOAD", "ОБНОВИТЬ", "ОНОВИТИ")}
       </button>
     </div>
   );

@@ -6,6 +6,7 @@ import { motion, AnimatePresence } from "framer-motion";
 import BlurText from "../components/ui/BlurText";
 import HeroTitle from "../components/ui/HeroTitle";
 import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 import { CircleHelp, QrCode } from "lucide-react";
 import PageChrome from "@/components/PageChrome";
 import {
@@ -185,7 +186,7 @@ export default function Home() {
         base44.auth.redirectToLogin(createPageUrl("Home"));
         return;
       }
-      setRoomActionError(error?.message || (lang === "ru" ? "Не удалось создать комнату" : "Unable to create room"));
+      setRoomActionError(error?.message || localize(lang, "Unable to create room", "Не удалось создать комнату", "Не вдалося створити кімнату"));
     } finally {
       setCreating(false);
     }
@@ -223,11 +224,9 @@ export default function Home() {
   const homeStatus = activeRoom?.status
     ? String(activeRoom.status).replaceAll("_", " ").toUpperCase()
     : "ONLINE";
-  const homeEyebrow = lang === "ru"
-    ? "СТАТУС:"
-    : lang === "es"
-      ? "ESTADO:"
-      : "STATUS:";
+  const homeEyebrow = lang === "es"
+    ? "ESTADO:"
+    : localize(lang, "STATUS:", "СТАТУС:", "СТАН:");
 
 
   if (loading) return (
@@ -249,7 +248,7 @@ export default function Home() {
             <div style={{ position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderBottom: "1px solid #e53535", borderRight: "1px solid #e53535" }} />
             <div style={{ fontSize: 10, letterSpacing: 4, color: "#444", marginBottom: 24 }}>{t('tut_header')}</div>
             <div style={{ fontSize: 14, color: "#666", marginBottom: 28, letterSpacing: 0.5 }}>
-              {lang === "ru" ? "Какой режим игры хочешь узнать?" : "Which game mode do you want to learn?"}
+              {localize(lang, "Which game mode do you want to learn?", "Какой режим игры хочешь узнать?", "Про який режим гри ви хочете дізнатися?")}
             </div>
             <div style={{ display: "flex", flexDirection: "column", gap: 12, marginBottom: 20 }}>
               <motion.button whileHover={{ scale: 1.02, boxShadow: "0 0 24px rgba(229,53,53,0.18)" }} whileTap={{ scale: 0.98 }}
@@ -261,10 +260,10 @@ export default function Home() {
                   <span style={{ fontSize: 32 }}>❓</span>
                   <div>
                     <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 18, letterSpacing: 3, color: "#fff" }}>
-                      {lang === "ru" ? "ВОПРОСЫ И ОТВЕТЫ" : "QUESTIONS MODE"}
+                      {localize(lang, "QUESTIONS MODE", "ВОПРОСЫ И ОТВЕТЫ", "ЗАПИТАННЯ Й ВІДПОВІДІ")}
                     </div>
                     <div style={{ fontSize: 11, color: "#666", letterSpacing: 1, marginTop: 3 }}>
-                      {lang === "ru" ? "Классический режим" : "Classic mode"}
+                      {localize(lang, "Classic mode", "Классический режим", "Класичний режим")}
                     </div>
                   </div>
                   <span style={{ marginLeft: "auto", color: "#e53535", fontSize: 18 }}>›</span>
@@ -279,10 +278,10 @@ export default function Home() {
                   <span style={{ fontSize: 32 }}>🎰</span>
                   <div>
                     <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 18, letterSpacing: 3, color: "#fff" }}>
-                      {lang === "ru" ? "АССОЦИАЦИИ" : "ASSOCIATIONS MODE"}
+                      {localize(lang, "ASSOCIATIONS MODE", "АССОЦИАЦИИ", "АСОЦІАЦІЇ")}
                     </div>
                     <div style={{ fontSize: 11, color: "#666", letterSpacing: 1, marginTop: 3 }}>
-                      {lang === "ru" ? "Барабан + одно слово" : "Drum + one word"}
+                      {localize(lang, "Drum + one word", "Барабан + одно слово", "Барабан + одне слово")}
                     </div>
                   </div>
                   <span style={{ marginLeft: "auto", color: "#6464c8", fontSize: 18 }}>›</span>
@@ -395,7 +394,7 @@ export default function Home() {
                       </motion.button>
                       <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.99 }} className="btn-ghost" style={{ fontSize: 12, padding: "14px 16px" }}
                         onClick={handleLeaveActiveRoom}>
-                        {lang === "ru" ? "ВЫЙТИ" : "LEAVE"}
+                        {localize(lang, "LEAVE", "ВЫЙТИ", "ВИЙТИ")}
                       </motion.button>
                     </div>
                   </motion.div>
@@ -407,7 +406,7 @@ export default function Home() {
                           initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}
                           transition={{ delay: 0.55, duration: 0.5, ease: [0.22, 0.61, 0.36, 1] }}
                           whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }} className="btn-red" style={{ width: "100%", fontSize: 14, padding: "18px 0", letterSpacing: 4 }} onClick={() => setView("play_mode")}>
-                          ▶ {lang === "ru" ? "ИГРАТЬ" : "PLAY"}
+                          ▶ {localize(lang, "PLAY", "ИГРАТЬ", "ГРАТИ")}
                         </motion.button>
                         <motion.button
                           initial={{ opacity: 0, y: 18 }} animate={{ opacity: 1, y: 0 }}
@@ -462,10 +461,10 @@ export default function Home() {
                 <div style={{ fontSize: 44, flexShrink: 0 }}>📱</div>
                 <div>
                   <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 22, letterSpacing: 4, color: "#fff", marginBottom: 6 }}>
-                    {lang === "ru" ? "ЛОКАЛЬНО" : "LOCAL"}
+                    {localize(lang, "LOCAL", "ЛОКАЛЬНО", "ЛОКАЛЬНО")}
                   </div>
                   <div style={{ fontSize: 12, color: "#666", letterSpacing: 1, lineHeight: 1.6 }}>
-                    {lang === "ru" ? "Один телефон, передаёте по кругу" : "One device · pass & play"}
+                    {localize(lang, "One device · pass & play", "Один телефон, передаёте по кругу", "Один пристрій · передавайте по колу")}
                   </div>
                 </div>
                 <div style={{ marginLeft: "auto", color: "#444", fontSize: 20, flexShrink: 0 }}>›</div>
@@ -488,10 +487,10 @@ export default function Home() {
                 <div style={{ fontSize: 44, flexShrink: 0 }}>📡</div>
                 <div>
                   <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 22, letterSpacing: 4, color: "#fff", marginBottom: 6 }}>
-                    {lang === "ru" ? "ОНЛАЙН" : "ONLINE"}
+                    {localize(lang, "ONLINE", "ОНЛАЙН", "ОНЛАЙН")}
                   </div>
                   <div style={{ fontSize: 12, color: "#666", letterSpacing: 1, lineHeight: 1.6 }}>
-                    {lang === "ru" ? "Каждый на своём телефоне" : "Each player on their own device"}
+                    {localize(lang, "Each player on their own device", "Каждый на своём телефоне", "Кожен гравець на власному пристрої")}
                   </div>
                 </div>
                 <div style={{ marginLeft: "auto", color: "#e53535", fontSize: 20, flexShrink: 0 }}>›</div>
@@ -509,7 +508,7 @@ export default function Home() {
           <motion.div key="online_mode" initial={{ opacity: 0 }} animate={{ opacity: 1 }} exit={{ opacity: 0 }} transition={{ duration: 0.22 }}
             style={{ width: "100%", maxWidth: 360, display: "flex", flexDirection: "column", gap: 14 }}>
             <div style={{ fontSize: 10, letterSpacing: 4, color: "#555", textAlign: "center", marginBottom: 0, fontFamily: "monospace" }}>
-              {lang === "ru" ? "РАЗНЫЕ УСТРОЙСТВА" : "ONLINE MODE"}
+              {localize(lang, "ONLINE MODE", "РАЗНЫЕ УСТРОЙСТВА", "РІЗНІ ПРИСТРОЇ")}
             </div>
 
             {roomActionError && (
@@ -542,11 +541,11 @@ export default function Home() {
                 <div>
                   <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 20, letterSpacing: 4, color: "#fff", marginBottom: 4 }}>
                     {creating
-                      ? (lang === "ru" ? "СОЗДАЁМ КОМНАТУ" : "CREATING ROOM")
-                      : (lang === "ru" ? "СОЗДАТЬ КОМНАТУ" : "CREATE ROOM")}
+                      ? localize(lang, "CREATING ROOM", "СОЗДАЁМ КОМНАТУ", "СТВОРЮЄМО КІМНАТУ")
+                      : localize(lang, "CREATE ROOM", "СОЗДАТЬ КОМНАТУ", "СТВОРИТИ КІМНАТУ")}
                   </div>
                   <div style={{ fontSize: 12, color: "#666", letterSpacing: 1 }}>
-                    {lang === "ru" ? "Новая игровая сессия" : "Start a new game session"}
+                    {localize(lang, "Start a new game session", "Новая игровая сессия", "Почати нову ігрову сесію")}
                   </div>
                 </div>
                 <div style={{ marginLeft: "auto", color: "#e53535", fontSize: 20, flexShrink: 0 }}>›</div>
@@ -570,10 +569,10 @@ export default function Home() {
                 <div style={{ fontSize: 36, flexShrink: 0 }}>🚪</div>
                 <div>
                   <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 20, letterSpacing: 4, color: "#fff", marginBottom: 4 }}>
-                    {lang === "ru" ? "ВОЙТИ В КОМНАТУ" : "ENTER ROOM"}
+                    {localize(lang, "ENTER ROOM", "ВОЙТИ В КОМНАТУ", "УВІЙТИ ДО КІМНАТИ")}
                   </div>
                   <div style={{ fontSize: 12, color: "#666", letterSpacing: 1 }}>
-                    {lang === "ru" ? "Ввести код или сканировать QR" : "Enter code or scan QR"}
+                    {localize(lang, "Enter code or scan QR", "Ввести код или сканировать QR", "Ввести код або відсканувати QR")}
                   </div>
                 </div>
                 <div style={{ marginLeft: "auto", color: "#444", fontSize: 20, flexShrink: 0 }}>›</div>

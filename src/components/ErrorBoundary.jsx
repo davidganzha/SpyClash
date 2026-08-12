@@ -1,4 +1,5 @@
 import { Component } from "react";
+import { localize, normalizeLanguage } from "@/components/i18n";
 
 export default class ErrorBoundary extends Component {
   constructor(props) {
@@ -16,6 +17,7 @@ export default class ErrorBoundary extends Component {
 
   render() {
     if (this.state.hasError) {
+      const lang = normalizeLanguage(localStorage.getItem("spy_lang"));
       return (
         <div style={{
           position: "fixed", inset: 0, background: "#000",
@@ -24,13 +26,13 @@ export default class ErrorBoundary extends Component {
           fontFamily: "monospace", padding: 24
         }}>
           <div style={{ color: "#e53535", fontSize: 28, marginBottom: 16 }}>⚠</div>
-          <div style={{ color: "#888", fontSize: 12, letterSpacing: 3, marginBottom: 12 }}>APP CRASH</div>
+          <div style={{ color: "#888", fontSize: 12, letterSpacing: 3, marginBottom: 12 }}>{localize(lang, "APP CRASH", "СБОЙ ПРИЛОЖЕНИЯ", "ЗБІЙ ЗАСТОСУНКУ")}</div>
           <div style={{
             color: "#444", fontSize: 11, letterSpacing: 1, marginBottom: 24,
             maxWidth: 480, textAlign: "center", lineHeight: 1.6,
             wordBreak: "break-all"
           }}>
-            {this.state.error?.message || "Unknown error"}
+            {this.state.error?.message || localize(lang, "Unknown error", "Неизвестная ошибка", "Невідома помилка")}
           </div>
           <button
             onClick={() => window.location.reload()}
@@ -39,7 +41,7 @@ export default class ErrorBoundary extends Component {
               padding: "10px 28px", fontSize: 12, letterSpacing: 3,
               fontFamily: "monospace", cursor: "pointer"
             }}
-          >RETRY</button>
+          >{localize(lang, "RETRY", "ПОВТОРИТЬ", "ПОВТОРИТИ")}</button>
         </div>
       );
     }

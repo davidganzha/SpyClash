@@ -2,11 +2,17 @@ import React from "react";
 import { Link } from "react-router-dom";
 import { motion } from "framer-motion";
 import { LogIn, UserPlus } from "lucide-react";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
+import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 
 const SPY_LETTERS = ["S", "P", "Y"];
 const CLASH_LETTERS = ["C", "L", "A", "S", "H"];
 
 export default function Welcome() {
+  const { lang } = useLanguage();
+  const tagline = localize(lang, "DECEPTION · DEDUCTION · DOMINATION", "ОБМАН · ДЕДУКЦИЯ · ДОМИНИРОВАНИЕ", "ОБМАН · ДЕДУКЦІЯ · ПЕРЕВАГА");
+
   return (
     <div style={{
       minHeight: "100vh",
@@ -18,6 +24,7 @@ export default function Welcome() {
       position: "relative",
       overflow: "hidden",
     }}>
+      <LanguageSwitcher style={{ position: "absolute", top: 16, right: 16, zIndex: 4 }} />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;600;700&display=swap');
 
@@ -278,7 +285,7 @@ export default function Welcome() {
           }}
           style={{ fontSize: 12, letterSpacing: 8, color: "#888", fontFamily: "monospace", marginBottom: 48, display: "flex", flexWrap: "wrap", justifyContent: "center" }}
         >
-          {"DECEPTION · DEDUCTION · DOMINATION".split("").map((ch, i) => (
+          {tagline.split("").map((ch, i) => (
             <motion.span
               key={i}
               variants={{
@@ -314,7 +321,7 @@ export default function Welcome() {
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
           >
             <Link to="/login" className="welcome-btn-red">
-              <LogIn size={16} /> ENTER THE GAME
+              <LogIn size={16} /> {localize(lang, "ENTER THE GAME", "ВОЙТИ В ИГРУ", "УВІЙТИ ДО ГРИ")}
             </Link>
           </motion.div>
           <motion.div
@@ -326,7 +333,7 @@ export default function Welcome() {
             whileHover={{ scale: 1.02 }} whileTap={{ scale: 0.98 }}
           >
             <Link to="/register" className="welcome-btn-outline">
-              <UserPlus size={16} /> CREATE ACCOUNT
+              <UserPlus size={16} /> {localize(lang, "CREATE ACCOUNT", "СОЗДАТЬ АККАУНТ", "СТВОРИТИ ОБЛІКОВИЙ ЗАПИС")}
             </Link>
           </motion.div>
         </motion.div>
@@ -344,19 +351,19 @@ export default function Welcome() {
         <Link to="/support" className="welcome-footer-link" style={{ color: "#444", textDecoration: "none", transition: "color 0.2s" }}
           onMouseEnter={e => e.currentTarget.style.color = "#e53535"}
           onMouseLeave={e => e.currentTarget.style.color = "#444"}>
-          SUPPORT
+          {localize(lang, "SUPPORT", "ПОДДЕРЖКА", "ПІДТРИМКА")}
         </Link>
         <span style={{ color: "#222" }}>//</span>
         <Link to="/privacypolicy" className="welcome-footer-link" style={{ color: "#444", textDecoration: "none", transition: "color 0.2s" }}
           onMouseEnter={e => e.currentTarget.style.color = "#e53535"}
           onMouseLeave={e => e.currentTarget.style.color = "#444"}>
-          PRIVACY
+          {localize(lang, "PRIVACY", "КОНФИДЕНЦИАЛЬНОСТЬ", "КОНФІДЕНЦІЙНІСТЬ")}
         </Link>
         <span style={{ color: "#222" }}>//</span>
         <Link to="/termsofservice" className="welcome-footer-link" style={{ color: "#444", textDecoration: "none", transition: "color 0.2s", animationDelay: "1s" }}
           onMouseEnter={e => e.currentTarget.style.color = "#e53535"}
           onMouseLeave={e => e.currentTarget.style.color = "#444"}>
-          TERMS
+          {localize(lang, "TERMS", "УСЛОВИЯ", "УМОВИ")}
         </Link>
       </motion.div>
     </div>

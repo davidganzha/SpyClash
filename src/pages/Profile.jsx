@@ -4,6 +4,7 @@ import { createPageUrl } from "@/utils";
 import { useNavigate } from "react-router-dom";
 import { motion } from "framer-motion";
 import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 import Reveal from "@/components/Reveal";
 import DeleteAccountSection from "@/components/DeleteAccountSection";
 import PageChrome from "@/components/PageChrome";
@@ -16,21 +17,23 @@ import {
 } from "@/lib/avatars";
 
 const THEMES = [
-  { id: "field", label: "FIELD" },
-  { id: "blacksite", label: "BLACKSITE" },
-  { id: "dossier", label: "DOSSIER" },
+  { id: "field", label: "FIELD", ru: "ПОЛЕ", uk: "ПОЛЕ" },
+  { id: "blacksite", label: "BLACKSITE", ru: "СЕКРЕТНЫЙ ОБЪЕКТ", uk: "СЕКРЕТНИЙ ОБ'ЄКТ" },
+  { id: "dossier", label: "DOSSIER", ru: "ДОСЬЕ", uk: "ДОСЬЄ" },
 ];
 const ACCENTS = [
-  { id: "signal_red", label: "RED", color: "#e53535" },
-  { id: "clearance_amber", label: "AMBER", color: "#fbbf24" },
-  { id: "verified_green", label: "GREEN", color: "#4ade80" },
+  { id: "signal_red", label: "RED", ru: "КРАСНЫЙ", uk: "ЧЕРВОНИЙ", color: "#e53535" },
+  { id: "clearance_amber", label: "AMBER", ru: "ЯНТАРНЫЙ", uk: "БУРШТИНОВИЙ", color: "#fbbf24" },
+  { id: "verified_green", label: "GREEN", ru: "ЗЕЛЁНЫЙ", uk: "ЗЕЛЕНИЙ", color: "#4ade80" },
 ];
 const BADGES = [
-  { id: "operative", label: "OPERATIVE", symbol: "◆" },
-  { id: "ghost", label: "GHOST", symbol: "◌" },
-  { id: "analyst", label: "ANALYST", symbol: "⌁" },
-  { id: "handler", label: "HANDLER", symbol: "▲" },
+  { id: "operative", label: "OPERATIVE", ru: "ОПЕРАТИВНИК", uk: "ОПЕРАТИВНИК", symbol: "◆" },
+  { id: "ghost", label: "GHOST", ru: "ПРИЗРАК", uk: "ПРИВИД", symbol: "◌" },
+  { id: "analyst", label: "ANALYST", ru: "АНАЛИТИК", uk: "АНАЛІТИК", symbol: "⌁" },
+  { id: "handler", label: "HANDLER", ru: "КУРАТОР", uk: "КУРАТОР", symbol: "▲" },
 ];
+
+const optionLabel = (lang, option) => localize(lang, option.label, option.ru, option.uk);
 
 function SpyCard({
   avatar,
@@ -42,6 +45,7 @@ function SpyCard({
   theme,
   accent,
   winRate,
+  lang,
 }) {
   const badgeOption = BADGES.find((item) => item.id === badge) || BADGES[0];
   const accentClass = accent === "#fbbf24"
@@ -56,21 +60,21 @@ function SpyCard({
       initial={{ opacity: 0, y: 22, scale: 0.98 }}
       animate={{ opacity: 1, y: 0, scale: 1 }}
       transition={{ delay: 0.12, duration: 0.5, ease: [0.22, 0.61, 0.36, 1] }}
-      aria-label={`SPYCARD ${displayName}`}
+      aria-label={`${localize(lang, "SPYCARD", "КАРТА ШПИОНА", "КАРТКА ШПИГУНА")} ${displayName}`}
     >
       <div className="spycard-pattern" aria-hidden />
       <div className="spycard-topline">
         <span className="spycard-mark">S</span>
         <span className="spycard-clearance">
           <span>{badgeOption.symbol}</span>
-          {badgeOption.label}
+          {optionLabel(lang, badgeOption)}
         </span>
       </div>
 
       <div className="spycard-identity">
         <div className="spycard-avatar" aria-hidden>{avatar}</div>
         <div>
-          <strong>{displayName || "OPERATIVE"}</strong>
+          <strong>{displayName || localize(lang, "OPERATIVE", "ОПЕРАТИВНИК", "ОПЕРАТИВНИК")}</strong>
           <span>SPYID • {spyID}</span>
         </div>
       </div>
@@ -79,15 +83,15 @@ function SpyCard({
       <div className="spycard-stats">
         <div>
           <strong style={{ color: "#e53535" }}>{rating >= 0 ? `+${rating}` : rating}</strong>
-          <span>RATING</span>
+          <span>{localize(lang, "RATING", "РЕЙТИНГ", "РЕЙТИНГ")}</span>
         </div>
         <div>
           <strong style={{ color: "#fbbf24" }}>{games}</strong>
-          <span>GAMES</span>
+          <span>{localize(lang, "GAMES", "ИГРЫ", "ІГРИ")}</span>
         </div>
         <div>
           <strong style={{ color: "#4ade80" }}>{winRate}%</strong>
-          <span>RATE</span>
+          <span>{localize(lang, "RATE", "ПОБЕДЫ", "ПЕРЕМОГИ")}</span>
         </div>
       </div>
     </motion.section>
@@ -209,7 +213,7 @@ export default function Profile() {
       setLang(language);
     } catch (error) {
       console.error("Profile update failed", error);
-      setSaveError(lang === "ru" ? "НЕ УДАЛОСЬ СОХРАНИТЬ ПРОФИЛЬ" : "PROFILE SAVE FAILED");
+      setSaveError(localize(lang, "PROFILE SAVE FAILED", "НЕ УДАЛОСЬ СОХРАНИТЬ ПРОФИЛЬ", "НЕ ВДАЛОСЯ ЗБЕРЕГТИ ПРОФІЛЬ"));
     } finally {
       setSaving(false);
     }
@@ -236,9 +240,9 @@ export default function Profile() {
       cards: [
         { label: t("profile_missions"), value: rankedHistory.length, color: "#fff" },
         { label: t("profile_wins"), value: wins, color: "#4ade80" },
-        { label: lang === "ru" ? "ПРОЦЕНТ ПОБЕД" : "WIN RATE", value: `${winRate}%`, color: "#4ade80" },
-        { label: lang === "ru" ? "ШПИОН" : "SPY WIN RATE", value: `${spyWinRate}%`, color: "#e53535" },
-        { label: lang === "ru" ? "ДЕТЕКТИВ" : "DETECTIVE WIN RATE", value: `${detectiveWinRate}%`, color: "#60a5fa" },
+        { label: localize(lang, "WIN RATE", "ПРОЦЕНТ ПОБЕД", "ВІДСОТОК ПЕРЕМОГ"), value: `${winRate}%`, color: "#4ade80" },
+        { label: localize(lang, "SPY WIN RATE", "ШПИОН", "ПЕРЕМОГИ ШПИГУНА"), value: `${spyWinRate}%`, color: "#e53535" },
+        { label: localize(lang, "DETECTIVE WIN RATE", "ДЕТЕКТИВ", "ПЕРЕМОГИ ДЕТЕКТИВА"), value: `${detectiveWinRate}%`, color: "#60a5fa" },
         { label: t("profile_losses"), value: losses, color: "#e53535" },
       ],
     };
@@ -301,13 +305,14 @@ export default function Profile() {
         <SpyCard
           avatar={avatar}
           badge={badge}
-          displayName={String(displayName || "OPERATIVE").toUpperCase()}
+          displayName={String(displayName || localize(lang, "OPERATIVE", "ОПЕРАТИВНИК", "ОПЕРАТИВНИК")).toUpperCase()}
           games={history.filter(isRankedOnlineGameHistory).length}
           rating={rating}
           spyID={spyID}
           theme={theme}
           accent={accentColor}
           winRate={stats.winRate}
+          lang={lang}
         />
 
         <motion.section
@@ -316,7 +321,7 @@ export default function Profile() {
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.22, duration: 0.45 }}
         >
-          <div className="profile-kicker">// {lang === "ru" ? "НАСТРОЙКИ ЛИЧНОСТИ" : "IDENTITY SETTINGS"}</div>
+          <div className="profile-kicker">// {localize(lang, "IDENTITY SETTINGS", "НАСТРОЙКИ ЛИЧНОСТИ", "НАЛАШТУВАННЯ ОСОБИ")}</div>
           <div className="profile-kicker">// {t("profile_select_avatar")}</div>
           <div className="profile-avatar-grid">
             {(ACCOUNT_AVATARS.includes(avatar) ? ACCOUNT_AVATARS : [avatar, ...ACCOUNT_AVATARS]).map((item, index) => (
@@ -329,7 +334,7 @@ export default function Profile() {
                 transition={{ delay: 0.22 + index * 0.025 }}
                 whileTap={{ scale: 0.9 }}
                 onClick={() => setAvatar(item)}
-                aria-label={`Avatar ${item}`}
+                aria-label={`${localize(lang, "Avatar", "Аватар", "Аватар")} ${item}`}
                 style={{
                   borderColor: avatar === item ? "#e53535" : "#202020",
                   background: avatar === item ? "rgba(229,53,53,.1)" : "#080808",
@@ -341,17 +346,17 @@ export default function Profile() {
             ))}
           </div>
 
-          <div className="profile-kicker">// SPYCARD STUDIO</div>
-          <div className="profile-kicker" style={{ marginBottom: 7 }}>SKIN</div>
+          <div className="profile-kicker">// {localize(lang, "SPYCARD STUDIO", "СТУДИЯ SPYCARD", "СТУДІЯ SPYCARD")}</div>
+          <div className="profile-kicker" style={{ marginBottom: 7 }}>{localize(lang, "SKIN", "ОФОРМЛЕНИЕ", "ОФОРМЛЕННЯ")}</div>
           <div className="profile-studio-grid">
             {THEMES.map((item) => (
               <StudioChoice key={item.id} active={theme === item.id} onClick={() => setTheme(item.id)}>
-                {item.label}
+                {optionLabel(lang, item)}
               </StudioChoice>
             ))}
           </div>
 
-          <div className="profile-kicker" style={{ marginBottom: 7 }}>SIGNAL</div>
+          <div className="profile-kicker" style={{ marginBottom: 7 }}>{localize(lang, "SIGNAL", "СИГНАЛ", "СИГНАЛ")}</div>
           <div className="profile-studio-grid">
             {ACCENTS.map((item) => (
               <StudioChoice
@@ -361,12 +366,12 @@ export default function Profile() {
                 onClick={() => setAccent(item.id)}
               >
                 <span style={{ color: item.color, marginRight: 6 }}>●</span>
-                {item.label}
+                {optionLabel(lang, item)}
               </StudioChoice>
             ))}
           </div>
 
-          <div className="profile-kicker" style={{ marginBottom: 7 }}>CLEARANCE</div>
+          <div className="profile-kicker" style={{ marginBottom: 7 }}>{localize(lang, "CLEARANCE", "УРОВЕНЬ ДОСТУПА", "РІВЕНЬ ДОСТУПУ")}</div>
           <div className="profile-badge-grid">
             {BADGES.map((item) => (
               <StudioChoice
@@ -376,7 +381,7 @@ export default function Profile() {
                 onClick={() => setBadge(item.id)}
               >
                 <span style={{ marginRight: 5 }}>{item.symbol}</span>
-                {item.label}
+                {optionLabel(lang, item)}
               </StudioChoice>
             ))}
           </div>
@@ -411,6 +416,7 @@ export default function Profile() {
               >
                 <option value="en">ENGLISH</option>
                 <option value="ru">РУССКИЙ</option>
+                <option value="uk">УКРАЇНСЬКА</option>
                 <option value="es">ESPAÑOL</option>
               </select>
             </label>

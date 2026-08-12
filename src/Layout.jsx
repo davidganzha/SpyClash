@@ -4,7 +4,8 @@ import { base44 } from "@/api/base44Client";
 import { useEffect, useState, useRef, useCallback } from "react";
 import { motion, useMotionValue, useTransform, useMotionValueEvent, animate } from "framer-motion";
 import { ChevronUp } from "lucide-react";
-import { LanguageProvider, LanguageContext } from "@/components/LanguageContext";
+import { LanguageContext, useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 import AppLoader from "@/components/AppLoader";
 import PWAInstallPrompt from "@/components/PWAInstallPrompt";
 import MenuToggleButton from "@/components/MenuToggleButton";
@@ -131,7 +132,7 @@ function MenuContent({ user, currentPageName, setMenuOpen, lang, setLang, t, pro
         <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
           <span style={{ fontSize: 10, letterSpacing: 2, color: "#444", fontFamily: "'Share Tech Mono', monospace" }}>{t('nav_menu_lang')}</span>
           <div style={{ display: "flex", gap: 6 }}>
-            {[{ code: "en", label: "EN" }, { code: "ru", label: "RU" }].map(l => (
+            {[{ code: "en", label: "EN" }, { code: "ru", label: "RU" }, { code: "uk", label: "UK" }, { code: "es", label: "ES" }].map(l => (
               <button key={l.code} onClick={() => { setLang(l.code, !!user); }}
                 style={{
                   padding: "5px 12px", fontSize: 11, fontWeight: 700, letterSpacing: 1,
@@ -156,7 +157,7 @@ function MenuContent({ user, currentPageName, setMenuOpen, lang, setLang, t, pro
           }}
           onMouseEnter={e => { e.currentTarget.style.borderColor = "#e53535"; e.currentTarget.style.background = "rgba(229,53,53,0.1)"; }}
           onMouseLeave={e => { e.currentTarget.style.borderColor = "#2a2a2a"; e.currentTarget.style.background = "transparent"; }}
-          aria-label="Close menu"
+          aria-label={localize(lang, "Close menu", "Закрыть меню", "Закрити меню")}
         >
           <ChevronUp size={18} />
         </button>
@@ -172,6 +173,7 @@ function MenuContent({ user, currentPageName, setMenuOpen, lang, setLang, t, pro
 export default function Layout({ children, currentPageName }) {
   const navigate = useNavigate();
   const { user, isLoadingAuth } = useAuth();
+  const { lang } = useLanguage();
   const userChecked = !isLoadingAuth;
   const [loading, setLoading] = useState(() => {
     try { return !sessionStorage.getItem("spy_loader_shown"); } catch { return true; }
@@ -358,18 +360,15 @@ export default function Layout({ children, currentPageName }) {
 
   if (loading) {
     return (
-      <LanguageProvider>
-        <AppLoader onDone={() => {
-          try { sessionStorage.setItem("spy_loader_shown", "1"); } catch {}
-          setLoading(false);
-        }} />
-      </LanguageProvider>
+      <AppLoader onDone={() => {
+        try { sessionStorage.setItem("spy_loader_shown", "1"); } catch {}
+        setLoading(false);
+      }} />
     );
   }
 
   return (
-    <LanguageProvider>
-      <div className="min-h-screen bg-black text-white" style={{ fontFamily: "'Share Tech Mono', 'Courier New', monospace" }}>
+    <div className="min-h-screen bg-black text-white" style={{ fontFamily: "'Share Tech Mono', 'Courier New', monospace" }}>
         <style>{`
           @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;600;700&display=swap');
 
@@ -641,20 +640,19 @@ export default function Layout({ children, currentPageName }) {
         <footer style={{ borderTop: "1px solid #1a1a1a", padding: "20px 24px", display: currentPageName === "LocalGame" || user ? "none" : "flex", justifyContent: "center", gap: 24, position: "relative", zIndex: 1 }}>
           <Link to="/support" style={{ textDecoration: "none", fontSize: 10, letterSpacing: 2, color: "#444", textTransform: "uppercase", transition: "color 0.2s" }}
             onMouseEnter={e => e.currentTarget.style.color = "#e53535"} onMouseLeave={e => e.currentTarget.style.color = "#444"}>
-            Support
+            {localize(lang, "Support", "Поддержка", "Підтримка")}
           </Link>
           <Link to={createPageUrl("PrivacyPolicy")} style={{ textDecoration: "none", fontSize: 10, letterSpacing: 2, color: "#444", textTransform: "uppercase", transition: "color 0.2s" }}
             onMouseEnter={e => e.currentTarget.style.color = "#e53535"} onMouseLeave={e => e.currentTarget.style.color = "#444"}>
-            Privacy Policy
+            {localize(lang, "Privacy Policy", "Политика конфиденциальности", "Політика конфіденційності")}
           </Link>
           <Link to={createPageUrl("TermsOfService")} style={{ textDecoration: "none", fontSize: 10, letterSpacing: 2, color: "#444", textTransform: "uppercase", transition: "color 0.2s" }}
             onMouseEnter={e => e.currentTarget.style.color = "#e53535"} onMouseLeave={e => e.currentTarget.style.color = "#444"}>
-            Terms of Service
+            {localize(lang, "Terms of Service", "Условия использования", "Умови використання")}
           </Link>
         </footer>
 
         <PWAInstallPrompt />
-      </div>
-    </LanguageProvider>
+    </div>
   );
 }

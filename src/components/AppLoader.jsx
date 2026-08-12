@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
+import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 
 const CHARS = "ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789#@!%&";
 const WORD = "SPY";
@@ -49,6 +51,7 @@ const IMG_URL = "https://qtrypzzcjebvfcihiynt.supabase.co/storage/v1/object/publ
 const SIZE = 160;
 
 export default function AppLoader({ onDone }) {
+  const { lang } = useLanguage();
   const [visible, setVisible] = useState(true);
 
   // After fill animation completes, fade out
@@ -144,7 +147,7 @@ export default function AppLoader({ onDone }) {
             transition={{ delay: 1.2 }}
             style={{ fontSize: 10, letterSpacing: 5, color: "#333", fontFamily: "monospace" }}
           >
-            INITIALIZING SECURE CHANNEL
+            {localize(lang, "INITIALIZING SECURE CHANNEL", "ИНИЦИАЛИЗАЦИЯ ЗАЩИЩЁННОГО КАНАЛА", "ІНІЦІАЛІЗАЦІЯ ЗАХИЩЕНОГО КАНАЛУ")}
           </motion.div>
         </motion.div>
       )}

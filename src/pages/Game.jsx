@@ -3,6 +3,7 @@ import { AnimatePresence, motion } from "framer-motion";
 import { useNavigate } from "react-router-dom";
 import { base44 } from "@/api/base44Client";
 import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 import GameToastContainer, { gameToast } from "../components/GameToast";
 import {
   OnlineActiveGameScene,
@@ -166,8 +167,8 @@ function WinnerScreen({
           {t(pluralSpies ? "game_spies_were" : "game_spy_was")}{" "}
           <strong style={{ color: "#aaa" }}>
             {(spyPlayers || []).length > 0
-              ? spyPlayers.map((player) => `${player.avatar || "•"} ${String(player.name || "UNKNOWN").toUpperCase()}`).join(" · ")
-              : "UNKNOWN"}
+              ? spyPlayers.map((player) => `${player.avatar || "•"} ${String(player.name || t("game_unknown")).toUpperCase()}`).join(" · ")
+              : t("game_unknown")}
           </strong>
         </div>
 
@@ -361,13 +362,13 @@ export default function Game() {
         return await adoptAuthoritativeVoteRefresh("detective vote retry state");
       }
       console.error(`Failed room action: ${action}`, visibleError);
-      gameToast(visibleError?.message || "Room action failed", "warning", "⚠️");
+      gameToast(visibleError?.message || localize(lang, "Room action failed", "Не удалось выполнить действие в комнате", "Не вдалося виконати дію в кімнаті"), "warning", "⚠️");
       return null;
     } finally {
       actionInFlightRef.current = null;
       setBusyAction(null);
     }
-  }, [applyRoom, t, user?.email]);
+  }, [applyRoom, lang, t, user?.email]);
 
   const loadRoom = async (currentUser) => {
     const id = getRoomId();

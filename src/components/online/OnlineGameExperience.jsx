@@ -6,9 +6,9 @@ import {
   onlineRoundCommand,
   parseAssociationRoundState,
 } from "@/lib/onlineGamePresentation";
+import { localize } from "@/components/i18n";
 import "./OnlineGameExperience.css";
 
-const localize = (lang, en, ru) => (lang === "ru" ? ru : en);
 const normalizedEmail = (value) => String(value ?? "").trim().toLocaleLowerCase();
 
 function Wordmark() {
@@ -51,11 +51,11 @@ function MissionRoleCard({
     ? t("game_you_are_spy")
     : isDetective
       ? t("game_you_are_detective")
-      : localize(lang, "SPECTATOR", "НАБЛЮДАТЕЛЬ");
+      : localize(lang, "SPECTATOR", "НАБЛЮДАТЕЛЬ", "ГЛЯДАЧ");
   const roleHint = isSpy
     ? t("game_spy_hint")
     : role === "spectator"
-      ? localize(lang, "Observe the mission. Your role is read-only.", "Наблюдай за миссией. Ты не участвуешь в раунде.")
+      ? localize(lang, "Observe the mission. Your role is read-only.", "Наблюдай за миссией. Ты не участвуешь в раунде.", "Спостерігайте за місією. Ви не берете участі в раунді.")
       : null;
   const teammateNames = (presentation.spyTeammates || [])
     .map((player) => String(player?.name || "AGENT").toUpperCase());
@@ -90,7 +90,7 @@ function MissionRoleCard({
           <span className="oge-role-classification">// {t("game_dont_show")}</span>
         </span>
         <span className="oge-role-face oge-role-face-front" aria-hidden={!revealed}>
-          <span className="oge-role-kicker">// {localize(lang, "YOUR ROLE", "ТВОЯ РОЛЬ")}</span>
+          <span className="oge-role-kicker">// {localize(lang, "YOUR ROLE", "ТВОЯ РОЛЬ", "ВАША РОЛЬ")}</span>
           <span className="oge-role-icon" aria-hidden="true">{isSpy ? "S" : isDetective ? "D" : "O"}</span>
           <span className="oge-role-title">{roleTitle}</span>
           {presentation.secretWord && (
@@ -106,7 +106,7 @@ function MissionRoleCard({
             </span>
           )}
           <span className="oge-role-category">
-            {category ? `${t("game_category_label")} ${String(category).toUpperCase()}` : "// CLASSIFIED"}
+            {category ? `${t("game_category_label")} ${String(category).toUpperCase()}` : localize(lang, "// CLASSIFIED", "// ЗАСЕКРЕЧЕНО", "// ЗАСЕКРЕЧЕНО")}
           </span>
         </span>
       </span>
@@ -192,10 +192,10 @@ function ExpiredStage({ t, lang, pluralSpies }) {
       <span className="oge-expired-icon" aria-hidden="true">⏱</span>
       <span className="oge-stage-kicker">// {t("game_time_up")}</span>
       <span className="oge-expired-value">
-        {pluralSpies ? t("game_spies_won") : localize(lang, "SPY WINS", "ПОБЕДА ШПИОНА")}
+        {pluralSpies ? t("game_spies_won") : localize(lang, "SPY WINS", "ПОБЕДА ШПИОНА", "ПЕРЕМОГА ШПИГУНА")}
       </span>
       <span className="oge-stage-message">
-        {localize(lang, "CONFIRMING RESULT…", "ПОДТВЕРЖДАЕМ РЕЗУЛЬТАТ…")}
+        {localize(lang, "CONFIRMING RESULT…", "ПОДТВЕРЖДАЕМ РЕЗУЛЬТАТ…", "ПІДТВЕРДЖУЄМО РЕЗУЛЬТАТ…")}
       </span>
     </div>
   );
@@ -210,15 +210,15 @@ function AssociationStage({ room, state, lang }) {
     <div className="oge-association-stage" data-testid="onlineExperience.associationState">
       <span className="oge-stage-kicker">
         {state.spinning
-          ? localize(lang, "SELECTING NEXT SPEAKER", "ВЫБИРАЕМ СЛЕДУЮЩЕГО")
-          : localize(lang, "CURRENT SPEAKER", "СЕЙЧАС ГОВОРИТ")}
+          ? localize(lang, "SELECTING NEXT SPEAKER", "ВЫБИРАЕМ СЛЕДУЮЩЕГО", "ОБИРАЄМО НАСТУПНОГО")
+          : localize(lang, "CURRENT SPEAKER", "СЕЙЧАС ГОВОРИТ", "ЗАРАЗ ГОВОРИТЬ")}
       </span>
       <span className={`oge-association-avatar${state.spinning ? " is-spinning" : ""}`}>
         {state.spinning ? "⌁" : (player?.avatar || "•")}
       </span>
       <span className="oge-association-name">
         {state.spinning
-          ? localize(lang, "SIGNAL SCANNING", "СКАНИРУЕМ СИГНАЛ")
+          ? localize(lang, "SIGNAL SCANNING", "СКАНИРУЕМ СИГНАЛ", "СКАНУЄМО СИГНАЛ")
           : String(player?.name || "PENDING").toUpperCase()}
       </span>
       <span className="oge-stage-message">{state.spoken.length} / {activeCount}</span>
@@ -267,7 +267,7 @@ function VotingStage({ presentation, userEmail, onCastVote, busyAction, lang }) 
   const canCastVote = presentation.isActivePlayer && !presentation.isSpectator;
   return (
     <div className="oge-voting-stage" data-testid="onlineExperience.votingCandidates">
-      <div className="oge-stage-title">{localize(lang, "CHOOSE A SUSPECT", "ВЫБЕРИ ПОДОЗРЕВАЕМОГО")}</div>
+      <div className="oge-stage-title">{localize(lang, "CHOOSE A SUSPECT", "ВЫБЕРИ ПОДОЗРЕВАЕМОГО", "ОБЕРІТЬ ПІДОЗРЮВАНОГО")}</div>
       <div className="oge-vote-rule" data-testid="onlineExperience.voteRule">
         <strong>{presentation.exclusionVoteThreshold}/{presentation.activePlayers.length}</strong>
         <span>
@@ -275,6 +275,7 @@ function VotingStage({ presentation, userEmail, onCastVote, busyAction, lang }) 
             lang,
             `To exclude a player, ${presentation.exclusionVoteThreshold} votes must point to the same suspect. If that becomes impossible, the server cancels the vote.`,
             `Чтобы исключить игрока, ${presentation.exclusionVoteThreshold} голосов должны быть за одного подозреваемого. Если это становится невозможно, сервер отменяет голосование.`,
+            `Щоб виключити гравця, ${presentation.exclusionVoteThreshold} голосів мають бути віддані за одного підозрюваного. Якщо це стає неможливим, сервер скасовує голосування.`,
           )}
         </span>
       </div>
@@ -298,8 +299,8 @@ function VotingStage({ presentation, userEmail, onCastVote, busyAction, lang }) 
       </div>
       <div className="oge-vote-hint">
         {presentation.myVote
-          ? localize(lang, "VOTE RECORDED · WAITING FOR SERVER", "ГОЛОС ПРИНЯТ · ОЖИДАЕМ СЕРВЕР")
-          : localize(lang, "THE VOTE IS FINAL", "ГОЛОС НЕЛЬЗЯ ИЗМЕНИТЬ")}
+          ? localize(lang, "VOTE RECORDED · WAITING FOR SERVER", "ГОЛОС ПРИНЯТ · ОЖИДАЕМ СЕРВЕР", "ГОЛОС ПРИЙНЯТО · ОЧІКУЄМО НА СЕРВЕР")
+          : localize(lang, "THE VOTE IS FINAL", "ГОЛОС НЕЛЬЗЯ ИЗМЕНИТЬ", "ГОЛОС НЕ МОЖНА ЗМІНИТИ")}
       </div>
     </div>
   );
@@ -345,8 +346,8 @@ function commandCopy(action, t, lang) {
   switch (action) {
     case "mark_answer_heard": return t("qr_answer_received_btn");
     case "continue_round": return t("rr_continue");
-    case "start_association": return localize(lang, "START ASSOCIATIONS", "НАЧАТЬ АССОЦИАЦИИ");
-    case "advance_association": return localize(lang, "ASSOCIATION GIVEN", "АССОЦИАЦИЯ НАЗВАНА");
+    case "start_association": return localize(lang, "START ASSOCIATIONS", "НАЧАТЬ АССОЦИАЦИИ", "ПОЧАТИ АСОЦІАЦІЇ");
+    case "advance_association": return localize(lang, "ASSOCIATION GIVEN", "АССОЦИАЦИЯ НАЗВАНА", "АСОЦІАЦІЮ НАЗВАНО");
     default: return null;
   }
 }
@@ -387,7 +388,7 @@ export function OnlineRoleRevealScene({
 
         <main className="oge-role-gate-content">
           <div>
-            <div className="oge-role-kicker">{localize(lang, "// YOUR CARD", "// ТВОЯ КАРТА")}</div>
+            <div className="oge-role-kicker">{localize(lang, "// YOUR CARD", "// ТВОЯ КАРТА", "// ВАША КАРТКА")}</div>
             <div className="oge-player-identity">
               <span>{currentPlayer?.avatar || "•"}</span>
               <span>{String(currentPlayer?.name || "AGENT").toUpperCase()}</span>
@@ -416,6 +417,7 @@ export function OnlineRoleRevealScene({
                     lang,
                     `WAITING ${presentation.cardsReadCount} / ${(room.players || []).length}`,
                     `ОЖИДАЕМ ${presentation.cardsReadCount} / ${(room.players || []).length}`,
+                    `ОЧІКУЄМО ${presentation.cardsReadCount} / ${(room.players || []).length}`,
                   )}
                 </div>
                 <div className="oge-read-roster" data-testid="onlineExperience.cardsReadRoster">
@@ -446,7 +448,7 @@ export function OnlineRoleRevealScene({
           </div>
 
           <button type="button" className="oge-leave-link" onClick={onLeave} data-testid="onlineExperience.leave">
-            {localize(lang, "LEAVE GAME", "ВЫЙТИ ИЗ ИГРЫ")}
+            {localize(lang, "LEAVE GAME", "ВЫЙТИ ИЗ ИГРЫ", "ВИЙТИ З ГРИ")}
           </button>
         </main>
       </div>
@@ -584,15 +586,15 @@ export function OnlineActiveGameScene({
     && !isPaused
     && !timeExpired;
   const canRequestVote = showsVoteRequest && !presentation.hasRequestedVote;
-  const voteRequestTitle = `${localize(lang, "START VOTE", "НАЧАТЬ ГОЛОСОВАНИЕ")} ${presentation.activeVoteRequests.length}/${presentation.voteThreshold}`;
-  const secondaryVoteTitle = `${localize(lang, "VOTE", "ГОЛОСОВАНИЕ")} ${presentation.activeVoteRequests.length}/${presentation.voteThreshold}`;
+  const voteRequestTitle = `${localize(lang, "START VOTE", "НАЧАТЬ ГОЛОСОВАНИЕ", "ПОЧАТИ ГОЛОСУВАННЯ")} ${presentation.activeVoteRequests.length}/${presentation.voteThreshold}`;
+  const secondaryVoteTitle = `${localize(lang, "VOTE", "ГОЛОСОВАНИЕ", "ГОЛОСУВАННЯ")} ${presentation.activeVoteRequests.length}/${presentation.voteThreshold}`;
   const suppressFallback = presentation.roundPhase === "results"
     || presentation.roundPhase === "countdown"
     || presentation.isVotingActive
     || (presentation.gameMode === "associations" && associationState.spinning);
   const spyGuessAction = {
     action: "submit_spy_guess",
-    title: localize(lang, "GUESS THE WORD", "УГАДАТЬ СЛОВО"),
+    title: localize(lang, "GUESS THE WORD", "УГАДАТЬ СЛОВО", "ВІДГАДАТИ СЛОВО"),
     handler: onSpyGuess,
   };
   const primaryAction = timeExpired
@@ -662,7 +664,12 @@ export function OnlineActiveGameScene({
           <Wordmark />
           <div className="oge-header-controls">
             <HeaderControl
-              label={localize(lang, presentation.isHost ? "Close game" : "Leave game", presentation.isHost ? "Закрыть игру" : "Выйти из игры")}
+              label={localize(
+                lang,
+                presentation.isHost ? "Close game" : "Leave game",
+                presentation.isHost ? "Закрыть игру" : "Выйти из игры",
+                presentation.isHost ? "Закрити гру" : "Вийти з гри",
+              )}
               onClick={() => setConfirmingLeave(true)}
               testId="onlineExperience.leave"
             >
@@ -742,8 +749,8 @@ export function OnlineActiveGameScene({
             {showRoleControl && (
               <ActionButton onClick={onToggleRole} testId="onlineExperience.action.reveal">
                 {revealed
-                  ? localize(lang, "HIDE CARD", "СКРЫТЬ КАРТУ")
-                  : localize(lang, "SHOW CARD", "ПОКАЗАТЬ КАРТУ")}
+                  ? localize(lang, "HIDE CARD", "СКРЫТЬ КАРТУ", "СХОВАТИ КАРТКУ")
+                  : localize(lang, "SHOW CARD", "ПОКАЗАТЬ КАРТУ", "ПОКАЗАТИ КАРТКУ")}
               </ActionButton>
             )}
             {showSecondaryVote && (
@@ -757,7 +764,7 @@ export function OnlineActiveGameScene({
             )}
             {showSecondaryGuess && (
               <ActionButton onClick={onSpyGuess} disabled={Boolean(busyAction)} testId="onlineExperience.action.spyGuess">
-                {localize(lang, "GUESS", "УГАДАТЬ")}
+                {localize(lang, "GUESS", "УГАДАТЬ", "ВІДГАДАТИ")}
               </ActionButton>
             )}
           </div>
@@ -773,7 +780,7 @@ export function OnlineActiveGameScene({
             exit={{ opacity: 0 }}
             role="dialog"
             aria-modal="true"
-            aria-label={localize(lang, "Your role card", "Твоя карта роли")}
+            aria-label={localize(lang, "Your role card", "Твоя карта роли", "Ваша картка ролі")}
           >
             <MissionRoleCard
               presentation={presentation}
@@ -801,15 +808,20 @@ export function OnlineActiveGameScene({
             aria-live="polite"
           >
             <div className="oge-paused-card">
-              <div className="oge-overlay-title">{localize(lang, "PAUSED", "ПАУЗА")}</div>
-              <div className="oge-overlay-copy">{localize(lang, "THE TIMER IS STOPPED", "ТАЙМЕР ОСТАНОВЛЕН")}</div>
+              <div className="oge-overlay-title">{localize(lang, "PAUSED", "ПАУЗА", "ПАУЗА")}</div>
+              <div className="oge-overlay-copy">{localize(lang, "THE TIMER IS STOPPED", "ТАЙМЕР ОСТАНОВЛЕН", "ТАЙМЕР ЗУПИНЕНО")}</div>
               {presentation.isHost && (
                 <ActionButton primary onClick={onTogglePause} disabled={Boolean(busyAction)} testId="onlineExperience.pauseResume">
                   ▶ {t("game_resume_btn")}
                 </ActionButton>
               )}
               <ActionButton onClick={() => setConfirmingLeave(true)} testId="onlineExperience.leave">
-                {localize(lang, presentation.isHost ? "CLOSE GAME" : "LEAVE GAME", presentation.isHost ? "ЗАКРЫТЬ ИГРУ" : "ВЫЙТИ ИЗ ИГРЫ")}
+                {localize(
+                  lang,
+                  presentation.isHost ? "CLOSE GAME" : "LEAVE GAME",
+                  presentation.isHost ? "ЗАКРЫТЬ ИГРУ" : "ВЫЙТИ ИЗ ИГРЫ",
+                  presentation.isHost ? "ЗАКРИТИ ГРУ" : "ВИЙТИ З ГРИ",
+                )}
               </ActionButton>
             </div>
           </motion.div>
@@ -828,13 +840,23 @@ export function OnlineActiveGameScene({
           >
             <div className="oge-confirm-card">
               <div className="oge-stage-title">
-                {localize(lang, presentation.isHost ? "CLOSE GAME?" : "LEAVE GAME?", presentation.isHost ? "ЗАКРЫТЬ ИГРУ?" : "ВЫЙТИ ИЗ ИГРЫ?")}
+                {localize(
+                  lang,
+                  presentation.isHost ? "CLOSE GAME?" : "LEAVE GAME?",
+                  presentation.isHost ? "ЗАКРЫТЬ ИГРУ?" : "ВЫЙТИ ИЗ ИГРЫ?",
+                  presentation.isHost ? "ЗАКРИТИ ГРУ?" : "ВИЙТИ З ГРИ?",
+                )}
               </div>
               <ActionButton primary onClick={onLeave}>
-                {localize(lang, presentation.isHost ? "CLOSE GAME" : "LEAVE GAME", presentation.isHost ? "ЗАКРЫТЬ ИГРУ" : "ВЫЙТИ ИЗ ИГРЫ")}
+                {localize(
+                  lang,
+                  presentation.isHost ? "CLOSE GAME" : "LEAVE GAME",
+                  presentation.isHost ? "ЗАКРЫТЬ ИГРУ" : "ВЫЙТИ ИЗ ИГРЫ",
+                  presentation.isHost ? "ЗАКРИТИ ГРУ" : "ВИЙТИ З ГРИ",
+                )}
               </ActionButton>
               <ActionButton onClick={() => setConfirmingLeave(false)}>
-                {localize(lang, "CANCEL", "ОТМЕНА")}
+                {localize(lang, "CANCEL", "ОТМЕНА", "СКАСУВАТИ")}
               </ActionButton>
             </div>
           </motion.div>

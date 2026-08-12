@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { base44 } from "@/api/base44Client";
 import { useLanguage } from "@/components/LanguageContext";
+import { localize } from "@/components/i18n";
 
 export default function DeleteAccountSection() {
   const { lang } = useLanguage();
@@ -16,7 +17,7 @@ export default function DeleteAccountSection() {
       base44.auth.logout("/");
     } catch (e) {
       console.error(e);
-      setError(lang === "ru" ? "Не удалось удалить аккаунт" : "Failed to delete account");
+      setError(localize(lang, "Failed to delete account", "Не удалось удалить аккаунт", "Не вдалося видалити обліковий запис"));
       setDeleting(false);
     }
   };
@@ -28,15 +29,18 @@ export default function DeleteAccountSection() {
         <div style={{ position: "absolute", top: 0, left: 0, width: 12, height: 12, borderTop: "1px solid #e53535", borderLeft: "1px solid #e53535" }} />
         <div style={{ position: "absolute", bottom: 0, right: 0, width: 12, height: 12, borderBottom: "1px solid #e53535", borderRight: "1px solid #e53535" }} />
         <div style={{ fontSize: 10, letterSpacing: 4, color: "#e53535", marginBottom: 10, fontFamily: "'Share Tech Mono', monospace" }}>
-          {lang === "ru" ? "// ОПАСНАЯ ЗОНА" : "// DANGER ZONE"}
+          {localize(lang, "// DANGER ZONE", "// ОПАСНАЯ ЗОНА", "// НЕБЕЗПЕЧНА ЗОНА")}
         </div>
         <div style={{ color: "#888", fontSize: 12, letterSpacing: 0.5, marginBottom: 18, lineHeight: 1.6 }}>
-          {lang === "ru"
-            ? "Удаление аккаунта необратимо. Профиль, история, паки и социальные данные будут удалены. Если у тебя остался старый платёжный договор с провайдером, его нужно отменить отдельно."
-            : "Deleting your account is permanent. Your profile, history, packs, and social data are removed. If you still have a legacy provider billing agreement, cancel it separately with that provider."}
+          {localize(
+            lang,
+            "Deleting your account is permanent. Your profile, history, packs, and social data are removed. If you still have a legacy provider billing agreement, cancel it separately with that provider.",
+            "Удаление аккаунта необратимо. Профиль, история, паки и социальные данные будут удалены. Если у тебя остался старый платёжный договор с провайдером, его нужно отменить отдельно.",
+            "Видалення облікового запису є незворотним. Профіль, історію, набори слів і соціальні дані буде видалено. Якщо у вас залишилася стара платіжна угода з провайдером, скасуйте її окремо в цього провайдера.",
+          )}
         </div>
         <button className="btn-red" onClick={() => setOpen(true)} style={{ fontSize: 11 }}>
-          {lang === "ru" ? "УДАЛИТЬ АККАУНТ" : "DELETE ACCOUNT"}
+          {localize(lang, "DELETE ACCOUNT", "УДАЛИТЬ АККАУНТ", "ВИДАЛИТИ ОБЛІКОВИЙ ЗАПИС")}
         </button>
       </motion.div>
 
@@ -61,27 +65,30 @@ export default function DeleteAccountSection() {
               <div style={{ position: "absolute", top: 0, left: 0, width: 14, height: 14, borderTop: "1px solid #e53535", borderLeft: "1px solid #e53535" }} />
               <div style={{ position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderBottom: "1px solid #e53535", borderRight: "1px solid #e53535" }} />
               <div style={{ fontSize: 10, letterSpacing: 4, color: "#e53535", marginBottom: 14, fontFamily: "'Share Tech Mono', monospace" }}>
-                {lang === "ru" ? "ПОДТВЕРДИ УДАЛЕНИЕ" : "CONFIRM DELETION"}
+                {localize(lang, "CONFIRM DELETION", "ПОДТВЕРДИ УДАЛЕНИЕ", "ПІДТВЕРДЬТЕ ВИДАЛЕННЯ")}
               </div>
               <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 24, letterSpacing: 2, marginBottom: 14, color: "#fff" }}>
-                {lang === "ru" ? "Удалить аккаунт?" : "Delete account?"}
+                {localize(lang, "Delete account?", "Удалить аккаунт?", "Видалити обліковий запис?")}
               </div>
               <div style={{ color: "#888", fontSize: 12, lineHeight: 1.6, marginBottom: 20 }}>
-                {lang === "ru"
-                  ? "Профиль и игровые данные будут удалены навсегда. Старым платёжным договором нужно управлять отдельно у его провайдера; ограниченные записи о прошлых транзакциях могут храниться для предотвращения мошенничества и выполнения юридических обязательств."
-                  : "Your profile and game data will be permanently removed. Manage any legacy billing agreement separately with its provider; limited past-transaction records may be retained for fraud prevention and legal obligations."}
+                {localize(
+                  lang,
+                  "Your profile and game data will be permanently removed. Manage any legacy billing agreement separately with its provider; limited past-transaction records may be retained for fraud prevention and legal obligations.",
+                  "Профиль и игровые данные будут удалены навсегда. Старым платёжным договором нужно управлять отдельно у его провайдера; ограниченные записи о прошлых транзакциях могут храниться для предотвращения мошенничества и выполнения юридических обязательств.",
+                  "Ваш профіль та ігрові дані буде видалено назавжди. Керуйте будь-якою старою платіжною угодою окремо в її провайдера; обмежені записи про минулі транзакції можуть зберігатися для запобігання шахрайству та виконання юридичних зобов’язань.",
+                )}
               </div>
               {error && (
                 <div style={{ color: "#e53535", fontSize: 11, marginBottom: 12, letterSpacing: 1, fontFamily: "monospace" }}>⚠ {error}</div>
               )}
               <div style={{ display: "flex", gap: 10 }}>
                 <button className="btn-ghost" onClick={() => setOpen(false)} disabled={deleting} style={{ flex: 1, fontSize: 11 }}>
-                  {lang === "ru" ? "ОТМЕНА" : "CANCEL"}
+                  {localize(lang, "CANCEL", "ОТМЕНА", "СКАСУВАТИ")}
                 </button>
                 <button className="btn-red" onClick={confirm} disabled={deleting} style={{ flex: 1, fontSize: 11 }}>
                   {deleting
-                    ? (lang === "ru" ? "УДАЛЕНИЕ..." : "DELETING...")
-                    : (lang === "ru" ? "УДАЛИТЬ" : "DELETE")}
+                    ? localize(lang, "DELETING...", "УДАЛЕНИЕ...", "ВИДАЛЕННЯ...")
+                    : localize(lang, "DELETE", "УДАЛИТЬ", "ВИДАЛИТИ")}
                 </button>
               </div>
             </motion.div>

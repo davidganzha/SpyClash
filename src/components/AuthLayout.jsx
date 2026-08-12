@@ -1,4 +1,5 @@
 import React from "react";
+import LanguageSwitcher from "@/components/LanguageSwitcher";
 
 export default function AuthLayout({ icon: Icon, title, subtitle, footer = null, children, eyebrow = null }) {
   return (
@@ -13,6 +14,7 @@ export default function AuthLayout({ icon: Icon, title, subtitle, footer = null,
       position: "relative",
       overflow: "hidden",
     }}>
+      <LanguageSwitcher style={{ position: "absolute", top: 16, right: 16, zIndex: 3 }} />
       <style>{`
         @import url('https://fonts.googleapis.com/css2?family=Share+Tech+Mono&family=Rajdhani:wght@500;600;700&display=swap');
 

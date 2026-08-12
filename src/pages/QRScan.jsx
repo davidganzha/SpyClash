@@ -177,7 +177,7 @@ export default function QRScan() {
   if (loading) {
     return (
       <div style={{ display: "flex", alignItems: "center", justifyContent: "center", height: "100dvh", background: "#000" }}>
-        <div style={{ color: "#e53535", fontFamily: "monospace", letterSpacing: 4, fontSize: 12 }}>LOADING...</div>
+        <div style={{ color: "#e53535", fontFamily: "monospace", letterSpacing: 4, fontSize: 12 }}>{t('qr_scan_loading')}</div>
       </div>
     );
   }

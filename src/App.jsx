@@ -25,6 +25,8 @@ import PrivacyPolicy from './pages/PrivacyPolicy';
 import Support from './pages/Support';
 import TermsOfService from './pages/TermsOfService';
 import WebReleaseNotice from '@/components/WebReleaseNotice';
+import { LanguageProvider, useLanguage } from '@/components/LanguageContext';
+import { localize } from '@/components/i18n';
 
 const { Pages, Layout } = pagesConfig;
 const PUBLIC_PAGE_NAMES = new Set(['PrivacyPolicy', 'Support', 'TermsOfService']);
@@ -48,6 +50,7 @@ const WelcomeRoute = () => {
 
 const AppShell = () => {
   const { isLoadingPublicSettings, authError } = useAuth();
+  const { lang } = useLanguage();
   const location = useLocation();
   const publicInformationRoute = ['/privacypolicy', '/support', '/termsofservice']
     .includes(location.pathname.toLowerCase());
@@ -64,12 +67,14 @@ const AppShell = () => {
     return (
       <div className="fixed inset-0 flex flex-col items-center justify-center" style={{ background: "#000" }}>
         <div style={{ color: "#e53535", fontSize: 28, marginBottom: 16 }}>⚠</div>
-        <div style={{ color: "#888", fontSize: 12, letterSpacing: 3, fontFamily: "monospace", marginBottom: 8 }}>CONNECTION ERROR</div>
+        <div style={{ color: "#888", fontSize: 12, letterSpacing: 3, fontFamily: "monospace", marginBottom: 8 }}>
+          {localize(lang, "CONNECTION ERROR", "ОШИБКА СОЕДИНЕНИЯ", "ПОМИЛКА З'ЄДНАННЯ")}
+        </div>
         <div style={{ color: "#444", fontSize: 11, letterSpacing: 1, fontFamily: "monospace", marginBottom: 24 }}>{authError.message}</div>
         <button
           onClick={() => window.location.reload()}
           style={{ background: "#e53535", color: "#fff", border: "none", padding: "10px 28px", fontSize: 12, letterSpacing: 3, fontFamily: "monospace", cursor: "pointer" }}
-        >RETRY</button>
+        >{localize(lang, "RETRY", "ПОВТОРИТЬ", "ПОВТОРИТИ")}</button>
       </div>
     );
   }
@@ -138,17 +143,19 @@ function App() {
   return (
     <ErrorBoundary>
       <AuthProvider>
-        <CommunityProvider>
-          <MembershipProvider>
-            <QueryClientProvider client={queryClientInstance}>
-              <Router>
-                <ScrollToTop />
-                <AppShell />
-              </Router>
-              <Toaster />
-            </QueryClientProvider>
-          </MembershipProvider>
-        </CommunityProvider>
+        <LanguageProvider>
+          <CommunityProvider>
+            <MembershipProvider>
+              <QueryClientProvider client={queryClientInstance}>
+                <Router>
+                  <ScrollToTop />
+                  <AppShell />
+                </Router>
+                <Toaster />
+              </QueryClientProvider>
+            </MembershipProvider>
+          </CommunityProvider>
+        </LanguageProvider>
       </AuthProvider>
     </ErrorBoundary>
   )

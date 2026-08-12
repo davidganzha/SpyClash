@@ -2,6 +2,7 @@ import { useState } from "react";
 import { motion, AnimatePresence } from "framer-motion";
 import { base44 } from "@/api/base44Client";
 import { createWordPack } from "@/lib/wordPackActions";
+import { localize } from "@/components/i18n";
 
 export default function SaveAsWordPackDialog({ open, onClose, defaultName, words, category, lang, onSaved }) {
   const [name, setName] = useState(defaultName || "");
@@ -12,11 +13,11 @@ export default function SaveAsWordPackDialog({ open, onClose, defaultName, words
   const handleSave = async () => {
     const trimmed = name.trim();
     if (!trimmed) {
-      setError(lang === "ru" ? "Введите название" : "Enter a name");
+      setError(localize(lang, "Enter a name", "Введите название", "Введіть назву"));
       return;
     }
     if (!words || words.length < 2) {
-      setError(lang === "ru" ? "Нужно минимум 2 слова" : "Need at least 2 words");
+      setError(localize(lang, "Need at least 2 words", "Нужно минимум 2 слова", "Потрібно щонайменше 2 слова"));
       return;
     }
     setSaving(true);
@@ -24,7 +25,7 @@ export default function SaveAsWordPackDialog({ open, onClose, defaultName, words
     const user = await base44.auth.me().catch(() => null);
     if (!user) {
       setSaving(false);
-      setError(lang === "ru" ? "Нужно войти в аккаунт" : "Sign in required");
+      setError(localize(lang, "Sign in required", "Нужно войти в аккаунт", "Потрібно увійти до облікового запису"));
       return;
     }
     await createWordPack({
@@ -67,22 +68,25 @@ export default function SaveAsWordPackDialog({ open, onClose, defaultName, words
           <div style={{ position: "absolute", bottom: 0, right: 0, width: 14, height: 14, borderBottom: "1px solid #e53535", borderRight: "1px solid #e53535" }} />
 
           <div style={{ fontSize: 11, letterSpacing: 3, color: "#888", fontFamily: "monospace", marginBottom: 6 }}>
-            💾 {lang === "ru" ? "СОХРАНИТЬ КАК WORDPACK" : "SAVE AS WORDPACK"}
+            💾 {localize(lang, "SAVE AS WORD PACK", "СОХРАНИТЬ КАК WORDPACK", "ЗБЕРЕГТИ ЯК НАБІР СЛІВ")}
           </div>
           <div style={{ fontSize: 11, color: "#555", marginBottom: 16, lineHeight: 1.5 }}>
-            {lang === "ru"
-              ? `${words?.length || 0} слов будут сохранены в твою коллекцию`
-              : `${words?.length || 0} words will be saved to your collection`}
+            {localize(
+              lang,
+              `${words?.length || 0} words will be saved to your collection`,
+              `${words?.length || 0} слов будут сохранены в твою коллекцию`,
+              `${words?.length || 0} слів буде збережено до вашої колекції`,
+            )}
           </div>
 
           <label style={{ fontSize: 10, letterSpacing: 2, color: "#666", fontFamily: "monospace", display: "block", marginBottom: 6 }}>
-            {lang === "ru" ? "НАЗВАНИЕ" : "NAME"}
+            {localize(lang, "NAME", "НАЗВАНИЕ", "НАЗВА")}
           </label>
           <input
             autoFocus
             value={name}
             onChange={e => { setName(e.target.value); setError(""); }}
-            placeholder={lang === "ru" ? "Моя коллекция..." : "My collection..."}
+            placeholder={localize(lang, "My collection...", "Моя коллекция...", "Моя колекція...")}
             onKeyDown={e => { if (e.key === "Enter") handleSave(); }}
             style={{ marginBottom: 4, fontSize: 14 }}
           />
@@ -91,13 +95,13 @@ export default function SaveAsWordPackDialog({ open, onClose, defaultName, words
           <div style={{ display: "flex", gap: 8, marginTop: 20 }}>
             <button onClick={onClose} className="btn-ghost"
               style={{ flex: 1, fontSize: 11, padding: "12px 0" }}>
-              {lang === "ru" ? "ОТМЕНА" : "CANCEL"}
+              {localize(lang, "CANCEL", "ОТМЕНА", "СКАСУВАТИ")}
             </button>
             <button onClick={handleSave} disabled={saving || saved} className="btn-red"
               style={{ flex: 1, fontSize: 11, padding: "12px 0", clipPath: "none", borderRadius: 6 }}>
-              {saved ? (lang === "ru" ? "✓ СОХРАНЕНО" : "✓ SAVED") :
+              {saved ? localize(lang, "✓ SAVED", "✓ СОХРАНЕНО", "✓ ЗБЕРЕЖЕНО") :
                 saving ? "..." :
-                (lang === "ru" ? "СОХРАНИТЬ" : "SAVE")}
+                localize(lang, "SAVE", "СОХРАНИТЬ", "ЗБЕРЕГТИ")}
             </button>
           </div>
         </motion.div>
