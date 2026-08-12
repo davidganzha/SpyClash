@@ -586,6 +586,7 @@ struct AIThemeSuggestionStrip: View {
         case .ru: "ИДЕИ ДЛЯ ТЕМЫ"
         case .es: "IDEAS DE TEMA"
         case .en: "THEME IDEAS"
+        case .uk: "ІДЕЇ ДЛЯ ТЕМИ"
         }
     }
 
@@ -594,6 +595,7 @@ struct AIThemeSuggestionStrip: View {
         case .ru: "НАЖМИ, ЧТОБЫ ВСТАВИТЬ"
         case .es: "TOCA PARA USAR"
         case .en: "TAP TO USE"
+        case .uk: "НАТИСНИ, ЩОБ ВИКОРИСТАТИ"
         }
     }
 
@@ -602,6 +604,7 @@ struct AIThemeSuggestionStrip: View {
         case .ru: "Подставить эту тему в поле"
         case .es: "Usar este tema en el campo"
         case .en: "Use this theme in the field"
+        case .uk: "Використати цю тему"
         }
     }
 
@@ -619,6 +622,19 @@ struct AIThemeSuggestionStrip: View {
                 Suggestion(id: "video-games", title: "Видеоигры", systemImage: "gamecontroller.fill"),
                 Suggestion(id: "mythology", title: "Греческая мифология", systemImage: "building.columns.fill"),
                 Suggestion(id: "movies-tv", title: "Фильмы и сериалы", systemImage: "film.fill")
+            ]
+        case .uk:
+            [
+                Suggestion(id: "marvel", title: "Герої Marvel", systemImage: "shield.fill"),
+                Suggestion(id: "harry-potter", title: "Світ Гаррі Поттера", systemImage: "sparkles"),
+                Suggestion(id: "europe", title: "Країни Європи", systemImage: "globe.europe.africa.fill"),
+                Suggestion(id: "music-2000s", title: "Хіти 2000-х", systemImage: "music.note"),
+                Suggestion(id: "football", title: "Футболісти", systemImage: "soccerball"),
+                Suggestion(id: "brands", title: "Відомі бренди", systemImage: "tag.fill"),
+                Suggestion(id: "world-food", title: "Кухні світу", systemImage: "fork.knife"),
+                Suggestion(id: "video-games", title: "Відеоігри", systemImage: "gamecontroller.fill"),
+                Suggestion(id: "mythology", title: "Грецька міфологія", systemImage: "building.columns.fill"),
+                Suggestion(id: "movies-tv", title: "Фільми й серіали", systemImage: "film.fill")
             ]
         case .es:
             [
@@ -655,6 +671,7 @@ struct SpyWebSlider: View {
     @Binding var value: Double
 
     let range: ClosedRange<Double>
+    let language: AppLanguage
     var step: Double = 1
     var accent: Color = SpyTheme.red
     var maxMarker: Double?
@@ -690,7 +707,7 @@ struct SpyWebSlider: View {
                 tint: isMaxZone ? SpyTheme.amber : accent,
                 isEnabled: isEnabled,
                 animatesProgrammaticChanges: animatesProgrammaticChanges,
-                accessibilityLabel: accessibilityLabel,
+                accessibilityLabel: accessibilityLabel ?? sliderAccessibilityLabel,
                 accessibilityIdentifier: accessibilityIdentifier,
                 onEditingChanged: onEditingChanged,
                 onCommit: onCommit,
@@ -707,6 +724,15 @@ struct SpyWebSlider: View {
         return value > maxMarker
     }
 
+    private var sliderAccessibilityLabel: String {
+        switch language {
+        case .en: "Slider"
+        case .es: "Control deslizante"
+        case .ru: "Ползунок"
+        case .uk: "Повзунок"
+        }
+    }
+
 }
 
 private struct SpyNativeSlider: UIViewRepresentable {
@@ -717,7 +743,7 @@ private struct SpyNativeSlider: UIViewRepresentable {
     let tint: Color
     let isEnabled: Bool
     let animatesProgrammaticChanges: Bool
-    let accessibilityLabel: String?
+    let accessibilityLabel: String
     let accessibilityIdentifier: String?
     let onEditingChanged: ((Bool) -> Void)?
     let onCommit: ((Double) -> Void)?
@@ -753,7 +779,7 @@ private struct SpyNativeSlider: UIViewRepresentable {
         slider.maximumValue = Float(range.upperBound)
         slider.minimumTrackTintColor = UIColor(tint)
         slider.isEnabled = isEnabled
-        slider.accessibilityLabel = accessibilityLabel ?? "Slider"
+        slider.accessibilityLabel = accessibilityLabel
         slider.accessibilityValue = "\(Int(value.rounded()))"
         slider.accessibilityIdentifier = accessibilityIdentifier
 
@@ -1234,6 +1260,8 @@ private struct GlobalToastLayer: View {
 }
 
 private struct GlobalToastNoticeView: View {
+    @Environment(AppState.self) private var appState
+
     let notice: AppToastNotice
     let onDismiss: () -> Void
 
@@ -1300,7 +1328,16 @@ private struct GlobalToastNoticeView: View {
         .shadow(color: .black.opacity(0.46), radius: 8, y: 4)
         .accessibilityElement(children: .combine)
         .accessibilityLabel("\(notice.title), \(notice.detail)")
-        .accessibilityHint("Tap to dismiss")
+        .accessibilityHint(dismissAccessibilityHint)
+    }
+
+    private var dismissAccessibilityHint: String {
+        switch appState.language {
+        case .en: "Tap to dismiss"
+        case .es: "Toca para cerrar"
+        case .ru: "Нажмите, чтобы закрыть"
+        case .uk: "Натисніть, щоб закрити"
+        }
     }
 
     private var toastWidth: CGFloat {
@@ -1319,7 +1356,9 @@ private struct GlobalToastNoticeView: View {
 }
 
 struct SpyLoader: View {
-    var label: String = "SYNC"
+    @Environment(AppState.self) private var appState
+
+    var label: String? = nil
     var isAnimating: Bool = true
 
     var body: some View {
@@ -1341,7 +1380,7 @@ struct SpyLoader: View {
                 .frame(width: isAnimating ? 38 : 30, height: isAnimating ? 38 : 30)
                 .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.red.opacity(0.7), lineWidth: 1))
 
-            Text(label)
+            Text(resolvedLabel)
                 .font(.system(size: 8, weight: .black, design: .monospaced))
                 .tracking(0.14)
                 .foregroundStyle(.white.opacity(0.86))
@@ -1351,11 +1390,32 @@ struct SpyLoader: View {
         .frame(width: 96, height: 96)
         .shadow(color: SpyTheme.red.opacity(isAnimating ? 0.38 : 0.16), radius: isAnimating ? 22 : 10)
         .animation(.easeInOut(duration: 1.1), value: isAnimating)
-        .accessibilityLabel("SpyClash loading")
+        .accessibilityLabel(loaderAccessibilityLabel)
+    }
+
+    private var resolvedLabel: String {
+        if let label { return label }
+        return switch appState.language {
+        case .en: "SYNC"
+        case .es: "SINCRONIZAR"
+        case .ru: "СИНХРОНИЗАЦИЯ"
+        case .uk: "СИНХРОНІЗАЦІЯ"
+        }
+    }
+
+    private var loaderAccessibilityLabel: String {
+        switch appState.language {
+        case .en: "SpyClash loading"
+        case .es: "SpyClash cargando"
+        case .ru: "SpyClash загружается"
+        case .uk: "SpyClash завантажується"
+        }
     }
 }
 
 struct SpySpinner: View {
+    @Environment(AppState.self) private var appState
+
     var size: CGFloat = 22
     var accent: Color = SpyTheme.red
     @State private var isSpinning = false
@@ -1380,7 +1440,16 @@ struct SpySpinner: View {
                 isSpinning = true
             }
         }
-        .accessibilityLabel("Loading")
+        .accessibilityLabel(loadingAccessibilityLabel)
+    }
+
+    private var loadingAccessibilityLabel: String {
+        switch appState.language {
+        case .en: "Loading"
+        case .es: "Cargando"
+        case .ru: "Загрузка"
+        case .uk: "Завантаження"
+        }
     }
 }
 

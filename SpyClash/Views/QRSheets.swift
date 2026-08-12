@@ -25,13 +25,15 @@ struct RoomQRSheet: View {
             localized(
                 en: "Scan with any camera to join in a browser.",
                 ru: "Отсканируй любой камерой, чтобы войти через браузер.",
-                es: "Escanea con cualquier cámara para entrar desde el navegador."
+                es: "Escanea con cualquier cámara para entrar desde el navegador.",
+                uk: "Відскануй будь-якою камерою, щоб приєднатися через браузер."
             )
         case .ios:
             localized(
                 en: "Scan to open this room directly in SpyClash for iOS.",
                 ru: "Отсканируй, чтобы открыть комнату прямо в SpyClash для iOS.",
-                es: "Escanea para abrir la sala en SpyClash para iOS."
+                es: "Escanea para abrir la sala en SpyClash para iOS.",
+                uk: "Відскануй, щоб відкрити кімнату безпосередньо у SpyClash для iOS."
             )
         }
     }
@@ -56,7 +58,7 @@ struct RoomQRSheet: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 18) {
                     sheetHeader(
-                        eyebrow: localized(en: "// ROOM INVITE", ru: "// ПРИГЛАШЕНИЕ", es: "// INVITACIÓN"),
+                        eyebrow: localized(en: "// ROOM INVITE", ru: "// ПРИГЛАШЕНИЕ", es: "// INVITACIÓN", uk: "// ЗАПРОШЕННЯ ДО КІМНАТИ"),
                         title: room.code.uppercased(),
                         subtitle: inviteSubtitle
                     )
@@ -106,7 +108,7 @@ struct RoomQRSheet: View {
                         isRadarPresented = true
                     } label: {
                         Label(
-                            localized(en: "FIND BY RADAR", ru: "НАЙТИ ПО РАДАРУ", es: "BUSCAR POR RADAR"),
+                            localized(en: "FIND BY RADAR", ru: "НАЙТИ ПО РАДАРУ", es: "BUSCAR POR RADAR", uk: "ЗНАЙТИ ЧЕРЕЗ РАДАР"),
                             systemImage: "dot.radiowaves.left.and.right"
                         )
                     }
@@ -120,8 +122,8 @@ struct RoomQRSheet: View {
                     } label: {
                         Label(
                             copiedLink
-                                ? localized(en: "LINK COPIED", ru: "ССЫЛКА СКОПИРОВАНА", es: "ENLACE COPIADO")
-                                : localized(en: "COPY LINK", ru: "КОПИРОВАТЬ ССЫЛКУ", es: "COPIAR ENLACE"),
+                                ? localized(en: "LINK COPIED", ru: "ССЫЛКА СКОПИРОВАНА", es: "ENLACE COPIADO", uk: "ПОСИЛАННЯ СКОПІЙОВАНО")
+                                : localized(en: "COPY LINK", ru: "КОПИРОВАТЬ ССЫЛКУ", es: "COPIAR ENLACE", uk: "СКОПІЮВАТИ ПОСИЛАННЯ"),
                             systemImage: copiedLink ? "checkmark" : "link"
                         )
                     }
@@ -146,12 +148,14 @@ struct RoomQRSheet: View {
         }
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru:
             ru
         case .es:
             es
+        case .uk:
+            uk
         default:
             en
         }
@@ -221,6 +225,8 @@ struct RoomQRTargetToggle: View {
             "Цель QR"
         case .es:
             "Destino del QR"
+        case .uk:
+            "Ціль QR"
         default:
             "QR destination"
         }
@@ -236,6 +242,10 @@ struct RoomQRTargetToggle: View {
             "Cambiar a la app de iOS"
         case (.es, .ios):
             "Cambiar a la version web"
+        case (.uk, .web):
+            "Перемкнути на застосунок iOS"
+        case (.uk, .ios):
+            "Перемкнути на вебверсію"
         case (_, .web):
             "Switch to the iOS app"
         case (_, .ios):
@@ -245,6 +255,8 @@ struct RoomQRTargetToggle: View {
 }
 
 struct QRCodeImageView: View {
+    @Environment(AppState.self) private var appState
+
     let payload: String
     var cornerRadius: CGFloat = 10
     @State private var render: QRCodeRender?
@@ -258,7 +270,7 @@ struct QRCodeImageView: View {
                     .interpolation(.none)
                     .resizable()
                     .scaledToFit()
-                    .accessibilityLabel("SpyClash room QR")
+                    .accessibilityLabel(roomQRAccessibilityLabel)
             } else {
                 SpySpinner(size: 32, accent: SpyTheme.red)
             }
@@ -266,6 +278,15 @@ struct QRCodeImageView: View {
         .clipShape(RoundedRectangle(cornerRadius: cornerRadius, style: .continuous))
         .task(id: payload) {
             render = QRCodeRender(payload: payload, image: QRCodeFactory.image(from: payload))
+        }
+    }
+
+    private var roomQRAccessibilityLabel: String {
+        switch appState.language {
+        case .en: "SpyClash room QR code"
+        case .es: "Código QR de la sala de SpyClash"
+        case .ru: "QR-код комнаты SpyClash"
+        case .uk: "QR-код кімнати SpyClash"
         }
     }
 }
@@ -383,9 +404,10 @@ struct QRScannerSheet: View {
                 }
             } onError: {
                 let message = localized(
-                    en: "Camera could not start. Close the scanner and try again.",
-                    ru: "Не удалось запустить камеру. Закрой сканер и попробуй снова.",
-                    es: "No se pudo iniciar la camara. Cierra y vuelve a intentarlo."
+                en: "Camera could not start. Close the scanner and try again.",
+                ru: "Не удалось запустить камеру. Закрой сканер и попробуй снова.",
+                es: "No se pudo iniciar la camara. Cierra y vuelve a intentarlo.",
+                uk: "Не вдалося запустити камеру. Закрий сканер і спробуй ще раз."
                 )
                 statusText = nil
                 appState.showToast(message, kind: .error)
@@ -417,12 +439,14 @@ struct QRScannerSheet: View {
         .padding(22)
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru:
             ru
         case .es:
             es
+        case .uk:
+            uk
         default:
             en
         }

@@ -146,7 +146,22 @@ private enum AppleSignInError: LocalizedError {
     case unexpectedCredential
 
     var errorDescription: String? {
-        switch self {
+        if AppLanguage.stored == .uk {
+            return switch self {
+            case .requestAlreadyInProgress:
+                "Вхід з Apple уже виконується."
+            case .randomGenerationFailed:
+                "Не вдалося захистити запит на вхід з Apple."
+            case .stateMismatch:
+                "Не вдалося перевірити стан входу з Apple. Спробуй ще раз."
+            case .missingCredentialPayload:
+                "Apple не повернув повні облікові дані для входу."
+            case .unexpectedCredential:
+                "Apple повернув непідтримувані облікові дані для входу."
+            }
+        }
+
+        return switch self {
         case .requestAlreadyInProgress:
             "Apple sign-in is already in progress."
         case .randomGenerationFailed:

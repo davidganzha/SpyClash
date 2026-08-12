@@ -113,8 +113,10 @@ export function announcementCopy(body: Entity): Entity {
     body_ru: safeCopy(body.body_ru, 800, false),
     title_es: safeCopy(body.title_es, 80, false),
     body_es: safeCopy(body.body_es, 800, false),
+    title_uk: safeCopy(body.title_uk, 80, false),
+    body_uk: safeCopy(body.body_uk, 800, false),
   };
-  for (const locale of ["ru", "es"]) {
+  for (const locale of ["ru", "es", "uk"]) {
     if (Boolean(copy[`title_${locale}`]) !== Boolean(copy[`body_${locale}`])) {
       throw new NotificationContractError(
         `Both ${locale} title and body must be supplied together.`,
@@ -175,9 +177,9 @@ export function optionalActionDeepLink(value: unknown): string {
   }
 }
 
-export function language(value: unknown): "en" | "ru" | "es" {
+export function language(value: unknown): "en" | "ru" | "es" | "uk" {
   const locale = clean(value).toLowerCase().split(/[-_]/)[0];
-  return locale === "ru" || locale === "es" ? locale : "en";
+  return locale === "ru" || locale === "es" || locale === "uk" ? locale : "en";
 }
 
 export function localizedAnnouncement(

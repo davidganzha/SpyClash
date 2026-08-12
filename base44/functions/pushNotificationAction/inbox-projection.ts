@@ -19,7 +19,7 @@ export function isPersonalInboxEvent(event: PushEvent): boolean {
 function alertCopy(
   event: PushEvent,
   source: SourceContext,
-  locale: "en" | "ru" | "es",
+  locale: "en" | "ru" | "es" | "uk",
 ) {
   const payload = alertPayload(event, source, locale);
   const aps = payload.aps as Record<string, unknown>;
@@ -39,6 +39,7 @@ export function committedPersonalInboxPatch(
   const en = alertCopy(event, source, "en");
   const ru = alertCopy(event, source, "ru");
   const es = alertCopy(event, source, "es");
+  const uk = alertCopy(event, source, "uk");
   return {
     inbox_kind: clean(event.event_type),
     inbox_importance: "important",
@@ -48,6 +49,8 @@ export function committedPersonalInboxPatch(
     inbox_body_ru: ru.body,
     inbox_title_es: es.title,
     inbox_body_es: es.body,
+    inbox_title_uk: uk.title,
+    inbox_body_uk: uk.body,
     inbox_action_deep_link: en.deepLink.startsWith("spyclash://")
       ? en.deepLink
       : "spyclash://notifications",

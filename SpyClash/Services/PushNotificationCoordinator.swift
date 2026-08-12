@@ -68,6 +68,55 @@ final class PushNotificationCoordinator {
     static let roomInviteCategory = "SPYCLASH_ROOM_INVITE"
     static let gameUpdateCategory = "SPYCLASH_GAME_UPDATE"
     static let announcementCategory = "SPYCLASH_ANNOUNCEMENT"
+    static let openRoomAction = "OPEN_ROOM"
+
+    static func notificationCategories(
+        for language: AppLanguage
+    ) -> Set<UNNotificationCategory> {
+        let openGameActionTitle: String
+        switch language {
+        case .en: openGameActionTitle = "Open game"
+        case .es: openGameActionTitle = "Abrir partida"
+        case .ru: openGameActionTitle = "Открыть игру"
+        case .uk: openGameActionTitle = "Відкрити гру"
+        }
+
+        return [
+            UNNotificationCategory(
+                identifier: friendRequestCategory,
+                actions: [],
+                intentIdentifiers: []
+            ),
+            UNNotificationCategory(
+                identifier: roomInviteCategory,
+                actions: [
+                    UNNotificationAction(
+                        identifier: openRoomAction,
+                        title: openGameActionTitle,
+                        options: [.foreground]
+                    )
+                ],
+                intentIdentifiers: []
+            ),
+            UNNotificationCategory(
+                identifier: gameUpdateCategory,
+                actions: [],
+                intentIdentifiers: []
+            ),
+            UNNotificationCategory(
+                identifier: announcementCategory,
+                actions: [],
+                intentIdentifiers: []
+            )
+        ]
+    }
+
+    static func registerNotificationCategories(
+        for language: AppLanguage,
+        center: UNUserNotificationCenter = .current()
+    ) {
+        center.setNotificationCategories(notificationCategories(for: language))
+    }
 
     private static let installationIDKey = "spyclash.push.installation-id"
     private static let apnsTokenKey = "spyclash.push.apns-token"
@@ -146,9 +195,10 @@ final class PushNotificationCoordinator {
     }
 
     func updatePreferredLocale(_ locale: String) {
-        let normalized = locale.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-        guard !normalized.isEmpty, normalized != preferredLocale else { return }
-        preferredLocale = normalized
+        let language = AppLanguage.normalized(locale)
+        guard language.rawValue != preferredLocale else { return }
+        preferredLocale = language.rawValue
+        Self.registerNotificationCategories(for: language)
         lastRegistrationSignature = nil
         guard signedIn else { return }
         registrationTask?.cancel()
@@ -742,34 +792,10 @@ final class SpyClashAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
     ) -> Bool {
         let center = UNUserNotificationCenter.current()
         center.delegate = self
-        center.setNotificationCategories([
-            UNNotificationCategory(
-                identifier: PushNotificationCoordinator.friendRequestCategory,
-                actions: [],
-                intentIdentifiers: []
-            ),
-            UNNotificationCategory(
-                identifier: PushNotificationCoordinator.roomInviteCategory,
-                actions: [
-                    UNNotificationAction(
-                        identifier: "OPEN_ROOM",
-                        title: "Open game",
-                        options: [.foreground]
-                    )
-                ],
-                intentIdentifiers: []
-            ),
-            UNNotificationCategory(
-                identifier: PushNotificationCoordinator.gameUpdateCategory,
-                actions: [],
-                intentIdentifiers: []
-            ),
-            UNNotificationCategory(
-                identifier: PushNotificationCoordinator.announcementCategory,
-                actions: [],
-                intentIdentifiers: []
-            )
-        ])
+        PushNotificationCoordinator.registerNotificationCategories(
+            for: AppLanguage.stored,
+            center: center
+        )
         return true
     }
 

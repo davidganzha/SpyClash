@@ -65,6 +65,13 @@ Deno.test("game event fans out once per stable participant id", async () => {
     ),
     true,
   );
+  assertEquals(
+    store.records.every((record) =>
+      record.inbox_title_uk === "Гра почалася" &&
+      record.inbox_body_uk === "Ваша місія SpyClash уже почалася."
+    ),
+    true,
+  );
 });
 
 Deno.test("game start alert expires with the match instead of lingering offline", () => {

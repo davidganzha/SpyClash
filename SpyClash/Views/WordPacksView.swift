@@ -88,7 +88,7 @@ struct WordPacksView: View {
         SpySceneStage(accent: SpyTheme.red, motionDelay: 0, minHeight: 198, isSubtle: true) {
             VStack(alignment: .leading, spacing: 12) {
                 SpySceneKicker(
-                    title: localized(en: "WORD PACKS", ru: "ПАКИ СЛОВ", es: "PACKS DE PALABRAS"),
+                    title: localized(en: "WORD PACKS", ru: "ПАКИ СЛОВ", es: "PACKS DE PALABRAS", uk: "НАБОРИ СЛІВ"),
                     status: nil,
                     accent: SpyTheme.red
                 )
@@ -105,7 +105,8 @@ struct WordPacksView: View {
                         Text(localized(
                             en: "Build reusable intelligence for every mission.",
                             ru: "Собирай разведданные для каждой новой миссии.",
-                            es: "Crea inteligencia reutilizable para cada misión."
+                            es: "Crea inteligencia reutilizable para cada misión.",
+                            uk: "Збирай розвіддані для кожної нової місії."
                         ))
                         .font(.system(size: 11, weight: .semibold, design: .default))
                         .foregroundStyle(SpyTheme.muted)
@@ -130,13 +131,14 @@ struct WordPacksView: View {
                     .accessibilityLabel(localized(
                         en: "Refresh word packs",
                         ru: "Обновить паки слов",
-                        es: "Actualizar packs de palabras"
+                        es: "Actualizar packs de palabras",
+                        uk: "Оновити набори слів"
                     ))
                 }
 
                 HStack(spacing: 18) {
-                    packHeroMetric(String(format: "%02d", packs.count), label: localized(en: "PACKS", ru: "КОЛОДЫ", es: "PACKS"))
-                    packHeroMetric(String(format: "%03d", totalWordCount), label: localized(en: "WORDS", ru: "СЛОВА", es: "PALABRAS"))
+                    packHeroMetric(String(format: "%02d", packs.count), label: localized(en: "PACKS", ru: "КОЛОДЫ", es: "PACKS", uk: "НАБОРИ"))
+                    packHeroMetric(String(format: "%03d", totalWordCount), label: localized(en: "WORDS", ru: "СЛОВА", es: "PALABRAS", uk: "СЛОВА"))
 
                     VStack(alignment: .leading, spacing: 3) {
                         Text(featuredPackName.uppercased())
@@ -145,7 +147,7 @@ struct WordPacksView: View {
                             .foregroundStyle(packs.isEmpty ? SpyTheme.dim : SpyTheme.red)
                             .lineLimit(1)
                             .minimumScaleFactor(0.58)
-                        Text(localized(en: "LATEST INTEL", ru: "ПОСЛЕДНИЙ INTEL", es: "ÚLTIMO INTEL"))
+                        Text(localized(en: "LATEST INTEL", ru: "ПОСЛЕДНИЙ INTEL", es: "ÚLTIMO INTEL", uk: "ОСТАННІ ДАНІ"))
                             .font(.system(size: 7, weight: .black, design: .monospaced))
                             .tracking(0.06)
                             .foregroundStyle(SpyTheme.faint)
@@ -157,7 +159,7 @@ struct WordPacksView: View {
                     editor = .create
                 } label: {
                     SpyPrimaryCommandLabel(
-                        title: localized(en: "CREATE WORD PACK", ru: "СОЗДАТЬ КОЛОДУ", es: "CREAR PACK"),
+                        title: localized(en: "CREATE WORD PACK", ru: "СОЗДАТЬ КОЛОДУ", es: "CREAR PACK", uk: "СТВОРИТИ НАБІР СЛІВ"),
                         detail: nil,
                         systemImage: "plus"
                     )
@@ -172,7 +174,7 @@ struct WordPacksView: View {
     }
 
     private var featuredPackName: String {
-        packs.first?.name ?? localized(en: "NO PACKS", ru: "НЕТ КОЛОД", es: "SIN PACKS")
+        packs.first?.name ?? localized(en: "NO PACKS", ru: "НЕТ КОЛОД", es: "SIN PACKS", uk: "НЕМАЄ НАБОРІВ")
     }
 
     private func packHeroMetric(_ value: String, label: String) -> some View {
@@ -226,10 +228,11 @@ struct WordPacksView: View {
         }
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru: ru
         case .es: es
+        case .uk: uk
         default: en
         }
     }
@@ -266,7 +269,8 @@ struct WordPacksView: View {
                             accessibilityLabel: localized(
                                 en: "Edit \(pack.name)",
                                 ru: "Изменить \(pack.name)",
-                                es: "Editar \(pack.name)"
+                                es: "Editar \(pack.name)",
+                                uk: "Змінити \(pack.name)"
                             )
                         ) {
                             editor = .edit(pack)
@@ -277,7 +281,8 @@ struct WordPacksView: View {
                             accessibilityLabel: localized(
                                 en: "Delete \(pack.name)",
                                 ru: "Удалить \(pack.name)",
-                                es: "Eliminar \(pack.name)"
+                                es: "Eliminar \(pack.name)",
+                                uk: "Видалити \(pack.name)"
                             ),
                             accent: SpyTheme.red
                         ) {
@@ -537,7 +542,7 @@ private struct WordPackEditorSheet: View {
             }
             .buttonStyle(SpyWebPressStyle())
             .spyHitTarget()
-            .accessibilityLabel(localized(en: "Close editor", ru: "Закрыть редактор", es: "Cerrar editor"))
+            .accessibilityLabel(localized(en: "Close editor", ru: "Закрыть редактор", es: "Cerrar editor", uk: "Закрити редактор"))
         }
         .padding(.horizontal, 20)
         .padding(.top, 18)
@@ -586,7 +591,12 @@ private struct WordPackEditorSheet: View {
             }
 
             VStack(alignment: .leading, spacing: 8) {
-                SpyWebSlider(value: $aiWordCount, range: 5...100, step: 1)
+                SpyWebSlider(
+                    value: $aiWordCount,
+                    range: 5...100,
+                    language: appState.language,
+                    step: 1
+                )
                 HStack {
                     Text("5")
                     Spacer()
@@ -846,10 +856,11 @@ private struct WordPackEditorSheet: View {
         )
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru: ru
         case .es: es
+        case .uk: uk
         default: en
         }
     }
@@ -891,6 +902,8 @@ private struct WordPackEditorSheet: View {
             ["Clave", "Embajada", "Correo", "Boveda", "Puerto", "Senal", "Azotea", "Senuelo", "Pasaporte", "Informe", "Disfraz", "Control"]
         case .ru:
             ["Шифр", "Посольство", "Курьер", "Сейф", "Порт", "Сигнал", "Крыша", "Приманка", "Паспорт", "Брифинг", "Маскировка", "Пост"]
+        case .uk:
+            ["Шифр", "Посольство", "Курʼєр", "Сховище", "Порт", "Сигнал", "Дах", "Приманка", "Паспорт", "Брифінг", "Маскування", "Пост"]
         }
     }
 

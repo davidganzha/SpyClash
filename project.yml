@@ -7,7 +7,7 @@ fileGroups:
   - StoreKit
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 77
+    CURRENT_PROJECT_VERSION: 78
     MARKETING_VERSION: 1.0
     SWIFT_VERSION: 6.0
 packages:
@@ -45,15 +45,16 @@ targets:
           - es
           - ru
           - ru-UA
+          - uk
         CFBundleShortVersionString: "$(MARKETING_VERSION)"
         CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
         LSRequiresIPhoneOS: true
         ITSAppUsesNonExemptEncryption: false
         NSSupportsLiveActivities: true
         NSSupportsLiveActivitiesFrequentUpdates: true
-        NSCameraUsageDescription: "Scan room QR codes and stabilize nearby Radar positions. / Escanear QR y estabilizar posiciones del Radar. / Сканировать QR-коды и стабилизировать позиции на Радаре."
-        NSLocalNetworkUsageDescription: "Find nearby SpyClash players and deliver room invitations while the app is open. / Buscar jugadores cercanos y enviar invitaciones. / Находить игроков рядом и отправлять приглашения, пока приложение открыто."
-        NSNearbyInteractionUsageDescription: "Measure the distance to nearby SpyClash players so the radar can show precise proximity. / Medir la distancia a jugadores cercanos. / Измерять расстояние до игроков рядом для точного радара."
+        NSCameraUsageDescription: "Scan room QR codes and stabilize nearby Radar positions. / Escanear QR y estabilizar posiciones del Radar. / Сканировать QR-коды и стабилизировать позиции на Радаре. / Сканувати QR-коди й стабілізувати позиції гравців на Радарі."
+        NSLocalNetworkUsageDescription: "Find nearby SpyClash players and deliver room invitations while the app is open. / Buscar jugadores cercanos y enviar invitaciones. / Находить игроков рядом и отправлять приглашения, пока приложение открыто. / Знаходити гравців поблизу й надсилати запрошення, поки застосунок відкритий."
+        NSNearbyInteractionUsageDescription: "Measure the distance to nearby SpyClash players so the radar can show precise proximity. / Medir la distancia a jugadores cercanos. / Измерять расстояние до игроков рядом для точного радара. / Вимірювати відстань до гравців поблизу для точного Радара."
         NSBonjourServices:
           - _spyclash-radar._tcp
           - _spyclash-radar._udp

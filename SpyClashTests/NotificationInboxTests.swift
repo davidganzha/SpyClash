@@ -12,6 +12,31 @@ final class NotificationInboxModelTests: XCTestCase {
         XCTAssertFalse(PushNotificationCoordinator.shouldInvalidateInbox(for: "game_finished"))
     }
 
+    func testRoomNotificationActionIsRegeneratedForEverySelectedLanguage() throws {
+        let expectedTitles: [AppLanguage: String] = [
+            .en: "Open game",
+            .es: "Abrir partida",
+            .ru: "Открыть игру",
+            .uk: "Відкрити гру"
+        ]
+
+        for language in AppLanguage.allCases {
+            let categories = PushNotificationCoordinator.notificationCategories(for: language)
+            XCTAssertEqual(categories.count, 4)
+            let roomCategory = try XCTUnwrap(
+                categories.first {
+                    $0.identifier == PushNotificationCoordinator.roomInviteCategory
+                }
+            )
+            let openRoomAction = try XCTUnwrap(
+                roomCategory.actions.first {
+                    $0.identifier == PushNotificationCoordinator.openRoomAction
+                }
+            )
+            XCTAssertEqual(openRoomAction.title, expectedTitles[language])
+        }
+    }
+
     func testItemAndUnreadContractDecodeSnakeCase() throws {
         let data = Data(
             #"""

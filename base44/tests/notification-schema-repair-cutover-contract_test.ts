@@ -143,6 +143,8 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
       "inbox_body_ru",
       "inbox_title_es",
       "inbox_body_es",
+      "inbox_title_uk",
+      "inbox_body_uk",
       "inbox_action_deep_link",
       "inbox_published_at",
       "inbox_projection_version",
@@ -156,6 +158,8 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
   const user = schemas.find((schema) => schema.name === "User")!;
   const userProperties = user.properties as Record<string, unknown>;
   delete userProperties.radar_invite_policy;
+  const language = userProperties.language as Record<string, unknown>;
+  language.enum = (language.enum as string[]).filter((value) => value !== "uk");
   userProperties.role = {
     default: "user",
     enum: ["admin", "user"],

@@ -111,6 +111,7 @@ private struct SpyTeammateDisclosure: View {
         case .en: "SPY TEAM"
         case .es: "EQUIPO DE ESPIAS"
         case .ru: "КОМАНДА ШПИОНОВ"
+        case .uk: "КОМАНДА ШПИГУНІВ"
         }
     }
 }
@@ -2333,94 +2334,96 @@ private extension MissionRoleCardContent {
 private struct OnlineExperienceCopy {
     let language: AppLanguage
 
-    private func text(_ en: String, _ es: String, _ ru: String) -> String {
+    private func text(_ en: String, _ es: String, _ ru: String, _ uk: String) -> String {
         switch language {
         case .en: en
         case .es: es
         case .ru: ru
+        case .uk: uk
         }
     }
 
-    var spy: String { text("SPY", "ESPÍA", "ШПИОН") }
-    var amongYou: String { text("AMONG YOU", "ENTRE USTEDES", "СРЕДИ ВАС") }
-    var theme: String { text("THEME", "TEMA", "ТЕМА") }
-    var unknownTheme: String { text("UNKNOWN", "DESCONOCIDO", "НЕИЗВЕСТНО") }
-    var spectator: String { text("SPECTATOR", "ESPECTADOR", "НАБЛЮДАТЕЛЬ") }
-    var roleCard: String { text("Role card", "Tarjeta de rol", "Карточка роли") }
-    var revealed: String { text("Revealed", "Revelada", "Открыта") }
-    var concealed: String { text("Concealed", "Oculta", "Закрыта") }
-    var tapToReveal: String { text("TAP TO REVEAL", "TOCA PARA REVELAR", "НАЖМИ, ЧТОБЫ ОТКРЫТЬ") }
-    var tapToConceal: String { text("TAP TO CONCEAL", "TOCA PARA OCULTAR", "НАЖМИ, ЧТОБЫ СКРЫТЬ") }
+    var spy: String { text("SPY", "ESPÍA", "ШПИОН", "ШПИГУН") }
+    var amongYou: String { text("AMONG YOU", "ENTRE USTEDES", "СРЕДИ ВАС", "СЕРЕД ВАС") }
+    var theme: String { text("THEME", "TEMA", "ТЕМА", "ТЕМА") }
+    var unknownTheme: String { text("UNKNOWN", "DESCONOCIDO", "НЕИЗВЕСТНО", "НЕВІДОМО") }
+    var spectator: String { text("SPECTATOR", "ESPECTADOR", "НАБЛЮДАТЕЛЬ", "СПОСТЕРІГАЧ") }
+    var roleCard: String { text("Role card", "Tarjeta de rol", "Карточка роли", "Картка ролі") }
+    var revealed: String { text("Revealed", "Revelada", "Открыта", "Відкрита") }
+    var concealed: String { text("Concealed", "Oculta", "Закрыта", "Прихована") }
+    var tapToReveal: String { text("TAP TO REVEAL", "TOCA PARA REVELAR", "НАЖМИ, ЧТОБЫ ОТКРЫТЬ", "НАТИСНИ, ЩОБ ВІДКРИТИ") }
+    var tapToConceal: String { text("TAP TO CONCEAL", "TOCA PARA OCULTAR", "НАЖМИ, ЧТОБЫ СКРЫТЬ", "НАТИСНИ, ЩОБ ПРИХОВАТИ") }
 
-    var gameStarting: String { text("// THE GAME BEGINS", "// EL JUEGO EMPIEZA", "// ИГРА НАЧИНАЕТСЯ") }
+    var gameStarting: String { text("// THE GAME BEGINS", "// EL JUEGO EMPIEZA", "// ИГРА НАЧИНАЕТСЯ", "// ГРА ПОЧИНАЄТЬСЯ") }
     func spyTeam(spyCount: Int) -> String {
-        spyCount > 1 ? text("SPIES", "ESPÍAS", "ШПИОНЫ") : spy
+        spyCount > 1 ? text("SPIES", "ESPÍAS", "ШПИОНЫ", "ШПИГУНИ") : spy
     }
 
     func introAccessibility(spyCount: Int) -> String {
         spyCount > 1
-            ? text("The game begins. Cards are dealt. The spies are among you.", "El juego comienza. Las cartas están repartidas. Los espías están entre ustedes.", "Игра начинается. Карты розданы. Шпионы среди вас.")
-            : text("The game begins. Cards are dealt. The spy is among you.", "El juego comienza. Las cartas están repartidas. El espía está entre ustedes.", "Игра начинается. Карты розданы. Шпион среди вас.")
+            ? text("The game begins. Cards are dealt. The spies are among you.", "El juego comienza. Las cartas están repartidas. Los espías están entre ustedes.", "Игра начинается. Карты розданы. Шпионы среди вас.", "Гра починається. Карти роздано. Шпигуни серед вас.")
+            : text("The game begins. Cards are dealt. The spy is among you.", "El juego comienza. Las cartas están repartidas. El espía está entre ustedes.", "Игра начинается. Карты розданы. Шпион среди вас.", "Гра починається. Карти роздано. Шпигун серед вас.")
     }
 
-    var personalCard: String { text("// YOUR CARD", "// TU TARJETA", "// ТВОЯ КАРТА") }
-    var cardViewed: String { text("I VIEWED THE CARD", "HE VISTO LA TARJETA", "КАРТОЧКУ ПРОСМОТРЕЛ") }
-    var leaveGame: String { text("LEAVE GAME", "SALIR DEL JUEGO", "ВЫЙТИ ИЗ ИГРЫ") }
-    var closeGame: String { text("CLOSE GAME", "CERRAR JUEGO", "ЗАКРЫТЬ ИГРУ") }
-    var cancel: String { text("CANCEL", "CANCELAR", "ОТМЕНА") }
+    var personalCard: String { text("// YOUR CARD", "// TU TARJETA", "// ТВОЯ КАРТА", "// ТВОЯ КАРТКА") }
+    var cardViewed: String { text("I VIEWED THE CARD", "HE VISTO LA TARJETA", "КАРТОЧКУ ПРОСМОТРЕЛ", "КАРТКУ ПЕРЕГЛЯНУТО") }
+    var leaveGame: String { text("LEAVE GAME", "SALIR DEL JUEGO", "ВЫЙТИ ИЗ ИГРЫ", "ВИЙТИ З ГРИ") }
+    var closeGame: String { text("CLOSE GAME", "CERRAR JUEGO", "ЗАКРЫТЬ ИГРУ", "ЗАКРИТИ ГРУ") }
+    var cancel: String { text("CANCEL", "CANCELAR", "ОТМЕНА", "СКАСУВАТИ") }
     func waitingCount(_ ready: Int, _ total: Int) -> String {
-        text("WAITING FOR OTHERS", "ESPERANDO A LOS DEMÁS", "ЖДЁМ ОСТАЛЬНЫХ") + "  \(ready)/\(total)"
+        text("WAITING FOR OTHERS", "ESPERANDO A LOS DEMÁS", "ЖДЁМ ОСТАЛЬНЫХ", "ЧЕКАЄМО НА ІНШИХ") + "  \(ready)/\(total)"
     }
 
     func playingRound(_ round: Int) -> String {
-        text("// PLAYING", "// JUGANDO", "// ИГРА") + "  •  " + text("ROUND", "RONDA", "РАУНД") + " " + String(format: "%02d", round)
+        text("// PLAYING", "// JUGANDO", "// ИГРА", "// ГРА") + "  •  " + text("ROUND", "RONDA", "РАУНД", "РАУНД") + " " + String(format: "%02d", round)
     }
-    var pause: String { text("Pause timer", "Pausar temporizador", "Поставить таймер на паузу") }
-    var resume: String { text("Resume timer", "Reanudar temporizador", "Продолжить таймер") }
-    var exit: String { text("Exit", "Salir", "Выйти") }
-    var asks: String { text("ASKS", "PREGUNTA", "СПРАШИВАЕТ") }
-    var answers: String { text("ANSWERS", "RESPONDE", "ОТВЕЧАЕТ") }
-    var pending: String { text("PENDING", "PENDIENTE", "ОЖИДАНИЕ") }
-    var chooseSuspect: String { text("CHOOSE A SUSPECT", "ELIGE UN SOSPECHOSO", "ВЫБЕРИ ПОДОЗРЕВАЕМОГО") }
-    var voteIsFinal: String { text("THE VOTE IS FINAL", "EL VOTO ES DEFINITIVO", "ГОЛОС НЕЛЬЗЯ ИЗМЕНИТЬ") }
-    var voteRecorded: String { text("VOTE RECORDED", "VOTO REGISTRADO", "ГОЛОС ПРИНЯТ") }
-    var nextTurn: String { text("NEXT TURN", "SIGUIENTE TURNO", "СЛЕДУЮЩИЙ ХОД") }
-    var answerReceived: String { text("ANSWER RECEIVED", "RESPUESTA RECIBIDA", "ОТВЕТ ПОЛУЧЕН") }
-    var continueRound: String { text("CONTINUE ROUND", "CONTINUAR RONDA", "ПРОДОЛЖИТЬ РАУНД") }
-    var startAssociations: String { text("START ASSOCIATIONS", "INICIAR ASOCIACIONES", "НАЧАТЬ АССОЦИАЦИИ") }
-    var associationGiven: String { text("ASSOCIATION GIVEN", "ASOCIACIÓN DADA", "АССОЦИАЦИЯ НАЗВАНА") }
-    var nextQuestionIn: String { text("NEXT QUESTION IN", "SIGUIENTE PREGUNTA EN", "СЛЕДУЮЩИЙ ВОПРОС ЧЕРЕЗ") }
-    var waitForNextTurn: String { text("SYNCHRONIZING ALL OPERATIVES", "SINCRONIZANDO OPERATIVOS", "СИНХРОНИЗАЦИЯ ИГРОКОВ") }
-    var selectingSpeaker: String { text("SELECTING NEXT SPEAKER", "ELIGIENDO AL SIGUIENTE", "ВЫБИРАЕМ СЛЕДУЮЩЕГО") }
-    var currentSpeaker: String { text("CURRENT SPEAKER", "HABLA AHORA", "СЕЙЧАС ГОВОРИТ") }
-    var signalScanning: String { text("SIGNAL SCANNING", "ESCANEANDO SEÑAL", "СКАНИРУЕМ СИГНАЛ") }
-    var roundResults: String { text("ROUND RESULTS", "RESULTADOS DE RONDA", "ИТОГИ РАУНДА") }
+    var pause: String { text("Pause timer", "Pausar temporizador", "Поставить таймер на паузу", "Призупинити таймер") }
+    var resume: String { text("Resume timer", "Reanudar temporizador", "Продолжить таймер", "Продовжити таймер") }
+    var exit: String { text("Exit", "Salir", "Выйти", "Вийти") }
+    var asks: String { text("ASKS", "PREGUNTA", "СПРАШИВАЕТ", "ЗАПИТУЄ") }
+    var answers: String { text("ANSWERS", "RESPONDE", "ОТВЕЧАЕТ", "ВІДПОВІДАЄ") }
+    var pending: String { text("PENDING", "PENDIENTE", "ОЖИДАНИЕ", "ОЧІКУВАННЯ") }
+    var chooseSuspect: String { text("CHOOSE A SUSPECT", "ELIGE UN SOSPECHOSO", "ВЫБЕРИ ПОДОЗРЕВАЕМОГО", "ОБЕРИ ПІДОЗРЮВАНОГО") }
+    var voteIsFinal: String { text("THE VOTE IS FINAL", "EL VOTO ES DEFINITIVO", "ГОЛОС НЕЛЬЗЯ ИЗМЕНИТЬ", "ГОЛОС НЕ МОЖНА ЗМІНИТИ") }
+    var voteRecorded: String { text("VOTE RECORDED", "VOTO REGISTRADO", "ГОЛОС ПРИНЯТ", "ГОЛОС ПРИЙНЯТО") }
+    var nextTurn: String { text("NEXT TURN", "SIGUIENTE TURNO", "СЛЕДУЮЩИЙ ХОД", "НАСТУПНИЙ ХІД") }
+    var answerReceived: String { text("ANSWER RECEIVED", "RESPUESTA RECIBIDA", "ОТВЕТ ПОЛУЧЕН", "ВІДПОВІДЬ ОТРИМАНО") }
+    var continueRound: String { text("CONTINUE ROUND", "CONTINUAR RONDA", "ПРОДОЛЖИТЬ РАУНД", "ПРОДОВЖИТИ РАУНД") }
+    var startAssociations: String { text("START ASSOCIATIONS", "INICIAR ASOCIACIONES", "НАЧАТЬ АССОЦИАЦИИ", "ПОЧАТИ АСОЦІАЦІЇ") }
+    var associationGiven: String { text("ASSOCIATION GIVEN", "ASOCIACIÓN DADA", "АССОЦИАЦИЯ НАЗВАНА", "АСОЦІАЦІЮ НАЗВАНО") }
+    var nextQuestionIn: String { text("NEXT QUESTION IN", "SIGUIENTE PREGUNTA EN", "СЛЕДУЮЩИЙ ВОПРОС ЧЕРЕЗ", "НАСТУПНЕ ЗАПИТАННЯ ЧЕРЕЗ") }
+    var waitForNextTurn: String { text("SYNCHRONIZING ALL OPERATIVES", "SINCRONIZANDO OPERATIVOS", "СИНХРОНИЗАЦИЯ ИГРОКОВ", "СИНХРОНІЗАЦІЯ ГРАВЦІВ") }
+    var selectingSpeaker: String { text("SELECTING NEXT SPEAKER", "ELIGIENDO AL SIGUIENTE", "ВЫБИРАЕМ СЛЕДУЮЩЕГО", "ОБИРАЄМО НАСТУПНОГО") }
+    var currentSpeaker: String { text("CURRENT SPEAKER", "HABLA AHORA", "СЕЙЧАС ГОВОРИТ", "ЗАРАЗ ГОВОРИТЬ") }
+    var signalScanning: String { text("SIGNAL SCANNING", "ESCANEANDO SEÑAL", "СКАНИРУЕМ СИГНАЛ", "СКАНУЄМО СИГНАЛ") }
+    var roundResults: String { text("ROUND RESULTS", "RESULTADOS DE RONDA", "ИТОГИ РАУНДА", "ПІДСУМКИ РАУНДУ") }
     func associationProgress(_ spoken: Int, _ total: Int) -> String {
-        text("ASSOCIATIONS", "ASOCIACIONES", "АССОЦИАЦИИ") + "  \(spoken)/\(max(total, 0))"
+        text("ASSOCIATIONS", "ASOCIACIONES", "АССОЦИАЦИИ", "АСОЦІАЦІЇ") + "  \(spoken)/\(max(total, 0))"
     }
-    var guessWord: String { text("GUESS THE WORD", "ADIVINAR PALABRA", "УГАДАТЬ СЛОВО") }
+    var guessWord: String { text("GUESS THE WORD", "ADIVINAR PALABRA", "УГАДАТЬ СЛОВО", "ВГАДАТИ СЛОВО") }
     func spyWinsAtDeadline(spyCount: Int) -> String {
         spyCount > 1
-            ? text("TIME EXPIRED — SPIES WIN", "TIEMPO AGOTADO — GANAN LOS ESPÍAS", "ВРЕМЯ ВЫШЛО — ШПИОНЫ ПОБЕДИЛИ")
-            : text("TIME EXPIRED — SPY WINS", "TIEMPO AGOTADO — GANA EL ESPÍA", "ВРЕМЯ ВЫШЛО — ШПИОН ПОБЕДИЛ")
+            ? text("TIME EXPIRED — SPIES WIN", "TIEMPO AGOTADO — GANAN LOS ESPÍAS", "ВРЕМЯ ВЫШЛО — ШПИОНЫ ПОБЕДИЛИ", "ЧАС ВИЙШОВ — ШПИГУНИ ПЕРЕМОГЛИ")
+            : text("TIME EXPIRED — SPY WINS", "TIEMPO AGOTADO — GANA EL ESPÍA", "ВРЕМЯ ВЫШЛО — ШПИОН ПОБЕДИЛ", "ЧАС ВИЙШОВ — ШПИГУН ПЕРЕМІГ")
     }
-    var startVote: String { text("START VOTE", "INICIAR VOTACIÓN", "НАЧАТЬ ГОЛОСОВАНИЕ") }
+    var startVote: String { text("START VOTE", "INICIAR VOTACIÓN", "НАЧАТЬ ГОЛОСОВАНИЕ", "ПОЧАТИ ГОЛОСУВАННЯ") }
     func startVoteProgress(_ count: Int, _ threshold: Int) -> String {
         "\(startVote) \(min(max(count, 0), max(threshold, 0)))/\(max(threshold, 0))"
     }
-    var hideCard: String { text("HIDE CARD", "OCULTAR TARJETA", "СКРЫТЬ КАРТУ") }
-    var showCard: String { text("SHOW CARD", "MOSTRAR TARJETA", "ПОКАЗАТЬ КАРТУ") }
-    var vote: String { text("VOTE", "VOTAR", "ГОЛОСОВАНИЕ") }
+    var hideCard: String { text("HIDE CARD", "OCULTAR TARJETA", "СКРЫТЬ КАРТУ", "ПРИХОВАТИ КАРТКУ") }
+    var showCard: String { text("SHOW CARD", "MOSTRAR TARJETA", "ПОКАЗАТЬ КАРТУ", "ПОКАЗАТИ КАРТКУ") }
+    var vote: String { text("VOTE", "VOTAR", "ГОЛОСОВАНИЕ", "ГОЛОСУВАННЯ") }
     func voteProgress(_ count: Int, _ threshold: Int) -> String {
         "\(vote) \(min(max(count, 0), max(threshold, 0)))/\(max(threshold, 0))"
     }
-    var guess: String { text("GUESS", "ADIVINAR", "УГАДАТЬ") }
+    var guess: String { text("GUESS", "ADIVINAR", "УГАДАТЬ", "ВГАДАТИ") }
 
     func exclusionRequirement(required: Int, total: Int) -> String {
         text(
             "EXCLUSION REQUIRES \(required) OF \(total) VOTES FOR ONE SUSPECT",
             "LA EXCLUSIÓN REQUIERE \(required) DE \(total) VOTOS POR UN SOSPECHOSO",
-            "ДЛЯ ИСКЛЮЧЕНИЯ НУЖНО \(required) ИЗ \(total) ГОЛОСОВ ЗА ОДНОГО ИГРОКА"
+            "ДЛЯ ИСКЛЮЧЕНИЯ НУЖНО \(required) ИЗ \(total) ГОЛОСОВ ЗА ОДНОГО ИГРОКА",
+            "ДЛЯ ВИКЛЮЧЕННЯ ПОТРІБНО \(required) ІЗ \(total) ГОЛОСІВ ЗА ОДНОГО ГРАВЦЯ"
         )
     }
 
@@ -2428,13 +2431,14 @@ private struct OnlineExperienceCopy {
         text(
             "THE SERVER CANCELS THE VOTE WHEN THAT RESULT BECOMES IMPOSSIBLE",
             "EL SERVIDOR CANCELA LA VOTACIÓN CUANDO ESE RESULTADO YA ES IMPOSIBLE",
-            "СЕРВЕР ОТМЕНИТ ГОЛОСОВАНИЕ, КОГДА ТАКОЙ РЕЗУЛЬТАТ СТАНЕТ НЕВОЗМОЖЕН"
+            "СЕРВЕР ОТМЕНИТ ГОЛОСОВАНИЕ, КОГДА ТАКОЙ РЕЗУЛЬТАТ СТАНЕТ НЕВОЗМОЖЕН",
+            "СЕРВЕР СКАСУЄ ГОЛОСУВАННЯ, КОЛИ ТАКИЙ РЕЗУЛЬТАТ СТАНЕ НЕМОЖЛИВИМ"
         )
     }
 
-    var paused: String { text("PAUSED", "PAUSA", "ПАУЗА") }
-    var timerStopped: String { text("THE TIMER IS STOPPED", "EL TEMPORIZADOR ESTÁ DETENIDO", "ТАЙМЕР ОСТАНОВЛЕН") }
-    var resumeGame: String { text("RESUME GAME", "CONTINUAR JUEGO", "ПРОДОЛЖИТЬ ИГРУ") }
+    var paused: String { text("PAUSED", "PAUSA", "ПАУЗА", "ПАУЗА") }
+    var timerStopped: String { text("THE TIMER IS STOPPED", "EL TEMPORIZADOR ESTÁ DETENIDO", "ТАЙМЕР ОСТАНОВЛЕН", "ТАЙМЕР ЗУПИНЕНО") }
+    var resumeGame: String { text("RESUME GAME", "CONTINUAR JUEGO", "ПРОДОЛЖИТЬ ИГРУ", "ПРОДОВЖИТИ ГРУ") }
 }
 
 private extension OnlineRoundCommand {

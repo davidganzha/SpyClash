@@ -826,52 +826,53 @@ private struct NotificationGlobalComposerSheet: View {
 private struct NotificationInboxCopy {
     let language: AppLanguage
 
-    var eyebrow: String { text("// NOTIFICATIONS", "// УВЕДОМЛЕНИЯ", "// NOTIFICACIONES") }
-    var title: String { text("INBOX", "ВХОДЯЩИЕ", "BANDEJA") }
-    var subtitle: String { text("NETWORK SIGNALS AND PERSONAL OPERATIONS", "СИГНАЛЫ СЕТИ И ЛИЧНЫЕ ОПЕРАЦИИ", "SEÑALES DE RED Y OPERACIONES PERSONALES") }
-    var serverSource: String { text("SYNCED THROUGH SPYCLASH COMMAND", "СИНХРОНИЗИРОВАНО ЧЕРЕЗ SPYCLASH COMMAND", "SINCRONIZADO POR SPYCLASH COMMAND") }
-    var channel: String { text("CHANNEL", "КАНАЛ", "CANAL") }
-    var markAll: String { text("READ ALL", "ПРОЧИТАТЬ ВСЕ", "LEER TODO") }
-    var loading: String { text("SCANNING INBOX", "СКАНИРОВАНИЕ ВХОДЯЩИХ", "ESCANEANDO BANDEJA") }
-    var loadingDetail: String { text("Verifying the latest server state", "Проверяем последнее состояние сервера", "Verificando el estado del servidor") }
-    var loadingMore: String { text("LOADING MORE", "ЗАГРУЗКА", "CARGANDO") }
-    var loadMore: String { text("LOAD MORE", "ЗАГРУЗИТЬ ЕЩЕ", "CARGAR MÁS") }
-    var unavailable: String { text("CHANNEL UNAVAILABLE", "КАНАЛ НЕДОСТУПЕН", "CANAL NO DISPONIBLE") }
-    var retry: String { text("RETRY", "ПОВТОРИТЬ", "REINTENTAR") }
-    var emptyTitle: String { text("ALL CLEAR", "ВСЕ ЧИСТО", "TODO DESPEJADO") }
-    var important: String { text("IMPORTANT", "ВАЖНО", "IMPORTANTE") }
-    var open: String { text("OPEN", "ОТКРЫТЬ", "ABRIR") }
-    var compose: String { text("Publish global notification", "Опубликовать общее уведомление", "Publicar notificación global") }
-    var close: String { text("Close", "Закрыть", "Cerrar") }
-    var composerTitle: String { text("GLOBAL TRANSMISSION", "ОБЩАЯ ПЕРЕДАЧА", "TRANSMISIÓN GLOBAL") }
-    var composerDetail: String { text("Admin-only message for every operative", "Сообщение администратора для всех игроков", "Mensaje de administración para todos") }
-    var composerTitleField: String { text("TITLE", "ЗАГОЛОВОК", "TÍTULO") }
-    var composerTitlePlaceholder: String { text("Operation update", "Обновление операции", "Actualización de operación") }
-    var composerBody: String { text("MESSAGE", "СООБЩЕНИЕ", "MENSAJE") }
-    var composerBodyPlaceholder: String { text("Enter the transmission text…", "Введите текст передачи…", "Introduce el mensaje…") }
-    var deepLink: String { text("OPTIONAL DEEP LINK", "ССЫЛКА В ПРИЛОЖЕНИИ — НЕОБЯЗАТЕЛЬНО", "ENLACE OPCIONAL") }
-    var deliveryMode: String { text("DELIVERY MODE", "РЕЖИМ ДОСТАВКИ", "MODO DE ENTREGA") }
-    var publish: String { text("PUBLISH TRANSMISSION", "ОПУБЛИКОВАТЬ", "PUBLICAR TRANSMISIÓN") }
-    var publishing: String { text("PUBLISHING", "ПУБЛИКАЦИЯ", "PUBLICANDO") }
-    var cancel: String { text("CANCEL", "ОТМЕНА", "CANCELAR") }
-    var importantConfirmationTitle: String { text("SEND IMPORTANT ALERT?", "ОТПРАВИТЬ ВАЖНОЕ УВЕДОМЛЕНИЕ?", "¿ENVIAR ALERTA IMPORTANTE?") }
-    var importantConfirmationAction: String { text("SEND TO ALL OPERATIVES", "ОТПРАВИТЬ ВСЕМ ИГРОКАМ", "ENVIAR A TODOS") }
+    var eyebrow: String { text("// NOTIFICATIONS", "// УВЕДОМЛЕНИЯ", "// NOTIFICACIONES", "// СПОВІЩЕННЯ") }
+    var title: String { text("INBOX", "ВХОДЯЩИЕ", "BANDEJA", "ВХІДНІ") }
+    var subtitle: String { text("NETWORK SIGNALS AND PERSONAL OPERATIONS", "СИГНАЛЫ СЕТИ И ЛИЧНЫЕ ОПЕРАЦИИ", "SEÑALES DE RED Y OPERACIONES PERSONALES", "СИГНАЛИ МЕРЕЖІ ТА ОСОБИСТІ ОПЕРАЦІЇ") }
+    var serverSource: String { text("SYNCED THROUGH SPYCLASH COMMAND", "СИНХРОНИЗИРОВАНО ЧЕРЕЗ SPYCLASH COMMAND", "SINCRONIZADO POR SPYCLASH COMMAND", "СИНХРОНІЗОВАНО ЧЕРЕЗ SPYCLASH COMMAND") }
+    var channel: String { text("CHANNEL", "КАНАЛ", "CANAL", "КАНАЛ") }
+    var markAll: String { text("READ ALL", "ПРОЧИТАТЬ ВСЕ", "LEER TODO", "ПРОЧИТАТИ ВСЕ") }
+    var loading: String { text("SCANNING INBOX", "СКАНИРОВАНИЕ ВХОДЯЩИХ", "ESCANEANDO BANDEJA", "СКАНУВАННЯ ВХІДНИХ") }
+    var loadingDetail: String { text("Verifying the latest server state", "Проверяем последнее состояние сервера", "Verificando el estado del servidor", "Перевіряємо останній стан сервера") }
+    var loadingMore: String { text("LOADING MORE", "ЗАГРУЗКА", "CARGANDO", "ЗАВАНТАЖЕННЯ") }
+    var loadMore: String { text("LOAD MORE", "ЗАГРУЗИТЬ ЕЩЕ", "CARGAR MÁS", "ЗАВАНТАЖИТИ ЩЕ") }
+    var unavailable: String { text("CHANNEL UNAVAILABLE", "КАНАЛ НЕДОСТУПЕН", "CANAL NO DISPONIBLE", "КАНАЛ НЕДОСТУПНИЙ") }
+    var retry: String { text("RETRY", "ПОВТОРИТЬ", "REINTENTAR", "ПОВТОРИТИ") }
+    var emptyTitle: String { text("ALL CLEAR", "ВСЕ ЧИСТО", "TODO DESPEJADO", "УСЕ ЧИСТО") }
+    var important: String { text("IMPORTANT", "ВАЖНО", "IMPORTANTE", "ВАЖЛИВО") }
+    var open: String { text("OPEN", "ОТКРЫТЬ", "ABRIR", "ВІДКРИТИ") }
+    var compose: String { text("Publish global notification", "Опубликовать общее уведомление", "Publicar notificación global", "Опублікувати загальне сповіщення") }
+    var close: String { text("Close", "Закрыть", "Cerrar", "Закрити") }
+    var composerTitle: String { text("GLOBAL TRANSMISSION", "ОБЩАЯ ПЕРЕДАЧА", "TRANSMISIÓN GLOBAL", "ЗАГАЛЬНА ПЕРЕДАЧА") }
+    var composerDetail: String { text("Admin-only message for every operative", "Сообщение администратора для всех игроков", "Mensaje de administración para todos", "Повідомлення адміністратора для всіх гравців") }
+    var composerTitleField: String { text("TITLE", "ЗАГОЛОВОК", "TÍTULO", "ЗАГОЛОВОК") }
+    var composerTitlePlaceholder: String { text("Operation update", "Обновление операции", "Actualización de operación", "Оновлення операції") }
+    var composerBody: String { text("MESSAGE", "СООБЩЕНИЕ", "MENSAJE", "ПОВІДОМЛЕННЯ") }
+    var composerBodyPlaceholder: String { text("Enter the transmission text…", "Введите текст передачи…", "Introduce el mensaje…", "Введіть текст повідомлення…") }
+    var deepLink: String { text("OPTIONAL DEEP LINK", "ССЫЛКА В ПРИЛОЖЕНИИ — НЕОБЯЗАТЕЛЬНО", "ENLACE OPCIONAL", "ПОСИЛАННЯ У ЗАСТОСУНКУ — НЕОБОВʼЯЗКОВО") }
+    var deliveryMode: String { text("DELIVERY MODE", "РЕЖИМ ДОСТАВКИ", "MODO DE ENTREGA", "РЕЖИМ ДОСТАВЛЕННЯ") }
+    var publish: String { text("PUBLISH TRANSMISSION", "ОПУБЛИКОВАТЬ", "PUBLICAR TRANSMISIÓN", "ОПУБЛІКУВАТИ") }
+    var publishing: String { text("PUBLISHING", "ПУБЛИКАЦИЯ", "PUBLICANDO", "ПУБЛІКАЦІЯ") }
+    var cancel: String { text("CANCEL", "ОТМЕНА", "CANCELAR", "СКАСУВАТИ") }
+    var importantConfirmationTitle: String { text("SEND IMPORTANT ALERT?", "ОТПРАВИТЬ ВАЖНОЕ УВЕДОМЛЕНИЕ?", "¿ENVIAR ALERTA IMPORTANTE?", "НАДІСЛАТИ ВАЖЛИВЕ СПОВІЩЕННЯ?") }
+    var importantConfirmationAction: String { text("SEND TO ALL OPERATIVES", "ОТПРАВИТЬ ВСЕМ ИГРОКАМ", "ENVIAR A TODOS", "НАДІСЛАТИ ВСІМ ГРАВЦЯМ") }
     var importantConfirmationDetail: String { text(
         "This transmission may display a system notification and ping every eligible operative.",
         "Эта передача может показать системное уведомление и оповестить каждого доступного игрока.",
-        "Esta transmisión puede mostrar una notificación del sistema y avisar a todos los jugadores disponibles."
+        "Esta transmisión puede mostrar una notificación del sistema y avisar a todos los jugadores disponibles.",
+        "Це повідомлення може показати системне сповіщення та сповістити всіх доступних гравців."
     ) }
 
     func status(unread: Int) -> String {
         unread == 0
-            ? text("CLEAR", "ЧИСТО", "DESPEJADO")
-            : text("\(unread) UNREAD", "НЕПРОЧИТАНО: \(unread)", "\(unread) SIN LEER")
+            ? text("CLEAR", "ЧИСТО", "DESPEJADO", "ЧИСТО")
+            : text("\(unread) UNREAD", "НЕПРОЧИТАНО: \(unread)", "\(unread) SIN LEER", "НЕПРОЧИТАНО: \(unread)")
     }
 
     func scopeTitle(_ scope: NotificationInboxScope) -> String {
         switch scope {
-        case .global: text("GLOBAL", "ОБЩИЕ", "GLOBAL")
-        case .personal: text("PERSONAL", "ЛИЧНЫЕ", "PERSONAL")
+        case .global: text("GLOBAL", "ОБЩИЕ", "GLOBAL", "ЗАГАЛЬНІ")
+        case .personal: text("PERSONAL", "ЛИЧНЫЕ", "PERSONAL", "ОСОБИСТІ")
         }
     }
 
@@ -879,38 +880,40 @@ private struct NotificationInboxCopy {
         text(
             "\(scopeTitle(scope)), \(unread) unread",
             "\(scopeTitle(scope)), непрочитано: \(unread)",
-            "\(scopeTitle(scope)), \(unread) sin leer"
+            "\(scopeTitle(scope)), \(unread) sin leer",
+            "\(scopeTitle(scope)), непрочитано: \(unread)"
         )
     }
 
     func emptyDetail(_ scope: NotificationInboxScope) -> String {
         switch scope {
         case .global:
-            text("No command broadcasts yet.", "Новых общих сообщений пока нет.", "Todavía no hay mensajes globales.")
+            text("No command broadcasts yet.", "Новых общих сообщений пока нет.", "Todavía no hay mensajes globales.", "Нових загальних повідомлень поки немає.")
         case .personal:
-            text("No personal operations are waiting.", "Новых личных операций пока нет.", "No hay operaciones personales pendientes.")
+            text("No personal operations are waiting.", "Новых личных операций пока нет.", "No hay operaciones personales pendientes.", "Нових особистих операцій поки немає.")
         }
     }
 
     func importanceTitle(_ importance: NotificationInboxImportance) -> String {
         switch importance {
-        case .quiet: text("QUIET", "ТИХОЕ", "SILENCIOSA")
-        case .important: text("IMPORTANT", "ВАЖНОЕ", "IMPORTANTE")
+        case .quiet: text("QUIET", "ТИХОЕ", "SILENCIOSA", "ТИХЕ")
+        case .important: text("IMPORTANT", "ВАЖНОЕ", "IMPORTANTE", "ВАЖЛИВЕ")
         }
     }
 
     func itemAccessibility(_ item: NotificationInboxItem) -> String {
         let state = item.isUnread
-            ? text("unread", "не прочитано", "sin leer")
-            : text("read", "прочитано", "leído")
+            ? text("unread", "не прочитано", "sin leer", "не прочитано")
+            : text("read", "прочитано", "leído", "прочитано")
         return "\(item.title), \(state). \(item.body)"
     }
 
-    private func text(_ en: String, _ ru: String, _ es: String) -> String {
+    private func text(_ en: String, _ ru: String, _ es: String, _ uk: String) -> String {
         switch language {
         case .en: en
         case .ru: ru
         case .es: es
+        case .uk: uk
         }
     }
 }
@@ -921,6 +924,7 @@ private extension AppLanguage {
         case .en: "en_US"
         case .ru: "ru_RU"
         case .es: "es_ES"
+        case .uk: "uk_UA"
         }
     }
 }

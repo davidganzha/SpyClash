@@ -29,7 +29,8 @@ struct ProfileView: View {
         return localized(
             en: "This permanently deletes your profile, game history, custom packs, and social data. Limited security, moderation, and legacy billing records may be retained where legally required. Deleting your account does not cancel an existing Apple or Stripe subscription; manage it with that provider.",
             ru: "Это навсегда удалит профиль, историю игр, пользовательские паки и социальные данные. Ограниченные записи безопасности, модерации и прежних платежей могут храниться по закону. Удаление аккаунта не отменяет действующую подписку Apple или Stripe — управляйте ею у провайдера.",
-            es: "Esto elimina permanentemente tu perfil, historial, paquetes personalizados y datos sociales. Algunos registros de seguridad, moderacion y facturacion anterior pueden conservarse por ley. Eliminar la cuenta no cancela una suscripcion existente de Apple o Stripe; gestionela con el proveedor."
+            es: "Esto elimina permanentemente tu perfil, historial, paquetes personalizados y datos sociales. Algunos registros de seguridad, moderacion y facturacion anterior pueden conservarse por ley. Eliminar la cuenta no cancela una suscripcion existente de Apple o Stripe; gestionela con el proveedor.",
+            uk: "Це назавжди видалить ваш профіль, історію ігор, власні набори та соціальні дані. Обмежені записи безпеки, модерації й попередніх платежів можуть зберігатися згідно із законом. Видалення облікового запису не скасовує чинну підписку Apple або Stripe — керуйте нею у відповідного постачальника."
         )
     }
 
@@ -37,7 +38,8 @@ struct ProfileView: View {
         localized(
             en: "Your SpyClash account was deleted. If you previously used Sign in with Apple, also open your Apple Account settings and remove SpyClash from Sign in with Apple.",
             ru: "Аккаунт SpyClash удалён. Если вы раньше входили через Apple, откройте настройки Аккаунта Apple и удалите SpyClash из раздела «Вход с Apple».",
-            es: "Tu cuenta de SpyClash se eliminó. Si antes usaste Iniciar sesión con Apple, abre los ajustes de tu Cuenta de Apple y elimina SpyClash de Iniciar sesión con Apple."
+            es: "Tu cuenta de SpyClash se eliminó. Si antes usaste Iniciar sesión con Apple, abre los ajustes de tu Cuenta de Apple y elimina SpyClash de Iniciar sesión con Apple.",
+            uk: "Ваш обліковий запис SpyClash видалено. Якщо ви раніше використовували «Вхід з Apple», також відкрийте налаштування облікового запису Apple і видаліть SpyClash із розділу «Вхід з Apple»."
         )
     }
 
@@ -164,7 +166,7 @@ struct ProfileView: View {
                                 .foregroundStyle(.white)
                                 .spyFitted(lines: 1, scale: 0.62)
 
-                            Text("SPYID • \(appState.user?.spyID ?? "UNASSIGNED")")
+                            Text("SPYID • \(appState.user?.spyID ?? localized(en: "UNASSIGNED", ru: "НЕ НАЗНАЧЕН", es: "SIN ASIGNAR", uk: "НЕ ПРИЗНАЧЕНО"))")
                                 .font(.system(size: 8, weight: .semibold, design: .monospaced))
                                 .tracking(0.08)
                                 .foregroundStyle(Color.white.opacity(0.38))
@@ -310,11 +312,27 @@ struct ProfileView: View {
     private var profileCallSign: String {
         displayName.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank
             ?? appState.user?.callSign.nilIfBlank
-            ?? "OPERATIVE"
+            ?? localized(
+                en: "OPERATIVE",
+                ru: "ОПЕРАТИВНИК",
+                es: "OPERATIVO",
+                uk: "ОПЕРАТИВНИК"
+            )
     }
 
     private var spyCardAccessibilityLabel: String {
-        "SPYCARD, \(profileCallSign), SPYID \(appState.user?.spyID ?? "unassigned"), \(copy.games) \(gamesCount), \(copy.rating) \(rating), \(copy.rate) \(winRate) percent"
+        let spyID = appState.user?.spyID ?? localized(
+            en: "unassigned",
+            ru: "не назначен",
+            es: "sin asignar",
+            uk: "не призначено"
+        )
+        return localized(
+            en: "SPYCARD, \(profileCallSign), SPYID \(spyID), \(copy.games) \(gamesCount), \(copy.rating) \(rating), \(copy.rate) \(winRate) percent",
+            ru: "SPYCARD, \(profileCallSign), SPYID \(spyID), игр: \(gamesCount), рейтинг: \(rating), процент побед: \(winRate)",
+            es: "SPYCARD, \(profileCallSign), SPYID \(spyID), partidas: \(gamesCount), puntuación: \(rating), porcentaje de victorias: \(winRate)",
+            uk: "SPYCARD, \(profileCallSign), SPYID \(spyID), ігор: \(gamesCount), рейтинг: \(rating), відсоток перемог: \(winRate)"
+        )
     }
 
     private var spyCardAccentColor: Color {
@@ -351,7 +369,7 @@ struct ProfileView: View {
         SpyPanel(motionDelay: 0.25) {
             VStack(alignment: .leading, spacing: 14) {
                 SpySceneKicker(
-                    title: localized(en: "IDENTITY SETTINGS", ru: "НАСТРОЙКИ ЛИЧНОСТИ", es: "AJUSTES DE IDENTIDAD"),
+                    title: localized(en: "IDENTITY SETTINGS", ru: "НАСТРОЙКИ ЛИЧНОСТИ", es: "AJUSTES DE IDENTIDAD", uk: "НАЛАШТУВАННЯ ПРОФІЛЮ"),
                     status: nil,
                     accent: SpyTheme.muted
                 )
@@ -363,7 +381,7 @@ struct ProfileView: View {
                     .spyKicker(lines: 2)
 
                 avatarCategory(
-                    title: localized(en: "OPERATIVE IDENTITIES", ru: "ОБРАЗЫ ОПЕРАТИВНИКА", es: "IDENTIDADES OPERATIVAS"),
+                    title: localized(en: "OPERATIVE IDENTITIES", ru: "ОБРАЗЫ ОПЕРАТИВНИКА", es: "IDENTIDADES OPERATIVAS", uk: "ОБРАЗИ ОПЕРАТИВНИКА"),
                     avatars: availableAvatars
                 )
 
@@ -460,7 +478,7 @@ struct ProfileView: View {
                 legalButton(copy.privacy, kind: .privacy, icon: "hand.raised.fill")
                 legalButton(copy.terms, kind: .terms, icon: "doc.text.fill")
                 legalButton(
-                    localized(en: "THIRD-PARTY LICENSES", ru: "СТОРОННИЕ ЛИЦЕНЗИИ", es: "LICENCIAS DE TERCEROS"),
+                    localized(en: "THIRD-PARTY LICENSES", ru: "СТОРОННИЕ ЛИЦЕНЗИИ", es: "LICENCIAS DE TERCEROS", uk: "ЛІЦЕНЗІЇ ТРЕТІХ СТОРІН"),
                     kind: .acknowledgements,
                     icon: "checkmark.seal.fill"
                 )
@@ -571,20 +589,20 @@ struct ProfileView: View {
                 .overlay(Rectangle().stroke(isSelected ? SpyTheme.red : SpyTheme.stroke, lineWidth: 1))
         }
         .buttonStyle(SpyWebPressStyle(pressedScale: 0.90))
-        .accessibilityLabel(localized(en: "Avatar \(item)", ru: "Аватар \(item)", es: "Avatar \(item)"))
+        .accessibilityLabel(localized(en: "Avatar \(item)", ru: "Аватар \(item)", es: "Avatar \(item)", uk: "Аватар \(item)"))
         .spyWebEntrance(delay: Double(index) * 0.04, duration: 0.35, y: 0, scale: 0.8)
     }
 
     private var spyCardCustomization: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(localized(en: "// SPYCARD STUDIO", ru: "// SPYCARD СТУДИЯ", es: "// ESTUDIO SPYCARD"))
+            Text(localized(en: "// SPYCARD STUDIO", ru: "// SPYCARD СТУДИЯ", es: "// ESTUDIO SPYCARD", uk: "// СТУДІЯ SPYCARD"))
                 .font(SpyTheme.micro)
                 .tracking(0.10)
                 .foregroundStyle(SpyTheme.dim)
                 .spyKicker(lines: 2)
 
             VStack(spacing: 7) {
-                customizationRow(label: localized(en: "SKIN", ru: "ОБШИВКА", es: "ESTILO")) {
+                customizationRow(label: localized(en: "SKIN", ru: "ОБШИВКА", es: "ESTILO", uk: "ОФОРМЛЕННЯ")) {
                     HStack(spacing: 6) {
                         ForEach(SpyCardThemeID.allCases) { item in
                             themeSwatch(item)
@@ -592,7 +610,7 @@ struct ProfileView: View {
                     }
                 }
 
-                customizationRow(label: localized(en: "SIGNAL", ru: "СВЕТ", es: "SENAL")) {
+                customizationRow(label: localized(en: "SIGNAL", ru: "СВЕТ", es: "SENAL", uk: "СИГНАЛ")) {
                     HStack(spacing: 6) {
                         ForEach(SpyCardAccentID.allCases) { item in
                             accentSwatch(item)
@@ -600,7 +618,7 @@ struct ProfileView: View {
                     }
                 }
 
-                customizationRow(label: localized(en: "CLEARANCE", ru: "ДОПУСК", es: "ACCESO")) {
+                customizationRow(label: localized(en: "CLEARANCE", ru: "ДОПУСК", es: "ACCESO", uk: "ДОПУСК")) {
                     HStack(spacing: 6) {
                         ForEach(SpyCardBadgeID.allCases) { item in
                             badgeSwatch(item)
@@ -767,26 +785,26 @@ struct ProfileView: View {
 
     private func cardThemeTitle(_ item: SpyCardThemeID) -> String {
         switch item {
-        case .field: localized(en: "FIELD", ru: "ПОЛЕ", es: "CAMPO")
-        case .blacksite: localized(en: "BLACKSITE", ru: "БЛЭКСАЙТ", es: "BLACKSITE")
-        case .dossier: localized(en: "DOSSIER", ru: "ДОСЬЕ", es: "DOSSIER")
+        case .field: localized(en: "FIELD", ru: "ПОЛЕ", es: "CAMPO", uk: "ПОЛЕ")
+        case .blacksite: localized(en: "BLACKSITE", ru: "БЛЭКСАЙТ", es: "BLACKSITE", uk: "СЕКРЕТНИЙ ОБʼЄКТ")
+        case .dossier: localized(en: "DOSSIER", ru: "ДОСЬЕ", es: "DOSSIER", uk: "ДОСЬЄ")
         }
     }
 
     private func cardAccentTitle(_ item: SpyCardAccentID) -> String {
         switch item {
-        case .signalRed: localized(en: "RED", ru: "КРАСНЫЙ", es: "ROJO")
-        case .clearanceAmber: localized(en: "AMBER", ru: "ЯНТАРЬ", es: "AMBAR")
-        case .verifiedGreen: localized(en: "GREEN", ru: "ЗЕЛЕНЫЙ", es: "VERDE")
+        case .signalRed: localized(en: "RED", ru: "КРАСНЫЙ", es: "ROJO", uk: "ЧЕРВОНИЙ")
+        case .clearanceAmber: localized(en: "AMBER", ru: "ЯНТАРЬ", es: "AMBAR", uk: "БУРШТИНОВИЙ")
+        case .verifiedGreen: localized(en: "GREEN", ru: "ЗЕЛЕНЫЙ", es: "VERDE", uk: "ЗЕЛЕНИЙ")
         }
     }
 
     private func cardBadgeTitle(_ item: SpyCardBadgeID) -> String {
         switch item {
-        case .operative: localized(en: "OPERATIVE", ru: "ОПЕРАТИВ", es: "OPERATIVO")
-        case .ghost: localized(en: "GHOST", ru: "ПРИЗРАК", es: "FANTASMA")
-        case .analyst: localized(en: "ANALYST", ru: "АНАЛИТИК", es: "ANALISTA")
-        case .handler: localized(en: "HANDLER", ru: "КУРАТОР", es: "CONTROL")
+        case .operative: localized(en: "OPERATIVE", ru: "ОПЕРАТИВ", es: "OPERATIVO", uk: "ОПЕРАТИВНИК")
+        case .ghost: localized(en: "GHOST", ru: "ПРИЗРАК", es: "FANTASMA", uk: "ПРИВИД")
+        case .analyst: localized(en: "ANALYST", ru: "АНАЛИТИК", es: "ANALISTA", uk: "АНАЛІТИК")
+        case .handler: localized(en: "HANDLER", ru: "КУРАТОР", es: "CONTROL", uk: "КУРАТОР")
         }
     }
 
@@ -879,10 +897,11 @@ struct ProfileView: View {
         }
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru: ru
         case .es: es
+        case .uk: uk
         default: en
         }
     }

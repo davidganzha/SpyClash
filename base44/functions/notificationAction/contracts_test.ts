@@ -3,6 +3,8 @@ import {
   announcementCopy,
   decodeCursor,
   encodeCursor,
+  language,
+  localizedAnnouncement,
   optionalActionDeepLink,
   requireRequestID,
 } from "./contracts.ts";
@@ -19,6 +21,8 @@ Deno.test("announcement input is bounded plain text with complete translations",
     body_ru: "",
     title_es: "",
     body_es: "",
+    title_uk: "",
+    body_uk: "",
   });
   assertThrows(() =>
     announcementCopy({
@@ -32,6 +36,27 @@ Deno.test("announcement input is bounded plain text with complete translations",
       body_en: "Body",
       title_ru: "Заголовок",
     })
+  );
+  assertThrows(() =>
+    announcementCopy({
+      title_en: "Title",
+      body_en: "Body",
+      title_uk: "Заголовок",
+    })
+  );
+});
+
+Deno.test("Ukrainian locale is normalized and localized independently", () => {
+  assertEquals(language("uk-UA"), "uk");
+  assertEquals(language("uk_UA"), "uk");
+  assertEquals(
+    localizedAnnouncement({
+      title_en: "Title",
+      body_en: "Body",
+      title_uk: "Заголовок",
+      body_uk: "Текст",
+    }, "uk-UA"),
+    { title: "Заголовок", body: "Текст" },
   );
 });
 

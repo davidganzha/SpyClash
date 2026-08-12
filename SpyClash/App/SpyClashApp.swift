@@ -150,6 +150,7 @@ private struct RootView: View {
         switch appState.language {
         case .ru: "ДОСТУП APPLE"
         case .es: "ACCESO DE APPLE"
+        case .uk: "ДОСТУП APPLE"
         default: "APPLE ACCESS"
         }
     }
@@ -158,6 +159,7 @@ private struct RootView: View {
         switch appState.language {
         case .ru: "ГОТОВО"
         case .es: "LISTO"
+        case .uk: "ГОТОВО"
         default: "DONE"
         }
     }
@@ -262,6 +264,7 @@ private struct FullAccessUnlockOverlay: View {
         case .en: "ACCESS SYNCHRONIZED"
         case .ru: "ДОСТУП СИНХРОНИЗИРОВАН"
         case .es: "ACCESO SINCRONIZADO"
+        case .uk: "ДОСТУП СИНХРОНІЗОВАНО"
         }
     }
 }

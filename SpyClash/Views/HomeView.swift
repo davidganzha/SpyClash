@@ -45,7 +45,7 @@ struct HomeView: View {
 
                 VStack(spacing: 0) {
                     SpyPageStatusLine(
-                        eyebrow: localized(en: "STATUS:", ru: "СТАТУС:", es: "ESTADO:"),
+                        eyebrow: localized(en: "STATUS:", ru: "СТАТУС:", es: "ESTADO:", uk: "СТАТУС:"),
                         status: homeShellStatus
                     )
 
@@ -143,7 +143,7 @@ struct HomeView: View {
               statusText.isEmpty
         else { return }
 
-        statusText = localized(en: "ROOM CLOSED", ru: "КОМНАТА ЗАКРЫТА", es: "SALA CERRADA")
+        statusText = localized(en: "ROOM CLOSED", ru: "КОМНАТА ЗАКРЫТА", es: "SALA CERRADA", uk: "КІМНАТУ ЗАКРИТО")
         statusKind = .success
     }
 #endif
@@ -217,7 +217,9 @@ struct HomeView: View {
     }
 
     private var homeShellStatus: String {
-        guard let room = appState.activeRoom else { return "ONLINE" }
+        guard let room = appState.activeRoom else {
+            return localized(en: "ONLINE", ru: "В СЕТИ", es: "EN LÍNEA", uk: "У МЕРЕЖІ")
+        }
         return copy.statusLabel(room.status).uppercased()
     }
 
@@ -230,7 +232,7 @@ struct HomeView: View {
 
         return VStack(spacing: compact ? 14 : 22) {
             if showMainCopy {
-                Text(localized(en: "// PLAY SOCIAL DEDUCTION", ru: "// ИГРА НА СОЦИАЛЬНУЮ ДЕДУКЦИЮ", es: "// DEDUCCION SOCIAL"))
+                Text(localized(en: "// PLAY SOCIAL DEDUCTION", ru: "// ИГРА НА СОЦИАЛЬНУЮ ДЕДУКЦИЮ", es: "// DEDUCCION SOCIAL", uk: "// ГРА В СОЦІАЛЬНУ ДЕДУКЦІЮ"))
                     .font(SpyTheme.micro)
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
@@ -242,7 +244,8 @@ struct HomeView: View {
                 HomeHeroTitle(
                     isModeHero: isModeHero,
                     fontSize: heroFontSize,
-                    usesCondensedLines: usesShortActionLayout
+                    usesCondensedLines: usesShortActionLayout,
+                    language: appState.language
                 )
                 .shadow(color: .black.opacity(0.62), radius: 18, y: 8)
                 .shadow(color: SpyTheme.red.opacity(idlePulse ? 0.16 : 0.06), radius: idlePulse ? 28 : 14)
@@ -254,7 +257,8 @@ struct HomeView: View {
                 Text(localized(
                     en: "Detectives know the word. The spy does not. Find the spy before the spy guesses the word.",
                     ru: "Детективы знают слово. Шпион - нет. Угадайте шпиона раньше, чем шпион угадает слово.",
-                    es: "Los detectives conocen la palabra. El espia no. Encuentra al espia antes de que adivine la palabra."
+                    es: "Los detectives conocen la palabra. El espia no. Encuentra al espia antes de que adivine la palabra.",
+                    uk: "Детективи знають слово. Шпигун — ні. Знайдіть шпигуна раніше, ніж він вгадає слово."
                 ))
                 .font(.system(size: 13, weight: .semibold, design: .monospaced))
                 .tracking(0.04)
@@ -303,7 +307,7 @@ struct HomeView: View {
                 }
             } label: {
                 heroButtonLabel(
-                    title: localized(en: "PLAY", ru: "ИГРАТЬ", es: "JUGAR"),
+                    title: localized(en: "PLAY", ru: "ИГРАТЬ", es: "JUGAR", uk: "ГРАТИ"),
                     systemImage: "play.fill"
                 )
             }
@@ -321,10 +325,10 @@ struct HomeView: View {
     private var playModeActions: some View {
         VStack(spacing: 10) {
             webChoiceCard(
-                title: localized(en: "ONLINE", ru: "ОНЛАЙН", es: "ONLINE"),
-                subtitle: localized(en: "Each player on their own device", ru: "Каждый на своём телефоне", es: "Cada jugador en su telefono"),
+                title: localized(en: "ONLINE", ru: "ОНЛАЙН", es: "ONLINE", uk: "ОНЛАЙН"),
+                subtitle: localized(en: "Each player on their own device", ru: "Каждый на своём телефоне", es: "Cada jugador en su telefono", uk: "Кожен гравець на своєму пристрої"),
                 icon: .emoji("📡"),
-                badge: localized(en: "RECOMMENDED", ru: "РЕКОМЕНДОВАНО", es: "RECOMENDADO"),
+                badge: localized(en: "RECOMMENDED", ru: "РЕКОМЕНДОВАНО", es: "RECOMENDADO", uk: "РЕКОМЕНДОВАНО"),
                 highlighted: true,
                 compact: true
             ) {
@@ -335,8 +339,8 @@ struct HomeView: View {
             }
 
             webChoiceCard(
-                title: localized(en: "LOCAL", ru: "ЛОКАЛЬНО", es: "LOCAL"),
-                subtitle: localized(en: "One device · pass & play", ru: "Один телефон, передаёте по кругу", es: "Un telefono · pasar y jugar"),
+                title: localized(en: "LOCAL", ru: "ЛОКАЛЬНО", es: "LOCAL", uk: "ЛОКАЛЬНО"),
+                subtitle: localized(en: "One device · pass & play", ru: "Один телефон, передаёте по кругу", es: "Un telefono · pasar y jugar", uk: "Один пристрій · передавайте по колу"),
                 icon: .systemImage("iphone"),
                 prominence: .secondary,
                 compact: true
@@ -345,7 +349,7 @@ struct HomeView: View {
                 appState.openLocalSetup()
             }
 
-            webGhostButton(title: localized(en: "Cancel", ru: "Отмена", es: "Cancelar"), systemImage: "chevron.left") {
+            webGhostButton(title: localized(en: "Cancel", ru: "Отмена", es: "Cancelar", uk: "Скасувати"), systemImage: "chevron.left") {
                 HapticManager.shared.fire(.buttonPress)
                 withAnimation(SpyMotion.page) {
                     stage = .main
@@ -357,7 +361,7 @@ struct HomeView: View {
 
     private var onlineModeActions: some View {
         VStack(spacing: 10) {
-                Text(localized(en: "ONLINE MODE", ru: "РАЗНЫЕ УСТРОЙСТВА", es: "MODO ONLINE"))
+                Text(localized(en: "ONLINE MODE", ru: "РАЗНЫЕ УСТРОЙСТВА", es: "MODO ONLINE", uk: "РІЗНІ ПРИСТРОЇ"))
                 .font(SpyTheme.micro)
                 .tracking(0.12)
                 .foregroundStyle(SpyTheme.dim)
@@ -365,8 +369,8 @@ struct HomeView: View {
                 .spyKicker(lines: 2, alignment: .center)
 
             webChoiceCard(
-                title: localized(en: isLoading ? "CREATING ROOM" : "CREATE ROOM", ru: isLoading ? "СОЗДАЕМ КОМНАТУ" : "СОЗДАТЬ КОМНАТУ", es: isLoading ? "CREANDO SALA" : "CREAR SALA"),
-                subtitle: localized(en: "Start a new game session", ru: "Новая игровая сессия", es: "Iniciar una nueva sesion"),
+                title: localized(en: isLoading ? "CREATING ROOM" : "CREATE ROOM", ru: isLoading ? "СОЗДАЕМ КОМНАТУ" : "СОЗДАТЬ КОМНАТУ", es: isLoading ? "CREANDO SALA" : "CREAR SALA", uk: isLoading ? "СТВОРЮЄМО КІМНАТУ" : "СТВОРИТИ КІМНАТУ"),
+                subtitle: localized(en: "Start a new game session", ru: "Новая игровая сессия", es: "Iniciar una nueva sesion", uk: "Почати нову ігрову сесію"),
                 icon: .emoji(isLoading ? "⏳" : "➕"),
                 highlighted: true,
                 compact: true
@@ -376,8 +380,8 @@ struct HomeView: View {
             .disabled(isLoading)
 
             webChoiceCard(
-                title: localized(en: "ENTER ROOM", ru: "ВОЙТИ В КОМНАТУ", es: "ENTRAR A SALA"),
-                subtitle: localized(en: "Enter code or scan QR", ru: "Ввести код или сканировать QR", es: "Codigo o escanear QR"),
+                title: localized(en: "ENTER ROOM", ru: "ВОЙТИ В КОМНАТУ", es: "ENTRAR A SALA", uk: "УВІЙТИ ДО КІМНАТИ"),
+                subtitle: localized(en: "Enter code or scan QR", ru: "Ввести код или сканировать QR", es: "Codigo o escanear QR", uk: "Введіть код або відскануйте QR"),
                 icon: .emoji("🚪"),
                 compact: true
             ) {
@@ -387,7 +391,7 @@ struct HomeView: View {
                 }
             }
 
-            webGhostButton(title: localized(en: "Cancel", ru: "Отмена", es: "Cancelar"), systemImage: "chevron.left") {
+            webGhostButton(title: localized(en: "Cancel", ru: "Отмена", es: "Cancelar", uk: "Скасувати"), systemImage: "chevron.left") {
                 HapticManager.shared.fire(.buttonPress)
                 withAnimation(SpyMotion.page) {
                     stage = .playMode
@@ -399,14 +403,14 @@ struct HomeView: View {
 
     private var joinRoomActions: some View {
         VStack(alignment: .leading, spacing: 0) {
-            Text(localized(en: "// ENTER ROOM", ru: "// ВОЙТИ В КОМНАТУ", es: "// ENTRAR A SALA"))
+            Text(localized(en: "// ENTER ROOM", ru: "// ВОЙТИ В КОМНАТУ", es: "// ENTRAR A SALA", uk: "// УВІЙТИ ДО КІМНАТИ"))
                 .font(SpyTheme.micro)
                 .tracking(0.12)
                 .foregroundStyle(SpyTheme.dim)
                 .spyKicker(lines: 2)
                 .padding(.bottom, 16)
 
-            Text(localized(en: "ROOM CODE", ru: "КОД КОМНАТЫ", es: "CODIGO"))
+            Text(localized(en: "ROOM CODE", ru: "КОД КОМНАТЫ", es: "CODIGO", uk: "КОД КІМНАТИ"))
                 .font(.system(size: 22, weight: .black, design: .default))
                 .tracking(0.04)
                 .foregroundStyle(.white)
@@ -432,17 +436,17 @@ struct HomeView: View {
 
             VStack(spacing: 10) {
                 HStack(spacing: 10) {
-                    webSmallActionButton(title: localized(en: isLoading ? "Joining..." : "Join", ru: isLoading ? "Входим..." : "Войти", es: isLoading ? "Entrando..." : "Entrar"), variant: .red) {
+                    webSmallActionButton(title: localized(en: isLoading ? "Joining..." : "Join", ru: isLoading ? "Входим..." : "Войти", es: isLoading ? "Entrando..." : "Entrar", uk: isLoading ? "Входимо..." : "Увійти"), variant: .red) {
                         Task { await joinRoom() }
                     }
                     .disabled(isLoading || joinCode.isEmpty)
 
-                    webSmallActionButton(title: localized(en: "SCAN", ru: "СКАН", es: "SCAN"), systemImage: "qrcode.viewfinder", variant: .outline) {
+                    webSmallActionButton(title: localized(en: "SCAN", ru: "СКАН", es: "SCAN", uk: "СКАНУВАТИ"), systemImage: "qrcode.viewfinder", variant: .outline) {
                         isQRScannerPresented = true
                     }
                 }
 
-                webGhostButton(title: localized(en: "Cancel", ru: "Отмена", es: "Cancelar"), systemImage: "chevron.left") {
+                webGhostButton(title: localized(en: "Cancel", ru: "Отмена", es: "Cancelar", uk: "Скасувати"), systemImage: "chevron.left") {
                     HapticManager.shared.fire(.buttonPress)
                     withAnimation(SpyMotion.page) {
                         stage = .onlineMode
@@ -672,7 +676,7 @@ struct HomeView: View {
 
             VStack(spacing: 0) {
                 HStack(spacing: 10) {
-                    Text(localized(en: "// ACTIVE SESSION", ru: "// АКТИВНАЯ СЕССИЯ", es: "// SESION ACTIVA"))
+                    Text(localized(en: "// ACTIVE SESSION", ru: "// АКТИВНАЯ СЕССИЯ", es: "// SESION ACTIVA", uk: "// АКТИВНА СЕСІЯ"))
                         .font(.system(size: 9, weight: .black, design: .monospaced))
                         .tracking(0.12)
                         .foregroundStyle(SpyTheme.red)
@@ -687,8 +691,8 @@ struct HomeView: View {
                             .shadow(color: isPlaying ? SpyTheme.green : SpyTheme.red, radius: 5)
 
                         Text(isPlaying
-                            ? localized(en: "IN PROGRESS", ru: "ИГРА ИДЁТ", es: "EN CURSO")
-                            : localized(en: "LOBBY", ru: "ЛОББИ", es: "LOBBY"))
+                            ? localized(en: "IN PROGRESS", ru: "ИГРА ИДЁТ", es: "EN CURSO", uk: "ГРА ТРИВАЄ")
+                            : localized(en: "LOBBY", ru: "ЛОББИ", es: "LOBBY", uk: "ЛОБІ"))
                             .font(.system(size: 8, weight: .black, design: .monospaced))
                             .tracking(0.08)
                             .foregroundStyle(isPlaying ? SpyTheme.green : SpyTheme.red)
@@ -701,7 +705,7 @@ struct HomeView: View {
 
                 HStack(alignment: .center, spacing: 12) {
                     VStack(alignment: .leading, spacing: 3) {
-                        Text(localized(en: "ROOM KEY", ru: "КЛЮЧ КОМНАТЫ", es: "CLAVE DE SALA"))
+                        Text(localized(en: "ROOM KEY", ru: "КЛЮЧ КОМНАТЫ", es: "CLAVE DE SALA", uk: "КЛЮЧ КІМНАТИ"))
                             .font(.system(size: 8, weight: .black, design: .monospaced))
                             .tracking(0.12)
                             .foregroundStyle(SpyTheme.faint)
@@ -720,8 +724,8 @@ struct HomeView: View {
                         Image(systemName: isHost(room) ? "crown.fill" : "person.fill")
                             .font(.system(size: 9, weight: .black))
                         Text(isHost(room)
-                            ? localized(en: "HOST", ru: "ХОСТ", es: "HOST")
-                            : localized(en: "AGENT", ru: "АГЕНТ", es: "AGENTE"))
+                            ? localized(en: "HOST", ru: "ХОСТ", es: "HOST", uk: "ХОСТ")
+                            : localized(en: "AGENT", ru: "АГЕНТ", es: "AGENTE", uk: "АГЕНТ"))
                             .font(.system(size: 8, weight: .black, design: .monospaced))
                             .tracking(0.08)
                     }
@@ -779,7 +783,7 @@ struct HomeView: View {
                     .font(.system(size: 16, weight: .black))
 
                 VStack(alignment: .leading, spacing: 2) {
-                    Text(localized(en: "RETURN TO ROOM", ru: "ВЕРНУТЬСЯ В КОМНАТУ", es: "VOLVER A LA SALA"))
+                    Text(localized(en: "RETURN TO ROOM", ru: "ВЕРНУТЬСЯ В КОМНАТУ", es: "VOLVER A LA SALA", uk: "ПОВЕРНУТИСЯ ДО КІМНАТИ"))
                         .font(.system(size: 11, weight: .black, design: .monospaced))
                         .tracking(0.04)
                         .spyFitted(lines: 2, scale: 0.60)
@@ -812,7 +816,7 @@ struct HomeView: View {
                 Image(systemName: "rectangle.portrait.and.arrow.right")
                     .font(.system(size: 15, weight: .black))
 
-                Text(localized(en: "LEAVE", ru: "ВЫЙТИ", es: "SALIR"))
+                Text(localized(en: "LEAVE", ru: "ВЫЙТИ", es: "SALIR", uk: "ВИЙТИ"))
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .tracking(0.06)
                     .spyFitted(scale: 0.65, alignment: .center)
@@ -900,7 +904,8 @@ struct HomeView: View {
             return localized(
                 en: "UPDATE SPYCLASH TO JOIN THIS MULTI-SPY ROOM",
                 ru: "ОБНОВИ SPYCLASH, ЧТОБЫ ВОЙТИ В КОМНАТУ С НЕСКОЛЬКИМИ ШПИОНАМИ",
-                es: "ACTUALIZA SPYCLASH PARA ENTRAR EN ESTA SALA MULTIESPIA"
+                es: "ACTUALIZA SPYCLASH PARA ENTRAR EN ESTA SALA MULTIESPIA",
+                uk: "ОНОВИ SPYCLASH, ЩОБ УВІЙТИ ДО КІМНАТИ З КІЛЬКОМА ШПИГУНАМИ"
             )
         }
         return error.localizedDescription.uppercased()
@@ -911,27 +916,29 @@ struct HomeView: View {
             appState.leaveRoomImmediately(room)
             stage = .main
         }
-        statusText = isHost(room) ? localized(en: "ROOM CLOSED", ru: "КОМНАТА ЗАКРЫТА", es: "SALA CERRADA") : localized(en: "LEFT ROOM", ru: "ВЫШЕЛ ИЗ КОМНАТЫ", es: "SALA ABANDONADA")
+        statusText = isHost(room) ? localized(en: "ROOM CLOSED", ru: "КОМНАТА ЗАКРЫТА", es: "SALA CERRADA", uk: "КІМНАТУ ЗАКРИТО") : localized(en: "LEFT ROOM", ru: "ВЫШЕЛ ИЗ КОМНАТЫ", es: "SALA ABANDONADA", uk: "ВИ ВИЙШЛИ З КІМНАТИ")
         statusKind = .success
         HapticManager.shared.fire(.notification(.success))
     }
 
     private func closeRoomMenuTitle(_ room: GameRoom) -> String {
         isHost(room)
-            ? localized(en: "Close room", ru: "Закрыть комнату", es: "Cerrar sala")
-            : localized(en: "Leave room", ru: "Выйти из комнаты", es: "Salir de sala")
+            ? localized(en: "Close room", ru: "Закрыть комнату", es: "Cerrar sala", uk: "Закрити кімнату")
+            : localized(en: "Leave room", ru: "Выйти из комнаты", es: "Salir de sala", uk: "Вийти з кімнати")
     }
 
     private func isHost(_ room: GameRoom) -> Bool {
         appState.user?.email == room.hostEmail
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru:
             ru
         case .es:
             es
+        case .uk:
+            uk
         default:
             en
         }
@@ -1009,17 +1016,25 @@ private struct HomeHeroTitle: View {
     let isModeHero: Bool
     let fontSize: CGFloat
     let usesCondensedLines: Bool
+    let language: AppLanguage
 
     private var lineWords: [[String]] {
-        if isModeHero {
-            return usesCondensedLines
-                ? [["SELECT", "YOUR"], ["MODE"]]
-                : [["SELECT"], ["YOUR"], ["MODE"]]
+        switch (language, isModeHero, usesCondensedLines) {
+        case (.en, true, true): [["SELECT", "YOUR"], ["MODE"]]
+        case (.en, true, false): [["SELECT"], ["YOUR"], ["MODE"]]
+        case (.en, false, true): [["CAN", "YOU"], ["FIND", "THE", "SPY?"]]
+        case (.en, false, false): [["CAN", "YOU"], ["FIND", "THE"], ["SPY?"]]
+        case (.es, true, true): [["ELIGE", "TU"], ["MODO"]]
+        case (.es, true, false): [["ELIGE"], ["TU"], ["MODO"]]
+        case (.es, false, true): [["¿PUEDES"], ["HALLAR", "AL", "ESPÍA?"]]
+        case (.es, false, false): [["¿PUEDES"], ["HALLAR", "AL"], ["ESPÍA?"]]
+        case (.ru, true, _): [["ВЫБЕРИ"], ["РЕЖИМ"]]
+        case (.ru, false, true): [["НАЙДЁШЬ"], ["ШПИОНА?"]]
+        case (.ru, false, false): [["СМОЖЕШЬ"], ["НАЙТИ"], ["ШПИОНА?"]]
+        case (.uk, true, _): [["ОБЕРИ"], ["РЕЖИМ"]]
+        case (.uk, false, true): [["ЗНАЙДЕШ"], ["ШПИГУНА?"]]
+        case (.uk, false, false): [["ЗМОЖЕШ"], ["ЗНАЙТИ"], ["ШПИГУНА?"]]
         }
-        if usesCondensedLines {
-            return [["CAN", "YOU"], ["FIND", "THE", "SPY?"]]
-        }
-        return [["CAN", "YOU"], ["FIND", "THE"], ["SPY?"]]
     }
 
     var body: some View {
@@ -1182,7 +1197,7 @@ private struct HowToPlaySheet: View {
                     .frame(width: 40, height: 40)
             }
             .buttonStyle(SpyButtonStyle(variant: .ghost))
-            .accessibilityLabel("Close tutorial")
+            .accessibilityLabel(closeTutorialAccessibilityLabel)
         }
         .opacity(reveal ? 1 : 0)
         .offset(y: reveal ? 0 : -10)
@@ -1205,6 +1220,15 @@ private struct HowToPlaySheet: View {
         }
         .opacity(reveal ? 1 : 0)
         .offset(y: reveal ? 0 : 18)
+    }
+
+    private var closeTutorialAccessibilityLabel: String {
+        switch language {
+        case .en: "Close tutorial"
+        case .es: "Cerrar tutorial"
+        case .ru: "Закрыть обучение"
+        case .uk: "Закрити навчання"
+        }
     }
 
     private var modePicker: some View {

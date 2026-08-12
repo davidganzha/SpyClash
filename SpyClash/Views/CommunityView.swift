@@ -75,8 +75,8 @@ struct CommunityView: View {
 
     var body: some View {
         PageChrome(
-            eyebrow: localized(en: "// COMMUNITY", ru: "// СООБЩЕСТВО", es: "// COMUNIDAD"),
-            status: localized(en: "OPERATIVE NETWORK", ru: "СЕТЬ ОПЕРАТИВНИКОВ", es: "RED DE OPERATIVOS")
+            eyebrow: localized(en: "// COMMUNITY", ru: "// СООБЩЕСТВО", es: "// COMUNIDAD", uk: "// СПІЛЬНОТА"),
+            status: localized(en: "OPERATIVE NETWORK", ru: "СЕТЬ ОПЕРАТИВНИКОВ", es: "RED DE OPERATIVOS", uk: "МЕРЕЖА ОПЕРАТИВНИКІВ")
         ) {
             sceneContent
                 .padding(.horizontal, 18)
@@ -130,7 +130,7 @@ struct CommunityView: View {
             await loadDirectory(reset: true)
         }
         .confirmationDialog(
-            localized(en: "REPORT CONTENT", ru: "ПОЖАЛОВАТЬСЯ", es: "REPORTAR CONTENIDO"),
+            localized(en: "REPORT CONTENT", ru: "ПОЖАЛОВАТЬСЯ", es: "REPORTAR CONTENIDO", uk: "ПОВІДОМИТИ ПРО ПОРУШЕННЯ"),
             isPresented: reportPromptPresented,
             titleVisibility: .visible,
             presenting: reportTarget
@@ -141,50 +141,52 @@ struct CommunityView: View {
                     Task { await submitReport(target, reason: reason) }
                 }
             }
-            Button(localized(en: "CANCEL", ru: "ОТМЕНА", es: "CANCELAR"), role: .cancel) {
+            Button(localized(en: "CANCEL", ru: "ОТМЕНА", es: "CANCELAR", uk: "СКАСУВАТИ"), role: .cancel) {
                 reportTarget = nil
             }
         } message: { target in
             Text(reportPromptMessage(target))
         }
         .confirmationDialog(
-            localized(en: "BLOCK OPERATIVE?", ru: "ЗАБЛОКИРОВАТЬ?", es: "BLOQUEAR OPERATIVO?"),
+            localized(en: "BLOCK OPERATIVE?", ru: "ЗАБЛОКИРОВАТЬ?", es: "BLOQUEAR OPERATIVO?", uk: "ЗАБЛОКУВАТИ ОПЕРАТИВНИКА?"),
             isPresented: blockPromptPresented,
             titleVisibility: .visible,
             presenting: blockTarget
         ) { target in
-            Button(localized(en: "BLOCK AND REMOVE CONTACT", ru: "ЗАБЛОКИРОВАТЬ И УДАЛИТЬ СВЯЗЬ", es: "BLOQUEAR Y ELIMINAR CONTACTO"), role: .destructive) {
+            Button(localized(en: "BLOCK AND REMOVE CONTACT", ru: "ЗАБЛОКИРОВАТЬ И УДАЛИТЬ СВЯЗЬ", es: "BLOQUEAR Y ELIMINAR CONTACTO", uk: "ЗАБЛОКУВАТИ Й ВИДАЛИТИ КОНТАКТ"), role: .destructive) {
                 blockTarget = nil
                 Task { await blockOperative(target) }
             }
-            Button(localized(en: "CANCEL", ru: "ОТМЕНА", es: "CANCELAR"), role: .cancel) {
+            Button(localized(en: "CANCEL", ru: "ОТМЕНА", es: "CANCELAR", uk: "СКАСУВАТИ"), role: .cancel) {
                 blockTarget = nil
             }
         } message: { target in
             Text(localized(
                 en: "You and \(target.displayName) will no longer find or open each other's profiles, comment, or send room invites. Existing comments and invites between you are removed.",
                 ru: "Вы с \(target.displayName) больше не сможете находить профили друг друга, оставлять записи или отправлять приглашения. Существующие записи и приглашения будут удалены.",
-                es: "Tu y \(target.displayName) dejaran de encontrar o abrir sus perfiles, comentar o enviar invitaciones. Se eliminaran los comentarios e invitaciones existentes."
+                es: "Tu y \(target.displayName) dejaran de encontrar o abrir sus perfiles, comentar o enviar invitaciones. Se eliminaran los comentarios e invitaciones existentes.",
+                uk: "Ви з \(target.displayName) більше не зможете знаходити чи відкривати профілі одне одного, залишати дописи або надсилати запрошення до кімнат. Ваші наявні дописи й запрошення буде видалено."
             ))
         }
         .confirmationDialog(
-            localized(en: "UNBLOCK OPERATIVE?", ru: "РАЗБЛОКИРОВАТЬ?", es: "DESBLOQUEAR OPERATIVO?"),
+            localized(en: "UNBLOCK OPERATIVE?", ru: "РАЗБЛОКИРОВАТЬ?", es: "DESBLOQUEAR OPERATIVO?", uk: "РОЗБЛОКУВАТИ ОПЕРАТИВНИКА?"),
             isPresented: unblockPromptPresented,
             titleVisibility: .visible,
             presenting: unblockTarget
         ) { relationship in
-            Button(localized(en: "UNBLOCK", ru: "РАЗБЛОКИРОВАТЬ", es: "DESBLOQUEAR")) {
+            Button(localized(en: "UNBLOCK", ru: "РАЗБЛОКИРОВАТЬ", es: "DESBLOQUEAR", uk: "РОЗБЛОКУВАТИ")) {
                 unblockTarget = nil
                 Task { await unblockOperative(relationship) }
             }
-            Button(localized(en: "CANCEL", ru: "ОТМЕНА", es: "CANCELAR"), role: .cancel) {
+            Button(localized(en: "CANCEL", ru: "ОТМЕНА", es: "CANCELAR", uk: "СКАСУВАТИ"), role: .cancel) {
                 unblockTarget = nil
             }
         } message: { relationship in
             Text(localized(
                 en: "\(relationship.profile.displayName) may find and contact you in Community again.",
                 ru: "\(relationship.profile.displayName) снова сможет найти вас и связаться через Сообщество.",
-                es: "\(relationship.profile.displayName) podra encontrarte y contactarte en Comunidad otra vez."
+                es: "\(relationship.profile.displayName) podra encontrarte y contactarte en Comunidad otra vez.",
+                uk: "\(relationship.profile.displayName) знову зможе знайти тебе та зв’язатися через Спільноту."
             ))
         }
     }
@@ -239,15 +241,16 @@ struct CommunityView: View {
         VStack(alignment: .leading, spacing: 16) {
             VStack(alignment: .leading, spacing: 7) {
                 SpySceneKicker(
-                    title: localized(en: "PUBLIC DIRECTORY", ru: "ПУБЛИЧНЫЙ КАТАЛОГ", es: "DIRECTORIO PÚBLICO"),
-                    status: localized(en: "DISCOVER", ru: "ПОИСК", es: "DESCUBRIR"),
+                    title: localized(en: "PUBLIC DIRECTORY", ru: "ПУБЛИЧНЫЙ КАТАЛОГ", es: "DIRECTORIO PÚBLICO", uk: "ПУБЛІЧНИЙ КАТАЛОГ"),
+                    status: localized(en: "DISCOVER", ru: "ПОИСК", es: "DESCUBRIR", uk: "ПОШУК"),
                     accent: SpyTheme.red
                 )
 
                 Text(localized(
                     en: "FIND YOUR NEXT OPERATIVE",
                     ru: "НАЙДИ СВОЕГО ОПЕРАТИВНИКА",
-                    es: "ENCUENTRA TU OPERATIVO"
+                    es: "ENCUENTRA TU OPERATIVO",
+                    uk: "ЗНАЙДИ НОВОГО ОПЕРАТИВНИКА"
                 ))
                 .font(SpyTheme.brandFont(size: 29))
                 .tracking(0.8)
@@ -257,7 +260,8 @@ struct CommunityView: View {
                 Text(localized(
                     en: "Search by callsign or SPYID. Every card is the operative's real public identity.",
                     ru: "Ищи по позывному или SPYID. Каждая карточка — настоящая публичная личность игрока.",
-                    es: "Busca por alias o SPYID. Cada tarjeta es la identidad pública real del jugador."
+                    es: "Busca por alias o SPYID. Cada tarjeta es la identidad pública real del jugador.",
+                    uk: "Шукай за позивним або SPYID. Кожна картка показує справжній публічний профіль оперативника."
                 ))
                 .font(.system(size: 10, weight: .medium, design: .monospaced))
                 .foregroundStyle(SpyTheme.muted)
@@ -270,7 +274,7 @@ struct CommunityView: View {
             searchField
 
             HStack {
-                Text(localized(en: "OPERATIVES", ru: "ОПЕРАТИВНИКИ", es: "OPERATIVOS"))
+                Text(localized(en: "OPERATIVES", ru: "ОПЕРАТИВНИКИ", es: "OPERATIVOS", uk: "ОПЕРАТИВНИКИ"))
                     .font(SpyTheme.micro)
                     .tracking(1.2)
                     .foregroundStyle(SpyTheme.dim)
@@ -309,7 +313,7 @@ struct CommunityView: View {
                             CommunitySpyCard(profile: profile, language: appState.language, size: .compact)
                         }
                         .buttonStyle(SpyWebPressStyle(pressedScale: 0.985))
-                        .accessibilityHint(localized(en: "Open public profile", ru: "Открыть публичный профиль", es: "Abrir perfil publico"))
+                        .accessibilityHint(localized(en: "Open public profile", ru: "Открыть публичный профиль", es: "Abrir perfil publico", uk: "Відкрити публічний профіль"))
                         .spyWebEntrance(delay: min(Double(index) * 0.035, 0.24), duration: 0.42, y: 12, scale: 0.99)
                     }
                 }
@@ -318,7 +322,7 @@ struct CommunityView: View {
             if isDirectoryLoading || isInitialLoading {
                 HStack(spacing: 9) {
                     SpySpinner(size: 16, accent: SpyTheme.red)
-                    Text(localized(en: "SCANNING NETWORK", ru: "СКАНИРОВАНИЕ СЕТИ", es: "ESCANEANDO RED"))
+                    Text(localized(en: "SCANNING NETWORK", ru: "СКАНИРОВАНИЕ СЕТИ", es: "ESCANEANDO RED", uk: "СКАНУВАННЯ МЕРЕЖІ"))
                         .font(SpyTheme.micro)
                         .tracking(0.8)
                         .foregroundStyle(SpyTheme.muted)
@@ -329,7 +333,7 @@ struct CommunityView: View {
                     Task { await loadDirectory(reset: false, offset: nextDirectoryOffset) }
                 } label: {
                     commandLabel(
-                        localized(en: "LOAD MORE OPERATIVES", ru: "ЗАГРУЗИТЬ ЕЩЕ", es: "CARGAR MAS"),
+                        localized(en: "LOAD MORE OPERATIVES", ru: "ЗАГРУЗИТЬ ЕЩЕ", es: "CARGAR MAS", uk: "ЗАВАНТАЖИТИ ЩЕ"),
                         icon: "arrow.down"
                     )
                 }
@@ -346,7 +350,7 @@ struct CommunityView: View {
                 .accessibilityHidden(true)
 
             TextField(
-                localized(en: "CALLSIGN OR 000-000", ru: "ПОЗЫВНОЙ ИЛИ 000-000", es: "ALIAS O 000-000"),
+                localized(en: "CALLSIGN OR 000-000", ru: "ПОЗЫВНОЙ ИЛИ 000-000", es: "ALIAS O 000-000", uk: "ПОЗИВНИЙ АБО 000-000"),
                 text: $query
             )
             .autocorrectionDisabled()
@@ -357,7 +361,8 @@ struct CommunityView: View {
             .accessibilityLabel(localized(
                 en: "Search operatives",
                 ru: "Поиск оперативников",
-                es: "Buscar operativos"
+                es: "Buscar operativos",
+                uk: "Пошук оперативників"
             ))
 
             if !query.isEmpty {
@@ -371,7 +376,7 @@ struct CommunityView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(.plain)
-                .accessibilityLabel(localized(en: "Clear search", ru: "Очистить поиск", es: "Borrar busqueda"))
+                .accessibilityLabel(localized(en: "Clear search", ru: "Очистить поиск", es: "Borrar busqueda", uk: "Очистити пошук"))
             }
         }
         .padding(.leading, 15)
@@ -389,7 +394,7 @@ struct CommunityView: View {
                 .font(.system(size: 27, weight: .light))
                 .foregroundStyle(SpyTheme.faint)
 
-            Text(localized(en: "NO OPERATIVES FOUND", ru: "ОПЕРАТИВНИКИ НЕ НАЙДЕНЫ", es: "NO SE ENCONTRARON OPERATIVOS"))
+            Text(localized(en: "NO OPERATIVES FOUND", ru: "ОПЕРАТИВНИКИ НЕ НАЙДЕНЫ", es: "NO SE ENCONTRARON OPERATIVOS", uk: "ОПЕРАТИВНИКІВ НЕ ЗНАЙДЕНО"))
                 .font(SpyTheme.micro)
                 .tracking(0.8)
                 .foregroundStyle(SpyTheme.muted)
@@ -407,7 +412,8 @@ struct CommunityView: View {
             Text(localized(
                 en: "OPERATIVE NETWORK TEMPORARILY UNAVAILABLE",
                 ru: "СЕТЬ ОПЕРАТИВНИКОВ ВРЕМЕННО НЕДОСТУПНА",
-                es: "RED DE OPERATIVOS TEMPORALMENTE NO DISPONIBLE"
+                es: "RED DE OPERATIVOS TEMPORALMENTE NO DISPONIBLE",
+                uk: "МЕРЕЖА ОПЕРАТИВНИКІВ ТИМЧАСОВО НЕДОСТУПНА"
             ))
             .font(SpyTheme.micro)
             .tracking(0.7)
@@ -418,7 +424,7 @@ struct CommunityView: View {
                 Task { await retryInitialContent() }
             } label: {
                 commandLabel(
-                    localized(en: "RETRY NETWORK", ru: "ПОВТОРИТЬ", es: "REINTENTAR"),
+                    localized(en: "RETRY NETWORK", ru: "ПОВТОРИТЬ", es: "REINTENTAR", uk: "СПРОБУВАТИ ЗНОВУ"),
                     icon: "arrow.clockwise"
                 )
             }
@@ -439,7 +445,7 @@ struct CommunityView: View {
             if isProfileLoading {
                 HStack(spacing: 10) {
                     SpySpinner(size: 18, accent: SpyTheme.red)
-                    Text(localized(en: "SYNCING SOCIAL INTEL", ru: "СИНХРОНИЗАЦИЯ СВЯЗЕЙ", es: "SINCRONIZANDO RED"))
+                    Text(localized(en: "SYNCING SOCIAL INTEL", ru: "СИНХРОНИЗАЦИЯ СВЯЗЕЙ", es: "SINCRONIZANDO RED", uk: "СИНХРОНІЗАЦІЯ КОНТАКТІВ"))
                         .font(SpyTheme.micro)
                         .tracking(0.8)
                         .foregroundStyle(SpyTheme.muted)
@@ -474,13 +480,13 @@ struct CommunityView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(SpyWebPressStyle())
-                .accessibilityLabel(localized(en: "Back to community", ru: "Назад в сообщество", es: "Volver a comunidad"))
+                .accessibilityLabel(localized(en: "Back to community", ru: "Назад в сообщество", es: "Volver a comunidad", uk: "Назад до Спільноти"))
             }
 
             VStack(alignment: .leading, spacing: 3) {
                 Text(detail.isSelf
-                    ? localized(en: "MY PUBLIC PROFILE", ru: "МОЙ ПУБЛИЧНЫЙ ПРОФИЛЬ", es: "MI PERFIL PÚBLICO")
-                    : localized(en: "PUBLIC DOSSIER", ru: "ПУБЛИЧНОЕ ДОСЬЕ", es: "EXPEDIENTE PÚBLICO"))
+                    ? localized(en: "MY PUBLIC PROFILE", ru: "МОЙ ПУБЛИЧНЫЙ ПРОФИЛЬ", es: "MI PERFIL PÚBLICO", uk: "МІЙ ПУБЛІЧНИЙ ПРОФІЛЬ")
+                    : localized(en: "PUBLIC DOSSIER", ru: "ПУБЛИЧНОЕ ДОСЬЕ", es: "EXPEDIENTE PÚBLICO", uk: "ПУБЛІЧНЕ ДОСЬЄ"))
                     .font(SpyTheme.brandFont(size: 23))
                     .tracking(0.6)
                     .foregroundStyle(.white)
@@ -501,7 +507,7 @@ struct CommunityView: View {
         SpyPanel(accent: relationshipAccent(detail.relationship), motionDelay: 0.05) {
             VStack(alignment: .leading, spacing: 11) {
                 SpySceneKicker(
-                    title: localized(en: "CONNECTION", ru: "СВЯЗЬ", es: "CONEXION"),
+                    title: localized(en: "CONNECTION", ru: "СВЯЗЬ", es: "CONEXION", uk: "ЗВ’ЯЗОК"),
                     status: relationshipTitle(detail.relationship),
                     accent: relationshipAccent(detail.relationship)
                 )
@@ -510,7 +516,7 @@ struct CommunityView: View {
 
                 HStack(spacing: 9) {
                     communityActionButton(
-                        localized(en: "REPORT", ru: "ЖАЛОБА", es: "REPORTAR"),
+                        localized(en: "REPORT", ru: "ЖАЛОБА", es: "REPORTAR", uk: "ПОСКАРЖИТИСЯ"),
                         icon: "flag.fill",
                         color: SpyTheme.amber
                     ) {
@@ -518,7 +524,7 @@ struct CommunityView: View {
                     }
 
                     communityActionButton(
-                        localized(en: "BLOCK", ru: "БЛОКИРОВАТЬ", es: "BLOQUEAR"),
+                        localized(en: "BLOCK", ru: "БЛОКИРОВАТЬ", es: "BLOQUEAR", uk: "ЗАБЛОКУВАТИ"),
                         icon: "person.crop.circle.badge.xmark",
                         color: SpyTheme.red
                     ) {
@@ -531,7 +537,7 @@ struct CommunityView: View {
                         Task { await inviteToRoom(detail.profile, room: room) }
                     } label: {
                         commandLabel(
-                            localized(en: "INVITE TO ROOM \(room.code)", ru: "ПРИГЛАСИТЬ В КОМНАТУ \(room.code)", es: "INVITAR A SALA \(room.code)"),
+                            localized(en: "INVITE TO ROOM \(room.code)", ru: "ПРИГЛАСИТЬ В КОМНАТУ \(room.code)", es: "INVITAR A SALA \(room.code)", uk: "ЗАПРОСИТИ ДО КІМНАТИ \(room.code)"),
                             icon: "paperplane.fill"
                         )
                     }
@@ -548,7 +554,7 @@ struct CommunityView: View {
 
         if relationship == nil || relationship?.status == "declined" {
             communityActionButton(
-                localized(en: "ADD OPERATIVE", ru: "ДОБАВИТЬ В ДРУЗЬЯ", es: "AGREGAR OPERATIVO"),
+                localized(en: "ADD OPERATIVE", ru: "ДОБАВИТЬ В ДРУЗЬЯ", es: "AGREGAR OPERATIVO", uk: "ДОДАТИ ОПЕРАТИВНИКА"),
                 icon: "person.badge.plus",
                 color: SpyTheme.red,
                 filled: true
@@ -558,13 +564,13 @@ struct CommunityView: View {
         } else if relationship?.status == "accepted" {
             HStack(spacing: 9) {
                 connectionStatus(
-                    localized(en: "FRIENDS", ru: "В ДРУЗЬЯХ", es: "AMIGOS"),
+                    localized(en: "FRIENDS", ru: "В ДРУЗЬЯХ", es: "AMIGOS", uk: "У ДРУЗЯХ"),
                     icon: "checkmark.circle.fill",
                     color: SpyTheme.green
                 )
 
                 communityActionButton(
-                    localized(en: "REMOVE", ru: "УДАЛИТЬ", es: "ELIMINAR"),
+                    localized(en: "REMOVE", ru: "УДАЛИТЬ", es: "ELIMINAR", uk: "ВИДАЛИТИ"),
                     icon: "person.badge.minus",
                     color: SpyTheme.muted
                 ) {
@@ -575,24 +581,24 @@ struct CommunityView: View {
         } else if let relationship, relationship.direction == "incoming" {
             HStack(spacing: 9) {
                 communityActionButton(
-                    localized(en: "ACCEPT", ru: "ПРИНЯТЬ", es: "ACEPTAR"),
+                    localized(en: "ACCEPT", ru: "ПРИНЯТЬ", es: "ACEPTAR", uk: "ПРИЙНЯТИ"),
                     icon: "checkmark",
                     color: SpyTheme.green,
                     filled: true,
                     feedbackID: relationshipFeedbackID("accept", relationship.id),
-                    waitingTitle: localized(en: "ACCEPTING...", ru: "ПРИНИМАЕМ...", es: "ACEPTANDO..."),
-                    successTitle: localized(en: "ACCEPTED", ru: "ПРИНЯТО", es: "ACEPTADO")
+                    waitingTitle: localized(en: "ACCEPTING...", ru: "ПРИНИМАЕМ...", es: "ACEPTANDO...", uk: "ПРИЙМАЄМО..."),
+                    successTitle: localized(en: "ACCEPTED", ru: "ПРИНЯТО", es: "ACEPTADO", uk: "ПРИЙНЯТО")
                 ) {
                     await relationshipDecision("accept", relationship.id)
                 }
 
                 communityActionButton(
-                    localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR"),
+                    localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR", uk: "ВІДХИЛИТИ"),
                     icon: "xmark",
                     color: SpyTheme.muted,
                     feedbackID: relationshipFeedbackID("decline", relationship.id),
-                    waitingTitle: localized(en: "DECLINING...", ru: "ОТКЛОНЯЕМ...", es: "RECHAZANDO..."),
-                    successTitle: localized(en: "DECLINED", ru: "ОТКЛОНЕНО", es: "RECHAZADO")
+                    waitingTitle: localized(en: "DECLINING...", ru: "ОТКЛОНЯЕМ...", es: "RECHAZANDO...", uk: "ВІДХИЛЯЄМО..."),
+                    successTitle: localized(en: "DECLINED", ru: "ОТКЛОНЕНО", es: "RECHAZADO", uk: "ВІДХИЛЕНО")
                 ) {
                     await relationshipDecision("decline", relationship.id)
                 }
@@ -600,13 +606,13 @@ struct CommunityView: View {
         } else if let relationship {
             HStack(spacing: 9) {
                 connectionStatus(
-                    localized(en: "REQUEST SENT", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA"),
+                    localized(en: "REQUEST SENT", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA", uk: "ЗАПИТ НАДІСЛАНО"),
                     icon: "clock",
                     color: SpyTheme.amber
                 )
 
                 communityActionButton(
-                    localized(en: "CANCEL", ru: "ОТМЕНИТЬ", es: "CANCELAR"),
+                    localized(en: "CANCEL", ru: "ОТМЕНИТЬ", es: "CANCELAR", uk: "СКАСУВАТИ"),
                     icon: "xmark",
                     color: SpyTheme.muted
                 ) {
@@ -624,7 +630,7 @@ struct CommunityView: View {
             SpyPanel(accent: SpyTheme.muted, motionDelay: 0.10) {
                 VStack(alignment: .leading, spacing: 10) {
                     SpySceneKicker(
-                        title: localized(en: "BLOCKED OPERATIVES", ru: "ЗАБЛОКИРОВАННЫЕ", es: "OPERATIVOS BLOQUEADOS"),
+                        title: localized(en: "BLOCKED OPERATIVES", ru: "ЗАБЛОКИРОВАННЫЕ", es: "OPERATIVOS BLOQUEADOS", uk: "ЗАБЛОКОВАНІ ОПЕРАТИВНИКИ"),
                         status: "\(network.blocked.count)",
                         accent: SpyTheme.muted
                     )
@@ -640,7 +646,8 @@ struct CommunityView: View {
             Text(localized(
                 en: "YOUR PUBLIC PROFILE IS LIVE. OPERATIVES CAN FIND IT IN THE COMMUNITY DIRECTORY.",
                 ru: "ТВОЙ ПУБЛИЧНЫЙ ПРОФИЛЬ АКТИВЕН. ОПЕРАТИВНИКИ МОГУТ НАЙТИ ЕГО В КАТАЛОГЕ.",
-                es: "TU PERFIL PÚBLICO ESTÁ ACTIVO. LOS OPERATIVOS PUEDEN ENCONTRARLO EN EL DIRECTORIO."
+                es: "TU PERFIL PÚBLICO ESTÁ ACTIVO. LOS OPERATIVOS PUEDEN ENCONTRARLO EN EL DIRECTORIO.",
+                uk: "ТВІЙ ПУБЛІЧНИЙ ПРОФІЛЬ АКТИВНИЙ. ОПЕРАТИВНИКИ МОЖУТЬ ЗНАЙТИ ЙОГО В КАТАЛОЗІ СПІЛЬНОТИ."
             ))
             .font(.system(size: 10, weight: .medium, design: .monospaced))
             .foregroundStyle(SpyTheme.muted)
@@ -655,7 +662,7 @@ struct CommunityView: View {
             SpyPanel(accent: SpyTheme.red, motionDelay: 0.05) {
                 VStack(alignment: .leading, spacing: 10) {
                     SpySceneKicker(
-                        title: localized(en: "ROOM INVITES", ru: "ПРИГЛАШЕНИЯ В КОМНАТУ", es: "INVITACIONES A SALA"),
+                        title: localized(en: "ROOM INVITES", ru: "ПРИГЛАШЕНИЯ В КОМНАТУ", es: "INVITACIONES A SALA", uk: "ЗАПРОШЕННЯ ДО КІМНАТ"),
                         status: "\(network.incomingRoomInvites.count)",
                         accent: SpyTheme.red
                     )
@@ -671,7 +678,7 @@ struct CommunityView: View {
             SpyPanel(accent: SpyTheme.amber, motionDelay: 0.08) {
                 VStack(alignment: .leading, spacing: 10) {
                     SpySceneKicker(
-                        title: localized(en: "FRIEND REQUESTS", ru: "ЗАПРОСЫ В ДРУЗЬЯ", es: "SOLICITUDES DE AMISTAD"),
+                        title: localized(en: "FRIEND REQUESTS", ru: "ЗАПРОСЫ В ДРУЗЬЯ", es: "SOLICITUDES DE AMISTAD", uk: "ЗАПИТИ В ДРУЗІ"),
                         status: "\(network.incoming.count)",
                         accent: SpyTheme.amber
                     )
@@ -689,14 +696,14 @@ struct CommunityView: View {
             VStack(alignment: .leading, spacing: 10) {
                 SpySceneKicker(
                     title: detail.isSelf
-                        ? localized(en: "MY FRIENDS", ru: "МОИ ДРУЗЬЯ", es: "MIS AMIGOS")
-                        : localized(en: "FRIENDS", ru: "ДРУЗЬЯ", es: "AMIGOS"),
+                        ? localized(en: "MY FRIENDS", ru: "МОИ ДРУЗЬЯ", es: "MIS AMIGOS", uk: "МОЇ ДРУЗІ")
+                        : localized(en: "FRIENDS", ru: "ДРУЗЬЯ", es: "AMIGOS", uk: "ДРУЗІ"),
                     status: "\(detail.friends.count)",
                     accent: SpyTheme.muted
                 )
 
                 if detail.friends.isEmpty {
-                    Text(localized(en: "NO PUBLIC CONNECTIONS YET", ru: "ПОКА НЕТ ПУБЛИЧНЫХ СВЯЗЕЙ", es: "AÚN NO HAY CONEXIONES PÚBLICAS"))
+                    Text(localized(en: "NO PUBLIC CONNECTIONS YET", ru: "ПОКА НЕТ ПУБЛИЧНЫХ СВЯЗЕЙ", es: "AÚN NO HAY CONEXIONES PÚBLICAS", uk: "ПУБЛІЧНИХ ЗВ’ЯЗКІВ ЩЕ НЕМАЄ"))
                         .font(SpyTheme.micro)
                         .tracking(0.6)
                         .foregroundStyle(SpyTheme.faint)
@@ -722,7 +729,7 @@ struct CommunityView: View {
         SpyPanel(accent: SpyTheme.red.opacity(0.72), motionDelay: 0.14) {
             VStack(alignment: .leading, spacing: 11) {
                 SpySceneKicker(
-                    title: localized(en: "PROFILE WALL", ru: "СТЕНА ПРОФИЛЯ", es: "MURO DEL PERFIL"),
+                    title: localized(en: "PROFILE WALL", ru: "СТЕНА ПРОФИЛЯ", es: "MURO DEL PERFIL", uk: "СТІНА ПРОФІЛЮ"),
                     status: "\(detail.comments.count)",
                     accent: SpyTheme.red
                 )
@@ -731,7 +738,8 @@ struct CommunityView: View {
                     Text(localized(
                         en: "NO FIELD NOTES YET",
                         ru: "ПОКА НЕТ ЗАПИСЕЙ",
-                        es: "AUN NO HAY NOTAS"
+                        es: "AUN NO HAY NOTAS",
+                        uk: "ДОПИСІВ ЩЕ НЕМАЄ"
                     ))
                     .font(SpyTheme.micro)
                     .tracking(0.6)
@@ -749,7 +757,8 @@ struct CommunityView: View {
                     Text(localized(
                         en: "KEEP FIELD NOTES SAFE. OBJECTIONABLE CONTENT IS FILTERED; USE REPORT OR BLOCK FOR ABUSE.",
                         ru: "СОБЛЮДАЙ ПРАВИЛА. НЕДОПУСТИМЫЙ КОНТЕНТ ФИЛЬТРУЕТСЯ; ДЛЯ НАРУШЕНИЙ ИСПОЛЬЗУЙ ЖАЛОБУ ИЛИ БЛОКИРОВКУ.",
-                        es: "MANTEN LAS NOTAS SEGURAS. EL CONTENIDO INACEPTABLE SE FILTRA; USA REPORTAR O BLOQUEAR."
+                        es: "MANTEN LAS NOTAS SEGURAS. EL CONTENIDO INACEPTABLE SE FILTRA; USA REPORTAR O BLOQUEAR.",
+                        uk: "ДОТРИМУЙСЯ ПРАВИЛ. НЕПРИПУСТИМИЙ ВМІСТ ФІЛЬТРУЄТЬСЯ; У РАЗІ ПОРУШЕНЬ НАДІШЛИ СКАРГУ АБО ЗАБЛОКУЙ КОРИСТУВАЧА."
                     ))
                     .font(.system(size: 8, weight: .bold, design: .monospaced))
                     .tracking(0.35)
@@ -763,7 +772,7 @@ struct CommunityView: View {
     private func commentComposer(target: PublicSpyProfile) -> some View {
         VStack(alignment: .trailing, spacing: 8) {
             TextField(
-                localized(en: "Leave a field note...", ru: "Оставить запись...", es: "Dejar una nota..."),
+                localized(en: "Leave a field note...", ru: "Оставить запись...", es: "Dejar una nota...", uk: "Залишити допис..."),
                 text: $commentDraft,
                 axis: .vertical
             )
@@ -792,7 +801,7 @@ struct CommunityView: View {
                     HStack(spacing: 7) {
                         Image(systemName: "paperplane.fill")
                             .accessibilityHidden(true)
-                        Text(localized(en: "POST", ru: "ОТПРАВИТЬ", es: "PUBLICAR"))
+                        Text(localized(en: "POST", ru: "ОТПРАВИТЬ", es: "PUBLICAR", uk: "ОПУБЛІКУВАТИ"))
                     }
                     .font(.system(size: 10, weight: .black, design: .monospaced))
                     .tracking(0.6)
@@ -867,7 +876,7 @@ struct CommunityView: View {
                     }
                     .buttonStyle(SpyWebPressStyle())
                     .disabled(activeAction != nil)
-                    .accessibilityLabel(localized(en: "Report comment", ru: "Пожаловаться на комментарий", es: "Reportar comentario"))
+                    .accessibilityLabel(localized(en: "Report comment", ru: "Пожаловаться на комментарий", es: "Reportar comentario", uk: "Поскаржитися на допис"))
                 }
 
                 if comment.canDelete {
@@ -882,7 +891,7 @@ struct CommunityView: View {
                     }
                     .buttonStyle(SpyWebPressStyle())
                     .disabled(activeAction != nil)
-                    .accessibilityLabel(localized(en: "Delete comment", ru: "Удалить комментарий", es: "Eliminar comentario"))
+                    .accessibilityLabel(localized(en: "Delete comment", ru: "Удалить комментарий", es: "Eliminar comentario", uk: "Видалити допис"))
                 }
             }
         }
@@ -906,24 +915,24 @@ struct CommunityView: View {
 
             HStack(spacing: 9) {
                 communityActionButton(
-                    localized(en: "ACCEPT", ru: "ПРИНЯТЬ", es: "ACEPTAR"),
+                    localized(en: "ACCEPT", ru: "ПРИНЯТЬ", es: "ACEPTAR", uk: "ПРИЙНЯТИ"),
                     icon: "checkmark",
                     color: SpyTheme.green,
                     filled: true,
                     feedbackID: relationshipFeedbackID("accept", record.id),
-                    waitingTitle: localized(en: "ACCEPTING...", ru: "ПРИНИМАЕМ...", es: "ACEPTANDO..."),
-                    successTitle: localized(en: "ACCEPTED", ru: "ПРИНЯТО", es: "ACEPTADO")
+                    waitingTitle: localized(en: "ACCEPTING...", ru: "ПРИНИМАЕМ...", es: "ACEPTANDO...", uk: "ПРИЙМАЄМО..."),
+                    successTitle: localized(en: "ACCEPTED", ru: "ПРИНЯТО", es: "ACEPTADO", uk: "ПРИЙНЯТО")
                 ) {
                     await relationshipDecision("accept", record.id)
                 }
 
                 communityActionButton(
-                    localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR"),
+                    localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR", uk: "ВІДХИЛИТИ"),
                     icon: "xmark",
                     color: SpyTheme.muted,
                     feedbackID: relationshipFeedbackID("decline", record.id),
-                    waitingTitle: localized(en: "DECLINING...", ru: "ОТКЛОНЯЕМ...", es: "RECHAZANDO..."),
-                    successTitle: localized(en: "DECLINED", ru: "ОТКЛОНЕНО", es: "RECHAZADO")
+                    waitingTitle: localized(en: "DECLINING...", ru: "ОТКЛОНЯЕМ...", es: "RECHAZANDO...", uk: "ВІДХИЛЯЄМО..."),
+                    successTitle: localized(en: "DECLINED", ru: "ОТКЛОНЕНО", es: "RECHAZADO", uk: "ВІДХИЛЕНО")
                 ) {
                     await relationshipDecision("decline", record.id)
                 }
@@ -946,7 +955,7 @@ struct CommunityView: View {
                         .font(.system(size: 11, weight: .black, design: .monospaced))
                         .foregroundStyle(.white)
                         .lineLimit(1)
-                    Text(localized(en: "ROOM \(invite.roomCode)", ru: "КОМНАТА \(invite.roomCode)", es: "SALA \(invite.roomCode)"))
+                    Text(localized(en: "ROOM \(invite.roomCode)", ru: "КОМНАТА \(invite.roomCode)", es: "SALA \(invite.roomCode)", uk: "КІМНАТА \(invite.roomCode)"))
                         .font(.system(size: 9, weight: .bold, design: .monospaced))
                         .foregroundStyle(SpyTheme.red)
                 }
@@ -956,24 +965,24 @@ struct CommunityView: View {
 
             HStack(spacing: 9) {
                 communityActionButton(
-                    localized(en: "JOIN", ru: "ВОЙТИ", es: "ENTRAR"),
+                    localized(en: "JOIN", ru: "ВОЙТИ", es: "ENTRAR", uk: "УВІЙТИ"),
                     icon: "arrow.right",
                     color: SpyTheme.red,
                     filled: true,
                     feedbackID: roomInviteFeedbackID("accept", invite.id),
-                    waitingTitle: localized(en: "ACCEPTING...", ru: "ПРИНИМАЕМ...", es: "ACEPTANDO..."),
-                    successTitle: localized(en: "READY", ru: "ГОТОВО", es: "LISTO")
+                    waitingTitle: localized(en: "ACCEPTING...", ru: "ПРИНИМАЕМ...", es: "ACEPTANDO...", uk: "ПРИЙМАЄМО..."),
+                    successTitle: localized(en: "READY", ru: "ГОТОВО", es: "LISTO", uk: "ГОТОВО")
                 ) {
                     await acceptRoomInvite(invite)
                 }
 
                 communityActionButton(
-                    localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR"),
+                    localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR", uk: "ВІДХИЛИТИ"),
                     icon: "xmark",
                     color: SpyTheme.muted,
                     feedbackID: roomInviteFeedbackID("decline", invite.id),
-                    waitingTitle: localized(en: "DECLINING...", ru: "ОТКЛОНЯЕМ...", es: "RECHAZANDO..."),
-                    successTitle: localized(en: "DECLINED", ru: "ОТКЛОНЕНО", es: "RECHAZADO")
+                    waitingTitle: localized(en: "DECLINING...", ru: "ОТКЛОНЯЕМ...", es: "RECHAZANDO...", uk: "ВІДХИЛЯЄМО..."),
+                    successTitle: localized(en: "DECLINED", ru: "ОТКЛОНЕНО", es: "RECHAZADO", uk: "ВІДХИЛЕНО")
                 ) {
                     await declineRoomInvite(invite)
                 }
@@ -1046,7 +1055,7 @@ struct CommunityView: View {
                 unblockTarget = relationship
             } label: {
                 commandLabel(
-                    localized(en: "UNBLOCK", ru: "РАЗБЛОКИРОВАТЬ", es: "DESBLOQUEAR"),
+                    localized(en: "UNBLOCK", ru: "РАЗБЛОКИРОВАТЬ", es: "DESBLOQUEAR", uk: "РОЗБЛОКУВАТИ"),
                     icon: "lock.open.fill"
                 )
                 .foregroundStyle(SpyTheme.muted)
@@ -1109,7 +1118,7 @@ struct CommunityView: View {
                     case .failure:
                         Image(systemName: "exclamationmark.triangle.fill")
                             .font(.system(size: 12, weight: .black))
-                        Text(localized(en: "RETRY", ru: "ПОВТОРИТЬ", es: "REINTENTAR"))
+                        Text(localized(en: "RETRY", ru: "ПОВТОРИТЬ", es: "REINTENTAR", uk: "СПРОБУВАТИ ЗНОВУ"))
                             .contentTransition(.numericText())
                     }
                 } else {
@@ -1210,7 +1219,8 @@ struct CommunityView: View {
             argument: localized(
                 en: "Action failed. Try again.",
                 ru: "Не удалось. Попробуйте ещё раз.",
-                es: "La accion fallo. Intentalo de nuevo."
+                es: "La accion fallo. Intentalo de nuevo.",
+                uk: "Не вдалося виконати дію. Спробуйте ще раз."
             )
         )
         reconcileNetworkAfterAction()
@@ -1228,11 +1238,11 @@ struct CommunityView: View {
         guard let feedback else { return "" }
         switch feedback.phase {
         case .waiting:
-            return localized(en: "In progress", ru: "Выполняется", es: "En progreso")
+            return localized(en: "In progress", ru: "Выполняется", es: "En progreso", uk: "Виконується")
         case .success:
-            return localized(en: "Successful", ru: "Успешно", es: "Completado")
+            return localized(en: "Successful", ru: "Успешно", es: "Completado", uk: "Успішно")
         case .failure:
-            return localized(en: "Failed. Try again", ru: "Ошибка. Повторить", es: "Error. Reintentar")
+            return localized(en: "Failed. Try again", ru: "Ошибка. Повторить", es: "Error. Reintentar", uk: "Помилка. Спробуйте ще раз")
         }
     }
 
@@ -1509,7 +1519,7 @@ struct CommunityView: View {
         defer { activeAction = nil }
 
         if appState.shouldUsePreviewData {
-            message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA")
+            message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA", uk: "ЗАПИТ НАДІСЛАНО")
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
             return
@@ -1518,7 +1528,7 @@ struct CommunityView: View {
         do {
             network = try await appState.client.sendFriendRequest(userID: userID)
             await refreshActiveProfile()
-            message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA")
+            message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA", uk: "ЗАПИТ НАДІСЛАНО")
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
         } catch {
@@ -1562,8 +1572,8 @@ struct CommunityView: View {
             }
 
             let successMessage = action == "accept"
-                ? localized(en: "OPERATIVE ADDED", ru: "ОПЕРАТИВНИК ДОБАВЛЕН", es: "OPERATIVO AGREGADO")
-                : localized(en: "REQUEST DECLINED", ru: "ЗАПРОС ОТКЛОНЁН", es: "SOLICITUD RECHAZADA")
+                ? localized(en: "OPERATIVE ADDED", ru: "ОПЕРАТИВНИК ДОБАВЛЕН", es: "OPERATIVO AGREGADO", uk: "ОПЕРАТИВНИКА ДОДАНО")
+                : localized(en: "REQUEST DECLINED", ru: "ЗАПРОС ОТКЛОНЁН", es: "SOLICITUD RECHAZADA", uk: "ЗАПИТ ВІДХИЛЕНО")
             await showActionSuccess(actionID, message: successMessage)
 
             resolvedRelationshipIDs.insert(friendshipID)
@@ -1641,7 +1651,7 @@ struct CommunityView: View {
         defer { activeAction = nil }
 
         if appState.shouldUsePreviewData {
-            message = localized(en: "REPORT RECEIVED", ru: "ЖАЛОБА ПРИНЯТА", es: "REPORTE RECIBIDO")
+            message = localized(en: "REPORT RECEIVED", ru: "ЖАЛОБА ПРИНЯТА", es: "REPORTE RECIBIDO", uk: "СКАРГУ ПРИЙНЯТО")
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
             return
@@ -1665,7 +1675,8 @@ struct CommunityView: View {
             message = localized(
                 en: "REPORT RECEIVED — MODERATION WILL REVIEW IT",
                 ru: "ЖАЛОБА ПРИНЯТА — МОДЕРАЦИЯ ПРОВЕРИТ ЕЕ",
-                es: "REPORTE RECIBIDO — MODERACION LO REVISARA"
+                es: "REPORTE RECIBIDO — MODERACION LO REVISARA",
+                uk: "СКАРГУ ПРИЙНЯТО — МОДЕРАЦІЯ ЇЇ РОЗГЛЯНЕ"
             )
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
@@ -1683,7 +1694,7 @@ struct CommunityView: View {
             activeProfile = nil
             profileHistory.removeAll()
             directory.removeAll { $0.id == profile.id }
-            message = localized(en: "OPERATIVE BLOCKED", ru: "ОПЕРАТИВНИК ЗАБЛОКИРОВАН", es: "OPERATIVO BLOQUEADO")
+            message = localized(en: "OPERATIVE BLOCKED", ru: "ОПЕРАТИВНИК ЗАБЛОКИРОВАН", es: "OPERATIVO BLOQUEADO", uk: "ОПЕРАТИВНИКА ЗАБЛОКОВАНО")
             messageKind = .success
             return
         }
@@ -1698,7 +1709,8 @@ struct CommunityView: View {
             message = localized(
                 en: "OPERATIVE BLOCKED — COMMENTS AND INVITES REMOVED",
                 ru: "ОПЕРАТИВНИК ЗАБЛОКИРОВАН — ЗАПИСИ И ПРИГЛАШЕНИЯ УДАЛЕНЫ",
-                es: "OPERATIVO BLOQUEADO — COMENTARIOS E INVITACIONES ELIMINADOS"
+                es: "OPERATIVO BLOQUEADO — COMENTARIOS E INVITACIONES ELIMINADOS",
+                uk: "ОПЕРАТИВНИКА ЗАБЛОКОВАНО — ДОПИСИ ТА ЗАПРОШЕННЯ ВИДАЛЕНО"
             )
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
@@ -1713,14 +1725,14 @@ struct CommunityView: View {
         defer { activeAction = nil }
 
         if appState.shouldUsePreviewData {
-            message = localized(en: "OPERATIVE UNBLOCKED", ru: "ОПЕРАТИВНИК РАЗБЛОКИРОВАН", es: "OPERATIVO DESBLOQUEADO")
+            message = localized(en: "OPERATIVE UNBLOCKED", ru: "ОПЕРАТИВНИК РАЗБЛОКИРОВАН", es: "OPERATIVO DESBLOQUEADO", uk: "ОПЕРАТИВНИКА РОЗБЛОКОВАНО")
             messageKind = .success
             return
         }
 
         do {
             network = try await appState.client.unblockCommunityUser(friendshipID: relationship.id)
-            message = localized(en: "OPERATIVE UNBLOCKED", ru: "ОПЕРАТИВНИК РАЗБЛОКИРОВАН", es: "OPERATIVO DESBLOQUEADO")
+            message = localized(en: "OPERATIVE UNBLOCKED", ru: "ОПЕРАТИВНИК РАЗБЛОКИРОВАН", es: "OPERATIVO DESBLOQUEADO", uk: "ОПЕРАТИВНИКА РОЗБЛОКОВАНО")
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
         } catch {
@@ -1736,7 +1748,7 @@ struct CommunityView: View {
 
         if appState.shouldUsePreviewData {
             commentDraft = ""
-            message = localized(en: "FIELD NOTE POSTED", ru: "ЗАПИСЬ ОПУБЛИКОВАНА", es: "NOTA PUBLICADA")
+            message = localized(en: "FIELD NOTE POSTED", ru: "ЗАПИСЬ ОПУБЛИКОВАНА", es: "NOTA PUBLICADA", uk: "ДОПИС ОПУБЛІКОВАНО")
             messageKind = .success
             return
         }
@@ -1744,7 +1756,7 @@ struct CommunityView: View {
         do {
             activeProfile = try await appState.client.addCommunityComment(userID: userID, comment: body)
             commentDraft = ""
-            message = localized(en: "FIELD NOTE POSTED", ru: "ЗАПИСЬ ОПУБЛИКОВАНА", es: "NOTA PUBLICADA")
+            message = localized(en: "FIELD NOTE POSTED", ru: "ЗАПИСЬ ОПУБЛИКОВАНА", es: "NOTA PUBLICADA", uk: "ДОПИС ОПУБЛІКОВАНО")
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
         } catch {
@@ -1773,7 +1785,7 @@ struct CommunityView: View {
         defer { activeAction = nil }
 
         if appState.shouldUsePreviewData {
-            message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA")
+            message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA", uk: "ЗАПРОШЕННЯ ДО КІМНАТИ НАДІСЛАНО")
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
             return
@@ -1782,7 +1794,7 @@ struct CommunityView: View {
         do {
             let acknowledgement = try await appState.client.inviteCommunityOperative(userID: profile.id, room: room)
             guard acknowledgement.ok else { return }
-            message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA")
+            message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA", uk: "ЗАПРОШЕННЯ ДО КІМНАТИ НАДІСЛАНО")
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
         } catch {
@@ -1798,13 +1810,13 @@ struct CommunityView: View {
             do {
                 try await Task.sleep(for: .milliseconds(620))
                 updateActionWaitingTitle(
-                    localized(en: "JOINING...", ru: "ВХОДИМ...", es: "ENTRANDO..."),
+                    localized(en: "JOINING...", ru: "ВХОДИМ...", es: "ENTRANDO...", uk: "ПРИЄДНУЄМОСЯ..."),
                     id: actionID
                 )
                 try await Task.sleep(for: .milliseconds(620))
                 await showActionSuccess(
                     actionID,
-                    message: localized(en: "ROOM READY", ru: "КОМНАТА ГОТОВА", es: "SALA LISTA")
+                    message: localized(en: "ROOM READY", ru: "КОМНАТА ГОТОВА", es: "SALA LISTA", uk: "КІМНАТА ГОТОВА")
                 )
                 resolvedRoomInviteIDs.insert(invite.id)
                 network = networkRemovingRoomInvite(invite.id, from: network)
@@ -1829,7 +1841,7 @@ struct CommunityView: View {
             }
 
             updateActionWaitingTitle(
-                localized(en: "JOINING...", ru: "ВХОДИМ...", es: "ENTRANDO..."),
+                localized(en: "JOINING...", ru: "ВХОДИМ...", es: "ENTRANDO...", uk: "ПРИЄДНУЄМОСЯ..."),
                 id: actionID
             )
             guard await appState.joinRoom(code: roomCode) else {
@@ -1837,7 +1849,8 @@ struct CommunityView: View {
                 throw Base44Error(message: localized(
                     en: "Could not join the room",
                     ru: "Не удалось войти в комнату",
-                    es: "No se pudo entrar a la sala"
+                    es: "No se pudo entrar a la sala",
+                    uk: "Не вдалося увійти до кімнати"
                 ))
             }
 
@@ -1853,7 +1866,7 @@ struct CommunityView: View {
 
             await showActionSuccess(
                 actionID,
-                message: localized(en: "ROOM READY", ru: "КОМНАТА ГОТОВА", es: "SALA LISTA")
+                message: localized(en: "ROOM READY", ru: "КОМНАТА ГОТОВА", es: "SALA LISTA", uk: "КІМНАТА ГОТОВА")
             )
             network = networkRemovingRoomInvite(invite.id, from: acceptedState)
             finishActionFeedback(actionID)
@@ -1872,7 +1885,7 @@ struct CommunityView: View {
                 try await Task.sleep(for: .milliseconds(760))
                 await showActionSuccess(
                     actionID,
-                    message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACIÓN RECHAZADA")
+                    message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACIÓN RECHAZADA", uk: "ЗАПРОШЕННЯ ВІДХИЛЕНО")
                 )
                 resolvedRoomInviteIDs.insert(invite.id)
                 network = networkRemovingRoomInvite(invite.id, from: network)
@@ -1887,7 +1900,7 @@ struct CommunityView: View {
             let result = try await appState.client.communityRoomInviteAction("decline_room_invite", inviteID: invite.id)
             await showActionSuccess(
                 actionID,
-                message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACIÓN RECHAZADA")
+                message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACIÓN RECHAZADA", uk: "ЗАПРОШЕННЯ ВІДХИЛЕНО")
             )
             resolvedRoomInviteIDs.insert(invite.id)
             withAnimation(.smooth(duration: 0.24)) {
@@ -2056,12 +2069,12 @@ struct CommunityView: View {
 
     private func relationshipTitle(_ relationship: CommunityRelationshipSummary?) -> String {
         guard let relationship else {
-            return localized(en: "AVAILABLE", ru: "ДОСТУПЕН", es: "DISPONIBLE")
+            return localized(en: "AVAILABLE", ru: "ДОСТУПЕН", es: "DISPONIBLE", uk: "ДОСТУПНИЙ")
         }
         switch relationship.status {
-        case "accepted": return localized(en: "CONNECTED", ru: "В ДРУЗЬЯХ", es: "CONECTADO")
-        case "pending": return localized(en: "PENDING", ru: "ОЖИДАНИЕ", es: "PENDIENTE")
-        default: return localized(en: "AVAILABLE", ru: "ДОСТУПЕН", es: "DISPONIBLE")
+        case "accepted": return localized(en: "CONNECTED", ru: "В ДРУЗЬЯХ", es: "CONECTADO", uk: "У ДРУЗЯХ")
+        case "pending": return localized(en: "PENDING", ru: "ОЖИДАНИЕ", es: "PENDIENTE", uk: "ОЧІКУВАННЯ")
+        default: return localized(en: "AVAILABLE", ru: "ДОСТУПЕН", es: "DISPONIBLE", uk: "ДОСТУПНИЙ")
         }
     }
 
@@ -2076,19 +2089,19 @@ struct CommunityView: View {
     private func reportReasonTitle(_ reason: CommunityReportReason) -> String {
         switch reason {
         case .harassment:
-            localized(en: "HARASSMENT OR BULLYING", ru: "ТРАВЛЯ ИЛИ ДОМОГАТЕЛЬСТВО", es: "ACOSO O INTIMIDACION")
+            localized(en: "HARASSMENT OR BULLYING", ru: "ТРАВЛЯ ИЛИ ДОМОГАТЕЛЬСТВО", es: "ACOSO O INTIMIDACION", uk: "ПЕРЕСЛІДУВАННЯ АБО ЦЬКУВАННЯ")
         case .hateSpeech:
-            localized(en: "HATE SPEECH", ru: "ЯЗЫК НЕНАВИСТИ", es: "DISCURSO DE ODIO")
+            localized(en: "HATE SPEECH", ru: "ЯЗЫК НЕНАВИСТИ", es: "DISCURSO DE ODIO", uk: "МОВА ВОРОЖНЕЧІ")
         case .sexualContent:
-            localized(en: "SEXUAL CONTENT", ru: "СЕКСУАЛЬНЫЙ КОНТЕНТ", es: "CONTENIDO SEXUAL")
+            localized(en: "SEXUAL CONTENT", ru: "СЕКСУАЛЬНЫЙ КОНТЕНТ", es: "CONTENIDO SEXUAL", uk: "СЕКСУАЛЬНИЙ ВМІСТ")
         case .violenceOrThreats:
-            localized(en: "VIOLENCE OR THREATS", ru: "НАСИЛИЕ ИЛИ УГРОЗЫ", es: "VIOLENCIA O AMENAZAS")
+            localized(en: "VIOLENCE OR THREATS", ru: "НАСИЛИЕ ИЛИ УГРОЗЫ", es: "VIOLENCIA O AMENAZAS", uk: "НАСИЛЬСТВО АБО ПОГРОЗИ")
         case .spam:
-            localized(en: "SPAM", ru: "СПАМ", es: "SPAM")
+            localized(en: "SPAM", ru: "СПАМ", es: "SPAM", uk: "СПАМ")
         case .impersonation:
-            localized(en: "IMPERSONATION", ru: "ВЫДАЧА СЕБЯ ЗА ДРУГОГО", es: "SUPLANTACION")
+            localized(en: "IMPERSONATION", ru: "ВЫДАЧА СЕБЯ ЗА ДРУГОГО", es: "SUPLANTACION", uk: "ВИДАВАННЯ СЕБЕ ЗА ІНШУ ОСОБУ")
         case .other:
-            localized(en: "OTHER VIOLATION", ru: "ДРУГОЕ НАРУШЕНИЕ", es: "OTRA INFRACCION")
+            localized(en: "OTHER VIOLATION", ru: "ДРУГОЕ НАРУШЕНИЕ", es: "OTRA INFRACCION", uk: "ІНШЕ ПОРУШЕННЯ")
         }
     }
 
@@ -2096,14 +2109,21 @@ struct CommunityView: View {
         localized(
             en: "Select the reason for reporting \(target.displayName). Reports are private and reviewed by moderation.",
             ru: "Выберите причину жалобы на \(target.displayName). Жалобы конфиденциальны и проверяются модерацией.",
-            es: "Selecciona el motivo para reportar a \(target.displayName). Los reportes son privados y revisados por moderacion."
+            es: "Selecciona el motivo para reportar a \(target.displayName). Los reportes son privados y revisados por moderacion.",
+            uk: "Оберіть причину скарги на \(target.displayName). Скарги конфіденційні та розглядаються модерацією."
         )
     }
 
     private func formattedCommunityDate(_ raw: String) -> String {
         guard let date = ISO8601DateFormatter().date(from: raw) else { return raw }
         let formatter = DateFormatter()
-        formatter.locale = Locale(identifier: appState.language == .ru ? "ru_RU" : appState.language == .es ? "es_ES" : "en_US")
+        let localeIdentifier: String = switch appState.language {
+        case .en: "en_US"
+        case .ru: "ru_RU"
+        case .es: "es_ES"
+        case .uk: "uk_UA"
+        }
+        formatter.locale = Locale(identifier: localeIdentifier)
         formatter.dateStyle = .medium
         formatter.timeStyle = .short
         return formatter.string(from: date).uppercased()
@@ -2131,14 +2151,15 @@ struct CommunityView: View {
         let message = nsError.localizedDescription
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        return ["cancelled", "canceled", "отменено", "cancelado"].contains(message)
+        return ["cancelled", "canceled", "отменено", "cancelado", "скасовано"].contains(message)
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .en: en
         case .ru: ru
         case .es: es
+        case .uk: uk
         }
     }
 }
@@ -2199,6 +2220,9 @@ enum CommunityTab: String, CaseIterable, Identifiable {
         case (.exit, .es): "Volver"
         case (.network, .es): "Comunidad"
         case (.me, .es): "Mi perfil publico"
+        case (.exit, .uk): "Повернутися назад"
+        case (.network, .uk): "Спільнота"
+        case (.me, .uk): "Мій публічний профіль"
         case (.exit, _): "Return"
         case (.network, _): "Community"
         case (.me, _): "My public profile"
@@ -2275,7 +2299,16 @@ private struct CommunitySpyCard: View {
             }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("SPYCARD, \(profile.displayName), SPYID \(profile.spyID)")
+        .accessibilityLabel(spyCardAccessibilityLabel)
+    }
+
+    private var spyCardAccessibilityLabel: String {
+        switch language {
+        case .en: "Spy card, \(profile.displayName), Spy ID \(profile.spyID)"
+        case .es: "Tarjeta de espía, \(profile.displayName), identificador \(profile.spyID)"
+        case .ru: "Карта оперативника, \(profile.displayName), идентификатор \(profile.spyID)"
+        case .uk: "Картка оперативника, \(profile.displayName), ідентифікатор \(profile.spyID)"
+        }
     }
 
     private var fullCard: some View {
@@ -2497,6 +2530,10 @@ private struct CommunitySpyCard: View {
         case (.ghost, .es): "FANTASMA"
         case (.analyst, .es): "ANALISTA"
         case (.handler, .es): "CONTROL"
+        case (.operative, .uk): "ОПЕРАТИВНИК"
+        case (.ghost, .uk): "ПРИВИД"
+        case (.analyst, .uk): "АНАЛІТИК"
+        case (.handler, .uk): "КУРАТОР"
         case (.operative, _): "OPERATIVE"
         case (.ghost, _): "GHOST"
         case (.analyst, _): "ANALYST"
@@ -2509,6 +2546,7 @@ private struct CommunitySpyCard: View {
         case .en: "PUBLIC"
         case .ru: "ПУБЛИЧНЫЙ"
         case .es: "PÚBLICO"
+        case .uk: "ПУБЛІЧНИЙ"
         }
     }
 
@@ -2520,6 +2558,9 @@ private struct CommunitySpyCard: View {
         case (.rating, .es): "RANGO"
         case (.games, .es): "JUEGOS"
         case (.rate, .es): "VICTORIAS"
+        case (.rating, .uk): "РЕЙТИНГ"
+        case (.games, .uk): "ІГРИ"
+        case (.rate, .uk): "ПЕРЕМОГИ"
         case (.rating, _): "RATING"
         case (.games, _): "GAMES"
         case (.rate, _): "WIN RATE"

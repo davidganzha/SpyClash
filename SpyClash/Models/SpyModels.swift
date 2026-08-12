@@ -5,6 +5,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
     case en
     case es
     case ru
+    case uk
 
     static let storageKey = "spy_lang"
 
@@ -17,6 +18,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en: "English"
         case .es: "Español"
         case .ru: "Русский"
+        case .uk: "Українська"
         }
     }
 
@@ -25,6 +27,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en: "LANGUAGE"
         case .es: "IDIOMA"
         case .ru: "LANGUAGE / ЯЗЫК"
+        case .uk: "МОВА"
         }
     }
 
@@ -33,6 +36,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en: "LANGUAGE SAVED"
         case .es: "IDIOMA GUARDADO"
         case .ru: "ЯЗЫК СОХРАНЕН"
+        case .uk: "МОВУ ЗБЕРЕЖЕНО"
         }
     }
 
@@ -41,6 +45,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en: "LANGUAGE SYNC FAILED"
         case .es: "ERROR AL SINCRONIZAR IDIOMA"
         case .ru: "СИНХРОНИЗАЦИЯ ЯЗЫКА НЕ УДАЛАСЬ"
+        case .uk: "НЕ ВДАЛОСЯ СИНХРОНІЗУВАТИ МОВУ"
         }
     }
 
@@ -52,6 +57,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
             "Revisa las mismas reglas y politica de privacidad del centro web."
         case .ru:
             "Открой те же правила и политику приватности, что и в веб-версии."
+        case .uk:
+            "Переглянь ті самі правила гри та політику приватності, що й у вебверсії."
         }
     }
 
@@ -60,6 +67,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en: "HOW TO PLAY?"
         case .es: "¿CÓMO JUGAR?"
         case .ru: "КАК ИГРАТЬ?"
+        case .uk: "ЯК ГРАТИ?"
         }
     }
 
@@ -68,6 +76,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en: "// TUTORIAL"
         case .es: "// TUTORIAL"
         case .ru: "// ТУТОРИАЛ"
+        case .uk: "// НАВЧАННЯ"
         }
     }
 
@@ -76,6 +85,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en: "SYNCING FIELD KIT"
         case .es: "SINCRONIZANDO EQUIPO"
         case .ru: "СИНХРОНИЗАЦИЯ НАБОРА"
+        case .uk: "СИНХРОНІЗАЦІЯ СПОРЯДЖЕННЯ"
         }
     }
 
@@ -84,6 +94,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en: "NEXT"
         case .es: "SIGUIENTE"
         case .ru: "ДАЛЬШЕ"
+        case .uk: "ДАЛІ"
         }
     }
 
@@ -92,6 +103,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en: "BACK"
         case .es: "ATRÁS"
         case .ru: "НАЗАД"
+        case .uk: "НАЗАД"
         }
     }
 
@@ -100,6 +112,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en: "GOT IT"
         case .es: "ENTENDIDO"
         case .ru: "ПОНЯТНО"
+        case .uk: "ЗРОЗУМІЛО"
         }
     }
 
@@ -111,6 +124,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case (.es, .associations): "ASOCIACIONES"
         case (.ru, .questions): "ВОПРОСЫ"
         case (.ru, .associations): "АССОЦИАЦИИ"
+        case (.uk, .questions): "ЗАПИТАННЯ"
+        case (.uk, .associations): "АСОЦІАЦІЇ"
         }
     }
 
@@ -129,6 +144,20 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 TutorialStep(icon: "🎰", title: "Барабан", text: "Хост запускает барабан — он случайно выбирает игрока. Этот игрок должен назвать вслух ОДНО слово-ассоциацию к секретному слову, затем нажать «Ответил»."),
                 TutorialStep(icon: "🔄", title: "Без повторов", text: "Каждый игрок говорит по одному разу за раунд. Когда все высказались — начинается следующий раунд с новым случайным порядком."),
                 TutorialStep(icon: "🎯", title: "Найди шпиона", text: "Услышав ассоциации, голосуйте за подозреваемого. Для исключения нужны N−S голосов за одного подозреваемого, где N — активные игроки, а S — активные шпионы; при одном шпионе это N−1. Сервер автоматически отменит невозможное голосование. У команды шпионов одна общая попытка угадать слово!")
+            ]
+        case (.uk, .questions):
+            [
+                TutorialStep(icon: "🎭", title: "Ролі", text: "На початку гри кожен таємно читає свою картку ролі. Детективи бачать секретне слово й категорію. Шпигун не бачить слова — лише список варіантів, з яких згодом доведеться вгадувати."),
+                TutorialStep(icon: "❓", title: "Запитання й відповіді", text: "Гравці ходять по колу: один ставить запитання, інший відповідає вголос. Коли гравець почув відповідь, він натискає «Відповідь почуто», і хід переходить далі. Запитання мають натякати на слово, але не розкривати його шпигуну."),
+                TutorialStep(icon: "🗳️", title: "Голосування за шпигуна", text: "Будь-який гравець може ініціювати голосування. Для виключення потрібні N−S голосів за одного підозрюваного, де N — кількість активних гравців, а S — кількість активних шпигунів. З одним шпигуном це, як і раніше, N−1. Сервер автоматично скасує голосування, щойно такий результат стане неможливим."),
+                TutorialStep(icon: "🎯", title: "Спроба шпигунів", text: "Команда шпигунів має одну спільну спробу: будь-який шпигун може натиснути «Вгадати достроково» й вибрати слово. Правильна відповідь приносить перемогу всім шпигунам, а помилка одразу віддає перемогу детективам.")
+            ]
+        case (.uk, .associations):
+            [
+                TutorialStep(icon: "🎭", title: "Ролі", text: "На початку кожен таємно читає свою картку ролі. Детективи бачать секретне слово. Шпигун не бачить нічого — замість слова в нього «???»."),
+                TutorialStep(icon: "🎰", title: "Барабан", text: "Хост запускає барабан, і той випадково обирає гравця. Цей гравець має вголос назвати ОДНЕ слово-асоціацію до секретного слова, а потім натиснути «Відповів»."),
+                TutorialStep(icon: "🔄", title: "Без повторів", text: "Кожен гравець говорить один раз за раунд. Коли всі висловилися, починається новий раунд із новою випадковою чергою."),
+                TutorialStep(icon: "🎯", title: "Знайди шпигуна", text: "Прослухавши асоціації, голосуйте за підозрюваного. Для виключення потрібні N−S голосів за одного підозрюваного, де N — кількість активних гравців, а S — кількість активних шпигунів; з одним шпигуном це N−1. Сервер автоматично скасує голосування, результат якого вже неможливий. Команда шпигунів має одну спільну спробу вгадати слово!")
             ]
         case (.es, .questions):
             [
@@ -198,6 +227,18 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 terms: "ПРАВИЛА",
                 invitePrefix: "ПРИГЛАШЕНИЕ",
                 inviteSuffix: "АКТИВЕН"
+            )
+        case .uk:
+            WelcomeCopy(
+                statusPrefix: "СТАТУС:",
+                locked: "ЗАКРИТО",
+                tagline: "ОБМАН · ДЕДУКЦІЯ · ДОМІНУВАННЯ",
+                enterGame: "УВІЙТИ В ГРУ",
+                createAccount: "СТВОРИТИ АКАУНТ",
+                privacy: "ПРИВАТНІСТЬ",
+                terms: "УМОВИ",
+                invitePrefix: "ЗАПРОШЕННЯ",
+                inviteSuffix: "АКТИВНЕ"
             )
         }
     }
@@ -399,6 +440,71 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 signInToJoinPrefix: "ВОЙДИ, ЧТОБЫ ПРИСОЕДИНИТЬСЯ К",
                 emailPlaceholder: "operative@example.com"
             )
+        case .uk:
+            AuthCopy(
+                accessTerminal: "ТЕРМІНАЛ ДОСТУПУ",
+                passphraseRequired: "ПОТРІБЕН ПАРОЛЬ",
+                newOperative: "НОВИЙ ОПЕРАТИВНИК",
+                setPassphrase: "СТВОРІТЬ ПАРОЛЬ",
+                verificationRequired: "ПОТРІБНЕ ПІДТВЕРДЖЕННЯ",
+                recoveryProtocol: "ПРОТОКОЛ ВІДНОВЛЕННЯ",
+                transmissionSent: "ПОВІДОМЛЕННЯ НАДІСЛАНО",
+                setNewPassphrase: "НОВИЙ ПАРОЛЬ",
+                welcomeBack: "З поверненням",
+                joinNetworkTitle: "Приєднатися до мережі",
+                createPassphraseTitle: "Створити пароль",
+                confirmIdentityTitle: "Підтвердити особу",
+                resetPassphraseTitle: "Скинути пароль",
+                checkInboxTitle: "Перевір пошту",
+                newCredentialsTitle: "Нові облікові дані",
+                emailSubtitle: "Увійди, щоб продовжити місію",
+                passwordSubtitle: "Останній крок",
+                registerEmailSubtitle: "Створи облікові дані, щоб увійти в гру",
+                registerPasswordSubtitle: "Обери надійний пароль",
+                otpSubtitlePrefix: "Код надіслано на",
+                forgotPasswordEmptySubtitle: "Запроси безпечне посилання для відновлення",
+                forgotPasswordPrefix: "Посилання для відновлення для",
+                resetEmailSentPrefix: "Посилання для відновлення надіслано на",
+                resetPasswordSubtitle: "Обери новий надійний пароль",
+                continueAction: "ДАЛІ",
+                unlockAction: "РОЗБЛОКУВАТИ",
+                joinNetworkAction: "ПРИЄДНАТИСЯ ДО МЕРЕЖІ",
+                createCredentialsAction: "СТВОРИТИ ОБЛІКОВІ ДАНІ",
+                verifyEnterAction: "ПІДТВЕРДИТИ Й УВІЙТИ",
+                dispatchResetLinkAction: "НАДІСЛАТИ ПОСИЛАННЯ",
+                confirmNewKeyAction: "ПІДТВЕРДИТИ НОВИЙ ПАРОЛЬ",
+                authenticatingBusy: "АВТЕНТИФІКАЦІЯ...",
+                recruitingBusy: "РЕЄСТРАЦІЯ...",
+                verifyingBusy: "ПІДТВЕРДЖЕННЯ...",
+                dispatchingBusy: "НАДСИЛАННЯ...",
+                resettingBusy: "СКИДАННЯ...",
+                passphraseLabel: "// ПАРОЛЬ",
+                confirmPassphraseLabel: "// ПОВТОРІТЬ ПАРОЛЬ",
+                newPassphraseLabel: "// НОВИЙ ПАРОЛЬ",
+                sixDigitKeyLabel: "// 6-ЗНАЧНИЙ КОД",
+                forgotPassphrase: "ЗАБУВ ПАРОЛЬ?",
+                requestResetBody: "Запроси безпечне посилання для відновлення на свою оперативну пошту.",
+                resetInboxTitle: "ПЕРЕВІР ПОШТУ",
+                resetInboxDetailPrefix: "Якщо облікові дані існують для",
+                resetInboxDetailSuffix: "посилання для відновлення вже надіслано.",
+                backToLogin: "НАЗАД ДО ВХОДУ",
+                continueWithApple: "Продовжити з Apple",
+                appleSheetTitle: "Увійти з Apple",
+                appleSheetBody: "Використай Apple ID, щоб увійти в SpyClash. Твій пароль обробляє лише Apple.",
+                appleSheetDismiss: "НЕ ЗАРАЗ",
+                continueWithGoogle: "ПРОДОВЖИТИ З GOOGLE",
+                emailDivider: "АБО ЧЕРЕЗ EMAIL",
+                requestAccessFooter: "ЗАПРОСИТИ ДОСТУП",
+                loginFooter: "УВІЙТИ",
+                passphrasesMismatch: "Паролі не збігаються.",
+                recoveryLinkNotice: "Якщо облікові дані для цієї пошти існують, посилання для відновлення вже надіслано.",
+                passphraseUpdatedNotice: "Пароль оновлено. Увійди з новим паролем.",
+                appleMissingToken: "Відповідь Apple не містить токена доступу.",
+                googleMissingToken: "Відповідь Google не містить токена доступу.",
+                chooseNewPassphraseNotice: "Обери новий пароль, щоб відновити доступ.",
+                signInToJoinPrefix: "УВІЙДИ, ЩОБ ПРИЄДНАТИСЯ ДО",
+                emailPlaceholder: "operative@example.com"
+            )
         }
     }
 
@@ -460,6 +566,25 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 roomLinked: "КОМНАТА ПОДКЛЮЧЕНА",
                 roomNotFound: "КОМНАТА НЕ НАЙДЕНА",
                 invalidCode: "НЕВЕРНЫЙ QR КОМНАТЫ"
+            )
+        case .uk:
+            QRInviteCopy(
+                roomBeaconEyebrow: "// МАЯК КІМНАТИ",
+                roomBeaconSubtitle: "Відскануй, щоб увійти до цієї кімнати",
+                transmitInvite: "НАДІСЛАТИ ЗАПРОШЕННЯ",
+                close: "ЗАКРИТИ",
+                scanEyebrow: "// QR-СКАНЕР",
+                scanTitle: "Канал кімнати",
+                alignRoomBeacon: "НАВЕДИ НА МАЯК КІМНАТИ",
+                checkingCamera: "ПЕРЕВІРКА КАМЕРИ",
+                cameraPreparing: "Готуємо захищений канал камери.",
+                cameraLocked: "КАМЕРУ ЗАБЛОКОВАНО",
+                cameraLockedDetail: "Дозволь доступ до камери в Параметрах, щоб сканувати QR-коди кімнат.",
+                cancel: "СКАСУВАТИ",
+                joiningPrefix: "ВХІД ДО",
+                roomLinked: "КІМНАТУ ПІДКЛЮЧЕНО",
+                roomNotFound: "КІМНАТУ НЕ ЗНАЙДЕНО",
+                invalidCode: "НЕДІЙСНИЙ QR-КОД КІМНАТИ"
             )
         }
     }
@@ -568,6 +693,40 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 deletingAccount: "УДАЛЕНИЕ АККАУНТА...",
                 saved: "СОХРАНЕНО"
             )
+        case .uk:
+            ProfileCopy(
+                eyebrow: "// ПРОФІЛЬ",
+                logOut: "ВИЙТИ",
+                deleteDialogTitle: "ВИДАЛИТИ АКАУНТ",
+                deleteDialogAction: "ВИДАЛИТИ АКАУНТ",
+                cancel: "СКАСУВАТИ",
+                deleteDialogMessage: "Це назавжди видалить твій профіль, історію ігор, власні набори слів і соціальні дані. Обмежені записи безпеки та модерації можуть зберігатися, якщо цього вимагає закон.",
+                operativeID: "ID ОПЕРАТИВНИКА",
+                selectAvatar: "// ОБЕРИ АВАТАР",
+                displayName: "// ІМ’Я НА ЕКРАНІ",
+                callSignPlaceholder: "ПОЗИВНИЙ",
+                saveProfile: "ЗБЕРЕГТИ ПРОФІЛЬ",
+                savingProfile: "ЗБЕРЕЖЕННЯ ПРОФІЛЮ...",
+                archive: "// АРХІВ",
+                games: "ІГРИ",
+                wins: "ПЕРЕМОГИ",
+                rate: "ВІДСОТОК",
+                rating: "РЕЙТИНГ",
+                spy: "ШПИГУН",
+                detective: "ДЕТЕКТ",
+                leaderboard: "РЕЙТИНГ",
+                history: "ІСТОРІЯ",
+                languageLabel: "// МОВА",
+                legal: "// ПРАВОВА ІНФОРМАЦІЯ",
+                legalHint: "Переглянь ті самі правила гри та політику приватності, що й у вебверсії.",
+                privacy: "ПРИВАТНІСТЬ",
+                terms: "УМОВИ",
+                dangerZone: "// НЕБЕЗПЕЧНА ЗОНА",
+                dangerBody: "Видалення акаунта стирає профіль, власні набори слів і записи архіву.",
+                deleteAccount: "ВИДАЛИТИ АКАУНТ",
+                deletingAccount: "ВИДАЛЕННЯ АКАУНТА...",
+                saved: "ЗБЕРЕЖЕНО"
+            )
         }
     }
 
@@ -633,6 +792,26 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 win: "ПОБЕДА",
                 loss: "ПОРАЖЕНИЕ"
             )
+        case .uk:
+            HistoryCopy(
+                eyebrow: "// ІСТОРІЯ",
+                status: "АРХІВ",
+                title: "АРХІВ",
+                subtitle: "ІСТОРІЯ МІСІЙ",
+                games: "ІГРИ",
+                wins: "ПЕРЕМОГИ",
+                rate: "ВІДСОТОК",
+                loading: "ЗАВАНТАЖЕННЯ АРХІВУ",
+                empty: "АРХІВ ПОРОЖНІЙ",
+                operatives: "ОПЕРАТИВНИКІВ",
+                roomFallback: "КІМНАТА",
+                categoryFallback: "КЛАСИКА",
+                unknownRole: "НЕВІДОМО",
+                spyRole: "ШПИГУН",
+                detectiveRole: "ДЕТЕКТИВ",
+                win: "ПЕРЕМОГА",
+                loss: "ПОРАЗКА"
+            )
         }
     }
 
@@ -651,7 +830,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 ratingHeader: "RATING",
                 winsHeader: "W",
                 games: "GAMES",
-                winRate: "WIN RATE"
+                winRate: "WIN RATE",
+                currentUser: "YOU"
             )
         case .es:
             LeaderboardCopy(
@@ -666,7 +846,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 ratingHeader: "RATING",
                 winsHeader: "V",
                 games: "PARTIDAS",
-                winRate: "TASA VICT."
+                winRate: "TASA VICT.",
+                currentUser: "TÚ"
             )
         case .ru:
             LeaderboardCopy(
@@ -681,7 +862,24 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 ratingHeader: "РЕЙТ",
                 winsHeader: "П",
                 games: "ИГР",
-                winRate: "ВИНРЕЙТ"
+                winRate: "ВИНРЕЙТ",
+                currentUser: "ТЫ"
+            )
+        case .uk:
+            LeaderboardCopy(
+                eyebrow: "// РЕЙТИНГ",
+                status: "РАНГ",
+                title: "РАНГ",
+                subtitle: "ГЛОБАЛЬНИЙ РЕЙТИНГ ОПЕРАТИВНИКІВ",
+                loading: "СИНХРОНІЗАЦІЯ РАНГІВ",
+                empty: "РЕЙТИНГОВИХ ДАНИХ НЕМАЄ",
+                rankHeader: "РК",
+                playerHeader: "ГРАВЕЦЬ",
+                ratingHeader: "РЕЙТ",
+                winsHeader: "П",
+                games: "ІГОР",
+                winRate: "ПЕРЕМОГИ",
+                currentUser: "ТИ"
             )
         }
     }
@@ -838,6 +1036,56 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                     previewSaved: "PREVIEW СОХРАНЕН"
                 )
             )
+        case .uk:
+            WordPacksCopy(
+                eyebrow: "// НАБОРИ СЛІВ",
+                status: "АРСЕНАЛ",
+                title: "АРСЕНАЛ",
+                countSuffix: "ВЛАСНИХ НАБОРІВ",
+                loading: "ЗАВАНТАЖЕННЯ НАБОРІВ",
+                emptyTitle: "ВЛАСНИХ НАБОРІВ НЕМАЄ",
+                emptyBody: "Створи приватний набір слів для онлайн-кімнат і локальних ігор.",
+                createFirstPack: "СТВОРИТИ ПЕРШИЙ НАБІР",
+                customFallback: "ВЛАСНИЙ",
+                wordsSuffix: "СЛІВ",
+                removingPack: "ВИДАЛЕННЯ НАБОРУ",
+                deleteDialogTitle: "ВИДАЛИТИ НАБІР СЛІВ",
+                deleteActionPrefix: "ВИДАЛИТИ",
+                cancel: "СКАСУВАТИ",
+                deleteMessagePrefix: "Це видалить",
+                deleteMessageSuffix: "з твого арсеналу Base44.",
+                editor: WordPackEditorCopy(
+                    eyebrow: "// РЕДАКТОР АРСЕНАЛУ",
+                    newTitle: "НОВИЙ НАБІР СЛІВ",
+                    editTitle: "РЕДАГУВАТИ НАБІР",
+                    wordsMetric: "СЛОВА",
+                    modeMetric: "РЕЖИМ",
+                    createMode: "СТВОРЕННЯ",
+                    updateMode: "ОНОВЛЕННЯ",
+                    aiGeneration: "// AI-ГЕНЕРАЦІЯ",
+                    themePlaceholder: "Тема будь-якою мовою",
+                    wordsToGenerate: "КІЛЬКІСТЬ СЛІВ",
+                    generateWords: "ЗГЕНЕРУВАТИ СЛОВА",
+                    aiDraftHint: "AI лише заповнює чернетку. Перевір і відредагуй її перед збереженням.",
+                    packNameLabel: "// НАЗВА НАБОРУ",
+                    packNamePlaceholder: "Міста, фільми, сімейний хаос...",
+                    categoryLabel: "// КАТЕГОРІЯ",
+                    categoryPlaceholder: "Власна",
+                    wordsLabel: "// СЛОВА",
+                    wordsInputHint: "КОМА АБО НОВИЙ РЯДОК",
+                    emptyWordsHint: "Додай щонайменше два слова для гри.",
+                    createPack: "СТВОРИТИ НАБІР",
+                    savePack: "ЗБЕРЕГТИ НАБІР",
+                    signInRequired: "ПОТРІБНО УВІЙТИ",
+                    packNeedsNameAndWords: "НАБОРУ ПОТРІБНІ НАЗВА Й ЩОНАЙМЕНШЕ ДВА СЛОВА",
+                    enterThemeFirst: "СПОЧАТКУ ВВЕДИ ТЕМУ",
+                    aiReady: "AI ГОТОВИЙ",
+                    wordsUnit: "СЛІВ",
+                    of: "З",
+                    today: "СЬОГОДНІ",
+                    previewSaved: "ПОПЕРЕДНІЙ ПЕРЕГЛЯД ЗБЕРЕЖЕНО"
+                )
+            )
         }
     }
 
@@ -937,6 +1185,38 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 readyVoting: "ГОТОВНОСТЬ",
                 roulette: "РУЛЕТКА",
                 playing: "В ИГРЕ",
+                finished: "ЗАВЕРШЕНА"
+            )
+        case .uk:
+            HomeCopy(
+                eyebrow: "// ГОЛОВНА",
+                operativeLabel: "ОПЕРАТИВНИК",
+                unknownOperative: "НЕВІДОМО",
+                missionControl: "ЦЕНТР МІСІЇ",
+                createOnlineRoom: "СТВОРИТИ ОНЛАЙН-КІМНАТУ",
+                roomKeyPlaceholder: "КОД КІМНАТИ",
+                scanQR: "СКАНУВАТИ QR",
+                localPassMode: "ЛОКАЛЬНА ГРА",
+                ranked: "РАНГ",
+                archive: "АРХІВ",
+                activeRoom: "// АКТИВНА КІМНАТА",
+                liveSignals: "// ЖИВІ СИГНАЛИ",
+                recentFiles: "// ОСТАННІ СПРАВИ",
+                noArchiveEntries: "АРХІВ ПОРОЖНІЙ",
+                openArchive: "ВІДКРИТИ АРХІВ",
+                roomLabel: "КІМНАТА",
+                operatives: "ОПЕРАТИВНИКІВ",
+                unknown: "НЕВІДОМО",
+                win: "ПЕРЕМОГА",
+                loss: "ПОРАЗКА",
+                spyRole: "ШПИГУН",
+                detectiveRole: "ДЕТЕКТИВ",
+                roomNotFound: "КІМНАТУ НЕ ЗНАЙДЕНО",
+                roomReadySuffix: "ГОТОВА",
+                waiting: "ОЧІКУВАННЯ",
+                readyVoting: "ПЕРЕВІРКА ГОТОВНОСТІ",
+                roulette: "РУЛЕТКА",
+                playing: "У ГРІ",
                 finished: "ЗАВЕРШЕНА"
             )
         }
@@ -1108,6 +1388,61 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 spyHint: "Запомни слово. Не попадись.",
                 secretWord: "СЕКРЕТНОЕ СЛОВО",
                 fallbackPlayer: "Игрок"
+            )
+        case .uk:
+            LocalGameCopy(
+                eyebrow: "// ЛОКАЛЬНА ГРА",
+                setupStatus: "ОФЛАЙН",
+                cardsStatus: "РОЗДАЧА",
+                playingStatus: "У ГРІ",
+                votingStatus: "ГОЛОСУВАННЯ",
+                spyGuessStatus: "СПРОБА",
+                resultsStatus: "АРХІВ",
+                passModeTitle: "РЕЖИМ ПЕРЕДАЧІ",
+                localOperatives: "ЛОКАЛЬНІ ОПЕРАТИВНИКИ",
+                operativeNamePlaceholder: "ІМ’Я ОПЕРАТИВНИКА",
+                addPlayer: "ДОДАТИ",
+                dropPlayer: "ПРИБРАТИ",
+                duration: "ТРИВАЛІСТЬ",
+                minuteSuffix: "ХВ",
+                wordPool: "НАБІР СЛІВ",
+                wordsSuffix: "СЛІВ",
+                mode: "РЕЖИМ",
+                questionsMode: "ЗАПИТАННЯ",
+                classicMode: "АСОЦІАЦІЇ",
+                wordSource: "ДЖЕРЕЛО СЛІВ",
+                builtinIntel: "ВБУДОВАНИЙ НАБІР",
+                armLocalGame: "ПОЧАТИ ЛОКАЛЬНУ ГРУ",
+                passPhone: "ПЕРЕДАЙ ТЕЛЕФОН ЦЬОМУ ГРАВЦЕВІ",
+                lockScreen: "ЗАКРИЙ ЕКРАН ПЕРЕД ПЕРЕДАЧЕЮ",
+                revealCard: "ВІДКРИТИ КАРТКУ",
+                beginTimer: "ЗАПУСТИТИ ТАЙМЕР",
+                nextPlayer: "НАСТУПНИЙ ГРАВЕЦЬ",
+                timerEyebrow: "// ТАЙМЕР",
+                wordHidden: "СЛОВО ПРИХОВАНЕ ДО ВІДКРИТТЯ АРХІВУ",
+                questionVector: "// НАПРЯМОК ЗАПИТАННЯ",
+                asker: "ЗАПИТУЄ",
+                answer: "ВІДПОВІДАЄ",
+                pending: "ОЧІКУВАННЯ",
+                nextQuestion: "НАСТУПНЕ ЗАПИТАННЯ",
+                callVote: "ПОЧАТИ ГОЛОСУВАННЯ",
+                finalAccusation: "// ФІНАЛЬНЕ ЗВИНУВАЧЕННЯ",
+                whoIsSpy: "ХТО ШПИГУН?",
+                archive: "// АРХІВ",
+                spyWins: "ШПИГУН ПЕРЕМІГ",
+                detectivesWin: "ДЕТЕКТИВИ ПЕРЕМОГЛИ",
+                wordLabel: "СЛОВО",
+                spyLabel: "ШПИГУН",
+                newRound: "НОВИЙ РАУНД",
+                returnSetup: "НАЗАД ДО НАЛАШТУВАНЬ",
+                needTwoOperatives: "ПОТРІБНО ЩОНАЙМЕНШЕ 2 ОПЕРАТИВНИКИ",
+                tapToReveal: "НАТИСНИ, ЩОБ ВІДКРИТИ",
+                youAreSpy: "ТИ ШПИГУН",
+                youAreDetective: "ТИ ДЕТЕКТИВ",
+                categoryLabel: "КАТЕГОРІЯ",
+                spyHint: "Запам’ятай слово. Не дай себе викрити.",
+                secretWord: "СЕКРЕТНЕ СЛОВО",
+                fallbackPlayer: "Гравець"
             )
         }
     }
@@ -1501,6 +1836,135 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 chooseWord: "ВЫБЕРИ СЛОВО",
                 spyGuessHint: "У команды шпионов одна общая попытка. Верная догадка даёт победу всем шпионам; ошибка отдаёт дело детективам."
             )
+        case .uk:
+            GameCopy(
+                eyebrow: "// КІМНАТА",
+                standby: "ОЧІКУВАННЯ",
+                lobby: "// ЛОБІ",
+                hostConsoleReady: "КОНСОЛЬ ХОСТА ГОТОВА",
+                waitingForHost: "ОЧІКУЄМО НА ХОСТА",
+                minimumOperativesSuffix: "— МІНІМУМ ОПЕРАТИВНИКІВ",
+                readyCheck: "// ПЕРЕВІРКА ГОТОВНОСТІ",
+                operativeConfirmed: "ОПЕРАТИВНИК ГОТОВИЙ",
+                areYouReady: "ТИ ГОТОВИЙ?",
+                operativesReadySuffix: "ГОТОВИХ ОПЕРАТИВНИКІВ",
+                readyConfirmed: "ГОТОВНІСТЬ ПІДТВЕРДЖЕНО",
+                confirmReady: "ПІДТВЕРДИТИ ГОТОВНІСТЬ",
+                startGame: "ПОЧАТИ ГРУ",
+                returnToLobby: "ПОВЕРНУТИСЯ ДО ЛОБІ",
+                leaveRoom: "ВИЙТИ З КІМНАТИ",
+                roulette: "// РУЛЕТКА",
+                selecting: "ВИБІР",
+                firstQuestionVector: "ПЕРШИЙ НАПРЯМОК ЗАПИТАННЯ",
+                armingFinalPayload: "ГОТУЄМО ФІНАЛЬНИЙ ПАКЕТ",
+                waitingForHostSignal: "ОЧІКУЄМО НА СИГНАЛ ХОСТА",
+                result: "// РЕЗУЛЬТАТ",
+                spyWins: "ШПИГУН ПЕРЕМІГ",
+                detectivesWin: "ДЕТЕКТИВИ ПЕРЕМОГЛИ",
+                wordLabel: "СЛОВО",
+                spyLabel: "ШПИГУН",
+                classified: "ЗАСЕКРЕЧЕНО",
+                roomKey: "// КОД КІМНАТИ",
+                activeMetric: "АКТИВНИХ",
+                questionsMetric: "ЗАПИТАННЯ",
+                votesMetric: "ГОЛОСИ",
+                hostConsole: "// КОНСОЛЬ ХОСТА",
+                missionConfig: "// НАЛАШТУВАННЯ МІСІЇ",
+                mode: "РЕЖИМ",
+                questionsMode: "ЗАПИТАННЯ",
+                associationsMode: "АСОЦІАЦІЇ",
+                questionsSubtitle: "Ланцюжок спрямованих запитань із вісьмома тактичними ходами.",
+                associationsSubtitle: "Обирай гравця рулеткою та стеж за ланцюжком асоціацій.",
+                duration: "ТРИВАЛІСТЬ",
+                minuteSuffix: "ХВ",
+                wordSource: "ДЖЕРЕЛО СЛІВ",
+                builtinIntel: "ВБУДОВАНИЙ НАБІР",
+                syncingWordPacks: "СИНХРОНІЗАЦІЯ НАБОРІВ",
+                customPacksAvailableSuffix: "ВЛАСНИХ НАБОРІВ ДОСТУПНО",
+                wordsSuffix: "СЛІВ",
+                customPackUnavailable: "НАБІР НЕДОСТУПНИЙ",
+                operatives: "// ОПЕРАТИВНИКИ",
+                outBadge: "ВИБУВ",
+                hostBadge: "ХОСТ",
+                askBadge: "ПИТ",
+                voteBadge: "ГОЛОС",
+                shareRoomQR: "ПОДІЛИТИСЯ QR-КОДОМ",
+                readyCheckAction: "ПЕРЕВІРИТИ ГОТОВНІСТЬ",
+                startNow: "ПОЧАТИ ЗАРАЗ",
+                noActiveRoom: "НЕМАЄ АКТИВНОЇ КІМНАТИ",
+                openHome: "ВІДКРИТИ ГОЛОВНУ",
+                dealing: "РОЗДАЧА",
+                voting: "ГОЛОСУВАННЯ",
+                results: "РЕЗУЛЬТАТИ",
+                waiting: "ОЧІКУВАННЯ",
+                readyVoting: "ГОТОВНІСТЬ",
+                playing: "У ГРІ",
+                finished: "ЗАВЕРШЕНА",
+                modeSynced: "РЕЖИМ СИНХРОНІЗОВАНО",
+                readyCheckSent: "ПЕРЕВІРКУ ГОТОВНОСТІ НАДІСЛАНО",
+                lobbyRestored: "ЛОБІ ВІДНОВЛЕНО",
+                roomSynced: "КІМНАТУ СИНХРОНІЗОВАНО",
+                missionTimer: "// ТАЙМЕР МІСІЇ",
+                timeUp: "ЧАС ВИЧЕРПАНО",
+                liveStatus: "У ГРІ",
+                timerHintLive: "ЗАПИТУЙ, ВІДВОДЬ ПІДОЗРУ, ПОМІЧАЙ ЗАКОНОМІРНОСТІ",
+                roleCard: "// КАРТКА РОЛІ",
+                tapEyeToReveal: "НАТИСНИ НА ОКО, ЩОБ ВІДКРИТИ",
+                cardCheck: "// ПЕРЕВІРКА КАРТОК",
+                cardConfirmed: "КАРТКУ ПІДТВЕРДЖЕНО",
+                readYourRole: "ПРОЧИТАЙ СВОЮ РОЛЬ",
+                readyShort: "ГОТОВИЙ",
+                waitShort: "ОЧІКУЄМО",
+                cardTimerHint: "Таймер запуститься, коли всі оперативники підтвердять свої картки ролей.",
+                waitingForTeam: "ОЧІКУЄМО НА КОМАНДУ",
+                confirmCardRead: "ПІДТВЕРДИТИ КАРТКУ",
+                associationDrum: "// БАРАБАН АСОЦІАЦІЙ",
+                spinToStart: "КРУТИ, ЩОБ ПОЧАТИ",
+                roundLabel: "РАУНД",
+                sayOneAssociation: "НАЗВИ ОДНУ АСОЦІАЦІЮ",
+                questionVector: "// НАПРЯМОК ЗАПИТАННЯ",
+                asker: "ЗАПИТУЄ",
+                answer: "ВІДПОВІДАЄ",
+                pending: "ОЧІКУВАННЯ",
+                voteProtocol: "// ПРОТОКОЛ ГОЛОСУВАННЯ",
+                whoIsSpy: "ХТО ШПИГУН?",
+                questionCycleComplete: "ЦИКЛ ЗАПИТАНЬ ЗАВЕРШЕНО",
+                requestVoteHint: "Запроси голосування, щоб перейти до фінального звинувачення.",
+                spectatorVoteHint: "Ти спостерігач. Голосують лише активні оперативники.",
+                voteLockedPrefix: "ГОЛОС ЗАФІКСОВАНО",
+                playAgainEyebrow: "// ЗІГРАТИ ЩЕ РАЗ",
+                teamReadyAnotherRun: "КОМАНДА ГОТОВА ДО НОВОЇ ГРИ",
+                voteForNewGame: "ГОЛОСУВАТИ ЗА НОВУ ГРУ",
+                replayVoteLocked: "ГОЛОС ЗА ПОВТОР ЗАФІКСОВАНО",
+                playAgain: "ГРАТИ ЩЕ РАЗ",
+                backToLobby: "НАЗАД ДО ЛОБІ",
+                waitingHostResetLobby: "ОЧІКУЄМО, КОЛИ ХОСТ ОНОВИТЬ ЛОБІ",
+                guessWord: "ВГАДАТИ СЛОВО",
+                nextAssociation: "НАСТУПНА АСОЦІАЦІЯ",
+                nextQuestion: "НАСТУПНЕ ЗАПИТАННЯ",
+                votingOpen: "ГОЛОСУВАННЯ ВІДКРИТО",
+                requestVotePrefix: "ЗАПРОСИТИ ГОЛОСУВАННЯ",
+                spectatorMode: "РЕЖИМ СПОСТЕРІГАЧА",
+                spectatorSubtitle: "Спостерігай за грою. Ти не береш участі в голосуванні.",
+                youAreSpy: "ТИ ШПИГУН",
+                youAreDetective: "ТИ ДЕТЕКТИВ",
+                categoryLabel: "КАТЕГОРІЯ",
+                classicCategory: "КЛАСИКА",
+                secretWord: "СЕКРЕТНЕ СЛОВО",
+                readyRemoved: "ГОТОВНІСТЬ ЗНЯТО",
+                readyLocked: "ГОТОВНІСТЬ ЗАФІКСОВАНО",
+                rouletteArmed: "РУЛЕТКА ГОТОВА",
+                gameReady: "ГРА ГОТОВА",
+                associationSpun: "АСОЦІАЦІЮ ОБРАНО",
+                questionSent: "ЗАПИТАННЯ НАДІСЛАНО",
+                cardConfirmedStatus: "КАРТКУ ПІДТВЕРДЖЕНО",
+                voteRequestedStatus: "ГОЛОСУВАННЯ ЗАПРОШЕНО",
+                voteLockedStatus: "ГОЛОС ЗАФІКСОВАНО",
+                spyGuessLocked: "СПРОБУ ШПИГУНІВ ЗАФІКСОВАНО",
+                spyGuessEyebrow: "// СПРОБА ШПИГУНІВ",
+                chooseWord: "ОБЕРИ СЛОВО",
+                spyGuessHint: "Команда шпигунів має одну спільну спробу. Правильна відповідь приносить перемогу всім шпигунам, а помилка віддає справу детективам."
+            )
         }
     }
 
@@ -1527,6 +1991,13 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case (.ru, .packs): "КОЛОДЫ"
         case (.ru, .history): "ИСТ"
         case (.ru, .profile): "ПРОФИЛЬ"
+        case (.uk, .home): "ГОЛОВНА"
+        case (.uk, .game): "КІМНАТА"
+        case (.uk, .local): "ЛОКАЛЬНА"
+        case (.uk, .leaderboard): "РАНГ"
+        case (.uk, .packs): "НАБОРИ"
+        case (.uk, .history): "ІСТ"
+        case (.uk, .profile): "ПРОФІЛЬ"
         }
     }
 
@@ -1540,7 +2011,14 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
 
     static func normalized(_ raw: String?) -> AppLanguage {
         guard let raw else { return .en }
-        return AppLanguage(rawValue: raw.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()) ?? .en
+        let languageCode = raw
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+            .split(separator: "-", maxSplits: 1)
+            .first
+            .map(String.init)
+        return AppLanguage(rawValue: languageCode ?? "") ?? .en
     }
 
     func persist() {
@@ -1804,6 +2282,7 @@ struct LeaderboardCopy: Hashable {
     let winsHeader: String
     let games: String
     let winRate: String
+    let currentUser: String
 
     func detail(games count: Int, winRate rate: Int) -> String {
         "\(count) \(games) · \(rate)% \(winRate)"
@@ -3330,6 +3809,33 @@ extension WordPack {
                     name: "Хаос вечеринки",
                     category: "Общение",
                     words: ["Караоке", "Пицца", "Костюм", "Балкон", "Плейлист", "Конфетти", "Селфи", "Танцпол", "Моктейль", "Приглашение"],
+                    ownerEmail: "operative.preview@spyclash.local",
+                    isPublic: false
+                ),
+            ]
+        case .uk:
+            [
+                WordPack(
+                    id: "preview-pack-places",
+                    name: "Нічне місто",
+                    category: "Місця",
+                    words: ["Посольство", "Порт", "Казино", "Метро", "Музей", "Дах", "Театр", "Ринок", "Готель", "Аеропорт", "Сховище", "Тунель"],
+                    ownerEmail: "operative.preview@spyclash.local",
+                    isPublic: false
+                ),
+                WordPack(
+                    id: "preview-pack-tech",
+                    name: "Техносигнали",
+                    category: "Технології",
+                    words: ["Супутник", "Шифр", "Дрон", "Фаєрвол", "Сервер", "Маяк", "Консоль", "Датчик", "Роутер", "Термінал", "Проксі", "Ключ-картка"],
+                    ownerEmail: "operative.preview@spyclash.local",
+                    isPublic: false
+                ),
+                WordPack(
+                    id: "preview-pack-party",
+                    name: "Хаос вечірки",
+                    category: "Спілкування",
+                    words: ["Караоке", "Піца", "Костюм", "Балкон", "Плейліст", "Конфеті", "Селфі", "Танцмайданчик", "Моктейль", "Запрошення"],
                     ownerEmail: "operative.preview@spyclash.local",
                     isPublic: false
                 ),

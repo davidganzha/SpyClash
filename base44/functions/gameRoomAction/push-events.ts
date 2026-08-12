@@ -32,6 +32,10 @@ function inboxProjection(
         title: "La misión comenzó",
         body: "Tu partida de SpyClash ya comenzó.",
       },
+      uk: {
+        title: "Гра почалася",
+        body: "Ваша місія SpyClash уже почалася.",
+      },
     }
     : {
       en: {
@@ -46,6 +50,10 @@ function inboxProjection(
         title: "Misión completada",
         body: "Abre SpyClash para ver el resultado.",
       },
+      uk: {
+        title: "Гру завершено",
+        body: "Відкрийте SpyClash, щоб побачити результат.",
+      },
     };
   return {
     inbox_kind: eventType,
@@ -56,6 +64,8 @@ function inboxProjection(
     inbox_body_ru: copy.ru.body,
     inbox_title_es: copy.es.title,
     inbox_body_es: copy.es.body,
+    inbox_title_uk: copy.uk.title,
+    inbox_body_uk: copy.uk.body,
     inbox_action_deep_link: `spyclash://game?room_id=${
       encodeURIComponent(clean(roomID).slice(0, 200))
     }`,

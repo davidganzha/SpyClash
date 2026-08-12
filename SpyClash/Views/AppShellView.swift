@@ -686,48 +686,56 @@ struct AppShellView: View {
             title = localizedCommunityAttention(
                 en: "NEW COMMUNITY ACTIVITY",
                 ru: "НОВОЕ В СООБЩЕСТВЕ",
-                es: "NOVEDADES EN COMUNIDAD"
+                es: "NOVEDADES EN COMUNIDAD",
+                uk: "НОВА АКТИВНІСТЬ У СПІЛЬНОТІ"
             )
             detail = localizedCommunityAttention(
                 en: "Room invite and friend request received.",
                 ru: "Получены приглашение в комнату и запрос в друзья.",
-                es: "Recibiste una invitacion y una solicitud de amistad."
+                es: "Recibiste una invitacion y una solicitud de amistad.",
+                uk: "Отримано запрошення до кімнати та запит у друзі."
             )
             systemImage = "bell.badge.fill"
         } else if newRoomInviteCount > 0 {
             title = localizedCommunityAttention(
                 en: "ROOM INVITE RECEIVED",
                 ru: "ПРИГЛАШЕНИЕ В КОМНАТУ",
-                es: "INVITACIÓN A UNA SALA"
+                es: "INVITACIÓN A UNA SALA",
+                uk: "ЗАПРОШЕННЯ ДО КІМНАТИ"
             )
             detail = snapshot.senderName(forRoomInviteIDs: newIDs).map {
                 localizedCommunityAttention(
                     en: "From \($0). Open Community to respond.",
                     ru: "От \($0). Откройте Сообщество, чтобы ответить.",
-                    es: "De \($0). Abre Comunidad para responder."
+                    es: "De \($0). Abre Comunidad para responder.",
+                    uk: "Від \($0). Відкрийте Спільноту, щоб відповісти."
                 )
             } ?? localizedCommunityAttention(
                 en: "Open Community to respond.",
                 ru: "Откройте Сообщество, чтобы ответить.",
-                es: "Abre Comunidad para responder."
+                es: "Abre Comunidad para responder.",
+                uk: "Відкрийте Спільноту, щоб відповісти."
             )
             systemImage = "door.left.hand.open"
         } else {
             title = localizedCommunityAttention(
                 en: "NEW FRIEND REQUEST",
                 ru: "НОВЫЙ ЗАПРОС В ДРУЗЬЯ",
-                es: "NUEVA SOLICITUD DE AMISTAD"
+                es: "NUEVA SOLICITUD DE AMISTAD",
+                uk: "НОВИЙ ЗАПИТ У ДРУЗІ"
             )
             detail = snapshot.senderName(forFriendRequestIDs: newIDs).map {
                 localizedCommunityAttention(
                     en: "From \($0). Open Community to respond.",
                     ru: "От \($0). Откройте Сообщество, чтобы ответить.",
-                    es: "De \($0). Abre Comunidad para responder."
+                    es: "De \($0). Abre Comunidad para responder.",
+                    uk: "Від \($0). Відкрийте Спільноту, щоб відповісти."
                 )
             } ?? localizedCommunityAttention(
                 en: "Open Community to respond.",
                 ru: "Откройте Сообщество, чтобы ответить.",
-                es: "Abre Comunidad para responder."
+                es: "Abre Comunidad para responder.",
+                uk: "Відкрийте Спільноту, щоб відповісти."
             )
             systemImage = "person.crop.circle.badge.plus"
         }
@@ -827,11 +835,12 @@ struct AppShellView: View {
         }
     }
 
-    private func localizedCommunityAttention(en: String, ru: String, es: String) -> String {
-        switch appState.language {
+    private func localizedCommunityAttention(en: String, ru: String, es: String, uk: String) -> String {
+        return switch appState.language {
         case .en: en
         case .ru: ru
         case .es: es
+        case .uk: uk
         }
     }
 
@@ -985,9 +994,11 @@ private struct RoomSynchronizationTerminalLine: View {
         switch (operation, language) {
         case (.creatingRoom, .ru): "Создание комнаты"
         case (.creatingRoom, .es): "Creando sala"
+        case (.creatingRoom, .uk): "Створення кімнати"
         case (.creatingRoom, _): "Creating Room"
         case (.closingRoom, .ru): "Закрытие комнаты"
         case (.closingRoom, .es): "Cerrando sala"
+        case (.closingRoom, .uk): "Закриття кімнати"
         case (.closingRoom, _): "Shutting Down"
         default: operation.title(for: language)
         }
@@ -1138,7 +1149,11 @@ private struct PullDownCommandMenu: View {
             )
             .frame(height: handleHeight, alignment: .bottom)
             .contentShape(Rectangle())
-            .accessibilityLabel(isPresented ? "Close command menu" : "Pull down command menu")
+            .accessibilityLabel(
+                isPresented
+                    ? localized(en: "Close command menu", ru: "Закрыть командное меню", es: "Cerrar menú de comandos", uk: "Закрити командне меню")
+                    : localized(en: "Pull down command menu", ru: "Потяните вниз, чтобы открыть командное меню", es: "Desliza hacia abajo para abrir el menú de comandos", uk: "Потягніть униз, щоб відкрити командне меню")
+            )
             .highPriorityGesture(commandMenuGesture(travelDistance: travelDistance, closedHandleHeight: closedHandleHeight))
         }
         .frame(maxWidth: .infinity)
@@ -1499,11 +1514,11 @@ private struct PullDownCommandMenu: View {
         if let room = appState.activeRoom {
             return appState.language.home.statusLabel(room.status).uppercased()
         }
-        return "ONLINE"
+        return localized(en: "ONLINE", ru: "В СЕТИ", es: "EN LÍNEA", uk: "У МЕРЕЖІ")
     }
 
     private var statusLinePrefix: String {
-        localized(en: "STATUS:", ru: "СТАТУС:", es: "ESTADO:")
+        localized(en: "STATUS:", ru: "СТАТУС:", es: "ESTADO:", uk: "СТАТУС:")
     }
 
     private func statusLineColor(progress: CGFloat) -> Color {
@@ -1556,11 +1571,12 @@ private struct PullDownCommandMenu: View {
         return clamped * clamped * (3 - (2 * clamped))
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .en: en
         case .ru: ru
         case .es: es
+        case .uk: uk
         }
     }
 
@@ -1628,7 +1644,7 @@ private struct CompactCommandMenuPanel: View {
 
                     menuRow(
                         icon: "🪪",
-                        title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD"),
+                        title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD", uk: "СПІЛЬНОТА"),
                         selected: appState.shellRoute == .community,
                         phaseStart: 0.42
                     ) {
@@ -1788,7 +1804,7 @@ private struct CompactCommandMenuPanel: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(SpyWebPressStyle())
-            .accessibilityLabel(localized(en: "Close menu", ru: "Закрыть меню", es: "Cerrar menu"))
+            .accessibilityLabel(localized(en: "Close menu", ru: "Закрыть меню", es: "Cerrar menu", uk: "Закрити меню"))
         }
         .padding(.horizontal, 28)
     }
@@ -1813,7 +1829,7 @@ private struct CompactCommandMenuPanel: View {
 
     private var languageFooter: some View {
         HStack(spacing: 12) {
-            Text(localized(en: "LANG", ru: "ЯЗЫК", es: "IDIOMA"))
+            Text(localized(en: "LANG", ru: "ЯЗЫК", es: "IDIOMA", uk: "МОВА"))
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .tracking(0.22)
                 .foregroundStyle(SpyTheme.faint)
@@ -1823,6 +1839,7 @@ private struct CompactCommandMenuPanel: View {
                 languageChip(.en)
                 languageChip(.es)
                 languageChip(.ru)
+                languageChip(.uk)
             }
 
             Spacer()
@@ -1838,7 +1855,7 @@ private struct CompactCommandMenuPanel: View {
                     .overlay(CutCornerShape(cut: 6).stroke(SpyTheme.strokeStrong.opacity(0.88), lineWidth: 1))
             }
             .buttonStyle(SpyWebPressStyle())
-            .accessibilityLabel(localized(en: "Close menu", ru: "Закрыть меню", es: "Cerrar menu"))
+            .accessibilityLabel(localized(en: "Close menu", ru: "Закрыть меню", es: "Cerrar menu", uk: "Закрити меню"))
         }
         .padding(.horizontal, 24)
         .padding(.top, 18)
@@ -1930,10 +1947,11 @@ private struct CompactCommandMenuPanel: View {
         }
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru: ru
         case .es: es
+        case .uk: uk
         default: en
         }
     }
@@ -2056,7 +2074,8 @@ private struct FloatingDock: View {
                         badgeCount: item.badgeCount,
                         showsMatchedSelectionLine: isCommunity,
                         namespace: namespace,
-                        accessibilityLabel: item.accessibilityLabel
+                        accessibilityLabel: item.accessibilityLabel,
+                        language: language
                     )
                 }
                 .buttonStyle(DockPressStyle())
@@ -2180,6 +2199,7 @@ private struct DockItem: View {
     let showsMatchedSelectionLine: Bool
     let namespace: Namespace.ID
     let accessibilityLabel: String
+    let language: AppLanguage
 
     var body: some View {
         let amount = selectionAmount
@@ -2222,7 +2242,16 @@ private struct DockItem: View {
                 value: amount
             )
             .accessibilityLabel(accessibilityLabel)
-            .accessibilityValue(badgeCount > 0 ? "\(badgeCount) pending items" : "")
+            .accessibilityValue(badgeCount > 0 ? pendingItemsValue : "")
+    }
+
+    private var pendingItemsValue: String {
+        switch language {
+        case .en: "\(badgeCount) pending items"
+        case .es: "\(badgeCount) elementos pendientes"
+        case .ru: "Ожидают действия: \(badgeCount)"
+        case .uk: "Очікують дії: \(badgeCount)"
+        }
     }
 
     private var selectionAmount: CGFloat {
@@ -2320,7 +2349,7 @@ private struct WebPullDownCommandMenu: View {
                         .frame(height: topBarHeight)
                         .contentShape(Rectangle())
                         .accessibilityElement(children: .contain)
-                        .accessibilityLabel(isPresented ? "Close command menu" : "Pull down command menu")
+                        .accessibilityLabel(commandMenuAccessibilityLabel)
                         .accessibilityIdentifier("spy-command-menu-drag-handle")
                         .accessibilityAddTraits(.isButton)
                         .accessibilityAction {
@@ -2466,12 +2495,27 @@ private struct WebPullDownCommandMenu: View {
         }
     }
 
+    private var commandMenuAccessibilityLabel: String {
+        switch (appState.language, isPresented) {
+        case (.en, true): "Close command menu"
+        case (.en, false): "Pull down command menu"
+        case (.es, true): "Cerrar menú de comandos"
+        case (.es, false): "Desliza hacia abajo para abrir el menú de comandos"
+        case (.ru, true): "Закрыть командное меню"
+        case (.ru, false): "Потяните вниз, чтобы открыть командное меню"
+        case (.uk, true): "Закрити командне меню"
+        case (.uk, false): "Потягніть униз, щоб відкрити командне меню"
+        }
+    }
+
     private func clamp(_ value: CGFloat) -> CGFloat {
         min(max(value, 0), 1)
     }
 }
 
 private struct WebMenuTopBar: View {
+    @Environment(AppState.self) private var appState
+
     let progress: CGFloat
     let topInset: CGFloat
     let communityAttentionCount: Int
@@ -2496,8 +2540,7 @@ private struct WebMenuTopBar: View {
                             if totalAttentionCount > 0 {
                                 CommunityAttentionBadge(
                                     count: totalAttentionCount,
-                                    compact: true,
-                                    accessibilityDescription: "pending items"
+                                    compact: true
                                 )
                                     .offset(x: 3, y: -4)
                                     .transition(.scale.combined(with: .opacity))
@@ -2540,11 +2583,20 @@ private struct WebMenuTopBar: View {
             .frame(height: 1)
         }
         .animation(.easeOut(duration: 0.18), value: totalAttentionCount)
-        .accessibilityValue(
-            totalAttentionCount > 0
-                ? "\(totalAttentionCount) pending items"
-                : "No pending items"
-        )
+        .accessibilityValue(attentionAccessibilityValue)
+    }
+
+    private var attentionAccessibilityValue: String {
+        switch (appState.language, totalAttentionCount > 0) {
+        case (.en, true): "\(totalAttentionCount) pending items"
+        case (.en, false): "No pending items"
+        case (.es, true): "\(totalAttentionCount) elementos pendientes"
+        case (.es, false): "No hay elementos pendientes"
+        case (.ru, true): "Ожидают действия: \(totalAttentionCount)"
+        case (.ru, false): "Нет ожидающих элементов"
+        case (.uk, true): "Очікують дії: \(totalAttentionCount)"
+        case (.uk, false): "Немає елементів, що очікують дії"
+        }
     }
 
     private var toggleIndicator: some View {
@@ -2586,6 +2638,8 @@ private struct WebMenuTopBar: View {
 }
 
 private struct WebHeaderHomeButton: View {
+    @Environment(AppState.self) private var appState
+
     let attentionCount: Int
     let action: () -> Void
 
@@ -2597,14 +2651,32 @@ private struct WebHeaderHomeButton: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(SpyWebPressStyle(pressedScale: 0.97))
-            .accessibilityLabel("Open SpyClash home")
-            .accessibilityValue(attentionCount > 0 ? "\(attentionCount) pending items" : "")
+            .accessibilityLabel(homeAccessibilityLabel)
+            .accessibilityValue(attentionCount > 0 ? pendingItemsAccessibilityValue : "")
             .accessibilityIdentifier("shell.header.home")
 
             SpyAppVersionMark()
                 .allowsHitTesting(false)
         }
         .fixedSize(horizontal: true, vertical: false)
+    }
+
+    private var homeAccessibilityLabel: String {
+        switch appState.language {
+        case .en: "Open SpyClash home"
+        case .es: "Abrir el inicio de SpyClash"
+        case .ru: "Открыть главную SpyClash"
+        case .uk: "Відкрити головну SpyClash"
+        }
+    }
+
+    private var pendingItemsAccessibilityValue: String {
+        switch appState.language {
+        case .en: "\(attentionCount) pending items"
+        case .es: "\(attentionCount) elementos pendientes"
+        case .ru: "Ожидают действия: \(attentionCount)"
+        case .uk: "Очікують дії: \(attentionCount)"
+        }
     }
 }
 
@@ -2625,7 +2697,7 @@ private struct WebCommandMenuPanel: View {
                 revealItem(index: 0) {
                     menuButton(
                         icon: "👤",
-                        title: localized(en: "PROFILE", ru: "ПРОФИЛЬ", es: "PERFIL"),
+                        title: localized(en: "PROFILE", ru: "ПРОФИЛЬ", es: "PERFIL", uk: "ПРОФІЛЬ"),
                         selected: appState.shellRoute == .main && appState.selectedTab == .profile
                     ) {
                         closeThen {
@@ -2637,7 +2709,7 @@ private struct WebCommandMenuPanel: View {
                 revealItem(index: 1) {
                     menuButton(
                         icon: "📦",
-                        title: localized(en: "WORD-PACKS", ru: "ПАКЕТЫ", es: "PAQUETES"),
+                        title: localized(en: "WORD-PACKS", ru: "ПАКЕТЫ", es: "PAQUETES", uk: "НАБОРИ СЛІВ"),
                         selected: appState.shellRoute == .main && appState.selectedTab == .packs
                     ) {
                         closeThen {
@@ -2649,7 +2721,7 @@ private struct WebCommandMenuPanel: View {
                 revealItem(index: 2) {
                     menuButton(
                         icon: "🪪",
-                        title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD"),
+                        title: localized(en: "COMMUNITY", ru: "СООБЩЕСТВО", es: "COMUNIDAD", uk: "СПІЛЬНОТА"),
                         selected: appState.shellRoute == .community,
                         badgeCount: communityAttentionCount
                     ) {
@@ -2663,14 +2735,16 @@ private struct WebCommandMenuPanel: View {
                         title: localized(
                             en: "NOTIFICATIONS",
                             ru: "УВЕДОМЛЕНИЯ",
-                            es: "NOTIFICACIONES"
+                            es: "NOTIFICACIONES",
+                            uk: "СПОВІЩЕННЯ"
                         ),
                         selected: appState.shellRoute == .notifications,
                         badgeCount: notificationUnreadCount,
                         badgeAccessibilityDescription: localized(
                             en: "unread notifications",
                             ru: "непрочитанных уведомлений",
-                            es: "notificaciones sin leer"
+                            es: "notificaciones sin leer",
+                            uk: "непрочитаних сповіщень"
                         )
                     ) {
                         closeThen { appState.openNotifications() }
@@ -2683,7 +2757,7 @@ private struct WebCommandMenuPanel: View {
                 revealItem(index: 5) {
                     menuButton(
                         icon: "🚪",
-                        title: localized(en: "LOGOUT", ru: "ВЫХОД", es: "SALIR"),
+                        title: localized(en: "LOGOUT", ru: "ВЫХОД", es: "SALIR", uk: "ВИЙТИ"),
                         highlighted: true
                     ) {
                         close()
@@ -2739,7 +2813,7 @@ private struct WebCommandMenuPanel: View {
         selected: Bool = false,
         highlighted: Bool = false,
         badgeCount: Int = 0,
-        badgeAccessibilityDescription: String = "pending Community items",
+        badgeAccessibilityDescription: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -2780,7 +2854,7 @@ private struct WebCommandMenuPanel: View {
 
     private var languageFooter: some View {
         HStack(spacing: 12) {
-            Text(localized(en: "LANGUAGE", ru: "ЯЗЫК", es: "IDIOMA"))
+            Text(localized(en: "LANGUAGE", ru: "ЯЗЫК", es: "IDIOMA", uk: "МОВА"))
                 .font(.system(size: 10, weight: .regular, design: .monospaced))
                 .tracking(2)
                 .foregroundStyle(Color(red: 68 / 255, green: 68 / 255, blue: 68 / 255))
@@ -2791,6 +2865,7 @@ private struct WebCommandMenuPanel: View {
                 languageButton(.en)
                 languageButton(.es)
                 languageButton(.ru)
+                languageButton(.uk)
             }
 
             Spacer()
@@ -2806,7 +2881,7 @@ private struct WebCommandMenuPanel: View {
                     .contentShape(Rectangle())
             }
             .buttonStyle(SpyWebPressStyle())
-            .accessibilityLabel(localized(en: "Close menu", ru: "Закрыть меню", es: "Cerrar menu"))
+            .accessibilityLabel(localized(en: "Close menu", ru: "Закрыть меню", es: "Cerrar menu", uk: "Закрити меню"))
         }
         .padding(.horizontal, 24)
         .padding(.top, 10)
@@ -2854,11 +2929,12 @@ private struct WebCommandMenuPanel: View {
         }
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .en: en
         case .ru: ru
         case .es: es
+        case .uk: uk
         }
     }
 
@@ -2868,12 +2944,23 @@ private struct WebCommandMenuPanel: View {
 }
 
 private struct SpyAppVersionMark: View {
+    @Environment(AppState.self) private var appState
+
     var body: some View {
         Text(SpyClashRelease.headerVersionLabel)
             .font(.system(size: 9, weight: .bold, design: .monospaced))
             .tracking(2.1)
             .foregroundStyle(Color.white.opacity(0.46))
-            .accessibilityLabel("SpyClash version \(SpyClashRelease.headerVersionLabel)")
+            .accessibilityLabel(versionAccessibilityLabel)
+    }
+
+    private var versionAccessibilityLabel: String {
+        switch appState.language {
+        case .en: "SpyClash version \(SpyClashRelease.headerVersionLabel)"
+        case .es: "Versión de SpyClash \(SpyClashRelease.headerVersionLabel)"
+        case .ru: "Версия SpyClash \(SpyClashRelease.headerVersionLabel)"
+        case .uk: "Версія SpyClash \(SpyClashRelease.headerVersionLabel)"
+        }
     }
 }
 
@@ -2945,9 +3032,11 @@ private struct CommunityAttentionSnapshot: Equatable {
 }
 
 private struct CommunityAttentionBadge: View {
+    @Environment(AppState.self) private var appState
+
     let count: Int
     var compact = false
-    var accessibilityDescription = "pending Community items"
+    var accessibilityDescription: String? = nil
 
     var body: some View {
         Text(count > 99 ? "99+" : "\(count)")
@@ -2960,7 +3049,19 @@ private struct CommunityAttentionBadge: View {
             .background(SpyTheme.red, in: Capsule())
             .overlay(Capsule().stroke(Color.white.opacity(0.90), lineWidth: 1))
             .shadow(color: SpyTheme.red.opacity(0.72), radius: 7)
-            .accessibilityLabel("\(count) \(accessibilityDescription)")
+            .accessibilityLabel("\(count) \(resolvedAccessibilityDescription)")
+    }
+
+    private var resolvedAccessibilityDescription: String {
+        if let accessibilityDescription {
+            return accessibilityDescription
+        }
+        return switch appState.language {
+        case .en: "pending Community items"
+        case .es: "elementos pendientes de Comunidad"
+        case .ru: "ожидающих элементов Сообщества"
+        case .uk: "елементів Спільноти, що очікують дії"
+        }
     }
 }
 

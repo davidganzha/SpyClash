@@ -564,9 +564,11 @@ struct AppleAuthCinematicOverlay: View {
 
     private var accessibilityStatus: String {
         switch (appState.language, stage) {
+        case (.uk, .accessGranted): "Вхід виконано. Відкриваємо головний екран."
         case (.ru, .accessGranted): "Вход выполнен. Открываем главный экран."
         case (.es, .accessGranted): "Acceso concedido. Abriendo la pantalla principal."
         case (_, .accessGranted): "Access granted. Opening the home screen."
+        case (.uk, _): "Виконується вхід через Apple."
         case (.ru, _): "Выполняется вход через Apple."
         case (.es, _): "Iniciando sesión con Apple."
         case (_, _): "Signing in with Apple."
@@ -649,9 +651,11 @@ private struct StandardAuthCinematicOverlay: View {
 
     private var accessibilityStatus: String {
         switch (appState.language, stage) {
+        case (.uk, .accessGranted): "Вхід виконано. Відкриваємо головний екран."
         case (.ru, .accessGranted): "Вход выполнен. Открываем главный экран."
         case (.es, .accessGranted): "Acceso concedido. Abriendo la pantalla principal."
         case (_, .accessGranted): "Access granted. Opening the home screen."
+        case (.uk, _): "Збираємо логотип SpyClash."
         case (.ru, _): "Собираем логотип SpyClash."
         case (.es, _): "Montando el logotipo de SpyClash."
         case (_, _): "Assembling the SpyClash logo."

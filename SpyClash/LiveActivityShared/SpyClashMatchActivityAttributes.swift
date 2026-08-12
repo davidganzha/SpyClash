@@ -58,7 +58,11 @@ struct SpyClashMatchActivityAttributes: ActivityAttributes, Sendable {
             let normalizedLanguage = displayLanguageCode?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .lowercased()
-            self.displayLanguageCode = ["en", "es", "ru"].contains(normalizedLanguage ?? "")
+                .replacingOccurrences(of: "_", with: "-")
+                .split(separator: "-", maxSplits: 1)
+                .first
+                .map(String.init)
+            self.displayLanguageCode = ["en", "es", "ru", "uk"].contains(normalizedLanguage ?? "")
                 ? normalizedLanguage
                 : nil
             self.timerEndsAtEpochSeconds = timerEndsAt.map {
@@ -159,10 +163,19 @@ struct SpyClashMatchActivityAttributes: ActivityAttributes, Sendable {
             self.status = status
         }
 
-        var compactName: String {
+        func resolvedDisplayName(fallback: String) -> String {
             let trimmed = displayName.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !trimmed.isEmpty else { return "AGENT" }
-            return String(trimmed.prefix(12)).uppercased()
+            let normalized = trimmed.uppercased()
+            guard !trimmed.isEmpty,
+                  normalized != "AGENT",
+                  normalized != "OPERATIVE" else {
+                return fallback
+            }
+            return trimmed
+        }
+
+        func compactName(fallback: String) -> String {
+            String(resolvedDisplayName(fallback: fallback).prefix(12)).uppercased()
         }
     }
 
@@ -171,14 +184,6 @@ struct SpyClashMatchActivityAttributes: ActivityAttributes, Sendable {
             case detective
             case spy
             case spectator
-
-            var displayName: String {
-                switch self {
-                case .detective: "DETECTIVE"
-                case .spy: "SPY"
-                case .spectator: "SPECTATOR"
-                }
-            }
         }
 
         /// Must equal the attributes' `viewerPlayerID` or the UI won't render it.
@@ -190,17 +195,6 @@ struct SpyClashMatchActivityAttributes: ActivityAttributes, Sendable {
             self.ownerPlayerID = ownerPlayerID
             self.role = role
             self.secretWord = role == .spy ? nil : secretWord
-        }
-
-        var wordForDisplay: String {
-            switch role {
-            case .spy:
-                "???"
-            case .spectator:
-                "NO FIELD WORD"
-            case .detective:
-                secretWord?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfEmpty ?? "SYNCING"
-            }
         }
     }
 

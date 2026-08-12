@@ -48,6 +48,7 @@ Deno.test("persisted game start identity repairs a missing outbox idempotently",
     store.records.every((row) =>
       row.inbox_projection_version === 1 &&
       row.inbox_title_en === "Mission started" &&
+      row.inbox_title_uk === "Гра почалася" &&
       row.inbox_action_deep_link === "spyclash://game?room_id=room-1" &&
       row.inbox_visible === false && Boolean(row.inbox_committed_at)
     ),

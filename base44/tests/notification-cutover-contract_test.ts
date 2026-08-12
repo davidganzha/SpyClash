@@ -182,6 +182,20 @@ async function pinHistoricalNotificationEntityFixture(root: string) {
   const history = JSON.parse(await Deno.readTextFile(historyPath));
   delete history.properties.spy_count;
   await writePrivateJSON(historyPath, history);
+
+  const userPath = `${root}/base44/entities/User.jsonc`;
+  const user = JSON.parse(await Deno.readTextFile(userPath));
+  user.properties.language.enum = user.properties.language.enum.filter(
+    (value: string) => value !== "uk",
+  );
+  await writePrivateJSON(userPath, user);
+
+  const announcementPath =
+    `${root}/base44/entities/notification-announcement.jsonc`;
+  const announcement = JSON.parse(await Deno.readTextFile(announcementPath));
+  delete announcement.properties.title_uk;
+  delete announcement.properties.body_uk;
+  await writePrivateJSON(announcementPath, announcement);
 }
 
 async function writeFakeNetworkCommands(
@@ -347,6 +361,8 @@ Deno.test("Step A read-only prepare builds the exact 20 to 22 candidate without 
         "inbox_body_ru",
         "inbox_title_es",
         "inbox_body_es",
+        "inbox_title_uk",
+        "inbox_body_uk",
         "inbox_action_deep_link",
         "inbox_published_at",
         "inbox_projection_version",
@@ -854,6 +870,8 @@ Deno.test("notification schema and worker activation match the reviewed contract
       "inbox_body_ru",
       "inbox_title_es",
       "inbox_body_es",
+      "inbox_title_uk",
+      "inbox_body_uk",
       "inbox_action_deep_link",
       "inbox_published_at",
       "inbox_projection_version",

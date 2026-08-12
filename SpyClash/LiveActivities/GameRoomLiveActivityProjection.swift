@@ -7,7 +7,10 @@ struct GameRoomLiveActivityProjection {
 }
 
 extension GameRoom {
-    func liveActivityProjection(for viewer: SpyUser) -> GameRoomLiveActivityProjection? {
+    func liveActivityProjection(
+        for viewer: SpyUser,
+        displayLanguage: AppLanguage? = nil
+    ) -> GameRoomLiveActivityProjection? {
         guard let currentMatchID = matchID?.nilIfBlank,
               ["playing", "finished"].contains(normalizedStatus),
               playersList.contains(where: { normalizedEmail($0.email) == normalizedEmail(viewer.email) }) else {
@@ -57,9 +60,11 @@ extension GameRoom {
                 currentResponderID: mode == .questions ? responderID : nil,
                 round: roundNumber ?? 1,
                 publicTopic: category?.nilIfBlank ?? "CLASSIC",
-                displayLanguageCode: AppLanguage
-                    .normalized(viewer.language ?? AppLanguage.stored.rawValue)
-                    .rawValue,
+                displayLanguageCode: (
+                    displayLanguage ?? AppLanguage.normalized(
+                        viewer.language ?? AppLanguage.stored.rawValue
+                    )
+                ).rawValue,
                 timerEndsAt: timer.endsAt,
                 pausedSecondsRemaining: timer.pausedSecondsRemaining,
                 // Lock Screen and Dynamic Island are glanceable surfaces.

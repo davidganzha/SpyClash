@@ -1053,7 +1053,13 @@ final class Base44Client {
         request.setValue(Self.appBaseURL.absoluteString, forHTTPHeaderField: "Origin")
         request.httpBody = try JSONEncoder.base44.encode(credential)
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw Self.displayableTransportError(error)
+        }
         guard let http = response as? HTTPURLResponse else {
             throw Base44Error(message: "Invalid Apple authentication response.")
         }
@@ -1066,7 +1072,9 @@ final class Base44Client {
             )
         }
 
-        let bootstrap = try JSONDecoder.base44.decode(AppleAuthBootstrapResponse.self, from: data)
+        guard let bootstrap = try? JSONDecoder.base44.decode(AppleAuthBootstrapResponse.self, from: data) else {
+            throw Base44Error(message: "The server returned an unreadable response.")
+        }
         guard let bootstrapURL = URL(string: bootstrap.bootstrapURL),
               bootstrapURL.scheme?.lowercased() == "https",
               bootstrapURL.host?.lowercased() == Self.appBaseURL.host?.lowercased(),
@@ -1116,7 +1124,13 @@ final class Base44Client {
         request.setValue("application/json,text/html", forHTTPHeaderField: "Accept")
         request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
 
-        let (data, response) = try await handoffSession.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await handoffSession.data(for: request)
+        } catch {
+            throw Self.displayableTransportError(error)
+        }
         if let redirectError = redirectDelegate.capturedError() {
             throw redirectError
         }
@@ -1242,7 +1256,7 @@ final class Base44Client {
             } catch {
                 guard attempt < maximumAttempts,
                       Self.isRetryablePushTransportError(error) else {
-                    throw error
+                    throw Self.displayableTransportError(error)
                 }
                 try await Self.waitBeforePushRetry(attempt: attempt)
                 attempt += 1
@@ -1560,7 +1574,13 @@ final class Base44Client {
             request.httpBody = try JSONEncoder.base44.encode(body)
         }
 
-        let (data, response) = try await session.data(for: request)
+        let data: Data
+        let response: URLResponse
+        do {
+            (data, response) = try await session.data(for: request)
+        } catch {
+            throw Self.displayableTransportError(error)
+        }
         guard let http = response as? HTTPURLResponse else {
             throw Base44Error(message: "Invalid API response.")
         }
@@ -1583,7 +1603,20 @@ final class Base44Client {
             throw Base44Error(message: "Empty API response.", statusCode: http.statusCode)
         }
 
-        return try JSONDecoder.base44.decode(T.self, from: data)
+        guard let decoded = try? JSONDecoder.base44.decode(T.self, from: data) else {
+            throw Base44Error(message: "The server returned an unreadable response.")
+        }
+        return decoded
+    }
+
+    private static func displayableTransportError(_ error: Error) -> Error {
+        if error is Base44Error {
+            return error
+        }
+        if RequestCancellationPolicy.isCancellation(error) {
+            return CancellationError()
+        }
+        return Base44Error(message: "Network request failed.", retryable: true)
     }
 }
 
@@ -1941,8 +1974,86 @@ struct Base44Error: LocalizedError {
     }
 
     var errorDescription: String? {
-        statusCode.map { "\(message) [\($0)]" } ?? message
+        let resolvedMessage = localizedMessage(for: AppLanguage.stored)
+        return statusCode.map { "\(resolvedMessage) [\($0)]" } ?? resolvedMessage
     }
+
+    func localizedMessage(for language: AppLanguage) -> String {
+        guard language == .uk else { return message }
+
+        if let localized = Self.ukrainianMessages[message] {
+            return localized
+        }
+        if message.range(of: #"[іїєґІЇЄҐ]"#, options: .regularExpression) != nil {
+            return message
+        }
+
+        switch normalizedCode {
+        case "client_update_required":
+            return "Оновіть SpyClash, щоб продовжити."
+        case "spy_count_invalid_for_player_count":
+            return "Обрана кількість шпигунів не підходить для цієї кількості гравців."
+        case "active_lease", "cas_contention":
+            return "Дані зараз оновлюються. Спробуйте ще раз."
+        default:
+            break
+        }
+
+        guard let statusCode else {
+            return "Не вдалося виконати запит. Спробуйте ще раз."
+        }
+        switch statusCode {
+        case 401:
+            return "Увійдіть до акаунта, щоб продовжити."
+        case 403:
+            return "У вас немає доступу до цієї дії."
+        case 404:
+            return "Запитувані дані не знайдено."
+        case 409:
+            return "Дані змінилися. Оновіть екран і спробуйте ще раз."
+        case 422:
+            return "Перевірте введені дані й спробуйте ще раз."
+        case 429:
+            return "Забагато запитів. Спробуйте трохи пізніше."
+        case 500...599:
+            return "Сервіс тимчасово недоступний. Спробуйте ще раз."
+        default:
+            return "Не вдалося виконати запит. Спробуйте ще раз."
+        }
+    }
+
+    private static let ukrainianMessages: [String: String] = [
+        "Authentication required.": "Увійдіть до акаунта, щоб продовжити.",
+        "Room join failed after retry.": "Не вдалося приєднатися до кімнати. Спробуйте ще раз.",
+        "Need at least 3 operatives.": "Потрібно щонайменше 3 оперативники.",
+        "Account deletion was not confirmed.": "Видалення акаунта не підтверджено.",
+        "Invalid Radar invite policy response.": "Радар повернув недійсні налаштування запрошень.",
+        "Radar invite policy was not confirmed.": "Налаштування запрошень Радара не підтверджено.",
+        "Notification identifier is required.": "Потрібен ідентифікатор сповіщення.",
+        "Notification title and body are required.": "Потрібні заголовок і текст сповіщення.",
+        "Notification content is too long.": "Текст сповіщення задовгий.",
+        "Invalid Apple authentication URL.": "Недійсне посилання автентифікації Apple.",
+        "Invalid Apple authentication response.": "Недійсна відповідь автентифікації Apple.",
+        "Apple authentication returned an invalid handoff URL.": "Apple повернула недійсне посилання для входу.",
+        "Apple authentication did not return a valid access token.": "Apple не повернула дійсний токен доступу.",
+        "Invalid API URL.": "Недійсне посилання API.",
+        "Invalid API response.": "Недійсна відповідь сервера.",
+        "Network request failed.": "Перевірте з’єднання з мережею та спробуйте ще раз.",
+        "Empty API response.": "Сервер повернув порожню відповідь.",
+        "The server returned an unreadable response.": "Не вдалося прочитати відповідь сервера.",
+        "Apple authentication returned an invalid redirect.": "Apple повернула недійсне перенаправлення.",
+        "Apple authentication returned an invalid app callback.": "Apple повернула недійсне посилання до застосунку.",
+        "Apple authentication attempted an untrusted redirect.": "Apple спробувала виконати ненадійне перенаправлення.",
+        "Apple authentication exceeded the redirect limit.": "Під час входу з Apple перевищено ліміт перенаправлень.",
+        "Select at least two enabled lobby words before starting.": "Перед початком оберіть щонайменше два активні слова.",
+        "Lobby room changed.": "Кімната лобі змінилася.",
+        "Lobby settings are still synchronizing.": "Налаштування лобі ще синхронізуються.",
+        "Lobby update was not confirmed.": "Оновлення лобі не підтверджено.",
+        "Notification was not marked as read.": "Не вдалося позначити сповіщення як прочитане.",
+        "Notifications were not marked as read.": "Не вдалося позначити сповіщення як прочитані.",
+        "Global notification was not published.": "Не вдалося опублікувати глобальне сповіщення.",
+        "Notification scope mismatch.": "Область сповіщення не збігається."
+    ]
 
     var isRetryableRoomJoinConflict: Bool {
         guard statusCode == 409 else { return false }

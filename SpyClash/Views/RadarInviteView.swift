@@ -31,7 +31,7 @@ struct RadarInviteView: View {
                     Button {
                         dismiss()
                     } label: {
-                        Label(localized(en: "CLOSE NEARBY", ru: "ЗАКРЫТЬ ПОИСК", es: "CERRAR CERCANOS"), systemImage: "xmark")
+                        Label(localized(en: "CLOSE NEARBY", ru: "ЗАКРЫТЬ ПОИСК", es: "CERRAR CERCANOS", uk: "ЗАКРИТИ ПОШУК"), systemImage: "xmark")
                     }
                     .buttonStyle(SpyButtonStyle(variant: .ghost))
                     .accessibilityIdentifier("radar.close")
@@ -55,12 +55,12 @@ struct RadarInviteView: View {
     private var header: some View {
         HStack(alignment: .top, spacing: 14) {
             VStack(alignment: .leading, spacing: 8) {
-                Text(localized(en: "// LOCAL ACCESS", ru: "// ЛОКАЛЬНЫЙ ДОСТУП", es: "// ACCESO LOCAL"))
+                Text(localized(en: "// LOCAL ACCESS", ru: "// ЛОКАЛЬНЫЙ ДОСТУП", es: "// ACCESO LOCAL", uk: "// ЛОКАЛЬНИЙ ДОСТУП"))
                     .font(SpyTheme.micro)
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.red)
 
-                Text(localized(en: "NEARBY", ru: "РЯДОМ", es: "CERCA"))
+                Text(localized(en: "NEARBY", ru: "РЯДОМ", es: "CERCA", uk: "ПОРУЧ"))
                     .font(SpyTheme.brandFont(size: 42))
                     .tracking(1.5)
                     .foregroundStyle(.white)
@@ -68,7 +68,8 @@ struct RadarInviteView: View {
                 Text(localized(
                     en: "Select a local SpyID to send room access.",
                     ru: "Выбери локальный SpyID, чтобы открыть доступ в комнату.",
-                    es: "Selecciona un SpyID local para enviar acceso a la sala."
+                    es: "Selecciona un SpyID local para enviar acceso a la sala.",
+                    uk: "Обери локальний SpyID, щоб надати доступ до кімнати."
                 ))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(SpyTheme.dim)
@@ -88,7 +89,7 @@ struct RadarInviteView: View {
                     .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.stroke, lineWidth: 1))
             }
             .buttonStyle(SpyWebPressStyle())
-            .accessibilityLabel(localized(en: "Close nearby", ru: "Закрыть поиск рядом", es: "Cerrar cercanos"))
+            .accessibilityLabel(localized(en: "Close nearby", ru: "Закрыть поиск рядом", es: "Cerrar cercanos", uk: "Закрити пошук поруч"))
         }
     }
 
@@ -108,7 +109,8 @@ struct RadarInviteView: View {
                     ForEach(0..<4, id: \.self) { index in
                         NearbySpyIDPlaceholder(
                             index: index,
-                            isActive: scanPulse && index < 2
+                            isActive: scanPulse && index < 2,
+                            language: appState.language
                         )
                     }
                 } else {
@@ -133,7 +135,8 @@ struct RadarInviteView: View {
                 Text(localized(
                     en: "WAITING FOR OPEN SPYCLASH DEVICES NEARBY",
                     ru: "ЖДЁМ УСТРОЙСТВА С ОТКРЫТЫМ SPYCLASH РЯДОМ",
-                    es: "ESPERANDO DISPOSITIVOS CON SPYCLASH ABIERTO"
+                    es: "ESPERANDO DISPOSITIVOS CON SPYCLASH ABIERTO",
+                    uk: "ЧЕКАЄМО НА ПРИСТРОЇ З ВІДКРИТИМ SPYCLASH ПОРУЧ"
                 ))
                 .font(.system(size: 8, weight: .black, design: .monospaced))
                 .tracking(0.35)
@@ -154,13 +157,14 @@ struct RadarInviteView: View {
                 .background(SpyTheme.green.opacity(0.08), in: Circle())
 
             VStack(alignment: .leading, spacing: 3) {
-                Text(localized(en: "LOCAL DISCOVERY", ru: "ЛОКАЛЬНОЕ ОБНАРУЖЕНИЕ", es: "DETECCIÓN LOCAL"))
+                Text(localized(en: "LOCAL DISCOVERY", ru: "ЛОКАЛЬНОЕ ОБНАРУЖЕНИЕ", es: "DETECCIÓN LOCAL", uk: "ЛОКАЛЬНИЙ ПОШУК"))
                     .font(.system(size: 8, weight: .black, design: .monospaced))
                     .foregroundStyle(.white)
                 Text(localized(
                     en: "Only open SpyClash devices appear here. Exact coordinates are not used.",
                     ru: "Здесь видны только устройства с открытым SpyClash. Точные координаты не используются.",
-                    es: "Solo aparecen dispositivos con SpyClash abierto. No se usan coordenadas exactas."
+                    es: "Solo aparecen dispositivos con SpyClash abierto. No se usan coordenadas exactas.",
+                    uk: "Тут видно лише пристрої з відкритим SpyClash. Точні координати не використовуються."
                 ))
                 .font(.system(size: 8, weight: .semibold, design: .monospaced))
                 .lineSpacing(2)
@@ -192,10 +196,11 @@ struct RadarInviteView: View {
         }
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru: ru
         case .es: es
+        case .uk: uk
         default: en
         }
     }
@@ -559,6 +564,10 @@ struct NearbySpyIDCard: View {
         case (.ghost, .es): "FANTASMA"
         case (.analyst, .es): "ANALISTA"
         case (.handler, .es): "CONTROL"
+        case (.operative, .uk): "ОПЕРАТИВНИК"
+        case (.ghost, .uk): "ПРИВИД"
+        case (.analyst, .uk): "АНАЛІТИК"
+        case (.handler, .uk): "КУРАТОР"
         case (.operative, _): "OPERATIVE"
         case (.ghost, _): "GHOST"
         case (.analyst, _): "ANALYST"
@@ -580,6 +589,13 @@ struct NearbySpyIDCard: View {
         case (.es, .inGame): "EN JUEGO"
         case (.es, .blocked): "CERRADO"
         case (.es, .unavailable): "SIN SEÑAL"
+        case (.uk, .waiting): "ОЧІКУВАННЯ"
+        case (.uk, .declined): "ВІДМОВА"
+        case (.uk, .accepted): "ПРИЙНЯТО"
+        case (.uk, .inGame): "У ГРІ"
+        case (.uk, .blocked): "ЗАКРИТО"
+        case (.uk, .unavailable): "НЕМАЄ ЗВʼЯЗКУ"
+        case (.uk, .available): "В ЕФІРІ"
         case (_, .waiting): "PENDING"
         case (_, .declined): "DECLINED"
         case (_, .accepted): "ACCEPTED"
@@ -616,6 +632,13 @@ struct NearbySpyIDCard: View {
         case (.es, .inGame): "YA ESTÁ JUGANDO"
         case (.es, .blocked): "INVITACIONES\nBLOQUEADAS"
         case (.es, .unavailable): "SIN RESPUESTA"
+        case (.uk, .waiting): "ЧЕКАЄМО НА ГРАВЦЯ"
+        case (.uk, .declined): "ГРАВЕЦЬ ВІДМОВИВСЯ"
+        case (.uk, .accepted): "ЗАПРОШЕННЯ\nПРИЙНЯТО"
+        case (.uk, .inGame): "УЖЕ У ГРІ"
+        case (.uk, .blocked): "ЗАПРОШЕННЯ\nЗАБОРОНЕНО"
+        case (.uk, .unavailable): "НЕМАЄ ВІДПОВІДІ"
+        case (.uk, .available): "ДОСТУПНИЙ"
         case (_, .waiting): "WAITING FOR PLAYER"
         case (_, .declined): "INVITATION DECLINED"
         case (_, .accepted): "INVITATION\nACCEPTED"
@@ -640,6 +663,13 @@ struct NearbySpyIDCard: View {
         case (.es, .inGame): "NO SE PUEDE INVITAR"
         case (.es, .blocked): "DESACTIVADAS EN AJUSTES"
         case (.es, .unavailable): "INTÉNTALO DE NUEVO"
+        case (.uk, .waiting): "НАТИСНИ ЩЕ РАЗ, ЩОБ СКАСУВАТИ"
+        case (.uk, .declined): "МОЖНА ЗАПРОСИТИ ПІЗНІШЕ"
+        case (.uk, .accepted): "ПІДКЛЮЧАЄМО ДО ГРИ"
+        case (.uk, .inGame): "ЗАПРОСИТИ НЕ МОЖНА"
+        case (.uk, .blocked): "ГРАВЕЦЬ ВИМКНУВ ЇХ У НАЛАШТУВАННЯХ"
+        case (.uk, .unavailable): "СПРОБУЙ ЩЕ РАЗ"
+        case (.uk, .available): "НАТИСНИ, ЩОБ ЗАПРОСИТИ"
         case (_, .waiting): "TAP AGAIN TO CANCEL"
         case (_, .declined): "YOU CAN INVITE AGAIN LATER"
         case (_, .accepted): "CONNECTING TO THE GAME"
@@ -658,6 +688,9 @@ struct NearbySpyIDCard: View {
         case (.es, .ask): "ENTRADA CON CONFIRMACIÓN"
         case (.es, .automatic): "ENTRADA AUTOMÁTICA"
         case (.es, .blocked): "INVITACIONES DESACTIVADAS"
+        case (.uk, .ask): "ВХІД ІЗ ПІДТВЕРДЖЕННЯМ"
+        case (.uk, .automatic): "АВТОМАТИЧНИЙ ВХІД"
+        case (.uk, .blocked): "ЗАПРОШЕННЯ ВИМКНЕНО"
         case (_, .ask): "CONFIRMATION REQUIRED"
         case (_, .automatic): "AUTOMATIC ENTRY"
         case (_, .blocked): "INVITATIONS DISABLED"
@@ -672,6 +705,9 @@ struct NearbySpyIDCard: View {
         case (.es, .ask): "INVITAR"
         case (.es, .automatic): "CONECTAR"
         case (.es, .blocked): "NO DISPONIBLE"
+        case (.uk, .ask): "ЗАПРОСИТИ"
+        case (.uk, .automatic): "ПІДКЛЮЧИТИ"
+        case (.uk, .blocked): "НЕДОСТУПНО"
         case (_, .ask): "INVITE"
         case (_, .automatic): "CONNECT"
         case (_, .blocked): "UNAVAILABLE"
@@ -742,6 +778,7 @@ extension AnyTransition {
 struct NearbySpyIDPlaceholder: View {
     let index: Int
     let isActive: Bool
+    let language: AppLanguage
 
     var body: some View {
         GeometryReader { proxy in
@@ -752,7 +789,7 @@ struct NearbySpyIDPlaceholder: View {
                 HStack(spacing: 6 * scale) {
                     SpyBrandMark()
                         .frame(width: 28 * scale, height: 36 * scale)
-                    Text("SLOT // \(String(format: "%02d", index + 1))")
+                    Text(slotLabel)
                     Spacer()
                     Circle()
                         .fill(isActive ? SpyTheme.amber : SpyTheme.strokeStrong)
@@ -792,6 +829,16 @@ struct NearbySpyIDPlaceholder: View {
         .animation(.easeInOut(duration: 0.9), value: isActive)
         .accessibilityHidden(true)
     }
+
+    private var slotLabel: String {
+        let position = String(format: "%02d", index + 1)
+        return switch language {
+        case .en: "SLOT // \(position)"
+        case .es: "PUESTO // \(position)"
+        case .ru: "МЕСТО // \(position)"
+        case .uk: "МІСЦЕ // \(position)"
+        }
+    }
 }
 
 private struct NearbyPlaceholderLine: View {
@@ -825,7 +872,7 @@ struct RadarPolicySettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(localized(en: "// RADAR ACCESS", ru: "// ДОСТУП ПО РАДАРУ", es: "// ACCESO POR RADAR"))
+            Text(localized(en: "// RADAR ACCESS", ru: "// ДОСТУП ПО РАДАРУ", es: "// ACCESO POR RADAR", uk: "// ДОСТУП ЧЕРЕЗ РАДАР"))
                 .font(SpyTheme.micro)
                 .tracking(0.10)
                 .foregroundStyle(SpyTheme.dim)
@@ -834,7 +881,8 @@ struct RadarPolicySettingsView: View {
             Text(localized(
                 en: "What should happen when a nearby host taps your signal?",
                 ru: "Что делать, когда находящийся рядом хост нажимает на твой сигнал?",
-                es: "¿Qué ocurre cuando un anfitrión cercano toca tu señal?"
+                es: "¿Qué ocurre cuando un anfitrión cercano toca tu señal?",
+                uk: "Що робити, коли хост поруч натискає на твій сигнал?"
             ))
             .font(.system(size: 10, weight: .semibold, design: .monospaced))
             .foregroundStyle(SpyTheme.faint)
@@ -905,7 +953,8 @@ struct RadarPolicySettingsView: View {
                 text: localized(
                     en: "Saved on this iPhone. Sign in to sync it with your SpyClash account.",
                     ru: "Сохранено на этом iPhone. Войди, чтобы синхронизировать с аккаунтом SpyClash.",
-                    es: "Guardado en este iPhone. Inicia sesión para sincronizarlo con tu cuenta de SpyClash."
+                    es: "Guardado en este iPhone. Inicia sesión para sincronizarlo con tu cuenta de SpyClash.",
+                    uk: "Збережено на цьому iPhone. Увійди, щоб синхронізувати з обліковим записом SpyClash."
                 )
             )
         case .syncing:
@@ -916,7 +965,8 @@ struct RadarPolicySettingsView: View {
                 Text(localized(
                     en: "Saved on this iPhone. Syncing your account…",
                     ru: "Сохранено на этом iPhone. Синхронизируем аккаунт…",
-                    es: "Guardado en este iPhone. Sincronizando tu cuenta…"
+                    es: "Guardado en este iPhone. Sincronizando tu cuenta…",
+                    uk: "Збережено на цьому iPhone. Синхронізуємо обліковий запис…"
                 ))
             }
             .syncStatusStyle()
@@ -926,7 +976,8 @@ struct RadarPolicySettingsView: View {
                 text: localized(
                     en: "Saved to your SpyClash account.",
                     ru: "Сохранено в аккаунте SpyClash.",
-                    es: "Guardado en tu cuenta de SpyClash."
+                    es: "Guardado en tu cuenta de SpyClash.",
+                    uk: "Збережено в обліковому записі SpyClash."
                 )
             )
         case .pendingRetry:
@@ -939,7 +990,8 @@ struct RadarPolicySettingsView: View {
                     text: localized(
                         en: "Saved on this iPhone. Account sync is waiting — tap to retry.",
                         ru: "Сохранено на этом iPhone. Синхронизация ожидает — нажми, чтобы повторить.",
-                        es: "Guardado en este iPhone. La sincronización está pendiente; toca para reintentar."
+                        es: "Guardado en este iPhone. La sincronización está pendiente; toca para reintentar.",
+                        uk: "Збережено на цьому iPhone. Синхронізація очікує — натисни, щоб повторити."
                     )
                 )
             }
@@ -961,6 +1013,9 @@ struct RadarPolicySettingsView: View {
         case (.es, .ask): "PREGUNTAR"
         case (.es, .automatic): "ENTRAR AUTOMÁTICAMENTE"
         case (.es, .blocked): "NO ACEPTAR"
+        case (.uk, .ask): "ЗАПИТУВАТИ"
+        case (.uk, .automatic): "ВХОДИТИ АВТОМАТИЧНО"
+        case (.uk, .blocked): "НЕ ПРИЙМАТИ"
         case (_, .ask): "ASK FIRST"
         case (_, .automatic): "JOIN AUTOMATICALLY"
         case (_, .blocked): "DO NOT ACCEPT"
@@ -975,6 +1030,9 @@ struct RadarPolicySettingsView: View {
         case (.es, .ask): "Mostrar la invitación antes de entrar"
         case (.es, .automatic): "Entrar si no estás en otra sala"
         case (.es, .blocked): "Indicar que desactivaste las invitaciones"
+        case (.uk, .ask): "Показати запрошення перед входом"
+        case (.uk, .automatic): "Одразу ввійти до кімнати, якщо ти вільний"
+        case (.uk, .blocked): "Показати хосту, що запрошення вимкнено"
         case (_, .ask): "Show an invitation before joining"
         case (_, .automatic): "Join immediately when you are free"
         case (_, .blocked): "Tell the host that invitations are disabled"
@@ -989,13 +1047,15 @@ struct RadarPolicySettingsView: View {
         }
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru: ru
         case .es: es
+        case .uk: uk
         default: en
         }
     }
+
 }
 
 private extension View {
@@ -1050,9 +1110,10 @@ struct RadarIncomingInvitationOverlay: View {
                         .shadow(color: SpyTheme.red.opacity(0.55), radius: 5)
 
                     Text(localized(
-                        en: "RADAR INVITATION",
-                        ru: "ПРИГЛАШЕНИЕ ПО РАДАРУ",
-                        es: "INVITACIÓN POR RADAR"
+                    en: "RADAR INVITATION",
+                    ru: "ПРИГЛАШЕНИЕ ПО РАДАРУ",
+                    es: "INVITACIÓN POR RADAR",
+                    uk: "ЗАПРОШЕННЯ ЧЕРЕЗ РАДАР"
                     ))
                     .font(.system(size: 8, weight: .black, design: .monospaced))
                     .tracking(0.75)
@@ -1062,7 +1123,8 @@ struct RadarIncomingInvitationOverlay: View {
                 Text(localized(
                     en: "FOUND ON RADAR",
                     ru: "ВАС НАШЛИ ПО РАДАРУ",
-                    es: "LOCALIZADO POR RADAR"
+                    es: "LOCALIZADO POR RADAR",
+                    uk: "ВАС ЗНАЙШЛИ ЧЕРЕЗ РАДАР"
                 ))
                 .font(SpyTheme.brandFont(size: 25))
                 .tracking(0.8)
@@ -1073,7 +1135,8 @@ struct RadarIncomingInvitationOverlay: View {
                 Text(localized(
                     en: "\(invitation.hostCallSign) invites you to room \(invitation.roomCode).",
                     ru: "\(invitation.hostCallSign) приглашает вас в комнату \(invitation.roomCode).",
-                    es: "\(invitation.hostCallSign) te invita a la sala \(invitation.roomCode)."
+                    es: "\(invitation.hostCallSign) te invita a la sala \(invitation.roomCode).",
+                    uk: "\(invitation.hostCallSign) запрошує вас до кімнати \(invitation.roomCode)."
                 ))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(SpyTheme.dim)
@@ -1086,7 +1149,7 @@ struct RadarIncomingInvitationOverlay: View {
                 Button {
                     appState.declineRadarInvitation()
                 } label: {
-                    Text(localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR"))
+                    Text(localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR", uk: "ВІДХИЛИТИ"))
                 }
                 .buttonStyle(SpyButtonStyle(variant: .outline))
                 .disabled(isJoining)
@@ -1101,7 +1164,8 @@ struct RadarIncomingInvitationOverlay: View {
                     Text(localized(
                         en: isJoining ? "JOINING..." : "JOIN",
                         ru: isJoining ? "ВХОДИМ..." : "ВОЙТИ",
-                        es: isJoining ? "ENTRANDO..." : "ENTRAR"
+                        es: isJoining ? "ENTRANDO..." : "ENTRAR",
+                        uk: isJoining ? "ВХОДИМО..." : "УВІЙТИ"
                     ))
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
@@ -1115,10 +1179,11 @@ struct RadarIncomingInvitationOverlay: View {
         .padding(.horizontal, 8)
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru: ru
         case .es: es
+        case .uk: uk
         default: en
         }
     }
@@ -1368,6 +1433,10 @@ private struct RadarIncomingSpyCard: View {
         case (.ghost, .es): "FANTASMA"
         case (.analyst, .es): "ANALISTA"
         case (.handler, .es): "CONTROL"
+        case (.operative, .uk): "ОПЕРАТИВНИК"
+        case (.ghost, .uk): "ПРИВИД"
+        case (.analyst, .uk): "АНАЛІТИК"
+        case (.handler, .uk): "КУРАТОР"
         case (.operative, _): "OPERATIVE"
         case (.ghost, _): "GHOST"
         case (.analyst, _): "ANALYST"
@@ -1383,6 +1452,9 @@ private struct RadarIncomingSpyCard: View {
         case (.rating, .es): "RANGO"
         case (.games, .es): "JUEGOS"
         case (.rate, .es): "TASA VICT."
+        case (.rating, .uk): "РЕЙТИНГ"
+        case (.games, .uk): "ІГРИ"
+        case (.rate, .uk): "ПЕРЕМОГИ"
         case (.rating, _): "RATING"
         case (.games, _): "GAMES"
         case (.rate, _): "WIN RATE"
@@ -1410,6 +1482,8 @@ private struct RadarIncomingSpyCard: View {
             "SPYCARD, \(invitation.hostCallSign), SPYID \(invitation.hostSpyID), игр \(invitation.hostGamesPlayed), винрейт \(invitation.hostWinRate) процентов"
         case .es:
             "SPYCARD, \(invitation.hostCallSign), SPYID \(invitation.hostSpyID), \(invitation.hostGamesPlayed) juegos, \(invitation.hostWinRate) por ciento de victorias"
+        case .uk:
+            "SPYCARD, \(invitation.hostCallSign), SPYID \(invitation.hostSpyID), ігор: \(invitation.hostGamesPlayed), відсоток перемог: \(invitation.hostWinRate)"
         default:
             "SPYCARD, \(invitation.hostCallSign), SPYID \(invitation.hostSpyID), \(invitation.hostGamesPlayed) games, \(invitation.hostWinRate) percent win rate"
         }

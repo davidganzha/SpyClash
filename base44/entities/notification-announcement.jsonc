@@ -24,6 +24,8 @@
     "body_ru": { "type": "string" },
     "title_es": { "type": "string" },
     "body_es": { "type": "string" },
+    "title_uk": { "type": "string" },
+    "body_uk": { "type": "string" },
     "action_deep_link": { "type": "string" },
     "published_at": { "type": "string", "format": "date-time" },
     "expires_at": { "type": "string", "format": "date-time" },

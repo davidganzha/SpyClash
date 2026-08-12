@@ -55,7 +55,28 @@ final class SpyClashMatchLiveActivityController {
         case remoteStartRequired
 
         var errorDescription: String? {
-            switch self {
+            if AppLanguage.stored == .uk {
+                return switch self {
+                case .activitiesDisabled:
+                    "На цьому пристрої вимкнено Live Activities для SpyClash."
+                case .invalidRoomID:
+                    "Ідентифікатор кімнати відсутній."
+                case .invalidMatchID:
+                    "Ідентифікатор матчу відсутній."
+                case .invalidViewerPlayerID:
+                    "Ідентифікатор гравця-власника відсутній."
+                case .invalidParticipants:
+                    "Для Live Activity потрібні унікальні непрозорі ідентифікатори учасників."
+                case .payloadTooLarge:
+                    "Дані Live Activity завеликі для ActivityKit."
+                case .activityNotFound:
+                    "Активну Live Activity матчу SpyClash не знайдено."
+                case .remoteStartRequired:
+                    "На iOS 17.2 або новішій версії Live Activity запускає сервер."
+                }
+            }
+
+            return switch self {
             case .activitiesDisabled:
                 "Live Activities are disabled for SpyClash on this device."
             case .invalidRoomID:

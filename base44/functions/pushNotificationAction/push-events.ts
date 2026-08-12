@@ -228,11 +228,13 @@ export function preferenceAllows(
   return registration.game_updates_enabled !== false;
 }
 
-type Language = "en" | "ru" | "es";
+type Language = "en" | "ru" | "es" | "uk";
 
 function language(value: unknown): Language {
   const normalized = clean(value).toLowerCase().split(/[-_]/)[0];
-  return normalized === "ru" || normalized === "es" ? normalized : "en";
+  return normalized === "ru" || normalized === "es" || normalized === "uk"
+    ? normalized
+    : "en";
 }
 
 export function alertPayload(
@@ -274,8 +276,17 @@ export function alertPayload(
         : `spyclash://notifications?id=${encodeURIComponent(announcementID)}`,
     };
   }
-  const actor = source.actorName ||
-    (lang === "ru" ? "Оперативник" : "An operative");
+  const sourceActor = source.actorName === "An operative"
+    ? ""
+    : source.actorName;
+  const actor = sourceActor ||
+    (lang === "ru"
+      ? "Оперативник"
+      : lang === "uk"
+      ? "Оперативник"
+      : lang === "es"
+      ? "Un agente"
+      : "An operative");
   const copy: Record<
     string,
     Record<Language, { title: string; body: string }>
@@ -289,6 +300,10 @@ export function alertPayload(
       es: {
         title: "Nueva solicitud de amistad",
         body: `${actor} quiere conectar contigo.`,
+      },
+      uk: {
+        title: "Новий запит у друзі",
+        body: `${actor} хоче додати вас у друзі.`,
       },
     },
     room_invite: {
@@ -304,6 +319,10 @@ export function alertPayload(
         title: "Invitación al juego",
         body: `${actor} te invitó a una sala de SpyClash.`,
       },
+      uk: {
+        title: "Запрошення до гри",
+        body: `${actor} запрошує вас до кімнати SpyClash.`,
+      },
     },
     game_started: {
       en: { title: "Mission started", body: "Your SpyClash game is now live." },
@@ -314,6 +333,10 @@ export function alertPayload(
       es: {
         title: "La misión comenzó",
         body: "Tu partida de SpyClash ya comenzó.",
+      },
+      uk: {
+        title: "Гра почалася",
+        body: "Ваша місія SpyClash уже почалася.",
       },
     },
     game_finished: {
@@ -328,6 +351,10 @@ export function alertPayload(
       es: {
         title: "Misión completada",
         body: "Abre SpyClash para ver el resultado.",
+      },
+      uk: {
+        title: "Гру завершено",
+        body: "Відкрийте SpyClash, щоб побачити результат.",
       },
     },
   };

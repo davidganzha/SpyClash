@@ -40,6 +40,8 @@
     "inbox_body_ru": { "type": "string" },
     "inbox_title_es": { "type": "string" },
     "inbox_body_es": { "type": "string" },
+    "inbox_title_uk": { "type": "string" },
+    "inbox_body_uk": { "type": "string" },
     "inbox_action_deep_link": { "type": "string" },
     "inbox_published_at": { "type": "string", "format": "date-time" },
     "inbox_projection_version": { "type": "number" },

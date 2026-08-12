@@ -1011,25 +1011,28 @@ struct GameView: View {
         switch mode {
         case .action:
             return isStarting
-                ? localized(en: "ARMING", ru: "ЗАПУСК", es: "INICIANDO")
+                ? localized(en: "ARMING", ru: "ЗАПУСК", es: "INICIANDO", uk: "ЗАПУСК")
                 : copy.startNow
         case .syncing:
             return localized(
                 en: "SYNCING WITH SERVER…",
                 ru: "СИНХРОНИЗАЦИЯ С СЕРВЕРОМ…",
-                es: "SINCRONIZANDO CON EL SERVIDOR…"
+                es: "SINCRONIZANDO CON EL SERVIDOR…",
+                uk: "СИНХРОНІЗАЦІЯ ІЗ СЕРВЕРОМ…"
             )
         case .serverConfirmed:
             return localized(
                 en: "SAVED ON SERVER",
                 ru: "СОХРАНЕНО НА СЕРВЕРЕ",
-                es: "GUARDADO EN EL SERVIDOR"
+                es: "GUARDADO EN EL SERVIDOR",
+                uk: "ЗБЕРЕЖЕНО НА СЕРВЕРІ"
             )
         case .failed:
             return localized(
                 en: "SERVER SYNC FAILED",
                 ru: "СИНХРОНИЗАЦИЯ НЕ УДАЛАСЬ",
-                es: "FALLO DE SINCRONIZACION"
+                es: "FALLO DE SINCRONIZACION",
+                uk: "СИНХРОНІЗАЦІЯ НЕ ВДАЛАСЯ"
             )
         }
     }
@@ -1048,7 +1051,8 @@ struct GameView: View {
             return localized(
                 en: "START AFTER CONFIRMATION",
                 ru: "СТАРТ ПОСЛЕ ПОДТВЕРЖДЕНИЯ",
-                es: "INICIA TRAS CONFIRMACION"
+                es: "INICIA TRAS CONFIRMACION",
+                uk: "СТАРТ ПІСЛЯ ПІДТВЕРДЖЕННЯ"
             )
         case .serverConfirmed:
             guard lobbyStartPrerequisitesAreMet(room) else {
@@ -1057,13 +1061,15 @@ struct GameView: View {
             return localized(
                 en: "READY TO START",
                 ru: "ГОТОВО К ЗАПУСКУ",
-                es: "LISTO PARA INICIAR"
+                es: "LISTO PARA INICIAR",
+                uk: "ГОТОВО ДО ЗАПУСКУ"
             )
         case .failed:
             return localized(
                 en: "CHANGE A SETTING TO RETRY",
                 ru: "ИЗМЕНИ ПАРАМЕТР И ПОВТОРИ",
-                es: "CAMBIA UN AJUSTE Y REINTENTA"
+                es: "CAMBIA UN AJUSTE Y REINTENTA",
+                uk: "ЗМІНИ ПАРАМЕТР І ПОВТОРИ"
             )
         }
     }
@@ -1384,7 +1390,8 @@ struct GameView: View {
             .accessibilityValue(localized(
                 en: "Page \(roomAccessPage + 1) of 3",
                 ru: "Страница \(roomAccessPage + 1) из 3",
-                es: "Pagina \(roomAccessPage + 1) de 3"
+                es: "Pagina \(roomAccessPage + 1) de 3",
+                uk: "Сторінка \(roomAccessPage + 1) із 3"
             ))
 
             roomAccessPageIndicator
@@ -1440,7 +1447,7 @@ struct GameView: View {
             VStack(spacing: 0) {
                 roomAccessHeader(
                     room,
-                    title: localized(en: "ROOM ACCESS", ru: "ДОСТУП В КОМНАТУ", es: "ACCESO A SALA")
+                    title: localized(en: "ROOM ACCESS", ru: "ДОСТУП В КОМНАТУ", es: "ACCESO A SALA", uk: "ДОСТУП ДО КІМНАТИ")
                 )
                 .padding(.horizontal, 18)
                 .padding(.top, 15)
@@ -1487,8 +1494,8 @@ struct GameView: View {
                     .accessibilityIdentifier("onlineRoom.roomCodeReveal")
                     .accessibilityLabel(
                         isRoomCodeVisible
-                            ? localized(en: "Room code \(room.code). Tap to hide", ru: "Код комнаты \(room.code). Нажмите, чтобы скрыть", es: "Codigo \(room.code). Toca para ocultar")
-                            : localized(en: "Room code hidden. Tap to reveal", ru: "Код комнаты скрыт. Нажмите, чтобы показать", es: "Codigo oculto. Toca para mostrar")
+                            ? localized(en: "Room code \(room.code). Tap to hide", ru: "Код комнаты \(room.code). Нажмите, чтобы скрыть", es: "Codigo \(room.code). Toca para ocultar", uk: "Код кімнати \(room.code). Натисніть, щоб приховати")
+                            : localized(en: "Room code hidden. Tap to reveal", ru: "Код комнаты скрыт. Нажмите, чтобы показать", es: "Codigo oculto. Toca para mostrar", uk: "Код кімнати приховано. Натисніть, щоб показати")
                     )
 
                     Text(isRoomCodeVisible ? tapToHideRoomCode : tapToRevealRoomCode)
@@ -1571,8 +1578,8 @@ struct GameView: View {
             .accessibilityIdentifier("onlineRoom.flipQR")
             .accessibilityLabel(
                 isRoomQRVisible
-                    ? localized(en: "Room \(targetTitle) QR visible. Tap the card to hide", ru: "\(targetTitle) QR комнаты открыт. Нажмите на карточку, чтобы скрыть", es: "QR \(targetTitle) visible. Toca la tarjeta para ocultar")
-                    : localized(en: "Room QR hidden. Tap the card to flip", ru: "QR комнаты скрыт. Нажмите на карточку, чтобы перевернуть", es: "QR oculto. Toca la tarjeta para girar")
+                    ? localized(en: "Room \(targetTitle) QR visible. Tap the card to hide", ru: "\(targetTitle) QR комнаты открыт. Нажмите на карточку, чтобы скрыть", es: "QR \(targetTitle) visible. Toca la tarjeta para ocultar", uk: "QR кімнати \(targetTitle) відкрито. Натисніть на картку, щоб приховати")
+                    : localized(en: "Room QR hidden. Tap the card to flip", ru: "QR комнаты скрыт. Нажмите на карточку, чтобы перевернуть", es: "QR oculto. Toca la tarjeta para girar", uk: "QR кімнати приховано. Натисніть на картку, щоб перевернути")
             )
 
             if isRoomQRVisible && !isRoomQRFlipping {
@@ -1593,7 +1600,7 @@ struct GameView: View {
                     }
                     .buttonStyle(SpyWebPressStyle(pressedScale: 0.95))
                     .accessibilityIdentifier("onlineRoom.openQR")
-                    .accessibilityLabel(localized(en: "Open large \(targetTitle) room QR", ru: "Открыть большой \(targetTitle) QR комнаты", es: "Abrir QR \(targetTitle) grande"))
+                    .accessibilityLabel(localized(en: "Open large \(targetTitle) room QR", ru: "Открыть большой \(targetTitle) QR комнаты", es: "Abrir QR \(targetTitle) grande", uk: "Відкрити великий QR кімнати \(targetTitle)"))
 
                     RoomQRTargetToggle(
                         target: roomQRTargetBinding,
@@ -1641,7 +1648,8 @@ struct GameView: View {
                             ForEach(0..<4, id: \.self) { index in
                                 NearbySpyIDPlaceholder(
                                     index: index,
-                                    isActive: roomAccessPage == 2 && index < 2
+                                    isActive: roomAccessPage == 2 && index < 2,
+                                    language: appState.language
                                 )
                             }
                         } else {
@@ -1675,7 +1683,8 @@ struct GameView: View {
         .accessibilityLabel(localized(
             en: "Radar, \(roomRadar.peers.count) nearby operatives",
             ru: "Радар, игроков рядом: \(roomRadar.peers.count)",
-            es: "Radar, agentes cercanos: \(roomRadar.peers.count)"
+            es: "Radar, agentes cercanos: \(roomRadar.peers.count)",
+            uk: "Радар, гравців поруч: \(roomRadar.peers.count)"
         ))
     }
 
@@ -1692,7 +1701,7 @@ struct GameView: View {
                 .fill(roomRadarStatusColor)
                 .frame(width: 7, height: 7)
                 .shadow(color: roomRadarStatusColor.opacity(0.42), radius: 5)
-            Text(localized(en: "NEARBY", ru: "РЯДОМ", es: "CERCA"))
+            Text(localized(en: "NEARBY", ru: "РЯДОМ", es: "CERCA", uk: "ПОРУЧ"))
                 .foregroundStyle(Color.white.opacity(0.52))
             Text(String(format: "%02d", roomRadar.peers.count))
                 .foregroundStyle(Color.white.opacity(0.90))
@@ -1712,20 +1721,23 @@ struct GameView: View {
             return localized(
                 en: "LOCAL SEARCH UNAVAILABLE",
                 ru: "ЛОКАЛЬНЫЙ ПОИСК НЕДОСТУПЕН",
-                es: "BÚSQUEDA LOCAL NO DISPONIBLE"
+                es: "BÚSQUEDA LOCAL NO DISPONIBLE",
+                uk: "ЛОКАЛЬНИЙ ПОШУК НЕДОСТУПНИЙ"
             )
         }
         if roomRadar.peers.isEmpty {
             return localized(
                 en: "SCANNING FOR OPEN SPYCLASH DEVICES",
                 ru: "ИЩЕМ УСТРОЙСТВА С ОТКРЫТЫМ SPYCLASH",
-                es: "BUSCANDO DISPOSITIVOS CON SPYCLASH"
+                es: "BUSCANDO DISPOSITIVOS CON SPYCLASH",
+                uk: "ШУКАЄМО ПРИСТРОЇ З ВІДКРИТИМ SPYCLASH"
             )
         }
         return localized(
             en: "TAP A SPYCARD TO SEND ROOM ACCESS",
             ru: "НАЖМИ SPYCARD, ЧТОБЫ ОТПРАВИТЬ ДОСТУП",
-            es: "TOCA UNA SPYCARD PARA ENVIAR ACCESO"
+            es: "TOCA UNA SPYCARD PARA ENVIAR ACCESO",
+            uk: "НАТИСНИ SPYCARD, ЩОБ НАДІСЛАТИ ДОСТУП"
         )
     }
 
@@ -1860,7 +1872,7 @@ struct GameView: View {
             VStack(spacing: 0) {
                 roomAccessHeader(
                     room,
-                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR")
+                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR", uk: "QR-ЗАПРОШЕННЯ")
                 )
                 .padding(.horizontal, 18)
                 .padding(.top, 15)
@@ -1914,7 +1926,7 @@ struct GameView: View {
             VStack(spacing: 0) {
                 roomAccessHeader(
                     room,
-                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR")
+                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR", uk: "QR-ЗАПРОШЕННЯ")
                 )
                 .padding(.horizontal, 18)
                 .padding(.top, 15)
@@ -1950,7 +1962,10 @@ struct GameView: View {
                         : "ОТКРОЕТСЯ В SPYCLASH · ТАП — СКРЫТЬ",
                     es: appState.roomQRTarget == .web
                         ? "ESCANEA CON CUALQUIER CÁMARA · TOCA PARA OCULTAR"
-                        : "ABRE EN SPYCLASH · TOCA PARA OCULTAR"
+                        : "ABRE EN SPYCLASH · TOCA PARA OCULTAR",
+                    uk: appState.roomQRTarget == .web
+                        ? "СКАНУЙ БУДЬ-ЯКОЮ КАМЕРОЮ · НАТИСНИ, ЩОБ ПРИХОВАТИ"
+                        : "ВІДКРИЄТЬСЯ У SPYCLASH · НАТИСНИ, ЩОБ ПРИХОВАТИ"
                 ))
                 .font(.system(size: 8, weight: .black, design: .monospaced))
                 .tracking(0.05)
@@ -2002,7 +2017,7 @@ struct GameView: View {
                 .fill(SpyTheme.red)
                 .frame(width: 7, height: 7)
                 .shadow(color: SpyTheme.red.opacity(0.42), radius: 5)
-            Text(localized(en: "LIVE", ru: "В СЕТИ", es: "EN LINEA"))
+            Text(localized(en: "LIVE", ru: "В СЕТИ", es: "EN LINEA", uk: "У МЕРЕЖІ"))
                 .foregroundStyle(secondary)
             Text(String(format: "%02d", room.playersList.count))
                 .foregroundStyle(count)
@@ -2085,7 +2100,7 @@ struct GameView: View {
             VStack(alignment: .leading, spacing: 14) {
                 onlineSectionHeader(
                     systemImage: "gearshape.fill",
-                    title: localized(en: "GAME MODE", ru: "РЕЖИМ ИГРЫ", es: "MODO DE JUEGO")
+                    title: localized(en: "GAME MODE", ru: "РЕЖИМ ИГРЫ", es: "MODO DE JUEGO", uk: "РЕЖИМ ГРИ")
                 )
 
                 HStack(spacing: 10) {
@@ -2142,7 +2157,7 @@ struct GameView: View {
                 HStack(alignment: .firstTextBaseline) {
                     onlineSectionHeader(
                         systemImage: "person.crop.circle.badge.questionmark",
-                        title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS")
+                        title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS", uk: "ШПИГУНИ")
                     )
                     Spacer()
                     Text("\(spyCount)")
@@ -2155,6 +2170,7 @@ struct GameView: View {
                 SpyWebSlider(
                     value: onlineSpyCountSliderValue(for: room),
                     range: 1...Double(maximum),
+                    language: appState.language,
                     step: 1,
                     animatesProgrammaticChanges: !isHost(room),
                     onCommit: { committedValue in
@@ -2177,7 +2193,8 @@ struct GameView: View {
                     accessibilityLabel: localized(
                         en: "Number of spies",
                         ru: "Количество шпионов",
-                        es: "Numero de espias"
+                        es: "Numero de espias",
+                        uk: "Кількість шпигунів"
                     ),
                     accessibilityIdentifier: "onlineRoom.spyCountSlider"
                 )
@@ -2205,14 +2222,16 @@ struct GameView: View {
                         Text(localized(
                             en: "SPIES KNOW EACH OTHER",
                             ru: "ШПИОНЫ ЗНАЮТ ДРУГ ДРУГА",
-                            es: "LOS ESPIAS SE CONOCEN"
+                            es: "LOS ESPIAS SE CONOCEN",
+                            uk: "ШПИГУНИ ЗНАЮТЬ ОДИН ОДНОГО"
                         ))
                         .font(.system(size: 10, weight: .black, design: .monospaced))
                         .foregroundStyle(.white)
                         Text(localized(
                             en: "Off by default. Teammates appear only on a revealed spy card.",
                             ru: "По умолчанию выключено. Сообщники видны только на открытой карте шпиона.",
-                            es: "Desactivado por defecto. Los aliados solo aparecen al revelar la carta."
+                            es: "Desactivado por defecto. Los aliados solo aparecen al revelar la carta.",
+                            uk: "Типово вимкнено. Напарників видно лише на відкритій картці шпигуна."
                         ))
                         .font(.system(size: 9, weight: .semibold, design: .default))
                         .foregroundStyle(SpyTheme.dim)
@@ -2227,7 +2246,8 @@ struct GameView: View {
                     Text(localized(
                         en: "MULTI-SPY MATCH · UNRANKED",
                         ru: "НЕСКОЛЬКО ШПИОНОВ · БЕЗ РЕЙТИНГА",
-                        es: "PARTIDA MULTIESPIA · SIN CLASIFICACION"
+                        es: "PARTIDA MULTIESPIA · SIN CLASIFICACION",
+                        uk: "КІЛЬКА ШПИГУНІВ · БЕЗ РЕЙТИНГУ"
                     ))
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .tracking(0.04)
@@ -2245,7 +2265,7 @@ struct GameView: View {
             VStack(alignment: .leading, spacing: 12) {
                 onlineSectionHeader(
                     systemImage: "person.2.fill",
-                    title: "\(localized(en: "PLAYERS", ru: "ИГРОКИ", es: "JUGADORES")) (\(room.playersList.count) / 3+)"
+                    title: "\(localized(en: "PLAYERS", ru: "ИГРОКИ", es: "JUGADORES", uk: "ГРАВЦІ")) (\(room.playersList.count) / 3+)"
                 )
 
                 VStack(spacing: 8) {
@@ -2338,10 +2358,10 @@ struct GameView: View {
                 HStack(alignment: .firstTextBaseline) {
                     onlineSectionHeader(
                         systemImage: "paintpalette.fill",
-                        title: localized(en: "THEME", ru: "ТЕМА", es: "TEMA")
+                        title: localized(en: "THEME", ru: "ТЕМА", es: "TEMA", uk: "ТЕМА")
                     )
                     Spacer()
-                    Text(localized(en: "AI INTEL", ru: "AI INTEL", es: "IA INTEL"))
+                    Text(localized(en: "AI INTEL", ru: "AI INTEL", es: "IA INTEL", uk: "AI-РОЗВІДКА"))
                         .font(.system(size: 10, weight: .black, design: .default))
                         .tracking(0.02)
                         .foregroundStyle(SpyTheme.dim)
@@ -2402,7 +2422,7 @@ struct GameView: View {
             VStack(alignment: .leading, spacing: 14) {
                 onlineSectionHeader(
                     systemImage: "paintpalette.fill",
-                    title: localized(en: "THEME", ru: "ТЕМА", es: "TEMA")
+                    title: localized(en: "THEME", ru: "ТЕМА", es: "TEMA", uk: "ТЕМА")
                 )
                 if roomHasAuthoritativeLobbySelection(room) {
                     VStack(alignment: .leading, spacing: 4) {
@@ -2514,6 +2534,7 @@ struct GameView: View {
                 SpyWebSlider(
                     value: onlineDurationSliderValue(for: room),
                     range: 1...15,
+                    language: appState.language,
                     step: 1,
                     animatesProgrammaticChanges: !isHost(room),
                     onCommit: { committedValue in
@@ -2636,7 +2657,7 @@ struct GameView: View {
                             Image(systemName: "sparkles")
                                 .font(.system(size: 12, weight: .semibold))
                                 .foregroundStyle(SpyTheme.red)
-                            Text(localized(en: "AI THEME BUILDER", ru: "AI-КОНСТРУКТОР ТЕМЫ", es: "CREADOR IA"))
+                            Text(localized(en: "AI THEME BUILDER", ru: "AI-КОНСТРУКТОР ТЕМЫ", es: "CREADOR IA", uk: "AI-КОНСТРУКТОР ТЕМИ"))
                                 .font(.system(size: 10, weight: .semibold, design: .monospaced))
                                 .tracking(1.4)
                                 .foregroundStyle(.white.opacity(0.72))
@@ -2677,10 +2698,10 @@ struct GameView: View {
         Menu {
             Button {
                 selectRoomPack(nil)
-                status = localized(en: "WORD PACK CLEARED", ru: "КОЛОДА НЕ ВЫБРАНА", es: "PACK NO SELECCIONADO")
+                status = localized(en: "WORD PACK CLEARED", ru: "КОЛОДА НЕ ВЫБРАНА", es: "PACK NO SELECCIONADO", uk: "НАБІР СЛІВ НЕ ОБРАНО")
             } label: {
                 Label(
-                    localized(en: "Not selected.", ru: "Не выбрано.", es: "No seleccionado."),
+                    localized(en: "Not selected.", ru: "Не выбрано.", es: "No seleccionado.", uk: "Не обрано."),
                     systemImage: "circle.dashed"
                 )
             }
@@ -2688,7 +2709,7 @@ struct GameView: View {
             ForEach(lobbyWordPacks) { pack in
                 Button {
                     selectRoomPack(pack.id)
-                    status = localized(en: "WORD PACK SELECTED", ru: "ПАК СЛОВ ВЫБРАН", es: "PACK SELECCIONADO")
+                    status = localized(en: "WORD PACK SELECTED", ru: "ПАК СЛОВ ВЫБРАН", es: "PACK SELECCIONADO", uk: "НАБІР СЛІВ ОБРАНО")
                 } label: {
                     Label(pack.name, systemImage: "shippingbox.fill")
                 }
@@ -2699,7 +2720,7 @@ struct GameView: View {
                     showsThemeBuilder = true
                 }
             } label: {
-                Label(localized(en: "Build AI theme", ru: "Создать AI-тему", es: "Crear tema IA"), systemImage: "sparkles")
+                Label(localized(en: "Build AI theme", ru: "Создать AI-тему", es: "Crear tema IA", uk: "Створити AI-тему"), systemImage: "sparkles")
             }
         } label: {
             HStack(spacing: 12) {
@@ -2834,7 +2855,7 @@ struct GameView: View {
             VStack(alignment: .leading, spacing: 14) {
                 onlineRoomCardTitle(
                     systemImage: "doc.text",
-                    title: localized(en: "MISSION BRIEF", ru: "ПАРАМЕТРЫ МИССИИ", es: "RESUMEN"),
+                    title: localized(en: "MISSION BRIEF", ru: "ПАРАМЕТРЫ МИССИИ", es: "RESUMEN", uk: "ПАРАМЕТРИ МІСІЇ"),
                     trailing: copy.waitingForHost
                 )
                 HStack(spacing: 12) {
@@ -2900,16 +2921,17 @@ struct GameView: View {
                         appState.presentedSheet = .roomQR(room)
                     } label: {
                         inviteActionBarLabel(
-                            title: localized(en: "INVITE PLAYERS", ru: "ПРИГЛАСИТЬ ИГРОКОВ", es: "INVITAR JUGADORES")
+                            title: localized(en: "INVITE PLAYERS", ru: "ПРИГЛАСИТЬ ИГРОКОВ", es: "INVITAR JUGADORES", uk: "ЗАПРОСИТИ ГРАВЦІВ")
                         )
                     }
                     .buttonStyle(WaitingFooterPressStyle())
                     .frame(maxWidth: .infinity)
-                    .accessibilityLabel(localized(en: "Invite players", ru: "Пригласить игроков", es: "Invitar jugadores"))
+                    .accessibilityLabel(localized(en: "Invite players", ru: "Пригласить игроков", es: "Invitar jugadores", uk: "Запросити гравців"))
                     .accessibilityHint(localized(
                         en: "Opens code, QR, share, and nearby radar options",
                         ru: "Открывает код, QR, отправку и поиск по радару",
-                        es: "Abre codigo, QR, compartir y radar cercano"
+                        es: "Abre codigo, QR, compartir y radar cercano",
+                        uk: "Відкриває код, QR, надсилання та пошук через радар"
                     ))
                     .accessibilityIdentifier("onlineRoom.inviteMore")
 
@@ -3042,7 +3064,7 @@ struct GameView: View {
                     .lineLimit(1)
                 }
                 .buttonStyle(SpyWebPressStyle())
-                .accessibilityLabel(localized(en: "Room code \(room.code)", ru: "Код комнаты \(room.code)", es: "Codigo de sala \(room.code)"))
+                .accessibilityLabel(localized(en: "Room code \(room.code)", ru: "Код комнаты \(room.code)", es: "Codigo de sala \(room.code)", uk: "Код кімнати \(room.code)"))
 
                 Text(isRoomCodeVisible ? tapToHideRoomCode : tapToRevealRoomCode)
                     .font(.system(size: 9, weight: .medium, design: .monospaced))
@@ -3064,7 +3086,7 @@ struct GameView: View {
 
                     ShareLink(item: inviteText) {
                         roomHeaderActionLabel(
-                            title: localized(en: "SHARE", ru: "ОТПРАВИТЬ", es: "COMPARTIR"),
+                            title: localized(en: "SHARE", ru: "ОТПРАВИТЬ", es: "COMPARTIR", uk: "НАДІСЛАТИ"),
                             systemImage: "square.and.arrow.up",
                             accent: .white.opacity(0.70)
                         )
@@ -3085,7 +3107,7 @@ struct GameView: View {
             Button {
                 appState.presentedSheet = .roomQR(room)
             } label: {
-                Label(localized(en: "Open QR", ru: "Открыть QR", es: "Abrir QR"), systemImage: "qrcode")
+                Label(localized(en: "Open QR", ru: "Открыть QR", es: "Abrir QR", uk: "Відкрити QR"), systemImage: "qrcode")
             }
 
             Button(role: .destructive) {
@@ -3107,7 +3129,8 @@ struct GameView: View {
         localized(
             en: "Join my SpyClash room \(room.code.uppercased()): \(appState.client.roomJoinURL(code: room.code).absoluteString)",
             ru: "Присоединяйся к комнате SpyClash \(room.code.uppercased()): \(appState.client.roomJoinURL(code: room.code).absoluteString)",
-            es: "Unete a mi sala SpyClash \(room.code.uppercased()): \(appState.client.roomJoinURL(code: room.code).absoluteString)"
+            es: "Unete a mi sala SpyClash \(room.code.uppercased()): \(appState.client.roomJoinURL(code: room.code).absoluteString)",
+            uk: "Приєднуйся до моєї кімнати SpyClash \(room.code.uppercased()): \(appState.client.roomJoinURL(code: room.code).absoluteString)"
         )
     }
 
@@ -3164,7 +3187,7 @@ struct GameView: View {
 
         return onlineRoomGlassCard(verticalPadding: 24) {
             VStack(spacing: 16) {
-                Text("// \(localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR"))")
+                Text("// \(localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR", uk: "QR-ЗАПРОШЕННЯ"))")
                     .font(.system(size: 9, weight: .medium, design: .monospaced))
                     .tracking(2.8)
                     .foregroundStyle(SpyTheme.dim.opacity(0.70))
@@ -3178,7 +3201,7 @@ struct GameView: View {
                 }
                 .buttonStyle(SpyWebPressStyle())
                 .accessibilityIdentifier("onlineRoom.openQR")
-                .accessibilityLabel(localized(en: "Open large room QR", ru: "Открыть большой QR комнаты", es: "Abrir QR grande de la sala"))
+                .accessibilityLabel(localized(en: "Open large room QR", ru: "Открыть большой QR комнаты", es: "Abrir QR grande de la sala", uk: "Відкрити великий QR кімнати"))
             }
         }
         .spyWebEntrance(delay: 0.02, duration: 0.45, y: 12)
@@ -3313,10 +3336,10 @@ struct GameView: View {
 
     private func readyBreadcrumb(_ room: GameRoom) -> some View {
         HStack(spacing: 8) {
-            Text(localized(en: "HOME", ru: "ДОМ", es: "INICIO"))
+            Text(localized(en: "HOME", ru: "ДОМ", es: "INICIO", uk: "ГОЛОВНА"))
                 .foregroundStyle(SpyTheme.red)
             Text("//")
-            Text(localized(en: "LOBBY", ru: "ЛОББИ", es: "SALA"))
+            Text(localized(en: "LOBBY", ru: "ЛОББИ", es: "SALA", uk: "ЛОБІ"))
             Text("//")
             Text(room.code.uppercased())
         }
@@ -3429,7 +3452,7 @@ struct GameView: View {
 
     private func webPlayingHeader(_ room: GameRoom) -> some View {
         HStack {
-            Text("// \(localized(en: "PLAYING", ru: "ИГРА", es: "JUEGO"))")
+            Text("// \(localized(en: "PLAYING", ru: "ИГРА", es: "JUEGO", uk: "ГРА"))")
                 .font(.system(size: 10, weight: .bold, design: .default))
                 .tracking(0.04)
                 .foregroundStyle(SpyTheme.dim)
@@ -3537,7 +3560,7 @@ struct GameView: View {
                     }
                 } label: {
                     SpyActionLabel(
-                        title: localized(en: "HIDE CARD", ru: "СКРЫТЬ КАРТУ", es: "OCULTAR CARTA"),
+                        title: localized(en: "HIDE CARD", ru: "СКРЫТЬ КАРТУ", es: "OCULTAR CARTA", uk: "ПРИХОВАТИ КАРТКУ"),
                         systemImage: "eye.slash.fill",
                         tracking: 0.02,
                         lines: 2
@@ -4258,7 +4281,7 @@ struct GameView: View {
             Button {
                 appState.presentedSheet = .roomQR(room)
             } label: {
-                Label(localized(en: "QR INVITE", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR"), systemImage: "qrcode")
+                Label(localized(en: "QR INVITE", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR", uk: "QR-ЗАПРОШЕННЯ"), systemImage: "qrcode")
             }
 
             if room.normalizedStatus == "ready_voting", isHost(room) {
@@ -4355,8 +4378,8 @@ struct GameView: View {
                         SpySpinner(size: 20, accent: .white)
                     } else {
                         Text(isReady
-                            ? localized(en: "REMOVE READY", ru: "СНЯТЬ ГОТОВНОСТЬ", es: "QUITAR LISTO")
-                            : localized(en: "I'M READY", ru: "Я ГОТОВ", es: "ESTOY LISTO"))
+                            ? localized(en: "REMOVE READY", ru: "СНЯТЬ ГОТОВНОСТЬ", es: "QUITAR LISTO", uk: "ЗНЯТИ ГОТОВНІСТЬ")
+                            : localized(en: "I'M READY", ru: "Я ГОТОВ", es: "ESTOY LISTO", uk: "Я ГОТОВИЙ"))
                             .font(.system(size: 13, weight: .black, design: .default))
                             .tracking(0.04)
                             .spyFitted(scale: 0.68, alignment: .center)
@@ -4563,7 +4586,7 @@ struct GameView: View {
                     }
                     .buttonStyle(SpyWebPressStyle())
                     .spyHitTarget()
-                    .accessibilityLabel(localized(en: "Clear theme", ru: "Очистить тему", es: "Limpiar tema"))
+                    .accessibilityLabel(localized(en: "Clear theme", ru: "Очистить тему", es: "Limpiar tema", uk: "Очистити тему"))
                 }
             }
             .padding(.horizontal, 14)
@@ -4637,6 +4660,7 @@ struct GameView: View {
                     SpyWebSlider(
                         value: $roomCustomWordCount,
                         range: 10...80,
+                        language: appState.language,
                         step: 1,
                         onCommit: { committedValue in
                             isDraggingOnlineWordCount = false
@@ -4688,7 +4712,7 @@ struct GameView: View {
             if lobbyPackLoadState == .idle || isLoadingLobbyPacks {
                 HStack(spacing: 10) {
                     SpySpinner(size: 16, accent: SpyTheme.red)
-                    Text(localized(en: "LOADING WORD PACKS", ru: "ЗАГРУЗКА КОЛОД", es: "CARGANDO PACKS"))
+                    Text(localized(en: "LOADING WORD PACKS", ru: "ЗАГРУЗКА КОЛОД", es: "CARGANDO PACKS", uk: "ЗАВАНТАЖЕННЯ НАБОРІВ СЛІВ"))
                         .font(.system(size: 11, weight: .black, design: .monospaced))
                         .tracking(0.04)
                         .foregroundStyle(SpyTheme.dim)
@@ -4699,7 +4723,7 @@ struct GameView: View {
                 .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.stroke, lineWidth: 1))
             } else if let roomPackLoadError {
                 VStack(alignment: .leading, spacing: 9) {
-                    Text(localized(en: "COULDN'T LOAD YOUR DECKS", ru: "НЕ УДАЛОСЬ ЗАГРУЗИТЬ КОЛОДЫ", es: "NO SE PUDIERON CARGAR LOS PACKS"))
+                    Text(localized(en: "COULDN'T LOAD YOUR DECKS", ru: "НЕ УДАЛОСЬ ЗАГРУЗИТЬ КОЛОДЫ", es: "NO SE PUDIERON CARGAR LOS PACKS", uk: "НЕ ВДАЛОСЯ ЗАВАНТАЖИТИ НАБОРИ"))
                         .font(.system(size: 11, weight: .black, design: .monospaced))
                         .foregroundStyle(SpyTheme.red)
                     Text(roomPackLoadError)
@@ -4710,7 +4734,7 @@ struct GameView: View {
                         Task { await loadLobbyWordPacks(force: true) }
                     } label: {
                         Label(
-                            localized(en: "TRY AGAIN", ru: "ПОВТОРИТЬ", es: "REINTENTAR"),
+                            localized(en: "TRY AGAIN", ru: "ПОВТОРИТЬ", es: "REINTENTAR", uk: "ПОВТОРИТИ"),
                             systemImage: "arrow.clockwise"
                         )
                         .font(.system(size: 10, weight: .black, design: .monospaced))
@@ -4733,7 +4757,8 @@ struct GameView: View {
                     Text(localized(
                         en: "You haven't created any decks.",
                         ru: "Вы не создавали своих колод.",
-                        es: "No has creado ningun pack."
+                        es: "No has creado ningun pack.",
+                        uk: "Ви ще не створили жодного набору."
                     ))
                     .font(.system(size: 11, weight: .semibold, design: .default))
                     .foregroundStyle(SpyTheme.muted)
@@ -4746,7 +4771,7 @@ struct GameView: View {
                 .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.stroke, lineWidth: 1))
                 .accessibilityIdentifier("onlineRoom.noSavedWordPacks")
             } else {
-                Text("\(localized(en: "WORD PACKS", ru: "КОЛОДЫ", es: "PACKS")) \(lobbyWordPacks.count)")
+                Text("\(localized(en: "WORD PACKS", ru: "КОЛОДЫ", es: "PACKS", uk: "НАБОРИ СЛІВ")) \(lobbyWordPacks.count)")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .tracking(0.02)
                     .foregroundStyle(SpyTheme.dim)
@@ -4755,7 +4780,7 @@ struct GameView: View {
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 8)], spacing: 8) {
                     roomPackOption(
                         id: nil,
-                        title: localized(en: "Not selected.", ru: "Не выбрано.", es: "No seleccionado."),
+                        title: localized(en: "Not selected.", ru: "Не выбрано.", es: "No seleccionado.", uk: "Не обрано."),
                         subtitle: nil,
                         systemImage: "circle.dashed",
                         accessibilityIdentifier: "onlineRoom.noPackSource"
@@ -4860,6 +4885,7 @@ struct GameView: View {
             SpyWebSlider(
                 value: $roomWordCount,
                 range: lowerBound...upperBound,
+                language: appState.language,
                 step: 1,
                 accent: SpyTheme.red,
                 onCommit: { committedValue in
@@ -5054,8 +5080,8 @@ struct GameView: View {
                 .accessibilityLabel(word)
                 .accessibilityValue(
                     isEnabled
-                        ? localized(en: "In game", ru: "В игре", es: "En juego")
-                        : localized(en: "Crossed out", ru: "Вычеркнуто", es: "Tachada")
+                        ? localized(en: "In game", ru: "В игре", es: "En juego", uk: "У грі")
+                        : localized(en: "Crossed out", ru: "Вычеркнуто", es: "Tachada", uk: "Викреслено")
                 )
             }
         }
@@ -5088,7 +5114,12 @@ struct GameView: View {
                         .spyFitted(scale: 0.66, alignment: .trailing)
                 }
 
-                SpyWebSlider(value: $selectedDurationMinutes, range: 1...15, step: 1)
+                SpyWebSlider(
+                    value: $selectedDurationMinutes,
+                    range: 1...15,
+                    language: appState.language,
+                    step: 1
+                )
 
                 HStack {
                     Text("1 \(copy.minuteSuffix)")
@@ -5526,7 +5557,7 @@ struct GameView: View {
             VStack(alignment: .leading, spacing: 14) {
                 onlineRoomCardTitle(
                     systemImage: "person.2",
-                    title: localized(en: "PLAYERS", ru: "ИГРОКИ", es: "JUGADORES"),
+                    title: localized(en: "PLAYERS", ru: "ИГРОКИ", es: "JUGADORES", uk: "ГРАВЦІ"),
                     trailing: "\(room.playersList.count) / 3+"
                 )
 
@@ -5629,7 +5660,7 @@ struct GameView: View {
                         appState.presentedSheet = .roomQR(room)
                     } label: {
                         webWaitingActionLabel(
-                            title: localized(en: "INVITE OPERATIVES", ru: "ПРИГЛАСИТЬ ИГРОКОВ", es: "INVITAR AGENTES"),
+                            title: localized(en: "INVITE OPERATIVES", ru: "ПРИГЛАСИТЬ ИГРОКОВ", es: "INVITAR AGENTES", uk: "ЗАПРОСИТИ ГРАВЦІВ"),
                             systemImage: "person.badge.plus",
                             filled: false
                         )
@@ -5656,7 +5687,7 @@ struct GameView: View {
                         } label: {
                             webWaitingActionLabel(
                                 title: isStarting
-                                    ? localized(en: "STARTING", ru: "ЗАПУСК", es: "INICIANDO")
+                                    ? localized(en: "STARTING", ru: "ЗАПУСК", es: "INICIANDO", uk: "ЗАПУСК")
                                     : copy.startNow,
                                 systemImage: "play.fill",
                                 filled: true
@@ -5714,7 +5745,7 @@ struct GameView: View {
                         appState.presentedSheet = .roomQR(room)
                     } label: {
                         SpyPrimaryCommandLabel(
-                            title: localized(en: "INVITE OPERATIVES", ru: "ПРИГЛАСИТЬ ОПЕРАТИВНИКОВ", es: "INVITAR AGENTES"),
+                            title: localized(en: "INVITE OPERATIVES", ru: "ПРИГЛАСИТЬ ОПЕРАТИВНИКОВ", es: "INVITAR AGENTES", uk: "ЗАПРОСИТИ ОПЕРАТИВНИКІВ"),
                             detail: copy.minimumOperatives(room.playersList.count),
                             systemImage: "person.badge.plus"
                         )
@@ -5727,14 +5758,14 @@ struct GameView: View {
                     } label: {
                         if isStarting {
                             SpyPrimaryCommandLabel(
-                                title: localized(en: "ARMING MISSION", ru: "ЗАПУСК МИССИИ", es: "INICIANDO MISION"),
+                                title: localized(en: "ARMING MISSION", ru: "ЗАПУСК МИССИИ", es: "INICIANDO MISION", uk: "ЗАПУСК МІСІЇ"),
                                 detail: copy.minimumOperatives(room.playersList.count),
                                 systemImage: "antenna.radiowaves.left.and.right"
                             )
                         } else {
                             SpyPrimaryCommandLabel(
                                 title: copy.startNow,
-                                detail: localized(en: "BEGIN IMMEDIATELY", ru: "НАЧАТЬ НЕМЕДЛЕННО", es: "COMENZAR AHORA"),
+                                detail: localized(en: "BEGIN IMMEDIATELY", ru: "НАЧАТЬ НЕМЕДЛЕННО", es: "COMENZAR AHORA", uk: "ПОЧАТИ НЕГАЙНО"),
                                 systemImage: "play.fill"
                             )
                         }
@@ -5867,14 +5898,16 @@ struct GameView: View {
         let upper = rawStatus.uppercased()
         let errorMarkers = [
             "ERROR", "FAILED", "COULDN'T", "UNABLE", "EXPIRED", "TRACEBACK", "[401]",
-            "ОШИБ", "НЕ УДАЛ", "ИСТЕКЛ", "NO SE PUDO", "ERROR DE"
+            "ОШИБ", "НЕ УДАЛ", "ИСТЕКЛ", "NO SE PUDO", "ERROR DE",
+            "ПОМИЛ", "НЕ ВДАЛ", "ЗАВЕРШИЛ"
         ]
         if errorMarkers.contains(where: upper.contains) {
             return .error
         }
 
         let warningMarkers = [
-            "SELECT A DECK", "NEED AT LEAST", "CHOOSE", "ВЫБЕРИ", "НУЖНО МИНИМУМ", "ELIGE"
+            "SELECT A DECK", "NEED AT LEAST", "CHOOSE", "ВЫБЕРИ", "НУЖНО МИНИМУМ", "ELIGE",
+            "ОБЕРИ", "ПОТРІБНО МІНІМУМ"
         ]
         if warningMarkers.contains(where: upper.contains) {
             return .warning
@@ -5883,7 +5916,8 @@ struct GameView: View {
         let successMarkers = [
             "READY", "SAVED", "SELECTED", "CLEARED", "SYNCED", "LOCKED", "SENT", "RESTORED", "EXPANDED",
             "ГОТОВ", "СОХРАН", "ВЫБРАН", "НЕ ВЫБРАН", "СИНХРОНИЗ", "ОТПРАВ", "ВОССТАНОВ", "РАСШИРЕН",
-            "LISTO", "GUARDADO", "SELECCIONADO", "SINCRONIZADO", "ENVIADO", "RESTAURADO", "AMPLIADO"
+            "LISTO", "GUARDADO", "SELECCIONADO", "SINCRONIZADO", "ENVIADO", "RESTAURADO", "AMPLIADO",
+            "ГОТОВ", "ЗБЕРЕЖ", "ОБРАН", "СИНХРОНІЗ", "НАДІСЛ", "ВІДНОВ", "РОЗШИР"
         ]
         if isPositiveStatus(rawStatus) || successMarkers.contains(where: upper.contains) {
             return .success
@@ -5898,10 +5932,10 @@ struct GameView: View {
 
         let upper = trimmed.uppercased()
         if upper.contains("AUTHENTICATION") || upper.contains("[401]") {
-            return localized(en: "SESSION EXPIRED. LOG IN AGAIN", ru: "СЕССИЯ ИСТЕКЛА. ВОЙДИ СНОВА", es: "SESION EXPIRADA. INICIA SESION")
+            return localized(en: "SESSION EXPIRED. LOG IN AGAIN", ru: "СЕССИЯ ИСТЕКЛА. ВОЙДИ СНОВА", es: "SESION EXPIRADA. INICIA SESION", uk: "СЕСІЯ ЗАВЕРШИЛАСЯ. УВІЙДИ ЗНОВУ")
         }
         if upper.contains("HTTP") || upper.contains("TRACEBACK") || upper.contains("REQUEST_ID") {
-            return localized(en: "SERVER SYNC FAILED. TRY AGAIN", ru: "СИНХРОНИЗАЦИЯ НЕ УДАЛАСЬ. ПОВТОРИ", es: "ERROR DE SINCRONIZACION")
+            return localized(en: "SERVER SYNC FAILED. TRY AGAIN", ru: "СИНХРОНИЗАЦИЯ НЕ УДАЛАСЬ. ПОВТОРИ", es: "ERROR DE SINCRONIZACION", uk: "СИНХРОНІЗАЦІЯ ІЗ СЕРВЕРОМ НЕ ВДАЛАСЯ. ПОВТОРИ")
         }
         return trimmed.count > 72 ? "\(trimmed.prefix(69))..." : trimmed
     }
@@ -5951,179 +5985,181 @@ struct GameView: View {
     }
 
     private var roomBreadcrumb: String {
-        localized(en: "HOME / LOBBY", ru: "ДОМ / ЛОББИ", es: "INICIO / SALA")
+        localized(en: "HOME / LOBBY", ru: "ДОМ / ЛОББИ", es: "INICIO / SALA", uk: "ГОЛОВНА / ЛОБІ")
     }
 
     private var roomCodeLabel: String {
-        localized(en: "// ROOM CODE", ru: "// КОД КОМНАТЫ", es: "// CODIGO")
+        localized(en: "// ROOM CODE", ru: "// КОД КОМНАТЫ", es: "// CODIGO", uk: "// КОД КІМНАТИ")
     }
 
     private var roomCodePlainLabel: String {
-        localized(en: "ROOM CODE", ru: "КОД КОМНАТЫ", es: "CODIGO")
+        localized(en: "ROOM CODE", ru: "КОД КОМНАТЫ", es: "CODIGO", uk: "КОД КІМНАТИ")
     }
 
     private var roomCodeShare: String {
-        localized(en: "Share the code with your team or open the QR invite.", ru: "Передай код команде или открой QR-приглашение.", es: "Comparte el codigo o abre el QR.")
+        localized(en: "Share the code with your team or open the QR invite.", ru: "Передай код команде или открой QR-приглашение.", es: "Comparte el codigo o abre el QR.", uk: "Передай код команді або відкрий QR-запрошення.")
     }
 
     private var roomCopyTitle: String {
-        localized(en: "COPY", ru: "КОПИРОВАТЬ", es: "COPIAR")
+        localized(en: "COPY", ru: "КОПИРОВАТЬ", es: "COPIAR", uk: "СКОПІЮВАТИ")
     }
 
     private var roomCopiedTitle: String {
-        localized(en: "COPIED", ru: "СКОПИРОВАНО", es: "COPIADO")
+        localized(en: "COPIED", ru: "СКОПИРОВАНО", es: "COPIADO", uk: "СКОПІЙОВАНО")
     }
 
     private var tapToHideRoomCode: String {
-        localized(en: "TAP TO HIDE", ru: "ТАП ЧТОБЫ СКРЫТЬ", es: "TOCA PARA OCULTAR")
+        localized(en: "TAP TO HIDE", ru: "ТАП ЧТОБЫ СКРЫТЬ", es: "TOCA PARA OCULTAR", uk: "НАТИСНИ, ЩОБ ПРИХОВАТИ")
     }
 
     private var tapToRevealRoomCode: String {
-        localized(en: "TAP TO REVEAL", ru: "ТАП ЧТОБЫ ПОКАЗАТЬ", es: "TOCA PARA MOSTRAR")
+        localized(en: "TAP TO REVEAL", ru: "ТАП ЧТОБЫ ПОКАЗАТЬ", es: "TOCA PARA MOSTRAR", uk: "НАТИСНИ, ЩОБ ПОКАЗАТИ")
     }
 
     private var webQRHint: String {
-        localized(en: "TAP TO FLIP", ru: "ТАП ЧТОБЫ ПЕРЕВЕРНУТЬ", es: "TOCA PARA GIRAR")
+        localized(en: "TAP TO FLIP", ru: "ТАП ЧТОБЫ ПЕРЕВЕРНУТЬ", es: "TOCA PARA GIRAR", uk: "НАТИСНИ, ЩОБ ПЕРЕВЕРНУТИ")
     }
 
     private var qrHiddenTitle: String {
-        localized(en: "QR HIDDEN", ru: "QR СКРЫТ", es: "QR OCULTO")
+        localized(en: "QR HIDDEN", ru: "QR СКРЫТ", es: "QR OCULTO", uk: "QR ПРИХОВАНО")
     }
 
     private var tapToFlipQR: String {
-        localized(en: "TAP TO FLIP", ru: "ТАП ЧТОБЫ ПЕРЕВЕРНУТЬ", es: "TOCA PARA GIRAR")
+        localized(en: "TAP TO FLIP", ru: "ТАП ЧТОБЫ ПЕРЕВЕРНУТЬ", es: "TOCA PARA GIRAR", uk: "НАТИСНИ, ЩОБ ПЕРЕВЕРНУТИ")
     }
 
     private var gameModeTitle: String {
-        localized(en: "GAME MODE", ru: "РЕЖИМ ИГРЫ", es: "MODO DE JUEGO")
+        localized(en: "GAME MODE", ru: "РЕЖИМ ИГРЫ", es: "MODO DE JUEGO", uk: "РЕЖИМ ГРИ")
     }
 
     private var modeTitle: String {
-        localized(en: "MODE", ru: "РЕЖИМ", es: "MODO")
+        localized(en: "MODE", ru: "РЕЖИМ", es: "MODO", uk: "РЕЖИМ")
     }
 
     private var agentsLabel: String {
-        localized(en: "// AGENTS", ru: "// АГЕНТЫ", es: "// AGENTES")
+        localized(en: "// AGENTS", ru: "// АГЕНТЫ", es: "// AGENTES", uk: "// АГЕНТИ")
     }
 
     private var readyCheckingTitle: String {
-        localized(en: "READY CHECK", ru: "ПРОВЕРКА", es: "CHECK")
+        localized(en: "READY CHECK", ru: "ПРОВЕРКА", es: "CHECK", uk: "ПЕРЕВІРКА ГОТОВНОСТІ")
     }
 
     private var readyYesTitle: String {
-        localized(en: "YES", ru: "ДА", es: "SI")
+        localized(en: "YES", ru: "ДА", es: "SI", uk: "ТАК")
     }
 
     private var readyNoTitle: String {
-        localized(en: "NO", ru: "НЕТ", es: "NO")
+        localized(en: "NO", ru: "НЕТ", es: "NO", uk: "НІ")
     }
 
     private var readyWaitingTitle: String {
-        localized(en: "WAITING", ru: "ЖДЕМ", es: "ESPERA")
+        localized(en: "WAITING", ru: "ЖДЕМ", es: "ESPERA", uk: "ЧЕКАЄМО")
     }
 
     private var readyCountTitle: String {
-        localized(en: "READY", ru: "ГОТОВЫ", es: "LISTOS")
+        localized(en: "READY", ru: "ГОТОВЫ", es: "LISTOS", uk: "ГОТОВІ")
     }
 
     private var readyAgentsStatusTitle: String {
-        localized(en: "AGENTS STATUS", ru: "СТАТУС АГЕНТОВ", es: "ESTADO AGENTES")
+        localized(en: "AGENTS STATUS", ru: "СТАТУС АГЕНТОВ", es: "ESTADO AGENTES", uk: "СТАТУС АГЕНТІВ")
     }
 
     private var webCardPhaseTitle: String {
-        localized(en: "// CARD REVEAL PHASE", ru: "// ФАЗА ОТКРЫТИЯ КАРТ", es: "// FASE DE CARTAS")
+        localized(en: "// CARD REVEAL PHASE", ru: "// ФАЗА ОТКРЫТИЯ КАРТ", es: "// FASE DE CARTAS", uk: "// ФАЗА ВІДКРИТТЯ КАРТОК")
     }
 
     private var webTapToRevealRoleTitle: String {
-        localized(en: "TAP TO REVEAL ROLE", ru: "НАЖМИ, ЧТОБЫ ОТКРЫТЬ РОЛЬ", es: "TOCA PARA REVELAR ROL")
+        localized(en: "TAP TO REVEAL ROLE", ru: "НАЖМИ, ЧТОБЫ ОТКРЫТЬ РОЛЬ", es: "TOCA PARA REVELAR ROL", uk: "НАТИСНИ, ЩОБ ВІДКРИТИ РОЛЬ")
     }
 
     private var webDontShowOthersTitle: String {
-        localized(en: "DON'T SHOW OTHERS", ru: "НЕ ПОКАЗЫВАЙ ДРУГИМ", es: "NO LO MUESTRES")
+        localized(en: "DON'T SHOW OTHERS", ru: "НЕ ПОКАЗЫВАЙ ДРУГИМ", es: "NO LO MUESTRES", uk: "НЕ ПОКАЗУЙ ІНШИМ")
     }
 
     private var webReadyToPlayTitle: String {
-        localized(en: "✓ READ, READY TO PLAY", ru: "✓ ПРОЧИТАЛ, ГОТОВ ИГРАТЬ", es: "✓ LEIDO, LISTO")
+        localized(en: "✓ READ, READY TO PLAY", ru: "✓ ПРОЧИТАЛ, ГОТОВ ИГРАТЬ", es: "✓ LEIDO, LISTO", uk: "✓ ПРОЧИТАНО, ГОТОВИЙ ГРАТИ")
     }
 
     private var webWaitingOthersTitle: String {
-        localized(en: "✓ You're ready. Waiting for others...", ru: "✓ Ты готов. Ждем остальных...", es: "✓ Listo. Esperando...")
+        localized(en: "✓ You're ready. Waiting for others...", ru: "✓ Ты готов. Ждем остальных...", es: "✓ Listo. Esperando...", uk: "✓ Ти готовий. Чекаємо на інших...")
     }
 
     private var webCardsReadTitle: String {
-        localized(en: "// CARDS READ", ru: "// КАРТЫ ПРОЧИТАНЫ", es: "// CARTAS LEIDAS")
+        localized(en: "// CARDS READ", ru: "// КАРТЫ ПРОЧИТАНЫ", es: "// CARTAS LEIDAS", uk: "// КАРТКИ ПРОЧИТАНО")
     }
 
     private var webSecretWordLabel: String {
-        localized(en: "SECRET WORD", ru: "СЕКРЕТНОЕ СЛОВО", es: "PALABRA SECRETA")
+        localized(en: "SECRET WORD", ru: "СЕКРЕТНОЕ СЛОВО", es: "PALABRA SECRETA", uk: "СЕКРЕТНЕ СЛОВО")
     }
 
     private var webTimeLeftTitle: String {
-        localized(en: "// TIME REMAINING", ru: "// ОСТАЛОСЬ ВРЕМЕНИ", es: "// TIEMPO RESTANTE")
+        localized(en: "// TIME REMAINING", ru: "// ОСТАЛОСЬ ВРЕМЕНИ", es: "// TIEMPO RESTANTE", uk: "// ЧАСУ ЗАЛИШИЛОСЯ")
     }
 
     private var webAgentsTitle: String {
-        localized(en: "// AGENTS", ru: "// АГЕНТЫ", es: "// AGENTES")
+        localized(en: "// AGENTS", ru: "// АГЕНТЫ", es: "// AGENTES", uk: "// АГЕНТИ")
     }
 
     private var webActivePairTitle: String {
-        localized(en: "ACTIVE PAIR", ru: "АКТИВНАЯ ПАРА", es: "PAREJA ACTIVA")
+        localized(en: "ACTIVE PAIR", ru: "АКТИВНАЯ ПАРА", es: "PAREJA ACTIVA", uk: "АКТИВНА ПАРА")
     }
 
     private var webNextPairTitle: String {
-        localized(en: "NEXT PAIR", ru: "СЛЕДУЮЩАЯ ПАРА", es: "SIGUIENTE PAREJA")
+        localized(en: "NEXT PAIR", ru: "СЛЕДУЮЩАЯ ПАРА", es: "SIGUIENTE PAREJA", uk: "НАСТУПНА ПАРА")
     }
 
     private var webEarlyGuessTitle: String {
-        localized(en: "// EARLY GUESS", ru: "// ДОСРОЧНОЕ УГАДЫВАНИЕ", es: "// PISTA TEMPRANA")
+        localized(en: "// EARLY GUESS", ru: "// ДОСРОЧНОЕ УГАДЫВАНИЕ", es: "// PISTA TEMPRANA", uk: "// ДОСТРОКОВА ЗДОГАДКА")
     }
 
     private var webEarlyGuessDescription: String {
         localized(
             en: "Think you know the secret word? Guess early. Correct answer wins the game.",
             ru: "Думаешь, что знаешь секретное слово? Угадай досрочно. Верный ответ выигрывает игру.",
-            es: "Crees saber la palabra secreta? Adivina antes. Respuesta correcta gana."
+            es: "Crees saber la palabra secreta? Adivina antes. Respuesta correcta gana.",
+            uk: "Думаєш, що знаєш секретне слово? Вгадай достроково. Правильна відповідь приносить перемогу."
         )
     }
 
     private var webEarlyGuessButtonTitle: String {
-        localized(en: "GUESS WORD EARLY", ru: "УГАДАТЬ СЛОВО ДОСРОЧНО", es: "ADIVINAR ANTES")
+        localized(en: "GUESS WORD EARLY", ru: "УГАДАТЬ СЛОВО ДОСРОЧНО", es: "ADIVINAR ANTES", uk: "ВГАДАТИ СЛОВО ДОСТРОКОВО")
     }
 
     private var webVoteTitle: String {
-        localized(en: "// VOTE FOR SPY", ru: "// ГОЛОСОВАНИЕ ЗА ШПИОНА", es: "// VOTAR AL ESPIA")
+        localized(en: "// VOTE FOR SPY", ru: "// ГОЛОСОВАНИЕ ЗА ШПИОНА", es: "// VOTAR AL ESPIA", uk: "// ГОЛОСУВАННЯ ЗА ШПИГУНА")
     }
 
     private var webVoteDescriptionLead: String {
-        localized(en: "Want to start a vote?", ru: "Хочешь начать голосование?", es: "Quieres iniciar votacion?")
+        localized(en: "Want to start a vote?", ru: "Хочешь начать голосование?", es: "Quieres iniciar votacion?", uk: "Хочеш почати голосування?")
     }
 
     private var webVoteAgreementSuffix: String {
-        localized(en: "players must agree.", ru: "игроков должны согласиться.", es: "jugadores deben aceptar.")
+        localized(en: "players must agree.", ru: "игроков должны согласиться.", es: "jugadores deben aceptar.", uk: "гравців мають погодитися.")
     }
 
     private var webVoteRequestButtonTitle: String {
-        localized(en: "VOTE TO START", ru: "ХОЧУ ГОЛОСОВАТЬ", es: "VOTAR PARA INICIAR")
+        localized(en: "VOTE TO START", ru: "ХОЧУ ГОЛОСОВАТЬ", es: "VOTAR PARA INICIAR", uk: "ХОЧУ ГОЛОСУВАТИ")
     }
 
     private var webVoteRequestedTitle: String {
-        localized(en: "✓ You voted to start", ru: "✓ Ты проголосовал за начало", es: "✓ Votaste para iniciar")
+        localized(en: "✓ You voted to start", ru: "✓ Ты проголосовал за начало", es: "✓ Votaste para iniciar", uk: "✓ Ти проголосував за початок")
     }
 
     private var webVoteStartedTitle: String {
         localized(
             en: "Voting started. Who do you vote as the spy?",
             ru: "Голосование началось. За кого голосуешь как за шпиона?",
-            es: "La votacion empezo. A quien marcas como espia?"
+            es: "La votacion empezo. A quien marcas como espia?",
+            uk: "Голосування почалося. Кого вважаєш шпигуном?"
         )
     }
 
     private var webVotingInProgressTitle: String {
-        localized(en: "// VOTING IN PROGRESS", ru: "// ГОЛОСОВАНИЕ ИДЕТ", es: "// VOTACION EN CURSO")
+        localized(en: "// VOTING IN PROGRESS", ru: "// ГОЛОСОВАНИЕ ИДЕТ", es: "// VOTACION EN CURSO", uk: "// ГОЛОСУВАННЯ ТРИВАЄ")
     }
 
     private var webVoteSpyQuestion: String {
-        localized(en: "SPY?", ru: "ШПИОН?", es: "ESPIA?")
+        localized(en: "SPY?", ru: "ШПИОН?", es: "ESPIA?", uk: "ШПИГУН?")
     }
 
     private func webVoteDescription(_ room: GameRoom) -> String {
@@ -6131,15 +6167,15 @@ struct GameView: View {
     }
 
     private var youLabel: String {
-        localized(en: "YOU", ru: "ТЫ", es: "TU")
+        localized(en: "YOU", ru: "ТЫ", es: "TU", uk: "ТИ")
     }
 
     private var closeRoomTitle: String {
-        localized(en: "CLOSE", ru: "ЗАКРЫТЬ", es: "CERRAR")
+        localized(en: "CLOSE", ru: "ЗАКРЫТЬ", es: "CERRAR", uk: "ЗАКРИТИ")
     }
 
     private var durationSyncedStatus: String {
-        localized(en: "DURATION SYNCED", ru: "ДЛИТЕЛЬНОСТЬ СОХРАНЕНА", es: "DURACION GUARDADA")
+        localized(en: "DURATION SYNCED", ru: "ДЛИТЕЛЬНОСТЬ СОХРАНЕНА", es: "DURACION GUARDADA", uk: "ТРИВАЛІСТЬ ЗБЕРЕЖЕНО")
     }
 
     private var selectedPackSummary: String {
@@ -6149,23 +6185,24 @@ struct GameView: View {
                 return localized(
                     en: "You haven't created any decks.",
                     ru: "Вы не создавали своих колод.",
-                    es: "No has creado ningun pack."
+                    es: "No has creado ningun pack.",
+                    uk: "Ви ще не створили жодного набору."
                 )
             }
-            return localized(en: "Not selected.", ru: "Не выбрано.", es: "No seleccionado.")
+            return localized(en: "Not selected.", ru: "Не выбрано.", es: "No seleccionado.", uk: "Не обрано.")
 
         case .generated:
             guard let roomGeneratedPack else {
-                return localized(en: "Not generated yet.", ru: "Ещё не сгенерировано.", es: "Aun no generado.")
+                return localized(en: "Not generated yet.", ru: "Ещё не сгенерировано.", es: "Aun no generado.", uk: "Ще не згенеровано.")
             }
             return copy.selectedPackSummary(
-                name: roomGeneratedPack.category.nilIfBlank ?? roomTheme.nilIfBlank ?? "CUSTOM",
+                name: roomGeneratedPack.category.nilIfBlank ?? roomTheme.nilIfBlank ?? customCategoryFallback,
                 words: roomGeneratedWords.count
             )
 
         case let .saved(id):
             guard let pack = lobbyWordPacks.first(where: { $0.id == id }) else {
-                return localized(en: "Not selected.", ru: "Не выбрано.", es: "No seleccionado.")
+                return localized(en: "Not selected.", ru: "Не выбрано.", es: "No seleccionado.", uk: "Не обрано.")
             }
             return copy.selectedPackSummary(name: pack.name, words: pack.words?.roomCleanWords.count ?? 0)
         }
@@ -6268,7 +6305,7 @@ struct GameView: View {
             return copy.minimumOperatives(room.playersList.count)
         }
         if isGeneratingRoomTheme {
-            return localized(en: "GENERATING WORDS", ru: "ГЕНЕРАЦИЯ СЛОВ", es: "GENERANDO PALABRAS")
+            return localized(en: "GENERATING WORDS", ru: "ГЕНЕРАЦИЯ СЛОВ", es: "GENERANDO PALABRAS", uk: "ГЕНЕРАЦІЯ СЛІВ")
         }
         if !roomThemeSelectionIsReady {
             switch roomWordSource {
@@ -6276,22 +6313,24 @@ struct GameView: View {
                 return localized(
                     en: "SELECT DECK / THEME",
                     ru: "ВЫБЕРИ КОЛОДУ / ТЕМУ",
-                    es: "ELIGE PACK / TEMA"
+                    es: "ELIGE PACK / TEMA",
+                    uk: "ОБЕРИ НАБІР / ТЕМУ"
                 )
             case .generated:
-                return localized(en: "GENERATE WORDS FIRST", ru: "СНАЧАЛА СГЕНЕРИРУЙ СЛОВА", es: "GENERA PALABRAS PRIMERO")
+                return localized(en: "GENERATE WORDS FIRST", ru: "СНАЧАЛА СГЕНЕРИРУЙ СЛОВА", es: "GENERA PALABRAS PRIMERO", uk: "СПОЧАТКУ ЗГЕНЕРУЙ СЛОВА")
             case .saved:
-                return localized(en: "THIS DECK NEEDS MORE WORDS", ru: "В КОЛОДЕ НЕДОСТАТОЧНО СЛОВ", es: "ESTE PACK NECESITA MAS PALABRAS")
+                return localized(en: "THIS DECK NEEDS MORE WORDS", ru: "В КОЛОДЕ НЕДОСТАТОЧНО СЛОВ", es: "ESTE PACK NECESITA MAS PALABRAS", uk: "У НАБОРІ ЗАМАЛО СЛІВ")
             }
         }
         if !lobbyStateIsServerConfirmed(for: room) {
             return localized(
                 en: "WAITING FOR SERVER CONFIRMATION",
                 ru: "ЖДЁМ ПОДТВЕРЖДЕНИЕ СЕРВЕРА",
-                es: "ESPERANDO CONFIRMACION DEL SERVIDOR"
+                es: "ESPERANDO CONFIRMACION DEL SERVIDOR",
+                uk: "ЧЕКАЄМО НА ПІДТВЕРДЖЕННЯ СЕРВЕРА"
             )
         }
-        return localized(en: "START NOW", ru: "НАЧАТЬ СРАЗУ", es: "INICIAR AHORA")
+        return localized(en: "START NOW", ru: "НАЧАТЬ СРАЗУ", es: "INICIAR AHORA", uk: "ПОЧАТИ ЗАРАЗ")
     }
 
     private var roomThemeMaxWords: Int {
@@ -6341,7 +6380,7 @@ struct GameView: View {
             let name = room.lobbySourceName?.nilIfBlank
                 ?? room.lobbyCategory?.nilIfBlank
                 ?? room.lobbyTheme?.nilIfBlank
-                ?? "Lobby"
+                ?? lobbyNameFallback
             let pack = WordPack(
                 id: id,
                 name: name,
@@ -6374,7 +6413,7 @@ struct GameView: View {
             let name = room.lobbySourceName?.nilIfBlank
                 ?? room.lobbyCategory?.nilIfBlank
                 ?? room.lobbyTheme?.nilIfBlank
-                ?? "Lobby"
+                ?? lobbyNameFallback
             let pack = WordPack(
                 id: id,
                 name: name,
@@ -6393,7 +6432,10 @@ struct GameView: View {
         guard let roomGeneratedPack else { return nil }
         let words = roomGeneratedWords
         guard words.count >= 2 else { return nil }
-        let name = roomGeneratedPack.name?.nilIfBlank ?? roomGeneratedPack.category.nilIfBlank ?? roomTheme.nilIfBlank ?? "Custom"
+        let name = roomGeneratedPack.name?.nilIfBlank
+            ?? roomGeneratedPack.category.nilIfBlank
+            ?? roomTheme.nilIfBlank
+            ?? customNameFallback
         return WordPack(
             id: "generated",
             name: name,
@@ -6409,17 +6451,18 @@ struct GameView: View {
             let words = roomGeneratedPack.words.roomCleanWords
             let inGameCount = min(max(Int(roomWordCount), 0), activeRoomWords(words).count)
             let source = roomGeneratedLobbySource == .manual
-                ? localized(en: "MANUAL", ru: "ВРУЧНУЮ", es: "MANUAL")
-                : localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO")
+                ? localized(en: "MANUAL", ru: "ВРУЧНУЮ", es: "MANUAL", uk: "ВРУЧНУ")
+                : localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO", uk: "ЗГЕНЕРОВАНО AI")
             return RoomPoolSnapshot(
-                category: roomGeneratedPack.category.nilIfBlank ?? roomTheme.nilIfBlank ?? "CUSTOM",
+                category: roomGeneratedPack.category.nilIfBlank ?? roomTheme.nilIfBlank ?? customCategoryFallback,
                 source: source,
                 words: words,
                 disabledWordKeys: disabledRoomPoolWordKeys,
                 countLabel: localized(
                     en: "\(inGameCount)/\(words.count) IN GAME",
                     ru: "\(inGameCount)/\(words.count) В ИГРЕ",
-                    es: "\(inGameCount)/\(words.count) EN JUEGO"
+                    es: "\(inGameCount)/\(words.count) EN JUEGO",
+                    uk: "\(inGameCount)/\(words.count) У ГРІ"
                 )
             )
         }
@@ -6433,13 +6476,14 @@ struct GameView: View {
             let inGameCount = activeRoomWords(words).count
             return RoomPoolSnapshot(
                 category: pack.category?.nilIfBlank ?? pack.name,
-                source: localized(en: "WORD PACK", ru: "WORDPACK", es: "WORDPACK"),
+                source: localized(en: "WORD PACK", ru: "WORDPACK", es: "WORDPACK", uk: "НАБІР СЛІВ"),
                 words: words,
                 disabledWordKeys: disabledRoomPoolWordKeys,
                 countLabel: localized(
                     en: "\(inGameCount)/\(words.count) IN GAME",
                     ru: "\(inGameCount)/\(words.count) В ИГРЕ",
-                    es: "\(inGameCount)/\(words.count) EN JUEGO"
+                    es: "\(inGameCount)/\(words.count) EN JUEGO",
+                    uk: "\(inGameCount)/\(words.count) У ГРІ"
                 )
             )
         }
@@ -6460,11 +6504,11 @@ struct GameView: View {
         let source: String
         switch LobbyWordSource(rawValue: room.lobbyWordSource ?? "none") ?? .none {
         case .ai:
-            source = localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO")
+            source = localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO", uk: "ЗГЕНЕРОВАНО AI")
         case .saved:
-            source = localized(en: "WORD PACK", ru: "WORDPACK", es: "WORDPACK")
+            source = localized(en: "WORD PACK", ru: "WORDPACK", es: "WORDPACK", uk: "НАБІР СЛІВ")
         case .manual:
-            source = localized(en: "MANUAL", ru: "ВРУЧНУЮ", es: "MANUAL")
+            source = localized(en: "MANUAL", ru: "ВРУЧНУЮ", es: "MANUAL", uk: "ВРУЧНУ")
         case .none:
             source = copy.waitingForHost
         }
@@ -6472,7 +6516,7 @@ struct GameView: View {
             category: room.lobbyCategory?.nilIfBlank
                 ?? room.lobbySourceName?.nilIfBlank
                 ?? room.lobbyTheme?.nilIfBlank
-                ?? "CUSTOM",
+                ?? customCategoryFallback,
             source: source,
             words: words,
             disabledWordKeys: Set(
@@ -6481,63 +6525,65 @@ struct GameView: View {
             countLabel: localized(
                 en: "\(selectedCount)/\(words.count) IN GAME",
                 ru: "\(selectedCount)/\(words.count) В ИГРЕ",
-                es: "\(selectedCount)/\(words.count) EN JUEGO"
+                es: "\(selectedCount)/\(words.count) EN JUEGO",
+                uk: "\(selectedCount)/\(words.count) У ГРІ"
             )
         )
     }
 
     private var roomThemeTitle: String {
-        localized(en: "THEME / WORD PACK", ru: "ТЕМА / ПАК СЛОВ", es: "TEMA / PACK")
+        localized(en: "THEME / WORD PACK", ru: "ТЕМА / ПАК СЛОВ", es: "TEMA / PACK", uk: "ТЕМА / НАБІР СЛІВ")
     }
 
     private var roomUnlimitedLabel: String {
-        localized(en: "∞ UNLIMITED", ru: "∞ UNLIMITED", es: "∞ ILIMITADO")
+        localized(en: "∞ UNLIMITED", ru: "∞ UNLIMITED", es: "∞ ILIMITADO", uk: "∞ БЕЗ ОБМЕЖЕНЬ")
     }
 
     private var roomThemePlaceholder: String {
-        localized(en: "European Countries, Marvel...", ru: "Страны Европы, Marvel...", es: "Paises, Marvel...")
+        localized(en: "European Countries, Marvel...", ru: "Страны Европы, Marvel...", es: "Paises, Marvel...", uk: "Країни Європи, Marvel...")
     }
 
     private var roomCountLabel: String {
-        localized(en: "// WORDS TO CREATE", ru: "// СОЗДАТЬ СЛОВ", es: "// PALABRAS A CREAR")
+        localized(en: "// WORDS TO CREATE", ru: "// СОЗДАТЬ СЛОВ", es: "// PALABRAS A CREAR", uk: "// СЛІВ ДЛЯ СТВОРЕННЯ")
     }
 
     private var roomWordsLabel: String {
-        localized(en: "WORDS IN GAME", ru: "СЛОВ В ИГРЕ", es: "PALABRAS EN JUEGO")
+        localized(en: "WORDS IN GAME", ru: "СЛОВ В ИГРЕ", es: "PALABRAS EN JUEGO", uk: "СЛІВ У ГРІ")
     }
 
     private var roomPoolPreviewLabel: String {
-        localized(en: "// POOL PREVIEW", ru: "// ПРЕВЬЮ ПУЛА", es: "// PREVIEW BANCO")
+        localized(en: "// POOL PREVIEW", ru: "// ПРЕВЬЮ ПУЛА", es: "// PREVIEW BANCO", uk: "// ПЕРЕГЛЯД ПУЛУ")
     }
 
     private var roomAddMoreWordsLabel: String {
         if roomThemeMaxWords >= 200 {
-            return localized(en: "WORD POOL MAXED", ru: "ДОСТИГНУТ МАКСИМУМ", es: "BANCO AL MAXIMO")
+            return localized(en: "WORD POOL MAXED", ru: "ДОСТИГНУТ МАКСИМУМ", es: "BANCO AL MAXIMO", uk: "ДОСЯГНУТО МАКСИМУМУ ПУЛУ")
         }
-        return localized(en: "EXPAND POOL · +50", ru: "РАСШИРИТЬ ПУЛ · +50", es: "AMPLIAR BANCO · +50")
+        return localized(en: "EXPAND POOL · +50", ru: "РАСШИРИТЬ ПУЛ · +50", es: "AMPLIAR BANCO · +50", uk: "РОЗШИРИТИ ПУЛ · +50")
     }
 
     private func roomShowAllWordsLabel(_ count: Int) -> String {
         localized(
             en: "SHOW ALL · \(count)",
             ru: "ПОКАЗАТЬ ВСЕ · \(count)",
-            es: "MOSTRAR TODO · \(count)"
+            es: "MOSTRAR TODO · \(count)",
+            uk: "ПОКАЗАТИ ВСІ · \(count)"
         )
     }
 
     private var roomShowLessWordsLabel: String {
-        localized(en: "SHOW LESS", ru: "ПОКАЗАТЬ МЕНЬШЕ", es: "MOSTRAR MENOS")
+        localized(en: "SHOW LESS", ru: "ПОКАЗАТЬ МЕНЬШЕ", es: "MOSTRAR MENOS", uk: "ПОКАЗАТИ МЕНШЕ")
     }
 
     private var roomSaveAsWordPackLabel: String {
-        localized(en: "SAVE AS WORDPACK", ru: "СОХРАНИТЬ КАК WORDPACK", es: "GUARDAR WORDPACK")
+        localized(en: "SAVE AS WORDPACK", ru: "СОХРАНИТЬ КАК WORDPACK", es: "GUARDAR WORDPACK", uk: "ЗБЕРЕГТИ ЯК НАБІР СЛІВ")
     }
 
     private var roomThemeActionTitle: String {
         if roomHasGeneratedTheme {
-            return localized(en: "REGENERATE", ru: "СГЕНЕРИРОВАТЬ ЗАНОВО", es: "REGENERAR")
+            return localized(en: "REGENERATE", ru: "СГЕНЕРИРОВАТЬ ЗАНОВО", es: "REGENERAR", uk: "ЗГЕНЕРУВАТИ ЗНОВУ")
         }
-        return localized(en: "GENERATE WORDS", ru: "СГЕНЕРИРОВАТЬ СЛОВА", es: "GENERAR PALABRAS")
+        return localized(en: "GENERATE WORDS", ru: "СГЕНЕРИРОВАТЬ СЛОВА", es: "GENERAR PALABRAS", uk: "ЗГЕНЕРУВАТИ СЛОВА")
     }
 
     private var roomThemeActionIcon: String {
@@ -6548,21 +6594,22 @@ struct GameView: View {
     private func roomWordCountModeTitle(_ mode: RoomWordCountMode) -> String {
         switch mode {
         case .recommended:
-            localized(en: "RECOMMENDED", ru: "РЕКОМЕНДОВАНО", es: "RECOMENDADO")
+            localized(en: "RECOMMENDED", ru: "РЕКОМЕНДОВАНО", es: "RECOMENDADO", uk: "РЕКОМЕНДОВАНО")
         case .custom:
-            localized(en: "CUSTOM", ru: "СВОЙ ВЫБОР", es: "CUSTOM")
+            localized(en: "CUSTOM", ru: "СВОЙ ВЫБОР", es: "CUSTOM", uk: "ВЛАСНИЙ ВИБІР")
         }
     }
 
     private func roomWordCountModeHint(_ mode: RoomWordCountMode) -> String {
         switch mode {
         case .recommended:
-            localized(en: "100 words", ru: "100 слов", es: "100 palabras")
+            localized(en: "100 words", ru: "100 слов", es: "100 palabras", uk: "100 слів")
         case .custom:
             localized(
                 en: "\(Int(roomCustomWordCount)) words",
                 ru: "\(Int(roomCustomWordCount)) слов",
-                es: "\(Int(roomCustomWordCount)) palabras"
+                es: "\(Int(roomCustomWordCount)) palabras",
+                uk: "\(Int(roomCustomWordCount)) слів"
             )
         }
     }
@@ -6571,7 +6618,8 @@ struct GameView: View {
         return localized(
             en: "AI POOL · \(maxWords) AVAILABLE",
             ru: "AI-ПУЛ · \(maxWords) ДОСТУПНО",
-            es: "BANCO IA · \(maxWords) DISPONIBLES"
+            es: "BANCO IA · \(maxWords) DISPONIBLES",
+            uk: "AI-ПУЛ · ДОСТУПНО \(maxWords)"
         )
     }
 
@@ -6653,7 +6701,12 @@ struct GameView: View {
                     .foregroundStyle(SpyTheme.red)
                     .spyFitted(scale: 0.66, alignment: .trailing)
             }
-            SpyWebSlider(value: value, range: range, step: 1)
+            SpyWebSlider(
+                value: value,
+                range: range,
+                language: appState.language,
+                step: 1
+            )
         }
     }
 
@@ -6703,12 +6756,36 @@ struct GameView: View {
         }
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private var customCategoryFallback: String {
+        localized(
+            en: "CUSTOM",
+            ru: "СВОЯ ТЕМА",
+            es: "PERSONALIZADO",
+            uk: "ВЛАСНА ТЕМА"
+        )
+    }
+
+    private var customNameFallback: String {
+        localized(
+            en: "Custom",
+            ru: "Своя тема",
+            es: "Personalizado",
+            uk: "Власна тема"
+        )
+    }
+
+    private var lobbyNameFallback: String {
+        localized(en: "Lobby", ru: "Лобби", es: "Sala", uk: "Лобі")
+    }
+
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru:
             ru
         case .es:
             es
+        case .uk:
+            uk
         default:
             en
         }
@@ -6718,7 +6795,8 @@ struct GameView: View {
         localized(
             en: "Exclusion requires \(room.exclusionVoteThreshold) of \(room.activePlayers.count) votes for one suspect.",
             ru: "Для исключения нужно \(room.exclusionVoteThreshold) из \(room.activePlayers.count) голосов за одного игрока.",
-            es: "La exclusion requiere \(room.exclusionVoteThreshold) de \(room.activePlayers.count) votos por un sospechoso."
+            es: "La exclusion requiere \(room.exclusionVoteThreshold) de \(room.activePlayers.count) votos por un sospechoso.",
+            uk: "Для виключення потрібно \(room.exclusionVoteThreshold) із \(room.activePlayers.count) голосів за одного підозрюваного."
         )
     }
 
@@ -6726,7 +6804,8 @@ struct GameView: View {
         localized(
             en: "The server cancels the vote as soon as that result becomes impossible.",
             ru: "Сервер отменит голосование, как только такой результат станет невозможен.",
-            es: "El servidor cancela la votacion en cuanto ese resultado sea imposible."
+            es: "El servidor cancela la votacion en cuanto ese resultado sea imposible.",
+            uk: "Сервер скасує голосування, щойно такий результат стане неможливим."
         )
     }
 
@@ -6734,7 +6813,8 @@ struct GameView: View {
         localized(
             en: "VOTE CANCELLED — THE REQUIRED RESULT IS NO LONGER POSSIBLE",
             ru: "ГОЛОСОВАНИЕ ОТМЕНЕНО — НУЖНЫЙ РЕЗУЛЬТАТ УЖЕ НЕВОЗМОЖЕН",
-            es: "VOTACION CANCELADA — EL RESULTADO REQUERIDO YA NO ES POSIBLE"
+            es: "VOTACION CANCELADA — EL RESULTADO REQUERIDO YA NO ES POSIBLE",
+            uk: "ГОЛОСУВАННЯ СКАСОВАНО — ПОТРІБНИЙ РЕЗУЛЬТАТ УЖЕ НЕМОЖЛИВИЙ"
         )
     }
 
@@ -6742,7 +6822,8 @@ struct GameView: View {
         localized(
             en: "VOTE RESULT SYNC IS DELAYED",
             ru: "СИНХРОНИЗАЦИЯ ИТОГА ГОЛОСОВАНИЯ ЗАДЕРЖИВАЕТСЯ",
-            es: "LA SINCRONIZACION DEL RESULTADO DE LA VOTACION SE RETRASA"
+            es: "LA SINCRONIZACION DEL RESULTADO DE LA VOTACION SE RETRASA",
+            uk: "СИНХРОНІЗАЦІЯ РЕЗУЛЬТАТУ ГОЛОСУВАННЯ ЗАТРИМУЄТЬСЯ"
         )
     }
 
@@ -6757,7 +6838,7 @@ struct GameView: View {
             return copy.spyResult(spies[0].name)
         }
         let names = spies.map { $0.name.uppercased() }.joined(separator: ", ")
-        return "\(localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS")): \(names)"
+        return "\(localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS", uk: "ШПИГУНИ")): \(names)"
     }
 
     private func spyVictoryTitle(_ room: GameRoom) -> String {
@@ -6765,7 +6846,8 @@ struct GameView: View {
         return localized(
             en: "SPIES WIN",
             ru: "ШПИОНЫ ПОБЕДИЛИ",
-            es: "GANAN LOS ESPIAS"
+            es: "GANAN LOS ESPIAS",
+            uk: "ШПИГУНИ ПЕРЕМОГЛИ"
         )
     }
 
@@ -6827,7 +6909,7 @@ struct GameView: View {
 
     private func roomStateLabel(_ room: GameRoom) -> String {
         if room.normalizedStatus == "playing" && !room.allRoleCardsRead { return copy.dealing }
-        if room.isGamePaused { return localized(en: "PAUSED", ru: "ПАУЗА", es: "PAUSA") }
+        if room.isGamePaused { return localized(en: "PAUSED", ru: "ПАУЗА", es: "PAUSA", uk: "ПАУЗА") }
         if room.isVotingActive { return copy.voting }
         if room.questionPhase == "results" { return copy.results }
         return copy.statusLabel(room.normalizedStatus)
@@ -6994,7 +7076,8 @@ struct GameView: View {
                 roomThemeError = localized(
                     en: "Couldn't recognize this theme. Try another.",
                     ru: "Не удалось распознать тему. Попробуй другую.",
-                    es: "No se pudo reconocer el tema. Prueba otro."
+                    es: "No se pudo reconocer el tema. Prueba otro.",
+                    uk: "Не вдалося розпізнати цю тему. Спробуй іншу."
                 )
                 HapticManager.shared.fire(.notification(.warning))
                 return
@@ -7019,7 +7102,7 @@ struct GameView: View {
             roomWordSource = .generated
             showsAllRoomPoolWords = false
             scheduleLobbyStateSync(debounce: .milliseconds(80))
-            status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO")
+            status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO", uk: "AI-ПУЛ СЛІВ ГОТОВИЙ")
             HapticManager.shared.fire(.milestone)
         } catch {
             guard appState.activeRoom?.id == operationRoomID,
@@ -7095,7 +7178,8 @@ struct GameView: View {
                 roomThemeError = localized(
                     en: "Couldn't find more unique words.",
                     ru: "Больше уникальных слов найти не удалось.",
-                    es: "No se encontraron mas palabras unicas."
+                    es: "No se encontraron mas palabras unicas.",
+                    uk: "Не вдалося знайти більше унікальних слів."
                 )
                 HapticManager.shared.fire(.notification(.warning))
                 return
@@ -7121,7 +7205,7 @@ struct GameView: View {
             roomWordSource = .generated
             showsAllRoomPoolWords = false
             scheduleLobbyStateSync(debounce: .milliseconds(80))
-            status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO")
+            status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO", uk: "AI-ПУЛ СЛІВ РОЗШИРЕНО")
             HapticManager.shared.fire(.milestone)
         } catch {
             guard appState.activeRoom?.id == operationRoomID,
@@ -7139,7 +7223,7 @@ struct GameView: View {
         let name = roomGeneratedPack.name?.nilIfBlank
             ?? roomGeneratedPack.category.nilIfBlank
             ?? roomTheme.nilIfBlank
-            ?? "Custom"
+            ?? customNameFallback
         let pack = WordPack(
             id: "generated",
             name: name,
@@ -7163,7 +7247,7 @@ struct GameView: View {
             )
             lobbyWordPacks.append(previewPack)
             lobbyPackLoadState = .loaded
-            status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO")
+            status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO", uk: "НАБІР СЛІВ ЗБЕРЕЖЕНО")
             HapticManager.shared.fire(.milestone)
             return
         }
@@ -7179,7 +7263,7 @@ struct GameView: View {
             lobbyWordPacks.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             lobbyPackLoadState = .loaded
             appState.markWordPacksChanged()
-            status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO")
+            status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO", uk: "НАБІР СЛІВ ЗБЕРЕЖЕНО")
             HapticManager.shared.fire(.milestone)
         } catch {
             status = error.localizedDescription.uppercased()
@@ -7268,7 +7352,7 @@ struct GameView: View {
                     name: authoritativeState.lobbySourceName,
                     category: authoritativeState.lobbyCategory?.nilIfBlank
                         ?? authoritativeState.lobbyTheme?.nilIfBlank
-                        ?? "CUSTOM",
+                        ?? customCategoryFallback,
                     words: words,
                     aiLimit: nil,
                     aiGenerationsToday: nil
@@ -7449,7 +7533,8 @@ struct GameView: View {
             lobbyPackLoadState = .failed(localized(
                 en: "Sign in again to load your decks.",
                 ru: "Войдите снова, чтобы загрузить колоды.",
-                es: "Inicia sesion de nuevo para cargar tus packs."
+                es: "Inicia sesion de nuevo para cargar tus packs.",
+                uk: "Увійди знову, щоб завантажити свої набори слів."
             ))
             return
         }
@@ -7691,7 +7776,8 @@ struct GameView: View {
             status = localized(
                 en: "WAIT FOR LOBBY SETTINGS TO BE SAVED ON THE SERVER",
                 ru: "ДОЖДИСЬ СОХРАНЕНИЯ НАСТРОЕК ЛОББИ НА СЕРВЕРЕ",
-                es: "ESPERA A QUE LOS AJUSTES SE GUARDEN EN EL SERVIDOR"
+                es: "ESPERA A QUE LOS AJUSTES SE GUARDEN EN EL SERVIDOR",
+                uk: "ЗАЧЕКАЙ, ДОКИ НАЛАШТУВАННЯ ЛОБІ ЗБЕРЕЖУТЬСЯ НА СЕРВЕРІ"
             )
             HapticManager.shared.fire(.notification(.warning))
             return
@@ -7701,7 +7787,8 @@ struct GameView: View {
             status = localized(
                 en: "SELECT A DECK OR GENERATE THE THEME WORDS BEFORE STARTING",
                 ru: "ПЕРЕД СТАРТОМ ВЫБЕРИ КОЛОДУ ИЛИ СГЕНЕРИРУЙ СЛОВА ТЕМЫ",
-                es: "ELIGE UN PACK O GENERA LAS PALABRAS ANTES DE EMPEZAR"
+                es: "ELIGE UN PACK O GENERA LAS PALABRAS ANTES DE EMPEZAR",
+                uk: "ПЕРЕД ПОЧАТКОМ ОБЕРИ НАБІР АБО ЗГЕНЕРУЙ СЛОВА ТЕМИ"
             )
             HapticManager.shared.fire(.notification(.warning))
             return
@@ -7724,7 +7811,8 @@ struct GameView: View {
                     message: localized(
                         en: "Select a deck or create a theme first.",
                         ru: "Сначала выбери колоду или создай тему.",
-                        es: "Elige un pack o crea un tema primero."
+                        es: "Elige un pack o crea un tema primero.",
+                        uk: "Спочатку обери набір слів або створи тему."
                     ),
                     statusCode: nil
                 )
@@ -7993,9 +8081,9 @@ struct GameView: View {
     private func onlineRoundSuccessStatus(_ command: OnlineRoundCommand) -> String {
         switch command {
         case .markAnswerHeard:
-            localized(en: "ANSWER CONFIRMED", ru: "ОТВЕТ ПОДТВЕРЖДЕН", es: "RESPUESTA CONFIRMADA")
+            localized(en: "ANSWER CONFIRMED", ru: "ОТВЕТ ПОДТВЕРЖДЕН", es: "RESPUESTA CONFIRMADA", uk: "ВІДПОВІДЬ ПІДТВЕРДЖЕНО")
         case .continueRound:
-            localized(en: "NEXT ROUND READY", ru: "НОВЫЙ РАУНД ГОТОВ", es: "NUEVA RONDA LISTA")
+            localized(en: "NEXT ROUND READY", ru: "НОВЫЙ РАУНД ГОТОВ", es: "NUEVA RONDA LISTA", uk: "НАСТУПНИЙ РАУНД ГОТОВИЙ")
         case .startAssociation, .advanceAssociation:
             copy.associationSpun
         }
@@ -8226,7 +8314,8 @@ struct GameView: View {
             localized(
                 en: "RESULT SYNC IS DELAYED. KEEP THE ROOM OPEN",
                 ru: "СИНХРОНИЗАЦИЯ РЕЗУЛЬТАТА ЗАДЕРЖИВАЕТСЯ. НЕ ЗАКРЫВАЙ КОМНАТУ",
-                es: "LA SINCRONIZACION DEL RESULTADO SE RETRASA. MANTEN LA SALA ABIERTA"
+                es: "LA SINCRONIZACION DEL RESULTADO SE RETRASA. MANTEN LA SALA ABIERTA",
+                uk: "СИНХРОНІЗАЦІЯ РЕЗУЛЬТАТУ ЗАТРИМУЄТЬСЯ. НЕ ЗАКРИВАЙ КІМНАТУ"
             ),
             kind: .warning
         )

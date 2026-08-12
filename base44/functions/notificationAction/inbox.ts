@@ -819,6 +819,8 @@ function sameDraftContent(left: Entity, right: Entity): boolean {
     "body_ru",
     "title_es",
     "body_es",
+    "title_uk",
+    "body_uk",
     "action_deep_link",
     "expires_at",
   ].every((field) => clean(left[field]) === clean(right[field]));

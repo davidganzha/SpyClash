@@ -157,6 +157,22 @@ Deno.test("ordinary lock-screen payload contains routing but never secret game d
   assertEquals("sound" in (payload.aps as Record<string, any>), false);
 });
 
+Deno.test("ordinary Ukrainian push copy never falls back to English", () => {
+  const payload = alertPayload(
+    {
+      event_type: "room_invite",
+      source_event_id: "event-uk",
+      room_id: "room-uk",
+    },
+    { valid: true, actorName: "Сокіл" },
+    "uk-UA",
+  );
+  assertEquals((payload.aps as Record<string, any>).alert, {
+    title: "Запрошення до гри",
+    body: "Сокіл запрошує вас до кімнати SpyClash.",
+  });
+});
+
 Deno.test("registration opt-outs are applied per notification family", () => {
   const registration = {
     status: "active",
@@ -203,6 +219,8 @@ Deno.test("global announcement source and payload are localized without sound", 
       body_en: "Swipe navigation is ready.",
       title_ru: "Сборка 29",
       body_ru: "Свайпы готовы.",
+      title_uk: "Збірка 29",
+      body_uk: "Навігація свайпами готова.",
       action_deep_link: "spyclash://notifications?id=announcement-1",
       expires_at: "2099-01-01T00:00:00.000Z",
     }]),
@@ -218,6 +236,11 @@ Deno.test("global announcement source and payload are localized without sound", 
     "SPYCLASH_ANNOUNCEMENT",
   );
   assertEquals("sound" in (payload.aps as Record<string, any>), false);
+  const ukrainianPayload = alertPayload(event, source, "uk-UA");
+  assertEquals(
+    (ukrainianPayload.aps as Record<string, any>).alert.title,
+    "Збірка 29",
+  );
   assertEquals(alertCollapseID(event), "announcement:announcement-1");
 });
 

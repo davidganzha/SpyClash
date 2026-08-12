@@ -384,6 +384,8 @@ strip_unreleased_notification_schema() {
         .properties.inbox_body_ru,
         .properties.inbox_title_es,
         .properties.inbox_body_es,
+        .properties.inbox_title_uk,
+        .properties.inbox_body_uk,
         .properties.inbox_action_deep_link,
         .properties.inbox_published_at,
         .properties.inbox_projection_version,
@@ -394,10 +396,13 @@ strip_unreleased_notification_schema() {
     mv "$next" "$event"
 }
 
-strip_unreleased_radar_policy() {
+strip_unreleased_user_fields() {
     local user="$STAGE/base44/entities/User.jsonc"
     local next="$WORK/stripped-user.json"
-    jq 'del(.properties.radar_invite_policy)' "$user" > "$next"
+    jq '
+      del(.properties.radar_invite_policy) |
+      (.properties.language.enum |= map(select(. != "uk")))
+    ' "$user" > "$next"
     mv "$next" "$user"
 }
 
@@ -437,7 +442,7 @@ prepare_candidate() {
     copy_local_final_baseline
     strip_unreleased_notification_schema
     merge_platform_user_boundary "$remote"
-    strip_unreleased_radar_policy
+    strip_unreleased_user_fields
     for file in "$STAGE"/base44/entities/*.jsonc; do jq -er '.name' "$file"; done |
         LC_ALL=C sort > "$target_names"
     write_expected_names "$expected_names" "${ENTITIES[@]}"

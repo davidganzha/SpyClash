@@ -149,7 +149,8 @@ struct HistoryView: View {
                     Text(localized(
                         en: "ANALYTICS",
                         ru: "АНАЛИТИКА",
-                        es: "ANALITICA"
+                        es: "ANALITICA",
+                        uk: "АНАЛІТИКА"
                     ))
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .tracking(0.10)
@@ -160,12 +161,12 @@ struct HistoryView: View {
 
                 HStack(spacing: 10) {
                     analyticsMetric(
-                        localized(en: "SPY WIN RATE", ru: "ПОБЕДЫ ШПИОНА", es: "VICTORIAS ESPIA"),
+                        localized(en: "SPY WIN RATE", ru: "ПОБЕДЫ ШПИОНА", es: "VICTORIAS ESPIA", uk: "ПЕРЕМОГИ ШПИГУНА"),
                         value: "\(roleWinRate("spy"))%",
                         accent: SpyTheme.red
                     )
                     analyticsMetric(
-                        localized(en: "DETECTIVE WIN RATE", ru: "ПОБЕДЫ ДЕТЕКТИВА", es: "VICTORIAS DETECTIVE"),
+                        localized(en: "DETECTIVE WIN RATE", ru: "ПОБЕДЫ ДЕТЕКТИВА", es: "VICTORIAS DETECTIVE", uk: "ПЕРЕМОГИ ДЕТЕКТИВА"),
                         value: "\(roleWinRate("detective"))%",
                         accent: SpyTheme.green
                     )
@@ -173,12 +174,12 @@ struct HistoryView: View {
 
                 HStack(spacing: 10) {
                     analyticsMetric(
-                        localized(en: "CURRENT STREAK", ru: "ТЕКУЩАЯ СЕРИЯ", es: "RACHA ACTUAL"),
+                        localized(en: "CURRENT STREAK", ru: "ТЕКУЩАЯ СЕРИЯ", es: "RACHA ACTUAL", uk: "ПОТОЧНА СЕРІЯ"),
                         value: "\(currentWinStreak)",
                         accent: SpyTheme.amber
                     )
                     analyticsMetric(
-                        localized(en: "AVG LOBBY", ru: "СРЕДНЕЕ ЛОББИ", es: "LOBBY PROMEDIO"),
+                        localized(en: "AVG LOBBY", ru: "СРЕДНЕЕ ЛОББИ", es: "LOBBY PROMEDIO", uk: "СЕРЕДНЄ ЛОБІ"),
                         value: averageLobbySize,
                         accent: .white
                     )
@@ -222,10 +223,11 @@ struct HistoryView: View {
         return String(format: "%.1f", average)
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru: ru
         case .es: es
+        case .uk: uk
         default: en
         }
     }
@@ -267,9 +269,9 @@ struct HistoryView: View {
                         Text("\(item.playerCount ?? 0) \(copy.operatives)")
                         Text("//")
                         if let spyCount = item.spyCount, spyCount > 1 {
-                            Text("\(spyCount) \(localized(en: "SPIES", ru: "ШПИОНА", es: "ESPIAS"))")
+                            Text("\(spyCount) \(localized(en: "SPIES", ru: "ШПИОНА", es: "ESPIAS", uk: "ШПИГУНИ"))")
                             Text("//")
-                            Text(localized(en: "UNRANKED", ru: "БЕЗ РЕЙТИНГА", es: "SIN CLASIFICACION"))
+                            Text(localized(en: "UNRANKED", ru: "БЕЗ РЕЙТИНГА", es: "SIN CLASIFICACION", uk: "БЕЗ РЕЙТИНГУ"))
                             Text("//")
                         }
                         Text(item.roomCode?.uppercased() ?? copy.roomFallback)

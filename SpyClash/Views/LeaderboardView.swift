@@ -266,7 +266,7 @@ struct LeaderboardView: View {
 
     private func displayName(for entry: LeaderboardEntry) -> String {
         if entry.isCurrentUser {
-            return "YOU"
+            return copy.currentUser
         }
         guard entry.displayName.count > 18 else { return entry.displayName }
         return String(entry.displayName.prefix(17)) + "…"

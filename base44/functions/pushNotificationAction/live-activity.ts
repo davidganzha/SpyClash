@@ -8,9 +8,28 @@ function bounded(value: unknown, length: number): string {
   return clean(value).slice(0, length);
 }
 
-function liveActivityLanguage(value: unknown): "en" | "es" | "ru" {
+function liveActivityLanguage(value: unknown): "en" | "es" | "ru" | "uk" {
   const code = clean(value).toLowerCase().split(/[-_]/)[0];
-  return code === "ru" || code === "es" ? code : "en";
+  return code === "ru" || code === "es" || code === "uk" ? code : "en";
+}
+
+function liveActivityParticipantName(value: unknown, locale: unknown): string {
+  const displayName = bounded(value, 24);
+  const normalized = displayName.toUpperCase();
+  const usesSystemFallback = !displayName ||
+    normalized === "AGENT" ||
+    normalized === "OPERATIVE";
+  if (!usesSystemFallback) return displayName;
+
+  switch (liveActivityLanguage(locale)) {
+    case "ru":
+    case "uk":
+      return "ОПЕРАТИВНИК";
+    case "es":
+      return "OPERATIVO";
+    default:
+      return "OPERATIVE";
+  }
 }
 
 function liveActivityStartAlert(locale: unknown): {
@@ -27,6 +46,11 @@ function liveActivityStartAlert(locale: unknown): {
       return {
         title: "La misión ha comenzado",
         body: "La mesa de SpyClash ya está activa en la pantalla bloqueada.",
+      };
+    case "uk":
+      return {
+        title: "Місія почалася",
+        body: "Стіл SpyClash уже доступний на екрані блокування.",
       };
     default:
       return {
@@ -161,7 +185,7 @@ export async function contentStateForUser(
       const email = clean(player.email).toLowerCase();
       return {
         id: await opaquePlayerID(roomID, email),
-        displayName: bounded(player.name || "AGENT", 24) || "AGENT",
+        displayName: liveActivityParticipantName(player.name, locale),
         avatarSymbol: bounded(player.avatar || "🕵️", 8) || "🕵️",
         status: playerStatus(room, email),
       };
@@ -343,6 +367,7 @@ export async function sendLiveActivityUpdate(input: {
 export function liveActivityTerminationPayload(input: {
   revision?: number;
   now?: Date;
+  locale?: unknown;
 } = {}): Entity {
   const now = input.now || new Date();
   const timestamp = Math.floor(now.getTime() / 1_000);
@@ -360,7 +385,7 @@ export function liveActivityTerminationPayload(input: {
         currentResponderID: null,
         round: 1,
         publicTopic: null,
-        displayLanguageCode: null,
+        displayLanguageCode: liveActivityLanguage(input.locale),
         timerEndsAtEpochSeconds: null,
         pausedSecondsRemaining: null,
         privateIntel: null,
@@ -402,7 +427,11 @@ export async function sendLiveActivityTermination(input: {
         clean(input.registration.user_id)
       }`,
       expiration: Math.floor(now.getTime() / 1_000) + 3600,
-      payload: liveActivityTerminationPayload({ revision, now }),
+      payload: liveActivityTerminationPayload({
+        revision,
+        now,
+        locale: input.registration.locale,
+      }),
     }),
     revision,
     event: "end",

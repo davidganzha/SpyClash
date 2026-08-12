@@ -17,30 +17,42 @@ function inboxProjection(
   now: Date,
 ) {
   const actor = safeActorName(actorName);
+  const enActor = actor === "An operative" ? "An operative" : actor;
+  const ruActor = actor === "An operative" ? "Оперативник" : actor;
+  const esActor = actor === "An operative" ? "Un agente" : actor;
+  const ukActor = actor === "An operative" ? "Оперативник" : actor;
   const copy = eventType === "friend_request"
     ? {
-      en: { title: "New friend request", body: `${actor} wants to connect.` },
+      en: { title: "New friend request", body: `${enActor} wants to connect.` },
       ru: {
         title: "Новый запрос в друзья",
-        body: `${actor} хочет добавить вас в друзья.`,
+        body: `${ruActor} хочет добавить вас в друзья.`,
       },
       es: {
         title: "Nueva solicitud de amistad",
-        body: `${actor} quiere conectar contigo.`,
+        body: `${esActor} quiere conectar contigo.`,
+      },
+      uk: {
+        title: "Новий запит у друзі",
+        body: `${ukActor} хоче додати вас у друзі.`,
       },
     }
     : {
       en: {
         title: "Game invitation",
-        body: `${actor} invited you to a SpyClash room.`,
+        body: `${enActor} invited you to a SpyClash room.`,
       },
       ru: {
         title: "Приглашение в игру",
-        body: `${actor} приглашает вас в комнату SpyClash.`,
+        body: `${ruActor} приглашает вас в комнату SpyClash.`,
       },
       es: {
         title: "Invitación al juego",
-        body: `${actor} te invitó a una sala de SpyClash.`,
+        body: `${esActor} te invitó a una sala de SpyClash.`,
+      },
+      uk: {
+        title: "Запрошення до гри",
+        body: `${ukActor} запрошує вас до кімнати SpyClash.`,
       },
     };
   return {
@@ -52,6 +64,8 @@ function inboxProjection(
     inbox_body_ru: copy.ru.body,
     inbox_title_es: copy.es.title,
     inbox_body_es: copy.es.body,
+    inbox_title_uk: copy.uk.title,
+    inbox_body_uk: copy.uk.body,
     inbox_action_deep_link: eventType === "friend_request"
       ? "spyclash://community/requests"
       : "spyclash://community/invites",

@@ -79,6 +79,7 @@ Deno.test("cache keys exactly normalize user, theme, language, and prompt versio
     (await request({ userID: "user-2" })).cacheKey,
   );
   assertNotEquals(first.cacheKey, (await request({ language: "es" })).cacheKey);
+  assertNotEquals(first.cacheKey, (await request({ language: "uk" })).cacheKey);
   assertNotEquals(
     first.cacheKey,
     (await request({ promptVersion: "prompt-v4" })).cacheKey,

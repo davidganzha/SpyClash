@@ -386,6 +386,8 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
       "fanout_cutoff_at",
       "fanout_enqueued_count",
       "action_deep_link",
+      "title_uk",
+      "body_uk",
     ],
     NotificationReadReceipt: ["user_id", "notification_key", "read_at"],
     PushDeviceRegistration: ["announcements_enabled"],
@@ -399,6 +401,8 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
       "inbox_body_ru",
       "inbox_title_es",
       "inbox_body_es",
+      "inbox_title_uk",
+      "inbox_body_uk",
       "inbox_action_deep_link",
       "inbox_published_at",
       "inbox_projection_version",
@@ -421,6 +425,12 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
       assert(field in schema.properties, `${name}.${field} must be canonical`);
     }
   }
+
+  const languageEnum = all.get("User")?.properties?.language?.enum;
+  assert(
+    Array.isArray(languageEnum) && languageEnum.includes("uk"),
+    "User.language must include the Ukrainian uk locale",
+  );
 
   for (
     const missingProductionEntity of [

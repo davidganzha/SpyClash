@@ -80,21 +80,27 @@ enum RoomSyncOperation: Equatable {
         switch (self, language) {
         case (.creatingRoom, .ru): "СОЗДАНИЕ КОМНАТЫ"
         case (.creatingRoom, .es): "CREANDO SALA"
+        case (.creatingRoom, .uk): "СТВОРЕННЯ КІМНАТИ"
         case (.creatingRoom, _): "CREATING ROOM"
         case (.joiningRoom, .ru): "ПОДКЛЮЧЕНИЕ К КОМНАТЕ"
         case (.joiningRoom, .es): "CONECTANDO A LA SALA"
+        case (.joiningRoom, .uk): "ПІДКЛЮЧЕННЯ ДО КІМНАТИ"
         case (.joiningRoom, _): "JOINING ROOM"
         case (.closingRoom, .ru): "ЗАКРЫТИЕ КОМНАТЫ"
         case (.closingRoom, .es): "CERRANDO SALA"
+        case (.closingRoom, .uk): "ЗАКРИТТЯ КІМНАТИ"
         case (.closingRoom, _): "CLOSING ROOM"
         case (.leavingRoom, .ru): "ВЫХОД ИЗ КОМНАТЫ"
         case (.leavingRoom, .es): "SALIENDO DE LA SALA"
+        case (.leavingRoom, .uk): "ВИХІД ІЗ КІМНАТИ"
         case (.leavingRoom, _): "LEAVING ROOM"
         case (.updatingMode, .ru): "СИНХРОНИЗАЦИЯ РЕЖИМА"
         case (.updatingMode, .es): "SINCRONIZANDO MODO"
+        case (.updatingMode, .uk): "СИНХРОНІЗАЦІЯ РЕЖИМУ"
         case (.updatingMode, _): "SYNCING GAME MODE"
         case (.updatingDuration, .ru): "СИНХРОНИЗАЦИЯ ВРЕМЕНИ"
         case (.updatingDuration, .es): "SINCRONIZANDO TIEMPO"
+        case (.updatingDuration, .uk): "СИНХРОНІЗАЦІЯ ТРИВАЛОСТІ"
         case (.updatingDuration, _): "SYNCING DURATION"
         }
     }
@@ -105,24 +111,28 @@ enum RoomSyncOperation: Equatable {
             return switch language {
             case .ru: "Подготавливаем защищённую игровую сессию. Пожалуйста, подождите."
             case .es: "Preparando una sesion segura. Espera un momento."
+            case .uk: "Готуємо захищену ігрову сесію. Зачекай, будь ласка."
             default: "Preparing a secure game session. Please wait."
             }
         case .joiningRoom:
             return switch language {
             case .ru: "Подключаемся и синхронизируем состояние комнаты. Пожалуйста, подождите."
             case .es: "Conectando y sincronizando el estado de la sala. Espera un momento."
+            case .uk: "Підключаємося та синхронізуємо стан кімнати. Зачекай, будь ласка."
             default: "Connecting and synchronizing room state. Please wait."
             }
         case .closingRoom:
             return switch language {
             case .ru: "Закрываем сессию для всех игроков. Пожалуйста, подождите."
             case .es: "Cerrando la sesion para todos los jugadores. Espera un momento."
+            case .uk: "Закриваємо сесію для всіх гравців. Зачекай, будь ласка."
             default: "Closing the session for every player. Please wait."
             }
         case .leavingRoom:
             return switch language {
             case .ru: "Синхронизируем выход из комнаты. Пожалуйста, подождите."
             case .es: "Sincronizando tu salida de la sala. Espera un momento."
+            case .uk: "Синхронізуємо твій вихід із кімнати. Зачекай, будь ласка."
             default: "Synchronizing your exit from the room. Please wait."
             }
         case .updatingMode(let mode):
@@ -132,18 +142,22 @@ enum RoomSyncOperation: Equatable {
             case (.associations, .ru): modeTitle = "«Ассоциации»"
             case (.questions, .es): modeTitle = "Preguntas"
             case (.associations, .es): modeTitle = "Asociaciones"
+            case (.questions, .uk): modeTitle = "«Запитання»"
+            case (.associations, .uk): modeTitle = "«Асоціації»"
             case (.questions, _): modeTitle = "Questions"
             case (.associations, _): modeTitle = "Associations"
             }
             switch language {
             case .ru: return "Переключаем комнату на режим \(modeTitle). Пожалуйста, подождите."
             case .es: return "Cambiando la sala al modo \(modeTitle). Espera un momento."
+            case .uk: return "Перемикаємо кімнату в режим \(modeTitle). Зачекай, будь ласка."
             default: return "Switching the room to \(modeTitle) mode. Please wait."
             }
         case .updatingDuration(let minutes):
             return switch language {
             case .ru: "Устанавливаем длительность игры: \(minutes) мин. Пожалуйста, подождите."
             case .es: "Ajustando la duracion a \(minutes) min. Espera un momento."
+            case .uk: "Установлюємо тривалість гри: \(minutes) хв. Зачекай, будь ласка."
             default: "Setting game duration to \(minutes) min. Please wait."
             }
         }
@@ -649,6 +663,8 @@ final class AppState: NSObject {
     var language: AppLanguage = .stored {
         didSet {
             PushNotificationCoordinator.shared.updatePreferredLocale(language.rawValue)
+            guard language != oldValue else { return }
+            synchronizeMatchLiveActivity(previousRoom: nil, room: activeRoom)
         }
     }
     var pendingJoinCode: String?
@@ -1162,12 +1178,14 @@ final class AppState: NSObject {
                         case .en: "THE SPY COUNT WAS REDUCED FOR THE CURRENT ROSTER"
                         case .es: "SE REDUJO EL NUMERO DE ESPIAS PARA LOS JUGADORES ACTUALES"
                         case .ru: "КОЛИЧЕСТВО ШПИОНОВ УМЕНЬШЕНО ПОД ТЕКУЩИЙ СОСТАВ"
+                        case .uk: "КІЛЬКІСТЬ ШПИГУНІВ ЗМЕНШЕНО ДЛЯ ПОТОЧНОГО СКЛАДУ"
                         }
                     } else if base44Error?.isClientUpdateRequired == true {
                         lobbySettingsSyncFailure = switch language {
                         case .en: "UPDATE SPYCLASH TO USE MULTI-SPY ROOMS"
                         case .es: "ACTUALIZA SPYCLASH PARA USAR SALAS MULTIESPIA"
                         case .ru: "ОБНОВИ SPYCLASH ДЛЯ КОМНАТ С НЕСКОЛЬКИМИ ШПИОНАМИ"
+                        case .uk: "ОНОВИ SPYCLASH ДЛЯ КІМНАТ ІЗ КІЛЬКОМА ШПИГУНАМИ"
                         }
                     } else {
                         lobbySettingsSyncFailure = error.localizedDescription
@@ -1501,6 +1519,7 @@ final class AppState: NSObject {
         switch language {
         case .ru: "ИГРОКОВ: \(count)"
         case .es: "\(count) JUGADORES"
+        case .uk: "ГРАВЦІВ: \(count)"
         default: "\(count) PLAYERS"
         }
     }
@@ -1515,6 +1534,10 @@ final class AppState: NSObject {
         case (true, true, .es): "ENTRARON"
         case (false, false, .es): "SALIÓ"
         case (false, true, .es): "SALIERON"
+        case (true, false, .uk): "ПРИЄДНАВСЯ"
+        case (true, true, .uk): "ПРИЄДНАЛИСЯ"
+        case (false, false, .uk): "ВИЙШОВ"
+        case (false, true, .uk): "ВИЙШЛИ"
         case (true, false, _): "JOINED"
         case (true, true, _): "JOINED"
         case (false, false, _): "LEFT"
@@ -1530,6 +1553,9 @@ final class AppState: NSObject {
         case (.success, .es): "LISTO"
         case (.warning, .es), (.info, .es): "ATENCIÓN"
         case (.error, .es): "ERROR"
+        case (.success, .uk): "ГОТОВО"
+        case (.warning, .uk), (.info, .uk): "УВАГА"
+        case (.error, .uk): "ПОМИЛКА"
         case (.success, _): "SUCCESS"
         case (.warning, _), (.info, _): "ATTENTION"
         case (.error, _): "ERROR"
@@ -1547,11 +1573,11 @@ final class AppState: NSObject {
 
     private static func deepLinkToastKind(_ message: String) -> AppToastKind {
         let upper = message.uppercased()
-        let errorMarkers = ["ERROR", "FAILED", "NOT FOUND", "COULD NOT", "НЕ УДАЛ", "НЕ НАЙД", "NO SE PUDO"]
+        let errorMarkers = ["ERROR", "FAILED", "NOT FOUND", "COULD NOT", "НЕ УДАЛ", "НЕ НАЙД", "NO SE PUDO", "НЕ ВДАЛ", "НЕ ЗНАЙД"]
         if errorMarkers.contains(where: upper.contains) {
             return .error
         }
-        if upper.contains("READY") || upper.contains("ГОТОВ") || upper.contains("LISTA") {
+        if upper.contains("READY") || upper.contains("ГОТОВ") || upper.contains("LISTA") || upper.contains("ПІДКЛЮЧЕНО") {
             return .success
         }
         return .warning
@@ -1561,6 +1587,7 @@ final class AppState: NSObject {
         switch language {
         case .ru: "ХОСТ ЗАКРЫЛ КОМНАТУ"
         case .es: "EL HOST CERRÓ LA SALA"
+        case .uk: "ХОСТ ЗАКРИВ КІМНАТУ"
         default: "ROOM CLOSED BY HOST"
         }
     }
@@ -1569,6 +1596,7 @@ final class AppState: NSObject {
         switch language {
         case .ru: "СВЯЗЬ С КОМНАТОЙ ПРЕРВАНА — ПЕРЕПОДКЛЮЧАЕМСЯ"
         case .es: "CONEXIÓN INTERRUMPIDA — RECONECTANDO"
+        case .uk: "ЗВ’ЯЗОК ІЗ КІМНАТОЮ ПЕРЕРВАНО — ПЕРЕПІДКЛЮЧАЄМОСЯ"
         default: "ROOM SYNC INTERRUPTED — RECONNECTING"
         }
     }
@@ -1577,6 +1605,7 @@ final class AppState: NSObject {
         switch language {
         case .ru: "СИНХРОНИЗАЦИЯ КОМНАТЫ ВОССТАНОВЛЕНА"
         case .es: "SINCRONIZACIÓN DE SALA RESTAURADA"
+        case .uk: "СИНХРОНІЗАЦІЮ КІМНАТИ ВІДНОВЛЕНО"
         default: "ROOM SYNC RESTORED"
         }
     }
@@ -2761,6 +2790,7 @@ final class AppState: NSObject {
                 case .en: "UPDATE SPYCLASH TO JOIN THIS MULTI-SPY ROOM"
                 case .es: "ACTUALIZA SPYCLASH PARA ENTRAR EN ESTA SALA MULTIESPIA"
                 case .ru: "ОБНОВИ SPYCLASH, ЧТОБЫ ВОЙТИ В КОМНАТУ С НЕСКОЛЬКИМИ ШПИОНАМИ"
+                case .uk: "ОНОВИ SPYCLASH, ЩОБ УВІЙТИ ДО КІМНАТИ З КІЛЬКОМА ШПИГУНАМИ"
                 }
             } else {
                 deepLinkStatus = error.localizedDescription.uppercased()
@@ -3040,6 +3070,7 @@ final class AppState: NSObject {
 #endif
         guard !isRestoring else { return }
         let viewer = user
+        let displayLanguage = language
         liveActivitySyncTask?.cancel()
         liveActivitySyncTask = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -3079,7 +3110,10 @@ final class AppState: NSObject {
             guard !Task.isCancelled,
                   let room,
                   let viewer,
-                  let projection = room.liveActivityProjection(for: viewer) else {
+                  let projection = room.liveActivityProjection(
+                    for: viewer,
+                    displayLanguage: displayLanguage
+                  ) else {
                 if room == nil {
                     await controller.endAll()
                     cancelLiveActivityPushTokenObservers()
@@ -3386,18 +3420,28 @@ final class AppState: NSObject {
         }
 
         if arguments.contains("--spyclash-preview-toasts") {
+            let previewToastCopy = switch language {
+            case .en:
+                ("PROFILE SAVED", "CHECK CONNECTION", "SYNC FAILED")
+            case .es:
+                ("PERFIL GUARDADO", "REVISA LA CONEXIÓN", "ERROR DE SINCRONIZACIÓN")
+            case .ru:
+                ("ПРОФИЛЬ СОХРАНЁН", "ПРОВЕРЬТЕ ПОДКЛЮЧЕНИЕ", "НЕ УДАЛОСЬ СИНХРОНИЗИРОВАТЬ")
+            case .uk:
+                ("ПРОФІЛЬ ЗБЕРЕЖЕНО", "ПЕРЕВІРТЕ З’ЄДНАННЯ", "НЕ ВДАЛОСЯ СИНХРОНІЗУВАТИ")
+            }
             showToast(
-                language == .ru ? "ПРОФИЛЬ СОХРАНЁН" : "PROFILE SAVED",
+                previewToastCopy.0,
                 kind: .success,
                 duration: .seconds(10)
             )
             showToast(
-                language == .ru ? "ПРОВЕРЬТЕ ПОДКЛЮЧЕНИЕ" : "CHECK CONNECTION",
+                previewToastCopy.1,
                 kind: .warning,
                 duration: .seconds(10)
             )
             showToast(
-                language == .ru ? "НЕ УДАЛОСЬ СИНХРОНИЗИРОВАТЬ" : "SYNC FAILED",
+                previewToastCopy.2,
                 kind: .error,
                 duration: .seconds(10)
             )
@@ -3432,6 +3476,7 @@ final class AppState: NSObject {
             case .en: "SECRET AGENT"
             case .es: "AGENTE SECRETO"
             case .ru: "ТАЙНЫЙ АГЕНТ"
+            case .uk: "ТАЄМНИЙ АГЕНТ"
             }
             let participants = [
                 SpyClashMatchActivityAttributes.Participant(

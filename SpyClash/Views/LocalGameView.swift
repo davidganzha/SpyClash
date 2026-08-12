@@ -414,14 +414,14 @@ struct LocalGameView: View {
         SpySceneStage(accent: mode == .questions ? SpyTheme.red : SpyTheme.amber, motionDelay: 0, minHeight: 150, isSubtle: true) {
             VStack(alignment: .leading, spacing: 11) {
                 SpySceneKicker(
-                    title: localized(en: "PASS & PLAY", ru: "ПЕРЕДАВАЙ И ИГРАЙ", es: "PASA Y JUEGA"),
+                    title: localized(en: "PASS & PLAY", ru: "ПЕРЕДАВАЙ И ИГРАЙ", es: "PASA Y JUEGA", uk: "ПЕРЕДАВАЙ І ГРАЙ"),
                     status: nil,
                     accent: mode == .questions ? SpyTheme.red : SpyTheme.amber
                 )
 
                 HStack(alignment: .bottom, spacing: 16) {
                     VStack(alignment: .leading, spacing: 7) {
-                        Text(localized(en: "LOCAL MISSION", ru: "ЛОКАЛЬНАЯ МИССИЯ", es: "MISION LOCAL"))
+                        Text(localized(en: "LOCAL MISSION", ru: "ЛОКАЛЬНАЯ МИССИЯ", es: "MISION LOCAL", uk: "ЛОКАЛЬНА МІСІЯ"))
                             .font(SpyTheme.brandFont(size: 29))
                             .tracking(1.2)
                             .foregroundStyle(.white)
@@ -430,7 +430,8 @@ struct LocalGameView: View {
                         Text(localized(
                             en: "One device. Secret roles. No network required.",
                             ru: "Один телефон. Тайные роли. Сеть не нужна.",
-                            es: "Un dispositivo. Roles secretos. Sin red."
+                            es: "Un dispositivo. Roles secretos. Sin red.",
+                            uk: "Один пристрій. Таємні ролі. Мережа не потрібна."
                         ))
                         .font(.system(size: 10, weight: .semibold, design: .default))
                         .lineSpacing(3)
@@ -444,7 +445,7 @@ struct LocalGameView: View {
                         Text(String(format: "%02d", players.count))
                             .font(SpyTheme.brandFont(size: 30))
                             .foregroundStyle(.white)
-                        Text(localized(en: "OPERATIVES", ru: "ОПЕРАТИВНИКИ", es: "AGENTES"))
+                        Text(localized(en: "OPERATIVES", ru: "ОПЕРАТИВНИКИ", es: "AGENTES", uk: "ОПЕРАТИВНИКИ"))
                             .font(.system(size: 8, weight: .black, design: .monospaced))
                             .tracking(0.08)
                             .foregroundStyle(SpyTheme.dim)
@@ -452,7 +453,7 @@ struct LocalGameView: View {
                 }
 
                 HStack(spacing: 8) {
-                    localMissionBadge(mode == .questions ? localized(en: "QUESTIONS", ru: "ВОПРОСЫ", es: "PREGUNTAS") : localized(en: "ASSOCIATIONS", ru: "АССОЦИАЦИИ", es: "ASOCIACIONES"), color: mode == .questions ? SpyTheme.red : SpyTheme.amber)
+                    localMissionBadge(mode == .questions ? localized(en: "QUESTIONS", ru: "ВОПРОСЫ", es: "PREGUNTAS", uk: "ЗАПИТАННЯ") : localized(en: "ASSOCIATIONS", ru: "АССОЦИАЦИИ", es: "ASOCIACIONES", uk: "АСОЦІАЦІЇ"), color: mode == .questions ? SpyTheme.red : SpyTheme.amber)
                     localMissionBadge(localDurationLabel, color: SpyTheme.muted)
                 }
             }
@@ -473,7 +474,7 @@ struct LocalGameView: View {
     private var localModePanel: some View {
         localSetupPanel(accent: mode == .questions ? SpyTheme.red : SpyTheme.amber) {
             VStack(alignment: .leading, spacing: 14) {
-                sectionHeader(systemImage: "gearshape.fill", title: localized(en: "GAME MODE", ru: "РЕЖИМ ИГРЫ", es: "MODO DE JUEGO"))
+                sectionHeader(systemImage: "gearshape.fill", title: localized(en: "GAME MODE", ru: "РЕЖИМ ИГРЫ", es: "MODO DE JUEGO", uk: "РЕЖИМ ГРИ"))
 
                 HStack(spacing: 10) {
                     localModeOption(.questions, symbol: "?")
@@ -495,7 +496,7 @@ struct LocalGameView: View {
                 HStack(alignment: .firstTextBaseline) {
                     sectionHeader(
                         systemImage: "person.crop.circle.badge.questionmark",
-                        title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS")
+                        title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS", uk: "ШПИГУНИ")
                     )
                     Spacer()
                     Text("\(selectedCount)")
@@ -515,11 +516,13 @@ struct LocalGameView: View {
                         }
                     ),
                     range: 1...Double(localMaximumSpyCount),
+                    language: appState.language,
                     step: 1,
                     accessibilityLabel: localized(
                         en: "Number of spies",
                         ru: "Количество шпионов",
-                        es: "Numero de espias"
+                        es: "Numero de espias",
+                        uk: "Кількість шпигунів"
                     ),
                     accessibilityIdentifier: "localGame.spyCountSlider"
                 )
@@ -539,14 +542,16 @@ struct LocalGameView: View {
                         Text(localized(
                             en: "SPIES KNOW EACH OTHER",
                             ru: "ШПИОНЫ ЗНАЮТ ДРУГ ДРУГА",
-                            es: "LOS ESPIAS SE CONOCEN"
+                            es: "LOS ESPIAS SE CONOCEN",
+                            uk: "ШПИГУНИ ЗНАЮТЬ ОДИН ОДНОГО"
                         ))
                         .font(.system(size: 10, weight: .black, design: .monospaced))
                         .foregroundStyle(.white)
                         Text(localized(
                             en: "Off by default. Teammates appear only after the spy reveals their card.",
                             ru: "По умолчанию выключено. Сообщники видны только после открытия карты шпиона.",
-                            es: "Desactivado por defecto. Los aliados aparecen solo al revelar la carta."
+                            es: "Desactivado por defecto. Los aliados aparecen solo al revelar la carta.",
+                            uk: "Типово вимкнено. Напарники зʼявляться лише після відкриття картки шпигуна."
                         ))
                         .font(.system(size: 9, weight: .semibold, design: .default))
                         .foregroundStyle(SpyTheme.dim)
@@ -560,7 +565,8 @@ struct LocalGameView: View {
                     Text(localized(
                         en: "ALL SPIES SHARE ONE WIN AND ONE GUESS",
                         ru: "У ВСЕХ ШПИОНОВ ОБЩАЯ ПОБЕДА И ОДНА ПОПЫТКА",
-                        es: "TODOS LOS ESPIAS COMPARTEN VICTORIA Y UN INTENTO"
+                        es: "TODOS LOS ESPIAS COMPARTEN VICTORIA Y UN INTENTO",
+                        uk: "УСІ ШПИГУНИ МАЮТЬ СПІЛЬНУ ПЕРЕМОГУ Й ОДНУ СПРОБУ"
                     ))
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .foregroundStyle(SpyTheme.amber)
@@ -573,7 +579,7 @@ struct LocalGameView: View {
     private var localPlayersPanel: some View {
         localSetupPanel(accent: SpyTheme.muted) {
             VStack(alignment: .leading, spacing: 12) {
-                sectionHeader(systemImage: "person.2.fill", title: "\(localized(en: "PLAYERS", ru: "ИГРОКИ", es: "JUGADORES")) (\(players.count))")
+                sectionHeader(systemImage: "person.2.fill", title: "\(localized(en: "PLAYERS", ru: "ИГРОКИ", es: "JUGADORES", uk: "ГРАВЦІ")) (\(players.count))")
 
                 VStack(spacing: 8) {
                     ForEach(localPlayerRows, id: \.id) { row in
@@ -588,7 +594,7 @@ struct LocalGameView: View {
                         HStack(spacing: 10) {
                             Image(systemName: "plus")
                                 .font(.system(size: 15, weight: .black))
-                            Text(localized(en: "ADD PLAYER", ru: "ДОБАВИТЬ ИГРОКА", es: "ANADIR JUGADOR"))
+                            Text(localized(en: "ADD PLAYER", ru: "ДОБАВИТЬ ИГРОКА", es: "ANADIR JUGADOR", uk: "ДОДАТИ ГРАВЦЯ"))
                                 .font(.system(size: 11, weight: .black, design: .monospaced))
                                 .tracking(0.06)
                                 .spyFitted(lines: 1, scale: 0.70, alignment: .center)
@@ -675,13 +681,13 @@ struct LocalGameView: View {
         .highPriorityGesture(playerReorderGesture(playerID: id))
         .accessibilityElement()
         .accessibilityAddTraits(.isButton)
-        .accessibilityLabel(localized(en: "Reorder player", ru: "Переставить игрока", es: "Reordenar jugador"))
-        .accessibilityHint(localized(en: "Hold and drag to reorder", ru: "Зажми и перетащи, чтобы изменить порядок", es: "Mantén y arrastra para reordenar"))
+        .accessibilityLabel(localized(en: "Reorder player", ru: "Переставить игрока", es: "Reordenar jugador", uk: "Перемістити гравця"))
+        .accessibilityHint(localized(en: "Hold and drag to reorder", ru: "Зажми и перетащи, чтобы изменить порядок", es: "Mantén y arrastra para reordenar", uk: "Затисни й перетягни, щоб змінити порядок"))
     }
 
     private func localPlayerNameField(index: Int) -> some View {
         TextField(
-            localized(en: "Player \(index + 1)", ru: "Игрок \(index + 1)", es: "Jugador \(index + 1)"),
+            localized(en: "Player \(index + 1)", ru: "Игрок \(index + 1)", es: "Jugador \(index + 1)", uk: "Гравець \(index + 1)"),
             text: $players[index]
         )
         .textInputAutocapitalization(.words)
@@ -819,7 +825,7 @@ struct LocalGameView: View {
         .buttonStyle(SpyWebPressStyle())
         .spyHitTarget()
         .contentShape(CutCornerShape(cut: 6))
-        .accessibilityLabel(localized(en: "Remove player", ru: "Удалить игрока", es: "Eliminar jugador"))
+        .accessibilityLabel(localized(en: "Remove player", ru: "Удалить игрока", es: "Eliminar jugador", uk: "Видалити гравця"))
     }
 
     private var localIntelPanel: some View {
@@ -1029,7 +1035,7 @@ struct LocalGameView: View {
                 }
                 .buttonStyle(SpyWebPressStyle())
                 .spyHitTarget()
-                .accessibilityLabel(localized(en: "Clear theme", ru: "Очистить тему", es: "Limpiar tema"))
+                .accessibilityLabel(localized(en: "Clear theme", ru: "Очистить тему", es: "Limpiar tema", uk: "Очистити тему"))
             }
         }
         .padding(.horizontal, 14)
@@ -1110,7 +1116,12 @@ struct LocalGameView: View {
                             .spyFitted(scale: 0.66, alignment: .trailing)
                     }
 
-                    SpyWebSlider(value: $localCustomWordCount, range: 10...80, step: 1)
+                    SpyWebSlider(
+                        value: $localCustomWordCount,
+                        range: 10...80,
+                        language: appState.language,
+                        step: 1
+                    )
                 }
                 .padding(.horizontal, 12)
                 .padding(.vertical, 10)
@@ -1178,7 +1189,7 @@ struct LocalGameView: View {
         } label: {
             if isGenerating && !isExpandingLocalThemePool {
                 SpyLoadingLabel(
-                    title: localized(en: "GENERATING INTEL", ru: "ГЕНЕРАЦИЯ INTEL", es: "GENERANDO INTEL"),
+                    title: localized(en: "GENERATING INTEL", ru: "ГЕНЕРАЦИЯ INTEL", es: "GENERANDO INTEL", uk: "ГЕНЕРАЦІЯ ДАНИХ"),
                     accent: .white
                 )
                 .frame(height: 52)
@@ -1202,12 +1213,12 @@ struct LocalGameView: View {
                         Text("📦")
                             .font(.system(size: 24))
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(localized(en: "You don't have any word packs yet.", ru: "У тебя пока нет word packs.", es: "Aun no tienes word packs."))
+                            Text(localized(en: "You don't have any word packs yet.", ru: "У тебя пока нет word packs.", es: "Aun no tienes word packs.", uk: "У тебе ще немає наборів слів."))
                                 .font(.system(size: 12, weight: .bold, design: .default))
                                 .tracking(0.02)
                                 .foregroundStyle(SpyTheme.dim)
                                 .spyFitted(lines: 2, scale: 0.62)
-                            Text(localized(en: "+ Create first pack →", ru: "+ Создать первый пак →", es: "+ Crear primer pack →"))
+                            Text(localized(en: "+ Create first pack →", ru: "+ Создать первый пак →", es: "+ Crear primer pack →", uk: "+ Створити перший набір →"))
                                 .font(.system(size: 12, weight: .black, design: .monospaced))
                                 .tracking(0.02)
                                 .foregroundStyle(SpyTheme.red)
@@ -1222,7 +1233,7 @@ struct LocalGameView: View {
                 }
                 .buttonStyle(SpyWebPressStyle())
             } else {
-                Text("\(localized(en: "WORD PACKS", ru: "WORD PACKS", es: "WORD PACKS")) \(packs.count)")
+                Text("\(localized(en: "WORD PACKS", ru: "WORD PACKS", es: "WORD PACKS", uk: "НАБОРИ СЛІВ")) \(packs.count)")
                     .font(.system(size: 12, weight: .bold, design: .monospaced))
                     .tracking(0.02)
                     .foregroundStyle(SpyTheme.dim)
@@ -1230,7 +1241,7 @@ struct LocalGameView: View {
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 8)], spacing: 8) {
                     localPackChip(
-                        title: localized(en: "RANDOM", ru: "СЛУЧАЙНО", es: "AZAR"),
+                        title: localized(en: "RANDOM", ru: "СЛУЧАЙНО", es: "AZAR", uk: "ВИПАДКОВО"),
                         subtitle: nil,
                         isSelected: selectedPackID == "builtin"
                     ) {
@@ -1250,7 +1261,7 @@ struct LocalGameView: View {
 
                 if selectedPackID != "builtin",
                    let selected = packs.first(where: { $0.id == selectedPackID }) {
-                    Text("\(localized(en: "Selected", ru: "Выбрано", es: "Seleccionado")) \(selected.name) · \(selected.words?.localCleanWords.count ?? 0) \(copy.wordsSuffix)")
+                    Text("\(localized(en: "Selected", ru: "Выбрано", es: "Seleccionado", uk: "Обрано")) \(selected.name) · \(selected.words?.localCleanWords.count ?? 0) \(copy.wordsSuffix)")
                         .font(.system(size: 11, weight: .bold, design: .default))
                         .tracking(0.02)
                         .foregroundStyle(SpyTheme.dim)
@@ -1288,6 +1299,7 @@ struct LocalGameView: View {
                 SpyWebSlider(
                     value: $wordCount,
                     range: Double(minimumWords)...Double(maxWords),
+                    language: appState.language,
                     step: 1,
                     accent: SpyTheme.red
                 )
@@ -1307,13 +1319,13 @@ struct LocalGameView: View {
         } label: {
             if isExpandingLocalThemePool {
                 SpyLoadingLabel(
-                    title: localized(en: "ADDING WORDS", ru: "ДОБАВЛЯЕМ СЛОВА", es: "ANADIENDO PALABRAS"),
+                    title: localized(en: "ADDING WORDS", ru: "ДОБАВЛЯЕМ СЛОВА", es: "ANADIENDO PALABRAS", uk: "ДОДАЄМО СЛОВА"),
                     accent: SpyTheme.amber
                 )
                 .frame(height: 50)
             } else {
                 SpyActionLabel(
-                    title: localized(en: "EXPAND POOL · +50", ru: "РАСШИРИТЬ ПУЛ · +50", es: "AMPLIAR BANCO · +50"),
+                    title: localized(en: "EXPAND POOL · +50", ru: "РАСШИРИТЬ ПУЛ · +50", es: "AMPLIAR BANCO · +50", uk: "РОЗШИРИТИ ПУЛ · +50"),
                     systemImage: "plus.circle.fill",
                     fontSize: 10.5,
                     iconSize: 13,
@@ -1333,7 +1345,7 @@ struct LocalGameView: View {
         } label: {
             if isSavingGeneratedPack {
                 SpyLoadingLabel(
-                    title: localized(en: "SAVING PACK", ru: "СОХРАНЕНИЕ ПАКА", es: "GUARDANDO PACK"),
+                    title: localized(en: "SAVING PACK", ru: "СОХРАНЕНИЕ ПАКА", es: "GUARDANDO PACK", uk: "ЗБЕРІГАЄМО НАБІР"),
                     accent: SpyTheme.green
                 )
                 .frame(height: 50)
@@ -1359,7 +1371,12 @@ struct LocalGameView: View {
                         .spyFitted(scale: 0.66, alignment: .trailing)
                 }
 
-                SpyWebSlider(value: $duration, range: 1...15, step: 1)
+                SpyWebSlider(
+                    value: $duration,
+                    range: 1...15,
+                    language: appState.language,
+                    step: 1
+                )
             }
         }
     }
@@ -1382,7 +1399,7 @@ struct LocalGameView: View {
             Button {
                 appState.selectedTab = .home
             } label: {
-                SpyActionLabel(title: localized(en: "BACK", ru: "НАЗАД", es: "ATRAS"), systemImage: "chevron.left", tracking: 0.02)
+                SpyActionLabel(title: localized(en: "BACK", ru: "НАЗАД", es: "ATRAS", uk: "НАЗАД"), systemImage: "chevron.left", tracking: 0.02)
             }
             .buttonStyle(SpyButtonStyle(variant: .ghost))
 
@@ -1415,13 +1432,13 @@ struct LocalGameView: View {
 
     private func localToastKind(_ message: String) -> AppToastKind {
         let upper = message.uppercased()
-        let errorMarkers = ["ERROR", "FAILED", "COULDN'T", "НЕ УДАЛ", "ОШИБ", "NO SE PUDO"]
+        let errorMarkers = ["ERROR", "FAILED", "COULDN'T", "НЕ УДАЛ", "ОШИБ", "NO SE PUDO", "НЕ ВДАЛ", "ПОМИЛ"]
         if errorMarkers.contains(where: upper.contains) {
             return .error
         }
         let successMarkers = [
             "READY", "SAVED", "REROLLED", "EXPANDED", "ГОТОВ", "СОХРАН", "ОБНОВЛЕН", "РАСШИРЕН",
-            "LISTO", "GUARDADO", "CAMBIADA", "AMPLIADO"
+            "LISTO", "GUARDADO", "CAMBIADA", "AMPLIADO", "ЗБЕРЕЖ", "ОНОВЛ", "РОЗШИР"
         ]
         if successMarkers.contains(where: upper.contains) {
             return .success
@@ -1431,32 +1448,32 @@ struct LocalGameView: View {
 
     private var localPrimaryActionTitle: String {
         if localNeedsGeneratedTheme {
-            return localized(en: "GENERATE THEME FIRST", ru: "СНАЧАЛА СГЕНЕРИРУЙ ТЕМУ", es: "GENERA EL TEMA PRIMERO")
+            return localized(en: "GENERATE THEME FIRST", ru: "СНАЧАЛА СГЕНЕРИРУЙ ТЕМУ", es: "GENERA EL TEMA PRIMERO", uk: "СПОЧАТКУ ЗГЕНЕРУЙ ТЕМУ")
         }
 
         if !localHasCustomTheme && selectedPackID == "builtin" && generatedPack == nil {
-            return localized(en: "RANDOM THEME", ru: "СЛУЧАЙНАЯ ТЕМА", es: "TEMA ALEATORIO")
+            return localized(en: "RANDOM THEME", ru: "СЛУЧАЙНАЯ ТЕМА", es: "TEMA ALEATORIO", uk: "ВИПАДКОВА ТЕМА")
         }
 
-        return localized(en: "DEAL CARDS", ru: "РАЗДАТЬ КАРТОЧКИ", es: "REPARTIR CARTAS")
+        return localized(en: "DEAL CARDS", ru: "РАЗДАТЬ КАРТОЧКИ", es: "REPARTIR CARTAS", uk: "РОЗДАТИ КАРТКИ")
     }
 
     private var localPrimaryActionDetail: String {
         if localNeedsGeneratedTheme {
-            return localized(en: "COMPLETE INTEL ABOVE", ru: "ЗАВЕРШИ ПОДГОТОВКУ INTEL", es: "COMPLETA INTEL ARRIBA")
+            return localized(en: "COMPLETE INTEL ABOVE", ru: "ЗАВЕРШИ ПОДГОТОВКУ INTEL", es: "COMPLETA INTEL ARRIBA", uk: "ЗАВЕРШИ ПІДГОТОВКУ ДАНИХ")
         }
 
         if !localHasCustomTheme && selectedPackID == "builtin" && generatedPack == nil {
-            return localized(en: "REVEAL A RANDOM FIELD POOL", ru: "ОТКРЫТЬ СЛУЧАЙНЫЙ НАБОР", es: "REVELAR UN GRUPO ALEATORIO")
+            return localized(en: "REVEAL A RANDOM FIELD POOL", ru: "ОТКРЫТЬ СЛУЧАЙНЫЙ НАБОР", es: "REVELAR UN GRUPO ALEATORIO", uk: "ВІДКРИТИ ВИПАДКОВИЙ НАБІР")
         }
 
-        return localized(en: "PASS THE DEVICE TO REVEAL ROLES", ru: "ПЕРЕДАВАЙ ТЕЛЕФОН ДЛЯ РАСКРЫТИЯ РОЛЕЙ", es: "PASA EL DISPOSITIVO PARA VER ROLES")
+        return localized(en: "PASS THE DEVICE TO REVEAL ROLES", ru: "ПЕРЕДАВАЙ ТЕЛЕФОН ДЛЯ РАСКРЫТИЯ РОЛЕЙ", es: "PASA EL DISPOSITIVO PARA VER ROLES", uk: "ПЕРЕДАВАЙ ПРИСТРІЙ, ЩОБ ВІДКРИВАТИ РОЛІ")
     }
 
     private var localDurationLabel: String {
         let seconds = max(Int((duration * 60).rounded()), 1)
         if seconds < 60 {
-            return localized(en: "\(seconds) SEC", ru: "\(seconds) СЕК", es: "\(seconds) SEG")
+            return localized(en: "\(seconds) SEC", ru: "\(seconds) СЕК", es: "\(seconds) SEG", uk: "\(seconds) СЕК")
         }
         return "\(Int(duration)) \(copy.minuteSuffix)"
     }
@@ -1495,47 +1512,49 @@ struct LocalGameView: View {
     }
 
     private var localThemeTitle: String {
-        localized(en: "THEME", ru: "ТЕМА", es: "TEMA")
+        localized(en: "THEME", ru: "ТЕМА", es: "TEMA", uk: "ТЕМА")
     }
 
     private var localUnlimitedLabel: String {
-        localized(en: "AI INTEL", ru: "AI INTEL", es: "IA INTEL")
+        localized(en: "AI INTEL", ru: "AI INTEL", es: "IA INTEL", uk: "AI-РОЗВІДКА")
     }
 
     private var localThemePlaceholder: String {
-        localized(en: "Marvel, European countries...", ru: "Marvel, страны Европы...", es: "Marvel, paises...")
+        localized(en: "Marvel, European countries...", ru: "Marvel, страны Европы...", es: "Marvel, paises...", uk: "Marvel, країни Європи...")
     }
 
     private var localCountLabel: String {
-        localized(en: "// WORDS TO CREATE", ru: "// СОЗДАТЬ СЛОВ", es: "// PALABRAS A CREAR")
+        localized(en: "// WORDS TO CREATE", ru: "// СОЗДАТЬ СЛОВ", es: "// PALABRAS A CREAR", uk: "// СЛІВ ДЛЯ СТВОРЕННЯ")
     }
 
     private var localWordsLabel: String {
-        localized(en: "WORDS IN GAME", ru: "СЛОВ В ИГРЕ", es: "PALABRAS EN JUEGO")
+        localized(en: "WORDS IN GAME", ru: "СЛОВ В ИГРЕ", es: "PALABRAS EN JUEGO", uk: "СЛІВ У ГРІ")
     }
 
     private var localAIWarning: String {
         localized(
             en: "AI may make mistakes. Double-check words before playing.",
             ru: "AI может ошибаться. Проверь слова перед игрой.",
-            es: "IA puede fallar. Revisa las palabras antes de jugar."
+            es: "IA puede fallar. Revisa las palabras antes de jugar.",
+            uk: "AI може помилятися. Перевір слова перед грою."
         )
     }
 
     private var localAddWordPlaceholder: String {
-        localized(en: "Add word...", ru: "Добавить слово...", es: "Agregar palabra...")
+        localized(en: "Add word...", ru: "Добавить слово...", es: "Agregar palabra...", uk: "Додати слово...")
     }
 
     private var localRandomThemeHint: String {
         localized(
             en: "Leave the field empty to play from a random or saved word pack.",
             ru: "Оставь поле пустым, чтобы играть со случайной темой или сохраненным паком.",
-            es: "Deja el campo vacio para jugar con un tema aleatorio o pack guardado."
+            es: "Deja el campo vacio para jugar con un tema aleatorio o pack guardado.",
+            uk: "Залиш поле порожнім, щоб грати з випадковим або збереженим набором слів."
         )
     }
 
     private var localSaveAsWordPackLabel: String {
-        localized(en: "SAVE AS WORDPACK", ru: "СОХРАНИТЬ КАК WORDPACK", es: "GUARDAR WORDPACK")
+        localized(en: "SAVE AS WORDPACK", ru: "СОХРАНИТЬ КАК WORDPACK", es: "GUARDAR WORDPACK", uk: "ЗБЕРЕГТИ ЯК НАБІР СЛІВ")
     }
 
     private var localPoolIcon: String {
@@ -1546,19 +1565,19 @@ struct LocalGameView: View {
 
     private var localPoolLabel: String {
         if localHasCustomTheme {
-            return localized(en: "GENERATED", ru: "СГЕНЕРИРОВАНО", es: "GENERADO")
+            return localized(en: "GENERATED", ru: "СГЕНЕРИРОВАНО", es: "GENERADO", uk: "ЗГЕНЕРОВАНО")
         }
         if selectedPackID != "builtin" {
-            return localized(en: "WORDPACK", ru: "WORDPACK", es: "WORDPACK")
+            return localized(en: "WORDPACK", ru: "WORDPACK", es: "WORDPACK", uk: "НАБІР СЛІВ")
         }
-        return localized(en: "RANDOM THEME", ru: "СЛУЧАЙНАЯ ТЕМА", es: "TEMA ALEATORIO")
+        return localized(en: "RANDOM THEME", ru: "СЛУЧАЙНАЯ ТЕМА", es: "TEMA ALEATORIO", uk: "ВИПАДКОВА ТЕМА")
     }
 
     private var localThemeActionTitle: String {
         if generatedPack?.words.localCleanWords.count ?? 0 >= 2 {
-            return localized(en: "REGENERATE", ru: "СГЕНЕРИРОВАТЬ ЗАНОВО", es: "REGENERAR")
+            return localized(en: "REGENERATE", ru: "СГЕНЕРИРОВАТЬ ЗАНОВО", es: "REGENERAR", uk: "ЗГЕНЕРУВАТИ ЗНОВУ")
         }
-        return localized(en: "GENERATE WORDS", ru: "СГЕНЕРИРОВАТЬ СЛОВА", es: "GENERAR PALABRAS")
+        return localized(en: "GENERATE WORDS", ru: "СГЕНЕРИРОВАТЬ СЛОВА", es: "GENERAR PALABRAS", uk: "ЗГЕНЕРУВАТИ СЛОВА")
     }
 
     private var localThemeActionIcon: String {
@@ -1573,21 +1592,22 @@ struct LocalGameView: View {
     private func localWordCountModeTitle(_ mode: LocalWordCountMode) -> String {
         switch mode {
         case .recommended:
-            localized(en: "RECOMMENDED", ru: "РЕКОМЕНДОВАНО", es: "RECOMENDADO")
+            localized(en: "RECOMMENDED", ru: "РЕКОМЕНДОВАНО", es: "RECOMENDADO", uk: "РЕКОМЕНДОВАНО")
         case .custom:
-            localized(en: "CUSTOM", ru: "СВОЙ ВЫБОР", es: "CUSTOM")
+            localized(en: "CUSTOM", ru: "СВОЙ ВЫБОР", es: "CUSTOM", uk: "ВЛАСНИЙ ВИБІР")
         }
     }
 
     private func localWordCountModeHint(_ mode: LocalWordCountMode) -> String {
         switch mode {
         case .recommended:
-            localized(en: "100 words", ru: "100 слов", es: "100 palabras")
+            localized(en: "100 words", ru: "100 слов", es: "100 palabras", uk: "100 слів")
         case .custom:
             localized(
                 en: "\(Int(localCustomWordCount)) words",
                 ru: "\(Int(localCustomWordCount)) слов",
-                es: "\(Int(localCustomWordCount)) palabras"
+                es: "\(Int(localCustomWordCount)) palabras",
+                uk: "\(Int(localCustomWordCount)) слів"
             )
         }
     }
@@ -1596,7 +1616,8 @@ struct LocalGameView: View {
         return localized(
             en: "AI POOL · \(maxWords) AVAILABLE",
             ru: "AI-ПУЛ · \(maxWords) ДОСТУПНО",
-            es: "BANCO IA · \(maxWords) DISPONIBLES"
+            es: "BANCO IA · \(maxWords) DISPONIBLES",
+            uk: "AI-ПУЛ · ДОСТУПНО \(maxWords)"
         )
     }
 
@@ -1604,19 +1625,21 @@ struct LocalGameView: View {
         localized(
             en: "\(inGame) in game · \(active)/\(total) active · tap to cross out",
             ru: "\(inGame) в игре · \(active)/\(total) активных · нажми, чтобы вычеркнуть",
-            es: "\(inGame) en juego · \(active)/\(total) activas · toca para tachar"
+            es: "\(inGame) en juego · \(active)/\(total) activas · toca para tachar",
+            uk: "\(inGame) у грі · \(active)/\(total) активних · натисни, щоб викреслити"
         )
     }
 
     private func localPoolExpansionLabel(total: Int) -> String {
         if localPoolExpanded {
-            return localized(en: "SHOW LESS", ru: "ПОКАЗАТЬ МЕНЬШЕ", es: "MOSTRAR MENOS")
+            return localized(en: "SHOW LESS", ru: "ПОКАЗАТЬ МЕНЬШЕ", es: "MOSTRAR MENOS", uk: "ПОКАЗАТИ МЕНШЕ")
         }
 
         return localized(
             en: "SHOW ALL \(total) WORDS",
             ru: "ПОКАЗАТЬ ВСЕ СЛОВА · \(total)",
-            es: "MOSTRAR \(total) PALABRAS"
+            es: "MOSTRAR \(total) PALABRAS",
+            uk: "ПОКАЗАТИ ВСІ СЛОВА · \(total)"
         )
     }
 
@@ -1774,13 +1797,15 @@ struct LocalGameView: View {
             localized(
                 en: "Ask direct questions in a rotating pair. Best when players want a sharper interrogation rhythm.",
                 ru: "Игроки задают вопросы по очереди. Лучше для жесткого ритма допроса.",
-                es: "Haz preguntas directas por turnos. Ideal para un ritmo mas tactico."
+                es: "Haz preguntas directas por turnos. Ideal para un ritmo mas tactico.",
+                uk: "Ставте прямі запитання по черзі. Найкраще для гострішого ритму допиту."
             )
         case .associations:
             localized(
                 en: "Each player says one association. Best when the table wants a fast, web-style clue chain.",
                 ru: "Каждый говорит одну ассоциацию. Ближе к web-ритму с быстрой цепочкой подсказок.",
-                es: "Cada jugador dice una asociacion. Ideal para una cadena rapida de pistas."
+                es: "Cada jugador dice una asociacion. Ideal para una cadena rapida de pistas.",
+                uk: "Кожен гравець називає одну асоціацію. Найкраще для швидкого ланцюжка підказок."
             )
         }
     }
@@ -1788,9 +1813,9 @@ struct LocalGameView: View {
     private func localModeMicrocopy(_ mode: LocalMode) -> String {
         switch mode {
         case .questions:
-            localized(en: "ASK / ANSWER", ru: "ВОПРОС / ОТВЕТ", es: "PREGUNTA / RESPONDE")
+            localized(en: "ASK / ANSWER", ru: "ВОПРОС / ОТВЕТ", es: "PREGUNTA / RESPONDE", uk: "ЗАПИТУЄ / ВІДПОВІДАЄ")
         case .associations:
-            localized(en: "ONE CLUE EACH", ru: "ПО ОДНОЙ ПОДСКАЗКЕ", es: "UNA PISTA")
+            localized(en: "ONE CLUE EACH", ru: "ПО ОДНОЙ ПОДСКАЗКЕ", es: "UNA PISTA", uk: "ПО ОДНІЙ ПІДКАЗЦІ")
         }
     }
 
@@ -1828,7 +1853,7 @@ struct LocalGameView: View {
                         rerollBuiltinPreview()
                     } label: {
                         SpyActionLabel(
-                            title: localized(en: "REROLL", ru: "ДРУГОЙ", es: "OTRO"),
+                            title: localized(en: "REROLL", ru: "ДРУГОЙ", es: "OTRO", uk: "ІНШИЙ"),
                             systemImage: "arrow.clockwise",
                             fontSize: 9,
                             iconSize: 11,
@@ -1991,7 +2016,7 @@ struct LocalGameView: View {
                     .buttonStyle(SpyWebPressStyle())
                     .spyHitTarget()
                     .contentShape(Rectangle())
-                    .accessibilityLabel(localized(en: "Remove \(word)", ru: "Удалить \(word)", es: "Eliminar \(word)"))
+                    .accessibilityLabel(localized(en: "Remove \(word)", ru: "Удалить \(word)", es: "Eliminar \(word)", uk: "Видалити \(word)"))
                 }
                 .foregroundStyle(isEnabled ? SpyTheme.bodyText : SpyTheme.dim.opacity(0.38))
                 .padding(.horizontal, 8)
@@ -2050,7 +2075,7 @@ struct LocalGameView: View {
                     revealed: cardRevealed,
                     copy: copy,
                     language: appState.language,
-                    dontShow: localized(en: "DON'T SHOW OTHERS", ru: "НЕ ПОКАЗЫВАЙ ДРУГИМ", es: "NO MUESTRES A OTROS")
+                    dontShow: localized(en: "DON'T SHOW OTHERS", ru: "НЕ ПОКАЗЫВАЙ ДРУГИМ", es: "NO MUESTRES A OTROS", uk: "НЕ ПОКАЗУЙ ІНШИМ")
                 )
                     .onTapGesture {
                         if !cardRevealed {
@@ -2133,21 +2158,22 @@ struct LocalGameView: View {
     private func associationVectorPanel(_ session: LocalSession) -> some View {
         SpyPanel {
             VStack(alignment: .leading, spacing: 14) {
-                Text(localized(en: "// ASSOCIATION DRUM", ru: "// БАРАБАН АССОЦИАЦИЙ", es: "// TAMBOR DE ASOCIACIONES"))
+                Text(localized(en: "// ASSOCIATION DRUM", ru: "// БАРАБАН АССОЦИАЦИЙ", es: "// TAMBOR DE ASOCIACIONES", uk: "// БАРАБАН АСОЦІАЦІЙ"))
                     .font(SpyTheme.micro)
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker(lines: 2)
 
                 HStack(spacing: 10) {
-                    localConfigTile(title: localized(en: "SPEAKER", ru: "ГОВОРИТ", es: "HABLA"), value: currentAsker(in: session)?.name.uppercased() ?? copy.pending)
-                    localConfigTile(title: localized(en: "ROUND", ru: "РАУНД", es: "RONDA"), value: "\(questionIndex + 1)")
+                    localConfigTile(title: localized(en: "SPEAKER", ru: "ГОВОРИТ", es: "HABLA", uk: "ГОВОРИТЬ"), value: currentAsker(in: session)?.name.uppercased() ?? copy.pending)
+                    localConfigTile(title: localized(en: "ROUND", ru: "РАУНД", es: "RONDA", uk: "РАУНД"), value: "\(questionIndex + 1)")
                 }
 
                 Text(localized(
                     en: "Say one association for the hidden word. Keep the tempo moving, listen for weak links, then call the final vote.",
                     ru: "Назови одну ассоциацию к скрытому слову. Держи темп, слушай слабые связи и затем запускай финальный голос.",
-                    es: "Di una asociacion para la palabra oculta. Mantén el ritmo, detecta enlaces debiles y llama el voto final."
+                    es: "Di una asociacion para la palabra oculta. Mantén el ritmo, detecta enlaces debiles y llama el voto final.",
+                    uk: "Назви одну асоціацію до прихованого слова. Тримай темп, слухай слабкі звʼязки, а потім починай фінальне голосування."
                 ))
                 .font(SpyTheme.mono)
                 .foregroundStyle(SpyTheme.muted)
@@ -2158,7 +2184,7 @@ struct LocalGameView: View {
 
     private var localPlayingHeader: some View {
         HStack {
-            Text(localized(en: "// PLAYING", ru: "// ИГРА", es: "// JUGANDO"))
+            Text(localized(en: "// PLAYING", ru: "// ИГРА", es: "// JUGANDO", uk: "// ГРА"))
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .tracking(0.16)
                 .foregroundStyle(SpyTheme.dim)
@@ -2174,7 +2200,7 @@ struct LocalGameView: View {
                 HStack(spacing: 5) {
                     Image(systemName: "xmark")
                         .font(.system(size: 9, weight: .black))
-                    Text(localized(en: "STOP", ru: "СТОП", es: "PARAR"))
+                    Text(localized(en: "STOP", ru: "СТОП", es: "PARAR", uk: "ЗУПИНИТИ"))
                         .font(.system(size: 10, weight: .black, design: .monospaced))
                         .tracking(0.08)
                 }
@@ -2192,8 +2218,8 @@ struct LocalGameView: View {
     private var localTimerStrip: some View {
         HStack(spacing: 12) {
             Text(isLocalGamePaused
-                ? localized(en: "PAUSED", ru: "ПАУЗА", es: "PAUSA")
-                : localized(en: "TIME LEFT", ru: "ОСТАЛОСЬ", es: "QUEDA"))
+                ? localized(en: "PAUSED", ru: "ПАУЗА", es: "PAUSA", uk: "ПАУЗА")
+                : localized(en: "TIME LEFT", ru: "ОСТАЛОСЬ", es: "QUEDA", uk: "ЗАЛИШИЛОСЯ"))
                 .font(.system(size: 10, weight: .black, design: .monospaced))
                 .tracking(0.08)
                 .foregroundStyle(isLocalGamePaused ? SpyTheme.red : SpyTheme.dim)
@@ -2218,8 +2244,8 @@ struct LocalGameView: View {
 
             localRoundUtilityButton(
                 title: isLocalGamePaused
-                    ? localized(en: "RESUME", ru: "ИГРАТЬ", es: "SEGUIR")
-                    : localized(en: "PAUSE", ru: "ПАУЗА", es: "PAUSA"),
+                    ? localized(en: "RESUME", ru: "ИГРАТЬ", es: "SEGUIR", uk: "ПРОДОВЖИТИ")
+                    : localized(en: "PAUSE", ru: "ПАУЗА", es: "PAUSA", uk: "ПАУЗА"),
                 systemImage: isLocalGamePaused ? "play.fill" : "pause.fill",
                 accessibilityID: "localGame.pause"
             ) {
@@ -2227,7 +2253,7 @@ struct LocalGameView: View {
             }
 
             localRoundUtilityButton(
-                title: localized(en: "CARD", ru: "КАРТА", es: "CARTA"),
+                title: localized(en: "CARD", ru: "КАРТА", es: "CARTA", uk: "КАРТКА"),
                 systemImage: "rectangle.portrait.on.rectangle.portrait",
                 accessibilityID: "localGame.forgotCard"
             ) {
@@ -2269,7 +2295,7 @@ struct LocalGameView: View {
                     .font(.system(size: 34, weight: .black))
                     .foregroundStyle(SpyTheme.red)
 
-                Text(localized(en: "GAME PAUSED", ru: "ИГРА НА ПАУЗЕ", es: "JUEGO EN PAUSA"))
+                Text(localized(en: "GAME PAUSED", ru: "ИГРА НА ПАУЗЕ", es: "JUEGO EN PAUSA", uk: "ГРУ ПРИЗУПИНЕНО"))
                     .font(.system(size: 20, weight: .black, design: .default))
                     .tracking(0.08)
                     .foregroundStyle(.white)
@@ -2278,14 +2304,15 @@ struct LocalGameView: View {
                 Text(localized(
                     en: "The timer and round actions are stopped.",
                     ru: "Таймер и игровые действия остановлены.",
-                    es: "El temporizador y las acciones estan detenidos."
+                    es: "El temporizador y las acciones estan detenidos.",
+                    uk: "Таймер і дії раунду зупинено."
                 ))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(SpyTheme.dim)
                 .multilineTextAlignment(.center)
 
                 localCompactActionButton(
-                    title: localized(en: "RESUME GAME", ru: "ПРОДОЛЖИТЬ ИГРУ", es: "CONTINUAR JUEGO"),
+                    title: localized(en: "RESUME GAME", ru: "ПРОДОЛЖИТЬ ИГРУ", es: "CONTINUAR JUEGO", uk: "ПРОДОВЖИТИ ГРУ"),
                     prefix: "▶",
                     primary: true
                 ) {
@@ -2301,7 +2328,7 @@ struct LocalGameView: View {
         let activeIndices = activeLocalPlayerIndices(in: session)
         return localCompactPanel(accent: SpyTheme.muted) {
             VStack(alignment: .leading, spacing: 8) {
-                Text("\(localized(en: "AGENTS", ru: "АГЕНТЫ", es: "AGENTES")) (\(activeIndices.count))")
+                Text("\(localized(en: "AGENTS", ru: "АГЕНТЫ", es: "AGENTES", uk: "АГЕНТИ")) (\(activeIndices.count))")
                     .font(.system(size: 10, weight: .black, design: .monospaced))
                     .tracking(0.08)
                     .foregroundStyle(SpyTheme.dim)
@@ -2319,7 +2346,7 @@ struct LocalGameView: View {
     private func localActivePairCard(_ session: LocalSession) -> some View {
         localCompactPanel(accent: SpyTheme.red, fillHeight: true) {
             VStack(spacing: 14) {
-                Text(localized(en: "ACTIVE PAIR", ru: "АКТИВНАЯ ПАРА", es: "PAREJA ACTIVA"))
+                Text(localized(en: "ACTIVE PAIR", ru: "АКТИВНАЯ ПАРА", es: "PAREJA ACTIVA", uk: "АКТИВНА ПАРА"))
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .tracking(0.18)
                     .foregroundStyle(SpyTheme.dim)
@@ -2327,7 +2354,7 @@ struct LocalGameView: View {
 
                 HStack(alignment: .center, spacing: 12) {
                     localPairAgentCell(
-                        title: localized(en: "ASKS", ru: "СПРАШИВАЕТ", es: "PREGUNTA"),
+                        title: localized(en: "ASKS", ru: "СПРАШИВАЕТ", es: "PREGUNTA", uk: "ЗАПИТУЄ"),
                         player: currentAsker(in: session),
                         color: SpyTheme.red
                     )
@@ -2338,14 +2365,14 @@ struct LocalGameView: View {
                         .symbolEffect(.pulse, value: questionIndex)
 
                     localPairAgentCell(
-                        title: localized(en: "ANSWERS", ru: "ОТВЕЧАЕТ", es: "RESPONDE"),
+                        title: localized(en: "ANSWERS", ru: "ОТВЕЧАЕТ", es: "RESPONDE", uk: "ВІДПОВІДАЄ"),
                         player: currentAnswerer(in: session),
                         color: .white
                     )
                 }
 
                 localCompactActionButton(
-                    title: localized(en: "NEXT PAIR", ru: "СЛЕДУЮЩАЯ ПАРА", es: "SIGUIENTE PAREJA"),
+                    title: localized(en: "NEXT PAIR", ru: "СЛЕДУЮЩАЯ ПАРА", es: "SIGUIENTE PAREJA", uk: "НАСТУПНА ПАРА"),
                     prefix: "↻",
                     primary: false
                 ) {
@@ -2365,7 +2392,7 @@ struct LocalGameView: View {
                 localAssociationRoulette(session)
             } else {
                 VStack(spacing: 12) {
-                    Text(localized(en: "SAYS ASSOCIATION", ru: "ГОВОРИТ АССОЦИАЦИЮ", es: "DICE ASOCIACION"))
+                    Text(localized(en: "SAYS ASSOCIATION", ru: "ГОВОРИТ АССОЦИАЦИЮ", es: "DICE ASOCIACION", uk: "НАЗИВАЄ АСОЦІАЦІЮ"))
                         .font(.system(size: 9, weight: .black, design: .monospaced))
                         .tracking(0.18)
                         .foregroundStyle(SpyTheme.dim)
@@ -2385,8 +2412,8 @@ struct LocalGameView: View {
 
                     localCompactActionButton(
                         title: isRoundEnd
-                            ? localized(en: "NEW ROUND", ru: "НОВЫЙ РАУНД", es: "NUEVA RONDA")
-                            : localized(en: "NEXT PLAYER", ru: "СЛЕДУЮЩИЙ ИГРОК", es: "SIGUIENTE JUGADOR"),
+                            ? localized(en: "NEW ROUND", ru: "НОВЫЙ РАУНД", es: "NUEVA RONDA", uk: "НОВИЙ РАУНД")
+                            : localized(en: "NEXT PLAYER", ru: "СЛЕДУЮЩИЙ ИГРОК", es: "SIGUIENTE JUGADOR", uk: "НАСТУПНИЙ ГРАВЕЦЬ"),
                         prefix: isRoundEnd ? "🎲" : "↻",
                         primary: false
                     ) {
@@ -2416,7 +2443,7 @@ struct LocalGameView: View {
             let previewPlayer = previewIndex.flatMap { session.players[safe: $0] } ?? currentAsker(in: session)
 
             VStack(spacing: 12) {
-                Text(localized(en: "ASSOCIATION ROULETTE", ru: "РУЛЕТКА АССОЦИАЦИЙ", es: "RULETA DE ASOCIACIONES"))
+                Text(localized(en: "ASSOCIATION ROULETTE", ru: "РУЛЕТКА АССОЦИАЦИЙ", es: "RULETA DE ASOCIACIONES", uk: "РУЛЕТКА АСОЦІАЦІЙ"))
                     .font(.system(size: 9, weight: .black, design: .monospaced))
                     .tracking(0.18)
                     .foregroundStyle(SpyTheme.dim)
@@ -2427,7 +2454,7 @@ struct LocalGameView: View {
                     .frame(height: 64)
                     .shadow(color: SpyTheme.red.opacity(0.35), radius: 18)
 
-                Text(localized(en: "SELECTING OPERATIVE", ru: "ВЫБОР ОПЕРАТИВНИКА", es: "ELIGIENDO OPERATIVO"))
+                Text(localized(en: "SELECTING OPERATIVE", ru: "ВЫБОР ОПЕРАТИВНИКА", es: "ELIGIENDO OPERATIVO", uk: "ОБИРАЄМО ОПЕРАТИВНИКА"))
                     .font(.system(size: 14, weight: .black, design: .default))
                     .tracking(0.10)
                     .foregroundStyle(SpyTheme.red)
@@ -2555,7 +2582,7 @@ struct LocalGameView: View {
                         .scaleEffect(guessSecondsRemaining <= 10 ? 1.05 : 1)
                         .animation(.smooth(duration: 0.2), value: guessSecondsRemaining)
 
-                    Text(localized(en: "TIME'S UP!", ru: "ВРЕМЯ ВЫШЛО!", es: "TIEMPO TERMINADO"))
+                    Text(localized(en: "TIME'S UP!", ru: "ВРЕМЯ ВЫШЛО!", es: "TIEMPO TERMINADO", uk: "ЧАС ВИЙШОВ!"))
                         .font(.system(size: 36, weight: .black, design: .default))
                         .tracking(0.06)
                         .foregroundStyle(SpyTheme.red)
@@ -2568,8 +2595,8 @@ struct LocalGameView: View {
                         VStack(spacing: 8) {
                             Text(
                                 session.spiesKnowEachOther
-                                    ? localized(en: "Pass phone to the spy team:", ru: "Передай телефон команде шпионов:", es: "Pasa el telefono al equipo de espias:")
-                                    : localized(en: "Pass the phone to any spy.", ru: "Передай телефон любому шпиону.", es: "Pasa el telefono a cualquier espia.")
+                                    ? localized(en: "Pass phone to the spy team:", ru: "Передай телефон команде шпионов:", es: "Pasa el telefono al equipo de espias:", uk: "Передай телефон команді шпигунів:")
+                                    : localized(en: "Pass the phone to any spy.", ru: "Передай телефон любому шпиону.", es: "Pasa el telefono a cualquier espia.", uk: "Передай телефон будь-якому шпигуну.")
                             )
                                 .font(.system(size: 13, weight: .semibold, design: .default))
                                 .foregroundStyle(SpyTheme.dim)
@@ -2602,7 +2629,7 @@ struct LocalGameView: View {
                         HapticManager.shared.fire(.buttonPress)
                     } label: {
                         SpyActionLabel(
-                            title: localized(en: "GUESS THE WORD", ru: "УГАДАТЬ СЛОВО", es: "ADIVINAR PALABRA"),
+                            title: localized(en: "GUESS THE WORD", ru: "УГАДАТЬ СЛОВО", es: "ADIVINAR PALABRA", uk: "ВГАДАТИ СЛОВО"),
                             systemImage: "scope",
                             tracking: 0.02,
                             lines: 2
@@ -2628,8 +2655,8 @@ struct LocalGameView: View {
         return VStack(spacing: 4) {
             Text(
                 activeSpyCount > 1
-                    ? localized(en: "SPY TEAM HAS", ru: "У КОМАНДЫ ШПИОНОВ", es: "EL EQUIPO DE ESPIAS TIENE")
-                    : localized(en: "SPY HAS", ru: "У ШПИОНА", es: "EL ESPIA TIENE")
+                    ? localized(en: "SPY TEAM HAS", ru: "У КОМАНДЫ ШПИОНОВ", es: "EL EQUIPO DE ESPIAS TIENE", uk: "У КОМАНДИ ШПИГУНІВ Є")
+                    : localized(en: "SPY HAS", ru: "У ШПИОНА", es: "EL ESPIA TIENE", uk: "У ШПИГУНА Є")
             )
                 .font(SpyTheme.micro)
                 .tracking(0.08)
@@ -2642,7 +2669,7 @@ struct LocalGameView: View {
                 .foregroundStyle(guessSecondsRemaining <= 10 ? SpyTheme.red : .white)
                 .contentTransition(.numericText())
 
-            Text(localized(en: "TO GUESS", ru: "ЧТОБЫ УГАДАТЬ", es: "PARA ADIVINAR"))
+            Text(localized(en: "TO GUESS", ru: "ЧТОБЫ УГАДАТЬ", es: "PARA ADIVINAR", uk: "ЩОБ ВГАДАТИ"))
                 .font(SpyTheme.micro)
                 .tracking(0.08)
                 .foregroundStyle(SpyTheme.dim)
@@ -2661,13 +2688,13 @@ struct LocalGameView: View {
 
             SpyPanel(accent: SpyTheme.red) {
                 VStack(alignment: .leading, spacing: 16) {
-                    Text(localized(en: "SPY GUESS", ru: "ДОГАДКА ШПИОНА", es: "INTENTO DEL ESPIA"))
+                    Text(localized(en: "SPY GUESS", ru: "ДОГАДКА ШПИОНА", es: "INTENTO DEL ESPIA", uk: "ЗДОГАДКА ШПИГУНА"))
                         .font(SpyTheme.micro)
                         .tracking(0.18)
                         .foregroundStyle(SpyTheme.red)
                         .spyKicker(lines: 2)
 
-                    Text(localized(en: "CHOOSE THE SECRET WORD", ru: "ВЫБЕРИ СЕКРЕТНОЕ СЛОВО", es: "ELIGE LA PALABRA SECRETA"))
+                    Text(localized(en: "CHOOSE THE SECRET WORD", ru: "ВЫБЕРИ СЕКРЕТНОЕ СЛОВО", es: "ELIGE LA PALABRA SECRETA", uk: "ОБЕРИ СЕКРЕТНЕ СЛОВО"))
                         .font(.system(size: 20, weight: .black, design: .default))
                         .tracking(0.08)
                         .foregroundStyle(.white)
@@ -2698,7 +2725,7 @@ struct LocalGameView: View {
                             }
                             HapticManager.shared.fire(.buttonPress)
                         } label: {
-                            Text(localized(en: "CANCEL", ru: "ОТМЕНА", es: "CANCELAR"))
+                            Text(localized(en: "CANCEL", ru: "ОТМЕНА", es: "CANCELAR", uk: "СКАСУВАТИ"))
                                 .frame(maxWidth: .infinity)
                         }
                         .buttonStyle(SpyButtonStyle(variant: .ghost))
@@ -2707,7 +2734,7 @@ struct LocalGameView: View {
                             guard let pendingSpyGuess else { return }
                             resolveSpyGuess(pendingSpyGuess, session: session)
                         } label: {
-                            Text(pendingSpyGuess.map { "▶ \($0.uppercased())" } ?? localized(en: "CHOOSE", ru: "ВЫБРАТЬ", es: "ELEGIR"))
+                            Text(pendingSpyGuess.map { "▶ \($0.uppercased())" } ?? localized(en: "CHOOSE", ru: "ВЫБРАТЬ", es: "ELEGIR", uk: "ОБРАТИ"))
                                 .lineLimit(1)
                                 .minimumScaleFactor(0.54)
                                 .frame(maxWidth: .infinity)
@@ -2808,7 +2835,7 @@ struct LocalGameView: View {
 
                 if !session.spyPlayers.isEmpty {
                     VStack(spacing: 6) {
-                        Text(localized(en: "SPIES WERE", ru: "ШПИОНАМИ БЫЛИ", es: "LOS ESPIAS ERAN"))
+                        Text(localized(en: "SPIES WERE", ru: "ШПИОНАМИ БЫЛИ", es: "LOS ESPIAS ERAN", uk: "ШПИГУНАМИ БУЛИ"))
                             .font(.system(size: 9, weight: .black, design: .monospaced))
                             .tracking(0.08)
                             .foregroundStyle(SpyTheme.dim)
@@ -2827,7 +2854,7 @@ struct LocalGameView: View {
                         startLocalGame()
                     } label: {
                         SpyActionLabel(
-                            title: localized(en: "PLAY AGAIN", ru: "СЫГРАТЬ ЕЩЁ", es: "JUGAR OTRA VEZ"),
+                            title: localized(en: "PLAY AGAIN", ru: "СЫГРАТЬ ЕЩЁ", es: "JUGAR OTRA VEZ", uk: "ЗІГРАТИ ЩЕ РАЗ"),
                             systemImage: "arrow.clockwise",
                             tracking: 0.04,
                             lines: 1
@@ -2840,7 +2867,7 @@ struct LocalGameView: View {
                         appState.selectedTab = .home
                     } label: {
                         SpyActionLabel(
-                            title: localized(en: "HOME", ru: "НА ГЛАВНУЮ", es: "INICIO"),
+                            title: localized(en: "HOME", ru: "НА ГЛАВНУЮ", es: "INICIO", uk: "НА ГОЛОВНУ"),
                             systemImage: "chevron.left",
                             tracking: 0.04,
                             lines: 1
@@ -2859,7 +2886,7 @@ struct LocalGameView: View {
 
     private func localResultWordPanel(_ session: LocalSession) -> some View {
         VStack(spacing: 8) {
-                Text(localized(en: "SECRET WORD", ru: "СЕКРЕТНОЕ СЛОВО", es: "PALABRA SECRETA"))
+                Text(localized(en: "SECRET WORD", ru: "СЕКРЕТНОЕ СЛОВО", es: "PALABRA SECRETA", uk: "СЕКРЕТНЕ СЛОВО"))
                     .font(SpyTheme.micro)
                     .tracking(0.18)
                     .foregroundStyle(SpyTheme.dim)
@@ -2909,7 +2936,7 @@ struct LocalGameView: View {
     }
 
     private var nextAssociationTitle: String {
-        localized(en: "NEXT ASSOCIATION", ru: "СЛЕДУЮЩАЯ АССОЦИАЦИЯ", es: "SIGUIENTE ASOCIACION")
+        localized(en: "NEXT ASSOCIATION", ru: "СЛЕДУЮЩАЯ АССОЦИАЦИЯ", es: "SIGUIENTE ASOCIACION", uk: "НАСТУПНА АСОЦІАЦІЯ")
     }
 
     private func settingSlider(_ title: String, value: Binding<Double>, range: ClosedRange<Double>, suffix: String) -> some View {
@@ -2927,7 +2954,12 @@ struct LocalGameView: View {
                     .foregroundStyle(SpyTheme.red)
                     .spyFitted(scale: 0.62, alignment: .trailing)
             }
-            SpyWebSlider(value: value, range: range, step: 1)
+            SpyWebSlider(
+                value: value,
+                range: range,
+                language: appState.language,
+                step: 1
+            )
         }
     }
 
@@ -2984,18 +3016,18 @@ struct LocalGameView: View {
                 source: localPoolDraft.source,
                 words: words,
                 countLabel: "\(words.count) \(copy.wordsSuffix)",
-                emptyMessage: localized(en: "Add at least one active word before dealing cards.", ru: "Добавь хотя бы одно активное слово перед раздачей.", es: "Agrega al menos una palabra activa antes de repartir.")
+                emptyMessage: localized(en: "Add at least one active word before dealing cards.", ru: "Добавь хотя бы одно активное слово перед раздачей.", es: "Agrega al menos una palabra activa antes de repartir.", uk: "Додай хоча б одне активне слово перед роздаванням карток.")
             )
         }
 
         if selectedPackID == "generated", let generatedPack {
             let words = generatedPack.words.localCleanWords
             return LocalPoolSnapshot(
-                category: generatedPack.category.nilIfBlank ?? customTheme.nilIfBlank ?? "CUSTOM",
-                source: localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO"),
+                category: generatedPack.category.nilIfBlank ?? customTheme.nilIfBlank ?? customCategoryFallback,
+                source: localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO", uk: "ЗГЕНЕРОВАНО AI"),
                 words: words,
                 countLabel: "\(words.count) \(copy.wordsSuffix)",
-                emptyMessage: localized(en: "Generate a theme before dealing cards.", ru: "Сгенерируй тему перед раздачей карт.", es: "Genera un tema antes de repartir.")
+                emptyMessage: localized(en: "Generate a theme before dealing cards.", ru: "Сгенерируй тему перед раздачей карт.", es: "Genera un tema antes de repartir.", uk: "Згенеруй тему перед роздаванням карток.")
             )
         }
 
@@ -3005,20 +3037,20 @@ struct LocalGameView: View {
             let words = generatedPack.words.localCleanWords
             return LocalPoolSnapshot(
                 category: generatedPack.category.nilIfBlank ?? builtinPreviewCategory,
-                source: localized(en: "BUILT-IN INTEL", ru: "ВСТРОЕННЫЙ INTEL", es: "INTEL INTEGRADA"),
+                source: localized(en: "BUILT-IN INTEL", ru: "ВСТРОЕННЫЙ INTEL", es: "INTEL INTEGRADA", uk: "ВБУДОВАНА РОЗВІДКА"),
                 words: words,
                 countLabel: "\(words.count) \(copy.wordsSuffix)",
-                emptyMessage: localized(en: "Built-in pool is unavailable.", ru: "Встроенный пул недоступен.", es: "Banco integrado no disponible.")
+                emptyMessage: localized(en: "Built-in pool is unavailable.", ru: "Встроенный пул недоступен.", es: "Banco integrado no disponible.", uk: "Вбудований пул недоступний.")
             )
         }
 
         if localHasCustomTheme {
             return LocalPoolSnapshot(
-                category: customTheme.nilIfBlank ?? "CUSTOM",
-                source: localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO"),
+                category: customTheme.nilIfBlank ?? customCategoryFallback,
+                source: localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO", uk: "ЗГЕНЕРОВАНО AI"),
                 words: [],
                 countLabel: "0 \(copy.wordsSuffix)",
-                emptyMessage: localized(en: "Generate a theme before dealing cards.", ru: "Сгенерируй тему перед раздачей карт.", es: "Genera un tema antes de repartir.")
+                emptyMessage: localized(en: "Generate a theme before dealing cards.", ru: "Сгенерируй тему перед раздачей карт.", es: "Genera un tema antes de repartir.", uk: "Згенеруй тему перед роздаванням карток.")
             )
         }
 
@@ -3027,10 +3059,10 @@ struct LocalGameView: View {
             let words = pack.words?.localCleanWords ?? []
             return LocalPoolSnapshot(
                 category: pack.category?.nilIfBlank ?? pack.name,
-                source: localized(en: "WORD PACK", ru: "WORDPACK", es: "WORDPACK"),
+                source: localized(en: "WORD PACK", ru: "WORDPACK", es: "WORDPACK", uk: "НАБІР СЛІВ"),
                 words: words,
                 countLabel: "\(words.count) \(copy.wordsSuffix)",
-                emptyMessage: localized(en: "This pack is empty. Choose another source.", ru: "Этот пак пуст. Выбери другой источник.", es: "Este pack esta vacio. Elige otra fuente.")
+                emptyMessage: localized(en: "This pack is empty. Choose another source.", ru: "Этот пак пуст. Выбери другой источник.", es: "Este pack esta vacio. Elige otra fuente.", uk: "Цей набір порожній. Обери інше джерело.")
             )
         }
 
@@ -3038,10 +3070,10 @@ struct LocalGameView: View {
         let words = (localWordPools[category] ?? localWordPools["CLASSIC"] ?? []).localCleanWords
         return LocalPoolSnapshot(
             category: category,
-            source: localized(en: "BUILT-IN INTEL", ru: "ВСТРОЕННЫЙ INTEL", es: "INTEL INTEGRADA"),
+            source: localized(en: "BUILT-IN INTEL", ru: "ВСТРОЕННЫЙ INTEL", es: "INTEL INTEGRADA", uk: "ВБУДОВАНА РОЗВІДКА"),
             words: words,
             countLabel: "\(words.count) \(copy.wordsSuffix)",
-            emptyMessage: localized(en: "Built-in pool is unavailable.", ru: "Встроенный пул недоступен.", es: "Banco integrado no disponible.")
+            emptyMessage: localized(en: "Built-in pool is unavailable.", ru: "Встроенный пул недоступен.", es: "Banco integrado no disponible.", uk: "Вбудований пул недоступний.")
         )
     }
 
@@ -3105,7 +3137,7 @@ struct LocalGameView: View {
         SpyPanel(accent: revealRoles ? SpyTheme.green : SpyTheme.muted) {
             VStack(alignment: .leading, spacing: 12) {
                 HStack(alignment: .firstTextBaseline) {
-                        Text(localized(en: "// SESSION ROSTER", ru: "// СОСТАВ СЕССИИ", es: "// LISTA DE SESION"))
+                        Text(localized(en: "// SESSION ROSTER", ru: "// СОСТАВ СЕССИИ", es: "// LISTA DE SESION", uk: "// СКЛАД СЕСІЇ"))
                             .font(SpyTheme.micro)
                             .tracking(0.12)
                         .foregroundStyle(SpyTheme.dim)
@@ -3122,8 +3154,8 @@ struct LocalGameView: View {
 
                 HStack(spacing: 10) {
                     localConfigTile(title: copy.categoryLabel, value: session.category.uppercased())
-                    localConfigTile(title: localized(en: "OPERATIVES", ru: "ИГРОКИ", es: "AGENTES"), value: "\(session.players.count)")
-                    localConfigTile(title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS"), value: "\(session.spyPlayers.count)")
+                    localConfigTile(title: localized(en: "OPERATIVES", ru: "ИГРОКИ", es: "AGENTES", uk: "ОПЕРАТИВНИКИ"), value: "\(session.players.count)")
+                    localConfigTile(title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS", uk: "ШПИГУНИ"), value: "\(session.spyPlayers.count)")
                 }
 
                 if revealRoles {
@@ -3180,12 +3212,12 @@ struct LocalGameView: View {
             Spacer()
 
             if revealRoles {
-                localBadge(player.isSpy ? copy.spyLabel : localized(en: "CLEAR", ru: "ЧИСТ", es: "LIMPIO"), color: player.isSpy ? SpyTheme.red : SpyTheme.green)
+                localBadge(player.isSpy ? copy.spyLabel : localized(en: "CLEAR", ru: "ЧИСТ", es: "LIMPIO", uk: "ЧИСТИЙ"), color: player.isSpy ? SpyTheme.red : SpyTheme.green)
             } else if isEliminated {
                 localBadge(
                     player.isSpy
-                        ? localized(en: "SPY OUT", ru: "ШПИОН ВЫБЫЛ", es: "ESPIA FUERA")
-                        : localized(en: "DETECTIVE OUT", ru: "ДЕТЕКТИВ ВЫБЫЛ", es: "DETECTIVE FUERA"),
+                        ? localized(en: "SPY OUT", ru: "ШПИОН ВЫБЫЛ", es: "ESPIA FUERA", uk: "ШПИГУН ВИБУВ")
+                        : localized(en: "DETECTIVE OUT", ru: "ДЕТЕКТИВ ВЫБЫЛ", es: "DETECTIVE FUERA", uk: "ДЕТЕКТИВ ВИБУВ"),
                     color: player.isSpy ? SpyTheme.red : SpyTheme.green
                 )
             } else if isAsker {
@@ -3193,7 +3225,7 @@ struct LocalGameView: View {
             } else if isAnswerer {
                 localBadge(copy.answer, color: SpyTheme.green)
             } else if isSpeaker {
-                localBadge(localized(en: "SPEAKER", ru: "ГОВОРИТ", es: "HABLA"), color: SpyTheme.red)
+                localBadge(localized(en: "SPEAKER", ru: "ГОВОРИТ", es: "HABLA", uk: "ГОВОРИТЬ"), color: SpyTheme.red)
             }
         }
         .padding(10)
@@ -3208,14 +3240,14 @@ struct LocalGameView: View {
         guard session.players.indices.contains(index) else { return copy.pending }
         if eliminatedPlayerIndices.contains(index) {
             return session.players[index].isSpy
-                ? localized(en: "SPY — EXCLUDED", ru: "ШПИОН — ИСКЛЮЧЁН", es: "ESPIA — EXCLUIDO")
-                : localized(en: "DETECTIVE — EXCLUDED", ru: "ДЕТЕКТИВ — ИСКЛЮЧЁН", es: "DETECTIVE — EXCLUIDO")
+                ? localized(en: "SPY — EXCLUDED", ru: "ШПИОН — ИСКЛЮЧЁН", es: "ESPIA — EXCLUIDO", uk: "ШПИГУН — ВИКЛЮЧЕНИЙ")
+                : localized(en: "DETECTIVE — EXCLUDED", ru: "ДЕТЕКТИВ — ИСКЛЮЧЁН", es: "DETECTIVE — EXCLUIDO", uk: "ДЕТЕКТИВ — ВИКЛЮЧЕНИЙ")
         }
         let player = session.players[index]
 
         if session.mode == .associations {
             return player.id == currentAsker(in: session)?.id
-                ? localized(en: "ASSOCIATION TURN", ru: "ХОД АССОЦИАЦИИ", es: "TURNO DE ASOCIACION")
+                ? localized(en: "ASSOCIATION TURN", ru: "ХОД АССОЦИАЦИИ", es: "TURNO DE ASOCIACION", uk: "ХІД АСОЦІАЦІЇ")
                 : copy.pending
         }
 
@@ -3318,7 +3350,7 @@ struct LocalGameView: View {
         localPoolExpanded = false
         disabledPoolWordKeys.removeAll()
         clearLocalPoolDraft()
-        status = localized(en: "BUILT-IN INTEL REROLLED", ru: "ВСТРОЕННЫЙ INTEL ОБНОВЛЕН", es: "INTEL INTEGRADA CAMBIADA")
+        status = localized(en: "BUILT-IN INTEL REROLLED", ru: "ВСТРОЕННЫЙ INTEL ОБНОВЛЕН", es: "INTEL INTEGRADA CAMBIADA", uk: "ВБУДОВАНУ РОЗВІДКУ ОНОВЛЕНО")
         HapticManager.shared.fire(.tabSelection)
     }
 
@@ -3396,7 +3428,8 @@ struct LocalGameView: View {
                 localThemeError = localized(
                     en: "Couldn't recognize this theme. Try another.",
                     ru: "Не удалось распознать тему. Попробуй другую.",
-                    es: "No se pudo reconocer el tema. Prueba otro."
+                    es: "No se pudo reconocer el tema. Prueba otro.",
+                    uk: "Не вдалося розпізнати цю тему. Спробуй іншу."
                 )
                 HapticManager.shared.fire(.notification(.warning))
                 return
@@ -3415,7 +3448,7 @@ struct LocalGameView: View {
             disabledPoolWordKeys.removeAll()
             clearLocalPoolDraft()
             wordCount = Double(min(words.count, targetCount))
-            status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO")
+            status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO", uk: "AI-ПУЛ СЛІВ ГОТОВИЙ")
             HapticManager.shared.fire(.milestone)
             persistLocalSettings()
         } catch {
@@ -3483,7 +3516,8 @@ struct LocalGameView: View {
                 localThemeError = localized(
                     en: "Couldn't find more unique words.",
                     ru: "Больше уникальных слов найти не удалось.",
-                    es: "No se encontraron mas palabras unicas."
+                    es: "No se encontraron mas palabras unicas.",
+                    uk: "Не вдалося знайти більше унікальних слів."
                 )
                 HapticManager.shared.fire(.notification(.warning))
                 return
@@ -3507,7 +3541,7 @@ struct LocalGameView: View {
                     ? merged.count
                     : min(merged.count, max(selectedWordCount, 2))
             )
-            status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO")
+            status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO", uk: "AI-ПУЛ СЛІВ РОЗШИРЕНО")
             HapticManager.shared.fire(.milestone)
             persistLocalSettings()
         } catch {
@@ -3528,7 +3562,10 @@ struct LocalGameView: View {
         defer { isSavingGeneratedPack = false }
 
         do {
-            let name = generatedPack.name?.nilIfBlank ?? generatedPack.category.nilIfBlank ?? customTheme.nilIfBlank ?? "Custom"
+            let name = generatedPack.name?.nilIfBlank
+                ?? generatedPack.category.nilIfBlank
+                ?? customTheme.nilIfBlank
+                ?? customNameFallback
             let saved = try await appState.client.createWordPack(
                 name: name,
                 category: generatedPack.category.nilIfBlank ?? name,
@@ -3538,7 +3575,7 @@ struct LocalGameView: View {
             packs.append(saved)
             packs.sort { $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending }
             appState.markWordPacksChanged()
-            status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO")
+            status = localized(en: "WORDPACK SAVED", ru: "WORDPACK СОХРАНЕН", es: "WORDPACK GUARDADO", uk: "НАБІР СЛІВ ЗБЕРЕЖЕНО")
             HapticManager.shared.fire(.milestone)
             persistLocalSettings()
         } catch {
@@ -3555,7 +3592,8 @@ struct LocalGameView: View {
             status = localized(
                 en: "NEED AT LEAST 3 OPERATIVES",
                 ru: "НУЖНО МИНИМУМ 3 ОПЕРАТИВНИКА",
-                es: "NECESITAS AL MENOS 3 OPERATIVOS"
+                es: "NECESITAS AL MENOS 3 OPERATIVOS",
+                uk: "ПОТРІБНО ЩОНАЙМЕНШЕ 3 ОПЕРАТИВНИКИ"
             )
             HapticManager.shared.fire(.notification(.warning))
             return
@@ -3578,7 +3616,8 @@ struct LocalGameView: View {
             status = localized(
                 en: "KEEP AT LEAST TWO ACTIVE WORDS",
                 ru: "ОСТАВЬ ХОТЯ БЫ ДВА АКТИВНЫХ СЛОВА",
-                es: "DEJA AL MENOS DOS PALABRAS ACTIVAS"
+                es: "DEJA AL MENOS DOS PALABRAS ACTIVAS",
+                uk: "ЗАЛИШ ЩОНАЙМЕНШЕ ДВА АКТИВНІ СЛОВА"
             )
             HapticManager.shared.fire(.notification(.warning))
             return
@@ -3588,7 +3627,8 @@ struct LocalGameView: View {
             status = localized(
                 en: "WORD POOL IS UNAVAILABLE",
                 ru: "ПУЛ СЛОВ НЕДОСТУПЕН",
-                es: "EL BANCO DE PALABRAS NO ESTA DISPONIBLE"
+                es: "EL BANCO DE PALABRAS NO ESTA DISPONIBLE",
+                uk: "ПУЛ СЛІВ НЕДОСТУПНИЙ"
             )
             HapticManager.shared.fire(.notification(.warning))
             return
@@ -3640,7 +3680,7 @@ struct LocalGameView: View {
     }
 
     private func nextCardTitle(_ session: LocalSession) -> String {
-        revealIndex + 1 >= session.players.count ? copy.beginTimer : localized(en: "READ - NEXT", ru: "ПРОЧИТАЛ — ДАЛЬШЕ", es: "LEIDO - SIGUIENTE")
+        revealIndex + 1 >= session.players.count ? copy.beginTimer : localized(en: "READ - NEXT", ru: "ПРОЧИТАЛ — ДАЛЬШЕ", es: "LEIDO - SIGUIENTE", uk: "ПРОЧИТАНО — ДАЛІ")
     }
 
     private func nextCardIcon(_ session: LocalSession) -> String {
@@ -3887,12 +3927,14 @@ struct LocalGameView: View {
                 ? localized(
                     en: "SPY EXCLUDED — ROUND CONTINUES",
                     ru: "ШПИОН ИСКЛЮЧЁН — ИГРА ПРОДОЛЖАЕТСЯ",
-                    es: "ESPIA EXCLUIDO — LA PARTIDA CONTINUA"
+                    es: "ESPIA EXCLUIDO — LA PARTIDA CONTINUA",
+                    uk: "ШПИГУНА ВИКЛЮЧЕНО — ГРА ТРИВАЄ"
                 )
                 : localized(
                     en: "DETECTIVE EXCLUDED — ROUND CONTINUES",
                     ru: "ДЕТЕКТИВ ИСКЛЮЧЁН — ИГРА ПРОДОЛЖАЕТСЯ",
-                    es: "DETECTIVE EXCLUIDO — LA PARTIDA CONTINUA"
+                    es: "DETECTIVE EXCLUIDO — LA PARTIDA CONTINUA",
+                    uk: "ДЕТЕКТИВА ВИКЛЮЧЕНО — ГРА ТРИВАЄ"
                 )
             HapticManager.shared.fire(.notification(.success))
         case .spyWins:
@@ -3992,7 +4034,7 @@ struct LocalGameView: View {
             guard let generatedPack else { return nil }
             return localWordSelection(
                 from: generatedPack.words,
-                category: generatedPack.category.nilIfBlank ?? customTheme.nilIfBlank ?? "CUSTOM"
+                category: generatedPack.category.nilIfBlank ?? customTheme.nilIfBlank ?? customCategoryFallback
             )
         }
 
@@ -4043,18 +4085,20 @@ struct LocalGameView: View {
         return localized(
             en: "SPIES WIN",
             ru: "ШПИОНЫ ПОБЕДИЛИ",
-            es: "GANAN LOS ESPIAS"
+            es: "GANAN LOS ESPIAS",
+            uk: "ШПИГУНИ ПЕРЕМОГЛИ"
         )
     }
 
     private func localSpyGuessResultLabel(_ session: LocalSession) -> String {
         guard session.spyPlayers.count > 1 else {
-            return localized(en: "SPY GUESSED", ru: "ШПИОН УГАДАЛ", es: "EL ESPIA DIJO")
+            return localized(en: "SPY GUESSED", ru: "ШПИОН УГАДАЛ", es: "EL ESPIA DIJO", uk: "ШПИГУН ВГАДАВ")
         }
         return localized(
             en: "SPY TEAM GUESSED",
             ru: "КОМАНДА ШПИОНОВ ВЫБРАЛА",
-            es: "EL EQUIPO DE ESPIAS DIJO"
+            es: "EL EQUIPO DE ESPIAS DIJO",
+            uk: "КОМАНДА ШПИГУНІВ ОБРАЛА"
         )
     }
 
@@ -4218,12 +4262,32 @@ struct LocalGameView: View {
             .map { String($0.dropFirst(prefix.count)) }
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private var customCategoryFallback: String {
+        localized(
+            en: "CUSTOM",
+            ru: "СВОЯ ТЕМА",
+            es: "PERSONALIZADO",
+            uk: "ВЛАСНА ТЕМА"
+        )
+    }
+
+    private var customNameFallback: String {
+        localized(
+            en: "Custom",
+            ru: "Своя тема",
+            es: "Personalizado",
+            uk: "Власна тема"
+        )
+    }
+
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
         case .ru:
             ru
         case .es:
             es
+        case .uk:
+            uk
         default:
             en
         }
@@ -4275,12 +4339,12 @@ private struct LocalForgotCardRecoveryView: View {
     private var header: some View {
         HStack(spacing: 12) {
             VStack(alignment: .leading, spacing: 4) {
-                Text(localized(en: "PRIVATE CARD REVIEW", ru: "ПОВТОРНЫЙ ПРОСМОТР", es: "REVISION PRIVADA"))
+                Text(localized(en: "PRIVATE CARD REVIEW", ru: "ПОВТОРНЫЙ ПРОСМОТР", es: "REVISION PRIVADA", uk: "ПРИВАТНИЙ ПЕРЕГЛЯД КАРТКИ"))
                     .font(.system(size: 17, weight: .black, design: .default))
                     .tracking(0.08)
                     .foregroundStyle(.white)
                     .spyFitted(lines: 2, scale: 0.64)
-                Text(localized(en: "The game timer is paused", ru: "Игровой таймер остановлен", es: "El temporizador esta pausado"))
+                Text(localized(en: "The game timer is paused", ru: "Игровой таймер остановлен", es: "El temporizador esta pausado", uk: "Ігровий таймер призупинено"))
                     .font(.system(size: 10, weight: .bold, design: .monospaced))
                     .tracking(0.04)
                     .foregroundStyle(SpyTheme.dim)
@@ -4299,7 +4363,7 @@ private struct LocalForgotCardRecoveryView: View {
                     .overlay(Rectangle().stroke(SpyTheme.strokeStrong, lineWidth: 1))
             }
             .buttonStyle(SpyWebPressStyle())
-            .accessibilityLabel(localized(en: "Close", ru: "Закрыть", es: "Cerrar"))
+            .accessibilityLabel(localized(en: "Close", ru: "Закрыть", es: "Cerrar", uk: "Закрити"))
         }
     }
 
@@ -4310,7 +4374,7 @@ private struct LocalForgotCardRecoveryView: View {
                     .font(.system(size: 30, weight: .black))
                     .foregroundStyle(SpyTheme.red)
 
-                Text(localized(en: "WHO FORGOT THEIR CARD?", ru: "КТО ЗАБЫЛ КАРТУ?", es: "QUIEN OLVIDO SU CARTA?"))
+                Text(localized(en: "WHO FORGOT THEIR CARD?", ru: "КТО ЗАБЫЛ КАРТУ?", es: "QUIEN OLVIDO SU CARTA?", uk: "ХТО ЗАБУВ СВОЮ КАРТКУ?"))
                     .font(.system(size: 20, weight: .black, design: .default))
                     .tracking(0.06)
                     .foregroundStyle(.white)
@@ -4320,7 +4384,8 @@ private struct LocalForgotCardRecoveryView: View {
                 Text(localized(
                     en: "Choose a player, then pass them the phone. No role is shown on this screen.",
                     ru: "Выбери игрока и передай ему телефон. На этом экране роль не показывается.",
-                    es: "Elige un jugador y pasale el telefono. Aqui no se muestra ningun rol."
+                    es: "Elige un jugador y pasale el telefono. Aqui no se muestra ningun rol.",
+                    uk: "Обери гравця й передай йому телефон. На цьому екрані роль не показується."
                 ))
                 .font(.system(size: 11, weight: .semibold, design: .monospaced))
                 .foregroundStyle(SpyTheme.dim)
@@ -4373,7 +4438,7 @@ private struct LocalForgotCardRecoveryView: View {
                     revealed: true,
                     copy: copy,
                     language: language,
-                    dontShow: localized(en: "DON'T SHOW OTHERS", ru: "НЕ ПОКАЗЫВАЙ ДРУГИМ", es: "NO MUESTRES A OTROS")
+                    dontShow: localized(en: "DON'T SHOW OTHERS", ru: "НЕ ПОКАЗЫВАЙ ДРУГИМ", es: "NO MUESTRES A OTROS", uk: "НЕ ПОКАЗУЙ ІНШИМ")
                 )
                 .frame(maxWidth: 280)
 
@@ -4381,7 +4446,7 @@ private struct LocalForgotCardRecoveryView: View {
                     dismiss()
                 } label: {
                     SpyActionLabel(
-                        title: localized(en: "I REMEMBER — CONTINUE", ru: "ВСПОМНИЛ — ПРОДОЛЖИТЬ", es: "RECORDADO — CONTINUAR"),
+                        title: localized(en: "I REMEMBER — CONTINUE", ru: "ВСПОМНИЛ — ПРОДОЛЖИТЬ", es: "RECORDADO — CONTINUAR", uk: "ЗГАДАВ — ПРОДОВЖИТИ"),
                         systemImage: "checkmark",
                         tracking: 0.04,
                         lines: 2
@@ -4405,7 +4470,8 @@ private struct LocalForgotCardRecoveryView: View {
                 Text(localized(
                     en: "PASS THE PHONE TO THIS PLAYER. They should continue alone.",
                     ru: "ПЕРЕДАЙ ТЕЛЕФОН ЭТОМУ ИГРОКУ. Дальше смотрит только он.",
-                    es: "PASA EL TELEFONO A ESTE JUGADOR. Debe continuar a solas."
+                    es: "PASA EL TELEFONO A ESTE JUGADOR. Debe continuar a solas.",
+                    uk: "ПЕРЕДАЙ ТЕЛЕФОН ЦЬОМУ ГРАВЦЕВІ. Далі дивиться лише він."
                 ))
                 .font(.system(size: 12, weight: .bold, design: .monospaced))
                 .foregroundStyle(SpyTheme.dim)
@@ -4419,7 +4485,7 @@ private struct LocalForgotCardRecoveryView: View {
                     HapticManager.shared.fire(.reveal)
                 } label: {
                     SpyActionLabel(
-                        title: localized(en: "I'M READY — SHOW MY CARD", ru: "Я ГОТОВ — ПОКАЗАТЬ КАРТУ", es: "ESTOY LISTO — MOSTRAR CARTA"),
+                        title: localized(en: "I'M READY — SHOW MY CARD", ru: "Я ГОТОВ — ПОКАЗАТЬ КАРТУ", es: "ESTOY LISTO — MOSTRAR CARTA", uk: "Я ГОТОВИЙ — ПОКАЗАТИ КАРТКУ"),
                         systemImage: "eye.fill",
                         tracking: 0.04,
                         lines: 2
@@ -4432,7 +4498,7 @@ private struct LocalForgotCardRecoveryView: View {
                 Button {
                     selectedPlayerIndex = nil
                 } label: {
-                    Text(localized(en: "CHOOSE ANOTHER PLAYER", ru: "ВЫБРАТЬ ДРУГОГО", es: "ELEGIR OTRO JUGADOR"))
+                    Text(localized(en: "CHOOSE ANOTHER PLAYER", ru: "ВЫБРАТЬ ДРУГОГО", es: "ELEGIR OTRO JUGADOR", uk: "ОБРАТИ ІНШОГО ГРАВЦЯ"))
                         .font(.system(size: 10, weight: .black, design: .monospaced))
                         .tracking(0.06)
                         .foregroundStyle(SpyTheme.muted)
@@ -4446,10 +4512,11 @@ private struct LocalForgotCardRecoveryView: View {
         .frame(maxWidth: .infinity)
     }
 
-    private func localized(en: String, ru: String, es: String) -> String {
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch language {
         case .ru: ru
         case .es: es
+        case .uk: uk
         default: en
         }
     }
@@ -4644,6 +4711,7 @@ private struct RoleRevealCard: View {
         case .en: "SPY TEAM"
         case .es: "EQUIPO DE ESPIAS"
         case .ru: "КОМАНДА ШПИОНОВ"
+        case .uk: "КОМАНДА ШПИГУНІВ"
         }
     }
 

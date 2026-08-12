@@ -55,6 +55,10 @@ Deno.test("source failure stays hidden and lost-response retry commits idempoten
   assertEquals(store.records.length, 1);
   assertEquals("actor_name" in store.records[0], false);
   assertEquals(store.records[0].inbox_body_en, "Red Raven wants to connect.");
+  assertEquals(
+    store.records[0].inbox_body_uk,
+    "Red Raven хоче додати вас у друзі.",
+  );
   assertEquals(store.records[0].inbox_projection_version, 1);
   assertEquals(store.records[0].inbox_visible, false);
 

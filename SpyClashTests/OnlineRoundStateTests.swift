@@ -10,6 +10,7 @@ final class OnlineRoundStateTests: XCTestCase {
             case .en: ("same suspect", "server cancels automatically")
             case .es: ("mismo sospechoso", "servidor cancela automáticamente")
             case .ru: ("одного подозреваемого", "сервер автоматически отменит")
+            case .uk: ("одного підозрюваного", "сервер автоматично скасує")
             }
 
             for mode in TutorialMode.allCases {
@@ -21,6 +22,122 @@ final class OnlineRoundStateTests: XCTestCase {
                 XCTAssertTrue(instruction.text.localizedCaseInsensitiveContains(expectedFragments.cancellation))
             }
         }
+    }
+
+    func testUkrainianLanguageCodesNormalizeToBCP47Language() {
+        XCTAssertEqual(AppLanguage.normalized("uk"), .uk)
+        XCTAssertEqual(AppLanguage.normalized("uk-UA"), .uk)
+        XCTAssertEqual(AppLanguage.normalized("uk_UA"), .uk)
+        XCTAssertEqual(AppLanguage.uk.rawValue, "uk")
+        XCTAssertEqual(AppLanguage.uk.title, "Українська")
+    }
+
+    func testUkrainianCoreCopyIsCompleteAndDoesNotFallBackToAnotherLanguage() {
+        let ukrainian = AppLanguage.uk
+
+        XCTAssertEqual(ukrainian.welcome.enterGame, "УВІЙТИ В ГРУ")
+        XCTAssertEqual(ukrainian.auth.continueAction, "ДАЛІ")
+        XCTAssertEqual(ukrainian.profile.languageLabel, "// МОВА")
+        XCTAssertEqual(ukrainian.home.createOnlineRoom, "СТВОРИТИ ОНЛАЙН-КІМНАТУ")
+        XCTAssertEqual(ukrainian.localGame.youAreSpy, "ТИ ШПИГУН")
+        XCTAssertEqual(ukrainian.game.detectivesWin, "ДЕТЕКТИВИ ПЕРЕМОГЛИ")
+        XCTAssertNotEqual(ukrainian.welcome, AppLanguage.en.welcome)
+        XCTAssertNotEqual(ukrainian.game, AppLanguage.ru.game)
+    }
+
+    func testLiveActivityContractPreservesUkrainianDisplayLanguage() {
+        let state = SpyClashMatchActivityAttributes.ContentState(
+            phase: .playing,
+            mode: .questions,
+            participants: [],
+            round: 1,
+            displayLanguageCode: "uk-UA",
+            revision: 1
+        )
+
+        XCTAssertEqual(state.displayLanguageCode, "uk")
+    }
+
+    func testLiveActivityParticipantFallbackUsesInjectedDisplayLanguageCopy() {
+        let fallback = "ОПЕРАТИВНИК"
+        for storedName in ["", "AGENT", "OPERATIVE"] {
+            let participant = SpyClashMatchActivityAttributes.Participant(
+                id: storedName.isEmpty ? "blank" : storedName.lowercased(),
+                displayName: storedName
+            )
+            XCTAssertEqual(participant.resolvedDisplayName(fallback: fallback), fallback)
+            XCTAssertEqual(participant.compactName(fallback: fallback), fallback)
+        }
+
+        let namedParticipant = SpyClashMatchActivityAttributes.Participant(
+            id: "raven",
+            displayName: "Red Raven"
+        )
+        XCTAssertEqual(
+            namedParticipant.resolvedDisplayName(fallback: fallback),
+            "Red Raven"
+        )
+        XCTAssertEqual(namedParticipant.compactName(fallback: fallback), "RED RAVEN")
+    }
+
+    func testActiveLiveActivityProjectionUsesNewAppLanguageBeforeAccountSync() throws {
+        let room = GameRoom.previewRoom(status: "playing")
+        let viewerEmail = try XCTUnwrap(room.playersList.first?.email)
+        let viewer = SpyUser(
+            id: "language-switch-viewer",
+            email: viewerEmail,
+            fullName: nil,
+            displayName: "Red Raven",
+            avatar: "🕵️",
+            language: "en",
+            role: nil,
+            isVerified: nil,
+            rating: nil,
+            gamesPlayed: nil,
+            gamesWon: nil,
+            remoteSpyID: nil,
+            spyCardTheme: nil,
+            spyCardAccent: nil,
+            spyCardBadge: nil,
+            radarInvitePolicy: nil
+        )
+
+        XCTAssertEqual(
+            try XCTUnwrap(room.liveActivityProjection(for: viewer)).state.displayLanguageCode,
+            "en"
+        )
+        XCTAssertEqual(
+            try XCTUnwrap(
+                room.liveActivityProjection(for: viewer, displayLanguage: .uk)
+            ).state.displayLanguageCode,
+            "uk"
+        )
+    }
+
+    func testBase44ErrorsNeverExposeEnglishFallbackInUkrainian() {
+        XCTAssertEqual(
+            Base44Error(message: "Authentication required.", statusCode: 401)
+                .localizedMessage(for: .uk),
+            "Увійдіть до акаунта, щоб продовжити."
+        )
+        XCTAssertEqual(
+            Base44Error(message: "Unknown server detail", statusCode: 503)
+                .localizedMessage(for: .uk),
+            "Сервіс тимчасово недоступний. Спробуйте ще раз."
+        )
+        XCTAssertEqual(
+            Base44Error(message: "Network request failed.", retryable: true)
+                .localizedMessage(for: .uk),
+            "Перевірте з’єднання з мережею та спробуйте ще раз."
+        )
+        XCTAssertEqual(
+            Base44Error(
+                message: "Update required",
+                statusCode: 426,
+                code: "client_update_required"
+            ).localizedMessage(for: .uk),
+            "Оновіть SpyClash, щоб продовжити."
+        )
     }
 
     func testLocalTimerAwardsSpyOnTickThatReachesZeroWithoutGuessGrace() {

@@ -92,7 +92,24 @@ private enum StoreKitManagerError: LocalizedError {
     case noWindowScene
 
     var errorDescription: String? {
-        switch self {
+        if AppLanguage.stored == .uk {
+            return switch self {
+            case .authenticationRequired:
+                "Увійди до свого акаунта SpyClash перед покупкою."
+            case .productUnavailable:
+                "Попередня підписка App Store зараз недоступна."
+            case .productMismatch:
+                "App Store повернув неочікуваний продукт підписки."
+            case .unverifiedTransaction:
+                "Не вдалося перевірити транзакцію App Store."
+            case .entitlementNotGranted:
+                "Покупку підтверджено, але попередній доступ не активовано."
+            case .noWindowScene:
+                "Менеджер підписок App Store зараз недоступний."
+            }
+        }
+
+        return switch self {
         case .authenticationRequired:
             "Sign in to your SpyClash account before purchasing."
         case .productUnavailable:

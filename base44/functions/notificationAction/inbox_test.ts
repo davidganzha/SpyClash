@@ -97,6 +97,8 @@ Deno.test("global and failed-delivery personal items remain safely visible", asy
       importance: "quiet",
       title_en: "Build 29",
       body_en: "Swipe navigation is ready.",
+      title_uk: "Збірка 29",
+      body_uk: "Навігація свайпами готова.",
       action_deep_link: "spyclash://notifications?id=announcement-1",
       published_at: "2026-07-27T12:00:00.000Z",
       expires_at: "2026-08-27T12:00:00.000Z",
@@ -118,6 +120,8 @@ Deno.test("global and failed-delivery personal items remain safely visible", asy
         inbox_body_ru: "Red Raven хочет добавить вас в друзья.",
         inbox_title_es: "Nueva solicitud de amistad",
         inbox_body_es: "Red Raven quiere conectar contigo.",
+        inbox_title_uk: "Новий запит у друзі",
+        inbox_body_uk: "Red Raven хоче додати вас у друзі.",
         inbox_action_deep_link: "spyclash://community/requests",
         inbox_published_at: "2026-07-27T11:00:00.000Z",
         inbox_projection_version: 1,
@@ -164,6 +168,15 @@ Deno.test("global and failed-delivery personal items remain safely visible", asy
   assertEquals(items[1].body, "Red Raven wants to connect.");
   assertEquals(JSON.stringify(items).includes("actor_user_id"), false);
   assertEquals(unreadCounts(items), { global: 1, personal: 1, total: 2 });
+
+  const ukrainianItems = await buildInbox({
+    base44: app,
+    userID: "recipient",
+    locale: "uk-UA",
+    now: new Date("2026-07-28T00:00:00.000Z"),
+  });
+  assertEquals(ukrainianItems[0].title, "Збірка 29");
+  assertEquals(ukrainianItems[1].body, "Red Raven хоче додати вас у друзі.");
 
   // Materialized rows do not perform source N+1 reads. Source cancellation is
   // performed atomically by communityAction when a request is blocked.

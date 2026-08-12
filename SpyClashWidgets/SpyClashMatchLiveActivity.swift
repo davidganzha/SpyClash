@@ -55,7 +55,9 @@ struct SpyClashMatchLiveActivity: Widget {
             } compactLeading: {
                 Text(state.speaker?.avatarSymbol ?? "🎯")
                     .font(.system(size: 15))
-                    .accessibilityLabel(state.speaker?.displayName ?? "SpyClash")
+                    .accessibilityLabel(
+                        state.speaker.map { copy.resolvedDisplayName($0) } ?? copy.match
+                    )
             } compactTrailing: {
                 SpyClashActivityTimer(state: state)
                     .font(.system(size: 12, weight: .black, design: .monospaced))
@@ -64,7 +66,9 @@ struct SpyClashMatchLiveActivity: Widget {
             } minimal: {
                 Text(state.speaker?.avatarSymbol ?? "🎯")
                     .font(.system(size: 14))
-                    .accessibilityLabel(state.speaker?.displayName ?? "SpyClash match")
+                    .accessibilityLabel(
+                        state.speaker.map { copy.resolvedDisplayName($0) } ?? copy.match
+                    )
             }
             .keylineTint(SpyClashActivityPalette.red)
             .widgetURL(matchURL(for: context.attributes.roomID))
@@ -91,6 +95,7 @@ private struct SpyClashMatchLockScreenView: View {
 
     var body: some View {
         let currentState = sanitizedState
+        let copy = SpyClashLiveActivityCopy(languageCode: currentState.displayLanguageCode)
 
         VStack(spacing: 5) {
             HStack(spacing: 8) {
@@ -130,7 +135,7 @@ private struct SpyClashMatchLockScreenView: View {
         .frame(maxWidth: .infinity, minHeight: 156)
         .foregroundStyle(.white)
         .opacity(isStale ? 0.78 : 1)
-        .accessibilityValue(isStale ? "Match data may be out of date" : "Live match data")
+        .accessibilityValue(isStale ? copy.staleMatchData : copy.liveMatchData)
     }
 }
 
@@ -155,6 +160,10 @@ private struct SpyClashRoundTableView: View {
         max(0, state.participants.count - visiblePlayers.count)
     }
 
+    private var copy: SpyClashLiveActivityCopy {
+        SpyClashLiveActivityCopy(languageCode: state.displayLanguageCode)
+    }
+
     var body: some View {
         GeometryReader { proxy in
             let side = min(proxy.size.width, proxy.size.height)
@@ -175,7 +184,8 @@ private struct SpyClashRoundTableView: View {
 
                     SpyClashPlayerNode(
                         player: player,
-                        isSpeaker: player.id == state.currentSpeakerID
+                        isSpeaker: player.id == state.currentSpeakerID,
+                        languageCode: state.displayLanguageCode
                     )
                     .position(x: x, y: y)
                 }
@@ -185,18 +195,23 @@ private struct SpyClashRoundTableView: View {
                         .font(.system(size: 11, weight: .black, design: .monospaced))
                         .foregroundStyle(SpyClashActivityPalette.muted)
                         .position(center)
-                        .accessibilityLabel("\(hiddenPlayerCount) more players")
+                        .accessibilityLabel(copy.morePlayers(hiddenPlayerCount))
                 }
             }
         }
         .accessibilityElement(children: .contain)
-        .accessibilityLabel("Players around the SpyClash table")
+        .accessibilityLabel(copy.playersAroundTable)
     }
 }
 
 private struct SpyClashPlayerNode: View {
     let player: SpyClashMatchActivityAttributes.Participant
     let isSpeaker: Bool
+    let languageCode: String?
+
+    private var copy: SpyClashLiveActivityCopy {
+        SpyClashLiveActivityCopy(languageCode: languageCode)
+    }
 
     private var ringColor: Color {
         if isSpeaker { return SpyClashActivityPalette.green }
@@ -204,7 +219,7 @@ private struct SpyClashPlayerNode: View {
     }
 
     private var turnLabel: String {
-        isSpeaker ? "speaking" : "at table"
+        return isSpeaker ? copy.speakingState : copy.atTableState
     }
 
     var body: some View {
@@ -227,7 +242,7 @@ private struct SpyClashPlayerNode: View {
         }
         .opacity(player.status == .active ? 1 : 0.42)
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("\(player.displayName), \(turnLabel)")
+        .accessibilityLabel("\(copy.resolvedDisplayName(player)), \(turnLabel)")
     }
 }
 
@@ -249,7 +264,7 @@ private struct SpyClashLockScreenTurnSummary: View {
         let value = state.publicTopic?
             .trimmingCharacters(in: .whitespacesAndNewlines)
         guard let value, !value.isEmpty else { return copy.defaultTopic }
-        if ["CLASSIC", "CLASICO", "CLÁSICO", "КЛАССИКА"].contains(value.uppercased()) {
+        if ["CLASSIC", "CLASICO", "CLÁSICO", "КЛАССИКА", "КЛАСИКА"].contains(value.uppercased()) {
             return copy.defaultTopic
         }
         return value.uppercased(with: locale)
@@ -326,7 +341,7 @@ private struct SpyClashLockScreenTurnSummary: View {
     }
 
     private func agentName(_ player: Attributes.Participant?, size: CGFloat = 15) -> some View {
-        Text(player?.compactName ?? copy.awaiting)
+        Text(player.map { copy.compactName($0) } ?? copy.awaiting)
             .font(.system(size: size, weight: .black, design: .monospaced))
             .fontWidth(.condensed)
             .foregroundStyle(.white)
@@ -336,7 +351,7 @@ private struct SpyClashLockScreenTurnSummary: View {
     }
 
     private func agentNameText(_ player: Attributes.Participant?) -> Text {
-        Text(player?.compactName ?? copy.awaiting)
+        Text(player.map { copy.compactName($0) } ?? copy.awaiting)
             .foregroundColor(.white)
     }
 
@@ -354,6 +369,7 @@ private struct SpyClashLockScreenTurnSummary: View {
 }
 
 private struct SpyClashLiveActivityCopy {
+    let languageCode: String
     let round: String
     let questionsMode: String
     let associationsMode: String
@@ -376,6 +392,182 @@ private struct SpyClashLiveActivityCopy {
     let awaitingTurn: String
     let pending: String
 
+    var match: String {
+        switch languageCode {
+        case "ru": "Матч SpyClash"
+        case "es": "Partida de SpyClash"
+        case "uk": "Матч SpyClash"
+        default: "SpyClash match"
+        }
+    }
+
+    var staleMatchData: String {
+        switch languageCode {
+        case "ru": "Данные матча могут быть устаревшими"
+        case "es": "Los datos de la partida pueden estar desactualizados"
+        case "uk": "Дані матчу можуть бути застарілими"
+        default: "Match data may be out of date"
+        }
+    }
+
+    var liveMatchData: String {
+        switch languageCode {
+        case "ru": "Текущие данные матча"
+        case "es": "Datos actuales de la partida"
+        case "uk": "Актуальні дані матчу"
+        default: "Live match data"
+        }
+    }
+
+    var playersAroundTable: String {
+        switch languageCode {
+        case "ru": "Игроки за столом SpyClash"
+        case "es": "Jugadores en la mesa de SpyClash"
+        case "uk": "Гравці за столом SpyClash"
+        default: "Players around the SpyClash table"
+        }
+    }
+
+    var speakingState: String {
+        switch languageCode {
+        case "ru": "говорит"
+        case "es": "hablando"
+        case "uk": "говорить"
+        default: "speaking"
+        }
+    }
+
+    var atTableState: String {
+        switch languageCode {
+        case "ru": "за столом"
+        case "es": "en la mesa"
+        case "uk": "за столом"
+        default: "at table"
+        }
+    }
+
+    func morePlayers(_ count: Int) -> String {
+        switch languageCode {
+        case "ru": "Ещё игроков: \(count)"
+        case "es": "\(count) jugadores más"
+        case "uk": "Ще гравців: \(count)"
+        default: "\(count) more players"
+        }
+    }
+
+    func playersInMatch(_ count: Int) -> String {
+        switch languageCode {
+        case "ru": "Игроков в матче: \(count)"
+        case "es": "\(count) jugadores en la partida"
+        case "uk": "Гравців у матчі: \(count)"
+        default: "\(count) players in match"
+        }
+    }
+
+    var operative: String {
+        switch languageCode {
+        case "ru", "uk": "ОПЕРАТИВНИК"
+        case "es": "OPERATIVO"
+        default: "OPERATIVE"
+        }
+    }
+
+    var privateRole: String {
+        switch languageCode {
+        case "ru": "СЕКРЕТНАЯ РОЛЬ"
+        case "es": "ROL PRIVADO"
+        case "uk": "ТАЄМНА РОЛЬ"
+        default: "PRIVATE ROLE"
+        }
+    }
+
+    var locked: String {
+        switch languageCode {
+        case "ru": "ЗАКРЫТО"
+        case "es": "BLOQUEADO"
+        case "uk": "ЗАКРИТО"
+        default: "LOCKED"
+        }
+    }
+
+    var eyesOnly: String {
+        switch languageCode {
+        case "ru": "ТОЛЬКО ДЛЯ ВАС"
+        case "es": "SOLO PARA TI"
+        case "uk": "ЛИШЕ ДЛЯ ТЕБЕ"
+        default: "EYES ONLY"
+        }
+    }
+
+    var privateIntelAccessibilityLabel: String {
+        switch languageCode {
+        case "ru": "Секретная роль и слово для этого устройства"
+        case "es": "Rol privado y palabra para este dispositivo"
+        case "uk": "Таємна роль і слово для цього пристрою"
+        default: "Private role and word for this device"
+        }
+    }
+
+    private var noFieldWord: String {
+        switch languageCode {
+        case "ru": "НЕТ СЕКРЕТНОГО СЛОВА"
+        case "es": "SIN PALABRA SECRETA"
+        case "uk": "НЕМАЄ ТАЄМНОГО СЛОВА"
+        default: "NO FIELD WORD"
+        }
+    }
+
+    private var syncing: String {
+        switch languageCode {
+        case "ru": "СИНХРОНИЗАЦИЯ"
+        case "es": "SINCRONIZANDO"
+        case "uk": "СИНХРОНІЗАЦІЯ"
+        default: "SYNCING"
+        }
+    }
+
+    func resolvedDisplayName(
+        _ player: SpyClashMatchActivityAttributes.Participant
+    ) -> String {
+        player.resolvedDisplayName(fallback: operative)
+    }
+
+    func compactName(_ player: SpyClashMatchActivityAttributes.Participant) -> String {
+        player.compactName(fallback: operative)
+    }
+
+    func roleLabel(_ role: SpyClashMatchActivityAttributes.PrivateIntel.Role) -> String {
+        switch (languageCode, role) {
+        case ("ru", .detective), ("uk", .detective): "ДЕТЕКТИВ"
+        case ("ru", .spy): "ШПИОН"
+        case ("uk", .spy): "ШПИГУН"
+        case ("ru", .spectator): "НАБЛЮДАТЕЛЬ"
+        case ("uk", .spectator): "СПОСТЕРІГАЧ"
+        case ("es", .detective): "DETECTIVE"
+        case ("es", .spy): "ESPÍA"
+        case ("es", .spectator): "ESPECTADOR"
+        case (_, .detective): "DETECTIVE"
+        case (_, .spy): "SPY"
+        case (_, .spectator): "SPECTATOR"
+        }
+    }
+
+    func privateWord(_ intel: SpyClashMatchActivityAttributes.PrivateIntel) -> String {
+        switch intel.role {
+        case .spy:
+            return "???"
+        case .spectator:
+            return noFieldWord
+        case .detective:
+            let word = intel.secretWord?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+            if let word, !word.isEmpty {
+                return word
+            }
+            return syncing
+        }
+    }
+
     func modeLabel(_ mode: SpyClashMatchActivityAttributes.MatchMode) -> String {
         switch mode {
         case .questions: questionsMode
@@ -384,7 +576,17 @@ private struct SpyClashLiveActivityCopy {
     }
 
     init(languageCode: String?) {
-        switch languageCode {
+        let normalizedLanguage = languageCode?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+            .replacingOccurrences(of: "_", with: "-")
+            .split(separator: "-", maxSplits: 1)
+            .first
+            .map(String.init) ?? "en"
+        self.languageCode = ["en", "es", "ru", "uk"].contains(normalizedLanguage)
+            ? normalizedLanguage
+            : "en"
+        switch self.languageCode {
         case "ru":
             round = "РАУНД"
             questionsMode = "ВОПРОСЫ"
@@ -429,6 +631,28 @@ private struct SpyClashLiveActivityCopy {
             speakingNow = "HABLANDO AHORA"
             awaitingTurn = "ESPERANDO TURNO"
             pending = "PENDIENTE"
+        case "uk":
+            round = "РАУНД"
+            questionsMode = "ЗАПИТАННЯ"
+            associationsMode = "АСОЦІАЦІЇ"
+            question = "ЗАПИТАННЯ"
+            speaking = "ГОВОРИТЬ:"
+            topic = "ТЕМА:"
+            defaultTopic = "КЛАСИКА"
+            awaiting = "ОЧІКУВАННЯ"
+            preparing = "ПІДКЛЮЧЕННЯ"
+            waiting = "ОЧІКУЄМО ГРАВЦІВ"
+            voting = "ГОЛОСУВАННЯ"
+            identifySpy = "ЗНАЙДІТЬ ШПИГУНА"
+            completed = "МІСІЮ ЗАВЕРШЕНО"
+            openForResults = "ВІДКРИЙТЕ SPYCLASH"
+            asks = "ЗАПИТУЄ"
+            answers = "ВІДПОВІДАЄ"
+            associationTurn = "ХІД АСОЦІАЦІЇ"
+            respondingNow = "ВІДПОВІДАЄ ЗАРАЗ"
+            speakingNow = "ЗАРАЗ ГОВОРИТЬ"
+            awaitingTurn = "ОЧІКУЄМО ХОДУ"
+            pending = "ОЧІКУВАННЯ"
         default:
             round = "ROUND"
             questionsMode = "Q&A"
@@ -529,7 +753,7 @@ private struct SpyClashTurnSummary: View {
             Text(copy.speakingNow)
                 .font(.system(size: compact ? 8 : 9, weight: .black, design: .monospaced))
                 .foregroundStyle(SpyClashActivityPalette.muted)
-            Text(state.speaker?.compactName ?? copy.awaitingTurn)
+            Text(state.speaker.map { copy.compactName($0) } ?? copy.awaitingTurn)
                 .font(.system(size: compact ? 11 : 13, weight: .black, design: .monospaced))
                 .foregroundStyle(SpyClashActivityPalette.green)
                 .lineLimit(1)
@@ -550,7 +774,7 @@ private struct SpyClashTurnSummary: View {
     }
 
     private func agentName(_ player: Attributes.Participant?, color: Color) -> some View {
-        Text(player?.compactName ?? copy.pending)
+        Text(player.map { copy.compactName($0) } ?? copy.pending)
             .font(.system(size: compact ? 9 : 11, weight: .black, design: .monospaced))
             .foregroundStyle(color)
             .lineLimit(1)
@@ -570,6 +794,11 @@ private struct SpyClashPrivateIntelView: View {
 
     let intel: SpyClashMatchActivityAttributes.PrivateIntel
     let compact: Bool
+    let languageCode: String?
+
+    private var copy: SpyClashLiveActivityCopy {
+        SpyClashLiveActivityCopy(languageCode: languageCode)
+    }
 
     private var hidesPrivateContent: Bool {
         redactionReasons.contains(.privacy)
@@ -582,10 +811,10 @@ private struct SpyClashPrivateIntelView: View {
                 .foregroundStyle(SpyClashActivityPalette.red)
 
             VStack(alignment: .leading, spacing: 0) {
-                Text(hidesPrivateContent ? "PRIVATE ROLE" : intel.role.displayName)
+                Text(hidesPrivateContent ? copy.privateRole : copy.roleLabel(intel.role))
                     .font(.system(size: compact ? 8 : 9, weight: .black, design: .monospaced))
                     .foregroundStyle(SpyClashActivityPalette.red)
-                Text(hidesPrivateContent ? "LOCKED" : intel.wordForDisplay.uppercased())
+                Text(hidesPrivateContent ? copy.locked : copy.privateWord(intel).uppercased())
                     .font(.system(size: compact ? 9 : 11, weight: .black, design: .monospaced))
                     .foregroundStyle(.white)
                     .lineLimit(1)
@@ -594,7 +823,7 @@ private struct SpyClashPrivateIntelView: View {
 
             if !compact {
                 Spacer(minLength: 4)
-                Text("EYES ONLY")
+                Text(copy.eyesOnly)
                     .font(.system(size: 7, weight: .black, design: .monospaced))
                     .foregroundStyle(SpyClashActivityPalette.muted)
             }
@@ -609,7 +838,7 @@ private struct SpyClashPrivateIntelView: View {
                 }
         }
         .accessibilityElement(children: .ignore)
-        .accessibilityLabel("Private role and word for this device")
+        .accessibilityLabel(copy.privateIntelAccessibilityLabel)
     }
 }
 
@@ -662,7 +891,10 @@ private struct SpyClashPlayerRail: View {
                     .opacity(player.status == .active ? 1 : 0.4)
             }
         }
-        .accessibilityLabel("\(state.participants.count) players in match")
+        .accessibilityLabel(
+            SpyClashLiveActivityCopy(languageCode: state.displayLanguageCode)
+                .playersInMatch(state.participants.count)
+        )
     }
 }
 

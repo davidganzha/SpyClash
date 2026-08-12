@@ -41,13 +41,13 @@ usage() {
 Usage:
   scripts/capture-app-store-source-screenshots.sh \
     --app /absolute/path/SpyClash.app \
-    --locale en|ru|es \
+    --locale en|ru|es|uk \
     --output /absolute/path/to/source-captures \
     [--screen NAME[,NAME...]] [--device UDID] [--wait SECONDS]
     [--skip-install] [--overwrite] [--dry-run]
 
 The output is written under a normalized locale directory:
-  en -> en-US, ru -> ru, es -> es-ES
+  en -> en-US, ru -> ru, es -> es-ES, uk -> uk-UA
 
 By default all seven fixtures are captured. Before CFBundleVersion 15 the
 script deliberately permits at most two screens, so build 14 can only be used
@@ -55,7 +55,7 @@ for a smoke test.
 
 Options:
   --app PATH          Debug-iphonesimulator SpyClash.app artifact.
-  --locale LOCALE     en/en-US, ru/ru-RU, or es/es-ES.
+  --locale LOCALE     en/en-US, ru/ru-RU, es/es-ES, or uk/uk-UA.
   --output DIR        Root output directory. Existing files are preserved.
   --screen NAME       Capture one or more comma-separated fixture names.
                       Repeat the option to add more fixtures.
@@ -191,8 +191,14 @@ case "$LOCALE_INPUT" in
         APPLE_LOCALE="es_ES"
         OUTPUT_LOCALE="es-ES"
         ;;
+    uk|uk-UA|uk_UA)
+        APP_LANGUAGE="uk"
+        APPLE_LANGUAGE="uk"
+        APPLE_LOCALE="uk_UA"
+        OUTPUT_LOCALE="uk-UA"
+        ;;
     *)
-        die "unsupported locale '$LOCALE_INPUT'; use en, ru, or es"
+        die "unsupported locale '$LOCALE_INPUT'; use en, ru, es, or uk"
         ;;
 esac
 

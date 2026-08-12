@@ -53,6 +53,34 @@ Deno.test("Live Activity uses opaque player ids and never exports private intel"
 Deno.test("Live Activity follows the in-app language carried by its registration", async () => {
   const result = await contentStateForUser(room, "detective-id", "ru_RU");
   assertEquals(result?.state.displayLanguageCode, "ru");
+  const ukrainian = await contentStateForUser(room, "detective-id", "uk_UA");
+  assertEquals(ukrainian?.state.displayLanguageCode, "uk");
+});
+
+Deno.test("Live Activity localizes reserved player fallbacks without mutating the room", async () => {
+  const fallbackRoom = {
+    ...room,
+    players: [
+      { ...room.players[0], name: "OPERATIVE" },
+      { ...room.players[1], name: "" },
+    ],
+  };
+
+  const ukrainian = await contentStateForUser(
+    fallbackRoom,
+    "detective-id",
+    "uk-UA",
+  );
+  assertEquals(
+    ukrainian?.state.participants.map((player: Record<string, unknown>) =>
+      player.displayName
+    ),
+    ["ОПЕРАТИВНИК", "ОПЕРАТИВНИК"],
+  );
+  assertEquals(fallbackRoom.players.map((player) => player.name), [
+    "OPERATIVE",
+    "",
+  ]);
 });
 
 Deno.test("spy Activity also receives no private role payload", async () => {
@@ -155,6 +183,14 @@ Deno.test("ActivityKit push-to-start alert follows the stored registration local
       locale: "es-ES",
     },
   });
+  const ukrainian = await liveActivityPayload({
+    room,
+    registration: {
+      user_id: "detective-id",
+      token_kind: "push_to_start",
+      locale: "uk-UA",
+    },
+  });
   assertEquals(russian?.payload.aps.alert, {
     title: "Миссия началась",
     body: "Стол SpyClash уже доступен на экране блокировки.",
@@ -162,6 +198,10 @@ Deno.test("ActivityKit push-to-start alert follows the stored registration local
   assertEquals(spanish?.payload.aps.alert, {
     title: "La misión ha comenzado",
     body: "La mesa de SpyClash ya está activa en la pantalla bloqueada.",
+  });
+  assertEquals(ukrainian?.payload.aps.alert, {
+    title: "Місія почалася",
+    body: "Стіл SpyClash уже доступний на екрані блокування.",
   });
 });
 
@@ -182,9 +222,11 @@ Deno.test("generic remote end survives room deletion without leaking room data",
   const payload = liveActivityTerminationPayload({
     revision: 42,
     now: new Date("2026-07-26T12:00:00.000Z"),
+    locale: "uk-UA",
   });
   assertEquals(payload.aps.event, "end");
   assertEquals(payload.aps["content-state"].phase, "completed");
+  assertEquals(payload.aps["content-state"].displayLanguageCode, "uk");
   assertEquals(payload.aps["content-state"].participants, []);
   assertEquals(payload.aps["content-state"].revision, 42);
   assertEquals(

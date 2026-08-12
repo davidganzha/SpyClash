@@ -42,7 +42,7 @@
     "language": {
       "type": "string",
       "description": "User's preferred language",
-      "enum": ["ru", "en", "es"],
+      "enum": ["ru", "en", "es", "uk"],
       "default": "en"
     },
     "ai_generations_today": {
