@@ -1481,7 +1481,7 @@ private struct PullDownCommandMenu: View {
     }
 
     private func spyClashLogo(fontSize: CGFloat) -> some View {
-        SpyWordmark(fontSize: fontSize)
+        ShellWordmark(fontSize: fontSize)
             .shadow(color: .black.opacity(0.70), radius: 8, y: 3)
     }
 
@@ -1823,7 +1823,7 @@ private struct CompactCommandMenuPanel: View {
     }
 
     private func spyClashLogo(fontSize: CGFloat) -> some View {
-        SpyWordmark(fontSize: fontSize)
+        ShellWordmark(fontSize: fontSize)
             .shadow(color: .black.opacity(0.70), radius: 8, y: 3)
     }
 
@@ -2637,6 +2637,17 @@ private struct WebMenuTopBar: View {
     }
 }
 
+private struct ShellWordmark: View {
+    let fontSize: CGFloat
+
+    var body: some View {
+        // The logotype already has a spoken accessibility label. Cap only its
+        // decorative glyphs so fixed shell chrome cannot overlap nearby actions.
+        SpyWordmark(fontSize: fontSize)
+            .dynamicTypeSize(...DynamicTypeSize.large)
+    }
+}
+
 private struct WebHeaderHomeButton: View {
     @Environment(AppState.self) private var appState
 
@@ -2646,7 +2657,7 @@ private struct WebHeaderHomeButton: View {
     var body: some View {
         VStack(alignment: .leading, spacing: 2) {
             Button(action: action) {
-                SpyWordmark(fontSize: 30)
+                ShellWordmark(fontSize: 30)
                     .fixedSize()
                     .contentShape(Rectangle())
             }

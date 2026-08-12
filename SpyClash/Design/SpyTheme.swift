@@ -402,6 +402,454 @@ struct SpyPanel<Content: View>: View {
     }
 }
 
+enum SpyLobbyVisualLanguage {
+    static let maxWidth: CGFloat = 480
+    static let sectionSpacing: CGFloat = 14
+    static let heroHeight: CGFloat = 270
+
+    enum EntranceDelay {
+        static let mission = 0.0
+        static let hero = mission
+        static let mode = 0.04
+        static let roles = 0.06
+        static let timing = 0.08
+        static let players = 0.12
+        static let intel = 0.16
+        static let controls = 0.20
+    }
+}
+
+struct SpyLobbyPanel<Content: View>: View {
+    let accent: Color
+    let horizontalPadding: CGFloat
+    let verticalPadding: CGFloat
+    @ViewBuilder var content: Content
+
+    init(
+        accent: Color = SpyTheme.muted,
+        horizontalPadding: CGFloat = 24,
+        verticalPadding: CGFloat = 20,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.accent = accent
+        self.horizontalPadding = horizontalPadding
+        self.verticalPadding = verticalPadding
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .padding(.horizontal, horizontalPadding)
+            .padding(.vertical, verticalPadding)
+            .background(SpyTheme.panel, in: CutCornerShape(cut: 12))
+            .overlay(CutCornerShape(cut: 12).stroke(SpyTheme.stroke, lineWidth: 1))
+            .overlay(alignment: .topLeading) {
+                Rectangle()
+                    .fill(accent.opacity(0.88))
+                    .frame(width: 34, height: 3)
+                    .padding(.top, 1)
+                    .padding(.leading, horizontalPadding)
+            }
+            .shadow(color: accent.opacity(0.06), radius: 14)
+            .shadow(color: .black.opacity(0.30), radius: 18, y: 9)
+    }
+}
+
+struct SpyLobbySectionHeader: View {
+    let systemImage: String
+    let title: String
+
+    init(systemImage: String, title: String) {
+        self.systemImage = systemImage
+        self.title = title
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 12, weight: .black))
+                .foregroundStyle(SpyTheme.dim)
+                .frame(width: 16)
+
+            Text(title)
+                .font(SpyTheme.micro)
+                .tracking(0.08)
+                .foregroundStyle(SpyTheme.muted)
+                .spyFitted(lines: 2, scale: 0.68)
+        }
+    }
+}
+
+struct SpyLobbyModeChoice: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let symbol: String
+    let title: String
+    let isSelected: Bool
+    let isEnabled: Bool
+    let accessibilityIdentifier: String
+    let action: () -> Void
+
+    init(
+        symbol: String,
+        title: String,
+        isSelected: Bool,
+        isEnabled: Bool = true,
+        accessibilityIdentifier: String,
+        action: @escaping () -> Void
+    ) {
+        self.symbol = symbol
+        self.title = title
+        self.isSelected = isSelected
+        self.isEnabled = isEnabled
+        self.accessibilityIdentifier = accessibilityIdentifier
+        self.action = action
+    }
+
+    var body: some View {
+        Button(action: action) {
+            VStack(spacing: 7) {
+                Text(symbol)
+                    .font(.system(size: symbol == "?" ? 22 : 20, weight: .black, design: .default))
+                    .foregroundStyle(isSelected ? .white.opacity(0.82) : SpyTheme.dim)
+
+                Text(title)
+                    .font(.system(size: 11, weight: .black, design: .default))
+                    .tracking(title.count > 10 ? 0 : 0.08)
+                    .foregroundStyle(isSelected ? .white : SpyTheme.muted)
+                    .spyFitted(lines: 2, scale: 0.62, alignment: .center)
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 82)
+            .background(isSelected ? SpyTheme.red : Color.clear, in: CutCornerShape(cut: 9))
+            .overlay(
+                CutCornerShape(cut: 9)
+                    .stroke(isSelected ? SpyTheme.red : SpyTheme.stroke, lineWidth: 1)
+            )
+            .contentShape(CutCornerShape(cut: 9))
+        }
+        .buttonStyle(SpyWebPressStyle())
+        .disabled(!isEnabled || isSelected)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: isSelected)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier(accessibilityIdentifier)
+    }
+}
+
+struct SpyLobbyHeroSurface<Content: View>: View {
+    let accent: Color
+    @ViewBuilder var content: Content
+
+    init(
+        accent: Color = SpyTheme.red,
+        @ViewBuilder content: () -> Content
+    ) {
+        self.accent = accent
+        self.content = content()
+    }
+
+    var body: some View {
+        content
+            .frame(maxWidth: .infinity)
+            .frame(height: SpyLobbyVisualLanguage.heroHeight)
+            .background(SpyTheme.panel, in: CutCornerShape(cut: 12))
+            .overlay(CutCornerShape(cut: 12).stroke(SpyTheme.stroke, lineWidth: 1))
+            .overlay(alignment: .topLeading) {
+                Rectangle()
+                    .fill(accent.opacity(0.92))
+                    .frame(width: 34, height: 3)
+                    .padding(.top, 1)
+                    .padding(.leading, 18)
+            }
+            .shadow(color: accent.opacity(0.06), radius: 14)
+            .shadow(color: .black.opacity(0.30), radius: 18, y: 9)
+    }
+}
+
+struct SpyLobbyHeroHeader: View {
+    let title: String
+    let status: String?
+    let count: Int?
+    let accent: Color
+    let statusAccent: Color?
+
+    init(
+        title: String,
+        status: String? = nil,
+        count: Int? = nil,
+        accent: Color = SpyTheme.red,
+        statusAccent: Color? = nil
+    ) {
+        self.title = title
+        self.status = status
+        self.count = count
+        self.accent = accent
+        self.statusAccent = statusAccent
+    }
+
+    var body: some View {
+        HStack(spacing: 8) {
+            Text("//")
+                .foregroundStyle(accent)
+            Text(title)
+                .foregroundStyle(Color.white.opacity(0.56))
+
+            Spacer(minLength: 8)
+
+            if let status {
+                Circle()
+                    .fill(resolvedStatusAccent)
+                    .frame(width: 7, height: 7)
+                    .shadow(color: resolvedStatusAccent.opacity(0.42), radius: 5)
+                Text(status)
+                    .foregroundStyle(Color.white.opacity(0.52))
+            }
+
+            if let count {
+                Text(String(format: "%02d", count))
+                    .foregroundStyle(Color.white.opacity(0.90))
+                    .contentTransition(.numericText())
+                    .accessibilityHidden(true)
+            }
+        }
+        .font(.system(size: 9, weight: .black, design: .monospaced))
+        .tracking(0.08)
+    }
+
+    private var resolvedStatusAccent: Color {
+        statusAccent ?? accent
+    }
+}
+
+struct SpyLobbyFooter<Content: View>: View {
+    @ViewBuilder var content: Content
+
+    init(@ViewBuilder content: () -> Content) {
+        self.content = content()
+    }
+
+    var body: some View {
+        VStack(spacing: 0) {
+            content
+        }
+        .padding(.horizontal, 18)
+        .padding(.top, 10)
+        .padding(.bottom, 10)
+        .background {
+            Color.black
+                .opacity(0.97)
+                .ignoresSafeArea(edges: .bottom)
+        }
+        .overlay(alignment: .top) {
+            Rectangle()
+                .fill(
+                    LinearGradient(
+                        colors: [SpyTheme.red.opacity(0.75), .clear],
+                        startPoint: .leading,
+                        endPoint: .trailing
+                    )
+                )
+                .frame(height: 1)
+        }
+        .shadow(color: .black.opacity(0.48), radius: 16, y: -5)
+    }
+}
+
+struct SpyLobbyActionRow<Leading: View, Trailing: View>: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    @ViewBuilder let leading: Leading
+    @ViewBuilder let trailing: Trailing
+
+    init(
+        @ViewBuilder leading: () -> Leading,
+        @ViewBuilder trailing: () -> Trailing
+    ) {
+        self.leading = leading()
+        self.trailing = trailing()
+    }
+
+    @ViewBuilder
+    var body: some View {
+        if dynamicTypeSize.isAccessibilitySize {
+            VStack(spacing: 8) {
+                leading
+                trailing
+            }
+        } else {
+            HStack(spacing: 8) {
+                leading
+                trailing
+            }
+        }
+    }
+}
+
+struct SpyLobbyFooterPressStyle: ButtonStyle {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .scaleEffect(configuration.isPressed ? 0.965 : 1)
+            .offset(y: configuration.isPressed ? 1 : 0)
+            .brightness(configuration.isPressed ? 0.035 : 0)
+            .animation(
+                reduceMotion ? nil : .easeOut(duration: 0.12),
+                value: configuration.isPressed
+            )
+    }
+}
+
+struct SpyLobbySecondaryActionLabel: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    let title: String
+    let systemImage: String
+    let accessorySystemImage: String?
+    let accent: Color
+
+    init(
+        title: String,
+        systemImage: String,
+        accessorySystemImage: String? = nil,
+        accent: Color = SpyTheme.red
+    ) {
+        self.title = title
+        self.systemImage = systemImage
+        self.accessorySystemImage = accessorySystemImage
+        self.accent = accent
+    }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .black))
+                .foregroundStyle(accent)
+                .frame(width: 19)
+                .accessibilityHidden(true)
+
+            Text(title)
+                .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 11 : 9, weight: .black, design: .monospaced))
+                .foregroundStyle(.white.opacity(0.94))
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.80 : 0.58)
+
+            Spacer(minLength: 0)
+
+            if let accessorySystemImage {
+                Image(systemName: accessorySystemImage)
+                    .font(.system(size: 11, weight: .black))
+                    .foregroundStyle(.white.opacity(0.58))
+                    .accessibilityHidden(true)
+            }
+        }
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 72 : 58)
+        .background(
+            LinearGradient(
+                colors: [accent.opacity(0.14), Color.white.opacity(0.035)],
+                startPoint: .leading,
+                endPoint: .trailing
+            ),
+            in: CutCornerShape(cut: 9)
+        )
+        .overlay(CutCornerShape(cut: 9).stroke(accent.opacity(0.62), lineWidth: 1))
+        .overlay(alignment: .topLeading) {
+            CornerStroke(color: accent.opacity(0.84))
+                .frame(width: 14, height: 14)
+        }
+        .shadow(color: accent.opacity(0.10), radius: 12, y: 4)
+        .contentShape(CutCornerShape(cut: 9))
+    }
+}
+
+struct SpyLobbyPrimaryActionLabel: View {
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+
+    let title: String
+    let detail: String
+    let systemImage: String
+    let isAvailable: Bool
+
+    init(
+        title: String,
+        detail: String,
+        systemImage: String,
+        isAvailable: Bool = true
+    ) {
+        self.title = title
+        self.detail = detail
+        self.systemImage = systemImage
+        self.isAvailable = isAvailable
+    }
+
+    var body: some View {
+        HStack(spacing: 9) {
+            Image(systemName: systemImage)
+                .font(.system(size: 14, weight: .black))
+                .frame(width: 18)
+                .accessibilityHidden(true)
+
+            VStack(alignment: .leading, spacing: 2) {
+                Text(title)
+                    .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 11 : 9, weight: .black, design: .monospaced))
+                    .foregroundStyle(isAvailable ? .white : SpyTheme.red.opacity(0.48))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                    .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.78 : 0.52)
+                    .contentTransition(.opacity)
+
+                Text(detail)
+                    .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 8.5 : 7, weight: .bold, design: .monospaced))
+                    .foregroundStyle(isAvailable ? Color.white.opacity(0.72) : SpyTheme.dim)
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                    .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.76 : 0.50)
+                    .contentTransition(.opacity)
+            }
+
+            Spacer(minLength: 0)
+        }
+        .foregroundStyle(isAvailable ? Color.white : SpyTheme.red.opacity(0.48))
+        .padding(.horizontal, 12)
+        .frame(maxWidth: .infinity, minHeight: dynamicTypeSize.isAccessibilitySize ? 72 : 58)
+        .background(
+            isAvailable ? SpyTheme.red : SpyTheme.red.opacity(0.035),
+            in: CutCornerShape(cut: 9)
+        )
+        .overlay(
+            CutCornerShape(cut: 9)
+                .stroke(SpyTheme.red.opacity(isAvailable ? 1 : 0.24), lineWidth: 1)
+        )
+        .shadow(
+            color: isAvailable ? SpyTheme.red.opacity(0.18) : .clear,
+            radius: 12,
+            y: 4
+        )
+        .contentShape(CutCornerShape(cut: 9))
+    }
+}
+
+struct SpyLobbySetupFocusEffect: ViewModifier {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+
+    let dimmed: Bool
+
+    init(dimmed: Bool) {
+        self.dimmed = dimmed
+    }
+
+    func body(content: Content) -> some View {
+        content
+            .opacity(dimmed ? 0.20 : 1)
+            .scaleEffect(dimmed ? 0.94 : 1)
+            .blur(radius: dimmed ? 2 : 0)
+            .allowsHitTesting(!dimmed)
+            .animation(
+                reduceMotion ? nil : .smooth(duration: dimmed ? 0.20 : 0.24),
+                value: dimmed
+            )
+    }
+}
+
 struct SpyInput: View {
     enum Kind {
         case text

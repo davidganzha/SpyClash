@@ -142,6 +142,7 @@ struct SpyBackground: View {
 
 struct PageChrome<Content: View>: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
 
     let eyebrow: String
     let status: String
@@ -214,7 +215,7 @@ struct PageChrome<Content: View>: View {
     private func scrollToTarget(_ target: String?, proxy: ScrollViewProxy) {
         guard let target else { return }
         DispatchQueue.main.async {
-            withAnimation(.smooth(duration: 0.28)) {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
                 proxy.scrollTo(target, anchor: .bottom)
             }
         }

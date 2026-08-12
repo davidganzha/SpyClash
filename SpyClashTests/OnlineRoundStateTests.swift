@@ -309,6 +309,57 @@ final class OnlineRoundStateTests: XCTestCase {
         )
     }
 
+    func testLocalLobbyPrimaryActionRequiresGenerationForUnpreparedCustomTheme() {
+        let resolution = LocalLobbyPrimaryActionPolicy.resolve(
+            hasCustomTheme: true,
+            hasGeneratedPack: false,
+            source: .builtin
+        )
+
+        XCTAssertEqual(resolution.action, .generateRequired)
+        XCTAssertFalse(resolution.isEnabled)
+    }
+
+    func testLocalLobbyPrimaryActionRevealsUnpreparedBuiltinPool() {
+        let resolution = LocalLobbyPrimaryActionPolicy.resolve(
+            hasCustomTheme: false,
+            hasGeneratedPack: false,
+            source: .builtin
+        )
+
+        XCTAssertEqual(resolution.action, .revealRandom)
+        XCTAssertTrue(resolution.isEnabled)
+    }
+
+    func testLocalLobbyPrimaryActionDealsCardsFromSavedOrGeneratedSource() {
+        for source: LocalLobbyPrimaryActionPolicy.Source in [.saved, .generated] {
+            let resolution = LocalLobbyPrimaryActionPolicy.resolve(
+                hasCustomTheme: source == .generated,
+                hasGeneratedPack: source == .generated,
+                source: source
+            )
+
+            XCTAssertEqual(resolution.action, .dealCards, "Unexpected action for \(source)")
+            XCTAssertTrue(resolution.isEnabled, "Expected enabled CTA for \(source)")
+        }
+    }
+
+    func testLocalLobbyBuiltinRandomCTAAdvancesFromRevealToDeal() {
+        let firstTap = LocalLobbyPrimaryActionPolicy.resolve(
+            hasCustomTheme: false,
+            hasGeneratedPack: false,
+            source: .builtin
+        )
+        let afterPoolReveal = LocalLobbyPrimaryActionPolicy.resolve(
+            hasCustomTheme: false,
+            hasGeneratedPack: true,
+            source: .builtin
+        )
+
+        XCTAssertEqual(firstTap, .init(action: .revealRandom, isEnabled: true))
+        XCTAssertEqual(afterPoolReveal, .init(action: .dealCards, isEnabled: true))
+    }
+
     func testForgotCardReviewOnlyResumesTimerThatWasRunningInTheSameLiveRound() {
         XCTAssertTrue(
             LocalGameInterruptionPolicy.shouldResumeTimerAfterCardReview(

@@ -1291,13 +1291,17 @@ struct GameView: View {
                     }
             }
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: SpyLobbyVisualLanguage.sectionSpacing) {
                 onlineSetupSlot(.mission, content: AnyView(onlineMissionPanel(room)))
                 onlineSetupSlot(
                     .mode,
                     content: AnyView(
                         onlineModePanel(room)
-                            .spyWebEntrance(delay: 0.04, duration: 0.42, y: 14)
+                            .spyWebEntrance(
+                                delay: SpyLobbyVisualLanguage.EntranceDelay.mode,
+                                duration: 0.42,
+                                y: 14
+                            )
                     )
                 )
                 if room.canChooseLobbySpyCount {
@@ -1305,7 +1309,11 @@ struct GameView: View {
                         .roles,
                         content: AnyView(
                             onlineSpySettingsPanel(room)
-                                .spyWebEntrance(delay: 0.06, duration: 0.42, y: 14)
+                                .spyWebEntrance(
+                                    delay: SpyLobbyVisualLanguage.EntranceDelay.roles,
+                                    duration: 0.42,
+                                    y: 14
+                                )
                         )
                     )
                 }
@@ -1313,14 +1321,22 @@ struct GameView: View {
                     .timing,
                     content: AnyView(
                         onlineTimingPanel(room)
-                            .spyWebEntrance(delay: 0.08, duration: 0.42, y: 14)
+                            .spyWebEntrance(
+                                delay: SpyLobbyVisualLanguage.EntranceDelay.timing,
+                                duration: 0.42,
+                                y: 14
+                            )
                     )
                 )
                 onlineSetupSlot(
                     .players,
                     content: AnyView(
                         onlinePlayersPanel(room)
-                            .spyWebEntrance(delay: 0.12, duration: 0.42, y: 14)
+                            .spyWebEntrance(
+                                delay: SpyLobbyVisualLanguage.EntranceDelay.players,
+                                duration: 0.42,
+                                y: 14
+                            )
                     )
                 )
                 if isHost(room) {
@@ -1328,7 +1344,11 @@ struct GameView: View {
                         .intel,
                         content: AnyView(
                             onlineIntelPanel
-                                .spyWebEntrance(delay: 0.16, duration: 0.42, y: 14)
+                                .spyWebEntrance(
+                                    delay: SpyLobbyVisualLanguage.EntranceDelay.intel,
+                                    duration: 0.42,
+                                    y: 14
+                                )
                         )
                     )
                     .id(onlineIntelScrollTarget)
@@ -1337,7 +1357,11 @@ struct GameView: View {
                         .intel,
                         content: AnyView(
                             onlineGuestIntelPanel(room)
-                                .spyWebEntrance(delay: 0.16, duration: 0.42, y: 14)
+                                .spyWebEntrance(
+                                    delay: SpyLobbyVisualLanguage.EntranceDelay.intel,
+                                    duration: 0.42,
+                                    y: 14
+                                )
                         )
                     )
                 }
@@ -1345,13 +1369,17 @@ struct GameView: View {
                     .controls,
                     content: AnyView(
                         onlineControls(room)
-                            .spyWebEntrance(delay: 0.20, duration: 0.42, y: 14)
+                            .spyWebEntrance(
+                                delay: SpyLobbyVisualLanguage.EntranceDelay.controls,
+                                duration: 0.42,
+                                y: 14
+                            )
                     )
                 )
             }
             .disabled(isStarting)
         }
-        .frame(maxWidth: 480)
+        .frame(maxWidth: SpyLobbyVisualLanguage.maxWidth)
         .frame(maxWidth: .infinity)
         .padding(.bottom, 12)
         .transition(.opacity)
@@ -1418,7 +1446,7 @@ struct GameView: View {
                     .tag(2)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
-            .frame(height: 270)
+            .frame(height: SpyLobbyVisualLanguage.heroHeight)
             .accessibilityValue(localized(
                 en: "Page \(roomAccessPage + 1) of 3",
                 ru: "Страница \(roomAccessPage + 1) из 3",
@@ -1430,7 +1458,7 @@ struct GameView: View {
                 .padding(.bottom, 11)
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 270)
+        .frame(height: SpyLobbyVisualLanguage.heroHeight)
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: roomAccessPage)
         .onChange(of: roomAccessPage) { previousPage, nextPage in
             HapticManager.shared.fire(.tabSelection)
@@ -1471,15 +1499,20 @@ struct GameView: View {
         .task(id: roomQRPayload(for: room)) {
             await prepareRoomQRCode(payload: roomQRPayload(for: room))
         }
-        .spyWebEntrance(delay: 0, duration: 0.46, y: 12)
+        .spyWebEntrance(
+            delay: SpyLobbyVisualLanguage.EntranceDelay.hero,
+            duration: 0.46,
+            y: 12
+        )
     }
 
     private func onlineRoomCodePage(_ room: GameRoom) -> some View {
-        roomAccessCardSurface {
+        SpyLobbyHeroSurface {
             VStack(spacing: 0) {
-                roomAccessHeader(
-                    room,
-                    title: localized(en: "ROOM ACCESS", ru: "ДОСТУП В КОМНАТУ", es: "ACCESO A SALA", uk: "ДОСТУП ДО КІМНАТИ")
+                SpyLobbyHeroHeader(
+                    title: localized(en: "ROOM ACCESS", ru: "ДОСТУП В КОМНАТУ", es: "ACCESO A SALA", uk: "ДОСТУП ДО КІМНАТИ"),
+                    status: localized(en: "LIVE", ru: "В СЕТИ", es: "EN LINEA", uk: "У МЕРЕЖІ"),
+                    count: room.playersList.count
                 )
                 .padding(.horizontal, 18)
                 .padding(.top, 15)
@@ -1585,7 +1618,7 @@ struct GameView: View {
                     .opacity(isRoomQRFlipping && !reduceMotion ? 1 : 0)
             }
             .frame(maxWidth: .infinity)
-            .frame(height: 270)
+            .frame(height: SpyLobbyVisualLanguage.heroHeight)
             .scaleEffect(roomQRIsLifted ? 1.018 : 1)
             .offset(y: roomQRIsLifted ? -4 : 0)
             .shadow(
@@ -1603,7 +1636,7 @@ struct GameView: View {
             } label: {
                 Color.clear
                     .frame(maxWidth: .infinity)
-                    .frame(height: 270)
+                    .frame(height: SpyLobbyVisualLanguage.heroHeight)
                     .contentShape(CutCornerShape(cut: 12))
             }
             .buttonStyle(.plain)
@@ -1648,7 +1681,7 @@ struct GameView: View {
             }
         }
         .frame(maxWidth: .infinity)
-        .frame(height: 270)
+        .frame(height: SpyLobbyVisualLanguage.heroHeight)
     }
 
     private func onlineRoomRadarPage(_ room: GameRoom) -> some View {
@@ -1657,9 +1690,14 @@ struct GameView: View {
             GridItem(.flexible(minimum: 0), spacing: 8)
         ]
 
-        return roomAccessCardSurface {
+        return SpyLobbyHeroSurface {
             VStack(spacing: 0) {
-                roomRadarHeader
+                SpyLobbyHeroHeader(
+                    title: "RADAR",
+                    status: localized(en: "NEARBY", ru: "РЯДОМ", es: "CERCA", uk: "ПОРУЧ"),
+                    count: roomRadar.peers.count,
+                    statusAccent: roomRadarStatusColor
+                )
                     .padding(.horizontal, 18)
                     .padding(.top, 15)
 
@@ -1718,29 +1756,6 @@ struct GameView: View {
             es: "Radar, agentes cercanos: \(roomRadar.peers.count)",
             uk: "Радар, гравців поруч: \(roomRadar.peers.count)"
         ))
-    }
-
-    private var roomRadarHeader: some View {
-        HStack(spacing: 8) {
-            Text("//")
-                .foregroundStyle(SpyTheme.red)
-            Text("RADAR")
-                .foregroundStyle(Color.white.opacity(0.56))
-
-            Spacer(minLength: 8)
-
-            Circle()
-                .fill(roomRadarStatusColor)
-                .frame(width: 7, height: 7)
-                .shadow(color: roomRadarStatusColor.opacity(0.42), radius: 5)
-            Text(localized(en: "NEARBY", ru: "РЯДОМ", es: "CERCA", uk: "ПОРУЧ"))
-                .foregroundStyle(Color.white.opacity(0.52))
-            Text(String(format: "%02d", roomRadar.peers.count))
-                .foregroundStyle(Color.white.opacity(0.90))
-                .contentTransition(.numericText())
-        }
-        .font(.system(size: 9, weight: .black, design: .monospaced))
-        .tracking(0.08)
     }
 
     private var roomRadarStatusColor: Color {
@@ -1900,11 +1915,12 @@ struct GameView: View {
     }
 
     private func roomQRHiddenFace(_ room: GameRoom) -> some View {
-        roomAccessCardSurface {
+        SpyLobbyHeroSurface {
             VStack(spacing: 0) {
-                roomAccessHeader(
-                    room,
-                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR", uk: "QR-ЗАПРОШЕННЯ")
+                SpyLobbyHeroHeader(
+                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR", uk: "QR-ЗАПРОШЕННЯ"),
+                    status: localized(en: "LIVE", ru: "В СЕТИ", es: "EN LINEA", uk: "У МЕРЕЖІ"),
+                    count: room.playersList.count
                 )
                 .padding(.horizontal, 18)
                 .padding(.top, 15)
@@ -1954,11 +1970,12 @@ struct GameView: View {
     }
 
     private func roomQRVisibleFace(_ room: GameRoom, payload: String) -> some View {
-        roomAccessCardSurface {
+        SpyLobbyHeroSurface {
             VStack(spacing: 0) {
-                roomAccessHeader(
-                    room,
-                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR", uk: "QR-ЗАПРОШЕННЯ")
+                SpyLobbyHeroHeader(
+                    title: localized(en: "QR INVITATION", ru: "QR-ПРИГЛАШЕНИЕ", es: "INVITACIÓN QR", uk: "QR-ЗАПРОШЕННЯ"),
+                    status: localized(en: "LIVE", ru: "В СЕТИ", es: "EN LINEA", uk: "У МЕРЕЖІ"),
+                    count: room.playersList.count
                 )
                 .padding(.horizontal, 18)
                 .padding(.top, 15)
@@ -2013,52 +2030,6 @@ struct GameView: View {
         .accessibilityHidden(true)
     }
 
-    private func roomAccessCardSurface<Content: View>(
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        content()
-            .frame(maxWidth: .infinity)
-            .frame(height: 270)
-            .background(SpyTheme.panel, in: CutCornerShape(cut: 12))
-            .overlay(CutCornerShape(cut: 12).stroke(SpyTheme.stroke, lineWidth: 1))
-            .overlay(alignment: .topLeading) {
-                Rectangle()
-                    .fill(SpyTheme.red.opacity(0.92))
-                    .frame(width: 34, height: 3)
-                    .padding(.top, 1)
-                    .padding(.leading, 18)
-            }
-            .shadow(color: SpyTheme.red.opacity(0.06), radius: 14)
-            .shadow(color: .black.opacity(0.30), radius: 18, y: 9)
-    }
-
-    private func roomAccessHeader(_ room: GameRoom, title: String) -> some View {
-        let primary = Color.white.opacity(0.56)
-        let secondary = Color.white.opacity(0.52)
-        let count = Color.white.opacity(0.90)
-
-        return HStack(spacing: 8) {
-            Text("//")
-                .foregroundStyle(SpyTheme.red)
-            Text(title)
-                .foregroundStyle(primary)
-
-            Spacer(minLength: 8)
-
-            Circle()
-                .fill(SpyTheme.red)
-                .frame(width: 7, height: 7)
-                .shadow(color: SpyTheme.red.opacity(0.42), radius: 5)
-            Text(localized(en: "LIVE", ru: "В СЕТИ", es: "EN LINEA", uk: "У МЕРЕЖІ"))
-                .foregroundStyle(secondary)
-            Text(String(format: "%02d", room.playersList.count))
-                .foregroundStyle(count)
-                .contentTransition(.numericText())
-        }
-        .font(.system(size: 9, weight: .black, design: .monospaced))
-        .tracking(0.08)
-    }
-
     private func roomAccessActionLabel(title: String, systemImage: String, accent: Color) -> some View {
         Label(title, systemImage: systemImage)
             .font(.system(size: 9, weight: .black, design: .monospaced))
@@ -2086,51 +2057,14 @@ struct GameView: View {
         .accessibilityHidden(true)
     }
 
-    private func onlineSetupPanel<Content: View>(
-        accent: Color = SpyTheme.muted,
-        horizontalPadding: CGFloat = 24,
-        verticalPadding: CGFloat = 20,
-        @ViewBuilder content: () -> Content
-    ) -> some View {
-        content()
-            .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
-            .background(SpyTheme.panel, in: CutCornerShape(cut: 12))
-            .overlay(CutCornerShape(cut: 12).stroke(SpyTheme.stroke, lineWidth: 1))
-            .overlay(alignment: .topLeading) {
-                Rectangle()
-                    .fill(accent.opacity(0.88))
-                    .frame(width: 34, height: 3)
-                    .padding(.top, 1)
-                    .padding(.leading, horizontalPadding)
-            }
-            .shadow(color: accent.opacity(0.06), radius: 14)
-            .shadow(color: .black.opacity(0.30), radius: 18, y: 9)
-    }
-
-    private func onlineSectionHeader(systemImage: String, title: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .black))
-                .foregroundStyle(SpyTheme.dim)
-                .frame(width: 16)
-
-            Text(title)
-                .font(SpyTheme.micro)
-                .tracking(0.08)
-                .foregroundStyle(SpyTheme.muted)
-                .spyFitted(lines: 2, scale: 0.68)
-        }
-    }
-
     private func onlineModePanel(_ room: GameRoom) -> some View {
         let displayedMode = displayedGameMode(for: room)
         let accent = displayedMode == .questions ? SpyTheme.red : SpyTheme.amber
         let presentationSnapshot = lobbyPresentationSnapshot(for: room)
 
-        return onlineSetupPanel(accent: accent) {
+        return SpyLobbyPanel(accent: accent) {
             VStack(alignment: .leading, spacing: 14) {
-                onlineSectionHeader(
+                SpyLobbySectionHeader(
                     systemImage: "gearshape.fill",
                     title: localized(en: "GAME MODE", ru: "РЕЖИМ ИГРЫ", es: "MODO DE JUEGO", uk: "РЕЖИМ ГРИ")
                 )
@@ -2150,32 +2084,17 @@ struct GameView: View {
     private func onlineModeOption(_ room: GameRoom, mode: SpyGameMode, symbol: String) -> some View {
         let isSelected = displayedGameMode(for: room) == mode
 
-        return Button {
+        return SpyLobbyModeChoice(
+            symbol: symbol,
+            title: copy.modeTitle(mode),
+            isSelected: isSelected,
+            isEnabled: isHost(room),
+            accessibilityIdentifier: "onlineRoom.mode.\(mode.rawValue)"
+        ) {
             guard isHost(room), !isSelected else { return }
             HapticManager.shared.fire(.tabSelection)
             Task { await updateMode(room, mode: mode) }
-        } label: {
-            VStack(spacing: 7) {
-                Text(symbol)
-                    .font(.system(size: mode == .questions ? 22 : 20, weight: .black, design: .default))
-                    .foregroundStyle(isSelected ? .white.opacity(0.82) : SpyTheme.dim)
-
-                Text(copy.modeTitle(mode))
-                    .font(.system(size: 11, weight: .black, design: .default))
-                    .tracking(copy.modeTitle(mode).count > 10 ? 0 : 0.08)
-                    .foregroundStyle(isSelected ? .white : SpyTheme.muted)
-                    .spyFitted(lines: 2, scale: 0.62, alignment: .center)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 82)
-            .background(isSelected ? SpyTheme.red : Color.clear, in: CutCornerShape(cut: 9))
-            .overlay(CutCornerShape(cut: 9).stroke(isSelected ? SpyTheme.red : SpyTheme.stroke, lineWidth: 1))
-            .contentShape(CutCornerShape(cut: 9))
         }
-        .buttonStyle(SpyWebPressStyle())
-        .disabled(!isHost(room) || isSelected)
-        .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: isSelected)
-        .accessibilityIdentifier("onlineRoom.mode.\(mode.rawValue)")
     }
 
     private func onlineSpySettingsPanel(_ room: GameRoom) -> some View {
@@ -2184,10 +2103,10 @@ struct GameView: View {
         let isMultiSpy = spyCount > 1
         let presentationSnapshot = lobbyPresentationSnapshot(for: room)
 
-        return onlineSetupPanel(accent: isMultiSpy ? SpyTheme.red : SpyTheme.muted) {
+        return SpyLobbyPanel(accent: isMultiSpy ? SpyTheme.red : SpyTheme.muted) {
             VStack(alignment: .leading, spacing: 14) {
                 HStack(alignment: .firstTextBaseline) {
-                    onlineSectionHeader(
+                    SpyLobbySectionHeader(
                         systemImage: "person.crop.circle.badge.questionmark",
                         title: localized(en: "SPIES", ru: "ШПИОНЫ", es: "ESPIAS", uk: "ШПИГУНИ")
                     )
@@ -2293,9 +2212,9 @@ struct GameView: View {
     private func onlinePlayersPanel(_ room: GameRoom) -> some View {
         let missingPlayers = max(3 - room.playersList.count, 0)
 
-        return onlineSetupPanel(accent: SpyTheme.muted) {
+        return SpyLobbyPanel(accent: SpyTheme.muted) {
             VStack(alignment: .leading, spacing: 12) {
-                onlineSectionHeader(
+                SpyLobbySectionHeader(
                     systemImage: "person.2.fill",
                     title: "\(localized(en: "PLAYERS", ru: "ИГРОКИ", es: "JUGADORES", uk: "ГРАВЦІ")) (\(room.playersList.count) / 3+)"
                 )
@@ -2385,10 +2304,10 @@ struct GameView: View {
     }
 
     private var onlineIntelPanel: some View {
-        onlineSetupPanel(accent: SpyTheme.muted) {
+        SpyLobbyPanel(accent: SpyTheme.muted) {
             VStack(alignment: .leading, spacing: 16) {
                 HStack(alignment: .firstTextBaseline) {
-                    onlineSectionHeader(
+                    SpyLobbySectionHeader(
                         systemImage: "paintpalette.fill",
                         title: localized(en: "THEME", ru: "ТЕМА", es: "TEMA", uk: "ТЕМА")
                     )
@@ -2450,9 +2369,9 @@ struct GameView: View {
     private func onlineGuestIntelPanel(_ room: GameRoom) -> some View {
         let presentationSnapshot = lobbyPresentationSnapshot(for: room)
 
-        return onlineSetupPanel(accent: SpyTheme.muted) {
+        return SpyLobbyPanel(accent: SpyTheme.muted) {
             VStack(alignment: .leading, spacing: 14) {
-                onlineSectionHeader(
+                SpyLobbySectionHeader(
                     systemImage: "paintpalette.fill",
                     title: localized(en: "THEME", ru: "ТЕМА", es: "TEMA", uk: "ТЕМА")
                 )
@@ -2511,7 +2430,7 @@ struct GameView: View {
                 .accessibilityIdentifier("onlineRoom.readyCheck")
             } else {
                 if !isHost(room) {
-                    onlineSetupPanel(accent: SpyTheme.muted, verticalPadding: 16) {
+                    SpyLobbyPanel(accent: SpyTheme.muted, verticalPadding: 16) {
                         HStack(spacing: 12) {
                             SpySpinner(size: 18, accent: SpyTheme.red)
                             VStack(alignment: .leading, spacing: 4) {
@@ -2551,10 +2470,10 @@ struct GameView: View {
         let displayedDuration = displayedDurationMinutes(for: room)
         let presentationSnapshot = lobbyPresentationSnapshot(for: room)
 
-        return onlineSetupPanel(accent: SpyTheme.muted) {
+        return SpyLobbyPanel(accent: SpyTheme.muted) {
             VStack(alignment: .leading, spacing: 13) {
                 HStack(alignment: .firstTextBaseline) {
-                    onlineSectionHeader(systemImage: "timer", title: copy.duration)
+                    SpyLobbySectionHeader(systemImage: "timer", title: copy.duration)
                     Spacer()
                     Text("\(Int(displayedDuration)) \(copy.minuteSuffix)")
                         .font(.system(size: 22, weight: .black, design: .default))
@@ -2945,18 +2864,20 @@ struct GameView: View {
         let usesAvailableAppearance = lobbyStartPrerequisitesAreMet(room)
         let canStart = lobbySetupCanAdvance(room)
 
-        return VStack(spacing: 0) {
+        return SpyLobbyFooter {
             if isHost(room) {
-                HStack(spacing: 8) {
+                SpyLobbyActionRow {
                     Button {
                         HapticManager.shared.fire(.buttonPress)
                         appState.presentedSheet = .roomQR(room)
                     } label: {
-                        inviteActionBarLabel(
-                            title: localized(en: "INVITE PLAYERS", ru: "ПРИГЛАСИТЬ ИГРОКОВ", es: "INVITAR JUGADORES", uk: "ЗАПРОСИТИ ГРАВЦІВ")
+                        SpyLobbySecondaryActionLabel(
+                            title: localized(en: "INVITE PLAYERS", ru: "ПРИГЛАСИТЬ ИГРОКОВ", es: "INVITAR JUGADORES", uk: "ЗАПРОСИТИ ГРАВЦІВ"),
+                            systemImage: "person.badge.plus",
+                            accessorySystemImage: "square.and.arrow.up"
                         )
                     }
-                    .buttonStyle(WaitingFooterPressStyle())
+                    .buttonStyle(SpyLobbyFooterPressStyle())
                     .frame(maxWidth: .infinity)
                     .accessibilityLabel(localized(en: "Invite players", ru: "Пригласить игроков", es: "Invitar jugadores", uk: "Запросити гравців"))
                     .accessibilityHint(localized(
@@ -2966,7 +2887,7 @@ struct GameView: View {
                         uk: "Відкриває код, QR, надсилання та пошук через радар"
                     ))
                     .accessibilityIdentifier("onlineRoom.inviteMore")
-
+                } trailing: {
                     Button {
                         Task { await start(room) }
                     } label: {
@@ -2977,7 +2898,7 @@ struct GameView: View {
                             usesAvailableAppearance: usesAvailableAppearance
                         )
                     }
-                    .buttonStyle(WaitingFooterPressStyle())
+                    .buttonStyle(SpyLobbyFooterPressStyle())
                     .frame(maxWidth: .infinity)
                     .disabled(!canStart || isStarting)
                     .accessibilityLabel(actionTitle)
@@ -3003,57 +2924,8 @@ struct GameView: View {
                 .overlay(CutCornerShape(cut: 9).stroke(SpyTheme.strokeStrong, lineWidth: 1))
             }
         }
-        .padding(.horizontal, 18)
-        .padding(.top, 10)
-        .padding(.bottom, 10)
-        .background {
-            Color.black
-                .opacity(0.97)
-                .ignoresSafeArea(edges: .bottom)
-        }
-        .overlay(alignment: .top) {
-            Rectangle()
-                .fill(LinearGradient(colors: [SpyTheme.red.opacity(0.75), .clear], startPoint: .leading, endPoint: .trailing))
-                .frame(height: 1)
-        }
-        .shadow(color: .black.opacity(0.48), radius: 16, y: -5)
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: canStart)
         .animation(reduceMotion ? nil : .smooth(duration: 0.20), value: isStarting)
-    }
-
-    private func inviteActionBarLabel(title: String) -> some View {
-        HStack(spacing: 9) {
-            Image(systemName: "person.badge.plus")
-                .font(.system(size: 14, weight: .black))
-                .foregroundStyle(SpyTheme.red)
-                .frame(width: 19)
-            Text(title)
-                .font(.system(size: 9, weight: .black, design: .monospaced))
-                .foregroundStyle(.white.opacity(0.94))
-                .lineLimit(2)
-                .minimumScaleFactor(0.58)
-            Spacer(minLength: 0)
-            Image(systemName: "square.and.arrow.up")
-                .font(.system(size: 11, weight: .black))
-                .foregroundStyle(.white.opacity(0.58))
-        }
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, minHeight: 58)
-        .background(
-            LinearGradient(
-                colors: [SpyTheme.red.opacity(0.14), Color.white.opacity(0.035)],
-                startPoint: .leading,
-                endPoint: .trailing
-            ),
-            in: CutCornerShape(cut: 9)
-        )
-        .overlay(CutCornerShape(cut: 9).stroke(SpyTheme.red.opacity(0.62), lineWidth: 1))
-        .overlay(alignment: .topLeading) {
-            CornerStroke(color: SpyTheme.red.opacity(0.84))
-                .frame(width: 14, height: 14)
-        }
-        .shadow(color: SpyTheme.red.opacity(0.10), radius: 12, y: 4)
-        .contentShape(CutCornerShape(cut: 9))
     }
 
     private func webRoomCodePanel(_ room: GameRoom) -> some View {
@@ -9049,6 +8921,7 @@ private struct RoomCodeSpoilerField: View {
 
 private struct WaitingStartActionLabel: View {
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let mode: WaitingStartActionMode
     let title: String
@@ -9059,7 +8932,7 @@ private struct WaitingStartActionLabel: View {
         ZStack {
             replacementContent
         }
-        .frame(maxWidth: .infinity, minHeight: 58)
+        .frame(maxWidth: .infinity, minHeight: actionMinimumHeight)
         .contentShape(CutCornerShape(cut: 9))
         .animation(
             reduceMotion ? nil : .smooth(duration: 0.24),
@@ -9102,37 +8975,11 @@ private struct WaitingStartActionLabel: View {
     }
 
     private var actionContent: some View {
-        HStack(spacing: 9) {
-            Image(systemName: "play.fill")
-                .font(.system(size: 14, weight: .black))
-                .frame(width: 18)
-
-            textContent(
-                titleColor: usesAvailableAppearance ? .white : SpyTheme.red.opacity(0.48),
-                detailColor: usesAvailableAppearance ? Color.white.opacity(0.72) : SpyTheme.dim,
-                titleSize: 9
-            )
-
-            Spacer(minLength: 0)
-        }
-        .foregroundStyle(usesAvailableAppearance ? Color.white : SpyTheme.red.opacity(0.48))
-        .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, minHeight: 58)
-        .background(
-            usesAvailableAppearance ? SpyTheme.red : SpyTheme.red.opacity(0.035),
-            in: CutCornerShape(cut: 9)
-        )
-        .overlay(
-            CutCornerShape(cut: 9)
-                .stroke(
-                    SpyTheme.red.opacity(usesAvailableAppearance ? 1 : 0.24),
-                    lineWidth: 1
-                )
-        )
-        .shadow(
-            color: usesAvailableAppearance ? SpyTheme.red.opacity(0.18) : .clear,
-            radius: 12,
-            y: 4
+        SpyLobbyPrimaryActionLabel(
+            title: title,
+            detail: detail,
+            systemImage: "play.fill",
+            isAvailable: usesAvailableAppearance
         )
     }
 
@@ -9161,13 +9008,13 @@ private struct WaitingStartActionLabel: View {
                 detailColor: usesAvailableAppearance
                     ? Color.white.opacity(0.58)
                     : SpyTheme.dim.opacity(0.72),
-                titleSize: 8.4
+                titleSize: dynamicTypeSize.isAccessibilitySize ? 11 : 8.4
             )
 
             Spacer(minLength: 0)
         }
         .padding(.horizontal, 12)
-        .frame(maxWidth: .infinity, minHeight: 58)
+        .frame(maxWidth: .infinity, minHeight: actionMinimumHeight)
         .background(
             LinearGradient(
                 colors: [
@@ -9205,15 +9052,15 @@ private struct WaitingStartActionLabel: View {
             Text(title)
                 .font(.system(size: titleSize, weight: .black, design: .monospaced))
                 .foregroundStyle(titleColor)
-                .lineLimit(2)
-                .minimumScaleFactor(0.52)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.78 : 0.52)
                 .contentTransition(.opacity)
 
             Text(detail)
-                .font(.system(size: 7, weight: .bold, design: .monospaced))
+                .font(.system(size: dynamicTypeSize.isAccessibilitySize ? 8.5 : 7, weight: .bold, design: .monospaced))
                 .foregroundStyle(detailColor)
-                .lineLimit(2)
-                .minimumScaleFactor(0.50)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
+                .minimumScaleFactor(dynamicTypeSize.isAccessibilitySize ? 0.76 : 0.50)
                 .contentTransition(.opacity)
         }
     }
@@ -9223,20 +9070,9 @@ private struct WaitingStartActionLabel: View {
             ? .opacity
             : .opacity.combined(with: .scale(scale: 0.96))
     }
-}
 
-private struct WaitingFooterPressStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    func makeBody(configuration: Configuration) -> some View {
-        configuration.label
-            .scaleEffect(configuration.isPressed ? 0.965 : 1)
-            .offset(y: configuration.isPressed ? 1 : 0)
-            .brightness(configuration.isPressed ? 0.035 : 0)
-            .animation(
-                reduceMotion ? nil : .easeOut(duration: 0.12),
-                value: configuration.isPressed
-            )
+    private var actionMinimumHeight: CGFloat {
+        dynamicTypeSize.isAccessibilitySize ? 72 : 58
     }
 }
 
@@ -9278,7 +9114,7 @@ private struct OnlineSetupSlotView: View {
     var body: some View {
         ZStack {
             content
-                .modifier(OnlineSetupFocusEffect(dimmed: dimmed))
+                .modifier(SpyLobbySetupFocusEffect(dimmed: dimmed))
 
             if dimmed {
                 Color.clear
@@ -9286,24 +9122,6 @@ private struct OnlineSetupSlotView: View {
                     .onTapGesture(perform: onDismiss)
             }
         }
-    }
-}
-
-private struct OnlineSetupFocusEffect: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-
-    let dimmed: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(dimmed ? 0.20 : 1)
-            .scaleEffect(dimmed ? 0.94 : 1)
-            .blur(radius: dimmed ? 2 : 0)
-            .allowsHitTesting(!dimmed)
-            .animation(
-                reduceMotion ? nil : .smooth(duration: dimmed ? 0.20 : 0.24),
-                value: dimmed
-            )
     }
 }
 

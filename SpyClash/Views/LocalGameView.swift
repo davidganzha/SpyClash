@@ -74,6 +74,8 @@ enum LocalSpyAssignmentPolicy {
 
 struct LocalGameView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     @State private var players = ["", "", ""]
     @State private var avatars = ["🕵️", "👤", "🤖"]
@@ -191,7 +193,11 @@ struct LocalGameView: View {
                 await loadPacks()
             }
             .onAppear {
-                withAnimation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true)) {
+                withAnimation(
+                    reduceMotion
+                        ? nil
+                        : .easeInOut(duration: 2.4).repeatForever(autoreverses: true)
+                ) {
                     localPreviewPulse = true
                 }
                 updateLocalShellChromeSuppression()
@@ -244,7 +250,11 @@ struct LocalGameView: View {
     }
 
     private var chromedLocalBody: some View {
-        PageChrome(eyebrow: copy.eyebrow, status: phase.status(copy)) {
+        PageChrome(
+            eyebrow: copy.eyebrow,
+            status: phase.status(copy),
+            scrollTarget: localSetupScrollTarget
+        ) {
             VStack(alignment: .leading, spacing: 18) {
                 switch phase {
                 case .setup:
@@ -263,8 +273,20 @@ struct LocalGameView: View {
             }
             .padding(.horizontal, 18)
             .padding(.top, 20)
-            .animation(.smooth(duration: 0.38), value: phase)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.38), value: phase)
         }
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if phase == .setup, focusedLocalSetupField == nil {
+                localLobbyActionBar
+                    .transition(
+                        .asymmetric(
+                            insertion: .move(edge: .bottom).combined(with: .opacity),
+                            removal: .opacity
+                        )
+                    )
+            }
+        }
+        .animation(reduceMotion ? nil : SpyMotion.page, value: focusedLocalSetupField)
     }
 
     private var cardsScene: some View {
@@ -317,40 +339,70 @@ struct LocalGameView: View {
                     }
             }
 
-            VStack(alignment: .leading, spacing: 14) {
+            VStack(alignment: .leading, spacing: SpyLobbyVisualLanguage.sectionSpacing) {
                 localSetupSlot(.mission) {
                     localMissionPanel
+                        .spyWebEntrance(
+                            delay: SpyLobbyVisualLanguage.EntranceDelay.hero,
+                            duration: 0.46,
+                            y: 12
+                        )
                 }
                 localSetupSlot(.mode) {
                     localModePanel
+                        .spyWebEntrance(
+                            delay: SpyLobbyVisualLanguage.EntranceDelay.mode,
+                            duration: 0.42,
+                            y: 14
+                        )
                 }
                 if GameRoom.canChooseSpyCount(forPlayerCount: players.count) {
                     localSetupSlot(.roles) {
                         localSpySettingsPanel
+                            .spyWebEntrance(
+                                delay: SpyLobbyVisualLanguage.EntranceDelay.roles,
+                                duration: 0.42,
+                                y: 14
+                            )
                     }
                 }
                 localSetupSlot(.timing) {
                     localTimingPanel
+                        .spyWebEntrance(
+                            delay: SpyLobbyVisualLanguage.EntranceDelay.timing,
+                            duration: 0.42,
+                            y: 14
+                        )
                 }
                 localSetupSlot(.players) {
                     localPlayersPanel
+                        .spyWebEntrance(
+                            delay: SpyLobbyVisualLanguage.EntranceDelay.players,
+                            duration: 0.42,
+                            y: 14
+                        )
                 }
+                .id(localPlayersScrollTarget)
                 localSetupSlot(.intel) {
                     localIntelPanel
+                        .spyWebEntrance(
+                            delay: SpyLobbyVisualLanguage.EntranceDelay.intel,
+                            duration: 0.42,
+                            y: 14
+                        )
                 }
-                localSetupSlot(.controls) {
-                    localControls
-                }
+                .id(localIntelScrollTarget)
             }
         }
-        .frame(maxWidth: 480)
+        .frame(maxWidth: SpyLobbyVisualLanguage.maxWidth)
         .frame(maxWidth: .infinity)
-        .animation(localSetupFocusAnimation, value: animatedLocalSetupPanel)
+        .padding(.bottom, 12)
+        .animation(reduceMotion ? nil : localSetupFocusAnimation, value: animatedLocalSetupPanel)
         .onAppear {
             animatedLocalSetupPanel = focusedLocalSetupPanel
         }
         .onChange(of: focusedLocalSetupPanel) { _, newPanel in
-            withAnimation(localSetupFocusAnimation) {
+            withAnimation(reduceMotion ? nil : localSetupFocusAnimation) {
                 animatedLocalSetupPanel = newPanel
             }
         }
@@ -366,7 +418,7 @@ struct LocalGameView: View {
 
         ZStack {
             content()
-                .modifier(LocalSetupFocusEffect(dimmed: dimmed))
+                .modifier(SpyLobbySetupFocusEffect(dimmed: dimmed))
 
             if dimmed {
                 Color.clear
@@ -383,11 +435,33 @@ struct LocalGameView: View {
     }
 
     private func dismissLocalSetupCapture() {
-        withAnimation(localSetupFocusAnimation) {
+        withAnimation(reduceMotion ? nil : localSetupFocusAnimation) {
             animatedLocalSetupPanel = nil
             focusedLocalSetupField = nil
         }
         resetPlayerDragState()
+    }
+
+    private var localPlayersScrollTarget: String { "local-lobby-players" }
+    private var localIntelScrollTarget: String { "local-lobby-intel" }
+    private var localThemeScrollTarget: String { "local-lobby-theme-input" }
+    private var localPoolWordScrollTarget: String { "local-lobby-pool-word-input" }
+
+    private func localPlayerScrollTarget(_ index: Int) -> String {
+        "local-lobby-player-\(index)"
+    }
+
+    private var localSetupScrollTarget: String? {
+        switch focusedLocalSetupField {
+        case .player(let index):
+            localPlayerScrollTarget(index)
+        case .theme:
+            localThemeScrollTarget
+        case .poolWord:
+            localPoolWordScrollTarget
+        case nil:
+            nil
+        }
     }
 
     private var focusedLocalSetupPanel: LocalSetupPanel? {
@@ -411,53 +485,103 @@ struct LocalGameView: View {
     }
 
     private var localMissionPanel: some View {
-        SpySceneStage(accent: mode == .questions ? SpyTheme.red : SpyTheme.amber, motionDelay: 0, minHeight: 150, isSubtle: true) {
-            VStack(alignment: .leading, spacing: 11) {
-                SpySceneKicker(
+        let accent = mode == .questions ? SpyTheme.red : SpyTheme.amber
+
+        return SpyLobbyHeroSurface(accent: accent) {
+            VStack(alignment: .leading, spacing: 0) {
+                SpyLobbyHeroHeader(
                     title: localized(en: "PASS & PLAY", ru: "ПЕРЕДАВАЙ И ИГРАЙ", es: "PASA Y JUEGA", uk: "ПЕРЕДАВАЙ І ГРАЙ"),
-                    status: nil,
-                    accent: mode == .questions ? SpyTheme.red : SpyTheme.amber
+                    status: localized(en: "OFFLINE", ru: "ОФЛАЙН", es: "SIN RED", uk: "ОФЛАЙН"),
+                    count: players.count,
+                    accent: accent,
+                    statusAccent: SpyTheme.green
                 )
+                .padding(.horizontal, 18)
+                .padding(.top, 15)
 
-                HStack(alignment: .bottom, spacing: 16) {
-                    VStack(alignment: .leading, spacing: 7) {
-                        Text(localized(en: "LOCAL MISSION", ru: "ЛОКАЛЬНАЯ МИССИЯ", es: "MISION LOCAL", uk: "ЛОКАЛЬНА МІСІЯ"))
-                            .font(SpyTheme.brandFont(size: 29))
-                            .tracking(1.2)
-                            .foregroundStyle(.white)
-                            .spyFitted(lines: 2, scale: 0.62)
+                Spacer(minLength: 14)
 
-                        Text(localized(
-                            en: "One device. Secret roles. No network required.",
-                            ru: "Один телефон. Тайные роли. Сеть не нужна.",
-                            es: "Un dispositivo. Roles secretos. Sin red.",
-                            uk: "Один пристрій. Таємні ролі. Мережа не потрібна."
-                        ))
-                        .font(.system(size: 10, weight: .semibold, design: .default))
-                        .lineSpacing(3)
-                        .foregroundStyle(SpyTheme.muted)
-                        .fixedSize(horizontal: false, vertical: true)
-                    }
-
-                    Spacer(minLength: 4)
-
-                    VStack(alignment: .trailing, spacing: 2) {
-                        Text(String(format: "%02d", players.count))
-                            .font(SpyTheme.brandFont(size: 30))
-                            .foregroundStyle(.white)
-                        Text(localized(en: "OPERATIVES", ru: "ОПЕРАТИВНИКИ", es: "AGENTES", uk: "ОПЕРАТИВНИКИ"))
-                            .font(.system(size: 8, weight: .black, design: .monospaced))
-                            .tracking(0.08)
-                            .foregroundStyle(SpyTheme.dim)
+                Group {
+                    if dynamicTypeSize.isAccessibilitySize {
+                        VStack(alignment: .leading, spacing: 10) {
+                            localMissionIdentity
+                            localMissionOperativeCount(alignment: .leading)
+                        }
+                    } else {
+                        HStack(alignment: .bottom, spacing: 18) {
+                            localMissionIdentity
+                            Spacer(minLength: 4)
+                            localMissionOperativeCount(alignment: .trailing)
+                        }
                     }
                 }
+                .padding(.horizontal, 22)
+
+                Spacer(minLength: 12)
 
                 HStack(spacing: 8) {
-                    localMissionBadge(mode == .questions ? localized(en: "QUESTIONS", ru: "ВОПРОСЫ", es: "PREGUNTAS", uk: "ЗАПИТАННЯ") : localized(en: "ASSOCIATIONS", ru: "АССОЦИАЦИИ", es: "ASOCIACIONES", uk: "АСОЦІАЦІЇ"), color: mode == .questions ? SpyTheme.red : SpyTheme.amber)
+                    localMissionBadge(
+                        mode == .questions
+                            ? localized(en: "QUESTIONS", ru: "ВОПРОСЫ", es: "PREGUNTAS", uk: "ЗАПИТАННЯ")
+                            : localized(en: "ASSOCIATIONS", ru: "АССОЦИАЦИИ", es: "ASOCIACIONES", uk: "АСОЦІАЦІЇ"),
+                        color: accent
+                    )
                     localMissionBadge(localDurationLabel, color: SpyTheme.muted)
+                    Spacer(minLength: 0)
+                    localMissionBadge(
+                        localized(en: "1 DEVICE", ru: "1 ТЕЛЕФОН", es: "1 DISPOSITIVO", uk: "1 ПРИСТРІЙ"),
+                        color: SpyTheme.green
+                    )
                 }
+                .padding(.horizontal, 22)
+                .padding(.bottom, 20)
             }
         }
+    }
+
+    private var localMissionIdentity: some View {
+        VStack(alignment: .leading, spacing: 7) {
+            Text(localized(en: "LOCAL MISSION", ru: "ЛОКАЛЬНАЯ МИССИЯ", es: "MISION LOCAL", uk: "ЛОКАЛЬНА МІСІЯ"))
+                .font(SpyTheme.brandFont(size: 32))
+                .tracking(1.2)
+                .foregroundStyle(.white)
+                .lineLimit(2)
+                .minimumScaleFactor(0.66)
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+
+            Text(localized(
+                en: "One device. Secret roles. No network required.",
+                ru: "Один телефон. Тайные роли. Сеть не нужна.",
+                es: "Un dispositivo. Roles secretos. Sin red.",
+                uk: "Один пристрій. Таємні ролі. Мережа не потрібна."
+            ))
+            .font(.system(size: 11, weight: .semibold, design: .default))
+            .lineSpacing(3)
+            .foregroundStyle(SpyTheme.muted)
+            .fixedSize(horizontal: false, vertical: true)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func localMissionOperativeCount(alignment: HorizontalAlignment) -> some View {
+        VStack(alignment: alignment, spacing: 2) {
+            Text(String(format: "%02d", players.count))
+                .font(SpyTheme.brandFont(size: dynamicTypeSize.isAccessibilitySize ? 24 : 32))
+                .foregroundStyle(.white)
+                .contentTransition(.numericText())
+                .dynamicTypeSize(...DynamicTypeSize.xxxLarge)
+            Text(localized(en: "OPERATIVES", ru: "ОПЕРАТИВНИКИ", es: "AGENTES", uk: "ОПЕРАТИВНИКИ"))
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .tracking(0.08)
+                .foregroundStyle(SpyTheme.dim)
+        }
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(localized(
+            en: "\(players.count) operatives",
+            ru: "Оперативников: \(players.count)",
+            es: "\(players.count) agentes",
+            uk: "Оперативників: \(players.count)"
+        ))
     }
 
     private func localMissionBadge(_ title: String, color: Color) -> some View {
@@ -587,6 +711,23 @@ struct LocalGameView: View {
                     }
                 }
 
+                if players.count < 3 {
+                    HStack(spacing: 10) {
+                        Image(systemName: "exclamationmark.triangle")
+                            .font(.system(size: 12, weight: .black))
+                        Text(localMinimumPlayersMessage)
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .tracking(0.02)
+                            .spyFitted(lines: 2, scale: 0.62)
+                        Spacer()
+                    }
+                    .foregroundStyle(SpyTheme.red)
+                    .padding(.horizontal, 14)
+                    .frame(minHeight: 46)
+                    .spyCutCard(cut: 8, fill: SpyTheme.red.opacity(0.05), stroke: SpyTheme.red.opacity(0.24))
+                    .transition(.move(edge: .top).combined(with: .opacity))
+                }
+
                 if players.count < 10 {
                     Button {
                         addPlayer()
@@ -606,9 +747,10 @@ struct LocalGameView: View {
                         .contentShape(CutCornerShape(cut: 8))
                     }
                     .buttonStyle(SpyWebPressStyle())
+                    .accessibilityIdentifier("localGame.addPlayer")
                 }
             }
-            .animation(.smooth(duration: 0.18), value: playerIDs)
+            .animation(reduceMotion ? nil : .smooth(duration: 0.18), value: playerIDs)
         }
     }
 
@@ -644,6 +786,19 @@ struct LocalGameView: View {
                     .contentShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
             }
             .buttonStyle(SpyWebPressStyle())
+            .accessibilityLabel(localized(
+                en: "Change avatar for player \(index + 1)",
+                ru: "Изменить аватар игрока \(index + 1)",
+                es: "Cambiar avatar del jugador \(index + 1)",
+                uk: "Змінити аватар гравця \(index + 1)"
+            ))
+            .accessibilityHint(localized(
+                en: "Cycles through available avatars",
+                ru: "Переключает доступные аватары",
+                es: "Cambia entre los avatares disponibles",
+                uk: "Перемикає доступні аватари"
+            ))
+            .accessibilityIdentifier("localGame.player.\(index).avatar")
 
             localPlayerNameField(index: index)
 
@@ -656,8 +811,8 @@ struct LocalGameView: View {
         .scaleEffect(isDragging ? 1.015 : (isArmed ? 0.985 : 1))
         .zIndex(isDragging ? 10 : 0)
         .contentShape(Rectangle())
-        .animation(.smooth(duration: 0.16), value: armedPlayerID)
-        .animation(.smooth(duration: 0.16), value: draggingPlayerIndex)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.16), value: armedPlayerID)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.16), value: draggingPlayerIndex)
         .animation(nil, value: playerDragResidualY)
     }
 
@@ -683,6 +838,12 @@ struct LocalGameView: View {
         .accessibilityAddTraits(.isButton)
         .accessibilityLabel(localized(en: "Reorder player", ru: "Переставить игрока", es: "Reordenar jugador", uk: "Перемістити гравця"))
         .accessibilityHint(localized(en: "Hold and drag to reorder", ru: "Зажми и перетащи, чтобы изменить порядок", es: "Mantén y arrastra para reordenar", uk: "Затисни й перетягни, щоб змінити порядок"))
+        .accessibilityAction(named: Text(localized(en: "Move up", ru: "Переместить выше", es: "Mover arriba", uk: "Перемістити вище"))) {
+            moveLocalPlayerForAccessibility(id: id, offset: -1)
+        }
+        .accessibilityAction(named: Text(localized(en: "Move down", ru: "Переместить ниже", es: "Mover abajo", uk: "Перемістити нижче"))) {
+            moveLocalPlayerForAccessibility(id: id, offset: 1)
+        }
     }
 
     private func localPlayerNameField(index: Int) -> some View {
@@ -705,6 +866,21 @@ struct LocalGameView: View {
         .layoutPriority(1)
         .submitLabel(.done)
         .focused($focusedLocalSetupField, equals: .player(index))
+        .id(localPlayerScrollTarget(index))
+        .accessibilityIdentifier("localGame.player.\(index).name")
+    }
+
+    private func moveLocalPlayerForAccessibility(id: UUID, offset: Int) {
+        guard let source = playerIDs.firstIndex(of: id) else { return }
+        let destination = source + offset
+        guard players.indices.contains(destination) else {
+            HapticManager.shared.fire(.notification(.warning))
+            return
+        }
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.18)) {
+            movePlayer(from: source, to: destination)
+        }
+        HapticManager.shared.fire(.tabSelection)
     }
 
     private func resetPlayerDragState() {
@@ -763,7 +939,7 @@ struct LocalGameView: View {
         playerDragResidualY += delta
 
         while playerDragResidualY > rowStride / 2, currentIndex < players.count - 1 {
-            withAnimation(.smooth(duration: 0.14)) {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.14)) {
                 movePlayer(from: currentIndex, to: currentIndex + 1)
             }
             currentIndex += 1
@@ -773,7 +949,7 @@ struct LocalGameView: View {
         }
 
         while playerDragResidualY < -rowStride / 2, currentIndex > 0 {
-            withAnimation(.smooth(duration: 0.14)) {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.14)) {
                 movePlayer(from: currentIndex, to: currentIndex - 1)
             }
             currentIndex -= 1
@@ -800,7 +976,7 @@ struct LocalGameView: View {
                 }
             }
             .onEnded { _ in
-                withAnimation(.smooth(duration: 0.18)) {
+                withAnimation(reduceMotion ? nil : .smooth(duration: 0.18)) {
                     resetPlayerDragState()
                 }
             }
@@ -859,9 +1035,9 @@ struct LocalGameView: View {
                     }
             }
         }
-        .animation(.smooth(duration: 0.28), value: localHasCustomTheme)
-        .animation(.smooth(duration: 0.28), value: localThemeAnalyzed)
-        .animation(.smooth(duration: 0.28), value: generatedPack)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: localHasCustomTheme)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: localThemeAnalyzed)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: generatedPack)
     }
 
     private var localIntelHeader: some View {
@@ -951,29 +1127,19 @@ struct LocalGameView: View {
         verticalPadding: CGFloat = 20,
         @ViewBuilder content: () -> Content
     ) -> some View {
-        content()
-            .padding(.horizontal, horizontalPadding)
-            .padding(.vertical, verticalPadding)
-            .background(SpyTheme.panel, in: CutCornerShape(cut: 12))
-            .overlay(
-                CutCornerShape(cut: 12)
-                    .stroke(SpyTheme.stroke, lineWidth: 1)
-            )
-            .overlay(alignment: .topLeading) {
-                Rectangle()
-                    .fill(accent.opacity(0.88))
-                    .frame(width: 34, height: 3)
-                    .padding(.top, 1)
-                    .padding(.leading, horizontalPadding)
-            }
-            .shadow(color: accent.opacity(0.06), radius: 14)
-            .shadow(color: .black.opacity(0.30), radius: 18, y: 9)
+        SpyLobbyPanel(
+            accent: accent,
+            horizontalPadding: horizontalPadding,
+            verticalPadding: verticalPadding,
+            content: content
+        )
     }
 
     private func localPackChip(
         title: String,
         subtitle: String?,
         isSelected: Bool,
+        accessibilityIdentifier: String,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
@@ -999,6 +1165,8 @@ struct LocalGameView: View {
             .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle())
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier(accessibilityIdentifier)
     }
 
     private var localThemeInput: some View {
@@ -1024,7 +1192,7 @@ struct LocalGameView: View {
 
             if localHasCustomTheme {
                 Button {
-                    withAnimation(.smooth(duration: 0.20)) {
+                    withAnimation(reduceMotion ? nil : .smooth(duration: 0.20)) {
                         updateLocalThemeInput("")
                     }
                 } label: {
@@ -1038,6 +1206,7 @@ struct LocalGameView: View {
                 .accessibilityLabel(localized(en: "Clear theme", ru: "Очистить тему", es: "Limpiar tema", uk: "Очистити тему"))
             }
         }
+        .id(localThemeScrollTarget)
         .padding(.horizontal, 14)
         .frame(height: 52)
         .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 9))
@@ -1046,7 +1215,7 @@ struct LocalGameView: View {
                 .stroke(focusedLocalSetupField == .theme ? SpyTheme.red.opacity(0.86) : SpyTheme.inputBorder, lineWidth: 1)
         )
         .shadow(color: focusedLocalSetupField == .theme ? SpyTheme.red.opacity(0.12) : .clear, radius: 8)
-        .animation(.smooth(duration: 0.18), value: focusedLocalSetupField == .theme)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.18), value: focusedLocalSetupField == .theme)
     }
 
     private var localThemeTextBinding: Binding<String> {
@@ -1120,7 +1289,14 @@ struct LocalGameView: View {
                         value: $localCustomWordCount,
                         range: 10...80,
                         language: appState.language,
-                        step: 1
+                        step: 1,
+                        accessibilityLabel: localized(
+                            en: "Custom word count",
+                            ru: "Количество слов",
+                            es: "Cantidad de palabras",
+                            uk: "Кількість слів"
+                        ),
+                        accessibilityIdentifier: "localGame.customWordCountSlider"
                     )
                 }
                 .padding(.horizontal, 12)
@@ -1138,7 +1314,7 @@ struct LocalGameView: View {
         let isActive = localWordCountMode == mode
 
         return Button {
-            withAnimation(.smooth(duration: 0.18)) {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.18)) {
                 localWordCountMode = mode
             }
         } label: {
@@ -1181,6 +1357,8 @@ struct LocalGameView: View {
         }
         .buttonStyle(SpyWebPressStyle())
         .accessibilityLabel(localWordCountModeTitle(mode))
+        .accessibilityAddTraits(isActive ? .isSelected : [])
+        .accessibilityIdentifier("localGame.wordCountMode.\(mode.rawValue)")
     }
 
     private var localGenerateButton: some View {
@@ -1243,7 +1421,8 @@ struct LocalGameView: View {
                     localPackChip(
                         title: localized(en: "RANDOM", ru: "СЛУЧАЙНО", es: "AZAR", uk: "ВИПАДКОВО"),
                         subtitle: nil,
-                        isSelected: selectedPackID == "builtin"
+                        isSelected: selectedPackID == "builtin",
+                        accessibilityIdentifier: "localGame.pack.builtin"
                     ) {
                         selectLocalWordSource("builtin")
                     }
@@ -1252,11 +1431,12 @@ struct LocalGameView: View {
                         localPackChip(
                             title: pack.name,
                             subtitle: "\(pack.words?.localCleanWords.count ?? 0)",
-                        isSelected: selectedPackID == pack.id
-                    ) {
-                        selectLocalWordSource(pack.id)
+                            isSelected: selectedPackID == pack.id,
+                            accessibilityIdentifier: "localGame.pack.\(pack.id)"
+                        ) {
+                            selectLocalWordSource(pack.id)
+                        }
                     }
-                }
                 }
 
                 if selectedPackID != "builtin",
@@ -1301,7 +1481,14 @@ struct LocalGameView: View {
                     range: Double(minimumWords)...Double(maxWords),
                     language: appState.language,
                     step: 1,
-                    accent: SpyTheme.red
+                    accent: SpyTheme.red,
+                    accessibilityLabel: localized(
+                        en: "Active words in this game",
+                        ru: "Активные слова в этой игре",
+                        es: "Palabras activas en esta partida",
+                        uk: "Активні слова в цій грі"
+                    ),
+                    accessibilityIdentifier: "localGame.activeWordCountSlider"
                 )
             }
         }
@@ -1375,35 +1562,55 @@ struct LocalGameView: View {
                     value: $duration,
                     range: 1...15,
                     language: appState.language,
-                    step: 1
+                    step: 1,
+                    accessibilityLabel: localized(
+                        en: "Round duration in minutes",
+                        ru: "Длительность раунда в минутах",
+                        es: "Duracion de la ronda en minutos",
+                        uk: "Тривалість раунду у хвилинах"
+                    ),
+                    accessibilityIdentifier: "localGame.durationSlider"
                 )
             }
         }
     }
 
-    private var localControls: some View {
-        VStack(spacing: 10) {
-            Button {
-                startLocalGame()
-            } label: {
-                SpyPrimaryCommandLabel(
-                    title: localPrimaryActionTitle,
-                    detail: localPrimaryActionDetail,
-                    systemImage: localNeedsGeneratedTheme ? "sparkles" : "rectangle.portrait.on.rectangle.portrait.angled.fill"
-                )
+    private var localLobbyActionBar: some View {
+        SpyLobbyFooter {
+            SpyLobbyActionRow {
+                Button {
+                    HapticManager.shared.fire(.buttonPress)
+                    appState.selectedTab = .home
+                } label: {
+                    SpyLobbySecondaryActionLabel(
+                        title: localized(en: "BACK", ru: "НАЗАД", es: "ATRAS", uk: "НАЗАД"),
+                        systemImage: "chevron.left"
+                    )
+                }
+                .buttonStyle(SpyLobbyFooterPressStyle())
+                .frame(maxWidth: .infinity)
+                .accessibilityIdentifier("localGame.back")
+            } trailing: {
+                Button {
+                    startLocalGame()
+                } label: {
+                    SpyLobbyPrimaryActionLabel(
+                        title: localPrimaryActionTitle,
+                        detail: localPrimaryActionDetail,
+                        systemImage: localPrimaryActionSystemImage,
+                        isAvailable: localPrimaryActionIsEnabled
+                    )
+                }
+                .buttonStyle(SpyLobbyFooterPressStyle())
+                .frame(maxWidth: .infinity)
+                .disabled(!localPrimaryActionIsEnabled)
+                .accessibilityLabel(localPrimaryActionTitle)
+                .accessibilityHint(localPrimaryActionDetail)
+                .accessibilityIdentifier("localGame.start")
             }
-            .buttonStyle(SpyPrimaryCommandStyle())
-            .disabled(localNeedsGeneratedTheme)
-            .opacity(localNeedsGeneratedTheme ? 0.48 : 1)
-
-            Button {
-                appState.selectedTab = .home
-            } label: {
-                SpyActionLabel(title: localized(en: "BACK", ru: "НАЗАД", es: "ATRAS", uk: "НАЗАД"), systemImage: "chevron.left", tracking: 0.02)
-            }
-            .buttonStyle(SpyButtonStyle(variant: .ghost))
-
         }
+        .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: localPrimaryActionResolution)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.20), value: players.count >= 3)
     }
 
     private func publishLocalToast(_ message: String) {
@@ -1447,27 +1654,71 @@ struct LocalGameView: View {
     }
 
     private var localPrimaryActionTitle: String {
-        if localNeedsGeneratedTheme {
+        if players.count < 3 {
+            return localized(en: "NEED 3 PLAYERS", ru: "НУЖНО 3 ИГРОКА", es: "SE NECESITAN 3", uk: "ПОТРІБНО 3 ГРАВЦІ")
+        }
+
+        switch localPrimaryActionResolution.action {
+        case .generateRequired:
             return localized(en: "GENERATE THEME FIRST", ru: "СНАЧАЛА СГЕНЕРИРУЙ ТЕМУ", es: "GENERA EL TEMA PRIMERO", uk: "СПОЧАТКУ ЗГЕНЕРУЙ ТЕМУ")
-        }
-
-        if !localHasCustomTheme && selectedPackID == "builtin" && generatedPack == nil {
+        case .revealRandom:
             return localized(en: "RANDOM THEME", ru: "СЛУЧАЙНАЯ ТЕМА", es: "TEMA ALEATORIO", uk: "ВИПАДКОВА ТЕМА")
+        case .dealCards:
+            return localized(en: "DEAL CARDS", ru: "РАЗДАТЬ КАРТОЧКИ", es: "REPARTIR CARTAS", uk: "РОЗДАТИ КАРТКИ")
         }
-
-        return localized(en: "DEAL CARDS", ru: "РАЗДАТЬ КАРТОЧКИ", es: "REPARTIR CARTAS", uk: "РОЗДАТИ КАРТКИ")
     }
 
     private var localPrimaryActionDetail: String {
-        if localNeedsGeneratedTheme {
+        if players.count < 3 {
+            return localMinimumPlayersMessage
+        }
+
+        switch localPrimaryActionResolution.action {
+        case .generateRequired:
             return localized(en: "COMPLETE INTEL ABOVE", ru: "ЗАВЕРШИ ПОДГОТОВКУ INTEL", es: "COMPLETA INTEL ARRIBA", uk: "ЗАВЕРШИ ПІДГОТОВКУ ДАНИХ")
-        }
-
-        if !localHasCustomTheme && selectedPackID == "builtin" && generatedPack == nil {
+        case .revealRandom:
             return localized(en: "REVEAL A RANDOM FIELD POOL", ru: "ОТКРЫТЬ СЛУЧАЙНЫЙ НАБОР", es: "REVELAR UN GRUPO ALEATORIO", uk: "ВІДКРИТИ ВИПАДКОВИЙ НАБІР")
+        case .dealCards:
+            return localized(en: "PASS THE DEVICE TO REVEAL ROLES", ru: "ПЕРЕДАВАЙ ТЕЛЕФОН ДЛЯ РАСКРЫТИЯ РОЛЕЙ", es: "PASA EL DISPOSITIVO PARA VER ROLES", uk: "ПЕРЕДАВАЙ ПРИСТРІЙ, ЩОБ ВІДКРИВАТИ РОЛІ")
         }
+    }
 
-        return localized(en: "PASS THE DEVICE TO REVEAL ROLES", ru: "ПЕРЕДАВАЙ ТЕЛЕФОН ДЛЯ РАСКРЫТИЯ РОЛЕЙ", es: "PASA EL DISPOSITIVO PARA VER ROLES", uk: "ПЕРЕДАВАЙ ПРИСТРІЙ, ЩОБ ВІДКРИВАТИ РОЛІ")
+    private var localPrimaryActionSystemImage: String {
+        guard players.count >= 3 else { return "person.badge.plus" }
+        return switch localPrimaryActionResolution.action {
+        case .generateRequired: "sparkles"
+        case .revealRandom: "shuffle"
+        case .dealCards: "rectangle.portrait.on.rectangle.portrait.angled.fill"
+        }
+    }
+
+    private var localPrimaryActionIsEnabled: Bool {
+        players.count >= 3 && localPrimaryActionResolution.isEnabled
+    }
+
+    private var localPrimaryActionResolution: LocalLobbyPrimaryActionPolicy.Resolution {
+        LocalLobbyPrimaryActionPolicy.resolve(
+            hasCustomTheme: localHasCustomTheme,
+            hasGeneratedPack: generatedPack != nil,
+            source: localPrimaryActionSource
+        )
+    }
+
+    private var localPrimaryActionSource: LocalLobbyPrimaryActionPolicy.Source {
+        switch selectedPackID {
+        case "builtin": .builtin
+        case "generated": .generated
+        default: .saved
+        }
+    }
+
+    private var localMinimumPlayersMessage: String {
+        localized(
+            en: "ADD AT LEAST 3 PLAYERS TO START",
+            ru: "ДОБАВЬ МИНИМУМ 3 ИГРОКОВ",
+            es: "ANADA AL MENOS 3 JUGADORES",
+            uk: "ДОДАЙ ЩОНАЙМЕНШЕ 3 ГРАВЦІВ"
+        )
     }
 
     private var localDurationLabel: String {
@@ -1678,7 +1929,7 @@ struct LocalGameView: View {
     }
 
     private func selectLocalWordSource(_ id: String) {
-        withAnimation(.smooth(duration: 0.22)) {
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.22)) {
             selectedPackID = id
             localSourceBeforeCustomTheme = id
             generatedPack = nil
@@ -1745,50 +1996,23 @@ struct LocalGameView: View {
     }
 
     private func sectionHeader(systemImage: String, title: String) -> some View {
-        HStack(spacing: 8) {
-            Image(systemName: systemImage)
-                .font(.system(size: 12, weight: .black))
-                .foregroundStyle(SpyTheme.dim)
-                .frame(width: 16)
-
-            Text(title)
-                .font(SpyTheme.micro)
-                .tracking(0.08)
-                .foregroundStyle(SpyTheme.muted)
-                .spyFitted(lines: 2, scale: 0.68)
-        }
+        SpyLobbySectionHeader(systemImage: systemImage, title: title)
     }
 
     private func localModeOption(_ candidate: LocalMode, symbol: String) -> some View {
         let isSelected = mode == candidate
 
-        return Button {
+        return SpyLobbyModeChoice(
+            symbol: symbol,
+            title: candidate.title(copy),
+            isSelected: isSelected,
+            accessibilityIdentifier: "localGame.mode.\(candidate.rawValue)"
+        ) {
             HapticManager.shared.fire(.tabSelection)
-            withAnimation(.smooth(duration: 0.24)) {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
                 mode = candidate
             }
-        } label: {
-            VStack(spacing: 7) {
-                Text(symbol)
-                    .font(.system(size: candidate == .questions ? 22 : 20, weight: .black, design: .default))
-                    .foregroundStyle(isSelected ? .white.opacity(0.82) : SpyTheme.dim)
-
-                Text(candidate.title(copy))
-                    .font(.system(size: 11, weight: .black, design: .default))
-                    .tracking(candidate.title(copy).count > 10 ? 0.0 : 0.08)
-                    .foregroundStyle(isSelected ? .white : SpyTheme.muted)
-                    .spyFitted(lines: 2, scale: 0.62, alignment: .center)
-            }
-            .frame(maxWidth: .infinity)
-            .frame(height: 82)
-            .background(isSelected ? SpyTheme.red : Color.clear, in: CutCornerShape(cut: 9))
-            .overlay(
-                CutCornerShape(cut: 9)
-                    .stroke(isSelected ? SpyTheme.red : SpyTheme.stroke, lineWidth: 1)
-            )
-            .contentShape(CutCornerShape(cut: 9))
         }
-        .buttonStyle(SpyWebPressStyle())
     }
 
     private func localModeSubtitle(_ mode: LocalMode) -> String {
@@ -1904,7 +2128,7 @@ struct LocalGameView: View {
                 if snapshot.words.count > localCollapsedPoolPreviewLimit {
                     Button {
                         HapticManager.shared.fire(.tabSelection)
-                        withAnimation(.smooth(duration: 0.30)) {
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.30)) {
                             localPoolExpanded.toggle()
                         }
                     } label: {
@@ -1953,6 +2177,7 @@ struct LocalGameView: View {
                         .background(SpyTheme.black, in: CutCornerShape(cut: 8))
                         .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.strokeStrong.opacity(0.72), lineWidth: 1))
                         .focused($focusedLocalSetupField, equals: .poolWord)
+                        .id(localPoolWordScrollTarget)
 
                     Button(action: addLocalPoolWord) {
                         Text("+ ADD")
@@ -1980,9 +2205,14 @@ struct LocalGameView: View {
             Rectangle()
                 .fill(SpyTheme.red.opacity(localPreviewPulse ? 0.42 : 0.14))
                 .frame(width: localPreviewPulse ? 76 : 28, height: 1)
-                .animation(.easeInOut(duration: 2.4).repeatForever(autoreverses: true), value: localPreviewPulse)
+                .animation(
+                    reduceMotion
+                        ? nil
+                        : .easeInOut(duration: 2.4).repeatForever(autoreverses: true),
+                    value: localPreviewPulse
+                )
         }
-        .animation(.smooth(duration: 0.30), value: localPoolExpanded)
+        .animation(reduceMotion ? nil : .smooth(duration: 0.30), value: localPoolExpanded)
     }
 
     private func localPoolWordGrid(_ words: [String]) -> some View {
@@ -3606,7 +3836,7 @@ struct LocalGameView: View {
         }
 
         if !localHasCustomTheme && selectedPackID == "builtin" && generatedPack == nil {
-            withAnimation(.smooth(duration: 0.28)) {
+            withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
                 revealBuiltinPool()
             }
             return
@@ -4836,6 +5066,41 @@ private struct LocalGlitchText: View {
     }
 }
 
+enum LocalLobbyPrimaryActionPolicy {
+    enum Source: Equatable {
+        case builtin
+        case saved
+        case generated
+    }
+
+    enum Action: Equatable {
+        case generateRequired
+        case revealRandom
+        case dealCards
+    }
+
+    struct Resolution: Equatable {
+        let action: Action
+        let isEnabled: Bool
+    }
+
+    static func resolve(
+        hasCustomTheme: Bool,
+        hasGeneratedPack: Bool,
+        source: Source
+    ) -> Resolution {
+        if hasCustomTheme, !hasGeneratedPack {
+            return Resolution(action: .generateRequired, isEnabled: false)
+        }
+
+        if source == .builtin, !hasGeneratedPack {
+            return Resolution(action: .revealRandom, isEnabled: true)
+        }
+
+        return Resolution(action: .dealCards, isEnabled: true)
+    }
+}
+
 private enum LocalMode: String, CaseIterable, Identifiable {
     case questions
     case associations
@@ -4959,20 +5224,6 @@ private enum LocalSetupPanel: Hashable {
     case players
     case intel
     case timing
-    case controls
-}
-
-private struct LocalSetupFocusEffect: ViewModifier {
-    let dimmed: Bool
-
-    func body(content: Content) -> some View {
-        content
-            .opacity(dimmed ? 0.20 : 1)
-            .scaleEffect(dimmed ? 0.94 : 1)
-            .blur(radius: dimmed ? 2 : 0)
-            .allowsHitTesting(!dimmed)
-            .animation(.smooth(duration: 0.34), value: dimmed)
-    }
 }
 
 private enum LocalWordCountMode: String, CaseIterable, Identifiable {
