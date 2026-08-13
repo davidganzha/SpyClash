@@ -3,6 +3,72 @@ import AVFoundation
 import XCTest
 @testable import SpyClash
 
+final class HomeHeroTypographyPolicyTests: XCTestCase {
+    func testRussianAndUkrainianLandingTitlesUseCompactScale() {
+        XCTAssertEqual(
+            HomeHeroTypographyPolicy.fontSize(baseFontSize: 58, language: .ru, isModeHero: false),
+            49.88,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            HomeHeroTypographyPolicy.fontSize(baseFontSize: 58, language: .uk, isModeHero: false),
+            49.88,
+            accuracy: 0.001
+        )
+    }
+
+    func testEnglishSpanishAndModeTitlesKeepBaseScale() {
+        XCTAssertEqual(
+            HomeHeroTypographyPolicy.fontSize(baseFontSize: 58, language: .en, isModeHero: false),
+            58
+        )
+        XCTAssertEqual(
+            HomeHeroTypographyPolicy.fontSize(baseFontSize: 58, language: .es, isModeHero: false),
+            58
+        )
+        XCTAssertEqual(
+            HomeHeroTypographyPolicy.fontSize(baseFontSize: 58, language: .uk, isModeHero: true),
+            58
+        )
+    }
+}
+
+final class SpyLoaderMotionPolicyTests: XCTestCase {
+    func testRotationAdvancesLinearlyWithoutAutoreverseStop() {
+        XCTAssertEqual(
+            SpyLoaderMotionPolicy.state(at: 0, isAnimating: true, reduceMotion: false).rotationDegrees,
+            0,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            SpyLoaderMotionPolicy.state(at: 0.275, isAnimating: true, reduceMotion: false).rotationDegrees,
+            90,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            SpyLoaderMotionPolicy.state(at: 0.55, isAnimating: true, reduceMotion: false).rotationDegrees,
+            180,
+            accuracy: 0.001
+        )
+        XCTAssertEqual(
+            SpyLoaderMotionPolicy.state(at: 0.825, isAnimating: true, reduceMotion: false).rotationDegrees,
+            270,
+            accuracy: 0.001
+        )
+    }
+
+    func testStoppedAndReduceMotionStatesAreStatic() {
+        XCTAssertEqual(
+            SpyLoaderMotionPolicy.state(at: 0.55, isAnimating: false, reduceMotion: false),
+            SpyLoaderMotionState(rotationDegrees: 0, pulse: 0)
+        )
+        XCTAssertEqual(
+            SpyLoaderMotionPolicy.state(at: 0.55, isAnimating: true, reduceMotion: true),
+            SpyLoaderMotionState(rotationDegrees: 0, pulse: 0)
+        )
+    }
+}
+
 final class OnlineRoundStateTests: XCTestCase {
     func testTutorialVoteCopyExplainsNMinusSAndAutomaticCancellationInEveryLanguageAndMode() throws {
         for language in AppLanguage.allCases {

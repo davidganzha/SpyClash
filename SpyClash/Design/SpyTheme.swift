@@ -1807,14 +1807,64 @@ private struct GlobalToastNoticeView: View {
     }
 }
 
+struct SpyLoaderMotionState: Equatable {
+    let rotationDegrees: Double
+    let pulse: Double
+}
+
+enum SpyLoaderMotionPolicy {
+    static let cycleDuration: TimeInterval = 1.1
+
+    static func state(
+        at time: TimeInterval,
+        isAnimating: Bool,
+        reduceMotion: Bool
+    ) -> SpyLoaderMotionState {
+        guard isAnimating, !reduceMotion else {
+            return SpyLoaderMotionState(rotationDegrees: 0, pulse: 0)
+        }
+
+        let cycleTime = time.truncatingRemainder(dividingBy: cycleDuration)
+        let normalizedTime = (cycleTime < 0 ? cycleTime + cycleDuration : cycleTime) / cycleDuration
+        let pulse = 0.5 - (cos(normalizedTime * .pi * 2) * 0.5)
+
+        return SpyLoaderMotionState(
+            rotationDegrees: normalizedTime * 360,
+            pulse: pulse
+        )
+    }
+}
+
 struct SpyLoader: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     var label: String? = nil
     var isAnimating: Bool = true
 
     var body: some View {
-        ZStack {
+        TimelineView(
+            .animation(
+                minimumInterval: 1 / 30,
+                paused: !isAnimating || reduceMotion || scenePhase != .active
+            )
+        ) { timeline in
+            let motion = SpyLoaderMotionPolicy.state(
+                at: timeline.date.timeIntervalSinceReferenceDate,
+                isAnimating: isAnimating && scenePhase == .active,
+                reduceMotion: reduceMotion
+            )
+
+            loader(motion: motion)
+        }
+        .accessibilityLabel(loaderAccessibilityLabel)
+    }
+
+    private func loader(motion: SpyLoaderMotionState) -> some View {
+        let pulse = CGFloat(motion.pulse)
+
+        return ZStack {
             Circle()
                 .stroke(SpyTheme.stroke.opacity(0.95), lineWidth: 1)
                 .frame(width: 74, height: 74)
@@ -1824,12 +1874,15 @@ struct SpyLoader: View {
                     .fill(index == 0 ? SpyTheme.red : SpyTheme.red.opacity(0.34))
                     .frame(width: index == 0 ? 34 : 18, height: 2)
                     .offset(x: index == 0 ? 28 : 34)
-                    .rotationEffect(.degrees(Double(index) * 90 + (isAnimating ? 28 : -28)))
+                    .rotationEffect(.degrees(Double(index) * 90 + motion.rotationDegrees))
             }
 
             CutCornerShape(cut: 7)
-                .fill(SpyTheme.red.opacity(isAnimating ? 0.22 : 0.10))
-                .frame(width: isAnimating ? 38 : 30, height: isAnimating ? 38 : 30)
+                .fill(SpyTheme.red.opacity(0.10 + motion.pulse * 0.12))
+                .frame(
+                    width: 30 + pulse * 8,
+                    height: 30 + pulse * 8
+                )
                 .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.red.opacity(0.7), lineWidth: 1))
 
             Text(resolvedLabel)
@@ -1840,9 +1893,10 @@ struct SpyLoader: View {
                 .minimumScaleFactor(0.58)
         }
         .frame(width: 96, height: 96)
-        .shadow(color: SpyTheme.red.opacity(isAnimating ? 0.38 : 0.16), radius: isAnimating ? 22 : 10)
-        .animation(.easeInOut(duration: 1.1), value: isAnimating)
-        .accessibilityLabel(loaderAccessibilityLabel)
+        .shadow(
+            color: SpyTheme.red.opacity(0.16 + motion.pulse * 0.22),
+            radius: 10 + pulse * 12
+        )
     }
 
     private var resolvedLabel: String {

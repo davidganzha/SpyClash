@@ -18,6 +18,23 @@ struct HomeRootPresentationPolicy {
     }
 }
 
+struct HomeHeroTypographyPolicy {
+    static func fontSize(
+        baseFontSize: CGFloat,
+        language: AppLanguage,
+        isModeHero: Bool
+    ) -> CGFloat {
+        guard !isModeHero else { return baseFontSize }
+
+        return switch language {
+        case .ru, .uk:
+            baseFontSize * 0.86
+        case .en, .es:
+            baseFontSize
+        }
+    }
+}
+
 struct HomeView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -227,7 +244,12 @@ struct HomeView: View {
         let isModeHero = appState.activeRoom == nil && (stage == .playMode || stage == .onlineMode)
         let showMainCopy = stage == .main || appState.activeRoom != nil
         let usesCondensedActionLayout = compact && appState.activeRoom == nil && stage != .main
-        let heroFontSize: CGFloat = usesShortActionLayout ? 36 : (usesCondensedActionLayout ? 42 : (compact ? 48 : 58))
+        let baseHeroFontSize: CGFloat = usesShortActionLayout ? 36 : (usesCondensedActionLayout ? 42 : (compact ? 48 : 58))
+        let heroFontSize = HomeHeroTypographyPolicy.fontSize(
+            baseFontSize: baseHeroFontSize,
+            language: appState.language,
+            isModeHero: isModeHero
+        )
         let heroHeight: CGFloat = usesShortActionLayout ? 96 : (usesCondensedActionLayout ? 168 : (compact ? 200 : 252))
 
         return VStack(spacing: compact ? 14 : 22) {

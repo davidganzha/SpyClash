@@ -271,24 +271,18 @@ private struct FullAccessUnlockOverlay: View {
 
 private struct BootView: View {
     @Environment(AppState.self) private var appState
-    @State private var pulse = false
 
     var body: some View {
         ZStack {
             SpyBackground()
             VStack(spacing: 20) {
-                SpyLoader(isAnimating: pulse)
+                SpyLoader()
 
                 Text(appState.language.bootSyncingFieldKit)
                     .font(SpyTheme.micro)
                     .tracking(0.18)
                     .foregroundStyle(SpyTheme.muted)
                     .spyFitted(lines: 2, scale: 0.62, alignment: .center)
-            }
-        }
-        .onAppear {
-            withAnimation(.easeInOut(duration: 1.1).repeatForever(autoreverses: true)) {
-                pulse = true
             }
         }
     }
