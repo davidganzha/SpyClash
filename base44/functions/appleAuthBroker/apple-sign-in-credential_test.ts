@@ -1052,7 +1052,7 @@ Deno.test("persistent Apple transport failure becomes manual cleanup on the resu
   );
 });
 
-Deno.test("multi-record resumed fallback keeps each fresh credential fail-closed for one lease window", async () => {
+Deno.test("multi-record resumed fallback completes every credential in the resumed lease window", async () => {
   const store = new MemoryStore();
   const firstSaved = await storedCredential(store, {
     token: "first-private-refresh-token",
@@ -1126,17 +1126,7 @@ Deno.test("multi-record resumed fallback keeps each fresh credential fail-closed
   assert(requests === 3, "blocked retry reached Apple");
 
   now = new Date(NOW.getTime() + 11 * 60 * 1_000);
-  let resumedRetryable = false;
-  try {
-    await attempt();
-  } catch (error) {
-    resumedRetryable = error instanceof AppleSignInCredentialError &&
-      error.code === "apple_revocation_unavailable";
-  }
-  assert(
-    resumedRetryable,
-    "resumed cycle did not fail closed on the fresh second credential",
-  );
+  const completed = await attempt();
   assert(
     Number(requests) === 9,
     "resumed multi-record cycle used unexpected retries",
@@ -1154,37 +1144,13 @@ Deno.test("multi-record resumed fallback keeps each fresh credential fail-closed
     "first credential retained bearer material after terminal fallback",
   );
   assert(
-    credential(secondID).state === "revoking",
-    "fresh second credential did not enter retry state",
-  );
-  assert(
-    cleanForTest(credential(secondID).refresh_token_ciphertext).length > 20,
-    "fresh second credential was scrubbed before its resumed cycle",
-  );
-
-  let secondImmediateRetryBlocked = false;
-  try {
-    await attempt();
-  } catch (error) {
-    secondImmediateRetryBlocked = error instanceof AppleSignInCredentialError &&
-      error.code === "apple_credential_lifecycle_unavailable";
-  }
-  assert(
-    secondImmediateRetryBlocked,
-    "live second-cycle marker was bypassed",
-  );
-  assert(Number(requests) === 9, "blocked second-cycle retry reached Apple");
-
-  now = new Date(NOW.getTime() + 22 * 60 * 1_000);
-  const completed = await attempt();
-  assert(
-    Number(requests) === 12,
-    "final multi-record cycle used unexpected retries",
+    credential(secondID).manual_revocation_required === true,
+    "fresh second credential did not use resumed manual fallback",
   );
   assert(completed.revoked === 0, "unconfirmed revocations were counted");
   assert(
     completed.manualRevocationRequired,
-    "manual fallback receipt did not survive the partial prior cycle",
+    "resumed multi-record fallback did not report manual revocation",
   );
   assert(
     cleanForTest(credential(firstID).state) === "revoked" &&
@@ -1195,6 +1161,125 @@ Deno.test("multi-record resumed fallback keeps each fresh credential fail-closed
     credential(firstID).refresh_token_ciphertext === "" &&
       credential(secondID).refresh_token_ciphertext === "",
     "multi-record fallback retained bearer material",
+  );
+
+  await releaseBillingDeletionMarker(
+    lifecycleStoreFor(store),
+    completed.identityDeletionMarker,
+    now,
+  );
+});
+
+Deno.test("resumed multi-record fallback retains a fresh token when the shared deadline prevents its request", async () => {
+  const store = new MemoryStore();
+  const firstSaved = await storedCredential(store, {
+    token: "first-private-refresh-token",
+  });
+  const secondSaved = await storedCredential(store, {
+    subject: "apple-subject-2",
+    token: "second-private-refresh-token",
+  });
+  const bound = await bindCredential(store, firstSaved.bindingTicket);
+  assert(
+    bound.bound === 2,
+    "deadline fixture did not bind both credentials",
+  );
+
+  const firstID = firstSaved.recordIDs[0];
+  const secondID = secondSaved.recordIDs[0];
+  const credential = (id: string) => {
+    const record = store.records.find((candidate) => candidate.id === id);
+    assert(record, `credential ${id} is missing`);
+    return record;
+  };
+  let now = NOW;
+  let requests = 0;
+  let consumeSharedDeadline = false;
+  let fakeWallTime = 0;
+  const attempt = () =>
+    revokeAppleSignInCredentials({
+      store,
+      lifecycleStore: lifecycleStoreFor(store),
+      email: "operative@privaterelay.appleid.com",
+      userID: "base44-user-1",
+      now: () => now,
+      pseudonymSecret: PSEUDONYM_SECRET,
+      encryptionSecret: ENCRYPTION_SECRET,
+      createClientSecret: async () => "signed-client-secret",
+      sleepBeforeRetry: async () => {},
+      fetcher: async () => {
+        requests += 1;
+        if (consumeSharedDeadline) fakeWallTime = 20_001;
+        return new Response(null, { status: 503 });
+      },
+    });
+
+  let firstRetryable = false;
+  try {
+    await attempt();
+  } catch (error) {
+    firstRetryable = error instanceof AppleSignInCredentialError &&
+      error.code === "apple_revocation_unavailable";
+  }
+  assert(firstRetryable, "initial deadline fixture cycle was not retryable");
+  assert(requests === 3, "initial deadline fixture used unexpected retries");
+  assert(
+    credential(firstID).state === "revoking" &&
+      credential(secondID).state === "bound",
+    "initial deadline fixture did not retain the expected states",
+  );
+
+  now = new Date(NOW.getTime() + 11 * 60 * 1_000);
+  consumeSharedDeadline = true;
+  const originalDateNow = Date.now;
+  Date.now = () => fakeWallTime;
+  let resumedRetryable = false;
+  try {
+    await attempt();
+  } catch (error) {
+    resumedRetryable = error instanceof AppleSignInCredentialError &&
+      error.code === "apple_revocation_unavailable";
+  } finally {
+    Date.now = originalDateNow;
+  }
+
+  assert(
+    resumedRetryable,
+    "unattempted fresh credential did not keep deletion fail-closed",
+  );
+  assert(
+    Number(requests) === 4,
+    "fresh credential was requested after the shared deadline expired",
+  );
+  assert(
+    cleanForTest(credential(firstID).state) === "revoked" &&
+      credential(firstID).refresh_token_ciphertext === "",
+    "attempted resumed credential did not finish manual cleanup",
+  );
+  assert(
+    credential(secondID).state === "revoking",
+    "unattempted fresh credential did not retain retry state",
+  );
+  assert(
+    cleanForTest(credential(secondID).refresh_token_ciphertext).length > 20,
+    "unattempted fresh credential was scrubbed",
+  );
+
+  now = new Date(NOW.getTime() + 22 * 60 * 1_000);
+  consumeSharedDeadline = false;
+  const completed = await attempt();
+  assert(
+    Number(requests) === 7,
+    "retried fresh credential used unexpected bounded requests",
+  );
+  assert(
+    completed.manualRevocationRequired,
+    "manual receipt did not survive deadline recovery",
+  );
+  assert(
+    cleanForTest(credential(secondID).state) === "revoked" &&
+      credential(secondID).refresh_token_ciphertext === "",
+    "retried fresh credential did not finish manual cleanup",
   );
 
   await releaseBillingDeletionMarker(

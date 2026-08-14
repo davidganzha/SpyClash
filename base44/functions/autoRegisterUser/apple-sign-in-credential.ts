@@ -1216,6 +1216,12 @@ export async function revokeAppleSignInCredentials(input: {
     const recordIDs: string[] = [];
     let manualRevocationRequired = identity.pseudonymUnavailable;
     let revoked = 0;
+    // A retained revoking record proves this account deletion already spent a
+    // fail-closed lease window. Every remaining credential still follows the
+    // bounded Apple retry path, but one fresh record must not open another lease.
+    const resumedDeletionCycle = [...records.values()].some((record) =>
+      recordState(record) === "revoking"
+    );
     const revocationDeadline = Date.now() +
       APPLE_REVOCATION_TOTAL_TIMEOUT_MILLISECONDS;
 
@@ -1224,10 +1230,6 @@ export async function revokeAppleSignInCredentials(input: {
       recordIDs.push(id);
       let record = initialRecord;
       const state = recordState(record);
-      // Only a record that entered this invocation already revoking proves a
-      // prior bounded deletion cycle failed. Newly revoking records retain the
-      // encrypted token and fail closed for one lease window before fallback.
-      const wasAlreadyRevoking = state === "revoking";
       if (state === "revoked") {
         manualRevocationRequired ||= record.manual_revocation_required === true;
         continue;
@@ -1293,7 +1295,7 @@ export async function revokeAppleSignInCredentials(input: {
           manualRevocationRequired = true;
           continue;
         }
-        if (wasAlreadyRevoking) {
+        if (resumedDeletionCycle) {
           console.warn(
             "Apple revocation signer remained unavailable after a resumed deletion cycle; manual revocation required.",
           );
@@ -1323,11 +1325,11 @@ export async function revokeAppleSignInCredentials(input: {
         token,
         token_type_hint: "refresh_token",
       });
-      input.beforeRevokeRequest?.();
       // Retry only while this invocation still owns the exact deletion
       // boundary. A lost response may mean Apple already revoked the token,
       // so cross-invocation retries remain blocked by the retained lease.
       let response: Response | undefined;
+      let requestAttempted = false;
       for (
         let attempt = 0;
         attempt <= APPLE_REVOCATION_RETRY_DELAYS_MILLISECONDS.length;
@@ -1335,6 +1337,8 @@ export async function revokeAppleSignInCredentials(input: {
       ) {
         const remainingMilliseconds = revocationDeadline - Date.now();
         if (remainingMilliseconds <= 0) break;
+        if (!requestAttempted) input.beforeRevokeRequest?.();
+        requestAttempted = true;
         try {
           response = await fetcher("https://appleid.apple.com/auth/revoke", {
             method: "POST",
@@ -1373,7 +1377,7 @@ export async function revokeAppleSignInCredentials(input: {
         !response ||
         (!response.ok && isRetryableAppleStatus(response.status))
       ) {
-        if (wasAlreadyRevoking) {
+        if (resumedDeletionCycle && requestAttempted) {
           console.warn(
             "Apple token revocation remained unavailable after a resumed deletion cycle; manual revocation required.",
           );
