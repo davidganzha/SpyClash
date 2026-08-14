@@ -4,6 +4,42 @@ import XCTest
 
 @MainActor
 final class Base44ClientRoomActionTests: XCTestCase {
+    func testDeleteAccountPreservesStructuredRetryDelay() async throws {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 503,
+                httpVersion: nil,
+                headerFields: [
+                    "Content-Type": "application/json",
+                    "Retry-After": "601"
+                ]
+            )!
+            let payload = #"{"error":"Account deletion is incomplete.","code":"apple_revocation_unavailable","retryable":true,"retry_after_seconds":600}"#
+            return (response, Data(payload.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        do {
+            _ = try await makeClient().deleteAccount()
+            XCTFail("Expected account deletion to remain retryable.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.statusCode, 503)
+            XCTAssertEqual(error.code, "apple_revocation_unavailable")
+            XCTAssertTrue(error.retryable)
+            XCTAssertEqual(error.retryAfterSeconds, 600)
+            XCTAssertTrue(error.isRetryableAccountDeletion)
+            XCTAssertEqual(
+                error.localizedMessage(for: .ru),
+                "Удаление аккаунта безопасно приостановлено. Повторите через 10 мин."
+            )
+            XCTAssertEqual(
+                error.localizedMessage(for: .uk),
+                "Видалення акаунта безпечно призупинено. Спробуйте знову через 10 хв."
+            )
+        }
+    }
+
     func testCastDetectiveVoteSendsCapturedVoteRoundID() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in

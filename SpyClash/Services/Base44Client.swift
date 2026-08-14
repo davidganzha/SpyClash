@@ -1587,11 +1587,14 @@ final class Base44Client {
 
         guard 200..<300 ~= http.statusCode else {
             let apiError = try? JSONDecoder.base44.decode(APIErrorEnvelope.self, from: data)
+            let retryAfterSeconds = apiError?.retryAfterSeconds
+                ?? http.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init)
             throw Base44Error(
                 message: apiError?.resolvedMessage ?? "Base44 request failed.",
                 statusCode: http.statusCode,
                 code: apiError?.code,
-                retryable: apiError?.retryable ?? false
+                retryable: apiError?.retryable ?? false,
+                retryAfterSeconds: retryAfterSeconds
             )
         }
 
@@ -1905,6 +1908,7 @@ private struct APIErrorEnvelope: Decodable {
     let errorDescription: String?
     let code: String?
     let retryable: Bool?
+    let retryAfterSeconds: Int?
 
     enum CodingKeys: String, CodingKey {
         case message
@@ -1912,6 +1916,7 @@ private struct APIErrorEnvelope: Decodable {
         case errorDescription = "error_description"
         case code
         case retryable
+        case retryAfterSeconds = "retry_after_seconds"
     }
 
     var resolvedMessage: String? { message ?? errorDescription ?? error }
@@ -1960,25 +1965,32 @@ struct Base44Error: LocalizedError {
     var statusCode: Int?
     var code: String?
     var retryable = false
+    var retryAfterSeconds: Int?
 
     init(
         message: String,
         statusCode: Int? = nil,
         code: String? = nil,
-        retryable: Bool = false
+        retryable: Bool = false,
+        retryAfterSeconds: Int? = nil
     ) {
         self.message = message
         self.statusCode = statusCode
         self.code = code
         self.retryable = retryable
+        self.retryAfterSeconds = retryAfterSeconds
     }
 
     var errorDescription: String? {
         let resolvedMessage = localizedMessage(for: AppLanguage.stored)
+        if isRetryableAccountDeletion { return resolvedMessage }
         return statusCode.map { "\(resolvedMessage) [\($0)]" } ?? resolvedMessage
     }
 
     func localizedMessage(for language: AppLanguage) -> String {
+        if isRetryableAccountDeletion {
+            return accountDeletionRetryMessage(for: language)
+        }
         guard language == .uk else { return message }
 
         if let localized = Self.ukrainianMessages[message] {
@@ -2077,6 +2089,28 @@ struct Base44Error: LocalizedError {
 
     var isSpyCountInvalidForPlayerCount: Bool {
         normalizedCode == "spy_count_invalid_for_player_count"
+    }
+
+    var isRetryableAccountDeletion: Bool {
+        guard statusCode == 503, retryable else { return false }
+        return normalizedCode == "apple_revocation_unavailable"
+            || normalizedCode.hasPrefix("account_deletion_")
+            || normalizedCode.hasPrefix("apple_account_deletion_")
+    }
+
+    private func accountDeletionRetryMessage(for language: AppLanguage) -> String {
+        let seconds = max(retryAfterSeconds ?? 600, 1)
+        let minutes = max(1, Int(ceil(Double(seconds) / 60)))
+        switch language {
+        case .en:
+            return "Account deletion is safely paused. Try again in \(minutes) min."
+        case .es:
+            return "La eliminación de la cuenta está pausada de forma segura. Inténtalo de nuevo en \(minutes) min."
+        case .ru:
+            return "Удаление аккаунта безопасно приостановлено. Повторите через \(minutes) мин."
+        case .uk:
+            return "Видалення акаунта безпечно призупинено. Спробуйте знову через \(minutes) хв."
+        }
     }
 
     private var normalizedCode: String {

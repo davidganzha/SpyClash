@@ -1,6 +1,7 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import { importPKCS8, SignJWT } from "npm:jose@5.10.0";
 import { entitlementRetentionPatch } from "./account-deletion.ts";
+import { retryableAccountDeletionResponse } from "./account-deletion-response.ts";
 import {
   acquireAppleAccountDeletionLeases,
   type AppleAccountDeletionLease,
@@ -51,6 +52,16 @@ function errorMessage(error: unknown): string {
   return error instanceof Error
     ? error.message
     : String(error || "Unknown error");
+}
+
+function deletionErrorCode(error: unknown, fallback: string): string {
+  if (
+    error instanceof AppleSignInCredentialError &&
+    error.code === "apple_revocation_unavailable"
+  ) {
+    return error.code;
+  }
+  return fallback;
 }
 
 function requiredEnv(name: string): string {
@@ -534,9 +545,15 @@ Deno.serve(async (req) => {
         "billing identity deletion preflight failed",
         errorMessage(e),
       );
-      return Response.json({
-        error: "Billing identity is updating. Retry account deletion shortly.",
-      }, { status: appleLeaseErrorStatus(e) });
+      const error =
+        "Billing identity is updating. Retry account deletion shortly.";
+      const status = appleLeaseErrorStatus(e);
+      return status === 503
+        ? retryableAccountDeletionResponse(
+          error,
+          deletionErrorCode(e, "account_deletion_preflight_unavailable"),
+        )
+        : Response.json({ error }, { status });
     }
 
     // Lock Apple billing before deleting any content. A live provider writer or
@@ -564,12 +581,17 @@ Deno.serve(async (req) => {
           errorMessage(releaseError),
         );
       }
-      return Response.json({
-        error: e instanceof AppleAccountDeletionLeaseError &&
-            e.code === "active_lease"
-          ? "App Store billing is updating. Retry account deletion shortly."
-          : "Failed to lock retained App Store billing records",
-      }, { status: appleLeaseErrorStatus(e) });
+      const error = e instanceof AppleAccountDeletionLeaseError &&
+          e.code === "active_lease"
+        ? "App Store billing is updating. Retry account deletion shortly."
+        : "Failed to lock retained App Store billing records";
+      const status = appleLeaseErrorStatus(e);
+      return status === 503
+        ? retryableAccountDeletionResponse(
+          error,
+          deletionErrorCode(e, "apple_account_deletion_preflight_unavailable"),
+        )
+        : Response.json({ error }, { status });
     }
 
     let billingSnapshot: BillingRedactionSnapshot | undefined;
@@ -817,15 +839,18 @@ Deno.serve(async (req) => {
           "irreversible cleanup started; deletion marker retained for retry",
         );
       }
-      return Response.json({
-        error: disposition === "retain_deleting_for_retry"
-          ? "Account deletion is incomplete and will continue on retry."
-          : "Failed to delete account data safely",
-      }, {
-        status: disposition === "retain_deleting_for_retry"
-          ? 503
-          : appleLeaseErrorStatus(e),
-      });
+      const error = disposition === "retain_deleting_for_retry"
+        ? "Account deletion is incomplete and will continue on retry."
+        : "Failed to delete account data safely";
+      const status = disposition === "retain_deleting_for_retry"
+        ? 503
+        : appleLeaseErrorStatus(e);
+      return status === 503
+        ? retryableAccountDeletionResponse(
+          error,
+          deletionErrorCode(e, "account_deletion_incomplete"),
+        )
+        : Response.json({ error }, { status });
     }
 
     try {
@@ -846,9 +871,10 @@ Deno.serve(async (req) => {
           ? "user remains; deleting state retained for retry"
           : "user deletion is ambiguous; deleting state retained",
       );
-      return Response.json({
-        error: "Account deletion is being reconciled. Retry shortly.",
-      }, { status: 503 });
+      return retryableAccountDeletionResponse(
+        "Account deletion is being reconciled. Retry shortly.",
+        "account_deletion_reconciling",
+      );
     }
 
     // Raw identity is already gone from every canonical row. Release is best

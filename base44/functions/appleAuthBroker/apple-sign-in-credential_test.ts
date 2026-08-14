@@ -332,6 +332,7 @@ Deno.test("lost Apple response retains encrypted credential for idempotent retry
   const saved = await storedCredential(store);
   await bindCredential(store, saved.bindingTicket);
   let requestStarted = false;
+  let requests = 0;
   let failed = false;
   try {
     await revokeAppleSignInCredentials({
@@ -345,7 +346,9 @@ Deno.test("lost Apple response retains encrypted credential for idempotent retry
       beforeRevokeRequest: () => {
         requestStarted = true;
       },
+      sleepBeforeRetry: async () => {},
       fetcher: async () => {
+        requests += 1;
         throw new TypeError("network lost after send");
       },
     });
@@ -354,6 +357,7 @@ Deno.test("lost Apple response retains encrypted credential for idempotent retry
       error.code === "apple_revocation_unavailable";
   }
   assert(requestStarted && failed, "lost response was not retryable");
+  assert(requests === 3, "lost Apple response did not exhaust bounded retries");
   assert(store.records[0].state === "revoking", "retry state was not retained");
   assert(
     cleanForTest(store.records[0].refresh_token_ciphertext).length > 20,
@@ -800,6 +804,7 @@ Deno.test("Apple 5xx remains retryable and retains encrypted credential", async 
   const store = new MemoryStore();
   const saved = await storedCredential(store);
   await bindCredential(store, saved.bindingTicket);
+  let requests = 0;
   let retryable = false;
   try {
     await revokeAppleSignInCredentials({
@@ -810,13 +815,18 @@ Deno.test("Apple 5xx remains retryable and retains encrypted credential", async 
       pseudonymSecret: PSEUDONYM_SECRET,
       encryptionSecret: ENCRYPTION_SECRET,
       createClientSecret: async () => "signed-client-secret",
-      fetcher: async () => new Response(null, { status: 503 }),
+      sleepBeforeRetry: async () => {},
+      fetcher: async () => {
+        requests += 1;
+        return new Response(null, { status: 503 });
+      },
     });
   } catch (error) {
     retryable = error instanceof AppleSignInCredentialError &&
       error.code === "apple_revocation_unavailable";
   }
   assert(retryable, "Apple 5xx was not surfaced as retryable");
+  assert(requests === 3, "Apple 5xx did not exhaust bounded retries");
   assert(store.records[0].state === "revoking", "retry state was lost");
   assert(
     cleanForTest(store.records[0].refresh_token_ciphertext).length > 20,
@@ -841,6 +851,7 @@ Deno.test("Apple revocation retry resumes after the retained deletion marker exp
       pseudonymSecret: PSEUDONYM_SECRET,
       encryptionSecret: ENCRYPTION_SECRET,
       createClientSecret: async () => "signed-client-secret",
+      sleepBeforeRetry: async () => {},
       fetcher: async () => {
         requests += 1;
         return new Response(null, { status: 503 });
@@ -889,13 +900,80 @@ Deno.test("Apple revocation retry resumes after the retained deletion marker exp
     },
   });
   assert(resumed.revoked === 1, "expired-marker retry did not revoke");
-  assert(requests === 2, "revocation retry sent an unexpected request count");
+  assert(requests === 4, "revocation retry sent an unexpected request count");
   assert(store.records[0].state === "revoked", "retry was not terminal");
   await releaseBillingDeletionMarker(
     lifecycleStoreFor(store),
     resumed.identityDeletionMarker,
     now,
   );
+});
+
+Deno.test("transient Apple 503 recovers within one deletion attempt", async () => {
+  const store = new MemoryStore();
+  const saved = await storedCredential(store);
+  await bindCredential(store, saved.bindingTicket);
+  const delays: number[] = [];
+  let requests = 0;
+
+  const result = await revokeAppleSignInCredentials({
+    store,
+    lifecycleStore: lifecycleStoreFor(store),
+    email: "operative@privaterelay.appleid.com",
+    userID: "base44-user-1",
+    pseudonymSecret: PSEUDONYM_SECRET,
+    encryptionSecret: ENCRYPTION_SECRET,
+    createClientSecret: async () => "signed-client-secret",
+    sleepBeforeRetry: async (milliseconds) => {
+      delays.push(milliseconds);
+    },
+    fetcher: async () => {
+      requests += 1;
+      return new Response(null, { status: requests === 1 ? 503 : 200 });
+    },
+  });
+
+  assert(result.revoked === 1, "transient Apple failure did not recover");
+  assert(requests === 2, "transient Apple failure used unexpected retries");
+  assert(
+    JSON.stringify(delays) === JSON.stringify([250]),
+    "transient Apple retry used an unexpected backoff",
+  );
+  assert(store.records[0].state === "revoked", "retry was not committed");
+});
+
+Deno.test("transient Apple transport failure recovers within one deletion attempt", async () => {
+  const store = new MemoryStore();
+  const saved = await storedCredential(store);
+  await bindCredential(store, saved.bindingTicket);
+  const delays: number[] = [];
+  let requests = 0;
+
+  const result = await revokeAppleSignInCredentials({
+    store,
+    lifecycleStore: lifecycleStoreFor(store),
+    email: "operative@privaterelay.appleid.com",
+    userID: "base44-user-1",
+    pseudonymSecret: PSEUDONYM_SECRET,
+    encryptionSecret: ENCRYPTION_SECRET,
+    createClientSecret: async () => "signed-client-secret",
+    sleepBeforeRetry: async (milliseconds) => {
+      delays.push(milliseconds);
+    },
+    fetcher: async () => {
+      requests += 1;
+      if (requests === 1) throw new TypeError("temporary network failure");
+      return new Response(null, { status: 200 });
+    },
+  });
+
+  assert(result.revoked === 1, "transport failure did not recover");
+  assert(requests === 2, "transport failure used unexpected retries");
+  assert(
+    JSON.stringify(delays) === JSON.stringify([250]),
+    "transport retry used an unexpected backoff",
+  );
+  assert(store.records[0].state === "revoked", "retry was not committed");
 });
 
 Deno.test("unexpected Apple signer failure remains retryable and retains encrypted credential", async () => {

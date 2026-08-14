@@ -14,8 +14,14 @@ const ENTITY_PAGE_SIZE = 100;
 const TOKEN_VERSION = "spyclash-apple-refresh-token-v1";
 const CREDENTIAL_KIND = "token";
 const APPLE_REVOCATION_TIMEOUT_MILLISECONDS = 15_000;
+const APPLE_REVOCATION_TOTAL_TIMEOUT_MILLISECONDS = 20_000;
+const APPLE_REVOCATION_RETRY_DELAYS_MILLISECONDS = [250, 750] as const;
 const encoder = new TextEncoder();
 const decoder = new TextDecoder();
+
+async function sleep(milliseconds: number): Promise<void> {
+  await new Promise((resolve) => setTimeout(resolve, milliseconds));
+}
 
 export type AppleSignInCredentialState =
   | "pending"
@@ -1150,6 +1156,7 @@ export async function revokeAppleSignInCredentials(input: {
   createClientSecret: (clientID: string) => Promise<string>;
   fetcher?: typeof fetch;
   beforeRevokeRequest?: () => void;
+  sleepBeforeRetry?: (milliseconds: number) => Promise<void>;
   now?: () => Date;
   pseudonymSecret?: string;
   encryptionSecret?: string;
@@ -1164,6 +1171,7 @@ export async function revokeAppleSignInCredentials(input: {
   const userID = requireValue(input.userID, "user id", 512);
   const nowFactory = input.now || (() => new Date());
   const revisionFactory = input.revisionFactory || randomRevision;
+  const sleepBeforeRetry = input.sleepBeforeRetry || sleep;
   const identity = await deletionIdentityKey(input);
   let identityDeletionMarker: BillingIdentityLease;
   try {
@@ -1208,6 +1216,8 @@ export async function revokeAppleSignInCredentials(input: {
     const recordIDs: string[] = [];
     let manualRevocationRequired = identity.pseudonymUnavailable;
     let revoked = 0;
+    const revocationDeadline = Date.now() +
+      APPLE_REVOCATION_TOTAL_TIMEOUT_MILLISECONDS;
 
     for (const initialRecord of records.values()) {
       const id = recordID(initialRecord);
@@ -1293,28 +1303,59 @@ export async function revokeAppleSignInCredentials(input: {
         token_type_hint: "refresh_token",
       });
       input.beforeRevokeRequest?.();
+      // Retry only while this invocation still owns the exact deletion
+      // boundary. A lost response may mean Apple already revoked the token,
+      // so cross-invocation retries remain blocked by the retained lease.
+      let response: Response | undefined;
+      for (
+        let attempt = 0;
+        attempt <= APPLE_REVOCATION_RETRY_DELAYS_MILLISECONDS.length;
+        attempt += 1
+      ) {
+        const remainingMilliseconds = revocationDeadline - Date.now();
+        if (remainingMilliseconds <= 0) break;
+        try {
+          response = await fetcher("https://appleid.apple.com/auth/revoke", {
+            method: "POST",
+            headers: {
+              Accept: "application/json",
+              "Content-Type": "application/x-www-form-urlencoded",
+            },
+            body,
+            redirect: "error",
+            signal: AbortSignal.timeout(
+              Math.min(
+                APPLE_REVOCATION_TIMEOUT_MILLISECONDS,
+                remainingMilliseconds,
+              ),
+            ),
+          });
+        } catch {
+          response = undefined;
+        }
 
-      let response: Response;
-      try {
-        response = await fetcher("https://appleid.apple.com/auth/revoke", {
-          method: "POST",
-          headers: {
-            Accept: "application/json",
-            "Content-Type": "application/x-www-form-urlencoded",
-          },
-          body,
-          redirect: "error",
-          signal: AbortSignal.timeout(APPLE_REVOCATION_TIMEOUT_MILLISECONDS),
-        });
-      } catch {
-        throw new AppleSignInCredentialError(
-          "apple_revocation_unavailable",
-          503,
-          "Apple token revocation is temporarily unavailable.",
-        );
+        if (
+          response &&
+          (response.ok || !isRetryableAppleStatus(response.status))
+        ) break;
+
+        const retryDelay = APPLE_REVOCATION_RETRY_DELAYS_MILLISECONDS[attempt];
+        if (
+          retryDelay === undefined ||
+          Date.now() + retryDelay >= revocationDeadline
+        ) {
+          throw new AppleSignInCredentialError(
+            "apple_revocation_unavailable",
+            503,
+            "Apple token revocation is temporarily unavailable.",
+          );
+        }
+        await sleepBeforeRetry(retryDelay);
       }
-
-      if (!response.ok && isRetryableAppleStatus(response.status)) {
+      if (
+        !response ||
+        (!response.ok && isRetryableAppleStatus(response.status))
+      ) {
         throw new AppleSignInCredentialError(
           "apple_revocation_unavailable",
           503,
