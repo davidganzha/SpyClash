@@ -1224,6 +1224,10 @@ export async function revokeAppleSignInCredentials(input: {
       recordIDs.push(id);
       let record = initialRecord;
       const state = recordState(record);
+      // Only a record that entered this invocation already revoking proves a
+      // prior bounded deletion cycle failed. Newly revoking records retain the
+      // encrypted token and fail closed for one lease window before fallback.
+      const wasAlreadyRevoking = state === "revoking";
       if (state === "revoked") {
         manualRevocationRequired ||= record.manual_revocation_required === true;
         continue;
@@ -1276,6 +1280,23 @@ export async function revokeAppleSignInCredentials(input: {
         );
       } catch (error) {
         if (error instanceof AppleSignInCredentialError) {
+          record = await terminalCredentialUpdate({
+            store: input.store,
+            lifecycleStore: input.lifecycleStore,
+            lifecycleLease: identityDeletionMarker!,
+            record,
+            userID,
+            manual: true,
+            nowFactory,
+            revisionFactory,
+          });
+          manualRevocationRequired = true;
+          continue;
+        }
+        if (wasAlreadyRevoking) {
+          console.warn(
+            "Apple revocation signer remained unavailable after a resumed deletion cycle; manual revocation required.",
+          );
           record = await terminalCredentialUpdate({
             store: input.store,
             lifecycleStore: input.lifecycleStore,
@@ -1344,11 +1365,7 @@ export async function revokeAppleSignInCredentials(input: {
           retryDelay === undefined ||
           Date.now() + retryDelay >= revocationDeadline
         ) {
-          throw new AppleSignInCredentialError(
-            "apple_revocation_unavailable",
-            503,
-            "Apple token revocation is temporarily unavailable.",
-          );
+          break;
         }
         await sleepBeforeRetry(retryDelay);
       }
@@ -1356,6 +1373,23 @@ export async function revokeAppleSignInCredentials(input: {
         !response ||
         (!response.ok && isRetryableAppleStatus(response.status))
       ) {
+        if (wasAlreadyRevoking) {
+          console.warn(
+            "Apple token revocation remained unavailable after a resumed deletion cycle; manual revocation required.",
+          );
+          record = await terminalCredentialUpdate({
+            store: input.store,
+            lifecycleStore: input.lifecycleStore,
+            lifecycleLease: identityDeletionMarker!,
+            record,
+            userID,
+            manual: true,
+            nowFactory,
+            revisionFactory,
+          });
+          manualRevocationRequired = true;
+          continue;
+        }
         throw new AppleSignInCredentialError(
           "apple_revocation_unavailable",
           503,

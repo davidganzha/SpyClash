@@ -909,6 +909,301 @@ Deno.test("Apple revocation retry resumes after the retained deletion marker exp
   );
 });
 
+Deno.test("persistent Apple 5xx becomes manual cleanup on the resumed cycle", async () => {
+  const store = new MemoryStore();
+  const saved = await storedCredential(store);
+  await bindCredential(store, saved.bindingTicket);
+  let now = NOW;
+  let requests = 0;
+  let firstRetryable = false;
+
+  try {
+    await revokeAppleSignInCredentials({
+      store,
+      lifecycleStore: lifecycleStoreFor(store),
+      email: "operative@privaterelay.appleid.com",
+      userID: "base44-user-1",
+      now: () => now,
+      pseudonymSecret: PSEUDONYM_SECRET,
+      encryptionSecret: ENCRYPTION_SECRET,
+      createClientSecret: async () => "signed-client-secret",
+      sleepBeforeRetry: async () => {},
+      fetcher: async () => {
+        requests += 1;
+        return new Response(null, { status: 503 });
+      },
+    });
+  } catch (error) {
+    firstRetryable = error instanceof AppleSignInCredentialError &&
+      error.code === "apple_revocation_unavailable";
+  }
+
+  assert(firstRetryable, "first Apple 5xx cycle was not retryable");
+  assert(requests === 3, "first Apple 5xx cycle used unexpected retries");
+  assert(store.records[0].state === "revoking", "first cycle lost retry state");
+  assert(
+    cleanForTest(store.records[0].refresh_token_ciphertext).length > 20,
+    "first cycle destroyed the encrypted credential",
+  );
+
+  now = new Date(NOW.getTime() + 11 * 60 * 1_000);
+  const resumed = await revokeAppleSignInCredentials({
+    store,
+    lifecycleStore: lifecycleStoreFor(store),
+    email: "operative@privaterelay.appleid.com",
+    userID: "base44-user-1",
+    now: () => now,
+    pseudonymSecret: PSEUDONYM_SECRET,
+    encryptionSecret: ENCRYPTION_SECRET,
+    createClientSecret: async () => "signed-client-secret",
+    sleepBeforeRetry: async () => {},
+    fetcher: async () => {
+      requests += 1;
+      return new Response(null, { status: 503 });
+    },
+  });
+
+  assert(
+    Number(requests) === 6,
+    "resumed Apple 5xx cycle used unexpected retries",
+  );
+  assert(resumed.revoked === 0, "unconfirmed Apple revocation was counted");
+  assert(resumed.manualRevocationRequired, "manual fallback was not reported");
+  assert(
+    cleanForTest(store.records[0].state) === "revoked",
+    "manual fallback was not terminal",
+  );
+  assert(
+    store.records[0].refresh_token_ciphertext === "",
+    "manual fallback retained encrypted bearer material",
+  );
+});
+
+Deno.test("persistent Apple transport failure becomes manual cleanup on the resumed cycle", async () => {
+  const store = new MemoryStore();
+  const saved = await storedCredential(store);
+  await bindCredential(store, saved.bindingTicket);
+  let now = NOW;
+  let requests = 0;
+  let firstRetryable = false;
+
+  try {
+    await revokeAppleSignInCredentials({
+      store,
+      lifecycleStore: lifecycleStoreFor(store),
+      email: "operative@privaterelay.appleid.com",
+      userID: "base44-user-1",
+      now: () => now,
+      pseudonymSecret: PSEUDONYM_SECRET,
+      encryptionSecret: ENCRYPTION_SECRET,
+      createClientSecret: async () => "signed-client-secret",
+      sleepBeforeRetry: async () => {},
+      fetcher: async () => {
+        requests += 1;
+        throw new TypeError("network lost after send");
+      },
+    });
+  } catch (error) {
+    firstRetryable = error instanceof AppleSignInCredentialError &&
+      error.code === "apple_revocation_unavailable";
+  }
+
+  assert(firstRetryable, "first transport-failure cycle was not retryable");
+  assert(
+    requests === 3,
+    "first transport-failure cycle used unexpected retries",
+  );
+  assert(store.records[0].state === "revoking", "first cycle lost retry state");
+  assert(
+    cleanForTest(store.records[0].refresh_token_ciphertext).length > 20,
+    "first cycle destroyed the encrypted credential",
+  );
+
+  now = new Date(NOW.getTime() + 11 * 60 * 1_000);
+  const resumed = await revokeAppleSignInCredentials({
+    store,
+    lifecycleStore: lifecycleStoreFor(store),
+    email: "operative@privaterelay.appleid.com",
+    userID: "base44-user-1",
+    now: () => now,
+    pseudonymSecret: PSEUDONYM_SECRET,
+    encryptionSecret: ENCRYPTION_SECRET,
+    createClientSecret: async () => "signed-client-secret",
+    sleepBeforeRetry: async () => {},
+    fetcher: async () => {
+      requests += 1;
+      throw new TypeError("network lost after send");
+    },
+  });
+
+  assert(
+    Number(requests) === 6,
+    "resumed transport cycle used unexpected retries",
+  );
+  assert(resumed.revoked === 0, "unconfirmed Apple revocation was counted");
+  assert(resumed.manualRevocationRequired, "manual fallback was not reported");
+  assert(
+    cleanForTest(store.records[0].state) === "revoked",
+    "manual fallback was not terminal",
+  );
+  assert(
+    store.records[0].refresh_token_ciphertext === "",
+    "manual fallback retained encrypted bearer material",
+  );
+});
+
+Deno.test("multi-record resumed fallback keeps each fresh credential fail-closed for one lease window", async () => {
+  const store = new MemoryStore();
+  const firstSaved = await storedCredential(store, {
+    token: "first-private-refresh-token",
+  });
+  const secondSaved = await storedCredential(store, {
+    subject: "apple-subject-2",
+    token: "second-private-refresh-token",
+  });
+  const bound = await bindCredential(store, firstSaved.bindingTicket);
+  assert(
+    bound.bound === 2,
+    "multi-record fixture did not bind both credentials",
+  );
+
+  const firstID = firstSaved.recordIDs[0];
+  const secondID = secondSaved.recordIDs[0];
+  const credential = (id: string) => {
+    const record = store.records.find((candidate) => candidate.id === id);
+    assert(record, `credential ${id} is missing`);
+    return record;
+  };
+  let now = NOW;
+  let requests = 0;
+  const attempt = () =>
+    revokeAppleSignInCredentials({
+      store,
+      lifecycleStore: lifecycleStoreFor(store),
+      email: "operative@privaterelay.appleid.com",
+      userID: "base44-user-1",
+      now: () => now,
+      pseudonymSecret: PSEUDONYM_SECRET,
+      encryptionSecret: ENCRYPTION_SECRET,
+      createClientSecret: async () => "signed-client-secret",
+      sleepBeforeRetry: async () => {},
+      fetcher: async () => {
+        requests += 1;
+        return new Response(null, { status: 503 });
+      },
+    });
+
+  let firstRetryable = false;
+  try {
+    await attempt();
+  } catch (error) {
+    firstRetryable = error instanceof AppleSignInCredentialError &&
+      error.code === "apple_revocation_unavailable";
+  }
+  assert(firstRetryable, "first multi-record cycle was not retryable");
+  assert(requests === 3, "first multi-record cycle used unexpected retries");
+  assert(
+    credential(firstID).state === "revoking",
+    "first credential did not retain retry state",
+  );
+  assert(
+    cleanForTest(credential(firstID).refresh_token_ciphertext).length > 20,
+    "first credential was scrubbed during its initial cycle",
+  );
+  assert(
+    credential(secondID).state === "bound",
+    "unvisited second credential changed during the first cycle",
+  );
+
+  let immediateRetryBlocked = false;
+  try {
+    await attempt();
+  } catch (error) {
+    immediateRetryBlocked = error instanceof AppleSignInCredentialError &&
+      error.code === "apple_credential_lifecycle_unavailable";
+  }
+  assert(immediateRetryBlocked, "live first-cycle marker was bypassed");
+  assert(requests === 3, "blocked retry reached Apple");
+
+  now = new Date(NOW.getTime() + 11 * 60 * 1_000);
+  let resumedRetryable = false;
+  try {
+    await attempt();
+  } catch (error) {
+    resumedRetryable = error instanceof AppleSignInCredentialError &&
+      error.code === "apple_revocation_unavailable";
+  }
+  assert(
+    resumedRetryable,
+    "resumed cycle did not fail closed on the fresh second credential",
+  );
+  assert(
+    Number(requests) === 9,
+    "resumed multi-record cycle used unexpected retries",
+  );
+  assert(
+    cleanForTest(credential(firstID).state) === "revoked",
+    "previously revoking credential was not terminal",
+  );
+  assert(
+    credential(firstID).manual_revocation_required === true,
+    "first credential lost its manual fallback receipt",
+  );
+  assert(
+    credential(firstID).refresh_token_ciphertext === "",
+    "first credential retained bearer material after terminal fallback",
+  );
+  assert(
+    credential(secondID).state === "revoking",
+    "fresh second credential did not enter retry state",
+  );
+  assert(
+    cleanForTest(credential(secondID).refresh_token_ciphertext).length > 20,
+    "fresh second credential was scrubbed before its resumed cycle",
+  );
+
+  let secondImmediateRetryBlocked = false;
+  try {
+    await attempt();
+  } catch (error) {
+    secondImmediateRetryBlocked = error instanceof AppleSignInCredentialError &&
+      error.code === "apple_credential_lifecycle_unavailable";
+  }
+  assert(
+    secondImmediateRetryBlocked,
+    "live second-cycle marker was bypassed",
+  );
+  assert(Number(requests) === 9, "blocked second-cycle retry reached Apple");
+
+  now = new Date(NOW.getTime() + 22 * 60 * 1_000);
+  const completed = await attempt();
+  assert(
+    Number(requests) === 12,
+    "final multi-record cycle used unexpected retries",
+  );
+  assert(completed.revoked === 0, "unconfirmed revocations were counted");
+  assert(
+    completed.manualRevocationRequired,
+    "manual fallback receipt did not survive the partial prior cycle",
+  );
+  assert(
+    cleanForTest(credential(firstID).state) === "revoked" &&
+      cleanForTest(credential(secondID).state) === "revoked",
+    "multi-record fallback did not finish terminally",
+  );
+  assert(
+    credential(firstID).refresh_token_ciphertext === "" &&
+      credential(secondID).refresh_token_ciphertext === "",
+    "multi-record fallback retained bearer material",
+  );
+
+  await releaseBillingDeletionMarker(
+    lifecycleStoreFor(store),
+    completed.identityDeletionMarker,
+    now,
+  );
+});
+
 Deno.test("transient Apple 503 recovers within one deletion attempt", async () => {
   const store = new MemoryStore();
   const saved = await storedCredential(store);
@@ -1008,6 +1303,81 @@ Deno.test("unexpected Apple signer failure remains retryable and retains encrypt
   assert(
     cleanForTest(store.records[0].refresh_token_ciphertext).length > 20,
     "signer failure destroyed the credential",
+  );
+});
+
+Deno.test("persistent Apple signer failure becomes manual cleanup on the resumed cycle", async () => {
+  const store = new MemoryStore();
+  const saved = await storedCredential(store);
+  await bindCredential(store, saved.bindingTicket);
+  let now = NOW;
+  let signerAttempts = 0;
+  let firstRetryable = false;
+
+  try {
+    await revokeAppleSignInCredentials({
+      store,
+      lifecycleStore: lifecycleStoreFor(store),
+      email: "operative@privaterelay.appleid.com",
+      userID: "base44-user-1",
+      now: () => now,
+      pseudonymSecret: PSEUDONYM_SECRET,
+      encryptionSecret: ENCRYPTION_SECRET,
+      createClientSecret: async () => {
+        signerAttempts += 1;
+        throw new Error("signer temporarily unavailable");
+      },
+      fetcher: async () => {
+        throw new Error("must not call Apple without a client secret");
+      },
+    });
+  } catch (error) {
+    firstRetryable = error instanceof AppleSignInCredentialError &&
+      error.code === "apple_revocation_unavailable";
+  }
+
+  assert(firstRetryable, "first signer-failure cycle was not retryable");
+  assert(
+    signerAttempts === 1,
+    "first signer-failure cycle retried unexpectedly",
+  );
+  assert(store.records[0].state === "revoking", "first cycle lost retry state");
+  assert(
+    cleanForTest(store.records[0].refresh_token_ciphertext).length > 20,
+    "first cycle destroyed the encrypted credential",
+  );
+
+  now = new Date(NOW.getTime() + 11 * 60 * 1_000);
+  const resumed = await revokeAppleSignInCredentials({
+    store,
+    lifecycleStore: lifecycleStoreFor(store),
+    email: "operative@privaterelay.appleid.com",
+    userID: "base44-user-1",
+    now: () => now,
+    pseudonymSecret: PSEUDONYM_SECRET,
+    encryptionSecret: ENCRYPTION_SECRET,
+    createClientSecret: async () => {
+      signerAttempts += 1;
+      throw new Error("signer temporarily unavailable");
+    },
+    fetcher: async () => {
+      throw new Error("must not call Apple without a client secret");
+    },
+  });
+
+  assert(
+    Number(signerAttempts) === 2,
+    "resumed signer cycle retried unexpectedly",
+  );
+  assert(resumed.revoked === 0, "unconfirmed Apple revocation was counted");
+  assert(resumed.manualRevocationRequired, "manual fallback was not reported");
+  assert(
+    cleanForTest(store.records[0].state) === "revoked",
+    "manual fallback was not terminal",
+  );
+  assert(
+    store.records[0].refresh_token_ciphertext === "",
+    "manual fallback retained encrypted bearer material",
   );
 });
 
