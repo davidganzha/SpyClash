@@ -11,12 +11,12 @@ import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
   type AppleCredentialIdentityWriter,
   type AppleCredentialIssuanceBoundary,
-  AppleSignInCredentialError,
   assertTrackedAppleSignInCredential,
   persistPendingAppleSignInCredential,
   withAppleCredentialIdentityWriter,
   withAppleCredentialIssuanceBoundary,
 } from "./apple-sign-in-credential.ts";
+import { publicAppleCredentialBrokerError } from "./apple-credential-error-policy.ts";
 import { appleCodeExchangeTokenOutcome } from "./apple-code-exchange.ts";
 import { compensateUntrackedAppleRefreshToken } from "./apple-token-compensation.ts";
 import { upstreamProviderFromBase44State } from "./provider.ts";
@@ -1336,11 +1336,11 @@ async function handleToken(req: Request, params: URLSearchParams) {
       },
     });
   } catch (error) {
-    if (error instanceof AppleSignInCredentialError) {
-      const temporary = error.status >= 500;
+    const publicError = publicAppleCredentialBrokerError(error);
+    if (publicError) {
       throw new BrokerError(
-        temporary ? "temporarily_unavailable" : "invalid_grant",
-        temporary ? 503 : 400,
+        publicError.code,
+        publicError.status,
       );
     }
     throw error;
@@ -1731,7 +1731,9 @@ async function handleGoogleCallback(req: Request, params: URLSearchParams) {
 }
 
 function normalizedInternalErrorCode(error: unknown) {
-  const candidate = error instanceof BrokerError ? error.code : "server_error";
+  const candidate = error instanceof BrokerError
+    ? error.code
+    : publicAppleCredentialBrokerError(error)?.code ?? "server_error";
   return /^[a-z][a-z0-9_]{0,63}$/.test(candidate) ? candidate : "server_error";
 }
 
@@ -1763,8 +1765,11 @@ function errorResponse(
   action: string,
   cookies?: ResponseCookies,
 ) {
+  const publicAppleError = publicAppleCredentialBrokerError(error);
   const brokerError = error instanceof BrokerError
     ? error
+    : publicAppleError
+    ? new BrokerError(publicAppleError.code, publicAppleError.status)
     : new BrokerError("server_error", 500);
   const headers = new Headers(baseHeaders());
   if (brokerError.status === 405) {

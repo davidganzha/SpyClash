@@ -2,6 +2,7 @@ import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import { importPKCS8, SignJWT } from "npm:jose@5.10.0";
 import { entitlementRetentionPatch } from "./account-deletion.ts";
 import { retryableAccountDeletionResponse } from "./account-deletion-response.ts";
+import { protectedAccountDeletionResponse } from "./account-deletion-protection.ts";
 import {
   acquireAppleAccountDeletionLeases,
   type AppleAccountDeletionLease,
@@ -525,6 +526,12 @@ Deno.serve(async (req) => {
       return Response.json({ error: "Account identity is incomplete" }, {
         status: 500,
       });
+    }
+
+    const protectedDeletion = protectedAccountDeletionResponse(user);
+    if (protectedDeletion) {
+      console.warn("deleteAccount blocked protected account principal");
+      return protectedDeletion;
     }
 
     // The admin-only lifecycle row is keyed by a one-way subject hash. Acquire
