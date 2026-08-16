@@ -4,6 +4,7 @@ import {
   type PushEvent,
   type SourceContext,
 } from "./push-events.ts";
+import { safePushActorName } from "./public-name-safety.ts";
 
 export const PERSONAL_INBOX_EVENT_TYPES = [
   "friend_request",
@@ -21,7 +22,10 @@ function alertCopy(
   source: SourceContext,
   locale: "en" | "ru" | "es" | "uk",
 ) {
-  const payload = alertPayload(event, source, locale);
+  const payload = alertPayload(event, {
+    ...source,
+    actorName: safePushActorName(source.actorName),
+  }, locale);
   const aps = payload.aps as Record<string, unknown>;
   const alert = aps.alert as Record<string, unknown>;
   return {

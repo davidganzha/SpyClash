@@ -629,7 +629,14 @@ final class AppState: NSObject {
     private(set) var wordPacksRevision = 0
     var activeRoom: GameRoom? {
         didSet {
-            if let room = activeRoom, isDismissedRoom(room.id) {
+            #if DEBUG
+            let shouldHonorDismissedRoom = !isUIPreviewMode
+            #else
+            let shouldHonorDismissedRoom = true
+            #endif
+            if shouldHonorDismissedRoom,
+               let room = activeRoom,
+               isDismissedRoom(room.id) {
                 activeRoom = nil
             }
             if activeRoom == nil {
@@ -3411,7 +3418,7 @@ final class AppState: NSObject {
         if arguments.contains("--spyclash-preview-radar-invite") {
             radarNearby.presentForConfirmation(
                 RadarIncomingInvitation(
-                    roomCode: "R7VN28",
+                    roomCode: "R7VN87",
                     hostCallSign: "Night Fox",
                     hostAvatar: "🥷",
                     hostSpyID: "350-911",

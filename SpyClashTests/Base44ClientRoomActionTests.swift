@@ -4,6 +4,94 @@ import XCTest
 
 @MainActor
 final class Base44ClientRoomActionTests: XCTestCase {
+    func testPublicDisplayNameSafetyBlocksKnownRootAcrossCommonEvasions() {
+        let blockedVariants = [
+            "zalupa",
+            "Z.A.L.U.P.A",
+            "z a l u p a",
+            "za lu pa",
+            "zal upa",
+            "zal u p a",
+            "z4lup4",
+            "za\u{200B}lupa",
+            "з-а-л-у-п-а",
+            "за лу па",
+            "zаlupa",
+            "3a1up4",
+            "zаluрa",
+            "z@lup@",
+            "za|upa",
+            "pza lupa"
+        ]
+
+        for value in blockedVariants {
+            XCTAssertTrue(
+                PublicDisplayNameSafety.containsBlockedRoot(value),
+                "Expected blocked display name variant: \(value)"
+            )
+            XCTAssertEqual(
+                PublicDisplayNameSafety.sanitizedForDisplay(value),
+                PublicDisplayNameSafety.fallback
+            )
+        }
+
+        for value in ["Pizza Lupin", "Zalina", "Lupin", "Paula Z.", "Red Raven", "za lupus"] {
+            XCTAssertFalse(
+                PublicDisplayNameSafety.containsBlockedRoot(value),
+                "Expected safe display name: \(value)"
+            )
+            XCTAssertEqual(
+                PublicDisplayNameSafety.sanitizedForDisplay(value),
+                value
+            )
+        }
+    }
+
+    func testPublicDisplayNameSafetyCleansUntrustedRenderedValue() {
+        XCTAssertEqual(
+            PublicDisplayNameSafety.sanitizedForDisplay("  Red\n\tRaven\u{200B}  "),
+            "Red Raven"
+        )
+        XCTAssertEqual(
+            PublicDisplayNameSafety.sanitizedForDisplay("   "),
+            PublicDisplayNameSafety.fallback
+        )
+    }
+
+    func testRadarInvitationSanitizesInboundHostCallSign() {
+        let invitation = RadarIncomingInvitation(
+            roomCode: "ABC123",
+            hostCallSign: "з а л у п а",
+            hostAvatar: "🕵️"
+        )
+
+        XCTAssertEqual(invitation.hostCallSign, PublicDisplayNameSafety.fallback)
+    }
+
+    func testUpdateProfileRejectsUnsafeDisplayNameBeforeNetworkRequest() async {
+        MockURLProtocol.requestHandler = nil
+
+        do {
+            _ = try await makeClient().updateProfile(
+                displayName: "z.4.l.u.p.4",
+                avatar: "🕵️",
+                language: .en,
+                spyCardTheme: .field,
+                spyCardAccent: .signalRed,
+                spyCardBadge: .operative
+            )
+            XCTFail("Expected unsafe display name to be rejected.")
+        } catch let error as PublicDisplayNameValidationError {
+            XCTAssertEqual(error, .objectionableContent)
+            XCTAssertEqual(
+                error.message(for: .ru),
+                "Имя содержит недопустимый текст."
+            )
+        } catch {
+            XCTFail("Unexpected error: \(error)")
+        }
+    }
+
     func testDeleteAccountPreservesStructuredRetryDelay() async throws {
         MockURLProtocol.requestHandler = { request in
             let response = HTTPURLResponse(

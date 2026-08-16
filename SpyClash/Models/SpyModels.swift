@@ -918,7 +918,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                     generateWords: "GENERATE WORDS",
                     aiDraftHint: "AI fills the draft only. Review and edit before saving.",
                     packNameLabel: "// PACK NAME",
-                    packNamePlaceholder: "Cities, movies, family chaos...",
+                    packNamePlaceholder: "Cities, nature, family chaos...",
                     categoryLabel: "// CATEGORY",
                     categoryPlaceholder: "Custom",
                     wordsLabel: "// WORDS",
@@ -968,7 +968,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                     generateWords: "GENERAR PALABRAS",
                     aiDraftHint: "La IA solo llena el borrador. Revisa y edita antes de guardar.",
                     packNameLabel: "// NOMBRE DEL PACK",
-                    packNamePlaceholder: "Ciudades, películas, caos familiar...",
+                    packNamePlaceholder: "Ciudades, naturaleza, caos familiar...",
                     categoryLabel: "// CATEGORÍA",
                     categoryPlaceholder: "Propio",
                     wordsLabel: "// PALABRAS",
@@ -1018,7 +1018,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                     generateWords: "СГЕНЕРИРОВАТЬ СЛОВА",
                     aiDraftHint: "AI заполняет только черновик. Проверь и отредактируй перед сохранением.",
                     packNameLabel: "// НАЗВАНИЕ ПАКА",
-                    packNamePlaceholder: "Города, фильмы, семейный хаос...",
+                    packNamePlaceholder: "Города, природа, семейный хаос...",
                     categoryLabel: "// КАТЕГОРИЯ",
                     categoryPlaceholder: "Свой",
                     wordsLabel: "// СЛОВА",
@@ -1068,7 +1068,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                     generateWords: "ЗГЕНЕРУВАТИ СЛОВА",
                     aiDraftHint: "AI лише заповнює чернетку. Перевір і відредагуй її перед збереженням.",
                     packNameLabel: "// НАЗВА НАБОРУ",
-                    packNamePlaceholder: "Міста, фільми, сімейний хаос...",
+                    packNamePlaceholder: "Міста, природа, сімейний хаос...",
                     categoryLabel: "// КАТЕГОРІЯ",
                     categoryPlaceholder: "Власна",
                     wordsLabel: "// СЛОВА",
@@ -2830,6 +2830,172 @@ struct SpyUser: Codable, Identifiable, Equatable {
     }
 }
 
+enum PublicDisplayNameValidationError: LocalizedError, Equatable {
+    case objectionableContent
+
+    var errorDescription: String? {
+        message(for: AppLanguage.stored)
+    }
+
+    func message(for language: AppLanguage) -> String {
+        switch language {
+        case .en:
+            "Display name contains content that is not allowed."
+        case .es:
+            "El nombre visible contiene contenido no permitido."
+        case .ru:
+            "Имя содержит недопустимый текст."
+        case .uk:
+            "Ім’я містить неприпустимий текст."
+        }
+    }
+}
+
+enum PublicDisplayNameSafety {
+    static let fallback = "Operative"
+
+    private static let blockedSkeletonRoot = "zalup"
+    private struct SkeletonChunk {
+        let canonical: String
+        let isRootOnly: Bool
+        let containsBlockedRoot: Bool
+    }
+
+    private static let zeroWidthScalars: Set<UInt32> = [
+        0x200B,
+        0x200C,
+        0x200D,
+        0x2060,
+        0xFEFF
+    ]
+
+    static func containsBlockedRoot(_ value: String) -> Bool {
+        var crossChunkRun = ""
+        for chunk in skeletonChunks(for: value) {
+            if chunk.containsBlockedRoot {
+                return true
+            }
+            if chunk.isRootOnly {
+                crossChunkRun += chunk.canonical
+                if crossChunkRun.contains(blockedSkeletonRoot) {
+                    return true
+                }
+            } else {
+                crossChunkRun = ""
+            }
+        }
+        return false
+    }
+
+    static func validatedForSave(_ value: String, limit: Int = 48) throws -> String {
+        let candidate = cleaned(value).boundedUnicodeScalars(limit)
+        guard !containsBlockedRoot(candidate) else {
+            throw PublicDisplayNameValidationError.objectionableContent
+        }
+        return candidate
+    }
+
+    static func sanitizedForDisplay(
+        _ value: String,
+        fallback: String = fallback,
+        limit: Int = 48
+    ) -> String {
+        let candidate = cleaned(value).boundedUnicodeScalars(limit)
+        guard !candidate.isEmpty, !containsBlockedRoot(candidate) else {
+            let cleanedFallback = cleaned(fallback).boundedUnicodeScalars(limit)
+            return cleanedFallback.isEmpty || containsBlockedRoot(cleanedFallback)
+                ? Self.fallback.boundedUnicodeScalars(limit)
+                : cleanedFallback
+        }
+        return candidate
+    }
+
+    private static func cleaned(_ value: String) -> String {
+        var cleaned = ""
+        for scalar in value.unicodeScalars {
+            if zeroWidthScalars.contains(scalar.value) {
+                continue
+            }
+            if CharacterSet.controlCharacters.contains(scalar) {
+                cleaned.append(" ")
+            } else {
+                cleaned.append(contentsOf: String(scalar))
+            }
+        }
+        return cleaned
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+    }
+
+    private static func skeletonChunks(for value: String) -> [SkeletonChunk] {
+        let normalized = value
+            .decomposedStringWithCompatibilityMapping
+            .lowercased()
+        var chunks: [SkeletonChunk] = []
+        var canonical = ""
+        var innerRun = ""
+        var isRootOnly = true
+        var hasContent = false
+        var chunkContainsBlockedRoot = false
+
+        func finishChunk() {
+            guard hasContent else { return }
+            chunks.append(
+                SkeletonChunk(
+                    canonical: canonical,
+                    isRootOnly: isRootOnly,
+                    containsBlockedRoot: chunkContainsBlockedRoot
+                )
+            )
+            canonical = ""
+            innerRun = ""
+            isRootOnly = true
+            hasContent = false
+            chunkContainsBlockedRoot = false
+        }
+
+        for scalar in normalized.unicodeScalars {
+            if zeroWidthScalars.contains(scalar.value)
+                || CharacterSet.nonBaseCharacters.contains(scalar) {
+                continue
+            }
+
+            if let equivalent = rootEquivalent(for: scalar) {
+                canonical.append(equivalent)
+                innerRun.append(equivalent)
+                chunkContainsBlockedRoot = chunkContainsBlockedRoot
+                    || innerRun.contains(blockedSkeletonRoot)
+                hasContent = true
+            } else if CharacterSet.alphanumerics.contains(scalar) {
+                innerRun = ""
+                isRootOnly = false
+                hasContent = true
+            } else {
+                finishChunk()
+            }
+        }
+        finishChunk()
+        return chunks
+    }
+
+    private static func rootEquivalent(for scalar: Unicode.Scalar) -> Character? {
+        switch scalar.value {
+        case 0x007A, 0x0437, 0x0033: // z, з, 3
+            "z"
+        case 0x0061, 0x0430, 0x0034, 0x0040: // a, а, 4, @
+            "a"
+        case 0x006C, 0x043B, 0x0031, 0x007C: // l, л, 1, |
+            "l"
+        case 0x0075, 0x0443: // u, у
+            "u"
+        case 0x0070, 0x043F, 0x0440: // p, п, visually similar р
+            "p"
+        default:
+            nil
+        }
+    }
+}
+
 enum SpyCardThemeID: String, Codable, CaseIterable, Identifiable {
     case field
     case blacksite
@@ -3664,7 +3830,7 @@ extension GameRoom {
 
         return GameRoom(
             id: "preview-room-\(status)",
-            code: "R7VN28",
+            code: "R7VN87",
             hostEmail: players[0].email,
             matchID: ["playing", "finished"].contains(status) ? "preview-match-\(status)" : nil,
             status: status,
@@ -3766,7 +3932,7 @@ extension WordPack {
     static let previewPacks: [WordPack] = [
         WordPack(
             id: "preview-pack-places",
-            name: "Night City",
+            name: "City Landmarks",
             category: "Places",
             words: ["Embassy", "Harbor", "Casino", "Subway", "Museum", "Rooftop", "Theater", "Market", "Hotel", "Airport", "Vault", "Tunnel"],
             ownerEmail: "operative.preview@spyclash.local",
@@ -3798,7 +3964,7 @@ extension WordPack {
             [
                 WordPack(
                     id: "preview-pack-places",
-                    name: "Ночной город",
+                    name: "Городские места",
                     category: "Места",
                     words: ["Посольство", "Порт", "Казино", "Метро", "Музей", "Крыша", "Театр", "Рынок", "Отель", "Аэропорт", "Хранилище", "Тоннель"],
                     ownerEmail: "operative.preview@spyclash.local",
@@ -3825,7 +3991,7 @@ extension WordPack {
             [
                 WordPack(
                     id: "preview-pack-places",
-                    name: "Нічне місто",
+                    name: "Міські місця",
                     category: "Місця",
                     words: ["Посольство", "Порт", "Казино", "Метро", "Музей", "Дах", "Театр", "Ринок", "Готель", "Аеропорт", "Сховище", "Тунель"],
                     ownerEmail: "operative.preview@spyclash.local",
@@ -3852,7 +4018,7 @@ extension WordPack {
             [
                 WordPack(
                     id: "preview-pack-places",
-                    name: "Ciudad Nocturna",
+                    name: "Lugares Urbanos",
                     category: "Lugares",
                     words: ["Embajada", "Puerto", "Casino", "Metro", "Museo", "Azotea", "Teatro", "Mercado", "Hotel", "Aeropuerto", "Bóveda", "Túnel"],
                     ownerEmail: "operative.preview@spyclash.local",

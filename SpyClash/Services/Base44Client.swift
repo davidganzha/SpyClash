@@ -704,7 +704,7 @@ final class Base44Client {
         spyCardAccent: SpyCardAccentID,
         spyCardBadge: SpyCardBadgeID
     ) async throws -> SpyUser {
-        let boundedDisplayName = displayName.boundedUnicodeScalars(48)
+        let boundedDisplayName = try PublicDisplayNameSafety.validatedForSave(displayName)
         return try await request(
             "/apps/\(Self.appID)/entities/User/me",
             method: "PUT",

@@ -145,6 +145,86 @@ Deno.test("legacy inbox backfill is bounded and self-advances to the tail", asyn
   );
 });
 
+Deno.test("legacy inbox backfill replaces unsafe actor names before visibility", async () => {
+  const eventStore = new Store([
+    {
+      id: "unsafe-legacy-event",
+      state: "delivered",
+      event_type: "friend_request",
+      source_event_id: "unsafe-legacy-source",
+      actor_user_id: "unsafe-legacy-actor",
+      recipient_user_id: "unsafe-recipient",
+      lease_token: "",
+      revision: "unsafe-legacy-revision",
+      created_at: "2026-08-15T00:00:00.000Z",
+      updated_at: "2026-08-15T00:00:00.000Z",
+    },
+    {
+      id: "safe-legacy-event",
+      state: "delivered",
+      event_type: "friend_request",
+      source_event_id: "safe-legacy-source",
+      actor_user_id: "safe-legacy-actor",
+      recipient_user_id: "safe-recipient",
+      lease_token: "",
+      revision: "safe-legacy-revision",
+      created_at: "2026-08-15T00:00:01.000Z",
+      updated_at: "2026-08-15T00:00:01.000Z",
+    },
+  ]);
+  const app = {
+    asServiceRole: {
+      entities: {
+        PushNotificationEvent: eventStore,
+        BillingIdentityLifecycle: new Store(),
+        Friendship: new Store([{
+          request_event_id: "unsafe-legacy-source",
+          requester_id: "unsafe-legacy-actor",
+          addressee_id: "unsafe-recipient",
+          status: "accepted",
+        }, {
+          request_event_id: "safe-legacy-source",
+          requester_id: "safe-legacy-actor",
+          addressee_id: "safe-recipient",
+          status: "accepted",
+        }]),
+        RoomInvite: new Store(),
+        GameRoom: new Store(),
+        User: new Store([{
+          id: "unsafe-legacy-actor",
+          display_name: "за лу па",
+        }, {
+          id: "safe-legacy-actor",
+          display_name: "Pizza Lupin",
+        }]),
+      },
+    },
+  };
+  const result = await backfillLegacyInboxProjections({
+    base44: app,
+    deadlineEpochMs: Date.now() + 10_000,
+    now: new Date("2026-08-16T10:00:00.000Z"),
+  });
+  assertEquals(result.visible, 2);
+  const unsafeEvent = eventStore.records.find((row) =>
+    row.id === "unsafe-legacy-event"
+  );
+  const safeEvent = eventStore.records.find((row) =>
+    row.id === "safe-legacy-event"
+  );
+  assertEquals(unsafeEvent?.inbox_visible, true);
+  assertEquals(
+    unsafeEvent?.inbox_body_en,
+    "An operative wants to connect.",
+  );
+  assertEquals(
+    JSON.stringify(unsafeEvent).includes("за лу па"),
+    false,
+  );
+  assertEquals(safeEvent?.inbox_visible, true);
+  assertEquals(safeEvent?.inbox_body_en, "Pizza Lupin wants to connect.");
+});
+
 Deno.test("missing source never becomes a visible phantom", async () => {
   const eventStore = new Store([{
     id: "event-phantom",

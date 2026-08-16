@@ -2522,7 +2522,7 @@ final class LobbyPresentationPolicyTests: XCTestCase {
         let differentPool = payload(
             mode: .associations,
             duration: 600,
-            theme: "Marvel"
+            theme: "Comic-book heroes"
         )
 
         XCTAssertFalse(shouldResetExpandedPool(from: original, to: settingsOnlyUpdate))
@@ -2571,7 +2571,7 @@ final class LobbyPresentationPolicyTests: XCTestCase {
         let state = payload(
             mode: .associations,
             duration: 720,
-            theme: "Marvel"
+            theme: "Comic-book heroes"
         )
         let snapshot = LobbyPresentationSnapshot(
             roomID: "room-1",

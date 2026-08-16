@@ -1,4 +1,5 @@
 import { boundedText, clean } from "./contracts.ts";
+import { safePushActorName } from "./public-name-safety.ts";
 
 export type PushEvent = Record<string, any>;
 export type SourceContext = {
@@ -25,11 +26,7 @@ async function one(store: any, filter: Record<string, unknown>) {
 }
 
 function actorDisplayName(user: PushEvent | null): string {
-  return boundedText(
-    user?.display_name || user?.full_name || "An operative",
-    48,
-  ) ||
-    "An operative";
+  return safePushActorName(user?.display_name || user?.full_name);
 }
 
 function recentlyQueued(event: PushEvent, now = new Date()): boolean {
@@ -276,9 +273,8 @@ export function alertPayload(
         : `spyclash://notifications?id=${encodeURIComponent(announcementID)}`,
     };
   }
-  const sourceActor = source.actorName === "An operative"
-    ? ""
-    : source.actorName;
+  const safeSourceActor = safePushActorName(source.actorName);
+  const sourceActor = safeSourceActor === "An operative" ? "" : safeSourceActor;
   const actor = sourceActor ||
     (lang === "ru"
       ? "Оперативник"

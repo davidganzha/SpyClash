@@ -6444,7 +6444,7 @@ struct GameView: View {
     }
 
     private var roomThemePlaceholder: String {
-        localized(en: "European Countries, Marvel...", ru: "Страны Европы, Marvel...", es: "Paises, Marvel...", uk: "Країни Європи, Marvel...")
+        localized(en: "European countries, hero archetypes...", ru: "Страны Европы, архетипы героев...", es: "Países de Europa, arquetipos heroicos...", uk: "Країни Європи, архетипи героїв...")
     }
 
     private var roomCountLabel: String {

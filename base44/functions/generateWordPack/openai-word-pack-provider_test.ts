@@ -1,9 +1,11 @@
 import { assert, assertEquals } from "jsr:@std/assert@1";
 import {
+  buildWordPackPrompt,
   createOpenAIWordPackProvider,
   createOpenAIWordPackProviderFromEnv,
   OpenAIWordPackProviderError,
   shouldFallbackFromDirectWordPackProvider,
+  WORD_PACK_SCHEMA_DESCRIPTION,
 } from "./openai-word-pack-provider.ts";
 
 function environment(values: Record<string, string>) {
@@ -49,6 +51,35 @@ async function rejection(
   }
   throw new Error("Expected provider operation to reject.");
 }
+
+Deno.test("word-pack prompt requires generic non-proprietary concepts", () => {
+  const prompt = buildWordPackPrompt({
+    theme: "Neighborhood mysteries",
+    count: 8,
+    alreadyUsed: ["Hidden passage"],
+  });
+  assert(prompt.includes("social-deduction party game"));
+  assert(
+    prompt.includes(
+      "Produce only generic, non-proprietary concepts, public-domain factual terms, or original neutral terms",
+    ),
+  );
+  assert(
+    prompt.includes(
+      "Do not output trademarks, brand or product names, franchise titles",
+    ),
+  );
+  assert(
+    prompt.includes(
+      "reinterpret it at a generic conceptual level; never repeat or imitate protected names",
+    ),
+  );
+  assert(prompt.includes("Hidden passage"));
+  assert(!prompt.toLowerCase().includes("spyfall"));
+  assert(!prompt.includes("prefer the official/original name"));
+  assert(WORD_PACK_SCHEMA_DESCRIPTION.includes("non-proprietary concepts"));
+  assert(!WORD_PACK_SCHEMA_DESCRIPTION.toLowerCase().includes("spyfall"));
+});
 
 Deno.test("environment factory is opt-in when OPENAI_API_KEY is absent", () => {
   assertEquals(
@@ -100,6 +131,7 @@ Deno.test("provider sends strict Responses API JSON schema and returns typed res
   assertEquals(body.store, false);
   assertEquals(body.text.format.type, "json_schema");
   assertEquals(body.text.format.strict, true);
+  assertEquals(body.text.format.description, WORD_PACK_SCHEMA_DESCRIPTION);
   assertEquals(
     body.text.format.schema.required,
     ["words", "category", "exhausted"],
@@ -111,7 +143,25 @@ Deno.test("provider sends strict Responses API JSON schema and returns typed res
     120,
   );
   assertEquals(body.text.format.schema.properties.category.maxLength, 120);
+  assert(
+    String(body.text.format.schema.properties.category.description).includes(
+      "non-proprietary",
+    ),
+  );
+  assert(
+    String(body.text.format.schema.properties.words.description).includes(
+      "non-proprietary concepts",
+    ),
+  );
   const prompt = String(body.input[0].content);
+  assertEquals(
+    prompt,
+    buildWordPackPrompt({
+      theme: "Настольные игры",
+      count: 12,
+      alreadyUsed: ["Мафия"],
+    }),
+  );
   assert(prompt.includes("Настольные игры"));
   assert(prompt.includes("Мафия"));
   assert(prompt.includes("Russian, English, Spanish, and Ukrainian"));
@@ -130,7 +180,7 @@ Deno.test("provider sends strict Responses API JSON schema and returns typed res
   assert(!prompt.includes("2024-2025"));
   assert(
     prompt.includes(
-      "Set exhausted to true ONLY when fewer real, safe, recognizable items exist",
+      "Set exhausted to true ONLY when fewer real, safe, recognizable, non-proprietary concepts exist",
     ),
   );
 

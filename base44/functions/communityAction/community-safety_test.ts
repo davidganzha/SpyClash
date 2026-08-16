@@ -27,6 +27,35 @@ Deno.test("server safety classifier catches objectionable text and common evasio
   assertEquals(classifyObjectionableMaterial("Scunthorpe mission"), null);
 });
 
+Deno.test("public-name safety catches zalup variants and falls back", () => {
+  for (
+    const value of [
+      "ZALUPA",
+      "ЗАЛУПА",
+      "zalup",
+      "залуп",
+      "za.lu-pa",
+      "za lu pa",
+      "zal upa",
+      "zal u p a",
+      "за лу па",
+      "zаlupa",
+      "3a1up4",
+      "zаluрa",
+      "z@lup@",
+      "za|upa",
+      "z a l u p a",
+      "з а л у п а",
+      "z4lup4",
+    ]
+  ) {
+    assertEquals(classifyObjectionableMaterial(value), "abusive_language");
+    assertEquals(safeCommunityDisplayName(value), "OPERATIVE");
+  }
+  assertEquals(classifyObjectionableMaterial("Pizza Lupin"), null);
+  assertEquals(safeCommunityDisplayName("Pizza Lupin"), "Pizza Lupin");
+});
+
 Deno.test("unsafe public names are replaced without leaking their original text", () => {
   assertEquals(safeCommunityDisplayName("  Signal   Raven  "), "Signal Raven");
   assertEquals(safeCommunityDisplayName("f.u.c.k"), "OPERATIVE");

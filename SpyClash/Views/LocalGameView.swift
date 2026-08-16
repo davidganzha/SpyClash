@@ -2033,7 +2033,7 @@ struct LocalGameView: View {
     }
 
     private var localThemePlaceholder: String {
-        localized(en: "Marvel, European countries...", ru: "Marvel, страны Европы...", es: "Marvel, paises...", uk: "Marvel, країни Європи...")
+        localized(en: "Hero archetypes, European countries...", ru: "Архетипы героев, страны Европы...", es: "Arquetipos heroicos, países de Europa...", uk: "Архетипи героїв, країни Європи...")
     }
 
     private var localCountLabel: String {
@@ -6235,7 +6235,7 @@ private extension LocalSession {
     static var preview: LocalSession {
         LocalSession(
             word: "Metro",
-            category: "NIGHT CITY",
+            category: "CITY LANDMARKS",
             spyIndices: [1],
             pool: ["Metro", "Rooftop", "Taxi", "Stadium", "Signal", "Market", "Tunnel", "Harbor"],
             players: [

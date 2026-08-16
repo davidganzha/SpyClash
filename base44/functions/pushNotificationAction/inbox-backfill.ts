@@ -1,6 +1,6 @@
 import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
 import { runBounded } from "./bounded-work.ts";
-import { boundedText, clean } from "./contracts.ts";
+import { clean } from "./contracts.ts";
 import { withPushWriterLeases } from "./device-registration.ts";
 import {
   committedPersonalInboxPatch,
@@ -12,6 +12,7 @@ import {
   pushEventLifecycleUserIDs,
   type SourceContext,
 } from "./push-events.ts";
+import { safePushActorName } from "./public-name-safety.ts";
 
 export const LEGACY_INBOX_BACKFILL_BATCH = 32;
 const SOURCE_SETTLE_MS = 2 * 60 * 1_000;
@@ -124,8 +125,7 @@ async function legacyInboxSource(
     });
     return {
       valid: true,
-      actorName: boundedText(actor?.display_name || actor?.full_name, 48) ||
-        "An operative",
+      actorName: safePushActorName(actor?.display_name || actor?.full_name),
     };
   }
   if (clean(event.event_type) === "room_invite") {
@@ -149,8 +149,7 @@ async function legacyInboxSource(
     });
     return {
       valid: true,
-      actorName: boundedText(actor?.display_name || actor?.full_name, 48) ||
-        "An operative",
+      actorName: safePushActorName(actor?.display_name || actor?.full_name),
     };
   }
   const room = await one(base44.asServiceRole.entities.GameRoom, {

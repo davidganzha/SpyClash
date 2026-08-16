@@ -57,6 +57,53 @@ Deno.test("friend request push is delivered only while its server source is pend
   assertEquals((await validatePushSource(base44, event)).valid, false);
 });
 
+Deno.test("live personal push replaces an unsafe actor name before payload copy", async () => {
+  const event = {
+    event_type: "friend_request",
+    source_event_id: "unsafe-name-event",
+    actor_user_id: "unsafe-actor",
+    recipient_user_id: "recipient",
+  };
+  const base44 = service({
+    Friendship: new Store([{
+      request_event_id: "unsafe-name-event",
+      requester_id: "unsafe-actor",
+      addressee_id: "recipient",
+      status: "pending",
+    }]),
+    User: new Store([{ id: "unsafe-actor", display_name: "zаluрa" }]),
+  });
+  const source = await validatePushSource(base44, event);
+  assertEquals(source, { valid: true, actorName: "An operative" });
+  const payload = alertPayload(event, source, "en-US");
+  assertEquals(
+    (payload.aps as Record<string, any>).alert.body,
+    "An operative wants to connect.",
+  );
+  assertEquals(JSON.stringify(payload).includes("zаluрa"), false);
+
+  const directPayload = alertPayload(
+    event,
+    { valid: true, actorName: "z@lup@" },
+    "uk-UA",
+  );
+  assertEquals(
+    (directPayload.aps as Record<string, any>).alert.body,
+    "Оперативник хоче додати вас у друзі.",
+  );
+  assertEquals(JSON.stringify(directPayload).includes("z@lup@"), false);
+
+  const safePayload = alertPayload(
+    event,
+    { valid: true, actorName: "Pizza Lupin" },
+    "en-US",
+  );
+  assertEquals(
+    (safePayload.aps as Record<string, any>).alert.body,
+    "Pizza Lupin wants to connect.",
+  );
+});
+
 Deno.test("fresh outbox row retries instead of being lost before its source write lands", async () => {
   const base44 = service({
     Friendship: new Store([]),

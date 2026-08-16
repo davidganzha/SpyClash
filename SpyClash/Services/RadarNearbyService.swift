@@ -147,7 +147,10 @@ struct RadarIncomingInvitation: Identifiable, Equatable {
         self.wireInvitationID = wireInvitationID
         self.sourcePeerID = sourcePeerID
         self.roomCode = roomCode
-        self.hostCallSign = hostCallSign
+        self.hostCallSign = PublicDisplayNameSafety.sanitizedForDisplay(
+            hostCallSign,
+            limit: 36
+        )
         self.hostAvatar = hostAvatar
         self.hostSpyID = hostSpyID
         self.hostSpyCardTheme = hostSpyCardTheme
@@ -586,7 +589,10 @@ final class RadarNearbyService: NSObject {
                 spyCardTheme: SpyCardThemeID(rawValue: $0.spyCardTheme ?? "") ?? .field,
                 spyCardAccent: SpyCardAccentID(rawValue: $0.spyCardAccent ?? "") ?? .signalRed,
                 spyCardBadge: SpyCardBadgeID(rawValue: $0.spyCardBadge ?? "") ?? .operative,
-                callSign: Self.discoveryValue($0.callSign, fallback: "Operative", limit: 36),
+                callSign: PublicDisplayNameSafety.sanitizedForDisplay(
+                    $0.callSign,
+                    limit: 36
+                ),
                 avatar: Self.discoveryValue($0.avatar ?? "🕵️", fallback: "🕵️", limit: 12),
                 rating: $0.rating ?? 0,
                 gamesPlayed: max(0, $0.gamesPlayed ?? 0),
@@ -1297,7 +1303,10 @@ final class RadarNearbyService: NSObject {
             spyCardTheme: SpyCardThemeID(rawValue: discoveryInfo?["theme"] ?? "") ?? .field,
             spyCardAccent: SpyCardAccentID(rawValue: discoveryInfo?["accent"] ?? "") ?? .signalRed,
             spyCardBadge: SpyCardBadgeID(rawValue: discoveryInfo?["badge"] ?? "") ?? .operative,
-            callSign: Self.discoveryValue(discoveryInfo?["name"] ?? "", fallback: "Operative", limit: 36),
+            callSign: PublicDisplayNameSafety.sanitizedForDisplay(
+                discoveryInfo?["name"] ?? "",
+                limit: 36
+            ),
             avatar: Self.discoveryValue(discoveryInfo?["avatar"] ?? "", fallback: "🕵️", limit: 12),
             invitePolicy: policy,
             availability: availability,
@@ -1943,7 +1952,10 @@ final class RadarNearbyService: NSObject {
 
         let invitation = RadarIncomingInvitation(
             roomCode: roomCode.uppercased(),
-            hostCallSign: Self.discoveryValue(message.hostCallSign ?? "", fallback: "Operative", limit: 36),
+            hostCallSign: PublicDisplayNameSafety.sanitizedForDisplay(
+                message.hostCallSign ?? "",
+                limit: 36
+            ),
             hostAvatar: Self.discoveryValue(message.hostAvatar ?? "", fallback: "🕵️", limit: 12),
             hostSpyID: Self.discoveryValue(message.hostSpyID ?? "", fallback: "000-000", limit: 7),
             hostSpyCardTheme: SpyCardThemeID(rawValue: message.hostSpyCardTheme ?? "") ?? .field,

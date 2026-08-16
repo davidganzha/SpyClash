@@ -983,6 +983,13 @@ struct AIThemeSuggestionStrip: View {
                 .padding(.horizontal, 1)
             }
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
+
+            Text(aiProcessingDisclosure)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SpyTheme.muted)
+                .lineSpacing(2)
+                .fixedSize(horizontal: false, vertical: true)
+                .accessibilityIdentifier("\(accessibilityIdentifier).aiProcessingDisclosure")
         }
         .accessibilityIdentifier(accessibilityIdentifier)
     }
@@ -1060,59 +1067,72 @@ struct AIThemeSuggestionStrip: View {
         }
     }
 
+    private var aiProcessingDisclosure: String {
+        switch language {
+        case .en:
+            "BY TAPPING GENERATE, REGENERATE, OR EXPAND POOL, YOU CONSENT TO SENDING THE THEME, REQUESTED COUNT, AND ANY EXCLUSIONS TO THE SPYCLASH BACKEND AND, WHEN NO SUITABLE CACHED RESULT IS AVAILABLE, THROUGH BASE44 INVOKELLM TO ITS CONFIGURED AI MODEL PROVIDER."
+        case .es:
+            "AL TOCAR GENERAR, REGENERAR O AMPLIAR BANCO, ACEPTAS QUE EL TEMA, LA CANTIDAD SOLICITADA Y LAS EXCLUSIONES SE ENVÍEN AL BACKEND DE SPYCLASH Y, SI NO HAY UN RESULTADO ADECUADO EN CACHÉ, MEDIANTE BASE44 INVOKELLM A SU PROVEEDOR DE MODELOS DE IA CONFIGURADO."
+        case .ru:
+            "НАЖИМАЯ «СГЕНЕРИРОВАТЬ», «СГЕНЕРИРОВАТЬ ЗАНОВО» ИЛИ «РАСШИРИТЬ ПУЛ», ВЫ СОГЛАШАЕТЕСЬ НА ПЕРЕДАЧУ ТЕМЫ, ЗАПРОШЕННОГО КОЛИЧЕСТВА И ИСКЛЮЧЕНИЙ В СЕРВЕРНУЮ ЧАСТЬ SPYCLASH И, ЕСЛИ В КЭШЕ НЕТ ПОДХОДЯЩЕГО РЕЗУЛЬТАТА, ЧЕРЕЗ BASE44 INVOKELLM НАСТРОЕННОМУ ПОСТАВЩИКУ МОДЕЛИ ИИ."
+        case .uk:
+            "НАТИСКАЮЧИ «ЗГЕНЕРУВАТИ», «ЗГЕНЕРУВАТИ ЗНОВУ» АБО «РОЗШИРИТИ ПУЛ», ВИ ПОГОДЖУЄТЕСЯ НА ПЕРЕДАВАННЯ ТЕМИ, ЗАПИТАНОЇ КІЛЬКОСТІ ТА ВИНЯТКІВ ДО СЕРВЕРНОЇ ЧАСТИНИ SPYCLASH І, КОЛИ НЕМАЄ ПРИДАТНОГО КЕШОВАНОГО РЕЗУЛЬТАТУ, ЧЕРЕЗ BASE44 INVOKELLM НАЛАШТОВАНОМУ ПОСТАЧАЛЬНИКУ МОДЕЛІ ШІ."
+        }
+    }
+
     private var suggestions: [Suggestion] {
         switch language {
         case .ru:
             [
-                Suggestion(id: "marvel", title: "Герои Marvel", systemImage: "shield.fill"),
-                Suggestion(id: "harry-potter", title: "Мир Гарри Поттера", systemImage: "sparkles"),
+                Suggestion(id: "hero-archetypes", title: "Архетипы героев", systemImage: "shield.fill"),
+                Suggestion(id: "magic-academy", title: "Академия магии", systemImage: "sparkles"),
                 Suggestion(id: "europe", title: "Страны Европы", systemImage: "globe.europe.africa.fill"),
-                Suggestion(id: "music-2000s", title: "Хиты 2000-х", systemImage: "music.note"),
-                Suggestion(id: "football", title: "Футболисты", systemImage: "soccerball"),
-                Suggestion(id: "brands", title: "Известные бренды", systemImage: "tag.fill"),
+                Suggestion(id: "musical-instruments", title: "Музыкальные инструменты", systemImage: "music.note"),
+                Suggestion(id: "football-terms", title: "Футбольные термины", systemImage: "soccerball"),
+                Suggestion(id: "natural-wonders", title: "Чудеса природы", systemImage: "leaf.fill"),
                 Suggestion(id: "world-food", title: "Мировая кухня", systemImage: "fork.knife"),
-                Suggestion(id: "video-games", title: "Видеоигры", systemImage: "gamecontroller.fill"),
+                Suggestion(id: "game-genres", title: "Жанры игр", systemImage: "gamecontroller.fill"),
                 Suggestion(id: "mythology", title: "Греческая мифология", systemImage: "building.columns.fill"),
-                Suggestion(id: "movies-tv", title: "Фильмы и сериалы", systemImage: "film.fill")
+                Suggestion(id: "everyday-objects", title: "Бытовые предметы", systemImage: "house.fill")
             ]
         case .uk:
             [
-                Suggestion(id: "marvel", title: "Герої Marvel", systemImage: "shield.fill"),
-                Suggestion(id: "harry-potter", title: "Світ Гаррі Поттера", systemImage: "sparkles"),
+                Suggestion(id: "hero-archetypes", title: "Архетипи героїв", systemImage: "shield.fill"),
+                Suggestion(id: "magic-academy", title: "Академія магії", systemImage: "sparkles"),
                 Suggestion(id: "europe", title: "Країни Європи", systemImage: "globe.europe.africa.fill"),
-                Suggestion(id: "music-2000s", title: "Хіти 2000-х", systemImage: "music.note"),
-                Suggestion(id: "football", title: "Футболісти", systemImage: "soccerball"),
-                Suggestion(id: "brands", title: "Відомі бренди", systemImage: "tag.fill"),
+                Suggestion(id: "musical-instruments", title: "Музичні інструменти", systemImage: "music.note"),
+                Suggestion(id: "football-terms", title: "Футбольні терміни", systemImage: "soccerball"),
+                Suggestion(id: "natural-wonders", title: "Дива природи", systemImage: "leaf.fill"),
                 Suggestion(id: "world-food", title: "Кухні світу", systemImage: "fork.knife"),
-                Suggestion(id: "video-games", title: "Відеоігри", systemImage: "gamecontroller.fill"),
+                Suggestion(id: "game-genres", title: "Жанри ігор", systemImage: "gamecontroller.fill"),
                 Suggestion(id: "mythology", title: "Грецька міфологія", systemImage: "building.columns.fill"),
-                Suggestion(id: "movies-tv", title: "Фільми й серіали", systemImage: "film.fill")
+                Suggestion(id: "everyday-objects", title: "Побутові предмети", systemImage: "house.fill")
             ]
         case .es:
             [
-                Suggestion(id: "marvel", title: "Héroes de Marvel", systemImage: "shield.fill"),
-                Suggestion(id: "harry-potter", title: "Mundo de Harry Potter", systemImage: "sparkles"),
+                Suggestion(id: "hero-archetypes", title: "Arquetipos heroicos", systemImage: "shield.fill"),
+                Suggestion(id: "magic-academy", title: "Academia de magia", systemImage: "sparkles"),
                 Suggestion(id: "europe", title: "Países de Europa", systemImage: "globe.europe.africa.fill"),
-                Suggestion(id: "music-2000s", title: "Éxitos de los 2000", systemImage: "music.note"),
-                Suggestion(id: "football", title: "Futbolistas", systemImage: "soccerball"),
-                Suggestion(id: "brands", title: "Marcas famosas", systemImage: "tag.fill"),
+                Suggestion(id: "musical-instruments", title: "Instrumentos musicales", systemImage: "music.note"),
+                Suggestion(id: "football-terms", title: "Términos de fútbol", systemImage: "soccerball"),
+                Suggestion(id: "natural-wonders", title: "Maravillas naturales", systemImage: "leaf.fill"),
                 Suggestion(id: "world-food", title: "Cocina del mundo", systemImage: "fork.knife"),
-                Suggestion(id: "video-games", title: "Videojuegos", systemImage: "gamecontroller.fill"),
+                Suggestion(id: "game-genres", title: "Géneros de juegos", systemImage: "gamecontroller.fill"),
                 Suggestion(id: "mythology", title: "Mitología griega", systemImage: "building.columns.fill"),
-                Suggestion(id: "movies-tv", title: "Cine y series", systemImage: "film.fill")
+                Suggestion(id: "everyday-objects", title: "Objetos cotidianos", systemImage: "house.fill")
             ]
         case .en:
             [
-                Suggestion(id: "marvel", title: "Marvel heroes", systemImage: "shield.fill"),
-                Suggestion(id: "harry-potter", title: "Harry Potter universe", systemImage: "sparkles"),
+                Suggestion(id: "hero-archetypes", title: "Hero archetypes", systemImage: "shield.fill"),
+                Suggestion(id: "magic-academy", title: "Magic academy", systemImage: "sparkles"),
                 Suggestion(id: "europe", title: "European countries", systemImage: "globe.europe.africa.fill"),
-                Suggestion(id: "music-2000s", title: "2000s hits", systemImage: "music.note"),
-                Suggestion(id: "football", title: "Football players", systemImage: "soccerball"),
-                Suggestion(id: "brands", title: "Famous brands", systemImage: "tag.fill"),
+                Suggestion(id: "musical-instruments", title: "Musical instruments", systemImage: "music.note"),
+                Suggestion(id: "football-terms", title: "Football terms", systemImage: "soccerball"),
+                Suggestion(id: "natural-wonders", title: "Natural wonders", systemImage: "leaf.fill"),
                 Suggestion(id: "world-food", title: "World cuisine", systemImage: "fork.knife"),
-                Suggestion(id: "video-games", title: "Video games", systemImage: "gamecontroller.fill"),
+                Suggestion(id: "game-genres", title: "Game genres", systemImage: "gamecontroller.fill"),
                 Suggestion(id: "mythology", title: "Greek mythology", systemImage: "building.columns.fill"),
-                Suggestion(id: "movies-tv", title: "Movies and TV", systemImage: "film.fill")
+                Suggestion(id: "everyday-objects", title: "Everyday objects", systemImage: "house.fill")
             ]
         }
     }
