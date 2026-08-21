@@ -2593,7 +2593,7 @@ struct GameView: View {
                     onlineRoomCardTitle(
                         systemImage: "paintpalette",
                         title: roomThemeTitle,
-                        trailing: roomUnlimitedLabel
+                        trailing: allIncludedLabel
                     )
 
                     roomIntelSourceMenu
@@ -4414,7 +4414,7 @@ struct GameView: View {
                 HStack(alignment: .firstTextBaseline) {
                     webPanelTitle(systemImage: "paintpalette.fill", title: roomThemeTitle)
                     Spacer()
-                    Text(roomUnlimitedLabel)
+                    Text(allIncludedLabel)
                         .font(.system(size: 10, weight: .black, design: .default))
                         .tracking(0.08)
                         .foregroundStyle(SpyTheme.dim)
@@ -6439,8 +6439,8 @@ struct GameView: View {
         localized(en: "THEME / WORD PACK", ru: "ТЕМА / ПАК СЛОВ", es: "TEMA / PACK", uk: "ТЕМА / НАБІР СЛІВ")
     }
 
-    private var roomUnlimitedLabel: String {
-        localized(en: "∞ UNLIMITED", ru: "∞ UNLIMITED", es: "∞ ILIMITADO", uk: "∞ БЕЗ ОБМЕЖЕНЬ")
+    private var allIncludedLabel: String {
+        localized(en: "ALL INCLUDED", ru: "ВСЁ ДОСТУПНО", es: "TODO INCLUIDO", uk: "УСЕ ДОСТУПНО")
     }
 
     private var roomThemePlaceholder: String {
@@ -6964,11 +6964,6 @@ struct GameView: View {
                     preferFresh: !usingInitialTarget
                 )
             }
-            appState.recordAIUsage(
-                used: generated.aiGenerationsToday,
-                remaining: generated.aiRemaining
-            )
-
             guard let currentRoom = appState.activeRoom,
                   currentRoom.id == operationRoomID,
                   isHost(currentRoom),
@@ -7064,11 +7059,6 @@ struct GameView: View {
                     preferFresh: false
                 )
             }
-            appState.recordAIUsage(
-                used: generated.aiGenerationsToday,
-                remaining: generated.aiRemaining
-            )
-
             guard let currentRoom = appState.activeRoom,
                   currentRoom.id == operationRoomID,
                   isHost(currentRoom),

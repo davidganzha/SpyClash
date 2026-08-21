@@ -22,9 +22,6 @@ struct HistoryView: View {
             .padding(.top, 20)
         }
         .task {
-            if !appState.shouldUsePreviewData && appState.membership == nil {
-                await appState.refreshSubscription()
-            }
             await load()
         }
         .onChange(of: status) { _, message in

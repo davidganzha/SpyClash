@@ -39,9 +39,6 @@ struct WordPacksView: View {
             .spyWebEntrance(duration: 0.35, y: -16, scale: 0.98)
         }
         .task {
-            if !appState.shouldUsePreviewData && appState.membership == nil {
-                await appState.refreshSubscription()
-            }
             await load()
         }
         .sheet(item: $editor, onDismiss: {
@@ -505,11 +502,6 @@ private struct WordPackEditorSheet: View {
                 }
             }
         }
-        .task {
-            if !appState.shouldUsePreviewData && appState.membership == nil {
-                await appState.refreshSubscription()
-            }
-        }
     }
 
     private var sheetHeader: some View {
@@ -809,7 +801,6 @@ private struct WordPackEditorSheet: View {
         if appState.shouldUsePreviewData {
             let generated = previewGeneratedWordPack(theme: signature.theme, count: signature.count)
             lastSuccessfulAIGenerationSignature = signature
-            captureAIAllowance(from: generated)
             apply(generated)
             setStatus(copy.aiReadyMessage(words: generated.words.count, used: nil, limit: nil), kind: .success)
             HapticManager.shared.fire(.milestone)
@@ -824,7 +815,6 @@ private struct WordPackEditorSheet: View {
                 preferFresh: preferFresh
             )
             lastSuccessfulAIGenerationSignature = signature
-            captureAIAllowance(from: generated)
             apply(generated)
             setStatus(
                 copy.aiReadyMessage(
@@ -847,13 +837,6 @@ private struct WordPackEditorSheet: View {
         category = generated.category.nilIfBlank ?? generatedName
         wordsText = generated.words.joined(separator: "\n")
         focusedField = .words
-    }
-
-    private func captureAIAllowance(from generated: GeneratedWordPack) {
-        appState.recordAIUsage(
-            used: generated.aiGenerationsToday,
-            remaining: generated.aiRemaining
-        )
     }
 
     private func localized(en: String, ru: String, es: String, uk: String) -> String {

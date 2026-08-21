@@ -3002,7 +3002,6 @@ enum SpyCardThemeID: String, Codable, CaseIterable, Identifiable {
     case dossier
 
     var id: String { rawValue }
-    var requiresFullAccess: Bool { self != .field }
 }
 
 enum SpyCardAccentID: String, Codable, CaseIterable, Identifiable {
@@ -3011,7 +3010,6 @@ enum SpyCardAccentID: String, Codable, CaseIterable, Identifiable {
     case verifiedGreen = "verified_green"
 
     var id: String { rawValue }
-    var requiresFullAccess: Bool { self != .signalRed }
 }
 
 enum SpyCardBadgeID: String, Codable, CaseIterable, Identifiable {
@@ -3021,7 +3019,6 @@ enum SpyCardBadgeID: String, Codable, CaseIterable, Identifiable {
     case handler
 
     var id: String { rawValue }
-    var requiresFullAccess: Bool { self != .operative }
 }
 
 struct PublicSpyProfile: Codable, Identifiable, Equatable {
@@ -4226,211 +4223,6 @@ extension GameHistory {
             createdDate: "2026-06-16T20:10:00Z"
         )
     ]
-}
-
-enum MembershipTier: String, Codable, CaseIterable {
-    case free
-    case limitless
-}
-
-struct MembershipBenefits: Codable, Equatable {
-    let aiGenerationsDailyLimit: Int?
-    let premiumAvatars: Bool
-    let fullHistory: Bool
-    let advancedStatistics: Bool
-    let historyLimit: Int?
-
-    static let free = MembershipBenefits(
-        aiGenerationsDailyLimit: 10,
-        premiumAvatars: false,
-        fullHistory: false,
-        advancedStatistics: false,
-        historyLimit: 5
-    )
-
-    static let fullAccess = MembershipBenefits(
-        aiGenerationsDailyLimit: nil,
-        premiumAvatars: true,
-        fullHistory: true,
-        advancedStatistics: true,
-        historyLimit: nil
-    )
-
-    enum CodingKeys: String, CodingKey {
-        case aiGenerationsDailyLimit = "ai_generations_daily_limit"
-        case premiumAvatars = "premium_avatars"
-        case fullHistory = "full_history"
-        case advancedStatistics = "advanced_statistics"
-        case historyLimit = "history_limit"
-    }
-}
-
-struct Membership: Equatable {
-    let tier: MembershipTier
-    let status: String
-    let providers: [String]
-    let benefits: MembershipBenefits
-    let expiresAt: Date?
-    let aiGenerationsToday: Int?
-    let aiRemaining: Int?
-
-    var grantsFullAccess: Bool {
-        guard tier == .limitless else { return false }
-        if providers.contains("casada") { return true }
-        if providers.contains("preview") { return true }
-        if providers.contains("admin"), expiresAt == nil { return true }
-        guard let expiresAt else { return false }
-        return expiresAt > Date()
-    }
-
-    init(subscriptionStatus: SubscriptionStatus) {
-        // `active` remains the authority while older deployments roll forward.
-        // A contradictory inactive response must never grant full access.
-        let effectiveTier: MembershipTier = subscriptionStatus.active && subscriptionStatus.tier == .limitless
-            ? .limitless
-            : .free
-        tier = effectiveTier
-        status = subscriptionStatus.status
-        providers = subscriptionStatus.providers
-        benefits = effectiveTier == .limitless
-            ? subscriptionStatus.benefits
-            : .free
-        expiresAt = subscriptionStatus.expiresAt
-        aiGenerationsToday = subscriptionStatus.aiGenerationsToday
-        aiRemaining = subscriptionStatus.aiRemaining
-    }
-
-    static let free = Membership(
-        tier: .free,
-        status: "free",
-        providers: [],
-        benefits: .free,
-        expiresAt: nil,
-        aiGenerationsToday: nil,
-        aiRemaining: nil
-    )
-
-    static let fullAccessPreview = Membership(
-        tier: .limitless,
-        status: "active",
-        providers: ["preview"],
-        benefits: .fullAccess,
-        expiresAt: nil,
-        aiGenerationsToday: nil,
-        aiRemaining: nil
-    )
-
-    private init(
-        tier: MembershipTier,
-        status: String,
-        providers: [String],
-        benefits: MembershipBenefits,
-        expiresAt: Date?,
-        aiGenerationsToday: Int?,
-        aiRemaining: Int?
-    ) {
-        self.tier = tier
-        self.status = status
-        self.providers = providers
-        self.benefits = benefits
-        self.expiresAt = expiresAt
-        self.aiGenerationsToday = aiGenerationsToday
-        self.aiRemaining = aiRemaining
-    }
-
-    func updatingAIUsage(used: Int?, remaining: Int?) -> Membership {
-        Membership(
-            tier: tier,
-            status: status,
-            providers: providers,
-            benefits: benefits,
-            expiresAt: expiresAt,
-            aiGenerationsToday: used,
-            aiRemaining: remaining
-        )
-    }
-}
-
-struct SubscriptionStatus: Decodable {
-    let active: Bool
-    let tier: MembershipTier
-    let status: String
-    let providers: [String]
-    let benefits: MembershipBenefits
-    let expiresAt: Date?
-    let aiGenerationsToday: Int?
-    let aiRemaining: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case active
-        case tier
-        case status
-        case providers
-        case benefits
-        case expiresAt = "expires_at"
-        case aiGenerationsToday = "ai_generations_today"
-        case aiRemaining = "ai_remaining"
-    }
-
-    init(from decoder: Decoder) throws {
-        let container = try decoder.container(keyedBy: CodingKeys.self)
-        let decodedActive = try container.decodeIfPresent(Bool.self, forKey: .active) ?? false
-        let tierKeyIsPresent = container.contains(.tier)
-        let decodedTierKey = try? container.decode(String.self, forKey: .tier)
-        let decodedTier = decodedTierKey.flatMap { rawValue -> MembershipTier? in
-            let normalized = rawValue.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            if normalized == "casada" {
-                // CASADA is the public full-access protocol. Internally it maps
-                // to the legacy full-benefits tier to preserve wire compatibility.
-                return .limitless
-            }
-            return MembershipTier(rawValue: normalized)
-        }
-        // `active` is a compatibility bridge only for the old response shape
-        // where `tier` did not exist. A present-but-invalid tier must fail
-        // closed instead of silently becoming full access.
-        let resolvedTier = decodedTier
-            ?? (!tierKeyIsPresent && decodedActive ? .limitless : .free)
-        let defaults: MembershipBenefits = resolvedTier == .limitless ? .fullAccess : .free
-        let partialBenefits = try container.decodeIfPresent(PartialMembershipBenefits.self, forKey: .benefits)
-
-        active = decodedActive
-        tier = resolvedTier
-        status = try container.decodeIfPresent(String.self, forKey: .status)
-            ?? (decodedActive ? "active" : "free")
-        providers = try container.decodeIfPresent([String].self, forKey: .providers) ?? []
-        benefits = MembershipBenefits(
-            aiGenerationsDailyLimit: partialBenefits?.aiGenerationsDailyLimit
-                ?? defaults.aiGenerationsDailyLimit,
-            premiumAvatars: partialBenefits?.premiumAvatars
-                ?? defaults.premiumAvatars,
-            fullHistory: partialBenefits?.fullHistory
-                ?? defaults.fullHistory,
-            advancedStatistics: partialBenefits?.advancedStatistics
-                ?? defaults.advancedStatistics,
-            historyLimit: partialBenefits?.historyLimit
-                ?? defaults.historyLimit
-        )
-        expiresAt = try container.decodeIfPresent(Date.self, forKey: .expiresAt)
-        aiGenerationsToday = try container.decodeIfPresent(Int.self, forKey: .aiGenerationsToday)
-        aiRemaining = try container.decodeIfPresent(Int.self, forKey: .aiRemaining)
-    }
-}
-
-private struct PartialMembershipBenefits: Decodable {
-    let aiGenerationsDailyLimit: Int?
-    let premiumAvatars: Bool?
-    let fullHistory: Bool?
-    let advancedStatistics: Bool?
-    let historyLimit: Int?
-
-    enum CodingKeys: String, CodingKey {
-        case aiGenerationsDailyLimit = "ai_generations_daily_limit"
-        case premiumAvatars = "premium_avatars"
-        case fullHistory = "full_history"
-        case advancedStatistics = "advanced_statistics"
-        case historyLimit = "history_limit"
-    }
 }
 
 struct EmptyResponse: Codable {}

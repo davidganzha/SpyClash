@@ -51,17 +51,42 @@ if grep -R -F -n \
   "$ROOT/project.yml" \
   "$ROOT/SpyClash.xcodeproj" \
   "$ROOT/SpyClash" \
-  "$ROOT/StoreKit" \
   "$ROOT/base44/functions/appleAuthBroker" \
   "$ROOT/base44/functions/app-store-entitlement"; then
   echo "Apple migration mismatch: legacy bundle identity remains." >&2
   exit 78
 fi
 
-if ! jq empty "$ROOT/StoreKit/SpyClash.storekit"; then
-  echo "StoreKit configuration is not valid JSON." >&2
-  exit 65
+if [ -e "$ROOT/StoreKit/SpyClash.storekit" ]; then
+  echo "Apple migration mismatch: retired StoreKit configuration remains." >&2
+  exit 78
 fi
+
+for forbidden_iap_marker in \
+  'import StoreKit' \
+  'StoreKitManager' \
+  'StoreKitConfigurationFileReference' \
+  'SpyClash.storekit' \
+  'com.spyclash.ios.limitless.weekly' \
+  'purchaseLimitless' \
+  'restorePurchases' \
+  'showManageSubscriptions' \
+  'SubscriptionStatus' \
+  'MembershipStatusResponse' \
+  'checkSubscription' \
+  'Apple or Stripe subscription'
+do
+  if grep -F -n "$forbidden_iap_marker" \
+      "$ROOT/project.yml" \
+      "$ROOT/SpyClash.xcodeproj/project.pbxproj" \
+      "$ROOT/SpyClash.xcodeproj/xcshareddata/xcschemes/SpyClash.xcscheme" \
+      >/dev/null 2>&1 \
+      || grep -R -F -n --include='*.swift' \
+        "$forbidden_iap_marker" "$ROOT/SpyClash" >/dev/null 2>&1; then
+    echo "Apple migration mismatch: native IAP marker remains: $forbidden_iap_marker" >&2
+    exit 78
+  fi
+done
 
 echo "Apple migration preflight passed."
 echo "Expected Base44 values:"

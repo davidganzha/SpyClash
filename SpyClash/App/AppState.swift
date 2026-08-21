@@ -54,13 +54,6 @@ private enum ProviderAuthCinematic: Equatable {
     case standard
 }
 
-enum MembershipSyncState: Equatable {
-    case unknown
-    case refreshing
-    case synced
-    case unavailable(message: String)
-}
-
 enum RadarInvitePolicySyncState: Equatable {
     case localOnly
     case syncing
@@ -547,10 +540,6 @@ enum SpyClashCustomRoute: Equatable {
 final class AppState: NSObject {
     let client: Base44Client
     let notificationInbox: NotificationInboxStore
-    /// Nil while CASADA is active so StoreKit is neither initialized nor
-    /// observed in the full-access protocol.
-    let storeKit: StoreKitManager?
-    let membershipRealtime: MembershipRealtimeService
     let gameRoomRealtime: GameRoomRealtimeService
     let radarNearby: RadarNearbyService
     var user: SpyUser? {
@@ -565,22 +554,6 @@ final class AppState: NSObject {
             reconcileGameRoomRealtimeSubscription()
             reconcileLobbySettingsSyncScope(from: activeRoom, to: activeRoom)
             guard accountChanged else { return }
-            // Account-scoped access belongs to exactly one SpyClash account.
-            // Clear it synchronously before the replacement account renders.
-            membership = nil
-            membershipOwnerUserID = nil
-            membershipSyncState = .unknown
-            membershipExpiryTask?.cancel()
-            membershipExpiryTask = nil
-            storeKit?.accountDidChange()
-            membershipRealtime.stop()
-            if let user, let token = client.currentAccessToken {
-                membershipRealtime.start(
-                    appID: Base44Client.appID,
-                    token: token,
-                    userID: user.id
-                )
-            }
             PushNotificationCoordinator.shared.accountDidChange(
                 isSignedIn: user != nil && client.hasSessionToken
             )
@@ -609,10 +582,7 @@ final class AppState: NSObject {
     var appleAuthStage: AppleAuthStage?
     var standardAuthCinematicStage: StandardAuthCinematicStage?
     var authHomeRevealPhase: AuthHomeRevealPhase = .idle
-    private(set) var membership: Membership?
-    private(set) var membershipSyncState: MembershipSyncState = .unknown
     private(set) var radarInvitePolicySyncState: RadarInvitePolicySyncState = .localOnly
-    private(set) var fullAccessUnlockPresentationID: UUID?
     var selectedTab: AppTab = .home {
         didSet {
             if selectedTab != .home {
@@ -689,11 +659,9 @@ final class AppState: NSObject {
 
     private var webAuthSession: ASWebAuthenticationSession?
     private let appleSignInCoordinator = AppleSignInCoordinator()
-    private var membershipOwnerUserID: String?
     @ObservationIgnored private var standardAuthTimelineTask: Task<Void, Never>?
     @ObservationIgnored private var standardAuthRunID: UUID?
-    @ObservationIgnored private var membershipExpiryTask: Task<Void, Never>?
-    @ObservationIgnored private var accessActivationSyncTask: Task<Void, Never>?
+    @ObservationIgnored private var activationResumeTask: Task<Void, Never>?
     @ObservationIgnored private var activeRoomActivationRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var roomRefreshRequestRevision = 0
     @ObservationIgnored private var lobbySettingsSyncWorker: Task<Void, Never>?
@@ -701,7 +669,6 @@ final class AppState: NSObject {
     @ObservationIgnored private var lobbySettingsSyncRunID: UUID?
     @ObservationIgnored private var lobbySettingsSyncScope: LobbySettingsSyncScope?
     @ObservationIgnored private var lobbySettingsSyncUserID: String?
-    @ObservationIgnored private var membershipRealtimeRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var gameRoomRealtimeRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var pendingGameRoomRealtimeRevision = 0
     @ObservationIgnored private var gameRoomRealtimeCatchUpRequested = false
@@ -727,20 +694,10 @@ final class AppState: NSObject {
         let radarNearby = RadarNearbyService()
         self.client = client
         self.notificationInbox = NotificationInboxStore(client: client)
-        self.storeKit = SpyClashRelease.isCasadaProtocolActive
-            ? nil
-            : StoreKitManager(client: client)
-        self.membershipRealtime = MembershipRealtimeService()
         self.gameRoomRealtime = GameRoomRealtimeService()
         self.radarNearby = radarNearby
         super.init()
 
-        storeKit?.onEntitlementChanged = { [weak self] in
-            await self?.refreshSubscription()
-        }
-        membershipRealtime.onMembershipSignal = { [weak self] in
-            self?.handleMembershipRealtimeSignal()
-        }
         gameRoomRealtime.onSignal = { [weak self] signal in
             self?.handleGameRoomRealtimeSignal(signal)
         }
@@ -1657,32 +1614,6 @@ final class AppState: NSObject {
         hasActiveAuthCinematic || authHomeRevealPhase != .idle
     }
 
-    var membershipTier: MembershipTier? {
-        if isCasadaProtocolActive { return .limitless }
-        guard let membership else { return nil }
-        return membership.grantsFullAccess ? .limitless : .free
-    }
-
-    var membershipBenefits: MembershipBenefits? {
-        if isCasadaProtocolActive { return .fullAccess }
-        guard let membership else { return nil }
-        return membership.grantsFullAccess ? membership.benefits : .free
-    }
-
-    var hasFullAccess: Bool {
-        isCasadaProtocolActive || membership?.grantsFullAccess == true
-    }
-
-    /// CASADA exposes the complete product without paid gates. Legacy billing
-    /// infrastructure remains available only for entitlement compatibility.
-    var isCasadaProtocolActive: Bool { SpyClashRelease.isCasadaProtocolActive }
-
-    // Kept as a read-only bridge for existing premium presentation code while
-    // the richer membership model becomes the shared source of truth.
-    var subscriptionActive: Bool {
-        hasFullAccess
-    }
-
     func restoreSession() async {
         isRestoring = true
         var shouldSynchronizeLiveActivity = true
@@ -1700,7 +1631,6 @@ final class AppState: NSObject {
         do {
             user = try await client.currentUser()
             reconcileLanguagePreference(with: user?.language)
-            await synchronizeAccess()
             retryDismissedRoomExitIfNeeded()
             await restoreActiveRoomIfPossible()
         } catch is CancellationError {
@@ -1721,9 +1651,6 @@ final class AppState: NSObject {
             client.clearToken()
             KeychainStore.clearToken()
             user = nil
-            membership = nil
-            membershipOwnerUserID = nil
-            membershipSyncState = .unknown
             clearStoredActiveRoom()
         } catch {
             // A temporary transport/server failure is not proof that the
@@ -1995,12 +1922,6 @@ final class AppState: NSObject {
             isUIPreviewMode = false
 #endif
 
-            if cinematic == .apple {
-                // Access synchronization must not hold the Apple sign-in screen.
-                Task { [weak self] in
-                    await self?.synchronizeAccess()
-                }
-            }
         } catch {
             client.clearToken()
             KeychainStore.clearToken()
@@ -2023,10 +1944,6 @@ final class AppState: NSObject {
         standardAuthCinematicStage = .preparing
         reconcileLanguagePreference(with: authenticatedUser.language)
         user = authenticatedUser
-
-        Task { [weak self] in
-            await self?.synchronizeAccess()
-        }
 
         let timeline = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -2167,10 +2084,6 @@ final class AppState: NSObject {
         client.clearToken()
         KeychainStore.clearToken()
         user = nil
-        membership = nil
-        membershipOwnerUserID = nil
-        membershipSyncState = .unknown
-        fullAccessUnlockPresentationID = nil
         authPhase = .email
         authError = nil
         authNotice = nil
@@ -2376,102 +2289,19 @@ final class AppState: NSObject {
         }
     }
 
-    func refreshSubscription() async {
-        guard let requestedUserID = user?.id else {
-            membership = nil
-            membershipOwnerUserID = nil
-            membershipSyncState = .unknown
-            return
-        }
-
-        if let membershipOwnerUserID, membershipOwnerUserID != requestedUserID {
-            // Entitlements must never bleed across an account switch.
-            membership = nil
-            self.membershipOwnerUserID = nil
-        }
-
-        membershipSyncState = .refreshing
-
-        do {
-            let refreshedMembership = try await client.membership()
-
-            // Ignore a response that belongs to the account that just logged
-            // out (or was replaced by another login) while this was in flight.
-            guard user?.id == requestedUserID else { return }
-            let shouldPresentUnlock = !isCasadaProtocolActive &&
-                membership != nil &&
-                membership?.grantsFullAccess == false &&
-                refreshedMembership.grantsFullAccess
-            membership = refreshedMembership
-            membershipOwnerUserID = requestedUserID
-            membershipSyncState = .synced
-            scheduleMembershipExpiryRefresh(
-                for: refreshedMembership,
-                ownerUserID: requestedUserID
-            )
-            if shouldPresentUnlock {
-                presentFullAccessUnlock()
-            }
-        } catch is CancellationError {
-            guard user?.id == requestedUserID else { return }
-            membershipSyncState = membership == nil ? .unknown : .synced
-        } catch {
-            guard user?.id == requestedUserID else { return }
-            // Preserve the last verified access state during an outage.
-            membershipSyncState = .unavailable(message: error.localizedDescription)
-        }
-    }
-
-    func synchronizeAccess() async {
-        if !isCasadaProtocolActive,
-           client.hasSessionToken,
-           let storeKit {
-            do {
-                _ = try await storeKit.synchronizeStoreKitState()
-            } catch is CancellationError {
-                return
-            } catch {
-                // Legacy provider access can still be resolved by Base44 while
-                // StoreKit synchronization is temporarily unavailable.
-            }
-        }
-        await refreshSubscription()
-    }
-
-    func synchronizeAccessOnActivation() {
+    func resumeAfterActivation() {
         guard user != nil,
               !isRestoring,
               !shouldUsePreviewData,
-              accessActivationSyncTask == nil else {
+              activationResumeTask == nil else {
             return
         }
 
-        membershipRealtime.resume()
-
-        accessActivationSyncTask = Task { @MainActor [weak self] in
+        activationResumeTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            defer { self.accessActivationSyncTask = nil }
-            await self.synchronizeAccess()
+            defer { self.activationResumeTask = nil }
             await self.consumePendingRoutesIfPossible()
             self.synchronizeMatchLiveActivity(previousRoom: nil, room: self.activeRoom)
-        }
-    }
-
-    func dismissFullAccessUnlock(_ presentationID: UUID) {
-        guard fullAccessUnlockPresentationID == presentationID else { return }
-        fullAccessUnlockPresentationID = nil
-    }
-
-    private func handleMembershipRealtimeSignal() {
-        guard user != nil else { return }
-        membershipRealtimeRefreshTask?.cancel()
-        membershipRealtimeRefreshTask = Task { @MainActor [weak self] in
-            do {
-                try await Task.sleep(for: .milliseconds(140))
-            } catch {
-                return
-            }
-            await self?.refreshSubscription()
         }
     }
 
@@ -2618,44 +2448,6 @@ final class AppState: NSObject {
                 return
             }
         }
-    }
-
-    private func presentFullAccessUnlock() {
-        fullAccessUnlockPresentationID = UUID()
-    }
-
-    private func scheduleMembershipExpiryRefresh(
-        for membership: Membership,
-        ownerUserID: String
-    ) {
-        membershipExpiryTask?.cancel()
-        membershipExpiryTask = nil
-
-        guard membership.tier == .limitless,
-              !membership.providers.contains("preview"),
-              let expiresAt = membership.expiresAt else {
-            return
-        }
-
-        let delay = expiresAt.timeIntervalSinceNow
-        guard delay > 0 else { return }
-        membershipExpiryTask = Task { @MainActor [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(delay))
-            } catch {
-                return
-            }
-            guard let self, self.user?.id == ownerUserID else { return }
-            await self.refreshSubscription()
-        }
-    }
-
-    func recordAIUsage(used: Int?, remaining: Int?) {
-        guard let membership,
-              membershipOwnerUserID == user?.id else {
-            return
-        }
-        self.membership = membership.updatingAIUsage(used: used, remaining: remaining)
     }
 
     func openCommunity() {
@@ -3348,13 +3140,6 @@ final class AppState: NSObject {
             spyCardBadge: "operative",
             radarInvitePolicy: nil
         )
-        let previewsFullAccess = arguments.contains("--spyclash-preview-casada")
-            || arguments.contains("--spyclash-preview-limitless")
-        membership = previewsFullAccess
-            ? .fullAccessPreview
-            : .free
-        membershipOwnerUserID = user?.id
-        membershipSyncState = .synced
         let requestedTab = previewTab(from: arguments) ?? .home
         let shouldPreviewActiveRoom = requestedTab == .game || arguments.contains("--spyclash-preview-active-room")
         selectedTab = requestedTab
@@ -3750,8 +3535,6 @@ private enum ResetPasswordLinkParser {
     }
 }
 enum SpyClashRelease {
-    static let isCasadaProtocolActive = true
-
     static var headerVersionLabel: String {
         let info = Bundle.main.infoDictionary ?? [:]
         guard let marketingVersion = info["CFBundleShortVersionString"] as? String,

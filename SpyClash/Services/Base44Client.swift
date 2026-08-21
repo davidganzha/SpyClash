@@ -121,33 +121,6 @@ final class Base44Client {
         return try await currentUser()
     }
 
-    func checkSubscription() async throws -> SubscriptionStatus {
-        try await invokeFunction("checkSubscription", body: EmptyPayload())
-    }
-
-    func membership() async throws -> Membership {
-        Membership(subscriptionStatus: try await checkSubscription())
-    }
-
-    func prepareAppStorePurchase() async throws -> AppStorePurchaseContext {
-        try await invokeFunction(
-            "app-store-entitlement",
-            body: ["action": "prepare"]
-        )
-    }
-
-    func syncAppStoreTransaction(
-        signedTransaction: String
-    ) async throws -> AppStoreEntitlementSyncResponse {
-        try await invokeFunction(
-            "app-store-entitlement",
-            body: [
-                "action": "sync_transaction",
-                "signed_transaction": signedTransaction
-            ]
-        )
-    }
-
     func registerPushDevice(
         installationID: String,
         apnsToken: String,

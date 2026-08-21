@@ -331,4 +331,20 @@ if [ "$storekit_count" -ne 0 ]; then
   exit 1
 fi
 
-echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), 1024px opaque App Store icon present, Live Activity extension embedded, $entitlement_gate_summary, no audio files or playback paths, privacy manifest exact, no .storekit."
+linked_frameworks=$(otool -L "$app/$bundle_executable") || {
+  echo "Could not inspect linked frameworks in the Release executable." >&2
+  exit 1
+}
+if printf '%s\n' "$linked_frameworks" | grep -F 'StoreKit.framework' >/dev/null; then
+  echo "The Release executable still links StoreKit.framework." >&2
+  exit 1
+fi
+
+if strings "$app/$bundle_executable" | grep -E \
+    'StoreKitManager|StoreKitProductState|StoreKitPurchaseState|SubscriptionStatus|MembershipStatusResponse|checkSubscription|premiumAvatars|com\.spyclash\.ios\.limitless|purchaseLimitless|restorePurchases|showManageSubscriptions|app-store-entitlement' \
+    >/dev/null; then
+  echo "The Release executable still contains native IAP markers." >&2
+  exit 1
+fi
+
+echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), 1024px opaque App Store icon present, Live Activity extension embedded, $entitlement_gate_summary, no audio files or playback paths, privacy manifest exact, no StoreKit linkage, no native IAP markers."

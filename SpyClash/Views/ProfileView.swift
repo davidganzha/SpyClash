@@ -24,16 +24,6 @@ struct ProfileView: View {
         appState.language.profile
     }
 
-    private var deleteDialogMessage: String {
-        guard appState.isCasadaProtocolActive else { return copy.deleteDialogMessage }
-        return localized(
-            en: "This permanently deletes your profile, game history, custom packs, and social data. Limited security, moderation, and legacy billing records may be retained where legally required. Deleting your account does not cancel an existing Apple or Stripe subscription; manage it with that provider.",
-            ru: "Это навсегда удалит профиль, историю игр, пользовательские паки и социальные данные. Ограниченные записи безопасности, модерации и прежних платежей могут храниться по закону. Удаление аккаунта не отменяет действующую подписку Apple или Stripe — управляйте ею у провайдера.",
-            es: "Esto elimina permanentemente tu perfil, historial, paquetes personalizados y datos sociales. Algunos registros de seguridad, moderacion y facturacion anterior pueden conservarse por ley. Eliminar la cuenta no cancela una suscripcion existente de Apple o Stripe; gestionela con el proveedor.",
-            uk: "Це назавжди видалить ваш профіль, історію ігор, власні набори та соціальні дані. Обмежені записи безпеки, модерації й попередніх платежів можуть зберігатися згідно із законом. Видалення облікового запису не скасовує чинну підписку Apple або Stripe — керуйте нею у відповідного постачальника."
-        )
-    }
-
     private var manualAppleRevocationMessage: String {
         localized(
             en: "Your SpyClash account was deleted. If you previously used Sign in with Apple, also open your Apple Account settings and remove SpyClash from Sign in with Apple.",
@@ -63,16 +53,13 @@ struct ProfileView: View {
             selectedCardTheme = SpyCardThemeID(rawValue: appState.user?.spyCardTheme ?? "") ?? .field
             selectedCardAccent = SpyCardAccentID(rawValue: appState.user?.spyCardAccent ?? "") ?? .signalRed
             selectedCardBadge = SpyCardBadgeID(rawValue: appState.user?.spyCardBadge ?? "") ?? .operative
-            if !appState.shouldUsePreviewData {
-                await appState.refreshSubscription()
-            }
             await loadHistory()
         }
         .overlay {
             if showDeleteConfirmation {
                 SpyConfirmDialog(
                     title: copy.deleteDialogTitle,
-                    message: deleteDialogMessage,
+                    message: copy.deleteDialogMessage,
                     confirmTitle: isDeleting ? copy.deletingAccount : copy.deleteDialogAction,
                     cancelTitle: copy.cancel,
                     isBusy: isDeleting
@@ -276,7 +263,7 @@ struct ProfileView: View {
                 LinearGradient(
                     colors: [
                         .clear,
-                        spyCardAccentColor.opacity(appState.hasFullAccess ? 0.88 : 0.42),
+                        spyCardAccentColor.opacity(0.88),
                         Color.white.opacity(0.16),
                         .clear
                     ],
@@ -286,7 +273,7 @@ struct ProfileView: View {
                     .frame(width: 76, height: 1.5)
                     .padding(.trailing, 22)
                     .padding(.bottom, 1)
-                    .shadow(color: spyCardAccentColor.opacity(appState.hasFullAccess ? 0.28 : 0.10), radius: 5)
+                    .shadow(color: spyCardAccentColor.opacity(0.28), radius: 5)
             }
             .background {
                 ZStack {
@@ -516,7 +503,7 @@ struct ProfileView: View {
                 .buttonStyle(SpyButtonStyle(variant: .outline))
                 .disabled(isDeleting)
                 .accessibilityIdentifier("profile.deleteAccount")
-                .accessibilityHint(deleteDialogMessage)
+                .accessibilityHint(copy.deleteDialogMessage)
             }
         }
     }

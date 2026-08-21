@@ -1308,7 +1308,7 @@ struct LocalGameView: View {
 
             Spacer()
 
-            Text(localUnlimitedLabel)
+            Text(aiIntelLabel)
                 .font(.system(size: 10, weight: .black, design: .default))
                 .tracking(0.02)
                 .foregroundStyle(SpyTheme.dim)
@@ -2028,7 +2028,7 @@ struct LocalGameView: View {
         localized(en: "THEME", ru: "ТЕМА", es: "TEMA", uk: "ТЕМА")
     }
 
-    private var localUnlimitedLabel: String {
+    private var aiIntelLabel: String {
         localized(en: "AI INTEL", ru: "AI INTEL", es: "IA INTEL", uk: "AI-РОЗВІДКА")
     }
 
@@ -4225,11 +4225,6 @@ struct LocalGameView: View {
                     preferFresh: existingPoolCount >= 2
                 )
             }
-            appState.recordAIUsage(
-                used: generated.aiGenerationsToday,
-                remaining: generated.aiRemaining
-            )
-
             guard localThemeRequestID == requestID,
                   localWordKey(customTheme) == themeKey else { return }
 
@@ -4311,11 +4306,6 @@ struct LocalGameView: View {
                     preferFresh: false
                 )
             }
-            appState.recordAIUsage(
-                used: generated.aiGenerationsToday,
-                remaining: generated.aiRemaining
-            )
-
             guard localThemeRequestID == requestID,
                   localWordKey(customTheme) == themeKey else { return }
 

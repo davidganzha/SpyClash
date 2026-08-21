@@ -1,0 +1,14 @@
+#!/bin/sh
+set -eu
+
+if [ "$#" -ne 2 ] || [ "$1" != "-L" ]; then
+  echo "Unexpected mock otool invocation: $*" >&2
+  exit 2
+fi
+
+target=$2
+printf '%s:\n' "$target"
+printf '\t/usr/lib/libSystem.B.dylib (compatibility version 1.0.0, current version 1.0.0)\n'
+if [ -f "$(dirname -- "$target")/.mock-storekit-linkage" ]; then
+  printf '\t/System/Library/Frameworks/StoreKit.framework/StoreKit (compatibility version 1.0.0, current version 1.0.0)\n'
+fi

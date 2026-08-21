@@ -30,7 +30,6 @@ SpyClash is a native SwiftUI iOS app. The web project is a reference for product
   - `LeaderboardView`
   - `HistoryView`
   - `ProfileView`
-  - `PricingView`
   - `QRSheets`
 - The biggest debt is not missing SwiftUI files; it is that several screens still behave and read like web panels instead of native iOS flows.
 

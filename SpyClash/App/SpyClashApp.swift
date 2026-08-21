@@ -20,7 +20,7 @@ struct SpyClashApp: App {
                     appState.setRadarApplicationActive(isActive)
                     if isActive {
                         PushNotificationCoordinator.shared.applicationDidBecomeActive()
-                        appState.synchronizeAccessOnActivation()
+                        appState.resumeAfterActivation()
                         appState.refreshActiveRoomOnActivation()
                     } else {
                         PushNotificationCoordinator.shared.applicationDidEnterBackground()
@@ -60,12 +60,6 @@ private struct RootView: View {
                         : nil,
                     value: appState.authHomeRevealPhase
                 )
-        }
-        .overlay {
-            if let presentationID = appState.fullAccessUnlockPresentationID {
-                FullAccessUnlockOverlay(presentationID: presentationID)
-                    .transition(.opacity)
-            }
         }
         .overlay {
             if let invitation = appState.radarNearby.incomingInvitation {
@@ -161,110 +155,6 @@ private struct RootView: View {
         case .es: "LISTO"
         case .uk: "ГОТОВО"
         default: "DONE"
-        }
-    }
-}
-
-private struct FullAccessUnlockOverlay: View {
-    @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
-    let presentationID: UUID
-
-    @State private var isVisible = false
-    @State private var ringScale = 0.72
-    @State private var scanOffset: CGFloat = -120
-    @State private var contentOpacity = 0.0
-
-    var body: some View {
-        ZStack {
-            Color.black.opacity(isVisible ? 0.78 : 0)
-                .ignoresSafeArea()
-
-            Circle()
-                .stroke(SpyTheme.red.opacity(0.15), lineWidth: 1)
-                .frame(width: 250, height: 250)
-                .scaleEffect(ringScale)
-
-            Circle()
-                .trim(from: 0.08, to: 0.82)
-                .stroke(
-                    AngularGradient(
-                        colors: [.clear, SpyTheme.red, .white, SpyTheme.red, .clear],
-                        center: .center
-                    ),
-                    style: StrokeStyle(lineWidth: 2, lineCap: .square)
-                )
-                .frame(width: 198, height: 198)
-                .rotationEffect(.degrees(isVisible ? 218 : -24))
-
-            Rectangle()
-                .fill(
-                    LinearGradient(
-                        colors: [.clear, SpyTheme.red.opacity(0.75), .clear],
-                        startPoint: .leading,
-                        endPoint: .trailing
-                    )
-                )
-                .frame(width: 260, height: 1)
-                .offset(y: scanOffset)
-
-            VStack(spacing: 8) {
-                Image(systemName: "infinity")
-                    .font(.system(size: 48, weight: .black))
-                    .foregroundStyle(.white)
-                    .shadow(color: SpyTheme.red.opacity(0.9), radius: 14)
-
-                Text(statusText)
-                    .font(.system(size: 9, weight: .bold, design: .monospaced))
-                    .tracking(0.16)
-                    .foregroundStyle(SpyTheme.red)
-            }
-            .opacity(contentOpacity)
-            .scaleEffect(isVisible ? 1 : 0.88)
-        }
-        .allowsHitTesting(false)
-        .accessibilityElement(children: .combine)
-        .accessibilityLabel(statusText)
-        .task(id: presentationID) {
-            HapticManager.shared.prepareFullAccessPresentation()
-            if reduceMotion {
-                isVisible = true
-                ringScale = 1
-                scanOffset = 120
-                contentOpacity = 1
-            } else {
-                withAnimation(.easeOut(duration: 0.24)) {
-                    isVisible = true
-                    contentOpacity = 1
-                }
-                withAnimation(.timingCurve(0.12, 0.86, 0.22, 1, duration: 0.72)) {
-                    ringScale = 1
-                    scanOffset = 120
-                }
-            }
-            HapticManager.shared.playFullAccessCharge()
-            try? await Task.sleep(for: .milliseconds(520))
-            guard !Task.isCancelled else { return }
-            HapticManager.shared.playFullAccessCompletion()
-            try? await Task.sleep(for: .milliseconds(reduceMotion ? 900 : 1_280))
-            guard !Task.isCancelled else { return }
-            if !reduceMotion {
-                withAnimation(.easeIn(duration: 0.28)) {
-                    isVisible = false
-                    contentOpacity = 0
-                }
-                try? await Task.sleep(for: .milliseconds(300))
-            }
-            appState.dismissFullAccessUnlock(presentationID)
-        }
-    }
-
-    private var statusText: String {
-        switch appState.language {
-        case .en: "ACCESS SYNCHRONIZED"
-        case .ru: "ДОСТУП СИНХРОНИЗИРОВАН"
-        case .es: "ACCESO SINCRONIZADO"
-        case .uk: "ДОСТУП СИНХРОНІЗОВАНО"
         }
     }
 }

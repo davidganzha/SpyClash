@@ -217,6 +217,24 @@ expect_fail_with "signed iphoneos rejects an archive from the old Apple team" \
   'instead of expected team 3Z64QKNL54.' \
   "$gate" "$wrong_app_team"
 
+storekit_config_app=$(make_fixture "$test_root/storekit-config" iphoneos true)
+touch "$storekit_config_app/Leaked.storekit"
+expect_fail_with "gate rejects a leaked StoreKit configuration" \
+  'Local StoreKit configuration leaked into the Release bundle.' \
+  "$gate" "$storekit_config_app"
+
+storekit_linkage_app=$(make_fixture "$test_root/storekit-linkage" iphoneos true)
+touch "$storekit_linkage_app/.mock-storekit-linkage"
+expect_fail_with "gate rejects StoreKit framework linkage" \
+  'The Release executable still links StoreKit.framework.' \
+  "$gate" "$storekit_linkage_app"
+
+iap_marker_app=$(make_fixture "$test_root/iap-marker" iphoneos true)
+printf '%s\n' 'com.spyclash.ios.limitless.weekly' >>"$iap_marker_app/SpyClash"
+expect_fail_with "gate rejects native IAP markers" \
+  'The Release executable still contains native IAP markers.' \
+  "$gate" "$iap_marker_app"
+
 printf '%s passed, %s failed\n' "$pass_count" "$fail_count"
 if [ "$fail_count" -ne 0 ]; then
   exit 1
