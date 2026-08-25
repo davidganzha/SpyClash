@@ -320,6 +320,23 @@ if [ "$privacy_count" -ne 1 ] || [ ! -f "$app/PrivacyInfo.xcprivacy" ]; then
   exit 1
 fi
 plutil -lint "$app/Info.plist" "$app/PrivacyInfo.xcprivacy" >/dev/null
+bundled_privacy_manifests=$(find "$app" -type f -name 'PrivacyInfo.xcprivacy' -print)
+printf '%s\n' "$source_privacy" "$bundled_privacy_manifests" \
+  | while IFS= read -r inspected_privacy_manifest
+do
+  [ -n "$inspected_privacy_manifest" ] || continue
+  if ! plutil -lint "$inspected_privacy_manifest" >/dev/null; then
+    echo "Could not validate a bundled privacy manifest: $inspected_privacy_manifest" >&2
+    exit 1
+  fi
+  if /usr/libexec/PlistBuddy \
+      -c 'Print :NSPrivacyCollectedDataTypes' \
+      "$inspected_privacy_manifest" 2>/dev/null \
+      | grep -F 'NSPrivacyCollectedDataTypePurchaseHistory' >/dev/null; then
+    echo "Free Release privacy manifest still declares Purchase History." >&2
+    exit 1
+  fi
+done
 if ! cmp -s "$source_privacy" "$app/PrivacyInfo.xcprivacy"; then
   echo "Bundled PrivacyInfo.xcprivacy differs from the reviewed source manifest." >&2
   exit 1
@@ -347,4 +364,36 @@ if strings "$app/$bundle_executable" | grep -E \
   exit 1
 fi
 
-echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), 1024px opaque App Store icon present, Live Activity extension embedded, $entitlement_gate_summary, no audio files or playback paths, privacy manifest exact, no StoreKit linkage, no native IAP markers."
+commerce_scan_status=0
+LC_ALL=C grep -r -a -F -l \
+    -e 'prior provider billing activity' \
+    -e 'historical provider records created outside this iOS release' \
+    -e 'historical web-billing records' \
+    -e 'historical transaction records' \
+    -e 'provider-managed billing agreement' \
+    -e 'has no checkout' \
+    -e 'Separate historical agreements created outside this release' \
+    -e 'Stripe' \
+    -e 'VERSIÓN ACTUAL PARA IOS' \
+    -e 'históricos de transacciones' \
+    -e 'acuerdo de facturación' \
+    -e 'ТЕКУЩАЯ ВЕРСИЯ ДЛЯ IOS' \
+    -e 'исторические записи транзакций' \
+    -e 'соглашение о выставлении счетов' \
+    -e 'ПОТОЧНА ВЕРСІЯ ДЛЯ IOS' \
+    -e 'історичні записи транзакцій' \
+    -e 'угода про виставлення рахунків' \
+    -- "$app" >/dev/null || commerce_scan_status=$?
+case "$commerce_scan_status" in
+  0)
+    echo "The signed Release bundle still contains retired commerce copy." >&2
+    exit 1
+    ;;
+  1) ;;
+  *)
+    echo "Could not inspect the signed Release bundle for retired commerce copy." >&2
+    exit 1
+    ;;
+esac
+
+echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), 1024px opaque App Store icon present, Live Activity extension embedded, $entitlement_gate_summary, no audio files or playback paths, privacy manifest exact and free of Purchase History, no StoreKit linkage, no native IAP markers or retired commerce copy."

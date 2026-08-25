@@ -235,6 +235,69 @@ expect_fail_with "gate rejects native IAP markers" \
   'The Release executable still contains native IAP markers.' \
   "$gate" "$iap_marker_app"
 
+purchase_history_app=$(make_fixture "$test_root/purchase-history" iphoneos true)
+/usr/libexec/PlistBuddy \
+  -c 'Set :NSPrivacyCollectedDataTypes:0:NSPrivacyCollectedDataType NSPrivacyCollectedDataTypePurchaseHistory' \
+  "$purchase_history_app/PrivacyInfo.xcprivacy" >/dev/null
+expect_fail_with "gate rejects Purchase History in a free Release manifest" \
+  'Free Release privacy manifest still declares Purchase History.' \
+  "$gate" "$purchase_history_app"
+
+nested_purchase_history_app=$(make_fixture "$test_root/nested-purchase-history" iphoneos true)
+nested_purchase_history_manifest="$nested_purchase_history_app/PlugIns/SpyClashWidgets.appex/PrivacyInfo.xcprivacy"
+cp "$root/SpyClash/Resources/PrivacyInfo.xcprivacy" "$nested_purchase_history_manifest"
+/usr/libexec/PlistBuddy \
+  -c 'Set :NSPrivacyCollectedDataTypes:0:NSPrivacyCollectedDataType NSPrivacyCollectedDataTypePurchaseHistory' \
+  "$nested_purchase_history_manifest" >/dev/null
+expect_fail_with "gate rejects Purchase History in a nested privacy manifest" \
+  'Free Release privacy manifest still declares Purchase History.' \
+  "$gate" "$nested_purchase_history_app"
+
+commerce_case=0
+for retired_commerce_marker in \
+  'prior provider billing activity' \
+  'historical provider records created outside this iOS release' \
+  'historical web-billing records' \
+  'historical transaction records' \
+  'provider-managed billing agreement' \
+  'has no checkout' \
+  'Separate historical agreements created outside this release' \
+  'Stripe' \
+  'VERSIÓN ACTUAL PARA IOS' \
+  'históricos de transacciones' \
+  'acuerdo de facturación' \
+  'ТЕКУЩАЯ ВЕРСИЯ ДЛЯ IOS' \
+  'исторические записи транзакций' \
+  'соглашение о выставлении счетов' \
+  'ПОТОЧНА ВЕРСІЯ ДЛЯ IOS' \
+  'історичні записи транзакцій' \
+  'угода про виставлення рахунків'
+do
+  commerce_case=$((commerce_case + 1))
+  commerce_app=$(make_fixture "$test_root/commerce-$commerce_case" iphoneos true)
+  printf '%s\n' "$retired_commerce_marker" >>"$commerce_app/SpyClash"
+  expect_fail_with "gate rejects retired commerce marker $commerce_case" \
+    'The signed Release bundle still contains retired commerce copy.' \
+    "$gate" "$commerce_app"
+done
+
+noncommerce_app=$(make_fixture "$test_root/noncommerce-subscription-plan" iphoneos true)
+printf '%s\n' \
+  'presence_subscription' \
+  'GameStartPlan' \
+  'reconcileGameRoomRealtimeSubscription' \
+  >>"$noncommerce_app/SpyClash"
+expect_pass "gate allows non-commerce subscription and plan identifiers" \
+  "$gate" "$noncommerce_app"
+
+grep_error_app=$(make_fixture "$test_root/grep-error" iphoneos true)
+touch "$grep_error_app/unreadable-commerce-scan-fixture"
+chmod 000 "$grep_error_app/unreadable-commerce-scan-fixture"
+expect_fail_with "gate fails closed when commerce-copy inspection errors" \
+  'Could not inspect the signed Release bundle for retired commerce copy.' \
+  "$gate" "$grep_error_app"
+chmod 600 "$grep_error_app/unreadable-commerce-scan-fixture"
+
 printf '%s passed, %s failed\n' "$pass_count" "$fail_count"
 if [ "$fail_count" -ne 0 ]; then
   exit 1
