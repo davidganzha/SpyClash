@@ -984,12 +984,6 @@ struct AIThemeSuggestionStrip: View {
             }
             .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
 
-            Text(aiProcessingDisclosure)
-                .font(.system(size: 10, weight: .semibold, design: .monospaced))
-                .foregroundStyle(SpyTheme.muted)
-                .lineSpacing(2)
-                .fixedSize(horizontal: false, vertical: true)
-                .accessibilityIdentifier("\(accessibilityIdentifier).aiProcessingDisclosure")
         }
         .accessibilityIdentifier(accessibilityIdentifier)
     }
@@ -1064,19 +1058,6 @@ struct AIThemeSuggestionStrip: View {
         case .es: "Usar este tema en el campo"
         case .en: "Use this theme in the field"
         case .uk: "Використати цю тему"
-        }
-    }
-
-    private var aiProcessingDisclosure: String {
-        switch language {
-        case .en:
-            "BY TAPPING GENERATE, REGENERATE, OR EXPAND POOL, YOU CONSENT TO SENDING THE THEME, REQUESTED COUNT, AND ANY EXCLUSIONS TO THE SPYCLASH BACKEND AND, WHEN NO SUITABLE CACHED RESULT IS AVAILABLE, THROUGH BASE44 INVOKELLM TO ITS CONFIGURED AI MODEL PROVIDER."
-        case .es:
-            "AL TOCAR GENERAR, REGENERAR O AMPLIAR BANCO, ACEPTAS QUE EL TEMA, LA CANTIDAD SOLICITADA Y LAS EXCLUSIONES SE ENVÍEN AL BACKEND DE SPYCLASH Y, SI NO HAY UN RESULTADO ADECUADO EN CACHÉ, MEDIANTE BASE44 INVOKELLM A SU PROVEEDOR DE MODELOS DE IA CONFIGURADO."
-        case .ru:
-            "НАЖИМАЯ «СГЕНЕРИРОВАТЬ», «СГЕНЕРИРОВАТЬ ЗАНОВО» ИЛИ «РАСШИРИТЬ ПУЛ», ВЫ СОГЛАШАЕТЕСЬ НА ПЕРЕДАЧУ ТЕМЫ, ЗАПРОШЕННОГО КОЛИЧЕСТВА И ИСКЛЮЧЕНИЙ В СЕРВЕРНУЮ ЧАСТЬ SPYCLASH И, ЕСЛИ В КЭШЕ НЕТ ПОДХОДЯЩЕГО РЕЗУЛЬТАТА, ЧЕРЕЗ BASE44 INVOKELLM НАСТРОЕННОМУ ПОСТАВЩИКУ МОДЕЛИ ИИ."
-        case .uk:
-            "НАТИСКАЮЧИ «ЗГЕНЕРУВАТИ», «ЗГЕНЕРУВАТИ ЗНОВУ» АБО «РОЗШИРИТИ ПУЛ», ВИ ПОГОДЖУЄТЕСЯ НА ПЕРЕДАВАННЯ ТЕМИ, ЗАПИТАНОЇ КІЛЬКОСТІ ТА ВИНЯТКІВ ДО СЕРВЕРНОЇ ЧАСТИНИ SPYCLASH І, КОЛИ НЕМАЄ ПРИДАТНОГО КЕШОВАНОГО РЕЗУЛЬТАТУ, ЧЕРЕЗ BASE44 INVOKELLM НАЛАШТОВАНОМУ ПОСТАЧАЛЬНИКУ МОДЕЛІ ШІ."
         }
     }
 
