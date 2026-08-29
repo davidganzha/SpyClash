@@ -22,6 +22,8 @@ import {
   friendshipBlocksPair,
   normalizeCommunityReportReason,
   requireSafeCommunityText,
+  safeCommunityAvatar,
+  safeCommunityDisplayName,
   safeCommunityTextForDisplay,
   sanitizeCommunityReportDetails,
 } from "./community-safety.ts";
@@ -43,6 +45,7 @@ const PROFILE_FRIEND_LIMIT = 60;
 const PROFILE_COMMENT_LIMIT = 40;
 const COMMENT_COOLDOWN_MS = 5_000;
 const PROFILE_LOOKUP_CONCURRENCY = 8;
+const PROFILE_SIGNAL_CONCURRENCY = 12;
 
 function errorResponse(message: string, status = 400) {
   return Response.json({ error: message }, { status });
@@ -124,6 +127,31 @@ async function listAllUsers(base44: any) {
     ) || [];
     users.push(...page);
     if (page.length < pageSize) return users;
+  }
+}
+
+async function fanoutProfileUpdate(base44: any, profileUserID: string) {
+  const recipients = await listAllUsers(base44);
+  const revision = Date.now();
+
+  for (let offset = 0; offset < recipients.length; offset += PROFILE_SIGNAL_CONCURRENCY) {
+    await Promise.all(recipients.slice(offset, offset + PROFILE_SIGNAL_CONCURRENCY).map(async (recipient) => {
+      const recipientUserID = clean(recipient.id);
+      if (!recipientUserID) return;
+      const rows = await base44.asServiceRole.entities.CommunityProfileSignal.filter({
+        recipient_user_id: recipientUserID,
+      }) || [];
+      const signal = {
+        recipient_user_id: recipientUserID,
+        profile_user_id: profileUserID,
+        revision,
+      };
+      if (rows[0]?.id) {
+        await base44.asServiceRole.entities.CommunityProfileSignal.update(rows[0].id, signal);
+      } else {
+        await base44.asServiceRole.entities.CommunityProfileSignal.create(signal);
+      }
+    }));
   }
 }
 
@@ -758,6 +786,33 @@ Deno.serve(async (req) => {
         action: ({ persist }) => ensureUserProfile(base44, user, persist),
       })
       : await ensureUserProfile(base44, user);
+
+    if (action === "update_profile") {
+      const displayName = safeCommunityDisplayName(body.display_name);
+      const avatar = safeCommunityAvatar(body.avatar);
+      const theme = ["field", "blacksite", "dossier"].includes(clean(body.spy_card_theme))
+        ? clean(body.spy_card_theme)
+        : "field";
+      const accent = ["signal_red", "clearance_amber", "verified_green"].includes(clean(body.spy_card_accent))
+        ? clean(body.spy_card_accent)
+        : "signal_red";
+      const badge = ["operative", "ghost", "analyst", "handler"].includes(clean(body.spy_card_badge))
+        ? clean(body.spy_card_badge)
+        : "operative";
+      const language = ["en", "es", "ru", "uk"].includes(clean(body.language))
+        ? clean(body.language)
+        : "en";
+      const updated = await base44.asServiceRole.entities.User.update(current.id, {
+        display_name: displayName,
+        avatar,
+        language,
+        spy_card_theme: theme,
+        spy_card_accent: accent,
+        spy_card_badge: badge,
+      });
+      await fanoutProfileUpdate(base44, current.id);
+      return Response.json(updated);
+    }
 
     if (action === "state") {
       return Response.json(await buildState(base44, current));

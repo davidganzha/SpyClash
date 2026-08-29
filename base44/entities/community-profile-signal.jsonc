@@ -1,0 +1,22 @@
+{
+  "name": "CommunityProfileSignal",
+  "description": "Per-user realtime wake-up hint that a public Community profile changed. Clients refetch the mediated public projection; no profile or private account data is stored here.",
+  "type": "object",
+  "properties": {
+    "recipient_user_id": { "type": "string", "maxLength": 256 },
+    "profile_user_id": { "type": "string", "maxLength": 256 },
+    "revision": { "type": "integer", "minimum": 0 }
+  },
+  "required": ["recipient_user_id", "profile_user_id", "revision"],
+  "rls": {
+    "create": { "user_condition": { "role": "admin" } },
+    "read": {
+      "$or": [
+        { "data.recipient_user_id": "{{user.id}}" },
+        { "user_condition": { "role": "admin" } }
+      ]
+    },
+    "update": { "user_condition": { "role": "admin" } },
+    "delete": { "user_condition": { "role": "admin" } }
+  }
+}

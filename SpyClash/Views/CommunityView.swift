@@ -1,5 +1,87 @@
 import SwiftUI
 import UIKit
+import SocketIO
+
+private struct CommunityProfileSignal: Equatable {
+    let profileUserID: String
+    let revision: Int
+}
+
+private enum CommunityProfileSignalParser {
+    static func parse(_ payload: [Any], room: String, recipientUserID: String) -> CommunityProfileSignal? {
+        guard let envelope = payload.first as? [String: Any],
+              envelope["room"] as? String == room,
+              let dataString = envelope["data"] as? String,
+              let data = dataString.data(using: .utf8),
+              let event = try? JSONSerialization.jsonObject(with: data) as? [String: Any],
+              ["create", "update"].contains(event["type"] as? String),
+              let eventData = event["data"] as? [String: Any],
+              eventData["recipient_user_id"] as? String == recipientUserID,
+              let profileUserID = (eventData["profile_user_id"] as? String)?.nilIfBlank,
+              let revision = (eventData["revision"] as? NSNumber)?.intValue else {
+            return nil
+        }
+        return CommunityProfileSignal(profileUserID: profileUserID, revision: revision)
+    }
+}
+
+@MainActor
+private final class CommunityProfileRealtimeService {
+    var onSignal: ((CommunityProfileSignal) -> Void)?
+    var onCatchUp: (() -> Void)?
+
+    private var manager: SocketManager?
+    private var socket: SocketIOClient?
+    private var room: String?
+    private var generation = UUID()
+
+    func start(appID: String, token: String, userID: String) {
+        stop()
+        let room = "entities:\(appID):CommunityProfileSignal"
+        let generation = UUID()
+        let manager = SocketManager(
+            socketURL: URL(string: "https://base44.app")!,
+            config: [
+                .path("/ws-user-apps/socket.io/"),
+                .connectParams(["app_id": appID, "token": token]),
+                .forceWebsockets(true),
+                .reconnects(true),
+                .reconnectAttempts(-1),
+                .reconnectWait(1),
+                .reconnectWaitMax(8),
+                .log(false),
+                .handleQueue(.main)
+            ]
+        )
+        let socket = manager.defaultSocket
+        socket.on(clientEvent: .connect) { [weak self, weak socket] _, _ in
+            guard let self, self.generation == generation else { return }
+            socket?.emit("join", room)
+            self.onCatchUp?()
+        }
+        socket.on("update_model") { [weak self] payload, _ in
+            guard let self, self.generation == generation,
+                  let signal = CommunityProfileSignalParser.parse(payload, room: room, recipientUserID: userID) else { return }
+            self.onSignal?(signal)
+        }
+        self.manager = manager
+        self.socket = socket
+        self.room = room
+        self.generation = generation
+        socket.connect()
+    }
+
+    func stop() {
+        generation = UUID()
+        if let room, socket?.status == .connected { socket?.emit("leave", room) }
+        socket?.removeAllHandlers()
+        socket?.disconnect()
+        manager?.disconnect()
+        socket = nil
+        manager = nil
+        room = nil
+    }
+}
 
 private enum CommunityActionFeedbackPhase: Equatable {
     case waiting
@@ -72,6 +154,8 @@ struct CommunityView: View {
     @State private var reportTarget: CommunityReportTarget?
     @State private var blockTarget: PublicSpyProfile?
     @State private var unblockTarget: CommunityRelationship?
+    @State private var profileRealtime = CommunityProfileRealtimeService()
+    @State private var latestProfileRevisions: [String: Int] = [:]
 
     var body: some View {
         PageChrome(
@@ -91,7 +175,11 @@ struct CommunityView: View {
                 isSelfProfileTransitionPending = true
             }
             await loadInitialContent()
+            startProfileRealtime()
             await completePendingSelfProfileTransitionIfPossible()
+        }
+        .onDisappear {
+            profileRealtime.stop()
         }
         .onChange(of: dockRequest.id) { _, _ in
             handleDockAction(dockRequest.tab)
@@ -119,6 +207,9 @@ struct CommunityView: View {
         .onChange(of: activeAction) { _, action in
             guard action == nil else { return }
             Task { await completePendingSelfProfileTransitionIfPossible() }
+        }
+        .onChange(of: appState.user) { _, _ in
+            Task { await refreshProfilesAfterAccountChange() }
         }
         .onChange(of: message) { _, newMessage in
             publishCommunityToast(newMessage)
@@ -1367,9 +1458,8 @@ struct CommunityView: View {
             // a shared writer lease even for reads, so parallel startup calls
             // could make one request fail with a transient 503 and discard both
             // successful and failed results together.
-            let page = try await appState.client.communityDirectory()
-            directory = page.profiles
-            nextDirectoryOffset = page.nextOffset
+            directory = try await loadEntireDirectory()
+            nextDirectoryOffset = nil
             directoryLoadFailed = false
         } catch {
             directoryLoadFailed = true
@@ -1387,6 +1477,84 @@ struct CommunityView: View {
         } catch {
             showError(error)
         }
+    }
+
+    private func loadEntireDirectory() async throws -> [PublicSpyProfile] {
+        var profiles: [PublicSpyProfile] = []
+        var offset = 0
+        repeat {
+            let page = try await appState.client.communityDirectory(offset: offset, limit: 60)
+            let known = Set(profiles.map(\.id))
+            profiles.append(contentsOf: page.profiles.filter { !known.contains($0.id) })
+            guard let nextOffset = page.nextOffset else { break }
+            offset = nextOffset
+        } while !Task.isCancelled
+        return profiles
+    }
+
+    @MainActor
+    private func startProfileRealtime() {
+        guard let token = appState.client.currentAccessToken,
+              let userID = appState.user?.id else { return }
+        profileRealtime.onSignal = { signal in
+            Task { await applyProfileSignal(signal) }
+        }
+        profileRealtime.onCatchUp = {
+            Task {
+                do {
+                    directory = try await loadEntireDirectory()
+                } catch {
+                    showError(error)
+                }
+            }
+        }
+        profileRealtime.start(appID: Base44Client.appID, token: token, userID: userID)
+    }
+
+    @MainActor
+    private func applyProfileSignal(_ signal: CommunityProfileSignal) async {
+        guard signal.revision > (latestProfileRevisions[signal.profileUserID] ?? -1) else { return }
+        latestProfileRevisions[signal.profileUserID] = signal.revision
+        do {
+            let detail = try await appState.client.communityProfile(userID: signal.profileUserID)
+            profileCache[signal.profileUserID] = detail
+            if let index = directory.firstIndex(where: { $0.id == signal.profileUserID }) {
+                directory[index] = detail.profile
+            } else {
+                directory.append(detail.profile)
+            }
+            if activeProfile?.profile.id == signal.profileUserID {
+                activeProfile = detail
+            }
+            if network?.me.id == signal.profileUserID {
+                network = try await appState.client.communityState()
+            }
+        } catch {
+            directory.removeAll { $0.id == signal.profileUserID }
+            profileCache[signal.profileUserID] = nil
+        }
+    }
+
+    @MainActor
+    private func refreshProfilesAfterAccountChange() async {
+        guard didLoadInitialContent, !appState.shouldUsePreviewData else { return }
+
+        profileRequestState.invalidate()
+        profileCache.removeAll()
+
+        do {
+            let refreshedState = try await appState.client.communityState()
+            network = sanitizedNetworkState(refreshedState)
+            if selectedTab == .me {
+                activeProfile = nil
+                isSelfProfileTransitionPending = true
+                await completePendingSelfProfileTransitionIfPossible()
+            }
+        } catch {
+            showError(error)
+        }
+
+        await loadDirectory(reset: true)
     }
 
     private func loadDirectory(reset: Bool, offset: Int = 0) async {
@@ -2241,12 +2409,12 @@ struct CommunityDockRequest: Equatable {
     }
 }
 
-private enum CommunitySpyCardSize {
+enum CommunitySpyCardSize {
     case full
     case compact
 }
 
-private struct CommunitySpyCard: View {
+struct CommunitySpyCard: View {
     let profile: PublicSpyProfile
     let language: AppLanguage
     let size: CommunitySpyCardSize

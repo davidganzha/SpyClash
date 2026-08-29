@@ -678,18 +678,23 @@ final class Base44Client {
         spyCardBadge: SpyCardBadgeID
     ) async throws -> SpyUser {
         let boundedDisplayName = try PublicDisplayNameSafety.validatedForSave(displayName)
-        return try await request(
-            "/apps/\(Self.appID)/entities/User/me",
-            method: "PUT",
-            body: [
-                "display_name": boundedDisplayName,
-                "avatar": avatar,
-                "language": language.rawValue,
-                "spy_card_theme": spyCardTheme.rawValue,
-                "spy_card_accent": spyCardAccent.rawValue,
-                "spy_card_badge": spyCardBadge.rawValue
-            ]
-        )
+        let fields = [
+            "display_name": boundedDisplayName,
+            "avatar": avatar,
+            "language": language.rawValue,
+            "spy_card_theme": spyCardTheme.rawValue,
+            "spy_card_accent": spyCardAccent.rawValue,
+            "spy_card_badge": spyCardBadge.rawValue
+        ]
+        do {
+            return try await communityAction("update_profile", fields: fields)
+        } catch let error as Base44Error where error.statusCode == 400 || error.statusCode == 404 {
+            return try await request(
+                "/apps/\(Self.appID)/entities/User/me",
+                method: "PUT",
+                body: fields
+            )
+        }
     }
 
     func updateLanguage(_ language: AppLanguage) async throws -> SpyUser {

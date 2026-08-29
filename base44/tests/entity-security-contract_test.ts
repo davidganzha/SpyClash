@@ -39,6 +39,7 @@ const expectedEntityNames = [
   "AppStoreAccount",
   "AppleSignInCredential",
   "BillingIdentityLifecycle",
+  "CommunityProfileSignal",
   "CommunityReport",
   "Entitlement",
   "Friendship",
@@ -166,7 +167,7 @@ function assertAdminOnlyPolicy(
   );
 }
 
-Deno.test("all 23 canonical entity schemas are explicit and parseable", async () => {
+Deno.test("all 24 canonical entity schemas are explicit and parseable", async () => {
   const all = await schemas();
   assertEquals([...all.keys()].sort(), expectedEntityNames);
 
@@ -255,6 +256,26 @@ Deno.test("GameRoomSignal exposes only the caller's wake-up row and keeps writes
       "state",
       "user_id",
     ],
+  );
+});
+
+Deno.test("CommunityProfileSignal exposes only the caller's profile wake-up row", async () => {
+  const signal = (await schemas()).get("CommunityProfileSignal");
+  assert(signal?.rls);
+  const ownerRow = {
+    recipient_user_id: owner.id,
+    profile_user_id: outsider.id,
+    revision: 42,
+  };
+  assert(policyAllows(signal.rls.read, ownerRow, owner));
+  assert(!policyAllows(signal.rls.read, ownerRow, outsider));
+  assert(policyAllows(signal.rls.read, ownerRow, admin));
+  for (const operation of ["create", "update", "delete"] as const) {
+    assertAdminOnlyPolicy(signal, operation);
+  }
+  assertEquals(
+    Object.keys(signal.properties).sort(),
+    ["profile_user_id", "recipient_user_id", "revision"],
   );
 });
 
@@ -371,6 +392,7 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
       "lobby_last_mutation_fingerprint",
     ],
     GameRoomSignal: ["user_id", "room_id", "lobby_revision", "state"],
+    CommunityProfileSignal: ["recipient_user_id", "profile_user_id", "revision"],
     RoomInvite: ["notification_event_id"],
     WordPack: ["owner_user_id"],
     AppStoreAccount: ["reservation_state"],

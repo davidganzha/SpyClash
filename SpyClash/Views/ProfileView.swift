@@ -36,7 +36,7 @@ struct ProfileView: View {
     var body: some View {
         PageChrome(eyebrow: copy.eyebrow, status: "") {
             VStack(alignment: .leading, spacing: 16) {
-                spyCard
+                synchronizedSpyCard
                 profileCard
                 statsCard
                 legalCard
@@ -293,6 +293,30 @@ struct ProfileView: View {
             .accessibilityLabel(spyCardAccessibilityLabel)
         }
         .aspectRatio(1.50, contentMode: .fit)
+        .spyWebEntrance(delay: 0, duration: 0.50, y: 18, scale: 0.98)
+    }
+
+    private var synchronizedSpyCard: some View {
+        CommunitySpyCard(
+            profile: PublicSpyProfile(
+                id: appState.user?.id ?? "current-user",
+                spyID: appState.user?.spyID ?? localized(en: "UNASSIGNED", ru: "НЕ НАЗНАЧЕН", es: "SIN ASIGNAR", uk: "НЕ ПРИЗНАЧЕНО"),
+                displayName: profileCallSign,
+                avatar: avatar,
+                spyCardTheme: selectedCardTheme.rawValue,
+                spyCardAccent: selectedCardAccent.rawValue,
+                spyCardBadge: selectedCardBadge.rawValue,
+                rating: rating,
+                gamesPlayed: gamesCount,
+                gamesWon: appState.user?.gamesWon ?? 0,
+                winRate: winRate
+            ),
+            language: appState.language
+        )
+        .animation(.smooth(duration: 0.28), value: selectedCardTheme)
+        .animation(.smooth(duration: 0.22), value: selectedCardAccent)
+        .animation(.smooth(duration: 0.22), value: selectedCardBadge)
+        .animation(.smooth(duration: 0.22), value: avatar)
         .spyWebEntrance(delay: 0, duration: 0.50, y: 18, scale: 0.98)
     }
 
