@@ -1619,7 +1619,7 @@ struct LocalGameView: View {
         VStack(alignment: .leading, spacing: 10) {
             if packs.isEmpty {
                 Button {
-                    appState.selectedTab = .packs
+                    appState.openMainTab(.packs)
                 } label: {
                     HStack(alignment: .center, spacing: 10) {
                         Text("📦")
@@ -1804,7 +1804,7 @@ struct LocalGameView: View {
             SpyLobbyActionRow {
                 Button {
                     HapticManager.shared.fire(.buttonPress)
-                    appState.selectedTab = .home
+                    appState.openMainTab(.home)
                 } label: {
                     SpyLobbySecondaryActionLabel(
                         title: localized(en: "BACK", ru: "НАЗАД", es: "ATRAS", uk: "НАЗАД"),
@@ -3282,7 +3282,7 @@ struct LocalGameView: View {
 
                         Button {
                             reset()
-                            appState.selectedTab = .home
+                            appState.openMainTab(.home)
                         } label: {
                             HStack(spacing: 9) {
                                 Image(systemName: "chevron.left")

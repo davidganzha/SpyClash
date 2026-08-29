@@ -705,6 +705,27 @@ final class Base44Client {
         )
     }
 
+    func completeOnboarding(_ submission: OnboardingSubmission) async throws -> SpyUser {
+        guard let token, !token.isEmpty else {
+            throw Base44Error(message: "Authentication required.", statusCode: 401)
+        }
+
+        let updatedUser: SpyUser = try await request(
+            "/apps/\(Self.appID)/entities/User/me",
+            method: "PUT",
+            body: OnboardingCompletionPayload(submission: submission)
+        )
+        guard updatedUser.onboardingCompleted == true,
+              (updatedUser.onboardingVersion ?? 1) >= submission.version else {
+            throw Base44Error(
+                message: "Onboarding completion was not confirmed.",
+                statusCode: 502,
+                retryable: true
+            )
+        }
+        return updatedUser
+    }
+
     func deleteAccount() async throws -> AccountDeletionResult {
         let result: AccountDeletionResult = try await invokeFunction(
             "deleteAccount",
@@ -1936,6 +1957,30 @@ struct AccountDeletionResult: Decodable {
 
 private struct AutoRegisterUserResponse: Decodable {
     let user: SpyUser?
+}
+
+private struct OnboardingCompletionPayload: Encodable {
+    let language: String
+    let onboardingCompleted: Bool
+    let onboardingVersion: Int
+    let onboardingCompletedAt: Date
+    let acquisitionSource: String
+
+    init(submission: OnboardingSubmission) {
+        language = submission.language.rawValue
+        onboardingCompleted = true
+        onboardingVersion = submission.version
+        onboardingCompletedAt = submission.completedAt
+        acquisitionSource = submission.acquisitionSource.rawValue
+    }
+
+    enum CodingKeys: String, CodingKey {
+        case language
+        case onboardingCompleted = "onboarding_completed"
+        case onboardingVersion = "onboarding_version"
+        case onboardingCompletedAt = "onboarding_completed_at"
+        case acquisitionSource = "acquisition_source"
+    }
 }
 
 struct Base44Error: LocalizedError {

@@ -54,6 +54,12 @@ private enum ProviderAuthCinematic: Equatable {
     case standard
 }
 
+private enum ActiveRoomRestoreOutcome: Equatable {
+    case restored
+    case noActiveRoom
+    case retryLater
+}
+
 enum RadarInvitePolicySyncState: Equatable {
     case localOnly
     case syncing
@@ -546,6 +552,17 @@ final class AppState: NSObject {
         didSet {
             let previousUserID = oldValue?.id
             let accountChanged = previousUserID != user?.id
+            if accountChanged {
+                onboardingSyncTask?.cancel()
+                onboardingSyncTask = nil
+                onboardingSyncUserID = nil
+                postAuthActiveRoomRestoreTask?.cancel()
+                postAuthActiveRoomRestoreTask = nil
+                postAuthActiveRoomRestoreUserID = nil
+            }
+            if let user {
+                OnboardingProgressStore.reconcileRemoteState(for: user)
+            }
             reconcileRadarInvitePolicy(for: user, accountChanged: accountChanged)
             radarNearby.setActiveRoom(activeRoom)
             // `user` can be reassigned after a same-account token rotation.
@@ -559,6 +576,7 @@ final class AppState: NSObject {
             )
             notificationInbox.bindAccount(user?.id)
             synchronizeLiveActivitiesForAccountChange(previousUserID: previousUserID)
+            queuePendingOnboardingSyncIfNeeded()
         }
     }
     var isRestoring = true
@@ -582,6 +600,8 @@ final class AppState: NSObject {
     var appleAuthStage: AppleAuthStage?
     var standardAuthCinematicStage: StandardAuthCinematicStage?
     var authHomeRevealPhase: AuthHomeRevealPhase = .idle
+    var onboardingLaunchMessage: String?
+    private(set) var isFinishingOnboarding = false
     private(set) var radarInvitePolicySyncState: RadarInvitePolicySyncState = .localOnly
     var selectedTab: AppTab = .home {
         didSet {
@@ -661,6 +681,13 @@ final class AppState: NSObject {
     private let appleSignInCoordinator = AppleSignInCoordinator()
     @ObservationIgnored private var standardAuthTimelineTask: Task<Void, Never>?
     @ObservationIgnored private var standardAuthRunID: UUID?
+    @ObservationIgnored private var onboardingSyncTask: Task<Void, Never>?
+    @ObservationIgnored private var onboardingSyncUserID: String?
+    @ObservationIgnored private var postAuthActiveRoomRestoreTask: Task<Void, Never>?
+    @ObservationIgnored private var postAuthActiveRoomRestoreUserID: String?
+    @ObservationIgnored private var authHomeRevealAnimationID: UUID?
+    @ObservationIgnored private var authHomeRevealRestartTask: Task<Void, Never>?
+    @ObservationIgnored private var authHomeRevealRestartID: UUID?
     @ObservationIgnored private var activationResumeTask: Task<Void, Never>?
     @ObservationIgnored private var activeRoomActivationRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var roomRefreshRequestRevision = 0
@@ -683,6 +710,16 @@ final class AppState: NSObject {
     @ObservationIgnored private var liveActivityPushToStartTokenTask: Task<Void, Never>?
     @ObservationIgnored private var liveActivityLifecycleTask: Task<Void, Never>?
     @ObservationIgnored private var pendingMatchRoomID: String?
+    @ObservationIgnored private var pendingNotificationRouteGeneration: UInt64 = 0
+    @ObservationIgnored private var deferredActiveGameRetryGeneration: UInt64?
+    @ObservationIgnored private var isConsumingPendingRoutes = false
+    @ObservationIgnored private var pendingNotificationRoute: SpyNotificationRoute? {
+        didSet {
+            pendingNotificationRouteGeneration &+= 1
+            deferredActiveGameRetryGeneration = nil
+        }
+    }
+    private(set) var authPresentationRequestID = 0
     @ObservationIgnored private var isOpeningPendingMatch = false
     @ObservationIgnored private var dismissedRoomExitAttemptedID: String?
     private static let activeRoomIDStorageKey = "spyclash.activeRoomID"
@@ -1334,12 +1371,20 @@ final class AppState: NSObject {
 #if DEBUG
         guard !shouldUsePreviewData else { return }
 #endif
-        guard user != nil, roomSyncOperation == nil else { return }
+        guard user != nil,
+              roomSyncOperation == nil,
+              !isAuthTransitionActive else { return }
+        if case .activeGame? = pendingNotificationRoute {
+            // The deferred-route resolver owns this lookup under the black
+            // curtain and must remain the only writer for that intent.
+            return
+        }
         retryDismissedRoomExitIfNeeded()
 
         let preferredRoomID = activeRoom?.id ?? UserDefaults.standard
             .string(forKey: Self.activeRoomIDStorageKey)?
             .nilIfBlank
+        let pendingRouteGeneration = pendingNotificationRouteGeneration
 
         activeRoomActivationRefreshTask?.cancel()
         activeRoomActivationRefreshTask = Task { @MainActor [weak self] in
@@ -1351,7 +1396,18 @@ final class AppState: NSObject {
             if let preferredRoomID {
                 refreshedRoom = try? await self.client.refreshRoom(id: preferredRoomID)
             }
-            if refreshedRoom == nil || refreshedRoom?.normalizedStatus == "finished" {
+            let activeStatuses: Set<String> = [
+                "waiting",
+                "ready_voting",
+                "roulette",
+                "playing"
+            ]
+            let preferredRoomIsUsable = refreshedRoom.map {
+                activeStatuses.contains($0.normalizedStatus)
+                    && !self.isDismissedRoom($0.id)
+                    && $0.containsPlayer(email: self.user?.email)
+            } ?? false
+            if !preferredRoomIsUsable {
                 do {
                     refreshedRoom = try await self.client.activeRoom(preferredRoomID: preferredRoomID)
                 } catch {
@@ -1364,7 +1420,8 @@ final class AppState: NSObject {
             guard !Task.isCancelled,
                   self.roomSyncOperation == nil,
                   self.roomSyncRevision == refreshRevision,
-                  self.roomRefreshRequestRevision == refreshRequestRevision else { return }
+                  self.roomRefreshRequestRevision == refreshRequestRevision,
+                  self.pendingNotificationRouteGeneration == pendingRouteGeneration else { return }
 
             if let candidate = refreshedRoom,
                candidate.normalizedStatus == "waiting",
@@ -1383,11 +1440,12 @@ final class AppState: NSObject {
             guard !Task.isCancelled,
                   self.roomSyncOperation == nil,
                   self.roomSyncRevision == refreshRevision,
-                  self.roomRefreshRequestRevision == refreshRequestRevision else { return }
+                  self.roomRefreshRequestRevision == refreshRequestRevision,
+                  self.pendingNotificationRouteGeneration == pendingRouteGeneration else { return }
 
             if let refreshedRoom,
                !self.isDismissedRoom(refreshedRoom.id),
-               ["waiting", "ready_voting", "roulette", "playing"].contains(refreshedRoom.normalizedStatus),
+               activeStatuses.contains(refreshedRoom.normalizedStatus),
                refreshedRoom.containsPlayer(email: self.user?.email) {
                 if self.activeRoom?.id != refreshedRoom.id || RoomPollPolicy.acceptsSnapshot(
                     currentLobbyRevision: self.activeRoom?.roomRevision ?? self.activeRoom?.lobbyRevision,
@@ -1610,8 +1668,13 @@ final class AppState: NSObject {
         appleAuthStage != nil || standardAuthCinematicStage != nil
     }
 
+    var requiresOnboarding: Bool {
+        guard let user else { return false }
+        return OnboardingProgressStore.shouldPresentOnboarding(for: user)
+    }
+
     var isAuthTransitionActive: Bool {
-        hasActiveAuthCinematic || authHomeRevealPhase != .idle
+        hasActiveAuthCinematic || requiresOnboarding || authHomeRevealPhase != .idle
     }
 
     func restoreSession() async {
@@ -1921,6 +1984,9 @@ final class AppState: NSObject {
             // forcing Welcome/Auth even though the authenticated user exists.
             isUIPreviewMode = false
 #endif
+            if cinematic == .apple {
+                startPostAuthActiveRoomRestoreIfNeeded()
+            }
 
         } catch {
             client.clearToken()
@@ -1944,6 +2010,7 @@ final class AppState: NSObject {
         standardAuthCinematicStage = .preparing
         reconcileLanguagePreference(with: authenticatedUser.language)
         user = authenticatedUser
+        startPostAuthActiveRoomRestoreIfNeeded()
 
         let timeline = Task { @MainActor [weak self] in
             guard let self else { return }
@@ -2017,6 +2084,7 @@ final class AppState: NSObject {
     private func revealHomeAfterStandardAuth(runID: UUID) async {
         guard standardAuthRunID == runID, user != nil else { return }
 
+        authHomeRevealAnimationID = nil
         authHomeRevealPhase = .covered
         do {
             try await Task.sleep(for: .milliseconds(80))
@@ -2027,6 +2095,8 @@ final class AppState: NSObject {
 
         guard standardAuthRunID == runID, user != nil else { return }
         standardAuthCinematicStage = nil
+        await waitForPostAuthActiveRoomRestoreIfNeeded()
+        await prepareLatestPendingShellRouteForReveal()
 
         do {
             try await Task.sleep(for: .milliseconds(260))
@@ -2036,17 +2106,9 @@ final class AppState: NSObject {
         }
 
         guard standardAuthRunID == runID, user != nil else { return }
-        authHomeRevealPhase = .revealing
-
-        do {
-            try await Task.sleep(for: .milliseconds(860))
-        } catch {
-            clearStandardAuthCinematicIfCurrent(runID)
-            return
-        }
-
+        await prepareLatestPendingShellRouteForReveal()
+        _ = await animateAuthHomeRevealToIdle()
         guard standardAuthRunID == runID, user != nil else { return }
-        authHomeRevealPhase = .idle
         standardAuthRunID = nil
 #if DEBUG
         isUIPreviewMode = false
@@ -2057,7 +2119,10 @@ final class AppState: NSObject {
         guard standardAuthRunID == runID else { return }
         standardAuthRunID = nil
         standardAuthCinematicStage = nil
-        authHomeRevealPhase = .idle
+        if authHomeRevealRestartTask == nil {
+            authHomeRevealAnimationID = nil
+            authHomeRevealPhase = .idle
+        }
     }
 
 #if DEBUG
@@ -2079,6 +2144,16 @@ final class AppState: NSObject {
         standardAuthTimelineTask?.cancel()
         standardAuthTimelineTask = nil
         standardAuthRunID = nil
+        onboardingSyncTask?.cancel()
+        onboardingSyncTask = nil
+        onboardingSyncUserID = nil
+        postAuthActiveRoomRestoreTask?.cancel()
+        postAuthActiveRoomRestoreTask = nil
+        postAuthActiveRoomRestoreUserID = nil
+        authHomeRevealRestartTask?.cancel()
+        authHomeRevealRestartTask = nil
+        authHomeRevealRestartID = nil
+        authHomeRevealAnimationID = nil
         HapticManager.shared.fire(.notification(.success))
         PushNotificationCoordinator.shared.prepareForLogout()
         client.clearToken()
@@ -2090,6 +2165,8 @@ final class AppState: NSObject {
         appleAuthStage = nil
         standardAuthCinematicStage = nil
         authHomeRevealPhase = .idle
+        onboardingLaunchMessage = nil
+        isFinishingOnboarding = false
         selectedTab = .home
         shellRoute = .main
         activeRoom = nil
@@ -2100,6 +2177,8 @@ final class AppState: NSObject {
         presentedSheet = nil
         pendingJoinCode = nil
         pendingMatchRoomID = nil
+        pendingNotificationRoute = nil
+        authPresentationRequestID = 0
         deepLinkStatus = nil
         isJoiningDeepLink = false
         isOpeningPendingMatch = false
@@ -2108,6 +2187,7 @@ final class AppState: NSObject {
     private func revealHomeAfterAppleAuth() async {
         // Phase 1 is committed on its own render pass. This guarantees the
         // black root curtain exists before RootView swaps Welcome for Home.
+        authHomeRevealAnimationID = nil
         authHomeRevealPhase = .covered
         try? await Task.sleep(for: .milliseconds(80))
         guard !Task.isCancelled else {
@@ -2116,9 +2196,11 @@ final class AppState: NSObject {
             return
         }
 
-        // Mount Home under an already opaque, stable curtain and let the auth
-        // sheet disappear black-to-black.
+        // Mount the authenticated destination under an already opaque, stable
+        // curtain and let the auth sheet disappear black-to-black.
         appleAuthStage = nil
+        await waitForPostAuthActiveRoomRestoreIfNeeded()
+        await prepareLatestPendingShellRouteForReveal()
         try? await Task.sleep(for: .milliseconds(260))
         guard !Task.isCancelled else {
             authHomeRevealPhase = .idle
@@ -2127,18 +2209,19 @@ final class AppState: NSObject {
 
         // Start the one visible reveal only after Home and its entrance state
         // have both had time to mount behind the curtain.
-        authHomeRevealPhase = .revealing
-        try? await Task.sleep(for: .milliseconds(860))
-        authHomeRevealPhase = .idle
+        await prepareLatestPendingShellRouteForReveal()
+        _ = await animateAuthHomeRevealToIdle()
     }
 
     func openLocalSetup() {
+        pendingNotificationRoute = nil
         isShellChromeSuppressed = false
         localSetupRequestID += 1
         selectedTab = .local
     }
 
     func openHomeRoot() {
+        pendingNotificationRoute = nil
         homeRootRequestID &+= 1
         isHomeLandingPresentationRequested = true
         presentedSheet = nil
@@ -2158,6 +2241,204 @@ final class AppState: NSObject {
         user = try await client.updateLanguage(newLanguage)
     }
 
+    func setOnboardingLanguage(_ newLanguage: AppLanguage) {
+        language = newLanguage
+        newLanguage.persist()
+    }
+
+    func finishOnboarding(
+        source: OnboardingAcquisitionSource,
+        enableNearbyTransport: Bool
+    ) async {
+        guard !isFinishingOnboarding,
+              let authenticatedUser = user,
+              requiresOnboarding else { return }
+
+        onboardingSyncTask?.cancel()
+        onboardingSyncTask = nil
+        onboardingSyncUserID = nil
+        isFinishingOnboarding = true
+        defer { isFinishingOnboarding = false }
+
+        let submission = OnboardingSubmission(
+            language: language,
+            acquisitionSource: source
+        )
+        var updatedUser: SpyUser?
+        var shouldRetrySync = false
+
+#if DEBUG
+        if !isUIPreviewMode {
+            do {
+                updatedUser = try await client.completeOnboarding(submission)
+            } catch is CancellationError {
+                return
+            } catch {
+                guard authenticatedUser.onboardingCompleted != false,
+                      Self.canDeferOnboardingSync(after: error) else {
+                    showToast(onboardingSaveFailureMessage, kind: .error)
+                    return
+                }
+                shouldRetrySync = true
+            }
+        }
+#else
+        do {
+            updatedUser = try await client.completeOnboarding(submission)
+        } catch is CancellationError {
+            return
+        } catch {
+            guard authenticatedUser.onboardingCompleted != false,
+                  Self.canDeferOnboardingSync(after: error) else {
+                showToast(onboardingSaveFailureMessage, kind: .error)
+                return
+            }
+            shouldRetrySync = true
+        }
+#endif
+
+        guard user?.id == authenticatedUser.id else { return }
+
+        onboardingLaunchMessage = nil
+        authHomeRevealAnimationID = nil
+        authHomeRevealPhase = .covered
+        HapticManager.shared.fire(.reveal)
+
+        // Give the opaque curtain its own render pass before changing the
+        // account gate. This keeps Onboarding and Home from ever sharing a
+        // visible frame.
+        try? await Task.sleep(for: .milliseconds(120))
+        guard user?.id == authenticatedUser.id else {
+            onboardingLaunchMessage = nil
+            authHomeRevealPhase = .idle
+            return
+        }
+
+        if let updatedUser {
+            OnboardingProgressStore.markSynced(submission, for: authenticatedUser.id)
+        } else if shouldRetrySync {
+            OnboardingProgressStore.savePending(submission, for: authenticatedUser.id)
+        } else {
+            // DEBUG previews have no authenticated Base44 transport, but still
+            // need to exercise the complete root transition deterministically.
+            OnboardingProgressStore.markSynced(submission, for: authenticatedUser.id)
+        }
+        OnboardingProgressStore.setNearbyTransportEnabled(
+            enableNearbyTransport,
+            for: authenticatedUser.id
+        )
+
+        selectedTab = .home
+        shellRoute = .main
+        presentedSheet = nil
+        user = updatedUser ?? authenticatedUser
+        await waitForPostAuthActiveRoomRestoreIfNeeded()
+        await prepareLatestPendingShellRouteForReveal()
+
+#if DEBUG
+        if isUIPreviewMode {
+            isUIPreviewMode = false
+        }
+#endif
+
+        // Play the launch phrase only after Home and any deferred destination
+        // are ready beneath the opaque curtain. Its 1.35 s entrance, 1.00 s
+        // hold, and 1.65 s exit form one uninterrupted four-second arc.
+        onboardingLaunchMessage = onboardingLaunchTitle
+        try? await Task.sleep(for: .milliseconds(4_080))
+        onboardingLaunchMessage = nil
+        try? await Task.sleep(for: .milliseconds(80))
+        await prepareLatestPendingShellRouteForReveal()
+        _ = await animateAuthHomeRevealToIdle()
+
+        if shouldRetrySync {
+            queuePendingOnboardingSyncIfNeeded()
+            showToast(onboardingPendingSyncMessage, kind: .warning)
+        }
+        await consumePendingRoutesIfPossible()
+    }
+
+    private static func canDeferOnboardingSync(after error: Error) -> Bool {
+        guard let error = error as? Base44Error else { return true }
+        if error.retryable { return true }
+        guard let statusCode = error.statusCode else { return true }
+        return statusCode == 408
+            || statusCode == 425
+            || statusCode == 429
+            || (500...599).contains(statusCode)
+    }
+
+    private var onboardingLaunchTitle: String {
+        switch language {
+        case .en: "LET'S BEGIN"
+        case .es: "EMPECEMOS"
+        case .ru: "ПРИСТУПИМ"
+        case .uk: "РОЗПОЧНІМО"
+        }
+    }
+
+    private var onboardingSaveFailureMessage: String {
+        switch language {
+        case .en: "ONBOARDING COULD NOT BE SAVED. TRY AGAIN."
+        case .es: "NO SE PUDO GUARDAR. INTÉNTALO DE NUEVO."
+        case .ru: "НЕ УДАЛОСЬ СОХРАНИТЬ. ПОПРОБУЙТЕ ЕЩЁ РАЗ."
+        case .uk: "НЕ ВДАЛОСЯ ЗБЕРЕГТИ. СПРОБУЙТЕ ЩЕ РАЗ."
+        }
+    }
+
+    private var onboardingPendingSyncMessage: String {
+        switch language {
+        case .en: "SAVED ON THIS DEVICE. ACCOUNT SYNC WILL RETRY."
+        case .es: "GUARDADO EN ESTE DISPOSITIVO. REINTENTAREMOS LA SINCRONIZACIÓN."
+        case .ru: "СОХРАНЕНО НА УСТРОЙСТВЕ. СИНХРОНИЗАЦИЮ ПОВТОРИМ."
+        case .uk: "ЗБЕРЕЖЕНО НА ПРИСТРОЇ. СИНХРОНІЗАЦІЮ БУДЕ ПОВТОРЕНО."
+        }
+    }
+
+    private func queuePendingOnboardingSyncIfNeeded() {
+        guard onboardingSyncTask == nil,
+              let user,
+              user.onboardingCompleted != false,
+              client.hasSessionToken,
+              let submission = OnboardingProgressStore.pendingSubmission(for: user.id),
+              submission.version >= OnboardingSubmission.currentVersion else {
+            return
+        }
+
+        let userID = user.id
+        onboardingSyncUserID = userID
+        onboardingSyncTask = Task { @MainActor [weak self] in
+            await self?.runPendingOnboardingSync(
+                submission,
+                userID: userID
+            )
+        }
+    }
+
+    private func runPendingOnboardingSync(
+        _ submission: OnboardingSubmission,
+        userID: String
+    ) async {
+        defer {
+            if onboardingSyncUserID == userID {
+                onboardingSyncTask = nil
+                onboardingSyncUserID = nil
+            }
+        }
+
+        do {
+            let synchronizedUser = try await client.completeOnboarding(submission)
+            guard !Task.isCancelled, user?.id == userID else { return }
+            OnboardingProgressStore.markSynced(submission, for: userID)
+            guard (OnboardingProgressStore.pendingSubmission(for: userID)?.version ?? 0)
+                <= submission.version else { return }
+            user = synchronizedUser
+        } catch {
+            // Keep the account-scoped payload for the next authenticated
+            // activation. Onboarding answers are never copied between users.
+        }
+    }
+
     func setRadarInvitePolicy(_ policy: RadarInvitePolicy) {
         radarNearby.setInvitePolicy(policy)
         guard let userID = user?.id, client.hasSessionToken else {
@@ -2165,6 +2446,13 @@ final class AppState: NSObject {
             return
         }
         queueRadarInvitePolicySync(policy, userID: userID)
+    }
+
+    func startRadarScanning(requestCameraAccess: Bool = false) {
+        guard let user, !requiresOnboarding else { return }
+        OnboardingProgressStore.setNearbyTransportEnabled(true, for: user.id)
+        reconcileRadarInvitePolicy(for: user, accountChanged: false)
+        radarNearby.startScanning(requestCameraAccess: requestCameraAccess)
     }
 
     func retryRadarInvitePolicySync() {
@@ -2207,7 +2495,11 @@ final class AppState: NSObject {
         )
         radarNearby.configure(
             user: user,
-            applyRemoteInvitePolicy: !hasPendingWrite
+            applyRemoteInvitePolicy: !hasPendingWrite,
+            allowsTransport: user.map {
+                !OnboardingProgressStore.shouldPresentOnboarding(for: $0)
+                    && OnboardingProgressStore.isNearbyTransportEnabled(for: $0.id)
+            } ?? false
         )
 
         guard let user, client.hasSessionToken else {
@@ -2290,8 +2582,11 @@ final class AppState: NSObject {
     }
 
     func resumeAfterActivation() {
+        queuePendingOnboardingSyncIfNeeded()
+        deferredActiveGameRetryGeneration = nil
         guard user != nil,
               !isRestoring,
+              !isAuthTransitionActive,
               !shouldUsePreviewData,
               activationResumeTask == nil else {
             return
@@ -2451,6 +2746,7 @@ final class AppState: NSObject {
     }
 
     func openCommunity() {
+        pendingNotificationRoute = nil
         presentedSheet = nil
         notificationFocusItemID = nil
         shellRoute = .community
@@ -2464,6 +2760,7 @@ final class AppState: NSObject {
         scope: NotificationInboxScope = .global,
         itemID: String? = nil
     ) {
+        pendingNotificationRoute = nil
         presentedSheet = nil
         notificationInbox.selectScope(scope)
         notificationFocusItemID = itemID?.nilIfBlank.map { value in
@@ -2474,6 +2771,7 @@ final class AppState: NSObject {
     }
 
     func openMainTab(_ tab: AppTab) {
+        pendingNotificationRoute = nil
         presentedSheet = nil
         notificationFocusItemID = nil
         shellRoute = .main
@@ -2538,6 +2836,8 @@ final class AppState: NSObject {
     }
 
     private func handleAutomaticRadarInvitation(_ invitation: RadarIncomingInvitation) {
+        guard !requiresOnboarding else { return }
+
         if let activeRoom,
            activeRoom.code.caseInsensitiveCompare(invitation.roomCode) != .orderedSame {
             // Never replace an active session without explicit confirmation,
@@ -2603,9 +2903,22 @@ final class AppState: NSObject {
         if let route = SpyClashCustomRoute.parse(url) {
             switch route {
             case .notifications(let scope, let itemID):
-                openNotifications(scope: scope, itemID: itemID)
+                if user == nil || isAuthTransitionActive {
+                    deferNotificationRoute(
+                        .notifications(
+                            scope: scope,
+                            itemID: itemID
+                        )
+                    )
+                } else {
+                    openNotifications(scope: scope, itemID: itemID)
+                }
             case .community:
-                openCommunity()
+                if user == nil || isAuthTransitionActive {
+                    deferNotificationRoute(.communityRequests)
+                } else {
+                    openCommunity()
+                }
             case .match(let roomID):
                 queueMatchRoute(roomID: roomID)
             case .join(let code):
@@ -2656,7 +2969,7 @@ final class AppState: NSObject {
         guard let normalizedRoomID = roomID.nilIfBlank else { return }
         pendingMatchRoomID = normalizedRoomID
         guard user != nil, !isRestoring else {
-            authPhase = .email
+            if user == nil { requestAuthenticationPresentation() }
             return
         }
         Task { await consumePendingMatchRouteIfPossible() }
@@ -2706,8 +3019,6 @@ final class AppState: NSObject {
 
     private func handleNotificationRoute(_ route: SpyNotificationRoute) {
         switch route {
-        case .communityRequests:
-            openCommunity()
         case .room(let code):
             pendingJoinCode = code
             deepLinkStatus = language.welcome.inviteArmed(code)
@@ -2716,22 +3027,206 @@ final class AppState: NSObject {
             } else {
                 Task { await consumePendingJoinIfPossible() }
             }
-        case .activeGame:
-            if activeRoom != nil {
-                selectedTab = .game
-                shellRoute = .main
-                presentedSheet = nil
-            }
-        case .notifications(let scope, let itemID):
-            openNotifications(scope: scope ?? .global, itemID: itemID)
         case .url(let url):
+            // URL routing owns its own auth/onboarding deferral so password
+            // reset callbacks are never trapped behind an authenticated gate.
             handleIncomingURL(url)
+        case .communityRequests, .activeGame, .notifications:
+            guard user != nil, !isAuthTransitionActive else {
+                deferNotificationRoute(route)
+                return
+            }
+
+            switch route {
+            case .communityRequests:
+                openCommunity()
+            case .activeGame:
+                if activeRoom != nil {
+                    pendingNotificationRoute = nil
+                    selectedTab = .game
+                    shellRoute = .main
+                    presentedSheet = nil
+                } else {
+                    deferNotificationRoute(route)
+                }
+            case .notifications(let scope, let itemID):
+                openNotifications(scope: scope ?? .global, itemID: itemID)
+            case .room, .url:
+                break
+            }
+        }
+    }
+
+    private func deferNotificationRoute(_ route: SpyNotificationRoute) {
+        activeRoomActivationRefreshTask?.cancel()
+        activeRoomActivationRefreshTask = nil
+        pendingNotificationRoute = route
+        guard user != nil else {
+            requestAuthenticationPresentation()
+            return
+        }
+
+        if authHomeRevealPhase == .revealing {
+            restartAuthHomeRevealForPendingRoute()
+        } else if authHomeRevealPhase == .idle,
+                  !requiresOnboarding,
+                  case .activeGame = route {
+            restartAuthHomeRevealForPendingRoute()
+        }
+    }
+
+    private func preparePendingShellRouteForReveal() async {
+        guard user != nil,
+              !requiresOnboarding,
+              authHomeRevealPhase == .covered,
+              pendingNotificationRoute != nil else { return }
+
+        var activeRoomOutcome: ActiveRoomRestoreOutcome?
+        var attemptedActiveGameGeneration: UInt64?
+        if case .activeGame? = pendingNotificationRoute,
+           activeRoom == nil {
+            attemptedActiveGameGeneration = pendingNotificationRouteGeneration
+            activeRoomOutcome = await restoreActiveRoomIfPossible(selectGame: false)
+        }
+
+        guard user != nil,
+              !requiresOnboarding,
+              authHomeRevealPhase == .covered,
+              let route = pendingNotificationRoute else { return }
+
+        switch route {
+        case .communityRequests:
+            pendingNotificationRoute = nil
+            openCommunity()
+        case .notifications(let scope, let itemID):
+            pendingNotificationRoute = nil
+            openNotifications(scope: scope ?? .global, itemID: itemID)
+        case .activeGame:
+            guard activeRoom != nil else {
+                guard attemptedActiveGameGeneration == pendingNotificationRouteGeneration else {
+                    return
+                }
+                if activeRoomOutcome == .noActiveRoom {
+                    pendingNotificationRoute = nil
+                } else if activeRoomOutcome == .retryLater {
+                    deferredActiveGameRetryGeneration = pendingNotificationRouteGeneration
+                }
+                return
+            }
+            pendingNotificationRoute = nil
+            selectedTab = .game
+            shellRoute = .main
+            presentedSheet = nil
+        case .room, .url:
+            return
+        }
+    }
+
+    private func prepareLatestPendingShellRouteForReveal() async {
+        var attempts = 0
+        while user != nil,
+              !requiresOnboarding,
+              authHomeRevealPhase == .covered,
+              pendingNotificationRoute != nil,
+              deferredActiveGameRetryGeneration
+                != pendingNotificationRouteGeneration,
+              attempts < 3 {
+            let attemptedGeneration = pendingNotificationRouteGeneration
+            attempts += 1
+            await preparePendingShellRouteForReveal()
+
+            if pendingNotificationRoute == nil
+                || deferredActiveGameRetryGeneration
+                    == pendingNotificationRouteGeneration
+                || attemptedGeneration == pendingNotificationRouteGeneration {
+                return
+            }
+        }
+
+        if attempts == 3,
+           case .activeGame? = pendingNotificationRoute,
+           activeRoom == nil {
+            // A burst of replacement game events must not create an unbounded
+            // network loop under the curtain. Preserve the latest intent for a
+            // future activation instead of revealing Home and retrying visibly.
+            deferredActiveGameRetryGeneration = pendingNotificationRouteGeneration
+        }
+    }
+
+    private func animateAuthHomeRevealToIdle() async -> Bool {
+        let animationID = UUID()
+        authHomeRevealAnimationID = animationID
+        authHomeRevealPhase = .revealing
+
+        do {
+            try await Task.sleep(for: .milliseconds(860))
+        } catch {
+            if authHomeRevealAnimationID == animationID {
+                authHomeRevealAnimationID = nil
+                authHomeRevealPhase = .idle
+            }
+            return false
+        }
+
+        guard authHomeRevealAnimationID == animationID else { return false }
+        authHomeRevealAnimationID = nil
+        authHomeRevealPhase = .idle
+        return true
+    }
+
+    private func restartAuthHomeRevealForPendingRoute() {
+        guard user != nil,
+              !requiresOnboarding,
+              authHomeRevealPhase == .idle || authHomeRevealPhase == .revealing else {
+            return
+        }
+
+        authHomeRevealRestartTask?.cancel()
+        authHomeRevealAnimationID = nil
+        authHomeRevealPhase = .covered
+
+        let restartID = UUID()
+        authHomeRevealRestartID = restartID
+        authHomeRevealRestartTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+
+            do {
+                try await Task.sleep(for: .milliseconds(80))
+            } catch {
+                return
+            }
+            guard self.authHomeRevealRestartID == restartID,
+                  self.user != nil else { return }
+
+            await self.prepareLatestPendingShellRouteForReveal()
+
+            do {
+                try await Task.sleep(for: .milliseconds(260))
+            } catch {
+                return
+            }
+            guard self.authHomeRevealRestartID == restartID,
+                  self.user != nil else { return }
+
+            // A second route may arrive while the new destination is mounting.
+            // Resolve the latest route once more before the single visible fade.
+            await self.prepareLatestPendingShellRouteForReveal()
+            let didReveal = await self.animateAuthHomeRevealToIdle()
+            guard self.authHomeRevealRestartID == restartID else { return }
+
+            self.authHomeRevealRestartTask = nil
+            self.authHomeRevealRestartID = nil
+            if didReveal {
+                await self.consumePendingRoutesIfPossible()
+            }
         }
     }
 
     @discardableResult
     func consumePendingJoinIfPossible() async -> Bool {
-        guard user != nil, let code = pendingJoinCode else {
+        guard user != nil,
+              !isAuthTransitionActive,
+              let code = pendingJoinCode else {
             return false
         }
 
@@ -2741,13 +3236,40 @@ final class AppState: NSObject {
     }
 
     func consumePendingRoutesIfPossible() async {
+        guard user != nil,
+              !isAuthTransitionActive,
+              !isConsumingPendingRoutes else { return }
+        isConsumingPendingRoutes = true
+        defer { isConsumingPendingRoutes = false }
+
+        authPresentationRequestID = 0
+        if case .activeGame? = pendingNotificationRoute,
+           activeRoom == nil {
+            if deferredActiveGameRetryGeneration
+                != pendingNotificationRouteGeneration {
+                // Own the async lookup from an unstructured, generation-guarded
+                // task. RootView's transition-keyed task is cancelled as soon as
+                // the curtain is raised and therefore must not own this work.
+                restartAuthHomeRevealForPendingRoute()
+                return
+            }
+        } else if let route = pendingNotificationRoute {
+            pendingNotificationRoute = nil
+            handleNotificationRoute(route)
+        }
         _ = await consumePendingJoinIfPossible()
         await consumePendingMatchRouteIfPossible()
+    }
+
+    private func requestAuthenticationPresentation() {
+        authPhase = .email
+        authPresentationRequestID &+= 1
     }
 
     private func consumePendingMatchRouteIfPossible() async {
         guard user != nil,
               !isRestoring,
+              !isAuthTransitionActive,
               !isOpeningPendingMatch,
               pendingMatchRoomID != nil else {
             return
@@ -2776,31 +3298,89 @@ final class AppState: NSObject {
         }
     }
 
-    private func restoreActiveRoomIfPossible() async {
-        guard let user else { return }
+    private func startPostAuthActiveRoomRestoreIfNeeded() {
+#if DEBUG
+        guard !shouldUsePreviewData else { return }
+#endif
+        guard let userID = user?.id,
+              client.hasSessionToken else { return }
+
+        postAuthActiveRoomRestoreTask?.cancel()
+        postAuthActiveRoomRestoreUserID = userID
+        postAuthActiveRoomRestoreTask = Task { @MainActor [weak self] in
+            guard let self,
+                  self.user?.id == userID else { return }
+            _ = await self.restoreActiveRoomIfPossible()
+        }
+    }
+
+    private func waitForPostAuthActiveRoomRestoreIfNeeded() async {
+        guard let task = postAuthActiveRoomRestoreTask,
+              let userID = postAuthActiveRoomRestoreUserID,
+              user?.id == userID else { return }
+
+        await task.value
+        guard postAuthActiveRoomRestoreUserID == userID else { return }
+        postAuthActiveRoomRestoreTask = nil
+        postAuthActiveRoomRestoreUserID = nil
+    }
+
+    @discardableResult
+    private func restoreActiveRoomIfPossible(
+        selectGame: Bool = true
+    ) async -> ActiveRoomRestoreOutcome {
+        guard let user else { return .retryLater }
+        let expectedUserID = user.id
         let storedRoomID = UserDefaults.standard
             .string(forKey: Self.activeRoomIDStorageKey)?
             .nilIfBlank
 
         var room: GameRoom?
         if let storedRoomID {
-            room = try? await client.refreshRoom(id: storedRoomID)
+            do {
+                room = try await client.refreshRoom(id: storedRoomID)
+            } catch is CancellationError {
+                return .retryLater
+            } catch {
+                // The bounded active-room lookup below remains the recovery
+                // path when a stale preferred room can no longer be fetched.
+                room = nil
+            }
+            guard !Task.isCancelled,
+                  self.user?.id == expectedUserID else { return .retryLater }
         }
-        if room == nil || room?.normalizedStatus == "finished" {
+        let activeStatuses: Set<String> = [
+            "waiting",
+            "ready_voting",
+            "roulette",
+            "playing"
+        ]
+        let preferredRoomIsUsable = room.map {
+            activeStatuses.contains($0.normalizedStatus)
+                && !isDismissedRoom($0.id)
+                && $0.containsPlayer(email: user.email)
+        } ?? false
+        if !preferredRoomIsUsable {
             // The backend keeps this lookup bounded to the preferred id, host
             // query, and the authenticated participant index. Never enumerate
             // rooms from the client when moving an account between Web and iOS.
-            room = try? await client.activeRoom(preferredRoomID: storedRoomID)
+            do {
+                room = try await client.activeRoom(preferredRoomID: storedRoomID)
+            } catch {
+                return .retryLater
+            }
+            guard !Task.isCancelled,
+                  self.user?.id == expectedUserID else { return .retryLater }
         }
 
         guard var room,
               !isDismissedRoom(room.id),
-              ["waiting", "ready_voting", "roulette", "playing"].contains(room.normalizedStatus),
+              activeStatuses.contains(room.normalizedStatus),
               room.containsPlayer(email: user.email) else {
             if storedRoomID != nil {
                 clearStoredActiveRoom()
             }
-            return
+            return .noActiveRoom
         }
 
         if room.normalizedStatus == "waiting" {
@@ -2809,12 +3389,17 @@ final class AppState: NSObject {
             } catch {
                 // Waiting-room mutations must not be enabled from a stale
                 // player record that predates this client's capability token.
-                return
+                return .retryLater
             }
+            guard !Task.isCancelled,
+                  self.user?.id == expectedUserID else { return .retryLater }
         }
 
         activeRoom = room
-        selectedTab = .game
+        if selectGame {
+            selectedTab = .game
+        }
+        return .restored
     }
 
     private func synchronizeLiveActivitiesForAccountChange(previousUserID: String?) {
@@ -3122,6 +3707,17 @@ final class AppState: NSObject {
         }
 
         isUIPreviewMode = true
+        let directPreviewValue = previewArgumentValue(
+            prefix: "--spyclash-preview-direct=",
+            in: arguments
+        )
+        let shouldPreviewOnboarding = arguments.contains("--spyclash-preview-onboarding")
+            || directPreviewValue.map {
+                ["onboarding", "on-board", "setup"].contains($0)
+            } == true
+        if shouldPreviewOnboarding {
+            OnboardingProgressStore.clear(for: "debug-ui-preview-user")
+        }
         user = SpyUser(
             id: "debug-ui-preview-user",
             email: "operative.preview@spyclash.local",
@@ -3129,6 +3725,14 @@ final class AppState: NSObject {
             displayName: "Red Raven",
             avatar: "🕵️",
             language: nil,
+            onboardingCompleted: shouldPreviewOnboarding ? nil : true,
+            onboardingVersion: shouldPreviewOnboarding
+                ? nil
+                : OnboardingSubmission.currentVersion,
+            onboardingCompletedAt: shouldPreviewOnboarding
+                ? nil
+                : ISO8601DateFormatter().string(from: Date()),
+            acquisitionSource: shouldPreviewOnboarding ? nil : "other",
             role: arguments.contains("--spyclash-preview-admin") ? "admin" : "user",
             isVerified: true,
             rating: 1240,

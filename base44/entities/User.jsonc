@@ -45,6 +45,32 @@
       "enum": ["ru", "en", "es", "uk"],
       "default": "en"
     },
+    "onboarding_completed": {
+      "type": "boolean",
+      "description": "Whether the user explicitly completed the current account onboarding flow. Existing accounts may omit this field."
+    },
+    "onboarding_version": {
+      "type": "integer",
+      "minimum": 1,
+      "description": "Latest onboarding contract version completed by the user. Existing accounts may omit this field."
+    },
+    "onboarding_completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Client completion timestamp persisted together with the onboarding answers."
+    },
+    "acquisition_source": {
+      "type": "string",
+      "description": "Locale-neutral self-reported acquisition channel selected during onboarding.",
+      "enum": [
+        "chatgpt",
+        "app_store_search",
+        "web_search",
+        "social_media",
+        "friends_or_family",
+        "other"
+      ]
+    },
     "ai_generations_today": {
       "type": "integer",
       "minimum": 0,

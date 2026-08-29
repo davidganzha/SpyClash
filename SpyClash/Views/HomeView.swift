@@ -55,7 +55,7 @@ struct HomeView: View {
     var body: some View {
         ZStack {
             SpyBackground()
-            HomeLaserScanLayer(reduceMotion: reduceMotion)
+            SpyLaserScanLayer(reduceMotion: reduceMotion)
 
             VStack(spacing: 0) {
                 homeTopBarReserve
@@ -966,67 +966,6 @@ struct HomeView: View {
         }
     }
 
-}
-
-private struct HomeLaserScanLayer: View {
-    let reduceMotion: Bool
-
-    var body: some View {
-        GeometryReader { proxy in
-            TimelineView(.animation(minimumInterval: 1.0 / 30.0, paused: reduceMotion)) { timeline in
-                let cycleDuration = 15.7
-                let movementDuration = 8.4
-                let absoluteTime = reduceMotion
-                    ? 0
-                    : timeline.date.timeIntervalSinceReferenceDate
-                let cycleIndex = Int(floor(absoluteTime / cycleDuration))
-                let routeSeed = cycleIndex &* 1_103_515_245 &+ 12_345
-                let cycleTime = reduceMotion
-                    ? movementDuration * 0.5
-                    : absoluteTime.truncatingRemainder(dividingBy: cycleDuration)
-                let isMoving = reduceMotion || cycleTime < movementDuration
-                let progress = min(1, cycleTime / movementDuration)
-                let edgeFade = min(1, min(progress / 0.08, (1 - progress) / 0.08))
-                let laserOpacity = isMoving ? (reduceMotion ? 0.425 : 0.85 * edgeFade) : 0
-                let horizontalProgress = routeSeed & 1 == 0 ? progress : 1 - progress
-                let verticalProgress = routeSeed & 4 == 0 ? progress : 1 - progress
-                let horizontalY = proxy.size.height * CGFloat(horizontalProgress)
-                let verticalX = proxy.size.width * CGFloat(verticalProgress)
-
-                ZStack(alignment: .topLeading) {
-                    laserLine(horizontal: true)
-                        .frame(width: proxy.size.width, height: 18)
-                        .offset(y: horizontalY - 9)
-                        .opacity(laserOpacity)
-
-                    laserLine(horizontal: false)
-                        .frame(width: 18, height: proxy.size.height)
-                        .offset(x: verticalX - 9)
-                        .opacity(laserOpacity)
-                }
-            }
-        }
-        .ignoresSafeArea()
-        .allowsHitTesting(false)
-        .accessibilityHidden(true)
-    }
-
-    private func laserLine(horizontal: Bool) -> some View {
-        Rectangle()
-            .fill(
-                LinearGradient(
-                    colors: [.clear, SpyTheme.red.opacity(0.42), SpyTheme.red, SpyTheme.red.opacity(0.42), .clear],
-                    startPoint: horizontal ? .leading : .top,
-                    endPoint: horizontal ? .trailing : .bottom
-                )
-            )
-            .frame(
-                maxWidth: horizontal ? .infinity : 1,
-                maxHeight: horizontal ? 1 : .infinity
-            )
-            .shadow(color: SpyTheme.red.opacity(0.48), radius: 3)
-            .shadow(color: SpyTheme.red.opacity(0.20), radius: 7)
-    }
 }
 
 private struct HomeHeroTitle: View {

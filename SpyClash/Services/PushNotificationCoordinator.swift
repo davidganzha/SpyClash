@@ -190,8 +190,31 @@ final class PushNotificationCoordinator {
 
         registrationTask?.cancel()
         registrationTask = Task { [weak self] in
-            await self?.requestAuthorizationAndRegister()
+            // Account transitions must never trigger the system permission
+            // prompt. Onboarding owns the explicit request; this path only
+            // refreshes and registers whatever status already exists.
+            await self?.refreshRegistration()
         }
+    }
+
+    func notificationAuthorizationStatus() async -> UNAuthorizationStatus {
+        await UNUserNotificationCenter.current()
+            .notificationSettings()
+            .authorizationStatus
+    }
+
+    @discardableResult
+    func requestNotificationAuthorization() async throws -> UNAuthorizationStatus {
+        let center = UNUserNotificationCenter.current()
+        var settings = await center.notificationSettings()
+        if settings.authorizationStatus == .notDetermined {
+            _ = try await center.requestAuthorization(options: [.alert, .badge])
+            settings = await center.notificationSettings()
+        }
+
+        UIApplication.shared.registerForRemoteNotifications()
+        await registerDeviceIfPossible(settings: settings)
+        return settings.authorizationStatus
     }
 
     func updatePreferredLocale(_ locale: String) {
@@ -397,18 +420,6 @@ final class PushNotificationCoordinator {
             }
         }
         return ""
-    }
-
-    private func requestAuthorizationAndRegister() async {
-        let center = UNUserNotificationCenter.current()
-        var settings = await center.notificationSettings()
-        if settings.authorizationStatus == .notDetermined {
-            _ = try? await center.requestAuthorization(options: [.alert, .badge])
-            settings = await center.notificationSettings()
-        }
-
-        UIApplication.shared.registerForRemoteNotifications()
-        await registerDeviceIfPossible(settings: settings)
     }
 
     private func isCurrentAccountGeneration(_ generation: UInt64) -> Bool {

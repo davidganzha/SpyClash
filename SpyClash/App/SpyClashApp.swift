@@ -34,7 +34,7 @@ private struct RootView: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
-        Group {
+        ZStack {
             if appState.isRestoring {
                 BootView()
             } else {
@@ -47,22 +47,35 @@ private struct RootView: View {
             \.spyEntranceMotionEnabled,
             appState.authHomeRevealPhase != .covered
         )
+        .accessibilityHidden(appState.authHomeRevealPhase != .idle)
         .overlay {
-            Color.black
+            if appState.authHomeRevealPhase != .idle {
+                ZStack {
+                    Color.black
+
+                    if let message = appState.onboardingLaunchMessage {
+                        OnboardingLaunchMessageView(message: message)
+                    }
+                }
                 .opacity(appState.authHomeRevealPhase == .covered ? 1 : 0)
                 .ignoresSafeArea()
                 .contentShape(Rectangle())
-                .allowsHitTesting(appState.authHomeRevealPhase != .idle)
-                .accessibilityHidden(true)
+                .allowsHitTesting(true)
+                .accessibilityElement(children: .ignore)
+                .accessibilityLabel(appState.onboardingLaunchMessage ?? "SpyClash")
+                .accessibilityAddTraits(.isModal)
                 .animation(
                     appState.authHomeRevealPhase == .revealing
                         ? .easeInOut(duration: 0.82)
                         : nil,
                     value: appState.authHomeRevealPhase
                 )
+            }
         }
         .overlay {
-            if let invitation = appState.radarNearby.incomingInvitation {
+            if appState.authHomeRevealPhase == .idle,
+               !appState.requiresOnboarding,
+               let invitation = appState.radarNearby.incomingInvitation {
                 RadarIncomingInvitationOverlay(invitation: invitation)
             }
         }
@@ -108,12 +121,16 @@ private struct RootView: View {
             directPreview.makeView()
         } else if appState.user == nil || appState.hasActiveAuthCinematic {
             WelcomeView()
+        } else if appState.requiresOnboarding {
+            OnboardingView()
         } else {
             AppShellView()
         }
 #else
         if appState.user == nil || appState.hasActiveAuthCinematic {
             WelcomeView()
+        } else if appState.requiresOnboarding {
+            OnboardingView()
         } else {
             AppShellView()
         }
@@ -159,6 +176,80 @@ private struct RootView: View {
     }
 }
 
+private struct OnboardingLaunchMessageView: View {
+    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @State private var phase = Phase.hidden
+
+    let message: String
+
+    var body: some View {
+        Text(message)
+            .font(SpyTheme.brandFont(size: 36))
+            .tracking(0.16)
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.center)
+            .padding(.horizontal, 28)
+            .opacity(phase == .visible ? 1 : 0)
+            .blur(radius: reduceMotion ? 0 : phase.blurRadius)
+            .scaleEffect(reduceMotion ? 1 : phase.scale)
+            .task(id: message) {
+                phase = .hidden
+                await Task.yield()
+
+                if reduceMotion {
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        phase = .visible
+                    }
+                    do {
+                        try await Task.sleep(for: .milliseconds(560))
+                    } catch {
+                        return
+                    }
+                    withAnimation(.easeInOut(duration: 0.22)) {
+                        phase = .fadingOut
+                    }
+                    return
+                }
+
+                withAnimation(.easeInOut(duration: 1.35)) {
+                    phase = .visible
+                }
+                do {
+                    // 1.35 s fade-in + 1.00 s stillness.
+                    try await Task.sleep(for: .milliseconds(2_350))
+                } catch {
+                    return
+                }
+                withAnimation(.easeInOut(duration: 1.65)) {
+                    phase = .fadingOut
+                }
+            }
+            .accessibilityLabel(message)
+    }
+
+    private enum Phase: Equatable {
+        case hidden
+        case visible
+        case fadingOut
+
+        var blurRadius: CGFloat {
+            switch self {
+            case .hidden: 16
+            case .visible: 0
+            case .fadingOut: 12
+            }
+        }
+
+        var scale: CGFloat {
+            switch self {
+            case .hidden: 0.96
+            case .visible: 1
+            case .fadingOut: 1.015
+            }
+        }
+    }
+}
+
 private struct BootView: View {
     @Environment(AppState.self) private var appState
 
@@ -184,6 +275,7 @@ private enum DebugPreviewDestination {
     case home
     case welcome
     case auth
+    case onboarding
     case appleAuthTerminal
     case standardAuthTerminal
     case scanner
@@ -212,6 +304,8 @@ private enum DebugPreviewDestination {
             return .welcome
         case "auth", "login":
             return .auth
+        case "onboarding", "on-board", "setup":
+            return .onboarding
         case "apple-auth", "apple-terminal", "auth-terminal":
             return .appleAuthTerminal
         case "standard-auth", "google-auth", "email-auth", "four-part-auth":
@@ -245,6 +339,8 @@ private enum DebugPreviewDestination {
             WelcomeView()
         case .auth:
             AuthView()
+        case .onboarding:
+            OnboardingView()
         case .appleAuthTerminal:
             DebugAppleAuthAssemblyPreview()
         case .standardAuthTerminal:
@@ -273,6 +369,8 @@ private struct DebugAppleAuthAssemblyPreview: View {
         Group {
             if appState.user == nil || appState.appleAuthStage != nil {
                 DebugAuthSheetPresenter(showAuth: $showAuth)
+            } else if appState.requiresOnboarding {
+                OnboardingView()
             } else {
                 AppShellView()
             }
@@ -320,7 +418,7 @@ private struct DebugAppleAuthAssemblyPreview: View {
             appState.authHomeRevealPhase = .idle
 
             // The preview owns the route only for the cinematic itself. Hand
-            // the assembled Home screen back to RootView so later actions,
+            // the assembled destination back to RootView so later actions,
             // especially logout, follow the same lifecycle as production.
             appState.isUIPreviewMode = false
         }
@@ -335,6 +433,8 @@ private struct DebugStandardAuthAssemblyPreview: View {
         Group {
             if appState.user == nil || appState.standardAuthCinematicStage != nil {
                 DebugAuthSheetPresenter(showAuth: $showAuth)
+            } else if appState.requiresOnboarding {
+                OnboardingView()
             } else {
                 AppShellView()
             }

@@ -1474,7 +1474,7 @@ struct GameView: View {
             roomQRSheenProgress = -1
             roomQRIsLifted = false
             if roomAccessPage == 2 {
-                roomRadar.startScanning(requestCameraAccess: true)
+                appState.startRadarScanning(requestCameraAccess: true)
             }
         }
         .onChange(of: room.id) { _, _ in
@@ -1793,7 +1793,7 @@ struct GameView: View {
             roomRadar.stopScanning()
         }
         if nextPage == 2 {
-            roomRadar.startScanning(requestCameraAccess: true)
+            appState.startRadarScanning(requestCameraAccess: true)
         }
     }
 

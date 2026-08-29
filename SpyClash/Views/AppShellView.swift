@@ -509,7 +509,7 @@ struct AppShellView: View {
             var transaction = Transaction()
             transaction.disablesAnimations = true
             withTransaction(transaction) {
-                appState.selectedTab = target
+                appState.openMainTab(target)
                 primarySwipeOffset = 0
                 primarySwipeProgress = 0
                 primarySwipeTarget = nil
@@ -583,7 +583,7 @@ struct AppShellView: View {
 
         HapticManager.shared.fire(.tabSelection)
         withAnimation(reduceMotion ? .easeOut(duration: 0.12) : .easeOut(duration: 0.20)) {
-            appState.selectedTab = target
+            appState.openMainTab(target)
         }
     }
 
@@ -1630,7 +1630,7 @@ private struct CompactCommandMenuPanel: View {
                         selected: appState.selectedTab == .profile,
                         phaseStart: 0.22
                     ) {
-                        closeThen { appState.selectedTab = .profile }
+                        closeThen { appState.openMainTab(.profile) }
                     }
 
                     menuRow(
@@ -1639,7 +1639,7 @@ private struct CompactCommandMenuPanel: View {
                         selected: appState.selectedTab == .packs,
                         phaseStart: 0.32
                     ) {
-                        closeThen { appState.selectedTab = .packs }
+                        closeThen { appState.openMainTab(.packs) }
                     }
 
                     menuRow(

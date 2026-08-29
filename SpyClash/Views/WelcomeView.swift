@@ -44,6 +44,7 @@ struct WelcomeView: View {
         .onAppear {
             isWordmarkVisible = true
             presentAuthForPendingInviteIfNeeded()
+            presentAuthForDeferredRouteIfNeeded()
             presentAuthForRecoveryIfNeeded()
         }
         .onChange(of: appState.pendingJoinCode) { _, _ in
@@ -53,6 +54,9 @@ struct WelcomeView: View {
             if phase.isRecoveryPresentation {
                 showAuth = true
             }
+        }
+        .onChange(of: appState.authPresentationRequestID) { _, _ in
+            presentAuthForDeferredRouteIfNeeded()
         }
     }
 
@@ -245,6 +249,12 @@ struct WelcomeView: View {
 
         showAuth = true
     }
+
+    private func presentAuthForDeferredRouteIfNeeded() {
+        guard appState.user == nil,
+              appState.authPresentationRequestID > 0 else { return }
+        showAuth = true
+    }
 }
 
 enum LegalSheetKind: String, Identifiable, Hashable {
@@ -311,6 +321,40 @@ enum LegalSheetKind: String, Identifiable, Hashable {
             text: "\(dataSharing.text) \(equivalentProtection)",
             usesMonospacedBody: dataSharing.usesMonospacedBody
         )
+
+        let onboardingCollection = localized(
+            language,
+            en: "During onboarding, we store your selected language, the self-reported way you learned about SpyClash, the onboarding version you completed, and the completion time. Permission choices remain under iOS control. The onboarding flow does not upload camera frames or local-network content.",
+            es: "Durante la incorporación, almacenamos el idioma seleccionado, la forma que indicaste de conocer SpyClash, la versión de incorporación completada y la hora de finalización. Las decisiones sobre permisos permanecen bajo el control de iOS. El proceso de incorporación no carga fotogramas de la cámara ni contenido de la red local.",
+            ru: "Во время онбординга мы сохраняем выбранный язык, указанный вами способ знакомства со SpyClash, пройденную версию онбординга и время завершения. Выбор разрешений остаётся под контролем iOS. Онбординг не загружает кадры камеры или содержимое локальной сети.",
+            uk: "Під час онбордингу ми зберігаємо вибрану мову, вказаний вами спосіб знайомства зі SpyClash, пройдену версію онбордингу та час завершення. Вибір дозволів залишається під контролем iOS. Онбординг не завантажує кадри камери або вміст локальної мережі."
+        )
+        let onboardingUse = localized(
+            language,
+            en: "We use the selected language to localize the app and the self-reported source to understand how people find SpyClash and improve onboarding and future tutorials. We do not use this answer for advertising or cross-company tracking.",
+            es: "Usamos el idioma seleccionado para localizar la aplicación y la fuente indicada para entender cómo las personas encuentran SpyClash y mejorar la incorporación y los futuros tutoriales. No usamos esta respuesta para publicidad ni seguimiento entre empresas.",
+            ru: "Выбранный язык используется для локализации приложения, а указанный источник — чтобы понимать, как люди находят SpyClash, и улучшать онбординг и будущие обучающие сценарии. Мы не используем этот ответ для рекламы или межсервисного отслеживания.",
+            uk: "Вибрана мова використовується для локалізації застосунку, а вказане джерело — щоб розуміти, як люди знаходять SpyClash, і покращувати онбординг та майбутні навчальні сценарії. Ми не використовуємо цю відповідь для реклами або міжсервісного відстеження."
+        )
+        let onboardingMetrics = localized(
+            language,
+            en: "The native app's limited account-linked product fields also include the onboarding completion and self-reported acquisition fields described above.",
+            es: "Los campos limitados de producto vinculados a la cuenta de la aplicación nativa también incluyen los campos de finalización de la incorporación y de adquisición declarada descritos anteriormente.",
+            ru: "К ограниченным продуктовым полям нативного приложения, связанным с аккаунтом, также относятся описанные выше отметка завершения онбординга и указанный пользователем источник знакомства.",
+            uk: "До обмежених продуктових полів нативного застосунку, пов’язаних з обліковим записом, також належать описані вище позначка завершення онбордингу та вказане користувачем джерело знайомства."
+        )
+        for (index, addition) in [
+            (0, onboardingCollection),
+            (1, onboardingUse),
+            (4, onboardingMetrics)
+        ] where privacySections.indices.contains(index) {
+            let section = privacySections[index]
+            privacySections[index] = LegalSection(
+                title: section.title,
+                text: "\(section.text) \(addition)",
+                usesMonospacedBody: section.usesMonospacedBody
+            )
+        }
         return privacySections
     }
 

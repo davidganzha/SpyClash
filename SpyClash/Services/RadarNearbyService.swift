@@ -532,6 +532,7 @@ final class RadarNearbyService: NSObject {
     private var identity: RadarLocalIdentity?
     private var localAvailability: RadarPlayerAvailability = .available
     private var isApplicationActive = false
+    private var allowsTransport = false
     private var wantsScanning = false
     private var wantsCameraAssistance = false
     private var cameraAuthorizationRequestID: UUID?
@@ -581,7 +582,11 @@ final class RadarNearbyService: NSObject {
         )
     }
 
-    func configure(user: SpyUser?, applyRemoteInvitePolicy: Bool = true) {
+    func configure(
+        user: SpyUser?,
+        applyRemoteInvitePolicy: Bool = true,
+        allowsTransport: Bool = true
+    ) {
         let nextIdentity = user.map {
             RadarLocalIdentity(
                 userID: $0.id,
@@ -618,12 +623,10 @@ final class RadarNearbyService: NSObject {
         let identityChanged = nextIdentity != identity
         let accountChanged = nextIdentity?.userID != identity?.userID
         let policyChanged = nextPolicy != invitePolicy
-        guard identityChanged || policyChanged else { return }
+        let transportAccessChanged = allowsTransport != self.allowsTransport
+        guard identityChanged || policyChanged || transportAccessChanged else { return }
 
-        if !identityChanged {
-            setInvitePolicy(nextPolicy)
-            return
-        }
+        self.allowsTransport = allowsTransport
 
         if accountChanged {
             // Account changes invalidate every invitation tied to the previous
@@ -637,20 +640,30 @@ final class RadarNearbyService: NSObject {
             receivedRoomInvites.removeAll()
             receivedRoomInviteOrder.removeAll()
         }
-        identity = nextIdentity
-        advanceLocalPresenceRevision()
+        if identityChanged {
+            identity = nextIdentity
+            advanceLocalPresenceRevision()
+        }
         if policyChanged {
             // The transport refresh below publishes identity and policy
-            // together. Suppress the normal policy-only refresh until the new
-            // local identity has been installed.
+            // together. Suppress the property observer's transport write so
+            // onboarding can keep Bonjour completely dormant until consent.
             isApplyingIdentityConfiguration = true
             invitePolicy = nextPolicy
             isApplyingIdentityConfiguration = false
-            if !accountChanged {
-                rejectIncomingInvitationForBlockedPolicyIfNeeded()
+            if !identityChanged {
+                advanceLocalPresenceRevision()
             }
+            rejectIncomingInvitationForBlockedPolicyIfNeeded()
         }
-        if accountChanged || multipeerSession == nil || localPeerID == nil {
+
+        guard allowsTransport else {
+            stopScanning()
+            stopTransport(clearPeers: true)
+            return
+        }
+
+        if transportAccessChanged || identityChanged || multipeerSession == nil || localPeerID == nil {
             rebuildTransportIfNeeded()
         } else if policyChanged {
             publishLocalPresence()
@@ -690,16 +703,22 @@ final class RadarNearbyService: NSObject {
             supportsPreciseDistance = NISession.deviceCapabilities.supportsPreciseDistanceMeasurement
             supportsDirectionMeasurement = NISession.deviceCapabilities.supportsDirectionMeasurement
             supportsCameraAssistance = NISession.deviceCapabilities.supportsCameraAssistance
-            if wantsCameraAssistance {
+            if allowsTransport, wantsCameraAssistance {
                 requestCameraAuthorizationForExplicitRadarUse()
             }
-            rebuildTransportIfNeeded()
+            if allowsTransport {
+                rebuildTransportIfNeeded()
+            }
         } else {
             stopTransport(clearPeers: true)
         }
     }
 
     func startScanning(requestCameraAccess: Bool = false) {
+        guard allowsTransport else {
+            scanState = .idle
+            return
+        }
         wantsScanning = true
         wantsCameraAssistance = requestCameraAccess
         if requestCameraAccess {
@@ -1139,7 +1158,7 @@ final class RadarNearbyService: NSObject {
 
     private func rebuildTransportIfNeeded() {
         stopTransport(clearPeers: true)
-        guard isApplicationActive, let identity else { return }
+        guard allowsTransport, isApplicationActive, let identity else { return }
 
         let peerID = Self.persistentPeerID()
         debugLog("transport rebuilt localPeer=\(peerID.displayName)")
@@ -1165,7 +1184,8 @@ final class RadarNearbyService: NSObject {
     }
 
     private func restartAdvertisingIfPossible() {
-        guard isApplicationActive,
+        guard allowsTransport,
+              isApplicationActive,
               let identity,
               let localPeerID else {
             advertiser?.delegate = nil
@@ -1180,6 +1200,12 @@ final class RadarNearbyService: NSObject {
         identity: RadarLocalIdentity,
         peerID: MCPeerID
     ) {
+        guard allowsTransport else {
+            advertiser?.delegate = nil
+            advertiser?.stopAdvertisingPeer()
+            advertiser = nil
+            return
+        }
         advertiser?.delegate = nil
         advertiser?.stopAdvertisingPeer()
 
@@ -1207,6 +1233,10 @@ final class RadarNearbyService: NSObject {
     }
 
     private func startBrowserIfPossible() {
+        guard allowsTransport else {
+            scanState = .idle
+            return
+        }
         guard browser == nil, let localPeerID else {
             if browser != nil {
                 scanState = .scanning
@@ -1261,6 +1291,7 @@ final class RadarNearbyService: NSObject {
     }
 
     private func recordFoundPeer(_ peerID: MCPeerID, discoveryInfo: [String: String]?) {
+        guard allowsTransport else { return }
         guard discoveryInfo?["v"] == Self.protocolVersion else { return }
 
         let id = peerID.displayName
@@ -1820,6 +1851,7 @@ final class RadarNearbyService: NSObject {
     }
 
     private func handleReceivedData(_ data: Data, from peerID: MCPeerID) {
+        guard allowsTransport else { return }
         guard let message = try? JSONDecoder().decode(RadarWireMessage.self, from: data),
               message.version == 1 else {
             return
@@ -2887,6 +2919,14 @@ private struct SendableRadarPeerID: @unchecked Sendable {
     let value: MCPeerID
 }
 
+private struct SendableNearbyBrowser: @unchecked Sendable {
+    let value: MCNearbyServiceBrowser
+}
+
+private struct SendableNearbyAdvertiser: @unchecked Sendable {
+    let value: MCNearbyServiceAdvertiser
+}
+
 private struct SendableMultipeerSession: @unchecked Sendable {
     let value: MCSession
 }
@@ -2913,23 +2953,35 @@ extension RadarNearbyService: MCNearbyServiceBrowserDelegate {
         foundPeer peerID: MCPeerID,
         withDiscoveryInfo info: [String: String]?
     ) {
+        let activeBrowser = SendableNearbyBrowser(value: browser)
         let peer = SendableRadarPeerID(value: peerID)
         Task { @MainActor [weak self] in
-            self?.recordFoundPeer(peer.value, discoveryInfo: info)
+            guard let self,
+                  self.allowsTransport,
+                  self.browser === activeBrowser.value else { return }
+            self.recordFoundPeer(peer.value, discoveryInfo: info)
         }
     }
 
     nonisolated func browser(_ browser: MCNearbyServiceBrowser, lostPeer peerID: MCPeerID) {
+        let activeBrowser = SendableNearbyBrowser(value: browser)
         let peer = SendableRadarPeerID(value: peerID)
         Task { @MainActor [weak self] in
-            self?.removeLostPeer(peer.value)
+            guard let self,
+                  self.allowsTransport,
+                  self.browser === activeBrowser.value else { return }
+            self.removeLostPeer(peer.value)
         }
     }
 
     nonisolated func browser(_ browser: MCNearbyServiceBrowser, didNotStartBrowsingForPeers error: Error) {
+        let activeBrowser = SendableNearbyBrowser(value: browser)
         let message = error.localizedDescription
         Task { @MainActor [weak self] in
-            self?.scanState = .unavailable(message)
+            guard let self,
+                  self.allowsTransport,
+                  self.browser === activeBrowser.value else { return }
+            self.scanState = .unavailable(message)
         }
     }
 }
@@ -2941,10 +2993,16 @@ extension RadarNearbyService: MCNearbyServiceAdvertiserDelegate {
         withContext context: Data?,
         invitationHandler: @escaping (Bool, MCSession?) -> Void
     ) {
+        let activeAdvertiser = SendableNearbyAdvertiser(value: advertiser)
         let peer = SendableRadarPeerID(value: peerID)
         let handler = SendableInvitationHandler(value: invitationHandler)
         Task { @MainActor [weak self] in
             guard let self else {
+                handler.value(false, nil)
+                return
+            }
+            guard self.allowsTransport,
+                  self.advertiser === activeAdvertiser.value else {
                 handler.value(false, nil)
                 return
             }
@@ -2957,9 +3015,13 @@ extension RadarNearbyService: MCNearbyServiceAdvertiserDelegate {
     }
 
     nonisolated func advertiser(_ advertiser: MCNearbyServiceAdvertiser, didNotStartAdvertisingPeer error: Error) {
+        let activeAdvertiser = SendableNearbyAdvertiser(value: advertiser)
         let message = error.localizedDescription
         Task { @MainActor [weak self] in
-            guard let self, self.wantsScanning else { return }
+            guard let self,
+                  self.allowsTransport,
+                  self.advertiser === activeAdvertiser.value,
+                  self.wantsScanning else { return }
             self.scanState = .unavailable(message)
         }
     }
@@ -2970,7 +3032,10 @@ extension RadarNearbyService: MCSessionDelegate {
         let activeSession = SendableMultipeerSession(value: session)
         let peer = SendableRadarPeerID(value: peerID)
         Task { @MainActor [weak self] in
-            self?.handleSessionState(
+            guard let self,
+                  self.allowsTransport,
+                  self.multipeerSession === activeSession.value else { return }
+            self.handleSessionState(
                 state,
                 peerID: peer.value,
                 session: activeSession.value
@@ -2983,9 +3048,13 @@ extension RadarNearbyService: MCSessionDelegate {
         didReceive data: Data,
         fromPeer peerID: MCPeerID
     ) {
+        let activeSession = SendableMultipeerSession(value: session)
         let peer = SendableRadarPeerID(value: peerID)
         Task { @MainActor [weak self] in
-            self?.handleReceivedData(data, from: peer.value)
+            guard let self,
+                  self.allowsTransport,
+                  self.multipeerSession === activeSession.value else { return }
+            self.handleReceivedData(data, from: peer.value)
         }
     }
 

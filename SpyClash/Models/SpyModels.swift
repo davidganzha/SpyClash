@@ -2789,6 +2789,10 @@ struct SpyUser: Codable, Identifiable, Equatable {
     let displayName: String?
     let avatar: String?
     let language: String?
+    var onboardingCompleted: Bool? = nil
+    var onboardingVersion: Int? = nil
+    var onboardingCompletedAt: String? = nil
+    var acquisitionSource: String? = nil
     let role: String?
     let isVerified: Bool?
     let rating: Int?
@@ -2817,6 +2821,10 @@ struct SpyUser: Codable, Identifiable, Equatable {
         case displayName = "display_name"
         case avatar
         case language
+        case onboardingCompleted = "onboarding_completed"
+        case onboardingVersion = "onboarding_version"
+        case onboardingCompletedAt = "onboarding_completed_at"
+        case acquisitionSource = "acquisition_source"
         case role
         case isVerified = "is_verified"
         case rating
