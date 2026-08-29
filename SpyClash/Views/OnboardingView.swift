@@ -5,13 +5,13 @@ struct OnboardingView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.openURL) private var openURL
     @Environment(\.scenePhase) private var scenePhase
     @ScaledMetric(relativeTo: .largeTitle) private var stepTitleSize: CGFloat = 34
     @ScaledMetric(relativeTo: .title2) private var greetingSize: CGFloat = 24
-    @Namespace private var languageSelectionNamespace
 
     @State private var permissions = OnboardingPermissionCoordinator()
+    @State private var permissionFlow = OnboardingPermissionFlow()
+    @State private var permissionRequestTask: Task<Void, Never>?
     @State private var step = Step.language
     @State private var selectedLanguage: AppLanguage?
     @State private var selectedSource: OnboardingAcquisitionSource?
@@ -19,8 +19,6 @@ struct OnboardingView: View {
     @State private var introMarkIsVisible = false
     @State private var revealedLanguageCount = 0
     @State private var isFinishing = false
-    @State private var activePermissionRequest: OnboardingPermissionKind?
-    @State private var permissionOpenedInSettings: OnboardingPermissionKind?
 
     private let languageOrder: [AppLanguage] = [.uk, .en, .es, .ru]
     private let sourceOrder: [OnboardingAcquisitionSource] = [
@@ -31,12 +29,6 @@ struct OnboardingView: View {
         .friendsOrFamily,
         .other
     ]
-    private let permissionOrder: [OnboardingPermissionKind] = [
-        .notifications,
-        .camera,
-        .nearby
-    ]
-
     var body: some View {
         ZStack {
             SpyTheme.black
@@ -89,22 +81,12 @@ struct OnboardingView: View {
             bottomAction
         }
         .preferredColorScheme(.dark)
-        .task {
-            await permissions.refresh()
-        }
         .onChange(of: scenePhase) { _, phase in
-            guard phase == .active else { return }
-            let settingsPermission = permissionOpenedInSettings
-            permissionOpenedInSettings = nil
-            if settingsPermission == .nearby {
-                activePermissionRequest = .nearby
-            }
-            Task {
-                await permissions.refresh()
-                guard settingsPermission == .nearby else { return }
-                await permissions.request(.nearby)
-                activePermissionRequest = nil
-            }
+            handleScenePhase(phase)
+        }
+        .onDisappear {
+            permissionRequestTask?.cancel()
+            permissionRequestTask = nil
         }
     }
 
@@ -116,14 +98,18 @@ struct OnboardingView: View {
         VStack(spacing: 34) {
             introMark
 
-            LazyVGrid(
-                columns: optionColumns,
-                spacing: 12
-            ) {
+            VStack(spacing: 0) {
                 ForEach(languageOrder.indices, id: \.self) { index in
                     languageButton(languageOrder[index], index: index)
+
+                    if index < languageOrder.count - 1 {
+                        Rectangle()
+                            .fill(Color.white.opacity(0.08))
+                            .frame(height: 1)
+                    }
                 }
             }
+            .frame(maxWidth: 310)
 
         }
         .task {
@@ -174,53 +160,29 @@ struct OnboardingView: View {
         return Button {
             selectLanguage(language)
         } label: {
-            ZStack {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .fill(
-                        LinearGradient(
-                            colors: [
-                                Color.white.opacity(0.085),
-                                Color.white.opacity(0.035)
-                            ],
-                            startPoint: .topLeading,
-                            endPoint: .bottomTrailing
-                        )
-                    )
+            HStack(spacing: 16) {
+                Text(language.title)
+                    .font(.system(.title3, design: .rounded, weight: .semibold))
+                    .foregroundStyle(Color.white.opacity(isSelected ? 1 : 0.68))
+                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
+                    .multilineTextAlignment(.leading)
+
+                Spacer(minLength: 12)
 
                 if isSelected {
-                    RoundedRectangle(cornerRadius: 18, style: .continuous)
-                        .fill(
-                            LinearGradient(
-                                colors: [SpyTheme.red, SpyTheme.red.opacity(0.78)],
-                                startPoint: .topLeading,
-                                endPoint: .bottomTrailing
-                            )
-                        )
-                        .matchedGeometryEffect(
-                            id: "onboarding-language-selection",
-                            in: languageSelectionNamespace
-                        )
+                    Image(systemName: "checkmark")
+                        .font(.system(size: 15, weight: .black))
+                        .foregroundStyle(SpyTheme.red)
+                        .shadow(color: SpyTheme.red.opacity(0.55), radius: 8)
+                        .transition(.scale(scale: 0.72).combined(with: .opacity))
                 }
-
-                Text(language.title)
-                    .font(.system(.body, design: .rounded, weight: .semibold))
-                    .foregroundStyle(.white)
-                    .lineLimit(dynamicTypeSize.isAccessibilitySize ? 2 : 1)
-                    .padding(.horizontal, 12)
             }
-            .frame(maxWidth: .infinity, minHeight: 62)
-            .overlay {
-                RoundedRectangle(cornerRadius: 18, style: .continuous)
-                    .stroke(
-                        isSelected ? Color.white.opacity(0.18) : Color.white.opacity(0.075),
-                        lineWidth: 1
-                    )
-            }
-            .shadow(color: isSelected ? SpyTheme.red.opacity(0.34) : .clear, radius: 18, y: 7)
-            .scaleEffect(isSelected ? 1.012 : 1)
-            .contentShape(RoundedRectangle(cornerRadius: 18, style: .continuous))
+            .padding(.horizontal, 4)
+            .padding(.vertical, dynamicTypeSize.isAccessibilitySize ? 17 : 14)
+            .frame(maxWidth: .infinity, minHeight: 56)
+            .contentShape(Rectangle())
         }
-        .buttonStyle(SpyWebPressStyle(pressedScale: 0.965))
+        .buttonStyle(SpyWebPressStyle(pressedScale: 0.985))
         .disabled(!isRevealed)
         .opacity(isRevealed ? 1 : 0)
         .offset(y: reduceMotion || isRevealed ? 0 : 18)
@@ -277,88 +239,93 @@ struct OnboardingView: View {
     }
 
     private var permissionsStep: some View {
-        VStack(spacing: 28) {
-            Text(copy.permissionsTitle)
-                .font(SpyTheme.brandFont(size: stepTitleSize))
-                .tracking(1.1)
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.68)
-
-            VStack(spacing: 12) {
-                ForEach(permissionOrder, id: \.self) { permission in
-                    permissionButton(permission)
-                }
+        Group {
+            if let permission = permissionFlow.currentPermission {
+                permissionPrompt(permission)
+                    .id(permission)
+                    .transition(pageTransition)
+            } else {
+                permissionCompletion
+                    .transition(pageTransition)
             }
-
         }
         .task {
-            await permissions.refresh()
+            await preparePermissionFlow()
         }
     }
 
-    private func permissionButton(_ permission: OnboardingPermissionKind) -> some View {
-        Button {
-            performPermissionAction(permission)
-        } label: {
-            HStack(spacing: 12) {
-                Image(systemName: permissionIcon(permission))
-                    .font(.system(size: 17, weight: .semibold))
-                    .foregroundStyle(permissionAccent(permission))
-                    .frame(width: 28)
+    private func permissionPrompt(_ permission: OnboardingPermissionKind) -> some View {
+        VStack(spacing: 22) {
+            permissionHero(permission)
 
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(copy.permissionTitle(permission))
-                        .font(.system(.body, design: .rounded, weight: .bold))
-                        .foregroundStyle(.white)
+            Text(copy.permissionTitle(permission))
+                .font(SpyTheme.brandFont(size: stepTitleSize))
+                .tracking(1.0)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+                .minimumScaleFactor(0.72)
 
-                    Text(copy.permissionBody(permission))
-                        .font(.system(.footnote, design: .rounded, weight: .medium))
-                        .foregroundStyle(SpyTheme.muted)
-                        .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 2)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
+            Text(copy.permissionBody(permission))
+                .font(.system(.body, design: .rounded, weight: .medium))
+                .foregroundStyle(SpyTheme.muted)
+                .multilineTextAlignment(.center)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
+                .fixedSize(horizontal: false, vertical: true)
 
-                permissionStatusIcon(permission)
-                    .frame(width: 24, height: 24)
+            if let statusText = permissionStatusText(permission) {
+                Text(statusText)
+                    .font(.system(.caption, design: .monospaced, weight: .bold))
+                    .tracking(0.9)
+                    .foregroundStyle(permissionDisplayColor(permission))
+                    .transition(.opacity)
             }
-            .padding(.horizontal, 15)
-            .padding(.vertical, 12)
-            .frame(maxWidth: .infinity, minHeight: 72)
-            .background(
-                permissions.status(for: permission) == .granted
-                    ? SpyTheme.green.opacity(0.075)
-                    : Color.white.opacity(0.05),
-                in: RoundedRectangle(cornerRadius: 16, style: .continuous)
-            )
-            .contentShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
         }
-        .buttonStyle(SpyWebPressStyle())
-        .disabled(!canActivate(permission) || isPermissionRequestInFlight)
-        .accessibilityIdentifier("spyclash.onboarding.permission.\(permissionID(permission))")
-        .accessibilityHint(permissionAccessibilityHint(permission))
+        .frame(maxWidth: 350)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("spyclash.onboarding.permission.screen.\(permissionID(permission))")
     }
 
     @ViewBuilder
-    private func permissionStatusIcon(_ permission: OnboardingPermissionKind) -> some View {
-        switch permissions.status(for: permission) {
+    private func permissionHero(_ permission: OnboardingPermissionKind) -> some View {
+        switch permissionDisplayStatus(permission) {
         case .notDetermined:
-            Image(systemName: "arrow.up.right")
+            Image(systemName: permissionIcon(permission))
+                .font(.system(size: 50, weight: .semibold))
                 .foregroundStyle(SpyTheme.red)
+                .shadow(color: SpyTheme.red.opacity(0.58), radius: 18)
         case .requesting:
             ProgressView()
+                .controlSize(.large)
                 .tint(SpyTheme.red)
         case .granted:
             Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: 52, weight: .semibold))
                 .foregroundStyle(SpyTheme.green)
         case .denied:
             Image(systemName: "xmark.circle.fill")
+                .font(.system(size: 52, weight: .semibold))
                 .foregroundStyle(SpyTheme.red)
         case .unavailable:
-            Image(systemName: canActivate(permission) ? "arrow.clockwise" : "minus.circle.fill")
-                .foregroundStyle(canActivate(permission) ? SpyTheme.red : SpyTheme.dim)
+            Image(systemName: "minus.circle.fill")
+                .font(.system(size: 52, weight: .semibold))
+                .foregroundStyle(SpyTheme.dim)
         }
+    }
+
+    private var permissionCompletion: some View {
+        VStack(spacing: 22) {
+            Image(systemName: "checkmark")
+                .font(.system(size: 54, weight: .black))
+                .foregroundStyle(SpyTheme.red)
+                .shadow(color: SpyTheme.red.opacity(0.58), radius: 18)
+
+            Text(copy.permissionsCompleteTitle)
+                .font(SpyTheme.brandFont(size: stepTitleSize))
+                .tracking(1.0)
+                .foregroundStyle(.white)
+        }
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("spyclash.onboarding.permission.complete")
     }
 
     @ViewBuilder
@@ -372,7 +339,7 @@ struct OnboardingView: View {
                         ProgressView()
                             .tint(.white)
                     } else {
-                        Image(systemName: step == .permissions ? "checkmark" : "arrow.right")
+                        Image(systemName: bottomActionSystemImage)
                             .font(.system(size: 21, weight: .black))
                             .foregroundStyle(.white)
                             .contentTransition(.symbolEffect(.replace))
@@ -383,10 +350,11 @@ struct OnboardingView: View {
                 .shadow(color: SpyTheme.red.opacity(0.38), radius: 18, y: 7)
                 .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
             }
+            .id(bottomActionIdentifier)
             .buttonStyle(SpyWebPressStyle(pressedScale: 0.93))
-            .disabled(isFinishing || isPermissionRequestInFlight)
-            .accessibilityIdentifier(step == .permissions ? "spyclash.onboarding.finish" : "spyclash.onboarding.next")
-            .accessibilityLabel(step == .permissions ? copy.finishAction : copy.nextAction)
+            .disabled(isBottomActionDisabled)
+            .accessibilityIdentifier(bottomActionIdentifier)
+            .accessibilityLabel(bottomActionAccessibilityLabel)
             .padding(.bottom, 14)
             .frame(maxWidth: .infinity)
             .transition(.scale(scale: 0.82).combined(with: .opacity))
@@ -400,7 +368,86 @@ struct OnboardingView: View {
         case .source:
             selectedSource != nil
         case .permissions:
-            selectedSource != nil
+            switch permissionFlow.phase {
+            case .ready:
+                canPerformCurrentPermissionAction
+            case .complete:
+                true
+            case .loading, .requesting, .awaitingSettings, .resolved:
+                false
+            }
+        }
+    }
+
+    private var bottomActionSystemImage: String {
+        guard step == .permissions,
+              let permission = permissionFlow.currentPermission else {
+            return step == .permissions ? "checkmark" : "arrow.right"
+        }
+
+        switch permissions.status(for: permission) {
+        case .denied:
+            return "gearshape.fill"
+        case .unavailable:
+            return permission == .camera ? "gearshape.fill" : "arrow.clockwise"
+        case .notDetermined, .requesting, .granted:
+            return "arrow.right"
+        }
+    }
+
+    private var bottomActionIdentifier: String {
+        guard step == .permissions else {
+            return "spyclash.onboarding.next"
+        }
+        guard let permission = permissionFlow.currentPermission else {
+            return "spyclash.onboarding.finish"
+        }
+        return "spyclash.onboarding.permission.\(permissionID(permission))"
+    }
+
+    private var bottomActionAccessibilityLabel: String {
+        guard step == .permissions else { return copy.nextAction }
+        guard let permission = permissionFlow.currentPermission else {
+            return copy.finishAction
+        }
+
+        switch permissions.status(for: permission) {
+        case .notDetermined:
+            return copy.permissionRequestAction(permission)
+        case .granted:
+            return copy.nextAction
+        case .denied:
+            return copy.openSettingsAction
+        case .unavailable:
+            return permission == .camera
+                ? copy.openSettingsAction
+                : copy.retryAction
+        case .requesting:
+            return copy.permissionRequesting
+        }
+    }
+
+    private var isBottomActionDisabled: Bool {
+        isFinishing
+            || isPermissionFlowBusy
+            || !canPerformCurrentPermissionAction
+    }
+
+    private var canPerformCurrentPermissionAction: Bool {
+        guard step == .permissions,
+              let permission = permissionFlow.currentPermission else {
+            return true
+        }
+        guard case .ready = permissionFlow.phase else { return false }
+
+        switch permissions.status(for: permission) {
+        case .notDetermined, .granted, .denied:
+            return true
+        case .unavailable:
+            return permission == .camera
+                || isPermissionRetryAvailable(permission)
+        case .requesting:
+            return false
         }
     }
 
@@ -488,9 +535,12 @@ struct OnboardingView: View {
             }
 
         case .permissions:
-            guard let selectedSource,
-                  !isFinishing,
-                  !isPermissionRequestInFlight else { return }
+            guard !isFinishing, !isPermissionFlowBusy else { return }
+            guard permissionFlow.isComplete else {
+                performCurrentPermissionAction()
+                return
+            }
+            guard let selectedSource else { return }
             isFinishing = true
             HapticManager.shared.fire(.milestone)
             Task {
@@ -588,76 +638,302 @@ struct OnboardingView: View {
         }
     }
 
-    private var isPermissionRequestInFlight: Bool {
-        activePermissionRequest != nil
-            || permissionOrder.contains {
-                permissions.status(for: $0) == .requesting
-            }
-    }
-
-    private func canActivate(_ permission: OnboardingPermissionKind) -> Bool {
-        switch permissions.status(for: permission) {
-        case .notDetermined:
-            true
-        case .denied:
-            true
-        case .unavailable:
-            permission == .nearby
-                && OnboardingPermissionCoordinator.canEvaluateNearbyPrivacy
-        case .requesting, .granted:
-            false
+    private func preparePermissionFlow() async {
+        guard permissionFlow.phase == .loading,
+              let permission = permissionFlow.currentPermission else { return }
+        await permissions.refresh()
+        guard !Task.isCancelled,
+              permissionFlow.currentPermission == permission else { return }
+        withAnimation(pageAnimation) {
+            _ = permissionFlow.markReady(for: permission)
         }
     }
 
-    private func performPermissionAction(_ permission: OnboardingPermissionKind) {
-        guard activePermissionRequest == nil else { return }
+    private var isPermissionFlowBusy: Bool {
+        guard step == .permissions else { return false }
+        switch permissionFlow.phase {
+        case .loading, .requesting, .awaitingSettings, .resolved:
+            return true
+        case .ready, .complete:
+            return false
+        }
+    }
 
-        switch permissions.status(for: permission) {
+    private func performCurrentPermissionAction() {
+        guard case .ready = permissionFlow.phase,
+              let permission = permissionFlow.currentPermission else { return }
+        let status = permissions.status(for: permission)
+        HapticManager.shared.fire(.buttonPress)
+
+        switch status {
+        case .notDetermined:
+            beginPermissionRequest(permission)
+        case .granted:
+            showExistingPermissionGrant(permission)
         case .denied:
-            guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
+            openPermissionSettings(permission)
+        case .unavailable:
+            if permission == .camera {
+                openPermissionSettings(permission)
                 return
             }
-            permissionOpenedInSettings = permission
-            HapticManager.shared.fire(.buttonPress)
-            openURL(settingsURL)
-        case .notDetermined, .unavailable:
-            guard canActivate(permission) else { return }
-            activePermissionRequest = permission
-            HapticManager.shared.fire(.buttonPress)
-            Task {
-                await permissions.request(permission)
-                activePermissionRequest = nil
-            }
-        case .requesting, .granted:
+            guard isPermissionRetryAvailable(permission) else { return }
+            beginPermissionRequest(permission)
+        case .requesting:
             return
         }
     }
 
-    private func permissionAccent(_ permission: OnboardingPermissionKind) -> Color {
-        switch permissions.status(for: permission) {
+    private func beginPermissionRequest(_ permission: OnboardingPermissionKind) {
+        let requestID = UUID()
+        var didBeginRequest = false
+        withAnimation(pageAnimation) {
+            didBeginRequest = permissionFlow.beginRequest(
+                for: permission,
+                requestID: requestID
+            )
+        }
+        guard didBeginRequest else { return }
+
+        permissionRequestTask?.cancel()
+        permissionRequestTask = Task { @MainActor in
+            let didStartSystemRequest = await permissions.request(permission)
+            guard !Task.isCancelled else { return }
+            guard didStartSystemRequest else {
+                withAnimation(pageAnimation) {
+                    _ = permissionFlow.cancelRequest(
+                        for: permission,
+                        requestID: requestID
+                    )
+                }
+                permissionRequestTask = nil
+                return
+            }
+            await applyPermissionRequestResult(
+                permission,
+                requestID: requestID
+            )
+        }
+    }
+
+    private func showExistingPermissionGrant(
+        _ permission: OnboardingPermissionKind
+    ) {
+        var didResolve = false
+        withAnimation(pageAnimation) {
+            didResolve = permissionFlow.resolveWithoutRequest(
+                .granted,
+                for: permission
+            )
+        }
+        guard didResolve else { return }
+
+        permissionRequestTask?.cancel()
+        permissionRequestTask = Task { @MainActor in
+            await showPermissionResolutionThenAdvance(permission)
+        }
+    }
+
+    private func openPermissionSettings(
+        _ permission: OnboardingPermissionKind
+    ) {
+        let settingsURLString = permission == .notifications
+            ? UIApplication.openNotificationSettingsURLString
+            : UIApplication.openSettingsURLString
+        guard let settingsURL = URL(string: settingsURLString) else {
+            return
+        }
+
+        let tripID = UUID()
+        var didBeginTrip = false
+        withAnimation(pageAnimation) {
+            didBeginTrip = permissionFlow.beginSettingsTrip(
+                for: permission,
+                tripID: tripID
+            )
+        }
+        guard didBeginTrip else { return }
+
+        permissionRequestTask?.cancel()
+        permissionRequestTask = nil
+        UIApplication.shared.open(settingsURL, options: [:]) { didOpen in
+            guard !didOpen else { return }
+            Task { @MainActor in
+                withAnimation(pageAnimation) {
+                    _ = permissionFlow.cancelSettingsTrip(
+                        for: permission,
+                        tripID: tripID
+                    )
+                }
+            }
+        }
+    }
+
+    private func handleScenePhase(_ phase: ScenePhase) {
+        switch phase {
+        case .inactive, .background:
+            _ = permissionFlow.markSettingsDidLeaveApp()
+        case .active:
+            recheckPermissionAfterSettingsIfNeeded()
+        @unknown default:
+            break
+        }
+    }
+
+    private func recheckPermissionAfterSettingsIfNeeded() {
+        guard let permission = permissionFlow.currentPermission,
+              let trip = permissionFlow.settingsTrip,
+              trip.didLeaveApp else { return }
+
+        let requestID = UUID()
+        var didBeginRecheck = false
+        withAnimation(pageAnimation) {
+            didBeginRecheck = permissionFlow.beginSettingsRecheck(
+                for: permission,
+                tripID: trip.id,
+                requestID: requestID
+            )
+        }
+        guard didBeginRecheck else { return }
+
+        permissionRequestTask?.cancel()
+        permissionRequestTask = Task { @MainActor in
+            let didRecheck: Bool
+            switch permission {
+            case .notifications, .camera:
+                await permissions.refresh()
+                didRecheck = true
+            case .nearby:
+                didRecheck = await permissions.request(.nearby)
+            }
+
+            guard !Task.isCancelled else { return }
+            guard didRecheck else {
+                withAnimation(pageAnimation) {
+                    _ = permissionFlow.cancelRequest(
+                        for: permission,
+                        requestID: requestID
+                    )
+                }
+                permissionRequestTask = nil
+                return
+            }
+            await applyPermissionRequestResult(
+                permission,
+                requestID: requestID
+            )
+        }
+    }
+
+    private func applyPermissionRequestResult(
+        _ permission: OnboardingPermissionKind,
+        requestID: UUID
+    ) async {
+        guard !Task.isCancelled else { return }
+        let resolvedStatus = permissions.status(for: permission)
+        var didResolveRequest = false
+        withAnimation(pageAnimation) {
+            didResolveRequest = permissionFlow.resolveRequest(
+                for: permission,
+                requestID: requestID,
+                status: resolvedStatus
+            )
+        }
+        guard didResolveRequest else { return }
+
+        guard resolvedStatus == .granted else {
+            permissionRequestTask = nil
+            HapticManager.shared.fire(.notification(.error))
+            return
+        }
+        await showPermissionResolutionThenAdvance(permission)
+    }
+
+    private func isPermissionRetryAvailable(
+        _ permission: OnboardingPermissionKind
+    ) -> Bool {
+        switch permission {
+        case .notifications:
+            true
+        case .camera:
+            false
+        case .nearby:
+            OnboardingPermissionCoordinator.canEvaluateNearbyPrivacy
+        }
+    }
+
+    private func showPermissionResolutionThenAdvance(
+        _ permission: OnboardingPermissionKind
+    ) async {
+        do {
+            try await Task.sleep(for: .milliseconds(620))
+        } catch {
+            return
+        }
+        guard !Task.isCancelled,
+              permissionFlow.currentPermission == permission,
+              permissionFlow.phase == .resolved(.granted) else { return }
+        var didAdvance = false
+        withAnimation(pageAnimation) {
+            didAdvance = permissionFlow.advance(after: permission)
+        }
+        guard didAdvance else { return }
+        HapticManager.shared.fire(.navigation)
+        permissionRequestTask = nil
+    }
+
+    private func permissionDisplayStatus(
+        _ permission: OnboardingPermissionKind
+    ) -> OnboardingPermissionStatus {
+        guard permissionFlow.currentPermission == permission else {
+            return permissions.status(for: permission)
+        }
+        switch permissionFlow.phase {
+        case .loading, .requesting:
+            return .requesting
+        case .resolved(let status):
+            return status
+        case .ready, .awaitingSettings, .complete:
+            return permissions.status(for: permission)
+        }
+    }
+
+    private func permissionStatusText(
+        _ permission: OnboardingPermissionKind
+    ) -> String? {
+        guard permissionFlow.currentPermission == permission else { return nil }
+        if permissionFlow.phase == .loading {
+            return copy.permissionChecking
+        }
+        switch permissionDisplayStatus(permission) {
+        case .notDetermined:
+            return nil
+        case .requesting:
+            return copy.permissionRequesting
+        case .granted:
+            return copy.permissionGranted
+        case .denied:
+            return copy.permissionDenied
+        case .unavailable:
+            if permission == .camera {
+                return copy.permissionDenied
+            }
+            return isPermissionRetryAvailable(permission)
+                ? copy.permissionRetryRequired
+                : copy.permissionUnavailableRequired
+        }
+    }
+
+    private func permissionDisplayColor(
+        _ permission: OnboardingPermissionKind
+    ) -> Color {
+        switch permissionDisplayStatus(permission) {
         case .granted:
             SpyTheme.green
         case .unavailable:
             SpyTheme.dim
         case .notDetermined, .requesting, .denied:
             SpyTheme.red
-        }
-    }
-
-    private func permissionAccessibilityHint(_ permission: OnboardingPermissionKind) -> String {
-        switch permissions.status(for: permission) {
-        case .notDetermined:
-            copy.permissionRequestHint
-        case .requesting:
-            copy.permissionRequesting
-        case .granted:
-            copy.permissionGranted
-        case .denied:
-            copy.permissionDeniedHint
-        case .unavailable:
-            canActivate(permission)
-                ? copy.permissionRequestHint
-                : copy.permissionUnavailable
         }
     }
 }
@@ -731,15 +1007,6 @@ private struct OnboardingCopy {
         )
     }
 
-    var permissionsTitle: String {
-        localized(
-            en: "PERMISSIONS",
-            es: "PERMISOS",
-            ru: "РАЗРЕШЕНИЯ",
-            uk: "ДОЗВОЛИ"
-        )
-    }
-
     var nextAction: String {
         localized(en: "Next", es: "Siguiente", ru: "Дальше", uk: "Далі")
     }
@@ -752,30 +1019,77 @@ private struct OnboardingCopy {
         localized(en: "WAITING FOR IOS", es: "ESPERANDO A IOS", ru: "ОЖИДАНИЕ IOS", uk: "ОЧІКУВАННЯ IOS")
     }
 
+    var permissionChecking: String {
+        localized(en: "CHECKING", es: "COMPROBANDO", ru: "ПРОВЕРКА", uk: "ПЕРЕВІРКА")
+    }
+
     var permissionGranted: String {
         localized(en: "ENABLED", es: "ACTIVADO", ru: "ВКЛЮЧЕНО", uk: "УВІМКНЕНО")
     }
 
-    var permissionUnavailable: String {
-        localized(en: "NOT AVAILABLE", es: "NO DISPONIBLE", ru: "НЕДОСТУПНО", uk: "НЕДОСТУПНО")
-    }
-
-    var permissionRequestHint: String {
+    var openSettingsAction: String {
         localized(
-            en: "Opens the iOS permission request.",
-            es: "Abre la solicitud de permiso de iOS.",
-            ru: "Откроет системный запрос разрешения iOS.",
-            uk: "Відкриє системний запит дозволу iOS."
+            en: "Open Settings",
+            es: "Abrir Ajustes",
+            ru: "Открыть Настройки",
+            uk: "Відкрити Налаштування"
         )
     }
 
-    var permissionDeniedHint: String {
+    var retryAction: String {
         localized(
-            en: "Permission was not granted. You can change it in iOS Settings.",
-            es: "No se concedió el permiso. Puedes cambiarlo en los ajustes de iOS.",
-            ru: "Разрешение не предоставлено. Его можно изменить в настройках iOS.",
-            uk: "Дозвіл не надано. Його можна змінити в налаштуваннях iOS."
+            en: "Try again",
+            es: "Intentar de nuevo",
+            ru: "Повторить",
+            uk: "Спробувати ще раз"
         )
+    }
+
+    var permissionDenied: String {
+        localized(
+            en: "REQUIRED · OPEN SETTINGS",
+            es: "OBLIGATORIO · ABRE AJUSTES",
+            ru: "ОБЯЗАТЕЛЬНО · ОТКРОЙТЕ НАСТРОЙКИ",
+            uk: "ОБОВ’ЯЗКОВО · ВІДКРИЙТЕ НАЛАШТУВАННЯ"
+        )
+    }
+
+    var permissionRetryRequired: String {
+        localized(
+            en: "REQUIRED · TRY AGAIN",
+            es: "OBLIGATORIO · INTÉNTALO DE NUEVO",
+            ru: "ОБЯЗАТЕЛЬНО · ПОВТОРИТЕ",
+            uk: "ОБОВ’ЯЗКОВО · СПРОБУЙТЕ ЩЕ РАЗ"
+        )
+    }
+
+    var permissionUnavailableRequired: String {
+        localized(
+            en: "REQUIRED · NOT AVAILABLE",
+            es: "OBLIGATORIO · NO DISPONIBLE",
+            ru: "ОБЯЗАТЕЛЬНО · НЕДОСТУПНО",
+            uk: "ОБОВ’ЯЗКОВО · НЕДОСТУПНО"
+        )
+    }
+
+    var permissionsCompleteTitle: String {
+        localized(
+            en: "ALL SET",
+            es: "TODO LISTO",
+            ru: "ВСЁ ГОТОВО",
+            uk: "УСЕ ГОТОВО"
+        )
+    }
+
+    func permissionRequestAction(_ permission: OnboardingPermissionKind) -> String {
+        switch permission {
+        case .notifications:
+            localized(en: "Allow notifications", es: "Permitir notificaciones", ru: "Разрешить уведомления", uk: "Дозволити сповіщення")
+        case .camera:
+            localized(en: "Allow camera", es: "Permitir cámara", ru: "Разрешить камеру", uk: "Дозволити камеру")
+        case .nearby:
+            localized(en: "Allow nearby players", es: "Permitir jugadores cercanos", ru: "Разрешить поиск игроков рядом", uk: "Дозволити пошук гравців поруч")
+        }
     }
 
     func sourceLabel(_ source: OnboardingAcquisitionSource) -> String {
