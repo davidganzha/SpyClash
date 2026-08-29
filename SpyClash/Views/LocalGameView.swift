@@ -1625,12 +1625,12 @@ struct LocalGameView: View {
                         Text("📦")
                             .font(.system(size: 24))
                         VStack(alignment: .leading, spacing: 4) {
-                            Text(localized(en: "You don't have any word packs yet.", ru: "У тебя пока нет word packs.", es: "Aun no tienes word packs.", uk: "У тебе ще немає наборів слів."))
+                            Text(localized(en: "You don't have any word packs yet.", ru: "У тебя пока нет наборов слов.", es: "Aun no tienes word packs.", uk: "У тебе ще немає наборів слів."))
                                 .font(.system(size: 12, weight: .bold, design: .default))
                                 .tracking(0.02)
                                 .foregroundStyle(SpyTheme.dim)
                                 .spyFitted(lines: 2, scale: 0.62)
-                            Text(localized(en: "+ Create first pack →", ru: "+ Создать первый пак →", es: "+ Crear primer pack →", uk: "+ Створити перший набір →"))
+                            Text(localized(en: "+ Create first pack →", ru: "+ Создать первый набор →", es: "+ Crear primer pack →", uk: "+ Створити перший набір →"))
                                 .font(.system(size: 12, weight: .black, design: .monospaced))
                                 .tracking(0.02)
                                 .foregroundStyle(SpyTheme.red)
@@ -1756,7 +1756,7 @@ struct LocalGameView: View {
         } label: {
             if isSavingGeneratedPack {
                 SpyLoadingLabel(
-                    title: localized(en: "SAVING PACK", ru: "СОХРАНЕНИЕ ПАКА", es: "GUARDANDO PACK", uk: "ЗБЕРІГАЄМО НАБІР"),
+                    title: localized(en: "SAVING PACK", ru: "СОХРАНЕНИЕ НАБОРА", es: "GUARDANDO PACK", uk: "ЗБЕРІГАЄМО НАБІР"),
                     accent: SpyTheme.green
                 )
                 .frame(height: 50)
@@ -1901,7 +1901,7 @@ struct LocalGameView: View {
         case .generateRequired:
             return localized(en: "COMPLETE INTEL ABOVE", ru: "ЗАВЕРШИ ПОДГОТОВКУ INTEL", es: "COMPLETA INTEL ARRIBA", uk: "ЗАВЕРШИ ПІДГОТОВКУ ДАНИХ")
         case .sourceRequired:
-            return localized(en: "ENTER A THEME OR SELECT A SAVED PACK", ru: "ВВЕДИ ТЕМУ ИЛИ ВЫБЕРИ СОХРАНЕННЫЙ ПАК", es: "ESCRIBE UN TEMA O ELIGE UN PACK", uk: "ВВЕДИ ТЕМУ АБО ОБЕРИ ЗБЕРЕЖЕНИЙ НАБІР")
+            return localized(en: "ENTER A THEME OR SELECT A SAVED PACK", ru: "ВВЕДИ ТЕМУ ИЛИ ВЫБЕРИ СОХРАНЕННЫЙ НАБОР", es: "ESCRIBE UN TEMA O ELIGE UN PACK", uk: "ВВЕДИ ТЕМУ АБО ОБЕРИ ЗБЕРЕЖЕНИЙ НАБІР")
         case .dealCards:
             return localized(en: "PASS THE DEVICE TO REVEAL ROLES", ru: "ПЕРЕДАВАЙ ТЕЛЕФОН ДЛЯ РАСКРЫТИЯ РОЛЕЙ", es: "PASA EL DISPOSITIVO PARA VER ROLES", uk: "ПЕРЕДАВАЙ ПРИСТРІЙ, ЩОБ ВІДКРИВАТИ РОЛІ")
         }

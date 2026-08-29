@@ -2720,7 +2720,7 @@ private struct WebCommandMenuPanel: View {
                 revealItem(index: 1) {
                     menuButton(
                         icon: "📦",
-                        title: localized(en: "WORD-PACKS", ru: "ПАКЕТЫ", es: "PAQUETES", uk: "НАБОРИ СЛІВ"),
+                        title: localized(en: "WORD-PACKS", ru: "НАБОРЫ", es: "PAQUETES", uk: "НАБОРИ СЛІВ"),
                         selected: appState.shellRoute == .main && appState.selectedTab == .packs
                     ) {
                         closeThen {

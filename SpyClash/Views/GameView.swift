@@ -2667,7 +2667,7 @@ struct GameView: View {
             ForEach(lobbyWordPacks) { pack in
                 Button {
                     selectRoomPack(pack.id)
-                    status = localized(en: "WORD PACK SELECTED", ru: "ПАК СЛОВ ВЫБРАН", es: "PACK SELECCIONADO", uk: "НАБІР СЛІВ ОБРАНО")
+                    status = localized(en: "WORD PACK SELECTED", ru: "НАБОР СЛОВ ВЫБРАН", es: "PACK SELECCIONADO", uk: "НАБІР СЛІВ ОБРАНО")
                 } label: {
                     Label(pack.name, systemImage: "shippingbox.fill")
                 }
@@ -6454,7 +6454,7 @@ struct GameView: View {
     }
 
     private var roomThemeTitle: String {
-        localized(en: "THEME / WORD PACK", ru: "ТЕМА / ПАК СЛОВ", es: "TEMA / PACK", uk: "ТЕМА / НАБІР СЛІВ")
+        localized(en: "THEME / WORD PACK", ru: "ТЕМА / НАБОР СЛОВ", es: "TEMA / PACK", uk: "ТЕМА / НАБІР СЛІВ")
     }
 
     private var allIncludedLabel: String {

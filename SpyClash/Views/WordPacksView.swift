@@ -85,7 +85,7 @@ struct WordPacksView: View {
         SpySceneStage(accent: SpyTheme.red, motionDelay: 0, minHeight: 198, isSubtle: true) {
             VStack(alignment: .leading, spacing: 12) {
                 SpySceneKicker(
-                    title: localized(en: "WORD PACKS", ru: "ПАКИ СЛОВ", es: "PACKS DE PALABRAS", uk: "НАБОРИ СЛІВ"),
+                    title: localized(en: "WORD PACKS", ru: "НАБОРЫ СЛОВ", es: "PACKS DE PALABRAS", uk: "НАБОРИ СЛІВ"),
                     status: nil,
                     accent: SpyTheme.red
                 )
@@ -127,7 +127,7 @@ struct WordPacksView: View {
                     .opacity(isLoading ? 0.45 : 1)
                     .accessibilityLabel(localized(
                         en: "Refresh word packs",
-                        ru: "Обновить паки слов",
+                        ru: "Обновить наборы слов",
                         es: "Actualizar packs de palabras",
                         uk: "Оновити набори слів"
                     ))
