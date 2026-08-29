@@ -19,7 +19,6 @@ import {
 import {
   filterSafeCommunityStrings,
   requireSafeCommunityText,
-  safeCommunityTextForDisplay,
 } from "./content-safety.ts";
 import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
 import {
@@ -45,20 +44,35 @@ import {
   WordPackIdempotencyUnavailableError,
 } from "./generation-idempotency.ts";
 import {
+  BASE44_WORD_PACK_MODEL,
   buildWordPackPrompt,
   createOpenAIWordPackProviderFromEnv,
   type OpenAIWordPackProvider,
+  parseWordPackLanguage,
   shouldFallbackFromDirectWordPackProvider,
+  WORD_PACK_CACHE_VERSION,
+  WORD_PACK_CATEGORY_SCHEMA_DESCRIPTION,
+  WORD_PACK_EXHAUSTED_SCHEMA_DESCRIPTION,
   type WordPackGenerationResult,
+  type WordPackLanguage,
+  wordPackThemeMode,
+  wordPackWordsSchemaDescription,
 } from "./openai-word-pack-provider.ts";
-
-const WORD_PACK_PROMPT_VERSION = "word-pack-2026-08-16-v3";
+import {
+  applyWordPackQualityAudit,
+  buildWordPackQualityAuditPrompt,
+  requireWordPackRepairQuality,
+  type WordPackQualityAuditCandidate,
+  wordPackQualityAuditSchema,
+} from "./word-pack-quality.ts";
 
 function errorMessage(error: unknown) {
   return error instanceof Error
     ? error.message
     : String(error || "Internal error");
 }
+
+const STORED_WORD_PACK_CATEGORY = "AI GENERATED";
 
 type QuotaReservation = {
   allowed: boolean;
@@ -72,6 +86,7 @@ type AIInvocationState = {
   directProviderDisabled: boolean;
   directAttempts: number;
   base44Attempts: number;
+  qualityAuditAttempts: number;
   fallbackUsed: boolean;
 };
 
@@ -210,16 +225,6 @@ function removeExcludedWords(values: unknown[], excludedWords: string[]) {
   );
 }
 
-function themeLanguageKey(theme: string): string {
-  if (/\p{Script=Cyrillic}/u.test(theme)) return "ru";
-  if (
-    /[\u00bf\u00a1\u00f1\u00d1\u00e1\u00c1\u00e9\u00c9\u00ed\u00cd\u00f3\u00d3\u00fa\u00da\u00fc\u00dc]/u
-      .test(theme)
-  ) return "es";
-  if (/\p{Script=Latin}/u.test(theme)) return "en";
-  return "und";
-}
-
 function optionalRequestID(value: unknown): string | null {
   if (typeof value !== "string") return null;
   const normalized = value.normalize("NFKC").trim();
@@ -246,6 +251,7 @@ function createAIInvocationState(): AIInvocationState {
     directProviderDisabled: configurationFailed,
     directAttempts: 0,
     base44Attempts: 0,
+    qualityAuditAttempts: 0,
     fallbackUsed: configurationFailed,
   };
 }
@@ -264,6 +270,7 @@ async function invokeWordPackLLM(
   base44: any,
   theme: string,
   count: number,
+  language: WordPackLanguage | undefined,
   alreadyUsed: string[] = [],
   guard: GenerationWriteGuard,
   state: AIInvocationState,
@@ -277,6 +284,7 @@ async function invokeWordPackLLM(
             state.directProvider!.generate({
               theme,
               count,
+              language,
               alreadyUsed,
             })
           );
@@ -304,18 +312,32 @@ async function invokeWordPackLLM(
       state.base44Attempts += 1;
       return guard.boundary<WordPackCandidate>(() =>
         base44.integrations.Core.InvokeLLM({
-          prompt: buildWordPackPrompt({ theme, count, alreadyUsed }),
+          model: BASE44_WORD_PACK_MODEL,
+          prompt: buildWordPackPrompt({
+            theme,
+            count,
+            language,
+            alreadyUsed,
+          }),
           response_json_schema: {
             type: "object",
             properties: {
               words: {
                 type: "array",
+                description: wordPackWordsSchemaDescription(theme),
                 items: { type: "string", minLength: 1, maxLength: 120 },
-                minItems: 2,
                 maxItems: count,
               },
-              category: { type: "string", minLength: 1, maxLength: 120 },
-              exhausted: { type: "boolean" },
+              category: {
+                type: "string",
+                minLength: 1,
+                maxLength: 120,
+                description: WORD_PACK_CATEGORY_SCHEMA_DESCRIPTION,
+              },
+              exhausted: {
+                type: "boolean",
+                description: WORD_PACK_EXHAUSTED_SCHEMA_DESCRIPTION,
+              },
             },
             required: ["words", "category", "exhausted"],
             additionalProperties: false,
@@ -330,6 +352,46 @@ async function invokeWordPackLLM(
       );
     },
   });
+}
+
+async function auditNamedThemeWords(
+  base44: any,
+  theme: string,
+  language: WordPackLanguage | undefined,
+  requestedCount: number,
+  alreadyExcluded: string[],
+  candidates: string[],
+  guard: GenerationWriteGuard,
+  state: AIInvocationState,
+) {
+  const audit = await invokeAIProviderWithRetry<WordPackQualityAuditCandidate>({
+    operation: () => {
+      state.qualityAuditAttempts += 1;
+      return guard.boundary<WordPackQualityAuditCandidate>(() =>
+        base44.integrations.Core.InvokeLLM({
+          model: BASE44_WORD_PACK_MODEL,
+          prompt: buildWordPackQualityAuditPrompt({
+            theme,
+            language,
+            requestedCount,
+            alreadyExcluded,
+            words: candidates,
+          }),
+          response_json_schema: wordPackQualityAuditSchema(
+            candidates.length,
+            requestedCount,
+          ),
+        })
+      );
+    },
+    onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
+      console.warn(
+        `generateWordPack quality audit retry ${attempt}->${nextAttempt} after ${delayMilliseconds}ms:`,
+        errorMessage(error),
+      );
+    },
+  });
+  return applyWordPackQualityAudit(candidates, audit);
 }
 
 function lifecycleHTTPStatus(error: unknown): number {
@@ -370,6 +432,22 @@ Deno.serve(async (req) => {
     if (!theme) {
       return Response.json({ error: "Theme is required" }, { status: 400 });
     }
+    const hasClientLanguage = body?.language !== undefined &&
+      body?.language !== null && body?.language !== "";
+    const clientLanguage = hasClientLanguage
+      ? parseWordPackLanguage(body.language)
+      : null;
+    if (hasClientLanguage && !clientLanguage) {
+      return Response.json({
+        error: "Language must be one of en, es, ru, or uk.",
+        code: "invalid_word_pack_language",
+      }, { status: 400 });
+    }
+    const profileLanguage = !hasClientLanguage
+      ? parseWordPackLanguage(user?.language)
+      : null;
+    const promptLanguage = clientLanguage ?? profileLanguage ?? undefined;
+    const cacheLanguage = promptLanguage ?? "und";
 
     const requestID = optionalRequestID(body?.request_id);
     // Legacy clients do not send request_id. Keep their explicit Regenerate
@@ -379,8 +457,8 @@ Deno.serve(async (req) => {
       await prepareWordPackCacheRequest({
         userID: user.id,
         theme,
-        language: themeLanguageKey(theme),
-        promptVersion: WORD_PACK_PROMPT_VERSION,
+        language: cacheLanguage,
+        promptVersion: WORD_PACK_CACHE_VERSION,
         requestedCount: count,
         exclusions: excludedWords,
       });
@@ -490,6 +568,10 @@ Deno.serve(async (req) => {
                   request_replayed: true,
                   direct_attempts: 0,
                   base44_attempts: 0,
+                  base44_model: BASE44_WORD_PACK_MODEL,
+                  quality_audit_attempts: 0,
+                  quality_repair_used: false,
+                  quality_rejected_count: 0,
                   fallback_used: false,
                   refill_used: false,
                   exhausted: replay.exhausted,
@@ -497,8 +579,8 @@ Deno.serve(async (req) => {
                 }),
               );
               return Response.json({
-                name: replay.category,
-                category: replay.category,
+                name: theme,
+                category: theme,
                 words: replay.words,
                 exhausted: replay.exhausted,
                 cache_hit: false,
@@ -584,11 +666,14 @@ Deno.serve(async (req) => {
         let cacheHit = false;
         let cacheVariantKey: string | undefined;
         let refillUsed = false;
+        let qualityRepairUsed = false;
+        let qualityRejectedCount = 0;
         let aiState: AIInvocationState = {
           directProvider: null,
           directProviderDisabled: false,
           directAttempts: 0,
           base44Attempts: 0,
+          qualityAuditAttempts: 0,
           fallbackUsed: false,
         };
         try {
@@ -608,10 +693,7 @@ Deno.serve(async (req) => {
                   (safeWords.length >= count || hit.exhausted)
                 ) {
                   words = safeWords;
-                  category = safeCommunityTextForDisplay(
-                    cleanWord(hit.category),
-                    theme,
-                  );
+                  category = theme;
                   exhausted = hit.exhausted;
                   cacheHit = true;
                   cacheVariantKey = hit.variantKey;
@@ -631,34 +713,75 @@ Deno.serve(async (req) => {
               base44,
               theme,
               count,
+              promptLanguage,
               excludedWords,
               guard,
               aiState,
             );
-            words = filterSafeCommunityStrings(
+            const firstCandidates = filterSafeCommunityStrings(
               removeExcludedWords(firstPass?.words || [], excludedWords),
             );
-            category = safeCommunityTextForDisplay(
-              cleanWord(firstPass?.category),
-              theme,
-            );
-            exhausted = firstPass?.exhausted === true && words.length < count;
+            const requiresQualityAudit = wordPackThemeMode(theme) ===
+              "named_entities";
+            if (requiresQualityAudit) {
+              const audit = await auditNamedThemeWords(
+                base44,
+                theme,
+                promptLanguage,
+                count,
+                excludedWords,
+                firstCandidates,
+                guard,
+                aiState,
+              );
+              const replacements = filterSafeCommunityStrings(
+                removeExcludedWords(
+                  audit.replacementWords,
+                  [...excludedWords, ...firstCandidates],
+                ),
+              );
+              words = uniqueWords([...audit.words, ...replacements]).slice(
+                0,
+                count,
+              );
+              qualityRejectedCount += audit.rejectedCount;
+              qualityRepairUsed = audit.rejectedCount > 0 ||
+                replacements.length > 0;
+              refillUsed = replacements.length > 0;
+              exhausted = audit.exhausted && words.length < count;
+              requireWordPackRepairQuality({
+                returnedCount: words.length,
+                requestedCount: count,
+                rejectedCount: audit.rejectedCount,
+                exhausted,
+              });
+            } else {
+              words = firstCandidates;
+              exhausted = firstPass?.exhausted === true &&
+                words.length < count;
+            }
+            category = theme;
 
-            if (!exhausted && words.length < count) {
+            if (!requiresQualityAudit && !exhausted && words.length < count) {
               refillUsed = true;
               try {
                 const secondPass = await invokeWordPackLLM(
                   base44,
                   theme,
                   Math.max(2, count - words.length),
-                  [...excludedWords, ...words],
+                  promptLanguage,
+                  [...excludedWords, ...firstCandidates],
                   guard,
                   aiState,
                 );
-                words = filterSafeCommunityStrings(removeExcludedWords(
-                  [...words, ...(secondPass?.words || [])],
-                  excludedWords,
-                ));
+                const secondCandidates = filterSafeCommunityStrings(
+                  removeExcludedWords(
+                    secondPass?.words || [],
+                    [...excludedWords, ...firstCandidates],
+                  ),
+                );
+                const acceptedSecond = secondCandidates;
+                words = uniqueWords([...words, ...acceptedSecond]);
                 exhausted = secondPass?.exhausted === true &&
                   words.length < count;
               } catch (error) {
@@ -688,7 +811,11 @@ Deno.serve(async (req) => {
                 persistWordPackCacheVariant({
                   store: cacheStore,
                   request: cacheRequest,
-                  result: { category, words, exhausted },
+                  result: {
+                    category: STORED_WORD_PACK_CATEGORY,
+                    words,
+                    exhausted,
+                  },
                 })
               );
               cacheVariantKey = cached.variant_key;
@@ -707,7 +834,7 @@ Deno.serve(async (req) => {
                   store: idempotencyStore,
                   identity: idempotency,
                   result: {
-                    category,
+                    category: STORED_WORD_PACK_CATEGORY,
                     words,
                     exhausted,
                     cacheVariantKey,
@@ -800,6 +927,10 @@ Deno.serve(async (req) => {
             request_replayed: false,
             direct_attempts: aiState.directAttempts,
             base44_attempts: aiState.base44Attempts,
+            base44_model: BASE44_WORD_PACK_MODEL,
+            quality_audit_attempts: aiState.qualityAuditAttempts,
+            quality_repair_used: qualityRepairUsed,
+            quality_rejected_count: qualityRejectedCount,
             fallback_used: aiState.fallbackUsed,
             refill_used: refillUsed,
             exhausted,

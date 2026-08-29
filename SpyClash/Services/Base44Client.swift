@@ -595,6 +595,7 @@ final class Base44Client {
     func generateWordPack(
         theme: String,
         count: Int,
+        language: AppLanguage,
         requestID: UUID,
         excluding excludedWords: [String] = [],
         preferFresh: Bool = false
@@ -604,6 +605,7 @@ final class Base44Client {
             body: GenerateWordPackPayload(
                 theme: theme.trimmingCharacters(in: .whitespacesAndNewlines),
                 count: count,
+                language: language.rawValue,
                 requestID: requestID,
                 excludedWords: excludedWords,
                 preferFresh: preferFresh
@@ -2584,6 +2586,7 @@ private struct WordPackActionPayload: Encodable {
 private struct GenerateWordPackPayload: Encodable {
     let theme: String
     let count: Int
+    let language: String
     let requestID: UUID
     let excludedWords: [String]
     let preferFresh: Bool
@@ -2591,6 +2594,7 @@ private struct GenerateWordPackPayload: Encodable {
     enum CodingKeys: String, CodingKey {
         case theme
         case count
+        case language
         case requestID = "request_id"
         case excludedWords = "exclude_words"
         case preferFresh = "prefer_fresh"

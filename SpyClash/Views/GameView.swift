@@ -6987,6 +6987,7 @@ struct GameView: View {
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
                     count: max(targetCount, 5),
+                    language: appState.language,
                     requestID: requestID,
                     preferFresh: !usingInitialTarget
                 )
@@ -7081,6 +7082,7 @@ struct GameView: View {
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
                     count: additionalCount,
+                    language: appState.language,
                     requestID: requestID,
                     excluding: current,
                     preferFresh: false

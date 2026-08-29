@@ -3715,6 +3715,7 @@ struct LocalGameView: View {
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
                     count: targetCount,
+                    language: appState.language,
                     requestID: requestID,
                     preferFresh: existingPoolCount >= 2
                 )
@@ -3792,6 +3793,7 @@ struct LocalGameView: View {
                 generated = try await appState.client.generateWordPack(
                     theme: theme,
                     count: additionalCount,
+                    language: appState.language,
                     requestID: requestID,
                     excluding: current,
                     preferFresh: false

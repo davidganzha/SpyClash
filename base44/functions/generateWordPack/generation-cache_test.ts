@@ -7,6 +7,11 @@ import {
   pruneExpiredWordPackCacheVariants,
   wordPackTelemetryDimensions,
 } from "./generation-cache.ts";
+import {
+  BASE44_WORD_PACK_MODEL,
+  WORD_PACK_CACHE_VERSION,
+  WORD_PACK_PROMPT_VERSION,
+} from "./openai-word-pack-provider.ts";
 
 const NOW = new Date("2026-07-24T12:00:00.000Z");
 
@@ -88,6 +93,34 @@ Deno.test("cache keys exactly normalize user, theme, language, and prompt versio
     first.cacheKey,
     (await request({ theme: "Café Bikes" })).cacheKey,
   );
+});
+
+Deno.test("current exact-theme prompt bypasses cached v3 variants", async () => {
+  const legacy = await request({
+    promptVersion: "word-pack-2026-08-16-v3",
+  });
+  const current = await request({ promptVersion: WORD_PACK_CACHE_VERSION });
+
+  assertEquals(WORD_PACK_PROMPT_VERSION, "word-pack-2026-08-29-v4");
+  assertEquals(BASE44_WORD_PACK_MODEL, "gpt_5_4");
+  assertEquals(
+    WORD_PACK_CACHE_VERSION,
+    "word-pack-2026-08-29-v4-gpt_5_4",
+  );
+  assertNotEquals(current.cacheKey, legacy.cacheKey);
+});
+
+Deno.test("legacy theme-auto cache cannot collide with an explicit English locale", async () => {
+  const legacyThemeAuto = await request({
+    theme: "Personajes de anime",
+    language: "und",
+  });
+  const explicitEnglish = await request({
+    theme: "Personajes de anime",
+    language: "en",
+  });
+
+  assertNotEquals(legacyThemeAuto.cacheKey, explicitEnglish.cacheKey);
 });
 
 Deno.test("telemetry dimensions expose only a per-user theme hash", async () => {
