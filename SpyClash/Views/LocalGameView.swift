@@ -99,11 +99,10 @@ struct LocalGameView: View {
     @State private var spiesKnowEachOther = false
     @State private var wordCount = 25.0
     @State private var mode = LocalMode.questions
-    @State private var selectedPackID = "builtin"
-    @State private var builtinPreviewCategory = "CLASSIC"
+    @State private var selectedPackID = ""
     @State private var customTheme = ""
     @State private var generatedPack: GeneratedWordPack?
-    @State private var localSourceBeforeCustomTheme = "builtin"
+    @State private var localSourceBeforeCustomTheme = ""
     @State private var packs: [WordPack] = []
     @State private var status = ""
     @State private var isGenerating = false
@@ -112,12 +111,7 @@ struct LocalGameView: View {
     @State private var localThemeError = ""
     @State private var localWordCountMode = LocalWordCountMode.recommended
     @State private var localCustomWordCount = 25.0
-    @State private var localPoolExpanded = false
     @State private var localThemeRequestID = UUID()
-    @State private var localPreviewPulse = false
-    @State private var localPoolDraft: LocalPoolDraft?
-    @State private var localNewPoolWord = ""
-    @State private var disabledPoolWordKeys: Set<String> = []
     @State private var playerIDs = [UUID(), UUID(), UUID()]
     @State private var armedPlayerID: UUID?
     @State private var draggingPlayerID: UUID?
@@ -290,13 +284,6 @@ struct LocalGameView: View {
                 await loadPacks()
             }
             .onAppear {
-                withAnimation(
-                    reduceMotion
-                        ? nil
-                        : .easeInOut(duration: 2.4).repeatForever(autoreverses: true)
-                ) {
-                    localPreviewPulse = true
-                }
                 updateLocalShellChromeSuppression()
             }
     }
@@ -707,7 +694,6 @@ struct LocalGameView: View {
     private var localPlayersScrollTarget: String { "local-lobby-players" }
     private var localIntelScrollTarget: String { "local-lobby-intel" }
     private var localThemeScrollTarget: String { "local-lobby-theme-input" }
-    private var localPoolWordScrollTarget: String { "local-lobby-pool-word-input" }
 
     private func localPlayerScrollTarget(_ index: Int) -> String {
         "local-lobby-player-\(index)"
@@ -719,8 +705,6 @@ struct LocalGameView: View {
             localPlayerScrollTarget(index)
         case .theme:
             localThemeScrollTarget
-        case .poolWord:
-            localPoolWordScrollTarget
         case nil:
             nil
         }
@@ -734,7 +718,7 @@ struct LocalGameView: View {
         switch focusedLocalSetupField {
         case .player:
             return .players
-        case .theme, .poolWord:
+        case .theme:
             return .intel
         case nil:
             return nil
@@ -1347,13 +1331,6 @@ struct LocalGameView: View {
             localWordPackSelector
                 .transition(.opacity.combined(with: .move(edge: .top)))
 
-            Text(localRandomThemeHint)
-                .font(.system(size: 10, weight: .bold, design: .default))
-                .tracking(0.02)
-                .foregroundStyle(SpyTheme.dim)
-                .lineSpacing(2)
-                .spyFitted(lines: 2, scale: 0.58)
-                .transition(.opacity.combined(with: .move(edge: .top)))
         }
     }
 
@@ -1369,10 +1346,6 @@ struct LocalGameView: View {
             }
         }
 
-        if localShouldShowPoolPreview {
-            localPoolPreview
-        }
-
         if (generatedPack?.words.localCleanWords.count ?? 0) >= 2, localHasCustomTheme {
             localSaveAsWordPackButton
                 .transition(.opacity.combined(with: .move(edge: .top)))
@@ -1380,7 +1353,7 @@ struct LocalGameView: View {
     }
 
     private var localIntelHasActiveCapture: Bool {
-        focusedLocalSetupField == .theme || focusedLocalSetupField == .poolWord
+        focusedLocalSetupField == .theme
     }
 
     private func localSetupPanel<Content: View>(
@@ -1495,7 +1468,7 @@ struct LocalGameView: View {
         let hadCustomTheme = localHasCustomTheme
         let willHaveCustomTheme = value.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank != nil
         if !hadCustomTheme, willHaveCustomTheme {
-            localSourceBeforeCustomTheme = selectedPackID == "generated" ? "builtin" : selectedPackID
+            localSourceBeforeCustomTheme = selectedPackID == "generated" ? "" : selectedPackID
         }
 
         customTheme = value
@@ -1504,24 +1477,23 @@ struct LocalGameView: View {
         isExpandingLocalThemePool = false
         generatedPack = nil
         localThemeError = ""
-        localPoolExpanded = false
-        disabledPoolWordKeys.removeAll()
-        clearLocalPoolDraft()
         status = ""
 
         if willHaveCustomTheme {
-            selectedPackID = "builtin"
+            selectedPackID = "generated"
         } else {
             selectedPackID = resolvedLocalSourceBeforeCustomTheme
         }
     }
 
     private var resolvedLocalSourceBeforeCustomTheme: String {
-        guard localSourceBeforeCustomTheme != "generated" else { return "builtin" }
-        guard localSourceBeforeCustomTheme != "builtin" else { return "builtin" }
+        guard localSourceBeforeCustomTheme != "generated",
+              localSourceBeforeCustomTheme != "builtin" else {
+            return packs.first?.id ?? ""
+        }
         return packs.contains(where: { $0.id == localSourceBeforeCustomTheme })
             ? localSourceBeforeCustomTheme
-            : "builtin"
+            : packs.first?.id ?? ""
     }
 
     private var localWordCountModeSelector: some View {
@@ -1680,15 +1652,6 @@ struct LocalGameView: View {
                     .spyFitted(scale: 0.62)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 128), spacing: 8)], spacing: 8) {
-                    localPackChip(
-                        title: localized(en: "RANDOM", ru: "СЛУЧАЙНО", es: "AZAR", uk: "ВИПАДКОВО"),
-                        subtitle: nil,
-                        isSelected: selectedPackID == "builtin",
-                        accessibilityIdentifier: "localGame.pack.builtin"
-                    ) {
-                        selectLocalWordSource("builtin")
-                    }
-
                     ForEach(packs) { pack in
                         localPackChip(
                             title: pack.name,
@@ -1701,8 +1664,7 @@ struct LocalGameView: View {
                     }
                 }
 
-                if selectedPackID != "builtin",
-                   let selected = packs.first(where: { $0.id == selectedPackID }) {
+                if let selected = packs.first(where: { $0.id == selectedPackID }) {
                     Text("\(localized(en: "Selected", ru: "Выбрано", es: "Seleccionado", uk: "Обрано")) \(selected.name) · \(selected.words?.localCleanWords.count ?? 0) \(copy.wordsSuffix)")
                         .font(.system(size: 11, weight: .bold, design: .default))
                         .tracking(0.02)
@@ -1803,7 +1765,7 @@ struct LocalGameView: View {
             }
         }
         .buttonStyle(SpyButtonStyle(variant: .ghost))
-        .disabled(isSavingGeneratedPack || activeLocalWords(localPoolSnapshot.words).count < 2)
+        .disabled(isSavingGeneratedPack || (generatedPack?.words.localCleanWords.count ?? 0) < 2)
     }
 
     private var localTimingPanel: some View {
@@ -1923,8 +1885,8 @@ struct LocalGameView: View {
         switch localPrimaryActionResolution.action {
         case .generateRequired:
             return localized(en: "GENERATE THEME FIRST", ru: "СНАЧАЛА СГЕНЕРИРУЙ ТЕМУ", es: "GENERA EL TEMA PRIMERO", uk: "СПОЧАТКУ ЗГЕНЕРУЙ ТЕМУ")
-        case .revealRandom:
-            return localized(en: "RANDOM THEME", ru: "СЛУЧАЙНАЯ ТЕМА", es: "TEMA ALEATORIO", uk: "ВИПАДКОВА ТЕМА")
+        case .sourceRequired:
+            return localized(en: "CHOOSE A THEME OR WORDPACK", ru: "ВЫБЕРИ ТЕМУ ИЛИ WORDPACK", es: "ELIGE TEMA O WORDPACK", uk: "ОБЕРИ ТЕМУ АБО НАБІР СЛІВ")
         case .dealCards:
             return localized(en: "DEAL CARDS", ru: "РАЗДАТЬ КАРТОЧКИ", es: "REPARTIR CARTAS", uk: "РОЗДАТИ КАРТКИ")
         }
@@ -1938,8 +1900,8 @@ struct LocalGameView: View {
         switch localPrimaryActionResolution.action {
         case .generateRequired:
             return localized(en: "COMPLETE INTEL ABOVE", ru: "ЗАВЕРШИ ПОДГОТОВКУ INTEL", es: "COMPLETA INTEL ARRIBA", uk: "ЗАВЕРШИ ПІДГОТОВКУ ДАНИХ")
-        case .revealRandom:
-            return localized(en: "REVEAL A RANDOM FIELD POOL", ru: "ОТКРЫТЬ СЛУЧАЙНЫЙ НАБОР", es: "REVELAR UN GRUPO ALEATORIO", uk: "ВІДКРИТИ ВИПАДКОВИЙ НАБІР")
+        case .sourceRequired:
+            return localized(en: "ENTER A THEME OR SELECT A SAVED PACK", ru: "ВВЕДИ ТЕМУ ИЛИ ВЫБЕРИ СОХРАНЕННЫЙ ПАК", es: "ESCRIBE UN TEMA O ELIGE UN PACK", uk: "ВВЕДИ ТЕМУ АБО ОБЕРИ ЗБЕРЕЖЕНИЙ НАБІР")
         case .dealCards:
             return localized(en: "PASS THE DEVICE TO REVEAL ROLES", ru: "ПЕРЕДАВАЙ ТЕЛЕФОН ДЛЯ РАСКРЫТИЯ РОЛЕЙ", es: "PASA EL DISPOSITIVO PARA VER ROLES", uk: "ПЕРЕДАВАЙ ПРИСТРІЙ, ЩОБ ВІДКРИВАТИ РОЛІ")
         }
@@ -1949,7 +1911,7 @@ struct LocalGameView: View {
         guard players.count >= 3 else { return "person.badge.plus" }
         return switch localPrimaryActionResolution.action {
         case .generateRequired: "sparkles"
-        case .revealRandom: "shuffle"
+        case .sourceRequired: "archivebox"
         case .dealCards: "rectangle.portrait.on.rectangle.portrait.angled.fill"
         }
     }
@@ -1967,11 +1929,9 @@ struct LocalGameView: View {
     }
 
     private var localPrimaryActionSource: LocalLobbyPrimaryActionPolicy.Source {
-        switch selectedPackID {
-        case "builtin": .builtin
-        case "generated": .generated
-        default: .saved
-        }
+        if selectedPackID == "generated" { return .generated }
+        if packs.contains(where: { $0.id == selectedPackID }) { return .saved }
+        return .none
     }
 
     private var localMinimumPlayersMessage: String {
@@ -2006,22 +1966,8 @@ struct LocalGameView: View {
     }
 
     private var localThemeMaxWords: Int {
-        let availableWords = localPoolDraft?.words.localCleanWords
-            ?? generatedPack?.words.localCleanWords
-            ?? []
+        let availableWords = generatedPack?.words.localCleanWords ?? []
         return max(availableWords.count, 2)
-    }
-
-    private var localShouldShowPoolPreview: Bool {
-        if localHasCustomTheme {
-            return (generatedPack?.words.localCleanWords.count ?? 0) >= 2
-        }
-
-        if selectedPackID == "builtin" {
-            return (generatedPack?.words.localCleanWords.count ?? 0) >= 2
-        }
-
-        return true
     }
 
     private var localThemeTitle: String {
@@ -2053,38 +1999,10 @@ struct LocalGameView: View {
         )
     }
 
-    private var localAddWordPlaceholder: String {
-        localized(en: "Add word...", ru: "Добавить слово...", es: "Agregar palabra...", uk: "Додати слово...")
-    }
-
-    private var localRandomThemeHint: String {
-        localized(
-            en: "Leave the field empty to play from a random or saved word pack.",
-            ru: "Оставь поле пустым, чтобы играть со случайной темой или сохраненным паком.",
-            es: "Deja el campo vacio para jugar con un tema aleatorio o pack guardado.",
-            uk: "Залиш поле порожнім, щоб грати з випадковим або збереженим набором слів."
-        )
-    }
-
     private var localSaveAsWordPackLabel: String {
         localized(en: "SAVE AS WORDPACK", ru: "СОХРАНИТЬ КАК WORDPACK", es: "GUARDAR WORDPACK", uk: "ЗБЕРЕГТИ ЯК НАБІР СЛІВ")
     }
 
-    private var localPoolIcon: String {
-        if localHasCustomTheme { return "✨" }
-        if selectedPackID != "builtin" { return "📦" }
-        return "🎲"
-    }
-
-    private var localPoolLabel: String {
-        if localHasCustomTheme {
-            return localized(en: "GENERATED", ru: "СГЕНЕРИРОВАНО", es: "GENERADO", uk: "ЗГЕНЕРОВАНО")
-        }
-        if selectedPackID != "builtin" {
-            return localized(en: "WORDPACK", ru: "WORDPACK", es: "WORDPACK", uk: "НАБІР СЛІВ")
-        }
-        return localized(en: "RANDOM THEME", ru: "СЛУЧАЙНАЯ ТЕМА", es: "TEMA ALEATORIO", uk: "ВИПАДКОВА ТЕМА")
-    }
 
     private var localThemeActionTitle: String {
         if generatedPack?.words.localCleanWords.count ?? 0 >= 2 {
@@ -2134,60 +2052,23 @@ struct LocalGameView: View {
         )
     }
 
-    private func localPoolStats(inGame: Int, active: Int, total: Int) -> String {
-        localized(
-            en: "\(inGame) in game · \(active)/\(total) active · tap to cross out",
-            ru: "\(inGame) в игре · \(active)/\(total) активных · нажми, чтобы вычеркнуть",
-            es: "\(inGame) en juego · \(active)/\(total) activas · toca para tachar",
-            uk: "\(inGame) у грі · \(active)/\(total) активних · натисни, щоб викреслити"
-        )
-    }
-
-    private func localPoolExpansionLabel(total: Int) -> String {
-        if localPoolExpanded {
-            return localized(en: "SHOW LESS", ru: "ПОКАЗАТЬ МЕНЬШЕ", es: "MOSTRAR MENOS", uk: "ПОКАЗАТИ МЕНШЕ")
-        }
-
-        return localized(
-            en: "SHOW ALL \(total) WORDS",
-            ru: "ПОКАЗАТЬ ВСЕ СЛОВА · \(total)",
-            es: "MOSTRAR \(total) PALABRAS",
-            uk: "ПОКАЗАТИ ВСІ СЛОВА · \(total)"
-        )
-    }
 
     private func localWordKey(_ word: String) -> String {
         word.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
     }
 
-    private func activeLocalWords(_ words: [String]) -> [String] {
-        let clean = words.localCleanWords
-        return clean.filter { !disabledPoolWordKeys.contains(localWordKey($0)) }
-    }
-
     private func playableLocalWords(_ words: [String]) -> [String] {
-        Array(activeLocalWords(words).prefix(max(Int(wordCount), 1)))
+        Array(words.localCleanWords.prefix(max(Int(wordCount), 1)))
     }
 
     private var localPlayablePool: [String] {
-        playableLocalWords(localPoolSnapshot.words)
-    }
-
-    private func toggleLocalPoolWord(_ word: String) {
-        let key = localWordKey(word)
-        if disabledPoolWordKeys.contains(key) {
-            disabledPoolWordKeys.remove(key)
-        } else {
-            disabledPoolWordKeys.insert(key)
+        if selectedPackID == "generated", let generatedPack {
+            return playableLocalWords(generatedPack.words)
         }
-        let activeCount = activeLocalWords(localPoolSnapshot.words).count
-        wordCount = min(wordCount, Double(max(activeCount, 2)))
-        HapticManager.shared.fire(.tabSelection)
-    }
-
-    private func clearLocalPoolDraft() {
-        localPoolDraft = nil
-        localNewPoolWord = ""
+        if let pack = packs.first(where: { $0.id == selectedPackID }) {
+            return playableLocalWords(pack.words ?? [])
+        }
+        return []
     }
 
     private func selectLocalWordSource(_ id: String) {
@@ -2196,65 +2077,13 @@ struct LocalGameView: View {
             localSourceBeforeCustomTheme = id
             generatedPack = nil
             localThemeError = ""
-            localPoolExpanded = false
-            disabledPoolWordKeys.removeAll()
-            clearLocalPoolDraft()
             status = ""
 
-            if id == "builtin" {
-                let category = localWordPools[builtinPreviewCategory] == nil ? "CLASSIC" : builtinPreviewCategory
-                wordCount = Double(max(localWordPools[category]?.localCleanWords.count ?? 0, 2))
-            } else if let pack = packs.first(where: { $0.id == id }) {
+            if let pack = packs.first(where: { $0.id == id }) {
                 wordCount = Double(max(pack.words?.localCleanWords.count ?? 0, 2))
             }
         }
         HapticManager.shared.fire(.tabSelection)
-    }
-
-    private func setLocalPoolDraft(words: [String], category: String? = nil, source: String? = nil) {
-        let snapshot = localPoolSnapshot
-        let clean = words.localCleanWords
-        localPoolDraft = LocalPoolDraft(
-            category: category?.nilIfBlank ?? snapshot.category,
-            source: source?.nilIfBlank ?? snapshot.source,
-            words: clean
-        )
-        if selectedPackID == "generated" {
-            wordCount = min(wordCount, Double(max(clean.count, 2)))
-        }
-        if clean.count <= localCollapsedPoolPreviewLimit {
-            localPoolExpanded = false
-        }
-        disabledPoolWordKeys = disabledPoolWordKeys.filter { key in
-            clean.contains { localWordKey($0) == key }
-        }
-    }
-
-    private func removeLocalPoolWord(_ word: String) {
-        let snapshot = localPoolSnapshot
-        let key = localWordKey(word)
-        let words = snapshot.words.filter { localWordKey($0) != key }
-        setLocalPoolDraft(words: words, category: snapshot.category, source: snapshot.source)
-        HapticManager.shared.fire(.buttonPress)
-    }
-
-    private func addLocalPoolWord() {
-        let value = localNewPoolWord
-            .trimmingCharacters(in: .whitespacesAndNewlines)
-            .replacingOccurrences(of: "\\s+", with: " ", options: .regularExpression)
-        guard !value.isEmpty else { return }
-
-        let snapshot = localPoolSnapshot
-        let key = localWordKey(value)
-        guard !snapshot.words.contains(where: { localWordKey($0) == key }) else {
-            localNewPoolWord = ""
-            HapticManager.shared.fire(.notification(.warning))
-            return
-        }
-
-        setLocalPoolDraft(words: snapshot.words + [value], category: snapshot.category, source: snapshot.source)
-        localNewPoolWord = ""
-        HapticManager.shared.fire(.buttonPress)
     }
 
     private func sectionHeader(systemImage: String, title: String) -> some View {
@@ -2303,226 +2132,6 @@ struct LocalGameView: View {
         case .associations:
             localized(en: "ONE CLUE EACH", ru: "ПО ОДНОЙ ПОДСКАЗКЕ", es: "UNA PISTA", uk: "ПО ОДНІЙ ПІДКАЗЦІ")
         }
-    }
-
-    private var localPoolPreview: some View {
-        let snapshot = localPoolSnapshot
-        let compactWords = Array(snapshot.words.prefix(localCollapsedPoolPreviewLimit))
-        let additionalWords = Array(snapshot.words.dropFirst(localCollapsedPoolPreviewLimit))
-        let activeCount = snapshot.words.filter { !disabledPoolWordKeys.contains(localWordKey($0)) }.count
-        let inGameCount = min(max(Int(wordCount), 0), activeCount)
-
-        return VStack(alignment: .leading, spacing: 0) {
-            HStack(alignment: .center, spacing: 8) {
-                Text(localPoolIcon)
-                    .font(.system(size: 16))
-
-                Text(localPoolLabel)
-                    .font(SpyTheme.micro)
-                    .tracking(0.08)
-                    .foregroundStyle(SpyTheme.muted)
-                    .spyFitted(lines: 2, scale: 0.66)
-
-                Text(snapshot.category.uppercased())
-                    .font(.system(size: 10, weight: .black, design: .default))
-                    .tracking(0.02)
-                    .foregroundStyle(SpyTheme.red)
-                    .padding(.horizontal, 8)
-                    .frame(height: 24)
-                    .background(SpyTheme.red.opacity(0.12), in: CutCornerShape(cut: 5))
-                    .spyFitted(scale: 0.54)
-
-                Spacer()
-
-                if selectedPackID == "builtin", !localHasCustomTheme {
-                    Button {
-                        rerollBuiltinPreview()
-                    } label: {
-                        SpyActionLabel(
-                            title: localized(en: "REROLL", ru: "ДРУГОЙ", es: "OTRO", uk: "ІНШИЙ"),
-                            systemImage: "arrow.clockwise",
-                            fontSize: 9,
-                            iconSize: 11,
-                            tracking: 0.02
-                        )
-                    }
-                    .buttonStyle(SpyButtonStyle(variant: .ghost))
-                        .frame(maxWidth: 104)
-                }
-            }
-            .padding(.horizontal, 16)
-            .padding(.vertical, 12)
-            .overlay(alignment: .bottom) {
-                Rectangle()
-                    .fill(SpyTheme.red.opacity(0.15))
-                    .frame(height: 1)
-            }
-
-            Text(localPoolStats(inGame: inGameCount, active: activeCount, total: snapshot.words.count))
-                .font(.system(size: 10, weight: .bold, design: .monospaced))
-                .tracking(0.02)
-                .foregroundStyle(snapshot.words.isEmpty ? SpyTheme.red.opacity(0.82) : SpyTheme.dim)
-                .spyFitted(lines: 2, scale: 0.62)
-                .padding(.horizontal, 16)
-                .padding(.top, 8)
-
-            if snapshot.words.isEmpty {
-                HStack(alignment: .top, spacing: 10) {
-                    Image(systemName: "sparkles")
-                        .font(.system(size: 13, weight: .black))
-                        .foregroundStyle(SpyTheme.red.opacity(0.78))
-                        .frame(width: 18)
-                        .padding(.top, 2)
-
-                    Text(snapshot.emptyMessage)
-                        .font(SpyTheme.mono)
-                        .foregroundStyle(SpyTheme.muted)
-                        .lineSpacing(4)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .fixedSize(horizontal: false, vertical: true)
-                }
-                .padding(.horizontal, 16)
-                .padding(.top, 12)
-                .padding(.bottom, 16)
-            } else {
-                localPoolWordGrid(compactWords)
-
-                if snapshot.words.count > localCollapsedPoolPreviewLimit {
-                    Button {
-                        HapticManager.shared.fire(.tabSelection)
-                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.30)) {
-                            localPoolExpanded.toggle()
-                        }
-                    } label: {
-                        HStack(spacing: 9) {
-                            Image(systemName: localPoolExpanded ? "chevron.up" : "chevron.down")
-                                .font(.system(size: 11, weight: .black))
-
-                            Text(localPoolExpansionLabel(total: snapshot.words.count))
-                                .font(.system(size: 10.5, weight: .black, design: .monospaced))
-                                .tracking(0.04)
-                                .spyFitted(lines: 1, scale: 0.62, alignment: .center)
-                        }
-                        .foregroundStyle(localPoolExpanded ? SpyTheme.muted : SpyTheme.red)
-                        .frame(maxWidth: .infinity)
-                        .frame(height: 44)
-                        .background(SpyTheme.black.opacity(0.42), in: CutCornerShape(cut: 8))
-                        .overlay(
-                            CutCornerShape(cut: 8)
-                                .stroke(localPoolExpanded ? SpyTheme.strokeStrong : SpyTheme.red.opacity(0.42), lineWidth: 1)
-                        )
-                        .contentShape(CutCornerShape(cut: 8))
-                    }
-                    .buttonStyle(SpyWebPressStyle())
-                    .padding(.horizontal, 16)
-                    .padding(.bottom, 10)
-                    .accessibilityIdentifier("localGame.poolExpansion")
-                }
-
-                if localPoolExpanded {
-                    localPoolWordGrid(additionalWords)
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                HStack(spacing: 8) {
-                    TextField("", text: $localNewPoolWord, prompt: Text(localAddWordPlaceholder).foregroundStyle(SpyTheme.dim))
-                        .textInputAutocapitalization(.words)
-                        .autocorrectionDisabled()
-                        .submitLabel(.done)
-                        .onSubmit(addLocalPoolWord)
-                        .font(.system(size: 13, weight: .semibold, design: .monospaced))
-                        .foregroundStyle(.white)
-                        .tint(SpyTheme.red)
-                        .padding(.horizontal, 12)
-                        .frame(height: 44)
-                        .frame(maxWidth: .infinity)
-                        .background(SpyTheme.black, in: CutCornerShape(cut: 8))
-                        .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.strokeStrong.opacity(0.72), lineWidth: 1))
-                        .focused($focusedLocalSetupField, equals: .poolWord)
-                        .id(localPoolWordScrollTarget)
-
-                    Button(action: addLocalPoolWord) {
-                        Text("+ ADD")
-                            .font(.system(size: 11, weight: .black, design: .monospaced))
-                            .tracking(0.04)
-                            .foregroundStyle(SpyTheme.red)
-                            .frame(width: 72, height: 44)
-                            .spyCutCard(cut: 8, fill: Color.clear, stroke: SpyTheme.red.opacity(0.55))
-                    }
-                    .buttonStyle(SpyWebPressStyle())
-                    .disabled(localNewPoolWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                    .opacity(localNewPoolWord.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty ? 0.45 : 1)
-                }
-                .padding(.horizontal, 16)
-                .padding(.bottom, 14)
-            }
-        }
-        .background(SpyTheme.red.opacity(0.04))
-        .overlay(
-            CutCornerShape(cut: 10)
-                .stroke(SpyTheme.red.opacity(snapshot.words.isEmpty ? 0.22 : 0.25), lineWidth: 1)
-        )
-        .clipShape(CutCornerShape(cut: 10))
-        .overlay(alignment: .topLeading) {
-            Rectangle()
-                .fill(SpyTheme.red.opacity(localPreviewPulse ? 0.42 : 0.14))
-                .frame(width: localPreviewPulse ? 76 : 28, height: 1)
-                .animation(
-                    reduceMotion
-                        ? nil
-                        : .easeInOut(duration: 2.4).repeatForever(autoreverses: true),
-                    value: localPreviewPulse
-                )
-        }
-        .animation(reduceMotion ? nil : .smooth(duration: 0.30), value: localPoolExpanded)
-    }
-
-    private func localPoolWordGrid(_ words: [String]) -> some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], spacing: 8) {
-            ForEach(words, id: \.self) { word in
-                let isEnabled = !disabledPoolWordKeys.contains(localWordKey(word))
-                HStack(spacing: 3) {
-                    Button {
-                        toggleLocalPoolWord(word)
-                    } label: {
-                        Text(word.uppercased())
-                            .font(.system(size: 10, weight: .black, design: .default))
-                            .tracking(0.02)
-                            .strikethrough(!isEnabled, color: SpyTheme.dim)
-                            .spyFitted(scale: 0.50, alignment: .center)
-                            .frame(maxWidth: .infinity)
-                            .frame(minHeight: 44)
-                    }
-                    .buttonStyle(SpyWebPressStyle())
-                    .contentShape(Rectangle())
-                    .accessibilityLabel(word)
-
-                    Button {
-                        removeLocalPoolWord(word)
-                    } label: {
-                        Image(systemName: "xmark")
-                            .font(.system(size: 9, weight: .black))
-                            .foregroundStyle(SpyTheme.dim.opacity(isEnabled ? 0.72 : 0.35))
-                            .frame(width: 24, height: 36)
-                    }
-                    .buttonStyle(SpyWebPressStyle())
-                    .spyHitTarget()
-                    .contentShape(Rectangle())
-                    .accessibilityLabel(localized(en: "Remove \(word)", ru: "Удалить \(word)", es: "Eliminar \(word)", uk: "Видалити \(word)"))
-                }
-                .foregroundStyle(isEnabled ? SpyTheme.bodyText : SpyTheme.dim.opacity(0.38))
-                .padding(.horizontal, 8)
-                .frame(minHeight: 44)
-                .frame(maxWidth: .infinity)
-                .spyCutCard(
-                    cut: 7,
-                    fill: isEnabled ? SpyTheme.control : SpyTheme.black,
-                    stroke: isEnabled ? SpyTheme.strokeStrong : SpyTheme.strokeDim
-                )
-            }
-        }
-        .padding(.horizontal, 16)
-        .padding(.vertical, 10)
     }
 
     @ViewBuilder
@@ -3775,7 +3384,7 @@ struct LocalGameView: View {
 
     private var localSourceLabel: some View {
         HStack(spacing: 10) {
-            Image(systemName: selectedPackID == "builtin" ? "archivebox.fill" : "shippingbox.fill")
+            Image(systemName: selectedPackID == "generated" ? "sparkles" : "shippingbox.fill")
                 .font(.system(size: 16, weight: .bold))
                 .foregroundStyle(SpyTheme.red)
                 .frame(width: 28)
@@ -3806,85 +3415,10 @@ struct LocalGameView: View {
             return "\(generatedPack.category.uppercased()) · \(generatedPack.words.localCleanWords.count) \(copy.wordsSuffix)"
         }
 
-        if selectedPackID != "builtin",
-           let pack = packs.first(where: { $0.id == selectedPackID }) {
+        if let pack = packs.first(where: { $0.id == selectedPackID }) {
             return "\(pack.name.uppercased()) · \(pack.words?.localCleanWords.count ?? 0) \(copy.wordsSuffix)"
         }
-
-        if let generatedPack, !generatedPack.words.isEmpty {
-            return "\(copy.builtinIntel) · \(generatedPack.words.localCleanWords.count) AI"
-        }
-
-        return "\(copy.builtinIntel) · \(Int(wordCount)) \(copy.wordsSuffix)"
-    }
-
-    private var localPoolSnapshot: LocalPoolSnapshot {
-        if let localPoolDraft {
-            let words = localPoolDraft.words.localCleanWords
-            return LocalPoolSnapshot(
-                category: localPoolDraft.category,
-                source: localPoolDraft.source,
-                words: words,
-                countLabel: "\(words.count) \(copy.wordsSuffix)",
-                emptyMessage: localized(en: "Add at least one active word before dealing cards.", ru: "Добавь хотя бы одно активное слово перед раздачей.", es: "Agrega al menos una palabra activa antes de repartir.", uk: "Додай хоча б одне активне слово перед роздаванням карток.")
-            )
-        }
-
-        if selectedPackID == "generated", let generatedPack {
-            let words = generatedPack.words.localCleanWords
-            return LocalPoolSnapshot(
-                category: generatedPack.category.nilIfBlank ?? customTheme.nilIfBlank ?? customCategoryFallback,
-                source: localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO", uk: "ЗГЕНЕРОВАНО AI"),
-                words: words,
-                countLabel: "\(words.count) \(copy.wordsSuffix)",
-                emptyMessage: localized(en: "Generate a theme before dealing cards.", ru: "Сгенерируй тему перед раздачей карт.", es: "Genera un tema antes de repartir.", uk: "Згенеруй тему перед роздаванням карток.")
-            )
-        }
-
-        if !localHasCustomTheme,
-           selectedPackID == "builtin",
-           let generatedPack {
-            let words = generatedPack.words.localCleanWords
-            return LocalPoolSnapshot(
-                category: generatedPack.category.nilIfBlank ?? builtinPreviewCategory,
-                source: localized(en: "BUILT-IN INTEL", ru: "ВСТРОЕННЫЙ INTEL", es: "INTEL INTEGRADA", uk: "ВБУДОВАНА РОЗВІДКА"),
-                words: words,
-                countLabel: "\(words.count) \(copy.wordsSuffix)",
-                emptyMessage: localized(en: "Built-in pool is unavailable.", ru: "Встроенный пул недоступен.", es: "Banco integrado no disponible.", uk: "Вбудований пул недоступний.")
-            )
-        }
-
-        if localHasCustomTheme {
-            return LocalPoolSnapshot(
-                category: customTheme.nilIfBlank ?? customCategoryFallback,
-                source: localized(en: "AI GENERATED", ru: "AI ГЕНЕРАЦИЯ", es: "IA GENERADO", uk: "ЗГЕНЕРОВАНО AI"),
-                words: [],
-                countLabel: "0 \(copy.wordsSuffix)",
-                emptyMessage: localized(en: "Generate a theme before dealing cards.", ru: "Сгенерируй тему перед раздачей карт.", es: "Genera un tema antes de repartir.", uk: "Згенеруй тему перед роздаванням карток.")
-            )
-        }
-
-        if selectedPackID != "builtin",
-           let pack = packs.first(where: { $0.id == selectedPackID }) {
-            let words = pack.words?.localCleanWords ?? []
-            return LocalPoolSnapshot(
-                category: pack.category?.nilIfBlank ?? pack.name,
-                source: localized(en: "WORD PACK", ru: "WORDPACK", es: "WORDPACK", uk: "НАБІР СЛІВ"),
-                words: words,
-                countLabel: "\(words.count) \(copy.wordsSuffix)",
-                emptyMessage: localized(en: "This pack is empty. Choose another source.", ru: "Этот пак пуст. Выбери другой источник.", es: "Este pack esta vacio. Elige otra fuente.", uk: "Цей набір порожній. Обери інше джерело.")
-            )
-        }
-
-        let category = localWordPools[builtinPreviewCategory] == nil ? "CLASSIC" : builtinPreviewCategory
-        let words = (localWordPools[category] ?? localWordPools["CLASSIC"] ?? []).localCleanWords
-        return LocalPoolSnapshot(
-            category: category,
-            source: localized(en: "BUILT-IN INTEL", ru: "ВСТРОЕННЫЙ INTEL", es: "INTEL INTEGRADA", uk: "ВБУДОВАНА РОЗВІДКА"),
-            words: words,
-            countLabel: "\(words.count) \(copy.wordsSuffix)",
-            emptyMessage: localized(en: "Built-in pool is unavailable.", ru: "Встроенный пул недоступен.", es: "Banco integrado no disponible.", uk: "Вбудований пул недоступний.")
-        )
+        return localized(en: "NO SOURCE SELECTED", ru: "ИСТОЧНИК НЕ ВЫБРАН", es: "SIN FUENTE", uk: "ДЖЕРЕЛО НЕ ОБРАНО")
     }
 
     private func localConfigTile(title: String, value: String) -> some View {
@@ -4143,46 +3677,6 @@ struct LocalGameView: View {
         HapticManager.shared.fire(.buttonPress)
     }
 
-    private func rerollBuiltinPreview() {
-        let categories = localWordPools.keys.sorted()
-        guard !categories.isEmpty else { return }
-        let remaining = categories.filter { $0 != builtinPreviewCategory }
-        let category = remaining.randomElement() ?? categories.randomElement() ?? "CLASSIC"
-        builtinPreviewCategory = category
-        generatedPack = GeneratedWordPack(
-            name: category,
-            category: category,
-            words: localWordPools[category] ?? localWordPools["CLASSIC"] ?? []
-        )
-        wordCount = Double(max(generatedPack?.words.localCleanWords.count ?? 0, 2))
-        selectedPackID = "builtin"
-        localSourceBeforeCustomTheme = "builtin"
-        localPoolExpanded = false
-        disabledPoolWordKeys.removeAll()
-        clearLocalPoolDraft()
-        status = localized(en: "BUILT-IN INTEL REROLLED", ru: "ВСТРОЕННЫЙ INTEL ОБНОВЛЕН", es: "INTEL INTEGRADA CAMBIADA", uk: "ВБУДОВАНУ РОЗВІДКУ ОНОВЛЕНО")
-        HapticManager.shared.fire(.tabSelection)
-    }
-
-    private func revealBuiltinPool() {
-        let categories = localWordPools.keys.sorted()
-        let category = categories.randomElement() ?? "CLASSIC"
-        builtinPreviewCategory = category
-        generatedPack = GeneratedWordPack(
-            name: category,
-            category: category,
-            words: localWordPools[category] ?? localWordPools["CLASSIC"] ?? []
-        )
-        wordCount = Double(max(generatedPack?.words.localCleanWords.count ?? 0, 2))
-        selectedPackID = "builtin"
-        localSourceBeforeCustomTheme = "builtin"
-        localPoolExpanded = false
-        disabledPoolWordKeys.removeAll()
-        clearLocalPoolDraft()
-        status = ""
-        HapticManager.shared.fire(.buttonPress)
-    }
-
     private func generateLocalTheme() async {
         let theme = customTheme.trimmingCharacters(in: .whitespacesAndNewlines)
         guard !theme.isEmpty, !isGenerating else { return }
@@ -4249,9 +3743,6 @@ struct LocalGameView: View {
                 aiRemaining: generated.aiRemaining
             )
             selectedPackID = "generated"
-            localPoolExpanded = false
-            disabledPoolWordKeys.removeAll()
-            clearLocalPoolDraft()
             wordCount = Double(min(words.count, targetCount))
             status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO", uk: "AI-ПУЛ СЛІВ ГОТОВИЙ")
             HapticManager.shared.fire(.milestone)
@@ -4265,7 +3756,7 @@ struct LocalGameView: View {
 
     private func pushLocalThemeMax() async {
         let theme = customTheme.trimmingCharacters(in: .whitespacesAndNewlines)
-        let current = localPoolSnapshot.words.localCleanWords
+        let current = generatedPack?.words.localCleanWords ?? []
         let selectedWordCount = Int(wordCount)
         let wasUsingEntirePool = selectedWordCount >= current.count
         guard !theme.isEmpty,
@@ -4332,10 +3823,6 @@ struct LocalGameView: View {
                 aiRemaining: generated.aiRemaining
             )
             selectedPackID = "generated"
-            clearLocalPoolDraft()
-            disabledPoolWordKeys = disabledPoolWordKeys.filter { key in
-                merged.contains { localWordKey($0) == key }
-            }
             wordCount = Double(
                 wasUsingEntirePool
                     ? merged.count
@@ -4355,7 +3842,7 @@ struct LocalGameView: View {
         guard let email = appState.user?.email else { return }
         guard let generatedPack else { return }
 
-        let words = activeLocalWords(localPoolSnapshot.words)
+        let words = generatedPack.words.localCleanWords
         guard words.count >= 2 else { return }
 
         isSavingGeneratedPack = true
@@ -4402,13 +3889,6 @@ struct LocalGameView: View {
         if localNeedsGeneratedTheme {
             status = localPrimaryActionTitle
             HapticManager.shared.fire(.notification(.warning))
-            return
-        }
-
-        if !localHasCustomTheme && selectedPackID == "builtin" && generatedPack == nil {
-            withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
-                revealBuiltinPool()
-            }
             return
         }
 
@@ -5111,28 +4591,20 @@ struct LocalGameView: View {
     }
 
     private func reconcileLocalWordSources() {
-        if localSourceBeforeCustomTheme != "builtin",
+        if !localSourceBeforeCustomTheme.isEmpty,
            !packs.contains(where: { $0.id == localSourceBeforeCustomTheme }) {
-            localSourceBeforeCustomTheme = "builtin"
+            localSourceBeforeCustomTheme = packs.first?.id ?? ""
         }
 
         guard !localHasCustomTheme,
-              selectedPackID != "builtin",
               selectedPackID != "generated",
               !packs.contains(where: { $0.id == selectedPackID }) else { return }
 
-        selectedPackID = "builtin"
+        selectedPackID = packs.first?.id ?? ""
         generatedPack = nil
-        localPoolExpanded = false
-        disabledPoolWordKeys.removeAll()
-        clearLocalPoolDraft()
     }
 
     private func pickLocalWord() -> (word: String, category: String, pool: [String])? {
-        if let localPoolDraft {
-            return localWordSelection(from: localPoolDraft.words, category: localPoolDraft.category)
-        }
-
         if selectedPackID == "generated" {
             guard let generatedPack else { return nil }
             return localWordSelection(
@@ -5151,19 +4623,13 @@ struct LocalGameView: View {
             return nil
         }
 
-        if selectedPackID != "builtin",
-           let pack = packs.first(where: { $0.id == selectedPackID }) {
+        if let pack = packs.first(where: { $0.id == selectedPackID }) {
             return localWordSelection(
                 from: pack.words?.localCleanWords ?? [],
                 category: pack.category?.nilIfBlank ?? pack.name
             )
-        } else if selectedPackID != "builtin" {
-            return nil
         }
-
-        let category = localWordPools[builtinPreviewCategory] == nil ? (localWordPools.keys.randomElement() ?? "CLASSIC") : builtinPreviewCategory
-        let words = localWordPools[category] ?? localWordPools["CLASSIC"] ?? ["Embassy"]
-        return localWordSelection(from: words, category: category)
+        return nil
     }
 
     private func localWordSelection(
@@ -5245,13 +4711,11 @@ struct LocalGameView: View {
         spiesKnowEachOther = settings.spiesKnowEachOther ?? false
         wordCount = min(max(settings.wordCount, 2), Double(localThemeGenerationLimit))
         mode = settings.mode == "classic" ? .associations : (LocalMode(rawValue: settings.mode) ?? .questions)
-        selectedPackID = settings.selectedPackID
+        selectedPackID = settings.selectedPackID == "builtin" ? "" : settings.selectedPackID
         localSourceBeforeCustomTheme = settings.sourceBeforeCustomTheme
-            ?? (settings.selectedPackID == "generated" ? "builtin" : settings.selectedPackID)
+            ?? (settings.selectedPackID == "generated" || settings.selectedPackID == "builtin" ? "" : settings.selectedPackID)
         customTheme = settings.customTheme
         generatedPack = settings.generatedPack
-        clearLocalPoolDraft()
-        localPoolExpanded = false
         localThemeError = ""
         localThemeRequestID = UUID()
         localWordCountMode = LocalWordCountMode(rawValue: settings.localWordCountMode ?? "") ?? .recommended
@@ -5267,13 +4731,11 @@ struct LocalGameView: View {
             )
         } else if localHasCustomTheme {
             generatedPack = nil
-            if selectedPackID == "generated" {
-                selectedPackID = "builtin"
-            }
+            selectedPackID = "generated"
         } else if selectedPackID == "generated" {
-            selectedPackID = "builtin"
+            selectedPackID = ""
             generatedPack = nil
-        } else if selectedPackID != "builtin" {
+        } else {
             generatedPack = nil
         }
     }
@@ -5314,9 +4776,7 @@ struct LocalGameView: View {
         avatars = preview.players.map(\.avatar)
         playerIDs = players.map { _ in UUID() }
         mode = preview.mode
-        selectedPackID = "builtin"
-        builtinPreviewCategory = preview.category
-        clearLocalPoolDraft()
+        selectedPackID = ""
         session = preview
         eliminatedPlayerIndices = []
         resetAssociationFlow(playerIndices: Array(preview.players.indices), mode: preview.mode)
@@ -6097,14 +5557,14 @@ private struct LocalGlitchText: View {
 
 enum LocalLobbyPrimaryActionPolicy {
     enum Source: Equatable {
-        case builtin
+        case none
         case saved
         case generated
     }
 
     enum Action: Equatable {
         case generateRequired
-        case revealRandom
+        case sourceRequired
         case dealCards
     }
 
@@ -6122,8 +5582,8 @@ enum LocalLobbyPrimaryActionPolicy {
             return Resolution(action: .generateRequired, isEnabled: false)
         }
 
-        if source == .builtin, !hasGeneratedPack {
-            return Resolution(action: .revealRandom, isEnabled: true)
+        if source == .none {
+            return Resolution(action: .sourceRequired, isEnabled: false)
         }
 
         return Resolution(action: .dealCards, isEnabled: true)
@@ -6255,24 +5715,9 @@ private extension LocalSession {
 }
 #endif
 
-private struct LocalPoolSnapshot {
-    let category: String
-    let source: String
-    let words: [String]
-    let countLabel: String
-    let emptyMessage: String
-}
-
-private struct LocalPoolDraft: Hashable {
-    let category: String
-    let source: String
-    let words: [String]
-}
-
 private enum LocalSetupField: Hashable {
     case player(Int)
     case theme
-    case poolWord
 }
 
 private enum LocalSetupPanel: Hashable {
@@ -6310,26 +5755,7 @@ private struct LocalGameSettings: Codable {
 }
 
 private let localAvatars = ["🕵️", "👤", "🤖", "🎭", "🧠", "💀", "🎯", "🔥", "👻", "🦅"]
-private let localCollapsedPoolPreviewLimit = 8
 private let localThemeGenerationLimit = 200
-
-private let localWordPools: [String: [String]] = [
-    "CLASSIC": [
-        "Embassy", "Submarine", "Casino", "Airport", "Museum", "Hospital", "Bank Vault", "Opera House", "Train Station", "University",
-        "Restaurant", "Cinema", "Library", "Space Station", "Police Station", "Hotel", "Zoo", "Laboratory", "Stadium", "Shopping Mall",
-        "Cathedral", "Courtroom", "Factory", "Circus", "Theater", "School", "Post Office", "Harbor", "Metro", "Aquarium"
-    ],
-    "BLACK OPS": [
-        "Safehouse", "Satellite", "Cipher", "Dead Drop", "Briefcase", "Laser Grid", "Rooftop", "Interrogation", "Vault", "Checkpoint",
-        "Encrypted Drive", "Control Room", "Night Vision", "Drone", "Radio Tower", "Border Gate", "Decoy Van", "Hidden Tunnel", "Signal Jammer", "Microfilm",
-        "Extraction Point", "Silent Alarm", "Disguise Kit", "Listening Post", "Fake Passport", "Underground Bunker", "Code Phrase", "Thermal Camera", "Blackout", "Courier"
-    ],
-    "TRAVEL": [
-        "Hotel", "Beach", "Cruise Ship", "Ski Resort", "Desert Camp", "Night Market", "Theme Park", "Harbor", "Cathedral", "Metro",
-        "Airport Lounge", "Mountain Cabin", "Train Platform", "Old Town", "Safari Lodge", "Island Ferry", "Street Market", "Museum Tour", "Vineyard", "Capsule Hotel",
-        "Bus Terminal", "National Park", "River Boat", "Temple", "Boardwalk", "Hostel", "Observation Deck", "Cable Car", "Souvenir Shop", "Camping Site"
-    ]
-]
 
 private extension Array {
     subscript(safe index: Int) -> Element? {

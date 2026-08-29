@@ -400,22 +400,22 @@ final class OnlineRoundStateTests: XCTestCase {
         let resolution = LocalLobbyPrimaryActionPolicy.resolve(
             hasCustomTheme: true,
             hasGeneratedPack: false,
-            source: .builtin
+            source: .generated
         )
 
         XCTAssertEqual(resolution.action, .generateRequired)
         XCTAssertFalse(resolution.isEnabled)
     }
 
-    func testLocalLobbyPrimaryActionRevealsUnpreparedBuiltinPool() {
+    func testLocalLobbyPrimaryActionRequiresAWordSource() {
         let resolution = LocalLobbyPrimaryActionPolicy.resolve(
             hasCustomTheme: false,
             hasGeneratedPack: false,
-            source: .builtin
+            source: .none
         )
 
-        XCTAssertEqual(resolution.action, .revealRandom)
-        XCTAssertTrue(resolution.isEnabled)
+        XCTAssertEqual(resolution.action, .sourceRequired)
+        XCTAssertFalse(resolution.isEnabled)
     }
 
     func testLocalLobbyPrimaryActionDealsCardsFromSavedOrGeneratedSource() {
@@ -429,22 +429,6 @@ final class OnlineRoundStateTests: XCTestCase {
             XCTAssertEqual(resolution.action, .dealCards, "Unexpected action for \(source)")
             XCTAssertTrue(resolution.isEnabled, "Expected enabled CTA for \(source)")
         }
-    }
-
-    func testLocalLobbyBuiltinRandomCTAAdvancesFromRevealToDeal() {
-        let firstTap = LocalLobbyPrimaryActionPolicy.resolve(
-            hasCustomTheme: false,
-            hasGeneratedPack: false,
-            source: .builtin
-        )
-        let afterPoolReveal = LocalLobbyPrimaryActionPolicy.resolve(
-            hasCustomTheme: false,
-            hasGeneratedPack: true,
-            source: .builtin
-        )
-
-        XCTAssertEqual(firstTap, .init(action: .revealRandom, isEnabled: true))
-        XCTAssertEqual(afterPoolReveal, .init(action: .dealCards, isEnabled: true))
     }
 
     func testForgotCardReviewOnlyResumesTimerThatWasRunningInTheSameLiveRound() {
