@@ -95,17 +95,17 @@ Deno.test("cache keys exactly normalize user, theme, language, and prompt versio
   );
 });
 
-Deno.test("current exact-theme prompt bypasses cached v3 variants", async () => {
+Deno.test("current single-pass theme-language prompt bypasses cached v4 variants", async () => {
   const legacy = await request({
-    promptVersion: "word-pack-2026-08-16-v3",
+    promptVersion: "word-pack-2026-08-29-v4-gpt_5_4",
   });
   const current = await request({ promptVersion: WORD_PACK_CACHE_VERSION });
 
-  assertEquals(WORD_PACK_PROMPT_VERSION, "word-pack-2026-08-29-v4");
+  assertEquals(WORD_PACK_PROMPT_VERSION, "word-pack-2026-08-29-v5");
   assertEquals(BASE44_WORD_PACK_MODEL, "gpt_5_4");
   assertEquals(
     WORD_PACK_CACHE_VERSION,
-    "word-pack-2026-08-29-v4-gpt_5_4",
+    "word-pack-2026-08-29-v5-gpt_5_4-single-pass-theme-language",
   );
   assertNotEquals(current.cacheKey, legacy.cacheKey);
 });

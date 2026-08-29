@@ -1,128 +1,166 @@
-import { assert, assertEquals, assertThrows } from "jsr:@std/assert@1";
+import { assertEquals, assertThrows } from "jsr:@std/assert@1";
 import {
-  applyWordPackQualityAudit,
-  buildWordPackQualityAuditPrompt,
-  requireWordPackRepairQuality,
-  wordPackQualityAuditSchema,
+  applyWordPackSelfAudit,
   WordPackQualityGateError,
+  wordPackSelfAuditSchema,
 } from "./word-pack-quality.ts";
 
-Deno.test("named-theme quality audit rejects adjacent anime and rapper concepts", () => {
-  const animePrompt = buildWordPackQualityAuditPrompt({
-    theme: "Имена аниме персонажей",
-    language: "ru",
-    requestedCount: 25,
-    alreadyExcluded: ["Гоку"],
-    words: ["Наруто Удзумаки", "Сёнэн", "Ниндзя"],
-  });
-  const rapperPrompt = buildWordPackQualityAuditPrompt({
-    theme: "Русские популярные реперы",
-    language: "ru",
-    requestedCount: 25,
-    alreadyExcluded: ["Oxxxymiron"],
-    words: ["Баста", "Микрофон", "Студия"],
-  });
-
-  for (const prompt of [animePrompt, rapperPrompt]) {
-    assert(prompt.includes("strictly as data"));
-    assert(prompt.includes("truthful direct member"));
-    assert(prompt.includes("proper name of one specific matching entity"));
-    assert(prompt.includes("preserve the requested answer type"));
-    assert(prompt.includes("If and only if the grammatical answer type"));
-    assert(prompt.includes("Do not accept an item just to reach a quota"));
-    assert(prompt.includes("return enough unique replacement words"));
-  }
-  assert(animePrompt.includes("shonen, shojo, seinen, josei, mecha, isekai"));
-  assert(rapperPrompt.includes("microphone, beat, rhyme, studio, and concert"));
-});
-
-Deno.test("quality repair accepts a full pack despite an unused rejected extra", () => {
-  requireWordPackRepairQuality({
-    returnedCount: 25,
-    requestedCount: 25,
-    rejectedCount: 1,
-    exhausted: false,
-  });
-  requireWordPackRepairQuality({
-    returnedCount: 4,
-    requestedCount: 25,
-    rejectedCount: 1,
-    exhausted: true,
-  });
-
-  for (
-    const input of [
-      {
-        returnedCount: 24,
-        requestedCount: 25,
-        rejectedCount: 0,
-        exhausted: false,
-      },
-    ]
-  ) {
-    assertThrows(
-      () => requireWordPackRepairQuality(input),
-      WordPackQualityGateError,
-    );
-  }
-});
-
-Deno.test("quality audit keeps accepted candidates in original order", () => {
+Deno.test("single-pass quality audit keeps accepted drafts in order and appends replacements", () => {
   assertEquals(
-    applyWordPackQualityAudit(
-      ["Наруто Удзумаки", "Сёнэн", "Сейлор Мун"],
-      {
-        accepted_indices: [2, 0],
-        replacement_words: ["Монки Д. Луффи"],
-        exhausted: false,
-      },
-    ),
-    {
-      words: ["Наруто Удзумаки", "Сейлор Мун"],
-      replacementWords: ["Монки Д. Луффи"],
-      rejectedCount: 1,
+    applyWordPackSelfAudit({
+      draft_words: ["Наруто Удзумаки", "Сёнэн", "Сейлор Мун"],
+      accepted_indices: [2, 0],
+      replacement_words: ["Монки Д. Луффи"],
+      accepted_replacement_indices: [0],
+      category: "Имена аниме персонажей",
       exhausted: false,
+    }, 3),
+    {
+      words: ["Наруто Удзумаки", "Сейлор Мун", "Монки Д. Луффи"],
+      category: "Имена аниме персонажей",
+      exhausted: false,
+      rejectedCount: 1,
+      replacementCount: 1,
     },
   );
 });
 
-Deno.test("quality audit schema and parser fail closed on invalid indices", () => {
-  const schema = wordPackQualityAuditSchema(3, 25);
+Deno.test("single-pass quality audit deduplicates replacements before enforcing count", () => {
+  assertEquals(
+    applyWordPackSelfAudit({
+      draft_words: ["Баста", "Микрофон", "Noize MC"],
+      accepted_indices: [0, 2],
+      replacement_words: ["баста", "Oxxxymiron"],
+      accepted_replacement_indices: [0, 1],
+      category: "Русские популярные рэперы",
+      exhausted: false,
+    }, 3),
+    {
+      words: ["Баста", "Noize MC", "Oxxxymiron"],
+      category: "Русские популярные рэперы",
+      exhausted: false,
+      rejectedCount: 2,
+      replacementCount: 1,
+    },
+  );
+});
+
+Deno.test("single-pass quality audit never re-accepts a rejected draft as a replacement", () => {
+  assertThrows(
+    () =>
+      applyWordPackSelfAudit({
+        draft_words: ["Tom Hanks", "Camera", "Meryl Streep"],
+        accepted_indices: [0, 2],
+        replacement_words: ["Camera"],
+        accepted_replacement_indices: [0],
+        category: "Famous actors",
+        exhausted: false,
+      }, 3),
+    WordPackQualityGateError,
+  );
+});
+
+Deno.test("single-pass quality audit excludes forbidden draft and replacement words", () => {
+  assertEquals(
+    applyWordPackSelfAudit(
+      {
+        draft_words: ["Mars", "Venus", "Earth"],
+        accepted_indices: [0, 1, 2],
+        replacement_words: ["Mercury"],
+        accepted_replacement_indices: [0],
+        category: "Planets",
+        exhausted: false,
+      },
+      3,
+      ["Mars"],
+    ),
+    {
+      words: ["Venus", "Earth", "Mercury"],
+      category: "Planets",
+      exhausted: false,
+      rejectedCount: 1,
+      replacementCount: 1,
+    },
+  );
+});
+
+Deno.test("single-pass quality schema binds draft, audit, replacements and exhaustion", () => {
+  const schema = wordPackSelfAuditSchema({
+    requestedCount: 25,
+    draftDescription: "Exact-theme draft words.",
+    categoryDescription: "Theme label.",
+    exhaustedDescription: "True only when the exact set is exhausted.",
+  });
+
+  assertEquals(schema.properties.draft_words.maxItems, 25);
   assertEquals(schema.properties.accepted_indices.items.minimum, 0);
-  assertEquals(schema.properties.accepted_indices.items.maximum, 2);
-  assertEquals(schema.properties.accepted_indices.maxItems, 3);
+  assertEquals(schema.properties.accepted_indices.items.maximum, 24);
+  assertEquals(schema.properties.accepted_indices.maxItems, 25);
   assertEquals(schema.properties.replacement_words.maxItems, 25);
   assertEquals(
-    schema.required,
-    ["accepted_indices", "replacement_words", "exhausted"],
+    schema.properties.accepted_replacement_indices.items.maximum,
+    24,
   );
+  assertEquals(schema.required, [
+    "draft_words",
+    "accepted_indices",
+    "replacement_words",
+    "accepted_replacement_indices",
+    "category",
+    "exhausted",
+  ]);
+  assertEquals(schema.additionalProperties, false);
+});
 
-  for (const accepted_indices of [[0, 0], [-1], [3], [1.5], ["0"], null]) {
+Deno.test("single-pass quality gate fails closed on invalid or incomplete audits", () => {
+  const base = {
+    draft_words: ["A", "B", "C"],
+    accepted_indices: [0, 1, 2],
+    replacement_words: [],
+    accepted_replacement_indices: [],
+    category: "Letters",
+    exhausted: false,
+  };
+
+  for (
+    const candidate of [
+      { ...base, accepted_indices: [0, 0, 2] },
+      { ...base, accepted_indices: [-1, 1, 2] },
+      { ...base, accepted_indices: [0, 1, 3] },
+      { ...base, accepted_indices: [0, 1.5, 2] },
+      { ...base, accepted_indices: ["0", 1, 2] },
+      { ...base, accepted_replacement_indices: [0] },
+      { ...base, accepted_indices: [0, 1], exhausted: false },
+      { ...base, exhausted: true },
+      { ...base, unexpected: true },
+    ]
+  ) {
     const error = assertThrows(
-      () =>
-        applyWordPackQualityAudit(["A", "B", "C"], {
-          accepted_indices,
-          replacement_words: [],
-          exhausted: false,
-        }),
+      () => applyWordPackSelfAudit(candidate, 3),
       WordPackQualityGateError,
     );
     assertEquals(error.code, "ai_output_failed_quality_gate");
     assertEquals(error.status, 502);
     assertEquals(error.retryable, true);
   }
+});
 
+Deno.test("single-pass quality gate permits a truthful exhausted short pack", () => {
   assertEquals(
-    applyWordPackQualityAudit([], {
-      accepted_indices: [],
-      replacement_words: ["Баста", "Noize MC"],
-      exhausted: false,
-    }),
+    applyWordPackSelfAudit({
+      draft_words: ["Mercury", "Venus"],
+      accepted_indices: [0, 1],
+      replacement_words: [],
+      accepted_replacement_indices: [],
+      category: "Planets near the Sun",
+      exhausted: true,
+    }, 10),
     {
-      words: [],
-      replacementWords: ["Баста", "Noize MC"],
+      words: ["Mercury", "Venus"],
+      category: "Planets near the Sun",
+      exhausted: true,
       rejectedCount: 0,
-      exhausted: false,
+      replacementCount: 0,
     },
   );
 });

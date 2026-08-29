@@ -4,7 +4,7 @@ function occurrences(source: string, needle: string): number {
   return source.split(needle).length - 1;
 }
 
-Deno.test("AI word packs bind exact-theme quality, locale, cache, and client payload", async () => {
+Deno.test("AI word packs bind one-pass exact-theme quality and theme-language policy", async () => {
   const main = await Deno.readTextFile(
     new URL("../functions/generateWordPack/main.ts", import.meta.url),
   );
@@ -28,30 +28,37 @@ Deno.test("AI word packs bind exact-theme quality, locale, cache, and client pay
     "../../SpyClash/Views/LocalGameView.swift",
     "../../SpyClash/Views/WordPacksView.swift",
   ].map((path) => Deno.readTextFile(new URL(path, import.meta.url))));
+  const webClient = await Deno.readTextFile(
+    new URL(
+      "../../.web-reference/spyclash-web/src/utils/wordPoolAI.js",
+      import.meta.url,
+    ),
+  );
 
   assertStringIncludes(
     provider,
-    'WORD_PACK_PROMPT_VERSION = "word-pack-2026-08-29-v4"',
+    'WORD_PACK_PROMPT_VERSION = "word-pack-2026-08-29-v5"',
   );
   assertStringIncludes(provider, 'BASE44_WORD_PACK_MODEL = "gpt_5_4"');
   assertStringIncludes(provider, "strict set-membership constraint");
   assertStringIncludes(provider, "canonical proper name");
+  assertStringIncludes(provider, "assertNoKnownNamedThemeDrift");
+  assertStringIncludes(provider, "SAME NATURAL LANGUAGE");
+  assertStringIncludes(provider, "never use an app, device, profile");
   assert(!provider.includes("reinterpret it at a generic conceptual level"));
   assert(!provider.includes("minItems: 2"));
 
-  assertStringIncludes(main, "parseWordPackLanguage(body.language)");
-  assertStringIncludes(main, "parseWordPackLanguage(user?.language)");
-  assertStringIncludes(main, 'const cacheLanguage = promptLanguage ?? "und"');
-  assertStringIncludes(main, "language: cacheLanguage");
-  assertStringIncludes(
-    main,
-    'wordPackThemeMode(theme) ===\n              "named_entities"',
-  );
-  assertEquals(occurrences(main, "auditNamedThemeWords("), 2);
-  assertStringIncludes(
-    main,
-    "if (!requiresQualityAudit && !exhausted && words.length < count)",
-  );
+  assert(!main.includes("body.language"));
+  assert(!main.includes("user?.language"));
+  assertStringIncludes(main, 'language: "und"');
+  // One definition plus one normal call. A second call exists only inside the
+  // explicit exhausted-result verification branch.
+  assertEquals(occurrences(main, "invokeWordPackLLM("), 3);
+  assertStringIncludes(main, "if (exhausted)");
+  assertStringIncludes(main, "exhaustion_verification_used");
+  assertEquals(occurrences(main, "auditNamedThemeWords("), 0);
+  assertEquals(occurrences(main, "optional refill"), 0);
+  assertStringIncludes(main, "assertNoKnownNamedThemeDrift(theme, words)");
   assertStringIncludes(main, "category = theme");
   assertStringIncludes(
     main,
@@ -61,20 +68,30 @@ Deno.test("AI word packs bind exact-theme quality, locale, cache, and client pay
     occurrences(main, "category: STORED_WORD_PACK_CATEGORY"),
     2,
   );
-  assertStringIncludes(main, "quality_audit_attempts");
+  assertStringIncludes(main, "single_pass_quality_gate");
+  assertStringIncludes(main, "ai_duration_ms");
   assertStringIncludes(main, "quality_rejected_count");
   assertEquals(
     main.match(/^\s+model: BASE44_WORD_PACK_MODEL,/gm)?.length ?? 0,
-    2,
+    1,
   );
   assertStringIncludes(main, "promptVersion: WORD_PACK_CACHE_VERSION");
 
   assertStringIncludes(quality, 'code = "ai_output_failed_quality_gate"');
-  assertStringIncludes(quality, "Do not accept an item just to reach a quota");
+  assertStringIncludes(quality, "draft_words");
+  assertStringIncludes(quality, "accepted_indices");
+  assertStringIncludes(quality, "replacement_words");
+  assertStringIncludes(quality, "accepted_replacement_indices");
+  assertStringIncludes(quality, "applyWordPackSelfAudit");
   assert(!quality.includes("uniqueItems"));
 
-  assertStringIncludes(client, "language: language.rawValue");
-  assertStringIncludes(client, "let language: String");
+  const payloadStart = client.indexOf("private struct GenerateWordPackPayload");
+  const payloadEnd = client.indexOf(
+    "private struct AssociationState",
+    payloadStart,
+  );
+  const payload = client.slice(payloadStart, payloadEnd);
+  assert(!payload.includes("language"));
   assertEquals(
     callSites.reduce(
       (total, source) =>
@@ -84,6 +101,7 @@ Deno.test("AI word packs bind exact-theme quality, locale, cache, and client pay
         )?.length ?? 0),
       0,
     ),
-    5,
+    0,
   );
+  assert(!webClient.match(/generateWordPack[\s\S]{0,180}?language\s*:/));
 });

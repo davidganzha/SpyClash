@@ -811,7 +811,6 @@ private struct WordPackEditorSheet: View {
             let generated = try await appState.client.generateWordPack(
                 theme: signature.theme,
                 count: signature.count,
-                language: appState.language,
                 requestID: requestID,
                 preferFresh: preferFresh
             )

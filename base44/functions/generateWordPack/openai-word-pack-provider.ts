@@ -1,3 +1,10 @@
+import {
+  applyWordPackSelfAudit,
+  WordPackQualityGateError,
+  type WordPackSelfAuditCandidate,
+  wordPackSelfAuditSchema,
+} from "./word-pack-quality.ts";
+
 const DEFAULT_OPENAI_ENDPOINT = "https://api.openai.com/v1/responses";
 // Pinned official GPT-5.4 mini snapshot. Override through
 // SPYCLASH_OPENAI_MODEL after evaluating a newer model on representative packs.
@@ -19,7 +26,8 @@ type UnknownRecord = Record<string, unknown>;
 export type WordPackGenerationInput = {
   theme: string;
   count: number;
-  language?: WordPackLanguage;
+  /** @deprecated Output language is inferred only from the theme text. */
+  language?: string;
   alreadyUsed?: readonly string[];
 };
 
@@ -32,6 +40,10 @@ export type WordPackGenerationResult = {
    * that case without lowering result quality.
    */
   exhausted: boolean;
+  /** Internal quality telemetry; not returned by the public function API. */
+  qualityRejectedCount?: number;
+  /** Internal quality telemetry; not returned by the public function API. */
+  qualityReplacementCount?: number;
 };
 
 export type OpenAIWordPackProvider = {
@@ -59,7 +71,7 @@ export type OpenAIWordPackEnvironmentOptions = {
 export const WORD_PACK_SCHEMA_DESCRIPTION =
   "A safe word pool whose items are direct members or examples of the exact requested theme for a social-deduction party game.";
 
-export const WORD_PACK_PROMPT_VERSION = "word-pack-2026-08-29-v4";
+export const WORD_PACK_PROMPT_VERSION = "word-pack-2026-08-29-v5";
 
 // Pin Base44's per-call model so an app-level default change cannot silently
 // alter generation quality. Changing this constant must also change the cache
@@ -67,7 +79,7 @@ export const WORD_PACK_PROMPT_VERSION = "word-pack-2026-08-29-v4";
 export const BASE44_WORD_PACK_MODEL = "gpt_5_4" as const;
 
 export const WORD_PACK_CACHE_VERSION =
-  `${WORD_PACK_PROMPT_VERSION}-${BASE44_WORD_PACK_MODEL}`;
+  `${WORD_PACK_PROMPT_VERSION}-${BASE44_WORD_PACK_MODEL}-single-pass-theme-language`;
 
 export const WORD_PACK_CATEGORY_SCHEMA_DESCRIPTION =
   "A short, faithful display label for the exact requested theme, using the same language as the theme.";
@@ -76,8 +88,6 @@ export const WORD_PACK_EXHAUSTED_SCHEMA_DESCRIPTION =
   "True only when fewer real, safe, recognizable, directly on-theme items exist after exclusions.";
 
 export type WordPackThemeMode = "named_entities" | "direct_members";
-
-export type WordPackLanguage = "en" | "es" | "ru" | "uk";
 
 const NAMED_ENTITY_THEME_WORDS = new Set([
   "rapper",
@@ -422,6 +432,35 @@ const NAMED_ENTITY_SCOPE_CONTEXT = new Set([
 
 const NAMED_HEAD_TAIL_RELATIONS = new Set(["жанра"]);
 
+// Spanish commonly places scope adjectives after the entity noun, unlike the
+// English/Russian examples where the named-entity head is usually last. Keep
+// this deliberately narrow so adjacent requests such as "rapper albums" stay
+// in direct-members mode.
+const POSTPOSITIVE_NAMED_ENTITY_QUALIFIERS = new Set([
+  "español",
+  "española",
+  "españoles",
+  "españolas",
+  "espanol",
+  "espanola",
+  "espanoles",
+  "espanolas",
+  "famoso",
+  "famosa",
+  "famosos",
+  "famosas",
+  "popular",
+  "populares",
+]);
+
+const SPANISH_DEMONYM_QUALIFIER_PATTERNS = [
+  /^(?:mexican|argentin|chilen|colombian|venezolan|peruan|cuban|dominican|italian|ucranian|rus|eslovac|esloven|latin|británic|britanic)(?:o|a|os|as)$/u,
+  /^(?:brasileñ|puertorriqueñ)(?:o|a|os|as)$/u,
+  /^(?:estadounidense|canadiense)(?:s)?$/u,
+  /^(?:francés|frances|francesa|franceses|francesas)$/u,
+  /^(?:alemán|aleman|alemana|alemanes|alemanas)$/u,
+];
+
 const TECHNICAL_CHARACTER_CONTEXT = new Set([
   "alphanumeric",
   "alphabet",
@@ -485,6 +524,24 @@ const RELATIONAL_THEME_WORDS = new Set([
   "из",
   "у",
 ]);
+
+function isPostpositiveNamedEntityQualifier(word: string): boolean {
+  return POSTPOSITIVE_NAMED_ENTITY_QUALIFIERS.has(word) ||
+    SPANISH_DEMONYM_QUALIFIER_PATTERNS.some((pattern) => pattern.test(word));
+}
+
+function hasPostpositiveNamedEntityScope(
+  words: readonly string[],
+  headIndex: number,
+): boolean {
+  const tail = words.slice(headIndex + 1);
+  const relationIndex = tail.findIndex((word) =>
+    RELATIONAL_THEME_WORDS.has(word)
+  );
+  const qualifiers = relationIndex >= 0 ? tail.slice(0, relationIndex) : tail;
+  return qualifiers.length > 0 &&
+    qualifiers.every(isPostpositiveNamedEntityQualifier);
+}
 
 function normalizedThemeWords(theme: string): string[] {
   return theme.normalize("NFKC").toLocaleLowerCase().match(/\p{L}+/gu) ?? [];
@@ -638,49 +695,381 @@ export function wordPackThemeMode(theme: string): WordPackThemeMode {
         return true;
       }
       return index === 0 &&
-        words.slice(1).some((word) => NAMED_HEAD_TAIL_RELATIONS.has(word));
+        (words.slice(1).some((word) => NAMED_HEAD_TAIL_RELATIONS.has(word)) ||
+          hasPostpositiveNamedEntityScope(words, index));
     })
     ? "named_entities"
     : "direct_members";
 }
 
-function legacyThemeLanguage(theme: string): WordPackLanguage {
-  if (/[іїєґ]/iu.test(theme)) return "uk";
-  if (/\p{Script=Cyrillic}/u.test(theme)) return "ru";
-  if (
-    /[\u00bf\u00a1\u00f1\u00d1\u00e1\u00c1\u00e9\u00c9\u00ed\u00cd\u00f3\u00d3\u00fa\u00da\u00fc\u00dc]/u
-      .test(theme)
-  ) return "es";
-  return "en";
+const ANIME_NAMED_THEME_DRIFT = new Set([
+  "shonen",
+  "shojo",
+  "seinen",
+  "josei",
+  "mecha",
+  "isekai",
+  "witch",
+  "sorceress",
+  "swordsman",
+  "schoolboy",
+  "android",
+  "detective",
+  "ninja",
+  "cybernetic",
+  "cyborg",
+  "spirit",
+  "pilot",
+  "student",
+  "magician",
+  "mage",
+  "captain",
+  "alchemist",
+  "demon",
+  "traveler",
+  "traveller",
+  "guard",
+  "guardian",
+  "princess",
+  "mentor",
+  "racer",
+  "warrior",
+  "fighter",
+  "astronaut",
+  "healer",
+  "explorer",
+  "mercenary",
+  "comedy",
+  "drama",
+  "thriller",
+  "adventure",
+  "adventures",
+  "romance",
+  "horror",
+  "historical",
+  "musical",
+  "fantasy",
+  "mystery",
+  "mysticism",
+  "psychology",
+  "action",
+  "alien",
+  "magical girl",
+  "school life",
+  "slice of life",
+  "dark fantasy",
+  "cyberpunk",
+  "sport",
+  "sports",
+  "сёнэн",
+  "сёдзё",
+  "сэйнэн",
+  "сэйнен",
+  "дзёсэй",
+  "меха",
+  "исекай",
+  "магическая девочка",
+  "школьная повседневность",
+  "темное фэнтези",
+  "тёмное фэнтези",
+  "киберпанк",
+  "детектив",
+  "комедия",
+  "спорт",
+  "драма",
+  "триллер",
+  "приключения",
+  "романтика",
+  "ужасы",
+  "исторический",
+  "музыкальный",
+  "фантастика",
+  "мистика",
+  "психология",
+  "экшен",
+  "пришелец",
+  "прибулець",
+  "волшебница",
+  "мечник",
+  "школьник",
+  "андроид",
+  "ниндзя",
+  "кибернетик",
+  "дух",
+  "пилот",
+  "ученик",
+  "маг",
+  "капитан",
+  "алхимик",
+  "демон",
+  "путешественник",
+  "страж",
+  "принцесса",
+  "наставник",
+  "гонщик",
+  "боец",
+  "космонавт",
+  "целитель",
+  "исследователь",
+  "наемник",
+  "найманець",
+  "комедія",
+  "comedia",
+  "hechicera",
+  "bruja",
+  "espadachín",
+  "espadachin",
+  "escolar",
+  "androide",
+  "ciborg",
+  "cíborg",
+  "espíritu",
+  "espiritu",
+  "estudiante",
+  "mago",
+  "maga",
+  "capitán",
+  "capitan",
+  "alquimista",
+  "demonio",
+  "viajero",
+  "viajera",
+  "guardián",
+  "guardian",
+  "princesa",
+  "corredor",
+  "luchador",
+  "astronauta",
+  "sanador",
+  "curandero",
+  "explorador",
+  "mercenario",
+  "chica mágica",
+  "chica magica",
+  "vida escolar",
+  "fantasía oscura",
+  "fantasia oscura",
+  "ciberpunk",
+  "deporte",
+  "suspenso",
+  "aventura",
+  "aventuras",
+  "romance",
+  "romántica",
+  "romantica",
+  "terror",
+  "histórico",
+  "historico",
+  "histórica",
+  "historica",
+  "musical",
+  "fantasía",
+  "fantasia",
+  "misterio",
+  "mística",
+  "mistica",
+  "psicología",
+  "psicologia",
+  "acción",
+  "accion",
+  "alienígena",
+  "alienigena",
+  "чарівниця",
+  "школяр",
+  "андроїд",
+  "ніндзя",
+  "кіборг",
+  "пілот",
+  "учень",
+  "капітан",
+  "алхімік",
+  "мандрівник",
+  "вартовий",
+  "принцеса",
+  "боєць",
+  "цілитель",
+  "дослідник",
+  "магічна дівчина",
+  "шкільна повсякденність",
+  "темне фентезі",
+  "кіберпанк",
+  "трилер",
+  "пригоди",
+  "романтика",
+  "жахи",
+  "історичний",
+  "музичний",
+  "фантастика",
+  "містика",
+  "психологія",
+  "екшен",
+]);
+
+const RAPPER_NAMED_THEME_DRIFT = new Set([
+  "microphone",
+  "beat",
+  "rhyme",
+  "studio",
+  "concert",
+  "freestyle",
+  "album",
+  "track",
+  "tour",
+  "producer",
+  "hip hop",
+  "lyrics",
+  "text",
+  "audience",
+  "single",
+  "voice",
+  "rhythm",
+  "production",
+  "stage",
+  "fans",
+  "fan",
+  "sample",
+  "release",
+  "arrangement",
+  "hood",
+  "mixtape",
+  "recitation",
+  "hook",
+  "punchline",
+  "diss",
+  "label",
+  "clip",
+  "music video",
+  "poster",
+  "sound",
+  "микрофон",
+  "бит",
+  "рифма",
+  "студия",
+  "концерт",
+  "фристайл",
+  "альбом",
+  "текст",
+  "аудитория",
+  "гастроли",
+  "сингл",
+  "голос",
+  "ритм",
+  "продакшн",
+  "сцена",
+  "поклонники",
+  "сэмпл",
+  "продюсер",
+  "тур",
+  "релиз",
+  "аранжировка",
+  "капюшон",
+  "микстейп",
+  "декламация",
+  "трек",
+  "читка",
+  "хук",
+  "панчлайн",
+  "дисс",
+  "лейбл",
+  "клип",
+  "афиша",
+  "саунд",
+  "мікрофон",
+  "хип хоп",
+  "micrófono",
+  "microfono",
+  "ritmo",
+  "rima",
+  "estudio",
+  "concierto",
+  "estilo libre",
+  "álbum",
+  "album",
+  "letra",
+  "audiencia",
+  "gira",
+  "sencillo",
+  "voz",
+  "producción",
+  "produccion",
+  "escenario",
+  "admiradores",
+  "muestra",
+  "productor",
+  "lanzamiento",
+  "arreglo",
+  "capucha",
+  "declamación",
+  "declamacion",
+  "pista",
+  "gancho",
+  "sello",
+  "videoclip",
+  "cartel",
+  "sonido",
+  "студія",
+  "біт",
+  "рима",
+  "концерт",
+  "фрістайл",
+  "альбом",
+  "текст",
+  "аудиторія",
+  "гастролі",
+  "сингл",
+  "голос",
+  "ритм",
+  "продакшн",
+  "сцена",
+  "шанувальники",
+  "семпл",
+  "продюсер",
+  "тур",
+  "реліз",
+  "аранжування",
+  "капюшон",
+  "мікстейп",
+  "декламація",
+  "трек",
+  "читка",
+  "хук",
+  "панчлайн",
+  "дис",
+  "лейбл",
+  "кліп",
+  "афіша",
+  "саунд",
+  "хіп хоп",
+]);
+
+function normalizedPhrase(value: string): string {
+  return value.normalize("NFKC").toLowerCase()
+    .replace(/[^\p{L}\p{N}]+/gu, " ")
+    .trim();
 }
 
-export function resolveWordPackLanguage(
-  value: unknown,
+export function assertNoKnownNamedThemeDrift(
   theme: string,
-): WordPackLanguage | null {
-  if (value === undefined || value === null || value === "") {
-    return legacyThemeLanguage(theme);
-  }
-  return parseWordPackLanguage(value);
-}
-
-export function parseWordPackLanguage(value: unknown): WordPackLanguage | null {
-  if (typeof value !== "string") return null;
-  const normalized = value.trim().toLowerCase().replaceAll("_", "-")
-    .split("-")[0];
-  return normalized === "en" || normalized === "es" || normalized === "ru" ||
-      normalized === "uk"
-    ? normalized
+  words: readonly string[],
+): void {
+  if (wordPackThemeMode(theme) !== "named_entities") return;
+  const themeWords = new Set(normalizedThemeWords(theme));
+  const isAnimeTheme = themeWords.has("anime") || themeWords.has("аниме") ||
+    themeWords.has("аніме");
+  const isRapperTheme = [...themeWords].some((word) =>
+    /^(?:rappers?|raper[oa]s?|рэпер|рэперы|рэперов|репер|реперы|реперов|репери|реперів)$/u
+      .test(word)
+  );
+  const driftTerms = isAnimeTheme
+    ? ANIME_NAMED_THEME_DRIFT
+    : isRapperTheme
+    ? RAPPER_NAMED_THEME_DRIFT
     : null;
-}
+  if (!driftTerms) return;
 
-function wordPackLanguageName(language: WordPackLanguage): string {
-  return {
-    en: "English",
-    es: "Spanish",
-    ru: "Russian",
-    uk: "Ukrainian",
-  }[language];
+  if (words.some((word) => driftTerms.has(normalizedPhrase(word)))) {
+    throw new WordPackQualityGateError();
+  }
 }
 
 export function wordPackWordsSchemaDescription(theme: string): string {
@@ -750,7 +1139,7 @@ export class OpenAIWordPackProviderError extends Error {
       "Direct AI provider returned an invalid response. Try again shortly.",
       502,
       code,
-      true,
+      false,
     );
   }
 }
@@ -814,13 +1203,9 @@ function validateInput(input: WordPackGenerationInput) {
   const theme = nonEmptyString(input?.theme);
   const count = Number(input?.count);
   const alreadyUsed = input?.alreadyUsed ?? [];
-  const language = theme
-    ? resolveWordPackLanguage(input?.language, theme)
-    : null;
 
   if (
     !theme ||
-    !language ||
     theme.length > 80 ||
     !Number.isInteger(count) ||
     count < 2 ||
@@ -837,9 +1222,6 @@ function validateInput(input: WordPackGenerationInput) {
   return {
     theme,
     count,
-    language,
-    hasExplicitLanguage: typeof input.language === "string" &&
-      input.language.trim() !== "",
     alreadyUsed: alreadyUsed.map((word) => word.trim()),
   };
 }
@@ -857,11 +1239,8 @@ function wordPackPrompt(input: ReturnType<typeof validateInput>): string {
 - If the theme instead asks for albums, songs, works, attributes, tools, or other items connected to people or characters, return those requested items—not the people's or characters' names.
 - Never substitute adjacent genres, roles, archetypes, occupations, attributes, tools, locations, or vocabulary. For an anime-character theme, labels such as shonen, shojo, seinen, josei, mecha, isekai, swordsman, student, or ninja are invalid. For a rapper theme, microphone, beat, rhyme, studio, or concert are invalid.`
     : `- Every item MUST be a direct member or example of the exact supplied theme. Related objects, genres, roles, settings, attributes, tools, and general vocabulary are invalid unless the theme explicitly asks for them.`;
-  const languageRequirement = input.hasExplicitLanguage
-    ? `- Write ordinary words in ${
-      wordPackLanguageName(input.language)
-    }, the app's explicitly requested output language. The theme wording and the nationality, country, culture, or medium described by it do not override this output language. A proper name may keep its official spelling or a widely recognized localization/transliteration in that language.`
-    : `- This request comes from a legacy client without an explicit app locale. Use the SAME LANGUAGE as the wording of the theme input. A nationality, country, culture, or medium described by the theme does not change that language. A proper name may keep its official spelling or a widely recognized localization/transliteration.`;
+  const languageRequirement =
+    `- Use the SAME NATURAL LANGUAGE as the wording of the theme input. Infer it from the whole grammatical request, including unaccented Spanish and mixed phrases; never use an app, device, profile, or deprecated client locale to choose the output language. A nationality, country, culture, or medium named by the theme does not choose its language. If the theme contains only a language-neutral proper title, preserve official names and use English only for any unavoidable ordinary terms. Proper names may keep their official spelling or a widely recognized localization/transliteration.`;
 
   return `You are setting up a social-deduction party game. The exact theme/category is: ${
     JSON.stringify(input.theme)
@@ -880,12 +1259,22 @@ ${exactTypeRequirement}
 - Items must be widely recognizable and grounded in either current, well-established facts or timeless knowledge; avoid dated snapshots, rumors, and short-lived trends.
 - Exclude profanity, hate speech, sexual or exploitative material, threats, harassment, and encouragement of self-harm.
 - No explanations, numbering, generic placeholders, or duplicates.
+- First draft ${input.count} candidates and audit every draft candidate against all requirements above. Then propose replacements for rejected candidates, audit every replacement candidate against the same requirements, and return only the passing draft and replacement indices in the same response.
 - If you cannot safely reach ${input.count} without inventing or drifting outside the exact theme, return fewer real items and set exhausted to true.
 - Set exhausted to true ONLY when fewer real, safe, recognizable, directly on-theme items exist after applying the exclusions. Otherwise set it to false.${exclusions}`;
 }
 
 export function buildWordPackPrompt(input: WordPackGenerationInput): string {
   return wordPackPrompt(validateInput(input));
+}
+
+export function wordPackResponseSchema(theme: string, requestedCount: number) {
+  return wordPackSelfAuditSchema({
+    requestedCount,
+    draftDescription: wordPackWordsSchemaDescription(theme),
+    categoryDescription: WORD_PACK_CATEGORY_SCHEMA_DESCRIPTION,
+    exhaustedDescription: WORD_PACK_EXHAUSTED_SCHEMA_DESCRIPTION,
+  });
 }
 
 function requestBody(
@@ -907,29 +1296,7 @@ function requestBody(
         name: "spyclash_word_pack",
         description: WORD_PACK_SCHEMA_DESCRIPTION,
         strict: true,
-        schema: {
-          type: "object",
-          properties: {
-            words: {
-              type: "array",
-              description: wordPackWordsSchemaDescription(input.theme),
-              items: { type: "string", minLength: 1, maxLength: 120 },
-              maxItems: input.count,
-            },
-            category: {
-              type: "string",
-              minLength: 1,
-              maxLength: 120,
-              description: WORD_PACK_CATEGORY_SCHEMA_DESCRIPTION,
-            },
-            exhausted: {
-              type: "boolean",
-              description: WORD_PACK_EXHAUSTED_SCHEMA_DESCRIPTION,
-            },
-          },
-          required: ["words", "category", "exhausted"],
-          additionalProperties: false,
-        },
+        schema: wordPackResponseSchema(input.theme, input.count),
       },
     },
   };
@@ -975,6 +1342,7 @@ function outputContent(response: UnknownRecord): unknown[] {
 function parseWordPackResponse(
   value: unknown,
   requestedCount: number,
+  forbiddenWords: readonly string[] = [],
 ): WordPackGenerationResult {
   const response = asRecord(value);
   if (!response) throw OpenAIWordPackProviderError.invalidResponse();
@@ -1009,33 +1377,25 @@ function parseWordPackResponse(
     throw OpenAIWordPackProviderError.invalidResponse();
   }
 
-  const result = asRecord(parsed);
-  const words = result?.words;
-  const category = result?.category;
-  const exhausted = result?.exhausted;
-  const keys = result ? Object.keys(result).sort() : [];
-  if (
-    !result ||
-    !Array.isArray(words) ||
-    words.length > requestedCount ||
-    words.some((word) =>
-      typeof word !== "string" || !word.trim() || word.length > 120
-    ) ||
-    typeof category !== "string" ||
-    !category.trim() ||
-    category.length > 120 ||
-    typeof exhausted !== "boolean" ||
-    exhausted && words.length >= requestedCount ||
-    keys.join(",") !== "category,exhausted,words"
-  ) {
-    throw OpenAIWordPackProviderError.invalidResponse();
+  try {
+    const result = applyWordPackSelfAudit(
+      parsed as WordPackSelfAuditCandidate,
+      requestedCount,
+      forbiddenWords,
+    );
+    return {
+      words: result.words,
+      category: result.category,
+      exhausted: result.exhausted,
+      qualityRejectedCount: result.rejectedCount,
+      qualityReplacementCount: result.replacementCount,
+    };
+  } catch (error) {
+    if (error instanceof WordPackQualityGateError) {
+      throw OpenAIWordPackProviderError.invalidResponse();
+    }
+    throw error;
   }
-
-  return {
-    words: [...words] as string[],
-    category,
-    exhausted,
-  };
 }
 
 async function jsonBody(response: Response): Promise<unknown> {
@@ -1092,7 +1452,7 @@ export function createOpenAIWordPackProvider(
 
       const body = await jsonBody(response);
       if (!response.ok) throw httpProviderError(response.status, body);
-      return parseWordPackResponse(body, input.count);
+      return parseWordPackResponse(body, input.count, input.alreadyUsed);
     },
   };
 }

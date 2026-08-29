@@ -44,26 +44,20 @@ import {
   WordPackIdempotencyUnavailableError,
 } from "./generation-idempotency.ts";
 import {
+  assertNoKnownNamedThemeDrift,
   BASE44_WORD_PACK_MODEL,
   buildWordPackPrompt,
   createOpenAIWordPackProviderFromEnv,
   type OpenAIWordPackProvider,
-  parseWordPackLanguage,
   shouldFallbackFromDirectWordPackProvider,
   WORD_PACK_CACHE_VERSION,
-  WORD_PACK_CATEGORY_SCHEMA_DESCRIPTION,
-  WORD_PACK_EXHAUSTED_SCHEMA_DESCRIPTION,
   type WordPackGenerationResult,
-  type WordPackLanguage,
-  wordPackThemeMode,
-  wordPackWordsSchemaDescription,
+  wordPackResponseSchema,
 } from "./openai-word-pack-provider.ts";
 import {
-  applyWordPackQualityAudit,
-  buildWordPackQualityAuditPrompt,
-  requireWordPackRepairQuality,
-  type WordPackQualityAuditCandidate,
-  wordPackQualityAuditSchema,
+  applyWordPackSelfAudit,
+  WordPackQualityGateError,
+  type WordPackSelfAuditCandidate,
 } from "./word-pack-quality.ts";
 
 function errorMessage(error: unknown) {
@@ -86,14 +80,10 @@ type AIInvocationState = {
   directProviderDisabled: boolean;
   directAttempts: number;
   base44Attempts: number;
-  qualityAuditAttempts: number;
+  aiDurationMilliseconds: number;
+  qualityRejectedCount: number;
+  qualityReplacementCount: number;
   fallbackUsed: boolean;
-};
-
-type WordPackCandidate = {
-  words?: unknown[];
-  category?: unknown;
-  exhausted?: unknown;
 };
 
 async function reserveGenerationQuota(
@@ -251,7 +241,9 @@ function createAIInvocationState(): AIInvocationState {
     directProviderDisabled: configurationFailed,
     directAttempts: 0,
     base44Attempts: 0,
-    qualityAuditAttempts: 0,
+    aiDurationMilliseconds: 0,
+    qualityRejectedCount: 0,
+    qualityReplacementCount: 0,
     fallbackUsed: configurationFailed,
   };
 }
@@ -270,23 +262,34 @@ async function invokeWordPackLLM(
   base44: any,
   theme: string,
   count: number,
-  language: WordPackLanguage | undefined,
   alreadyUsed: string[] = [],
   guard: GenerationWriteGuard,
   state: AIInvocationState,
-): Promise<WordPackCandidate> {
+): Promise<WordPackGenerationResult> {
+  const measured = async <T>(operation: () => Promise<T>): Promise<T> => {
+    const startedAt = Date.now();
+    try {
+      return await operation();
+    } finally {
+      state.aiDurationMilliseconds += Math.max(0, Date.now() - startedAt);
+    }
+  };
+
   if (state.directProvider && !state.directProviderDisabled) {
     try {
-      return await invokeAIProviderWithRetry<WordPackGenerationResult>({
+      const directResult = await invokeAIProviderWithRetry<
+        WordPackGenerationResult
+      >({
         operation: () => {
           state.directAttempts += 1;
-          return guard.boundary(() =>
-            state.directProvider!.generate({
-              theme,
-              count,
-              language,
-              alreadyUsed,
-            })
+          return measured(() =>
+            guard.boundary(() =>
+              state.directProvider!.generate({
+                theme,
+                count,
+                alreadyUsed,
+              })
+            )
           );
         },
         onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
@@ -296,6 +299,14 @@ async function invokeWordPackLLM(
           );
         },
       });
+      // Semantic/schema failures do not benefit from repeating the same direct
+      // request. The provider marks them non-transient, and this local guard
+      // routes known drift immediately to the Base44 fallback instead.
+      assertNoKnownNamedThemeDrift(theme, directResult.words);
+      state.qualityRejectedCount += directResult.qualityRejectedCount ?? 0;
+      state.qualityReplacementCount += directResult.qualityReplacementCount ??
+        0;
+      return directResult;
     } catch (error) {
       if (!shouldFallbackFromDirectWordPackProvider(error)) throw error;
       state.directProviderDisabled = true;
@@ -307,91 +318,41 @@ async function invokeWordPackLLM(
     }
   }
 
-  return await invokeAIProviderWithRetry<WordPackCandidate>({
-    operation: () => {
-      state.base44Attempts += 1;
-      return guard.boundary<WordPackCandidate>(() =>
-        base44.integrations.Core.InvokeLLM({
-          model: BASE44_WORD_PACK_MODEL,
-          prompt: buildWordPackPrompt({
-            theme,
-            count,
-            language,
-            alreadyUsed,
-          }),
-          response_json_schema: {
-            type: "object",
-            properties: {
-              words: {
-                type: "array",
-                description: wordPackWordsSchemaDescription(theme),
-                items: { type: "string", minLength: 1, maxLength: 120 },
-                maxItems: count,
-              },
-              category: {
-                type: "string",
-                minLength: 1,
-                maxLength: 120,
-                description: WORD_PACK_CATEGORY_SCHEMA_DESCRIPTION,
-              },
-              exhausted: {
-                type: "boolean",
-                description: WORD_PACK_EXHAUSTED_SCHEMA_DESCRIPTION,
-              },
-            },
-            required: ["words", "category", "exhausted"],
-            additionalProperties: false,
-          },
-        })
-      );
+  const candidate = await invokeAIProviderWithRetry<WordPackSelfAuditCandidate>(
+    {
+      operation: () => {
+        state.base44Attempts += 1;
+        return measured(() =>
+          guard.boundary<WordPackSelfAuditCandidate>(() =>
+            base44.integrations.Core.InvokeLLM({
+              model: BASE44_WORD_PACK_MODEL,
+              prompt: buildWordPackPrompt({
+                theme,
+                count,
+                alreadyUsed,
+              }),
+              response_json_schema: wordPackResponseSchema(theme, count),
+            })
+          )
+        );
+      },
+      onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
+        console.warn(
+          `generateWordPack Base44 AI retry ${attempt}->${nextAttempt} after ${delayMilliseconds}ms:`,
+          errorMessage(error),
+        );
+      },
     },
-    onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
-      console.warn(
-        `generateWordPack Base44 AI retry ${attempt}->${nextAttempt} after ${delayMilliseconds}ms:`,
-        errorMessage(error),
-      );
-    },
-  });
-}
+  );
 
-async function auditNamedThemeWords(
-  base44: any,
-  theme: string,
-  language: WordPackLanguage | undefined,
-  requestedCount: number,
-  alreadyExcluded: string[],
-  candidates: string[],
-  guard: GenerationWriteGuard,
-  state: AIInvocationState,
-) {
-  const audit = await invokeAIProviderWithRetry<WordPackQualityAuditCandidate>({
-    operation: () => {
-      state.qualityAuditAttempts += 1;
-      return guard.boundary<WordPackQualityAuditCandidate>(() =>
-        base44.integrations.Core.InvokeLLM({
-          model: BASE44_WORD_PACK_MODEL,
-          prompt: buildWordPackQualityAuditPrompt({
-            theme,
-            language,
-            requestedCount,
-            alreadyExcluded,
-            words: candidates,
-          }),
-          response_json_schema: wordPackQualityAuditSchema(
-            candidates.length,
-            requestedCount,
-          ),
-        })
-      );
-    },
-    onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
-      console.warn(
-        `generateWordPack quality audit retry ${attempt}->${nextAttempt} after ${delayMilliseconds}ms:`,
-        errorMessage(error),
-      );
-    },
-  });
-  return applyWordPackQualityAudit(candidates, audit);
+  const audited = applyWordPackSelfAudit(candidate, count, alreadyUsed);
+  state.qualityRejectedCount += audited.rejectedCount;
+  state.qualityReplacementCount += audited.replacementCount;
+  return {
+    words: audited.words,
+    category: audited.category,
+    exhausted: audited.exhausted,
+  };
 }
 
 function lifecycleHTTPStatus(error: unknown): number {
@@ -432,22 +393,6 @@ Deno.serve(async (req) => {
     if (!theme) {
       return Response.json({ error: "Theme is required" }, { status: 400 });
     }
-    const hasClientLanguage = body?.language !== undefined &&
-      body?.language !== null && body?.language !== "";
-    const clientLanguage = hasClientLanguage
-      ? parseWordPackLanguage(body.language)
-      : null;
-    if (hasClientLanguage && !clientLanguage) {
-      return Response.json({
-        error: "Language must be one of en, es, ru, or uk.",
-        code: "invalid_word_pack_language",
-      }, { status: 400 });
-    }
-    const profileLanguage = !hasClientLanguage
-      ? parseWordPackLanguage(user?.language)
-      : null;
-    const promptLanguage = clientLanguage ?? profileLanguage ?? undefined;
-    const cacheLanguage = promptLanguage ?? "und";
 
     const requestID = optionalRequestID(body?.request_id);
     // Legacy clients do not send request_id. Keep their explicit Regenerate
@@ -457,7 +402,10 @@ Deno.serve(async (req) => {
       await prepareWordPackCacheRequest({
         userID: user.id,
         theme,
-        language: cacheLanguage,
+        // The theme wording is the sole language authority. Keep one cache
+        // namespace across app/profile locales; translated themes remain
+        // isolated by the normalized theme itself.
+        language: "und",
         promptVersion: WORD_PACK_CACHE_VERSION,
         requestedCount: count,
         exclusions: excludedWords,
@@ -569,11 +517,13 @@ Deno.serve(async (req) => {
                   direct_attempts: 0,
                   base44_attempts: 0,
                   base44_model: BASE44_WORD_PACK_MODEL,
-                  quality_audit_attempts: 0,
+                  single_pass_quality_gate: true,
+                  exhaustion_verification_used: false,
+                  ai_duration_ms: 0,
                   quality_repair_used: false,
                   quality_rejected_count: 0,
+                  quality_replacement_count: 0,
                   fallback_used: false,
-                  refill_used: false,
                   exhausted: replay.exhausted,
                   source: "idempotency",
                 }),
@@ -665,15 +615,15 @@ Deno.serve(async (req) => {
         let exhausted = false;
         let cacheHit = false;
         let cacheVariantKey: string | undefined;
-        let refillUsed = false;
-        let qualityRepairUsed = false;
-        let qualityRejectedCount = 0;
+        let exhaustionVerificationUsed = false;
         let aiState: AIInvocationState = {
           directProvider: null,
           directProviderDisabled: false,
           directAttempts: 0,
           base44Attempts: 0,
-          qualityAuditAttempts: 0,
+          aiDurationMilliseconds: 0,
+          qualityRejectedCount: 0,
+          qualityReplacementCount: 0,
           fallbackUsed: false,
         };
         try {
@@ -713,89 +663,43 @@ Deno.serve(async (req) => {
               base44,
               theme,
               count,
-              promptLanguage,
               excludedWords,
               guard,
               aiState,
             );
-            const firstCandidates = filterSafeCommunityStrings(
+            words = filterSafeCommunityStrings(
               removeExcludedWords(firstPass?.words || [], excludedWords),
-            );
-            const requiresQualityAudit = wordPackThemeMode(theme) ===
-              "named_entities";
-            if (requiresQualityAudit) {
-              const audit = await auditNamedThemeWords(
+            ).slice(0, count);
+            assertNoKnownNamedThemeDrift(theme, words);
+            exhausted = firstPass?.exhausted === true && words.length < count;
+            if (exhausted) {
+              exhaustionVerificationUsed = true;
+              const verification = await invokeWordPackLLM(
                 base44,
                 theme,
-                promptLanguage,
-                count,
-                excludedWords,
-                firstCandidates,
+                Math.max(2, count - words.length),
+                [...excludedWords, ...words],
                 guard,
                 aiState,
               );
-              const replacements = filterSafeCommunityStrings(
+              const additionalWords = filterSafeCommunityStrings(
                 removeExcludedWords(
-                  audit.replacementWords,
-                  [...excludedWords, ...firstCandidates],
+                  verification.words,
+                  [...excludedWords, ...words],
                 ),
               );
-              words = uniqueWords([...audit.words, ...replacements]).slice(
+              assertNoKnownNamedThemeDrift(theme, additionalWords);
+              words = uniqueWords([...words, ...additionalWords]).slice(
                 0,
                 count,
               );
-              qualityRejectedCount += audit.rejectedCount;
-              qualityRepairUsed = audit.rejectedCount > 0 ||
-                replacements.length > 0;
-              refillUsed = replacements.length > 0;
-              exhausted = audit.exhausted && words.length < count;
-              requireWordPackRepairQuality({
-                returnedCount: words.length,
-                requestedCount: count,
-                rejectedCount: audit.rejectedCount,
-                exhausted,
-              });
-            } else {
-              words = firstCandidates;
-              exhausted = firstPass?.exhausted === true &&
+              exhausted = verification.exhausted === true &&
                 words.length < count;
             }
             category = theme;
-
-            if (!requiresQualityAudit && !exhausted && words.length < count) {
-              refillUsed = true;
-              try {
-                const secondPass = await invokeWordPackLLM(
-                  base44,
-                  theme,
-                  Math.max(2, count - words.length),
-                  promptLanguage,
-                  [...excludedWords, ...firstCandidates],
-                  guard,
-                  aiState,
-                );
-                const secondCandidates = filterSafeCommunityStrings(
-                  removeExcludedWords(
-                    secondPass?.words || [],
-                    [...excludedWords, ...firstCandidates],
-                  ),
-                );
-                const acceptedSecond = secondCandidates;
-                words = uniqueWords([...words, ...acceptedSecond]);
-                exhausted = secondPass?.exhausted === true &&
-                  words.length < count;
-              } catch (error) {
-                // The refill is optional. Never discard a playable first pass
-                // just because the provider is briefly unavailable again.
-                if (words.length < 2) throw error;
-                console.warn(
-                  "generateWordPack optional refill skipped:",
-                  errorMessage(error),
-                );
-              }
+            if (words.length < count && !exhausted) {
+              throw new WordPackQualityGateError();
             }
-
-            words = words.slice(0, count);
           }
 
           if (words.length < 2) {
@@ -928,11 +832,14 @@ Deno.serve(async (req) => {
             direct_attempts: aiState.directAttempts,
             base44_attempts: aiState.base44Attempts,
             base44_model: BASE44_WORD_PACK_MODEL,
-            quality_audit_attempts: aiState.qualityAuditAttempts,
-            quality_repair_used: qualityRepairUsed,
-            quality_rejected_count: qualityRejectedCount,
+            single_pass_quality_gate: true,
+            exhaustion_verification_used: exhaustionVerificationUsed,
+            ai_duration_ms: aiState.aiDurationMilliseconds,
+            quality_repair_used: aiState.qualityRejectedCount > 0 ||
+              aiState.qualityReplacementCount > 0,
+            quality_rejected_count: aiState.qualityRejectedCount,
+            quality_replacement_count: aiState.qualityReplacementCount,
             fallback_used: aiState.fallbackUsed,
-            refill_used: refillUsed,
             exhausted,
             source,
           }),
