@@ -2321,6 +2321,8 @@ struct GameView: View {
 
                 roomThemeInput
 
+                roomThemeSuggestions
+
                 if roomHasCustomTheme {
                     if !roomHasGeneratedTheme {
                         roomWordCountModeSelector
@@ -2336,14 +2338,19 @@ struct GameView: View {
                 }
 
                 if roomHasCustomTheme && roomHasGeneratedTheme {
+                    Text(roomAIWarning)
+                        .font(.system(size: 9, weight: .bold, design: .default))
+                        .tracking(0.02)
+                        .foregroundStyle(SpyTheme.dim)
+                        .lineSpacing(2)
+                        .spyFitted(lines: 2, scale: 0.58)
+
                     roomWordsSlider
                         .transition(.opacity.combined(with: .move(edge: .top)))
-                    roomExpandThemePoolButton
-                        .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-
-                if roomShouldShowPoolPreview {
-                    roomPoolPreview
+                    if roomThemeMaxWords < 200 {
+                        roomExpandThemePoolButton
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                 }
 
                 if roomGeneratedWords.count >= 2 && roomHasCustomTheme {
@@ -2772,6 +2779,7 @@ struct GameView: View {
     private var roomThemeBuilderCompact: some View {
         VStack(alignment: .leading, spacing: 12) {
             roomThemeInput
+            roomThemeSuggestions
 
             if roomHasCustomTheme && !roomHasGeneratedTheme {
                 roomWordCountModeSelector
@@ -4422,6 +4430,7 @@ struct GameView: View {
                 }
 
                 roomThemeInput
+                roomThemeSuggestions
 
                 if roomHasCustomTheme && !roomHasGeneratedTheme {
                     roomWordCountModeSelector
@@ -4436,13 +4445,20 @@ struct GameView: View {
                 }
 
                 if roomHasCustomTheme && roomHasGeneratedTheme {
+                    Text(roomAIWarning)
+                        .font(.system(size: 9, weight: .bold, design: .default))
+                        .tracking(0.02)
+                        .foregroundStyle(SpyTheme.dim)
+                        .lineSpacing(2)
+                        .spyFitted(lines: 2, scale: 0.58)
+
                     roomWordsSlider
                         .transition(.opacity.combined(with: .move(edge: .top)))
-                    roomExpandThemePoolButton
-                        .transition(.opacity.combined(with: .move(edge: .top)))
+                    if roomThemeMaxWords < 200 {
+                        roomExpandThemePoolButton
+                            .transition(.opacity.combined(with: .move(edge: .top)))
+                    }
                 }
-
-                roomPoolPreview
 
                 if roomGeneratedWords.count >= 2 && roomHasCustomTheme {
                     roomSaveAsWordPackButton
@@ -4456,68 +4472,68 @@ struct GameView: View {
     }
 
     private var roomThemeInput: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 12) {
-                Image(systemName: "sparkles")
-                    .font(.system(size: 14, weight: .black))
-                    .foregroundStyle(focusedOnlineSetupField == .theme ? SpyTheme.red : SpyTheme.dim)
-                    .frame(width: 18)
+        HStack(spacing: 12) {
+            Image(systemName: "sparkles")
+                .font(.system(size: 14, weight: .black))
+                .foregroundStyle(focusedOnlineSetupField == .theme ? SpyTheme.red : SpyTheme.dim)
+                .frame(width: 18)
 
-                TextField("", text: roomThemeDraftBinding, prompt: Text(roomThemePlaceholder).foregroundStyle(SpyTheme.dim))
-                    .textInputAutocapitalization(.words)
-                    .autocorrectionDisabled()
-                    .submitLabel(.done)
-                    .font(SpyTheme.mono)
-                    .tracking(0.04)
-                    .foregroundStyle(.white)
-                    .tint(SpyTheme.red)
-                    .focused($focusedOnlineSetupField, equals: .theme)
-                    .onSubmit {
-                        dismissOnlineSetupCapture()
-                    }
-                    .accessibilityIdentifier("onlineRoom.themeInput")
-
-                if roomHasCustomTheme {
-                    Button {
-                        withAnimation(.smooth(duration: 0.20)) {
-                            setRoomThemeDraft("")
-                        }
-                    } label: {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 15, weight: .bold))
-                            .foregroundStyle(SpyTheme.dim)
-                            .frame(width: 28, height: 36)
-                    }
-                    .buttonStyle(SpyWebPressStyle())
-                    .spyHitTarget()
-                    .accessibilityLabel(localized(en: "Clear theme", ru: "Очистить тему", es: "Limpiar tema", uk: "Очистити тему"))
+            TextField("", text: roomThemeDraftBinding, prompt: Text(roomThemePlaceholder).foregroundStyle(SpyTheme.dim))
+                .textInputAutocapitalization(.words)
+                .autocorrectionDisabled()
+                .submitLabel(.done)
+                .font(SpyTheme.mono)
+                .tracking(0.04)
+                .foregroundStyle(.white)
+                .tint(SpyTheme.red)
+                .focused($focusedOnlineSetupField, equals: .theme)
+                .onSubmit {
+                    dismissOnlineSetupCapture()
                 }
-            }
-            .padding(.horizontal, 14)
-            .frame(height: 50)
-            .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 9))
-            .overlay(
-                CutCornerShape(cut: 9)
-                    .stroke(
-                        focusedOnlineSetupField == .theme ? SpyTheme.red.opacity(0.86) : SpyTheme.inputBorder,
-                        lineWidth: 1
-                    )
-            )
-            .shadow(color: focusedOnlineSetupField == .theme ? SpyTheme.red.opacity(0.12) : .clear, radius: 8)
-            .animation(.smooth(duration: 0.18), value: focusedOnlineSetupField == .theme)
+                .accessibilityIdentifier("onlineRoom.themeInput")
 
-            AIThemeSuggestionStrip(
-                language: appState.language,
-                selectedTheme: roomTheme,
-                accessibilityIdentifier: "onlineRoom.themeSuggestions"
-            ) { suggestion in
-                setRoomThemeDraft(suggestion)
+            if roomHasCustomTheme {
+                Button {
+                    withAnimation(.smooth(duration: 0.20)) {
+                        setRoomThemeDraft("")
+                    }
+                } label: {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 15, weight: .bold))
+                        .foregroundStyle(SpyTheme.dim)
+                        .frame(width: 28, height: 36)
+                }
+                .buttonStyle(SpyWebPressStyle())
+                .spyHitTarget()
+                .accessibilityLabel(localized(en: "Clear theme", ru: "Очистить тему", es: "Limpiar tema", uk: "Очистити тему"))
             }
+        }
+        .padding(.horizontal, 14)
+        .frame(height: 52)
+        .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 9))
+        .overlay(
+            CutCornerShape(cut: 9)
+                .stroke(
+                    focusedOnlineSetupField == .theme ? SpyTheme.red.opacity(0.86) : SpyTheme.inputBorder,
+                    lineWidth: 1
+                )
+        )
+        .shadow(color: focusedOnlineSetupField == .theme ? SpyTheme.red.opacity(0.12) : .clear, radius: 8)
+        .animation(.smooth(duration: 0.18), value: focusedOnlineSetupField == .theme)
+    }
+
+    private var roomThemeSuggestions: some View {
+        AIThemeSuggestionStrip(
+            language: appState.language,
+            selectedTheme: roomTheme,
+            accessibilityIdentifier: "onlineRoom.themeSuggestions"
+        ) { suggestion in
+            setRoomThemeDraft(suggestion)
         }
     }
 
     private var roomWordCountModeSelector: some View {
-        VStack(alignment: .leading, spacing: 10) {
+        VStack(alignment: .leading, spacing: 12) {
             HStack(spacing: 8) {
                 ForEach(RoomWordCountMode.allCases) { mode in
                     let isActive = roomWordCountMode == mode
@@ -4527,22 +4543,41 @@ struct GameView: View {
                         }
                         scheduleLobbyStateSync(debounce: .milliseconds(120))
                     } label: {
-                        VStack(spacing: 3) {
-                            Text(roomWordCountModeTitle(mode))
-                                .font(.system(size: 10, weight: .black, design: .default))
-                                .tracking(0.04)
-                                .foregroundStyle(isActive ? .white : SpyTheme.muted)
-                                .spyFitted(lines: 2, scale: 0.58, alignment: .center)
-                            Text(roomWordCountModeHint(mode))
-                                .font(.system(size: 9, weight: .bold, design: .default))
-                                .tracking(0.02)
-                                .foregroundStyle(isActive ? .white.opacity(0.72) : SpyTheme.dim)
-                                .spyFitted(scale: 0.58, alignment: .center)
+                        HStack(spacing: 9) {
+                            Image(systemName: mode == .recommended ? "wand.and.stars" : "slider.horizontal.3")
+                                .font(.system(size: 13, weight: .black))
+                                .frame(width: 16)
+
+                            VStack(alignment: .leading, spacing: 2) {
+                                Text(roomWordCountModeTitle(mode))
+                                    .font(.system(size: 10.5, weight: .black, design: .default))
+                                    .tracking(0.02)
+                                    .spyFitted(lines: 1, scale: 0.58)
+                                Text(roomWordCountModeHint(mode))
+                                    .font(.system(size: 9.5, weight: .bold, design: .default))
+                                    .tracking(0.02)
+                                    .foregroundStyle(isActive ? Color.white.opacity(0.70) : SpyTheme.dim)
+                                    .spyFitted(lines: 1, scale: 0.58)
+                            }
+
+                            Spacer(minLength: 0)
+
+                            if isActive {
+                                Circle()
+                                    .fill(SpyTheme.green)
+                                    .frame(width: 7, height: 7)
+                            }
                         }
+                        .foregroundStyle(isActive ? SpyTheme.red : SpyTheme.muted)
+                        .padding(.horizontal, 12)
                         .frame(maxWidth: .infinity)
-                        .frame(height: 54)
+                        .frame(height: 48)
+                        .background(isActive ? SpyTheme.red.opacity(0.10) : SpyTheme.dark.opacity(0.76), in: CutCornerShape(cut: 7))
+                        .overlay(CutCornerShape(cut: 7).stroke(isActive ? SpyTheme.red.opacity(0.55) : SpyTheme.strokeStrong.opacity(0.78), lineWidth: 1))
+                        .contentShape(CutCornerShape(cut: 7))
                     }
-                    .buttonStyle(SpyButtonStyle(variant: isActive ? .red : .ghost))
+                    .buttonStyle(SpyWebPressStyle())
+                    .accessibilityAddTraits(isActive ? .isSelected : [])
                 }
             }
 
@@ -4580,9 +4615,10 @@ struct GameView: View {
                         }
                     )
                 }
-                .padding(12)
-                .background(SpyTheme.dark)
-                .overlay(Rectangle().stroke(SpyTheme.stroke, lineWidth: 1))
+                .padding(.horizontal, 12)
+                .padding(.vertical, 10)
+                .background(SpyTheme.dark.opacity(0.86), in: CutCornerShape(cut: 7))
+                .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.strokeStrong.opacity(0.72), lineWidth: 1))
             }
         }
     }
@@ -4686,7 +4722,6 @@ struct GameView: View {
                         id: nil,
                         title: localized(en: "Not selected.", ru: "Не выбрано.", es: "No seleccionado.", uk: "Не обрано."),
                         subtitle: nil,
-                        systemImage: "circle.dashed",
                         accessibilityIdentifier: "onlineRoom.noPackSource"
                     ) {
                         selectRoomPack(nil)
@@ -4697,7 +4732,6 @@ struct GameView: View {
                             id: pack.id,
                             title: pack.name,
                             subtitle: "\(pack.words?.roomCleanWords.count ?? 0)",
-                            systemImage: "shippingbox.fill"
                         ) {
                             selectRoomPack(pack.id)
                         }
@@ -4713,48 +4747,32 @@ struct GameView: View {
         id: String?,
         title: String,
         subtitle: String?,
-        systemImage: String,
         accessibilityIdentifier: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
         let isSelected = selectedPackID == id
 
         return Button(action: action) {
-            HStack(spacing: 8) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 14, weight: .black))
-                    .foregroundStyle(isSelected ? .white : SpyTheme.red)
-                    .frame(width: 18)
+            HStack(spacing: 5) {
+                Text(title.uppercased())
+                    .font(.system(size: 12, weight: .black, design: .default))
+                    .tracking(0.02)
+                    .spyFitted(lines: 2, scale: 0.68, alignment: .center)
 
-                VStack(alignment: .leading, spacing: 2) {
-                    Text(title.uppercased())
-                        .font(.system(size: 11, weight: .black, design: .monospaced))
-                        .tracking(0.02)
-                        .foregroundStyle(isSelected ? .white : SpyTheme.muted)
-                        .lineLimit(2)
-                        .minimumScaleFactor(0.65)
-
-                    if let subtitle {
-                        Text("\(subtitle) \(copy.wordsSuffix)")
-                            .font(.system(size: 10, weight: .black, design: .monospaced))
-                            .tracking(0.02)
-                            .foregroundStyle(isSelected ? .white.opacity(0.70) : SpyTheme.dim)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.60)
-                    }
+                if let subtitle {
+                    Text("(\(subtitle))")
+                        .font(.system(size: 10, weight: .black, design: .default))
+                        .foregroundStyle(SpyTheme.dim)
+                        .lineLimit(1)
                 }
-
-                Spacer(minLength: 0)
             }
+            .foregroundStyle(isSelected ? SpyTheme.red : SpyTheme.muted)
             .padding(.horizontal, 12)
-            .frame(maxWidth: .infinity, minHeight: 52, alignment: .leading)
-            .background(isSelected ? SpyTheme.red : SpyTheme.dark, in: CutCornerShape(cut: 8))
-            .overlay(
-                CutCornerShape(cut: 8)
-                    .stroke(isSelected ? Color.clear : SpyTheme.strokeStrong, lineWidth: 1)
-            )
-            .shadow(color: isSelected ? SpyTheme.red.opacity(0.18) : .black.opacity(0.12), radius: isSelected ? 12 : 8, y: 6)
-            .contentShape(CutCornerShape(cut: 8))
+            .frame(maxWidth: .infinity)
+            .frame(minHeight: 52)
+            .background(isSelected ? SpyTheme.red.opacity(0.06) : SpyTheme.dark)
+            .overlay(Rectangle().stroke(isSelected ? SpyTheme.red.opacity(0.50) : SpyTheme.strokeStrong, lineWidth: 1))
+            .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle())
         .accessibilityIdentifier(accessibilityIdentifier ?? "")
@@ -4808,8 +4826,8 @@ struct GameView: View {
             .disabled(lowerBound == upperBound)
         }
         .padding(12)
-        .background(SpyTheme.panelDeep)
-        .overlay(Rectangle().stroke(Color.white.opacity(0.07), lineWidth: 1))
+        .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 8))
+        .overlay(CutCornerShape(cut: 8).stroke(Color.white.opacity(0.07), lineWidth: 1))
     }
 
     private var roomExpandThemePoolButton: some View {
@@ -6453,6 +6471,15 @@ struct GameView: View {
 
     private var roomWordsLabel: String {
         localized(en: "WORDS IN GAME", ru: "СЛОВ В ИГРЕ", es: "PALABRAS EN JUEGO", uk: "СЛІВ У ГРІ")
+    }
+
+    private var roomAIWarning: String {
+        localized(
+            en: "AI can make mistakes. Check the words before playing.",
+            ru: "AI может ошибаться. Проверь слова перед игрой.",
+            es: "La IA puede equivocarse. Revisa las palabras antes de jugar.",
+            uk: "AI може помилятися. Перевір слова перед грою."
+        )
     }
 
     private var roomPoolPreviewLabel: String {
