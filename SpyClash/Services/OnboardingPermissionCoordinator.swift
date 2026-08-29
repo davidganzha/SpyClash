@@ -18,19 +18,22 @@ enum OnboardingPermissionStatus: Equatable, Sendable {
     case granted
     case denied
     case unavailable
+
+    var completesOnboardingStep: Bool {
+        switch self {
+        case .granted, .denied, .unavailable:
+            true
+        case .notDetermined, .requesting:
+            false
+        }
+    }
 }
 
 struct OnboardingPermissionFlow: Equatable, Sendable {
-    struct SettingsTrip: Equatable, Sendable {
-        let id: UUID
-        var didLeaveApp = false
-    }
-
     enum Phase: Equatable, Sendable {
         case loading
         case ready
         case requesting(UUID)
-        case awaitingSettings(SettingsTrip)
         case resolved(OnboardingPermissionStatus)
         case complete
     }
@@ -53,11 +56,6 @@ struct OnboardingPermissionFlow: Equatable, Sendable {
 
     var isComplete: Bool {
         phase == .complete
-    }
-
-    var settingsTrip: SettingsTrip? {
-        guard case .awaitingSettings(let trip) = phase else { return nil }
-        return trip
     }
 
     @discardableResult
@@ -85,7 +83,11 @@ struct OnboardingPermissionFlow: Equatable, Sendable {
     ) -> Bool {
         guard currentPermission == permission,
               phase == .requesting(requestID) else { return false }
-        phase = status == .granted ? .resolved(.granted) : .ready
+        guard status.completesOnboardingStep else {
+            phase = .ready
+            return false
+        }
+        phase = .resolved(status)
         return true
     }
 
@@ -107,60 +109,16 @@ struct OnboardingPermissionFlow: Equatable, Sendable {
     ) -> Bool {
         guard currentPermission == permission,
               phase == .ready,
-              status == .granted else { return false }
-        phase = .resolved(.granted)
-        return true
-    }
-
-    @discardableResult
-    mutating func beginSettingsTrip(
-        for permission: OnboardingPermissionKind,
-        tripID: UUID
-    ) -> Bool {
-        guard currentPermission == permission, phase == .ready else { return false }
-        phase = .awaitingSettings(SettingsTrip(id: tripID))
-        return true
-    }
-
-    @discardableResult
-    mutating func cancelSettingsTrip(
-        for permission: OnboardingPermissionKind,
-        tripID: UUID
-    ) -> Bool {
-        guard currentPermission == permission,
-              case .awaitingSettings(let trip) = phase,
-              trip.id == tripID else { return false }
-        phase = .ready
-        return true
-    }
-
-    @discardableResult
-    mutating func markSettingsDidLeaveApp() -> Bool {
-        guard case .awaitingSettings(var trip) = phase,
-              !trip.didLeaveApp else { return false }
-        trip.didLeaveApp = true
-        phase = .awaitingSettings(trip)
-        return true
-    }
-
-    @discardableResult
-    mutating func beginSettingsRecheck(
-        for permission: OnboardingPermissionKind,
-        tripID: UUID,
-        requestID: UUID
-    ) -> Bool {
-        guard currentPermission == permission,
-              case .awaitingSettings(let trip) = phase,
-              trip.id == tripID,
-              trip.didLeaveApp else { return false }
-        phase = .requesting(requestID)
+              status.completesOnboardingStep else { return false }
+        phase = .resolved(status)
         return true
     }
 
     @discardableResult
     mutating func advance(after permission: OnboardingPermissionKind) -> Bool {
         guard currentPermission == permission,
-              phase == .resolved(.granted) else { return false }
+              case .resolved(let status) = phase,
+              status.completesOnboardingStep else { return false }
 
         index += 1
         phase = Self.order.indices.contains(index) ? .ready : .complete

@@ -5,7 +5,7 @@ import XCTest
 @testable import SpyClash
 
 final class OnboardingPermissionStatusMappingTests: XCTestCase {
-    func testPermissionFlowRequiresGrantForEveryPermissionInStrictOrder() {
+    func testPermissionFlowRequiresEveryStepButNotEveryGrant() {
         var flow = OnboardingPermissionFlow()
 
         XCTAssertEqual(flow.currentPermission, .notifications)
@@ -13,9 +13,6 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         XCTAssertFalse(flow.advance(after: .notifications))
         XCTAssertFalse(flow.markReady(for: .camera))
         XCTAssertTrue(flow.markReady(for: .notifications))
-
-        XCTAssertFalse(flow.resolveWithoutRequest(.denied, for: .notifications))
-        XCTAssertEqual(flow.phase, .ready)
         XCTAssertFalse(flow.advance(after: .notifications))
 
         let deniedRequestID = UUID()
@@ -32,24 +29,8 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
                 status: .denied
             )
         )
-        XCTAssertEqual(flow.phase, .ready)
-        XCTAssertFalse(flow.advance(after: .notifications))
+        XCTAssertEqual(flow.phase, .resolved(.denied))
         XCTAssertFalse(flow.advance(after: .camera))
-
-        let grantedRequestID = UUID()
-        XCTAssertTrue(
-            flow.beginRequest(
-                for: .notifications,
-                requestID: grantedRequestID
-            )
-        )
-        XCTAssertTrue(
-            flow.resolveRequest(
-                for: .notifications,
-                requestID: grantedRequestID,
-                status: .granted
-            )
-        )
         XCTAssertTrue(flow.advance(after: .notifications))
         XCTAssertEqual(flow.currentPermission, .camera)
         XCTAssertEqual(flow.phase, .ready)
@@ -72,14 +53,73 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
                 status: .unavailable
             )
         )
-        XCTAssertEqual(flow.phase, .ready)
-        XCTAssertFalse(flow.advance(after: .nearby))
-
-        XCTAssertTrue(flow.resolveWithoutRequest(.granted, for: .nearby))
+        XCTAssertEqual(flow.phase, .resolved(.unavailable))
         XCTAssertTrue(flow.advance(after: .nearby))
         XCTAssertTrue(flow.isComplete)
         XCTAssertNil(flow.currentPermission)
         XCTAssertEqual(flow.phase, .complete)
+    }
+
+    func testPermissionFlowAcceptsExistingTerminalStatuses() {
+        var flow = OnboardingPermissionFlow()
+
+        XCTAssertTrue(flow.markReady(for: .notifications))
+        XCTAssertTrue(flow.resolveWithoutRequest(.denied, for: .notifications))
+        XCTAssertTrue(flow.advance(after: .notifications))
+
+        XCTAssertTrue(flow.resolveWithoutRequest(.unavailable, for: .camera))
+        XCTAssertTrue(flow.advance(after: .camera))
+
+        XCTAssertTrue(flow.resolveWithoutRequest(.granted, for: .nearby))
+        XCTAssertTrue(flow.advance(after: .nearby))
+        XCTAssertTrue(flow.isComplete)
+    }
+
+    func testPermissionFlowRejectsNonterminalResolution() {
+        var flow = OnboardingPermissionFlow()
+
+        XCTAssertTrue(flow.markReady(for: .notifications))
+        XCTAssertFalse(
+            flow.resolveWithoutRequest(.notDetermined, for: .notifications)
+        )
+        XCTAssertFalse(
+            flow.resolveWithoutRequest(.requesting, for: .notifications)
+        )
+        XCTAssertEqual(flow.phase, .ready)
+        XCTAssertFalse(flow.advance(after: .notifications))
+
+        let requestingResultID = UUID()
+        XCTAssertTrue(
+            flow.beginRequest(
+                for: .notifications,
+                requestID: requestingResultID
+            )
+        )
+        XCTAssertFalse(
+            flow.resolveRequest(
+                for: .notifications,
+                requestID: requestingResultID,
+                status: .requesting
+            )
+        )
+        XCTAssertEqual(flow.phase, .ready)
+        XCTAssertFalse(flow.advance(after: .notifications))
+
+        let undeterminedResultID = UUID()
+        XCTAssertTrue(
+            flow.beginRequest(
+                for: .notifications,
+                requestID: undeterminedResultID
+            )
+        )
+        XCTAssertFalse(
+            flow.resolveRequest(
+                for: .notifications,
+                requestID: undeterminedResultID,
+                status: .notDetermined
+            )
+        )
+        XCTAssertEqual(flow.phase, .ready)
     }
 
     func testPermissionFlowRejectsStaleRequestResults() {
@@ -119,102 +159,37 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         XCTAssertEqual(flow.phase, .resolved(.granted))
     }
 
-    func testPermissionFlowOnlyRechecksSettingsAfterAppActuallyLeaves() {
+    func testPermissionFlowCanCancelOnlyTheActiveRequest() {
         var flow = OnboardingPermissionFlow()
-        let tripID = UUID()
-        let recheckID = UUID()
+        let requestID = UUID()
 
         XCTAssertTrue(flow.markReady(for: .notifications))
         XCTAssertTrue(
-            flow.beginSettingsTrip(
+            flow.beginRequest(
                 for: .notifications,
-                tripID: tripID
+                requestID: requestID
             )
         )
         XCTAssertFalse(
-            flow.beginSettingsRecheck(
+            flow.cancelRequest(
                 for: .notifications,
-                tripID: tripID,
-                requestID: recheckID
+                requestID: UUID()
             )
         )
-        XCTAssertTrue(flow.markSettingsDidLeaveApp())
-        XCTAssertFalse(flow.markSettingsDidLeaveApp())
         XCTAssertFalse(
-            flow.beginSettingsRecheck(
-                for: .notifications,
-                tripID: UUID(),
-                requestID: recheckID
+            flow.cancelRequest(
+                for: .camera,
+                requestID: requestID
             )
         )
         XCTAssertTrue(
-            flow.beginSettingsRecheck(
+            flow.cancelRequest(
                 for: .notifications,
-                tripID: tripID,
-                requestID: recheckID
-            )
-        )
-        XCTAssertTrue(
-            flow.resolveRequest(
-                for: .notifications,
-                requestID: recheckID,
-                status: .denied
+                requestID: requestID
             )
         )
         XCTAssertEqual(flow.phase, .ready)
         XCTAssertFalse(flow.advance(after: .notifications))
-
-        let grantedTripID = UUID()
-        let grantedRecheckID = UUID()
-        XCTAssertTrue(
-            flow.beginSettingsTrip(
-                for: .notifications,
-                tripID: grantedTripID
-            )
-        )
-        XCTAssertTrue(flow.markSettingsDidLeaveApp())
-        XCTAssertTrue(
-            flow.beginSettingsRecheck(
-                for: .notifications,
-                tripID: grantedTripID,
-                requestID: grantedRecheckID
-            )
-        )
-        XCTAssertTrue(
-            flow.resolveRequest(
-                for: .notifications,
-                requestID: grantedRecheckID,
-                status: .granted
-            )
-        )
-        XCTAssertTrue(flow.advance(after: .notifications))
-        XCTAssertEqual(flow.currentPermission, .camera)
-    }
-
-    func testPermissionFlowCanRecoverWhenSettingsFailsToOpen() {
-        var flow = OnboardingPermissionFlow()
-        let tripID = UUID()
-
-        XCTAssertTrue(flow.markReady(for: .notifications))
-        XCTAssertTrue(
-            flow.beginSettingsTrip(
-                for: .notifications,
-                tripID: tripID
-            )
-        )
-        XCTAssertFalse(
-            flow.cancelSettingsTrip(
-                for: .notifications,
-                tripID: UUID()
-            )
-        )
-        XCTAssertTrue(
-            flow.cancelSettingsTrip(
-                for: .notifications,
-                tripID: tripID
-            )
-        )
-        XCTAssertEqual(flow.phase, .ready)
     }
 
     func testNotificationAuthorizationStatusesMapToOnboardingStatuses() {

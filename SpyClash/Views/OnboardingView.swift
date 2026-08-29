@@ -1,11 +1,9 @@
 import SwiftUI
-import UIKit
 
 struct OnboardingView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
-    @Environment(\.scenePhase) private var scenePhase
     @ScaledMetric(relativeTo: .largeTitle) private var stepTitleSize: CGFloat = 34
     @ScaledMetric(relativeTo: .title2) private var greetingSize: CGFloat = 24
 
@@ -81,9 +79,6 @@ struct OnboardingView: View {
             bottomAction
         }
         .preferredColorScheme(.dark)
-        .onChange(of: scenePhase) { _, phase in
-            handleScenePhase(phase)
-        }
         .onDisappear {
             permissionRequestTask?.cancel()
             permissionRequestTask = nil
@@ -373,26 +368,16 @@ struct OnboardingView: View {
                 canPerformCurrentPermissionAction
             case .complete:
                 true
-            case .loading, .requesting, .awaitingSettings, .resolved:
+            case .loading, .requesting, .resolved:
                 false
             }
         }
     }
 
     private var bottomActionSystemImage: String {
-        guard step == .permissions,
-              let permission = permissionFlow.currentPermission else {
-            return step == .permissions ? "checkmark" : "arrow.right"
-        }
-
-        switch permissions.status(for: permission) {
-        case .denied:
-            return "gearshape.fill"
-        case .unavailable:
-            return permission == .camera ? "gearshape.fill" : "arrow.clockwise"
-        case .notDetermined, .requesting, .granted:
-            return "arrow.right"
-        }
+        step == .permissions && permissionFlow.currentPermission == nil
+            ? "checkmark"
+            : "arrow.right"
     }
 
     private var bottomActionIdentifier: String {
@@ -412,16 +397,8 @@ struct OnboardingView: View {
         }
 
         switch permissions.status(for: permission) {
-        case .notDetermined:
-            return copy.permissionRequestAction(permission)
-        case .granted:
+        case .notDetermined, .granted, .denied, .unavailable:
             return copy.nextAction
-        case .denied:
-            return copy.openSettingsAction
-        case .unavailable:
-            return permission == .camera
-                ? copy.openSettingsAction
-                : copy.retryAction
         case .requesting:
             return copy.permissionRequesting
         }
@@ -441,11 +418,8 @@ struct OnboardingView: View {
         guard case .ready = permissionFlow.phase else { return false }
 
         switch permissions.status(for: permission) {
-        case .notDetermined, .granted, .denied:
+        case .notDetermined, .granted, .denied, .unavailable:
             return true
-        case .unavailable:
-            return permission == .camera
-                || isPermissionRetryAvailable(permission)
         case .requesting:
             return false
         }
@@ -652,7 +626,7 @@ struct OnboardingView: View {
     private var isPermissionFlowBusy: Bool {
         guard step == .permissions else { return false }
         switch permissionFlow.phase {
-        case .loading, .requesting, .awaitingSettings, .resolved:
+        case .loading, .requesting, .resolved:
             return true
         case .ready, .complete:
             return false
@@ -668,17 +642,8 @@ struct OnboardingView: View {
         switch status {
         case .notDetermined:
             beginPermissionRequest(permission)
-        case .granted:
-            showExistingPermissionGrant(permission)
-        case .denied:
-            openPermissionSettings(permission)
-        case .unavailable:
-            if permission == .camera {
-                openPermissionSettings(permission)
-                return
-            }
-            guard isPermissionRetryAvailable(permission) else { return }
-            beginPermissionRequest(permission)
+        case .granted, .denied, .unavailable:
+            showExistingPermissionResolution(status, for: permission)
         case .requesting:
             return
         }
@@ -716,13 +681,14 @@ struct OnboardingView: View {
         }
     }
 
-    private func showExistingPermissionGrant(
-        _ permission: OnboardingPermissionKind
+    private func showExistingPermissionResolution(
+        _ status: OnboardingPermissionStatus,
+        for permission: OnboardingPermissionKind
     ) {
         var didResolve = false
         withAnimation(pageAnimation) {
             didResolve = permissionFlow.resolveWithoutRequest(
-                .granted,
+                status,
                 for: permission
             )
         }
@@ -731,97 +697,6 @@ struct OnboardingView: View {
         permissionRequestTask?.cancel()
         permissionRequestTask = Task { @MainActor in
             await showPermissionResolutionThenAdvance(permission)
-        }
-    }
-
-    private func openPermissionSettings(
-        _ permission: OnboardingPermissionKind
-    ) {
-        let settingsURLString = permission == .notifications
-            ? UIApplication.openNotificationSettingsURLString
-            : UIApplication.openSettingsURLString
-        guard let settingsURL = URL(string: settingsURLString) else {
-            return
-        }
-
-        let tripID = UUID()
-        var didBeginTrip = false
-        withAnimation(pageAnimation) {
-            didBeginTrip = permissionFlow.beginSettingsTrip(
-                for: permission,
-                tripID: tripID
-            )
-        }
-        guard didBeginTrip else { return }
-
-        permissionRequestTask?.cancel()
-        permissionRequestTask = nil
-        UIApplication.shared.open(settingsURL, options: [:]) { didOpen in
-            guard !didOpen else { return }
-            Task { @MainActor in
-                withAnimation(pageAnimation) {
-                    _ = permissionFlow.cancelSettingsTrip(
-                        for: permission,
-                        tripID: tripID
-                    )
-                }
-            }
-        }
-    }
-
-    private func handleScenePhase(_ phase: ScenePhase) {
-        switch phase {
-        case .inactive, .background:
-            _ = permissionFlow.markSettingsDidLeaveApp()
-        case .active:
-            recheckPermissionAfterSettingsIfNeeded()
-        @unknown default:
-            break
-        }
-    }
-
-    private func recheckPermissionAfterSettingsIfNeeded() {
-        guard let permission = permissionFlow.currentPermission,
-              let trip = permissionFlow.settingsTrip,
-              trip.didLeaveApp else { return }
-
-        let requestID = UUID()
-        var didBeginRecheck = false
-        withAnimation(pageAnimation) {
-            didBeginRecheck = permissionFlow.beginSettingsRecheck(
-                for: permission,
-                tripID: trip.id,
-                requestID: requestID
-            )
-        }
-        guard didBeginRecheck else { return }
-
-        permissionRequestTask?.cancel()
-        permissionRequestTask = Task { @MainActor in
-            let didRecheck: Bool
-            switch permission {
-            case .notifications, .camera:
-                await permissions.refresh()
-                didRecheck = true
-            case .nearby:
-                didRecheck = await permissions.request(.nearby)
-            }
-
-            guard !Task.isCancelled else { return }
-            guard didRecheck else {
-                withAnimation(pageAnimation) {
-                    _ = permissionFlow.cancelRequest(
-                        for: permission,
-                        requestID: requestID
-                    )
-                }
-                permissionRequestTask = nil
-                return
-            }
-            await applyPermissionRequestResult(
-                permission,
-                requestID: requestID
-            )
         }
     }
 
@@ -841,25 +716,10 @@ struct OnboardingView: View {
         }
         guard didResolveRequest else { return }
 
-        guard resolvedStatus == .granted else {
-            permissionRequestTask = nil
-            HapticManager.shared.fire(.notification(.error))
-            return
+        if resolvedStatus == .granted {
+            HapticManager.shared.fire(.notification(.success))
         }
         await showPermissionResolutionThenAdvance(permission)
-    }
-
-    private func isPermissionRetryAvailable(
-        _ permission: OnboardingPermissionKind
-    ) -> Bool {
-        switch permission {
-        case .notifications:
-            true
-        case .camera:
-            false
-        case .nearby:
-            OnboardingPermissionCoordinator.canEvaluateNearbyPrivacy
-        }
     }
 
     private func showPermissionResolutionThenAdvance(
@@ -872,7 +732,8 @@ struct OnboardingView: View {
         }
         guard !Task.isCancelled,
               permissionFlow.currentPermission == permission,
-              permissionFlow.phase == .resolved(.granted) else { return }
+              case .resolved(let status) = permissionFlow.phase,
+              status.completesOnboardingStep else { return }
         var didAdvance = false
         withAnimation(pageAnimation) {
             didAdvance = permissionFlow.advance(after: permission)
@@ -893,7 +754,7 @@ struct OnboardingView: View {
             return .requesting
         case .resolved(let status):
             return status
-        case .ready, .awaitingSettings, .complete:
+        case .ready, .complete:
             return permissions.status(for: permission)
         }
     }
@@ -915,12 +776,7 @@ struct OnboardingView: View {
         case .denied:
             return copy.permissionDenied
         case .unavailable:
-            if permission == .camera {
-                return copy.permissionDenied
-            }
-            return isPermissionRetryAvailable(permission)
-                ? copy.permissionRetryRequired
-                : copy.permissionUnavailableRequired
+            return copy.permissionUnavailable
         }
     }
 
@@ -1027,69 +883,31 @@ private struct OnboardingCopy {
         localized(en: "ENABLED", es: "ACTIVADO", ru: "ВКЛЮЧЕНО", uk: "УВІМКНЕНО")
     }
 
-    var openSettingsAction: String {
-        localized(
-            en: "Open Settings",
-            es: "Abrir Ajustes",
-            ru: "Открыть Настройки",
-            uk: "Відкрити Налаштування"
-        )
-    }
-
-    var retryAction: String {
-        localized(
-            en: "Try again",
-            es: "Intentar de nuevo",
-            ru: "Повторить",
-            uk: "Спробувати ще раз"
-        )
-    }
-
     var permissionDenied: String {
         localized(
-            en: "REQUIRED · OPEN SETTINGS",
-            es: "OBLIGATORIO · ABRE AJUSTES",
-            ru: "ОБЯЗАТЕЛЬНО · ОТКРОЙТЕ НАСТРОЙКИ",
-            uk: "ОБОВ’ЯЗКОВО · ВІДКРИЙТЕ НАЛАШТУВАННЯ"
+            en: "NOT ENABLED",
+            es: "NO ACTIVADO",
+            ru: "НЕ ВКЛЮЧЕНО",
+            uk: "НЕ УВІМКНЕНО"
         )
     }
 
-    var permissionRetryRequired: String {
+    var permissionUnavailable: String {
         localized(
-            en: "REQUIRED · TRY AGAIN",
-            es: "OBLIGATORIO · INTÉNTALO DE NUEVO",
-            ru: "ОБЯЗАТЕЛЬНО · ПОВТОРИТЕ",
-            uk: "ОБОВ’ЯЗКОВО · СПРОБУЙТЕ ЩЕ РАЗ"
-        )
-    }
-
-    var permissionUnavailableRequired: String {
-        localized(
-            en: "REQUIRED · NOT AVAILABLE",
-            es: "OBLIGATORIO · NO DISPONIBLE",
-            ru: "ОБЯЗАТЕЛЬНО · НЕДОСТУПНО",
-            uk: "ОБОВ’ЯЗКОВО · НЕДОСТУПНО"
+            en: "NOT AVAILABLE",
+            es: "NO DISPONIBLE",
+            ru: "НЕДОСТУПНО",
+            uk: "НЕДОСТУПНО"
         )
     }
 
     var permissionsCompleteTitle: String {
         localized(
-            en: "ALL SET",
-            es: "TODO LISTO",
-            ru: "ВСЁ ГОТОВО",
-            uk: "УСЕ ГОТОВО"
+            en: "SETUP COMPLETE",
+            es: "CONFIGURACIÓN COMPLETA",
+            ru: "НАСТРОЙКА ЗАВЕРШЕНА",
+            uk: "НАЛАШТУВАННЯ ЗАВЕРШЕНО"
         )
-    }
-
-    func permissionRequestAction(_ permission: OnboardingPermissionKind) -> String {
-        switch permission {
-        case .notifications:
-            localized(en: "Allow notifications", es: "Permitir notificaciones", ru: "Разрешить уведомления", uk: "Дозволити сповіщення")
-        case .camera:
-            localized(en: "Allow camera", es: "Permitir cámara", ru: "Разрешить камеру", uk: "Дозволити камеру")
-        case .nearby:
-            localized(en: "Allow nearby players", es: "Permitir jugadores cercanos", ru: "Разрешить поиск игроков рядом", uk: "Дозволити пошук гравців поруч")
-        }
     }
 
     func sourceLabel(_ source: OnboardingAcquisitionSource) -> String {
