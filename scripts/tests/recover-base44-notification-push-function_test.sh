@@ -65,7 +65,7 @@ printf '%s\n' \
     '    "schedule_mode": "recurring",' \
     '    "schedule_type": "simple",' \
     '    "repeat_unit": "minutes",' \
-    '    "repeat_interval": 5,' \
+    '    "repeat_interval": 15,' \
     '    "ends_type": "never",' \
     '    "function_args": {"action":"drain","limit":64}' \
     '  }]' \

@@ -133,9 +133,9 @@ The exact function delta is one addition (`notificationAction`), four updates
 digests. Deployment order is deliberate: `notificationAction`,
 `communityAction`, `gameRoomAction`, `deleteAccount`, then
 `pushNotificationAction`. The last function activates the reviewed bounded
-five-minute drain worker (`limit: 64`), which is the minimum interval accepted
-by Base44 Production. This cutover does not create or publish a global
-announcement.
+retry drain (`limit: 64`). The original cutover used Base44 Production's
+minimum five-minute interval; the current reviewed schedule runs every fifteen
+minutes. This cutover does not create or publish a global announcement.
 
 A future, separately authorized Production execution would have this shape:
 
@@ -172,10 +172,10 @@ Prepare the dedicated push-only recovery plan with the read-only default:
 
 The recovery plan requires exactly 17 live functions and the exact 22-entity
 Step A schema. Its only allowed delta is `pushNotificationAction`; it preserves
-the other 16 function trees byte-for-byte. The retry drain uses Base44's
-minimum accepted interval of five minutes with a bounded batch of 64. A future,
-separately authorized recovery has this shape (always use the freshly prepared
-digest):
+the other 16 function trees byte-for-byte. The retry drain runs every fifteen
+minutes with a bounded batch of 64; Base44's minimum accepted interval remains
+five minutes. A future, separately authorized recovery has this shape (always
+use the freshly prepared digest):
 
 ```sh
 PLAN_DIGEST=$(jq -er .plan_digest \

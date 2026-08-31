@@ -303,12 +303,12 @@ validate_push_target_policy() {
       .automations[0].schedule_mode == "recurring" and
       .automations[0].schedule_type == "simple" and
       .automations[0].repeat_unit == "minutes" and
-      .automations[0].repeat_interval == 5 and
+      .automations[0].repeat_interval == 15 and
       .automations[0].ends_type == "never" and
       .automations[0].function_args.action == "drain" and
       .automations[0].function_args.limit == 64
     ' "$config" >/dev/null || {
-        echo "Local pushNotificationAction must use the reviewed 5-minute retry schedule." >&2
+        echo "Local pushNotificationAction must use the reviewed 15-minute retry schedule." >&2
         return 77
     }
 }
@@ -513,7 +513,7 @@ prepare_plan() {
     echo "Prepared read-only pushNotificationAction recovery plan: $plan_destination"
     echo "Production functions: 17; recovery changes: pushNotificationAction only"
     echo "Preserved Production functions: 16 raw-byte trees"
-    echo "Required retry interval: 5 minutes"
+    echo "Required retry interval: 15 minutes"
     echo "Schema digest: $EXPECTED_SCHEMA_DIGEST"
     echo "Plan digest: $plan_digest"
     echo "No Base44 mutation was made."

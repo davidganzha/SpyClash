@@ -5,13 +5,13 @@ import {
   pushDrainQueryLimit,
 } from "./drain-policy.ts";
 
-Deno.test("scheduled drain uses Base44's minimum five-minute interval with a batch substantially above eight", async () => {
+Deno.test("scheduled drain uses the reviewed fifteen-minute interval with a batch substantially above eight", async () => {
   const configuration = JSON.parse(
     await Deno.readTextFile(new URL("./function.jsonc", import.meta.url)),
   );
   const scheduled = configuration.automations[0];
   assertEquals(scheduled.repeat_unit, "minutes");
-  assertEquals(scheduled.repeat_interval, 5);
+  assertEquals(scheduled.repeat_interval, 15);
   assertEquals(scheduled.function_args.limit, 64);
   assertEquals(normalizePushDrainLimit(undefined), PUSH_DRAIN_DEFAULT_BATCH);
   assertGreater(normalizePushDrainLimit(undefined), 8);
