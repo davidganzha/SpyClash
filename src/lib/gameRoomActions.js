@@ -275,10 +275,12 @@ export async function joinGameRoom({ roomId = null, roomCode = null, player }) {
   return payload;
 }
 
-export async function finalizeExpiredOnlineGame(roomId) {
+export async function finalizeExpiredOnlineGame(roomId, expectedScope = {}) {
   const payload = await performGameRoomAction({
     action: "finalize_expired_room",
     room_id: roomId,
+    expected_match_id: expectedScope?.expected_match_id || undefined,
+    expected_game_started_at: expectedScope?.expected_game_started_at || undefined,
   });
   if (!payload?.id) {
     throw new GameRoomActionError("Unable to finalize expired online game", 502);

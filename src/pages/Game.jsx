@@ -14,12 +14,17 @@ import SpyGuessModal from "../components/SpyGuessModal";
 import GlitchText from "../components/ui/GlitchText";
 import { useGameSounds } from "../components/useGameSounds";
 import {
+  finalizeExpiredOnlineGame,
   getGameRoom,
   leaveGameRoom,
   performGameRoomAction,
   runGameRoomAction,
   subscribeGameRoom,
 } from "@/lib/gameRoomActions";
+import {
+  createExpiredRoomFinalizer,
+  expiredRoomFinalizationKey,
+} from "@/lib/expiredRoomFinalizer";
 import {
   isRetryableDetectiveVoteCastConflict,
   recoverDetectiveVoteCastConflict,
@@ -252,13 +257,16 @@ export default function Game() {
   const prevRoomRef = useRef(null);
   const unsubRef = useRef(null);
   const timerRef = useRef(null);
-  const expirationRetryTimerRef = useRef(null);
+  const expiredRoomFinalizerRef = useRef(null);
   const actionInFlightRef = useRef(null);
   const leavingRef = useRef(false);
-  const finalizingExpiredRef = useRef(false);
   const voteCancellationSeenRef = useRef(new Set());
   const voteCancellationStartTimerRef = useRef(null);
   const voteCancellationEndTimerRef = useRef(null);
+
+  if (!expiredRoomFinalizerRef.current) {
+    expiredRoomFinalizerRef.current = createExpiredRoomFinalizer();
+  }
 
   const getRoomId = () => new URLSearchParams(window.location.search).get("id");
 
@@ -486,7 +494,7 @@ export default function Game() {
       disposed = true;
       unsubRef.current?.();
       if (timerRef.current) clearInterval(timerRef.current);
-      if (expirationRetryTimerRef.current) clearInterval(expirationRetryTimerRef.current);
+      expiredRoomFinalizerRef.current?.dispose();
       if (voteCancellationStartTimerRef.current) {
         clearTimeout(voteCancellationStartTimerRef.current);
       }
@@ -597,37 +605,26 @@ export default function Game() {
   useEffect(() => {
     if (!timeExpired || room?.status === "finished") return undefined;
     if (!room?.game_started_at || !room?.game_duration_seconds) return undefined;
-
-    const finalize = async () => {
-      const currentRoom = roomRef.current || room;
-      if (
-        currentRoom.status !== "finished"
-        && (currentRoom.players || []).some(
-          (player) => normalizedEmail(player.email) === normalizedEmail(user?.email),
-        )
-        && !finalizingExpiredRef.current
-      ) {
-        finalizingExpiredRef.current = true;
-        try {
-          const updated = await runGameRoomAction("finalize_expired_room", currentRoom.id);
-          if (updated?.id) applyRoom(updated);
-        } catch (error) {
-          console.error("Failed to finalize expired room", error);
-        } finally {
-          finalizingExpiredRef.current = false;
-        }
-      }
-    };
-
-    void finalize();
-    if (expirationRetryTimerRef.current) clearInterval(expirationRetryTimerRef.current);
-    expirationRetryTimerRef.current = setInterval(() => void finalize(), 500);
-    return () => {
-      if (expirationRetryTimerRef.current) clearInterval(expirationRetryTimerRef.current);
-    };
+    if (!user?.email) return undefined;
+    const currentRoom = roomRef.current || room;
+    const finalizationKey = expiredRoomFinalizationKey(currentRoom);
+    void expiredRoomFinalizerRef.current.run({
+      room: currentRoom,
+      actorEmail: user?.email,
+      currentRoom: () => roomRef.current,
+      refreshRoom: getGameRoom,
+      finalizeRoom: finalizeExpiredOnlineGame,
+      acceptRoom: applyRoom,
+    }).catch((error) => {
+      if (error?.name === "AbortError") return;
+      console.error("Failed to finalize expired room after bounded recovery", error);
+    });
+    return () => expiredRoomFinalizerRef.current?.cancel(finalizationKey);
   }, [
     applyRoom,
     timeExpired,
+    room?.id,
+    room?.match_id,
     room?.status,
     room?.game_started_at,
     room?.game_duration_seconds,
