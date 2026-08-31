@@ -34,6 +34,17 @@ const postHistoricalGameRoomFields = [
   "lobby_word_pool",
   "lobby_last_mutation_id",
   "lobby_last_mutation_fingerprint",
+  "detective_vote_round_id",
+  "detective_vote_cancellation_event_id",
+  "detective_vote_cancellation_round_id",
+  "detective_vote_cancellation_present_at",
+  "detective_vote_cancellation_reason",
+];
+const postHistoricalUserFields = [
+  "onboarding_completed",
+  "onboarding_version",
+  "onboarding_completed_at",
+  "acquisition_source",
 ];
 
 function assertBefore(source: string, earlier: string, later: string) {
@@ -105,6 +116,7 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
   const schemas = (await readLocalSchemas()).filter((schema) =>
     ![
       "GameRoomSignal",
+      "CommunityProfileSignal",
       "NotificationAnnouncement",
       "NotificationReadReceipt",
     ].includes(
@@ -160,6 +172,9 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
   delete userProperties.radar_invite_policy;
   const language = userProperties.language as Record<string, unknown>;
   language.enum = (language.enum as string[]).filter((value) => value !== "uk");
+  for (const field of postHistoricalUserFields) {
+    delete userProperties[field];
+  }
   userProperties.role = {
     default: "user",
     enum: ["admin", "user"],

@@ -40,6 +40,17 @@ const postNotificationLobbyFields = [
   "lobby_word_pool",
   "lobby_last_mutation_id",
   "lobby_last_mutation_fingerprint",
+  "detective_vote_round_id",
+  "detective_vote_cancellation_event_id",
+  "detective_vote_cancellation_round_id",
+  "detective_vote_cancellation_present_at",
+  "detective_vote_cancellation_reason",
+];
+const postHistoricalUserFields = [
+  "onboarding_completed",
+  "onboarding_version",
+  "onboarding_completed_at",
+  "acquisition_source",
 ];
 
 const expectedEntities = [
@@ -50,6 +61,7 @@ const expectedEntities = [
   "AppleSignInCredential",
   "AppStoreAccount",
   "BillingIdentityLifecycle",
+  "CommunityProfileSignal",
   "CommunityReport",
   "Entitlement",
   "Friendship",
@@ -172,6 +184,7 @@ async function makeFixture(): Promise<{
 
 async function pinHistoricalNotificationEntityFixture(root: string) {
   await Deno.remove(`${root}/base44/entities/game-room-signal.jsonc`);
+  await Deno.remove(`${root}/base44/entities/community-profile-signal.jsonc`);
   const roomPath = `${root}/base44/entities/GameRoom.jsonc`;
   const room = JSON.parse(await Deno.readTextFile(roomPath));
   for (const field of postNotificationLobbyFields) {
@@ -188,6 +201,9 @@ async function pinHistoricalNotificationEntityFixture(root: string) {
   user.properties.language.enum = user.properties.language.enum.filter(
     (value: string) => value !== "uk",
   );
+  for (const field of postHistoricalUserFields) {
+    delete user.properties[field];
+  }
   await writePrivateJSON(userPath, user);
 
   const announcementPath =
@@ -788,7 +804,7 @@ Deno.test("Step B binds 16 to 17 sources and preserves all non-targets", async (
   assertEquals(source.includes("sites deploy"), false);
 });
 
-Deno.test("canonical inventory is exactly 23 entities and 17 functions", async () => {
+Deno.test("canonical inventory is exactly 24 entities and 17 functions", async () => {
   const entityNames: string[] = [];
   for await (const entry of Deno.readDir(entitiesURL)) {
     if (!entry.isFile || !entry.name.endsWith(".jsonc")) continue;
