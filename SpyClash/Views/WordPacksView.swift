@@ -4,51 +4,45 @@ struct WordPacksView: View {
     @Environment(AppState.self) private var appState
 
     @State private var packs: [WordPack] = []
-    @State private var isLoading = false
-    @State private var status = ""
+    @State private var isLoading = true
+    @State private var loadError: String?
     @State private var editor: WordPackEditorRoute?
     @State private var deleteTarget: WordPack?
     @State private var showDeleteConfirmation = false
     @State private var deletingID: String?
+    @State private var loadRequestID: UUID?
+    @State private var packMutationRevision = 0
 
     private var copy: WordPacksCopy {
         appState.language.wordPacks
     }
 
+    private var flowCopy: WordPackEditorFlowCopy {
+        appState.language.wordPackEditorFlow
+    }
+
     var body: some View {
-        PageChrome(eyebrow: copy.eyebrow, status: copy.status) {
-            VStack(alignment: .leading, spacing: 18) {
-                packsSceneHero
-
-                if isLoading {
-                    loadingPanel
-                } else if packs.isEmpty {
-                    emptyPanel
-                } else {
-                    LazyVStack(spacing: 12) {
-                        ForEach(Array(packs.enumerated()), id: \.element.id) { index, pack in
-                            packPanel(pack, index: index)
-                                .transition(.opacity)
-                        }
-                    }
+        ZStack {
+            PageChrome(eyebrow: copy.eyebrow, status: copy.status) {
+                VStack(alignment: .leading, spacing: 18) {
+                    packsSceneHero
+                    listContent
                 }
-
+                .padding(.horizontal, 18)
+                .padding(.top, 20)
+                .spyWebEntrance(duration: 0.35, y: -16, scale: 0.98)
             }
-            .padding(.horizontal, 18)
-            .padding(.top, 20)
-            .spyWebEntrance(duration: 0.35, y: -16, scale: 0.98)
+            .disabled(editor != nil || showDeleteConfirmation)
+            .accessibilityHidden(editor != nil || showDeleteConfirmation)
         }
         .task {
             await load()
         }
-        .sheet(item: $editor, onDismiss: {
-            Task { await load() }
-        }) { route in
-            WordPackEditorSheet(route: route)
-                .spyGlobalToastLayer()
-                .presentationDetents([.large])
-                .presentationDragIndicator(.hidden)
-                .presentationCornerRadius(0)
+        .fullScreenCover(item: $editor) { route in
+            WordPackEditorSheet(route: route) { savedPack in
+                applySavedPack(savedPack)
+            }
+            .spyGlobalToastLayer()
         }
         .overlay {
             if showDeleteConfirmation, let deleteTarget {
@@ -65,19 +59,39 @@ struct WordPacksView: View {
                     self.deleteTarget = nil
                 }
                 .zIndex(10)
+                .accessibilityElement(children: .contain)
+                .accessibilityAddTraits(.isModal)
             }
         }
         .animation(.smooth(duration: 0.22), value: showDeleteConfirmation)
-        .onChange(of: showDeleteConfirmation, initial: true) { _, isPresented in
-            appState.isShellChromeSuppressed = isPresented
+        .onChange(of: showDeleteConfirmation, initial: true) { _, _ in
+            updateShellSuppression()
+        }
+        .onChange(of: editor, initial: true) { _, _ in
+            updateShellSuppression()
         }
         .onDisappear {
-            if showDeleteConfirmation {
+            if showDeleteConfirmation || editor != nil {
                 appState.isShellChromeSuppressed = false
             }
         }
-        .onChange(of: status) { _, message in
-            publishWordPacksToast(message)
+    }
+
+    @ViewBuilder
+    private var listContent: some View {
+        if isLoading && packs.isEmpty {
+            loadingPanel
+        } else if loadError != nil && packs.isEmpty {
+            loadErrorPanel
+        } else if packs.isEmpty {
+            emptyPanel
+        } else {
+            LazyVStack(spacing: 12) {
+                ForEach(Array(packs.enumerated()), id: \.element.id) { index, pack in
+                    packPanel(pack, index: index)
+                        .transition(.opacity)
+                }
+            }
         }
     }
 
@@ -85,7 +99,12 @@ struct WordPacksView: View {
         SpySceneStage(accent: SpyTheme.red, motionDelay: 0, minHeight: 198, isSubtle: true) {
             VStack(alignment: .leading, spacing: 12) {
                 SpySceneKicker(
-                    title: localized(en: "WORD PACKS", ru: "НАБОРЫ СЛОВ", es: "PACKS DE PALABRAS", uk: "НАБОРИ СЛІВ"),
+                    title: localized(
+                        en: "WORD PACK LIBRARY",
+                        ru: "БИБЛИОТЕКА НАБОРОВ",
+                        es: "BIBLIOTECA DE PACKS",
+                        uk: "БІБЛІОТЕКА НАБОРІВ"
+                    ),
                     status: nil,
                     accent: SpyTheme.red
                 )
@@ -100,12 +119,12 @@ struct WordPacksView: View {
                         )
 
                         Text(localized(
-                            en: "Build reusable intelligence for every mission.",
-                            ru: "Собирай разведданные для каждой новой миссии.",
-                            es: "Crea inteligencia reutilizable para cada misión.",
-                            uk: "Збирай розвіддані для кожної нової місії."
+                            en: "Create once, then reuse the pack in local and online games.",
+                            ru: "Создай набор один раз и используй его в локальных и онлайн-играх.",
+                            es: "Crea un pack una vez y úsalo en partidas locales y online.",
+                            uk: "Створи набір один раз і використовуй його в локальних та онлайн-іграх."
                         ))
-                        .font(.system(size: 11, weight: .semibold, design: .default))
+                        .font(.system(size: 11, weight: .semibold))
                         .foregroundStyle(SpyTheme.muted)
                         .lineSpacing(3)
                         .fixedSize(horizontal: false, vertical: true)
@@ -116,15 +135,20 @@ struct WordPacksView: View {
                     Button {
                         Task { await load() }
                     } label: {
-                        Image(systemName: "arrow.clockwise")
-                            .font(.system(size: 15, weight: .black))
-                            .foregroundStyle(SpyTheme.muted)
-                            .frame(width: 44, height: 44)
-                            .overlay(Rectangle().stroke(SpyTheme.strokeStrong, lineWidth: 1))
+                        Group {
+                            if isLoading {
+                                SpySpinner(size: 17, accent: SpyTheme.muted)
+                            } else {
+                                Image(systemName: "arrow.clockwise")
+                                    .font(.system(size: 15, weight: .black))
+                            }
+                        }
+                        .foregroundStyle(SpyTheme.muted)
+                        .frame(width: 44, height: 44)
+                        .overlay(Rectangle().stroke(SpyTheme.strokeStrong, lineWidth: 1))
                     }
                     .buttonStyle(SpyWebPressStyle())
                     .disabled(isLoading)
-                    .opacity(isLoading ? 0.45 : 1)
                     .accessibilityLabel(localized(
                         en: "Refresh word packs",
                         ru: "Обновить наборы слов",
@@ -134,65 +158,42 @@ struct WordPacksView: View {
                 }
 
                 HStack(spacing: 18) {
-                    packHeroMetric(String(format: "%02d", packs.count), label: localized(en: "PACKS", ru: "КОЛОДЫ", es: "PACKS", uk: "НАБОРИ"))
-                    packHeroMetric(String(format: "%03d", totalWordCount), label: localized(en: "WORDS", ru: "СЛОВА", es: "PALABRAS", uk: "СЛОВА"))
-
-                    VStack(alignment: .leading, spacing: 3) {
-                        Text(featuredPackName.uppercased())
-                            .font(.system(size: 10, weight: .black, design: .monospaced))
-                            .tracking(0.06)
-                            .foregroundStyle(packs.isEmpty ? SpyTheme.dim : SpyTheme.red)
-                            .lineLimit(1)
-                            .minimumScaleFactor(0.58)
-                        Text(localized(en: "LATEST INTEL", ru: "ПОСЛЕДНИЙ INTEL", es: "ÚLTIMO INTEL", uk: "ОСТАННІ ДАНІ"))
-                            .font(.system(size: 7, weight: .black, design: .monospaced))
-                            .tracking(0.06)
-                            .foregroundStyle(SpyTheme.faint)
-                    }
-                    .frame(maxWidth: .infinity, alignment: .leading)
+                    packHeroMetric(
+                        String(format: "%02d", packs.count),
+                        label: localized(en: "PACKS", ru: "НАБОРЫ", es: "PACKS", uk: "НАБОРИ")
+                    )
+                    packHeroMetric(
+                        String(format: "%03d", totalWordCount),
+                        label: localized(en: "WORDS", ru: "СЛОВА", es: "PALABRAS", uk: "СЛОВА")
+                    )
+                    packHeroMetric(
+                        String(format: "%02d", averageWordCount),
+                        label: flowCopy.averagePerPack
+                    )
                 }
 
                 Button {
                     editor = .create
                 } label: {
                     SpyPrimaryCommandLabel(
-                        title: localized(en: "CREATE WORD PACK", ru: "СОЗДАТЬ КОЛОДУ", es: "CREAR PACK", uk: "СТВОРИТИ НАБІР СЛІВ"),
+                        title: flowCopy.addTitle,
                         detail: nil,
                         systemImage: "plus"
                     )
                 }
                 .buttonStyle(SpyPrimaryCommandStyle())
+                .accessibilityIdentifier("wordPacks.add")
             }
-        }
-    }
-
-    private var totalWordCount: Int {
-        packs.reduce(0) { $0 + ($1.words?.count ?? 0) }
-    }
-
-    private var featuredPackName: String {
-        packs.first?.name ?? localized(en: "NO PACKS", ru: "НЕТ КОЛОД", es: "SIN PACKS", uk: "НЕМАЄ НАБОРІВ")
-    }
-
-    private func packHeroMetric(_ value: String, label: String) -> some View {
-        VStack(alignment: .leading, spacing: 2) {
-            Text(value)
-                .font(SpyTheme.brandFont(size: 25))
-                .foregroundStyle(.white)
-            Text(label.uppercased())
-                .font(.system(size: 7, weight: .black, design: .monospaced))
-                .tracking(0.07)
-                .foregroundStyle(SpyTheme.faint)
         }
     }
 
     private var loadingPanel: some View {
         SpyPanel(motionDelay: 0.08) {
-            HStack {
+            HStack(spacing: 10) {
                 SpySpinner(size: 20, accent: SpyTheme.red)
-                    Text(copy.loading)
-                        .font(SpyTheme.micro)
-                        .tracking(0.12)
+                Text(copy.loading)
+                    .font(SpyTheme.micro)
+                    .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker(lines: 2)
             }
@@ -206,38 +207,64 @@ struct WordPacksView: View {
                 Image(systemName: "shippingbox")
                     .font(.system(size: 34, weight: .bold))
                     .foregroundStyle(SpyTheme.red)
+                    .accessibilityHidden(true)
+
                 VStack(spacing: 6) {
                     Text(copy.emptyTitle)
                         .font(SpyTheme.micro)
                         .tracking(0.12)
                         .foregroundStyle(.white.opacity(0.84))
                         .spyKicker(lines: 2, alignment: .center)
+
                     Text(copy.emptyBody)
-                        .font(SpyTheme.micro)
-                        .tracking(0.08)
+                        .font(.system(size: 12, weight: .semibold))
                         .multilineTextAlignment(.center)
-                        .foregroundStyle(SpyTheme.dim)
+                        .foregroundStyle(SpyTheme.muted)
                         .lineSpacing(3)
                         .fixedSize(horizontal: false, vertical: true)
                 }
+
+                Button {
+                    editor = .create
+                } label: {
+                    Label(copy.createFirstPack, systemImage: "plus")
+                }
+                .buttonStyle(SpyButtonStyle(variant: .outline))
             }
-            .frame(maxWidth: .infinity, minHeight: 144)
+            .frame(maxWidth: .infinity, minHeight: 164)
         }
     }
 
-    private func localized(en: String, ru: String, es: String, uk: String) -> String {
-        switch appState.language {
-        case .ru: ru
-        case .es: es
-        case .uk: uk
-        default: en
-        }
-    }
+    private var loadErrorPanel: some View {
+        SpyPanel(motionDelay: 0.12) {
+            VStack(spacing: 14) {
+                Image(systemName: "wifi.exclamationmark")
+                    .font(.system(size: 30, weight: .bold))
+                    .foregroundStyle(SpyTheme.red)
+                    .accessibilityHidden(true)
 
-    private func publishWordPacksToast(_ message: String) {
-        guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
-        appState.showToast(message, kind: .error)
-        status = ""
+                Text(flowCopy.loadFailedTitle)
+                    .font(SpyTheme.micro)
+                    .tracking(0.10)
+                    .foregroundStyle(.white)
+                    .multilineTextAlignment(.center)
+
+                Text(flowCopy.loadFailedBody)
+                    .font(.system(size: 12, weight: .semibold))
+                    .foregroundStyle(SpyTheme.muted)
+                    .multilineTextAlignment(.center)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                Button {
+                    Task { await load() }
+                } label: {
+                    Label(flowCopy.retry, systemImage: "arrow.clockwise")
+                }
+                .buttonStyle(SpyButtonStyle(variant: .outline))
+                .disabled(isLoading)
+            }
+            .frame(maxWidth: .infinity, minHeight: 176)
+        }
     }
 
     private func packPanel(_ pack: WordPack, index: Int) -> some View {
@@ -246,15 +273,21 @@ struct WordPacksView: View {
                 HStack(alignment: .top, spacing: 12) {
                     VStack(alignment: .leading, spacing: 8) {
                         Text(pack.name.uppercased())
-                            .font(.system(size: 21, weight: .black, design: .default))
+                            .font(.system(size: 21, weight: .black))
                             .tracking(0.04)
                             .foregroundStyle(.white)
                             .lineLimit(2)
                             .minimumScaleFactor(0.56)
 
                         HStack(spacing: 8) {
-                            metaPill(pack.category?.nilIfBlank ?? copy.customFallback, systemName: "tag.fill")
-                            metaPill(copy.wordsLabel(pack.words?.count ?? 0), systemName: "text.word.spacing")
+                            metaPill(
+                                pack.category?.nilIfBlank ?? copy.customFallback,
+                                systemName: "tag.fill"
+                            )
+                            metaPill(
+                                copy.wordsLabel(pack.words?.count ?? 0),
+                                systemName: "text.word.spacing"
+                            )
                         }
                     }
 
@@ -290,8 +323,12 @@ struct WordPacksView: View {
                     }
                 }
 
-                FlowWords(words: Array((pack.words ?? []).prefix(12)))
-                    .opacity(deletingID == pack.id ? 0.45 : 1)
+                let wordCount = pack.words?.count ?? 0
+                FlowWords(
+                    words: Array((pack.words ?? []).prefix(12)),
+                    overflowText: wordCount > 12 ? flowCopy.moreWords(wordCount - 12) : nil
+                )
+                .opacity(deletingID == pack.id ? 0.45 : 1)
 
                 if deletingID == pack.id {
                     HStack(spacing: 8) {
@@ -307,6 +344,19 @@ struct WordPacksView: View {
         }
     }
 
+    private func packHeroMetric(_ value: String, label: String) -> some View {
+        VStack(alignment: .leading, spacing: 2) {
+            Text(value)
+                .font(SpyTheme.brandFont(size: 25))
+                .foregroundStyle(.white)
+            Text(label.uppercased())
+                .font(.system(size: 7, weight: .black, design: .monospaced))
+                .tracking(0.07)
+                .foregroundStyle(SpyTheme.faint)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
     private func metaPill(_ text: String, systemName: String) -> some View {
         HStack(spacing: 6) {
             Image(systemName: systemName)
@@ -315,27 +365,13 @@ struct WordPacksView: View {
             Text(text.uppercased())
                 .spyFitted(scale: 0.66)
         }
-        .font(.system(size: 10, weight: .bold, design: .default))
+        .font(.system(size: 10, weight: .bold))
         .tracking(0.02)
         .foregroundStyle(SpyTheme.dim)
         .padding(.horizontal, 9)
         .frame(height: 28)
         .background(SpyTheme.panelDeep)
         .overlay(Rectangle().stroke(SpyTheme.stroke))
-    }
-
-    private func iconButton(_ symbol: String, action: @escaping () -> Void) -> some View {
-        Button(action: action) {
-            Image(systemName: symbol)
-                .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(SpyTheme.red)
-                .frame(width: 46, height: 46)
-                .background(SpyTheme.panel)
-                .overlay(CutCornerShape(cut: 9).stroke(SpyTheme.stroke, lineWidth: 1))
-                .clipShape(CutCornerShape(cut: 9))
-        }
-        .buttonStyle(SpyWebPressStyle())
-        .spyHitTarget()
     }
 
     private func smallActionButton(
@@ -358,47 +394,129 @@ struct WordPacksView: View {
         .accessibilityLabel(accessibilityLabel)
     }
 
+    private var totalWordCount: Int {
+        packs.reduce(0) { $0 + ($1.words?.count ?? 0) }
+    }
+
+    private var averageWordCount: Int {
+        guard !packs.isEmpty else { return 0 }
+        return Int((Double(totalWordCount) / Double(packs.count)).rounded())
+    }
+
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
+        switch appState.language {
+        case .ru: ru
+        case .es: es
+        case .uk: uk
+        default: en
+        }
+    }
+
     private func load() async {
+        let requestID = UUID()
+        let startingMutationRevision = packMutationRevision
+        loadRequestID = requestID
+
         if appState.shouldUsePreviewData {
             packs = WordPack.localizedPreviewPacks(for: appState.language)
-            status = ""
+            loadError = nil
             isLoading = false
+            loadRequestID = nil
             return
         }
 
-        guard let email = appState.user?.email else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            packs = try await appState.client.wordPacks(ownerEmail: email)
-            status = ""
-        } catch {
-            status = error.localizedDescription.uppercased()
+        guard let email = appState.user?.email else {
+            isLoading = false
+            loadError = flowCopy.loadFailedBody
+            loadRequestID = nil
+            return
         }
+
+        isLoading = true
+        defer {
+            if loadRequestID == requestID {
+                isLoading = false
+                loadRequestID = nil
+            }
+        }
+
+        do {
+            let loadedPacks = try await appState.client.wordPacks(ownerEmail: email)
+            guard loadRequestID == requestID,
+                  packMutationRevision == startingMutationRevision else {
+                return
+            }
+            withAnimation(SpyMotion.page) {
+                packs = loadedPacks
+            }
+            loadError = nil
+        } catch is CancellationError {
+            return
+        } catch {
+            guard loadRequestID == requestID,
+                  packMutationRevision == startingMutationRevision else {
+                return
+            }
+            let message = error.localizedDescription.uppercased()
+            loadError = message
+            if !packs.isEmpty {
+                appState.showToast(message, kind: .error)
+            }
+        }
+    }
+
+    private func applySavedPack(_ savedPack: WordPack) {
+        recordLocalMutation()
+        withAnimation(SpyMotion.page) {
+            if let index = packs.firstIndex(where: { $0.id == savedPack.id }) {
+                packs[index] = savedPack
+            } else {
+                packs.append(savedPack)
+            }
+            packs.sort {
+                $0.name.localizedCaseInsensitiveCompare($1.name) == .orderedAscending
+            }
+        }
+        loadError = nil
+        appState.showToast(flowCopy.savedMessage, kind: .success)
     }
 
     private func delete(_ pack: WordPack) async {
         deletingID = pack.id
         defer { deletingID = nil }
+
         do {
             try await appState.client.deleteWordPack(id: pack.id)
+            recordLocalMutation()
             withAnimation(SpyMotion.page) {
                 packs.removeAll { $0.id == pack.id }
             }
+            loadError = nil
             appState.markWordPacksChanged()
             deleteTarget = nil
             showDeleteConfirmation = false
-            status = ""
             HapticManager.shared.fire(.notification(.success))
+        } catch is CancellationError {
+            return
         } catch {
             showDeleteConfirmation = false
-            status = error.localizedDescription.uppercased()
+            appState.showToast(error.localizedDescription.uppercased(), kind: .error)
             HapticManager.shared.fire(.notification(.error))
         }
     }
+
+    private func recordLocalMutation() {
+        packMutationRevision += 1
+        loadRequestID = nil
+        isLoading = false
+    }
+
+    private func updateShellSuppression() {
+        appState.isShellChromeSuppressed = showDeleteConfirmation || editor != nil
+    }
 }
 
-private enum WordPackEditorRoute: Identifiable, Hashable {
+enum WordPackEditorRoute: Identifiable, Hashable {
     case create
     case edit(WordPack)
 
@@ -419,508 +537,42 @@ private enum WordPackEditorRoute: Identifiable, Hashable {
             pack
         }
     }
-
 }
 
-private struct WordPackEditorSheet: View {
-    @Environment(AppState.self) private var appState
-    @Environment(\.dismiss) private var dismiss
-
-    let route: WordPackEditorRoute
-
-    @State private var name: String
-    @State private var category: String
-    @State private var wordsText: String
-    @State private var aiTheme: String
-    @State private var aiWordCount: Double
-    @State private var isGenerating = false
-    @State private var isSaving = false
-    @State private var lastSuccessfulAIGenerationSignature: AIGenerationSignature?
-    @FocusState private var focusedField: Field?
-
-    private struct AIGenerationSignature: Equatable {
-        let theme: String
-        let count: Int
-    }
-
-    private enum Field {
-        case name
-        case category
-        case words
-    }
-
-    private enum EditorStatusKind {
-        case success
-        case error
-    }
-
-    private var copy: WordPackEditorCopy {
-        appState.language.wordPacks.editor
-    }
-
-    init(route: WordPackEditorRoute) {
-        self.route = route
-        let pack = route.pack
-        _name = State(initialValue: pack?.name ?? "")
-        _category = State(initialValue: pack?.category ?? "")
-        _wordsText = State(initialValue: (pack?.words ?? []).joined(separator: "\n"))
-        _aiTheme = State(initialValue: pack?.category ?? pack?.name ?? "")
-        _aiWordCount = State(initialValue: Double(max(12, min(100, pack?.words?.count ?? 12))))
-    }
-
-    var body: some View {
-        ZStack {
-            SpyBackground()
-            VStack(spacing: 0) {
-                sheetHeader
-                ScrollView(showsIndicators: false) {
-                    VStack(alignment: .leading, spacing: 18) {
-                        SpyPanel {
-                            VStack(alignment: .leading, spacing: 18) {
-                                summaryStrip
-                                aiPanel
-                                textFieldSection(
-                                    label: copy.packNameLabel,
-                                    placeholder: copy.packNamePlaceholder,
-                                    text: $name,
-                                    focus: .name
-                                )
-                                textFieldSection(
-                                    label: copy.categoryLabel,
-                                    placeholder: copy.categoryPlaceholder,
-                                    text: $category,
-                                    focus: .category
-                                )
-                                wordsSection
-                                saveButton
-                            }
-                        }
-                    }
-                    .padding(.horizontal, 18)
-                    .padding(.top, 20)
-                    .padding(.bottom, 32)
-                }
-            }
-        }
-    }
-
-    private var sheetHeader: some View {
-        HStack(spacing: 14) {
-            VStack(alignment: .leading, spacing: 6) {
-                Text(copy.eyebrow)
-                    .font(SpyTheme.micro)
-                    .tracking(0.12)
-                    .foregroundStyle(SpyTheme.dim)
-                    .spyKicker()
-                Text(copy.title(isEditing: route.pack != nil))
-                    .font(.system(size: 26, weight: .black, design: .default))
-                    .tracking(0.04)
-                    .foregroundStyle(.white)
-                    .spyFitted(lines: 2, scale: 0.58)
-            }
-
-            Spacer()
-
-            Button {
-                dismiss()
-            } label: {
-                Image(systemName: "xmark")
-                    .font(.system(size: 14, weight: .black))
-                    .foregroundStyle(SpyTheme.red)
-                    .frame(width: 42, height: 42)
-                    .background(SpyTheme.panel)
-                    .overlay(CutCornerShape(cut: 9).stroke(SpyTheme.stroke, lineWidth: 1))
-                    .clipShape(CutCornerShape(cut: 9))
-            }
-            .buttonStyle(SpyWebPressStyle())
-            .spyHitTarget()
-            .accessibilityLabel(localized(en: "Close editor", ru: "Закрыть редактор", es: "Cerrar editor", uk: "Закрити редактор"))
-        }
-        .padding(.horizontal, 20)
-        .padding(.top, 18)
-        .padding(.bottom, 14)
-        .background(SpyTheme.black)
-    }
-
-    private var summaryStrip: some View {
-        HStack(spacing: 10) {
-            editorStat(copy.wordsMetric, "\(words.count)", accent: words.count >= 2 ? SpyTheme.green : SpyTheme.red)
-            editorStat(copy.modeMetric, copy.mode(isEditing: route.pack != nil), accent: SpyTheme.red)
-        }
-    }
-
-    private var aiPanel: some View {
-        VStack(alignment: .leading, spacing: 14) {
-            HStack(spacing: 8) {
-                Image(systemName: "sparkles")
-                    .foregroundStyle(SpyTheme.red)
-                Text(copy.aiGeneration)
-                    .font(SpyTheme.micro)
-                    .tracking(0.12)
-                    .foregroundStyle(SpyTheme.dim)
-                    .spyKicker(lines: 2)
-                Spacer()
-                Text("\(aiCount)")
-                    .font(.system(size: 18, weight: .black, design: .monospaced))
-                    .foregroundStyle(SpyTheme.red)
-            }
-
-            SpyInput(
-                label: nil,
-                placeholder: copy.themePlaceholder,
-                text: $aiTheme,
-                icon: "sparkles",
-                isFocused: focusedField == .category,
-                autocapitalization: .sentences
-            )
-
-            AIThemeSuggestionStrip(
-                language: appState.language,
-                selectedTheme: aiTheme,
-                accessibilityIdentifier: "wordPacks.aiThemeSuggestions"
-            ) { suggestion in
-                aiTheme = suggestion
-            }
-
-            VStack(alignment: .leading, spacing: 8) {
-                SpyWebSlider(
-                    value: $aiWordCount,
-                    range: 5...100,
-                    language: appState.language,
-                    step: 1
-                )
-                HStack {
-                    Text("5")
-                    Spacer()
-                    Text(copy.wordsToGenerate)
-                    Spacer()
-                    Text("100")
-                }
-                .font(SpyTheme.micro)
-                .tracking(0.08)
-                .foregroundStyle(SpyTheme.dim)
-            }
-
-            Button {
-                Task { await generateWithAI() }
-            } label: {
-                if isGenerating {
-                    SpyLoadingLabel(title: copy.generateWords, accent: .white)
-                } else {
-                    Label(copy.generateWords, systemImage: "sparkles")
-                }
-            }
-            .buttonStyle(SpyButtonStyle(variant: .outline))
-            .disabled(!canGenerate)
-            .opacity(canGenerate ? 1 : 0.45)
-
-            Text(copy.aiDraftHint)
-                .font(SpyTheme.micro)
-                .tracking(0.08)
-                .foregroundStyle(SpyTheme.dim)
-                .lineSpacing(3)
-                .fixedSize(horizontal: false, vertical: true)
-        }
-        .padding(14)
-        .background(SpyTheme.dark)
-        .overlay(Rectangle().stroke(SpyTheme.stroke))
-    }
-
-    private var wordsSection: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack {
-                Text(copy.wordsLabel)
-                    .font(SpyTheme.micro)
-                    .tracking(0.12)
-                    .foregroundStyle(SpyTheme.dim)
-                    .spyKicker()
-                Spacer()
-                Text(copy.wordsInputHint)
-                    .font(SpyTheme.micro)
-                    .tracking(0.10)
-                    .foregroundStyle(SpyTheme.dim)
-                    .spyFitted(scale: 0.58, alignment: .trailing)
-            }
-
-            TextEditor(text: $wordsText)
-                .focused($focusedField, equals: .words)
-                .font(SpyTheme.mono)
-                .foregroundStyle(.white)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 190)
-                .padding(10)
-                .background(SpyTheme.panelDeep)
-                .overlay(Rectangle().stroke(focusedField == .words ? SpyTheme.red.opacity(0.55) : SpyTheme.stroke))
-
-            if words.isEmpty {
-                Text(copy.emptyWordsHint)
-                    .font(SpyTheme.micro)
-                    .tracking(0.22)
-                    .foregroundStyle(SpyTheme.dim)
-                    .fixedSize(horizontal: false, vertical: true)
-            } else {
-                FlowWords(words: Array(words.prefix(18)))
-            }
-        }
-    }
-
-    private var saveButton: some View {
-        Button {
-            Task { await save() }
-        } label: {
-            if isSaving {
-                SpyLoadingLabel(title: copy.saveAction(isEditing: route.pack != nil), accent: .white)
-            } else {
-                Label(copy.saveAction(isEditing: route.pack != nil), systemImage: "checkmark.seal.fill")
-            }
-        }
-        .buttonStyle(SpyButtonStyle(variant: .red))
-        .disabled(!canSave)
-        .opacity(canSave ? 1 : 0.42)
-    }
-
-    private var cleanName: String {
-        name.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var cleanCategory: String {
-        category.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var words: [String] {
-        Self.parseWords(wordsText)
-    }
-
-    private var aiCount: Int {
-        Int(aiWordCount.rounded())
-    }
-
-    private var cleanAITheme: String {
-        aiTheme.trimmingCharacters(in: .whitespacesAndNewlines)
-    }
-
-    private var canSave: Bool {
-        !isSaving && !isGenerating && !cleanName.isEmpty && words.count >= 2
-    }
-
-    private var canGenerate: Bool {
-        !isSaving && !isGenerating && !cleanAITheme.isEmpty
-    }
-
-    private func textFieldSection(label: String, placeholder: String, text: Binding<String>, focus: Field) -> some View {
-        SpyInput(
-            label: label,
-            placeholder: placeholder,
-            text: text,
-            icon: focus == .name ? "tag.fill" : "folder.fill",
-            isFocused: focusedField == focus,
-            autocapitalization: .words
-        )
-    }
-
-    private func editorStat(_ title: String, _ value: String, accent: Color) -> some View {
-        VStack(alignment: .leading, spacing: 6) {
-            Text(title)
-                .font(SpyTheme.micro)
-                .tracking(0.12)
-                .foregroundStyle(SpyTheme.dim)
-                .spyKicker()
-            Text(value)
-                .font(.system(size: 18, weight: .black, design: .monospaced))
-                .foregroundStyle(accent)
-                .lineLimit(1)
-                .minimumScaleFactor(0.72)
-        }
-        .frame(maxWidth: .infinity, alignment: .leading)
-        .padding(12)
-        .background(SpyTheme.panelDeep)
-        .overlay(Rectangle().stroke(SpyTheme.stroke))
-    }
-
-    private func save() async {
-        guard canSave else {
-            setStatus(copy.packNeedsNameAndWords, kind: .error)
-            HapticManager.shared.fire(.notification(.warning))
-            return
-        }
-
-        if appState.shouldUsePreviewData {
-            setStatus(copy.previewSaved, kind: .success)
-            HapticManager.shared.fire(.milestone)
-            dismiss()
-            return
-        }
-
-        guard let email = appState.user?.email else {
-            setStatus(copy.signInRequired, kind: .error)
-            HapticManager.shared.fire(.notification(.warning))
-            return
-        }
-
-        isSaving = true
-        defer { isSaving = false }
-
-        do {
-            if let pack = route.pack {
-                _ = try await appState.client.updateWordPack(
-                    pack: pack,
-                    name: cleanName,
-                    category: cleanCategory,
-                    words: words
-                )
-            } else {
-                _ = try await appState.client.createWordPack(
-                    name: cleanName,
-                    category: cleanCategory,
-                    words: words,
-                    ownerEmail: email
-                )
-            }
-            appState.markWordPacksChanged()
-            HapticManager.shared.fire(.milestone)
-            dismiss()
-        } catch {
-            setStatus(error.localizedDescription.uppercased(), kind: .error)
-            HapticManager.shared.fire(.notification(.error))
-        }
-    }
-
-    private func generateWithAI() async {
-        guard canGenerate else {
-            setStatus(copy.enterThemeFirst, kind: .error)
-            return
-        }
-
-        let signature = AIGenerationSignature(theme: cleanAITheme, count: aiCount)
-        let preferFresh = lastSuccessfulAIGenerationSignature == signature
-        let requestID = UUID()
-        isGenerating = true
-        clearStatus()
-        defer { isGenerating = false }
-
-        if appState.shouldUsePreviewData {
-            let generated = previewGeneratedWordPack(theme: signature.theme, count: signature.count)
-            lastSuccessfulAIGenerationSignature = signature
-            apply(generated)
-            setStatus(copy.aiReadyMessage(words: generated.words.count, used: nil, limit: nil), kind: .success)
-            HapticManager.shared.fire(.milestone)
-            return
-        }
-
-        do {
-            let generated = try await appState.client.generateWordPack(
-                theme: signature.theme,
-                count: signature.count,
-                requestID: requestID,
-                preferFresh: preferFresh
-            )
-            lastSuccessfulAIGenerationSignature = signature
-            apply(generated)
-            setStatus(
-                copy.aiReadyMessage(
-                    words: generated.words.count,
-                    used: nil,
-                    limit: nil
-                ),
-                kind: .success
-            )
-            HapticManager.shared.fire(.milestone)
-        } catch {
-            setStatus(error.localizedDescription.uppercased(), kind: .error)
-            HapticManager.shared.fire(.notification(.error))
-        }
-    }
-
-    private func apply(_ generated: GeneratedWordPack) {
-        let generatedName = generated.name?.nilIfBlank ?? cleanAITheme
-        name = cleanName.isEmpty ? generatedName : name
-        category = generated.category.nilIfBlank ?? generatedName
-        wordsText = generated.words.joined(separator: "\n")
-        focusedField = .words
-    }
-
-    private func localized(en: String, ru: String, es: String, uk: String) -> String {
-        switch appState.language {
-        case .ru: ru
-        case .es: es
-        case .uk: uk
-        default: en
-        }
-    }
-
-    private func setStatus(_ message: String, kind: EditorStatusKind) {
-        let toastKind: AppToastKind = switch kind {
-        case .success: .success
-        case .error: .error
-        }
-        appState.showToast(
-            message,
-            kind: toastKind
-        )
-    }
-
-    private func clearStatus() {}
-
-    private func previewGeneratedWordPack(theme: String, count: Int) -> GeneratedWordPack {
-        let seeds = previewWordSeeds
-        let words = (0..<count).map { index in
-            seeds[index % seeds.count]
-        }
-
-        return GeneratedWordPack(
-            name: "\(theme) Kit",
-            category: theme,
-            words: words,
-            aiLimit: nil,
-            aiGenerationsToday: nil,
-            aiRemaining: nil
-        )
-    }
-
-    private var previewWordSeeds: [String] {
-        switch appState.language {
-        case .en:
-            ["Cipher", "Embassy", "Courier", "Vault", "Harbor", "Signal", "Rooftop", "Decoy", "Passport", "Briefing", "Disguise", "Checkpoint"]
-        case .es:
-            ["Clave", "Embajada", "Correo", "Boveda", "Puerto", "Senal", "Azotea", "Senuelo", "Pasaporte", "Informe", "Disfraz", "Control"]
-        case .ru:
-            ["Шифр", "Посольство", "Курьер", "Сейф", "Порт", "Сигнал", "Крыша", "Приманка", "Паспорт", "Брифинг", "Маскировка", "Пост"]
-        case .uk:
-            ["Шифр", "Посольство", "Курʼєр", "Сховище", "Порт", "Сигнал", "Дах", "Приманка", "Паспорт", "Брифінг", "Маскування", "Пост"]
-        }
-    }
-
-    private static func parseWords(_ text: String) -> [String] {
-        var seen = Set<String>()
-        return text
-            .components(separatedBy: CharacterSet(charactersIn: ",;\n"))
-            .compactMap { rawWord in
-                let word = rawWord.trimmingCharacters(in: .whitespacesAndNewlines)
-                guard !word.isEmpty else { return nil }
-                let key = word.lowercased()
-                guard !seen.contains(key) else { return nil }
-                seen.insert(key)
-                return word
-            }
-    }
-}
-
-private struct FlowWords: View {
+struct FlowWords: View {
     let words: [String]
+    var overflowText: String? = nil
 
     var body: some View {
-        LazyVGrid(columns: [GridItem(.adaptive(minimum: 92), spacing: 8)], alignment: .leading, spacing: 8) {
+        LazyVGrid(
+            columns: [GridItem(.adaptive(minimum: 92), spacing: 8)],
+            alignment: .leading,
+            spacing: 8
+        ) {
             ForEach(words, id: \.self) { word in
-                Text(word.uppercased())
-                    .font(.system(size: 10, weight: .bold, design: .default))
-                    .tracking(0.02)
-                    .foregroundStyle(.white.opacity(0.76))
-                    .spyFitted(scale: 0.66, alignment: .center)
-                    .padding(.horizontal, 10)
-                    .frame(height: 28)
-                    .background(SpyTheme.panelDeep)
-                    .overlay(Rectangle().stroke(SpyTheme.stroke))
+                wordChip(word, isOverflow: false)
+            }
+
+            if let overflowText {
+                wordChip(overflowText, isOverflow: true)
+                    .accessibilityLabel(overflowText)
             }
         }
+    }
+
+    private func wordChip(_ text: String, isOverflow: Bool) -> some View {
+        Text(text.uppercased())
+            .font(.system(size: 10, weight: .bold))
+            .tracking(0.02)
+            .foregroundStyle(isOverflow ? SpyTheme.red : .white.opacity(0.76))
+            .spyFitted(scale: 0.66, alignment: .center)
+            .padding(.horizontal, 10)
+            .frame(height: 28)
+            .background(SpyTheme.panelDeep)
+            .overlay(
+                Rectangle().stroke(
+                    isOverflow ? SpyTheme.red.opacity(0.45) : SpyTheme.stroke
+                )
+            )
     }
 }

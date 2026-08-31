@@ -27,7 +27,12 @@ Deno.test("AI word packs bind one-pass exact-theme quality and theme-language po
     "../../SpyClash/Views/GameView.swift",
     "../../SpyClash/Views/LocalGameView.swift",
     "../../SpyClash/Views/WordPacksView.swift",
+    "../../SpyClash/Views/WordPackEditorSheet.swift",
   ].map((path) => Deno.readTextFile(new URL(path, import.meta.url))));
+  assertEquals(
+    occurrences(callSites[3], "appState.client.generateWordPack("),
+    1,
+  );
   const webClient = await Deno.readTextFile(
     new URL(
       "../../.web-reference/spyclash-web/src/utils/wordPoolAI.js",

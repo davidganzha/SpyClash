@@ -889,8 +889,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .en:
             WordPacksCopy(
                 eyebrow: "// WORD PACKS",
-                status: "ARMORY",
-                title: "ARMORY",
+                status: "LIBRARY",
+                title: "WORD PACKS",
                 countSuffix: "CUSTOM PACKS",
                 loading: "LOADING PACKS",
                 emptyTitle: "NO CUSTOM PACKS",
@@ -903,9 +903,9 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 deleteActionPrefix: "DELETE",
                 cancel: "CANCEL",
                 deleteMessagePrefix: "This removes",
-                deleteMessageSuffix: "from your Base44 armory.",
+                deleteMessageSuffix: "from your saved word packs.",
                 editor: WordPackEditorCopy(
-                    eyebrow: "// ARMORY EDITOR",
+                    eyebrow: "// WORD PACK EDITOR",
                     newTitle: "NEW WORD PACK",
                     editTitle: "EDIT WORD PACK",
                     wordsMetric: "WORDS",
@@ -919,7 +919,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                     aiDraftHint: "AI fills the draft only. Review and edit before saving.",
                     packNameLabel: "// PACK NAME",
                     packNamePlaceholder: "Cities, nature, family chaos...",
-                    categoryLabel: "// CATEGORY",
+                    categoryLabel: "// CATEGORY · OPTIONAL",
                     categoryPlaceholder: "Custom",
                     wordsLabel: "// WORDS",
                     wordsInputHint: "COMMA OR NEW LINE",
@@ -939,8 +939,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .es:
             WordPacksCopy(
                 eyebrow: "// PACKS",
-                status: "ARMERÍA",
-                title: "ARMERÍA",
+                status: "BIBLIOTECA",
+                title: "PACKS",
                 countSuffix: "PACKS PROPIOS",
                 loading: "CARGANDO PACKS",
                 emptyTitle: "SIN PACKS PROPIOS",
@@ -953,9 +953,9 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 deleteActionPrefix: "ELIMINAR",
                 cancel: "CANCELAR",
                 deleteMessagePrefix: "Esto elimina",
-                deleteMessageSuffix: "de tu armería Base44.",
+                deleteMessageSuffix: "de tus packs guardados.",
                 editor: WordPackEditorCopy(
-                    eyebrow: "// EDITOR DE ARMERÍA",
+                    eyebrow: "// EDITOR DE PACKS",
                     newTitle: "NUEVO PACK",
                     editTitle: "EDITAR PACK",
                     wordsMetric: "PALABRAS",
@@ -969,7 +969,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                     aiDraftHint: "La IA solo llena el borrador. Revisa y edita antes de guardar.",
                     packNameLabel: "// NOMBRE DEL PACK",
                     packNamePlaceholder: "Ciudades, naturaleza, caos familiar...",
-                    categoryLabel: "// CATEGORÍA",
+                    categoryLabel: "// CATEGORÍA · OPCIONAL",
                     categoryPlaceholder: "Propio",
                     wordsLabel: "// PALABRAS",
                     wordsInputHint: "COMA O LÍNEA NUEVA",
@@ -989,8 +989,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .ru:
             WordPacksCopy(
                 eyebrow: "// НАБОРЫ СЛОВ",
-                status: "АРСЕНАЛ",
-                title: "АРСЕНАЛ",
+                status: "БИБЛИОТЕКА",
+                title: "НАБОРЫ СЛОВ",
                 countSuffix: "СВОИХ НАБОРОВ",
                 loading: "ЗАГРУЗКА НАБОРОВ",
                 emptyTitle: "СВОИХ НАБОРОВ НЕТ",
@@ -1003,9 +1003,9 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 deleteActionPrefix: "УДАЛИТЬ",
                 cancel: "ОТМЕНА",
                 deleteMessagePrefix: "Это удалит",
-                deleteMessageSuffix: "из твоего арсенала Base44.",
+                deleteMessageSuffix: "из сохранённых наборов.",
                 editor: WordPackEditorCopy(
-                    eyebrow: "// РЕДАКТОР АРСЕНАЛА",
+                    eyebrow: "// РЕДАКТОР НАБОРА",
                     newTitle: "НОВЫЙ НАБОР",
                     editTitle: "РЕДАКТИРОВАТЬ НАБОР",
                     wordsMetric: "СЛОВА",
@@ -1019,7 +1019,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                     aiDraftHint: "AI заполняет только черновик. Проверь и отредактируй перед сохранением.",
                     packNameLabel: "// НАЗВАНИЕ НАБОРА",
                     packNamePlaceholder: "Города, природа, семейный хаос...",
-                    categoryLabel: "// КАТЕГОРИЯ",
+                    categoryLabel: "// КАТЕГОРИЯ · НЕОБЯЗАТЕЛЬНО",
                     categoryPlaceholder: "Свой",
                     wordsLabel: "// СЛОВА",
                     wordsInputHint: "ЗАПЯТАЯ ИЛИ НОВАЯ СТРОКА",
@@ -1039,8 +1039,8 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         case .uk:
             WordPacksCopy(
                 eyebrow: "// НАБОРИ СЛІВ",
-                status: "АРСЕНАЛ",
-                title: "АРСЕНАЛ",
+                status: "БІБЛІОТЕКА",
+                title: "НАБОРИ СЛІВ",
                 countSuffix: "ВЛАСНИХ НАБОРІВ",
                 loading: "ЗАВАНТАЖЕННЯ НАБОРІВ",
                 emptyTitle: "ВЛАСНИХ НАБОРІВ НЕМАЄ",
@@ -1053,9 +1053,9 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                 deleteActionPrefix: "ВИДАЛИТИ",
                 cancel: "СКАСУВАТИ",
                 deleteMessagePrefix: "Це видалить",
-                deleteMessageSuffix: "з твого арсеналу Base44.",
+                deleteMessageSuffix: "зі збережених наборів.",
                 editor: WordPackEditorCopy(
-                    eyebrow: "// РЕДАКТОР АРСЕНАЛУ",
+                    eyebrow: "// РЕДАКТОР НАБОРУ",
                     newTitle: "НОВИЙ НАБІР СЛІВ",
                     editTitle: "РЕДАГУВАТИ НАБІР",
                     wordsMetric: "СЛОВА",
@@ -1069,7 +1069,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                     aiDraftHint: "AI лише заповнює чернетку. Перевір і відредагуй її перед збереженням.",
                     packNameLabel: "// НАЗВА НАБОРУ",
                     packNamePlaceholder: "Міста, природа, сімейний хаос...",
-                    categoryLabel: "// КАТЕГОРІЯ",
+                    categoryLabel: "// КАТЕГОРІЯ · НЕОБОВ’ЯЗКОВО",
                     categoryPlaceholder: "Власна",
                     wordsLabel: "// СЛОВА",
                     wordsInputHint: "КОМА АБО НОВИЙ РЯДОК",
@@ -1085,6 +1085,191 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
                     today: "СЬОГОДНІ",
                     previewSaved: "ПОПЕРЕДНІЙ ПЕРЕГЛЯД ЗБЕРЕЖЕНО"
                 )
+            )
+        }
+    }
+
+    var wordPackEditorFlow: WordPackEditorFlowCopy {
+        switch self {
+        case .en:
+            WordPackEditorFlowCopy(
+                addTitle: "ADD WORD PACK",
+                chooseTitle: "HOW DO YOU WANT TO START?",
+                chooseBody: "Choose one path now. Both finish with the same editable draft before anything is saved.",
+                aiMethodTitle: "BUILD WITH AI",
+                aiMethodBody: "Describe a theme and choose a size. Review every generated word before saving.",
+                manualMethodTitle: "ENTER MANUALLY",
+                manualMethodBody: "Paste or type your own list. Commas, semicolons and new lines all work.",
+                aiSetupTitle: "AI WORD PACK",
+                aiSetupBody: "Write the theme in the language you want the words to use.",
+                aiReviewTitle: "REVIEW THE DRAFT",
+                aiReviewBody: "Check the name and every word. The generated result is not saved yet.",
+                manualCreateBody: "Name the pack, then paste or type at least two playable words.",
+                editBody: "Update the name, optional category or word list, then save your changes.",
+                back: "BACK",
+                close: "Close editor",
+                stepOneOfTwo: "STEP 1 OF 2",
+                stepTwoOfTwo: "STEP 2 OF 2",
+                aiThemeLabel: "// THEME",
+                decreaseCount: "Generate fewer words",
+                increaseCount: "Generate more words",
+                generating: "GENERATING DRAFT",
+                retryGeneration: "RETRY GENERATION",
+                generateAgain: "GENERATE AGAIN",
+                uniqueWords: "UNIQUE WORDS",
+                duplicatesRemovedSuffix: "DUPLICATES REMOVED",
+                shortenedSuffix: "LONG ENTRIES SHORTENED",
+                gameLimitHint: "ONLINE GAMES USE THE FIRST 200 WORDS FROM A PACK.",
+                nameRequired: "ADD A PACK NAME.",
+                twoWordsRequired: "ADD AT LEAST TWO UNIQUE WORDS.",
+                replaceDraftTitle: "REPLACE THE CURRENT DRAFT?",
+                replaceDraftMessage: "A new generation will replace the current name, category and words. The old draft is not saved.",
+                replaceDraftAction: "REPLACE AND GENERATE",
+                discardTitle: "DISCARD THIS DRAFT?",
+                discardMessage: "Your unsaved name, theme and words will be lost.",
+                discardAction: "DISCARD DRAFT",
+                keepEditing: "KEEP EDITING",
+                loadFailedTitle: "WORD PACKS COULD NOT LOAD",
+                loadFailedBody: "Check the connection and try again. Existing packs stay untouched.",
+                retry: "TRY AGAIN",
+                averagePerPack: "AVG / PACK",
+                moreWordsSuffix: "MORE",
+                savedMessage: "WORD PACK SAVED"
+            )
+        case .es:
+            WordPackEditorFlowCopy(
+                addTitle: "AÑADIR PACK",
+                chooseTitle: "¿CÓMO QUIERES EMPEZAR?",
+                chooseBody: "Elige una ruta. Ambas terminan con el mismo borrador editable antes de guardar.",
+                aiMethodTitle: "CREAR CON IA",
+                aiMethodBody: "Describe un tema y elige el tamaño. Revisa cada palabra antes de guardar.",
+                manualMethodTitle: "ESCRIBIR A MANO",
+                manualMethodBody: "Pega o escribe tu lista. Se aceptan comas, punto y coma y líneas nuevas.",
+                aiSetupTitle: "PACK CON IA",
+                aiSetupBody: "Escribe el tema en el idioma que deben usar las palabras.",
+                aiReviewTitle: "REVISAR BORRADOR",
+                aiReviewBody: "Comprueba el nombre y cada palabra. El resultado aún no está guardado.",
+                manualCreateBody: "Pon un nombre y añade al menos dos palabras jugables.",
+                editBody: "Actualiza el nombre, la categoría opcional o las palabras y guarda los cambios.",
+                back: "ATRÁS",
+                close: "Cerrar editor",
+                stepOneOfTwo: "PASO 1 DE 2",
+                stepTwoOfTwo: "PASO 2 DE 2",
+                aiThemeLabel: "// TEMA",
+                decreaseCount: "Generar menos palabras",
+                increaseCount: "Generar más palabras",
+                generating: "GENERANDO BORRADOR",
+                retryGeneration: "REINTENTAR GENERACIÓN",
+                generateAgain: "GENERAR DE NUEVO",
+                uniqueWords: "PALABRAS ÚNICAS",
+                duplicatesRemovedSuffix: "DUPLICADOS ELIMINADOS",
+                shortenedSuffix: "ENTRADAS LARGAS ACORTADAS",
+                gameLimitHint: "LAS PARTIDAS ONLINE USAN LAS PRIMERAS 200 PALABRAS DEL PACK.",
+                nameRequired: "AÑADE UN NOMBRE AL PACK.",
+                twoWordsRequired: "AÑADE AL MENOS DOS PALABRAS ÚNICAS.",
+                replaceDraftTitle: "¿REEMPLAZAR EL BORRADOR?",
+                replaceDraftMessage: "Una nueva generación reemplazará el nombre, la categoría y las palabras actuales. El borrador anterior no está guardado.",
+                replaceDraftAction: "REEMPLAZAR Y GENERAR",
+                discardTitle: "¿DESCARTAR BORRADOR?",
+                discardMessage: "Se perderán el nombre, el tema y las palabras sin guardar.",
+                discardAction: "DESCARTAR BORRADOR",
+                keepEditing: "SEGUIR EDITANDO",
+                loadFailedTitle: "NO SE PUDIERON CARGAR LOS PACKS",
+                loadFailedBody: "Comprueba la conexión e inténtalo de nuevo. Tus packs no se modificarán.",
+                retry: "REINTENTAR",
+                averagePerPack: "MEDIA / PACK",
+                moreWordsSuffix: "MÁS",
+                savedMessage: "PACK GUARDADO"
+            )
+        case .ru:
+            WordPackEditorFlowCopy(
+                addTitle: "ДОБАВИТЬ НАБОР",
+                chooseTitle: "КАК СОЗДАТЬ НАБОР?",
+                chooseBody: "Сначала выбери способ. В обоих случаях перед сохранением будет редактируемый черновик.",
+                aiMethodTitle: "СОЗДАТЬ С AI",
+                aiMethodBody: "Опиши тему и выбери размер. Перед сохранением проверь каждое слово.",
+                manualMethodTitle: "ВВЕСТИ ВРУЧНУЮ",
+                manualMethodBody: "Вставь или напечатай список. Подойдут запятые, точки с запятой и новые строки.",
+                aiSetupTitle: "AI-НАБОР",
+                aiSetupBody: "Опиши тему на том языке, на котором должны быть слова.",
+                aiReviewTitle: "ПРОВЕРКА ЧЕРНОВИКА",
+                aiReviewBody: "Проверь название и каждое слово. Результат AI пока не сохранён.",
+                manualCreateBody: "Задай название и добавь минимум два игровых слова.",
+                editBody: "Измени название, необязательную категорию или список слов и сохрани результат.",
+                back: "НАЗАД",
+                close: "Закрыть редактор",
+                stepOneOfTwo: "ШАГ 1 ИЗ 2",
+                stepTwoOfTwo: "ШАГ 2 ИЗ 2",
+                aiThemeLabel: "// ТЕМА",
+                decreaseCount: "Сгенерировать меньше слов",
+                increaseCount: "Сгенерировать больше слов",
+                generating: "СОЗДАЁМ ЧЕРНОВИК",
+                retryGeneration: "ПОВТОРИТЬ ГЕНЕРАЦИЮ",
+                generateAgain: "СГЕНЕРИРОВАТЬ ЗАНОВО",
+                uniqueWords: "УНИКАЛЬНЫХ СЛОВ",
+                duplicatesRemovedSuffix: "ДУБЛЕЙ УДАЛЕНО",
+                shortenedSuffix: "ДЛИННЫХ ЗАПИСЕЙ СОКРАЩЕНО",
+                gameLimitHint: "В ОНЛАЙН-ИГРЕ ИСПОЛЬЗУЮТСЯ ПЕРВЫЕ 200 СЛОВ НАБОРА.",
+                nameRequired: "ДОБАВЬ НАЗВАНИЕ НАБОРА.",
+                twoWordsRequired: "ДОБАВЬ МИНИМУМ ДВА УНИКАЛЬНЫХ СЛОВА.",
+                replaceDraftTitle: "ЗАМЕНИТЬ ТЕКУЩИЙ ЧЕРНОВИК?",
+                replaceDraftMessage: "Новая генерация заменит название, категорию и все слова. Текущий черновик ещё не сохранён.",
+                replaceDraftAction: "ЗАМЕНИТЬ И СОЗДАТЬ",
+                discardTitle: "УДАЛИТЬ ЧЕРНОВИК?",
+                discardMessage: "Несохранённые название, тема и слова будут потеряны.",
+                discardAction: "УДАЛИТЬ ЧЕРНОВИК",
+                keepEditing: "ПРОДОЛЖИТЬ РЕДАКТИРОВАНИЕ",
+                loadFailedTitle: "НЕ УДАЛОСЬ ЗАГРУЗИТЬ НАБОРЫ",
+                loadFailedBody: "Проверь соединение и попробуй снова. Существующие наборы не изменены.",
+                retry: "ПОВТОРИТЬ",
+                averagePerPack: "СРЕДНЕЕ / НАБОР",
+                moreWordsSuffix: "ЕЩЁ",
+                savedMessage: "НАБОР СОХРАНЁН"
+            )
+        case .uk:
+            WordPackEditorFlowCopy(
+                addTitle: "ДОДАТИ НАБІР",
+                chooseTitle: "ЯК СТВОРИТИ НАБІР?",
+                chooseBody: "Спочатку обери спосіб. В обох випадках перед збереженням буде чернетка для редагування.",
+                aiMethodTitle: "СТВОРИТИ З AI",
+                aiMethodBody: "Опиши тему й обери розмір. Перед збереженням перевір кожне слово.",
+                manualMethodTitle: "ВВЕСТИ ВРУЧНУ",
+                manualMethodBody: "Встав або надрукуй список. Підійдуть коми, крапки з комою та нові рядки.",
+                aiSetupTitle: "AI-НАБІР",
+                aiSetupBody: "Опиши тему тією мовою, якою мають бути слова.",
+                aiReviewTitle: "ПЕРЕВІРКА ЧЕРНЕТКИ",
+                aiReviewBody: "Перевір назву й кожне слово. Результат AI ще не збережено.",
+                manualCreateBody: "Додай назву та щонайменше два слова для гри.",
+                editBody: "Зміни назву, необов’язкову категорію або список слів і збережи результат.",
+                back: "НАЗАД",
+                close: "Закрити редактор",
+                stepOneOfTwo: "КРОК 1 З 2",
+                stepTwoOfTwo: "КРОК 2 З 2",
+                aiThemeLabel: "// ТЕМА",
+                decreaseCount: "Згенерувати менше слів",
+                increaseCount: "Згенерувати більше слів",
+                generating: "СТВОРЮЄМО ЧЕРНЕТКУ",
+                retryGeneration: "ПОВТОРИТИ ГЕНЕРАЦІЮ",
+                generateAgain: "ЗГЕНЕРУВАТИ ЗНОВУ",
+                uniqueWords: "УНІКАЛЬНИХ СЛІВ",
+                duplicatesRemovedSuffix: "ДУБЛІВ ВИДАЛЕНО",
+                shortenedSuffix: "ДОВГИХ ЗАПИСІВ СКОРОЧЕНО",
+                gameLimitHint: "В ОНЛАЙН-ГРІ ВИКОРИСТОВУЮТЬСЯ ПЕРШІ 200 СЛІВ НАБОРУ.",
+                nameRequired: "ДОДАЙ НАЗВУ НАБОРУ.",
+                twoWordsRequired: "ДОДАЙ ЩОНАЙМЕНШЕ ДВА УНІКАЛЬНІ СЛОВА.",
+                replaceDraftTitle: "ЗАМІНИТИ ПОТОЧНУ ЧЕРНЕТКУ?",
+                replaceDraftMessage: "Нова генерація замінить назву, категорію та всі слова. Поточну чернетку ще не збережено.",
+                replaceDraftAction: "ЗАМІНИТИ Й СТВОРИТИ",
+                discardTitle: "ВИДАЛИТИ ЧЕРНЕТКУ?",
+                discardMessage: "Незбережені назва, тема та слова будуть втрачені.",
+                discardAction: "ВИДАЛИТИ ЧЕРНЕТКУ",
+                keepEditing: "ПРОДОВЖИТИ РЕДАГУВАННЯ",
+                loadFailedTitle: "НЕ ВДАЛОСЯ ЗАВАНТАЖИТИ НАБОРИ",
+                loadFailedBody: "Перевір з’єднання та спробуй ще раз. Наявні набори не змінено.",
+                retry: "ПОВТОРИТИ",
+                averagePerPack: "СЕРЕДНЄ / НАБІР",
+                moreWordsSuffix: "ЩЕ",
+                savedMessage: "НАБІР ЗБЕРЕЖЕНО"
             )
         }
     }
@@ -2373,6 +2558,63 @@ struct WordPackEditorCopy: Hashable {
             return "\(aiReady) / \(count) \(wordsUnit)"
         }
         return "\(aiReady) / \(count) \(wordsUnit) / \(used) \(of) \(limit) \(today)"
+    }
+}
+
+struct WordPackEditorFlowCopy: Hashable {
+    let addTitle: String
+    let chooseTitle: String
+    let chooseBody: String
+    let aiMethodTitle: String
+    let aiMethodBody: String
+    let manualMethodTitle: String
+    let manualMethodBody: String
+    let aiSetupTitle: String
+    let aiSetupBody: String
+    let aiReviewTitle: String
+    let aiReviewBody: String
+    let manualCreateBody: String
+    let editBody: String
+    let back: String
+    let close: String
+    let stepOneOfTwo: String
+    let stepTwoOfTwo: String
+    let aiThemeLabel: String
+    let decreaseCount: String
+    let increaseCount: String
+    let generating: String
+    let retryGeneration: String
+    let generateAgain: String
+    let uniqueWords: String
+    let duplicatesRemovedSuffix: String
+    let shortenedSuffix: String
+    let gameLimitHint: String
+    let nameRequired: String
+    let twoWordsRequired: String
+    let replaceDraftTitle: String
+    let replaceDraftMessage: String
+    let replaceDraftAction: String
+    let discardTitle: String
+    let discardMessage: String
+    let discardAction: String
+    let keepEditing: String
+    let loadFailedTitle: String
+    let loadFailedBody: String
+    let retry: String
+    let averagePerPack: String
+    let moreWordsSuffix: String
+    let savedMessage: String
+
+    func duplicatesRemoved(_ count: Int) -> String {
+        "\(count) \(duplicatesRemovedSuffix)"
+    }
+
+    func shortenedEntries(_ count: Int) -> String {
+        "\(count) \(shortenedSuffix)"
+    }
+
+    func moreWords(_ count: Int) -> String {
+        "+\(count) \(moreWordsSuffix)"
     }
 }
 

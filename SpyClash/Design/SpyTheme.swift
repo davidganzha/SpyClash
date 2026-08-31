@@ -945,9 +945,16 @@ struct SpyInput: View {
 }
 
 struct AIThemeSuggestionStrip: View {
+    enum Layout {
+        case horizontal
+        case grid
+    }
+
     let language: AppLanguage
     let selectedTheme: String
     let accessibilityIdentifier: String
+    var layout: Layout = .horizontal
+    var suggestionLimit: Int? = nil
     let onSelect: (String) -> Void
 
     private struct Suggestion: Identifiable {
@@ -974,17 +981,30 @@ struct AIThemeSuggestionStrip: View {
             .minimumScaleFactor(0.66)
             .accessibilityHidden(true)
 
-            ScrollView(.horizontal, showsIndicators: false) {
-                LazyHStack(spacing: 8) {
-                    ForEach(suggestions) { suggestion in
+            if layout == .grid {
+                LazyVGrid(
+                    columns: [GridItem(.flexible(), spacing: 8), GridItem(.flexible(), spacing: 8)],
+                    spacing: 8
+                ) {
+                    ForEach(visibleSuggestions) { suggestion in
                         suggestionButton(suggestion)
                     }
                 }
-                .padding(.horizontal, 1)
+            } else {
+                ScrollView(.horizontal, showsIndicators: true) {
+                    LazyHStack(spacing: 8) {
+                        ForEach(visibleSuggestions) { suggestion in
+                            suggestionButton(suggestion)
+                        }
+                    }
+                    .padding(.horizontal, 1)
+                }
+                .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
             }
-            .scrollBounceBehavior(.basedOnSize, axes: .horizontal)
 
         }
+        .accessibilityElement(children: .contain)
+        .accessibilityLabel(title)
         .accessibilityIdentifier(accessibilityIdentifier)
     }
 
@@ -1009,10 +1029,11 @@ struct AIThemeSuggestionStrip: View {
                     .font(.system(size: 10, weight: .black, design: .monospaced))
                     .tracking(0.04)
                     .foregroundStyle(isSelected ? .white : SpyTheme.muted)
-                    .lineLimit(1)
+                    .lineLimit(layout == .grid ? 2 : 1)
+                    .multilineTextAlignment(.leading)
             }
             .padding(.horizontal, 11)
-            .frame(minHeight: 40)
+            .frame(maxWidth: layout == .grid ? .infinity : nil, minHeight: layout == .grid ? 52 : 40)
             .background(
                 isSelected ? SpyTheme.red.opacity(0.10) : SpyTheme.control,
                 in: CutCornerShape(cut: 7)
@@ -1116,6 +1137,11 @@ struct AIThemeSuggestionStrip: View {
                 Suggestion(id: "everyday-objects", title: "Everyday objects", systemImage: "house.fill")
             ]
         }
+    }
+
+    private var visibleSuggestions: [Suggestion] {
+        guard let suggestionLimit else { return suggestions }
+        return Array(suggestions.prefix(max(0, suggestionLimit)))
     }
 }
 
