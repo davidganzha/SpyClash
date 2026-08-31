@@ -5,23 +5,10 @@ import {
 
 const SPY_ID_NAMESPACE = "com.spyclash.spyid.v2:";
 const SPY_ID_CAPACITY = 1_000_000;
-const READ_ONLY_COMMUNITY_ACTIONS = new Set([
-  "state",
-  "directory",
-  "search",
-  "profile",
-]);
 const RADAR_INVITE_POLICIES = new Set(["ask", "automatic", "blocked"]);
 export const PROFILE_COMMENT_MAX_LENGTH = 280;
 
 export type RadarInvitePolicy = "ask" | "automatic" | "blocked";
-
-export function communityActionRequiresProfileWriteLease(
-  value: unknown,
-): boolean {
-  const action = String(value || "state").trim().toLowerCase();
-  return !READ_ONLY_COMMUNITY_ACTIONS.has(action);
-}
 
 export function normalizeRadarInvitePolicy(
   value: unknown,

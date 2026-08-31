@@ -22,6 +22,7 @@ export async function withCommunityWriteLeases<T>(input: {
   }) => Promise<T>;
   nowFactory?: () => Date;
   randomUUID?: () => string;
+  onReleaseError?: (error: unknown) => void;
 }): Promise<T> {
   const nowFactory = input.nowFactory || (() => new Date());
   const randomUUID = input.randomUUID || (() => crypto.randomUUID());
@@ -56,7 +57,6 @@ export async function withCommunityWriteLeases<T>(input: {
       },
     });
   } finally {
-    const failures: string[] = [];
     for (const lease of [...leases].reverse()) {
       try {
         await releaseBillingWriterLease(
@@ -66,13 +66,12 @@ export async function withCommunityWriteLeases<T>(input: {
           randomUUID,
         );
       } catch (error) {
-        failures.push(error instanceof Error ? error.message : String(error));
+        if (input.onReleaseError) {
+          input.onReleaseError(error);
+        } else {
+          console.error("Community writer lease release failed", error);
+        }
       }
-    }
-    if (failures.length) {
-      throw new Error(
-        `Community writer lease release failed: ${failures.join("; ")}`,
-      );
     }
   }
 }

@@ -1,6 +1,5 @@
 import { createClient, createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
-  communityActionRequiresProfileWriteLease,
   normalizeCommunityQuery,
   normalizeRadarInvitePolicy,
   normalizeSpyID,
@@ -11,8 +10,6 @@ import {
   sanitizeProfileComment,
   stableSpyID,
 } from "./community.ts";
-import { withCommunityWriteLeases } from "./community-write-lifecycle.ts";
-import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
 import {
   blockedCounterpartIDs,
   deleteBlockedPairContent,
@@ -34,6 +31,14 @@ import {
   reusablePendingInviteEventID,
 } from "./push-events.ts";
 import { internalPushSecret } from "./internal-push.ts";
+import {
+  canonicalBase44Request,
+  canonicalIdentityClientConfig,
+  hasTrustedBase44Context,
+} from "./base44-context.ts";
+import { communityErrorResponse } from "./error-response.ts";
+import { withCurrentProfileWriteLease } from "./profile-write-lifecycle.ts";
+import { fanoutProfileUpdate } from "./profile-signal.ts";
 
 type Entity = Record<string, any>;
 type Persist = <T>(writer: () => Promise<T>) => Promise<T>;
@@ -45,7 +50,6 @@ const PROFILE_FRIEND_LIMIT = 60;
 const PROFILE_COMMENT_LIMIT = 40;
 const COMMENT_COOLDOWN_MS = 5_000;
 const PROFILE_LOOKUP_CONCURRENCY = 8;
-const PROFILE_SIGNAL_CONCURRENCY = 12;
 
 function errorResponse(message: string, status = 400) {
   return Response.json({ error: message }, { status });
@@ -127,31 +131,6 @@ async function listAllUsers(base44: any) {
     ) || [];
     users.push(...page);
     if (page.length < pageSize) return users;
-  }
-}
-
-async function fanoutProfileUpdate(base44: any, profileUserID: string) {
-  const recipients = await listAllUsers(base44);
-  const revision = Date.now();
-
-  for (let offset = 0; offset < recipients.length; offset += PROFILE_SIGNAL_CONCURRENCY) {
-    await Promise.all(recipients.slice(offset, offset + PROFILE_SIGNAL_CONCURRENCY).map(async (recipient) => {
-      const recipientUserID = clean(recipient.id);
-      if (!recipientUserID) return;
-      const rows = await base44.asServiceRole.entities.CommunityProfileSignal.filter({
-        recipient_user_id: recipientUserID,
-      }) || [];
-      const signal = {
-        recipient_user_id: recipientUserID,
-        profile_user_id: profileUserID,
-        revision,
-      };
-      if (rows[0]?.id) {
-        await base44.asServiceRole.entities.CommunityProfileSignal.update(rows[0].id, signal);
-      } else {
-        await base44.asServiceRole.entities.CommunityProfileSignal.create(signal);
-      }
-    }));
   }
 }
 
@@ -416,7 +395,14 @@ async function buildProfileDetail(
   };
 }
 
-async function incomingRoomInvites(base44: any, current: Entity) {
+async function incomingRoomInvites(
+  base44: any,
+  current: Entity,
+  relationshipsPromise: Promise<Entity[]> = relationshipsForUser(
+    base44,
+    current.id,
+  ),
+) {
   const [pending, accepted, relationships] = await Promise.all([
     base44.asServiceRole.entities.RoomInvite.filter({
       recipient_user_id: current.id,
@@ -426,7 +412,7 @@ async function incomingRoomInvites(base44: any, current: Entity) {
       recipient_user_id: current.id,
       status: "accepted",
     }),
-    relationshipsForUser(base44, current.id),
+    relationshipsPromise,
   ]);
   const blockedSenders = blockedCounterpartIDs(relationships, current.id);
   const invitations = newestFirst(
@@ -457,9 +443,10 @@ async function incomingRoomInvites(base44: any, current: Entity) {
 
 async function buildState(base44: any, rawUser: Entity) {
   const user = await ensureUserProfile(base44, rawUser);
+  const relationshipsPromise = relationshipsForUser(base44, user.id);
   const [all, roomInvites] = await Promise.all([
-    relationshipsForUser(base44, user.id),
-    incomingRoomInvites(base44, user),
+    relationshipsPromise,
+    incomingRoomInvites(base44, user, relationshipsPromise),
   ]);
 
   const counterpartIDs = [
@@ -760,57 +747,92 @@ async function validateRoomInvite(
 
 Deno.serve(async (req) => {
   try {
+    if (req.method !== "POST") {
+      return errorResponse("Method not allowed", 405);
+    }
+    if (!hasTrustedBase44Context(req)) {
+      return errorResponse("Unauthorized", 401);
+    }
     const body = await req.json().catch(() => ({}));
     const accessToken = clean(body.access_token);
-    const appID = req.headers.get("Base44-App-Id");
-    const serverURL = req.headers.get("Base44-Api-Url") || "https://base44.app";
 
-    if (!accessToken || !appID) return errorResponse("Unauthorized", 401);
+    if (!accessToken) return errorResponse("Unauthorized", 401);
 
-    const identityClient = createClient({
-      appId: appID,
-      serverUrl: serverURL,
-      token: accessToken,
-    });
+    const identityClient = createClient(
+      canonicalIdentityClientConfig(accessToken),
+    );
     const user = await identityClient.auth.me();
     if (!user?.id) return errorResponse("Unauthorized", 401);
 
-    const base44 = createClientFromRequest(req);
+    const base44 = createClientFromRequest(canonicalBase44Request(req));
     const lifecycleStore =
       base44.asServiceRole.entities.BillingIdentityLifecycle;
     const action = clean(body.action || "state").toLowerCase();
-    const current = communityActionRequiresProfileWriteLease(action)
-      ? await withCommunityWriteLeases({
+    let current = await ensureUserProfile(base44, user);
+    const withCommunityWriteLeases = async <T>(input: {
+      lifecycleStore: any;
+      userIDs: readonly unknown[];
+      action: (guard: { persist: Persist }) => Promise<T>;
+    }): Promise<T> => {
+      return await withCurrentProfileWriteLease({
         lifecycleStore,
-        userIDs: [user.id],
-        action: ({ persist }) => ensureUserProfile(base44, user, persist),
-      })
-      : await ensureUserProfile(base44, user);
+        userIDs: input.userIDs,
+        currentUserID: current.id,
+        loadCurrent: () => findUserByID(base44, current.id),
+        ensureCurrent: (freshCurrent, persist) =>
+          ensureUserProfile(base44, freshCurrent, persist),
+        installCurrent: (freshCurrent) => {
+          current = freshCurrent;
+        },
+        action: input.action,
+      });
+    };
 
     if (action === "update_profile") {
       const displayName = safeCommunityDisplayName(body.display_name);
       const avatar = safeCommunityAvatar(body.avatar);
-      const theme = ["field", "blacksite", "dossier"].includes(clean(body.spy_card_theme))
-        ? clean(body.spy_card_theme)
-        : "field";
-      const accent = ["signal_red", "clearance_amber", "verified_green"].includes(clean(body.spy_card_accent))
-        ? clean(body.spy_card_accent)
-        : "signal_red";
-      const badge = ["operative", "ghost", "analyst", "handler"].includes(clean(body.spy_card_badge))
+      const theme =
+        ["field", "blacksite", "dossier"].includes(clean(body.spy_card_theme))
+          ? clean(body.spy_card_theme)
+          : "field";
+      const accent =
+        ["signal_red", "clearance_amber", "verified_green"].includes(
+            clean(body.spy_card_accent),
+          )
+          ? clean(body.spy_card_accent)
+          : "signal_red";
+      const badge = ["operative", "ghost", "analyst", "handler"].includes(
+          clean(body.spy_card_badge),
+        )
         ? clean(body.spy_card_badge)
         : "operative";
       const language = ["en", "es", "ru", "uk"].includes(clean(body.language))
         ? clean(body.language)
         : "en";
-      const updated = await base44.asServiceRole.entities.User.update(current.id, {
-        display_name: displayName,
-        avatar,
-        language,
-        spy_card_theme: theme,
-        spy_card_accent: accent,
-        spy_card_badge: badge,
+      const updated = await withCommunityWriteLeases({
+        lifecycleStore,
+        userIDs: [current.id],
+        action: async ({ persist }) =>
+          await persist(() =>
+            base44.asServiceRole.entities.User.update(current.id, {
+              display_name: displayName,
+              avatar,
+              language,
+              spy_card_theme: theme,
+              spy_card_accent: accent,
+              spy_card_badge: badge,
+            })
+          ),
       });
-      await fanoutProfileUpdate(base44, current.id);
+      try {
+        await fanoutProfileUpdate({
+          userStore: base44.asServiceRole.entities.User,
+          signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
+          profileUserID: current.id,
+        });
+      } catch (fanoutError) {
+        console.error("community profile fanout deferred", fanoutError);
+      }
       return Response.json(updated);
     }
 
@@ -1530,12 +1552,6 @@ Deno.serve(async (req) => {
     return Response.json(await buildState(base44, current));
   } catch (error: any) {
     console.error("communityAction", error?.message, error?.stack);
-    const status = error instanceof BillingIdentityLifecycleError
-      ? 503
-      : Number(error?.status || error?.statusCode || 500);
-    return errorResponse(
-      status >= 400 && status < 600 ? error?.message : "Community unavailable",
-      status,
-    );
+    return communityErrorResponse(error);
   }
 });

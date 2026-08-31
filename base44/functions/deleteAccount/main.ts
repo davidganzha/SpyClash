@@ -29,6 +29,7 @@ import {
   deleteAppleSignInCredentialRecords,
   revokeAppleSignInCredentials,
 } from "./apple-sign-in-credential.ts";
+import { canonicalBase44Request } from "./base44-context.ts";
 
 type Entity = Record<string, any>;
 type BillingRedactionSnapshot = {
@@ -513,7 +514,7 @@ Deno.serve(async (req) => {
         headers: { Allow: "POST" },
       });
     }
-    const base44 = createClientFromRequest(req);
+    const base44 = createClientFromRequest(canonicalBase44Request(req));
     const user = await base44.auth.me();
 
     if (!user) {

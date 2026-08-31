@@ -1,3 +1,6 @@
+export const SPYCLASH_BASE44_APP_ID = "69a0e57fa939f578082f8091";
+export const SPYCLASH_BASE44_API_URL = "https://base44.app";
+
 export function requestForBase44ServiceRole(req: Request): Request {
   const headers = new Headers(req.headers);
   const authorization = headers.get("Authorization") || "";
@@ -11,6 +14,9 @@ export function requestForBase44ServiceRole(req: Request): Request {
   if (authorization.startsWith("Basic ")) {
     headers.delete("Authorization");
   }
+  headers.set("Base44-App-Id", SPYCLASH_BASE44_APP_ID);
+  headers.set("Base44-Api-Url", SPYCLASH_BASE44_API_URL);
+  headers.delete("content-length");
 
-  return new Request(req.url, { headers });
+  return new Request(req.url, { method: req.method, headers });
 }

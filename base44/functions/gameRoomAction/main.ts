@@ -45,7 +45,12 @@ import {
   pauseGameTransitionPatch,
   resumeGameTransitionPatch,
 } from "./game-timer-policy.ts";
-import { resolveRoomActionUser } from "./request-auth.ts";
+import {
+  canonicalRoomActionRequest,
+  hasTrustedRoomActionContext,
+  resolveRoomActionUser,
+} from "./request-auth.ts";
+import { storedRoomParticipantUserIDs } from "./room-participant-identity.ts";
 import { commitGamePushEvents, enqueueGamePushEvents } from "./push-events.ts";
 import { nextRoundNumber } from "./game-round.ts";
 import { internalPushSecret } from "./internal-push.ts";
@@ -2027,6 +2032,14 @@ async function userIDForEmail(base44, emailValue) {
 }
 
 async function roomParticipantUserIDs(base44, room, actor) {
+  const stableUserIDs = storedRoomParticipantUserIDs({
+    players: players(room),
+    participantUserIDs: room?.participant_user_ids,
+    hostEmail: room?.host_email,
+    actor,
+  });
+  if (stableUserIDs) return stableUserIDs;
+
   const actorID = clean(actor?.id);
   const actorEmail = clean(actor?.email).toLocaleLowerCase();
   const emails = uniqueStrings([
@@ -2063,9 +2076,21 @@ async function roomLifecycleUserIDs(base44, room, actor) {
 async function backfillRoomParticipantUserIDs(base44, room, userIDs) {
   const current = uniqueStrings(room?.participant_user_ids).sort();
   const expected = uniqueStrings(userIDs).sort();
+  const existingPlayers = players(room);
+  const stablePlayerIDs = existingPlayers
+    .map((player) => clean(player?.user_id))
+    .filter(Boolean)
+    .sort();
+  if (
+    stablePlayerIDs.length === existingPlayers.length &&
+    stablePlayerIDs.length === expected.length &&
+    stablePlayerIDs.every((value, index) => value === expected[index]) &&
+    current.length === expected.length &&
+    current.every((value, index) => value === expected[index])
+  ) return room;
   let playersChanged = false;
   const migratedPlayers = [];
-  for (const player of players(room)) {
+  for (const player of existingPlayers) {
     const stableUserID = await userIDForEmail(base44, player?.email);
     if (!stableUserID) {
       throw Object.assign(new Error("Room participant identity is missing"), {
@@ -2363,17 +2388,15 @@ Deno.serve(async (req) => {
   let actionForLog = null;
   let roomIDForLog = null;
   try {
-    const body = await req.json().catch(() => ({}));
-    const accessToken = clean(body?.access_token);
-    const appId = req.headers.get("Base44-App-Id") ||
-      req.headers.get("X-App-Id");
-    const serverUrl = req.headers.get("Base44-Api-Url") || "https://base44.app";
-
-    if (!appId) {
+    if (req.method !== "POST") {
+      return jsonError("Method not allowed", 405);
+    }
+    if (!hasTrustedRoomActionContext(req)) {
       return jsonError("Unauthorized", 401);
     }
-
-    const base44 = createClientFromRequest(req);
+    const body = await req.json().catch(() => ({}));
+    const accessToken = clean(body?.access_token);
+    const base44 = createClientFromRequest(canonicalRoomActionRequest(req));
 
     // The function gateway does not accept every provider/SSO token as its
     // Authorization header. Verify that token directly against Base44, while
@@ -2384,8 +2407,6 @@ Deno.serve(async (req) => {
     try {
       user = await resolveRoomActionUser({
         accessToken,
-        appId,
-        serverUrl,
         requestClient: base44,
         createIdentityClient: (config) => createClient(config),
       });

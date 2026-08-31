@@ -1,5 +1,4 @@
 import {
-  communityActionRequiresProfileWriteLease,
   normalizeCommunityQuery,
   normalizeRadarInvitePolicy,
   normalizeSpyID,
@@ -10,26 +9,6 @@ import {
   sanitizeProfileComment,
   stableSpyID,
 } from "./community.ts";
-
-Deno.test("community reads do not acquire the profile writer lease", () => {
-  for (const action of ["state", "directory", "search", "profile"]) {
-    if (communityActionRequiresProfileWriteLease(action)) {
-      throw new Error(`${action} unexpectedly requires a writer lease`);
-    }
-  }
-  for (
-    const action of [
-      "send_request",
-      "add_comment",
-      "report",
-      "set_radar_invite_policy",
-    ]
-  ) {
-    if (!communityActionRequiresProfileWriteLease(action)) {
-      throw new Error(`${action} unexpectedly bypasses the writer lease`);
-    }
-  }
-});
 
 Deno.test("Radar invite policy accepts only the shared account enum", () => {
   if (normalizeRadarInvitePolicy(" AUTOMATIC ") !== "automatic") {

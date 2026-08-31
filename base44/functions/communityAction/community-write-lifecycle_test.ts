@@ -150,3 +150,35 @@ Deno.test("suspended social action reasserts lease before persistence", async ()
   assertEquals(rejectionCode, "active_lease");
   assertEquals(wrote, false);
 });
+
+Deno.test("lease release failure cannot turn a committed social write into a retry", async () => {
+  const store = new MockLifecycleStore();
+  const updateMany = store.updateMany.bind(store);
+  store.updateMany = async (filter: RecordValue, update: RecordValue) => {
+    const leaseToken = String(update.$set?.lease_token || "");
+    if (leaseToken.startsWith("released:")) {
+      throw new Error("release response unavailable");
+    }
+    return await updateMany(filter, update);
+  };
+  let writes = 0;
+  const releaseErrors: unknown[] = [];
+
+  const result = await withCommunityWriteLeases({
+    lifecycleStore: store,
+    userIDs: ["user-a"],
+    action: async ({ persist }) => {
+      await persist(async () => {
+        writes += 1;
+      });
+      return "committed";
+    },
+    nowFactory: () => NOW,
+    randomUUID: sequence("release-failure"),
+    onReleaseError: (error) => releaseErrors.push(error),
+  });
+
+  assertEquals(result, "committed");
+  assertEquals(writes, 1);
+  assertEquals(releaseErrors.length, 1);
+});

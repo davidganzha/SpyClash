@@ -1,5 +1,9 @@
 import Stripe from "npm:stripe@14";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
+import {
+  canonicalBase44Request,
+  hasTrustedBase44Context,
+} from "./base44-context.ts";
 import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
 import { casadaCheckoutRetirement } from "./casada-checkout.ts";
 import { withCheckoutBillingLease } from "./checkout-lifecycle.ts";
@@ -183,7 +187,15 @@ async function assertNoExistingStripeAccess(
 
 Deno.serve(async (req) => {
   try {
-    const base44 = createClientFromRequest(req);
+    if (req.method !== "POST") {
+      return Response.json({ error: "Method not allowed" }, { status: 405 });
+    }
+    if (!hasTrustedBase44Context(req)) {
+      return Response.json({ error: "Authentication required" }, {
+        status: 401,
+      });
+    }
+    const base44 = createClientFromRequest(canonicalBase44Request(req));
     const user = await base44.auth.me();
 
     if (!user?.id || !user?.email) {

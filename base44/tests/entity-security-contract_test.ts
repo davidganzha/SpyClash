@@ -392,7 +392,11 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
       "lobby_last_mutation_fingerprint",
     ],
     GameRoomSignal: ["user_id", "room_id", "lobby_revision", "state"],
-    CommunityProfileSignal: ["recipient_user_id", "profile_user_id", "revision"],
+    CommunityProfileSignal: [
+      "recipient_user_id",
+      "profile_user_id",
+      "revision",
+    ],
     RoomInvite: ["notification_event_id"],
     WordPack: ["owner_user_id"],
     AppStoreAccount: ["reservation_state"],
@@ -469,18 +473,33 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
 });
 
 Deno.test("mediated functions authenticate callers before service-role entity access", async () => {
-  const guardedFunctions = [
-    "communityAction",
-    "gameRoomAction",
-    "notificationAction",
-    "pushNotificationAction",
-    "wordPackAction",
-  ];
-  for (const name of guardedFunctions) {
+  const guardedFunctions = new Map([
+    ["communityAction", "createClientFromRequest(canonicalBase44Request(req))"],
+    [
+      "gameRoomAction",
+      "createClientFromRequest(canonicalRoomActionRequest(req))",
+    ],
+    [
+      "notificationAction",
+      "createClientFromRequest(canonicalBase44Request(req))",
+    ],
+    [
+      "pushNotificationAction",
+      "createClientFromRequest(canonicalBase44Request(req))",
+    ],
+    ["wordPackAction", "createClientFromRequest(canonicalBase44Request(req))"],
+  ]);
+  for (const [name, canonicalFactory] of guardedFunctions) {
     const source = await Deno.readTextFile(
       new URL(`../functions/${name}/main.ts`, import.meta.url),
     );
-    assertStringIncludes(source, "createClientFromRequest(req)");
+    assertStringIncludes(source, 'req.method !== "POST"');
+    assertStringIncludes(source, canonicalFactory);
+    assertEquals(
+      source.includes("createClientFromRequest(req)"),
+      false,
+      `${name} must not trust caller-selected Base44 routing headers`,
+    );
     if (name === "gameRoomAction") {
       assertStringIncludes(source, "resolveRoomActionUser({");
       const requestAuth = await Deno.readTextFile(

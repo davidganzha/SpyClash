@@ -181,21 +181,11 @@ function readState(
   receipts: Entity[],
 ): InboxItem[] {
   const individual = new Map<string, string>();
-  const watermark: Partial<Record<InboxScope, string>> = {};
+  const watermark = receiptWatermarks(receipts);
   for (const receipt of receipts) {
     const key = clean(receipt.notification_key);
     const readAt = sourceTime({ published_at: receipt.read_at });
-    const watermarkScope = key === "__all__"
-      ? "all"
-      : key === "__all__:global"
-      ? "global"
-      : key === "__all__:personal"
-      ? "personal"
-      : null;
-    if (watermarkScope) {
-      const current = watermark[watermarkScope];
-      if (!current || readAt > current) watermark[watermarkScope] = readAt;
-    } else if (/^(global|personal):/.test(key)) {
+    if (/^(global|personal):/.test(key)) {
       const current = individual.get(key);
       if (!current || readAt > current) individual.set(key, readAt);
     }
@@ -210,6 +200,41 @@ function readState(
       ).sort().at(-1) || null;
     return { ...item, read_at: applicable };
   });
+}
+
+function receiptWatermarks(
+  receipts: Entity[],
+): Partial<Record<InboxScope, string>> {
+  const watermarks: Partial<Record<InboxScope, string>> = {};
+  for (const receipt of receipts) {
+    const key = clean(receipt.notification_key);
+    const scope = key === "__all__"
+      ? "all"
+      : key === "__all__:global"
+      ? "global"
+      : key === "__all__:personal"
+      ? "personal"
+      : null;
+    if (!scope) continue;
+    const readAt = sourceTime({ published_at: receipt.read_at });
+    const current = watermarks[scope];
+    if (!current || readAt > current) watermarks[scope] = readAt;
+  }
+  return watermarks;
+}
+
+function unreadLowerBounds(
+  receipts: Entity[],
+): Partial<Record<"global" | "personal", string>> {
+  const watermarks = receiptWatermarks(receipts);
+  const result: Partial<Record<"global" | "personal", string>> = {};
+  for (const scope of ["global", "personal"] as const) {
+    const candidates = [watermarks.all, watermarks[scope]].filter(
+      (value): value is string => Boolean(value),
+    );
+    if (candidates.length) result[scope] = candidates.sort().at(-1);
+  }
+  return result;
 }
 
 export function unreadCounts(items: InboxItem[]) {
@@ -590,6 +615,9 @@ async function boundedInboxWindow(input: {
   userID: string;
   locale: unknown;
   now: Date;
+  lowerExclusiveByScope?: Partial<
+    Record<"global" | "personal", string>
+  >;
 }): Promise<InboxItem[]> {
   const [globals, personal] = await Promise.all([
     rawInboxPage({
@@ -597,12 +625,14 @@ async function boundedInboxWindow(input: {
       scope: "global",
       cursor: null,
       limit: INBOX_SCOPE_WINDOW_LIMIT,
+      lowerExclusive: input.lowerExclusiveByScope?.global,
     }),
     rawInboxPage({
       ...input,
       scope: "personal",
       cursor: null,
       limit: INBOX_SCOPE_WINDOW_LIMIT,
+      lowerExclusive: input.lowerExclusiveByScope?.personal,
     }),
   ]);
   return sorted([...globals.items, ...personal.items]);
@@ -630,7 +660,24 @@ export async function inboxUnreadCounts(input: {
   locale: unknown;
   now?: Date;
 }) {
-  return (await inboxSnapshot(input)).unread;
+  const now = input.now || new Date();
+  const watermarkReceipts = await matchingReceipts({
+    store: input.base44.asServiceRole.entities.NotificationReadReceipt,
+    userID: input.userID,
+    keys: WATERMARK_KEYS,
+  });
+  const rawItems = await boundedInboxWindow({
+    ...input,
+    now,
+    lowerExclusiveByScope: unreadLowerBounds(watermarkReceipts),
+  });
+  const items = await hydrateReadState({
+    base44: input.base44,
+    userID: input.userID,
+    items: rawItems,
+    watermarkReceipts,
+  });
+  return unreadCounts(items);
 }
 
 export async function queryInboxPage(input: {

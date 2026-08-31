@@ -1,10 +1,7 @@
 import { createClient, createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
-  acquireBillingWriterLease,
   assertBillingWriterLease,
-  type BillingIdentityLease,
   BillingIdentityLifecycleError,
-  releaseBillingWriterLease,
 } from "./billing-identity-lifecycle.ts";
 import {
   cleanWordPackValue,
@@ -14,6 +11,12 @@ import {
   type WordPackRecord,
   wordPackWritePayload,
 } from "./word-pack.ts";
+import {
+  canonicalBase44Request,
+  canonicalIdentityClientConfig,
+  hasTrustedBase44Context,
+} from "./base44-context.ts";
+import { withWordPackWriterLease } from "./word-pack-write-lifecycle.ts";
 
 const PAGE_SIZE = 100;
 const MAX_PACKS = 500;
@@ -77,48 +80,27 @@ function lifecycleStatus(error: BillingIdentityLifecycleError) {
     : 503;
 }
 
-async function withWriterLease<T>(
-  lifecycleStore: any,
-  userID: string,
-  action: (lease: BillingIdentityLease) => Promise<T>,
-): Promise<T> {
-  const lease = await acquireBillingWriterLease(lifecycleStore, userID);
-  let actionError: unknown;
-  try {
-    return await action(lease);
-  } catch (error) {
-    actionError = error;
-    throw error;
-  } finally {
-    try {
-      await releaseBillingWriterLease(lifecycleStore, lease);
-    } catch (releaseError) {
-      if (!actionError) throw releaseError;
-      console.error("wordPackAction lease release failed", releaseError);
-    }
-  }
-}
-
 Deno.serve(async (req) => {
   try {
+    if (req.method !== "POST") {
+      return jsonError("Method not allowed", 405);
+    }
+    if (!hasTrustedBase44Context(req)) {
+      return jsonError("Unauthorized", 401);
+    }
     const body: WordPackRecord = await req.json().catch(() => ({}));
     const accessToken = cleanWordPackValue(body.access_token);
-    const appId = req.headers.get("Base44-App-Id") ||
-      req.headers.get("X-App-Id");
-    const serverUrl = req.headers.get("Base44-Api-Url") || "https://base44.app";
-    if (!accessToken || !appId) return jsonError("Unauthorized", 401);
+    if (!accessToken) return jsonError("Unauthorized", 401);
 
-    const identityClient = createClient({
-      appId,
-      serverUrl,
-      token: accessToken,
-    });
+    const identityClient = createClient(
+      canonicalIdentityClientConfig(accessToken),
+    );
     const user: WordPackRecord = await identityClient.auth.me();
     if (!cleanWordPackValue(user?.id) || !cleanWordPackValue(user?.email)) {
       return jsonError("Unauthorized", 401);
     }
 
-    const base44 = createClientFromRequest(req);
+    const base44 = createClientFromRequest(canonicalBase44Request(req));
     const store = base44.asServiceRole.entities.WordPack;
     const lifecycleStore =
       base44.asServiceRole.entities.BillingIdentityLifecycle;
@@ -138,14 +120,14 @@ Deno.serve(async (req) => {
     const userID = cleanWordPackValue(user.id);
     if (action === "create") {
       const payload = wordPackWritePayload(body, user);
-      const created = await withWriterLease(
+      const created = await withWordPackWriterLease({
         lifecycleStore,
         userID,
-        async (lease) => {
+        action: async (lease) => {
           await assertBillingWriterLease(lifecycleStore, lease);
           return await store.create(payload);
         },
-      );
+      });
       return Response.json(wordPackForClient(created));
     }
 
@@ -156,21 +138,25 @@ Deno.serve(async (req) => {
     const packID = cleanWordPackValue(body.pack_id || body.id);
     if (!packID) return jsonError("Word pack id is required.", 400);
 
-    return await withWriterLease(lifecycleStore, userID, async (lease) => {
-      const existing = await exactPack(store, packID);
-      if (!existing) return jsonError("Word pack not found.", 404);
-      if (!ownsWordPack(existing, user)) return jsonError("Forbidden", 403);
+    return await withWordPackWriterLease({
+      lifecycleStore,
+      userID,
+      action: async (lease) => {
+        const existing = await exactPack(store, packID);
+        if (!existing) return jsonError("Word pack not found.", 404);
+        if (!ownsWordPack(existing, user)) return jsonError("Forbidden", 403);
 
-      if (action === "delete") {
+        if (action === "delete") {
+          await assertBillingWriterLease(lifecycleStore, lease);
+          await store.delete(packID);
+          return Response.json({ success: true });
+        }
+
+        const payload = wordPackWritePayload(body, user);
         await assertBillingWriterLease(lifecycleStore, lease);
-        await store.delete(packID);
-        return Response.json({ success: true });
-      }
-
-      const payload = wordPackWritePayload(body, user);
-      await assertBillingWriterLease(lifecycleStore, lease);
-      const updated = await store.update(packID, payload);
-      return Response.json(wordPackForClient(updated));
+        const updated = await store.update(packID, payload);
+        return Response.json(wordPackForClient(updated));
+      },
     });
   } catch (error) {
     console.error("wordPackAction error", error);

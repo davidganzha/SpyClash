@@ -15,6 +15,7 @@ import {
   persistStripeEntitlement,
   StripeEntitlementPersistenceError,
 } from "./stripe-entitlement-persistence.ts";
+import { canonicalBase44Request } from "./base44-context.ts";
 
 const MAX_WEBHOOK_BYTES = 1_000_000;
 
@@ -53,7 +54,7 @@ Deno.serve(async (req) => {
       throw new WebhookError("Stripe webhook is not configured.", 503);
     }
 
-    const base44 = createClientFromRequest(req);
+    const base44 = createClientFromRequest(canonicalBase44Request(req));
     const rawBody = await req.text();
     if (rawBody.length > MAX_WEBHOOK_BYTES) {
       throw new WebhookError("Webhook payload is too large.", 413);

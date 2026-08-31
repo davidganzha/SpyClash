@@ -5,6 +5,10 @@ import {
   bindPendingAppleSignInCredentials,
   withPendingAppleCredentialBindingIdentityWriter,
 } from "./apple-sign-in-credential.ts";
+import {
+  canonicalIdentityClientConfig,
+  hasTrustedBase44Context,
+} from "./base44-context.ts";
 
 type AuthUser = {
   id?: string;
@@ -94,6 +98,12 @@ const verifyProvisioning = async (base44: AuthClient) => {
 
 Deno.serve(async (req) => {
   try {
+    if (req.method !== "POST") {
+      return json({ error: "Method not allowed" }, { status: 405 });
+    }
+    if (!hasTrustedBase44Context(req)) {
+      return json({ error: "Authentication required" }, { status: 401 });
+    }
     const body = await req.json().catch(() => ({}));
     const accessToken = typeof body?.access_token === "string"
       ? body.access_token.trim()
@@ -102,8 +112,6 @@ Deno.serve(async (req) => {
       ? body.apple_binding_ticket.trim()
       : "";
     const serviceHeader = req.headers.get("Base44-Service-Authorization");
-    const appId = req.headers.get("Base44-App-Id");
-    const serverUrl = req.headers.get("Base44-Api-Url") || "https://base44.app";
 
     // A newly authenticated SSO identity is not attached to this app yet.
     // Sending its token in Authorization makes the functions gateway reject
@@ -112,25 +120,17 @@ Deno.serve(async (req) => {
     if (!accessToken) {
       return json({ error: "Authentication required" }, { status: 401 });
     }
-    if (!serviceHeader?.startsWith("Bearer ") || !appId) {
-      throw new Error("Missing Base44 service context");
-    }
-
-    const userClient = createClient({
-      appId,
-      serverUrl,
-      token: accessToken,
-    });
+    const userClient = createClient(canonicalIdentityClientConfig(accessToken));
     const identity = await getVerifiedIdentity(userClient);
 
     // The service token is injected by Base44 and never accepted from the
     // request body. It owns both user provisioning and the admin-only Apple
     // credential binding record.
-    const serviceClient = createClient({
-      appId,
-      serverUrl,
-      token: serviceHeader.slice("Bearer ".length),
-    }) as ReturnType<typeof createClient> & UserInvitationClient;
+    const serviceClient = createClient(
+      canonicalIdentityClientConfig(
+        serviceHeader!.slice("Bearer ".length),
+      ),
+    ) as ReturnType<typeof createClient> & UserInvitationClient;
 
     const appleCredentialStore =
       (serviceClient as any).entities.AppleSignInCredential;
