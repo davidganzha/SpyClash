@@ -972,7 +972,6 @@ final class Base44Client {
             throw CancellationError()
         }
 
-        let retryDelays = [180, 520]
         var attempt = 0
         while true {
             try Task.checkCancellation()
@@ -991,11 +990,14 @@ final class Base44Client {
                     throw CancellationError()
                 }
                 return response
-            } catch let error as Base44Error
-                where retriesTransientReadFailures &&
-                    error.statusCode == 503 &&
-                    attempt < retryDelays.count {
-                let delay = retryDelays[attempt]
+            } catch let error as Base44Error {
+                guard retriesTransientReadFailures,
+                      let delay = SupplementaryReadRetryPolicy.delayMilliseconds(
+                          for: error,
+                          completedRetries: attempt
+                      ) else {
+                    throw error
+                }
                 attempt += 1
                 try await Task.sleep(for: .milliseconds(delay))
             }
@@ -1017,7 +1019,6 @@ final class Base44Client {
         ]
         payload.merge(fields) { _, newValue in newValue }
 
-        let retryDelays = [180, 520]
         var attempt = 0
         while true {
             do {
@@ -1027,9 +1028,14 @@ final class Base44Client {
                     body: payload,
                     includeAuthorization: false
                 )
-            } catch let error as Base44Error
-                where retriesTransientReadFailures && error.statusCode == 503 && attempt < retryDelays.count {
-                let delay = retryDelays[attempt]
+            } catch let error as Base44Error {
+                guard retriesTransientReadFailures,
+                      let delay = SupplementaryReadRetryPolicy.delayMilliseconds(
+                          for: error,
+                          completedRetries: attempt
+                      ) else {
+                    throw error
+                }
                 attempt += 1
                 try await Task.sleep(for: .milliseconds(delay))
             }
@@ -2168,6 +2174,27 @@ struct Base44Error: LocalizedError {
         code?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? ""
+    }
+}
+
+enum SupplementaryReadRetryPolicy {
+    static func delayMilliseconds(
+        for error: Base44Error,
+        completedRetries: Int
+    ) -> Int? {
+        guard completedRetries == 0 else { return nil }
+        switch error.statusCode {
+        case 429:
+            guard error.retryable else { return nil }
+        case 503:
+            // Older deployed functions did not include the retryable field.
+            guard error.retryable || error.code == nil else { return nil }
+        default:
+            return nil
+        }
+
+        let seconds = min(max(error.retryAfterSeconds ?? 2, 1), 15)
+        return seconds * 1_000
     }
 }
 

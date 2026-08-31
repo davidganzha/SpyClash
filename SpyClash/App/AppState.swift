@@ -230,10 +230,10 @@ enum RoomPollPolicy {
         consecutiveFailures: Int,
         isApplicationActive: Bool
     ) -> Double {
-        guard isApplicationActive else { return 20 }
+        guard isApplicationActive else { return 30 }
 
         _ = roomStatus
-        return min(2 * pow(2, Double(min(consecutiveFailures, 4))), 30)
+        return min(4 * pow(2, Double(min(consecutiveFailures, 3))), 30)
     }
 }
 

@@ -1,6 +1,10 @@
 import Stripe from "npm:stripe@14";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
+  canonicalBase44Request,
+  hasTrustedBase44Context,
+} from "./base44-context.ts";
+import {
   applyAdminGrant,
   applyCasadaAccess,
   casadaMembershipResponse,
@@ -338,7 +342,16 @@ function unknownMembershipBody(
 }
 
 Deno.serve(async (req) => {
-  const base44 = createClientFromRequest(req);
+  if (req.method !== "POST") {
+    return Response.json({ error: "Method not allowed" }, { status: 405 });
+  }
+  if (!hasTrustedBase44Context(req)) {
+    return Response.json(
+      unknownMembershipBody("unauthenticated", "Authentication required."),
+      { status: 401 },
+    );
+  }
+  const base44 = createClientFromRequest(canonicalBase44Request(req));
   let user: any;
   try {
     user = await base44.auth.me();

@@ -19,8 +19,11 @@ import {
 } from "./inbox.ts";
 import { withNotificationWriteLease } from "./receipt-lifecycle.ts";
 import { withSerializedAdminMutation } from "./admin-publish-lifecycle.ts";
-
-const SPYCLASH_BASE44_APP_ID = "69a0e57fa939f578082f8091";
+import { notificationErrorResponse } from "./error-response.ts";
+import {
+  canonicalBase44Request,
+  SPYCLASH_BASE44_APP_ID,
+} from "./base44-context.ts";
 
 async function authenticatedUser(req: Request, body: Entity): Promise<Entity> {
   const accessToken = clean(body.access_token);
@@ -46,24 +49,6 @@ async function authenticatedUser(req: Request, body: Entity): Promise<Entity> {
   return user;
 }
 
-function errorResponse(error: unknown): Response {
-  if (error instanceof NotificationContractError) {
-    return Response.json({ error: error.message, code: error.code }, {
-      status: error.status,
-    });
-  }
-  console.error(
-    "notificationAction failed",
-    error instanceof Error ? error.message : error,
-  );
-  return Response.json(
-    { error: "Notifications are temporarily unavailable." },
-    {
-      status: 500,
-    },
-  );
-}
-
 function requireAdmin(user: Entity): void {
   if (clean(user.role) !== "admin") {
     throw new NotificationContractError("Forbidden", 403, "forbidden");
@@ -77,7 +62,7 @@ Deno.serve(async (req) => {
     }
     const body = await req.json().catch(() => ({})) as Entity;
     const action = clean(body.action).toLowerCase();
-    const base44 = createClientFromRequest(req);
+    const base44 = createClientFromRequest(canonicalBase44Request(req));
     const user = await authenticatedUser(req, body);
     const userID = clean(user.id);
     const locale = boundedText(body.locale || user.language, 32) || "en";
@@ -272,6 +257,6 @@ Deno.serve(async (req) => {
       "unsupported_action",
     );
   } catch (error) {
-    return errorResponse(error);
+    return notificationErrorResponse(error);
   }
 });

@@ -1,5 +1,9 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
+  canonicalBase44Request,
+  hasTrustedBase44Context,
+} from "./base44-context.ts";
+import {
   type AdminGrantRecord,
   applyAdminGenerationGrant,
   applyCasadaGenerationAccess,
@@ -282,15 +286,14 @@ async function invokeWordPackLLM(
       >({
         operation: () => {
           state.directAttempts += 1;
-          return measured(() =>
-            guard.boundary(() =>
-              state.directProvider!.generate({
-                theme,
-                count,
-                alreadyUsed,
-              })
-            )
-          );
+          return measured(async () => {
+            await guard.assertAvailable();
+            return await state.directProvider!.generate({
+              theme,
+              count,
+              alreadyUsed,
+            });
+          });
         },
         onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
           console.warn(
@@ -322,19 +325,18 @@ async function invokeWordPackLLM(
     {
       operation: () => {
         state.base44Attempts += 1;
-        return measured(() =>
-          guard.boundary<WordPackSelfAuditCandidate>(() =>
-            base44.integrations.Core.InvokeLLM({
-              model: BASE44_WORD_PACK_MODEL,
-              prompt: buildWordPackPrompt({
-                theme,
-                count,
-                alreadyUsed,
-              }),
-              response_json_schema: wordPackResponseSchema(theme, count),
-            })
-          )
-        );
+        return measured(async () => {
+          await guard.assertAvailable();
+          return await base44.integrations.Core.InvokeLLM({
+            model: BASE44_WORD_PACK_MODEL,
+            prompt: buildWordPackPrompt({
+              theme,
+              count,
+              alreadyUsed,
+            }),
+            response_json_schema: wordPackResponseSchema(theme, count),
+          });
+        });
       },
       onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
         console.warn(
@@ -373,7 +375,13 @@ function lifecycleHTTPStatus(error: unknown): number {
 
 Deno.serve(async (req) => {
   try {
-    const base44 = createClientFromRequest(req);
+    if (req.method !== "POST") {
+      return Response.json({ error: "Method not allowed" }, { status: 405 });
+    }
+    if (!hasTrustedBase44Context(req)) {
+      return Response.json({ error: "Unauthorized" }, { status: 401 });
+    }
+    const base44 = createClientFromRequest(canonicalBase44Request(req));
     const user = await base44.auth.me();
 
     if (!user?.id) {

@@ -55,36 +55,14 @@ import {
   isPersonalInboxEvent,
 } from "./inbox-projection.ts";
 import { backfillLegacyInboxProjections } from "./inbox-backfill.ts";
+import { canonicalBase44Request } from "./base44-context.ts";
+import { pushErrorResponse } from "./error-response.ts";
 
 type Entity = Record<string, any>;
 const PAGE_SIZE = 100;
 const SPYCLASH_BASE44_APP_ID = "69a0e57fa939f578082f8091";
 const LIVE_SYNC_BUDGET_MS = 25_000;
 const DRAIN_BUDGET_MS = 55_000;
-
-function errorResponse(error: unknown): Response {
-  if (error instanceof PushContractError) {
-    return Response.json({ error: error.message, code: error.code }, {
-      status: error.status,
-    });
-  }
-  if (error instanceof BillingIdentityLifecycleError) {
-    const status = ["deletion_in_progress", "active_lease", "cas_contention"]
-        .includes(error.code)
-      ? 409
-      : 503;
-    return Response.json({
-      error: "Push registration is temporarily unavailable.",
-    }, { status });
-  }
-  console.error(
-    "pushNotificationAction failed",
-    error instanceof Error ? error.message : error,
-  );
-  return Response.json({ error: "Push service is temporarily unavailable." }, {
-    status: 500,
-  });
-}
 
 async function allMatching(
   store: any,
@@ -767,7 +745,7 @@ async function syncLiveActivities(base44: any, body: Entity): Promise<Entity> {
           });
         }
       }
-    } catch (error) {
+    } catch {
       failed += 1;
       await queueLiveRetry({
         store: liveStore,
@@ -1354,7 +1332,7 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const automationArgs = scheduledDrainArgs(body);
     const action = clean(body.action || automationArgs?.action).toLowerCase();
-    const base44 = createClientFromRequest(req);
+    const base44 = createClientFromRequest(canonicalBase44Request(req));
 
     if (
       [
@@ -1483,6 +1461,6 @@ Deno.serve(async (req) => {
       "unsupported_action",
     );
   } catch (error) {
-    return errorResponse(error);
+    return pushErrorResponse(error);
   }
 });

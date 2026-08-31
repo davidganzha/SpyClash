@@ -7,6 +7,7 @@ import {
 } from "npm:@apple/app-store-server-library@3.1.0";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import { Buffer } from "node:buffer";
+import { canonicalBase44Request } from "./base44-context.ts";
 import {
   appleCommerceConfigurationError,
   type AppleEntitlementRecord,
@@ -1153,7 +1154,7 @@ Deno.serve(async (req) => {
   try {
     assertAppleCommerceConfiguration();
     const body = await parseJSONBody(req);
-    const base44 = createClientFromRequest(req);
+    const base44 = createClientFromRequest(canonicalBase44Request(req));
     const signedPayload = typeof body.signedPayload === "string"
       ? body.signedPayload
       : null;

@@ -515,6 +515,104 @@ Deno.test("unread scan counts every retained row beyond source page size", async
   assertEquals(counts, { global: 135, personal: 145, total: 280 });
 });
 
+Deno.test("unread summary starts source scans after the latest read-all watermark", async () => {
+  const watermark = "2026-07-27T12:00:00.000Z";
+  const announcementStore = new Store([
+    {
+      id: "old-global",
+      status: "published",
+      topic: "developer",
+      importance: "quiet",
+      title_en: "Old global",
+      body_en: "Body",
+      published_at: "2026-07-27T11:00:00.000Z",
+      expires_at: "2026-08-27T12:00:00.000Z",
+    },
+    {
+      id: "new-global",
+      status: "published",
+      topic: "developer",
+      importance: "quiet",
+      title_en: "New global",
+      body_en: "Body",
+      published_at: "2026-07-27T13:00:00.000Z",
+      expires_at: "2026-08-27T12:00:00.000Z",
+    },
+  ]);
+  const personalStore = new Store([
+    {
+      id: "old-personal",
+      state: "delivered",
+      event_type: "friend_request",
+      recipient_user_id: "recipient",
+      inbox_kind: "friend_request",
+      inbox_importance: "important",
+      inbox_title_en: "Old personal",
+      inbox_body_en: "Body",
+      inbox_published_at: "2026-07-27T11:30:00.000Z",
+      inbox_projection_version: 1,
+      inbox_visible: true,
+      inbox_committed_at: "2026-07-27T11:30:01.000Z",
+    },
+    {
+      id: "new-personal",
+      state: "delivered",
+      event_type: "friend_request",
+      recipient_user_id: "recipient",
+      inbox_kind: "friend_request",
+      inbox_importance: "important",
+      inbox_title_en: "New personal",
+      inbox_body_en: "Body",
+      inbox_published_at: "2026-07-27T13:30:00.000Z",
+      inbox_projection_version: 1,
+      inbox_visible: true,
+      inbox_committed_at: "2026-07-27T13:30:01.000Z",
+    },
+  ]);
+  const receiptStore = new Store([{
+    id: "watermark",
+    user_id: "recipient",
+    notification_key: "__all__",
+    read_at: watermark,
+  }]);
+
+  const counts = await inboxUnreadCounts({
+    base44: base44({
+      NotificationAnnouncement: announcementStore,
+      PushNotificationEvent: personalStore,
+      NotificationReadReceipt: receiptStore,
+    }),
+    userID: "recipient",
+    locale: "en",
+    now: new Date("2026-07-28T00:00:00.000Z"),
+  });
+
+  assertEquals(counts, { global: 1, personal: 1, total: 2 });
+  const globalRangeCalls = announcementStore.filterCalls.filter((call) =>
+    typeof call.filter.published_at === "object" &&
+    "$gt" in call.filter.published_at
+  );
+  const personalRangeCalls = personalStore.filterCalls.filter((call) =>
+    typeof call.filter.inbox_published_at === "object" &&
+    "$gt" in call.filter.inbox_published_at
+  );
+  assertEquals(globalRangeCalls.length > 0, true);
+  assertEquals(
+    globalRangeCalls.every((call) =>
+      call.filter.published_at.$gt === watermark
+    ),
+    true,
+  );
+  assertEquals(personalRangeCalls.length > 0, true);
+  assertEquals(
+    personalRangeCalls.every((call) =>
+      call.filter.inbox_published_at.$gt === watermark
+    ),
+    true,
+  );
+  assertEquals(receiptStore.filterCalls.length <= 2, true);
+});
+
 Deno.test("global and personal windows are independently capped at 500", async () => {
   const base = Date.parse("2026-07-27T01:00:00.000Z");
   const globals = Array.from({ length: 620 }, (_, index) => ({

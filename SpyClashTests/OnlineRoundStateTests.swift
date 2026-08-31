@@ -1876,7 +1876,7 @@ final class OnlineRoundStateTests: XCTestCase {
                 consecutiveFailures: 0,
                 isApplicationActive: true
             ),
-            2,
+            4,
             accuracy: 0.001
         )
         XCTAssertEqual(
@@ -1885,13 +1885,13 @@ final class OnlineRoundStateTests: XCTestCase {
                 consecutiveFailures: 0,
                 isApplicationActive: true
             ),
-            2,
+            4,
             accuracy: 0.001
         )
-        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 1, isApplicationActive: true), 4)
-        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 2, isApplicationActive: true), 8)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 1, isApplicationActive: true), 8)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 2, isApplicationActive: true), 16)
         XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 8, isApplicationActive: true), 30)
-        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 0, isApplicationActive: false), 20)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 0, isApplicationActive: false), 30)
     }
 
     func testRoomPollPolicyRejectsLobbySnapshotOlderThanCurrentRevision() {
@@ -1929,6 +1929,80 @@ final class ShellSupplementaryRefreshPolicyTests: XCTestCase {
         )
         XCTAssertTrue(
             ShellSupplementaryRefreshPolicy.shouldRun(activeRoomStatus: nil)
+        )
+    }
+
+    func testSupplementaryFallbacksAreStaggeredAndLowFrequency() {
+        XCTAssertEqual(
+            ShellSupplementaryRefreshPolicy.initialDelaySeconds(for: .notifications),
+            2
+        )
+        XCTAssertEqual(
+            ShellSupplementaryRefreshPolicy.initialDelaySeconds(for: .community),
+            7
+        )
+        XCTAssertEqual(
+            ShellSupplementaryRefreshPolicy.intervalSeconds(for: .community),
+            60
+        )
+        XCTAssertEqual(
+            ShellSupplementaryRefreshPolicy.intervalSeconds(for: .notifications),
+            90
+        )
+    }
+}
+
+final class SupplementaryReadRetryPolicyTests: XCTestCase {
+    func testRetryableRateLimitHonorsServerDelayOnce() {
+        let error = Base44Error(
+            message: "Too many requests",
+            statusCode: 429,
+            code: "rate_limited",
+            retryable: true,
+            retryAfterSeconds: 7
+        )
+
+        XCTAssertEqual(
+            SupplementaryReadRetryPolicy.delayMilliseconds(
+                for: error,
+                completedRetries: 0
+            ),
+            7_000
+        )
+        XCTAssertNil(
+            SupplementaryReadRetryPolicy.delayMilliseconds(
+                for: error,
+                completedRetries: 1
+            )
+        )
+    }
+
+    func testLegacyServiceUnavailableGetsOneBoundedRetry() {
+        let legacy = Base44Error(
+            message: "Unavailable",
+            statusCode: 503
+        )
+        XCTAssertEqual(
+            SupplementaryReadRetryPolicy.delayMilliseconds(
+                for: legacy,
+                completedRetries: 0
+            ),
+            2_000
+        )
+    }
+
+    func testNonRetryableErrorsDoNotAmplifyTraffic() {
+        XCTAssertNil(
+            SupplementaryReadRetryPolicy.delayMilliseconds(
+                for: Base44Error(message: "Conflict", statusCode: 409),
+                completedRetries: 0
+            )
+        )
+        XCTAssertNil(
+            SupplementaryReadRetryPolicy.delayMilliseconds(
+                for: Base44Error(message: "Rate limit", statusCode: 429),
+                completedRetries: 0
+            )
         )
     }
 }

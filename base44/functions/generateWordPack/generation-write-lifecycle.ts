@@ -73,14 +73,54 @@ async function acquireGenerationWriterLease(input: {
 }
 
 export type GenerationWriteGuard = {
-  /** Reasserts the exact writer lease immediately before a write/provider call. */
+  /** Holds the account deletion-opposing lease only around an entity write. */
   boundary: <T>(operation: () => Promise<T>) => Promise<T>;
+  /** Refuses new provider work when deletion already owns the account. */
+  assertAvailable: () => Promise<void>;
 };
 
+export function generationCoordinationUserID(userID: string): string {
+  return `ai-generation:${String(userID ?? "").trim()}`;
+}
+
+async function releaseGenerationLease(input: {
+  lifecycleStore: any;
+  lease: BillingIdentityLease;
+  nowFactory: () => Date;
+  randomUUID: () => string;
+  release: ReleaseGenerationWriterLease;
+  delay: GenerationLeaseDelay;
+}): Promise<unknown | undefined> {
+  let releaseError: unknown;
+  for (
+    let attempt = 0;
+    attempt <= GENERATION_LEASE_RELEASE_DELAYS_MILLISECONDS.length;
+    attempt += 1
+  ) {
+    try {
+      await input.release(
+        input.lifecycleStore,
+        input.lease,
+        input.nowFactory(),
+        input.randomUUID,
+      );
+      return undefined;
+    } catch (error) {
+      releaseError = error;
+      if (attempt < GENERATION_LEASE_RELEASE_DELAYS_MILLISECONDS.length) {
+        await input.delay(
+          GENERATION_LEASE_RELEASE_DELAYS_MILLISECONDS[attempt],
+        );
+      }
+    }
+  }
+  return releaseError;
+}
+
 /**
- * Serializes generation quota/provider side effects against account deletion.
- * The boundary callback is deliberately the only place a caller may perform
- * an entity write or InvokeLLM call.
+ * Serializes AI work per account without holding the shared account lifecycle
+ * lease across provider latency. Every entity write still obtains the root
+ * deletion-opposing lease for its own short persistence boundary.
  */
 export async function withGenerationWriterLease<T>(input: {
   lifecycleStore: any;
@@ -101,66 +141,83 @@ export async function withGenerationWriterLease<T>(input: {
   // generation request. Only retry transient lease contention, and do it
   // before the action can reserve quota, call the provider, or persist an
   // idempotent result.
-  const lease = await acquireGenerationWriterLease({
+  const coordinationLease = await acquireGenerationWriterLease({
     lifecycleStore: input.lifecycleStore,
-    userID: input.userID,
+    userID: generationCoordinationUserID(input.userID),
     nowFactory,
     randomUUID,
     acquire,
     delay,
   });
 
-  let actionFailed = false;
-  try {
-    return await input.action({
-      boundary: async <R>(operation: () => Promise<R>) => {
-        await assertBillingWriterLease(
-          input.lifecycleStore,
-          lease,
-          nowFactory(),
-        );
-        return await operation();
-      },
+  const accountBoundary = async <R>(
+    operation: () => Promise<R>,
+    releaseFailureIsFatal: boolean,
+  ): Promise<R> => {
+    const accountLease = await acquireGenerationWriterLease({
+      lifecycleStore: input.lifecycleStore,
+      userID: input.userID,
+      nowFactory,
+      randomUUID,
+      acquire,
+      delay,
     });
-  } catch (error) {
-    actionFailed = true;
-    throw error;
-  } finally {
-    let releaseError: unknown;
-    for (
-      let attempt = 0;
-      attempt <= GENERATION_LEASE_RELEASE_DELAYS_MILLISECONDS.length;
-      attempt += 1
-    ) {
-      try {
-        await release(
-          input.lifecycleStore,
-          lease,
-          nowFactory(),
-          randomUUID,
-        );
-        releaseError = undefined;
-        break;
-      } catch (error) {
-        releaseError = error;
-        if (attempt < GENERATION_LEASE_RELEASE_DELAYS_MILLISECONDS.length) {
-          await delay(
-            GENERATION_LEASE_RELEASE_DELAYS_MILLISECONDS[attempt],
-          );
-        }
-      }
+    let result: R | undefined;
+    let operationError: unknown;
+    try {
+      await assertBillingWriterLease(
+        input.lifecycleStore,
+        accountLease,
+        nowFactory(),
+      );
+      result = await operation();
+    } catch (error) {
+      operationError = error;
     }
-
-    // A failed release leaves a bounded, deletion-blocking lease behind. It is
-    // safe to report the already committed generation result; converting that
-    // success into a 503 only causes duplicate user retries and quota usage.
+    const releaseError = await releaseGenerationLease({
+      lifecycleStore: input.lifecycleStore,
+      lease: accountLease,
+      nowFactory,
+      randomUUID,
+      release,
+      delay,
+    });
+    if (operationError !== undefined) throw operationError;
     if (releaseError !== undefined) {
+      if (releaseFailureIsFatal) throw releaseError;
       console.error(
-        actionFailed
-          ? "generateWordPack lease release failed after action error"
-          : "generateWordPack lease release failed after committed action",
+        "generateWordPack account lease release failed after committed write",
         releaseError,
       );
     }
+    return result as R;
+  };
+
+  let actionError: unknown;
+  let result: T | undefined;
+  try {
+    result = await input.action({
+      boundary: <R>(operation: () => Promise<R>) =>
+        accountBoundary(operation, false),
+      assertAvailable: () => accountBoundary(() => Promise.resolve(), true),
+    });
+  } catch (error) {
+    actionError = error;
   }
+  const coordinationReleaseError = await releaseGenerationLease({
+    lifecycleStore: input.lifecycleStore,
+    lease: coordinationLease,
+    nowFactory,
+    randomUUID,
+    release,
+    delay,
+  });
+  if (actionError !== undefined) throw actionError;
+  if (coordinationReleaseError !== undefined) {
+    console.error(
+      "generateWordPack coordination lease release failed after committed action",
+      coordinationReleaseError,
+    );
+  }
+  return result as T;
 }

@@ -1,6 +1,10 @@
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import { assertEquals, assertThrows } from "jsr:@std/assert@1";
-import { requestForBase44ServiceRole } from "./service-role-request.ts";
+import {
+  requestForBase44ServiceRole,
+  SPYCLASH_BASE44_API_URL,
+  SPYCLASH_BASE44_APP_ID,
+} from "./service-role-request.ts";
 
 Deno.test("service-role request removes OIDC Basic auth and preserves Base44 context", () => {
   const request = new Request(
@@ -11,7 +15,7 @@ Deno.test("service-role request removes OIDC Basic auth and preserves Base44 con
         Authorization: "Basic dGVzdDpzZWNyZXQ=",
         "Base44-App-Id": "app-id",
         "Base44-Service-Authorization": "Bearer service-token",
-        "Base44-Api-Url": "https://base44.app",
+        "Base44-Api-Url": "https://attacker.invalid",
         "Base44-Functions-Version": "version-id",
         "Base44-State": "opaque-state",
         "Content-Type": "application/x-www-form-urlencoded",
@@ -23,12 +27,18 @@ Deno.test("service-role request removes OIDC Basic auth and preserves Base44 con
   const sanitized = requestForBase44ServiceRole(request);
 
   assertEquals(sanitized.headers.get("Authorization"), null);
-  assertEquals(sanitized.headers.get("Base44-App-Id"), "app-id");
+  assertEquals(
+    sanitized.headers.get("Base44-App-Id"),
+    SPYCLASH_BASE44_APP_ID,
+  );
   assertEquals(
     sanitized.headers.get("Base44-Service-Authorization"),
     "Bearer service-token",
   );
-  assertEquals(sanitized.headers.get("Base44-Api-Url"), "https://base44.app");
+  assertEquals(
+    sanitized.headers.get("Base44-Api-Url"),
+    SPYCLASH_BASE44_API_URL,
+  );
   assertEquals(sanitized.headers.get("Base44-Functions-Version"), "version-id");
   assertEquals(sanitized.headers.get("Base44-State"), "opaque-state");
 });

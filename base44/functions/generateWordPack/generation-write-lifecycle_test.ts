@@ -1,5 +1,8 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
-import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
+import {
+  BillingIdentityLifecycleError,
+  billingIdentitySubjectKey,
+} from "./billing-identity-lifecycle.ts";
 import { withGenerationWriterLease } from "./generation-write-lifecycle.ts";
 
 type RecordValue = Record<string, any>;
@@ -193,30 +196,40 @@ Deno.test("generation does not retry account deletion in progress", async () => 
   assertEquals(delays, []);
 });
 
-Deno.test("generation side effect is rejected after its writer lease expires", async () => {
+Deno.test("provider work does not retain the shared account writer lease", async () => {
   const store = new MockLifecycleStore();
-  let now = START;
-  let providerCalls = 0;
+  const accountSubjectKey = await billingIdentitySubjectKey("user-1");
+  let accountLeaseActiveDuringProvider = true;
+  let accountLeaseActiveDuringWrite = false;
 
-  const error = await assertRejects(
-    () =>
-      withGenerationWriterLease({
-        lifecycleStore: store,
-        userID: "user-1",
-        nowFactory: () => now,
-        randomUUID: sequence("generation"),
-        action: async (guard) => {
-          now = new Date(START.getTime() + 11 * 60 * 1_000);
-          await guard.boundary(async () => {
-            providerCalls += 1;
-          });
-        },
-      }),
-    BillingIdentityLifecycleError,
-  );
+  await withGenerationWriterLease({
+    lifecycleStore: store,
+    userID: "user-1",
+    nowFactory: () => START,
+    randomUUID: sequence("generation"),
+    action: async (guard) => {
+      await guard.assertAvailable();
+      const releasedAccount = store.records.find((record) =>
+        record.subject_key === accountSubjectKey
+      );
+      accountLeaseActiveDuringProvider =
+        Date.parse(String(releasedAccount?.lease_until || "")) >
+          START.getTime();
 
-  assertEquals(error.code, "active_lease");
-  assertEquals(providerCalls, 0);
+      await guard.boundary(async () => {
+        const activeAccount = store.records.find((record) =>
+          record.subject_key === accountSubjectKey
+        );
+        accountLeaseActiveDuringWrite =
+          Date.parse(String(activeAccount?.lease_until || "")) >
+            START.getTime();
+      });
+    },
+  });
+
+  assertEquals(accountLeaseActiveDuringProvider, false);
+  assertEquals(accountLeaseActiveDuringWrite, true);
+  assertEquals(store.records.length, 2);
 });
 
 Deno.test("committed generation survives transient lease release failures", async () => {

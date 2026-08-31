@@ -116,8 +116,13 @@ export async function withPushWriterLeases<T>(input: {
         failures.push(error);
       }
     }
-    if (!actionError && failures.length) throw failures[0];
-    if (failures.length) console.error("push lifecycle lease release failed");
+    if (failures.length) {
+      console.error(
+        actionError
+          ? "push lifecycle lease release failed after action error"
+          : "push lifecycle lease release failed after committed action",
+      );
+    }
   }
 }
 
