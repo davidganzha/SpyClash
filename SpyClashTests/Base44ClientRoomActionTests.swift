@@ -227,6 +227,40 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertEqual(try recorder.requestBodies().count, 2)
     }
 
+    func testExpiredFinalizationOwnsRetryAndSendsExactMatchScope() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.leaseConflictResponse(
+                for: request,
+                code: "active_lease",
+                retryable: true
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        var room = GameRoom.previewRoom(status: "playing")
+        room.matchID = "match-finalize"
+        room.gameStartedAt = "2026-08-31T08:00:00.000Z"
+        do {
+            _ = try await makeClient().finalizeExpiredRoom(room: room)
+            XCTFail("Expected the coordinator-owned retryable conflict.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.statusCode, 409)
+            XCTAssertEqual(error.code, "active_lease")
+            XCTAssertTrue(error.retryable)
+        }
+
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(bodies.count, 1)
+        XCTAssertEqual(bodies[0]["action"] as? String, "finalize_expired_room")
+        XCTAssertEqual(bodies[0]["expected_match_id"] as? String, room.matchID)
+        XCTAssertEqual(
+            bodies[0]["expected_game_started_at"] as? String,
+            room.gameStartedAt
+        )
+    }
+
     func testCompleteGameStartAdoptsAuthoritativePlayingRoomAfterConflictRetryExhausts() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in

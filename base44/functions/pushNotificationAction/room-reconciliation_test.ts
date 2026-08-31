@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
   committedRoomPushEvents,
   repairCommittedRoomPushEvents,
@@ -7,6 +7,7 @@ import {
 
 class Store {
   records: Record<string, any>[] = [];
+  throwAfterNextUpdate = false;
   async filter(filter: Record<string, any>) {
     return this.records.filter((record) =>
       Object.entries(filter).every(([key, value]) => record[key] === value)
@@ -15,10 +16,48 @@ class Store {
   async create(record: Record<string, any>) {
     this.records.push({ id: `event-${this.records.length + 1}`, ...record });
   }
+  async updateMany(
+    filter: Record<string, any>,
+    update: Record<string, any>,
+  ) {
+    let updated = 0;
+    this.records = this.records.map((record) => {
+      if (
+        !Object.entries(filter).every(([key, value]) => record[key] === value)
+      ) return record;
+      updated += 1;
+      return { ...record, ...(update.$set || {}) };
+    });
+    if (this.throwAfterNextUpdate && updated > 0) {
+      this.throwAfterNextUpdate = false;
+      throw new Error("lost update response");
+    }
+    return { updated };
+  }
+}
+
+function unfinishedEvent(recipientUserID: string, overrides = {}) {
+  return {
+    id: `event-${recipientUserID}`,
+    dedupe_key: `game_finished:finish-1:${recipientUserID}`,
+    source_event_id: "finish-1",
+    event_type: "game_finished",
+    source_type: "game_room",
+    recipient_user_id: recipientUserID,
+    room_id: "room-1",
+    match_id: "match-1",
+    inbox_visible: false,
+    inbox_committed_at: null,
+    state: "pending",
+    lease_token: "",
+    revision: `revision-${recipientUserID}`,
+    ...overrides,
+  };
 }
 
 Deno.test("persisted game start identity repairs a missing outbox idempotently", async () => {
   const store = new Store();
+  let persistenceBoundaries = 0;
   const room = {
     id: "room-1",
     status: "playing",
@@ -32,12 +71,16 @@ Deno.test("persisted game start identity repairs a missing outbox idempotently",
   const input = {
     eventStore: store,
     room,
-    persist: async <T>(writer: () => Promise<T>) => await writer(),
+    persist: async <T>(writer: () => Promise<T>) => {
+      persistenceBoundaries += 1;
+      return await writer();
+    },
     now: new Date("2026-07-26T12:00:01.000Z"),
     randomUUID: () => "revision",
   };
   assertEquals(await repairCommittedRoomPushEvents(input), 3);
   assertEquals(await repairCommittedRoomPushEvents(input), 0);
+  assertEquals(persistenceBoundaries, 1);
   assertEquals(store.records.map((row) => row.recipient_user_id), [
     "user-a",
     "user-b",
@@ -70,6 +113,105 @@ Deno.test("finished rooms repair only the terminal event", async () => {
       matchID: "match-1",
     }],
   );
+});
+
+Deno.test("partial lost batched commit is fully recoverable from the finished room", async () => {
+  const store = new Store();
+  store.records = [
+    unfinishedEvent("user-a"),
+    unfinishedEvent("user-b"),
+    unfinishedEvent("user-c"),
+  ];
+  const input = {
+    eventStore: store,
+    room: {
+      id: "room-1",
+      status: "finished",
+      match_id: "match-1",
+      game_finished_event_id: "finish-1",
+      participant_user_ids: ["user-a", "user-b", "user-c"],
+      updated_date: "2026-07-26T11:59:30.000Z",
+    },
+    persist: async <T>(writer: () => Promise<T>) => await writer(),
+    now: new Date("2026-07-26T12:00:00.000Z"),
+    randomUUID: () => crypto.randomUUID(),
+  };
+  store.throwAfterNextUpdate = true;
+  await assertRejects(
+    () => repairCommittedRoomPushEvents(input),
+    Error,
+    "lost update response",
+  );
+  assertEquals(
+    store.records.filter((row) => Boolean(row.inbox_committed_at)).length,
+    1,
+  );
+
+  assertEquals(await repairCommittedRoomPushEvents(input), 2);
+  assertEquals(
+    store.records.every((row) => Boolean(row.inbox_committed_at)),
+    true,
+  );
+  assertEquals(
+    store.records.map((row) => row.recipient_user_id),
+    ["user-a", "user-b", "user-c"],
+  );
+});
+
+Deno.test("inbox repair does not invalidate an active delivery worker CAS", async () => {
+  const store = new Store();
+  store.records = [unfinishedEvent("user-a", {
+    state: "processing",
+    lease_token: "push-worker",
+    lease_until: "2026-07-26T12:02:00.000Z",
+    revision: "worker-revision",
+  })];
+  const repaired = await repairCommittedRoomPushEvents({
+    eventStore: store,
+    room: {
+      id: "room-1",
+      status: "finished",
+      match_id: "match-1",
+      game_finished_event_id: "finish-1",
+      participant_user_ids: ["user-a"],
+      updated_date: "2026-07-26T11:59:30.000Z",
+    },
+    persist: async <T>(writer: () => Promise<T>) => await writer(),
+    now: new Date("2026-07-26T12:00:00.000Z"),
+    randomUUID: () => "must-not-replace-worker-revision",
+  });
+  assertEquals(repaired, 1);
+  assertEquals(store.records[0].revision, "worker-revision");
+  const completion = await store.updateMany({
+    id: "event-user-a",
+    state: "processing",
+    lease_token: "push-worker",
+    revision: "worker-revision",
+  }, {
+    $set: {
+      state: "delivered",
+      lease_token: "",
+      revision: "delivered-revision",
+    },
+  });
+  assertEquals(completion.updated, 1);
+  assertEquals(Boolean(store.records[0].inbox_committed_at), true);
+});
+
+Deno.test("process_event reconciles partial room outboxes before delivery", async () => {
+  const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
+  const processEvents = source.slice(
+    source.indexOf("async function processEvents"),
+    source.indexOf("async function drain(base44"),
+  );
+  const existingLookup = processEvents.indexOf("const existingRoomEvent");
+  const repair = processEvents.indexOf(
+    "await repairRoomPushOutbox(base44, room)",
+  );
+  const delivery = processEvents.indexOf("await syncLiveActivities(base44");
+  assertEquals(existingLookup >= 0, true);
+  assertEquals(repair > existingLookup, true);
+  assertEquals(delivery > repair, true);
 });
 
 Deno.test("old terminal identities are not resurrected as fresh alerts", async () => {

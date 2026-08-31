@@ -178,7 +178,8 @@ export async function repairCommittedRoomPushEvents(input: {
 }): Promise<number> {
   const now = input.now || new Date();
   const randomUUID = input.randomUUID || (() => crypto.randomUUID());
-  let created = 0;
+  const missingEvents: Entity[] = [];
+  const pendingCommits: Entity[] = [];
   for (const event of repairableCommittedRoomPushEvents(input.room, now)) {
     for (const recipientUserID of stableParticipantUserIDs(input.room)) {
       const dedupeKey = [event.eventType, event.sourceEventID, recipientUserID]
@@ -186,35 +187,103 @@ export async function repairCommittedRoomPushEvents(input: {
       const existing = await input.eventStore.filter({
         dedupe_key: dedupeKey,
       }) || [];
-      if (existing.length) continue;
-      await input.persist(() =>
-        input.eventStore.create({
-          dedupe_key: dedupeKey,
-          source_event_id: event.sourceEventID,
-          event_type: event.eventType,
-          source_type: "game_room",
-          recipient_user_id: recipientUserID,
-          actor_user_id: "",
-          room_id: clean(input.room.id),
-          match_id: event.matchID,
-          ...gameInboxProjection(event.eventType, clean(input.room.id), now),
-          inbox_visible: false,
-          inbox_committed_at: now.toISOString(),
-          state: "pending",
-          attempt_count: 0,
-          delivered_count: 0,
-          failed_count: 0,
-          delivered_token_hashes: [],
-          lease_token: "",
-          lease_until: now.toISOString(),
-          revision: randomUUID(),
-          expires_at: event.expiresAt,
-          created_at: now.toISOString(),
-          updated_at: now.toISOString(),
-        })
+      if (
+        existing.some((row: Entity) =>
+          row.inbox_visible !== true && clean(row.inbox_committed_at)
+        )
+      ) continue;
+      const repairable = existing.find((row: Entity) =>
+        clean(row.id) && clean(row.state) !== "cancelled"
       );
-      created += 1;
+      if (repairable) {
+        pendingCommits.push({
+          record: repairable,
+          eventType: event.eventType,
+          roomID: clean(input.room.id),
+        });
+        continue;
+      }
+      if (existing.length) continue;
+      missingEvents.push({
+        dedupe_key: dedupeKey,
+        source_event_id: event.sourceEventID,
+        event_type: event.eventType,
+        source_type: "game_room",
+        recipient_user_id: recipientUserID,
+        actor_user_id: "",
+        room_id: clean(input.room.id),
+        match_id: event.matchID,
+        ...gameInboxProjection(event.eventType, clean(input.room.id), now),
+        inbox_visible: false,
+        inbox_committed_at: now.toISOString(),
+        state: "pending",
+        attempt_count: 0,
+        delivered_count: 0,
+        failed_count: 0,
+        delivered_token_hashes: [],
+        lease_token: "",
+        lease_until: now.toISOString(),
+        revision: randomUUID(),
+        expires_at: event.expiresAt,
+        created_at: now.toISOString(),
+        updated_at: now.toISOString(),
+      });
     }
   }
-  return created;
+  if (!missingEvents.length && !pendingCommits.length) return 0;
+
+  // One lifecycle assertion covers this bounded, idempotently repairable
+  // group. Asserting the full participant lease set before every recipient
+  // used to turn an N-recipient terminal event into roughly N² lifecycle
+  // reads, which could exhaust the function budget immediately after a game.
+  const repaired = await input.persist(async () => {
+    let count = 0;
+    for (const event of missingEvents) {
+      await input.eventStore.create(event);
+      count += 1;
+    }
+    for (const pending of pendingCommits) {
+      const event = pending.record;
+      const result = await input.eventStore.updateMany({
+        id: event.id,
+        state: event.state,
+        lease_token: event.lease_token,
+        revision: event.revision,
+      }, {
+        $set: {
+          ...gameInboxProjection(
+            pending.eventType,
+            pending.roomID,
+            now,
+          ),
+          inbox_visible: false,
+          inbox_committed_at: now.toISOString(),
+          updated_at: now.toISOString(),
+        },
+      });
+      if (Number(result?.updated) === 1) {
+        count += 1;
+        continue;
+      }
+      const current = await input.eventStore.filter({ id: event.id }) || [];
+      if (
+        current.some((row: Entity) =>
+          row.inbox_visible !== true && clean(row.inbox_committed_at)
+        )
+      ) {
+        count += 1;
+        continue;
+      }
+      const latest = current.find((row: Entity) => clean(row.id) === event.id);
+      if (
+        latest &&
+        (latest.state !== event.state ||
+          latest.lease_token !== event.lease_token ||
+          latest.revision !== event.revision)
+      ) continue;
+      throw new Error("game_room_push_repair_contention");
+    }
+    return count;
+  });
+  return repaired;
 }

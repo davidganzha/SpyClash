@@ -85,13 +85,14 @@ class MockLifecycleStore {
 }
 
 async function inactiveRecord(userID: string, id: string) {
+  const revision = `revision:${id}`;
   return {
     id,
     subject_key: await billingIdentitySubjectKey(userID),
     state: "active",
-    lease_token: `idle:${id}`,
+    lease_token: `initialized:${revision}`,
     lease_until: "2026-07-14T11:00:00.000Z",
-    revision: `revision:${id}`,
+    revision,
     created_date: `2026-07-14T11:00:0${id.endsWith("1") ? "1" : "2"}.000Z`,
     updated_date: "2026-07-14T11:00:00.000Z",
   };

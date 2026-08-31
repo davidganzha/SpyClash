@@ -213,7 +213,7 @@ Deno.test("detective casts resolve N-S voting from the latest CAS snapshot", asy
   assertStringIncludes(policy, 'activeSpyCount === 0\n    ? "detectives"');
 
   const requestDispatch = source.slice(
-    source.indexOf("const room = roomId"),
+    source.indexOf("let room = roomId"),
     source.indexOf("const elapsedMilliseconds = performance.now()"),
   );
   assertStringIncludes(
@@ -391,6 +391,93 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     "pending terminal reconciliation must precede the pause mutation guard",
   );
 
+  const finish = source.slice(
+    source.indexOf("async function finishRoom"),
+    source.indexOf("async function createRoom"),
+  );
+  assertStringIncludes(finish, "game_finished_event_id: finishedEventID");
+  const enqueueFinish = finish.indexOf("await enqueueGamePushEvents({");
+  const finishRoomCommit = finish.indexOf(
+    "const finished = await updateRoomWithRetry(",
+  );
+  const commitFinishPush = finish.indexOf(
+    "const committed = await commitGamePushEvents({",
+  );
+  assert(
+    enqueueFinish >= 0 && enqueueFinish < finishRoomCommit &&
+      finishRoomCommit < commitFinishPush,
+    "the deletion-safe outbox must surround the committed terminal room transition",
+  );
+
+  const finalizationReadPath = source.slice(
+    source.indexOf("if (EXPLICIT_TIMER_FINALIZE_ACTIONS.has(action))"),
+    source.indexOf("// Capture whether this exact server request entered"),
+  );
+  assertStringIncludes(
+    finalizationReadPath,
+    'normalizedStatus(room) === "finished"',
+  );
+  assertStringIncludes(
+    finalizationReadPath,
+    "waitForCommittedTerminalRoom(base44, room)",
+  );
+  assertStringIncludes(
+    finalizationReadPath,
+    "await dispatchRoomSideEffectsAfterLeases(base44, room, action)",
+  );
+
+  const postLeaseDispatch = source.slice(
+    source.indexOf("if (result?.id && !readOnlyCastLeaseRecovery)"),
+    source.indexOf("return Response.json(result?.id"),
+  );
+  assertStringIncludes(
+    postLeaseDispatch,
+    "result = await dispatchRoomSideEffectsAfterLeases(",
+  );
+  const terminalSideEffects = source.slice(
+    source.indexOf("async function dispatchRoomSideEffectsAfterLeases"),
+    source.indexOf("function lifecycleHTTPStatus"),
+  );
+  const pushAfterLease = terminalSideEffects.indexOf(
+    "await dispatchRoomPushBestEffort(base44, claimedRoom, action)",
+  );
+  const signalAfterPush = terminalSideEffects.indexOf(
+    "await fanoutDeferredFinishedRoomSignal(base44, claimedRoom)",
+  );
+  const durablePushCompletesClaim = terminalSideEffects.indexOf(
+    "return true;",
+    signalAfterPush,
+  );
+  assertStringIncludes(
+    terminalSideEffects,
+    "runTerminalSideEffectsSingleFlight({",
+  );
+  assertStringIncludes(
+    terminalSideEffects,
+    "store: base44.asServiceRole.entities.GameRoom",
+  );
+  assertStringIncludes(terminalSideEffects, "return run.room");
+  assert(
+    pushAfterLease >= 0 && pushAfterLease < signalAfterPush &&
+      signalAfterPush < durablePushCompletesClaim,
+    "finished push repair must complete before best-effort realtime wakes token cleanup",
+  );
+  const deferredSignal = source.slice(
+    source.indexOf("async function fanoutDeferredFinishedRoomSignal"),
+    source.indexOf("async function dispatchRoomPushBestEffort"),
+  );
+  assertStringIncludes(deferredSignal, "await withRoomWriteLeases({");
+  assertStringIncludes(deferredSignal, "attempts: 1");
+  assertStringIncludes(source, "if (isCommittedFinishedRoom(room)) {");
+  assertStringIncludes(
+    source,
+    "if (!sourceEventIDs.length && shouldSynchronizeLiveActivity(action, room))",
+  );
+  assertStringIncludes(
+    source,
+    "assertExpectedTimerFinalizationScope(room, body)",
+  );
+
   const completeStart = source.slice(
     source.indexOf("async function completeGameStart"),
     source.indexOf("async function markRoleCardRead"),
@@ -446,6 +533,10 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   const recovery = leasedAction.indexOf("recover: async () =>");
   const recoveryBypass = leasedAction.indexOf(
     "allowActiveIdentityLeaseRecovery: true",
+  );
+  assertStringIncludes(
+    leasedAction,
+    "reconcileTerminalFinalizationAfterLeaseConflict({",
   );
   assert(
     fastDispatch >= 0 && fastDispatch < lease && lease < refetch &&

@@ -5,6 +5,25 @@ enum AppleNativeAuthPhase {
     case establishingSession
 }
 
+/// The coordinator already retries Live Activity token mutations. Keeping
+/// those requests single-attempt at the HTTP layer prevents one coordinator
+/// retry from expanding into several identical backend writes.
+struct PushNotificationTransportRetryPolicy: Equatable, Sendable {
+    let maximumAttempts: Int
+    let retriesTypedLeaseConflict: Bool
+
+    static func policy(for action: String) -> Self {
+        switch action {
+        case "register_live_activity_token", "unregister_live_activity_token":
+            return Self(maximumAttempts: 1, retriesTypedLeaseConflict: false)
+        case "register_device":
+            return Self(maximumAttempts: 3, retriesTypedLeaseConflict: true)
+        default:
+            return Self(maximumAttempts: 3, retriesTypedLeaseConflict: false)
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class Base44Client {
@@ -543,7 +562,12 @@ final class Base44Client {
     }
 
     func finalizeExpiredRoom(room: GameRoom) async throws -> GameRoom {
-        try await roomAction("finalize_expired_room", roomID: room.id)
+        try await roomAction(
+            "finalize_expired_room",
+            roomID: room.id,
+            expectedMatchID: room.matchID,
+            expectedGameStartedAt: room.gameStartedAt
+        )
     }
 
     func leaveRoom(room: GameRoom, user: SpyUser) async throws {
@@ -1235,8 +1259,10 @@ final class Base44Client {
         actionRequest.setValue(Self.appID, forHTTPHeaderField: "X-App-Id")
         actionRequest.httpBody = try JSONEncoder.base44.encode(payload)
 
+        let retryPolicy = PushNotificationTransportRetryPolicy.policy(
+            for: payload.action
+        )
         var attempt = 1
-        let maximumAttempts = 3
         while true {
             try Task.checkCancellation()
             if enforceCurrentAccount, token != expectedToken {
@@ -1253,7 +1279,7 @@ final class Base44Client {
                 data = result.0
                 response = http
             } catch {
-                guard attempt < maximumAttempts,
+                guard attempt < retryPolicy.maximumAttempts,
                       Self.isRetryablePushTransportError(error) else {
                     throw Self.displayableTransportError(error)
                 }
@@ -1265,10 +1291,10 @@ final class Base44Client {
             let apiError = 200..<300 ~= response.statusCode
                 ? nil
                 : try? JSONDecoder.base44.decode(APIErrorEnvelope.self, from: data)
-            if attempt < maximumAttempts,
+            if attempt < retryPolicy.maximumAttempts,
                Self.isRetryablePushHTTPStatus(
                    response.statusCode,
-                   action: payload.action,
+                   retryPolicy: retryPolicy,
                    apiError: apiError
                ) {
                 try await Self.waitBeforePushRetry(
@@ -1296,7 +1322,7 @@ final class Base44Client {
                 return EmptyResponse() as! T
             }
             guard !data.isEmpty else {
-                if attempt < maximumAttempts {
+                if attempt < retryPolicy.maximumAttempts {
                     try await Self.waitBeforePushRetry(attempt: attempt)
                     attempt += 1
                     continue
@@ -1307,7 +1333,7 @@ final class Base44Client {
             do {
                 return try JSONDecoder.base44.decode(T.self, from: data)
             } catch {
-                if attempt < maximumAttempts {
+                if attempt < retryPolicy.maximumAttempts {
                     try await Self.waitBeforePushRetry(attempt: attempt)
                     attempt += 1
                     continue
@@ -1319,15 +1345,11 @@ final class Base44Client {
 
     private static func isRetryablePushHTTPStatus(
         _ statusCode: Int,
-        action: String,
+        retryPolicy: PushNotificationTransportRetryPolicy,
         apiError: APIErrorEnvelope?
     ) -> Bool {
         if statusCode == 409 {
-            // Live Activity requests already own a longer bounded retry policy.
-            // Keep the transport-level 409 retry limited to alert-device
-            // registration so that request recovers from a short
-            // BillingIdentityLifecycle collision without multiplying retries.
-            guard action == "register_device",
+            guard retryPolicy.retriesTypedLeaseConflict,
                   apiError?.retryable != false else {
                 return false
             }
@@ -1404,7 +1426,9 @@ final class Base44Client {
         mutationID: String? = nil,
         expectedRevision: Int? = nil,
         state: LobbyStatePayload? = nil,
-        expectedLobbyRevision: Int? = nil
+        expectedLobbyRevision: Int? = nil,
+        expectedMatchID: String? = nil,
+        expectedGameStartedAt: String? = nil
     ) async throws -> GameRoom {
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
@@ -1429,9 +1453,13 @@ final class Base44Client {
             mutationID: mutationID,
             expectedRevision: expectedRevision,
             state: state,
-            expectedLobbyRevision: expectedLobbyRevision
+            expectedLobbyRevision: expectedLobbyRevision,
+            expectedMatchID: expectedMatchID,
+            expectedGameStartedAt: expectedGameStartedAt
         )
-        let retryDelays = [250]
+        // Expired-room finalization owns an authoritative read/backoff loop in
+        // GameView. A second transport retry here used to double every write.
+        let retryDelays = action == "finalize_expired_room" ? [] : [250]
         var attempt = 0
 
         while true {
@@ -2258,6 +2286,8 @@ private struct GameRoomActionPayload: Encodable {
     let expectedRevision: Int?
     let state: LobbyStatePayload?
     let expectedLobbyRevision: Int?
+    let expectedMatchID: String?
+    let expectedGameStartedAt: String?
 
     init(
         action: String,
@@ -2278,7 +2308,9 @@ private struct GameRoomActionPayload: Encodable {
         mutationID: String? = nil,
         expectedRevision: Int? = nil,
         state: LobbyStatePayload? = nil,
-        expectedLobbyRevision: Int? = nil
+        expectedLobbyRevision: Int? = nil,
+        expectedMatchID: String? = nil,
+        expectedGameStartedAt: String? = nil
     ) {
         self.action = action
         self.accessToken = accessToken
@@ -2299,6 +2331,8 @@ private struct GameRoomActionPayload: Encodable {
         self.expectedRevision = expectedRevision
         self.state = state
         self.expectedLobbyRevision = expectedLobbyRevision
+        self.expectedMatchID = expectedMatchID
+        self.expectedGameStartedAt = expectedGameStartedAt
     }
 
     enum CodingKeys: String, CodingKey {
@@ -2321,6 +2355,8 @@ private struct GameRoomActionPayload: Encodable {
         case expectedRevision = "expected_revision"
         case state
         case expectedLobbyRevision = "expected_lobby_revision"
+        case expectedMatchID = "expected_match_id"
+        case expectedGameStartedAt = "expected_game_started_at"
     }
 }
 

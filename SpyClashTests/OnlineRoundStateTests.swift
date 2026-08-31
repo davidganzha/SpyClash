@@ -939,7 +939,7 @@ final class OnlineRoundStateTests: XCTestCase {
         )
     }
 
-    func testExpiredRoomFinalizationBackoffHasCappedLongTailWithoutTerminalStop() {
+    func testExpiredRoomFinalizationBackoffDefersLongTailWithoutTerminalStop() {
         let delays = ExpiredRoomFinalizationRetryPolicy.retryDelaysMilliseconds
 
         XCTAssertEqual(delays, [250, 500, 1_000, 2_000, 4_000, 6_000, 8_000])
@@ -948,13 +948,13 @@ final class OnlineRoundStateTests: XCTestCase {
             ExpiredRoomFinalizationRetryPolicy.delayMilliseconds(
                 afterFailedAttempt: delays.count
             ),
-            8_000
+            60_000
         )
         XCTAssertEqual(
             ExpiredRoomFinalizationRetryPolicy.delayMilliseconds(
                 afterFailedAttempt: 10_000
             ),
-            8_000
+            60_000
         )
     }
 

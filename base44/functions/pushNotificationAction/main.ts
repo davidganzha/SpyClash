@@ -1164,15 +1164,34 @@ async function processEvents(base44: any, body: Entity): Promise<Entity> {
     base44.asServiceRole.entities.PushNotificationEvent,
     { source_event_id: sourceEventID },
   );
-  if (!events.length) {
-    const room = await roomForSourceEvent(base44, sourceEventID);
-    if (room) {
-      await repairRoomPushOutbox(base44, room);
-      events = await allMatching(
-        base44.asServiceRole.entities.PushNotificationEvent,
-        { source_event_id: sourceEventID },
-      );
-    }
+  const existingRoomEvent = events.find((event) =>
+    clean(event.room_id) && clean(event.match_id) &&
+    ["game_started", "game_finished"].includes(clean(event.event_type))
+  );
+  let room: Entity | null = null;
+  if (existingRoomEvent) {
+    const candidates = await allMatching(
+      base44.asServiceRole.entities.GameRoom,
+      { id: clean(existingRoomEvent.room_id) },
+    );
+    room = candidates.find((candidate) =>
+      clean(candidate.id) === clean(existingRoomEvent.room_id) &&
+      [candidate.game_started_event_id, candidate.game_finished_event_id]
+        .some((eventID) =>
+          clean(eventID) === sourceEventID
+        )
+    ) || null;
+  } else if (!events.length) {
+    room = await roomForSourceEvent(base44, sourceEventID);
+  }
+  if (room) {
+    // Reconcile even when some recipient rows already exist: a room can be
+    // committed after only the first updates in the batched inbox commit.
+    await repairRoomPushOutbox(base44, room);
+    events = await allMatching(
+      base44.asServiceRole.entities.PushNotificationEvent,
+      { source_event_id: sourceEventID },
+    );
   }
   // ActivityKit is attempted before the ordinary event becomes terminal. If
   // this invocation is interrupted, the still-pending alert outbox remains a

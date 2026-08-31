@@ -18,10 +18,19 @@ struct LiveActivityRegistrationRetryPolicy: Equatable, Sendable {
     let maximumDelayMilliseconds: Int
 
     static let standard = LiveActivityRegistrationRetryPolicy(
-        maxAttempts: 5,
+        maxAttempts: 3,
         initialDelayMilliseconds: 400,
-        maximumDelayMilliseconds: 3_200
+        maximumDelayMilliseconds: 1_600
     )
+
+    /// Deferred recovery stays eventual without repeating an immediate retry
+    /// burst every time the retained request wakes up.
+    static let deferred = LiveActivityRegistrationRetryPolicy(
+        maxAttempts: 1,
+        initialDelayMilliseconds: 400,
+        maximumDelayMilliseconds: 400
+    )
+    static let deferredRetryDelaySeconds = 60
 
     func delayMilliseconds(afterFailedAttempt attempt: Int) -> Int {
         let exponent = min(max(0, attempt - 1), 20)
@@ -427,7 +436,8 @@ final class PushNotificationCoordinator {
     }
 
     private func performLiveActivityRegistration(
-        _ request: PendingLiveActivityRegistration
+        _ request: PendingLiveActivityRegistration,
+        policy: LiveActivityRegistrationRetryPolicy = .standard
     ) async -> Bool {
         guard signedIn,
               let client,
@@ -436,7 +446,6 @@ final class PushNotificationCoordinator {
             return false
         }
 
-        let policy = LiveActivityRegistrationRetryPolicy.standard
         for attempt in 1...policy.maxAttempts {
             guard isCurrentAccountGeneration(request.accountGeneration) else {
                 return false
@@ -491,7 +500,8 @@ final class PushNotificationCoordinator {
     }
 
     private func performLiveActivityUnregistration(
-        _ request: PendingLiveActivityUnregistration
+        _ request: PendingLiveActivityUnregistration,
+        policy: LiveActivityRegistrationRetryPolicy = .standard
     ) async -> Bool {
         guard signedIn,
               let client,
@@ -500,7 +510,6 @@ final class PushNotificationCoordinator {
             return false
         }
 
-        let policy = LiveActivityRegistrationRetryPolicy.standard
         for attempt in 1...policy.maxAttempts {
             guard isCurrentAccountGeneration(request.accountGeneration) else {
                 return false
@@ -575,7 +584,8 @@ final class PushNotificationCoordinator {
 
     private func schedulePendingLiveActivityRegistrationRetry(
         _ request: PendingLiveActivityRegistration,
-        delaySeconds: Int = 30
+        delaySeconds: Int = LiveActivityRegistrationRetryPolicy
+            .deferredRetryDelaySeconds
     ) {
         guard signedIn,
               isApplicationActive,
@@ -598,13 +608,17 @@ final class PushNotificationCoordinator {
                 return
             }
             self.pendingLiveActivityRetryTasks.removeValue(forKey: key)
-            _ = await self.performLiveActivityRegistration(request)
+            _ = await self.performLiveActivityRegistration(
+                request,
+                policy: .deferred
+            )
         }
     }
 
     private func schedulePendingLiveActivityUnregistrationRetry(
         _ request: PendingLiveActivityUnregistration,
-        delaySeconds: Int = 30
+        delaySeconds: Int = LiveActivityRegistrationRetryPolicy
+            .deferredRetryDelaySeconds
     ) {
         guard signedIn,
               isApplicationActive,
@@ -629,7 +643,10 @@ final class PushNotificationCoordinator {
                 return
             }
             self.pendingLiveActivityUnregistrationRetryTasks.removeValue(forKey: key)
-            _ = await self.performLiveActivityUnregistration(request)
+            _ = await self.performLiveActivityUnregistration(
+                request,
+                policy: .deferred
+            )
         }
     }
 

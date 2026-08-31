@@ -114,37 +114,44 @@ export async function enqueueGamePushEvents(input: {
   const now = input.now || new Date();
   const randomUUID = input.randomUUID || (() => crypto.randomUUID());
   const store = input.base44.asServiceRole.entities.PushNotificationEvent;
+  const missingEvents: Entity[] = [];
   for (const recipientUserID of stableUserIDs(input.room)) {
     const dedupeKey = [input.eventType, input.sourceEventID, recipientUserID]
       .join(":");
     const existing = await store.filter({ dedupe_key: dedupeKey }) || [];
     if (existing.length) continue;
-    await input.persist(() =>
-      store.create({
-        dedupe_key: dedupeKey,
-        source_event_id: clean(input.sourceEventID),
-        event_type: input.eventType,
-        source_type: "game_room",
-        recipient_user_id: recipientUserID,
-        actor_user_id: clean(input.actorUserID),
-        room_id: clean(input.room.id),
-        match_id: clean(input.matchID),
-        ...inboxProjection(input.eventType, clean(input.room.id), now),
-        inbox_visible: false,
-        inbox_committed_at: null,
-        state: "pending",
-        attempt_count: 0,
-        delivered_count: 0,
-        failed_count: 0,
-        delivered_token_hashes: [],
-        lease_token: "",
-        lease_until: now.toISOString(),
-        revision: randomUUID(),
-        expires_at: gamePushExpiry(input.room, input.eventType, now),
-        created_at: now.toISOString(),
-        updated_at: now.toISOString(),
-      })
-    );
+    missingEvents.push({
+      dedupe_key: dedupeKey,
+      source_event_id: clean(input.sourceEventID),
+      event_type: input.eventType,
+      source_type: "game_room",
+      recipient_user_id: recipientUserID,
+      actor_user_id: clean(input.actorUserID),
+      room_id: clean(input.room.id),
+      match_id: clean(input.matchID),
+      ...inboxProjection(input.eventType, clean(input.room.id), now),
+      inbox_visible: false,
+      inbox_committed_at: null,
+      state: "pending",
+      attempt_count: 0,
+      delivered_count: 0,
+      failed_count: 0,
+      delivered_token_hashes: [],
+      lease_token: "",
+      lease_until: now.toISOString(),
+      revision: randomUUID(),
+      expires_at: gamePushExpiry(input.room, input.eventType, now),
+      created_at: now.toISOString(),
+      updated_at: now.toISOString(),
+    });
+  }
+  if (missingEvents.length) {
+    // The caller already holds the complete participant lease set. Reassert it
+    // once for this bounded, retry-idempotent group instead of once per
+    // recipient, which turns the lifecycle work from quadratic to linear.
+    await input.persist(async () => {
+      for (const event of missingEvents) await store.create(event);
+    });
   }
   if (input.sourceCommitted) {
     const committed = await commitGamePushEvents({
@@ -181,33 +188,41 @@ export async function commitGamePushEvents(input: {
   const now = (input.now || new Date()).toISOString();
   const randomUUID = input.randomUUID || (() => crypto.randomUUID());
   let committed = 0;
+  const pendingCommits: Entity[] = [];
   for (const event of events) {
     if (event.inbox_visible !== true && clean(event.inbox_committed_at)) {
       committed += 1;
       continue;
     }
     if (clean(event.state) === "cancelled") continue;
-    const result: Entity = await input.persist(() =>
-      input.store.updateMany({
-        id: event.id,
-        state: event.state,
-        lease_token: event.lease_token,
-        revision: event.revision,
-      }, {
-        $set: {
-          ...inboxProjection(
-            input.eventType,
-            clean(event.room_id),
-            new Date(now),
-          ),
-          inbox_visible: false,
-          inbox_committed_at: now,
-          revision: randomUUID(),
-          updated_at: now,
-        },
-      })
-    );
-    committed += Number(result?.updated) === 1 ? 1 : 0;
+    pendingCommits.push(event);
+  }
+  if (pendingCommits.length) {
+    committed += await input.persist(async () => {
+      let updated = 0;
+      for (const event of pendingCommits) {
+        const result: Entity = await input.store.updateMany({
+          id: event.id,
+          state: event.state,
+          lease_token: event.lease_token,
+          revision: event.revision,
+        }, {
+          $set: {
+            ...inboxProjection(
+              input.eventType,
+              clean(event.room_id),
+              new Date(now),
+            ),
+            inbox_visible: false,
+            inbox_committed_at: now,
+            revision: randomUUID(),
+            updated_at: now,
+          },
+        });
+        updated += Number(result?.updated) === 1 ? 1 : 0;
+      }
+      return updated;
+    });
   }
   return committed;
 }

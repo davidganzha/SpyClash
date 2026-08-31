@@ -4,6 +4,50 @@ import XCTest
 
 @MainActor
 final class NotificationInboxModelTests: XCTestCase {
+    func testLiveActivityTransportPolicyDoesNotMultiplyCoordinatorRetries() {
+        for action in [
+            "register_live_activity_token",
+            "unregister_live_activity_token"
+        ] {
+            let policy = PushNotificationTransportRetryPolicy.policy(for: action)
+
+            XCTAssertEqual(policy.maximumAttempts, 1)
+            XCTAssertFalse(policy.retriesTypedLeaseConflict)
+        }
+    }
+
+    func testDeviceTransportPolicyRetainsBoundedRecovery() {
+        let registration = PushNotificationTransportRetryPolicy.policy(
+            for: "register_device"
+        )
+        let removal = PushNotificationTransportRetryPolicy.policy(
+            for: "unregister_device"
+        )
+
+        XCTAssertEqual(registration.maximumAttempts, 3)
+        XCTAssertTrue(registration.retriesTypedLeaseConflict)
+        XCTAssertEqual(removal.maximumAttempts, 3)
+        XCTAssertFalse(removal.retriesTypedLeaseConflict)
+    }
+
+    func testLiveActivityRetryPolicyBoundsImmediateAndDeferredPressure() {
+        let immediate = LiveActivityRegistrationRetryPolicy.standard
+        let deferred = LiveActivityRegistrationRetryPolicy.deferred
+
+        XCTAssertEqual(immediate.maxAttempts, 3)
+        XCTAssertEqual(
+            (1..<immediate.maxAttempts).map {
+                immediate.delayMilliseconds(afterFailedAttempt: $0)
+            },
+            [400, 800]
+        )
+        XCTAssertEqual(deferred.maxAttempts, 1)
+        XCTAssertEqual(
+            LiveActivityRegistrationRetryPolicy.deferredRetryDelaySeconds,
+            60
+        )
+    }
+
     func testTransientGamePushesDoNotInvalidateInbox() {
         XCTAssertTrue(PushNotificationCoordinator.shouldInvalidateInbox(for: "friend_request"))
         XCTAssertTrue(PushNotificationCoordinator.shouldInvalidateInbox(for: "room_invite"))
@@ -471,6 +515,60 @@ final class Base44ClientNotificationInboxTests: XCTestCase {
         let body = try XCTUnwrap(recorder.requestBodies().first)
         let preferences = try XCTUnwrap(body["preferences"] as? [String: Any])
         XCTAssertEqual(preferences["announcements"] as? Bool, true)
+    }
+
+    func testLiveActivityTransportReturnsTransientFailureWithoutRetrying() async throws {
+        defer { NotificationMockURLProtocol.requestHandler = nil }
+
+        for action in [
+            "register_live_activity_token",
+            "unregister_live_activity_token"
+        ] {
+            let recorder = NotificationRequestRecorder()
+            NotificationMockURLProtocol.requestHandler = { request in
+                try recorder.append(request)
+                let response = HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 503,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                let payload = #"{"error":"Temporarily unavailable.","retryable":true}"#
+                return (response, Data(payload.utf8))
+            }
+
+            let client = makeClient()
+            do {
+                if action == "register_live_activity_token" {
+                    _ = try await client.registerLiveActivityToken(
+                        installationID: "installation-a",
+                        tokenKind: .activity,
+                        token: "activity-token",
+                        environment: .sandbox,
+                        locale: "en",
+                        activityID: "activity-a",
+                        matchID: "match-a"
+                    )
+                } else {
+                    try await client.unregisterLiveActivityToken(
+                        installationID: "installation-a",
+                        tokenKind: .activity,
+                        activityID: "activity-a",
+                        matchID: "match-a"
+                    )
+                }
+                XCTFail("Expected the transient failure to reach the coordinator.")
+            } catch let error as Base44Error {
+                XCTAssertEqual(error.statusCode, 503)
+                XCTAssertTrue(error.retryable)
+            }
+
+            XCTAssertEqual(recorder.requests().count, 1)
+            XCTAssertEqual(
+                try recorder.requestBodies().first?["action"] as? String,
+                action
+            )
+        }
     }
 
     private func makeClient() -> Base44Client {

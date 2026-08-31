@@ -134,14 +134,17 @@ enum ExpiredRoomFinalizationCandidateDisposition: Equatable {
 
 enum ExpiredRoomFinalizationRetryPolicy {
     /// The first attempt is immediate. Retry delay ramps across the first
-    /// failures, then stays capped so a recoverable outage cannot leave the
-    /// scoped room permanently parked at 0:00.
+    /// failures, then switches to a low-frequency recovery cadence so an
+    /// outage cannot leave the scoped room permanently parked at 0:00.
     static let retryDelaysMilliseconds = [250, 500, 1_000, 2_000, 4_000, 6_000, 8_000]
+    static let deferredRetryDelayMilliseconds = 60_000
     static let warningAfterFailedAttempts = retryDelaysMilliseconds.count
 
     static func delayMilliseconds(afterFailedAttempt failedAttempt: Int) -> Int {
-        let index = min(max(failedAttempt, 0), retryDelaysMilliseconds.count - 1)
-        return retryDelaysMilliseconds[index]
+        guard failedAttempt < retryDelaysMilliseconds.count else {
+            return deferredRetryDelayMilliseconds
+        }
+        return retryDelaysMilliseconds[max(failedAttempt, 0)]
     }
 
     static func canAttempt(

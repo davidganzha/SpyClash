@@ -73,6 +73,9 @@ import {
 import { fanoutGameRoomSignalsBestEffort } from "./game-room-signal.ts";
 import { questionAdvancePatch } from "./question-round-policy.ts";
 import { shouldSynchronizeLiveActivity } from "./room-push-policy.ts";
+import { reconcileTerminalFinalizationAfterLeaseConflict } from "./terminal-finalization-recovery.ts";
+import { assertExpectedTimerFinalizationScope } from "./terminal-finalization-scope.ts";
+import { runTerminalSideEffectsSingleFlight } from "./terminal-side-effect-dispatch.ts";
 import {
   isRoomWriteCASConflict,
   roomWriteRevision,
@@ -416,6 +419,22 @@ async function assertRoomHistoryPersistenceBoundary(base44, userID) {
 function pendingTerminalIntent(room) {
   const intent = terminalIntentFromRoom(room);
   return intent && normalizedStatus(room) !== "finished" ? intent : null;
+}
+
+const EXPLICIT_TIMER_FINALIZE_ACTIONS = new Set([
+  "finalize_expired_room",
+  "finish_room",
+]);
+
+async function waitForCommittedTerminalRoom(base44, room) {
+  let latest = room;
+  for (const milliseconds of [0, 80, 200, 420]) {
+    if (milliseconds > 0) await delay(milliseconds);
+    latest = await fetchRoom(base44, latest.id);
+    if (!latest || normalizedStatus(latest) === "finished") return latest;
+    if (!pendingTerminalIntent(latest)) return latest;
+  }
+  return latest;
 }
 
 function assertRoomMutationOpen(room, allowPendingTerminal = false) {
@@ -2257,6 +2276,9 @@ async function executeRoomAction(base44, action, room, user, body) {
     case "submit_spy_guess":
       return await submitSpyGuess(base44, room, user, body);
     case "finalize_expired_room": {
+      // Recheck under the participant lease set. A room can be reset to a new
+      // match after the client's authoritative read but before this write.
+      assertExpectedTimerFinalizationScope(room, body);
       const winner = deriveExpiredGameWinner(room);
       return await finishRoom(base44, room, winner);
     }
@@ -2288,7 +2310,7 @@ async function executeRoomActionWithSignal(
   options = {},
 ) {
   const result = await executeRoomAction(base44, action, room, user, body);
-  if (result?.id) {
+  if (result?.id && !shouldDeferFinishedRoomSignal(result)) {
     await fanoutGameRoomSignalsBestEffort({
       store: base44.asServiceRole.entities.GameRoomSignal,
       room: result,
@@ -2300,20 +2322,49 @@ async function executeRoomActionWithSignal(
   return result;
 }
 
-const GAME_FINISH_ACTIONS = new Set([
-  "mark_role_card_read",
-  "request_vote",
-  "cast_detective_vote",
-  "submit_spy_guess",
-  "finalize_expired_room",
-  "finish_room",
-]);
+function isCommittedFinishedRoom(room) {
+  return normalizedStatus(room) === "finished" &&
+    Boolean(clean(room?.game_finished_event_id));
+}
+
+function shouldDeferFinishedRoomSignal(room) {
+  return isCommittedFinishedRoom(room);
+}
+
+async function fanoutDeferredFinishedRoomSignal(base44, room) {
+  if (!room?.id || !isCommittedFinishedRoom(room)) return true;
+  const userIDs = uniqueStrings([
+    ...(room.participant_user_ids || []),
+    ...players(room).map((player) => player.user_id),
+  ]);
+  if (!userIDs.length) return true;
+  try {
+    const result = await withRoomWriteLeases({
+      lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+      userIDs,
+      attempts: 1,
+      action: async () =>
+        await fanoutGameRoomSignalsBestEffort({
+          store: base44.asServiceRole.entities.GameRoomSignal,
+          room,
+          logError: (message, error) =>
+            console.error(message, error?.message || error),
+        }),
+    });
+    return Number(result?.failed) === 0;
+  } catch (error) {
+    // Polling remains the fallback. Never recreate an identity-bearing signal
+    // after account deletion has acquired its opposing lifecycle marker.
+    console.error("finished room signal deferred", error?.message || error);
+    return false;
+  }
+}
 
 async function dispatchRoomPushBestEffort(base44, room, action) {
   const internalSecret = internalPushSecret(
     Deno.env.get("PUSH_INTERNAL_SECRET"),
   );
-  if (!internalSecret || !room?.id) return;
+  if (!internalSecret || !room?.id) return false;
   const sourceEventIDs = [];
   if (
     action === "complete_game_start" && clean(room.status) === "playing" &&
@@ -2321,10 +2372,7 @@ async function dispatchRoomPushBestEffort(base44, room, action) {
   ) {
     sourceEventIDs.push(clean(room.game_started_event_id));
   }
-  if (
-    GAME_FINISH_ACTIONS.has(action) && clean(room.status) === "finished" &&
-    clean(room.game_finished_event_id)
-  ) {
+  if (isCommittedFinishedRoom(room)) {
     sourceEventIDs.push(clean(room.game_finished_event_id));
   }
   try {
@@ -2335,7 +2383,10 @@ async function dispatchRoomPushBestEffort(base44, room, action) {
         internal_secret: internalSecret,
       });
     }
-    if (shouldSynchronizeLiveActivity(action, room)) {
+    // process_event already synchronizes the matching ActivityKit generation
+    // before it drains the ordinary alert. Avoid invoking the same terminal
+    // sync twice on the hottest post-game path.
+    if (!sourceEventIDs.length && shouldSynchronizeLiveActivity(action, room)) {
       await base44.asServiceRole.functions.invoke("pushNotificationAction", {
         action: "sync_live_activity",
         room_id: clean(room.id),
@@ -2343,9 +2394,39 @@ async function dispatchRoomPushBestEffort(base44, room, action) {
         internal_secret: internalSecret,
       });
     }
+    return true;
   } catch (error) {
     console.error("room push dispatch deferred", error?.message || error);
+    return false;
   }
+}
+
+async function dispatchRoomSideEffectsAfterLeases(base44, room, action) {
+  if (!isCommittedFinishedRoom(room)) {
+    await dispatchRoomPushBestEffort(base44, room, action);
+    return room;
+  }
+  const run = await runTerminalSideEffectsSingleFlight({
+    store: base44.asServiceRole.entities.GameRoom,
+    room,
+    dispatch: async (claimedRoom) => {
+      if (!(await dispatchRoomPushBestEffort(base44, claimedRoom, action))) {
+        return false;
+      }
+      // Polling is the realtime fallback. Once the durable push/ActivityKit
+      // pipeline succeeds, a transient signal write must not cause it to be
+      // replayed after the source lease expires.
+      await fanoutDeferredFinishedRoomSignal(base44, claimedRoom);
+      return true;
+    },
+  });
+  if (run.outcome === "failed") {
+    // The bounded source claim expires for a later explicit retry. Independently,
+    // the scheduled push drain continues to repair and deliver the durable
+    // outbox even when the initiating request disappears.
+    console.error("terminal room side effects deferred");
+  }
+  return run.room;
 }
 
 function lifecycleHTTPStatus(error) {
@@ -2435,7 +2516,7 @@ Deno.serve(async (req) => {
       return Response.json(roomForClient(result, user));
     }
 
-    const room = roomId
+    let room = roomId
       ? await fetchRoom(base44, roomId)
       : await fetchRoomByCode(base44, body?.room_code || body?.code);
     roomIDForLog = safeLogLabel(room?.id);
@@ -2460,6 +2541,35 @@ Deno.serve(async (req) => {
     }
 
     if (action !== "join_room") requirePlayer(room, user);
+
+    if (action === "finalize_expired_room") {
+      assertExpectedTimerFinalizationScope(room, body);
+    }
+
+    if (EXPLICIT_TIMER_FINALIZE_ACTIONS.has(action)) {
+      if (normalizedStatus(room) === "finished") {
+        room = await dispatchRoomSideEffectsAfterLeases(base44, room, action);
+        if (!room) return jsonError("Room not found", 404);
+        return Response.json(roomForClient(room, user));
+      }
+      if (pendingTerminalIntent(room)) {
+        const reconciled = await waitForCommittedTerminalRoom(base44, room);
+        if (!reconciled) return jsonError("Room not found", 404);
+        room = reconciled;
+        if (action === "finalize_expired_room") {
+          assertExpectedTimerFinalizationScope(room, body);
+        }
+        if (normalizedStatus(room) === "finished") {
+          room = await dispatchRoomSideEffectsAfterLeases(
+            base44,
+            room,
+            action,
+          );
+          if (!room) return jsonError("Room not found", 404);
+          return Response.json(roomForClient(room, user));
+        }
+      }
+    }
 
     // Capture whether this exact server request entered during an active vote
     // before it can wait behind lifecycle leases. Client-supplied values are
@@ -2541,6 +2651,9 @@ Deno.serve(async (req) => {
             lifecycleStore:
               base44.asServiceRole.entities.BillingIdentityLifecycle,
             userIDs,
+            attempts: EXPLICIT_TIMER_FINALIZE_ACTIONS.has(action)
+              ? 1
+              : undefined,
             action: async (context) => {
               base44.__spyclashRoomWriteLeaseContext = context;
               try {
@@ -2595,6 +2708,20 @@ Deno.serve(async (req) => {
           });
         },
       }).catch((error) => {
+        if (EXPLICIT_TIMER_FINALIZE_ACTIONS.has(action)) {
+          return reconcileTerminalFinalizationAfterLeaseConflict({
+            action,
+            error,
+            refetch: () => fetchRoom(base44, room.id),
+            validate: (candidate) => {
+              requirePlayer(candidate, user);
+              if (action === "finalize_expired_room") {
+                assertExpectedTimerFinalizationScope(candidate, actionBody);
+              }
+            },
+            delay,
+          });
+        }
         if (action === "cast_detective_vote") {
           return reconcileDetectiveVoteCastAfterActiveIdentityLease({
             action,
@@ -2665,7 +2792,15 @@ Deno.serve(async (req) => {
       });
     }
     if (result?.id && !readOnlyCastLeaseRecovery) {
-      await dispatchRoomPushBestEffort(base44, result, action);
+      // Finish push repair and ActivityKit delivery must complete after the
+      // participant room leases are released and before realtime wakes every
+      // client to unregister its token against the same account lease.
+      result = await dispatchRoomSideEffectsAfterLeases(
+        base44,
+        result,
+        action,
+      );
+      if (!result) return jsonError("Room not found", 404);
     }
     return Response.json(result?.id ? roomForClient(result, user) : result);
   } catch (error) {

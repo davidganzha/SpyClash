@@ -1,8 +1,9 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import { enqueueGamePushEvents, gamePushExpiry } from "./push-events.ts";
 
 class Store {
   records: Record<string, any>[] = [];
+  throwAfterNextCreate = false;
   async filter(filter: Record<string, any>) {
     return this.records.filter((record) =>
       Object.entries(filter).every(([key, value]) => record[key] === value)
@@ -10,6 +11,10 @@ class Store {
   }
   async create(record: Record<string, any>) {
     this.records.push({ id: `row-${this.records.length + 1}`, ...record });
+    if (this.throwAfterNextCreate) {
+      this.throwAfterNextCreate = false;
+      throw new Error("lost create response");
+    }
   }
   async updateMany(
     filter: Record<string, any>,
@@ -31,6 +36,7 @@ class Store {
 
 Deno.test("game event fans out once per stable participant id", async () => {
   const store = new Store();
+  let persistenceBoundaries = 0;
   const input = {
     base44: { asServiceRole: { entities: { PushNotificationEvent: store } } },
     room: {
@@ -41,7 +47,10 @@ Deno.test("game event fans out once per stable participant id", async () => {
     eventType: "game_started" as const,
     sourceEventID: "source-1",
     matchID: "match-1",
-    persist: async <T>(writer: () => Promise<T>) => await writer(),
+    persist: async <T>(writer: () => Promise<T>) => {
+      persistenceBoundaries += 1;
+      return await writer();
+    },
     now: new Date("2026-07-15T12:00:00.000Z"),
     randomUUID: () => crypto.randomUUID(),
   };
@@ -51,6 +60,7 @@ Deno.test("game event fans out once per stable participant id", async () => {
     true,
   );
   await enqueueGamePushEvents({ ...input, sourceCommitted: true });
+  assertEquals(persistenceBoundaries, 2);
   assertEquals(store.records.map((record) => record.recipient_user_id), [
     "a",
     "b",
@@ -72,6 +82,32 @@ Deno.test("game event fans out once per stable participant id", async () => {
     ),
     true,
   );
+});
+
+Deno.test("a partial batched enqueue retries without duplicate recipients", async () => {
+  const store = new Store();
+  store.throwAfterNextCreate = true;
+  const input = {
+    base44: { asServiceRole: { entities: { PushNotificationEvent: store } } },
+    room: {
+      id: "room-1",
+      participant_user_ids: ["a", "b"],
+      players: [],
+    },
+    eventType: "game_finished" as const,
+    sourceEventID: "finish-1",
+    matchID: "match-1",
+    persist: async <T>(writer: () => Promise<T>) => await writer(),
+    now: new Date("2026-07-15T12:00:00.000Z"),
+    randomUUID: () => crypto.randomUUID(),
+  };
+
+  await assertRejects(() => enqueueGamePushEvents(input), Error);
+  await enqueueGamePushEvents(input);
+  assertEquals(store.records.map((record) => record.recipient_user_id), [
+    "a",
+    "b",
+  ]);
 });
 
 Deno.test("game start alert expires with the match instead of lingering offline", () => {
