@@ -72,11 +72,30 @@ private enum ShellHorizontalControlHitTest {
 }
 
 enum ShellSupplementaryRefreshPolicy {
+    enum Stream {
+        case community
+        case notifications
+    }
+
     static func shouldRun(activeRoomStatus: String?) -> Bool {
         let status = activeRoomStatus?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         return status != "roulette" && status != "playing"
+    }
+
+    static func initialDelaySeconds(for stream: Stream) -> Double {
+        switch stream {
+        case .community: 7
+        case .notifications: 2
+        }
+    }
+
+    static func intervalSeconds(for stream: Stream) -> Double {
+        switch stream {
+        case .community: 60
+        case .notifications: 90
+        }
     }
 }
 
@@ -333,12 +352,30 @@ struct AppShellView: View {
     }
 
     private func monitorNotificationInbox() async {
+        do {
+            try await Task.sleep(
+                for: .seconds(
+                    ShellSupplementaryRefreshPolicy.initialDelaySeconds(
+                        for: .notifications
+                    )
+                )
+            )
+        } catch {
+            return
+        }
+
         while !Task.isCancelled {
             await appState.notificationInbox.refreshSummary()
             synchronizeNotificationBadge()
 
             do {
-                try await Task.sleep(for: .seconds(20))
+                try await Task.sleep(
+                    for: .seconds(
+                        ShellSupplementaryRefreshPolicy.intervalSeconds(
+                            for: .notifications
+                        )
+                    )
+                )
             } catch {
                 return
             }
@@ -604,11 +641,29 @@ struct AppShellView: View {
 #endif
 
     private func monitorCommunityAttention() async {
+        do {
+            try await Task.sleep(
+                for: .seconds(
+                    ShellSupplementaryRefreshPolicy.initialDelaySeconds(
+                        for: .community
+                    )
+                )
+            )
+        } catch {
+            return
+        }
+
         while !Task.isCancelled {
             await refreshCommunityAttention()
 
             do {
-                try await Task.sleep(for: .seconds(20))
+                try await Task.sleep(
+                    for: .seconds(
+                        ShellSupplementaryRefreshPolicy.intervalSeconds(
+                            for: .community
+                        )
+                    )
+                )
             } catch {
                 return
             }
