@@ -575,6 +575,8 @@ final class RadarNearbyService: NSObject {
     private var presencePublishRunID: UUID?
 #if DEBUG
     private var usesPreviewRangingPeers = false
+    private var previewScanFailureMessage: String?
+    private(set) var transportRebuildCountForTesting = 0
 #endif
 
     override init() {
@@ -750,6 +752,18 @@ final class RadarNearbyService: NSObject {
             applyPreviewRangingPeers()
         }
 #endif
+    }
+
+    func retryScanning(requestCameraAccess: Bool = false) {
+        // A failed MCNearbyServiceBrowser or advertiser is not guaranteed to
+        // recover when startScanning() is called again. Tear down the complete
+        // transport first so Retry always creates fresh Multipeer objects.
+        debugLog("scan retry requested")
+#if DEBUG
+        previewScanFailureMessage = nil
+#endif
+        stopTransport(clearPeers: true)
+        startScanning(requestCameraAccess: requestCameraAccess)
     }
 
     func stopScanning() {
@@ -1070,10 +1084,19 @@ final class RadarNearbyService: NSObject {
         applyPreviewRangingPeers()
     }
 
+    func installPreviewScanFailure(message: String = "Preview local search failure") {
+        previewScanFailureMessage = message
+        markTransportUnavailable(message)
+    }
+
     private func applyPreviewRangingPeers() {
         supportsPreciseDistance = true
         supportsDirectionMeasurement = true
         supportsCameraAssistance = true
+        if let previewScanFailureMessage {
+            markTransportUnavailable(previewScanFailureMessage)
+            return
+        }
         scanState = .scanning
         peers = [
             RadarNearbyPeer(
@@ -1169,6 +1192,9 @@ final class RadarNearbyService: NSObject {
     private func rebuildTransportIfNeeded() {
         stopTransport(clearPeers: true)
         guard allowsTransport, isApplicationActive, let identity else { return }
+#if DEBUG
+        transportRebuildCountForTesting &+= 1
+#endif
 
         let peerID = Self.persistentPeerID()
         debugLog("transport rebuilt localPeer=\(peerID.displayName)")
@@ -1259,6 +1285,16 @@ final class RadarNearbyService: NSObject {
         self.browser = browser
         scanState = .scanning
         browser.startBrowsingForPeers()
+    }
+
+    private func markTransportUnavailable(_ message: String) {
+        let shouldReportFailure = wantsScanning
+        debugLog("transport unavailable: \(message)")
+        // Failed Multipeer objects are not restartable. Remove the complete
+        // transport immediately so leaving and re-entering Radar cannot reuse
+        // a broken advertiser, browser, or session.
+        stopTransport(clearPeers: true)
+        scanState = shouldReportFailure ? .unavailable(message) : .idle
     }
 
     private func stopTransport(clearPeers: Bool) {
@@ -2991,7 +3027,7 @@ extension RadarNearbyService: MCNearbyServiceBrowserDelegate {
             guard let self,
                   self.allowsTransport,
                   self.browser === activeBrowser.value else { return }
-            self.scanState = .unavailable(message)
+            self.markTransportUnavailable(message)
         }
     }
 }
@@ -3030,9 +3066,8 @@ extension RadarNearbyService: MCNearbyServiceAdvertiserDelegate {
         Task { @MainActor [weak self] in
             guard let self,
                   self.allowsTransport,
-                  self.advertiser === activeAdvertiser.value,
-                  self.wantsScanning else { return }
-            self.scanState = .unavailable(message)
+                  self.advertiser === activeAdvertiser.value else { return }
+            self.markTransportUnavailable(message)
         }
     }
 }

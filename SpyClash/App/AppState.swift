@@ -2664,12 +2664,24 @@ final class AppState: NSObject {
         radarActivationRevision &+= 1
         reconcileRadarInvitePolicy(for: user, accountChanged: false)
         radarNearby.startScanning(requestCameraAccess: requestCameraAccess)
+#if DEBUG
+        installPreviewRadarFailureIfRequested()
+#endif
     }
 
     func resumeRadarScanningIfActivated(requestCameraAccess: Bool = false) {
         guard let user, isRadarActivated else { return }
         reconcileRadarInvitePolicy(for: user, accountChanged: false)
         radarNearby.startScanning(requestCameraAccess: requestCameraAccess)
+#if DEBUG
+        installPreviewRadarFailureIfRequested()
+#endif
+    }
+
+    func retryRadarScanning(requestCameraAccess: Bool = false) {
+        guard let user, isRadarActivated else { return }
+        reconcileRadarInvitePolicy(for: user, accountChanged: false)
+        radarNearby.retryScanning(requestCameraAccess: requestCameraAccess)
     }
 
     func retryRadarInvitePolicySync() {
@@ -3932,6 +3944,14 @@ final class AppState: NSObject {
     }
 
 #if DEBUG
+    private func installPreviewRadarFailureIfRequested() {
+        guard isUIPreviewMode,
+              ProcessInfo.processInfo.arguments.contains(
+                  "--spyclash-preview-radar-unavailable"
+              ) else { return }
+        radarNearby.installPreviewScanFailure()
+    }
+
     private func activateUIPreviewModeIfRequested() -> Bool {
         let arguments = ProcessInfo.processInfo.arguments
         guard arguments.contains("--spyclash-ui-preview") else {

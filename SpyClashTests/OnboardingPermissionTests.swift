@@ -255,4 +255,45 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         XCTAssertEqual(radar.scanState, .idle)
         XCTAssertTrue(radar.peers.isEmpty)
     }
+
+#if DEBUG
+    @MainActor
+    func testRadarRetryRecoversPreviewScanAfterUnavailableTransport() throws {
+        let user = try JSONDecoder().decode(
+            SpyUser.self,
+            from: Data(#"{"id":"radar-retry-user","email":"radar-retry@example.com"}"#.utf8)
+        )
+        let radar = RadarNearbyService()
+
+        radar.configure(user: user, allowsTransport: true)
+        radar.setApplicationActive(true)
+        radar.installPreviewRangingPeers()
+        radar.startScanning()
+        radar.installPreviewScanFailure(message: "Local network unavailable")
+        let rebuildCountBeforeRetry = radar.transportRebuildCountForTesting
+
+        XCTAssertEqual(radar.scanState, .unavailable("Local network unavailable"))
+        XCTAssertTrue(radar.peers.isEmpty)
+
+        radar.stopScanning()
+        radar.startScanning()
+
+        XCTAssertEqual(radar.scanState, .unavailable("Local network unavailable"))
+        XCTAssertGreaterThan(radar.transportRebuildCountForTesting, rebuildCountBeforeRetry)
+
+        let rebuildCountBeforeExplicitRetry = radar.transportRebuildCountForTesting
+
+        radar.retryScanning()
+
+        XCTAssertEqual(radar.scanState, .scanning)
+        XCTAssertFalse(radar.peers.isEmpty)
+        XCTAssertGreaterThan(
+            radar.transportRebuildCountForTesting,
+            rebuildCountBeforeExplicitRetry
+        )
+
+        radar.stopScanning()
+        radar.configure(user: nil, allowsTransport: false)
+    }
+#endif
 }

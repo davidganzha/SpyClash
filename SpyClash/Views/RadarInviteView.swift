@@ -1,4 +1,5 @@
 import SwiftUI
+import UIKit
 
 struct RadarInviteView: View {
     @Environment(AppState.self) private var appState
@@ -26,7 +27,18 @@ struct RadarInviteView: View {
                 VStack(spacing: 16) {
                     header
                     if appState.isRadarActivated {
-                        identityGrid
+                        if case .unavailable = radar.scanState {
+                            RadarScanRecoveryPrompt(
+                                language: appState.language,
+                                retryAccessibilityIdentifier: "radar.retry",
+                                settingsAccessibilityIdentifier: "radar.openSettings"
+                            ) {
+                                HapticManager.shared.fire(.buttonPress)
+                                appState.retryRadarScanning(requestCameraAccess: true)
+                            }
+                        } else {
+                            identityGrid
+                        }
                     } else {
                         activationCard
                     }
@@ -236,6 +248,97 @@ struct RadarInviteView: View {
 
     private func localized(en: String, ru: String, es: String, uk: String) -> String {
         switch appState.language {
+        case .ru: ru
+        case .es: es
+        case .uk: uk
+        default: en
+        }
+    }
+}
+
+struct RadarScanRecoveryPrompt: View {
+    @Environment(\.openURL) private var openURL
+
+    let language: AppLanguage
+    let retryAccessibilityIdentifier: String
+    let settingsAccessibilityIdentifier: String
+    var compact = false
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(spacing: compact ? 8 : 12) {
+            Image(systemName: "exclamationmark.triangle.fill")
+                .font(.system(size: compact ? 18 : 24, weight: .black))
+                .foregroundStyle(SpyTheme.red)
+
+            Text(localized(
+                en: "RADAR COULD NOT START",
+                ru: "НЕ УДАЛОСЬ ЗАПУСТИТЬ РАДАР",
+                es: "NO SE PUDO INICIAR RADAR",
+                uk: "НЕ ВДАЛОСЯ ЗАПУСТИТИ РАДАР"
+            ))
+            .font(.system(size: compact ? 8 : 10, weight: .black, design: .monospaced))
+            .tracking(0.10)
+            .foregroundStyle(.white)
+            .multilineTextAlignment(.center)
+
+            Text(localized(
+                en: "Check Local Network access in Settings, then retry.",
+                ru: "Проверь доступ к локальной сети в Настройках и повтори попытку.",
+                es: "Revisa el acceso a la red local en Ajustes y vuelve a intentarlo.",
+                uk: "Перевір доступ до локальної мережі в Налаштуваннях і повтори спробу."
+            ))
+            .font(.system(size: compact ? 7 : 9, weight: .semibold, design: .monospaced))
+            .foregroundStyle(SpyTheme.dim)
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 8) {
+                Button(action: retry) {
+                    Label(
+                        localized(en: "RETRY", ru: "ПОВТОРИТЬ", es: "REINTENTAR", uk: "ПОВТОРИТИ"),
+                        systemImage: "arrow.clockwise"
+                    )
+                    .font(.system(size: compact ? 8 : 9, weight: .black, design: .monospaced))
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(SpyButtonStyle(variant: .red))
+                .accessibilityIdentifier(retryAccessibilityIdentifier)
+
+                Button {
+                    guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                    openURL(url)
+                } label: {
+                    Label(
+                        localized(
+                            en: "OPEN SETTINGS",
+                            ru: "ОТКРЫТЬ НАСТРОЙКИ",
+                            es: "ABRIR AJUSTES",
+                            uk: "ВІДКРИТИ НАЛАШТУВАННЯ"
+                        ),
+                        systemImage: "gearshape"
+                    )
+                    .font(.system(size: compact ? 8 : 9, weight: .black, design: .monospaced))
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(SpyButtonStyle(variant: .ghost))
+                .accessibilityIdentifier(settingsAccessibilityIdentifier)
+            }
+        }
+        .padding(compact ? 10 : 18)
+        .frame(maxWidth: .infinity, maxHeight: compact ? .infinity : nil)
+        .background(
+            compact ? Color.clear : SpyTheme.panelDeep,
+            in: CutCornerShape(cut: 10)
+        )
+        .overlay(
+            CutCornerShape(cut: 10)
+                .stroke(SpyTheme.strokeStrong.opacity(compact ? 0 : 1), lineWidth: 1)
+        )
+    }
+
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
+        switch language {
         case .ru: ru
         case .es: es
         case .uk: uk

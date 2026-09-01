@@ -3255,40 +3255,54 @@ struct GameView: View {
                         .padding(.horizontal, 18)
                         .contentTransition(.opacity)
 
-                    ScrollView(.vertical, showsIndicators: true) {
-                        LazyVGrid(columns: columns, spacing: 8) {
-                            if roomRadar.peers.isEmpty {
-                                ForEach(0..<4, id: \.self) { index in
-                                    NearbySpyIDPlaceholder(
-                                        index: index,
-                                        isActive: roomAccessPage == RoomAccessPagePolicy.radar && index < 2,
-                                        language: appState.language
-                                    )
-                                }
-                            } else {
-                                ForEach(roomRadar.peers) { peer in
-                                    NearbySpyIDCard(
-                                        peer: peer,
-                                        language: appState.language,
-                                        invitationState: roomRadar.invitationState(for: peer.id)
-                                    ) {
-                                        inviteRoomRadarPeer(peer, to: room)
+                    if case .unavailable = roomRadar.scanState {
+                        RadarScanRecoveryPrompt(
+                            language: appState.language,
+                            retryAccessibilityIdentifier: "onlineRoom.retryRadar",
+                            settingsAccessibilityIdentifier: "onlineRoom.openRadarSettings",
+                            compact: true
+                        ) {
+                            HapticManager.shared.fire(.buttonPress)
+                            appState.retryRadarScanning(requestCameraAccess: true)
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 12)
+                    } else {
+                        ScrollView(.vertical, showsIndicators: true) {
+                            LazyVGrid(columns: columns, spacing: 8) {
+                                if roomRadar.peers.isEmpty {
+                                    ForEach(0..<4, id: \.self) { index in
+                                        NearbySpyIDPlaceholder(
+                                            index: index,
+                                            isActive: roomAccessPage == RoomAccessPagePolicy.radar && index < 2,
+                                            language: appState.language
+                                        )
                                     }
-                                    .transition(.radarPeerPresence)
+                                } else {
+                                    ForEach(roomRadar.peers) { peer in
+                                        NearbySpyIDCard(
+                                            peer: peer,
+                                            language: appState.language,
+                                            invitationState: roomRadar.invitationState(for: peer.id)
+                                        ) {
+                                            inviteRoomRadarPeer(peer, to: room)
+                                        }
+                                        .transition(.radarPeerPresence)
+                                    }
                                 }
                             }
+                            .padding(.horizontal, 12)
+                            .padding(.bottom, 30)
+                            .animation(
+                                reduceMotion
+                                    ? .easeOut(duration: 0.14)
+                                    : .spring(response: 0.48, dampingFraction: 0.88),
+                                value: roomRadar.peers.map(\.id)
+                            )
                         }
-                        .padding(.horizontal, 12)
-                        .padding(.bottom, 30)
-                        .animation(
-                            reduceMotion
-                                ? .easeOut(duration: 0.14)
-                                : .spring(response: 0.48, dampingFraction: 0.88),
-                            value: roomRadar.peers.map(\.id)
-                        )
+                        .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+                        .accessibilityIdentifier("onlineRoom.radarDirectory")
                     }
-                    .scrollBounceBehavior(.basedOnSize, axes: .vertical)
-                    .accessibilityIdentifier("onlineRoom.radarDirectory")
                 } else {
                     roomRadarActivationPrompt
                 }
