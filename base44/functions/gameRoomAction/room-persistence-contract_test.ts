@@ -428,7 +428,7 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     source.indexOf("async function dispatchRoomPushBestEffort"),
   );
   const terminalReconciliation = executeAction.indexOf(
-    "return await finishRoom(base44, room, terminal.winner)",
+    "return await finishRoom(base44, room, terminal.winner",
   );
   const pauseGuard = executeAction.indexOf(
     "assertGameActionAllowedWhilePaused(room, action)",
@@ -498,7 +498,7 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     source.indexOf("function lifecycleHTTPStatus"),
   );
   const pushAfterLease = terminalSideEffects.indexOf(
-    "await dispatchRoomPushBestEffort(base44, claimedRoom, action)",
+    "await dispatchRoomPushBestEffort(",
   );
   const signalAfterPush = terminalSideEffects.indexOf(
     "await fanoutDeferredFinishedRoomSignal(base44, claimedRoom)",

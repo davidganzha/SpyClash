@@ -79,7 +79,10 @@ import {
 import { storedRoomParticipantUserIDs } from "./room-participant-identity.ts";
 import { commitGamePushEvents, enqueueGamePushEvents } from "./push-events.ts";
 import {
+  createOpaqueTimingID,
+  createSpyGuessSideEffectTiming,
   createTerminalPhaseTiming,
+  normalizeOpaqueTimingID,
   spyGuessResponseTiming,
 } from "./terminal-timing.ts";
 import { nextRoundNumber } from "./game-round.ts";
@@ -736,7 +739,13 @@ async function claimTerminalIntent(
   );
 }
 
-async function finishRoom(base44, room, winner, terminalPatch = {}) {
+async function finishRoom(
+  base44,
+  room,
+  winner,
+  terminalPatch = {},
+  options = {},
+) {
   const terminalTiming = createTerminalPhaseTiming();
   let terminalOutcome = "failed";
   let timingRoom = room;
@@ -870,7 +879,11 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
     try {
       console.info(
         "gameRoomAction terminal phase timing",
-        terminalTiming.report(terminalOutcome, players(timingRoom).length),
+        terminalTiming.report(
+          terminalOutcome,
+          players(timingRoom).length,
+          options.timingID,
+        ),
       );
     } catch {
       // Timing diagnostics must never change the terminal game result.
@@ -2139,7 +2152,7 @@ async function castDetectiveVote(base44, room, user, body) {
     : votedRoom;
 }
 
-async function submitSpyGuess(base44, room, user, body) {
+async function submitSpyGuess(base44, room, user, body, options = {}) {
   requirePlayer(room, user);
   assertActiveSpyGuesser(room, user.email);
 
@@ -2147,7 +2160,7 @@ async function submitSpyGuess(base44, room, user, body) {
   const winner = spyGuessWinner(displayWord(room), guess);
   return await finishRoom(base44, room, winner, {
     spy_guess: guess,
-  });
+  }, options);
 }
 
 async function leaveRoom(base44, room, user, options = {}) {
@@ -2435,7 +2448,14 @@ async function activeRoomForUser(base44, user, preferredRoomID) {
     )[0] || null;
 }
 
-async function executeRoomAction(base44, action, room, user, body) {
+async function executeRoomAction(
+  base44,
+  action,
+  room,
+  user,
+  body,
+  options = {},
+) {
   const terminal = pendingTerminalIntent(room);
   if (terminal) {
     if (action === "join_room") {
@@ -2447,7 +2467,7 @@ async function executeRoomAction(base44, action, room, user, body) {
     // Any authenticated participant retry helps finish the immutable decision
     // before another mutation is allowed. The persisted intent, not this new
     // action's payload, remains the sole terminal source of truth.
-    return await finishRoom(base44, room, terminal.winner);
+    return await finishRoom(base44, room, terminal.winner, {}, options);
   }
 
   if (action !== "join_room") {
@@ -2515,7 +2535,7 @@ async function executeRoomAction(base44, action, room, user, body) {
     case "cast_detective_vote":
       return await castDetectiveVote(base44, room, user, body);
     case "submit_spy_guess":
-      return await submitSpyGuess(base44, room, user, body);
+      return await submitSpyGuess(base44, room, user, body, options);
     case "finalize_expired_room": {
       // Recheck under the participant lease set. A room can be reset to a new
       // match after the client's authoritative read but before this write.
@@ -2550,7 +2570,14 @@ async function executeRoomActionWithSignal(
   body,
   options = {},
 ) {
-  const result = await executeRoomAction(base44, action, room, user, body);
+  const result = await executeRoomAction(
+    base44,
+    action,
+    room,
+    user,
+    body,
+    options,
+  );
   if (result?.id && !shouldDeferFinishedRoomSignal(result)) {
     let additionalRecipientUserIDs = [];
     if (action === "kick_player" && normalizedStatus(result) === "waiting") {
@@ -2773,7 +2800,12 @@ async function repairFinishedCommunityProfilesAndSignals(base44, room) {
   );
 }
 
-async function dispatchRoomPushBestEffort(base44, room, action) {
+async function dispatchRoomPushBestEffort(
+  base44,
+  room,
+  action,
+  options = {},
+) {
   const internalSecret = internalPushSecret(
     Deno.env.get("PUSH_INTERNAL_SECRET"),
   );
@@ -2788,44 +2820,71 @@ async function dispatchRoomPushBestEffort(base44, room, action) {
   if (isCommittedFinishedRoom(room)) {
     sourceEventIDs.push(clean(room.game_finished_event_id));
   }
+  const timingID = normalizeOpaqueTimingID(options.timingID);
+  const timing = options.sideEffectTiming;
+  timing?.begin("push_function_invoke");
   try {
     for (const sourceEventID of sourceEventIDs) {
-      await base44.asServiceRole.functions.invoke("pushNotificationAction", {
+      const invocationBody = {
         action: "process_event",
         source_event_id: sourceEventID,
         internal_secret: internalSecret,
-      });
+        ...(timingID ? { timing_id: timingID } : {}),
+      };
+      await base44.asServiceRole.functions.invoke(
+        "pushNotificationAction",
+        invocationBody,
+      );
     }
     // process_event already synchronizes the matching ActivityKit generation
     // before it drains the ordinary alert. Avoid invoking the same terminal
     // sync twice on the hottest post-game path.
     if (!sourceEventIDs.length && shouldSynchronizeLiveActivity(action, room)) {
-      await base44.asServiceRole.functions.invoke("pushNotificationAction", {
+      const invocationBody = {
         action: "sync_live_activity",
         room_id: clean(room.id),
         match_id: clean(room.match_id),
         internal_secret: internalSecret,
-      });
+        ...(timingID ? { timing_id: timingID } : {}),
+      };
+      await base44.asServiceRole.functions.invoke(
+        "pushNotificationAction",
+        invocationBody,
+      );
     }
     return true;
   } catch (error) {
     console.error("room push dispatch deferred", error?.message || error);
     return false;
+  } finally {
+    timing?.complete("push_function_invoke");
   }
 }
 
-async function dispatchRoomSideEffectsAfterLeases(base44, room, action) {
+async function dispatchRoomSideEffectsAfterLeases(
+  base44,
+  room,
+  action,
+  options = {},
+) {
   if (!isCommittedFinishedRoom(room)) {
-    await dispatchRoomPushBestEffort(base44, room, action);
+    await dispatchRoomPushBestEffort(base44, room, action, options);
     return room;
   }
   // The durable history queue is authoritative for profile convergence and is
   // attempted before APNs. A missing secret or push outage must never gate the
   // participant's freshly mirrored competitive identity.
-  const profileRun = await dispatchFinishedCommunityProfileSideEffects(
-    base44,
-    room,
-  );
+  const timing = options.sideEffectTiming;
+  timing?.begin("profile_repair");
+  let profileRun;
+  try {
+    profileRun = await dispatchFinishedCommunityProfileSideEffects(
+      base44,
+      room,
+    );
+  } finally {
+    timing?.complete("profile_repair");
+  }
   if (profileRun.outcome === "failed") {
     console.error("terminal community profile repair deferred");
   }
@@ -2833,13 +2892,25 @@ async function dispatchRoomSideEffectsAfterLeases(base44, room, action) {
     store: base44.asServiceRole.entities.GameRoom,
     room: profileRun.room || room,
     dispatch: async (claimedRoom) => {
-      if (!(await dispatchRoomPushBestEffort(base44, claimedRoom, action))) {
+      if (
+        !(await dispatchRoomPushBestEffort(
+          base44,
+          claimedRoom,
+          action,
+          options,
+        ))
+      ) {
         return false;
       }
       // Polling is the realtime fallback. Once the durable push/ActivityKit
       // pipeline succeeds, a transient signal write must not cause it to be
       // replayed after the source lease expires.
-      await fanoutDeferredFinishedRoomSignal(base44, claimedRoom);
+      timing?.begin("signal_fanout");
+      try {
+        await fanoutDeferredFinishedRoomSignal(base44, claimedRoom);
+      } finally {
+        timing?.complete("signal_fanout");
+      }
       return true;
     },
   });
@@ -2904,6 +2975,8 @@ Deno.serve(async (req) => {
   let actionCompletedAt = null;
   let postCommitSideEffectsStartedAt = null;
   let postCommitSideEffectsMS = 0;
+  let spyGuessTimingID = "";
+  const spyGuessSideEffectTiming = createSpyGuessSideEffectTiming();
   const logSpyGuessResponseTiming = (outcome, responseReadyAt) => {
     if (actionForLog !== "submit_spy_guess") return;
     const completedAt = actionCompletedAt ?? responseReadyAt;
@@ -2918,11 +2991,13 @@ Deno.serve(async (req) => {
       console.info(
         "gameRoomAction spy-guess response timing",
         spyGuessResponseTiming({
+          timingID: spyGuessTimingID,
           requestStartedAt,
           actionStartedAt: startedAt,
           actionCompletedAt: completedAt,
           responseReadyAt,
           postCommitSideEffectsMS: sideEffectsMS,
+          sideEffects: spyGuessSideEffectTiming.snapshot(),
           outcome,
         }),
       );
@@ -3012,6 +3087,17 @@ Deno.serve(async (req) => {
     const action = requestedAction;
     const roomId = clean(body?.room_id);
     actionForLog = safeLogLabel(action);
+    if (action === "submit_spy_guess") {
+      // A request-local UUID correlates timing-only logs across the two
+      // functions. It is unrelated to room/user/content and is never persisted.
+      spyGuessTimingID = createOpaqueTimingID();
+    }
+    const spyGuessTimingOptions = spyGuessTimingID
+      ? {
+        timingID: spyGuessTimingID,
+        sideEffectTiming: spyGuessSideEffectTiming,
+      }
+      : {};
 
     if (!action) return jsonError("Missing action");
 
@@ -3191,7 +3277,10 @@ Deno.serve(async (req) => {
           room,
           user,
           actionBody,
-          { allowSignalCreate: false },
+          {
+            allowSignalCreate: false,
+            ...spyGuessTimingOptions,
+          },
         );
       } finally {
         delete base44.__spyclashFastRoomWriteContext;
@@ -3273,6 +3362,7 @@ Deno.serve(async (req) => {
                   migratedRoom,
                   user,
                   actionBody,
+                  spyGuessTimingOptions,
                 );
               } finally {
                 delete base44.__spyclashRoomWriteLeaseContext;
@@ -3375,6 +3465,7 @@ Deno.serve(async (req) => {
         base44,
         result,
         action,
+        spyGuessTimingOptions,
       );
       postCommitSideEffectsMS = Math.round(
         performance.now() - sideEffectsStartedAt,

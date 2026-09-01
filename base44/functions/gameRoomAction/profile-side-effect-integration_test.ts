@@ -38,11 +38,11 @@ Deno.test("terminal profile repair is post-commit, durable, and push-independent
   assertStringIncludes(dispatch, "const pushRun = await");
   assertStringIncludes(
     dispatch,
-    "const profileRun = await dispatchFinishedCommunityProfileSideEffects(",
+    "profileRun = await dispatchFinishedCommunityProfileSideEffects(",
   );
   assertStringIncludes(dispatch, 'stateKey: "profile_side_effect_dispatch"');
   assert(
-    dispatch.indexOf("const profileRun = await") <
+    dispatch.indexOf("profileRun = await") <
       dispatch.indexOf("const pushRun = await"),
     "profile repair must be attempted independently before APNs dispatch",
   );

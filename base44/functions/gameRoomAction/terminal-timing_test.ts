@@ -3,9 +3,14 @@ import {
   assertFalse,
 } from "https://deno.land/std@0.224.0/assert/mod.ts";
 import {
+  createOpaqueTimingID,
+  createSpyGuessSideEffectTiming,
   createTerminalPhaseTiming,
+  normalizeOpaqueTimingID,
   spyGuessResponseTiming,
 } from "./terminal-timing.ts";
+
+const timingID = "123e4567-e89b-42d3-a456-426614174000";
 
 Deno.test("terminal timing reports every completed phase without identity fields", () => {
   let now = 100;
@@ -76,26 +81,129 @@ Deno.test("terminal timing preserves the active failed phase", () => {
 
 Deno.test("spy guess response timing includes work before the action", () => {
   const report = spyGuessResponseTiming({
+    timingID,
     requestStartedAt: 10,
     actionStartedAt: 130,
     actionCompletedAt: 360,
     responseReadyAt: 430,
     postCommitSideEffectsMS: 70,
+    sideEffects: {
+      profile_repair_ms: 12,
+      push_function_invoke_ms: 44,
+      signal_fanout_ms: 8,
+    },
     outcome: "completed",
   });
 
   assertEquals(report, {
+    timing_id: timingID,
     pre_action_ms: 120,
     action_core_ms: 230,
+    profile_repair_ms: 12,
+    push_function_invoke_ms: 44,
+    signal_fanout_ms: 8,
     post_commit_side_effects_ms: 70,
     total_ms: 420,
     outcome: "completed",
   });
   assertEquals(Object.keys(report), [
+    "timing_id",
     "pre_action_ms",
     "action_core_ms",
+    "profile_repair_ms",
+    "push_function_invoke_ms",
+    "signal_fanout_ms",
     "post_commit_side_effects_ms",
     "total_ms",
     "outcome",
   ]);
+});
+
+Deno.test("opaque timing ids are generated and normalized without accepting content", () => {
+  assertEquals(createOpaqueTimingID(() => timingID.toUpperCase()), timingID);
+  assertEquals(
+    normalizeOpaqueTimingID(` ${timingID.toUpperCase()} `),
+    timingID,
+  );
+  assertEquals(normalizeOpaqueTimingID("room-123:user@example.com"), "");
+  assertEquals(createOpaqueTimingID(() => "guess-content"), "");
+  assertEquals(
+    createOpaqueTimingID(() => {
+      throw new Error("random source unavailable");
+    }),
+    "",
+  );
+});
+
+Deno.test("spy guess side-effect timing accumulates only allowlisted phases", () => {
+  let now = 0;
+  const timing = createSpyGuessSideEffectTiming(() => now);
+  timing.begin("profile_repair");
+  now = 11;
+  timing.complete("profile_repair");
+  timing.begin("push_function_invoke");
+  now = 36;
+  timing.complete("push_function_invoke");
+  timing.begin("signal_fanout");
+  now = 43;
+  timing.complete("signal_fanout");
+
+  assertEquals(timing.snapshot(), {
+    profile_repair_ms: 11,
+    push_function_invoke_ms: 25,
+    signal_fanout_ms: 7,
+  });
+});
+
+Deno.test("terminal and response reports share only the opaque correlation id", () => {
+  let now = 0;
+  const terminal = createTerminalPhaseTiming(() => now);
+  now = 5;
+  const terminalReport = terminal.report("completed", 2, timingID);
+  const responseReport = spyGuessResponseTiming({
+    timingID,
+    requestStartedAt: 0,
+    actionStartedAt: 1,
+    actionCompletedAt: 3,
+    responseReadyAt: 5,
+    postCommitSideEffectsMS: 2,
+    outcome: "completed",
+  });
+
+  assertEquals(terminalReport.timing_id, responseReport.timing_id);
+  const allowedTerminalFields = new Set([
+    "timing_id",
+    "terminal_claim_ms",
+    "push_enqueue_ms",
+    "history_archive_ms",
+    "room_commit_ms",
+    "push_commit_ms",
+    "total_ms",
+    "player_count",
+    "outcome",
+    "failed_phase",
+  ]);
+  const allowedResponseFields = new Set([
+    "timing_id",
+    "pre_action_ms",
+    "action_core_ms",
+    "profile_repair_ms",
+    "push_function_invoke_ms",
+    "signal_fanout_ms",
+    "post_commit_side_effects_ms",
+    "total_ms",
+    "outcome",
+  ]);
+  assertEquals(
+    Object.keys(terminalReport).every((field) =>
+      allowedTerminalFields.has(field)
+    ),
+    true,
+  );
+  assertEquals(
+    Object.keys(responseReport).every((field) =>
+      allowedResponseFields.has(field)
+    ),
+    true,
+  );
 });

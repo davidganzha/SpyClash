@@ -58,6 +58,7 @@ import { backfillLegacyInboxProjections } from "./inbox-backfill.ts";
 import { canonicalBase44Request } from "./base44-context.ts";
 import { pushErrorResponse } from "./error-response.ts";
 import { finishedProfileRepairAlreadyCompleted } from "./profile-repair-state.ts";
+import { createProcessEventTiming } from "./process-event-timing.ts";
 
 type Entity = Record<string, any>;
 const PAGE_SIZE = 100;
@@ -1197,7 +1198,11 @@ async function reconcileIdleLiveActivityDrift(
   return results;
 }
 
-async function processEvents(base44: any, body: Entity): Promise<Entity> {
+async function processEvents(
+  base44: any,
+  body: Entity,
+  timing?: ReturnType<typeof createProcessEventTiming>,
+): Promise<Entity> {
   const deadlineEpochMs = Date.now() + 50_000;
   const sourceEventID = clean(body.source_event_id);
   if (!sourceEventID) throw new PushContractError("Source event is required.");
@@ -1243,25 +1248,36 @@ async function processEvents(base44: any, body: Entity): Promise<Entity> {
     ["game_started", "game_finished"].includes(clean(event.event_type))
   );
   if (roomEvent) {
-    await syncLiveActivities(base44, {
-      room_id: roomEvent.room_id,
-      match_id: roomEvent.match_id,
-      deadline_epoch_ms: deadlineEpochMs,
-    });
+    timing?.begin("live_activity");
+    try {
+      await syncLiveActivities(base44, {
+        room_id: roomEvent.room_id,
+        match_id: roomEvent.match_id,
+        deadline_epoch_ms: deadlineEpochMs,
+      });
+    } finally {
+      timing?.complete("live_activity");
+    }
   }
   const results: Entity[] = [];
-  const eventWork = await runBounded({
-    items: events.slice(0, 24),
-    concurrency: 6,
-    deadlineEpochMs,
-    worker: async (event) => {
-      try {
-        results.push(await processOneEvent(base44, event));
-      } catch {
-        // Exact worker leases recover through a later trusted drain.
-      }
-    },
-  });
+  timing?.begin("ordinary_push");
+  let eventWork;
+  try {
+    eventWork = await runBounded({
+      items: events.slice(0, 24),
+      concurrency: 6,
+      deadlineEpochMs,
+      worker: async (event) => {
+        try {
+          results.push(await processOneEvent(base44, event));
+        } catch {
+          // Exact worker leases recover through a later trusted drain.
+        }
+      },
+    });
+  } finally {
+    timing?.complete("ordinary_push");
+  }
   return {
     ok: true,
     processed: results.length,
@@ -1426,7 +1442,26 @@ Deno.serve(async (req) => {
         return Response.json({ error: "Unauthorized" }, { status: 401 });
       }
       if (action === "process_event") {
-        return Response.json(await processEvents(base44, body));
+        const timing = createProcessEventTiming(body?.timing_id);
+        let timingOutcome: "completed" | "failed" = "failed";
+        try {
+          const result = await processEvents(base44, body, timing);
+          timingOutcome = "completed";
+          return Response.json(result);
+        } finally {
+          // Only a server-generated, format-validated opaque id enables this
+          // timing log. Missing/invalid values never affect push processing.
+          if (timing.timingID) {
+            try {
+              console.info(
+                "pushNotificationAction process-event timing",
+                timing.report(timingOutcome),
+              );
+            } catch {
+              // Timing diagnostics must never change durable push processing.
+            }
+          }
+        }
       }
       if (action === "sync_live_activity") {
         return Response.json(await syncLiveActivities(base44, body));
