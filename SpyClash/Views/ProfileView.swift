@@ -476,6 +476,30 @@ struct ProfileView: View {
                     statPill(copy.spy, "\(spyGames)", color: SpyTheme.red)
                     statPill(copy.detective, "\(detectiveGames)", color: .white.opacity(0.74))
                 }
+                HStack(spacing: 8) {
+                    statPill(
+                        localized(
+                            en: "SPY WIN RATE",
+                            ru: "ВИНРЕЙТ ШПИОНА",
+                            es: "VICTORIAS ESPIA",
+                            uk: "ВІДСОТОК ШПИГУНА"
+                        ),
+                        "\(spyWinRate)%",
+                        color: SpyTheme.red
+                    )
+                    .accessibilityIdentifier("profile.stats.spyWinRate")
+                    statPill(
+                        localized(
+                            en: "DETECTIVE WIN RATE",
+                            ru: "ВИНРЕЙТ ДЕТЕКТИВА",
+                            es: "VICTORIAS DETECTIVE",
+                            uk: "ВІДСОТОК ДЕТЕКТИВА"
+                        ),
+                        "\(detectiveWinRate)%",
+                        color: SpyTheme.green
+                    )
+                    .accessibilityIdentifier("profile.stats.detectiveWinRate")
+                }
             }
         }
     }
@@ -931,6 +955,24 @@ struct ProfileView: View {
 
     private var detectiveGames: Int {
         competitiveHistory.filter { $0.role == "detective" }.count
+    }
+
+    private var spyWinRate: Int {
+        GameHistoryAnalytics.roleWinRate(
+            "spy",
+            in: history,
+            competitiveOnly: !appState.shouldUsePreviewData,
+            currentUserID: appState.user?.id
+        )
+    }
+
+    private var detectiveWinRate: Int {
+        GameHistoryAnalytics.roleWinRate(
+            "detective",
+            in: history,
+            competitiveOnly: !appState.shouldUsePreviewData,
+            currentUserID: appState.user?.id
+        )
     }
 
     private var competitiveHistory: [GameHistory] {
