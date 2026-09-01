@@ -1,5 +1,52 @@
 import SwiftUI
 
+enum ProfileHistoryLoadState: Equatable {
+    case idle
+    case loading
+    case loaded
+    case failed
+
+    var showsMetrics: Bool {
+        self == .loaded
+    }
+
+    var canRetry: Bool {
+        self == .failed
+    }
+}
+
+enum ProfileHistoryMetricText {
+    static func value(
+        _ value: Int,
+        state: ProfileHistoryLoadState,
+        showsPositiveSign: Bool = false
+    ) -> String {
+        guard state.showsMetrics else { return "—" }
+        if showsPositiveSign, value >= 0 {
+            return "+\(value)"
+        }
+        return "\(value)"
+    }
+
+    static func percentage(
+        _ value: Int,
+        state: ProfileHistoryLoadState
+    ) -> String {
+        guard state.showsMetrics else { return "—" }
+        return "\(value)%"
+    }
+}
+
+enum ProfileHistoryRequestPolicy {
+    static func canCommit(
+        requestID: Int,
+        currentRequestID: Int,
+        isCancelled: Bool
+    ) -> Bool {
+        !isCancelled && requestID == currentRequestID
+    }
+}
+
 struct ProfileView: View {
     @Environment(AppState.self) private var appState
 
@@ -10,6 +57,8 @@ struct ProfileView: View {
     @State private var selectedCardAccent: SpyCardAccentID = .signalRed
     @State private var selectedCardBadge: SpyCardBadgeID = .operative
     @State private var history: [GameHistory] = []
+    @State private var historyLoadState: ProfileHistoryLoadState = .idle
+    @State private var historyRequestID = 0
     @State private var isSaving = false
     @State private var isSavingLanguage = false
     @State private var isDeleting = false
@@ -34,6 +83,8 @@ struct ProfileView: View {
     }
 
     var body: some View {
+        let historyTaskID = historyRequestID
+
         PageChrome(eyebrow: copy.eyebrow, status: "") {
             VStack(alignment: .leading, spacing: 16) {
                 synchronizedSpyCard
@@ -54,7 +105,9 @@ struct ProfileView: View {
             selectedCardTheme = SpyCardThemeID(rawValue: appState.user?.spyCardTheme ?? "") ?? .field
             selectedCardAccent = SpyCardAccentID(rawValue: appState.user?.spyCardAccent ?? "") ?? .signalRed
             selectedCardBadge = SpyCardBadgeID(rawValue: appState.user?.spyCardBadge ?? "") ?? .operative
-            await loadHistory()
+        }
+        .task(id: historyTaskID) {
+            await loadHistory(requestID: historyTaskID)
         }
         .overlay {
             if showDeleteConfirmation {
@@ -466,15 +519,28 @@ struct ProfileView: View {
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker()
+                Text(
+                    localized(
+                        en: "RANKED ONLINE · SINGLE-SPY",
+                        ru: "РЕЙТИНГОВЫЕ ОНЛАЙН · ОДИН ШПИОН",
+                        es: "ONLINE CLASIFICATORIO · UN ESPÍA",
+                        uk: "РЕЙТИНГОВІ ОНЛАЙН · ОДИН ШПИГУН"
+                    )
+                )
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .tracking(0.06)
+                .foregroundStyle(SpyTheme.muted)
+                .spyFitted(lines: 2, scale: 0.58)
+                .accessibilityIdentifier("profile.stats.scope")
                 HStack(spacing: 12) {
-                    stat(copy.rating, "\(rating >= 0 ? "+" : "")\(rating)")
-                    stat(copy.games, "\(gamesCount)")
-                    stat(copy.rate, "\(winRate)%")
+                    stat(copy.rating, historyMetric(rating, showsPositiveSign: true))
+                    stat(copy.games, historyMetric(gamesCount))
+                    stat(copy.rate, historyPercent(winRate))
                 }
                 HStack(spacing: 8) {
-                    statPill(copy.wins, "\(winCount)", color: SpyTheme.green)
-                    statPill(copy.spy, "\(spyGames)", color: SpyTheme.red)
-                    statPill(copy.detective, "\(detectiveGames)", color: .white.opacity(0.74))
+                    statPill(copy.wins, historyMetric(winCount), color: SpyTheme.green)
+                    statPill(copy.spy, historyMetric(spyGames), color: SpyTheme.red)
+                    statPill(copy.detective, historyMetric(detectiveGames), color: .white.opacity(0.74))
                 }
                 HStack(spacing: 8) {
                     statPill(
@@ -484,7 +550,7 @@ struct ProfileView: View {
                             es: "VICTORIAS ESPIA",
                             uk: "ВІДСОТОК ШПИГУНА"
                         ),
-                        "\(spyWinRate)%",
+                        historyPercent(spyWinRate),
                         color: SpyTheme.red
                     )
                     .accessibilityIdentifier("profile.stats.spyWinRate")
@@ -495,10 +561,63 @@ struct ProfileView: View {
                             es: "VICTORIAS DETECTIVE",
                             uk: "ВІДСОТОК ДЕТЕКТИВА"
                         ),
-                        "\(detectiveWinRate)%",
+                        historyPercent(detectiveWinRate),
                         color: SpyTheme.green
                     )
                     .accessibilityIdentifier("profile.stats.detectiveWinRate")
+                }
+
+                if historyLoadState == .idle || historyLoadState == .loading {
+                    HStack(spacing: 10) {
+                        SpySpinner(size: 16, accent: SpyTheme.green)
+                        Text(
+                            localized(
+                                en: "LOADING MATCH HISTORY",
+                                ru: "ЗАГРУЗКА ИСТОРИИ МАТЧЕЙ",
+                                es: "CARGANDO HISTORIAL",
+                                uk: "ЗАВАНТАЖЕННЯ ІСТОРІЇ МАТЧІВ"
+                            )
+                        )
+                        .font(.system(size: 10, weight: .black, design: .monospaced))
+                        .tracking(0.05)
+                        .foregroundStyle(SpyTheme.muted)
+                    }
+                    .frame(maxWidth: .infinity, minHeight: 38, alignment: .leading)
+                    .accessibilityIdentifier("profile.stats.loading")
+                } else if historyLoadState.canRetry {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(
+                            localized(
+                                en: "MATCH HISTORY IS UNAVAILABLE. RETRY TO REFRESH THESE STATS.",
+                                ru: "ИСТОРИЯ МАТЧЕЙ НЕДОСТУПНА. ПОВТОРИТЕ ЗАГРУЗКУ СТАТИСТИКИ.",
+                                es: "EL HISTORIAL NO ESTÁ DISPONIBLE. REINTENTA PARA ACTUALIZAR.",
+                                uk: "ІСТОРІЯ МАТЧІВ НЕДОСТУПНА. ПОВТОРІТЬ ЗАВАНТАЖЕННЯ СТАТИСТИКИ."
+                            )
+                        )
+                        .font(.system(size: 10, weight: .semibold, design: .default))
+                        .foregroundStyle(SpyTheme.muted)
+                        .fixedSize(horizontal: false, vertical: true)
+                        .accessibilityIdentifier("profile.stats.failed")
+
+                        Button {
+                            historyLoadState = .loading
+                            historyRequestID &+= 1
+                        } label: {
+                            Label(
+                                localized(
+                                    en: "RETRY",
+                                    ru: "ПОВТОРИТЬ",
+                                    es: "REINTENTAR",
+                                    uk: "ПОВТОРИТИ"
+                                ),
+                                systemImage: "arrow.clockwise"
+                            )
+                            .font(.system(size: 10, weight: .black, design: .monospaced))
+                            .frame(maxWidth: .infinity, minHeight: 40)
+                        }
+                        .buttonStyle(SpyButtonStyle(variant: .outline))
+                        .accessibilityIdentifier("profile.stats.retry")
+                    }
                 }
             }
         }
@@ -981,6 +1100,24 @@ struct ProfileView: View {
             : history.filter(\.isOnlineCompetitiveMatch)
     }
 
+    private func historyMetric(
+        _ value: Int,
+        showsPositiveSign: Bool = false
+    ) -> String {
+        ProfileHistoryMetricText.value(
+            value,
+            state: historyLoadState,
+            showsPositiveSign: showsPositiveSign
+        )
+    }
+
+    private func historyPercent(_ value: Int) -> String {
+        ProfileHistoryMetricText.percentage(
+            value,
+            state: historyLoadState
+        )
+    }
+
     private func stat(_ title: String, _ value: String) -> some View {
         VStack(alignment: .leading, spacing: 6) {
             Text(title)
@@ -1013,19 +1150,59 @@ struct ProfileView: View {
         .overlay(Rectangle().stroke(SpyTheme.stroke, lineWidth: 1))
     }
 
-    private func loadHistory() async {
-        guard let user = appState.user else { return }
+    private func loadHistory(requestID: Int) async {
+        guard ProfileHistoryRequestPolicy.canCommit(
+            requestID: requestID,
+            currentRequestID: historyRequestID,
+            isCancelled: Task.isCancelled
+        ) else { return }
 
-        if appState.shouldUsePreviewData {
-            history = GameHistory.previewArchive
+        guard let user = appState.user else {
+            history = []
+            historyLoadState = .loaded
             return
         }
 
-        history = (try? await appState.client.gameHistory(
-            userID: user.id,
-            email: user.email,
-            limit: nil
-        )) ?? []
+        historyLoadState = .loading
+
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains(
+            "--spyclash-preview-history-unavailable"
+        ) {
+            history = []
+            historyLoadState = .failed
+            return
+        }
+#endif
+
+        if appState.shouldUsePreviewData {
+            history = GameHistory.previewArchive
+            historyLoadState = .loaded
+            return
+        }
+
+        do {
+            let loadedHistory = try await appState.client.gameHistory(
+                userID: user.id,
+                email: user.email,
+                limit: nil
+            )
+            guard ProfileHistoryRequestPolicy.canCommit(
+                requestID: requestID,
+                currentRequestID: historyRequestID,
+                isCancelled: Task.isCancelled
+            ) else { return }
+            history = loadedHistory
+            historyLoadState = .loaded
+        } catch {
+            guard ProfileHistoryRequestPolicy.canCommit(
+                requestID: requestID,
+                currentRequestID: historyRequestID,
+                isCancelled: Task.isCancelled
+            ) else { return }
+            history = []
+            historyLoadState = .failed
+        }
     }
 
     private func save() async {

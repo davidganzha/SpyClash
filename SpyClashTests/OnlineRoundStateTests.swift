@@ -849,6 +849,66 @@ final class OnlineRoundStateTests: XCTestCase {
         )
     }
 
+    func testProfileHistoryMetricsDoNotPresentLoadingOrFailureAsZero() {
+        for state in [
+            ProfileHistoryLoadState.idle,
+            .loading,
+            .failed,
+        ] {
+            XCTAssertEqual(
+                ProfileHistoryMetricText.value(0, state: state),
+                "—"
+            )
+            XCTAssertEqual(
+                ProfileHistoryMetricText.percentage(0, state: state),
+                "—"
+            )
+        }
+
+        XCTAssertEqual(
+            ProfileHistoryMetricText.value(
+                0,
+                state: .loaded,
+                showsPositiveSign: true
+            ),
+            "+0"
+        )
+        XCTAssertEqual(
+            ProfileHistoryMetricText.value(-20, state: .loaded),
+            "-20"
+        )
+        XCTAssertEqual(
+            ProfileHistoryMetricText.percentage(0, state: .loaded),
+            "0%"
+        )
+        XCTAssertTrue(ProfileHistoryLoadState.failed.canRetry)
+        XCTAssertFalse(ProfileHistoryLoadState.loaded.canRetry)
+    }
+
+    func testProfileHistoryRequestCommitsOnlyTheCurrentUncancelledLoad() {
+        XCTAssertTrue(
+            ProfileHistoryRequestPolicy.canCommit(
+                requestID: 4,
+                currentRequestID: 4,
+                isCancelled: false
+            )
+        )
+        XCTAssertFalse(
+            ProfileHistoryRequestPolicy.canCommit(
+                requestID: 3,
+                currentRequestID: 4,
+                isCancelled: false
+            )
+        )
+        XCTAssertFalse(
+            ProfileHistoryRequestPolicy.canCommit(
+                requestID: 4,
+                currentRequestID: 4,
+                isCancelled: true
+            )
+        )
+    }
+
     func testHistoryRequiresStableOwnerForMetricsAndDeduplicatesVisibleResults() throws {
         let records = try JSONDecoder().decode(
             [GameHistory].self,
