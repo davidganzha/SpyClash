@@ -6130,11 +6130,12 @@ struct GameView: View {
             playersPanel(room)
             replayPanel(room)
             Button {
-                leaveLocally(providesFeedback: false)
+                Task { await leaveRoom(room) }
             } label: {
                 Label(copy.leaveRoom, systemImage: "house.fill")
             }
             .buttonStyle(SpyButtonStyle(variant: .outline))
+            .accessibilityIdentifier("onlineRoom.finished.leaveRoom")
         }
     }
 
@@ -11619,15 +11620,6 @@ struct GameView: View {
         revealRole = false
     }
 
-    private func leaveLocally(providesFeedback: Bool = true) {
-        if providesFeedback {
-            HapticManager.shared.fire(.buttonPress)
-        }
-        appState.activeRoom = nil
-        appState.selectedTab = .home
-        status = ""
-        revealRole = false
-    }
 }
 
 private struct PreparedRoomQRCode: @unchecked Sendable {

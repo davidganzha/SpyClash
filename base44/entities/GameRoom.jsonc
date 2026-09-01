@@ -32,6 +32,15 @@
         "write": { "user_condition": { "role": "admin" } }
       }
     },
+    "replay_source_match_id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Finished match identity consumed by the latest server-owned replay auto-start; used only for retry reconciliation.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
     "terminal_intent": {
       "type": "object",
       "description": "Immutable CAS-claimed server decision reconciled into history and final room state.",

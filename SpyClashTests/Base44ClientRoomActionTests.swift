@@ -315,6 +315,83 @@ final class Base44ClientRoomActionTests: XCTestCase {
         )
     }
 
+    func testReplayVoteCarriesFinishedMatchGeneration() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        var finished = GameRoom.previewRoom(status: "finished")
+        finished.matchID = "match-finished-13"
+        let user = makeRadarUser(id: "user-1", avatar: "🕵️", rating: 0, policy: .ask)
+        _ = try await makeClient().votePlayAgain(room: finished, user: user)
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        XCTAssertEqual(body["action"] as? String, "vote_play_again")
+        XCTAssertEqual(body["room_id"] as? String, finished.id)
+        XCTAssertEqual(body["expected_match_id"] as? String, "match-finished-13")
+    }
+
+    func testReplayVoteRecoversServerOwnedAutoStartAfterLostResponse() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let action = try XCTUnwrap(recorder.requestBodies().last?["action"] as? String)
+            if action == "vote_play_again" {
+                throw URLError(.timedOut)
+            }
+            XCTAssertEqual(action, "get_room")
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let payload = #"{"id":"preview-room-finished","code":"REPLAY","status":"roulette","match_id":"","replay_source_match_id":"match-finished-13","players":[]}"#
+            return (response, Data(payload.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        var finished = GameRoom.previewRoom(status: "finished")
+        finished.matchID = "match-finished-13"
+        let user = makeRadarUser(id: "user-1", avatar: "🕵️", rating: 0, policy: .ask)
+        let recovered = try await makeClient().votePlayAgain(room: finished, user: user)
+
+        XCTAssertEqual(recovered.normalizedStatus, "roulette")
+        XCTAssertEqual(recovered.replaySourceMatchID, "match-finished-13")
+        XCTAssertEqual(
+            try recorder.requestBodies().compactMap { $0["action"] as? String },
+            ["vote_play_again", "get_room"]
+        )
+    }
+
+    func testReplayVoteRecoveryRejectsAnotherReplayGeneration() {
+        var roulette = GameRoom.previewRoom(status: "roulette")
+        roulette.replaySourceMatchID = "newer-match"
+        XCTAssertFalse(
+            ReplayVoteCommitRecoveryPolicy.accepts(
+                room: roulette,
+                expectedRoomID: roulette.id,
+                expectedSourceMatchID: "older-match",
+                currentUserEmail: roulette.playersList[0].email
+            )
+        )
+
+        var committedVote = GameRoom.previewRoom(status: "finished")
+        committedVote.matchID = "older-match"
+        committedVote.readyPlayers = [committedVote.playersList[0].email]
+        XCTAssertTrue(
+            ReplayVoteCommitRecoveryPolicy.accepts(
+                room: committedVote,
+                expectedRoomID: committedVote.id,
+                expectedSourceMatchID: "older-match",
+                currentUserEmail: committedVote.playersList[0].email.uppercased()
+            )
+        )
+    }
+
     func testGameRoomDecodesAddressableLobbyPlayersAndCanonicalReturnVotes() throws {
         let room = try JSONDecoder().decode(
             GameRoom.self,

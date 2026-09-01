@@ -382,6 +382,7 @@ function abandonedPreTimerMatchPatch(): Room {
     roulette_target_email: "",
     player_feedback: [],
     word_pool: [],
+    replay_source_match_id: "",
     match_id: "",
     terminal_intent: null,
     intro_started_at: null,

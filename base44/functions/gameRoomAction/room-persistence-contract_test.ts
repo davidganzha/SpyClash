@@ -405,13 +405,23 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     source.indexOf("async function leaveRoom"),
     source.indexOf("function activeRoomStatus"),
   );
-  assertStringIncludes(leaveAction, "leavingDuringPreTimer");
+  assertStringIncludes(
+    leaveAction,
+    "hostDepartureUsesMembershipTransition(room, user.email)",
+  );
   assertStringIncludes(leaveAction, "detectiveVoteLeavePatch(");
   assertStringIncludes(leaveAction, "...leavingVotePatch");
   assertStringIncludes(
     leaveAction,
     "{ host_email: clean(nextPlayers[0]?.email) }",
   );
+  const hostDeparturePolicy = await Deno.readTextFile(
+    new URL("./finished-room-departure-policy.ts", import.meta.url),
+  );
+  assertStringIncludes(hostDeparturePolicy, "const preTimer =");
+  assertStringIncludes(hostDeparturePolicy, "const activeGame =");
+  assertStringIncludes(hostDeparturePolicy, 'status !== "finished"');
+  assertStringIncludes(hostDeparturePolicy, "players.some(");
 
   const executeAction = source.slice(
     source.indexOf("async function executeRoomAction"),

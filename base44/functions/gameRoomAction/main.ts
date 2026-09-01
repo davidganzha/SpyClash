@@ -36,11 +36,18 @@ import {
 } from "./community-profile-repair-queue.ts";
 import { activeGameLobbyReturnTransition } from "./active-game-lobby-return-policy.ts";
 import { lobbyKickTransition } from "./lobby-kick-policy.ts";
+import { hostDepartureUsesMembershipTransition } from "./finished-room-departure-policy.ts";
 import {
   replayResetMembershipPatch,
   replayVoteState,
   replayVoteTransition,
 } from "./replay-policy.ts";
+import {
+  assertExpectedReplaySourceMatch,
+  replayAutoStartAlreadyComplete,
+  replayAutoStartPatch,
+  replaySourceMatchID,
+} from "./replay-auto-start-policy.ts";
 import {
   assertIntroCompletionAccess,
   assertRankedTerminalRoom,
@@ -867,6 +874,7 @@ async function createRoom(base44, user, body) {
     lobby_word_pool: [],
     lobby_last_mutation_id: "",
     lobby_last_mutation_fingerprint: "",
+    replay_source_match_id: "",
     intro_started_at: null,
     game_started_at: null,
     game_paused_at: null,
@@ -1143,14 +1151,34 @@ async function toggleReady(base44, room, user) {
   );
 }
 
-async function votePlayAgain(base44, room, user) {
+async function votePlayAgain(base44, room, user, body) {
   requirePlayer(room, user);
+  const expectedSourceMatchID = clean(body?.expected_match_id) ||
+    (["roulette", "playing"].includes(normalizedStatus(room))
+      ? clean(room?.replay_source_match_id)
+      : replaySourceMatchID(room));
+  if (replayAutoStartAlreadyComplete(room, expectedSourceMatchID)) return room;
+  assertExpectedReplaySourceMatch(room, expectedSourceMatchID);
   replayVoteTransition(room, user.email);
   return await updateRoomWithRetry(
     base44,
     room,
-    (latest) => replayVoteTransition(latest, user.email).patch,
     (latest) => {
+      if (replayAutoStartAlreadyComplete(latest, expectedSourceMatchID)) {
+        return {};
+      }
+      assertExpectedReplaySourceMatch(latest, expectedSourceMatchID);
+      const transition = replayVoteTransition(latest, user.email);
+      if (!transition.unanimous) return transition.patch;
+      return replayAutoStartPatch(
+        { ...latest, ...transition.patch },
+        { expectedSourceMatchID },
+      );
+    },
+    (latest) => {
+      if (replayAutoStartAlreadyComplete(latest, expectedSourceMatchID)) {
+        return true;
+      }
       try {
         return replayVoteTransition(latest, user.email).patch
           .ready_players === undefined;
@@ -1214,6 +1242,9 @@ function replayResetPatch(room, user, body, requiresReplayVotes = true) {
     roulette_target_email: "",
     player_feedback: [],
     word_pool: [],
+    replay_source_match_id: requiresReplayVotes
+      ? replaySourceMatchID(room)
+      : "",
     match_id: "",
     terminal_intent: null,
     intro_started_at: null,
@@ -2085,14 +2116,7 @@ async function submitSpyGuess(base44, room, user, body) {
 async function leaveRoom(base44, room, user, options = {}) {
   if (roomLeaveAlreadyComplete(room, user.email)) return { success: true };
 
-  const hostLeaving = clean(room.host_email).toLocaleLowerCase() ===
-    clean(user.email).toLocaleLowerCase();
-  const leavingDuringPreTimer =
-    ["roulette", "playing"].includes(normalizedStatus(room)) &&
-    !clean(room.game_started_at);
-  const leavingDuringActiveGame = normalizedStatus(room) === "playing" &&
-    Boolean(clean(room.game_started_at));
-  if (hostLeaving && !leavingDuringPreTimer && !leavingDuringActiveGame) {
+  if (!hostDepartureUsesMembershipTransition(room, user.email)) {
     return await deleteRoom(base44, room, options);
   }
 
@@ -2416,7 +2440,7 @@ async function executeRoomAction(base44, action, room, user, body) {
     case "toggle_ready":
       return await toggleReady(base44, room, user);
     case "vote_play_again":
-      return await votePlayAgain(base44, room, user);
+      return await votePlayAgain(base44, room, user, body);
     case "reset_room_for_replay":
       return await resetRoomForReplay(base44, room, user, body);
     case "return_finished_room_to_lobby":

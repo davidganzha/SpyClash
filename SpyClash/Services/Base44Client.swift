@@ -37,6 +37,39 @@ enum FinishedRoomLobbyReturnRecoveryPolicy {
     }
 }
 
+enum ReplayVoteCommitRecoveryPolicy {
+    static func accepts(
+        room: GameRoom?,
+        expectedRoomID: String,
+        expectedSourceMatchID: String,
+        currentUserEmail: String
+    ) -> Bool {
+        guard let room,
+              room.id == expectedRoomID,
+              !expectedSourceMatchID.isEmpty else { return false }
+        let currentUserKey = currentUserEmail
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard !currentUserKey.isEmpty else { return false }
+
+        switch room.normalizedStatus {
+        case "finished", "ended":
+            guard room.matchID?
+                .trimmingCharacters(in: .whitespacesAndNewlines) == expectedSourceMatchID else {
+                return false
+            }
+            return (room.readyPlayers ?? []).contains {
+                $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == currentUserKey
+            }
+        case "roulette", "playing":
+            return room.replaySourceMatchID?
+                .trimmingCharacters(in: .whitespacesAndNewlines) == expectedSourceMatchID
+        default:
+            return false
+        }
+    }
+}
+
 @MainActor
 @Observable
 final class Base44Client {
@@ -411,7 +444,29 @@ final class Base44Client {
     }
 
     func votePlayAgain(room: GameRoom, user: SpyUser) async throws -> GameRoom {
-        try await roomAction("vote_play_again", roomID: room.id)
+        let expectedSourceMatchID = room.matchID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        do {
+            return try await roomAction(
+                "vote_play_again",
+                roomID: room.id,
+                expectedMatchID: expectedSourceMatchID.nilIfBlank
+            )
+        } catch {
+            guard !RequestCancellationPolicy.isCancellation(error) else {
+                throw error
+            }
+            if let recovered = try? await refreshRoom(id: room.id),
+               ReplayVoteCommitRecoveryPolicy.accepts(
+                   room: recovered,
+                   expectedRoomID: room.id,
+                   expectedSourceMatchID: expectedSourceMatchID,
+                   currentUserEmail: user.email
+               ) {
+                return recovered
+            }
+            throw error
+        }
     }
 
     func toggleReady(room: GameRoom, user: SpyUser) async throws -> GameRoom {

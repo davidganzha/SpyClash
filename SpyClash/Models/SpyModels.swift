@@ -3726,6 +3726,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var gameDurationSeconds: Int?
     var gamePausedAt: String?
     var gamePausedTotalSeconds: Int?
+    var replaySourceMatchID: String? = nil
     var questionPhase: String?
     var countdownStartedAt: String?
     var currentAnswer: String?
@@ -3995,6 +3996,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case gameDurationSeconds = "game_duration_seconds"
         case gamePausedAt = "game_paused_at"
         case gamePausedTotalSeconds = "game_paused_total_seconds"
+        case replaySourceMatchID = "replay_source_match_id"
         case questionPhase = "question_phase"
         case countdownStartedAt = "countdown_started_at"
         case currentAnswer = "current_answer"
