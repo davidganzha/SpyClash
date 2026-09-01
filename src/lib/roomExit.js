@@ -120,6 +120,7 @@ async function runPendingRoomExitCompletion({
   roomId,
   action,
   performExit,
+  performLeaveFallback,
   storage,
   sleep,
   closeRetryDelaysMilliseconds,
@@ -137,6 +138,28 @@ async function runPendingRoomExitCompletion({
       clearPendingRoomExit(roomId, storage);
       return true;
     } catch (error) {
+      if (
+        action === GAME_ROOM_CLOSE_ACTION
+        && Number(error?.status || error?.response?.status) === 403
+      ) {
+        // Host authority moved, so the durable remaining intent is now an
+        // ordinary leave. Persist that before the fallback starts: the request
+        // may commit after a local timeout or the app may close mid-flight.
+        markRoomExitPending(roomId, storage, GAME_ROOM_LEAVE_ACTION);
+        if (typeof performLeaveFallback !== "function") return false;
+        try {
+          await performLeaveFallback(roomId);
+          clearPendingRoomExit(roomId, storage);
+          return true;
+        } catch (fallbackError) {
+          if (confirmsRoomExit(fallbackError)) {
+            clearPendingRoomExit(roomId, storage);
+            return true;
+          }
+          // Preserve the leave marker for a later bounded Home/remount retry.
+          return false;
+        }
+      }
       if (confirmsRoomExit(error)) {
         clearPendingRoomExit(roomId, storage);
         return true;
@@ -161,6 +184,7 @@ export function completePendingRoomExit({
   roomId,
   action = GAME_ROOM_LEAVE_ACTION,
   performExit,
+  performLeaveFallback = null,
   storage = undefined,
   sleep = defaultSleep,
   closeRetryDelaysMilliseconds = PENDING_ROOM_CLOSE_RETRY_DELAYS_MILLISECONDS,
@@ -169,7 +193,10 @@ export function completePendingRoomExit({
   const normalizedAction = normalizedGameRoomExitAction(action);
   if (!normalizedRoom || typeof performExit !== "function") return Promise.resolve(false);
 
-  const completionKey = `${normalizedAction}:${normalizedRoom}`;
+  // One room can legitimately transition from close -> leave after a 403.
+  // Key by room so Home/remount cannot start a duplicate worker during that
+  // durable action transition.
+  const completionKey = normalizedRoom;
   const inFlight = pendingRoomExitCompletions.get(completionKey);
   if (inFlight) return inFlight;
 
@@ -177,6 +204,7 @@ export function completePendingRoomExit({
     roomId: normalizedRoom,
     action: normalizedAction,
     performExit,
+    performLeaveFallback,
     storage,
     sleep,
     closeRetryDelaysMilliseconds,
@@ -194,7 +222,8 @@ export function completePendingRoomExit({
 export function exitRoomImmediately({
   roomId,
   action = GAME_ROOM_LEAVE_ACTION,
-  leaveRoom,
+  performExit,
+  performLeaveFallback = null,
   navigateHome,
   storage = undefined,
 }) {
@@ -206,7 +235,8 @@ export function exitRoomImmediately({
     .then(() => completePendingRoomExit({
       roomId: normalized,
       action,
-      performExit: leaveRoom,
+      performExit,
+      performLeaveFallback,
       storage,
     }));
 }

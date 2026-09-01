@@ -9,20 +9,25 @@ import {
   isRetryableRoomActionConflict,
 } from "./gameRoomTransport.js";
 
-test("room reads and uncertain vote/close mutations receive bounded deadlines", () => {
+test("room reads and uncertain vote/exit mutations receive bounded deadlines", () => {
   assert.equal(GAME_ROOM_READ_DEADLINE_MILLISECONDS, 3_000);
   assert.equal(GAME_ROOM_UNCERTAIN_MUTATION_DEADLINE_MILLISECONDS, 2_000);
   assert.equal(
     gameRoomActionDeadlineMilliseconds({ action: "get_room" }),
     GAME_ROOM_READ_DEADLINE_MILLISECONDS,
   );
-  for (const action of ["request_vote", "cast_detective_vote", "close_room"]) {
+  for (const action of [
+    "request_vote",
+    "cast_detective_vote",
+    "close_room",
+    "leave_room",
+  ]) {
     assert.equal(
       gameRoomActionDeadlineMilliseconds({ action }),
       GAME_ROOM_UNCERTAIN_MUTATION_DEADLINE_MILLISECONDS,
     );
   }
-  for (const action of ["leave_room", "pause_game", "advance_question"]) {
+  for (const action of ["pause_game", "advance_question"]) {
     assert.equal(gameRoomActionDeadlineMilliseconds({ action }), null);
   }
   assert.equal(gameRoomActionDeadlineMilliseconds({ action: "get_room" }, 25), 25);

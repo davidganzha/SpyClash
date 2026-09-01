@@ -688,7 +688,10 @@ export default function Game() {
     void exitRoomImmediately({
       roomId: currentRoom.id,
       action: exitAction,
-      leaveRoom: performExit,
+      performExit,
+      performLeaveFallback: exitAction === GAME_ROOM_CLOSE_ACTION
+        ? leaveGameRoom
+        : null,
       navigateHome: () => navigate(createPageUrl("Home"), { replace: true }),
     });
   }, [navigate, user?.email]);

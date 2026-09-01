@@ -136,6 +136,9 @@ export default function Home() {
             roomId: dismissedRoomId,
             action: dismissedRoomAction,
             performExit: retryRoomExit,
+            performLeaveFallback: dismissedRoomAction === GAME_ROOM_CLOSE_ACTION
+              ? leaveGameRoom
+              : null,
           });
         }
         const checkRoom = async () => {

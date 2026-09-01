@@ -1018,7 +1018,10 @@ export default function Room() {
     void exitRoomImmediately({
       roomId: sourceRoom.id,
       action: exitAction,
-      leaveRoom: performExit,
+      performExit,
+      performLeaveFallback: exitAction === GAME_ROOM_CLOSE_ACTION
+        ? leaveGameRoom
+        : null,
       navigateHome: () => {
         try {
           localStorage.setItem("spy_return_to_online", "1");

@@ -321,4 +321,39 @@ test("room realtime wakeups are scoped to the current room and participant", () 
       state: "active",
     },
   }, { ...expected, currentRoomRevision: 14 }), true);
+  assert.equal(shouldRefreshForGameRoomSignal({
+    type: "update",
+    data: {
+      room_id: "room-1",
+      user_id: "user-1",
+      room_revision: 13,
+      state: "closed",
+    },
+  }, { ...expected, currentRoomRevision: 14 }), false);
+  assert.equal(shouldRefreshForGameRoomSignal({
+    type: "update",
+    data: {
+      room_id: "room-1",
+      user_id: "user-1",
+      room_revision: 14,
+      state: "closed",
+    },
+  }, { ...expected, currentRoomRevision: 14 }), true);
+  assert.equal(shouldRefreshForGameRoomSignal({
+    type: "update",
+    data: {
+      room_id: "room-1",
+      user_id: "user-1",
+      room_revision: 15,
+      state: "closed",
+    },
+  }, { ...expected, currentRoomRevision: 14 }), true);
+  assert.equal(shouldRefreshForGameRoomSignal({
+    type: "update",
+    data: {
+      room_id: "room-1",
+      user_id: "user-1",
+      state: "closed",
+    },
+  }, { ...expected, currentRoomRevision: 14 }), false);
 });

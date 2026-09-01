@@ -33,6 +33,7 @@ const DEADLINED_UNCERTAIN_MUTATIONS = new Set([
   "request_vote",
   "cast_detective_vote",
   "close_room",
+  "leave_room",
 ]);
 
 function normalizedDeadlineMilliseconds(value) {

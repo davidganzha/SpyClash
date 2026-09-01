@@ -38,12 +38,14 @@ export function shouldRefreshForGameRoomSignal(
 
   const signalRevision = normalizedRevision(signal.room_revision);
   const currentRevision = normalizedRevision(currentRoomRevision);
-  if (
-    String(signal.state || "active").toLocaleLowerCase() !== "closed"
-    && signalRevision !== null
-    && currentRevision !== null && currentRevision >= signalRevision
-  ) {
-    return false;
+  const signalState = String(signal.state || "active").toLocaleLowerCase();
+  if (currentRevision !== null) {
+    if (signalState === "closed") {
+      return signalRevision !== null && signalRevision >= currentRevision;
+    }
+    if (signalRevision !== null && currentRevision >= signalRevision) {
+      return false;
+    }
   }
   return true;
 }

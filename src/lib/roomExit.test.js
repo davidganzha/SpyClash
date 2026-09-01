@@ -61,7 +61,7 @@ test("navigation happens before the server leave resolves", async () => {
     roomId: "room-1",
     storage,
     navigateHome: () => events.push("navigate"),
-    leaveRoom: () => {
+    performExit: () => {
       events.push("leave");
       return leave;
     },
@@ -84,7 +84,7 @@ test("failed server cleanup keeps the room suppressed for a later retry", async 
     roomId: "room-1",
     storage,
     navigateHome: () => {},
-    leaveRoom: async () => { throw new Error("offline"); },
+    performExit: async () => { throw new Error("offline"); },
   });
 
   assert.equal(completed, false);
@@ -102,7 +102,7 @@ test("authoritative room absence completes pending local cleanup", async () => {
       roomId: "room-1",
       storage,
       navigateHome: () => {},
-      leaveRoom: async () => {
+      performExit: async () => {
         throw Object.assign(new Error("already gone"), { status });
       },
     });
@@ -120,7 +120,7 @@ test("a pending local-first exit can retry the same authoritative cleanup", asyn
     roomId: "room-1",
     storage,
     navigateHome: () => {},
-    leaveRoom: async () => {
+    performExit: async () => {
       leaveAttempts += 1;
       throw new Error("offline");
     },
@@ -134,7 +134,7 @@ test("a pending local-first exit can retry the same authoritative cleanup", asyn
     action: pendingRoomExitAction(storage),
     storage,
     navigateHome: () => {},
-    leaveRoom: async () => {
+    performExit: async () => {
       leaveAttempts += 1;
     },
   });
@@ -231,6 +231,125 @@ test("pending close retries only a typed retryable lease conflict", async () => 
   assert.equal(completed, true);
   assert.equal(attempts, 2);
   assert.deepEqual(sleeps, [1_000]);
+  assert.equal(pendingRoomExitId(storage), null);
+});
+
+test("a forbidden host close persists leave before one successful fallback", async () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-host-forbidden" });
+  markRoomExitPending("room-host-forbidden", storage, GAME_ROOM_CLOSE_ACTION);
+  const events = [];
+
+  const completed = await completePendingRoomExit({
+    roomId: "room-host-forbidden",
+    action: GAME_ROOM_CLOSE_ACTION,
+    storage,
+    performExit: async () => {
+      events.push("close");
+      throw Object.assign(new Error("host access lost"), { status: 403 });
+    },
+    performLeaveFallback: async () => {
+      events.push("leave");
+      assert.equal(pendingRoomExitAction(storage), GAME_ROOM_LEAVE_ACTION);
+    },
+  });
+
+  assert.equal(completed, true);
+  assert.deepEqual(events, ["close", "leave"]);
+  assert.equal(pendingRoomExitId(storage), null);
+  assert.equal(pendingRoomExitAction(storage), null);
+});
+
+test("a timed-out forbidden-close fallback remains a durable bounded leave", async () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-host-timeout" });
+  markRoomExitPending("room-host-timeout", storage, GAME_ROOM_CLOSE_ACTION);
+  let closeAttempts = 0;
+  let leaveAttempts = 0;
+
+  const first = await completePendingRoomExit({
+    roomId: "room-host-timeout",
+    action: GAME_ROOM_CLOSE_ACTION,
+    storage,
+    performExit: async () => {
+      closeAttempts += 1;
+      throw Object.assign(new Error("host access lost"), { status: 403 });
+    },
+    performLeaveFallback: async () => {
+      leaveAttempts += 1;
+      throw Object.assign(new Error("leave timed out"), { status: 408 });
+    },
+  });
+
+  assert.equal(first, false);
+  assert.equal(closeAttempts, 1);
+  assert.equal(leaveAttempts, 1);
+  assert.equal(pendingRoomExitId(storage), "room-host-timeout");
+  assert.equal(pendingRoomExitAction(storage), GAME_ROOM_LEAVE_ACTION);
+
+  const recovered = await completePendingRoomExit({
+    roomId: "room-host-timeout",
+    action: pendingRoomExitAction(storage),
+    storage,
+    performExit: async () => { leaveAttempts += 1; },
+  });
+
+  assert.equal(recovered, true);
+  assert.equal(closeAttempts, 1);
+  assert.equal(leaveAttempts, 2);
+  assert.equal(pendingRoomExitId(storage), null);
+});
+
+test("Home remount shares the forbidden-close leave fallback worker", async () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-host-remount" });
+  markRoomExitPending("room-host-remount", storage, GAME_ROOM_CLOSE_ACTION);
+  let closeAttempts = 0;
+  let firstFallbackAttempts = 0;
+  let duplicateCloseAttempts = 0;
+  let duplicateFallbackAttempts = 0;
+  let releaseFallback;
+  let announceFallbackStarted;
+  const fallbackGate = new Promise((resolve) => { releaseFallback = resolve; });
+  const fallbackStarted = new Promise((resolve) => { announceFallbackStarted = resolve; });
+
+  const firstCompletion = completePendingRoomExit({
+    roomId: "room-host-remount",
+    action: GAME_ROOM_CLOSE_ACTION,
+    storage,
+    performExit: async () => {
+      closeAttempts += 1;
+      throw Object.assign(new Error("host access lost"), { status: 403 });
+    },
+    performLeaveFallback: async () => {
+      firstFallbackAttempts += 1;
+      announceFallbackStarted();
+      await fallbackGate;
+    },
+  });
+  await fallbackStarted;
+
+  const remountedCompletion = completePendingRoomExit({
+    roomId: "room-host-remount",
+    action: pendingRoomExitAction(storage),
+    storage,
+    performExit: async () => {
+      duplicateCloseAttempts += 1;
+    },
+    performLeaveFallback: async () => {
+      duplicateFallbackAttempts += 1;
+    },
+  });
+
+  assert.equal(remountedCompletion, firstCompletion);
+  assert.equal(closeAttempts, 1);
+  assert.equal(firstFallbackAttempts, 1);
+  assert.equal(duplicateCloseAttempts, 0);
+  assert.equal(duplicateFallbackAttempts, 0);
+  releaseFallback();
+  assert.equal(await firstCompletion, true);
+  assert.equal(await remountedCompletion, true);
+  assert.equal(closeAttempts, 1);
+  assert.equal(firstFallbackAttempts, 1);
+  assert.equal(duplicateCloseAttempts, 0);
+  assert.equal(duplicateFallbackAttempts, 0);
   assert.equal(pendingRoomExitId(storage), null);
 });
 
