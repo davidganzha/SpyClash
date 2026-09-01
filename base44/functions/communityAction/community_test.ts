@@ -1,4 +1,6 @@
 import {
+  friendshipAllowsRoomInvite,
+  isReservedManualSpyID,
   normalizeCommunityQuery,
   normalizeRadarInvitePolicy,
   normalizeSpyID,
@@ -58,6 +60,19 @@ Deno.test("derives stable six digit SPY IDs with a collision probe", async () =>
   }
   if (first === await stableSpyID("user-1", 1)) {
     throw new Error("collision probe did not advance");
+  }
+});
+
+Deno.test("manual SPY ID 067-067 is reserved from automatic allocation", () => {
+  for (const value of ["067-067", "067067", "067 067"]) {
+    if (!isReservedManualSpyID(value)) {
+      throw new Error(`manual SPY ID was not reserved: ${value}`);
+    }
+  }
+  for (const value of ["067-068", "not-an-id", null]) {
+    if (isReservedManualSpyID(value)) {
+      throw new Error(`ordinary SPY ID was reserved: ${value}`);
+    }
   }
 });
 
@@ -126,5 +141,43 @@ Deno.test("community room invites are limited to waiting rooms", () => {
     if (roomAcceptsCommunityInvites(status)) {
       throw new Error(`${status} room accepted an invite`);
     }
+  }
+});
+
+Deno.test("room invites require one accepted unblocked friendship", () => {
+  const users = ["user-a", "user-b"] as const;
+  const relationship = (status: string, reverse = false) => ({
+    id: `${status}-${reverse}`,
+    requester_id: reverse ? users[1] : users[0],
+    addressee_id: reverse ? users[0] : users[1],
+    status,
+  });
+
+  if (!friendshipAllowsRoomInvite([relationship("accepted")], ...users)) {
+    throw new Error("accepted friendship was rejected");
+  }
+  if (!friendshipAllowsRoomInvite([relationship("accepted", true)], ...users)) {
+    throw new Error("reverse accepted friendship was rejected");
+  }
+  for (const status of ["pending", "declined", "removed", ""]) {
+    if (friendshipAllowsRoomInvite([relationship(status)], ...users)) {
+      throw new Error(`${status || "blank"} friendship allowed a room invite`);
+    }
+  }
+  if (
+    friendshipAllowsRoomInvite(
+      [relationship("accepted"), relationship("blocked", true)],
+      ...users,
+    )
+  ) {
+    throw new Error("blocked duplicate relationship allowed a room invite");
+  }
+  if (
+    friendshipAllowsRoomInvite(
+      [{ ...relationship("accepted"), addressee_id: "user-c" }],
+      ...users,
+    )
+  ) {
+    throw new Error("unrelated accepted friendship allowed a room invite");
   }
 });

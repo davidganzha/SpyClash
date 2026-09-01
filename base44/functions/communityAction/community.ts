@@ -5,6 +5,7 @@ import {
 
 const SPY_ID_NAMESPACE = "com.spyclash.spyid.v2:";
 const SPY_ID_CAPACITY = 1_000_000;
+const RESERVED_MANUAL_SPY_IDS = new Set(["067-067"]);
 const RADAR_INVITE_POLICIES = new Set(["ask", "automatic", "blocked"]);
 export const PROFILE_COMMENT_MAX_LENGTH = 280;
 
@@ -22,6 +23,11 @@ export function normalizeSpyID(value: unknown): string | null {
     .trim()
     .match(/^([0-9]{3})[- ]?([0-9]{3})$/);
   return match ? `${match[1]}-${match[2]}` : null;
+}
+
+export function isReservedManualSpyID(value: unknown): boolean {
+  const spyID = normalizeSpyID(value);
+  return spyID !== null && RESERVED_MANUAL_SPY_IDS.has(spyID);
 }
 
 export async function stableSpyID(
@@ -108,6 +114,33 @@ export function sanitizeProfileComment(value: unknown): string | null {
 
 export function roomAcceptsCommunityInvites(status: unknown): boolean {
   return String(status || "").trim().toLowerCase() === "waiting";
+}
+
+export function friendshipAllowsRoomInvite(
+  friendships: Array<Record<string, unknown>>,
+  firstUserID: unknown,
+  secondUserID: unknown,
+): boolean {
+  const first = String(firstUserID || "").trim();
+  const second = String(secondUserID || "").trim();
+  if (!first || !second || first === second) return false;
+
+  const pair = friendships.filter((friendship) => {
+    const requester = String(friendship.requester_id || "").trim();
+    const addressee = String(friendship.addressee_id || "").trim();
+    return (requester === first && addressee === second) ||
+      (requester === second && addressee === first);
+  });
+  if (
+    pair.some((friendship) =>
+      String(friendship.status || "").trim().toLowerCase() === "blocked"
+    )
+  ) {
+    return false;
+  }
+  return pair.some((friendship) =>
+    String(friendship.status || "").trim().toLowerCase() === "accepted"
+  );
 }
 
 export function publicProfile(user: Record<string, unknown>) {

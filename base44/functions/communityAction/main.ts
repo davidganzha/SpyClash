@@ -1,5 +1,7 @@
 import { createClient, createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
+  friendshipAllowsRoomInvite,
+  isReservedManualSpyID,
   normalizeCommunityQuery,
   normalizeRadarInvitePolicy,
   normalizeSpyID,
@@ -171,6 +173,7 @@ async function ensureUserProfile(
     attempt += 1
   ) {
     const candidate = await stableSpyID(userID, attempt);
+    if (isReservedManualSpyID(candidate)) continue;
     const holders = await usersWithSpyID(base44, candidate);
     if (holders.some((holder: Entity) => clean(holder.id) !== userID)) continue;
 
@@ -255,6 +258,24 @@ async function relationshipBetween(
     addressee_id: firstID,
   });
   return incoming?.[0] || null;
+}
+
+async function relationshipsBetween(
+  base44: any,
+  firstID: string,
+  secondID: string,
+) {
+  const [outgoing, incoming] = await Promise.all([
+    base44.asServiceRole.entities.Friendship.filter({
+      requester_id: firstID,
+      addressee_id: secondID,
+    }),
+    base44.asServiceRole.entities.Friendship.filter({
+      requester_id: secondID,
+      addressee_id: firstID,
+    }),
+  ]);
+  return uniqueByID([...(outgoing || []), ...(incoming || [])]);
 }
 
 async function relationshipsForUser(base44: any, userID: string) {
@@ -1054,11 +1075,23 @@ Deno.serve(async (req) => {
               status: 404,
             });
           }
-          requireUnblockedRelationship(
-            await relationshipBetween(base44, current.id, target.id),
+          const friendships = await relationshipsBetween(
+            base44,
             current.id,
             target.id,
           );
+          if (
+            !friendshipAllowsRoomInvite(
+              friendships,
+              current.id,
+              target.id,
+            )
+          ) {
+            throw Object.assign(
+              new Error("Only accepted friends can be invited"),
+              { status: 403 },
+            );
+          }
           const room = await validateRoomInvite(
             base44,
             freshCurrent,
