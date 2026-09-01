@@ -105,6 +105,36 @@ export async function upsertGameRoomSignal(
   }
 }
 
+/**
+ * Ensures that the actor introduced by create/join has one addressable signal
+ * row while the caller still holds that actor's lifecycle lease. The helper is
+ * best effort because authoritative polling remains the delivery fallback.
+ * Bulk fanout can then run after lease release with creation disabled.
+ */
+export async function bootstrapGameRoomSignalForUserBestEffort(input: {
+  store: GameRoomSignalStore;
+  room: Record<string, unknown>;
+  userID: unknown;
+  state?: GameRoomSignalState;
+  logError?: (message: string, error: unknown) => void;
+}): Promise<boolean> {
+  const userID = clean(input.userID);
+  if (!userID) return false;
+  const signal = signalRecordsForRoom(
+    input.room,
+    input.state || "active",
+    [userID],
+  ).find((candidate) => candidate.user_id === userID);
+  if (!signal) return false;
+
+  try {
+    return (await upsertGameRoomSignal(input.store, signal)) !== "missing";
+  } catch (error) {
+    input.logError?.("room signal bootstrap deferred", error);
+    return false;
+  }
+}
+
 export async function fanoutGameRoomSignalsBestEffort(input: {
   store: GameRoomSignalStore;
   room: Record<string, unknown>;

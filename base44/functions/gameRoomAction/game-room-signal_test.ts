@@ -1,5 +1,6 @@
 import { assertEquals } from "jsr:@std/assert@1";
 import {
+  bootstrapGameRoomSignalForUserBestEffort,
   fanoutGameRoomSignalsBestEffort,
   GameRoomSignalRecord,
   GameRoomSignalStore,
@@ -149,6 +150,44 @@ Deno.test("signal upsert converges after a create race", async () => {
   assertEquals(store.rows, [{ id: "signal-raced", ...signal }]);
 });
 
+Deno.test("leased create or join bootstraps only the introduced actor signal", async () => {
+  const store = new MemorySignalStore();
+  assertEquals(
+    await bootstrapGameRoomSignalForUserBestEffort({
+      store,
+      room: {
+        id: "room-1",
+        lobby_revision: 8,
+        room_revision: 22,
+        participant_user_ids: ["host-user", "joining-user"],
+      },
+      userID: "joining-user",
+    }),
+    true,
+  );
+  assertEquals(store.rows.map((row) => row.user_id), ["joining-user"]);
+});
+
+Deno.test("actor signal bootstrap is best effort after a committed join", async () => {
+  const store = new MemorySignalStore();
+  store.failUsers.add("joining-user");
+  const errors: string[] = [];
+  assertEquals(
+    await bootstrapGameRoomSignalForUserBestEffort({
+      store,
+      room: {
+        id: "room-1",
+        participant_user_ids: ["host-user", "joining-user"],
+      },
+      userID: "joining-user",
+      logError: (message) => errors.push(message),
+    }),
+    false,
+  );
+  assertEquals(store.rows, []);
+  assertEquals(errors, ["room signal bootstrap deferred"]);
+});
+
 Deno.test("signal fanout is best effort so polling remains a fallback", async () => {
   const store = new MemorySignalStore();
   store.failUsers.add("user-2");
@@ -197,5 +236,22 @@ Deno.test("rapid gameplay never recreates a signal removed by account cleanup", 
   );
   assertEquals(store.rows, []);
   assertEquals(store.filterCalls, 1);
+  assertEquals(store.updateCalls, 0);
+});
+
+Deno.test("post-lease fanout cannot recreate signals removed by account cleanup", async () => {
+  const store = new MemorySignalStore();
+  const result = await fanoutGameRoomSignalsBestEffort({
+    store,
+    room: {
+      id: "room-1",
+      lobby_revision: 8,
+      room_revision: 22,
+      participant_user_ids: ["user-1", "user-2"],
+    },
+    allowCreate: false,
+  });
+  assertEquals(result, { attempted: 2, succeeded: 0, failed: 2 });
+  assertEquals(store.rows, []);
   assertEquals(store.updateCalls, 0);
 });

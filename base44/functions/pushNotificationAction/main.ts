@@ -59,6 +59,7 @@ import { canonicalBase44Request } from "./base44-context.ts";
 import { pushErrorResponse } from "./error-response.ts";
 import { finishedProfileRepairAlreadyCompleted } from "./profile-repair-state.ts";
 import { createProcessEventTiming } from "./process-event-timing.ts";
+import { safePushErrorDetails } from "./safe-error.ts";
 
 type Entity = Record<string, any>;
 const PAGE_SIZE = 100;
@@ -144,9 +145,11 @@ async function repairFinishedRoomCommunityProfiles(
   } catch (error) {
     // Profile repair is a separate durable room outcome. It must never make
     // APNs/outbox delivery fail, but a scheduled pass will keep retrying it.
+    const details = safePushErrorDetails(error);
     console.error(
       "finished room community profile repair deferred",
-      (error as Error)?.message || error,
+      details.message,
+      details.status || 500,
     );
     return false;
   }
@@ -169,9 +172,11 @@ async function drainDurableCommunityProfileRepairs(
   } catch (error) {
     // GameHistory, not an ephemeral finished room, remains the durable source.
     // APNs/outbox work below proceeds independently and a later drain retries.
+    const details = safePushErrorDetails(error);
     console.error(
       "durable community profile repair drain deferred",
-      (error as Error)?.message || error,
+      details.message,
+      details.status || 500,
     );
     return { ok: false, selected: 0, deferred: 1 };
   }

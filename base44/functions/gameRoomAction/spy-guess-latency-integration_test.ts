@@ -105,13 +105,23 @@ Deno.test("latency instrumentation preserves lease, push, signal, response order
       "async function dispatchFinishedCommunityProfileSideEffects",
     ),
   );
-  const push = sideEffects.indexOf("await dispatchRoomPushBestEffort(");
+  const parallel = sideEffects.indexOf(
+    "const [profileRun, pushRun] = await Promise.all([",
+  );
+  const push = sideEffects.indexOf(
+    "dispatchRoomPushBestEffort(",
+    parallel,
+  );
   const signal = sideEffects.indexOf(
-    "await fanoutDeferredFinishedRoomSignal(base44, claimedRoom)",
+    "await fanoutDeferredFinishedRoomSignal(base44, latestSideEffectRoom)",
   );
   assert(
-    push >= 0 && push < signal,
-    "ActivityKit/push dispatch must remain before realtime token cleanup",
+    parallel >= 0 && parallel < push && push < signal,
+    "profile and ActivityKit repair must start together before realtime token cleanup",
+  );
+  assertStringIncludes(
+    sideEffects,
+    "if (pushDeliveryConfirmed && sideEffectAdvanced)",
   );
 
   const processEvent = pushSource.slice(

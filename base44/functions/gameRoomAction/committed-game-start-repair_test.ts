@@ -34,7 +34,7 @@ function activeLeaseError(): BillingIdentityLifecycleError {
   );
 }
 
-Deno.test("post-CAS active lease repairs enqueue and signal under fresh exact leases", async () => {
+Deno.test("post-CAS repair enqueues under fresh leases and signals after release", async () => {
   const room = startedRoom();
   const events: string[] = [];
   let leaseHeld = false;
@@ -97,7 +97,7 @@ Deno.test("post-CAS active lease repairs enqueue and signal under fresh exact le
           return Promise.resolve(candidate);
         },
         fanout: () => {
-          assert(leaseHeld);
+          assertEquals(leaseHeld, false);
           events.push("signal-fanout");
           return Promise.resolve();
         },
@@ -118,12 +118,12 @@ Deno.test("post-CAS active lease repairs enqueue and signal under fresh exact le
     "current-participant",
     "coverage-checked",
     "leases-asserted",
-    "signal-fanout",
     "lease-released",
+    "signal-fanout",
   ]);
 });
 
-Deno.test("leave cannot change recipients while committed-start side effects hold participant leases", async () => {
+Deno.test("committed-start fanout uses the exact snapshot after participant leases release", async () => {
   const room = startedRoom();
   const expectedRecipients = ["user-1", "user-2"];
   let leaseHeld = false;
@@ -185,7 +185,7 @@ Deno.test("leave cannot change recipients while committed-start side effects hol
       return candidate;
     },
     fanout: (candidate) => {
-      assert(leaseHeld);
+      assertEquals(leaseHeld, false);
       signalRecipients = [
         ...(candidate.participant_user_ids as string[]),
       ];

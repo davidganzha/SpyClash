@@ -50,7 +50,22 @@ export type EntitlementRecord = {
 
 const ENTITY_PAGE_SIZE = 100;
 const PERSISTENCE_ATTEMPTS = 4;
+const WRITER_LEASE_ACQUIRE_ATTEMPTS = 7;
+const WRITER_LEASE_RELEASE_ATTEMPTS = 3;
+const WRITER_LEASE_BACKOFF_MILLISECONDS = [50, 100, 200, 400, 600, 800];
 const DELETED_ACCOUNT_PATTERN = /^deleted:[0-9a-f]{40}$/;
+
+type AcquireWriterLease = (
+  lifecycleStore: any,
+  userID: string,
+) => Promise<BillingIdentityLease>;
+
+type ReleaseWriterLease = (
+  lifecycleStore: any,
+  lease: BillingIdentityLease,
+) => Promise<void>;
+
+type WriterLeaseDelay = (milliseconds: number) => Promise<void>;
 
 export type StripePersistenceRecord = EntitlementRecord & {
   id?: string;
@@ -89,6 +104,71 @@ export class StripeEntitlementPersistenceError extends Error {
 
 function clean(value: unknown): string {
   return String(value ?? "").trim();
+}
+
+function retryableWriterLeaseAcquisitionError(
+  error: unknown,
+): error is BillingIdentityLifecycleError {
+  return error instanceof BillingIdentityLifecycleError &&
+    (error.code === "active_lease" || error.code === "cas_contention");
+}
+
+async function defaultWriterLeaseDelay(milliseconds: number): Promise<void> {
+  await new Promise<void>((resolve) => setTimeout(resolve, milliseconds));
+}
+
+async function acquireWriterLeaseWithRetry(input: {
+  lifecycleStore: any;
+  userID: string;
+  acquire: AcquireWriterLease;
+  delay: WriterLeaseDelay;
+}): Promise<BillingIdentityLease> {
+  for (
+    let attempt = 0;
+    attempt < WRITER_LEASE_ACQUIRE_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      return await input.acquire(input.lifecycleStore, input.userID);
+    } catch (error) {
+      if (
+        !retryableWriterLeaseAcquisitionError(error) ||
+        attempt === WRITER_LEASE_ACQUIRE_ATTEMPTS - 1
+      ) {
+        throw error;
+      }
+      await input.delay(WRITER_LEASE_BACKOFF_MILLISECONDS[attempt]);
+    }
+  }
+  throw new Error("Stripe writer lease retry loop did not terminate.");
+}
+
+async function releaseWriterLeaseWithRetry(input: {
+  lifecycleStore: any;
+  lease: BillingIdentityLease;
+  release: ReleaseWriterLease;
+  delay: WriterLeaseDelay;
+}): Promise<void> {
+  let finalError: unknown;
+  for (
+    let attempt = 0;
+    attempt < WRITER_LEASE_RELEASE_ATTEMPTS;
+    attempt += 1
+  ) {
+    try {
+      // releaseBillingWriterLease reconciles the exact lease token. Repeating
+      // only this cleanup is safe whether the prior response was lost before
+      // or after the release CAS applied.
+      await input.release(input.lifecycleStore, input.lease);
+      return;
+    } catch (error) {
+      finalError = error;
+      if (attempt < WRITER_LEASE_RELEASE_ATTEMPTS - 1) {
+        await input.delay(WRITER_LEASE_BACKOFF_MILLISECONDS[attempt]);
+      }
+    }
+  }
+  throw finalError;
 }
 
 function isDeletedOwner(value: unknown): boolean {
@@ -272,6 +352,9 @@ export async function persistStripeEntitlement(input: {
   ) => StripeEntitlementBuildResult;
   nowFactory?: () => Date;
   randomUUID?: () => string;
+  acquireWriterLease?: AcquireWriterLease;
+  releaseWriterLease?: ReleaseWriterLease;
+  delay?: WriterLeaseDelay;
 }): Promise<StripeEntitlementPersistenceResult> {
   const subscriptionID = clean(input.subscriptionID);
   const initialRequestedUserID = clean(input.requestedUserID);
@@ -283,6 +366,23 @@ export async function persistStripeEntitlement(input: {
   }
   const nowFactory = input.nowFactory || (() => new Date());
   const randomUUID = input.randomUUID || (() => crypto.randomUUID());
+  const acquireWriterLease = input.acquireWriterLease ||
+    ((lifecycleStore, userID) =>
+      acquireBillingWriterLease(
+        lifecycleStore,
+        userID,
+        nowFactory,
+        randomUUID,
+      ));
+  const releaseLease = input.releaseWriterLease ||
+    ((lifecycleStore, lease) =>
+      releaseBillingWriterLease(
+        lifecycleStore,
+        lease,
+        nowFactory(),
+        randomUUID,
+      ));
+  const delay = input.delay || defaultWriterLeaseDelay;
   const rawRequestedUserID = isDeletedOwner(initialRequestedUserID)
     ? ""
     : initialRequestedUserID;
@@ -365,12 +465,14 @@ export async function persistStripeEntitlement(input: {
             "The billing owner no longer exists.",
           );
         }
-        writerLease = await acquireBillingWriterLease(
-          input.lifecycleStore,
-          effectiveRequestedUserID,
-          nowFactory,
-          randomUUID,
-        );
+        // Only acquisition is replayed here. Provider resolution, build, and
+        // entitlement mutation remain strictly outside this retry loop.
+        writerLease = await acquireWriterLeaseWithRetry({
+          lifecycleStore: input.lifecycleStore,
+          userID: effectiveRequestedUserID,
+          acquire: acquireWriterLease,
+          delay,
+        });
         // The lifecycle acquisition may have raced redaction. Always rebuild
         // from a fresh provider-source read while holding the writer lease.
         continue;
@@ -534,12 +636,12 @@ export async function persistStripeEntitlement(input: {
     throw error;
   } finally {
     if (writerLease && releaseWriterLease) {
-      await releaseBillingWriterLease(
-        input.lifecycleStore,
-        writerLease,
-        nowFactory(),
-        randomUUID,
-      );
+      await releaseWriterLeaseWithRetry({
+        lifecycleStore: input.lifecycleStore,
+        lease: writerLease,
+        release: releaseLease,
+        delay,
+      });
     }
   }
 }

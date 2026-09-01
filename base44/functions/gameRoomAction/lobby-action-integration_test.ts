@@ -108,15 +108,48 @@ Deno.test("gameRoomAction integrates lobby return and kick through CAS and parti
   );
   assertStringIncludes(leasedPath, "withRoomWriteLeases({");
   assertStringIncludes(leasedPath, "assertExactRoomLeaseCoverage(");
-  assertStringIncludes(leasedPath, "executeRoomActionWithSignal(");
+  assertStringIncludes(
+    leasedPath,
+    "const actionResult = await executeRoomAction(",
+  );
+  assertEquals(leasedPath.includes("executeRoomActionWithSignal("), false);
+  assertStringIncludes(
+    leasedPath,
+    "await bootstrapActorRoomSignalWithinLease(",
+  );
+
+  const postLeaseSignalPath = source.slice(
+    source.indexOf("}).catch((error) =>"),
+    source.indexOf("actionCompletedAt = performance.now()"),
+  );
+  assertStringIncludes(postLeaseSignalPath, "await fanoutRoomActionSignal(");
+  assertStringIncludes(postLeaseSignalPath, "allowSignalCreate: false");
 
   const signalPath = source.slice(
-    source.indexOf("async function executeRoomActionWithSignal"),
+    source.indexOf("async function fanoutRoomActionSignal"),
     source.indexOf("function isCommittedFinishedRoom"),
   );
   assertStringIncludes(signalPath, 'action === "kick_player"');
   assertStringIncludes(signalPath, "transition.removedPlayer?.user_id");
   assertStringIncludes(signalPath, "additionalRecipientUserIDs,");
+
+  const createPath = source.slice(
+    source.indexOf('if (action === "create_room")'),
+    source.indexOf("let room = roomId"),
+  );
+  const createLease = createPath.indexOf("withRoomWriteLeases({");
+  const createBootstrap = createPath.indexOf(
+    "await bootstrapActorRoomSignalWithinLease(",
+  );
+  const createPostLeaseFanout = createPath.indexOf(
+    "await fanoutRoomActionSignal(",
+  );
+  assert(
+    createLease >= 0 && createLease < createBootstrap &&
+      createBootstrap < createPostLeaseFanout,
+    "create must bootstrap the actor under lease and bulk-fanout after release",
+  );
+  assertStringIncludes(createPath, "{ allowSignalCreate: false }");
 
   const terminalGuard = source.indexOf(
     "const terminal = pendingTerminalIntent(room)",

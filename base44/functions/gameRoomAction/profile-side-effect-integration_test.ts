@@ -34,17 +34,35 @@ Deno.test("terminal profile repair is post-commit, durable, and push-independent
   assertStringIncludes(repair, "runCommunityProfileRepair({");
   assertStringIncludes(repair, "userIDs: [userID]");
   assertStringIncludes(repair, "recipientUserIDs: [recipientUserID]");
+  assertStringIncludes(repair, "await Promise.allSettled(");
+  assertStringIncludes(repair, "await mirrorBarrier");
+  assertStringIncludes(repair, "serializeFanout");
+  assertStringIncludes(repair, "concurrency: 4");
   assert(!repair.includes("userIDs,\n      attempts: 1"));
-  assertStringIncludes(dispatch, "const pushRun = await");
   assertStringIncludes(
     dispatch,
-    "profileRun = await dispatchFinishedCommunityProfileSideEffects(",
+    "const [profileRun, pushRun] = await Promise.all([",
   );
+  assertStringIncludes(
+    dispatch,
+    "const profileRunPromise = dispatchFinishedCommunityProfileSideEffects(",
+  );
+  assertStringIncludes(dispatch, "await profileDispatchReadyGate");
   assertStringIncludes(dispatch, 'stateKey: "profile_side_effect_dispatch"');
+  const parallelStart = dispatch.indexOf("await Promise.all([");
+  const profile = dispatch.indexOf(
+    "const profileRunPromise = dispatchFinishedCommunityProfileSideEffects(",
+  );
+  const profileClaimReady = dispatch.indexOf("await profileDispatchReadyGate");
+  const push = dispatch.indexOf("runTerminalSideEffectsSingleFlight({");
+  const signal = dispatch.indexOf(
+    "await fanoutDeferredFinishedRoomSignal(base44, latestSideEffectRoom)",
+  );
   assert(
-    dispatch.indexOf("profileRun = await") <
-      dispatch.indexOf("const pushRun = await"),
-    "profile repair must be attempted independently before APNs dispatch",
+    profile >= 0 && profile < profileClaimReady &&
+      profileClaimReady < parallelStart && parallelStart < push &&
+      push < signal,
+    "profile claim must publish before concurrent APNs work and realtime",
   );
 });
 

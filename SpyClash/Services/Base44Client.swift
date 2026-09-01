@@ -340,24 +340,35 @@ final class Base44Client {
     }
 
     func join(code: String, user: SpyUser) async throws -> GameRoom {
+        let expectedToken = try requireAccessToken()
         let player = capablePlayer(for: user)
         let normalizedCode = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let retryDelays = [250, 650]
+        var completedRetries = 0
 
-        for attempt in 0...retryDelays.count {
+        while true {
+            try Task.checkCancellation()
+            guard token == expectedToken else { throw CancellationError() }
             do {
-                return try await roomAction(
+                let room = try await roomAction(
                     "join_room",
                     roomCode: normalizedCode,
-                    player: player
+                    player: player,
+                    retriesLeaseConflicts: false
                 )
-            } catch let error as Base44Error
-                where error.isRetryableRoomJoinConflict && attempt < retryDelays.count {
-                try await Task.sleep(for: .milliseconds(retryDelays[attempt]))
+                guard token == expectedToken else { throw CancellationError() }
+                return room
+            } catch let error as Base44Error {
+                guard token == expectedToken else { throw CancellationError() }
+                guard let delay = RoomJoinRetryPolicy.delayMilliseconds(
+                    for: error,
+                    completedRetries: completedRetries
+                ) else {
+                    throw error
+                }
+                completedRetries += 1
+                try await Task.sleep(for: .milliseconds(delay))
             }
         }
-
-        throw Base44Error(message: "Room join failed after retry.", statusCode: 409)
     }
 
     private func capablePlayer(for user: SpyUser) -> Player {
@@ -945,7 +956,11 @@ final class Base44Client {
     }
 
     func communityRelationshipAction(_ action: String, friendshipID: String) async throws -> CommunityState {
-        try await communityAction(action, fields: ["friendship_id": friendshipID])
+        try await communityAction(
+            action,
+            fields: ["friendship_id": friendshipID],
+            retriesIdempotentMutationFailures: true
+        )
     }
 
     func blockCommunityUser(userID: String) async throws -> CommunityState {
@@ -1010,7 +1025,11 @@ final class Base44Client {
     }
 
     func communityRoomInviteAction(_ action: String, inviteID: String) async throws -> CommunityInviteActionResult {
-        try await communityAction(action, fields: ["invite_id": inviteID])
+        try await communityAction(
+            action,
+            fields: ["invite_id": inviteID],
+            retriesIdempotentMutationFailures: true
+        )
     }
 
     func notificationInboxSummary() async throws -> NotificationInboxSummary {
@@ -1051,7 +1070,8 @@ final class Base44Client {
                 action: "mark_read",
                 accessToken: try requireAccessToken(),
                 itemID: itemID
-            )
+            ),
+            retriesIdempotentMutationFailures: true
         )
     }
 
@@ -1063,7 +1083,8 @@ final class Base44Client {
                 action: "mark_all_read",
                 accessToken: try requireAccessToken(),
                 scope: scope.rawValue
-            )
+            ),
+            retriesIdempotentMutationFailures: true
         )
     }
 
@@ -1094,7 +1115,8 @@ final class Base44Client {
 
     private func notificationInboxAction<T: Decodable>(
         _ payload: NotificationInboxActionPayload,
-        retriesTransientReadFailures: Bool = false
+        retriesTransientReadFailures: Bool = false,
+        retriesIdempotentMutationFailures: Bool = false
     ) async throws -> T {
         let expectedToken = payload.accessToken
         guard token == expectedToken else {
@@ -1120,11 +1142,21 @@ final class Base44Client {
                 }
                 return response
             } catch let error as Base44Error {
-                guard retriesTransientReadFailures,
-                      let delay = SupplementaryReadRetryPolicy.delayMilliseconds(
-                          for: error,
-                          completedRetries: attempt
-                      ) else {
+                let delay: Int? = if retriesIdempotentMutationFailures {
+                    NotificationMutationRetryPolicy.delayMilliseconds(
+                        action: payload.action,
+                        error: error,
+                        completedRetries: attempt
+                    )
+                } else if retriesTransientReadFailures {
+                    SupplementaryReadRetryPolicy.delayMilliseconds(
+                        for: error,
+                        completedRetries: attempt
+                    )
+                } else {
+                    nil
+                }
+                guard let delay else {
                     throw error
                 }
                 attempt += 1
@@ -1136,7 +1168,8 @@ final class Base44Client {
     private func communityAction<T: Decodable>(
         _ action: String,
         fields: [String: String] = [:],
-        retriesTransientReadFailures: Bool = false
+        retriesTransientReadFailures: Bool = false,
+        retriesIdempotentMutationFailures: Bool = false
     ) async throws -> T {
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
@@ -1150,19 +1183,33 @@ final class Base44Client {
 
         var attempt = 0
         while true {
+            try Task.checkCancellation()
+            guard self.token == token else { throw CancellationError() }
             do {
-                return try await request(
+                let response: T = try await request(
                     "/apps/\(Self.appID)/functions/communityAction",
                     method: "POST",
                     body: payload,
                     includeAuthorization: false
                 )
+                guard self.token == token else { throw CancellationError() }
+                return response
             } catch let error as Base44Error {
-                guard retriesTransientReadFailures,
-                      let delay = SupplementaryReadRetryPolicy.delayMilliseconds(
-                          for: error,
-                          completedRetries: attempt
-                      ) else {
+                let delay: Int? = if retriesIdempotentMutationFailures {
+                    CommunityMutationRetryPolicy.delayMilliseconds(
+                        action: action,
+                        error: error,
+                        completedRetries: attempt
+                    )
+                } else if retriesTransientReadFailures {
+                    SupplementaryReadRetryPolicy.delayMilliseconds(
+                        for: error,
+                        completedRetries: attempt
+                    )
+                } else {
+                    nil
+                }
+                guard let delay else {
                     throw error
                 }
                 attempt += 1
@@ -1565,7 +1612,8 @@ final class Base44Client {
         state: LobbyStatePayload? = nil,
         expectedLobbyRevision: Int? = nil,
         expectedMatchID: String? = nil,
-        expectedGameStartedAt: String? = nil
+        expectedGameStartedAt: String? = nil,
+        retriesLeaseConflicts: Bool = true
     ) async throws -> GameRoom {
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
@@ -1598,7 +1646,7 @@ final class Base44Client {
         )
         // Expired-room finalization owns an authoritative read/backoff loop in
         // GameView. A second transport retry here used to double every write.
-        let retryDelays = action == "finalize_expired_room" ? [] : [250]
+        let retryDelays = action == "finalize_expired_room" || !retriesLeaseConflicts ? [] : [250]
         var attempt = 0
 
         while true {
@@ -1607,12 +1655,14 @@ final class Base44Client {
             do {
                 // Provider/SSO tokens are valid Base44 identity tokens, but the
                 // functions gateway can reject them before the function runs.
-                return try await request(
+                let room: GameRoom = try await request(
                     "/apps/\(Self.appID)/functions/gameRoomAction",
                     method: "POST",
                     body: payload,
                     includeAuthorization: false
                 )
+                guard self.token == token else { throw CancellationError() }
+                return room
             } catch let error as Base44Error
                 where error.isRetryableRoomActionConflict && attempt < retryDelays.count {
                 let delay = retryDelays[attempt]
@@ -1633,19 +1683,40 @@ final class Base44Client {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
 
-        return try await request(
-            "/apps/\(Self.appID)/functions/wordPackAction",
-            method: "POST",
-            body: WordPackActionPayload(
-                action: action,
-                accessToken: token,
-                packID: packID,
-                name: name,
-                category: category,
-                words: words
-            ),
-            includeAuthorization: false
+        let payload = WordPackActionPayload(
+            action: action,
+            accessToken: token,
+            packID: packID,
+            name: name,
+            category: category,
+            words: words
         )
+        var completedRetries = 0
+
+        while true {
+            try Task.checkCancellation()
+            guard self.token == token else { throw CancellationError() }
+            do {
+                let response: T = try await request(
+                    "/apps/\(Self.appID)/functions/wordPackAction",
+                    method: "POST",
+                    body: payload,
+                    includeAuthorization: false
+                )
+                guard self.token == token else { throw CancellationError() }
+                return response
+            } catch let error as Base44Error {
+                guard let delay = WordPackMutationRetryPolicy.delayMilliseconds(
+                    action: action,
+                    error: error,
+                    completedRetries: completedRetries
+                ) else {
+                    throw error
+                }
+                completedRetries += 1
+                try await Task.sleep(for: .milliseconds(delay))
+            }
+        }
     }
 
     private static func pickMissionWord(
@@ -2259,6 +2330,7 @@ struct Base44Error: LocalizedError {
 
     var isRetryableRoomJoinConflict: Bool {
         guard statusCode == 409 else { return false }
+        if isRetryableRoomActionConflict { return true }
         let normalized = message.lowercased()
         return normalized.contains("could not be verified")
             || normalized.contains("room membership changed")
@@ -2314,6 +2386,121 @@ struct Base44Error: LocalizedError {
         code?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? ""
+    }
+}
+
+enum RoomJoinRetryPolicy {
+    private static let fallbackDelays = [250, 650]
+
+    static func delayMilliseconds(
+        for error: Base44Error,
+        completedRetries: Int
+    ) -> Int? {
+        guard error.isRetryableRoomJoinConflict,
+              fallbackDelays.indices.contains(completedRetries) else {
+            return nil
+        }
+        let fallback = fallbackDelays[completedRetries]
+        guard let retryAfterSeconds = error.retryAfterSeconds else {
+            return fallback
+        }
+        return max(fallback, min(max(retryAfterSeconds, 0), 2) * 1_000)
+    }
+}
+
+enum CommunityMutationRetryPolicy {
+    private static let idempotentActions = Set([
+        "accept",
+        "decline",
+        "accept_room_invite",
+        "decline_room_invite",
+        "consume_room_invite"
+    ])
+    private static let fallbackDelays = [250, 650]
+
+    static func delayMilliseconds(
+        action: String,
+        error: Base44Error,
+        completedRetries: Int
+    ) -> Int? {
+        let normalizedAction = action
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard idempotentActions.contains(normalizedAction),
+              fallbackDelays.indices.contains(completedRetries) else {
+            return nil
+        }
+
+        let retryableFailure = error.isRetryableRoomActionConflict
+            || (error.statusCode == 429 && error.retryable)
+            || (error.statusCode == 503 && (error.retryable || error.code == nil))
+        guard retryableFailure else { return nil }
+
+        let fallback = fallbackDelays[completedRetries]
+        guard let retryAfterSeconds = error.retryAfterSeconds else {
+            return fallback
+        }
+        return max(fallback, min(max(retryAfterSeconds, 0), 3) * 1_000)
+    }
+}
+
+enum NotificationMutationRetryPolicy {
+    private static let idempotentActions = Set(["mark_read", "mark_all_read"])
+    private static let fallbackDelays = [250, 650]
+
+    static func delayMilliseconds(
+        action: String,
+        error: Base44Error,
+        completedRetries: Int
+    ) -> Int? {
+        let normalizedAction = action
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard idempotentActions.contains(normalizedAction),
+              fallbackDelays.indices.contains(completedRetries) else {
+            return nil
+        }
+        let retryableFailure = error.isRetryableRoomActionConflict
+            || (error.statusCode == 429 && error.retryable)
+            || (error.statusCode == 503 && (error.retryable || error.code == nil))
+        guard retryableFailure else { return nil }
+        let fallback = fallbackDelays[completedRetries]
+        guard let retryAfterSeconds = error.retryAfterSeconds else {
+            return fallback
+        }
+        return max(fallback, min(max(retryAfterSeconds, 0), 3) * 1_000)
+    }
+}
+
+enum WordPackMutationRetryPolicy {
+    private static let mutationActions = Set(["create", "update", "delete"])
+    private static let fallbackDelays = [250, 650]
+
+    static func delayMilliseconds(
+        action: String,
+        error: Base44Error,
+        completedRetries: Int
+    ) -> Int? {
+        let normalizedAction = action
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard mutationActions.contains(normalizedAction),
+              error.isRetryableRoomActionConflict,
+              fallbackDelays.indices.contains(completedRetries) else {
+            return nil
+        }
+        let fallback = fallbackDelays[completedRetries]
+        guard let retryAfterSeconds = error.retryAfterSeconds else {
+            return fallback
+        }
+        return max(fallback, min(max(retryAfterSeconds, 0), 3) * 1_000)
+    }
+}
+
+enum CommunityRoomInviteCleanupPolicy {
+    static func shouldClearAfterFailure(_ error: Base44Error) -> Bool {
+        error.statusCode == 404 ||
+            (error.statusCode == 409 && !error.retryable)
     }
 }
 

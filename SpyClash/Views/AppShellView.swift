@@ -1030,7 +1030,7 @@ struct AppShellView: View {
                 guard appState.user?.id == userID else { return }
                 removePendingRoomInviteCleanup(inviteID, userID: userID)
             } catch let error as Base44Error
-                where error.statusCode == 404 || error.statusCode == 409 {
+                where CommunityRoomInviteCleanupPolicy.shouldClearAfterFailure(error) {
                 guard appState.user?.id == userID else { return }
                 removePendingRoomInviteCleanup(inviteID, userID: userID)
             } catch {

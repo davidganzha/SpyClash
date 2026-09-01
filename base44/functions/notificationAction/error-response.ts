@@ -1,4 +1,5 @@
 import { clean, NotificationContractError } from "./contracts.ts";
+import { safeNotificationErrorDetails } from "./safe-error.ts";
 
 type ErrorShape = {
   status?: unknown;
@@ -9,16 +10,6 @@ type ErrorShape = {
   };
   headers?: Headers | Record<string, unknown>;
 };
-
-function upstreamStatus(error: unknown): number {
-  const shape = error as ErrorShape | null;
-  const candidate = Number(
-    shape?.status ?? shape?.statusCode ?? shape?.response?.status ?? 0,
-  );
-  return Number.isInteger(candidate) && candidate >= 400 && candidate < 600
-    ? candidate
-    : 0;
-}
 
 function headerValue(
   headers: Headers | Record<string, unknown> | undefined,
@@ -59,7 +50,10 @@ function retryableResponse(
 
 export function notificationErrorResponse(error: unknown): Response {
   if (error instanceof NotificationContractError) {
-    const retryable = error.status === 429 || error.status === 503;
+    const retryableLifecycleConflict = error.status === 409 &&
+      ["active_lease", "cas_contention"].includes(error.code);
+    const retryable = retryableLifecycleConflict || error.status === 429 ||
+      error.status === 503;
     return Response.json(
       {
         error: error.message,
@@ -68,16 +62,22 @@ export function notificationErrorResponse(error: unknown): Response {
       },
       {
         status: error.status,
-        ...(retryable ? { headers: { "Retry-After": retryAfter(error) } } : {}),
+        ...(retryable
+          ? {
+            headers: {
+              "Retry-After": retryableLifecycleConflict
+                ? "1"
+                : retryAfter(error),
+            },
+          }
+          : {}),
       },
     );
   }
 
-  console.error(
-    "notificationAction failed",
-    error instanceof Error ? error.message : error,
-  );
-  const status = upstreamStatus(error);
+  const details = safeNotificationErrorDetails(error);
+  console.error("notificationAction failed", details.message, details.status);
+  const status = details.status;
   if (status === 429) {
     return retryableResponse(
       error,

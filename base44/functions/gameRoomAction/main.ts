@@ -111,7 +111,10 @@ import {
   roomHasLobbyMutation,
   validateLobbyMutation,
 } from "./lobby-state-policy.ts";
-import { fanoutGameRoomSignalsBestEffort } from "./game-room-signal.ts";
+import {
+  bootstrapGameRoomSignalForUserBestEffort,
+  fanoutGameRoomSignalsBestEffort,
+} from "./game-room-signal.ts";
 import { fanoutCommunityProfileInvalidations } from "./community-profile-signal.ts";
 import {
   advanceAssociationTurn,
@@ -1746,6 +1749,7 @@ async function repairDetectedCommittedGameStart(base44, detectedRoom, user) {
       await fanoutGameRoomSignalsBestEffort({
         store: base44.asServiceRole.entities.GameRoomSignal,
         room: candidate,
+        allowCreate: false,
         logError: (message, error) =>
           console.error(message, error?.message || error),
       });
@@ -2603,26 +2607,19 @@ async function executeRoomAction(
   }
 }
 
-async function executeRoomActionWithSignal(
+async function fanoutRoomActionSignal(
   base44,
   action,
-  room,
+  sourceRoom,
+  result,
   user,
   body,
   options = {},
 ) {
-  const result = await executeRoomAction(
-    base44,
-    action,
-    room,
-    user,
-    body,
-    options,
-  );
   if (result?.id && !shouldDeferFinishedRoomSignal(result)) {
     let additionalRecipientUserIDs = [];
     if (action === "kick_player" && normalizedStatus(result) === "waiting") {
-      const transition = lobbyKickTransition(room, user.email, {
+      const transition = lobbyKickTransition(sourceRoom, user.email, {
         target_user_id: body?.target_user_id,
         target_email: body?.target_email,
       });
@@ -2639,7 +2636,45 @@ async function executeRoomActionWithSignal(
         console.error(message, error?.message || error),
     });
   }
+}
+
+async function executeRoomActionWithSignal(
+  base44,
+  action,
+  room,
+  user,
+  body,
+  options = {},
+) {
+  const result = await executeRoomAction(
+    base44,
+    action,
+    room,
+    user,
+    body,
+    options,
+  );
+  await fanoutRoomActionSignal(
+    base44,
+    action,
+    room,
+    result,
+    user,
+    body,
+    options,
+  );
   return result;
+}
+
+async function bootstrapActorRoomSignalWithinLease(base44, room, user) {
+  if (!room?.id || !user?.id || shouldDeferFinishedRoomSignal(room)) return;
+  await bootstrapGameRoomSignalForUserBestEffort({
+    store: base44.asServiceRole.entities.GameRoomSignal,
+    room,
+    userID: user.id,
+    logError: (message, error) =>
+      console.error(message, error?.message || error),
+  });
 }
 
 function isCommittedFinishedRoom(room) {
@@ -2746,10 +2781,17 @@ async function withSingleProfileRepairLease(base44, userIDValue, action) {
   }
 }
 
-async function repairCommunityProfileHistorySource(base44, source) {
+async function repairCommunityProfileHistorySource(
+  base44,
+  source,
+  options = {},
+) {
   const profileUserID = clean(source?.player_user_id);
   const matchID = clean(source?.match_id);
-  if (!profileUserID || !matchID) return true;
+  if (!profileUserID || !matchID) {
+    await options.afterMirror?.();
+    return true;
+  }
 
   const mirror = await withSingleProfileRepairLease(
     base44,
@@ -2766,61 +2808,118 @@ async function repairCommunityProfileHistorySource(base44, source) {
       return results[0]?.status !== "missing_user";
     },
   );
+  // A bounded terminal batch uses this barrier so every independent profile
+  // mirror releases its User lease before any overlapping recipient signal
+  // fanout begins. Non-terminal drains default to a batch size of one.
+  await options.afterMirror?.();
   if (mirror.status === "deferred") return false;
   if (mirror.status === "gone" || mirror.value !== true) return true;
 
-  const matchHistory = await rankedHistoryForMatch(base44, matchID);
-  const recipientUserIDs = uniqueStrings(
-    matchHistory.map((record) => record?.player_user_id),
-  );
-  const fanout = await repairCommunityProfileRecipients({
-    recipientUserIDs,
-    concurrency: 4,
-    repairRecipient: async (recipientUserID) => {
-      const outcome = await withSingleProfileRepairLease(
-        base44,
-        recipientUserID,
-        async () => {
-          const result = await fanoutCommunityProfileInvalidations({
-            signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
-            recipientUserIDs: [recipientUserID],
-            profileUserIDs: [profileUserID],
-            logError: (message, error) =>
-              console.error(message, error?.message || error),
-          });
-          return Number(result?.failed) === 0;
-        },
-      );
-      return outcome.status === "gone" ||
-        (outcome.status === "performed" && outcome.value === true);
-    },
-  });
-  return fanout.failedUserIDs.length === 0;
+  const fanout = async () => {
+    const matchHistory = await rankedHistoryForMatch(base44, matchID);
+    const recipientUserIDs = uniqueStrings(
+      matchHistory.map((record) => record?.player_user_id),
+    );
+    const result = await repairCommunityProfileRecipients({
+      recipientUserIDs,
+      concurrency: 4,
+      repairRecipient: async (recipientUserID) => {
+        const outcome = await withSingleProfileRepairLease(
+          base44,
+          recipientUserID,
+          async () => {
+            const signal = await fanoutCommunityProfileInvalidations({
+              signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
+              recipientUserIDs: [recipientUserID],
+              profileUserIDs: [profileUserID],
+              logError: (message, error) =>
+                console.error(message, error?.message || error),
+            });
+            return Number(signal?.failed) === 0;
+          },
+        );
+        return outcome.status === "gone" ||
+          (outcome.status === "performed" && outcome.value === true);
+      },
+    });
+    return result.failedUserIDs.length === 0;
+  };
+
+  // A recipient owns one CommunityProfileSignal row. Independent player
+  // mirrors may run concurrently, but their wake-up fanout must remain ordered
+  // so one profile cannot overwrite another profile's signal mid-write.
+  return typeof options.serializeFanout === "function"
+    ? await options.serializeFanout(fanout)
+    : await fanout();
 }
 
-async function runProfileRepairSources(base44, sources) {
+async function runProfileRepairSources(base44, sources, options = {}) {
   const outcomes = [];
-  // Every recipient owns one wake-up row. Keep affected profiles sequential
-  // while retaining bounded recipient concurrency inside each source so two
-  // profile updates cannot race to overwrite that shared row.
-  for (const source of sources) {
-    try {
-      outcomes.push(
-        await runCommunityProfileRepair({
+  const concurrency = Math.min(
+    Math.max(Math.floor(Number(options.concurrency)) || 1, 1),
+    4,
+  );
+  let fanoutTail = Promise.resolve();
+  const serializeFanout = async (fanout) => {
+    const run = fanoutTail.then(fanout, fanout);
+    fanoutTail = run.then(() => undefined, () => undefined);
+    return await run;
+  };
+
+  // Ranked participants update distinct User rows under distinct lifecycle
+  // leases. Bound their expensive history reads/mirror writes concurrently,
+  // while serializeFanout preserves the single wake-up row per recipient.
+  for (let offset = 0; offset < sources.length; offset += concurrency) {
+    const batch = sources.slice(offset, offset + concurrency);
+    let mirrorsSettled = 0;
+    let releaseMirrorBarrier;
+    const mirrorBarrier = new Promise((resolve) => {
+      releaseMirrorBarrier = resolve;
+    });
+    const settled = await Promise.allSettled(
+      batch.map((source) => {
+        let sourceSettled = false;
+        const settleSource = () => {
+          if (sourceSettled) return;
+          sourceSettled = true;
+          mirrorsSettled += 1;
+          if (mirrorsSettled === batch.length) releaseMirrorBarrier();
+        };
+        return runCommunityProfileRepair({
           store: base44.asServiceRole.entities.GameHistory,
           source,
-          repair: (claimedSource) =>
-            repairCommunityProfileHistorySource(base44, claimedSource),
+          repair: (claimedSource) => {
+            return repairCommunityProfileHistorySource(
+              base44,
+              claimedSource,
+              {
+                afterMirror: async () => {
+                  settleSource();
+                  await mirrorBarrier;
+                },
+                serializeFanout,
+              },
+            );
+          },
           logError: (message, error) =>
             console.error(message, error?.message || error),
-        }),
-      );
-    } catch (error) {
+        }).finally(() => {
+          // Completed/deferred sources never enter repair(), and an unexpected
+          // pre-barrier failure must not strand its batch behind the gate.
+          settleSource();
+        });
+      }),
+    );
+    for (const [index, result] of settled.entries()) {
+      if (result.status === "fulfilled") {
+        outcomes.push(result.value);
+        continue;
+      }
       console.error(
         "community profile repair claim deferred",
-        error?.message || error,
+        result.reason?.message || result.reason,
       );
-      outcomes.push({ outcome: "failed", source });
+      outcomes.push({ outcome: "failed", source: batch[index] });
     }
   }
   return outcomes;
@@ -2835,7 +2934,9 @@ async function repairFinishedCommunityProfilesAndSignals(base44, room) {
       )
     );
   if (!sources.length) return canonicalSpyEmails(room).length !== 1;
-  const outcomes = await runProfileRepairSources(base44, sources);
+  const outcomes = await runProfileRepairSources(base44, sources, {
+    concurrency: 4,
+  });
   return outcomes.every((result) =>
     ["performed", "completed", "missing"].includes(result.outcome)
   );
@@ -2912,65 +3013,92 @@ async function dispatchRoomSideEffectsAfterLeases(
     await dispatchRoomPushBestEffort(base44, room, action, options);
     return room;
   }
-  // The durable history queue is authoritative for profile convergence and is
-  // attempted before APNs. A missing secret or push outage must never gate the
-  // participant's freshly mirrored competitive identity.
+  // The durable history queue and committed APNs outbox are independent. Start
+  // both single-flight repairs together so neither network path serially
+  // extends the terminal response. Each remains retryable from its own source.
   const timing = options.sideEffectTiming;
+  let profileDispatchReady;
+  const profileDispatchReadyGate = new Promise((resolve) => {
+    profileDispatchReady = resolve;
+  });
+  let profileDispatchMarked = false;
+  const markProfileDispatchReady = () => {
+    if (profileDispatchMarked) return;
+    profileDispatchMarked = true;
+    profileDispatchReady();
+  };
   timing?.begin("profile_repair");
-  let profileRun;
-  try {
-    profileRun = await dispatchFinishedCommunityProfileSideEffects(
-      base44,
-      room,
-    );
-  } finally {
+  const profileRunPromise = dispatchFinishedCommunityProfileSideEffects(
+    base44,
+    room,
+    { onDispatchStarted: markProfileDispatchReady },
+  ).finally(() => {
     timing?.complete("profile_repair");
-  }
-  if (profileRun.outcome === "failed") {
-    console.error("terminal community profile repair deferred");
-  }
-  const pushRun = await runTerminalSideEffectsSingleFlight({
-    store: base44.asServiceRole.entities.GameRoom,
-    room: profileRun.room || room,
-    dispatch: async (claimedRoom) => {
-      if (
-        !(await dispatchRoomPushBestEffort(
+    markProfileDispatchReady();
+  });
+  // process_event also performs durable profile recovery. Publish this
+  // request's profile claim first so the nested worker observes it as active
+  // instead of repeating the same expensive mirror on the push critical path.
+  await profileDispatchReadyGate;
+  const [profileRun, pushRun] = await Promise.all([
+    profileRunPromise,
+    runTerminalSideEffectsSingleFlight({
+      store: base44.asServiceRole.entities.GameRoom,
+      room,
+      dispatch: (claimedRoom) =>
+        dispatchRoomPushBestEffort(
           base44,
           claimedRoom,
           action,
           options,
-        ))
-      ) {
-        return false;
-      }
-      // Polling is the realtime fallback. Once the durable push/ActivityKit
-      // pipeline succeeds, a transient signal write must not cause it to be
-      // replayed after the source lease expires.
-      timing?.begin("signal_fanout");
-      try {
-        await fanoutDeferredFinishedRoomSignal(base44, claimedRoom);
-      } finally {
-        timing?.complete("signal_fanout");
-      }
-      return true;
-    },
-  });
+        ),
+    }),
+  ]);
+  if (profileRun.outcome === "failed") {
+    console.error("terminal community profile repair deferred");
+  }
   if (pushRun.outcome === "failed") {
     // The bounded source claim expires for a later explicit retry. Independently,
     // the scheduled push drain continues to repair and deliver the durable
     // outbox even when the initiating request disappears.
     console.error("terminal room side effects deferred");
   }
-  return pushRun.room || profileRun.room;
+  const latestSideEffectRoom = [room, profileRun.room, pushRun.room]
+    .filter(Boolean)
+    .sort((left, right) =>
+      (roomWriteRevision(right) ?? -1) - (roomWriteRevision(left) ?? -1)
+    )[0];
+  const pushDeliveryConfirmed = ["performed", "completed"].includes(
+    pushRun.outcome,
+  );
+  const sideEffectAdvanced = profileRun.outcome === "performed" ||
+    pushRun.outcome === "performed";
+  if (pushDeliveryConfirmed && sideEffectAdvanced) {
+    // Polling remains the fallback. Realtime runs only after APNs/ActivityKit
+    // has completed, so clients cannot unregister terminal tokens too early.
+    timing?.begin("signal_fanout");
+    try {
+      await fanoutDeferredFinishedRoomSignal(base44, latestSideEffectRoom);
+    } finally {
+      timing?.complete("signal_fanout");
+    }
+  }
+  return latestSideEffectRoom;
 }
 
-async function dispatchFinishedCommunityProfileSideEffects(base44, room) {
+async function dispatchFinishedCommunityProfileSideEffects(
+  base44,
+  room,
+  options = {},
+) {
   return await runTerminalSideEffectsSingleFlight({
     store: base44.asServiceRole.entities.GameRoom,
     room,
     stateKey: "profile_side_effect_dispatch",
-    dispatch: (claimedRoom) =>
-      repairFinishedCommunityProfilesAndSignals(base44, claimedRoom),
+    dispatch: (claimedRoom) => {
+      options.onDispatchStarted?.();
+      return repairFinishedCommunityProfilesAndSignals(base44, claimedRoom);
+    },
   });
 }
 
@@ -3196,18 +3324,24 @@ Deno.serve(async (req) => {
           base44.__spyclashRoomWriteLeaseContext = context;
           try {
             const created = await createRoom(base44, user, body);
-            await fanoutGameRoomSignalsBestEffort({
-              store: base44.asServiceRole.entities.GameRoomSignal,
-              room: created,
-              logError: (message, error) =>
-                console.error(message, error?.message || error),
-            });
+            // Only the newly introduced actor signal may be created while its
+            // lifecycle lease is held. The bulk update happens after release.
+            await bootstrapActorRoomSignalWithinLease(base44, created, user);
             return created;
           } finally {
             delete base44.__spyclashRoomWriteLeaseContext;
           }
         },
       });
+      await fanoutRoomActionSignal(
+        base44,
+        action,
+        result,
+        result,
+        user,
+        body,
+        { allowSignalCreate: false },
+      );
       return Response.json(roomForClient(result, user));
     }
 
@@ -3308,6 +3442,7 @@ Deno.serve(async (req) => {
     ) && canUseFastRoomAction(action, room, user);
     actionStartedAt = performance.now();
     let readOnlyCastLeaseRecovery = false;
+    let leasedSignalSourceRoom = null;
     let result;
     if (fastRoomAction) {
       base44.__spyclashFastRoomWriteContext = true;
@@ -3397,7 +3532,7 @@ Deno.serve(async (req) => {
                   latestParticipantUserIDs,
                 );
                 markActionStarted();
-                return await executeRoomActionWithSignal(
+                const actionResult = await executeRoomAction(
                   base44,
                   action,
                   migratedRoom,
@@ -3405,6 +3540,18 @@ Deno.serve(async (req) => {
                   actionBody,
                   spyGuessTimingOptions,
                 );
+                if (action === "join_room") {
+                  // A join is the only existing-room action that can introduce
+                  // a signal recipient. Bootstrap only that actor under the
+                  // exact participant lease set; never bulk-fanout here.
+                  await bootstrapActorRoomSignalWithinLease(
+                    base44,
+                    actionResult,
+                    user,
+                  );
+                }
+                leasedSignalSourceRoom = migratedRoom;
+                return actionResult;
               } finally {
                 delete base44.__spyclashRoomWriteLeaseContext;
               }
@@ -3486,6 +3633,23 @@ Deno.serve(async (req) => {
           },
         });
       });
+    }
+    if (!fastRoomAction && leasedSignalSourceRoom && result?.id) {
+      // The room mutation has committed and all participant leases are now
+      // released. Update existing signal rows only, so a concurrent account
+      // cleanup cannot be undone by this post-lease fanout.
+      await fanoutRoomActionSignal(
+        base44,
+        action,
+        leasedSignalSourceRoom,
+        result,
+        user,
+        actionBody,
+        {
+          allowSignalCreate: false,
+          ...spyGuessTimingOptions,
+        },
+      );
     }
     actionCompletedAt = performance.now();
     if (fastRoomAction) {

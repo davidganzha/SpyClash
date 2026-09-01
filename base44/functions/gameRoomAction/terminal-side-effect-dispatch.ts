@@ -178,59 +178,64 @@ export async function completeTerminalSideEffectDispatch(input: {
   randomUUID?: () => string;
 }): Promise<{ completed: boolean; room: Entity | null }> {
   const now = input.now || new Date();
-  const room = await readRoom(input.store, input.claim.roomID);
-  const state = dispatchState(room || {}, input.claim.stateKey);
-  if (
-    !roomStillOwnsTerminalSource(room, input.claim.sourceEventID) ||
-    clean(state?.event_id) !== input.claim.sourceEventID ||
-    clean(state?.state) !== "processing" ||
-    clean(state?.token) !== input.claim.token ||
-    roomWriteRevision(room) === null
-  ) return { completed: false, room };
-
   const completionID = (input.randomUUID || (() => crypto.randomUUID()))();
-  try {
-    const completedRoom = await writeRoomWithCAS({
-      store: input.store,
+  let room = await readRoom(input.store, input.claim.roomID);
+
+  // Profile and push own independent fields inside terminal_intent, but both
+  // still advance the room CAS. Retry completion from the latest snapshot so
+  // concurrent independent workers preserve each other's state instead of
+  // leaving one already-performed side effect leased for a later replay.
+  for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt += 1) {
+    const state = dispatchState(room || {}, input.claim.stateKey);
+    const ownsSource = roomStillOwnsTerminalSource(
       room,
-      patch: {
-        terminal_intent: {
-          ...rawTerminalIntent(room),
-          [input.claim.stateKey]: {
-            ...state,
-            state: "completed",
-            lease_until: now.toISOString(),
-            completed_at: now.toISOString(),
+      input.claim.sourceEventID,
+    ) && clean(state?.event_id) === input.claim.sourceEventID &&
+      clean(state?.token) === input.claim.token;
+    if (ownsSource && clean(state?.state) === "completed") {
+      return { completed: true, room };
+    }
+    if (
+      !ownsSource || clean(state?.state) !== "processing" ||
+      roomWriteRevision(room) === null
+    ) return { completed: false, room };
+    if (!room) return { completed: false, room: null };
+
+    try {
+      const completedRoom = await writeRoomWithCAS({
+        store: input.store,
+        room,
+        patch: {
+          terminal_intent: {
+            ...rawTerminalIntent(room),
+            [input.claim.stateKey]: {
+              ...state,
+              state: "completed",
+              lease_until: now.toISOString(),
+              completed_at: now.toISOString(),
+            },
           },
         },
-      },
-      read: (id) => readRoom(input.store, id),
-      randomUUID: () => `terminal-dispatch-complete:${completionID}`,
-    });
-    const completedState = dispatchState(
-      completedRoom,
-      input.claim.stateKey,
-    );
-    return {
-      completed:
+        read: (id) => readRoom(input.store, id),
+        randomUUID: () =>
+          `terminal-dispatch-complete:${completionID}:${attempt}`,
+      });
+      const completedState = dispatchState(
+        completedRoom,
+        input.claim.stateKey,
+      );
+      if (
         roomStillOwnsTerminalSource(completedRoom, input.claim.sourceEventID) &&
         clean(completedState?.event_id) === input.claim.sourceEventID &&
         clean(completedState?.state) === "completed" &&
-        clean(completedState?.token) === input.claim.token,
-      room: completedRoom,
-    };
-  } catch {
-    const latest = await readRoom(input.store, input.claim.roomID);
-    const latestState = dispatchState(latest || {}, input.claim.stateKey);
-    return {
-      completed:
-        roomStillOwnsTerminalSource(latest, input.claim.sourceEventID) &&
-        clean(latestState?.event_id) === input.claim.sourceEventID &&
-        clean(latestState?.state) === "completed" &&
-        clean(latestState?.token) === input.claim.token,
-      room: latest,
-    };
+        clean(completedState?.token) === input.claim.token
+      ) return { completed: true, room: completedRoom };
+      room = completedRoom;
+    } catch {
+      room = await readRoom(input.store, input.claim.roomID);
+    }
   }
+  return { completed: false, room };
 }
 
 export type TerminalSideEffectRunResult = {

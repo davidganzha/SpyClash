@@ -1,5 +1,6 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import { withSerializedAdminMutation } from "./admin-publish-lifecycle.ts";
+import { NotificationContractError } from "./contracts.ts";
 import { publishGlobal } from "./inbox.ts";
 
 type Row = Record<string, any>;
@@ -38,6 +39,17 @@ class Store {
   }
 }
 
+async function lifecycleSubjectKey(userID: string): Promise<string> {
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`spyclash-billing-lifecycle:${userID}`),
+  );
+  const hex = Array.from(new Uint8Array(digest))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+  return `billing:${hex.slice(0, 40)}`;
+}
+
 Deno.test("parallel admins converge one published announcement per request id", async () => {
   const lifecycleStore = new Store();
   const announcementStore = new Store();
@@ -70,5 +82,73 @@ Deno.test("parallel admins converge one published announcement per request id", 
       row.dedupe_key === `notification:${requestID}`
     ).length,
     1,
+  );
+});
+
+Deno.test("admin mutation callback is not replayed after it starts", async () => {
+  const lifecycleStore = new Store();
+  let actionCalls = 0;
+
+  const error = await assertRejects(
+    () =>
+      withSerializedAdminMutation({
+        lifecycleStore,
+        adminUserID: "admin-1",
+        operationKey: "request:one",
+        action: () => {
+          actionCalls += 1;
+          throw new NotificationContractError(
+            "persistence changed",
+            409,
+            "cas_contention",
+          );
+        },
+      }),
+    NotificationContractError,
+  );
+
+  assertEquals(error.code, "cas_contention");
+  assertEquals(actionCalls, 1);
+});
+
+Deno.test("failed operation lease acquisition releases the already-held admin lease", async () => {
+  const operationKey = "request:blocked";
+  const operationSubjectKey = await lifecycleSubjectKey(
+    `notification-admin:${operationKey}`,
+  );
+  const lifecycleStore = new Store([{
+    id: "blocked-operation",
+    subject_key: operationSubjectKey,
+    state: "deleting",
+    lease_token: "deleting:blocked",
+    lease_until: "2099-01-01T00:00:00.000Z",
+    revision: "blocked-revision",
+    created_date: "2026-07-27T00:00:00.000Z",
+  }]);
+  let actionCalls = 0;
+
+  const error = await assertRejects(
+    () =>
+      withSerializedAdminMutation({
+        lifecycleStore,
+        adminUserID: "admin-partial",
+        operationKey,
+        action: () => {
+          actionCalls += 1;
+          return Promise.resolve();
+        },
+      }),
+    NotificationContractError,
+  );
+
+  const adminSubjectKey = await lifecycleSubjectKey("admin-partial");
+  const adminRow = lifecycleStore.records.find((row) =>
+    row.subject_key === adminSubjectKey
+  );
+  assertEquals(error.code, "deletion_in_progress");
+  assertEquals(actionCalls, 0);
+  assertEquals(
+    String(adminRow?.lease_token || "").startsWith("released:"),
+    true,
   );
 });

@@ -1,8 +1,10 @@
 import { assert, assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
   acquireBillingDeletionMarker,
+  acquireBillingWriterLease,
   BillingIdentityLifecycleError,
   isBillingIdentityLeaseActive,
+  releaseBillingWriterLease,
 } from "./billing-identity-lifecycle.ts";
 import {
   deletedAccountTombstone,
@@ -269,12 +271,164 @@ Deno.test("checkSubscription-style persistence cannot create while deletion mark
   assertEquals(store.createCalls.length, 0);
 });
 
+Deno.test("writer lease acquisition retries only before one entitlement mutation", async () => {
+  const userStore = new MockUserStore([activeUser()]);
+  const lifecycleStore = new MockUserStore([]);
+  const store = new MockEntitlementStore([]);
+  const delays: number[] = [];
+  let acquireCalls = 0;
+  let buildCalls = 0;
+
+  const result = await persistStripeEntitlement({
+    entitlementStore: store,
+    lifecycleStore,
+    userStore,
+    subscriptionID: SUBSCRIPTION_ID,
+    requestedUserID: USER_ID,
+    build: (current, ownerUserID) => {
+      buildCalls += 1;
+      return ordinaryBuild("active")(current, ownerUserID);
+    },
+    nowFactory: () => NOW,
+    randomUUID: sequence("acquire-retry"),
+    acquireWriterLease: async (targetStore, userID) => {
+      acquireCalls += 1;
+      if (acquireCalls <= 2) {
+        throw new BillingIdentityLifecycleError(
+          acquireCalls === 1 ? "active_lease" : "cas_contention",
+          "brief lifecycle contention",
+        );
+      }
+      return await acquireBillingWriterLease(
+        targetStore,
+        userID,
+        () => NOW,
+        sequence("acquired"),
+      );
+    },
+    delay: (milliseconds) => {
+      delays.push(milliseconds);
+      return Promise.resolve();
+    },
+  });
+
+  assertEquals(result.persisted, true);
+  assertEquals(acquireCalls, 3);
+  assertEquals(delays, [50, 100]);
+  assertEquals(buildCalls, 1);
+  assertEquals(store.createCalls.length, 1);
+});
+
+Deno.test("exhausted writer lease contention never starts entitlement mutation", async () => {
+  const userStore = new MockUserStore([activeUser()]);
+  const lifecycleStore = new MockUserStore([]);
+  const store = new MockEntitlementStore([]);
+  const delays: number[] = [];
+  let acquireCalls = 0;
+  let buildCalls = 0;
+
+  const error = await assertRejects(
+    () =>
+      persistStripeEntitlement({
+        entitlementStore: store,
+        lifecycleStore,
+        userStore,
+        subscriptionID: SUBSCRIPTION_ID,
+        requestedUserID: USER_ID,
+        build: (current, ownerUserID) => {
+          buildCalls += 1;
+          return ordinaryBuild("active")(current, ownerUserID);
+        },
+        nowFactory: () => NOW,
+        randomUUID: sequence("acquire-exhausted"),
+        acquireWriterLease: () => {
+          acquireCalls += 1;
+          throw new BillingIdentityLifecycleError(
+            "active_lease",
+            "writer still busy",
+          );
+        },
+        delay: (milliseconds) => {
+          delays.push(milliseconds);
+          return Promise.resolve();
+        },
+      }),
+    BillingIdentityLifecycleError,
+  );
+
+  assertEquals(error.code, "active_lease");
+  assertEquals(acquireCalls, 7);
+  assertEquals(delays, [50, 100, 200, 400, 600, 800]);
+  assertEquals(buildCalls, 0);
+  assertEquals(store.createCalls.length, 0);
+  assertEquals(store.updateCalls.length, 0);
+});
+
+Deno.test("lost release response reconciles without replaying committed mutation", async () => {
+  const userStore = new MockUserStore([activeUser()]);
+  const lifecycleStore = new MockUserStore([]);
+  const store = new MockEntitlementStore([entitlement()]);
+  const delays: number[] = [];
+  const releaseUUID = sequence("release-retry");
+  let releaseCalls = 0;
+  let buildCalls = 0;
+
+  const result = await persistStripeEntitlement({
+    entitlementStore: store,
+    lifecycleStore,
+    userStore,
+    subscriptionID: SUBSCRIPTION_ID,
+    requestedUserID: USER_ID,
+    build: (current, ownerUserID) => {
+      buildCalls += 1;
+      return ordinaryBuild("canceled")(current, ownerUserID);
+    },
+    nowFactory: () => NOW,
+    randomUUID: sequence("release-persistence"),
+    releaseWriterLease: async (targetStore, writerLease) => {
+      releaseCalls += 1;
+      await releaseBillingWriterLease(
+        targetStore,
+        writerLease,
+        NOW,
+        releaseUUID,
+      );
+      if (releaseCalls === 1) {
+        throw new Error("simulated lost release response");
+      }
+    },
+    delay: (milliseconds) => {
+      delays.push(milliseconds);
+      return Promise.resolve();
+    },
+  });
+
+  assertEquals(result.persisted, true);
+  assertEquals(result.record.status, "canceled");
+  assertEquals(releaseCalls, 2);
+  assertEquals(delays, [50]);
+  assertEquals(buildCalls, 1);
+  assertEquals(
+    store.updateCalls.filter((call) => call.update.$set?.status).length,
+    1,
+  );
+
+  const deletionLease = await acquireBillingDeletionMarker(
+    lifecycleStore,
+    USER_ID,
+    () => NOW,
+    sequence("delete-after-release-retry"),
+  );
+  assertEquals(deletionLease.state, "deleting");
+});
+
 Deno.test("lost raw create response plus reconciliation outage retains deletion-blocking writer lease", async () => {
   const userStore = new MockUserStore([activeUser()]);
   const lifecycleStore = new MockUserStore([]);
   const store = new MockEntitlementStore([]);
   store.createThrowsAfterApply = true;
   store.reconciliationOutage = true;
+  let releaseCalls = 0;
 
   const error = await assertRejects(
     () =>
@@ -287,10 +441,15 @@ Deno.test("lost raw create response plus reconciliation outage retains deletion-
         build: ordinaryBuild("active"),
         nowFactory: () => NOW,
         randomUUID: sequence("ambiguous"),
+        releaseWriterLease: () => {
+          releaseCalls += 1;
+          return Promise.resolve();
+        },
       }),
     StripeEntitlementPersistenceError,
   );
   assertEquals(error.code, "ambiguous");
+  assertEquals(releaseCalls, 0);
   assertEquals(store.records[0].user_id, USER_ID);
   assertEquals(
     isBillingIdentityLeaseActive(

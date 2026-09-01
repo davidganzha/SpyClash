@@ -623,7 +623,7 @@ struct CommunityView: View {
                     }
                 }
 
-                if let room = inviteRoom {
+                if let room = inviteRoom(for: detail) {
                     Button {
                         Task { await inviteToRoom(detail.profile, room: room) }
                     } label: {
@@ -1375,7 +1375,8 @@ struct CommunityView: View {
         .contentShape(Rectangle())
     }
 
-    private var inviteRoom: GameRoom? {
+    private func inviteRoom(for detail: CommunityProfileDetail) -> GameRoom? {
+        guard detail.relationship?.status.lowercased() == "accepted" else { return nil }
         guard let room = appState.activeRoom, room.normalizedStatus == "waiting" else { return nil }
         return room
     }
@@ -1754,6 +1755,9 @@ struct CommunityView: View {
             finishActionFeedback(actionID)
             reconcileNetworkAfterAction()
         } catch {
+            if !appState.shouldUsePreviewData {
+                await refreshActiveProfile()
+            }
             failActionFeedback(actionID, error: error)
         }
     }
@@ -2160,7 +2164,7 @@ struct CommunityView: View {
                 await refreshNetworkFromServer(generation: networkRefreshGeneration)
                 return
             } catch let error as Base44Error
-                where error.statusCode == 404 || error.statusCode == 409 {
+                where CommunityRoomInviteCleanupPolicy.shouldClearAfterFailure(error) {
                 guard appState.user?.id == userID else { return }
                 clearPendingRoomInviteCleanup(inviteID, userID: userID)
                 networkRefreshGeneration += 1

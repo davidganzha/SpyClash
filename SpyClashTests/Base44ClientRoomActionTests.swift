@@ -764,6 +764,177 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertTrue(try recorder.requestBodies().isEmpty)
     }
 
+    func testJoinRetriesTypedLeaseConflictWithinThreeRequestBudget() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if try recorder.requestBodies().count <= 2 {
+                return MockURLProtocol.leaseConflictResponse(
+                    for: request,
+                    code: "active_lease",
+                    retryable: true
+                )
+            }
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let user = makeRadarUser(
+            id: "joining-user",
+            avatar: "🕵️",
+            rating: 0,
+            policy: .ask
+        )
+        let joined = try await makeClient().join(code: "ABC123", user: user)
+
+        XCTAssertEqual(joined.id, "room-1")
+        XCTAssertEqual(
+            try recorder.requestBodies().compactMap { $0["action"] as? String },
+            ["join_room", "join_room", "join_room"]
+        )
+    }
+
+    func testJoinStopsAfterThreeRequestsWhenLeaseConflictPersists() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.leaseConflictResponse(
+                for: request,
+                code: "active_lease",
+                retryable: true
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let user = makeRadarUser(
+            id: "joining-user",
+            avatar: "🕵️",
+            rating: 0,
+            policy: .ask
+        )
+        do {
+            _ = try await makeClient().join(code: "ABC123", user: user)
+            XCTFail("Expected bounded lease contention.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.code, "active_lease")
+        }
+
+        XCTAssertEqual(try recorder.requestBodies().count, 3)
+    }
+
+    func testJoinRetryStopsAfterAccountSwitch() async throws {
+        let recorder = RequestRecorder()
+        let firstRequest = expectation(description: "First JOIN request started")
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if try recorder.requestBodies().count == 1 {
+                firstRequest.fulfill()
+            }
+            return MockURLProtocol.leaseConflictResponse(
+                for: request,
+                code: "active_lease",
+                retryable: true
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        let user = makeRadarUser(
+            id: "joining-user",
+            avatar: "🕵️",
+            rating: 0,
+            policy: .ask
+        )
+        let mutation = Task {
+            try await client.join(code: "ABC123", user: user)
+        }
+        await fulfillment(of: [firstRequest], timeout: 1)
+        client.setToken("replacement-token")
+
+        do {
+            _ = try await mutation.value
+            XCTFail("Expected the old-account JOIN retry to be cancelled.")
+        } catch is CancellationError {
+            // Expected: the old player payload must not be sent under the new token.
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+        XCTAssertEqual(try recorder.requestBodies().count, 1)
+    }
+
+    func testWordPackCreateRetriesOnlyTypedPreActionLeaseConflict() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if try recorder.requestBodies().count <= 2 {
+                return MockURLProtocol.leaseConflictResponse(
+                    for: request,
+                    code: "active_lease",
+                    retryable: true
+                )
+            }
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let payload = #"{"id":"pack-1","name":"Places","category":"Places","words":["Embassy","Harbor"]}"#
+            return (response, Data(payload.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let pack = try await makeClient().createWordPack(
+            name: "Places",
+            category: "Places",
+            words: ["Embassy", "Harbor"],
+            ownerEmail: "operative@example.com"
+        )
+
+        XCTAssertEqual(pack.id, "pack-1")
+        XCTAssertEqual(
+            try recorder.requestBodies().compactMap { $0["action"] as? String },
+            ["create", "create", "create"]
+        )
+    }
+
+    func testCommunityMutationRetryStopsAfterAccountSwitch() async throws {
+        let recorder = RequestRecorder()
+        let firstRequest = expectation(description: "First community request started")
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if try recorder.requestBodies().count == 1 {
+                firstRequest.fulfill()
+            }
+            return MockURLProtocol.leaseConflictResponse(
+                for: request,
+                code: "active_lease",
+                retryable: true
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        let mutation = Task {
+            try await client.communityRelationshipAction(
+                "accept",
+                friendshipID: "friendship-1"
+            )
+        }
+        await fulfillment(of: [firstRequest], timeout: 1)
+        client.setToken("replacement-token")
+
+        do {
+            _ = try await mutation.value
+            XCTFail("Expected the old-account retry to be cancelled.")
+        } catch is CancellationError {
+            // Expected: the second request must never use the captured token.
+        } catch {
+            XCTFail("Expected CancellationError, got \(error)")
+        }
+        XCTAssertEqual(try recorder.requestBodies().count, 1)
+    }
+
     func testSavedPackExclusionsAreFrozenIntoStartPlanAndTransport() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in

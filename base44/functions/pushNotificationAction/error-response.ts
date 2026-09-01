@@ -1,11 +1,6 @@
 import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
 import { PushContractError } from "./contracts.ts";
-
-type ErrorShape = {
-  status?: unknown;
-  statusCode?: unknown;
-  response?: { status?: unknown };
-};
+import { safePushErrorDetails } from "./safe-error.ts";
 
 function retryable(
   message: string,
@@ -39,14 +34,13 @@ export function pushErrorResponse(error: unknown): Response {
     );
   }
 
+  const details = safePushErrorDetails(error);
   console.error(
     "pushNotificationAction failed",
-    error instanceof Error ? error.message : error,
+    details.message,
+    details.status || 500,
   );
-  const shape = error as ErrorShape | null;
-  const status = Number(
-    shape?.status ?? shape?.statusCode ?? shape?.response?.status ?? 0,
-  );
+  const status = details.status;
   if (status === 429) {
     return retryable(
       "Too many push requests. Retry shortly.",

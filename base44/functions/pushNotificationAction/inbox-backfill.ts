@@ -13,6 +13,7 @@ import {
   type SourceContext,
 } from "./push-events.ts";
 import { safePushActorName } from "./public-name-safety.ts";
+import { safePushErrorDetails } from "./safe-error.ts";
 
 export const LEGACY_INBOX_BACKFILL_BATCH = 32;
 const SOURCE_SETTLE_MS = 2 * 60 * 1_000;
@@ -318,18 +319,20 @@ export async function backfillLegacyInboxProjections(input: {
             now,
           });
         } catch (rotationError) {
+          const details = safePushErrorDetails(rotationError);
           console.error(
             "legacy inbox backfill retry rotation failed",
             clean(event.id),
-            rotationError instanceof Error
-              ? rotationError.message
-              : rotationError,
+            details.message,
+            details.status || 500,
           );
         }
+        const details = safePushErrorDetails(error);
         console.error(
           "legacy inbox backfill row failed",
           clean(event.id),
-          error instanceof Error ? error.message : error,
+          details.message,
+          details.status || 500,
         );
       }
     },
