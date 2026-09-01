@@ -1,4 +1,22 @@
 import SwiftUI
+import UIKit
+
+enum LocalInputPresentationPolicy {
+    struct Layout: Equatable {
+        let revealsFocusedField: Bool
+        let allowsSetupFooter: Bool
+    }
+
+    static func layout(
+        isSetupFieldFocused: Bool,
+        isSoftwareKeyboardVisible: Bool
+    ) -> Layout {
+        Layout(
+            revealsFocusedField: isSetupFieldFocused && isSoftwareKeyboardVisible,
+            allowsSetupFooter: !isSoftwareKeyboardVisible
+        )
+    }
+}
 
 enum LocalGameDeadlineOutcome: Equatable {
     case continuePlaying(remainingSeconds: Int)
@@ -216,6 +234,7 @@ struct LocalGameView: View {
     @State private var playerDragResidualY: CGFloat = 0
     @State private var playerLastDragLocationY: CGFloat?
     @State private var animatedLocalSetupPanel: LocalSetupPanel?
+    @State private var isLocalSoftwareKeyboardVisible = false
     @FocusState private var focusedLocalSetupField: LocalSetupField?
 
     @State private var phase = LocalPhase.setup
@@ -418,6 +437,20 @@ struct LocalGameView: View {
             .onChange(of: localThemeError) { _, message in publishLocalThemeError(message) }
             .onReceive(
                 NotificationCenter.default.publisher(
+                    for: UIResponder.keyboardWillChangeFrameNotification
+                )
+            ) { notification in
+                captureLocalSoftwareKeyboardVisibility(notification)
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: UIResponder.keyboardDidHideNotification
+                )
+            ) { _ in
+                isLocalSoftwareKeyboardVisible = false
+            }
+            .onReceive(
+                NotificationCenter.default.publisher(
                     for: ShellKeyboardDismissal.requested
                 )
             ) { _ in
@@ -438,12 +471,14 @@ struct LocalGameView: View {
 
     private func handleLocalDisappear() {
         timerTask?.cancel()
+        isLocalSoftwareKeyboardVisible = false
         appState.isShellChromeSuppressed = false
     }
 
     private func handleLocalScenePhaseChange(_ newScenePhase: ScenePhase) {
         guard newScenePhase != .active else { return }
         dismissLocalSetupCapture(animated: false)
+        isLocalSoftwareKeyboardVisible = false
 
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -565,7 +600,7 @@ struct LocalGameView: View {
             .animation(reduceMotion ? nil : .smooth(duration: 0.38), value: phase)
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if phase == .setup, focusedLocalSetupField == nil {
+            if phase == .setup, localInputPresentation.allowsSetupFooter {
                 localLobbyActionBar
                     .transition(
                         .asymmetric(
@@ -575,7 +610,7 @@ struct LocalGameView: View {
                     )
             }
         }
-        .animation(reduceMotion ? nil : SpyMotion.page, value: focusedLocalSetupField)
+        .animation(reduceMotion ? nil : SpyMotion.page, value: localInputPresentation)
     }
 
     private var cardsScene: some View {
@@ -788,7 +823,9 @@ struct LocalGameView: View {
     }
 
     private var localSetupScrollTarget: String? {
-        switch focusedLocalSetupField {
+        guard localInputPresentation.revealsFocusedField else { return nil }
+
+        return switch focusedLocalSetupField {
         case .player(let index):
             localPlayerScrollTarget(index)
         case .theme:
@@ -796,6 +833,50 @@ struct LocalGameView: View {
         case nil:
             nil
         }
+    }
+
+    private var localInputPresentation: LocalInputPresentationPolicy.Layout {
+        LocalInputPresentationPolicy.layout(
+            isSetupFieldFocused: focusedLocalSetupField != nil,
+            isSoftwareKeyboardVisible: isLocalSoftwareKeyboardVisible
+        )
+    }
+
+    private func captureLocalSoftwareKeyboardVisibility(
+        _ notification: Notification
+    ) {
+        let endFrame = (
+            notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+                as? NSValue
+        )?.cgRectValue
+        let isLocal = (
+            notification.userInfo?[UIResponder.keyboardIsLocalUserInfoKey]
+                as? NSNumber
+        )?.boolValue ?? true
+        let screenBounds = (notification.object as? UIScreen)?
+            .coordinateSpace.bounds ?? activeLocalKeyboardScreenBounds
+
+        // The off-screen end frame arrives before the dismissal animation.
+        // keyboardDidHide owns the true-to-false transition so the footer
+        // cannot reappear underneath a keyboard that is still moving out.
+        isLocalSoftwareKeyboardVisible = SoftwareKeyboardVisibilityPolicy
+            .capturedVisibility(
+                currentlyVisible: isLocalSoftwareKeyboardVisible,
+                endFrame: endFrame,
+                screenBounds: screenBounds,
+                isLocal: isLocal
+            )
+    }
+
+    private var activeLocalKeyboardScreenBounds: CGRect {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .sorted {
+                $0.activationState == .foregroundActive &&
+                    $1.activationState != .foregroundActive
+            }
+            .first?
+            .screen.coordinateSpace.bounds ?? .zero
     }
 
     private var focusedLocalSetupPanel: LocalSetupPanel? {

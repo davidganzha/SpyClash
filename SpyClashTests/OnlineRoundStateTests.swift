@@ -5058,6 +5058,74 @@ final class OnlineInputPresentationPolicyTests: XCTestCase {
             )
         )
     }
+
+    func testOffscreenEndFrameWaitsForDidHideBeforeClearingCapture() {
+        let screen = CGRect(x: 0, y: 0, width: 390, height: 844)
+
+        XCTAssertTrue(
+            SoftwareKeyboardVisibilityPolicy.capturedVisibility(
+                currentlyVisible: false,
+                endFrame: CGRect(x: 0, y: 520, width: 390, height: 324),
+                screenBounds: screen,
+                isLocal: true
+            )
+        )
+        XCTAssertTrue(
+            SoftwareKeyboardVisibilityPolicy.capturedVisibility(
+                currentlyVisible: true,
+                endFrame: CGRect(x: 0, y: 844, width: 390, height: 324),
+                screenBounds: screen,
+                isLocal: true
+            )
+        )
+        XCTAssertFalse(
+            SoftwareKeyboardVisibilityPolicy.capturedVisibility(
+                currentlyVisible: false,
+                endFrame: CGRect(x: 0, y: 844, width: 390, height: 324),
+                screenBounds: screen,
+                isLocal: true
+            )
+        )
+    }
+}
+
+final class LocalInputPresentationPolicyTests: XCTestCase {
+    func testIdleLocalLobbyKeepsFooterWithoutScrolling() {
+        XCTAssertEqual(
+            LocalInputPresentationPolicy.layout(
+                isSetupFieldFocused: false,
+                isSoftwareKeyboardVisible: false
+            ),
+            .init(revealsFocusedField: false, allowsSetupFooter: true)
+        )
+    }
+
+    func testHardwareKeyboardFocusDoesNotMoveTheLocalLobby() {
+        XCTAssertEqual(
+            LocalInputPresentationPolicy.layout(
+                isSetupFieldFocused: true,
+                isSoftwareKeyboardVisible: false
+            ),
+            .init(revealsFocusedField: false, allowsSetupFooter: true)
+        )
+    }
+
+    func testSoftwareKeyboardRevealsFocusedFieldAndSuppressesFooter() {
+        XCTAssertEqual(
+            LocalInputPresentationPolicy.layout(
+                isSetupFieldFocused: true,
+                isSoftwareKeyboardVisible: true
+            ),
+            .init(revealsFocusedField: true, allowsSetupFooter: false)
+        )
+        XCTAssertEqual(
+            LocalInputPresentationPolicy.layout(
+                isSetupFieldFocused: false,
+                isSoftwareKeyboardVisible: true
+            ),
+            .init(revealsFocusedField: false, allowsSetupFooter: false)
+        )
+    }
 }
 
 @MainActor

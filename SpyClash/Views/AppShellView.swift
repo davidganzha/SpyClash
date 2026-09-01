@@ -57,6 +57,35 @@ enum ShellKeyboardDismissal {
     }
 }
 
+enum SoftwareKeyboardVisibilityPolicy {
+    static func isVisible(
+        endFrame: CGRect?,
+        screenBounds: CGRect,
+        isLocal: Bool
+    ) -> Bool {
+        guard isLocal,
+              let endFrame,
+              endFrame.width > 0,
+              endFrame.height > 0 else { return false }
+
+        let overlap = endFrame.intersection(screenBounds)
+        return !overlap.isNull && overlap.width > 0 && overlap.height > 0
+    }
+
+    static func capturedVisibility(
+        currentlyVisible: Bool,
+        endFrame: CGRect?,
+        screenBounds: CGRect,
+        isLocal: Bool
+    ) -> Bool {
+        currentlyVisible || isVisible(
+            endFrame: endFrame,
+            screenBounds: screenBounds,
+            isLocal: isLocal
+        )
+    }
+}
+
 @MainActor
 private struct ShellKeyboardDismissGestureInstaller: UIViewRepresentable {
     final class AttachmentView: UIView {

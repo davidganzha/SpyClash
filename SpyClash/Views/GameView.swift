@@ -37,13 +37,11 @@ enum OnlineInputPresentationPolicy {
         screenBounds: CGRect,
         isLocal: Bool
     ) -> Bool {
-        guard isLocal,
-              let endFrame,
-              endFrame.width > 0,
-              endFrame.height > 0 else { return false }
-
-        let overlap = endFrame.intersection(screenBounds)
-        return !overlap.isNull && overlap.width > 0 && overlap.height > 0
+        SoftwareKeyboardVisibilityPolicy.isVisible(
+            endFrame: endFrame,
+            screenBounds: screenBounds,
+            isLocal: isLocal
+        )
     }
 }
 
@@ -2299,7 +2297,7 @@ struct GameView: View {
                 for: UIResponder.keyboardWillChangeFrameNotification
             )
         ) { notification in
-            revealOnlineSoftwareKeyboardIfNeeded(notification)
+            captureOnlineSoftwareKeyboardVisibility(notification)
         }
         .onReceive(
             NotificationCenter.default.publisher(
@@ -2906,7 +2904,7 @@ struct GameView: View {
         }
     }
 
-    private func revealOnlineSoftwareKeyboardIfNeeded(
+    private func captureOnlineSoftwareKeyboardVisibility(
         _ notification: Notification
     ) {
         let endFrame = (
@@ -2920,12 +2918,16 @@ struct GameView: View {
         let screenBounds = (notification.object as? UIScreen)?
             .coordinateSpace.bounds ?? activeKeyboardScreenBounds
 
-        guard OnlineInputPresentationPolicy.isSoftwareKeyboardVisible(
-            endFrame: endFrame,
-            screenBounds: screenBounds,
-            isLocal: isLocal
-        ) else { return }
-        isOnlineSoftwareKeyboardVisible = true
+        // The off-screen end frame arrives before the dismissal animation.
+        // Keep the keyboard layout until keyboardDidHide to avoid inserting
+        // the footer while the keyboard still physically covers the screen.
+        isOnlineSoftwareKeyboardVisible = SoftwareKeyboardVisibilityPolicy
+            .capturedVisibility(
+                currentlyVisible: isOnlineSoftwareKeyboardVisible,
+                endFrame: endFrame,
+                screenBounds: screenBounds,
+                isLocal: isLocal
+            )
     }
 
     private var activeKeyboardScreenBounds: CGRect {
