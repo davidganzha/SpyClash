@@ -34,6 +34,18 @@ function confirmsRoomExit(error) {
   return status === 403 || status === 404;
 }
 
+function shouldRetryRoomClose(error) {
+  const rawStatus = error?.status || error?.response?.status;
+  const status = Number(rawStatus);
+  if (!Number.isFinite(status) || status <= 0) return true;
+  if ([408, 425, 429].includes(status)) return true;
+  if (status >= 500 && status <= 599) return true;
+  if (status !== 409 || error?.retryable !== true) return false;
+
+  const code = String(error?.code || "").trim().toLocaleLowerCase();
+  return code === "active_lease" || code === "cas_contention";
+}
+
 export function pendingRoomExitId(storage = undefined) {
   try {
     return normalizedRoomId(
@@ -130,6 +142,7 @@ async function runPendingRoomExitCompletion({
         return true;
       }
       if (action !== GAME_ROOM_CLOSE_ACTION) return false;
+      if (!shouldRetryRoomClose(error)) return false;
       if (!pendingExitMatches(roomId, action, storage)) return true;
 
       const delayIndex = Math.min(

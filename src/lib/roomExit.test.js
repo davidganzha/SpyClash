@@ -171,6 +171,69 @@ test("pending idempotent close retries at a capped cadence until success", async
   assert.equal(pendingRoomExitAction(storage), null);
 });
 
+test("pending close stops its active worker on permanent client failures", async () => {
+  for (const error of [
+    Object.assign(new Error("invalid"), { status: 400 }),
+    Object.assign(new Error("auth"), { status: 401 }),
+    Object.assign(new Error("conflict"), { status: 409 }),
+    Object.assign(new Error("wrong conflict"), {
+      status: 409,
+      code: "room_revision_conflict",
+      retryable: true,
+    }),
+  ]) {
+    const storage = memoryStorage({ spy_active_room_id: "room-host" });
+    markRoomExitPending("room-host", storage, GAME_ROOM_CLOSE_ACTION);
+    let attempts = 0;
+    const sleeps = [];
+
+    const completed = await completePendingRoomExit({
+      roomId: "room-host",
+      action: GAME_ROOM_CLOSE_ACTION,
+      storage,
+      performExit: async () => {
+        attempts += 1;
+        throw error;
+      },
+      sleep: async (milliseconds) => sleeps.push(milliseconds),
+    });
+
+    assert.equal(completed, false);
+    assert.equal(attempts, 1);
+    assert.deepEqual(sleeps, []);
+    assert.equal(pendingRoomExitId(storage), "room-host");
+  }
+});
+
+test("pending close retries only a typed retryable lease conflict", async () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-host" });
+  markRoomExitPending("room-host", storage, GAME_ROOM_CLOSE_ACTION);
+  let attempts = 0;
+  const sleeps = [];
+
+  const completed = await completePendingRoomExit({
+    roomId: "room-host",
+    action: GAME_ROOM_CLOSE_ACTION,
+    storage,
+    performExit: async () => {
+      attempts += 1;
+      if (attempts === 1) {
+        throw Object.assign(new Error("busy"), {
+          status: 409,
+          code: "active_lease",
+          retryable: true,
+        });
+      }
+    },
+    sleep: async (milliseconds) => sleeps.push(milliseconds),
+  });
+
+  assert.equal(completed, true);
+  assert.equal(attempts, 2);
+  assert.deepEqual(sleeps, [1_000]);
+  assert.equal(pendingRoomExitId(storage), null);
+});
+
 test("concurrent close recovery callers share one room-action worker", async () => {
   const storage = memoryStorage({ spy_active_room_id: "room-host" });
   markRoomExitPending("room-host", storage, GAME_ROOM_CLOSE_ACTION);
