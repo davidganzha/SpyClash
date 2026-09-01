@@ -77,6 +77,10 @@ Deno.test("scheduled push recovery wakes profile repair without coupling deliver
   assertStringIncludes(repair, '"gameRoomAction"');
   assertStringIncludes(
     repair,
+    "if (finishedProfileRepairAlreadyCompleted(room)) return true;",
+  );
+  assertStringIncludes(
+    repair,
     'action: "repair_finished_profile_side_effects"',
   );
   assertStringIncludes(recent, "await repairFinishedRoomCommunityProfiles(");

@@ -57,6 +57,7 @@ import {
 import { backfillLegacyInboxProjections } from "./inbox-backfill.ts";
 import { canonicalBase44Request } from "./base44-context.ts";
 import { pushErrorResponse } from "./error-response.ts";
+import { finishedProfileRepairAlreadyCompleted } from "./profile-repair-state.ts";
 
 type Entity = Record<string, any>;
 const PAGE_SIZE = 100;
@@ -118,6 +119,8 @@ async function repairFinishedRoomCommunityProfiles(
   base44: any,
   room: Entity,
 ): Promise<boolean> {
+  if (finishedProfileRepairAlreadyCompleted(room)) return true;
+
   const internalSecret = clean(Deno.env.get("PUSH_INTERNAL_SECRET"));
   if (
     internalSecret.length < 32 || clean(room?.status).toLowerCase() !==
