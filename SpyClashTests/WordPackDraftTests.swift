@@ -67,4 +67,108 @@ final class WordPackDraftTests: XCTestCase {
         XCTAssertEqual(draft.wordAnalysis.words, ["Orbit", "Comet"])
         XCTAssertTrue(draft.isValid)
     }
+
+    func testRecommendedWordCountUsesThirtyForOrdinaryThemes() {
+        XCTAssertEqual(WordPackRecommendedCountPolicy.requestCount(for: "Landmarks"), 30)
+        XCTAssertEqual(
+            WordPackRecommendedCountPolicy.selectedCount(
+                for: "Landmarks",
+                availableCount: 80
+            ),
+            30
+        )
+        XCTAssertEqual(
+            WordPackRecommendedCountPolicy.selectedCount(
+                for: "Landmarks",
+                availableCount: 18
+            ),
+            18
+        )
+    }
+
+    func testCountriesThemesUseTheAvailablePoolUpToGenerationLimit() {
+        let localizedThemes = [
+            "Countries",
+            "European countries",
+            "СТРАНЫ",
+            "Страны   Европы",
+            "Країни",
+            "Країни Європи",
+            "Países",
+            "Paises de Europa",
+            "  PAÍSES\n",
+            "Pai\u{301}ses"
+        ]
+
+        for theme in localizedThemes {
+            XCTAssertEqual(
+                WordPackRecommendedCountPolicy.requestCount(for: theme),
+                100,
+                theme
+            )
+            XCTAssertEqual(
+                WordPackRecommendedCountPolicy.selectedCount(
+                    for: theme,
+                    availableCount: 47
+                ),
+                47,
+                theme
+            )
+        }
+
+        XCTAssertEqual(WordPackRecommendedCountPolicy.requestCount(for: "Country music"), 30)
+        XCTAssertEqual(
+            WordPackRecommendedCountPolicy.selectedCount(
+                for: "Countries",
+                availableCount: -4
+            ),
+            0
+        )
+        XCTAssertEqual(
+            WordPackRecommendedCountPolicy.selectedCount(
+                for: "Countries",
+                availableCount: 140
+            ),
+            100
+        )
+    }
+
+    func testLegacyRecommendedLobbyCountIsNormalizedAndRequiresOneServerSync() {
+        XCTAssertTrue(LobbyRecommendedCountMigrationPolicy.applies(to: .ai))
+        XCTAssertTrue(LobbyRecommendedCountMigrationPolicy.applies(to: .manual))
+        XCTAssertFalse(LobbyRecommendedCountMigrationPolicy.applies(to: .saved))
+        XCTAssertFalse(LobbyRecommendedCountMigrationPolicy.applies(to: .none))
+
+        let ordinaryCount = LobbyRecommendedCountMigrationPolicy.normalizedCount(
+            for: "Hero archetypes",
+            authoritativeCount: 100,
+            availableCount: 100
+        )
+        XCTAssertEqual(ordinaryCount, 30)
+        XCTAssertTrue(
+            LobbyRecommendedCountMigrationPolicy.requiresServerSync(
+                authoritativeCount: 100,
+                normalizedCount: ordinaryCount
+            )
+        )
+
+        let countriesCount = LobbyRecommendedCountMigrationPolicy.normalizedCount(
+            for: "Countries",
+            authoritativeCount: 180,
+            availableCount: 180
+        )
+        XCTAssertEqual(countriesCount, 100)
+        XCTAssertTrue(
+            LobbyRecommendedCountMigrationPolicy.requiresServerSync(
+                authoritativeCount: 180,
+                normalizedCount: countriesCount
+            )
+        )
+        XCTAssertFalse(
+            LobbyRecommendedCountMigrationPolicy.requiresServerSync(
+                authoritativeCount: 30,
+                normalizedCount: 30
+            )
+        )
+    }
 }

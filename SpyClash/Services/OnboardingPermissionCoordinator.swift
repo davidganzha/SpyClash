@@ -40,8 +40,7 @@ struct OnboardingPermissionFlow: Equatable, Sendable {
 
     static let order: [OnboardingPermissionKind] = [
         .notifications,
-        .camera,
-        .nearby
+        .camera
     ]
 
     private(set) var index = 0

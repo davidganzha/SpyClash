@@ -113,6 +113,72 @@ enum WordPackDraftNormalizer {
     }
 }
 
+enum WordPackRecommendedCountPolicy {
+    static let defaultCount = 30
+    static let generationRequestLimit = 100
+
+    static func requestCount(for theme: String) -> Int {
+        isCountriesTheme(theme) ? generationRequestLimit : defaultCount
+    }
+
+    static func selectedCount(for theme: String, availableCount: Int) -> Int {
+        min(max(availableCount, 0), requestCount(for: theme))
+    }
+
+    static func isCountriesTheme(_ theme: String) -> Bool {
+        countriesThemes.contains(normalizedTheme(theme))
+    }
+
+    private static let countriesThemes: Set<String> = Set([
+        "countries",
+        "european countries",
+        "страны",
+        "страны европы",
+        "країни",
+        "країни європи",
+        "paises",
+        "paises de europa"
+    ].map(normalizedTheme))
+
+    private static func normalizedTheme(_ theme: String) -> String {
+        theme
+            .precomposedStringWithCompatibilityMapping
+            .folding(
+                options: [.caseInsensitive, .diacriticInsensitive],
+                locale: Locale(identifier: "en_US_POSIX")
+            )
+            .split(whereSeparator: { $0.isWhitespace })
+            .joined(separator: " ")
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+}
+
+enum LobbyRecommendedCountMigrationPolicy {
+    static func applies(to source: LobbyWordSource) -> Bool {
+        source == .ai || source == .manual
+    }
+
+    static func normalizedCount(
+        for theme: String,
+        authoritativeCount: Int,
+        availableCount: Int
+    ) -> Int {
+        WordPackRecommendedCountPolicy.selectedCount(
+            for: theme,
+            availableCount: availableCount > 0
+                ? availableCount
+                : max(authoritativeCount, 0)
+        )
+    }
+
+    static func requiresServerSync(
+        authoritativeCount: Int,
+        normalizedCount: Int
+    ) -> Bool {
+        max(authoritativeCount, 0) != max(normalizedCount, 0)
+    }
+}
+
 struct WordPackAIGenerationSignature: Equatable {
     let theme: String
     let count: Int

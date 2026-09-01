@@ -188,7 +188,17 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
     delete roomProperties[field];
   }
   const history = schemas.find((schema) => schema.name === "GameHistory")!;
-  delete (history.properties as Record<string, unknown>).spy_count;
+  const historicalHistoryProperties = history.properties as Record<
+    string,
+    unknown
+  >;
+  delete historicalHistoryProperties.spy_count;
+  delete historicalHistoryProperties.result_key;
+  delete historicalHistoryProperties.profile_repair_state;
+  delete historicalHistoryProperties.profile_repair_token;
+  delete historicalHistoryProperties.profile_repair_lease_until;
+  delete historicalHistoryProperties.profile_repair_attempt_count;
+  delete historicalHistoryProperties.profile_repair_completed_at;
   schemas.sort((left, right) => {
     const leftName = String(left.name);
     const rightName = String(right.name);

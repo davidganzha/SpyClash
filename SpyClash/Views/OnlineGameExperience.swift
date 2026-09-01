@@ -1255,6 +1255,7 @@ struct OnlineActiveGameScene: View {
     let canRequestVote: Bool
     let canSpyGuess: Bool
     let canCastVote: Bool
+    let lobbyReturn: ActiveLobbyReturnPresentation
     let onToggleRole: () -> Void
     let onTogglePause: () -> Void
     let onRoundCommand: (OnlineRoundCommand) -> Void
@@ -1263,6 +1264,7 @@ struct OnlineActiveGameScene: View {
     let onRequestVote: () -> Void
     let onCastVote: (String) -> Void
     let onSpyGuess: () -> Void
+    let onToggleLobbyReturn: () -> Void
     let onLeave: () -> Void
 
     @State private var isConfirmingLeave = false
@@ -1285,6 +1287,7 @@ struct OnlineActiveGameScene: View {
         canRequestVote: Bool,
         canSpyGuess: Bool,
         canCastVote: Bool = true,
+        lobbyReturn: ActiveLobbyReturnPresentation = .unavailable,
         onToggleRole: @escaping () -> Void,
         onTogglePause: @escaping () -> Void,
         onRoundCommand: @escaping (OnlineRoundCommand) -> Void,
@@ -1293,6 +1296,7 @@ struct OnlineActiveGameScene: View {
         onRequestVote: @escaping () -> Void,
         onCastVote: @escaping (String) -> Void,
         onSpyGuess: @escaping () -> Void,
+        onToggleLobbyReturn: @escaping () -> Void = {},
         onLeave: @escaping () -> Void
     ) {
         self.room = room
@@ -1310,6 +1314,7 @@ struct OnlineActiveGameScene: View {
         self.canRequestVote = canRequestVote
         self.canSpyGuess = canSpyGuess
         self.canCastVote = canCastVote
+        self.lobbyReturn = lobbyReturn
         self.onToggleRole = onToggleRole
         self.onTogglePause = onTogglePause
         self.onRoundCommand = onRoundCommand
@@ -1318,6 +1323,7 @@ struct OnlineActiveGameScene: View {
         self.onRequestVote = onRequestVote
         self.onCastVote = onCastVote
         self.onSpyGuess = onSpyGuess
+        self.onToggleLobbyReturn = onToggleLobbyReturn
         self.onLeave = onLeave
     }
 
@@ -1329,6 +1335,12 @@ struct OnlineActiveGameScene: View {
 
                     VStack(spacing: 0) {
                         gameBrandHeader
+
+                        if lobbyReturn.isAvailable {
+                            lobbyReturnControl(
+                                accessibilityID: "onlineExperience.returnToLobbyVote"
+                            )
+                        }
 
                         ZStack(alignment: .top) {
                             VStack(spacing: 0) {
@@ -1454,6 +1466,84 @@ struct OnlineActiveGameScene: View {
                 .fill(SpyTheme.stroke)
                 .frame(height: 1)
         }
+    }
+
+    private func lobbyReturnControl(accessibilityID: String) -> some View {
+        let accent = lobbyReturn.hasFailed
+            ? SpyTheme.amber
+            : (lobbyReturn.isSelected ? SpyTheme.red : Color.white.opacity(0.72))
+
+        return HStack(spacing: 10) {
+            Button(action: toggleLobbyReturn) {
+                HStack(spacing: 8) {
+                    ZStack {
+                        if lobbyReturn.isPending {
+                            ProgressView()
+                                .controlSize(.mini)
+                                .tint(accent)
+                        } else {
+                            Image(
+                                systemName: lobbyReturn.hasFailed
+                                    ? "arrow.clockwise"
+                                    : (lobbyReturn.isSelected ? "checkmark.circle.fill" : "arrow.uturn.backward.circle")
+                            )
+                            .font(.system(size: 13, weight: .black))
+                        }
+                    }
+                    .frame(width: 16, height: 16)
+
+                    Text(copy.returnToLobby)
+                        .font(.system(size: 9, weight: .black, design: .monospaced))
+                        .tracking(0.75)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                }
+                .foregroundStyle(accent)
+                .padding(.horizontal, 11)
+                .frame(minHeight: OnlineInteractionHitTargetPolicy.minimumSize)
+                .background(accent.opacity(lobbyReturn.isSelected ? 0.13 : 0.055), in: CutCornerShape(cut: 6))
+                .overlay {
+                    CutCornerShape(cut: 6)
+                        .stroke(accent.opacity(lobbyReturn.isSelected ? 0.72 : 0.32), lineWidth: 1)
+                }
+                .contentShape(CutCornerShape(cut: 6))
+            }
+            .buttonStyle(SpyWebPressStyle(pressedScale: 0.96))
+            .disabled(lobbyReturn.isPending)
+            .accessibilityIdentifier(accessibilityID)
+            .accessibilityLabel(
+                lobbyReturn.hasFailed
+                    ? copy.retryReturnToLobby
+                    : (lobbyReturn.isSelected ? copy.cancelReturnToLobby : copy.returnToLobby)
+            )
+            .accessibilityValue(
+                copy.returnToLobbyAccessibilityValue(
+                    votes: lobbyReturn.voteCount,
+                    players: lobbyReturn.playerCount,
+                    selected: lobbyReturn.isSelected,
+                    pending: lobbyReturn.isPending,
+                    failed: lobbyReturn.hasFailed
+                )
+            )
+
+            Spacer(minLength: 8)
+
+            Text("\(lobbyReturn.voteCount) / \(lobbyReturn.playerCount)")
+                .font(.system(size: 10, weight: .black, design: .monospaced))
+                .monospacedDigit()
+                .foregroundStyle(lobbyReturn.isSelected ? SpyTheme.red : SpyTheme.dim)
+                .contentTransition(.numericText())
+                .accessibilityHidden(true)
+        }
+        .padding(.horizontal, 16)
+        .frame(height: 46)
+        .background(Color.black.opacity(0.88))
+        .overlay(alignment: .bottom) {
+            Rectangle()
+                .fill(SpyTheme.stroke)
+                .frame(height: 1)
+        }
+        .animation(.easeOut(duration: 0.16), value: lobbyReturn)
     }
 
     private func headerControl(
@@ -2023,6 +2113,14 @@ struct OnlineActiveGameScene: View {
                 .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
                 .frame(width: 250)
                 .accessibilityIdentifier("onlineExperience.leave")
+
+                if lobbyReturn.isAvailable {
+                    lobbyReturnControl(
+                        accessibilityID: "onlineExperience.returnToLobbyVote.paused"
+                    )
+                    .frame(width: 250)
+                    .clipShape(CutCornerShape(cut: 7))
+                }
             }
         }
         .accessibilityElement(children: .contain)
@@ -2050,6 +2148,12 @@ struct OnlineActiveGameScene: View {
 
     private func spyGuess() {
         onSpyGuess()
+    }
+
+    private func toggleLobbyReturn() {
+        guard lobbyReturn.isAvailable, !lobbyReturn.isPending else { return }
+        HapticManager.shared.fire(.buttonPress)
+        onToggleLobbyReturn()
     }
 
     private func requestLeave() {
@@ -2382,6 +2486,34 @@ struct SpyGameExperienceCopy {
     var leaveGame: String { text("LEAVE GAME", "SALIR DEL JUEGO", "ВЫЙТИ ИЗ ИГРЫ", "ВИЙТИ З ГРИ") }
     var closeGame: String { text("CLOSE GAME", "CERRAR JUEGO", "ЗАКРЫТЬ ИГРУ", "ЗАКРИТИ ГРУ") }
     var cancel: String { text("CANCEL", "CANCELAR", "ОТМЕНА", "СКАСУВАТИ") }
+    var returnToLobby: String { text("RETURN TO LOBBY", "VOLVER AL LOBBY", "ВЕРНУТЬСЯ В ЛОББИ", "ПОВЕРНУТИСЯ ДО ЛОБІ") }
+    var cancelReturnToLobby: String { text("CANCEL RETURN VOTE", "CANCELAR VOTO DE REGRESO", "ОТМЕНИТЬ ГОЛОС ЗА ВОЗВРАТ", "СКАСУВАТИ ГОЛОС ЗА ПОВЕРНЕННЯ") }
+    var retryReturnToLobby: String { text("RETRY RETURN VOTE", "REINTENTAR VOTO DE REGRESO", "ПОВТОРИТЬ ГОЛОС ЗА ВОЗВРАТ", "ПОВТОРИТИ ГОЛОС ЗА ПОВЕРНЕННЯ") }
+    func returnToLobbyAccessibilityValue(
+        votes: Int,
+        players: Int,
+        selected: Bool,
+        pending: Bool,
+        failed: Bool
+    ) -> String {
+        let progress = text(
+            "\(votes) of \(players) players",
+            "\(votes) de \(players) jugadores",
+            "\(votes) из \(players) игроков",
+            "\(votes) із \(players) гравців"
+        )
+        let state: String
+        if pending {
+            state = text("pending", "pendiente", "отправляется", "надсилається")
+        } else if failed {
+            state = text("failed, retry available", "falló, reintento disponible", "ошибка, доступен повтор", "помилка, доступний повтор")
+        } else if selected {
+            state = text("selected", "seleccionado", "выбрано", "вибрано")
+        } else {
+            state = text("not selected", "no seleccionado", "не выбрано", "не вибрано")
+        }
+        return "\(progress), \(state)"
+    }
     func waitingCount(_ ready: Int, _ total: Int) -> String {
         text("WAITING FOR OTHERS", "ESPERANDO A LOS DEMÁS", "ЖДЁМ ОСТАЛЬНЫХ", "ЧЕКАЄМО НА ІНШИХ") + "  \(ready)/\(total)"
     }

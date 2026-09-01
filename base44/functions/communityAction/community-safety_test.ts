@@ -64,6 +64,7 @@ Deno.test("unsafe public names are replaced without leaking their original text"
 
 Deno.test("public avatars are allowlisted so legacy free-form UGC cannot leak", () => {
   assertEquals(safeCommunityAvatar("🎭"), "🎭");
+  assertEquals(safeCommunityAvatar("🦅"), "🦅");
   assertEquals(safeCommunityAvatar("harassing avatar text"), "🕵️");
   assertEquals(safeCommunityAvatar("https://example.invalid/tracker"), "🕵️");
 });

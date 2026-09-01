@@ -42,6 +42,7 @@ const PUBLIC_AVATARS = new Set([
   "⚡️",
   "🎯",
   "🛡️",
+  "🦅",
 ]);
 const ABUSIVE_TOKENS = new Set([
   "bitch",

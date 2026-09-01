@@ -111,7 +111,11 @@ struct HistoryView: View {
     }
 
     private var sortedHistory: [GameHistory] {
-        history.sorted { ($0.createdDate ?? "") > ($1.createdDate ?? "") }
+        GameHistoryAnalytics.deduplicatedVisibleHistory(
+            history,
+            currentUserID: appState.user?.id
+        )
+        .sorted { ($0.createdDate ?? "") > ($1.createdDate ?? "") }
     }
 
     private var visibleHistory: [GameHistory] {
@@ -203,10 +207,12 @@ struct HistoryView: View {
     }
 
     private func roleWinRate(_ role: String) -> Int {
-        let matches = sortedHistory.filter { $0.role?.lowercased() == role }
-        guard !matches.isEmpty else { return 0 }
-        let roleWins = matches.filter { $0.won == true }.count
-        return Int((Double(roleWins) / Double(matches.count) * 100).rounded())
+        GameHistoryAnalytics.roleWinRate(
+            role,
+            in: sortedHistory,
+            competitiveOnly: !appState.shouldUsePreviewData,
+            currentUserID: appState.user?.id
+        )
     }
 
     private var currentWinStreak: Int {

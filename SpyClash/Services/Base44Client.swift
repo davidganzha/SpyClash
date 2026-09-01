@@ -24,6 +24,19 @@ struct PushNotificationTransportRetryPolicy: Equatable, Sendable {
     }
 }
 
+enum FinishedRoomLobbyReturnRecoveryPolicy {
+    static func accepts(room: GameRoom?, expectedRoomID: String) -> Bool {
+        guard let room,
+              room.id == expectedRoomID,
+              room.normalizedStatus == "waiting",
+              room.matchID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank == nil,
+              room.gameStartedAt?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank == nil,
+              room.terminalReconciliationPending != true,
+              (room.readyPlayers ?? []).isEmpty else { return false }
+        return true
+    }
+}
+
 @MainActor
 @Observable
 final class Base44Client {
@@ -331,6 +344,40 @@ final class Base44Client {
         try await roomAction("return_to_waiting", roomID: room.id)
     }
 
+    func voteReturnToLobby(room: GameRoom, vote: Bool) async throws -> GameRoom {
+        try await roomAction(
+            "vote_return_to_lobby",
+            roomID: room.id,
+            returnToLobbyVote: vote
+        )
+    }
+
+    func kickPlayer(room: GameRoom, player: Player) async throws -> GameRoom {
+        try await kickPlayer(
+            room: room,
+            targetUserID: player.userID,
+            targetEmail: player.email
+        )
+    }
+
+    func kickPlayer(
+        room: GameRoom,
+        targetUserID: String?,
+        targetEmail: String
+    ) async throws -> GameRoom {
+        let normalizedUserID = targetUserID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfBlank
+        let normalizedEmail = targetEmail
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+        return try await roomAction(
+            "kick_player",
+            roomID: room.id,
+            targetUserID: normalizedUserID,
+            targetEmail: normalizedUserID == nil ? normalizedEmail : nil
+        )
+    }
+
     func resetRoomForReplay(room: GameRoom) async throws -> GameRoom {
         try await roomAction(
             "reset_room_for_replay",
@@ -338,6 +385,29 @@ final class Base44Client {
             gameMode: room.gameModeValue,
             gameDurationSeconds: room.gameDurationSeconds ?? 900
         )
+    }
+
+    func returnFinishedRoomToLobby(room: GameRoom) async throws -> GameRoom {
+        do {
+            return try await roomAction(
+                "return_finished_room_to_lobby",
+                roomID: room.id,
+                gameMode: room.gameModeValue,
+                gameDurationSeconds: room.gameDurationSeconds ?? 900
+            )
+        } catch {
+            guard !RequestCancellationPolicy.isCancellation(error) else {
+                throw error
+            }
+            if let recovered = try? await refreshRoom(id: room.id),
+               FinishedRoomLobbyReturnRecoveryPolicy.accepts(
+                   room: recovered,
+                   expectedRoomID: room.id
+               ) {
+                return recovered
+            }
+            throw error
+        }
     }
 
     func votePlayAgain(room: GameRoom, user: SpyUser) async throws -> GameRoom {
@@ -676,6 +746,10 @@ final class Base44Client {
         }
 
         if successfulQueries == 0, let firstError { throw firstError }
+        history = GameHistoryAnalytics.deduplicatedVisibleHistory(
+            history,
+            currentUserID: userID
+        )
         history.sort { ($0.createdDate ?? "") > ($1.createdDate ?? "") }
         return requestedLimit.map { Array(history.prefix($0)) } ?? history
     }
@@ -1425,7 +1499,9 @@ final class Base44Client {
         gameDurationSeconds: Int? = nil,
         plan: StartGamePayload? = nil,
         rouletteTargetEmail: String? = nil,
+        targetUserID: String? = nil,
         targetEmail: String? = nil,
+        returnToLobbyVote: Bool? = nil,
         guess: String? = nil,
         winner: String? = nil,
         expectedDetectiveVoteRoundID: String? = nil,
@@ -1452,7 +1528,9 @@ final class Base44Client {
             gameDurationSeconds: gameDurationSeconds,
             plan: plan,
             rouletteTargetEmail: rouletteTargetEmail,
+            targetUserID: targetUserID,
             targetEmail: targetEmail,
+            returnToLobbyVote: returnToLobbyVote,
             guess: guess,
             winner: winner,
             expectedDetectiveVoteRoundID: expectedDetectiveVoteRoundID,
@@ -2148,6 +2226,13 @@ struct Base44Error: LocalizedError {
         normalizedCode == "spy_count_invalid_for_player_count"
     }
 
+    var isRoomAccessRevoked: Bool {
+        statusCode == 403 && [
+            "room_access_revoked",
+            "room_departed"
+        ].contains(normalizedCode)
+    }
+
     var isRetryableAccountDeletion: Bool {
         guard statusCode == 503, retryable else { return false }
         return normalizedCode == "apple_revocation_unavailable"
@@ -2305,7 +2390,9 @@ private struct GameRoomActionPayload: Encodable {
     let gameDurationSeconds: Int?
     let plan: StartGamePayload?
     let rouletteTargetEmail: String?
+    let targetUserID: String?
     let targetEmail: String?
+    let returnToLobbyVote: Bool?
     let guess: String?
     let winner: String?
     let expectedDetectiveVoteRoundID: String?
@@ -2328,7 +2415,9 @@ private struct GameRoomActionPayload: Encodable {
         gameDurationSeconds: Int? = nil,
         plan: StartGamePayload? = nil,
         rouletteTargetEmail: String? = nil,
+        targetUserID: String? = nil,
         targetEmail: String? = nil,
+        returnToLobbyVote: Bool? = nil,
         guess: String? = nil,
         winner: String? = nil,
         expectedDetectiveVoteRoundID: String? = nil,
@@ -2350,7 +2439,9 @@ private struct GameRoomActionPayload: Encodable {
         self.gameDurationSeconds = gameDurationSeconds
         self.plan = plan
         self.rouletteTargetEmail = rouletteTargetEmail
+        self.targetUserID = targetUserID
         self.targetEmail = targetEmail
+        self.returnToLobbyVote = returnToLobbyVote
         self.guess = guess
         self.winner = winner
         self.expectedDetectiveVoteRoundID = expectedDetectiveVoteRoundID
@@ -2374,7 +2465,9 @@ private struct GameRoomActionPayload: Encodable {
         case gameDurationSeconds = "game_duration_seconds"
         case plan
         case rouletteTargetEmail = "roulette_target_email"
+        case targetUserID = "target_user_id"
         case targetEmail = "target_email"
+        case returnToLobbyVote = "return_to_lobby_vote"
         case guess
         case winner
         case expectedDetectiveVoteRoundID = "expected_vote_round_id"

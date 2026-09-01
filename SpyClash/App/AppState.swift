@@ -192,10 +192,147 @@ struct RoomRefreshFailureTracker {
     }
 }
 
+struct FinishedMatchCompetitiveStatsExpectation: Hashable {
+    let minimumGamesPlayed: Int
+
+    init(minimumGamesPlayed: Int) {
+        self.minimumGamesPlayed = minimumGamesPlayed
+    }
+
+    init?(room: GameRoom, user: SpyUser) {
+        let accountEmail = user.email
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard room.normalizedStatus == "finished",
+              room.lobbySpyCountValue == 1,
+              room.spyEmailsList.count == 1,
+              !accountEmail.isEmpty,
+              room.playersList.contains(where: {
+                  $0.email
+                    .trimmingCharacters(in: .whitespacesAndNewlines)
+                    .lowercased() == accountEmail
+              }) else { return nil }
+
+        let winner = room.winner?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        guard winner == "spy" || winner == "detectives" else { return nil }
+
+        let baselineGames = max(0, user.gamesPlayed ?? 0)
+        minimumGamesPlayed = baselineGames + 1
+    }
+
+    func isSatisfied(by user: SpyUser) -> Bool {
+        max(0, user.gamesPlayed ?? 0) >= minimumGamesPlayed
+    }
+}
+
+struct FinishedMatchProfileRefreshKey: Hashable {
+    let userID: String
+    let matchID: String
+}
+
+struct FinishedMatchProfileRefreshRequest: Hashable {
+    let userID: String
+    let matchID: String
+    let expectedCompetitiveStats: FinishedMatchCompetitiveStatsExpectation
+
+    var key: FinishedMatchProfileRefreshKey {
+        FinishedMatchProfileRefreshKey(userID: userID, matchID: matchID)
+    }
+}
+
+struct FinishedMatchProfileRefreshPolicy {
+    static let retryDelays: [Duration] = [
+        .zero,
+        .milliseconds(350),
+        .milliseconds(900)
+    ]
+
+    private(set) var inFlight = Set<FinishedMatchProfileRefreshKey>()
+    private(set) var completed = Set<FinishedMatchProfileRefreshKey>()
+    private var cachedRequests: [
+        FinishedMatchProfileRefreshKey: FinishedMatchProfileRefreshRequest
+    ] = [:]
+
+    mutating func request(
+        room: GameRoom?,
+        user: SpyUser?
+    ) -> FinishedMatchProfileRefreshRequest? {
+        guard let room,
+              room.normalizedStatus == "finished",
+              let matchID = room.matchID?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfBlank,
+              let user,
+              let userID = user.id
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfBlank else { return nil }
+        let key = FinishedMatchProfileRefreshKey(
+            userID: userID,
+            matchID: matchID
+        )
+        guard !completed.contains(key), !inFlight.contains(key) else {
+            return nil
+        }
+        if let cachedRequest = cachedRequests[key] {
+            inFlight.insert(key)
+            return cachedRequest
+        }
+        guard let expectedCompetitiveStats = FinishedMatchCompetitiveStatsExpectation(
+            room: room,
+            user: user
+        ) else { return nil }
+        let request = FinishedMatchProfileRefreshRequest(
+            userID: userID,
+            matchID: matchID,
+            expectedCompetitiveStats: expectedCompetitiveStats
+        )
+        cachedRequests[key] = request
+        inFlight.insert(key)
+        return request
+    }
+
+    mutating func finish(
+        _ request: FinishedMatchProfileRefreshRequest,
+        adopted: Bool
+    ) {
+        inFlight.remove(request.key)
+        if adopted {
+            completed.insert(request.key)
+        }
+    }
+
+    static func hasExpectedIdentity(
+        refreshedUserID: String,
+        expectedUserID: String,
+        currentUserID: String?
+    ) -> Bool {
+        refreshedUserID == expectedUserID && currentUserID == expectedUserID
+    }
+
+    static func canAdopt(
+        refreshedUser: SpyUser,
+        request: FinishedMatchProfileRefreshRequest,
+        currentUserID: String?
+    ) -> Bool {
+        hasExpectedIdentity(
+            refreshedUserID: refreshedUser.id,
+            expectedUserID: request.userID,
+            currentUserID: currentUserID
+        ) && request.expectedCompetitiveStats.isSatisfied(by: refreshedUser)
+    }
+}
+
 enum RoomRefreshDisposition: Equatable {
     case stop
     case discardAndContinue
     case apply
+    case close
+}
+
+enum RoomRefreshFailureDisposition: Equatable {
+    case retry
     case close
 }
 
@@ -234,6 +371,12 @@ enum RoomPollPolicy {
 
         _ = roomStatus
         return min(4 * pow(2, Double(min(consecutiveFailures, 3))), 30)
+    }
+
+    static func failureDisposition(for error: Error) -> RoomRefreshFailureDisposition {
+        guard let error = error as? Base44Error,
+              error.isRoomAccessRevoked else { return .retry }
+        return .close
     }
 }
 
@@ -559,6 +702,9 @@ final class AppState: NSObject {
                 postAuthActiveRoomRestoreTask?.cancel()
                 postAuthActiveRoomRestoreTask = nil
                 postAuthActiveRoomRestoreUserID = nil
+                finishedMatchProfileRefreshTasks.values.forEach { $0.cancel() }
+                finishedMatchProfileRefreshTasks.removeAll()
+                finishedMatchProfileRefreshPolicy = FinishedMatchProfileRefreshPolicy()
             }
             if let user {
                 OnboardingProgressStore.reconcileRemoteState(for: user)
@@ -603,6 +749,7 @@ final class AppState: NSObject {
     var onboardingLaunchMessage: String?
     private(set) var isFinishingOnboarding = false
     private(set) var radarInvitePolicySyncState: RadarInvitePolicySyncState = .localOnly
+    private(set) var radarActivationRevision = 0
     var selectedTab: AppTab = .home {
         didSet {
             if selectedTab != .home {
@@ -645,6 +792,7 @@ final class AppState: NSObject {
             radarNearby.setActiveRoom(activeRoom)
             handleRoomPresenceChange(from: oldValue, to: activeRoom)
             synchronizeMatchLiveActivity(previousRoom: oldValue, room: activeRoom)
+            scheduleFinishedMatchProfileRefreshIfNeeded(for: activeRoom)
         }
     }
     var isShellChromeSuppressed = false
@@ -700,6 +848,10 @@ final class AppState: NSObject {
     @ObservationIgnored private var pendingGameRoomRealtimeRevision = 0
     @ObservationIgnored private var gameRoomRealtimeCatchUpRequested = false
     @ObservationIgnored private var gameRoomRealtimeGeneration = UUID()
+    @ObservationIgnored private var finishedMatchProfileRefreshPolicy =
+        FinishedMatchProfileRefreshPolicy()
+    @ObservationIgnored private var finishedMatchProfileRefreshTasks:
+        [FinishedMatchProfileRefreshRequest: Task<Void, Never>] = [:]
     @ObservationIgnored private var radarInvitePolicySyncTask: Task<Void, Never>?
     @ObservationIgnored private var radarInvitePolicySyncRunID: UUID?
     private var pendingRadarInvitePolicy: RadarInvitePolicy?
@@ -1341,6 +1493,10 @@ final class AppState: NSObject {
                     guard roomSyncOperation == nil,
                           roomSyncRevision == refreshRevision,
                           roomRefreshRequestRevision == refreshRequestRevision else { continue }
+                    if RoomPollPolicy.failureDisposition(for: error) == .close {
+                        closeActiveRoomAfterRefresh(roomID: roomID)
+                        return
+                    }
                     if failureTracker.recordFailure(),
                        activeRoom?.id == roomID,
                        roomConnectionState != .reconnecting {
@@ -1513,6 +1669,59 @@ final class AppState: NSObject {
             showPresenceToast(for: left, joined: false)
         }
         HapticManager.shared.fire(.navigation)
+    }
+
+    private func scheduleFinishedMatchProfileRefreshIfNeeded(for room: GameRoom?) {
+#if DEBUG
+        guard !shouldUsePreviewData else { return }
+#endif
+        guard let request = finishedMatchProfileRefreshPolicy.request(
+            room: room,
+            user: user
+        ) else { return }
+
+        finishedMatchProfileRefreshTasks[request] = Task { @MainActor [weak self] in
+            guard let self else { return }
+            var adopted = false
+            defer {
+                self.finishedMatchProfileRefreshPolicy.finish(request, adopted: adopted)
+                self.finishedMatchProfileRefreshTasks[request] = nil
+            }
+            let retryDelays = FinishedMatchProfileRefreshPolicy.retryDelays
+
+            for (attempt, retryDelay) in retryDelays.enumerated() {
+                guard !Task.isCancelled,
+                      self.user?.id == request.userID else { return }
+                if retryDelay != .zero {
+                    do {
+                        try await Task.sleep(for: retryDelay)
+                    } catch {
+                        return
+                    }
+                }
+                do {
+                    let refreshed = try await self.client.currentUser()
+                    guard FinishedMatchProfileRefreshPolicy.hasExpectedIdentity(
+                        refreshedUserID: refreshed.id,
+                        expectedUserID: request.userID,
+                        currentUserID: self.user?.id
+                    ) else { return }
+                    guard FinishedMatchProfileRefreshPolicy.canAdopt(
+                        refreshedUser: refreshed,
+                        request: request,
+                        currentUserID: self.user?.id
+                    ) else {
+                        continue
+                    }
+                    adopted = true
+                    self.user = refreshed
+                    return
+                } catch {
+                    guard attempt < retryDelays.count - 1,
+                          LobbySyncRetryPolicy.isRetryable(error) else { return }
+                }
+            }
+        }
     }
 
     private func showPresenceToast(for players: [Player], joined: Bool) {
@@ -2247,8 +2456,7 @@ final class AppState: NSObject {
     }
 
     func finishOnboarding(
-        source: OnboardingAcquisitionSource,
-        enableNearbyTransport: Bool
+        source: OnboardingAcquisitionSource
     ) async {
         guard !isFinishingOnboarding,
               let authenticatedUser = user,
@@ -2323,11 +2531,6 @@ final class AppState: NSObject {
             // need to exercise the complete root transition deterministically.
             OnboardingProgressStore.markSynced(submission, for: authenticatedUser.id)
         }
-        OnboardingProgressStore.setNearbyTransportEnabled(
-            enableNearbyTransport,
-            for: authenticatedUser.id
-        )
-
         selectedTab = .home
         shellRoute = .main
         presentedSheet = nil
@@ -2440,17 +2643,31 @@ final class AppState: NSObject {
     }
 
     func setRadarInvitePolicy(_ policy: RadarInvitePolicy) {
-        radarNearby.setInvitePolicy(policy)
+        let selectablePolicy = policy.selectableValue
+        radarNearby.setInvitePolicy(selectablePolicy)
         guard let userID = user?.id, client.hasSessionToken else {
             radarInvitePolicySyncState = .localOnly
             return
         }
-        queueRadarInvitePolicySync(policy, userID: userID)
+        queueRadarInvitePolicySync(selectablePolicy, userID: userID)
     }
 
-    func startRadarScanning(requestCameraAccess: Bool = false) {
+    var isRadarActivated: Bool {
+        _ = radarActivationRevision
+        guard let user, !requiresOnboarding else { return false }
+        return OnboardingProgressStore.isNearbyTransportEnabled(for: user.id)
+    }
+
+    func activateRadarAndStartScanning(requestCameraAccess: Bool = false) {
         guard let user, !requiresOnboarding else { return }
         OnboardingProgressStore.setNearbyTransportEnabled(true, for: user.id)
+        radarActivationRevision &+= 1
+        reconcileRadarInvitePolicy(for: user, accountChanged: false)
+        radarNearby.startScanning(requestCameraAccess: requestCameraAccess)
+    }
+
+    func resumeRadarScanningIfActivated(requestCameraAccess: Bool = false) {
+        guard let user, isRadarActivated else { return }
         reconcileRadarInvitePolicy(for: user, accountChanged: false)
         radarNearby.startScanning(requestCameraAccess: requestCameraAccess)
     }
@@ -2506,7 +2723,14 @@ final class AppState: NSObject {
             radarInvitePolicySyncState = .localOnly
             return
         }
-        if RadarInvitePolicy(rawValue: user.radarInvitePolicy ?? "") != nil {
+        let remotePolicy = RadarInvitePolicy(rawValue: user.radarInvitePolicy ?? "")
+        if remotePolicy == .blocked {
+            if !hasPendingWrite {
+                queueRadarInvitePolicySync(.ask, userID: user.id)
+            }
+            return
+        }
+        if remotePolicy != nil {
             if !hasPendingWrite {
                 radarInvitePolicySyncState = .synced
             }
@@ -2697,6 +2921,14 @@ final class AppState: NSObject {
             } catch is CancellationError {
                 return
             } catch {
+                guard !Task.isCancelled,
+                      generation == gameRoomRealtimeGeneration,
+                      activeRoom?.id == roomID,
+                      roomSyncOperation == nil else { return }
+                if RoomPollPolicy.failureDisposition(for: error) == .close {
+                    closeActiveRoomAfterRefresh(roomID: roomID)
+                    return
+                }
                 // Park the wake-up revision instead of recursively spinning on
                 // a failing endpoint. Polling, reconnect catch-up, activation,
                 // or a later signal will make another bounded attempt.

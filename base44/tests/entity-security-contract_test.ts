@@ -226,6 +226,25 @@ Deno.test("GameHistory authorizes only owner reads while all writes stay server-
     assert(policyAllows(fieldPolicy.write, {}, admin));
     assert(!policyAllows(fieldPolicy.write, {}, owner));
   }
+
+  for (
+    const field of [
+      "profile_repair_state",
+      "profile_repair_token",
+      "profile_repair_lease_until",
+      "profile_repair_attempt_count",
+      "profile_repair_completed_at",
+    ]
+  ) {
+    const fieldPolicy = history.properties[field]?.rls as
+      | Record<string, unknown>
+      | undefined;
+    assert(fieldPolicy, `${field} must be server-only`);
+    assert(policyAllows(fieldPolicy.read, {}, admin));
+    assert(!policyAllows(fieldPolicy.read, {}, owner));
+    assert(policyAllows(fieldPolicy.write, {}, admin));
+    assert(!policyAllows(fieldPolicy.write, {}, owner));
+  }
 });
 
 Deno.test("GameRoomSignal exposes only the caller's wake-up row and keeps writes server-owned", async () => {
@@ -368,7 +387,18 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
   const all = await schemas();
   const requiredFields: Record<string, string[]> = {
     Friendship: ["blocked_by_id", "request_event_id"],
-    GameHistory: ["player_user_id", "match_id", "match_type", "ranked"],
+    GameHistory: [
+      "player_user_id",
+      "match_id",
+      "result_key",
+      "match_type",
+      "ranked",
+      "profile_repair_state",
+      "profile_repair_token",
+      "profile_repair_lease_until",
+      "profile_repair_attempt_count",
+      "profile_repair_completed_at",
+    ],
     GameRoom: [
       "participant_user_ids",
       "match_id",

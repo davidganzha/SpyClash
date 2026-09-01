@@ -8,6 +8,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
     func testPermissionFlowRequiresEveryStepButNotEveryGrant() {
         var flow = OnboardingPermissionFlow()
 
+        XCTAssertEqual(OnboardingPermissionFlow.order, [.notifications, .camera])
         XCTAssertEqual(flow.currentPermission, .notifications)
         XCTAssertEqual(flow.phase, .loading)
         XCTAssertFalse(flow.advance(after: .notifications))
@@ -37,24 +38,6 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
 
         XCTAssertTrue(flow.resolveWithoutRequest(.granted, for: .camera))
         XCTAssertTrue(flow.advance(after: .camera))
-        XCTAssertEqual(flow.currentPermission, .nearby)
-
-        let unavailableRequestID = UUID()
-        XCTAssertTrue(
-            flow.beginRequest(
-                for: .nearby,
-                requestID: unavailableRequestID
-            )
-        )
-        XCTAssertTrue(
-            flow.resolveRequest(
-                for: .nearby,
-                requestID: unavailableRequestID,
-                status: .unavailable
-            )
-        )
-        XCTAssertEqual(flow.phase, .resolved(.unavailable))
-        XCTAssertTrue(flow.advance(after: .nearby))
         XCTAssertTrue(flow.isComplete)
         XCTAssertNil(flow.currentPermission)
         XCTAssertEqual(flow.phase, .complete)
@@ -69,9 +52,6 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
 
         XCTAssertTrue(flow.resolveWithoutRequest(.unavailable, for: .camera))
         XCTAssertTrue(flow.advance(after: .camera))
-
-        XCTAssertTrue(flow.resolveWithoutRequest(.granted, for: .nearby))
-        XCTAssertTrue(flow.advance(after: .nearby))
         XCTAssertTrue(flow.isComplete)
     }
 

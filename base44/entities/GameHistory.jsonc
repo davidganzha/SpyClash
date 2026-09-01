@@ -19,6 +19,62 @@
         "write": { "user_condition": { "role": "admin" } }
       }
     },
+    "result_key": {
+      "type": "string",
+      "description": "Deterministic server result identity derived from match_id and player_user_id for idempotent archive recovery.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "profile_repair_state": {
+      "type": "string",
+      "enum": [
+        "pending",
+        "processing",
+        "completed"
+      ],
+      "description": "Server-only durable Community profile repair state for this ranked result.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "profile_repair_token": {
+      "type": "string",
+      "maxLength": 160,
+      "description": "Server-only single-flight token for Community profile repair.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "profile_repair_lease_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server-only expiry of the current Community profile repair claim.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "profile_repair_attempt_count": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Server-only count of Community profile repair claims.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "profile_repair_completed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server-only completion time for Community profile repair.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
     "room_code": {
       "type": "string"
     },

@@ -270,3 +270,112 @@ Deno.test("replay invalidates an old completion token", async () => {
   assertEquals(result.room?.match_id, "match-2");
   assertEquals(dispatches, 1);
 });
+
+Deno.test("push failure cannot gate independent profile completion", async () => {
+  const store = new Store([room()]);
+  let pushDispatches = 0;
+  let profileDispatches = 0;
+  const now = new Date("2026-08-31T12:00:00.000Z");
+
+  const push = await runTerminalSideEffectsSingleFlight({
+    store,
+    room: room(),
+    now,
+    randomUUID: () => "push-failure",
+    dispatch: async () => {
+      pushDispatches += 1;
+      return false;
+    },
+  });
+  const profile = await runTerminalSideEffectsSingleFlight({
+    store,
+    room: push.room || room(),
+    stateKey: "profile_side_effect_dispatch",
+    now,
+    randomUUID: () => "profile-success",
+    dispatch: async () => {
+      profileDispatches += 1;
+      return true;
+    },
+  });
+
+  assertEquals(push.outcome, "failed");
+  assertEquals(profile.outcome, "performed");
+  assertEquals(pushDispatches, 1);
+  assertEquals(profileDispatches, 1);
+  assertEquals(
+    store.records[0].terminal_intent.profile_side_effect_dispatch.state,
+    "completed",
+  );
+
+  await runTerminalSideEffectsSingleFlight({
+    store,
+    room: store.records[0],
+    stateKey: "profile_side_effect_dispatch",
+    now: new Date("2026-08-31T12:03:00.000Z"),
+    randomUUID: () => "profile-retry",
+    dispatch: async () => {
+      profileDispatches += 1;
+      return true;
+    },
+  });
+  assertEquals(profileDispatches, 1);
+});
+
+Deno.test("profile partial failure retries without replaying completed push", async () => {
+  const store = new Store([room()]);
+  let pushDispatches = 0;
+  let profileDispatches = 0;
+  const firstNow = new Date("2026-08-31T12:00:00.000Z");
+
+  await runTerminalSideEffectsSingleFlight({
+    store,
+    room: room(),
+    now: firstNow,
+    randomUUID: () => "push-success",
+    dispatch: async () => {
+      pushDispatches += 1;
+      return true;
+    },
+  });
+  await runTerminalSideEffectsSingleFlight({
+    store,
+    room: store.records[0],
+    stateKey: "profile_side_effect_dispatch",
+    now: firstNow,
+    leaseMilliseconds: 2_000,
+    randomUUID: () => "profile-partial",
+    dispatch: async () => {
+      profileDispatches += 1;
+      return false;
+    },
+  });
+
+  const retryNow = new Date("2026-08-31T12:00:03.000Z");
+  await runTerminalSideEffectsSingleFlight({
+    store,
+    room: store.records[0],
+    now: retryNow,
+    randomUUID: () => "push-retry",
+    dispatch: async () => {
+      pushDispatches += 1;
+      return true;
+    },
+  });
+  const profileRetry = await runTerminalSideEffectsSingleFlight({
+    store,
+    room: store.records[0],
+    stateKey: "profile_side_effect_dispatch",
+    now: retryNow,
+    leaseMilliseconds: 2_000,
+    randomUUID: () => "profile-retry",
+    dispatch: async () => {
+      profileDispatches += 1;
+      return true;
+    },
+  });
+
+  assertEquals(pushDispatches, 1);
+  assertEquals(profileDispatches, 2);
+  assertEquals(profileRetry.outcome, "performed");
+});

@@ -846,7 +846,6 @@ struct SpyLobbySetupFocusEffect: ViewModifier {
             .opacity(dimmed ? 0.20 : 1)
             .scaleEffect(dimmed ? 0.94 : 1)
             .blur(radius: dimmed ? 2 : 0)
-            .allowsHitTesting(!dimmed)
             .animation(
                 reduceMotion ? nil : .smooth(duration: dimmed ? 0.20 : 0.24),
                 value: dimmed

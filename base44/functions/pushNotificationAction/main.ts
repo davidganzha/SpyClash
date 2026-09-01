@@ -114,6 +114,65 @@ async function repairRoomPushOutbox(base44: any, room: Entity) {
   });
 }
 
+async function repairFinishedRoomCommunityProfiles(
+  base44: any,
+  room: Entity,
+): Promise<boolean> {
+  const internalSecret = clean(Deno.env.get("PUSH_INTERNAL_SECRET"));
+  if (
+    internalSecret.length < 32 || clean(room?.status).toLowerCase() !==
+      "finished" ||
+    !clean(room?.game_finished_event_id)
+  ) return false;
+  try {
+    const result = await base44.asServiceRole.functions.invoke(
+      "gameRoomAction",
+      {
+        action: "repair_finished_profile_side_effects",
+        room_id: clean(room.id),
+        source_event_id: clean(room.game_finished_event_id),
+        internal_secret: internalSecret,
+      },
+    );
+    return ["performed", "completed", "deferred"].includes(
+      clean(result?.outcome),
+    );
+  } catch (error) {
+    // Profile repair is a separate durable room outcome. It must never make
+    // APNs/outbox delivery fail, but a scheduled pass will keep retrying it.
+    console.error(
+      "finished room community profile repair deferred",
+      (error as Error)?.message || error,
+    );
+    return false;
+  }
+}
+
+async function drainDurableCommunityProfileRepairs(
+  base44: any,
+  limit: number,
+): Promise<Entity> {
+  const internalSecret = clean(Deno.env.get("PUSH_INTERNAL_SECRET"));
+  if (internalSecret.length < 32) {
+    return { ok: false, selected: 0, deferred: 0, reason: "secret_missing" };
+  }
+  try {
+    return await base44.asServiceRole.functions.invoke("gameRoomAction", {
+      action: "drain_community_profile_repairs",
+      internal_secret: internalSecret,
+      limit: Math.min(Math.max(Math.floor(limit) || 1, 1), 24),
+    });
+  } catch (error) {
+    // GameHistory, not an ephemeral finished room, remains the durable source.
+    // APNs/outbox work below proceeds independently and a later drain retries.
+    console.error(
+      "durable community profile repair drain deferred",
+      (error as Error)?.message || error,
+    );
+    return { ok: false, selected: 0, deferred: 1 };
+  }
+}
+
 async function roomForSourceEvent(base44: any, sourceEventID: string) {
   for (const field of ["game_started_event_id", "game_finished_event_id"]) {
     const rows = await allMatching(
@@ -157,6 +216,7 @@ async function reconcileRecentRoomOutboxes(
         // The committed room identity remains a durable repair source for the
         // next scheduled pass or any later process_event call.
       }
+      await repairFinishedRoomCommunityProfiles(base44, room);
     },
   });
   return created;
@@ -1166,6 +1226,7 @@ async function processEvents(base44: any, body: Entity): Promise<Entity> {
     // Reconcile even when some recipient rows already exist: a room can be
     // committed after only the first updates in the batched inbox commit.
     await repairRoomPushOutbox(base44, room);
+    await repairFinishedRoomCommunityProfiles(base44, room);
     events = await allMatching(
       base44.asServiceRole.entities.PushNotificationEvent,
       { source_event_id: sourceEventID },
@@ -1209,6 +1270,10 @@ async function processEvents(base44: any, body: Entity): Promise<Entity> {
 async function drain(base44: any, body: Entity): Promise<Entity> {
   const deadlineEpochMs = Date.now() + DRAIN_BUDGET_MS;
   const limit = normalizePushDrainLimit(body.limit);
+  const communityProfileRepairs = await drainDurableCommunityProfileRepairs(
+    base44,
+    Math.min(24, limit),
+  );
   const announcementFanoutResults = await drainAnnouncementFanout({
     base44,
     deadlineEpochMs: Math.min(deadlineEpochMs, Date.now() + 15_000),
@@ -1319,6 +1384,7 @@ async function drain(base44: any, body: Entity): Promise<Entity> {
     live_activity_results: liveResults,
     live_activity_reconciliations: reconciledLiveResults,
     repaired_events: repairedEvents,
+    community_profile_repairs: communityProfileRepairs,
     announcement_fanout_results: announcementFanoutResults,
     inbox_backfill: inboxBackfill,
   };

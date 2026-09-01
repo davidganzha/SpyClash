@@ -41,6 +41,7 @@ const PUBLIC_AVATARS = new Set([
   "⚡️",
   "🎯",
   "🛡️",
+  "🦅",
 ]);
 
 const LEET_EQUIVALENTS: Record<string, string> = {

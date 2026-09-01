@@ -21,13 +21,32 @@ import {
 } from "./room-write-lifecycle.ts";
 import { projectRoomForClient } from "./room-projection.ts";
 import { loadLeaderboard } from "./leaderboard.ts";
+import { reconcileCommunityProfileMirrors } from "./community-profile-mirror.ts";
+import { runCommunityProfileBackfillPage } from "./community-profile-backfill.ts";
+import {
+  gameHistoryResultKey,
+  persistGameHistoryResult,
+} from "./game-history-idempotency.ts";
+import {
+  dueCommunityProfileRepairSources,
+  ensureCommunityProfileRepairSource,
+  pendingCommunityProfileRepairFields,
+  repairCommunityProfileRecipients,
+  runCommunityProfileRepair,
+} from "./community-profile-repair-queue.ts";
+import { activeGameLobbyReturnTransition } from "./active-game-lobby-return-policy.ts";
+import { lobbyKickTransition } from "./lobby-kick-policy.ts";
+import {
+  replayResetMembershipPatch,
+  replayVoteState,
+  replayVoteTransition,
+} from "./replay-policy.ts";
 import {
   assertIntroCompletionAccess,
   assertRankedTerminalRoom,
   assertServerRankedFinishSource,
   buildTerminalIntent,
   deriveExpiredGameWinner,
-  historyRecordsForMatch,
   introStartedAtForCompletion,
   preTimerMembershipTransitionPatch,
   rankedMatchIdentity,
@@ -53,7 +72,10 @@ import {
 import { storedRoomParticipantUserIDs } from "./room-participant-identity.ts";
 import { commitGamePushEvents, enqueueGamePushEvents } from "./push-events.ts";
 import { nextRoundNumber } from "./game-round.ts";
-import { internalPushSecret } from "./internal-push.ts";
+import {
+  internalPushSecret,
+  matchesInternalPushSecret,
+} from "./internal-push.ts";
 import {
   assertLobbySettingsAccess,
   deleteRoomAndVerify,
@@ -76,6 +98,14 @@ import {
   validateLobbyMutation,
 } from "./lobby-state-policy.ts";
 import { fanoutGameRoomSignalsBestEffort } from "./game-room-signal.ts";
+import { fanoutCommunityProfileInvalidations } from "./community-profile-signal.ts";
+import {
+  advanceAssociationTurn,
+  associationRosterChangePatch,
+  encodeAssociationTurnState,
+  initialAssociationTurn,
+  reconcileAssociationTurnState,
+} from "./association-turn-order.ts";
 import { questionAdvancePatch } from "./question-round-policy.ts";
 import { shouldSynchronizeLiveActivity } from "./room-push-policy.ts";
 import { reconcileTerminalFinalizationAfterLeaseConflict } from "./terminal-finalization-recovery.ts";
@@ -280,6 +310,7 @@ function requirePlayer(room, user) {
   if (!playerInRoom(room, user.email)) {
     throw Object.assign(new Error("Not a player in this room"), {
       status: 403,
+      code: "room_access_revoked",
     });
   }
 }
@@ -360,25 +391,6 @@ async function refreshActorCapabilities(base44, room, user, body) {
           ) === JSON.stringify(expectedCapabilities);
     },
   );
-}
-
-function parseAssociationState(raw) {
-  try {
-    const parsed = JSON.parse(String(raw || ""));
-    return {
-      spoken: Array.isArray(parsed?.spoken) ? parsed.spoken : [],
-      spinning: Boolean(parsed?.spinning),
-    };
-  } catch {
-    return { spoken: [], spinning: false };
-  }
-}
-
-function encodeAssociationState(state) {
-  return JSON.stringify({
-    spoken: Array.isArray(state?.spoken) ? state.spoken : [],
-    spinning: Boolean(state?.spinning),
-  });
 }
 
 async function fetchRoom(base44, roomId) {
@@ -593,7 +605,7 @@ async function generateUniqueRoomCode(base44) {
   });
 }
 
-async function archiveRoomResult(base44, room, winner) {
+function terminalHistoryRecords(room, winner) {
   const roomPlayers = players(room);
   assertRankedTerminalRoom(room, winner);
   const matchIdentity = rankedMatchIdentity(room);
@@ -602,40 +614,18 @@ async function archiveRoomResult(base44, room, winner) {
     spyEmails.map((email) => clean(email).toLocaleLowerCase()),
   );
 
-  const queried = await base44.asServiceRole.entities.GameHistory.filter({
-    match_id: matchIdentity.id,
-  });
-  const existing = historyRecordsForMatch(queried || [], room);
-  const archivedEmails = new Set(
-    (existing || []).map((record) => clean(record?.player_email)).filter(
-      Boolean,
-    ),
-  );
-  const archivedUserIDs = new Set(
-    (existing || []).map((record) => clean(record?.player_user_id)).filter(
-      Boolean,
-    ),
-  );
-
-  for (const player of roomPlayers) {
-    if (
-      (clean(player.user_id) && archivedUserIDs.has(clean(player.user_id))) ||
-      archivedEmails.has(player.email)
-    ) continue;
-
+  return roomPlayers.map((player) => {
     const isSpy = spyKeys.has(clean(player.email).toLocaleLowerCase());
     const won = winner === "spy" ? isSpy : !isSpy;
-    // Re-prove the exact player's live lifecycle lease immediately before
-    // creating their retained history row. This prevents a deleteAccount race
-    // from recreating raw identity after that player's cleanup completed.
-    await assertRoomHistoryPersistenceBoundary(base44, player.user_id);
-    await base44.asServiceRole.entities.GameHistory.create({
+    const ranked = spyEmails.length === 1;
+    return {
       match_id: matchIdentity.id,
+      result_key: gameHistoryResultKey(matchIdentity.id, player.user_id),
       player_user_id: clean(player.user_id),
       player_email: player.email,
       room_code: room.code,
       match_type: "online",
-      ranked: spyEmails.length === 1,
+      ranked,
       role: isSpy ? "spy" : "detective",
       word: displayWord(room) || "CLASSIFIED",
       category: clean(room.category) || "CLASSIC",
@@ -643,8 +633,42 @@ async function archiveRoomResult(base44, room, winner) {
       player_count: roomPlayers.length,
       spy_count: spyEmails.length,
       won,
+      ...(ranked ? pendingCommunityProfileRepairFields() : {}),
+    };
+  });
+}
+
+async function archiveRoomResult(base44, room, winner) {
+  const repairSources = [];
+  for (const historyRecord of terminalHistoryRecords(room, winner)) {
+    // Re-prove the exact player's live lifecycle lease immediately before
+    // creating their retained history row. This prevents a deleteAccount race
+    // from recreating raw identity after that player's cleanup completed.
+    await assertRoomHistoryPersistenceBoundary(
+      base44,
+      historyRecord.player_user_id,
+    );
+    const persisted = await persistGameHistoryResult({
+      store: base44.asServiceRole.entities.GameHistory,
+      record: historyRecord,
     });
+    if (historyRecord.ranked === true) {
+      repairSources.push(
+        await ensureCommunityProfileRepairSource({
+          store: base44.asServiceRole.entities.GameHistory,
+          record: {
+            ...persisted.record,
+            result_key: historyRecord.result_key,
+          },
+        }),
+      );
+    }
   }
+  base44.__spyclashCommunityProfileRepairSources = {
+    matchID: clean(room?.match_id),
+    sources: repairSources,
+  };
+  return repairSources;
 }
 
 async function claimTerminalIntent(
@@ -676,6 +700,7 @@ async function claimTerminalIntent(
       claimed = await updateRoom(base44, latest, {
         terminal_intent: intent,
         detective_vote_round_id: "",
+        ready_players: [],
       }, { allowPendingTerminal: true });
     } catch (error) {
       if (isRoomWriteCASConflict(error) && attempt < attempts - 1) {
@@ -732,6 +757,7 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
     status: "finished",
     winner: claimed.intent.winner,
     detective_vote_round_id: "",
+    ready_players: [],
     game_finished_event_id: finishedEventID,
   };
   // The immutable CAS-claimed terminal intent is persisted first. A retry can
@@ -765,6 +791,7 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
           ...(detectiveVoteRoundID(latest)
             ? { detective_vote_round_id: "" }
             : {}),
+          ...(readyPlayers(latest).length ? { ready_players: [] } : {}),
           ...(clean(latest.game_finished_event_id) === finishedEventID
             ? {}
             : { game_finished_event_id: finishedEventID }),
@@ -776,6 +803,7 @@ async function finishRoom(base44, room, winner, terminalPatch = {}) {
         status: "finished",
         winner: intent.winner,
         detective_vote_round_id: "",
+        ready_players: [],
         game_finished_event_id: finishedEventID,
       };
     },
@@ -1022,6 +1050,76 @@ async function returnToWaiting(base44, room, user) {
   });
 }
 
+function returnToLobbyVoteMatches(room, actorEmailValue, requestedVote) {
+  const status = normalizedStatus(room);
+  if (status === "waiting") {
+    return requestedVote === true && !clean(room?.match_id) &&
+      !clean(room?.game_started_at) && readyPlayers(room).length === 0;
+  }
+  if (status !== "playing") return false;
+  const actorKey = clean(actorEmailValue).toLocaleLowerCase();
+  const hasVote = readyPlayers(room).some((email) =>
+    clean(email).toLocaleLowerCase() === actorKey
+  );
+  return hasVote === requestedVote;
+}
+
+async function voteReturnToLobby(base44, room, user, body) {
+  requirePlayer(room, user);
+  const requestedVote = body?.return_to_lobby_vote;
+  return await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) =>
+      activeGameLobbyReturnTransition(
+        latest,
+        user.email,
+        requestedVote,
+      ).patch,
+    (latest) => returnToLobbyVoteMatches(latest, user.email, requestedVote),
+  );
+}
+
+function roomHasKickTarget(room, target) {
+  const targetUserID = clean(target?.target_user_id);
+  if (targetUserID) {
+    return players(room).some((player) =>
+      clean(player?.user_id) === targetUserID
+    );
+  }
+  const targetEmail = clean(target?.target_email).toLocaleLowerCase();
+  return players(room).some((player) =>
+    clean(player?.email).toLocaleLowerCase() === targetEmail
+  );
+}
+
+async function kickPlayer(base44, room, user, body) {
+  const target = {
+    target_user_id: body?.target_user_id,
+    target_email: body?.target_email,
+  };
+  // Validate authority, status and target before entering the retry loop. The
+  // same policy is reapplied to every refreshed CAS snapshot below.
+  lobbyKickTransition(room, user.email, target);
+  return await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) => {
+      const transition = lobbyKickTransition(latest, user.email, target);
+      const remainingPlayerCount = Array.isArray(transition.patch.players)
+        ? transition.patch.players.length
+        : 0;
+      return {
+        ...transition.patch,
+        ...lobbyMembershipClampPatch(latest, remainingPlayerCount),
+      };
+    },
+    (latest) =>
+      normalizedStatus(latest) === "waiting" &&
+      !roomHasKickTarget(latest, target),
+  );
+}
+
 async function toggleReady(base44, room, user) {
   requirePlayer(room, user);
   if (normalizedStatus(room) !== "ready_voting") {
@@ -1047,37 +1145,34 @@ async function toggleReady(base44, room, user) {
 
 async function votePlayAgain(base44, room, user) {
   requirePlayer(room, user);
-  if (normalizedStatus(room) !== "finished") {
-    throw Object.assign(new Error("Replay voting is not active"), {
-      status: 409,
-      code: "replay_vote_inactive",
-    });
-  }
+  replayVoteTransition(room, user.email);
   return await updateRoomWithRetry(
     base44,
     room,
+    (latest) => replayVoteTransition(latest, user.email).patch,
     (latest) => {
-      if (normalizedStatus(latest) !== "finished") {
-        throw Object.assign(new Error("Replay voting is not active"), {
-          status: 409,
-          code: "replay_vote_inactive",
-        });
+      try {
+        return replayVoteTransition(latest, user.email).patch
+          .ready_players === undefined;
+      } catch {
+        return false;
       }
-      const ready = readyPlayers(latest);
-      return ready.includes(user.email)
-        ? {}
-        : { ready_players: uniqueStrings([...ready, user.email]) };
     },
-    (latest) => readyPlayers(latest).includes(user.email),
   );
 }
 
-async function resetRoomForReplay(base44, room, user, body) {
+function replayResetPatch(room, user, body, requiresReplayVotes = true) {
   requireHost(room, user);
   if (normalizedStatus(room) !== "finished") {
     throw Object.assign(
       new Error("A replay can start only after the match is fully finished."),
       { status: 409, code: "replay_before_terminal_commit" },
+    );
+  }
+  if (requiresReplayVotes && !replayVoteState(room).unanimous) {
+    throw Object.assign(
+      new Error("Every remaining operative must vote before replay."),
+      { status: 409, code: "replay_votes_incomplete" },
     );
   }
   const legacyLobbySettings = hasAuthoritativeLobbyState(room) ? {} : {
@@ -1086,32 +1181,11 @@ async function resetRoomForReplay(base44, room, user, body) {
       body?.game_duration_seconds || room.game_duration_seconds || 900,
     ),
   };
-  const departedKeys = new Set(
-    departedPlayerEmails(room).map((email) => clean(email).toLocaleLowerCase()),
-  );
-  const replayPlayers = players(room).filter((player) =>
-    !departedKeys.has(clean(player?.email).toLocaleLowerCase())
-  );
-  const removedUserIDs = new Set(
-    players(room).filter((player) =>
-      departedKeys.has(clean(player?.email).toLocaleLowerCase())
-    ).map((player) => clean(player?.user_id)).filter(Boolean),
-  );
-  const replayHost =
-    replayPlayers.some((player) =>
-        clean(player?.email).toLocaleLowerCase() ===
-          clean(room?.host_email).toLocaleLowerCase()
-      )
-      ? clean(room?.host_email)
-      : clean(replayPlayers[0]?.email);
-  return await updateRoom(base44, room, {
+  const replayMembership = replayResetMembershipPatch(room);
+  const replayPlayers = replayMembership.players;
+  return {
     status: "waiting",
-    players: replayPlayers,
-    participant_user_ids: uniqueStrings(room?.participant_user_ids).filter(
-      (userID) => !removedUserIDs.has(clean(userID)),
-    ),
-    host_email: replayHost,
-    departed_player_emails: [],
+    ...replayMembership,
     spy_email: "",
     spy_emails: [],
     secret_word: "",
@@ -1151,7 +1225,43 @@ async function resetRoomForReplay(base44, room, user, body) {
     countdown_started_at: null,
     ...lobbyMembershipClampPatch(room, replayPlayers.length),
     ...legacyLobbySettings,
-  });
+  };
+}
+
+async function resetRoomForReplay(base44, room, user, body) {
+  replayResetPatch(room, user, body);
+  return await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) => replayResetPatch(latest, user, body),
+    (latest) =>
+      normalizedStatus(latest) === "waiting" &&
+      !clean(latest.match_id) && !terminalIntentFromRoom(latest) &&
+      !clean(latest.game_finished_event_id) &&
+      readyPlayers(latest).length === 0,
+  );
+}
+
+function finishedLobbyReturnAlreadyComplete(room) {
+  return normalizedStatus(room) === "waiting" &&
+    !clean(room?.match_id) && !terminalIntentFromRoom(room) &&
+    !clean(room?.game_finished_event_id) &&
+    readyPlayers(room).length === 0;
+}
+
+async function returnFinishedRoomToLobby(base44, room, user, body) {
+  requireHost(room, user);
+  if (finishedLobbyReturnAlreadyComplete(room)) return room;
+  replayResetPatch(room, user, body, false);
+  return await updateRoomWithRetry(
+    base44,
+    room,
+    (latest) =>
+      finishedLobbyReturnAlreadyComplete(latest)
+        ? {}
+        : replayResetPatch(latest, user, body, false),
+    (latest) => finishedLobbyReturnAlreadyComplete(latest),
+  );
 }
 
 async function updateGameMode(base44, room, user, body) {
@@ -1616,28 +1726,19 @@ async function advanceAssociation(base44, room, user) {
     throw Object.assign(new Error("Need active operatives"), { status: 400 });
   }
 
-  const state = parseAssociationState(room.current_answer);
-  const spoken = [...state.spoken];
-  if (room.current_asker_email && !spoken.includes(room.current_asker_email)) {
-    spoken.push(room.current_asker_email);
-  }
-
-  const remaining = active.filter((player) => !spoken.includes(player.email));
-  const startsNewRound = remaining.length === 0;
-  const pool = startsNewRound ? active : remaining;
-  const nextSpeaker = pool[Math.floor(Math.random() * pool.length)] ||
-    active[0];
-  const nextRound = startsNewRound
+  const transition = advanceAssociationTurn({
+    activePlayers: active,
+    currentSpeakerEmail: room.current_asker_email,
+    rawState: room.current_answer,
+  });
+  const nextRound = transition.startsNewRound
     ? Number(room.round_number || 1) + 1
     : Number(room.round_number || 1);
 
   return await updateRoom(base44, room, {
     round_number: nextRound,
-    current_asker_email: nextSpeaker.email,
-    current_answer: encodeAssociationState({
-      spoken: startsNewRound ? [] : spoken,
-      spinning: true,
-    }),
+    current_asker_email: transition.speakerEmail,
+    current_answer: encodeAssociationTurnState(transition.state),
     question_phase: "asking",
   });
 }
@@ -1653,10 +1754,32 @@ async function startAssociation(base44, room, user) {
   if (!active.length) {
     throw Object.assign(new Error("Need active operatives"), { status: 400 });
   }
-  const next = active[Math.floor(Math.random() * active.length)];
+  const currentSpeaker = active.find((player) =>
+    clean(player.email).toLocaleLowerCase() ===
+      clean(room.current_asker_email).toLocaleLowerCase()
+  );
+  if (currentSpeaker) {
+    const existing = reconcileAssociationTurnState({
+      activePlayers: active,
+      rawState: room.current_answer,
+      currentSpeakerEmail: room.current_asker_email,
+    });
+    const encodedState = encodeAssociationTurnState(existing);
+    const patch = {};
+    if (clean(room.current_answer) !== encodedState) {
+      patch.current_answer = encodedState;
+    }
+    if (clean(room.question_phase) !== "asking") {
+      patch.question_phase = "asking";
+    }
+    return Object.keys(patch).length
+      ? await updateRoom(base44, room, patch)
+      : room;
+  }
+  const initial = initialAssociationTurn({ activePlayers: active });
   return await updateRoom(base44, room, {
-    current_asker_email: next.email,
-    current_answer: encodeAssociationState({ spoken: [], spinning: true }),
+    current_asker_email: initial.speakerEmail,
+    current_answer: encodeAssociationTurnState(initial.state),
     question_phase: "asking",
   });
 }
@@ -1668,13 +1791,22 @@ async function stopAssociationSpin(base44, room, user) {
       status: 403,
     });
   }
-  const state = parseAssociationState(room.current_answer);
-  if (!state.spinning) return room;
+  const state = reconcileAssociationTurnState({
+    activePlayers: activePlayers(room),
+    rawState: room.current_answer,
+    currentSpeakerEmail: room.current_asker_email,
+  });
+  const settledState = {
+    spoken: state.spoken,
+    spinning: false,
+    order: state.order,
+  };
+  const encodedState = encodeAssociationTurnState(settledState);
+  if (!state.spinning && clean(room.current_answer) === encodedState) {
+    return room;
+  }
   return await updateRoom(base44, room, {
-    current_answer: encodeAssociationState({
-      spoken: state.spoken,
-      spinning: false,
-    }),
+    current_answer: encodedState,
   });
 }
 
@@ -1866,6 +1998,23 @@ async function castDetectiveVote(base44, room, user, body) {
         cancellationEvent,
       );
       const patch = { ...resolution.patch };
+      if (
+        resolution.decision.outcome === "eject" &&
+        !resolution.terminal_winner &&
+        clean(latest?.game_mode) === "associations"
+      ) {
+        const nextRoom = { ...latest, ...patch };
+        const associationTransition = associationRosterChangePatch({
+          activePlayers: activePlayers(nextRoom),
+          currentSpeakerEmail: latest.current_asker_email,
+          currentAnswererEmail: latest.current_answerer_email,
+          rawState: latest.current_answer,
+        });
+        Object.assign(patch, associationTransition.patch);
+        if (associationTransition.startsNewRound) {
+          patch.round_number = Number(latest.round_number || 1) + 1;
+        }
+      }
       if (
         roundBinding.initialize &&
         resolution.decision.outcome === "continue" &&
@@ -2260,12 +2409,18 @@ async function executeRoomAction(base44, action, room, user, body) {
       return await beginReadyCheck(base44, room, user);
     case "return_to_waiting":
       return await returnToWaiting(base44, room, user);
+    case "vote_return_to_lobby":
+      return await voteReturnToLobby(base44, room, user, body);
+    case "kick_player":
+      return await kickPlayer(base44, room, user, body);
     case "toggle_ready":
       return await toggleReady(base44, room, user);
     case "vote_play_again":
       return await votePlayAgain(base44, room, user);
     case "reset_room_for_replay":
       return await resetRoomForReplay(base44, room, user, body);
+    case "return_finished_room_to_lobby":
+      return await returnFinishedRoomToLobby(base44, room, user, body);
     case "update_game_mode":
       return await updateGameMode(base44, room, user, body);
     case "update_game_duration":
@@ -2336,9 +2491,20 @@ async function executeRoomActionWithSignal(
 ) {
   const result = await executeRoomAction(base44, action, room, user, body);
   if (result?.id && !shouldDeferFinishedRoomSignal(result)) {
+    let additionalRecipientUserIDs = [];
+    if (action === "kick_player" && normalizedStatus(result) === "waiting") {
+      const transition = lobbyKickTransition(room, user.email, {
+        target_user_id: body?.target_user_id,
+        target_email: body?.target_email,
+      });
+      additionalRecipientUserIDs = uniqueStrings([
+        transition.removedPlayer?.user_id,
+      ]);
+    }
     await fanoutGameRoomSignalsBestEffort({
       store: base44.asServiceRole.entities.GameRoomSignal,
       room: result,
+      additionalRecipientUserIDs,
       allowCreate: options.allowSignalCreate !== false,
       logError: (message, error) =>
         console.error(message, error?.message || error),
@@ -2383,6 +2549,167 @@ async function fanoutDeferredFinishedRoomSignal(base44, room) {
     console.error("finished room signal deferred", error?.message || error);
     return false;
   }
+}
+
+async function rankedHistoryForMatch(base44, matchIDValue) {
+  const matchID = clean(matchIDValue);
+  if (!matchID) return [];
+  const records = [];
+  const seen = new Set();
+  for (let skip = 0;; skip += 100) {
+    const page = await base44.asServiceRole.entities.GameHistory.filter(
+      { match_id: matchID },
+      "created_date",
+      100,
+      skip,
+    ) || [];
+    for (const record of page) {
+      if (
+        clean(record?.match_id) !== matchID || record?.ranked !== true ||
+        clean(record?.match_type).toLowerCase() !== "online"
+      ) continue;
+      const key = clean(record?.id) || clean(record?.result_key) ||
+        `${clean(record?.player_user_id)}:${clean(record?.created_date)}`;
+      if (!key || seen.has(key)) continue;
+      seen.add(key);
+      records.push(record);
+    }
+    if (page.length < 100) break;
+  }
+  const cached = base44.__spyclashCommunityProfileRepairSources;
+  if (clean(cached?.matchID) === matchID) {
+    for (const record of Array.isArray(cached?.sources) ? cached.sources : []) {
+      const key = clean(record?.id) || clean(record?.result_key);
+      if (
+        !key || seen.has(key) || clean(record?.match_id) !== matchID ||
+        record?.ranked !== true
+      ) continue;
+      seen.add(key);
+      records.push(record);
+    }
+  }
+  return records;
+}
+
+function profileRepairLifecycleIsGone(error) {
+  return error instanceof BillingIdentityLifecycleError &&
+    ["deletion_in_progress", "user_missing"].includes(clean(error.code));
+}
+
+async function withSingleProfileRepairLease(base44, userIDValue, action) {
+  const userID = clean(userIDValue);
+  if (!userID) return { status: "gone" };
+  try {
+    const value = await withRoomWriteLeases({
+      lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+      userIDs: [userID],
+      attempts: 1,
+      action: (context) => action(context, userID),
+    });
+    return { status: "performed", value };
+  } catch (error) {
+    if (profileRepairLifecycleIsGone(error)) return { status: "gone" };
+    console.error(
+      "community profile single-user repair deferred",
+      error?.message || error,
+    );
+    return { status: "deferred" };
+  }
+}
+
+async function repairCommunityProfileHistorySource(base44, source) {
+  const profileUserID = clean(source?.player_user_id);
+  const matchID = clean(source?.match_id);
+  if (!profileUserID || !matchID) return true;
+
+  const mirror = await withSingleProfileRepairLease(
+    base44,
+    profileUserID,
+    async (context) => {
+      const results = await reconcileCommunityProfileMirrors({
+        historyStore: base44.asServiceRole.entities.GameHistory,
+        userStore: base44.asServiceRole.entities.User,
+        playerUserIDs: [profileUserID],
+        knownHistoryRecords: [source],
+        beforeUserUpdate: () =>
+          assertRoomWriterLeaseForUser(context, profileUserID),
+      });
+      return results[0]?.status !== "missing_user";
+    },
+  );
+  if (mirror.status === "deferred") return false;
+  if (mirror.status === "gone" || mirror.value !== true) return true;
+
+  const matchHistory = await rankedHistoryForMatch(base44, matchID);
+  const recipientUserIDs = uniqueStrings(
+    matchHistory.map((record) => record?.player_user_id),
+  );
+  const fanout = await repairCommunityProfileRecipients({
+    recipientUserIDs,
+    concurrency: 4,
+    repairRecipient: async (recipientUserID) => {
+      const outcome = await withSingleProfileRepairLease(
+        base44,
+        recipientUserID,
+        async () => {
+          const result = await fanoutCommunityProfileInvalidations({
+            signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
+            recipientUserIDs: [recipientUserID],
+            profileUserIDs: [profileUserID],
+            logError: (message, error) =>
+              console.error(message, error?.message || error),
+          });
+          return Number(result?.failed) === 0;
+        },
+      );
+      return outcome.status === "gone" ||
+        (outcome.status === "performed" && outcome.value === true);
+    },
+  });
+  return fanout.failedUserIDs.length === 0;
+}
+
+async function runProfileRepairSources(base44, sources) {
+  const outcomes = [];
+  // Every recipient owns one wake-up row. Keep affected profiles sequential
+  // while retaining bounded recipient concurrency inside each source so two
+  // profile updates cannot race to overwrite that shared row.
+  for (const source of sources) {
+    try {
+      outcomes.push(
+        await runCommunityProfileRepair({
+          store: base44.asServiceRole.entities.GameHistory,
+          source,
+          repair: (claimedSource) =>
+            repairCommunityProfileHistorySource(base44, claimedSource),
+          logError: (message, error) =>
+            console.error(message, error?.message || error),
+        }),
+      );
+    } catch (error) {
+      console.error(
+        "community profile repair claim deferred",
+        error?.message || error,
+      );
+      outcomes.push({ outcome: "failed", source });
+    }
+  }
+  return outcomes;
+}
+
+async function repairFinishedCommunityProfilesAndSignals(base44, room) {
+  if (!room?.id || !isCommittedFinishedRoom(room)) return true;
+  const sources = (await rankedHistoryForMatch(base44, room.match_id))
+    .filter((record) =>
+      ["pending", "processing", "completed"].includes(
+        clean(record?.profile_repair_state).toLowerCase(),
+      )
+    );
+  if (!sources.length) return canonicalSpyEmails(room).length !== 1;
+  const outcomes = await runProfileRepairSources(base44, sources);
+  return outcomes.every((result) =>
+    ["performed", "completed", "missing"].includes(result.outcome)
+  );
 }
 
 async function dispatchRoomPushBestEffort(base44, room, action) {
@@ -2431,9 +2758,19 @@ async function dispatchRoomSideEffectsAfterLeases(base44, room, action) {
     await dispatchRoomPushBestEffort(base44, room, action);
     return room;
   }
-  const run = await runTerminalSideEffectsSingleFlight({
-    store: base44.asServiceRole.entities.GameRoom,
+  // The durable history queue is authoritative for profile convergence and is
+  // attempted before APNs. A missing secret or push outage must never gate the
+  // participant's freshly mirrored competitive identity.
+  const profileRun = await dispatchFinishedCommunityProfileSideEffects(
+    base44,
     room,
+  );
+  if (profileRun.outcome === "failed") {
+    console.error("terminal community profile repair deferred");
+  }
+  const pushRun = await runTerminalSideEffectsSingleFlight({
+    store: base44.asServiceRole.entities.GameRoom,
+    room: profileRun.room || room,
     dispatch: async (claimedRoom) => {
       if (!(await dispatchRoomPushBestEffort(base44, claimedRoom, action))) {
         return false;
@@ -2445,13 +2782,46 @@ async function dispatchRoomSideEffectsAfterLeases(base44, room, action) {
       return true;
     },
   });
-  if (run.outcome === "failed") {
+  if (pushRun.outcome === "failed") {
     // The bounded source claim expires for a later explicit retry. Independently,
     // the scheduled push drain continues to repair and deliver the durable
     // outbox even when the initiating request disappears.
     console.error("terminal room side effects deferred");
   }
-  return run.room;
+  return pushRun.room || profileRun.room;
+}
+
+async function dispatchFinishedCommunityProfileSideEffects(base44, room) {
+  return await runTerminalSideEffectsSingleFlight({
+    store: base44.asServiceRole.entities.GameRoom,
+    room,
+    stateKey: "profile_side_effect_dispatch",
+    dispatch: (claimedRoom) =>
+      repairFinishedCommunityProfilesAndSignals(base44, claimedRoom),
+  });
+}
+
+async function drainCommunityProfileRepairs(base44, limitValue) {
+  const limit = Math.min(Math.max(Math.floor(Number(limitValue)) || 8, 1), 24);
+  const sources = await dueCommunityProfileRepairSources({
+    store: base44.asServiceRole.entities.GameHistory,
+    limit,
+  });
+  const outcomes = await runProfileRepairSources(base44, sources);
+  return {
+    ok: outcomes.every((result) =>
+      ["performed", "completed", "missing"].includes(result.outcome)
+    ),
+    selected: sources.length,
+    performed: outcomes.filter((result) => result.outcome === "performed")
+      .length,
+    completed: outcomes.filter((result) => result.outcome === "completed")
+      .length,
+    deferred:
+      outcomes.filter((result) =>
+        ["deferred", "failed"].includes(result.outcome)
+      ).length,
+  };
 }
 
 function lifecycleHTTPStatus(error) {
@@ -2478,6 +2848,50 @@ Deno.serve(async (req) => {
     const body = await req.json().catch(() => ({}));
     const accessToken = clean(body?.access_token);
     const base44 = createClientFromRequest(canonicalRoomActionRequest(req));
+    const requestedAction = clean(body?.action);
+
+    if (requestedAction === "drain_community_profile_repairs") {
+      if (
+        !matchesInternalPushSecret(
+          Deno.env.get("PUSH_INTERNAL_SECRET"),
+          body?.internal_secret,
+        )
+      ) {
+        return jsonError("Unauthorized", 401);
+      }
+      return Response.json(
+        await drainCommunityProfileRepairs(base44, body?.limit),
+      );
+    }
+
+    if (requestedAction === "repair_finished_profile_side_effects") {
+      if (
+        !matchesInternalPushSecret(
+          Deno.env.get("PUSH_INTERNAL_SECRET"),
+          body?.internal_secret,
+        )
+      ) {
+        return jsonError("Unauthorized", 401);
+      }
+      const roomID = clean(body?.room_id);
+      const room = roomID ? await fetchRoom(base44, roomID) : null;
+      if (!room) return jsonError("Room not found", 404);
+      if (
+        !isCommittedFinishedRoom(room) ||
+        clean(body?.source_event_id) !== clean(room.game_finished_event_id)
+      ) {
+        return jsonError("Finished source event is stale", 409);
+      }
+      const run = await dispatchFinishedCommunityProfileSideEffects(
+        base44,
+        room,
+      );
+      return Response.json({
+        ok: run.outcome === "performed" || run.outcome === "completed",
+        outcome: run.outcome,
+        room_id: roomID,
+      });
+    }
 
     // The function gateway does not accept every provider/SSO token as its
     // Authorization header. Verify that token directly against Base44, while
@@ -2499,11 +2913,48 @@ Deno.serve(async (req) => {
       return jsonError("Unauthorized", 401);
     }
 
-    const action = clean(body?.action);
+    const action = requestedAction;
     const roomId = clean(body?.room_id);
     actionForLog = safeLogLabel(action);
 
     if (!action) return jsonError("Missing action");
+
+    if (action === "backfill_community_profiles") {
+      if (clean(user.role).toLowerCase() !== "admin") {
+        return jsonError("Forbidden", 403);
+      }
+      const backfillMode = clean(body?.mode || "plan").toLowerCase();
+      if (!["plan", "apply"].includes(backfillMode)) {
+        return jsonError(
+          "Use mode plan for dry-run or mode apply for explicit writes",
+          400,
+        );
+      }
+      const apply = backfillMode === "apply";
+      const backfill = await runCommunityProfileBackfillPage({
+        historyStore: base44.asServiceRole.entities.GameHistory,
+        cursor: body?.cursor,
+        batchSize: body?.batch_size,
+        apply,
+        reconcileUser: async (userID) => {
+          await withRoomWriteLeases({
+            lifecycleStore:
+              base44.asServiceRole.entities.BillingIdentityLifecycle,
+            userIDs: [userID],
+            action: async (context) => {
+              await reconcileCommunityProfileMirrors({
+                historyStore: base44.asServiceRole.entities.GameHistory,
+                userStore: base44.asServiceRole.entities.User,
+                playerUserIDs: [userID],
+                beforeUserUpdate: () =>
+                  assertRoomWriterLeaseForUser(context, userID),
+              });
+            },
+          });
+        },
+      });
+      return Response.json({ ok: true, mode: backfillMode, ...backfill });
+    }
 
     if (action === "get_leaderboard") {
       return Response.json(await loadLeaderboard(base44, user));

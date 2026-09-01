@@ -1,25 +1,13 @@
+import { aggregateCompetitiveStats } from "./competitive-stats.ts";
+
+export { isRankedOnlineHistory } from "./competitive-stats.ts";
+
 const HISTORY_PAGE_SIZE = 100;
-const MAX_HISTORY_RECORDS = 20_000;
 const MAX_LEADERBOARD_ENTRIES = 100;
 const PSEUDONYM_KEY_ENV = "SPYCLASH_PSEUDONYM_KEY";
 
 function clean(value: unknown): string {
   return String(value ?? "").trim();
-}
-
-export function isRankedOnlineHistory(record: Record<string, any>): boolean {
-  const matchType = clean(record?.match_type).toLocaleLowerCase();
-  if (matchType) return matchType === "online" && record?.ranked !== false;
-  if (record?.ranked === false) return false;
-
-  const roomCode = clean(record?.room_code).toUpperCase();
-  return /^[A-Z0-9]{6}$/.test(roomCode);
-}
-
-function ratingDelta(record: Record<string, any>): number {
-  const detective = clean(record?.role).toLocaleLowerCase() === "detective";
-  if (record?.won === true) return detective ? 30 : 60;
-  return detective ? -20 : -40;
 }
 
 function requirePseudonymKey(value: unknown): string {
@@ -62,30 +50,7 @@ export async function aggregateLeaderboard(
   // Public aliases must be unlinkable without a server-held secret. Refuse to
   // produce even an empty leaderboard if release configuration is incomplete.
   const pseudonymKey = requirePseudonymKey(pseudonymKeyValue);
-  const table = new Map<
-    string,
-    { rating: number; games: number; wins: number; losses: number }
-  >();
-
-  for (const record of records) {
-    if (!isRankedOnlineHistory(record)) continue;
-    // Email is mutable and enumerable. Only the opaque Base44 user id may
-    // participate in the public identity projection. Legacy rows without one
-    // are omitted instead of making email-derived identifiers guessable.
-    const userID = clean(record?.player_user_id);
-    if (!userID) continue;
-    const stats = table.get(userID) || {
-      rating: 0,
-      games: 0,
-      wins: 0,
-      losses: 0,
-    };
-    stats.games += 1;
-    stats.rating += ratingDelta(record);
-    if (record?.won === true) stats.wins += 1;
-    else stats.losses += 1;
-    table.set(userID, stats);
-  }
+  const table = aggregateCompetitiveStats(records);
 
   const viewerUserID = clean(viewerUserIDValue);
   const ranked = [...table.entries()]
@@ -118,30 +83,9 @@ export async function loadLeaderboard(
   base44: any,
   viewer: Record<string, any>,
 ) {
-  const records: Record<string, any>[] = [];
-  const seenIDs = new Set<string>();
-
-  for (
-    let skip = 0;
-    skip < MAX_HISTORY_RECORDS;
-    skip += HISTORY_PAGE_SIZE
-  ) {
-    const page = await base44.asServiceRole.entities.GameHistory.filter(
-      {},
-      "-created_date",
-      HISTORY_PAGE_SIZE,
-      skip,
-    ) || [];
-    const unseen = page.filter((record: Record<string, any>) => {
-      const id = clean(record?.id);
-      if (!id) return true;
-      if (seenIDs.has(id)) return false;
-      seenIDs.add(id);
-      return true;
-    });
-    records.push(...unseen);
-    if (page.length < HISTORY_PAGE_SIZE || !unseen.length) break;
-  }
+  const records = await loadAllLeaderboardHistory(
+    base44.asServiceRole.entities.GameHistory,
+  );
 
   return {
     entries: await aggregateLeaderboard(
@@ -150,4 +94,50 @@ export async function loadLeaderboard(
       Deno.env.get(PSEUDONYM_KEY_ENV),
     ),
   };
+}
+
+export async function loadAllLeaderboardHistory(
+  store: {
+    filter(
+      query: Record<string, unknown>,
+      sort?: string,
+      limit?: number,
+      skip?: number,
+    ): Promise<Record<string, any>[]>;
+  },
+  pageSize = HISTORY_PAGE_SIZE,
+): Promise<Record<string, any>[]> {
+  const records: Record<string, any>[] = [];
+  const seenIDs = new Set<string>();
+  const seenFullPageFingerprints = new Set<string>();
+  const boundedPageSize = Math.max(1, Math.min(Number(pageSize) || 100, 500));
+
+  for (let skip = 0;;) {
+    const page = await store.filter(
+      {},
+      "-created_date",
+      boundedPageSize,
+      skip,
+    ) || [];
+    if (page.length === boundedPageSize) {
+      const fingerprint = page.map((record) =>
+        clean(record?.id) || JSON.stringify(record)
+      ).join("\n");
+      if (seenFullPageFingerprints.has(fingerprint)) {
+        throw new Error("GameHistory pagination repeated a full page");
+      }
+      seenFullPageFingerprints.add(fingerprint);
+    }
+    const unseen = page.filter((record: Record<string, any>) => {
+      const id = clean(record?.id);
+      if (!id) return true;
+      if (seenIDs.has(id)) return false;
+      seenIDs.add(id);
+      return true;
+    });
+    records.push(...unseen);
+    skip += page.length;
+    if (page.length < boundedPageSize) break;
+  }
+  return records;
 }

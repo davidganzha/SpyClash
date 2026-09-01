@@ -25,7 +25,11 @@ struct RadarInviteView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     header
-                    identityGrid
+                    if appState.isRadarActivated {
+                        identityGrid
+                    } else {
+                        activationCard
+                    }
                     privacyNote
 
                     Button {
@@ -41,7 +45,7 @@ struct RadarInviteView: View {
             }
         }
         .task {
-            appState.startRadarScanning(requestCameraAccess: true)
+            appState.resumeRadarScanningIfActivated(requestCameraAccess: true)
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                 scanPulse = true
@@ -50,6 +54,40 @@ struct RadarInviteView: View {
         .onDisappear {
             radar.stopScanning()
         }
+    }
+
+    private var activationCard: some View {
+        VStack(spacing: 12) {
+            Image(systemName: "dot.radiowaves.left.and.right")
+                .font(.system(size: 26, weight: .black))
+                .foregroundStyle(SpyTheme.red)
+
+            Text(localized(
+                en: "Radar stays off until you activate it.",
+                ru: "Радар выключен, пока ты сам его не активируешь.",
+                es: "Radar permanece apagado hasta que lo actives.",
+                uk: "Радар вимкнений, доки ти сам його не активуєш."
+            ))
+            .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            .foregroundStyle(SpyTheme.dim)
+            .multilineTextAlignment(.center)
+
+            Button {
+                HapticManager.shared.fire(.buttonPress)
+                appState.activateRadarAndStartScanning(requestCameraAccess: true)
+            } label: {
+                SpyActionLabel(
+                    title: localized(en: "ACTIVATE RADAR", ru: "АКТИВИРОВАТЬ РАДАР", es: "ACTIVAR RADAR", uk: "АКТИВУВАТИ РАДАР"),
+                    systemImage: "antenna.radiowaves.left.and.right"
+                )
+            }
+            .buttonStyle(SpyButtonStyle(variant: .red))
+            .accessibilityIdentifier("radar.activate")
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity)
+        .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 10))
+        .overlay(CutCornerShape(cut: 10).stroke(SpyTheme.strokeStrong, lineWidth: 1))
     }
 
     private var header: some View {
@@ -889,7 +927,7 @@ struct RadarPolicySettingsView: View {
             .fixedSize(horizontal: false, vertical: true)
 
             VStack(spacing: 7) {
-                ForEach(RadarInvitePolicy.allCases) { policy in
+                ForEach(RadarInvitePolicy.selectableCases) { policy in
                     policyButton(policy)
                 }
             }

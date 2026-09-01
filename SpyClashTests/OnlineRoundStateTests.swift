@@ -95,6 +95,8 @@ final class OnlineRoundStateTests: XCTestCase {
         XCTAssertEqual(AppLanguage.normalized("uk-UA"), .uk)
         XCTAssertEqual(AppLanguage.normalized("uk_UA"), .uk)
         XCTAssertEqual(AppLanguage.uk.rawValue, "uk")
+        XCTAssertEqual(AppLanguage.uk.shortCode, "UA")
+        XCTAssertEqual(AppLanguage.en.shortCode, "EN")
         XCTAssertEqual(AppLanguage.uk.title, "Українська")
     }
 
@@ -820,12 +822,1256 @@ final class OnlineRoundStateTests: XCTestCase {
         let records = try JSONDecoder().decode(
             [GameHistory].self,
             from: Data(
-                #"[{"id":"multi","room_code":"ABC123","match_type":"online","ranked":false,"spy_count":2},{"id":"ranked","room_code":"DEF456","match_type":"online","ranked":true,"spy_count":1},{"id":"local","room_code":"LOCAL","match_type":"local","ranked":false,"spy_count":2}]"#.utf8
+                #"[{"id":"multi","player_user_id":"user-1","room_code":"ABC123","match_type":"online","ranked":false,"spy_count":2},{"id":"ranked","player_user_id":"user-1","room_code":"DEF456","match_type":"online","ranked":true,"spy_count":1},{"id":"local","player_user_id":"user-1","room_code":"LOCAL","match_type":"local","ranked":false,"spy_count":2}]"#.utf8
             )
         )
 
         XCTAssertEqual(records.filter(\.isOnlineHistoryMatch).map(\.id), ["multi", "ranked"])
         XCTAssertEqual(records.filter(\.isOnlineCompetitiveMatch).map(\.id), ["ranked"])
+    }
+
+    func testRoleWinRatesAreIndependentAndExcludeNoncompetitiveHistory() throws {
+        let records = try JSONDecoder().decode(
+            [GameHistory].self,
+            from: Data(
+                #"[{"id":"spy-win","player_user_id":"user-1","room_code":"ABC123","match_type":"online","ranked":true,"spy_count":1,"role":"spy","won":true},{"id":"spy-loss","player_user_id":"user-1","room_code":"DEF456","match_type":"online","ranked":true,"spy_count":1,"role":"spy","won":false},{"id":"detective-win","player_user_id":"user-1","room_code":"GHI789","match_type":"online","ranked":true,"spy_count":1,"role":"detective","won":true},{"id":"local-detective-loss","player_user_id":"user-1","room_code":"LOCAL","match_type":"local","ranked":false,"spy_count":1,"role":"detective","won":false},{"id":"multi-spy-win","player_user_id":"user-1","room_code":"JKL012","match_type":"online","ranked":false,"spy_count":2,"role":"spy","won":true}]"#.utf8
+            )
+        )
+
+        XCTAssertEqual(
+            GameHistoryAnalytics.roleWinRate("spy", in: records, competitiveOnly: true),
+            50
+        )
+        XCTAssertEqual(
+            GameHistoryAnalytics.roleWinRate("detective", in: records, competitiveOnly: true),
+            100
+        )
+    }
+
+    func testHistoryRequiresStableOwnerForMetricsAndDeduplicatesVisibleResults() throws {
+        let records = try JSONDecoder().decode(
+            [GameHistory].self,
+            from: Data(
+                #"[{"id":"legacy-email","player_email":"operative@example.com","match_id":"match-legacy","room_code":"ABC123","match_type":"online","ranked":true,"spy_count":1,"role":"spy","won":true},{"id":"first","player_user_id":"user-1","match_id":"match-1","result_key":"game-result:v1:match-1:user-1","created_date":"2026-09-01T12:00:00.000Z","room_code":"DEF456","match_type":"online","ranked":true,"spy_count":1,"role":"detective","won":true},{"id":"duplicate","player_user_id":"user-1","match_id":"match-1","result_key":"game-result:v1:match-1:user-1","created_date":"2026-09-01T12:00:01.000Z","room_code":"DEF456","match_type":"online","ranked":true,"spy_count":1,"role":"detective","won":false}]"#.utf8
+            )
+        )
+
+        XCTAssertFalse(records[0].isOnlineCompetitiveMatch)
+        XCTAssertTrue(records[1].isOnlineCompetitiveMatch)
+        XCTAssertEqual(records[1].playerUserID, "user-1")
+        XCTAssertEqual(records[1].matchID, "match-1")
+        XCTAssertEqual(records[1].resultKey, "game-result:v1:match-1:user-1")
+        let visible = GameHistoryAnalytics.deduplicatedVisibleHistory(
+            records,
+            currentUserID: "user-1"
+        )
+        XCTAssertEqual(Set(visible.map(\.id)), ["legacy-email", "first"])
+        XCTAssertEqual(
+            GameHistoryAnalytics.roleWinRate(
+                "detective",
+                in: visible,
+                competitiveOnly: true,
+                currentUserID: "user-1"
+            ),
+            100
+        )
+    }
+
+    func testFinishedMatchProfileRefreshRejectsStaleStatsAndWrongAccounts() throws {
+        var room = GameRoom.previewRoom(status: "finished")
+        room.matchID = "match-1"
+        let projectedRoom = try JSONDecoder().decode(
+            GameRoom.self,
+            from: JSONEncoder().encode(room)
+        )
+        XCTAssertTrue(projectedRoom.playersList.allSatisfy { $0.userID == nil })
+        let baseline = finishedProfileUser(
+            id: "user-1",
+            email: projectedRoom.playersList[0].email.uppercased(),
+            rating: 100,
+            gamesPlayed: 10,
+            gamesWon: 6
+        )
+        var policy = FinishedMatchProfileRefreshPolicy()
+
+        let first = try XCTUnwrap(policy.request(room: projectedRoom, user: baseline))
+        XCTAssertEqual(
+            first.expectedCompetitiveStats,
+            FinishedMatchCompetitiveStatsExpectation(
+                minimumGamesPlayed: 11
+            )
+        )
+        XCTAssertNil(policy.request(room: projectedRoom, user: baseline))
+        XCTAssertEqual(FinishedMatchProfileRefreshPolicy.retryDelays.count, 3)
+
+        XCTAssertFalse(
+            FinishedMatchProfileRefreshPolicy.canAdopt(
+                refreshedUser: baseline,
+                request: first,
+                currentUserID: "user-1"
+            ),
+            "A successful currentUser response is still stale until the terminal mirror lands"
+        )
+        let refreshed = finishedProfileUser(
+            id: "user-1",
+            email: baseline.email,
+            rating: 130,
+            gamesPlayed: 11,
+            gamesWon: 7
+        )
+        XCTAssertTrue(
+            FinishedMatchProfileRefreshPolicy.canAdopt(
+                refreshedUser: refreshed,
+                request: first,
+                currentUserID: "user-1"
+            )
+        )
+        let newerAggregate = finishedProfileUser(
+            id: "user-1",
+            email: baseline.email,
+            rating: 75,
+            gamesPlayed: 13,
+            gamesWon: 8
+        )
+        XCTAssertTrue(
+            FinishedMatchProfileRefreshPolicy.canAdopt(
+                refreshedUser: newerAggregate,
+                request: first,
+                currentUserID: "user-1"
+            ),
+            "A newer absolute aggregate must satisfy this match even when rating and wins differ"
+        )
+        let wrongRefreshedAccount = finishedProfileUser(
+            id: "stale-user",
+            email: baseline.email,
+            rating: 130,
+            gamesPlayed: 11,
+            gamesWon: 7
+        )
+        XCTAssertFalse(
+            FinishedMatchProfileRefreshPolicy.canAdopt(
+                refreshedUser: wrongRefreshedAccount,
+                request: first,
+                currentUserID: "user-1"
+            )
+        )
+        XCTAssertFalse(
+            FinishedMatchProfileRefreshPolicy.canAdopt(
+                refreshedUser: refreshed,
+                request: first,
+                currentUserID: "replacement-user"
+            )
+        )
+    }
+
+    func testFinishedMatchProfileRefreshCanRetryStaleExhaustionThenCompletesOnce() throws {
+        var room = GameRoom.previewRoom(status: "finished")
+        room.matchID = "match-1"
+        let baseline = finishedProfileUser(
+            id: "user-1",
+            email: room.playersList[1].email,
+            rating: 100,
+            gamesPlayed: 10,
+            gamesWon: 6
+        )
+        var policy = FinishedMatchProfileRefreshPolicy()
+
+        let first = try XCTUnwrap(policy.request(room: room, user: baseline))
+        XCTAssertEqual(
+            first.expectedCompetitiveStats,
+            FinishedMatchCompetitiveStatsExpectation(
+                minimumGamesPlayed: 11
+            )
+        )
+        policy.finish(first, adopted: false)
+
+        let refreshed = finishedProfileUser(
+            id: "user-1",
+            email: baseline.email,
+            rating: 60,
+            gamesPlayed: 11,
+            gamesWon: 6
+        )
+        let retry = try XCTUnwrap(policy.request(room: room, user: refreshed))
+        XCTAssertEqual(
+            retry.expectedCompetitiveStats,
+            first.expectedCompetitiveStats,
+            "A later trigger must reuse the original expectation instead of counting the match twice"
+        )
+        policy.finish(retry, adopted: true)
+        XCTAssertNil(
+            policy.request(room: room, user: refreshed),
+            "A completed adoption is permanent for this account and match"
+        )
+
+        room.matchID = "match-2"
+        XCTAssertNotNil(policy.request(room: room, user: refreshed))
+    }
+
+    private func finishedProfileUser(
+        id: String,
+        email: String,
+        rating: Int,
+        gamesPlayed: Int,
+        gamesWon: Int
+    ) -> SpyUser {
+        SpyUser(
+            id: id,
+            email: email,
+            fullName: nil,
+            displayName: "Operative",
+            avatar: "🕵️",
+            language: "en",
+            role: nil,
+            isVerified: nil,
+            rating: rating,
+            gamesPlayed: gamesPlayed,
+            gamesWon: gamesWon,
+            remoteSpyID: nil,
+            spyCardTheme: nil,
+            spyCardAccent: nil,
+            spyCardBadge: nil,
+            radarInvitePolicy: nil
+        )
+    }
+
+    func testWrongSpyGuessOnlyAppearsForConfirmedDetectiveWinner() {
+        var room = GameRoom.previewRoom(status: "finished")
+        room.winner = "detectives"
+        room.spyGuess = "  Library  "
+        XCTAssertEqual(FinishedRoomResultPolicy.wrongSpyGuess(in: room), "Library")
+
+        room.winner = "spy"
+        XCTAssertNil(FinishedRoomResultPolicy.wrongSpyGuess(in: room))
+
+        room.winner = nil
+        XCTAssertNil(FinishedRoomResultPolicy.wrongSpyGuess(in: room))
+
+        room.winner = "unexpected"
+        XCTAssertNil(FinishedRoomResultPolicy.wrongSpyGuess(in: room))
+
+        room.winner = "detectives"
+        room.spyGuess = "   "
+        XCTAssertNil(FinishedRoomResultPolicy.wrongSpyGuess(in: room))
+    }
+
+    func testReplayAutoStartRequiresUnanimousFinishedHostObservation() throws {
+        var room = GameRoom.previewRoom(status: "finished")
+        let hostEmail = try XCTUnwrap(room.hostEmail)
+        room.readyPlayers = room.playersList.map(\.email)
+
+        let request = try XCTUnwrap(
+            ReplayAutoStartPolicy.request(
+                for: room,
+                currentUserEmail: hostEmail.uppercased()
+            )
+        )
+        XCTAssertEqual(request.roomID, room.id)
+        XCTAssertEqual(
+            ReplayAutoStartPolicy.disposition(
+                of: room,
+                for: request,
+                currentUserEmail: hostEmail
+            ),
+            .resetRequired
+        )
+        XCTAssertNil(
+            ReplayAutoStartPolicy.request(
+                for: room,
+                currentUserEmail: room.playersList[1].email
+            )
+        )
+
+        room.readyPlayers = Array(room.playersList.dropLast().map(\.email))
+        XCTAssertNil(
+            ReplayAutoStartPolicy.request(
+                for: room,
+                currentUserEmail: hostEmail
+            )
+        )
+    }
+
+    func testReplayAutoStartIgnoresDepartedTombstonedPlayer() throws {
+        var room = GameRoom.previewRoom(status: "finished", playerCount: 4)
+        let hostEmail = try XCTUnwrap(room.hostEmail)
+        let eligiblePlayers = Array(room.playersList.prefix(3))
+        let departedPlayer = try XCTUnwrap(room.playersList.last)
+        room.replayEligiblePlayerEmails = eligiblePlayers.map(\.email)
+        room.readyPlayers = eligiblePlayers.map(\.email)
+
+        XCTAssertNotNil(
+            ReplayAutoStartPolicy.request(
+                for: room,
+                currentUserEmail: hostEmail
+            ),
+            "A departed player retained only as a terminal tombstone must not block replay unanimity"
+        )
+        XCTAssertFalse(
+            room.replayEligiblePlayersList.contains(where: { $0.email == departedPlayer.email })
+        )
+
+        room.readyPlayers = Array(eligiblePlayers.dropLast().map(\.email))
+        XCTAssertNil(
+            ReplayAutoStartPolicy.request(
+                for: room,
+                currentUserEmail: hostEmail
+            ),
+            "Every authoritative eligible participant must still vote"
+        )
+    }
+
+    func testReplayEligibleRosterDecodesServerProjectionAndLegacyFallsBack() throws {
+        let projected = try JSONDecoder().decode(
+            GameRoom.self,
+            from: Data(#"""
+            {
+              "id": "room-1",
+              "code": "REPLAY",
+              "status": "finished",
+              "players": [
+                {"user_id":"user-a","email":"a@example.com","name":"A","avatar":"🕵️"},
+                {"user_id":"user-b","email":"b@example.com","name":"B","avatar":"🎭"},
+                {"user_id":"user-c","email":"c@example.com","name":"C","avatar":"👤"}
+              ],
+              "replay_eligible_player_emails": [" A@EXAMPLE.COM ", "b@example.com"]
+            }
+            """#.utf8)
+        )
+        XCTAssertEqual(
+            projected.replayEligiblePlayersList.map(\.email),
+            ["a@example.com", "b@example.com"]
+        )
+
+        let legacy = try JSONDecoder().decode(
+            GameRoom.self,
+            from: Data(#"""
+            {
+              "id": "legacy-room",
+              "code": "LEGACY",
+              "status": "finished",
+              "players": [
+                {"email":"a@example.com","name":"A","avatar":"🕵️"},
+                {"email":"b@example.com","name":"B","avatar":"🎭"}
+              ]
+            }
+            """#.utf8)
+        )
+        XCTAssertNil(legacy.replayEligiblePlayerEmails)
+        XCTAssertEqual(
+            legacy.replayEligiblePlayersList.map(\.email),
+            legacy.playersList.map(\.email)
+        )
+
+        var explicitlyEmpty = legacy
+        explicitlyEmpty.replayEligiblePlayerEmails = []
+        XCTAssertTrue(explicitlyEmpty.replayEligiblePlayersList.isEmpty)
+    }
+
+    func testReplayAutoStartCoordinatorSchedulesOneTaskPerObservedMatch() {
+        let first = ReplayAutoStartRequest(roomID: "room-1", matchKey: "match:a")
+        let second = ReplayAutoStartRequest(roomID: "room-1", matchKey: "match:b")
+        var coordinator = ReplayAutoStartCoordinatorState()
+
+        XCTAssertTrue(coordinator.observe(first))
+        XCTAssertFalse(coordinator.observe(first), "A repeated unanimous realtime snapshot must not start a second task")
+        XCTAssertEqual(coordinator.pendingRequest, first)
+
+        coordinator.finish(first)
+        XCTAssertNil(coordinator.pendingRequest)
+        XCTAssertFalse(coordinator.observe(first), "A completed operation stays idempotently handled")
+        XCTAssertTrue(coordinator.retry(first), "Only an explicit retry may repeat the same operation")
+        coordinator.finish(first)
+        XCTAssertTrue(coordinator.observe(second), "A later match in the same room must receive its own auto-start")
+    }
+
+    func testReplayAutoStartLostResponsesResumeFromWaitingOrStartedRoom() throws {
+        var finished = GameRoom.previewRoom(status: "finished")
+        let hostEmail = try XCTUnwrap(finished.hostEmail)
+        finished.readyPlayers = finished.playersList.map(\.email)
+        finished.roomRevision = 40
+        let request = try XCTUnwrap(
+            ReplayAutoStartPolicy.request(for: finished, currentUserEmail: hostEmail)
+        )
+
+        var resetCommitted = finished
+        resetCommitted.status = "waiting"
+        resetCommitted.matchID = nil
+        resetCommitted.readyPlayers = []
+        resetCommitted.wordPool = []
+        resetCommitted.roomRevision = 41
+        XCTAssertEqual(
+            ReplayAutoStartPolicy.disposition(
+                of: resetCommitted,
+                for: request,
+                currentUserEmail: hostEmail
+            ),
+            .armRequired,
+            "A refresh after a lost reset response must continue directly to roulette arming"
+        )
+        XCTAssertTrue(
+            ReplayAutoStartPolicy.canAdopt(
+                resetCommitted,
+                over: finished,
+                for: request,
+                currentUserEmail: hostEmail
+            )
+        )
+
+        var armCommitted = resetCommitted
+        armCommitted.status = "roulette"
+        armCommitted.roomRevision = 42
+        XCTAssertEqual(
+            ReplayAutoStartPolicy.disposition(
+                of: armCommitted,
+                for: request,
+                currentUserEmail: hostEmail
+            ),
+            .alreadyStarted,
+            "A refresh after a lost arm response must be treated as committed success"
+        )
+    }
+
+    func testSpyGuessSubmissionPhaseLocksImmediatelyAndKeepsExplicitRetry() throws {
+        var phase = SpyGuessSubmissionPhase.idle
+        phase = try XCTUnwrap(SpyGuessSubmissionPhase.begin(word: "  Library  ", from: phase))
+
+        XCTAssertEqual(phase.selectedWord, "Library")
+        XCTAssertTrue(phase.blocksInteraction)
+        XCTAssertNil(SpyGuessSubmissionPhase.begin(word: "Embassy", from: phase))
+
+        phase = phase.failing()
+        XCTAssertFalse(phase.blocksInteraction)
+        XCTAssertEqual(phase.failedWord, "Library")
+        XCTAssertEqual(
+            SpyGuessSubmissionPhase.begin(word: "Library", from: phase),
+            .submitting(word: "Library")
+        )
+    }
+
+    func testSpyGuessLostResponseConfirmsOnlyExactTerminalGuessInSameMatch() throws {
+        var playing = GameRoom.previewRoom(status: "playing")
+        playing.spyGuess = nil
+        let scope = try XCTUnwrap(
+            SpyGuessSubmissionScope(room: playing, guess: "  Library ")
+        )
+
+        var committed = playing
+        committed.status = "finished"
+        committed.spyGuess = "LIBRARY"
+        XCTAssertTrue(scope.confirmsCommit(in: committed))
+
+        committed.spyGuess = "Embassy"
+        XCTAssertFalse(scope.confirmsCommit(in: committed))
+
+        committed.spyGuess = "Library"
+        committed.matchID = "replacement-match"
+        XCTAssertFalse(scope.confirmsCommit(in: committed))
+    }
+
+    func testRoomFriendsPolicyKeepsOnlyAcceptedDeduplicatedProfiles() throws {
+        let me = roomFriendProfile(id: "me", name: "Host")
+        let cipher = roomFriendProfile(id: "friend-cipher", name: "Cipher")
+        let signal = roomFriendProfile(id: "friend-signal", name: "Signal")
+        let pending = roomFriendProfile(id: "friend-pending", name: "Pending")
+        let state = CommunityState(
+            me: me,
+            friends: [
+                CommunityRelationship(
+                    id: "accepted-1",
+                    status: " accepted ",
+                    direction: "outgoing",
+                    profile: cipher
+                ),
+                CommunityRelationship(
+                    id: "pending-1",
+                    status: "pending",
+                    direction: "incoming",
+                    profile: pending
+                ),
+                CommunityRelationship(
+                    id: "accepted-duplicate",
+                    status: "ACCEPTED",
+                    direction: "incoming",
+                    profile: cipher
+                ),
+                CommunityRelationship(
+                    id: "accepted-2",
+                    status: "accepted",
+                    direction: "incoming",
+                    profile: signal
+                )
+            ],
+            incoming: [],
+            outgoing: []
+        )
+
+        XCTAssertEqual(
+            RoomFriendsDirectoryPolicy.acceptedDeduplicatedProfiles(from: state).map(\.id),
+            [cipher.id, signal.id]
+        )
+    }
+
+    func testRoomFriendsScopeAndStateRejectStalePageAccountAndRoomResponses() throws {
+        let scopeA = try XCTUnwrap(
+            RoomFriendsScope(accountUserID: " account-a ", roomID: " room-a ")
+        )
+        let scopeB = try XCTUnwrap(
+            RoomFriendsScope(accountUserID: "account-b", roomID: "room-b")
+        )
+        XCTAssertTrue(
+            scopeA.matches(
+                accountUserID: "account-a",
+                roomID: "room-a",
+                page: RoomAccessPagePolicy.friends
+            )
+        )
+        XCTAssertFalse(
+            scopeA.matches(
+                accountUserID: "account-b",
+                roomID: "room-a",
+                page: RoomAccessPagePolicy.friends
+            )
+        )
+        XCTAssertFalse(
+            scopeA.matches(
+                accountUserID: "account-a",
+                roomID: "room-a",
+                page: RoomAccessPagePolicy.radar
+            )
+        )
+
+        let stateA = roomFriendsCommunityState(profileIDs: ["friend-a"])
+        let stateB = roomFriendsCommunityState(profileIDs: ["friend-b"])
+        let requestA = UUID()
+        let requestB = UUID()
+        var directory = RoomFriendsDirectoryState()
+
+        XCTAssertTrue(directory.beginLoading(scope: scopeA, requestID: requestA))
+        XCTAssertEqual(directory.loadPhase, .loading)
+        directory.deactivate()
+        XCTAssertFalse(
+            directory.receive(stateA, scope: scopeA, requestID: requestA),
+            "A response arriving after leaving Friends must not restore stale data"
+        )
+        XCTAssertEqual(directory.loadPhase, .idle)
+
+        XCTAssertTrue(directory.beginLoading(scope: scopeB, requestID: requestB))
+        XCTAssertFalse(directory.receive(stateA, scope: scopeA, requestID: requestA))
+        XCTAssertTrue(directory.receive(stateB, scope: scopeB, requestID: requestB))
+        XCTAssertEqual(directory.loadPhase, .loaded)
+        XCTAssertEqual(directory.profiles.map(\.id), ["friend-b"])
+    }
+
+    func testRoomFriendsCancellationReleasesOnlyTheMatchingLoadForRetry() throws {
+        let scope = try XCTUnwrap(
+            RoomFriendsScope(accountUserID: "account", roomID: "room")
+        )
+        let activeRequest = UUID()
+        var directory = RoomFriendsDirectoryState()
+
+        XCTAssertTrue(directory.beginLoading(scope: scope, requestID: activeRequest))
+        XCTAssertFalse(
+            directory.cancelLoading(scope: scope, requestID: UUID()),
+            "A stale cancelled task must not release the active request"
+        )
+        XCTAssertEqual(directory.loadPhase, .loading)
+        XCTAssertTrue(directory.cancelLoading(scope: scope, requestID: activeRequest))
+        XCTAssertEqual(directory.loadPhase, .idle)
+
+        let replacementRequest = UUID()
+        XCTAssertTrue(directory.beginLoading(scope: scope, requestID: replacementRequest))
+        XCTAssertTrue(
+            directory.receive(
+                roomFriendsCommunityState(profileIDs: ["friend-a"]),
+                scope: scope,
+                requestID: replacementRequest
+            )
+        )
+        XCTAssertEqual(directory.loadPhase, .loaded)
+    }
+
+    func testRoomFriendsStateCoversEmptyFailureAndSingleInvitePerUserRetry() throws {
+        let scope = try XCTUnwrap(
+            RoomFriendsScope(accountUserID: "account", roomID: "room")
+        )
+        var directory = RoomFriendsDirectoryState()
+
+        let emptyRequest = UUID()
+        XCTAssertTrue(directory.beginLoading(scope: scope, requestID: emptyRequest))
+        XCTAssertTrue(
+            directory.receive(
+                roomFriendsCommunityState(profileIDs: []),
+                scope: scope,
+                requestID: emptyRequest
+            )
+        )
+        XCTAssertEqual(directory.loadPhase, .empty)
+
+        directory.deactivate()
+        let failedRequest = UUID()
+        XCTAssertTrue(directory.beginLoading(scope: scope, requestID: failedRequest))
+        XCTAssertTrue(directory.failLoading(scope: scope, requestID: failedRequest))
+        XCTAssertEqual(directory.loadPhase, .failed)
+
+        let retryLoadRequest = UUID()
+        XCTAssertTrue(directory.beginLoading(scope: scope, requestID: retryLoadRequest))
+        XCTAssertTrue(
+            directory.receive(
+                roomFriendsCommunityState(profileIDs: ["friend-a"]),
+                scope: scope,
+                requestID: retryLoadRequest
+            )
+        )
+
+        let firstInvite = UUID()
+        let duplicateInvite = UUID()
+        XCTAssertTrue(
+            directory.beginInvitation(
+                userID: "friend-a",
+                scope: scope,
+                requestID: firstInvite
+            )
+        )
+        XCTAssertEqual(directory.invitationPhase(for: "friend-a"), .sending)
+        XCTAssertFalse(
+            directory.beginInvitation(
+                userID: "friend-a",
+                scope: scope,
+                requestID: duplicateInvite
+            ),
+            "Only one active invite request is allowed for a friend"
+        )
+        XCTAssertFalse(
+            directory.failInvitation(
+                userID: "friend-a",
+                scope: scope,
+                requestID: duplicateInvite
+            )
+        )
+        XCTAssertTrue(
+            directory.failInvitation(
+                userID: "friend-a",
+                scope: scope,
+                requestID: firstInvite
+            )
+        )
+        XCTAssertEqual(directory.invitationPhase(for: "friend-a"), .failed)
+
+        XCTAssertTrue(
+            directory.beginInvitation(
+                userID: "friend-a",
+                scope: scope,
+                requestID: duplicateInvite
+            )
+        )
+        XCTAssertTrue(
+            directory.finishInvitation(
+                userID: "friend-a",
+                scope: scope,
+                requestID: duplicateInvite
+            )
+        )
+        XCTAssertEqual(directory.invitationPhase(for: "friend-a"), .sent)
+        XCTAssertFalse(
+            directory.beginInvitation(
+                userID: "friend-a",
+                scope: scope,
+                requestID: UUID()
+            )
+        )
+
+        directory.deactivate()
+        let freshLoadRequest = UUID()
+        XCTAssertTrue(directory.beginLoading(scope: scope, requestID: freshLoadRequest))
+        XCTAssertTrue(
+            directory.receive(
+                roomFriendsCommunityState(profileIDs: ["friend-a"]),
+                scope: scope,
+                requestID: freshLoadRequest
+            )
+        )
+        let staleInvite = UUID()
+        XCTAssertTrue(
+            directory.beginInvitation(
+                userID: "friend-a",
+                scope: scope,
+                requestID: staleInvite
+            )
+        )
+        directory.deactivate()
+        XCTAssertFalse(
+            directory.finishInvitation(
+                userID: "friend-a",
+                scope: scope,
+                requestID: staleInvite
+            ),
+            "An invite response arriving after leaving Friends must not restore sent state"
+        )
+    }
+
+    func testRoomAccessPolicyStopsRadarWhenFriendsPageIsSelected() {
+        XCTAssertEqual(RoomAccessPagePolicy.pageCount, 4)
+        XCTAssertTrue(
+            RoomAccessPagePolicy.shouldStopRadar(
+                from: RoomAccessPagePolicy.radar,
+                to: RoomAccessPagePolicy.friends
+            )
+        )
+        XCTAssertFalse(
+            RoomAccessPagePolicy.shouldStartRadar(on: RoomAccessPagePolicy.friends)
+        )
+    }
+
+    func testOnlineInteractiveControlsUseAccessibleHitTargetFloor() {
+        XCTAssertGreaterThanOrEqual(
+            OnlineInteractionHitTargetPolicy.minimumSize,
+            44,
+            "Friends invite, kick, and active return buttons share this actual label hit-region floor"
+        )
+    }
+
+    func testReturnToLobbyEligibleRosterDecodesServerProjectionAndLegacyFallsBack() throws {
+        let projected = try JSONDecoder().decode(
+            GameRoom.self,
+            from: Data(#"""
+            {
+              "id": "room-1",
+              "code": "RETURN",
+              "status": "playing",
+              "players": [
+                {"user_id":"user-a","email":"a@example.com","name":"A","avatar":"🕵️"},
+                {"user_id":"user-b","email":"b@example.com","name":"B","avatar":"🎭"},
+                {"user_id":"user-c","email":"c@example.com","name":"C","avatar":"👤"}
+              ],
+              "return_to_lobby_eligible_player_emails": [" A@EXAMPLE.COM ", "b@example.com"]
+            }
+            """#.utf8)
+        )
+        XCTAssertEqual(
+            projected.returnToLobbyEligiblePlayersList.map(\.email),
+            ["a@example.com", "b@example.com"]
+        )
+
+        let legacy = try JSONDecoder().decode(
+            GameRoom.self,
+            from: Data(#"""
+            {
+              "id": "legacy-room",
+              "code": "LEGACY",
+              "status": "playing",
+              "players": [
+                {"email":"a@example.com","name":"A","avatar":"🕵️"},
+                {"email":"b@example.com","name":"B","avatar":"🎭"}
+              ]
+            }
+            """#.utf8)
+        )
+        XCTAssertNil(legacy.returnToLobbyEligiblePlayerEmails)
+        XCTAssertEqual(
+            legacy.returnToLobbyEligiblePlayersList.map(\.email),
+            legacy.playersList.map(\.email)
+        )
+
+        var explicitlyEmpty = legacy
+        explicitlyEmpty.returnToLobbyEligiblePlayerEmails = []
+        XCTAssertTrue(explicitlyEmpty.returnToLobbyEligiblePlayersList.isEmpty)
+    }
+
+    func testActiveLobbyReturnQuorumUsesTheAuthoritativeNonDepartedRoster() throws {
+        var room = GameRoom.previewRoom(status: "playing")
+        room.returnToLobbyEligiblePlayerEmails = [
+            room.playersList[0].email,
+            room.playersList[1].email
+        ]
+        room.readyPlayers = [
+            room.playersList[0].email,
+            room.playersList[2].email
+        ]
+
+        let eligible = ActiveLobbyReturnPolicy.presentation(
+            room: room,
+            accountUserID: "eligible-user",
+            currentUserEmail: room.playersList[1].email,
+            phase: .idle
+        )
+        XCTAssertTrue(eligible.isAvailable)
+        XCTAssertEqual(eligible.playerCount, 2)
+        XCTAssertEqual(
+            eligible.voteCount,
+            1,
+            "Votes from departed players must not count toward the displayed quorum"
+        )
+
+        let departed = ActiveLobbyReturnPolicy.presentation(
+            room: room,
+            accountUserID: "departed-user",
+            currentUserEmail: room.playersList[2].email,
+            phase: .idle
+        )
+        XCTAssertEqual(departed, .unavailable)
+        XCTAssertNil(
+            ActiveLobbyReturnPolicy.request(
+                room: room,
+                accountUserID: "departed-user",
+                currentUserEmail: room.playersList[2].email,
+                phase: .idle,
+                requestID: UUID()
+            )
+        )
+
+        var explicitDepartedProjection = room
+        explicitDepartedProjection.returnToLobbyEligiblePlayerEmails = []
+        XCTAssertEqual(
+            ActiveLobbyReturnPolicy.presentation(
+                room: explicitDepartedProjection,
+                accountUserID: "departed-user",
+                currentUserEmail: room.playersList[2].email,
+                phase: .idle
+            ),
+            .unavailable,
+            "An explicit empty server projection must not fall back to the retained player list"
+        )
+    }
+
+    func testActiveLobbyReturnVoteIsOptimisticScopedAndRetryable() throws {
+        var room = GameRoom.previewRoom(status: "playing")
+        room.roomRevision = 10
+        let actorEmail = room.playersList[1].email
+        room.spectators = [room.playersList[2].email]
+        room.readyPlayers = [room.playersList[0].email, "stale@example.com"]
+        var state = ActiveLobbyReturnVoteState()
+
+        let request = try XCTUnwrap(
+            state.begin(
+                room: room,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail,
+                requestID: UUID()
+            )
+        )
+        XCTAssertTrue(request.targetVote)
+        XCTAssertNil(
+            state.begin(
+                room: room,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail,
+                requestID: UUID()
+            ),
+            "Only one return vote request may be active for the participant"
+        )
+
+        let pending = state.presentation(
+            room: room,
+            accountUserID: "actor-id",
+            currentUserEmail: actorEmail
+        )
+        XCTAssertEqual(pending.voteCount, 2)
+        XCTAssertEqual(
+            pending.playerCount,
+            room.playersList.count,
+            "Return-to-lobby unanimity includes every current room participant, including spectators"
+        )
+        XCTAssertTrue(pending.isSelected)
+        XCTAssertTrue(pending.isPending)
+
+        XCTAssertTrue(
+            state.fail(
+                request,
+                currentRoom: room,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail
+            )
+        )
+        let failed = state.presentation(
+            room: room,
+            accountUserID: "actor-id",
+            currentUserEmail: actorEmail
+        )
+        XCTAssertFalse(failed.isSelected, "A failed optimistic vote must revert to server truth")
+        XCTAssertTrue(failed.hasFailed)
+
+        let retry = try XCTUnwrap(
+            state.begin(
+                room: room,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail,
+                requestID: UUID()
+            )
+        )
+        XCTAssertTrue(retry.targetVote, "Retry preserves the explicit idempotent target vote")
+        XCTAssertFalse(
+            state.finish(request),
+            "A late response from the failed request ID must not finish its replacement retry"
+        )
+        XCTAssertTrue(state.isPending(retry))
+    }
+
+    func testActiveLobbyReturnAcceptsConfirmedVoteAndUnanimousWaitingOnlyForSameMatch() throws {
+        var room = GameRoom.previewRoom(status: "playing")
+        room.roomRevision = 20
+        let actorEmail = room.playersList[1].email
+        var state = ActiveLobbyReturnVoteState()
+        let request = try XCTUnwrap(
+            state.begin(
+                room: room,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail,
+                requestID: UUID()
+            )
+        )
+
+        var confirmed = room
+        confirmed.readyPlayers = [actorEmail]
+        confirmed.roomRevision = 21
+        XCTAssertTrue(
+            ActiveLobbyReturnPolicy.canAdopt(
+                candidate: confirmed,
+                over: room,
+                request: request,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail
+            )
+        )
+
+        var unanimousWaiting = confirmed
+        unanimousWaiting.status = "waiting"
+        unanimousWaiting.readyPlayers = []
+        unanimousWaiting.matchID = nil
+        unanimousWaiting.gameStartedAt = nil
+        unanimousWaiting.roomRevision = 22
+        XCTAssertTrue(
+            ActiveLobbyReturnPolicy.canAdopt(
+                candidate: unanimousWaiting,
+                over: room,
+                request: request,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail
+            ),
+            "The terminal unanimous response intentionally clears the match scope"
+        )
+
+        var dirtyWaiting = unanimousWaiting
+        dirtyWaiting.gameStartedAt = room.gameStartedAt
+        XCTAssertFalse(
+            ActiveLobbyReturnPolicy.canAdopt(
+                candidate: dirtyWaiting,
+                over: room,
+                request: request,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail
+            ),
+            "Lost-response recovery requires proof that the old match was actually cleared"
+        )
+
+        var replacementMatch = room
+        replacementMatch.matchID = "replacement-match"
+        XCTAssertFalse(
+            ActiveLobbyReturnPolicy.canAdopt(
+                candidate: unanimousWaiting,
+                over: replacementMatch,
+                request: request,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail
+            ),
+            "A response from the previous match must not return a replacement match to its lobby"
+        )
+
+        var wrongMatchResponse = confirmed
+        wrongMatchResponse.matchID = "replacement-match"
+        XCTAssertFalse(
+            ActiveLobbyReturnPolicy.canAdopt(
+                candidate: wrongMatchResponse,
+                over: room,
+                request: request,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail
+            )
+        )
+    }
+
+    func testActiveLobbyReturnVoteCanBeCancelledBeforeUnanimity() throws {
+        var room = GameRoom.previewRoom(status: "playing")
+        room.roomRevision = 30
+        let actorEmail = room.playersList[1].email
+        room.readyPlayers = [actorEmail]
+        var state = ActiveLobbyReturnVoteState()
+        let cancellation = try XCTUnwrap(
+            state.begin(
+                room: room,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail,
+                requestID: UUID()
+            )
+        )
+        XCTAssertFalse(cancellation.targetVote)
+
+        let pending = state.presentation(
+            room: room,
+            accountUserID: "actor-id",
+            currentUserEmail: actorEmail
+        )
+        XCTAssertFalse(pending.isSelected)
+        XCTAssertEqual(pending.voteCount, 0)
+
+        var confirmed = room
+        confirmed.readyPlayers = []
+        confirmed.roomRevision = 31
+        XCTAssertTrue(
+            ActiveLobbyReturnPolicy.canAdopt(
+                candidate: confirmed,
+                over: room,
+                request: cancellation,
+                accountUserID: "actor-id",
+                currentUserEmail: actorEmail
+            )
+        )
+    }
+
+    func testRoomKickRequiresHostValidatedEmailAndOneRequestPerTarget() throws {
+        var room = GameRoom.previewRoom(status: "waiting")
+        let hostEmail = try XCTUnwrap(room.hostEmail)
+        var target = room.playersList[1]
+        target.userID = "stable-target-id"
+        room.players?[1] = target
+        let confirmation = try XCTUnwrap(
+            RoomKickPolicy.confirmation(
+                for: target,
+                room: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            )
+        )
+        XCTAssertEqual(confirmation.targetUserID, "stable-target-id")
+
+        let legacyTarget = room.playersList[2]
+        XCTAssertNil(
+            try XCTUnwrap(
+                RoomKickPolicy.confirmation(
+                    for: legacyTarget,
+                    room: room,
+                    accountUserID: "host-id",
+                    currentUserEmail: hostEmail
+                )
+            ).targetUserID,
+            "Only a genuinely legacy nil user id may use the validated email fallback"
+        )
+        XCTAssertNil(
+            RoomKickPolicy.confirmation(
+                for: room.playersList[0],
+                room: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            ),
+            "The host can never target themself"
+        )
+        XCTAssertNil(
+            RoomKickPolicy.confirmation(
+                for: target,
+                room: room,
+                accountUserID: "guest-id",
+                currentUserEmail: target.email
+            ),
+            "Guests never receive a kick action"
+        )
+
+        let invalid = Player(email: "not-an-email", name: "Invalid", avatar: "?")
+        room.players?.append(invalid)
+        XCTAssertNil(
+            RoomKickPolicy.confirmation(
+                for: invalid,
+                room: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            )
+        )
+
+        let invalidStableID = Player(
+            email: "valid@example.com",
+            name: "Invalid Stable ID",
+            avatar: "?",
+            userID: " invalid id "
+        )
+        room.players?.append(invalidStableID)
+        XCTAssertNil(
+            RoomKickPolicy.confirmation(
+                for: invalidStableID,
+                room: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            ),
+            "A present but invalid stable id must never silently fall back to email"
+        )
+
+        var coordinator = RoomKickCoordinatorState()
+        let request = try XCTUnwrap(
+            coordinator.begin(
+                confirmation: confirmation,
+                room: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail,
+                requestID: UUID()
+            )
+        )
+        XCTAssertEqual(request.targetUserID, "stable-target-id")
+        XCTAssertEqual(
+            coordinator.phase(
+                for: target,
+                room: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            ),
+            .sending
+        )
+        XCTAssertNil(
+            coordinator.begin(
+                confirmation: confirmation,
+                room: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail,
+                requestID: UUID()
+            ),
+            "One target must never have overlapping kick requests"
+        )
+        XCTAssertTrue(
+            coordinator.fail(
+                request,
+                currentRoom: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            )
+        )
+        XCTAssertEqual(
+            coordinator.phase(
+                for: target,
+                room: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            ),
+            .failed
+        )
+        let retry = try XCTUnwrap(
+            coordinator.begin(
+                confirmation: confirmation,
+                room: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail,
+                requestID: UUID()
+            ),
+            "A failed target exposes an explicit retry"
+        )
+        XCTAssertFalse(
+            coordinator.finish(request),
+            "A late response from the failed request ID must not finish the replacement request"
+        )
+        XCTAssertTrue(coordinator.isPending(retry))
+    }
+
+    func testRoomKickAcceptsRemovalButRejectsStaleRoomOrActiveSceneResponse() throws {
+        var room = GameRoom.previewRoom(status: "ready_voting")
+        room.roomRevision = 40
+        let hostEmail = try XCTUnwrap(room.hostEmail)
+        var target = room.playersList[1]
+        target.userID = "stable-target-id"
+        room.players?[1] = target
+        let confirmation = try XCTUnwrap(
+            RoomKickPolicy.confirmation(
+                for: target,
+                room: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            )
+        )
+        var coordinator = RoomKickCoordinatorState()
+        let request = try XCTUnwrap(
+            coordinator.begin(
+                confirmation: confirmation,
+                room: room,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail,
+                requestID: UUID()
+            )
+        )
+
+        var removed = room
+        removed.status = "waiting"
+        removed.players = room.playersList.filter { $0.email != target.email }
+        removed.readyPlayers = []
+        removed.roomRevision = 41
+        XCTAssertTrue(
+            RoomKickPolicy.canAdopt(
+                candidate: removed,
+                over: room,
+                request: request,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            )
+        )
+
+        var targetStillPresent = removed
+        targetStillPresent.players?.append(
+            Player(
+                email: "renamed@example.com",
+                name: target.name,
+                avatar: target.avatar,
+                userID: "stable-target-id"
+            )
+        )
+        XCTAssertFalse(
+            RoomKickPolicy.canAdopt(
+                candidate: targetStillPresent,
+                over: room,
+                request: request,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            )
+        )
+
+        var recoveredReadyVoting = removed
+        recoveredReadyVoting.status = "ready_voting"
+        XCTAssertFalse(
+            RoomKickPolicy.canAdopt(
+                candidate: recoveredReadyVoting,
+                over: room,
+                request: request,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            ),
+            "A direct kick response must carry the server's waiting transition"
+        )
+        XCTAssertTrue(
+            RoomKickPolicy.canAdoptRecoveredSnapshot(
+                candidate: recoveredReadyVoting,
+                over: room,
+                request: request,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            ),
+            "A refresh after a lost response may confirm success from stable target absence"
+        )
+
+        var activeScene = room
+        activeScene.status = "roulette"
+        XCTAssertFalse(
+            RoomKickPolicy.canAdopt(
+                candidate: removed,
+                over: activeScene,
+                request: request,
+                accountUserID: "host-id",
+                currentUserEmail: hostEmail
+            ),
+            "A lobby response must not overwrite a room that already entered an active scene"
+        )
+
+        let otherRoom = GameRoom.previewRoom(status: "waiting")
+        XCTAssertFalse(
+            RoomKickPolicy.canAdopt(
+                candidate: removed,
+                over: otherRoom,
+                request: request,
+                accountUserID: "host-id",
+                currentUserEmail: otherRoom.hostEmail
+            )
+        )
     }
 
     func testOnlineTimerExpiresExactlyAtZeroWithoutGuessGrace() {
@@ -847,6 +2093,38 @@ final class OnlineRoundStateTests: XCTestCase {
         )
         XCTAssertEqual(atDeadline.displayedSeconds, 0)
         XCTAssertTrue(atDeadline.isExpired)
+    }
+
+    private func roomFriendProfile(id: String, name: String) -> PublicSpyProfile {
+        PublicSpyProfile(
+            id: id,
+            spyID: "123-456",
+            displayName: name,
+            avatar: "🕵️",
+            spyCardTheme: "field",
+            spyCardAccent: "signal_red",
+            spyCardBadge: "operative",
+            rating: 0,
+            gamesPlayed: 0,
+            gamesWon: 0,
+            winRate: 0
+        )
+    }
+
+    private func roomFriendsCommunityState(profileIDs: [String]) -> CommunityState {
+        CommunityState(
+            me: roomFriendProfile(id: "me", name: "Host"),
+            friends: profileIDs.enumerated().map { index, profileID in
+                CommunityRelationship(
+                    id: "relationship-\(index)",
+                    status: "accepted",
+                    direction: "outgoing",
+                    profile: roomFriendProfile(id: profileID, name: "Friend \(index)")
+                )
+            },
+            incoming: [],
+            outgoing: []
+        )
     }
 
     func testPausedOnlineTimerDoesNotExpirePastWallClockDeadline() {
@@ -1866,6 +3144,39 @@ final class OnlineRoundStateTests: XCTestCase {
                 fetchedRoomExists: true
             ),
             .discardAndContinue
+        )
+    }
+
+    func testRoomRefreshAccessRevocationClosesInsteadOfRetrying() {
+        for code in ["room_access_revoked", "room_departed"] {
+            let error = Base44Error(
+                message: "Room access was revoked.",
+                statusCode: 403,
+                code: code
+            )
+            XCTAssertTrue(error.isRoomAccessRevoked)
+            XCTAssertEqual(RoomPollPolicy.failureDisposition(for: error), .close)
+        }
+
+        XCTAssertEqual(
+            RoomPollPolicy.failureDisposition(
+                for: Base44Error(
+                    message: "Temporary failure.",
+                    statusCode: 503,
+                    retryable: true
+                )
+            ),
+            .retry
+        )
+        XCTAssertEqual(
+            RoomPollPolicy.failureDisposition(
+                for: Base44Error(
+                    message: "Unrelated forbidden action.",
+                    statusCode: 403,
+                    code: "host_access_required"
+                )
+            ),
+            .retry
         )
     }
 
@@ -2918,6 +4229,119 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
             )
         )
     }
+
+    func testLobbySignalRevisionGateAdoptsTheWholeAuthoritativeSnapshot() throws {
+        var current = GameRoom.previewRoom(status: "waiting")
+        current.lobbyRevision = 4
+        current.roomRevision = 10
+        current.gameMode = "questions"
+        current.lobbyWordSource = "manual"
+        current.lobbySourceName = "Old pack"
+        current.lobbyTheme = "Old theme"
+        current.lobbyCategory = "Old category"
+        current.lobbyWordCount = 2
+        current.lobbyWordCountMode = "custom"
+        current.lobbyWordPool = [
+            LobbyWordPoolEntry(id: "old-1", word: "Old one"),
+            LobbyWordPoolEntry(id: "old-2", word: "Old two")
+        ]
+
+        var authoritative = current
+        authoritative.lobbyRevision = 5
+        authoritative.roomRevision = 11
+        authoritative.gameMode = "associations"
+        authoritative.lobbyWordSource = "saved"
+        authoritative.lobbySourceName = "City pack"
+        authoritative.lobbyTheme = "Night cities"
+        authoritative.lobbyCategory = "Places"
+        authoritative.lobbyWordCount = 3
+        authoritative.lobbyWordCountMode = "custom"
+        authoritative.lobbyWordPool = [
+            LobbyWordPoolEntry(id: "kyiv", word: "Kyiv"),
+            LobbyWordPoolEntry(id: "london", word: "London"),
+            LobbyWordPoolEntry(id: "tokyo", word: "Tokyo", enabled: false)
+        ]
+
+        let entityRoom = "entities:app-1:GameRoomSignal"
+        let event: [String: Any] = [
+            "type": "update",
+            "data": [
+                "user_id": "user-guest-b",
+                "room_id": current.id,
+                "lobby_revision": 5,
+                "room_revision": 11,
+                "state": "active"
+            ]
+        ]
+        let encoded = try JSONSerialization.data(withJSONObject: event)
+        let envelope: [String: Any] = [
+            "room": entityRoom,
+            "data": try XCTUnwrap(String(data: encoded, encoding: .utf8))
+        ]
+        let signal = try XCTUnwrap(
+            GameRoomRealtimeSignalParser.parse(
+                payload: [envelope],
+                expectedEntityRoom: entityRoom,
+                expectedUserID: "user-guest-b",
+                expectedRoomID: current.id
+            )
+        )
+        let requiredRevision = signal.roomRevision ?? signal.lobbyRevision
+        XCTAssertGreaterThan(requiredRevision, current.roomRevision ?? current.lobbyRevision ?? 0)
+
+        if RoomPollPolicy.acceptsSnapshot(
+            currentLobbyRevision: current.roomRevision ?? current.lobbyRevision,
+            fetchedLobbyRevision: authoritative.roomRevision ?? authoritative.lobbyRevision
+        ) {
+            current = authoritative
+        }
+
+        XCTAssertEqual(current.roomRevision, 11)
+        XCTAssertEqual(current.lobbyRevision, 5)
+        XCTAssertEqual(current.gameMode, "associations")
+        XCTAssertEqual(current.lobbyWordSource, "saved")
+        XCTAssertEqual(current.lobbySourceName, "City pack")
+        XCTAssertEqual(current.lobbyTheme, "Night cities")
+        XCTAssertEqual(current.lobbyCategory, "Places")
+        XCTAssertEqual(current.lobbyWordCount, 3)
+        XCTAssertEqual(current.lobbyWordCountMode, "custom")
+        XCTAssertEqual(current.lobbyWordPool?.map(\.word), ["Kyiv", "London", "Tokyo"])
+        XCTAssertEqual(current.lobbyWordPool?.map(\.enabled), [true, true, false])
+    }
+
+    func testCatchUpAdoptsEqualRevisionToHealADivergentLobbySnapshot() {
+        var divergent = GameRoom.previewRoom(status: "waiting")
+        divergent.lobbyRevision = 5
+        divergent.roomRevision = 11
+        divergent.lobbyTheme = "Stale local theme"
+        divergent.lobbyWordPool = [
+            LobbyWordPoolEntry(id: "stale", word: "Stale local word")
+        ]
+
+        var authoritative = divergent
+        authoritative.lobbyTheme = "Night cities"
+        authoritative.lobbyWordPool = [
+            LobbyWordPoolEntry(id: "kyiv", word: "Kyiv"),
+            LobbyWordPoolEntry(id: "london", word: "London")
+        ]
+
+        XCTAssertTrue(
+            RoomPollPolicy.acceptsSnapshot(
+                currentLobbyRevision: divergent.roomRevision ?? divergent.lobbyRevision,
+                fetchedLobbyRevision: authoritative.roomRevision ?? authoritative.lobbyRevision
+            ),
+            "Reconnect catch-up must be able to replace a divergent snapshot at the same server revision."
+        )
+        if RoomPollPolicy.acceptsSnapshot(
+            currentLobbyRevision: divergent.roomRevision ?? divergent.lobbyRevision,
+            fetchedLobbyRevision: authoritative.roomRevision ?? authoritative.lobbyRevision
+        ) {
+            divergent = authoritative
+        }
+
+        XCTAssertEqual(divergent.lobbyTheme, "Night cities")
+        XCTAssertEqual(divergent.lobbyWordPool?.map(\.word), ["Kyiv", "London"])
+    }
 }
 
 final class SpySliderInteractionStateTests: XCTestCase {
@@ -3281,5 +4705,81 @@ final class NavigationSwipeTests: XCTestCase {
             HomeRootPresentationPolicy.primaryAction(hasActiveRoom: false),
             .chooseMode
         )
+    }
+}
+
+final class LocalAssociationTurnOrderPolicyTests: XCTestCase {
+    func testInitialShuffleIsReusedAcrossEveryRoundWithoutSameSpeakerBoundary() throws {
+        var shuffleCalls = 0
+        let shuffle: LocalAssociationTurnOrderPolicy.Shuffle = { values in
+            shuffleCalls += 1
+            return Array(values.reversed())
+        }
+        var state = LocalAssociationTurnOrderPolicy.initial(
+            activePlayerIndices: [0, 1, 2, 3],
+            shuffle: shuffle
+        )
+        let initialOrder = state.order
+        var speakers: [Int] = []
+
+        for _ in 0..<(initialOrder.count * 2) {
+            speakers.append(try XCTUnwrap(state.currentPlayerIndex))
+            state = LocalAssociationTurnOrderPolicy.advanced(
+                state: state,
+                activePlayerIndices: [0, 1, 2, 3],
+                shuffle: shuffle
+            )
+            XCTAssertEqual(state.order, initialOrder)
+        }
+
+        XCTAssertEqual(initialOrder, [3, 2, 1, 0])
+        XCTAssertEqual(speakers, [3, 2, 1, 0, 3, 2, 1, 0])
+        XCTAssertNotEqual(speakers[3], speakers[4])
+        XCTAssertEqual(shuffleCalls, 1)
+    }
+
+    func testRosterReconciliationKeepsSurvivorsAndAppendsNewPlayersOnce() {
+        let state = LocalAssociationTurnOrderState(
+            order: [2, 0, 3, 1],
+            step: 1
+        )
+        let reconciled = LocalAssociationTurnOrderPolicy.reconciled(
+            state: state,
+            activePlayerIndices: [0, 3, 4, 4]
+        )
+
+        XCTAssertEqual(reconciled.order, [0, 3, 4])
+        XCTAssertEqual(reconciled.currentPlayerIndex, 0)
+        XCTAssertEqual(Set(reconciled.order).count, reconciled.order.count)
+    }
+
+    func testRemovingCurrentSpeakerSelectsTheirNextActiveSuccessor() {
+        let state = LocalAssociationTurnOrderState(
+            order: [2, 0, 3, 1],
+            step: 1
+        )
+        let reconciled = LocalAssociationTurnOrderPolicy.reconciled(
+            state: state,
+            activePlayerIndices: [1, 2, 3]
+        )
+
+        XCTAssertEqual(reconciled.order, [2, 3, 1])
+        XCTAssertEqual(reconciled.currentPlayerIndex, 3)
+    }
+
+    func testEmptyLegacyStateStartsAtFirstValueOfOneNewShuffle() {
+        var shuffleCalls = 0
+        let state = LocalAssociationTurnOrderPolicy.advanced(
+            state: LocalAssociationTurnOrderState(order: [], step: 0),
+            activePlayerIndices: [0, 1, 2],
+            shuffle: { values in
+                shuffleCalls += 1
+                return [1, 2, 0].filter { values.contains($0) }
+            }
+        )
+
+        XCTAssertEqual(state.order, [1, 2, 0])
+        XCTAssertEqual(state.currentPlayerIndex, 1)
+        XCTAssertEqual(shuffleCalls, 1)
     }
 }

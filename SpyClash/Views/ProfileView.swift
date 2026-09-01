@@ -18,7 +18,7 @@ struct ProfileView: View {
     @State private var status = ""
     @State private var statusKind: ProfileStatusKind?
 
-    private let availableAvatars = ["🕵️", "🥷", "🧠", "🎭", "🃏", "👁️", "🔥", "⚡️", "🎯", "🛡️"]
+    private let availableAvatars = ["🕵️", "🥷", "🧠", "🎭", "🃏", "👁️", "🔥", "⚡️", "🎯", "🛡️", "🦅"]
 
     private var copy: ProfileCopy {
         appState.language.profile
@@ -38,6 +38,7 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 16) {
                 synchronizedSpyCard
                 profileCard
+                languageCard
                 statsCard
                 legalCard
                 dangerZoneCard
@@ -91,6 +92,9 @@ struct ProfileView: View {
         }
         .onChange(of: status) { _, message in
             publishProfileToast(message)
+        }
+        .onChange(of: appState.language) { _, language in
+            selectedLanguage = language
         }
     }
 
@@ -408,8 +412,6 @@ struct ProfileView: View {
                     maxLength: 48
                 )
 
-                languageSelector
-
                 RadarPolicySettingsView()
 
                 Button {
@@ -432,6 +434,12 @@ struct ProfileView: View {
                 .buttonStyle(SpyPrimaryCommandStyle())
 
             }
+        }
+    }
+
+    private var languageCard: some View {
+        SpyPanel(motionDelay: 0.32) {
+            languageSelector
         }
     }
 
@@ -985,12 +993,11 @@ struct ProfileView: View {
             appState.user = try await appState.client.updateProfile(
                 displayName: displayName,
                 avatar: avatar,
-                language: selectedLanguage,
+                language: appState.language,
                 spyCardTheme: selectedCardTheme,
                 spyCardAccent: selectedCardAccent,
                 spyCardBadge: selectedCardBadge
             )
-            try await appState.setLanguage(selectedLanguage, syncRemote: false)
             status = appState.language.profile.saved
             statusKind = .success
             HapticManager.shared.fire(.notification(.success))

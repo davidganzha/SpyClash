@@ -13,6 +13,15 @@ private enum ShellTextInputActivity {
             }
     }
 
+    static func resignActiveInput() {
+        UIApplication.shared.sendAction(
+            #selector(UIResponder.resignFirstResponder),
+            to: nil,
+            from: nil,
+            for: nil
+        )
+    }
+
     private static func firstResponder(in view: UIView) -> UIView? {
         if view.isFirstResponder { return view }
         for subview in view.subviews {
@@ -21,6 +30,89 @@ private enum ShellTextInputActivity {
             }
         }
         return nil
+    }
+}
+
+@MainActor
+private struct ShellKeyboardDismissGestureInstaller: UIViewRepresentable {
+    final class AttachmentView: UIView {
+        var windowDidChange: ((UIWindow?) -> Void)?
+
+        override func didMoveToWindow() {
+            super.didMoveToWindow()
+            windowDidChange?(window)
+        }
+    }
+
+    final class Coordinator: NSObject, UIGestureRecognizerDelegate {
+        private weak var installedWindow: UIWindow?
+        private lazy var recognizer: UITapGestureRecognizer = {
+            let recognizer = UITapGestureRecognizer(
+                target: self,
+                action: #selector(handleTap)
+            )
+            recognizer.cancelsTouchesInView = false
+            recognizer.delaysTouchesBegan = false
+            recognizer.delaysTouchesEnded = false
+            recognizer.delegate = self
+            return recognizer
+        }()
+
+        func install(on window: UIWindow?) {
+            guard installedWindow !== window else { return }
+            installedWindow?.removeGestureRecognizer(recognizer)
+            installedWindow = window
+            window?.addGestureRecognizer(recognizer)
+        }
+
+        @objc private func handleTap() {
+            ShellTextInputActivity.resignActiveInput()
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldReceive touch: UITouch
+        ) -> Bool {
+            guard ShellTextInputActivity.isActive else { return false }
+
+            var touchedView = touch.view
+            while let view = touchedView {
+                if view is UITextField || view is UITextView {
+                    return false
+                }
+                touchedView = view.superview
+            }
+            return true
+        }
+
+        func gestureRecognizer(
+            _ gestureRecognizer: UIGestureRecognizer,
+            shouldRecognizeSimultaneouslyWith otherGestureRecognizer: UIGestureRecognizer
+        ) -> Bool {
+            true
+        }
+    }
+
+    func makeCoordinator() -> Coordinator {
+        Coordinator()
+    }
+
+    func makeUIView(context: Context) -> AttachmentView {
+        let view = AttachmentView(frame: .zero)
+        view.isUserInteractionEnabled = false
+        view.windowDidChange = { [weak coordinator = context.coordinator] window in
+            coordinator?.install(on: window)
+        }
+        return view
+    }
+
+    func updateUIView(_ uiView: AttachmentView, context: Context) {
+        context.coordinator.install(on: uiView.window)
+    }
+
+    static func dismantleUIView(_ uiView: AttachmentView, coordinator: Coordinator) {
+        uiView.windowDidChange = nil
+        coordinator.install(on: nil)
     }
 }
 
@@ -243,6 +335,11 @@ struct AppShellView: View {
             }
         }
         .background(SpyTheme.black)
+        .background {
+            ShellKeyboardDismissGestureInstaller()
+                .frame(width: 0, height: 0)
+                .accessibilityHidden(true)
+        }
         .animation(
             .easeOut(duration: reduceMotion ? 0.12 : 0.18),
             value: appState.shellRoute
@@ -286,6 +383,10 @@ struct AppShellView: View {
             guard route == .main else { return }
             communityTab = .network
             communityDockRequest = .initial
+        }
+        .onChange(of: scenePhase) { _, phase in
+            guard phase != .active else { return }
+            ShellTextInputActivity.resignActiveInput()
         }
         .task(id: communityAttentionMonitorID) {
             guard appState.user != nil else {
@@ -1883,21 +1984,22 @@ private struct CompactCommandMenuPanel: View {
     }
 
     private var languageFooter: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Text(localized(en: "LANG", ru: "ЯЗЫК", es: "IDIOMA", uk: "МОВА"))
                 .font(.system(size: 10, weight: .bold, design: .monospaced))
                 .tracking(0.22)
                 .foregroundStyle(SpyTheme.faint)
                 .spyFitted(scale: 0.74)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 languageChip(.en)
                 languageChip(.es)
                 languageChip(.ru)
                 languageChip(.uk)
             }
+            .layoutPriority(1)
 
-            Spacer()
+            Spacer(minLength: 0)
 
             Button {
                 close()
@@ -1912,7 +2014,7 @@ private struct CompactCommandMenuPanel: View {
             .buttonStyle(SpyWebPressStyle())
             .accessibilityLabel(localized(en: "Close menu", ru: "Закрыть меню", es: "Cerrar menu", uk: "Закрити меню"))
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 16)
         .padding(.top, 18)
         .overlay(alignment: .top) {
             Rectangle()
@@ -1932,10 +2034,14 @@ private struct CompactCommandMenuPanel: View {
             Text(language.shortCode)
                 .font(.system(size: 11, weight: .black, design: .monospaced))
                 .tracking(0.08)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .foregroundStyle(appState.language == language ? .white : SpyTheme.dim)
-                .frame(minWidth: 42, minHeight: 36)
+                .frame(width: 40, height: 36)
                 .background(appState.language == language ? SpyTheme.red : Color.clear, in: CutCornerShape(cut: 4))
                 .overlay(CutCornerShape(cut: 4).stroke(appState.language == language ? SpyTheme.red : SpyTheme.inputBorder, lineWidth: 1))
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle())
     }
@@ -2399,17 +2505,13 @@ private struct WebPullDownCommandMenu: View {
                         progress: progress,
                         topInset: topInset,
                         communityAttentionCount: communityAttentionCount,
-                        notificationUnreadCount: notificationUnreadCount
-                    )
-                        .frame(height: topBarHeight)
-                        .contentShape(Rectangle())
-                        .accessibilityElement(children: .contain)
-                        .accessibilityLabel(commandMenuAccessibilityLabel)
-                        .accessibilityIdentifier("spy-command-menu-drag-handle")
-                        .accessibilityAddTraits(.isButton)
-                        .accessibilityAction {
+                        notificationUnreadCount: notificationUnreadCount,
+                        toggleAccessibilityLabel: commandMenuAccessibilityLabel,
+                        toggle: {
                             setPresented(!isPresented)
                         }
+                    )
+                        .frame(height: topBarHeight)
 
                     if revealedHeight > 0.5 || isPresented {
                         WebCommandMenuPanel(
@@ -2575,6 +2677,8 @@ private struct WebMenuTopBar: View {
     let topInset: CGFloat
     let communityAttentionCount: Int
     let notificationUnreadCount: Int
+    let toggleAccessibilityLabel: String
+    let toggle: () -> Void
 
     private var totalAttentionCount: Int {
         communityAttentionCount + notificationUnreadCount
@@ -2589,8 +2693,15 @@ private struct WebMenuTopBar: View {
                 HStack(spacing: 0) {
                     Spacer()
 
-                    toggleIndicator
-                        .frame(width: 44, height: 40)
+                    Button(action: toggle) {
+                        toggleIndicator
+                            .frame(width: 44, height: 44)
+                            .contentShape(Rectangle())
+                    }
+                        .buttonStyle(.plain)
+                        .accessibilityLabel(toggleAccessibilityLabel)
+                        .accessibilityIdentifier("spy-command-menu-drag-handle")
+                        .accessibilityValue(attentionAccessibilityValue)
                         .overlay(alignment: .topTrailing) {
                             if totalAttentionCount > 0 {
                                 CommunityAttentionBadge(
@@ -2919,7 +3030,7 @@ private struct WebCommandMenuPanel: View {
     }
 
     private var languageFooter: some View {
-        HStack(spacing: 12) {
+        HStack(spacing: 8) {
             Text(localized(en: "LANGUAGE", ru: "ЯЗЫК", es: "IDIOMA", uk: "МОВА"))
                 .font(.system(size: 10, weight: .regular, design: .monospaced))
                 .tracking(2)
@@ -2927,14 +3038,15 @@ private struct WebCommandMenuPanel: View {
                 .lineLimit(1)
                 .minimumScaleFactor(0.72)
 
-            HStack(spacing: 6) {
+            HStack(spacing: 4) {
                 languageButton(.en)
                 languageButton(.es)
                 languageButton(.ru)
                 languageButton(.uk)
             }
+            .layoutPriority(1)
 
-            Spacer()
+            Spacer(minLength: 0)
 
             Button {
                 close()
@@ -2949,7 +3061,7 @@ private struct WebCommandMenuPanel: View {
             .buttonStyle(SpyWebPressStyle())
             .accessibilityLabel(localized(en: "Close menu", ru: "Закрыть меню", es: "Cerrar menu", uk: "Закрити меню"))
         }
-        .padding(.horizontal, 24)
+        .padding(.horizontal, 16)
         .padding(.top, 10)
         .padding(.bottom, 24)
         .overlay(alignment: .top) {
@@ -2970,11 +3082,13 @@ private struct WebCommandMenuPanel: View {
             Text(language.shortCode)
                 .font(.system(size: 11, weight: .bold, design: .monospaced))
                 .tracking(1)
+                .lineLimit(1)
+                .fixedSize(horizontal: true, vertical: false)
                 .foregroundStyle(appState.language == language ? .white : Color(red: 85 / 255, green: 85 / 255, blue: 85 / 255))
-                .padding(.horizontal, 12)
-                .frame(minHeight: 28)
+                .frame(width: 36, height: 28)
                 .background(appState.language == language ? SpyTheme.red : Color.clear)
                 .overlay(Rectangle().stroke(appState.language == language ? SpyTheme.red : Color(red: 42 / 255, green: 42 / 255, blue: 42 / 255), lineWidth: 1))
+                .frame(width: 44, height: 44)
                 .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle())

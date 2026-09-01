@@ -36,6 +36,7 @@ function unique(values: unknown[]): string[] {
 export function signalRecordsForRoom(
   room: Record<string, unknown>,
   state: GameRoomSignalState = "active",
+  additionalRecipientUserIDs: unknown[] = [],
 ): GameRoomSignalRecord[] {
   const roomID = clean(room?.id);
   if (!roomID) return [];
@@ -48,6 +49,7 @@ export function signalRecordsForRoom(
     ...players.map((player) =>
       clean((player as Record<string, unknown>)?.user_id)
     ),
+    ...additionalRecipientUserIDs,
   ]);
   return participantIDs.map((userID) => ({
     user_id: userID,
@@ -107,10 +109,15 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
   store: GameRoomSignalStore;
   room: Record<string, unknown>;
   state?: GameRoomSignalState;
+  additionalRecipientUserIDs?: unknown[];
   allowCreate?: boolean;
   logError?: (message: string, error: unknown) => void;
 }): Promise<{ attempted: number; succeeded: number; failed: number }> {
-  const signals = signalRecordsForRoom(input.room, input.state || "active");
+  const signals = signalRecordsForRoom(
+    input.room,
+    input.state || "active",
+    input.additionalRecipientUserIDs || [],
+  );
   if (!signals.length) return { attempted: 0, succeeded: 0, failed: 0 };
 
   let existing: Record<string, unknown>[];

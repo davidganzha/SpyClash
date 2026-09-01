@@ -11,7 +11,12 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
 
     var id: String { rawValue }
 
-    var shortCode: String { rawValue.uppercased() }
+    var shortCode: String {
+        switch self {
+        case .uk: "UA"
+        default: rawValue.uppercased()
+        }
+    }
 
     var title: String {
         switch self {
@@ -142,7 +147,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
             [
                 TutorialStep(icon: "🎭", title: "Роли", text: "В начале каждый тайно читает свою карточку роли. Детективы видят секретное слово. Шпион ничего не видит — вместо слова у него «???»."),
                 TutorialStep(icon: "🎰", title: "Барабан", text: "Хост запускает барабан — он случайно выбирает игрока. Этот игрок должен назвать вслух ОДНО слово-ассоциацию к секретному слову, затем нажать «Ответил»."),
-                TutorialStep(icon: "🔄", title: "Без повторов", text: "Каждый игрок говорит по одному разу за раунд. Когда все высказались — начинается следующий раунд с новым случайным порядком."),
+                TutorialStep(icon: "🔄", title: "Без повторов", text: "Каждый игрок говорит по одному разу за раунд. Порядок случайно определяется в первом раунде и повторяется во всех следующих."),
                 TutorialStep(icon: "🎯", title: "Найди шпиона", text: "Услышав ассоциации, голосуйте за подозреваемого. Для исключения нужны N−S голосов за одного подозреваемого, где N — активные игроки, а S — активные шпионы; при одном шпионе это N−1. Сервер автоматически отменит невозможное голосование. У команды шпионов одна общая попытка угадать слово!")
             ]
         case (.uk, .questions):
@@ -156,7 +161,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
             [
                 TutorialStep(icon: "🎭", title: "Ролі", text: "На початку кожен таємно читає свою картку ролі. Детективи бачать секретне слово. Шпигун не бачить нічого — замість слова в нього «???»."),
                 TutorialStep(icon: "🎰", title: "Барабан", text: "Хост запускає барабан, і той випадково обирає гравця. Цей гравець має вголос назвати ОДНЕ слово-асоціацію до секретного слова, а потім натиснути «Відповів»."),
-                TutorialStep(icon: "🔄", title: "Без повторів", text: "Кожен гравець говорить один раз за раунд. Коли всі висловилися, починається новий раунд із новою випадковою чергою."),
+                TutorialStep(icon: "🔄", title: "Без повторів", text: "Кожен гравець говорить один раз за раунд. Черга випадково визначається в першому раунді й повторюється в усіх наступних."),
                 TutorialStep(icon: "🎯", title: "Знайди шпигуна", text: "Прослухавши асоціації, голосуйте за підозрюваного. Для виключення потрібні N−S голосів за одного підозрюваного, де N — кількість активних гравців, а S — кількість активних шпигунів; з одним шпигуном це N−1. Сервер автоматично скасує голосування, результат якого вже неможливий. Команда шпигунів має одну спільну спробу вгадати слово!")
             ]
         case (.es, .questions):
@@ -170,7 +175,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
             [
                 TutorialStep(icon: "🎭", title: "Roles", text: "Al comenzar, cada persona lee su carta de rol en secreto. Los detectives ven la palabra secreta. El espía solo ve «???»."),
                 TutorialStep(icon: "🎰", title: "La ruleta", text: "El anfitrión activa la ruleta para elegir un jugador. Esa persona dice en voz alta UNA asociación con la palabra secreta y después pulsa «Respondido»."),
-                TutorialStep(icon: "🔄", title: "Sin repetir", text: "Cada jugador habla una vez por ronda. Cuando todos han participado, comienza otra ronda con un orden aleatorio nuevo."),
+                TutorialStep(icon: "🔄", title: "Sin repetir", text: "Cada jugador habla una vez por ronda. El orden se sortea en la primera ronda y se repite en todas las siguientes."),
                 TutorialStep(icon: "🎯", title: "Encuentra al espía", text: "Escucha las asociaciones y vota por el sospechoso. La expulsión requiere N−S votos contra el mismo sospechoso, donde N son los jugadores activos y S los espías activos; con un espía sigue siendo N−1. El servidor cancela automáticamente cuando el resultado ya es imposible. El equipo de espías comparte un solo intento para adivinar la palabra.")
             ]
         case (.en, .questions):
@@ -184,7 +189,7 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
             [
                 TutorialStep(icon: "🎭", title: "Roles", text: "At game start everyone secretly reads their role card. Detectives see the secret word. The Spy sees nothing — only '???' instead of the word."),
                 TutorialStep(icon: "🎰", title: "The Drum", text: "The host spins the drum — it randomly picks a player. That player must say ONE word associated with the secret word out loud, then press 'Answered'."),
-                TutorialStep(icon: "🔄", title: "No Repeats", text: "Each player speaks once per round. When everyone has given an association — a new round begins automatically with a fresh random order."),
+                TutorialStep(icon: "🔄", title: "No Repeats", text: "Each player speaks once per round. The first round sets one random order, and that same order repeats in every later round."),
                 TutorialStep(icon: "🎯", title: "Find the Spy", text: "After hearing associations, vote for the suspect. Exclusion requires N−S votes for the same suspect, where N is the active player count and S the active spy count; with one spy this remains N−1. The server cancels automatically as soon as that result becomes impossible. The spy team shares one attempt to guess the word.")
             ]
         }
@@ -3490,9 +3495,11 @@ struct Player: Codable, Hashable, Identifiable {
     let email: String
     var name: String
     var avatar: String
+    var userID: String? = nil
     var clientCapabilities: [String]? = nil
 
     enum CodingKeys: String, CodingKey {
+        case userID = "user_id"
         case email
         case name
         case avatar
@@ -3742,6 +3749,8 @@ struct GameRoom: Codable, Identifiable, Hashable {
     var playerFeedback: [PlayerFeedback]?
     var cardsRead: [String]?
     var readyPlayers: [String]?
+    var returnToLobbyEligiblePlayerEmails: [String]? = nil
+    var replayEligiblePlayerEmails: [String]? = nil
     var spectators: [String]?
     var voteRequests: [String]?
     var detectiveVotes: [VoteRecord]?
@@ -3882,6 +3891,76 @@ struct GameRoom: Codable, Identifiable, Hashable {
         }
     }
 
+    func hasReturnToLobbyVote(email: String?) -> Bool {
+        guard let email = email?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+              !email.isEmpty else { return false }
+        return (readyPlayers ?? []).contains {
+            $0.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() == email
+        }
+    }
+
+    var returnToLobbyVoteCount: Int {
+        let eligible = Set(activePlayers.map { $0.email.lowercased() })
+        return Set((readyPlayers ?? []).compactMap { value -> String? in
+            let email = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return eligible.contains(email) ? email : nil
+        }).count
+    }
+
+    /// The server derives this playing-only list from the private departure
+    /// tombstones. A legacy payload has no list and falls back to its projected
+    /// roster; an explicitly empty list must remain empty.
+    var returnToLobbyEligiblePlayersList: [Player] {
+        guard let returnToLobbyEligiblePlayerEmails else { return playersList }
+        let eligible = Set(returnToLobbyEligiblePlayerEmails.compactMap { value -> String? in
+            let email = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return email.isEmpty ? nil : email
+        })
+        var seenUserIDs = Set<String>()
+        var seenEmails = Set<String>()
+        return playersList.filter { player in
+            let email = player.email
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let userID = player.userID?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard eligible.contains(email),
+                  seenEmails.insert(email).inserted,
+                  userID.isEmpty || seenUserIDs.insert(userID).inserted else {
+                return false
+            }
+            return true
+        }
+    }
+
+    /// The backend derives this terminal-only list from the private departure
+    /// tombstones. A legacy payload has no list and falls back to its projected
+    /// roster; an explicitly empty list must remain empty.
+    var replayEligiblePlayersList: [Player] {
+        guard let replayEligiblePlayerEmails else { return playersList }
+        let eligible = Set(replayEligiblePlayerEmails.compactMap { value -> String? in
+            let email = value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return email.isEmpty ? nil : email
+        })
+        var seenUserIDs = Set<String>()
+        var seenEmails = Set<String>()
+        return playersList.filter { player in
+            let email = player.email
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased()
+            let userID = player.userID?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            guard eligible.contains(email),
+                  seenEmails.insert(email).inserted,
+                  userID.isEmpty || seenUserIDs.insert(userID).inserted else {
+                return false
+            }
+            return true
+        }
+    }
+
     var allRoleCardsRead: Bool {
         !activePlayers.isEmpty && activeCardsReadList.count == activePlayers.count
     }
@@ -3939,6 +4018,8 @@ struct GameRoom: Codable, Identifiable, Hashable {
         case playerFeedback = "player_feedback"
         case cardsRead = "cards_read"
         case readyPlayers = "ready_players"
+        case returnToLobbyEligiblePlayerEmails = "return_to_lobby_eligible_player_emails"
+        case replayEligiblePlayerEmails = "replay_eligible_player_emails"
         case spectators
         case voteRequests = "vote_requests"
         case detectiveVotes = "detective_votes"
@@ -4292,9 +4373,25 @@ extension WordPack {
     }
 }
 
+enum FinishedRoomResultPolicy {
+    static func wrongSpyGuess(in room: GameRoom) -> String? {
+        guard room.winner?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() == "detectives" else {
+            return nil
+        }
+        return room.spyGuess?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfBlank
+    }
+}
+
 struct GameHistory: Codable, Identifiable, Hashable {
     let id: String
     var playerEmail: String?
+    var playerUserID: String? = nil
+    var matchID: String? = nil
+    var resultKey: String? = nil
     var roomCode: String?
     var won: Bool?
     var role: String?
@@ -4310,6 +4407,9 @@ struct GameHistory: Codable, Identifiable, Hashable {
     enum CodingKeys: String, CodingKey {
         case id
         case playerEmail = "player_email"
+        case playerUserID = "player_user_id"
+        case matchID = "match_id"
+        case resultKey = "result_key"
         case roomCode = "room_code"
         case won
         case role
@@ -4342,7 +4442,82 @@ struct GameHistory: Codable, Identifiable, Hashable {
     }
 
     var isOnlineCompetitiveMatch: Bool {
-        isOnlineHistoryMatch && ranked != false && (spyCount ?? 1) <= 1
+        playerUserID?.nilIfBlank != nil
+            && isOnlineHistoryMatch
+            && ranked != false
+            && (spyCount ?? 1) <= 1
+    }
+}
+
+enum GameHistoryAnalytics {
+    static func deduplicatedVisibleHistory(
+        _ records: [GameHistory],
+        currentUserID: String?
+    ) -> [GameHistory] {
+        let currentUserID = currentUserID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfBlank
+        var canonicalByKey: [String: GameHistory] = [:]
+
+        for record in records {
+            let matchID = record.matchID?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfBlank
+            let ownerID = record.playerUserID?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfBlank
+            let resultKey = record.resultKey?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .nilIfBlank
+            let logicalKey: String
+            if let currentUserID,
+               ownerID == currentUserID,
+               let matchID {
+                logicalKey = "match-player:\(matchID):\(currentUserID)"
+            } else if let resultKey {
+                logicalKey = "result:\(resultKey)"
+            } else {
+                logicalKey = "entity:\(record.id)"
+            }
+
+            guard let existing = canonicalByKey[logicalKey] else {
+                canonicalByKey[logicalKey] = record
+                continue
+            }
+            let recordDate = record.createdDate ?? ""
+            let existingDate = existing.createdDate ?? ""
+            if recordDate < existingDate
+                || (recordDate == existingDate && record.id < existing.id) {
+                canonicalByKey[logicalKey] = record
+            }
+        }
+        return Array(canonicalByKey.values)
+    }
+
+    static func roleWinRate(
+        _ role: String,
+        in records: [GameHistory],
+        competitiveOnly: Bool,
+        currentUserID: String? = nil
+    ) -> Int {
+        let normalizedRole = role
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let visible = deduplicatedVisibleHistory(
+            records,
+            currentUserID: currentUserID
+        )
+        let eligible = competitiveOnly
+            ? visible.filter(\.isOnlineCompetitiveMatch)
+            : visible
+        let matches = eligible.filter {
+            $0.role?
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() == normalizedRole
+        }
+        guard !matches.isEmpty else { return 0 }
+        let wins = matches.filter { $0.won == true }.count
+        return Int((Double(wins) / Double(matches.count) * 100).rounded())
     }
 }
 

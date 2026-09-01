@@ -77,6 +77,561 @@ enum LobbyStartGate {
     }
 }
 
+struct ReplayAutoStartRequest: Equatable {
+    let roomID: String
+    let matchKey: String
+
+    var operationKey: String {
+        "\(roomID)|\(matchKey)"
+    }
+}
+
+enum ReplayAutoStartRoomDisposition: Equatable {
+    case resetRequired
+    case armRequired
+    case alreadyStarted
+    case invalid
+}
+
+enum ReplayAutoStartPolicy {
+    static func request(
+        for room: GameRoom,
+        currentUserEmail: String?
+    ) -> ReplayAutoStartRequest? {
+        let roomID = cleaned(room.id)
+        let currentUser = normalized(currentUserEmail)
+        guard !roomID.isEmpty,
+              !currentUser.isEmpty,
+              normalized(room.hostEmail) == currentUser,
+              ["finished", "ended"].contains(room.normalizedStatus) else { return nil }
+
+        let playerEmails = room.replayEligiblePlayersList
+            .map { normalized($0.email) }
+            .filter { !$0.isEmpty }
+        guard playerEmails.count >= 3 else { return nil }
+        let readyEmails = Set((room.readyPlayers ?? []).map(normalized).filter { !$0.isEmpty })
+        guard playerEmails.allSatisfy(readyEmails.contains) else { return nil }
+
+        let matchKey = optionalClean(room.matchID)
+            .map { "match:\($0.lowercased())" }
+            ?? optionalClean(room.gameStartedAt).map { "started:\($0)" }
+            ?? "legacy-finished"
+        return ReplayAutoStartRequest(roomID: roomID, matchKey: matchKey)
+    }
+
+    static func disposition(
+        of room: GameRoom,
+        for request: ReplayAutoStartRequest,
+        currentUserEmail: String?
+    ) -> ReplayAutoStartRoomDisposition {
+        guard cleaned(room.id) == request.roomID,
+              normalized(room.hostEmail) == normalized(currentUserEmail),
+              !normalized(currentUserEmail).isEmpty else { return .invalid }
+
+        switch room.normalizedStatus {
+        case "finished", "ended":
+            return self.request(for: room, currentUserEmail: currentUserEmail) == request
+                ? .resetRequired
+                : .invalid
+        case "waiting":
+            return .armRequired
+        case "roulette", "playing":
+            return .alreadyStarted
+        default:
+            return .invalid
+        }
+    }
+
+    static func canAdopt(
+        _ candidate: GameRoom,
+        over current: GameRoom,
+        for request: ReplayAutoStartRequest,
+        currentUserEmail: String?
+    ) -> Bool {
+        cleaned(candidate.id) == request.roomID &&
+            cleaned(current.id) == request.roomID &&
+            disposition(
+                of: candidate,
+                for: request,
+                currentUserEmail: currentUserEmail
+            ) != .invalid &&
+            RoomPollPolicy.acceptsSnapshot(
+                currentLobbyRevision: current.roomRevision ?? current.lobbyRevision,
+                fetchedLobbyRevision: candidate.roomRevision ?? candidate.lobbyRevision
+            )
+    }
+
+    private static func normalized(_ value: String?) -> String {
+        cleaned(value).lowercased()
+    }
+
+    private static func optionalClean(_ value: String?) -> String? {
+        let value = cleaned(value)
+        return value.isEmpty ? nil : value
+    }
+
+    private static func cleaned(_ value: String?) -> String {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+}
+
+struct ReplayAutoStartCoordinatorState: Equatable {
+    private(set) var pendingRequest: ReplayAutoStartRequest?
+    private var handledOperationKeys: Set<String> = []
+
+    mutating func observe(_ request: ReplayAutoStartRequest) -> Bool {
+        guard pendingRequest == nil,
+              !handledOperationKeys.contains(request.operationKey) else { return false }
+        handledOperationKeys.insert(request.operationKey)
+        pendingRequest = request
+        return true
+    }
+
+    mutating func retry(_ request: ReplayAutoStartRequest) -> Bool {
+        guard pendingRequest == nil else { return false }
+        handledOperationKeys.remove(request.operationKey)
+        return observe(request)
+    }
+
+    mutating func finish(_ request: ReplayAutoStartRequest) {
+        guard pendingRequest == request else { return }
+        pendingRequest = nil
+    }
+}
+
+struct SpyGuessSubmissionScope: Equatable {
+    let room: OnlineRoomMatchScope
+    let guessKey: String
+
+    init?(room: GameRoom, guess: String) {
+        guard let roomScope = OnlineRoomMatchScope(room: room) else { return nil }
+        let guessKey = Self.normalized(guess)
+        guard !guessKey.isEmpty else { return nil }
+        self.room = roomScope
+        self.guessKey = guessKey
+    }
+
+    func confirmsCommit(in candidate: GameRoom) -> Bool {
+        room.matches(candidate) &&
+            ["finished", "ended"].contains(candidate.normalizedStatus) &&
+            Self.normalized(candidate.spyGuess) == guessKey
+    }
+
+    private static func normalized(_ value: String?) -> String {
+        value?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased() ?? ""
+    }
+}
+
+enum SpyGuessSubmissionPhase: Equatable {
+    case idle
+    case submitting(word: String)
+    case failed(word: String)
+
+    var selectedWord: String? {
+        switch self {
+        case .idle:
+            nil
+        case let .submitting(word), let .failed(word):
+            word
+        }
+    }
+
+    var blocksInteraction: Bool {
+        if case .submitting = self { return true }
+        return false
+    }
+
+    var failedWord: String? {
+        guard case let .failed(word) = self else { return nil }
+        return word
+    }
+
+    static func begin(word: String, from phase: Self) -> Self? {
+        guard !phase.blocksInteraction else { return nil }
+        let word = word.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !word.isEmpty else { return nil }
+        return .submitting(word: word)
+    }
+
+    func failing() -> Self {
+        guard case let .submitting(word) = self else { return self }
+        return .failed(word: word)
+    }
+}
+
+enum RoomAccessPagePolicy {
+    static let roomCode = 0
+    static let roomQR = 1
+    static let radar = 2
+    static let friends = 3
+    static let pageCount = 4
+
+    static func shouldStopRadar(from previousPage: Int, to nextPage: Int) -> Bool {
+        previousPage == radar && nextPage != radar
+    }
+
+    static func shouldStartRadar(on page: Int) -> Bool {
+        page == radar
+    }
+}
+
+enum OnlineInteractionHitTargetPolicy {
+    static let minimumSize: CGFloat = 44
+}
+
+struct RoomFriendsScope: Hashable {
+    let accountUserID: String
+    let roomID: String
+
+    init?(accountUserID: String?, roomID: String?) {
+        let accountUserID = Self.cleaned(accountUserID)
+        let roomID = Self.cleaned(roomID)
+        guard !accountUserID.isEmpty, !roomID.isEmpty else { return nil }
+        self.accountUserID = accountUserID
+        self.roomID = roomID
+    }
+
+    func matches(accountUserID: String?, roomID: String?, page: Int) -> Bool {
+        guard page == RoomAccessPagePolicy.friends,
+              let currentScope = RoomFriendsScope(
+                  accountUserID: accountUserID,
+                  roomID: roomID
+              ) else { return false }
+        return self == currentScope
+    }
+
+    private static func cleaned(_ value: String?) -> String {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+}
+
+enum RoomFriendsLoadPhase: Equatable {
+    case idle
+    case loading
+    case loaded
+    case empty
+    case failed
+}
+
+enum RoomFriendInvitationPhase: Equatable {
+    case idle
+    case sending
+    case sent
+    case failed
+}
+
+enum RoomFriendsDirectoryPolicy {
+    static func acceptedDeduplicatedProfiles(from state: CommunityState) -> [PublicSpyProfile] {
+        var seenProfileIDs: Set<String> = []
+
+        return state.friends.compactMap { relationship in
+            guard relationship.status
+                .trimmingCharacters(in: .whitespacesAndNewlines)
+                .lowercased() == "accepted" else { return nil }
+
+            let profileID = normalizedProfileID(relationship.profile.id)
+            guard !profileID.isEmpty,
+                  seenProfileIDs.insert(profileID).inserted else { return nil }
+            return relationship.profile
+        }
+    }
+
+    static func normalizedProfileID(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
+struct RoomFriendsDirectoryState: Equatable {
+    private(set) var scope: RoomFriendsScope?
+    private(set) var loadPhase: RoomFriendsLoadPhase = .idle
+    private(set) var profiles: [PublicSpyProfile] = []
+
+    private var loadRequestID: UUID?
+    private var invitationPhases: [String: RoomFriendInvitationPhase] = [:]
+    private var invitationRequestIDs: [String: UUID] = [:]
+
+    init(scope: RoomFriendsScope? = nil) {
+        self.scope = scope
+    }
+
+    mutating func beginLoading(scope: RoomFriendsScope, requestID: UUID) -> Bool {
+        if self.scope != scope {
+            reset(to: scope)
+        }
+        guard loadPhase == .idle || loadPhase == .failed else { return false }
+        loadPhase = .loading
+        profiles = []
+        loadRequestID = requestID
+        invitationPhases = [:]
+        invitationRequestIDs = [:]
+        return true
+    }
+
+    @discardableResult
+    mutating func receive(
+        _ communityState: CommunityState,
+        scope: RoomFriendsScope,
+        requestID: UUID
+    ) -> Bool {
+        guard self.scope == scope,
+              loadPhase == .loading,
+              loadRequestID == requestID else { return false }
+
+        profiles = RoomFriendsDirectoryPolicy.acceptedDeduplicatedProfiles(from: communityState)
+        loadPhase = profiles.isEmpty ? .empty : .loaded
+        loadRequestID = nil
+        return true
+    }
+
+    @discardableResult
+    mutating func failLoading(scope: RoomFriendsScope, requestID: UUID) -> Bool {
+        guard self.scope == scope,
+              loadPhase == .loading,
+              loadRequestID == requestID else { return false }
+        profiles = []
+        loadPhase = .failed
+        loadRequestID = nil
+        invitationPhases = [:]
+        invitationRequestIDs = [:]
+        return true
+    }
+
+    /// SwiftUI can cancel and replace the view task while the Friends page is
+    /// still mounted (for example during the initial page transition). Release
+    /// only the exact in-flight request so its replacement can start instead of
+    /// leaving the directory permanently stuck in `.loading`.
+    mutating func cancelLoading(scope: RoomFriendsScope, requestID: UUID) -> Bool {
+        guard self.scope == scope,
+              loadPhase == .loading,
+              loadRequestID == requestID else { return false }
+        loadPhase = .idle
+        loadRequestID = nil
+        return true
+    }
+
+    mutating func deactivate() {
+        self = RoomFriendsDirectoryState()
+    }
+
+    func invitationPhase(for userID: String) -> RoomFriendInvitationPhase {
+        invitationPhases[RoomFriendsDirectoryPolicy.normalizedProfileID(userID)] ?? .idle
+    }
+
+    mutating func beginInvitation(
+        userID: String,
+        scope: RoomFriendsScope,
+        requestID: UUID
+    ) -> Bool {
+        let profileID = RoomFriendsDirectoryPolicy.normalizedProfileID(userID)
+        guard self.scope == scope,
+              loadPhase == .loaded,
+              profiles.contains(where: {
+                  RoomFriendsDirectoryPolicy.normalizedProfileID($0.id) == profileID
+              }),
+              invitationPhase(for: profileID) != .sending,
+              invitationPhase(for: profileID) != .sent else { return false }
+
+        invitationPhases[profileID] = .sending
+        invitationRequestIDs[profileID] = requestID
+        return true
+    }
+
+    @discardableResult
+    mutating func finishInvitation(
+        userID: String,
+        scope: RoomFriendsScope,
+        requestID: UUID
+    ) -> Bool {
+        updateInvitation(
+            userID: userID,
+            scope: scope,
+            requestID: requestID,
+            phase: .sent
+        )
+    }
+
+    @discardableResult
+    mutating func failInvitation(
+        userID: String,
+        scope: RoomFriendsScope,
+        requestID: UUID
+    ) -> Bool {
+        updateInvitation(
+            userID: userID,
+            scope: scope,
+            requestID: requestID,
+            phase: .failed
+        )
+    }
+
+    private mutating func updateInvitation(
+        userID: String,
+        scope: RoomFriendsScope,
+        requestID: UUID,
+        phase: RoomFriendInvitationPhase
+    ) -> Bool {
+        let profileID = RoomFriendsDirectoryPolicy.normalizedProfileID(userID)
+        guard self.scope == scope,
+              invitationPhases[profileID] == .sending,
+              invitationRequestIDs[profileID] == requestID else { return false }
+        invitationPhases[profileID] = phase
+        invitationRequestIDs[profileID] = nil
+        return true
+    }
+
+    private mutating func reset(to scope: RoomFriendsScope) {
+        self = RoomFriendsDirectoryState(scope: scope)
+    }
+}
+
+private struct RoomFriendsLoadTaskKey: Hashable {
+    let scope: RoomFriendsScope
+    let attempt: Int
+}
+
+#if DEBUG
+private enum RoomFriendsPreviewData {
+    private static let me = PublicSpyProfile(
+        id: "preview-room-host",
+        spyID: "107-001",
+        displayName: "Red Raven",
+        avatar: "🕵️",
+        spyCardTheme: "field",
+        spyCardAccent: "signal_red",
+        spyCardBadge: "operative",
+        rating: 248,
+        gamesPlayed: 31,
+        gamesWon: 19,
+        winRate: 61
+    )
+
+    private static let cipher = PublicSpyProfile(
+        id: "preview-friend-cipher",
+        spyID: "314-159",
+        displayName: "Cipher Fox",
+        avatar: "🦊",
+        spyCardTheme: "dossier",
+        spyCardAccent: "clearance_amber",
+        spyCardBadge: "analyst",
+        rating: 184,
+        gamesPlayed: 22,
+        gamesWon: 13,
+        winRate: 59
+    )
+
+    private static let signal = PublicSpyProfile(
+        id: "preview-friend-signal",
+        spyID: "271-828",
+        displayName: "Signal Ember",
+        avatar: "🔥",
+        spyCardTheme: "blacksite",
+        spyCardAccent: "verified_green",
+        spyCardBadge: "handler",
+        rating: 216,
+        gamesPlayed: 28,
+        gamesWon: 18,
+        winRate: 64
+    )
+
+    private static let pending = PublicSpyProfile(
+        id: "preview-friend-pending",
+        spyID: "161-803",
+        displayName: "Night Index",
+        avatar: "👁️",
+        spyCardTheme: "blacksite",
+        spyCardAccent: "signal_red",
+        spyCardBadge: "ghost",
+        rating: 167,
+        gamesPlayed: 17,
+        gamesWon: 8,
+        winRate: 47
+    )
+
+    static let state = CommunityState(
+        me: me,
+        friends: [
+            CommunityRelationship(
+                id: "preview-accepted-cipher",
+                status: "accepted",
+                direction: "outgoing",
+                profile: cipher
+            ),
+            CommunityRelationship(
+                id: "preview-accepted-signal",
+                status: "accepted",
+                direction: "incoming",
+                profile: signal
+            ),
+            CommunityRelationship(
+                id: "preview-accepted-cipher-duplicate",
+                status: "ACCEPTED",
+                direction: "incoming",
+                profile: cipher
+            ),
+            CommunityRelationship(
+                id: "preview-pending-night",
+                status: "pending",
+                direction: "incoming",
+                profile: pending
+            )
+        ],
+        incoming: [],
+        outgoing: [],
+        blocked: [],
+        incomingRoomInvites: []
+    )
+}
+#endif
+
+private struct RoomFriendInvitationButton: View {
+    let phase: RoomFriendInvitationPhase
+    let accent: Color
+    let title: String
+    let symbol: String
+    let accessibilityIdentifier: String
+    let accessibilityLabel: String
+    let accessibilityValue: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            HStack(spacing: 5) {
+                statusIcon
+
+                Text(title)
+                    .font(.system(size: 7, weight: .black, design: .monospaced))
+                    .tracking(0.04)
+                    .lineLimit(1)
+            }
+            .foregroundStyle(accent)
+            .frame(width: 88)
+            .frame(minHeight: OnlineInteractionHitTargetPolicy.minimumSize)
+            .background(accent.opacity(0.08), in: CutCornerShape(cut: 6))
+            .overlay(CutCornerShape(cut: 6).stroke(accent.opacity(0.38), lineWidth: 1))
+            .contentShape(CutCornerShape(cut: 6))
+        }
+        .buttonStyle(SpyWebPressStyle(pressedScale: 0.96))
+        .disabled(phase == .sending || phase == .sent)
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(accessibilityValue)
+    }
+
+    @ViewBuilder
+    private var statusIcon: some View {
+        if phase == .sending {
+            ProgressView()
+                .controlSize(.mini)
+                .tint(accent)
+        } else {
+            Image(systemName: symbol)
+                .font(.system(size: 9, weight: .black))
+        }
+    }
+}
+
 struct OnlineRoomMatchScope: Equatable {
     let roomID: String
     let matchID: String?
@@ -104,6 +659,756 @@ struct OnlineRoomMatchScope: Equatable {
     private static func optionalClean(_ value: String?) -> String? {
         let cleaned = clean(value)
         return cleaned.isEmpty ? nil : cleaned
+    }
+}
+
+struct ActiveLobbyReturnPresentation: Equatable {
+    let isAvailable: Bool
+    let voteCount: Int
+    let playerCount: Int
+    let isSelected: Bool
+    let isPending: Bool
+    let hasFailed: Bool
+
+    static let unavailable = ActiveLobbyReturnPresentation(
+        isAvailable: false,
+        voteCount: 0,
+        playerCount: 0,
+        isSelected: false,
+        isPending: false,
+        hasFailed: false
+    )
+}
+
+struct ActiveLobbyReturnRequest: Equatable {
+    let id: UUID
+    let scope: OnlineRoomMatchScope
+    let actorKey: String
+    let actorEmail: String
+    let targetVote: Bool
+}
+
+enum ActiveLobbyReturnVotePhase: Equatable {
+    case idle
+    case pending(ActiveLobbyReturnRequest)
+    case failed(scope: OnlineRoomMatchScope, actorKey: String, targetVote: Bool)
+}
+
+enum ActiveLobbyReturnPolicy {
+    static func presentation(
+        room: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?,
+        phase: ActiveLobbyReturnVotePhase
+    ) -> ActiveLobbyReturnPresentation {
+        guard room.normalizedStatus == "playing",
+              OnlineRoomMatchScope(room: room) != nil,
+              let actorKey = actorKey(
+                  accountUserID: accountUserID,
+                  email: currentUserEmail
+              ),
+              let actorEmailKey = normalizedEmail(currentUserEmail),
+              eligiblePlayerEmailKeys(in: room).contains(actorEmailKey) else {
+            return .unavailable
+        }
+
+        let eligible = eligiblePlayerEmailKeys(in: room)
+        var votes = canonicalVoteEmailKeys(in: room, eligible: eligible)
+        var isPending = false
+        var hasFailed = false
+
+        switch phase {
+        case .idle:
+            break
+        case let .pending(request)
+            where request.scope.matches(room) && request.actorKey == actorKey:
+            isPending = true
+            if request.targetVote {
+                votes.insert(actorEmailKey)
+            } else {
+                votes.remove(actorEmailKey)
+            }
+        case let .failed(scope, failedActorKey, _)
+            where scope.matches(room) && failedActorKey == actorKey:
+            hasFailed = true
+        case .pending, .failed:
+            break
+        }
+
+        return ActiveLobbyReturnPresentation(
+            isAvailable: true,
+            voteCount: votes.count,
+            playerCount: eligible.count,
+            isSelected: votes.contains(actorEmailKey),
+            isPending: isPending,
+            hasFailed: hasFailed
+        )
+    }
+
+    static func request(
+        room: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?,
+        phase: ActiveLobbyReturnVotePhase,
+        requestID: UUID
+    ) -> ActiveLobbyReturnRequest? {
+        guard let scope = OnlineRoomMatchScope(room: room),
+              room.normalizedStatus == "playing",
+              let actorKey = actorKey(
+                  accountUserID: accountUserID,
+                  email: currentUserEmail
+              ),
+              let actorEmail = cleanedEmail(currentUserEmail),
+              eligiblePlayerEmailKeys(in: room).contains(actorEmail.lowercased()) else {
+            return nil
+        }
+
+        if case let .pending(existing) = phase,
+           existing.scope.matches(room),
+           existing.actorKey == actorKey {
+            return nil
+        }
+
+        let targetVote: Bool
+        if case let .failed(failedScope, failedActorKey, failedTargetVote) = phase,
+           failedScope == scope,
+           failedActorKey == actorKey {
+            targetVote = failedTargetVote
+        } else {
+            targetVote = !room.hasReturnToLobbyVote(email: actorEmail)
+        }
+
+        return ActiveLobbyReturnRequest(
+            id: requestID,
+            scope: scope,
+            actorKey: actorKey,
+            actorEmail: actorEmail,
+            targetVote: targetVote
+        )
+    }
+
+    static func canAdopt(
+        candidate: GameRoom,
+        over current: GameRoom,
+        request: ActiveLobbyReturnRequest,
+        accountUserID: String?,
+        currentUserEmail: String?
+    ) -> Bool {
+        guard request.scope.matches(current),
+              actorKey(accountUserID: accountUserID, email: currentUserEmail) == request.actorKey,
+              cleaned(candidate.id) == request.scope.roomID,
+              RoomPollPolicy.acceptsSnapshot(
+                  currentLobbyRevision: revision(of: current),
+                  fetchedLobbyRevision: revision(of: candidate)
+              ) else { return false }
+
+        if candidate.normalizedStatus == "waiting" {
+            return request.targetVote &&
+                cleaned(candidate.matchID).isEmpty &&
+                cleaned(candidate.gameStartedAt).isEmpty
+        }
+
+        guard request.scope.matches(candidate),
+              candidate.normalizedStatus == "playing" else { return false }
+        return candidate.hasReturnToLobbyVote(email: request.actorEmail) == request.targetVote
+    }
+
+    static func actorKey(accountUserID: String?, email: String?) -> String? {
+        let userID = cleaned(accountUserID)
+        if !userID.isEmpty { return "user:\(userID)" }
+        guard let email = normalizedEmail(email) else { return nil }
+        return "email:\(email)"
+    }
+
+    static func eligiblePlayerEmailKeys(in room: GameRoom) -> Set<String> {
+        var seenUserIDs: Set<String> = []
+        var seenEmails: Set<String> = []
+        for player in room.returnToLobbyEligiblePlayersList {
+            guard let email = normalizedEmail(player.email) else { continue }
+            let userID = cleaned(player.userID)
+            guard !seenEmails.contains(email),
+                  userID.isEmpty || !seenUserIDs.contains(userID) else { continue }
+            seenEmails.insert(email)
+            if !userID.isEmpty {
+                seenUserIDs.insert(userID)
+            }
+        }
+        return seenEmails
+    }
+
+    private static func canonicalVoteEmailKeys(
+        in room: GameRoom,
+        eligible: Set<String>
+    ) -> Set<String> {
+        Set((room.readyPlayers ?? []).compactMap { value in
+            guard let email = normalizedEmail(value), eligible.contains(email) else { return nil }
+            return email
+        })
+    }
+
+    private static func revision(of room: GameRoom) -> Int? {
+        room.roomRevision ?? room.lobbyRevision
+    }
+
+    private static func cleanedEmail(_ value: String?) -> String? {
+        let value = cleaned(value)
+        return value.isEmpty ? nil : value
+    }
+
+    private static func normalizedEmail(_ value: String?) -> String? {
+        cleanedEmail(value)?.lowercased()
+    }
+
+    private static func cleaned(_ value: String?) -> String {
+        value?.trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+    }
+}
+
+struct ActiveLobbyReturnVoteState: Equatable {
+    private(set) var phase = ActiveLobbyReturnVotePhase.idle
+
+    init() {}
+
+    mutating func begin(
+        room: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?,
+        requestID: UUID
+    ) -> ActiveLobbyReturnRequest? {
+        if !phaseMatches(
+            room: room,
+            accountUserID: accountUserID,
+            currentUserEmail: currentUserEmail
+        ) {
+            phase = .idle
+        }
+        guard let request = ActiveLobbyReturnPolicy.request(
+            room: room,
+            accountUserID: accountUserID,
+            currentUserEmail: currentUserEmail,
+            phase: phase,
+            requestID: requestID
+        ) else { return nil }
+        phase = .pending(request)
+        return request
+    }
+
+    func isPending(_ request: ActiveLobbyReturnRequest) -> Bool {
+        phase == .pending(request)
+    }
+
+    @discardableResult
+    mutating func finish(_ request: ActiveLobbyReturnRequest) -> Bool {
+        guard isPending(request) else { return false }
+        phase = .idle
+        return true
+    }
+
+    @discardableResult
+    mutating func fail(
+        _ request: ActiveLobbyReturnRequest,
+        currentRoom: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?
+    ) -> Bool {
+        guard isPending(request),
+              request.scope.matches(currentRoom),
+              ActiveLobbyReturnPolicy.actorKey(
+                  accountUserID: accountUserID,
+                  email: currentUserEmail
+              ) == request.actorKey else { return false }
+        phase = .failed(
+            scope: request.scope,
+            actorKey: request.actorKey,
+            targetVote: request.targetVote
+        )
+        return true
+    }
+
+    func presentation(
+        room: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?
+    ) -> ActiveLobbyReturnPresentation {
+        ActiveLobbyReturnPolicy.presentation(
+            room: room,
+            accountUserID: accountUserID,
+            currentUserEmail: currentUserEmail,
+            phase: phase
+        )
+    }
+
+    private func phaseMatches(
+        room: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?
+    ) -> Bool {
+        let actorKey = ActiveLobbyReturnPolicy.actorKey(
+            accountUserID: accountUserID,
+            email: currentUserEmail
+        )
+        switch phase {
+        case .idle:
+            return true
+        case let .pending(request):
+            return request.scope.matches(room) && request.actorKey == actorKey
+        case let .failed(scope, failedActorKey, _):
+            return scope.matches(room) && failedActorKey == actorKey
+        }
+    }
+}
+
+enum RoomKickPhase: Equatable {
+    case idle
+    case sending
+    case failed
+}
+
+struct RoomKickScope: Equatable {
+    let roomID: String
+    let actorKey: String
+    let hostEmailKey: String
+
+    init?(
+        room: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?
+    ) {
+        let roomID = room.id.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !roomID.isEmpty,
+              ["waiting", "ready_voting"].contains(room.normalizedStatus),
+              let actorKey = ActiveLobbyReturnPolicy.actorKey(
+                  accountUserID: accountUserID,
+                  email: currentUserEmail
+              ),
+              let currentEmailKey = RoomKickPolicy.normalizedEmail(currentUserEmail),
+              let hostEmailKey = RoomKickPolicy.normalizedEmail(room.hostEmail),
+              currentEmailKey == hostEmailKey else { return nil }
+        self.roomID = roomID
+        self.actorKey = actorKey
+        self.hostEmailKey = hostEmailKey
+    }
+
+    func matches(
+        room: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?
+    ) -> Bool {
+        guard let current = RoomKickScope(
+            room: room,
+            accountUserID: accountUserID,
+            currentUserEmail: currentUserEmail
+        ) else { return false }
+        return self == current
+    }
+}
+
+struct RoomKickRequest: Equatable {
+    let id: UUID
+    let scope: RoomKickScope
+    let targetUserID: String?
+    let targetEmail: String
+    let targetEmailKey: String
+    let targetRequestKey: String
+    let targetName: String
+}
+
+struct RoomKickConfirmation: Identifiable, Equatable {
+    let scope: RoomKickScope
+    let targetUserID: String?
+    let targetEmail: String
+    let targetName: String
+
+    var id: String {
+        "\(scope.roomID)|\(RoomKickPolicy.requestKey(userID: targetUserID, email: targetEmail))"
+    }
+}
+
+enum RoomKickPolicy {
+    static func validatedTargetEmail(
+        for player: Player,
+        in room: GameRoom,
+        currentUserEmail: String?
+    ) -> String? {
+        let email = player.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard email.count <= 254,
+              email.range(
+                  of: #"^[^\s@]+@[^\s@]+\.[^\s@]+$"#,
+                  options: .regularExpression
+              ) != nil,
+              let emailKey = normalizedEmail(email),
+              normalizedEmail(room.hostEmail) != emailKey,
+              normalizedEmail(currentUserEmail) != emailKey,
+              room.playersList.filter({ normalizedEmail($0.email) == emailKey }).count == 1 else {
+            return nil
+        }
+        return email
+    }
+
+    static func confirmation(
+        for player: Player,
+        room: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?
+    ) -> RoomKickConfirmation? {
+        guard let scope = RoomKickScope(
+            room: room,
+            accountUserID: accountUserID,
+            currentUserEmail: currentUserEmail
+        ) else { return nil }
+
+        let targetEmail = player.email.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard let targetEmailKey = normalizedEmail(targetEmail),
+              normalizedEmail(room.hostEmail) != targetEmailKey,
+              normalizedEmail(currentUserEmail) != targetEmailKey,
+              room.playersList.filter({ normalizedEmail($0.email) == targetEmailKey }).count == 1 else {
+            return nil
+        }
+
+        let targetUserID: String?
+        if player.userID == nil {
+            guard validatedTargetEmail(
+                for: player,
+                in: room,
+                currentUserEmail: currentUserEmail
+            ) != nil else { return nil }
+            targetUserID = nil
+        } else {
+            guard let stableUserID = validatedTargetUserID(player.userID),
+                  Set(
+                      room.playersList.compactMap { candidate -> String? in
+                          guard validatedTargetUserID(candidate.userID) == stableUserID else { return nil }
+                          return normalizedEmail(candidate.email)
+                      }
+                  ).count == 1 else { return nil }
+            targetUserID = stableUserID
+        }
+
+        let targetName = player.name.trimmingCharacters(in: .whitespacesAndNewlines)
+        return RoomKickConfirmation(
+            scope: scope,
+            targetUserID: targetUserID,
+            targetEmail: targetEmail,
+            targetName: targetName.isEmpty ? targetEmail : targetName
+        )
+    }
+
+    static func canAdopt(
+        candidate: GameRoom,
+        over current: GameRoom,
+        request: RoomKickRequest,
+        accountUserID: String?,
+        currentUserEmail: String?
+    ) -> Bool {
+        request.scope.matches(
+            room: current,
+            accountUserID: accountUserID,
+            currentUserEmail: currentUserEmail
+        ) &&
+            candidate.id.trimmingCharacters(in: .whitespacesAndNewlines) == request.scope.roomID &&
+            candidate.normalizedStatus == "waiting" &&
+            normalizedEmail(candidate.hostEmail) == request.scope.hostEmailKey &&
+            targetIsAbsent(from: candidate, request: request) &&
+            RoomPollPolicy.acceptsSnapshot(
+                currentLobbyRevision: current.roomRevision ?? current.lobbyRevision,
+                fetchedLobbyRevision: candidate.roomRevision ?? candidate.lobbyRevision
+            )
+    }
+
+    static func canAdoptRecoveredSnapshot(
+        candidate: GameRoom,
+        over current: GameRoom,
+        request: RoomKickRequest,
+        accountUserID: String?,
+        currentUserEmail: String?
+    ) -> Bool {
+        request.scope.matches(
+            room: current,
+            accountUserID: accountUserID,
+            currentUserEmail: currentUserEmail
+        ) &&
+            candidate.id.trimmingCharacters(in: .whitespacesAndNewlines) == request.scope.roomID &&
+            ["waiting", "ready_voting"].contains(candidate.normalizedStatus) &&
+            normalizedEmail(candidate.hostEmail) == request.scope.hostEmailKey &&
+            targetIsAbsent(from: candidate, request: request) &&
+            RoomPollPolicy.acceptsSnapshot(
+                currentLobbyRevision: current.roomRevision ?? current.lobbyRevision,
+                fetchedLobbyRevision: candidate.roomRevision ?? candidate.lobbyRevision
+            )
+    }
+
+    static func requestKey(userID: String?, email: String) -> String {
+        if let userID = validatedTargetUserID(userID) {
+            return "user:\(userID)"
+        }
+        return "email:\(normalizedEmail(email) ?? "")"
+    }
+
+    static func targetIsAbsent(
+        from candidate: GameRoom,
+        request: RoomKickRequest
+    ) -> Bool {
+        !candidate.playersList.contains {
+            matchesTarget($0, request: request)
+        }
+    }
+
+    static func matchesTarget(_ player: Player, request: RoomKickRequest) -> Bool {
+        if let targetUserID = request.targetUserID {
+            return validatedTargetUserID(player.userID) == targetUserID
+        }
+        return normalizedEmail(player.email) == request.targetEmailKey
+    }
+
+    static func validatedTargetUserID(_ value: String?) -> String? {
+        guard let value else { return nil }
+        let cleanedValue = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard cleanedValue.range(
+            of: #"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"#,
+            options: String.CompareOptions.regularExpression
+        ) != nil else { return nil }
+        return cleanedValue
+    }
+
+    static func normalizedEmail(_ value: String?) -> String? {
+        let value = value?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        return value.isEmpty ? nil : value
+    }
+}
+
+struct RoomKickCoordinatorState: Equatable {
+    private(set) var scope: RoomKickScope?
+    private var activeRequests: [String: RoomKickRequest] = [:]
+    private var failedTargetKeys: Set<String> = []
+
+    init(scope: RoomKickScope? = nil) {
+        self.scope = scope
+    }
+
+    mutating func begin(
+        confirmation: RoomKickConfirmation,
+        room: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?,
+        requestID: UUID
+    ) -> RoomKickRequest? {
+        guard confirmation.scope.matches(
+            room: room,
+            accountUserID: accountUserID,
+            currentUserEmail: currentUserEmail
+        ),
+              let player = room.playersList.first(where: {
+                  RoomKickPolicy.normalizedEmail($0.email) ==
+                      RoomKickPolicy.normalizedEmail(confirmation.targetEmail)
+              }),
+              let currentConfirmation = RoomKickPolicy.confirmation(
+                  for: player,
+                  room: room,
+                  accountUserID: accountUserID,
+                  currentUserEmail: currentUserEmail
+              ),
+              currentConfirmation == confirmation,
+              let targetEmailKey = RoomKickPolicy.normalizedEmail(confirmation.targetEmail) else {
+            return nil
+        }
+
+        if scope != confirmation.scope {
+            self = RoomKickCoordinatorState(scope: confirmation.scope)
+        }
+        let targetRequestKey = RoomKickPolicy.requestKey(
+            userID: confirmation.targetUserID,
+            email: confirmation.targetEmail
+        )
+        guard activeRequests[targetRequestKey] == nil else { return nil }
+
+        let request = RoomKickRequest(
+            id: requestID,
+            scope: confirmation.scope,
+            targetUserID: confirmation.targetUserID,
+            targetEmail: confirmation.targetEmail,
+            targetEmailKey: targetEmailKey,
+            targetRequestKey: targetRequestKey,
+            targetName: confirmation.targetName
+        )
+        activeRequests[targetRequestKey] = request
+        failedTargetKeys.remove(targetRequestKey)
+        return request
+    }
+
+    func phase(
+        for player: Player,
+        room: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?
+    ) -> RoomKickPhase {
+        guard scope?.matches(
+            room: room,
+            accountUserID: accountUserID,
+            currentUserEmail: currentUserEmail
+        ) == true,
+              let confirmation = RoomKickPolicy.confirmation(
+                  for: player,
+                  room: room,
+                  accountUserID: accountUserID,
+                  currentUserEmail: currentUserEmail
+              ) else { return .idle }
+        let targetRequestKey = RoomKickPolicy.requestKey(
+            userID: confirmation.targetUserID,
+            email: confirmation.targetEmail
+        )
+        if activeRequests[targetRequestKey] != nil { return .sending }
+        return failedTargetKeys.contains(targetRequestKey) ? .failed : .idle
+    }
+
+    func isPending(_ request: RoomKickRequest) -> Bool {
+        scope == request.scope && activeRequests[request.targetRequestKey] == request
+    }
+
+    @discardableResult
+    mutating func finish(_ request: RoomKickRequest) -> Bool {
+        guard isPending(request) else { return false }
+        activeRequests[request.targetRequestKey] = nil
+        failedTargetKeys.remove(request.targetRequestKey)
+        return true
+    }
+
+    @discardableResult
+    mutating func fail(
+        _ request: RoomKickRequest,
+        currentRoom: GameRoom,
+        accountUserID: String?,
+        currentUserEmail: String?
+    ) -> Bool {
+        guard isPending(request),
+              request.scope.matches(
+                  room: currentRoom,
+                  accountUserID: accountUserID,
+                  currentUserEmail: currentUserEmail
+              ) else { return false }
+        activeRequests[request.targetRequestKey] = nil
+        failedTargetKeys.insert(request.targetRequestKey)
+        return true
+    }
+}
+
+private struct RoomKickButton: View {
+    let phase: RoomKickPhase
+    let accessibilityIdentifier: String
+    let accessibilityLabel: String
+    let action: () -> Void
+
+    var body: some View {
+        Button(action: action) {
+            ZStack {
+                if phase == .sending {
+                    ProgressView()
+                        .controlSize(.mini)
+                        .tint(.white)
+                } else {
+                    Image(systemName: phase == .failed ? "arrow.clockwise" : "person.fill.xmark")
+                        .font(.system(size: 11, weight: .black))
+                }
+            }
+            .foregroundStyle(phase == .failed ? SpyTheme.amber : SpyTheme.red)
+            .frame(
+                width: OnlineInteractionHitTargetPolicy.minimumSize,
+                height: OnlineInteractionHitTargetPolicy.minimumSize
+            )
+            .background(Color.white.opacity(0.035), in: CutCornerShape(cut: 6))
+            .overlay {
+                CutCornerShape(cut: 6)
+                    .stroke(
+                        phase == .failed ? SpyTheme.amber.opacity(0.62) : SpyTheme.red.opacity(0.38),
+                        lineWidth: 1
+                    )
+            }
+        }
+        .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
+        .disabled(phase == .sending)
+        .accessibilityIdentifier(accessibilityIdentifier)
+        .accessibilityLabel(accessibilityLabel)
+        .accessibilityValue(phase == .sending ? "pending" : (phase == .failed ? "failed, retry" : "ready"))
+    }
+}
+
+private struct RoomKickConfirmationModifier: ViewModifier {
+    let language: AppLanguage
+    @Binding var confirmation: RoomKickConfirmation?
+    let onConfirm: (RoomKickConfirmation) -> Void
+
+    func body(content: Content) -> some View {
+        content.confirmationDialog(
+            dialogTitle,
+            isPresented: isPresented,
+            titleVisibility: .visible,
+            presenting: confirmation
+        ) { confirmation in
+            Button(removeTitle, role: .destructive) {
+                onConfirm(confirmation)
+            }
+            Button(cancelTitle, role: .cancel) {
+                self.confirmation = nil
+            }
+        } message: { confirmation in
+            Text(message(for: confirmation))
+        }
+    }
+
+    private var isPresented: Binding<Bool> {
+        Binding(
+            get: { confirmation != nil },
+            set: { value in
+                if !value { confirmation = nil }
+            }
+        )
+    }
+
+    private var dialogTitle: String {
+        guard let confirmation else {
+            return text(
+                en: "REMOVE OPERATIVE?",
+                ru: "УДАЛИТЬ ИГРОКА?",
+                es: "¿EXPULSAR OPERATIVO?",
+                uk: "ВИДАЛИТИ ГРАВЦЯ?"
+            )
+        }
+        return text(
+            en: "REMOVE \(confirmation.targetName.uppercased())?",
+            ru: "УДАЛИТЬ \(confirmation.targetName.uppercased())?",
+            es: "¿EXPULSAR A \(confirmation.targetName.uppercased())?",
+            uk: "ВИДАЛИТИ \(confirmation.targetName.uppercased())?"
+        )
+    }
+
+    private var removeTitle: String {
+        text(
+            en: "REMOVE OPERATIVE",
+            ru: "УДАЛИТЬ ИГРОКА",
+            es: "EXPULSAR OPERATIVO",
+            uk: "ВИДАЛИТИ ГРАВЦЯ"
+        )
+    }
+
+    private var cancelTitle: String {
+        text(en: "CANCEL", ru: "ОТМЕНА", es: "CANCELAR", uk: "СКАСУВАТИ")
+    }
+
+    private func message(for confirmation: RoomKickConfirmation) -> String {
+        text(
+            en: "\(confirmation.targetName) will be removed from this room.",
+            ru: "\(confirmation.targetName) будет удалён из этой комнаты.",
+            es: "\(confirmation.targetName) será expulsado de esta sala.",
+            uk: "\(confirmation.targetName) буде видалено з цієї кімнати."
+        )
+    }
+
+    private func text(en: String, ru: String, es: String, uk: String) -> String {
+        switch language {
+        case .en: en
+        case .ru: ru
+        case .es: es
+        case .uk: uk
+        }
     }
 }
 
@@ -611,6 +1916,7 @@ struct GameView: View {
     @State private var isAdvancing = false
     @State private var isRequestingVote = false
     @State private var isCastingVote = false
+    @State private var pendingDetectiveVoteTargetEmail: String?
     @State private var isMarkingCardRead = false
     @State private var isTogglingGamePause = false
     @State private var isTogglingReady = false
@@ -618,10 +1924,17 @@ struct GameView: View {
     @State private var isSubmittingSpyGuess = false
     @State private var isVotingReplay = false
     @State private var isResettingRoom = false
+    @State private var activeLobbyReturnVoteState = ActiveLobbyReturnVoteState()
+    @State private var roomKickCoordinator = RoomKickCoordinatorState()
+    @State private var roomKickConfirmation: RoomKickConfirmation?
+    @State private var replayAutoStartCoordinator = ReplayAutoStartCoordinatorState()
+    @State private var replayAutoStartFailedOperationKey: String?
     @State private var copiedRoomCode = false
     @State private var showsThemeBuilder = false
     @State private var appliedLobbyRevision = -1
-    @State private var roomAccessPage = 0
+    @State private var roomAccessPage = RoomAccessPagePolicy.roomCode
+    @State private var roomFriendsDirectory = RoomFriendsDirectoryState()
+    @State private var roomFriendsLoadAttempt = 0
     @State private var isRoomCodeVisible = false
     @State private var isRoomQRVisible = false
     @State private var roomQRFlipProgress = 0.0
@@ -676,6 +1989,38 @@ struct GameView: View {
 
     private var roomRadar: RadarNearbyService {
         appState.radarNearby
+    }
+
+    private var currentRoomFriendsScope: RoomFriendsScope? {
+        guard roomAccessPage == RoomAccessPagePolicy.friends else { return nil }
+        return RoomFriendsScope(
+            accountUserID: appState.user?.id,
+            roomID: appState.activeRoom?.id
+        )
+    }
+
+    private var roomFriendsLoadTaskKey: RoomFriendsLoadTaskKey? {
+        currentRoomFriendsScope.map {
+            RoomFriendsLoadTaskKey(scope: $0, attempt: roomFriendsLoadAttempt)
+        }
+    }
+
+    private func activeLobbyReturnPresentation(
+        for room: GameRoom
+    ) -> ActiveLobbyReturnPresentation {
+        activeLobbyReturnVoteState.presentation(
+            room: room,
+            accountUserID: appState.user?.id,
+            currentUserEmail: appState.user?.email
+        )
+    }
+
+    private var replayAutoStartTrigger: ReplayAutoStartRequest? {
+        guard let room = appState.activeRoom else { return nil }
+        return ReplayAutoStartPolicy.request(
+            for: room,
+            currentUserEmail: appState.user?.email
+        )
     }
 
     private var selectedPackID: String? {
@@ -757,7 +2102,7 @@ struct GameView: View {
     }
 
     var body: some View {
-        typeErasedRootSurface
+        rootWithRoomKickConfirmation
         .disabled(detectiveVoteCancellationPresentation != nil)
         .allowsHitTesting(detectiveVoteCancellationPresentation == nil)
         .accessibilityHidden(detectiveVoteCancellationPresentation != nil)
@@ -773,6 +2118,14 @@ struct GameView: View {
         }
         .task(id: detectiveVoteCancellationTaskKey) {
             await presentDetectiveVoteCancellationIfNeeded()
+        }
+        .onChange(of: replayAutoStartTrigger, initial: true) { _, request in
+            guard let request else { return }
+            scheduleReplayAutoStart(request)
+        }
+        .task(id: replayAutoStartCoordinator.pendingRequest) {
+            guard let request = replayAutoStartCoordinator.pendingRequest else { return }
+            await performReplayAutoStart(request)
         }
         .onChange(of: lobbySyncFeedbackSnapshot, initial: true) { _, snapshot in
             lobbySyncFeedbackState.update(snapshot)
@@ -853,7 +2206,11 @@ struct GameView: View {
             }
 #endif
         }
-        .onChange(of: appState.activeRoom?.normalizedStatus) { _, _ in
+        .onChange(of: appState.activeRoom?.normalizedStatus) { _, status in
+            if status == "roulette" || status == "playing" {
+                dismissOnlineSetupCapture()
+                replayAutoStartFailedOperationKey = nil
+            }
             updateOnlineShellChromeSuppression()
         }
         .onDisappear {
@@ -874,9 +2231,10 @@ struct GameView: View {
                 SpyGuessSheet(
                     room: room,
                     isSubmitting: isSubmittingSpyGuess,
-                    copy: copy
+                    copy: copy,
+                    language: appState.language
                 ) { word in
-                    Task { await submitSpyGuess(room, word: word) }
+                    try await submitSpyGuess(room, word: word)
                 }
                 .spyGlobalToastLayer()
                 .presentationDetents([.large])
@@ -889,6 +2247,18 @@ struct GameView: View {
     // GameView contains a large legacy SwiftUI tree. Keeping that tree behind
     // a concrete boundary prevents outer feedback modifiers from forcing the
     // Swift runtime to instantiate one recursively deep generic metadata type.
+    private var rootWithRoomKickConfirmation: AnyView {
+        AnyView(
+            typeErasedRootSurface.modifier(
+                RoomKickConfirmationModifier(
+                    language: appState.language,
+                    confirmation: $roomKickConfirmation,
+                    onConfirm: confirmRoomKick
+                )
+            )
+        )
+    }
+
     private var typeErasedRootSurface: AnyView {
         AnyView(
             Group {
@@ -920,7 +2290,7 @@ struct GameView: View {
         PageChrome(
             eyebrow: copy.eyebrow,
             status: appState.activeRoom.map(roomStateLabel) ?? copy.standby,
-            scrollTarget: focusedOnlineSetupField == .theme ? onlineIntelScrollTarget : nil
+            scrollTarget: focusedOnlineSetupField == .theme ? onlineThemeScrollTarget : nil
         ) {
             VStack(alignment: .leading, spacing: 18) {
                 Group {
@@ -1124,6 +2494,7 @@ struct GameView: View {
         case "roulette":
             OnlineGameIntroScene(room: room, language: appState.language)
                 .transition(.opacity)
+                .ignoresSafeArea(.keyboard, edges: .bottom)
                 .task(id: "intro-\(room.id)-\(room.introStartedAt ?? "pending")") {
                     await completeRouletteIfNeeded(room)
                 }
@@ -1147,6 +2518,7 @@ struct GameView: View {
                 }
             )
             .transition(.opacity)
+            .ignoresSafeArea(.keyboard, edges: .bottom)
 
         case "playing":
             OnlineActiveGameScene(
@@ -1172,6 +2544,7 @@ struct GameView: View {
                 canRequestVote: canCurrentUserRequestVote(room),
                 canSpyGuess: canCurrentUserGuess(room),
                 canCastVote: canCurrentUserCastVote(room),
+                lobbyReturn: activeLobbyReturnPresentation(for: room),
                 onToggleRole: revealOnlineRole,
                 onTogglePause: {
                     Task { await toggleGamePause(room) }
@@ -1186,21 +2559,25 @@ struct GameView: View {
                     Task { await stopAssociationSpinAfterAnimation(room) }
                 },
                 onRequestVote: {
-                    Task { await requestVote(room) }
+                    beginVoteRequest(room, firesHaptic: false)
                 },
                 onCastVote: { targetEmail in
-                    Task { await castVote(room, targetEmail: targetEmail) }
+                    beginDetectiveVote(room, targetEmail: targetEmail, firesHaptic: false)
                 },
                 onSpyGuess: {
                     guard canCurrentUserGuess(room) else { return }
                     showSpyGuess = true
                     HapticManager.shared.fire(.buttonPress)
                 },
+                onToggleLobbyReturn: {
+                    beginActiveLobbyReturnVote(room)
+                },
                 onLeave: {
                     Task { await leaveRoom(room) }
                 }
             )
             .transition(.opacity)
+            .ignoresSafeArea(.keyboard, edges: .bottom)
 
         default:
             standardGameSurface
@@ -1286,14 +2663,6 @@ struct GameView: View {
 
     private func waitingRoom(_ room: GameRoom) -> some View {
         ZStack(alignment: .top) {
-            if onlineSetupHasActiveCapture {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        dismissOnlineSetupCapture()
-                    }
-            }
-
             VStack(alignment: .leading, spacing: SpyLobbyVisualLanguage.sectionSpacing) {
                 onlineSetupSlot(.mission, content: AnyView(onlineMissionPanel(room)))
                 onlineSetupSlot(
@@ -1354,7 +2723,6 @@ struct GameView: View {
                                 )
                         )
                     )
-                    .id(onlineIntelScrollTarget)
                 } else {
                     onlineSetupSlot(
                         .intel,
@@ -1403,17 +2771,12 @@ struct GameView: View {
     ) -> OnlineSetupSlotView {
         OnlineSetupSlotView(
             content: content,
-            dimmed: onlineShouldDimPanel(panel),
-            onDismiss: dismissOnlineSetupCapture
+            dimmed: onlineShouldDimPanel(panel)
         )
     }
 
-    private var onlineSetupHasActiveCapture: Bool {
-        focusedOnlineSetupField != nil
-    }
-
-    private var onlineIntelScrollTarget: String {
-        "online-room-intel-panel"
+    private var onlineThemeScrollTarget: String {
+        "online-room-theme-input"
     }
 
     private func dismissOnlineSetupCapture() {
@@ -1440,21 +2803,25 @@ struct GameView: View {
         ZStack(alignment: .bottom) {
             TabView(selection: $roomAccessPage) {
                 onlineRoomCodePage(room)
-                    .tag(0)
+                    .tag(RoomAccessPagePolicy.roomCode)
 
                 onlineRoomQRPage(room)
-                    .tag(1)
+                    .tag(RoomAccessPagePolicy.roomQR)
 
                 onlineRoomRadarPage(room)
-                    .tag(2)
+                    .tag(RoomAccessPagePolicy.radar)
+
+                onlineRoomFriendsPage(room)
+                    .tag(RoomAccessPagePolicy.friends)
             }
             .tabViewStyle(.page(indexDisplayMode: .never))
             .frame(height: SpyLobbyVisualLanguage.heroHeight)
+            .accessibilityIdentifier("onlineRoom.accessPages")
             .accessibilityValue(localized(
-                en: "Page \(roomAccessPage + 1) of 3",
-                ru: "Страница \(roomAccessPage + 1) из 3",
-                es: "Pagina \(roomAccessPage + 1) de 3",
-                uk: "Сторінка \(roomAccessPage + 1) із 3"
+                en: "Page \(roomAccessPage + 1) of \(RoomAccessPagePolicy.pageCount)",
+                ru: "Страница \(roomAccessPage + 1) из \(RoomAccessPagePolicy.pageCount)",
+                es: "Pagina \(roomAccessPage + 1) de \(RoomAccessPagePolicy.pageCount)",
+                uk: "Сторінка \(roomAccessPage + 1) із \(RoomAccessPagePolicy.pageCount)"
             ))
 
             roomAccessPageIndicator
@@ -1466,8 +2833,13 @@ struct GameView: View {
         .onChange(of: roomAccessPage) { previousPage, nextPage in
             HapticManager.shared.fire(.tabSelection)
             updateRoomRadarScanning(from: previousPage, to: nextPage)
+            if nextPage != RoomAccessPagePolicy.friends {
+                roomFriendsDirectory.deactivate()
+            }
         }
         .onAppear {
+            roomFriendsDirectory.deactivate()
+            roomFriendsLoadAttempt = 0
             roomAccessPage = initialRoomAccessPage
             isRoomCodeVisible = false
             isRoomQRVisible = false
@@ -1476,15 +2848,17 @@ struct GameView: View {
             roomQRFlipID = UUID()
             roomQRSheenProgress = -1
             roomQRIsLifted = false
-            if roomAccessPage == 2 {
-                appState.startRadarScanning(requestCameraAccess: true)
+            if RoomAccessPagePolicy.shouldStartRadar(on: roomAccessPage) {
+                appState.resumeRadarScanningIfActivated(requestCameraAccess: true)
             }
         }
         .onChange(of: room.id) { _, _ in
-            if roomAccessPage == 2 {
+            if RoomAccessPagePolicy.shouldStartRadar(on: roomAccessPage) {
                 roomRadar.stopScanning()
             }
-            roomAccessPage = 0
+            roomFriendsDirectory.deactivate()
+            roomFriendsLoadAttempt = 0
+            roomAccessPage = RoomAccessPagePolicy.roomCode
             isRoomCodeVisible = false
             isRoomQRVisible = false
             roomQRFlipProgress = 0
@@ -1494,13 +2868,22 @@ struct GameView: View {
             roomQRIsLifted = false
             preparedRoomQR = nil
         }
+        .onChange(of: appState.user?.id) { _, _ in
+            roomFriendsDirectory.deactivate()
+            roomFriendsLoadAttempt = 0
+        }
         .onDisappear {
-            if roomAccessPage == 2 {
+            if RoomAccessPagePolicy.shouldStartRadar(on: roomAccessPage) {
                 roomRadar.stopScanning()
             }
+            roomFriendsDirectory.deactivate()
         }
         .task(id: roomQRPayload(for: room)) {
             await prepareRoomQRCode(payload: roomQRPayload(for: room))
+        }
+        .task(id: roomFriendsLoadTaskKey) {
+            guard let taskKey = roomFriendsLoadTaskKey else { return }
+            await loadRoomFriends(for: taskKey.scope)
         }
         .spyWebEntrance(
             delay: SpyLobbyVisualLanguage.EntranceDelay.hero,
@@ -1550,7 +2933,9 @@ struct GameView: View {
                                     .lineLimit(1)
                                     .transition(.opacity.combined(with: .scale(scale: 0.90)))
                             } else {
-                                RoomCodeSpoilerField(isActive: roomAccessPage == 0)
+                                RoomCodeSpoilerField(
+                                    isActive: roomAccessPage == RoomAccessPagePolicy.roomCode
+                                )
                                     .frame(maxWidth: 246, minHeight: 72)
                                     .transition(.opacity.combined(with: .scale(scale: 1.34)))
                             }
@@ -1704,51 +3089,55 @@ struct GameView: View {
                     .padding(.horizontal, 18)
                     .padding(.top, 15)
 
-                Text(roomRadarStatusText)
-                    .font(.system(size: 7.5, weight: .black, design: .monospaced))
-                    .tracking(0.16)
-                    .foregroundStyle(roomRadarStatusColor)
-                    .lineLimit(1)
-                    .minimumScaleFactor(0.62)
-                    .frame(maxWidth: .infinity, alignment: .leading)
-                    .frame(height: 26)
-                    .padding(.horizontal, 18)
-                    .contentTransition(.opacity)
+                if appState.isRadarActivated {
+                    Text(roomRadarStatusText)
+                        .font(.system(size: 7.5, weight: .black, design: .monospaced))
+                        .tracking(0.16)
+                        .foregroundStyle(roomRadarStatusColor)
+                        .lineLimit(1)
+                        .minimumScaleFactor(0.62)
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .frame(height: 26)
+                        .padding(.horizontal, 18)
+                        .contentTransition(.opacity)
 
-                ScrollView(.vertical, showsIndicators: true) {
-                    LazyVGrid(columns: columns, spacing: 8) {
-                        if roomRadar.peers.isEmpty {
-                            ForEach(0..<4, id: \.self) { index in
-                                NearbySpyIDPlaceholder(
-                                    index: index,
-                                    isActive: roomAccessPage == 2 && index < 2,
-                                    language: appState.language
-                                )
-                            }
-                        } else {
-                            ForEach(roomRadar.peers) { peer in
-                                NearbySpyIDCard(
-                                    peer: peer,
-                                    language: appState.language,
-                                    invitationState: roomRadar.invitationState(for: peer.id)
-                                ) {
-                                    inviteRoomRadarPeer(peer, to: room)
+                    ScrollView(.vertical, showsIndicators: true) {
+                        LazyVGrid(columns: columns, spacing: 8) {
+                            if roomRadar.peers.isEmpty {
+                                ForEach(0..<4, id: \.self) { index in
+                                    NearbySpyIDPlaceholder(
+                                        index: index,
+                                        isActive: roomAccessPage == RoomAccessPagePolicy.radar && index < 2,
+                                        language: appState.language
+                                    )
                                 }
-                                .transition(.radarPeerPresence)
+                            } else {
+                                ForEach(roomRadar.peers) { peer in
+                                    NearbySpyIDCard(
+                                        peer: peer,
+                                        language: appState.language,
+                                        invitationState: roomRadar.invitationState(for: peer.id)
+                                    ) {
+                                        inviteRoomRadarPeer(peer, to: room)
+                                    }
+                                    .transition(.radarPeerPresence)
+                                }
                             }
                         }
+                        .padding(.horizontal, 12)
+                        .padding(.bottom, 30)
+                        .animation(
+                            reduceMotion
+                                ? .easeOut(duration: 0.14)
+                                : .spring(response: 0.48, dampingFraction: 0.88),
+                            value: roomRadar.peers.map(\.id)
+                        )
                     }
-                    .padding(.horizontal, 12)
-                    .padding(.bottom, 30)
-                    .animation(
-                        reduceMotion
-                            ? .easeOut(duration: 0.14)
-                            : .spring(response: 0.48, dampingFraction: 0.88),
-                        value: roomRadar.peers.map(\.id)
-                    )
+                    .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+                    .accessibilityIdentifier("onlineRoom.radarDirectory")
+                } else {
+                    roomRadarActivationPrompt
                 }
-                .scrollBounceBehavior(.basedOnSize, axes: .vertical)
-                .accessibilityIdentifier("onlineRoom.radarDirectory")
             }
         }
         .clipShape(CutCornerShape(cut: 12))
@@ -1759,6 +3148,336 @@ struct GameView: View {
             es: "Radar, agentes cercanos: \(roomRadar.peers.count)",
             uk: "Радар, гравців поруч: \(roomRadar.peers.count)"
         ))
+    }
+
+    private func onlineRoomFriendsPage(_ room: GameRoom) -> some View {
+        SpyLobbyHeroSurface(accent: roomFriendsStatusColor) {
+            VStack(spacing: 0) {
+                SpyLobbyHeroHeader(
+                    title: "FRIENDS",
+                    status: roomFriendsStatusTitle,
+                    count: roomFriendsDirectory.profiles.count,
+                    accent: roomFriendsStatusColor,
+                    statusAccent: roomFriendsStatusColor
+                )
+                .padding(.horizontal, 18)
+                .padding(.top, 15)
+
+                roomFriendsDirectoryContent(room)
+                    .frame(maxWidth: .infinity, maxHeight: .infinity)
+            }
+        }
+        .clipShape(CutCornerShape(cut: 12))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onlineRoom.friendsDirectory")
+        .accessibilityLabel(localized(
+            en: "Friends, \(roomFriendsDirectory.profiles.count) accepted operatives",
+            ru: "Друзья, принято оперативников: \(roomFriendsDirectory.profiles.count)",
+            es: "Amigos, agentes aceptados: \(roomFriendsDirectory.profiles.count)",
+            uk: "Друзі, прийнятих оперативників: \(roomFriendsDirectory.profiles.count)"
+        ))
+    }
+
+    @ViewBuilder
+    private func roomFriendsDirectoryContent(_ room: GameRoom) -> some View {
+        switch roomFriendsDirectory.loadPhase {
+        case .idle:
+            roomFriendsStateMessage(
+                systemImage: "person.2",
+                title: localized(
+                    en: "FRIEND DIRECTORY READY",
+                    ru: "СПИСОК ДРУЗЕЙ ГОТОВ",
+                    es: "DIRECTORIO DE AMIGOS LISTO",
+                    uk: "СПИСОК ДРУЗІВ ГОТОВИЙ"
+                ),
+                detail: localized(
+                    en: "OPENING SECURE CHANNEL",
+                    ru: "ОТКРЫВАЕМ ЗАЩИЩЁННЫЙ КАНАЛ",
+                    es: "ABRIENDO CANAL SEGURO",
+                    uk: "ВІДКРИВАЄМО ЗАХИЩЕНИЙ КАНАЛ"
+                ),
+                accent: SpyTheme.muted
+            )
+            .accessibilityIdentifier("onlineRoom.friends.idle")
+
+        case .loading:
+            VStack(spacing: 12) {
+                ProgressView()
+                    .controlSize(.regular)
+                    .tint(SpyTheme.red)
+
+                Text(localized(
+                    en: "LOADING ACCEPTED OPERATIVES",
+                    ru: "ЗАГРУЖАЕМ ПРИНЯТЫХ ДРУЗЕЙ",
+                    es: "CARGANDO AGENTES ACEPTADOS",
+                    uk: "ЗАВАНТАЖУЄМО ПРИЙНЯТИХ ДРУЗІВ"
+                ))
+                .font(.system(size: 8, weight: .black, design: .monospaced))
+                .tracking(0.10)
+                .foregroundStyle(SpyTheme.dim)
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.bottom, 24)
+            .accessibilityIdentifier("onlineRoom.friends.loading")
+
+        case .loaded:
+            ScrollView(.vertical, showsIndicators: true) {
+                LazyVStack(spacing: 8) {
+                    ForEach(roomFriendsDirectory.profiles) { profile in
+                        roomFriendInvitationRow(profile, room: room)
+                    }
+                }
+                .padding(.horizontal, 12)
+                .padding(.top, 10)
+                .padding(.bottom, 31)
+            }
+            .scrollBounceBehavior(.basedOnSize, axes: .vertical)
+            .accessibilityIdentifier("onlineRoom.friends.loaded")
+
+        case .empty:
+            roomFriendsStateMessage(
+                systemImage: "person.2.slash",
+                title: localized(
+                    en: "NO ACCEPTED FRIENDS YET",
+                    ru: "ПОКА НЕТ ПРИНЯТЫХ ДРУЗЕЙ",
+                    es: "AÚN NO HAY AMIGOS ACEPTADOS",
+                    uk: "ПРИЙНЯТИХ ДРУЗІВ ЩЕ НЕМАЄ"
+                ),
+                detail: localized(
+                    en: "ADD OPERATIVES IN COMMUNITY FIRST",
+                    ru: "СНАЧАЛА ДОБАВЬ ОПЕРАТИВНИКОВ В COMMUNITY",
+                    es: "AÑADE AGENTES EN COMMUNITY PRIMERO",
+                    uk: "СПОЧАТКУ ДОДАЙ ОПЕРАТИВНИКІВ У COMMUNITY"
+                ),
+                accent: SpyTheme.muted
+            )
+            .accessibilityIdentifier("onlineRoom.friends.empty")
+
+        case .failed:
+            VStack(spacing: 10) {
+                roomFriendsStateMessage(
+                    systemImage: "exclamationmark.triangle",
+                    title: localized(
+                        en: "FRIENDS COULD NOT LOAD",
+                        ru: "НЕ УДАЛОСЬ ЗАГРУЗИТЬ ДРУЗЕЙ",
+                        es: "NO SE PUDIERON CARGAR LOS AMIGOS",
+                        uk: "НЕ ВДАЛОСЯ ЗАВАНТАЖИТИ ДРУЗІВ"
+                    ),
+                    detail: localized(
+                        en: "CHECK THE CONNECTION AND RETRY",
+                        ru: "ПРОВЕРЬ СОЕДИНЕНИЕ И ПОВТОРИ",
+                        es: "REVISA LA CONEXIÓN Y REINTENTA",
+                        uk: "ПЕРЕВІР З’ЄДНАННЯ ТА ПОВТОРИ"
+                    ),
+                    accent: SpyTheme.red
+                )
+
+                Button {
+                    retryRoomFriendsLoad()
+                } label: {
+                    roomAccessActionLabel(
+                        title: localized(
+                            en: "RETRY",
+                            ru: "ПОВТОРИТЬ",
+                            es: "REINTENTAR",
+                            uk: "ПОВТОРИТИ"
+                        ),
+                        systemImage: "arrow.clockwise",
+                        accent: SpyTheme.red
+                    )
+                }
+                .buttonStyle(SpyWebPressStyle())
+                .frame(maxWidth: 150)
+                .accessibilityIdentifier("onlineRoom.friends.retry")
+            }
+            .frame(maxWidth: .infinity, maxHeight: .infinity)
+            .padding(.horizontal, 18)
+            .padding(.bottom, 24)
+            .accessibilityIdentifier("onlineRoom.friends.failed")
+        }
+    }
+
+    private func roomFriendsStateMessage(
+        systemImage: String,
+        title: String,
+        detail: String,
+        accent: Color
+    ) -> some View {
+        VStack(spacing: 8) {
+            Image(systemName: systemImage)
+                .font(.system(size: 20, weight: .bold))
+                .foregroundStyle(accent)
+
+            Text(title)
+                .font(.system(size: 9, weight: .black, design: .monospaced))
+                .tracking(0.08)
+                .foregroundStyle(Color.white.opacity(0.74))
+                .multilineTextAlignment(.center)
+
+            Text(detail)
+                .font(.system(size: 7, weight: .bold, design: .monospaced))
+                .tracking(0.07)
+                .foregroundStyle(SpyTheme.dim)
+                .multilineTextAlignment(.center)
+                .lineLimit(2)
+                .minimumScaleFactor(0.72)
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .padding(.horizontal, 20)
+        .padding(.bottom, 24)
+    }
+
+    private func roomFriendInvitationRow(
+        _ profile: PublicSpyProfile,
+        room: GameRoom
+    ) -> some View {
+        let invitationPhase = roomFriendsDirectory.invitationPhase(for: profile.id)
+        let accent = roomFriendInvitationAccent(invitationPhase)
+
+        return HStack(spacing: 10) {
+            Text(profile.avatar)
+                .font(.system(size: 21))
+                .frame(width: 38, height: 38)
+                .background(Color.black.opacity(0.34), in: CutCornerShape(cut: 6))
+                .overlay(CutCornerShape(cut: 6).stroke(SpyTheme.stroke, lineWidth: 1))
+
+            VStack(alignment: .leading, spacing: 3) {
+                Text(profile.displayName.uppercased())
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .tracking(0.05)
+                    .foregroundStyle(Color.white.opacity(0.82))
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.64)
+
+                Text("SPYID • \(profile.spyID)")
+                    .font(.system(size: 6.5, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.dim)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            RoomFriendInvitationButton(
+                phase: invitationPhase,
+                accent: accent,
+                title: roomFriendInvitationTitle(invitationPhase),
+                symbol: roomFriendInvitationSymbol(invitationPhase),
+                accessibilityIdentifier: "onlineRoom.friendInvite.\(profile.id)",
+                accessibilityLabel: localized(
+                en: "Invite \(profile.displayName) to this room",
+                ru: "Пригласить \(profile.displayName) в эту комнату",
+                es: "Invitar a \(profile.displayName) a esta sala",
+                uk: "Запросити \(profile.displayName) до цієї кімнати"
+                ),
+                accessibilityValue: roomFriendInvitationAccessibilityValue(invitationPhase)
+            ) {
+                beginRoomFriendInvitation(profile, room: room)
+            }
+        }
+        .padding(8)
+        .background(Color.white.opacity(0.03), in: CutCornerShape(cut: 8))
+        .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.stroke.opacity(0.90), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onlineRoom.friend.\(profile.id)")
+    }
+
+    private var roomFriendsStatusColor: Color {
+        switch roomFriendsDirectory.loadPhase {
+        case .idle: SpyTheme.muted
+        case .loading: SpyTheme.amber
+        case .loaded: SpyTheme.green
+        case .empty: SpyTheme.muted
+        case .failed: SpyTheme.red
+        }
+    }
+
+    private var roomFriendsStatusTitle: String {
+        switch roomFriendsDirectory.loadPhase {
+        case .idle:
+            localized(en: "READY", ru: "ГОТОВО", es: "LISTO", uk: "ГОТОВО")
+        case .loading:
+            localized(en: "LOADING", ru: "ЗАГРУЗКА", es: "CARGANDO", uk: "ЗАВАНТАЖЕННЯ")
+        case .loaded:
+            localized(en: "ACCEPTED", ru: "ПРИНЯТЫ", es: "ACEPTADOS", uk: "ПРИЙНЯТІ")
+        case .empty:
+            localized(en: "EMPTY", ru: "ПУСТО", es: "VACÍO", uk: "ПОРОЖНЬО")
+        case .failed:
+            localized(en: "FAILED", ru: "ОШИБКА", es: "ERROR", uk: "ПОМИЛКА")
+        }
+    }
+
+    private func roomFriendInvitationTitle(_ phase: RoomFriendInvitationPhase) -> String {
+        switch phase {
+        case .idle:
+            localized(en: "INVITE", ru: "ПОЗВАТЬ", es: "INVITAR", uk: "ЗАПРОСИТИ")
+        case .sending:
+            localized(en: "SENDING", ru: "ОТПРАВКА", es: "ENVIANDO", uk: "НАДСИЛАННЯ")
+        case .sent:
+            localized(en: "SENT", ru: "ОТПРАВЛЕНО", es: "ENVIADO", uk: "НАДІСЛАНО")
+        case .failed:
+            localized(en: "RETRY", ru: "ПОВТОРИТЬ", es: "REINTENTAR", uk: "ПОВТОРИТИ")
+        }
+    }
+
+    private func roomFriendInvitationSymbol(_ phase: RoomFriendInvitationPhase) -> String {
+        switch phase {
+        case .idle: "paperplane"
+        case .sending: "paperplane"
+        case .sent: "checkmark"
+        case .failed: "arrow.clockwise"
+        }
+    }
+
+    private func roomFriendInvitationAccent(_ phase: RoomFriendInvitationPhase) -> Color {
+        switch phase {
+        case .idle: SpyTheme.muted
+        case .sending: SpyTheme.amber
+        case .sent: SpyTheme.green
+        case .failed: SpyTheme.red
+        }
+    }
+
+    private func roomFriendInvitationAccessibilityValue(
+        _ phase: RoomFriendInvitationPhase
+    ) -> String {
+        switch phase {
+        case .idle:
+            localized(en: "Ready", ru: "Готово", es: "Listo", uk: "Готово")
+        case .sending:
+            localized(en: "Sending", ru: "Отправляется", es: "Enviando", uk: "Надсилається")
+        case .sent:
+            localized(en: "Sent", ru: "Отправлено", es: "Enviado", uk: "Надіслано")
+        case .failed:
+            localized(en: "Failed, retry available", ru: "Ошибка, можно повторить", es: "Error, se puede reintentar", uk: "Помилка, можна повторити")
+        }
+    }
+
+    private var roomRadarActivationPrompt: some View {
+        VStack(spacing: 9) {
+            Text(localized(
+                en: "RADAR IS OFF UNTIL YOU ACTIVATE IT",
+                ru: "РАДАР ВЫКЛЮЧЕН ДО ТВОЕЙ АКТИВАЦИИ",
+                es: "RADAR ESTÁ APAGADO HASTA QUE LO ACTIVES",
+                uk: "РАДАР ВИМКНЕНО ДО ТВОЄЇ АКТИВАЦІЇ"
+            ))
+            .font(.system(size: 8, weight: .black, design: .monospaced))
+            .tracking(0.10)
+            .foregroundStyle(SpyTheme.dim)
+            .multilineTextAlignment(.center)
+
+            Button {
+                HapticManager.shared.fire(.buttonPress)
+                appState.activateRadarAndStartScanning(requestCameraAccess: true)
+            } label: {
+                SpyActionLabel(
+                    title: localized(en: "ACTIVATE RADAR", ru: "АКТИВИРОВАТЬ РАДАР", es: "ACTIVAR RADAR", uk: "АКТИВУВАТИ РАДАР"),
+                    systemImage: "antenna.radiowaves.left.and.right"
+                )
+            }
+            .buttonStyle(SpyButtonStyle(variant: .red))
+            .accessibilityIdentifier("onlineRoom.activateRadar")
+        }
+        .padding(.horizontal, 18)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
     }
 
     private var roomRadarStatusColor: Color {
@@ -1792,22 +3511,189 @@ struct GameView: View {
     }
 
     private func updateRoomRadarScanning(from previousPage: Int, to nextPage: Int) {
-        if previousPage == 2, nextPage != 2 {
+        if RoomAccessPagePolicy.shouldStopRadar(from: previousPage, to: nextPage) {
             roomRadar.stopScanning()
         }
-        if nextPage == 2 {
-            appState.startRadarScanning(requestCameraAccess: true)
+        if RoomAccessPagePolicy.shouldStartRadar(on: nextPage) {
+            appState.resumeRadarScanningIfActivated(requestCameraAccess: true)
         }
     }
 
     private var initialRoomAccessPage: Int {
 #if DEBUG
         if appState.shouldUsePreviewData,
+           ProcessInfo.processInfo.arguments.contains("--spyclash-preview-room-access=friends") {
+            return RoomAccessPagePolicy.friends
+        }
+        if appState.shouldUsePreviewData,
            ProcessInfo.processInfo.arguments.contains("--spyclash-preview-room-access=radar") {
-            return 2
+            return RoomAccessPagePolicy.radar
         }
 #endif
-        return 0
+        return RoomAccessPagePolicy.roomCode
+    }
+
+    private func retryRoomFriendsLoad() {
+        guard roomFriendsDirectory.loadPhase == .failed,
+              currentRoomFriendsScope != nil else { return }
+        HapticManager.shared.fire(.buttonPress)
+        roomFriendsLoadAttempt &+= 1
+    }
+
+    @MainActor
+    private func loadRoomFriends(for scope: RoomFriendsScope) async {
+        guard scope.matches(
+            accountUserID: appState.user?.id,
+            roomID: appState.activeRoom?.id,
+            page: roomAccessPage
+        ) else { return }
+
+        let requestID = UUID()
+        guard roomFriendsDirectory.beginLoading(scope: scope, requestID: requestID) else { return }
+
+        do {
+            let communityState: CommunityState
+#if DEBUG
+            if appState.shouldUsePreviewData {
+                await Task.yield()
+                communityState = RoomFriendsPreviewData.state
+            } else {
+                communityState = try await appState.client.communityState()
+            }
+#else
+            communityState = try await appState.client.communityState()
+#endif
+
+            guard !Task.isCancelled else {
+                recoverCancelledRoomFriendsLoad(scope: scope, requestID: requestID)
+                return
+            }
+            guard scope.matches(
+                accountUserID: appState.user?.id,
+                roomID: appState.activeRoom?.id,
+                page: roomAccessPage
+            ) else { return }
+            _ = roomFriendsDirectory.receive(
+                communityState,
+                scope: scope,
+                requestID: requestID
+            )
+        } catch is CancellationError {
+            recoverCancelledRoomFriendsLoad(scope: scope, requestID: requestID)
+            return
+        } catch {
+            guard scope.matches(
+                accountUserID: appState.user?.id,
+                roomID: appState.activeRoom?.id,
+                page: roomAccessPage
+            ) else { return }
+            if roomFriendsDirectory.failLoading(scope: scope, requestID: requestID) {
+                HapticManager.shared.fire(.notification(.error))
+            }
+        }
+    }
+
+    private func recoverCancelledRoomFriendsLoad(
+        scope: RoomFriendsScope,
+        requestID: UUID
+    ) {
+        guard scope.matches(
+            accountUserID: appState.user?.id,
+            roomID: appState.activeRoom?.id,
+            page: roomAccessPage
+        ), roomFriendsDirectory.cancelLoading(
+            scope: scope,
+            requestID: requestID
+        ) else { return }
+        roomFriendsLoadAttempt &+= 1
+    }
+
+    private func beginRoomFriendInvitation(
+        _ profile: PublicSpyProfile,
+        room: GameRoom
+    ) {
+        guard let scope = currentRoomFriendsScope else { return }
+        let requestID = UUID()
+        guard roomFriendsDirectory.beginInvitation(
+            userID: profile.id,
+            scope: scope,
+            requestID: requestID
+        ) else { return }
+
+        HapticManager.shared.fire(.buttonPress)
+        Task { @MainActor in
+            await performRoomFriendInvitation(
+                profile,
+                room: room,
+                scope: scope,
+                requestID: requestID
+            )
+        }
+    }
+
+    @MainActor
+    private func performRoomFriendInvitation(
+        _ profile: PublicSpyProfile,
+        room: GameRoom,
+        scope: RoomFriendsScope,
+        requestID: UUID
+    ) async {
+        do {
+            let acknowledgement: CommunityActionAcknowledgement
+#if DEBUG
+            if appState.shouldUsePreviewData {
+                try await Task.sleep(for: .milliseconds(420))
+                acknowledgement = CommunityActionAcknowledgement(ok: true)
+            } else {
+                acknowledgement = try await appState.client.inviteCommunityOperative(
+                    userID: profile.id,
+                    room: room
+                )
+            }
+#else
+            acknowledgement = try await appState.client.inviteCommunityOperative(
+                userID: profile.id,
+                room: room
+            )
+#endif
+
+            guard scope.matches(
+                accountUserID: appState.user?.id,
+                roomID: appState.activeRoom?.id,
+                page: roomAccessPage
+            ) else { return }
+
+            if acknowledgement.ok {
+                if roomFriendsDirectory.finishInvitation(
+                    userID: profile.id,
+                    scope: scope,
+                    requestID: requestID
+                ) {
+                    HapticManager.shared.fire(.notification(.success))
+                }
+            } else if roomFriendsDirectory.failInvitation(
+                userID: profile.id,
+                scope: scope,
+                requestID: requestID
+            ) {
+                HapticManager.shared.fire(.notification(.error))
+            }
+        } catch is CancellationError {
+            return
+        } catch {
+            guard scope.matches(
+                accountUserID: appState.user?.id,
+                roomID: appState.activeRoom?.id,
+                page: roomAccessPage
+            ) else { return }
+            if roomFriendsDirectory.failInvitation(
+                userID: profile.id,
+                scope: scope,
+                requestID: requestID
+            ) {
+                HapticManager.shared.fire(.notification(.error))
+            }
+        }
     }
 
     private func inviteRoomRadarPeer(_ peer: RadarNearbyPeer, to room: GameRoom) {
@@ -1815,7 +3701,8 @@ struct GameView: View {
 
         Task { @MainActor in
             let result = await roomRadar.toggleInvitation(peer, to: room)
-            guard roomAccessPage == 2, appState.activeRoom?.id == room.id else { return }
+            guard roomAccessPage == RoomAccessPagePolicy.radar,
+                  appState.activeRoom?.id == room.id else { return }
 
             switch result {
             case .sent:
@@ -1932,7 +3819,7 @@ struct GameView: View {
 
                 ZStack {
                     RoomQRScanBeam(
-                        isActive: roomAccessPage == 1 && !isRoomQRVisible && !isRoomQRFlipping
+                        isActive: roomAccessPage == RoomAccessPagePolicy.roomQR && !isRoomQRVisible && !isRoomQRFlipping
                     )
 
                     Image(systemName: "eye.slash.fill")
@@ -2046,7 +3933,7 @@ struct GameView: View {
 
     private var roomAccessPageIndicator: some View {
         HStack(spacing: 6) {
-            ForEach(0..<3, id: \.self) { page in
+            ForEach(0..<RoomAccessPagePolicy.pageCount, id: \.self) { page in
                 Capsule()
                     .fill(page == roomAccessPage ? SpyTheme.red : Color.white.opacity(0.20))
                     .frame(width: page == roomAccessPage ? 24 : 10, height: 3)
@@ -2253,6 +4140,18 @@ struct GameView: View {
     private func onlinePlayerRow(_ player: Player, index: Int, room: GameRoom) -> some View {
         let isCurrentUser = player.email == appState.user?.email
         let isRoomHost = player.email == room.hostEmail
+        let kickConfirmation = RoomKickPolicy.confirmation(
+            for: player,
+            room: room,
+            accountUserID: appState.user?.id,
+            currentUserEmail: appState.user?.email
+        )
+        let kickPhase = roomKickCoordinator.phase(
+            for: player,
+            room: room,
+            accountUserID: appState.user?.id,
+            currentUserEmail: appState.user?.email
+        )
 
         return HStack(spacing: 8) {
             Text("\(index + 1)")
@@ -2291,6 +4190,19 @@ struct GameView: View {
                 RoundedRectangle(cornerRadius: 8, style: .continuous)
                     .stroke(SpyTheme.strokeStrong.opacity(0.78), lineWidth: 1)
             }
+
+            if kickConfirmation != nil {
+                RoomKickButton(
+                    phase: kickPhase,
+                    accessibilityIdentifier: "onlineRoom.kick.\(roomPlayerAccessibilityKey(player.email))",
+                    accessibilityLabel: roomKickAccessibilityLabel(
+                        player: player,
+                        phase: kickPhase
+                    )
+                ) {
+                    requestRoomKick(player, room: room)
+                }
+            }
         }
     }
 
@@ -2304,6 +4216,41 @@ struct GameView: View {
             .background(color.opacity(0.07))
             .overlay(Rectangle().stroke(color.opacity(0.28), lineWidth: 1))
             .lineLimit(1)
+    }
+
+    private func roomKickAccessibilityLabel(
+        player: Player,
+        phase: RoomKickPhase
+    ) -> String {
+        switch phase {
+        case .idle:
+            localized(
+                en: "Remove \(player.name) from room",
+                ru: "Удалить \(player.name) из комнаты",
+                es: "Expulsar a \(player.name) de la sala",
+                uk: "Видалити \(player.name) з кімнати"
+            )
+        case .sending:
+            localized(
+                en: "Removing \(player.name)",
+                ru: "Удаляем \(player.name)",
+                es: "Expulsando a \(player.name)",
+                uk: "Видаляємо \(player.name)"
+            )
+        case .failed:
+            localized(
+                en: "Retry removing \(player.name)",
+                ru: "Повторить удаление \(player.name)",
+                es: "Reintentar expulsar a \(player.name)",
+                uk: "Повторити видалення \(player.name)"
+            )
+        }
+    }
+
+    private func roomPlayerAccessibilityKey(_ value: String) -> String {
+        value.map { character in
+            character.isLetter || character.isNumber ? character : "_"
+        }.reduce("") { $0 + String($1) }
     }
 
     private var onlineIntelPanel: some View {
@@ -2323,6 +4270,7 @@ struct GameView: View {
                 }
 
                 roomThemeInput
+                    .id(onlineThemeScrollTarget)
 
                 roomThemeSuggestions
 
@@ -2359,15 +4307,6 @@ struct GameView: View {
                 if roomGeneratedWords.count >= 2 && roomHasCustomTheme {
                     roomSaveAsWordPackButton
                         .transition(.opacity.combined(with: .move(edge: .top)))
-                }
-            }
-            .background {
-                if focusedOnlineSetupField == .theme {
-                    Color.black.opacity(0.001)
-                        .contentShape(Rectangle())
-                        .onTapGesture {
-                            dismissOnlineSetupCapture()
-                        }
                 }
             }
             .animation(.smooth(duration: 0.28), value: roomHasCustomTheme)
@@ -3704,7 +5643,7 @@ struct GameView: View {
                             .spyFitted(lines: 2, scale: 0.68, alignment: .center)
                     } else {
                         Button {
-                            Task { await requestVote(room) }
+                            beginVoteRequest(room)
                         } label: {
                             if isRequestingVote {
                                 SpySpinner(size: 20, accent: .white)
@@ -3732,10 +5671,15 @@ struct GameView: View {
                     VStack(spacing: 8) {
                         ForEach(votingCandidates(in: room)) { candidate in
                             Button {
-                                HapticManager.shared.fire(.buttonPress)
-                                Task { await castVote(room, targetEmail: candidate.email) }
+                                beginDetectiveVote(room, targetEmail: candidate.email)
                             } label: {
-                                voteCandidateRow(candidate)
+                                voteCandidateRow(
+                                    candidate,
+                                    isPending: emailsMatch(
+                                        pendingDetectiveVoteTargetEmail,
+                                        candidate.email
+                                    )
+                                )
                             }
                             .buttonStyle(SpyButtonStyle(variant: .ghost))
                             .disabled(isCastingVote)
@@ -3823,7 +5767,7 @@ struct GameView: View {
         )
     }
 
-    private func voteCandidateRow(_ candidate: Player) -> some View {
+    private func voteCandidateRow(_ candidate: Player, isPending: Bool = false) -> some View {
         HStack(spacing: 10) {
             Text(candidate.avatar)
                 .font(.system(size: 21))
@@ -3836,10 +5780,14 @@ struct GameView: View {
 
             Spacer()
 
-            Text(webVoteSpyQuestion)
-                .font(.system(size: 10, weight: .bold, design: .default))
-                .foregroundStyle(SpyTheme.dim)
-                .spyFitted(scale: 0.62, alignment: .trailing)
+            if isPending {
+                SpySpinner(size: 17, accent: SpyTheme.red)
+            } else {
+                Text(webVoteSpyQuestion)
+                    .font(.system(size: 10, weight: .bold, design: .default))
+                    .foregroundStyle(SpyTheme.dim)
+                    .spyFitted(scale: 0.62, alignment: .trailing)
+            }
         }
         .frame(maxWidth: .infinity)
     }
@@ -3858,7 +5806,7 @@ struct GameView: View {
             }
 
             Button {
-                Task { await requestVote(room) }
+                beginVoteRequest(room)
             } label: {
                 if isRequestingVote {
                     SpySpinner(size: 20, accent: .white)
@@ -4118,6 +6066,14 @@ struct GameView: View {
                         .tracking(0.12)
                         .foregroundStyle(.white)
                         .spyFitted(lines: 2, scale: 0.58)
+                    if let spyGuess = FinishedRoomResultPolicy.wrongSpyGuess(in: room) {
+                        Text(wrongSpyGuessResult(spyGuess))
+                            .font(SpyTheme.micro)
+                            .tracking(0.08)
+                            .foregroundStyle(SpyTheme.amber)
+                            .spyFitted(lines: 3, scale: 0.56)
+                            .accessibilityIdentifier("onlineRoom.result.spyGuess")
+                    }
                     if !room.spyPlayers.isEmpty {
                         Text(spyTeamResult(room.spyPlayers))
                             .font(SpyTheme.micro)
@@ -4136,6 +6092,15 @@ struct GameView: View {
             }
             .buttonStyle(SpyButtonStyle(variant: .outline))
         }
+    }
+
+    private func wrongSpyGuessResult(_ guess: String) -> String {
+        localized(
+            en: "THE SPY GUESSED: \(guess.uppercased())",
+            ru: "ШПИОН ДУМАЛ, ЧТО СЛОВО: \(guess.uppercased())",
+            es: "EL ESPÍA PENSÓ QUE ERA: \(guess.uppercased())",
+            uk: "ШПИГУН ДУМАВ, ЩО СЛОВО: \(guess.uppercased())"
+        )
     }
 
     private func roomKeyPanel(_ room: GameRoom, showsMetrics: Bool = true) -> some View {
@@ -4287,7 +6252,7 @@ struct GameView: View {
                     .spyFitted(lines: 2, scale: 0.62, alignment: .center)
 
                 Button {
-                    Task { await toggleReady(room) }
+                    beginReadyToggle(room)
                 } label: {
                     if isTogglingReady {
                         SpySpinner(size: 20, accent: .white)
@@ -4327,14 +6292,35 @@ struct GameView: View {
                     .spyFitted(scale: 0.70)
 
                 ForEach(room.playersList) { player in
-                    readyPlayerRow(player, isReady: ready.contains(player.email))
+                    readyPlayerRow(
+                        player,
+                        room: room,
+                        isReady: ready.contains(player.email)
+                    )
                 }
             }
         }
     }
 
-    private func readyPlayerRow(_ player: Player, isReady: Bool) -> some View {
-        HStack(spacing: 12) {
+    private func readyPlayerRow(
+        _ player: Player,
+        room: GameRoom,
+        isReady: Bool
+    ) -> some View {
+        let kickConfirmation = RoomKickPolicy.confirmation(
+            for: player,
+            room: room,
+            accountUserID: appState.user?.id,
+            currentUserEmail: appState.user?.email
+        )
+        let kickPhase = roomKickCoordinator.phase(
+            for: player,
+            room: room,
+            accountUserID: appState.user?.id,
+            currentUserEmail: appState.user?.email
+        )
+
+        return HStack(spacing: 12) {
             Text(player.avatar)
                 .font(.system(size: 24))
                 .frame(width: 34, height: 34)
@@ -4352,6 +6338,19 @@ struct GameView: View {
                 .tracking(0.04)
                 .foregroundStyle(isReady ? SpyTheme.green : SpyTheme.dim.opacity(0.50))
                 .spyFitted(scale: 0.64, alignment: .trailing)
+
+            if kickConfirmation != nil {
+                RoomKickButton(
+                    phase: kickPhase,
+                    accessibilityIdentifier: "onlineRoom.kick.\(roomPlayerAccessibilityKey(player.email))",
+                    accessibilityLabel: roomKickAccessibilityLabel(
+                        player: player,
+                        phase: kickPhase
+                    )
+                ) {
+                    requestRoomKick(player, room: room)
+                }
+            }
         }
         .padding(.vertical, 10)
         .padding(.horizontal, 14)
@@ -5358,8 +7357,7 @@ struct GameView: View {
                 } else {
                     ForEach(votingCandidates(in: room)) { candidate in
                         Button {
-                            HapticManager.shared.fire(.buttonPress)
-                            Task { await castVote(room, targetEmail: candidate.email) }
+                            beginDetectiveVote(room, targetEmail: candidate.email)
                         } label: {
                             HStack {
                                 Text(candidate.avatar)
@@ -5369,7 +7367,11 @@ struct GameView: View {
                                     .tracking(0.04)
                                     .spyFitted(scale: 0.68)
                                 Spacer()
-                                Image(systemName: "scope")
+                                if emailsMatch(pendingDetectiveVoteTargetEmail, candidate.email) {
+                                    SpySpinner(size: 17, accent: SpyTheme.red)
+                                } else {
+                                    Image(systemName: "scope")
+                                }
                             }
                         }
                         .buttonStyle(SpyButtonStyle(variant: .ghost))
@@ -5381,10 +7383,23 @@ struct GameView: View {
     }
 
     private func replayPanel(_ room: GameRoom) -> some View {
-        let votes = Set(room.readyPlayers ?? [])
-        let hasVoted = appState.user.map { votes.contains($0.email) } ?? false
-        let total = max(room.playersList.count, 1)
-        let allVoted = room.playersList.count > 0 && room.playersList.allSatisfy { votes.contains($0.email) }
+        let eligiblePlayers = room.replayEligiblePlayersList
+        let eligibleEmails = Set(eligiblePlayers.map { normalizedEmailKey($0.email) })
+        var votes = Set((room.readyPlayers ?? []).map(normalizedEmailKey))
+        votes.formIntersection(eligibleEmails)
+        let currentEmail = appState.user.map { normalizedEmailKey($0.email) }
+        let currentIsEligible = currentEmail.map(eligibleEmails.contains) ?? false
+        if isVotingReplay, let currentEmail, currentIsEligible {
+            votes.insert(currentEmail)
+        }
+        let hasVoted = currentEmail.map(votes.contains) ?? false
+        let total = eligiblePlayers.count
+        let allVoted = !eligiblePlayers.isEmpty && eligibleEmails.isSubset(of: votes)
+        let replayRequest = ReplayAutoStartPolicy.request(
+            for: room,
+            currentUserEmail: appState.user?.email
+        )
+        let autoStartFailed = replayRequest?.operationKey == replayAutoStartFailedOperationKey
 
         return SpyPanel(accent: allVoted ? SpyTheme.green : SpyTheme.amber) {
             VStack(alignment: .leading, spacing: 14) {
@@ -5408,8 +7423,8 @@ struct GameView: View {
                     .spyFitted(lines: 2, scale: 0.58)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 96), spacing: 8)], spacing: 8) {
-                    ForEach(room.playersList) { player in
-                        let accepted = votes.contains(player.email)
+                    ForEach(eligiblePlayers) { player in
+                        let accepted = votes.contains(normalizedEmailKey(player.email))
                         HStack(spacing: 5) {
                             Text(accepted ? "✓" : "·")
                             Text(player.name.uppercased())
@@ -5427,9 +7442,9 @@ struct GameView: View {
                     }
                 }
 
-                if !hasVoted {
+                if currentIsEligible, !hasVoted {
                     Button {
-                        Task { await voteReplay(room) }
+                        beginReplayVote(room)
                     } label: {
                         if isVotingReplay {
                             SpySpinner(size: 20, accent: .white)
@@ -5441,6 +7456,22 @@ struct GameView: View {
                     }
                     .buttonStyle(SpyButtonStyle(variant: .red))
                     .disabled(isVotingReplay || isResettingRoom)
+                    .accessibilityIdentifier("onlineRoom.voteReplay")
+                } else if isVotingReplay {
+                    HStack(spacing: 8) {
+                        SpySpinner(size: 16, accent: SpyTheme.amber)
+                        Text(localized(
+                            en: "SAVING YOUR REPLAY VOTE",
+                            ru: "СОХРАНЯЕМ ТВОЙ ГОЛОС ЗА РЕВАНШ",
+                            es: "GUARDANDO TU VOTO DE REVANCHA",
+                            uk: "ЗБЕРІГАЄМО ТВІЙ ГОЛОС ЗА РЕВАНШ"
+                        ))
+                    }
+                    .font(SpyTheme.micro)
+                    .tracking(0.08)
+                    .foregroundStyle(SpyTheme.amber)
+                    .spyFitted(lines: 2, scale: 0.60, alignment: .center)
+                    .frame(maxWidth: .infinity, minHeight: 36)
                 } else {
                     Text(copy.replayVoteLocked)
                         .font(SpyTheme.micro)
@@ -5452,18 +7483,30 @@ struct GameView: View {
 
                 if isHost(room) {
                     Button {
-                        Task { await resetRoom(room) }
+                        if allVoted, let replayRequest {
+                            scheduleReplayAutoStart(replayRequest, isExplicitRetry: true)
+                        } else {
+                            Task { await resetRoom(room) }
+                        }
                     } label: {
-                        if isResettingRoom {
+                        if isResettingRoom || isStarting {
                             SpySpinner(size: 20, accent: .white)
                         } else {
-                        Label(allVoted ? copy.playAgain : copy.backToLobby, systemImage: allVoted ? "play.fill" : "arrow.uturn.left")
+                        Label(
+                            allVoted
+                                ? (autoStartFailed
+                                    ? localized(en: "RETRY START", ru: "ПОВТОРИТЬ СТАРТ", es: "REINTENTAR INICIO", uk: "ПОВТОРИТИ СТАРТ")
+                                    : copy.playAgain)
+                                : copy.backToLobby,
+                            systemImage: allVoted ? "play.fill" : "arrow.uturn.left"
+                        )
                                 .lineLimit(2)
                                 .minimumScaleFactor(0.58)
                         }
                     }
                     .buttonStyle(SpyButtonStyle(variant: allVoted ? .red : .outline))
-                    .disabled(isResettingRoom || isVotingReplay)
+                    .disabled(isResettingRoom || isStarting || isVotingReplay)
+                    .accessibilityIdentifier(allVoted ? "onlineRoom.startReplay" : "onlineRoom.resetReplay")
                 } else if allVoted {
                     Text(copy.waitingHostResetLobby)
                         .font(SpyTheme.micro)
@@ -5776,7 +7819,7 @@ struct GameView: View {
             }
 
             Button {
-                Task { await requestVote(room) }
+                beginVoteRequest(room)
             } label: {
                 if isRequestingVote {
                     SpySpinner(size: 20, accent: .white)
@@ -6537,7 +8580,11 @@ struct GameView: View {
     private func roomWordCountModeHint(_ mode: RoomWordCountMode) -> String {
         switch mode {
         case .recommended:
-            localized(en: "100 words", ru: "100 слов", es: "100 palabras", uk: "100 слів")
+            if WordPackRecommendedCountPolicy.isCountriesTheme(roomTheme) {
+                localized(en: "Up to 100 words", ru: "До 100 слов", es: "Hasta 100 palabras", uk: "До 100 слів")
+            } else {
+                localized(en: "30 words", ru: "30 слов", es: "30 palabras", uk: "30 слів")
+            }
         case .custom:
             localized(
                 en: "\(Int(roomCustomWordCount)) words",
@@ -6817,8 +8864,11 @@ struct GameView: View {
     }
 
     private func allPlayersReady(_ room: GameRoom) -> Bool {
-        let ready = Set(room.readyPlayers ?? [])
-        return room.playersList.count >= 3 && room.playersList.allSatisfy { ready.contains($0.email) }
+        let ready = Set((room.readyPlayers ?? []).map(normalizedEmailKey))
+        let eligiblePlayers = room.replayEligiblePlayersList
+        return eligiblePlayers.count >= 3 && eligiblePlayers.allSatisfy {
+            ready.contains(normalizedEmailKey($0.email))
+        }
     }
 
     private func isCurrentUserSpectator(_ room: GameRoom) -> Bool {
@@ -6958,7 +9008,9 @@ struct GameView: View {
 
         let targetCount: Int
         if usingInitialTarget {
-            targetCount = roomWordCountMode == .custom ? Int(roomCustomWordCount) : 100
+            targetCount = roomWordCountMode == .custom
+                ? Int(roomCustomWordCount)
+                : WordPackRecommendedCountPolicy.requestCount(for: theme)
         } else {
             targetCount = roomThemeMaxWords
         }
@@ -7024,7 +9076,13 @@ struct GameView: View {
             roomGeneratedLobbySource = .ai
             disabledRoomPoolWordKeys.removeAll()
             if usingInitialTarget {
-                roomWordCount = Double(min(words.count, roomWordCountMode == .custom ? Int(roomCustomWordCount) : max(25, min(words.count, 100))))
+                let selectedCount = roomWordCountMode == .custom
+                    ? min(words.count, Int(roomCustomWordCount))
+                    : WordPackRecommendedCountPolicy.selectedCount(
+                        for: theme,
+                        availableCount: words.count
+                    )
+                roomWordCount = Double(selectedCount)
             } else {
                 roomWordCount = Double(min(max(Int(roomWordCount), 2), words.count))
             }
@@ -7121,11 +9179,17 @@ struct GameView: View {
             disabledRoomPoolWordKeys = disabledRoomPoolWordKeys.filter { key in
                 merged.contains { roomWordKey($0) == key }
             }
-            roomWordCount = Double(
-                wasUsingEntirePool
-                    ? merged.count
-                    : min(merged.count, max(selectedWordCount, 2))
-            )
+            let nextSelectedCount = if roomWordCountMode == .recommended {
+                WordPackRecommendedCountPolicy.selectedCount(
+                    for: theme,
+                    availableCount: merged.count
+                )
+            } else if wasUsingEntirePool {
+                merged.count
+            } else {
+                min(merged.count, max(selectedWordCount, 2))
+            }
+            roomWordCount = Double(nextSelectedCount)
             roomWordSource = .generated
             showsAllRoomPoolWords = false
             scheduleLobbyStateSync(debounce: .milliseconds(80))
@@ -7254,7 +9318,25 @@ struct GameView: View {
             ? .custom
             : .recommended
         let authoritativeCount = max(min(authoritativeState.lobbyWordCount, 200), 0)
-        roomWordCount = Double(authoritativeCount)
+        let normalizedRecommendedCount = LobbyRecommendedCountMigrationPolicy.normalizedCount(
+            for: roomTheme,
+            authoritativeCount: authoritativeCount,
+            availableCount: entries.filter(\.enabled).count
+        )
+        let shouldApplyRecommendedCountPolicy = roomWordCountMode == .recommended
+            && LobbyRecommendedCountMigrationPolicy.applies(to: source)
+        let shouldPersistRecommendedCountNormalization = shouldApplyRecommendedCountPolicy
+            && LobbyRecommendedCountMigrationPolicy.requiresServerSync(
+                authoritativeCount: authoritativeCount,
+                normalizedCount: normalizedRecommendedCount
+            )
+            && isHost(room)
+            && room.normalizedStatus == "waiting"
+        roomWordCount = if shouldApplyRecommendedCountPolicy {
+            Double(normalizedRecommendedCount)
+        } else {
+            Double(authoritativeCount)
+        }
         if roomWordCountMode == .custom {
             roomCustomWordCount = Double(max(min(authoritativeCount, 80), 10))
         }
@@ -7295,6 +9377,9 @@ struct GameView: View {
 
         appliedLobbyRevision = revision
         deferredLobbyUpdate.clear()
+        if shouldPersistRecommendedCountNormalization {
+            scheduleLobbyStateSync(debounce: .milliseconds(80))
+        }
     }
 
     private func reconcileAuthoritativeLobbyStateAfterSliderInteraction() {
@@ -7410,7 +9495,9 @@ struct GameView: View {
             selectedDurationMinutes = Double(max((room.gameDurationSeconds ?? 900) / 60, 1))
             selectedSpyCount = Double(min(room.lobbySpyCountValue, room.maximumLobbySpyCount))
             selectedSpiesKnowEachOther = room.spiesKnowEachOther ?? false
-            roomAccessPage = 0
+            roomAccessPage = RoomAccessPagePolicy.roomCode
+            roomFriendsDirectory.deactivate()
+            roomFriendsLoadAttempt = 0
             isRoomCodeVisible = false
             isRoomQRVisible = false
             roomThemeFallbackSource = .none
@@ -7583,7 +9670,360 @@ struct GameView: View {
         }
     }
 
+    private func beginReadyToggle(_ room: GameRoom) {
+        guard !isTogglingReady,
+              room.normalizedStatus == "ready_voting",
+              appState.user != nil else { return }
+        isTogglingReady = true
+        HapticManager.shared.fire(.buttonPress)
+        Task { await toggleReady(room) }
+    }
+
+    private func beginActiveLobbyReturnVote(_ room: GameRoom) {
+        guard let request = activeLobbyReturnVoteState.begin(
+            room: room,
+            accountUserID: appState.user?.id,
+            currentUserEmail: appState.user?.email,
+            requestID: UUID()
+        ) else { return }
+        Task { await performActiveLobbyReturnVote(request, room: room) }
+    }
+
+    private func performActiveLobbyReturnVote(
+        _ request: ActiveLobbyReturnRequest,
+        room: GameRoom
+    ) async {
+        do {
+            let candidate: GameRoom
+            if appState.shouldUsePreviewData {
+                await Task.yield()
+                candidate = previewActiveLobbyReturnCandidate(
+                    room: room,
+                    request: request
+                )
+            } else {
+                candidate = try await appState.client.voteReturnToLobby(
+                    room: room,
+                    vote: request.targetVote
+                )
+            }
+
+            guard adoptActiveLobbyReturnCandidate(candidate, request: request) else {
+                if !appState.shouldUsePreviewData,
+                   await recoverActiveLobbyReturnVote(request) {
+                    return
+                }
+                guard failActiveLobbyReturnVote(request) else { return }
+                status = localized(
+                    en: "RETURN VOTE WAS NOT CONFIRMED — TAP TO RETRY",
+                    ru: "ГОЛОС ЗА ВОЗВРАТ НЕ ПОДТВЕРЖДЁН — ПОВТОРИ",
+                    es: "EL VOTO DE REGRESO NO SE CONFIRMÓ — REINTENTA",
+                    uk: "ГОЛОС ЗА ПОВЕРНЕННЯ НЕ ПІДТВЕРДЖЕНО — ПОВТОРИ"
+                )
+                HapticManager.shared.fire(.notification(.error))
+                return
+            }
+        } catch {
+            if RequestCancellationPolicy.isCancellation(error) {
+                activeLobbyReturnVoteState.finish(request)
+                return
+            }
+            if await recoverActiveLobbyReturnVote(request) {
+                return
+            }
+            guard failActiveLobbyReturnVote(request) else { return }
+            status = localized(
+                en: "RETURN VOTE FAILED — TAP TO RETRY",
+                ru: "НЕ УДАЛОСЬ ОТПРАВИТЬ ГОЛОС — ПОВТОРИ",
+                es: "FALLÓ EL VOTO DE REGRESO — REINTENTA",
+                uk: "НЕ ВДАЛОСЯ НАДІСЛАТИ ГОЛОС — ПОВТОРИ"
+            )
+            HapticManager.shared.fire(.notification(.error))
+        }
+    }
+
+    @discardableResult
+    private func adoptActiveLobbyReturnCandidate(
+        _ candidate: GameRoom,
+        request: ActiveLobbyReturnRequest
+    ) -> Bool {
+        guard activeLobbyReturnVoteState.isPending(request),
+              let currentRoom = appState.activeRoom,
+              ActiveLobbyReturnPolicy.canAdopt(
+                  candidate: candidate,
+                  over: currentRoom,
+                  request: request,
+                  accountUserID: appState.user?.id,
+                  currentUserEmail: appState.user?.email
+              ),
+              activeLobbyReturnVoteState.finish(request) else { return false }
+        appState.activeRoom = candidate
+        status = request.targetVote
+            ? localized(
+                en: "RETURN VOTE RECORDED",
+                ru: "ГОЛОС ЗА ВОЗВРАТ ПРИНЯТ",
+                es: "VOTO DE REGRESO REGISTRADO",
+                uk: "ГОЛОС ЗА ПОВЕРНЕННЯ ПРИЙНЯТО"
+            )
+            : localized(
+                en: "RETURN VOTE CANCELLED",
+                ru: "ГОЛОС ЗА ВОЗВРАТ ОТМЕНЁН",
+                es: "VOTO DE REGRESO CANCELADO",
+                uk: "ГОЛОС ЗА ПОВЕРНЕННЯ СКАСОВАНО"
+            )
+        HapticManager.shared.fire(.notification(.success))
+        return true
+    }
+
+    private func recoverActiveLobbyReturnVote(
+        _ request: ActiveLobbyReturnRequest
+    ) async -> Bool {
+        guard activeLobbyReturnVoteState.isPending(request),
+              let currentRoom = appState.activeRoom,
+              request.scope.matches(currentRoom),
+              let refreshed = try? await appState.client.refreshRoom(id: request.scope.roomID),
+              !Task.isCancelled else { return false }
+        return adoptActiveLobbyReturnCandidate(refreshed, request: request)
+    }
+
+    @discardableResult
+    private func failActiveLobbyReturnVote(
+        _ request: ActiveLobbyReturnRequest
+    ) -> Bool {
+        guard let currentRoom = appState.activeRoom else { return false }
+        return activeLobbyReturnVoteState.fail(
+            request,
+            currentRoom: currentRoom,
+            accountUserID: appState.user?.id,
+            currentUserEmail: appState.user?.email
+        )
+    }
+
+    private func previewActiveLobbyReturnCandidate(
+        room: GameRoom,
+        request: ActiveLobbyReturnRequest
+    ) -> GameRoom {
+        var candidate = room
+        var votes = room.readyPlayers ?? []
+        votes.removeAll {
+            RoomKickPolicy.normalizedEmail($0) == request.actorEmail.lowercased()
+        }
+        if request.targetVote {
+            votes.append(request.actorEmail)
+        }
+
+        let eligible = ActiveLobbyReturnPolicy.eligiblePlayerEmailKeys(in: room)
+        let voteKeys = Set(votes.compactMap(RoomKickPolicy.normalizedEmail))
+        if request.targetVote, !eligible.isEmpty, eligible.isSubset(of: voteKeys) {
+            candidate.status = "waiting"
+            candidate.readyPlayers = []
+            candidate.matchID = nil
+            candidate.introStartedAt = nil
+            candidate.gameStartedAt = nil
+            candidate.gamePausedAt = nil
+            candidate.gamePausedTotalSeconds = 0
+            candidate.spyEmail = nil
+            candidate.spyEmails = []
+            candidate.revealedSpyEmails = []
+            candidate.secretWord = nil
+            candidate.word = nil
+            candidate.category = nil
+            candidate.cardsRead = []
+            candidate.voteRequests = []
+            candidate.detectiveVotes = []
+            candidate.spyGuess = nil
+        } else {
+            candidate.readyPlayers = votes
+        }
+        candidate.roomRevision = (room.roomRevision ?? room.lobbyRevision ?? 0) + 1
+        return candidate
+    }
+
+    private func requestRoomKick(_ player: Player, room: GameRoom) {
+        guard let confirmation = RoomKickPolicy.confirmation(
+            for: player,
+            room: room,
+            accountUserID: appState.user?.id,
+            currentUserEmail: appState.user?.email
+        ) else { return }
+        roomKickConfirmation = confirmation
+        HapticManager.shared.fire(.buttonPress)
+    }
+
+    private func confirmRoomKick(_ confirmation: RoomKickConfirmation) {
+        roomKickConfirmation = nil
+        guard let room = appState.activeRoom,
+              let request = roomKickCoordinator.begin(
+                  confirmation: confirmation,
+                  room: room,
+                  accountUserID: appState.user?.id,
+                  currentUserEmail: appState.user?.email,
+                  requestID: UUID()
+              ) else { return }
+        HapticManager.shared.fire(.notification(.warning))
+        Task { await performRoomKick(request, room: room) }
+    }
+
+    private func performRoomKick(
+        _ request: RoomKickRequest,
+        room: GameRoom
+    ) async {
+        do {
+            let candidate: GameRoom
+            if appState.shouldUsePreviewData {
+                await Task.yield()
+                var previewRoom = room
+                previewRoom.players = room.playersList.filter {
+                    !RoomKickPolicy.matchesTarget($0, request: request)
+                }
+                previewRoom.status = "waiting"
+                previewRoom.readyPlayers = []
+                previewRoom.roomRevision = (room.roomRevision ?? room.lobbyRevision ?? 0) + 1
+                candidate = previewRoom
+            } else {
+                candidate = try await appState.client.kickPlayer(
+                    room: room,
+                    targetUserID: request.targetUserID,
+                    targetEmail: request.targetEmail
+                )
+            }
+
+            guard adoptRoomKickCandidate(candidate, request: request) else {
+                if !appState.shouldUsePreviewData,
+                   await recoverRoomKick(request) {
+                    return
+                }
+                guard failRoomKick(request) else { return }
+                status = localized(
+                    en: "REMOVE OPERATIVE WAS NOT CONFIRMED — RETRY",
+                    ru: "УДАЛЕНИЕ ИГРОКА НЕ ПОДТВЕРЖДЕНО — ПОВТОРИ",
+                    es: "LA EXPULSIÓN NO SE CONFIRMÓ — REINTENTA",
+                    uk: "ВИДАЛЕННЯ ГРАВЦЯ НЕ ПІДТВЕРДЖЕНО — ПОВТОРИ"
+                )
+                HapticManager.shared.fire(.notification(.error))
+                return
+            }
+        } catch {
+            if RequestCancellationPolicy.isCancellation(error) {
+                roomKickCoordinator.finish(request)
+                return
+            }
+            if await recoverRoomKick(request) {
+                return
+            }
+            guard failRoomKick(request) else { return }
+            status = localized(
+                en: "REMOVE OPERATIVE FAILED — RETRY",
+                ru: "НЕ УДАЛОСЬ УДАЛИТЬ ИГРОКА — ПОВТОРИ",
+                es: "NO SE PUDO EXPULSAR — REINTENTA",
+                uk: "НЕ ВДАЛОСЯ ВИДАЛИТИ ГРАВЦЯ — ПОВТОРИ"
+            )
+            HapticManager.shared.fire(.notification(.error))
+        }
+    }
+
+    @discardableResult
+    private func adoptRoomKickCandidate(
+        _ candidate: GameRoom,
+        request: RoomKickRequest,
+        recovered: Bool = false
+    ) -> Bool {
+        guard roomKickCoordinator.isPending(request),
+              let currentRoom = appState.activeRoom else { return false }
+        let canAdopt = recovered
+            ? RoomKickPolicy.canAdoptRecoveredSnapshot(
+                candidate: candidate,
+                over: currentRoom,
+                request: request,
+                accountUserID: appState.user?.id,
+                currentUserEmail: appState.user?.email
+            )
+            : RoomKickPolicy.canAdopt(
+                candidate: candidate,
+                over: currentRoom,
+                request: request,
+                accountUserID: appState.user?.id,
+                currentUserEmail: appState.user?.email
+            )
+        guard canAdopt, roomKickCoordinator.finish(request) else { return false }
+        appState.activeRoom = candidate
+        status = localized(
+            en: "OPERATIVE REMOVED",
+            ru: "ИГРОК УДАЛЁН",
+            es: "OPERATIVO EXPULSADO",
+            uk: "ГРАВЦЯ ВИДАЛЕНО"
+        )
+        HapticManager.shared.fire(.notification(.success))
+        return true
+    }
+
+    private func recoverRoomKick(_ request: RoomKickRequest) async -> Bool {
+        guard roomKickCoordinator.isPending(request),
+              let currentRoom = appState.activeRoom,
+              request.scope.matches(
+                  room: currentRoom,
+                  accountUserID: appState.user?.id,
+                  currentUserEmail: appState.user?.email
+              ),
+              let refreshed = try? await appState.client.refreshRoom(id: request.scope.roomID),
+              !Task.isCancelled else { return false }
+        return adoptRoomKickCandidate(
+            refreshed,
+            request: request,
+            recovered: true
+        )
+    }
+
+    @discardableResult
+    private func failRoomKick(_ request: RoomKickRequest) -> Bool {
+        guard let currentRoom = appState.activeRoom else { return false }
+        return roomKickCoordinator.fail(
+            request,
+            currentRoom: currentRoom,
+            accountUserID: appState.user?.id,
+            currentUserEmail: appState.user?.email
+        )
+    }
+
+    private func beginReplayVote(_ room: GameRoom) {
+        guard !isVotingReplay,
+              !isResettingRoom,
+              ["finished", "ended"].contains(room.normalizedStatus),
+              let currentEmail = appState.user?.email,
+              room.replayEligiblePlayersList.contains(where: {
+                  normalizedEmailKey($0.email) == normalizedEmailKey(currentEmail)
+              }),
+              !(room.readyPlayers ?? []).contains(where: { emailsMatch($0, currentEmail) }) else { return }
+        isVotingReplay = true
+        HapticManager.shared.fire(.buttonPress)
+        Task { await voteReplay(room) }
+    }
+
+    private func beginVoteRequest(_ room: GameRoom, firesHaptic: Bool = true) {
+        guard canCurrentUserRequestVote(room) else { return }
+        isRequestingVote = true
+        if firesHaptic {
+            HapticManager.shared.fire(.buttonPress)
+        }
+        Task { await requestVote(room) }
+    }
+
+    private func beginDetectiveVote(
+        _ room: GameRoom,
+        targetEmail: String,
+        firesHaptic: Bool = true
+    ) {
+        guard canCurrentUserCastVote(room) else { return }
+        isCastingVote = true
+        pendingDetectiveVoteTargetEmail = targetEmail
+        if firesHaptic {
+            HapticManager.shared.fire(.milestone)
+        }
+        Task { await castVote(room, targetEmail: targetEmail) }
+    }
+
     private func toggleReady(_ room: GameRoom) async {
+        defer { isTogglingReady = false }
         guard let user = appState.user else { return }
         let wasReady = currentUserIsReady(room)
         if appState.shouldUsePreviewData {
@@ -7603,8 +10043,6 @@ struct GameView: View {
             )
             return
         }
-        isTogglingReady = true
-        defer { isTogglingReady = false }
         do {
             appState.activeRoom = try await appState.client.toggleReady(room: room, user: user)
             status = wasReady ? copy.readyRemoved : copy.readyLocked
@@ -7637,24 +10075,38 @@ struct GameView: View {
     }
 
     private func voteReplay(_ room: GameRoom) async {
+        defer { isVotingReplay = false }
         guard let user = appState.user else { return }
         if appState.shouldUsePreviewData {
+            var previewRoom = room
+            var votes = Set(room.readyPlayers ?? [])
+            votes.insert(user.email)
+            previewRoom.readyPlayers = Array(votes)
+            appState.activeRoom = previewRoom
             status = copy.replayVoteLocked
             HapticManager.shared.fire(.notification(.success))
+            if let request = ReplayAutoStartPolicy.request(
+                for: previewRoom,
+                currentUserEmail: user.email
+            ) {
+                scheduleReplayAutoStart(request)
+            }
             return
         }
-        isVotingReplay = true
-        defer { isVotingReplay = false }
 
         do {
             let updated = try await appState.client.votePlayAgain(room: room, user: user)
+            guard appState.user?.id == user.id,
+                  appState.activeRoom?.id == room.id else { return }
             appState.activeRoom = updated
             status = copy.replayVoteLocked
             HapticManager.shared.fire(.notification(.success))
 
-            if isHost(updated), allPlayersReady(updated) {
-                try await Task.sleep(for: .milliseconds(300))
-                await resetRoom(updated)
+            if let request = ReplayAutoStartPolicy.request(
+                for: updated,
+                currentUserEmail: user.email
+            ) {
+                scheduleReplayAutoStart(request)
             }
         } catch {
             status = error.localizedDescription.uppercased()
@@ -7677,7 +10129,7 @@ struct GameView: View {
         defer { isResettingRoom = false }
 
         do {
-            appState.activeRoom = try await appState.client.resetRoomForReplay(room: room)
+            appState.activeRoom = try await appState.client.returnFinishedRoomToLobby(room: room)
             selectedGameMode = appState.activeRoom?.gameModeValue ?? selectedGameMode
             selectedDurationMinutes = Double(max((appState.activeRoom?.gameDurationSeconds ?? 900) / 60, 1))
             pendingStartPlan = nil
@@ -7690,6 +10142,263 @@ struct GameView: View {
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
+    }
+
+    private func scheduleReplayAutoStart(
+        _ request: ReplayAutoStartRequest,
+        isExplicitRetry: Bool = false
+    ) {
+        var coordinator = replayAutoStartCoordinator
+        let didSchedule = isExplicitRetry
+            ? coordinator.retry(request)
+            : coordinator.observe(request)
+        guard didSchedule else { return }
+
+        replayAutoStartCoordinator = coordinator
+        replayAutoStartFailedOperationKey = nil
+        isResettingRoom = true
+        isStarting = true
+        if isExplicitRetry {
+            HapticManager.shared.fire(.buttonPress)
+        }
+    }
+
+    private func performReplayAutoStart(_ request: ReplayAutoStartRequest) async {
+        defer {
+            var coordinator = replayAutoStartCoordinator
+            coordinator.finish(request)
+            replayAutoStartCoordinator = coordinator
+            isResettingRoom = false
+            isStarting = false
+        }
+
+        guard let user = appState.user,
+              let initialRoom = appState.activeRoom,
+              initialRoom.id == request.roomID else { return }
+
+        if appState.shouldUsePreviewData {
+            var previewRoom = initialRoom
+            previewRoom.status = "roulette"
+            previewRoom.matchID = nil
+            previewRoom.winner = nil
+            previewRoom.readyPlayers = []
+            previewRoom.cardsRead = []
+            previewRoom.voteRequests = []
+            previewRoom.detectiveVotes = []
+            previewRoom.spyGuess = nil
+            previewRoom.rouletteTargetEmail = previewRoom.playersList.randomElement()?.email
+            previewRoom.introStartedAt = ISO8601DateFormatter().string(from: Date())
+            previewRoom.gameStartedAt = nil
+            appState.activeRoom = previewRoom
+            replayAutoStartFailedOperationKey = nil
+            pendingStartPlan = nil
+            rouletteCompletionKey = nil
+            revealRole = false
+            showSpyGuess = false
+            status = copy.rouletteArmed
+            HapticManager.shared.fire(.notification(.success))
+            return
+        }
+
+        do {
+            var authoritativeRoom = initialRoom
+            switch ReplayAutoStartPolicy.disposition(
+                of: authoritativeRoom,
+                for: request,
+                currentUserEmail: user.email
+            ) {
+            case .resetRequired:
+                authoritativeRoom = try await resetReplayRoomForAutoStart(
+                    authoritativeRoom,
+                    request: request,
+                    userEmail: user.email
+                )
+            case .armRequired, .alreadyStarted:
+                break
+            case .invalid:
+                throw CancellationError()
+            }
+
+            try Task.checkCancellation()
+            authoritativeRoom = try adoptReplayAutoStartCandidate(
+                authoritativeRoom,
+                request: request,
+                userEmail: user.email
+            )
+
+            switch ReplayAutoStartPolicy.disposition(
+                of: authoritativeRoom,
+                for: request,
+                currentUserEmail: user.email
+            ) {
+            case .alreadyStarted:
+                break
+            case .armRequired:
+                isResettingRoom = false
+                selectedGameMode = authoritativeRoom.gameModeValue
+                selectedDurationMinutes = Double(
+                    max((authoritativeRoom.gameDurationSeconds ?? 900) / 60, 1)
+                )
+                applyAuthoritativeLobbyState(from: authoritativeRoom, force: true)
+                authoritativeRoom = try await armReplayRoomAfterReset(
+                    authoritativeRoom,
+                    request: request,
+                    userEmail: user.email
+                )
+                try Task.checkCancellation()
+                authoritativeRoom = try adoptReplayAutoStartCandidate(
+                    authoritativeRoom,
+                    request: request,
+                    userEmail: user.email
+                )
+                guard ReplayAutoStartPolicy.disposition(
+                    of: authoritativeRoom,
+                    for: request,
+                    currentUserEmail: user.email
+                ) == .alreadyStarted else {
+                    throw Base44Error(
+                        message: "Replay start did not reach roulette.",
+                        statusCode: 409
+                    )
+                }
+            case .resetRequired, .invalid:
+                throw Base44Error(
+                    message: "Replay reset did not reach the lobby.",
+                    statusCode: 409
+                )
+            }
+
+            replayAutoStartFailedOperationKey = nil
+            rouletteCompletionKey = nil
+            revealRole = false
+            showSpyGuess = false
+            status = copy.rouletteArmed
+            HapticManager.shared.fire(.notification(.success))
+        } catch {
+            guard !Task.isCancelled,
+                  !RequestCancellationPolicy.isCancellation(error) else { return }
+            replayAutoStartFailedOperationKey = request.operationKey
+            status = localized(
+                en: "REPLAY AUTO-START FAILED — TAP START AGAIN TO RETRY",
+                ru: "АВТОСТАРТ РЕВАНША НЕ УДАЛСЯ — НАЖМИ СТАРТ ЕЩЁ РАЗ",
+                es: "FALLO EL INICIO AUTOMATICO — TOCA INICIAR PARA REINTENTAR",
+                uk: "АВТОСТАРТ РЕВАНШУ НЕ ВДАВСЯ — НАТИСНИ СТАРТ ЩЕ РАЗ"
+            )
+            HapticManager.shared.fire(.notification(.error))
+        }
+    }
+
+    private func resetReplayRoomForAutoStart(
+        _ room: GameRoom,
+        request: ReplayAutoStartRequest,
+        userEmail: String
+    ) async throws -> GameRoom {
+        do {
+            return try await appState.client.resetRoomForReplay(room: room)
+        } catch {
+            guard !RequestCancellationPolicy.isCancellation(error) else { throw error }
+            if let currentRoom = appState.activeRoom {
+                let currentDisposition = ReplayAutoStartPolicy.disposition(
+                    of: currentRoom,
+                    for: request,
+                    currentUserEmail: userEmail
+                )
+                if currentDisposition == .armRequired || currentDisposition == .alreadyStarted {
+                    return currentRoom
+                }
+            }
+            if let refreshed = try? await appState.client.refreshRoom(id: request.roomID) {
+                let disposition = ReplayAutoStartPolicy.disposition(
+                    of: refreshed,
+                    for: request,
+                    currentUserEmail: userEmail
+                )
+                if disposition == .armRequired || disposition == .alreadyStarted {
+                    return refreshed
+                }
+            }
+            throw error
+        }
+    }
+
+    private func armReplayRoomAfterReset(
+        _ room: GameRoom,
+        request: ReplayAutoStartRequest,
+        userEmail: String
+    ) async throws -> GameRoom {
+        do {
+            let confirmedRoom = try await appState.confirmedLobbyRoom(roomID: room.id)
+            guard roomThemeSelectionIsReady, !isGeneratingRoomTheme else {
+                throw Base44Error(
+                    message: localized(
+                        en: "The saved replay word source is unavailable.",
+                        ru: "Сохранённый источник слов для реванша недоступен.",
+                        es: "La fuente de palabras guardada no esta disponible.",
+                        uk: "Збережене джерело слів для реваншу недоступне."
+                    ),
+                    statusCode: 409
+                )
+            }
+            let plan = try appState.client.makeGameStartPlan(
+                room: confirmedRoom,
+                wordPacks: lobbyWordPacksForStart,
+                selectedPackID: selectedPackID,
+                gameMode: confirmedRoom.gameModeValue,
+                durationSeconds: confirmedRoom.gameDurationSeconds ?? 900,
+                forcedAskerEmail: nil
+            )
+            pendingStartPlan = plan
+            return try await appState.client.armRoulette(room: confirmedRoom, plan: plan)
+        } catch {
+            guard !RequestCancellationPolicy.isCancellation(error) else { throw error }
+            if let currentRoom = appState.activeRoom,
+               ReplayAutoStartPolicy.disposition(
+                   of: currentRoom,
+                   for: request,
+                   currentUserEmail: userEmail
+               ) == .alreadyStarted {
+                return currentRoom
+            }
+            if let refreshed = try? await appState.client.refreshRoom(id: request.roomID),
+               ReplayAutoStartPolicy.disposition(
+                   of: refreshed,
+                   for: request,
+                   currentUserEmail: userEmail
+               ) == .alreadyStarted {
+                return refreshed
+            }
+            throw error
+        }
+    }
+
+    private func adoptReplayAutoStartCandidate(
+        _ candidate: GameRoom,
+        request: ReplayAutoStartRequest,
+        userEmail: String
+    ) throws -> GameRoom {
+        guard appState.user?.email == userEmail,
+              let currentRoom = appState.activeRoom,
+              currentRoom.id == request.roomID else { throw CancellationError() }
+
+        if ReplayAutoStartPolicy.canAdopt(
+            candidate,
+            over: currentRoom,
+            for: request,
+            currentUserEmail: userEmail
+        ) {
+            appState.activeRoom = candidate
+            return candidate
+        }
+
+        let currentDisposition = ReplayAutoStartPolicy.disposition(
+            of: currentRoom,
+            for: request,
+            currentUserEmail: userEmail
+        )
+        if currentDisposition == .armRequired || currentDisposition == .alreadyStarted {
+            return currentRoom
+        }
+        throw CancellationError()
     }
 
     private func start(_ room: GameRoom) async {
@@ -8019,6 +10728,10 @@ struct GameView: View {
             .caseInsensitiveCompare(right.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
     }
 
+    private func normalizedEmailKey(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+
     private func markCardRead(_ room: GameRoom) async {
         guard let user = appState.user else { return }
         if appState.shouldUsePreviewData {
@@ -8308,6 +11021,7 @@ struct GameView: View {
     }
 
     private func requestVote(_ room: GameRoom) async {
+        defer { isRequestingVote = false }
         guard detectiveVoteCancellationPresentation == nil,
               !room.isGamePaused,
               !isTimeExpired(room) else { return }
@@ -8321,8 +11035,6 @@ struct GameView: View {
             HapticManager.shared.fire(.notification(.success))
             return
         }
-        isRequestingVote = true
-        defer { isRequestingVote = false }
         do {
             appState.activeRoom = try await appState.client.requestVote(room: room, user: user)
             HapticManager.shared.fire(.notification(.success))
@@ -8333,6 +11045,10 @@ struct GameView: View {
     }
 
     private func castVote(_ room: GameRoom, targetEmail: String) async {
+        defer {
+            isCastingVote = false
+            pendingDetectiveVoteTargetEmail = nil
+        }
         guard detectiveVoteCancellationPresentation == nil,
               !room.isGamePaused,
               !isTimeExpired(room) else { return }
@@ -8347,8 +11063,6 @@ struct GameView: View {
             HapticManager.shared.fire(.notification(.success))
             return
         }
-        isCastingVote = true
-        defer { isCastingVote = false }
         var retry = 0
         while true {
             guard !Task.isCancelled,
@@ -8709,42 +11423,125 @@ struct GameView: View {
         }
     }
 
-    private func submitSpyGuess(_ room: GameRoom, word: String) async {
+    private func submitSpyGuess(_ room: GameRoom, word: String) async throws {
         guard detectiveVoteCancellationPresentation == nil,
               !room.isGamePaused,
               !isTimeExpired(room) else {
-            showSpyGuess = false
-            return
+            throw Base44Error(
+                message: localized(
+                    en: "The guessing window has closed.",
+                    ru: "Окно для выбора слова уже закрыто.",
+                    es: "La ventana para adivinar ya se cerro.",
+                    uk: "Час для вибору слова вже минув."
+                ),
+                statusCode: 409
+            )
         }
-        guard let user = appState.user else { return }
+        guard let user = appState.user,
+              let scope = SpyGuessSubmissionScope(room: room, guess: word) else {
+            throw Base44Error(
+                message: localized(
+                    en: "Unable to submit that word. Try again.",
+                    ru: "Не удалось отправить это слово. Попробуй ещё раз.",
+                    es: "No se pudo enviar esa palabra. Intentalo de nuevo.",
+                    uk: "Не вдалося надіслати це слово. Спробуй ще раз."
+                ),
+                statusCode: 400
+            )
+        }
+        guard !isSubmittingSpyGuess else {
+            throw Base44Error(
+                message: localized(
+                    en: "That guess is already being submitted.",
+                    ru: "Этот вариант уже отправляется.",
+                    es: "Esa respuesta ya se esta enviando.",
+                    uk: "Цей варіант уже надсилається."
+                ),
+                statusCode: 409
+            )
+        }
         if appState.shouldUsePreviewData {
-            showSpyGuess = false
+            var previewRoom = room
+            previewRoom.spyGuess = word.trimmingCharacters(in: .whitespacesAndNewlines)
+            previewRoom.status = "finished"
+            previewRoom.winner = previewRoom.displayWord.map {
+                $0.compare(word, options: [.caseInsensitive, .diacriticInsensitive]) == .orderedSame
+            } == true ? "spy" : "detectives"
+            appState.activeRoom = previewRoom
             status = copy.spyGuessLocked
-            let isFinished = room.normalizedStatus == "ended" || room.normalizedStatus == "finished"
-            if isFinished {
-                HapticManager.shared.fire(.notification(.success))
-            } else {
-                HapticManager.shared.fire(.notification(.success))
-            }
             return
         }
         isSubmittingSpyGuess = true
         defer { isSubmittingSpyGuess = false }
+
+        let updated: GameRoom
         do {
-            let updated = try await appState.client.submitSpyGuess(room: room, user: user, guess: word)
-            appState.activeRoom = updated
-            showSpyGuess = false
-            status = copy.spyGuessLocked
-            let isFinished = updated.normalizedStatus == "ended" || updated.normalizedStatus == "finished"
-            if isFinished {
-                HapticManager.shared.fire(.notification(.success))
-            } else {
-                HapticManager.shared.fire(.notification(.success))
-            }
+            updated = try await appState.client.submitSpyGuess(
+                room: room,
+                user: user,
+                guess: word
+            )
         } catch {
-            status = error.localizedDescription.uppercased()
-            HapticManager.shared.fire(.notification(.error))
+            guard !RequestCancellationPolicy.isCancellation(error) else { throw error }
+            if try await recoverCommittedSpyGuess(scope) {
+                status = copy.spyGuessLocked
+                return
+            }
+            throw error
         }
+
+        if adoptCommittedSpyGuessCandidate(updated, scope: scope) {
+            status = copy.spyGuessLocked
+            return
+        }
+        if try await recoverCommittedSpyGuess(scope) {
+            status = copy.spyGuessLocked
+            return
+        }
+
+        throw Base44Error(
+            message: localized(
+                en: "The result is still syncing. Tap retry to confirm your guess.",
+                ru: "Результат ещё синхронизируется. Нажми повтор, чтобы подтвердить выбор.",
+                es: "El resultado sigue sincronizandose. Toca reintentar para confirmar.",
+                uk: "Результат ще синхронізується. Натисни повтор, щоб підтвердити вибір."
+            ),
+            statusCode: 503,
+            code: "spy_guess_commit_unconfirmed",
+            retryable: true
+        )
+    }
+
+    private func recoverCommittedSpyGuess(_ scope: SpyGuessSubmissionScope) async throws -> Bool {
+        try Task.checkCancellation()
+        if let currentRoom = appState.activeRoom,
+           scope.confirmsCommit(in: currentRoom) {
+            return true
+        }
+        guard let refreshed = try? await appState.client.refreshRoom(id: scope.room.roomID) else {
+            try Task.checkCancellation()
+            return false
+        }
+        try Task.checkCancellation()
+        return adoptCommittedSpyGuessCandidate(refreshed, scope: scope)
+    }
+
+    private func adoptCommittedSpyGuessCandidate(
+        _ candidate: GameRoom,
+        scope: SpyGuessSubmissionScope
+    ) -> Bool {
+        guard let currentRoom = appState.activeRoom,
+              scope.room.matches(currentRoom) else { return false }
+        if scope.confirmsCommit(in: currentRoom) {
+            return true
+        }
+        guard OnlineAuthoritativeRoomPolicy.canAdopt(
+            candidate: candidate,
+            over: currentRoom,
+            scope: scope.room
+        ) else { return false }
+        appState.activeRoom = candidate
+        return scope.confirmsCommit(in: candidate)
     }
 
     private func leaveRoom(_ room: GameRoom) async {
@@ -9129,19 +11926,10 @@ private enum OnlineSetupPanel: Hashable {
 private struct OnlineSetupSlotView: View {
     let content: AnyView
     let dimmed: Bool
-    let onDismiss: () -> Void
 
     var body: some View {
-        ZStack {
-            content
-                .modifier(SpyLobbySetupFocusEffect(dimmed: dimmed))
-
-            if dimmed {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture(perform: onDismiss)
-            }
-        }
+        content
+            .modifier(SpyLobbySetupFocusEffect(dimmed: dimmed))
     }
 }
 
@@ -9220,14 +12008,20 @@ private struct SpyGuessSheet: View {
     let room: GameRoom
     let isSubmitting: Bool
     let copy: GameCopy
-    let onGuess: (String) -> Void
+    let language: AppLanguage
+    let onGuess: (String) async throws -> Void
 
     @Environment(\.dismiss) private var dismiss
+    @State private var submissionPhase = SpyGuessSubmissionPhase.idle
 
     private var words: [WordPoolEntry] {
         room.enabledWordPool.sorted {
             $0.word.localizedCaseInsensitiveCompare($1.word) == .orderedAscending
         }
+    }
+
+    private var blocksInteraction: Bool {
+        isSubmitting || submissionPhase.blocksInteraction
     }
 
     var body: some View {
@@ -9257,6 +12051,7 @@ private struct SpyGuessSheet: View {
                     }
                     .buttonStyle(SpyButtonStyle(variant: .ghost))
                     .frame(width: 54)
+                    .disabled(blocksInteraction)
                 }
 
                 Text(copy.spyGuessHint)
@@ -9264,11 +12059,51 @@ private struct SpyGuessSheet: View {
                     .foregroundStyle(SpyTheme.muted)
                     .lineSpacing(3)
 
+                if let failedWord = submissionPhase.failedWord {
+                    VStack(alignment: .leading, spacing: 10) {
+                        Text(localized(
+                            en: "YOUR GUESS WAS NOT CONFIRMED. NOTHING CHANGED — TRY AGAIN.",
+                            ru: "ВЫБОР НЕ ПОДТВЕРЖДЁН. НИЧЕГО НЕ ИЗМЕНИЛОСЬ — ПОПРОБУЙ ЕЩЁ РАЗ.",
+                            es: "NO SE CONFIRMO TU RESPUESTA. NADA CAMBIO — INTENTALO DE NUEVO.",
+                            uk: "ВИБІР НЕ ПІДТВЕРДЖЕНО. НІЧОГО НЕ ЗМІНИЛОСЯ — СПРОБУЙ ЩЕ РАЗ."
+                        ))
+                        .font(SpyTheme.micro)
+                        .tracking(0.06)
+                        .foregroundStyle(SpyTheme.amber)
+                        .spyFitted(lines: 3, scale: 0.58)
+
+                        Button {
+                            beginSubmission(failedWord)
+                        } label: {
+                            Label(
+                                localized(
+                                    en: "RETRY \(failedWord.uppercased())",
+                                    ru: "ПОВТОРИТЬ: \(failedWord.uppercased())",
+                                    es: "REINTENTAR: \(failedWord.uppercased())",
+                                    uk: "ПОВТОРИТИ: \(failedWord.uppercased())"
+                                ),
+                                systemImage: "arrow.clockwise"
+                            )
+                            .lineLimit(2)
+                            .minimumScaleFactor(0.56)
+                        }
+                        .buttonStyle(SpyButtonStyle(variant: .outline))
+                        .accessibilityIdentifier("onlineRoom.spyGuess.retry")
+                    }
+                    .padding(12)
+                    .background(SpyTheme.amber.opacity(0.08), in: CutCornerShape(cut: 8))
+                    .overlay(
+                        CutCornerShape(cut: 8)
+                            .stroke(SpyTheme.amber.opacity(0.46), lineWidth: 1)
+                    )
+                }
+
                 ScrollView {
                     LazyVStack(spacing: 10) {
                         ForEach(words) { entry in
+                            let isSelected = submissionPhase.selectedWord == entry.word
                             Button {
-                                onGuess(entry.word)
+                                beginSubmission(entry.word)
                             } label: {
                                 HStack {
                                     Text(entry.word.uppercased())
@@ -9277,8 +12112,11 @@ private struct SpyGuessSheet: View {
                                         .foregroundStyle(.white)
                                         .spyFitted(lines: 2, scale: 0.54)
                                     Spacer()
-                                    if isSubmitting {
+                                    if submissionPhase.blocksInteraction, isSelected {
                                         SpySpinner(size: 18, accent: SpyTheme.red)
+                                    } else if submissionPhase.failedWord == entry.word {
+                                        Image(systemName: "exclamationmark.triangle.fill")
+                                            .foregroundStyle(SpyTheme.amber)
                                     } else {
                                         Image(systemName: "scope")
                                             .foregroundStyle(SpyTheme.red)
@@ -9286,13 +12124,49 @@ private struct SpyGuessSheet: View {
                                 }
                             }
                             .buttonStyle(SpyButtonStyle(variant: .ghost))
-                            .disabled(isSubmitting)
+                            .disabled(blocksInteraction)
+                            .opacity(blocksInteraction && !isSelected ? 0.48 : 1)
+                            .accessibilityIdentifier("onlineRoom.spyGuess.word.\(entry.id)")
                         }
                     }
                     .padding(.bottom, 20)
                 }
             }
             .padding(20)
+        }
+        .interactiveDismissDisabled(blocksInteraction)
+    }
+
+    private func beginSubmission(_ word: String) {
+        guard let pending = SpyGuessSubmissionPhase.begin(
+            word: word,
+            from: submissionPhase
+        ) else { return }
+        submissionPhase = pending
+        HapticManager.shared.fire(.buttonPress)
+
+        Task { @MainActor in
+            do {
+                try await onGuess(word)
+                HapticManager.shared.fire(.notification(.success))
+                dismiss()
+            } catch {
+                guard !RequestCancellationPolicy.isCancellation(error) else {
+                    submissionPhase = .idle
+                    return
+                }
+                submissionPhase = submissionPhase.failing()
+                HapticManager.shared.fire(.notification(.error))
+            }
+        }
+    }
+
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
+        switch language {
+        case .en: en
+        case .ru: ru
+        case .es: es
+        case .uk: uk
         }
     }
 }

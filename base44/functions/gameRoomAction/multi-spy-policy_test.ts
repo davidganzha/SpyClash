@@ -331,6 +331,85 @@ Deno.test("active leave preserves an unrelated valid question vector", () => {
   assertEquals("current_answer" in transition.patch, false);
 });
 
+Deno.test("association leave advances an active speaker by the persisted order without dropping state", () => {
+  const activeRoom = room(7, 2);
+  activeRoom.game_mode = "associations";
+  activeRoom.current_asker_email = "p3@example.com";
+  activeRoom.current_answerer_email = "p5@example.com";
+  activeRoom.current_answer = JSON.stringify({
+    spoken: ["p1@example.com", "p3@example.com"],
+    spinning: false,
+    order: [
+      "p2@example.com",
+      "p3@example.com",
+      "p6@example.com",
+      "p4@example.com",
+      "p5@example.com",
+      "p1@example.com",
+      "p7@example.com",
+    ],
+  });
+
+  const transition = activeDepartureTransition(activeRoom, "p3@example.com");
+  const state = JSON.parse(transition.patch.current_answer);
+  assertEquals(transition.terminalWinner, null);
+  assertEquals(transition.patch.current_asker_email, "p6@example.com");
+  assertEquals(transition.patch.current_answerer_email, "p5@example.com");
+  assertEquals(state.order, [
+    "p2@example.com",
+    "p6@example.com",
+    "p4@example.com",
+    "p5@example.com",
+    "p1@example.com",
+    "p7@example.com",
+  ]);
+  assertEquals(state.spoken, ["p1@example.com"]);
+  assertEquals(state.spinning, true);
+});
+
+Deno.test("association leave at the roster boundary starts the next round atomically", () => {
+  const activeRoom = room(7, 2);
+  activeRoom.game_mode = "associations";
+  activeRoom.round_number = 4;
+  activeRoom.current_asker_email = "p7@example.com";
+  activeRoom.current_answerer_email = "p2@example.com";
+  activeRoom.current_answer = JSON.stringify({
+    spoken: [
+      "p1@example.com",
+      "p2@example.com",
+      "p3@example.com",
+      "p4@example.com",
+      "p5@example.com",
+      "p6@example.com",
+    ],
+    spinning: false,
+    order: [
+      "p1@example.com",
+      "p2@example.com",
+      "p3@example.com",
+      "p4@example.com",
+      "p5@example.com",
+      "p6@example.com",
+      "p7@example.com",
+    ],
+  });
+
+  const transition = activeDepartureTransition(activeRoom, "p7@example.com");
+  const state = JSON.parse(transition.patch.current_answer);
+  assertEquals(transition.patch.round_number, 5);
+  assertEquals(transition.patch.current_asker_email, "p1@example.com");
+  assertEquals(state.order, [
+    "p1@example.com",
+    "p2@example.com",
+    "p3@example.com",
+    "p4@example.com",
+    "p5@example.com",
+    "p6@example.com",
+  ]);
+  assertEquals(state.spoken, []);
+  assertEquals(state.spinning, true);
+});
+
 Deno.test("an expelled spectator can explicitly depart without rejoining play", () => {
   const activeRoom = room(6, 2);
   activeRoom.spectators = ["p3@example.com"];

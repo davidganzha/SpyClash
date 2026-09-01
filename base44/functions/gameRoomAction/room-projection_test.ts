@@ -50,6 +50,35 @@ Deno.test("active spy projection hides secret data and internal identities", () 
   assertEquals("user_id" in projected.players[0], false);
 });
 
+Deno.test("only the lobby host receives stable player ids for host-only membership actions", () => {
+  const room = {
+    id: "room-1",
+    code: "ABC123",
+    host_email: "host@example.com",
+    status: "waiting",
+    players: [
+      { user_id: "user-host", email: "host@example.com", name: "Host" },
+      { user_id: "user-guest", email: "guest@example.com", name: "Guest" },
+    ],
+  };
+
+  const hostProjection = projectRoomForClient(room, {
+    email: "HOST@example.com",
+  })!;
+  assertEquals(hostProjection.players.map((player) => player.user_id), [
+    "user-host",
+    "user-guest",
+  ]);
+
+  const guestProjection = projectRoomForClient(room, {
+    email: "guest@example.com",
+  })!;
+  assertEquals(
+    guestProjection.players.some((player) => "user_id" in player),
+    false,
+  );
+});
+
 Deno.test("detective sees a safe secret only after authenticated room projection", () => {
   const projected = projectRoomForClient(
     {
@@ -102,6 +131,119 @@ Deno.test("finished projection reveals the resolved spy and word", () => {
   assertEquals(projected.word, "Embassy");
   assertEquals(projected.secret_word, "Embassy");
   assertEquals(projected.terminal_reconciliation_pending, false);
+});
+
+Deno.test("terminal replay eligibility exposes only non-departed emails to an eligible participant", () => {
+  const room = {
+    id: "room-1",
+    code: "ABC123",
+    status: "finished",
+    players: [
+      { user_id: "secret-a", email: "a@example.com" },
+      { user_id: "secret-b", email: "b@example.com" },
+      { user_id: "secret-c", email: "c@example.com" },
+    ],
+    participant_user_ids: ["secret-a", "secret-b", "secret-c"],
+    departed_player_emails: [" C@EXAMPLE.COM "],
+  };
+
+  const participant = projectRoomForClient(room, {
+    email: "B@example.com",
+  })!;
+  assertEquals(participant.replay_eligible_player_emails, [
+    "a@example.com",
+    "b@example.com",
+  ]);
+  assertEquals("participant_user_ids" in participant, false);
+  assertEquals("departed_player_emails" in participant, false);
+  assertEquals(
+    participant.players.some((player) => "user_id" in player),
+    false,
+  );
+
+  const departed = projectRoomForClient(room, { email: "c@example.com" })!;
+  assertEquals("replay_eligible_player_emails" in departed, false);
+
+  const outsider = projectRoomForClient(room, {
+    email: "outsider@example.com",
+  })!;
+  assertEquals("replay_eligible_player_emails" in outsider, false);
+
+  const active = projectRoomForClient(
+    { ...room, status: "playing", departed_player_emails: [] },
+    { email: "b@example.com" },
+  )!;
+  assertEquals("replay_eligible_player_emails" in active, false);
+});
+
+Deno.test("active return eligibility exposes only canonical non-departed emails to an active participant", () => {
+  const room = {
+    id: "room-1",
+    code: "ABC123",
+    status: "playing",
+    players: [
+      { user_id: "secret-a", email: " a@example.com " },
+      { user_id: "secret-a", email: "alias@example.com" },
+      { user_id: "secret-b", email: "B@EXAMPLE.COM" },
+      { user_id: "secret-duplicate", email: " b@example.com " },
+      { user_id: "secret-c", email: "c@example.com" },
+    ],
+    participant_user_ids: [
+      "secret-a",
+      "secret-b",
+      "secret-duplicate",
+      "secret-c",
+    ],
+    departed_player_emails: [
+      " C@EXAMPLE.COM ",
+      "departed-tombstone@example.com",
+    ],
+  };
+
+  const participant = projectRoomForClient(room, {
+    email: " b@example.com ",
+  })!;
+  const eligibleEmails = participant.return_to_lobby_eligible_player_emails;
+  assert(eligibleEmails);
+  assertEquals(eligibleEmails, [
+    "a@example.com",
+    "B@EXAMPLE.COM",
+  ]);
+  assertEquals("participant_user_ids" in participant, false);
+  assertEquals("departed_player_emails" in participant, false);
+  assertEquals(
+    eligibleEmails.some((value) =>
+      value.includes("secret-") || value.includes("tombstone")
+    ),
+    false,
+  );
+  assertEquals("replay_eligible_player_emails" in participant, false);
+
+  const departed = projectRoomForClient(room, { email: "c@example.com" })!;
+  assertEquals(
+    departed.return_to_lobby_eligible_player_emails,
+    [],
+  );
+
+  const outsider = projectRoomForClient(room, {
+    email: "outsider@example.com",
+  })!;
+  assertEquals(
+    "return_to_lobby_eligible_player_emails" in outsider,
+    false,
+  );
+
+  for (const status of ["waiting", "ready_voting", "roulette", "finished"]) {
+    const otherStatus = projectRoomForClient(
+      { ...room, status },
+      { email: "a@example.com" },
+    )!;
+    assertEquals(
+      "return_to_lobby_eligible_player_emails" in otherStatus,
+      false,
+      `${status} must not project active return eligibility`,
+    );
+  }
 });
 
 Deno.test("projection exposes only a boolean for pending terminal reconciliation", () => {

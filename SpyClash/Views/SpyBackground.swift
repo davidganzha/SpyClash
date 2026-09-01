@@ -1,5 +1,4 @@
 import SwiftUI
-import UIKit
 
 struct SpyBackground: View {
     var body: some View {
@@ -197,9 +196,6 @@ struct PageChrome<Content: View>: View {
                         .scrollDismissesKeyboard(.interactively)
                         .onChange(of: scrollTarget) { _, target in
                             scrollToTarget(target, proxy: proxy)
-                        }
-                        .onReceive(NotificationCenter.default.publisher(for: UIResponder.keyboardWillChangeFrameNotification)) { _ in
-                            scrollToTarget(scrollTarget, proxy: proxy)
                         }
                         .overlay(alignment: .top) {
                             if showsPageTopEdge {

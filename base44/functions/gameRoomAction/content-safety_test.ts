@@ -12,6 +12,7 @@ Deno.test("room participant identity is sanitized before sharing", () => {
   assertEquals(safeCommunityDisplayName("Signal Raven"), "Signal Raven");
   assertEquals(safeCommunityDisplayName("f.u.c.k"), "OPERATIVE");
   assertEquals(safeCommunityAvatar("🎭"), "🎭");
+  assertEquals(safeCommunityAvatar("🦅"), "🦅");
   assertEquals(safeCommunityAvatar("hostile free-form text"), "🕵️");
 });
 

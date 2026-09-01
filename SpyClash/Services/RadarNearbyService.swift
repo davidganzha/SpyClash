@@ -15,20 +15,30 @@ enum RadarInvitePolicy: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
+    static let selectableCases: [RadarInvitePolicy] = [.ask, .automatic]
+
+    var selectableValue: RadarInvitePolicy {
+        self == .blocked ? .ask : self
+    }
+
     static func stored(
         for userID: String,
         defaults: UserDefaults = .standard
     ) -> RadarInvitePolicy {
         let key = accountStorageKey(for: userID)
         if let rawValue = defaults.string(forKey: key) {
-            return RadarInvitePolicy(rawValue: rawValue) ?? .ask
+            let stored = (RadarInvitePolicy(rawValue: rawValue) ?? .ask).selectableValue
+            defaults.set(stored.rawValue, forKey: key)
+            return stored
         }
 
         // Migrate the one device-wide preference to the first account that
         // opens Radar after this update. Removing the legacy value prevents it
         // from leaking into another account on the same iPhone.
-        let migrated = defaults.string(forKey: legacyStorageKey)
-            .flatMap(RadarInvitePolicy.init(rawValue:)) ?? .ask
+        let migrated = (
+            defaults.string(forKey: legacyStorageKey)
+                .flatMap(RadarInvitePolicy.init(rawValue:)) ?? .ask
+        ).selectableValue
         defaults.set(migrated.rawValue, forKey: key)
         defaults.removeObject(forKey: legacyStorageKey)
         return migrated
@@ -607,7 +617,7 @@ final class RadarNearbyService: NSObject {
 
         let remotePolicy = user.flatMap {
             RadarInvitePolicy(rawValue: $0.radarInvitePolicy ?? "")
-        }
+        }?.selectableValue
         let nextPolicy: RadarInvitePolicy
         if let user {
             if applyRemoteInvitePolicy, let remotePolicy {

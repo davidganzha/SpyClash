@@ -194,6 +194,11 @@ async function pinHistoricalNotificationEntityFixture(root: string) {
   const historyPath = `${root}/base44/entities/GameHistory.jsonc`;
   const history = JSON.parse(await Deno.readTextFile(historyPath));
   delete history.properties.spy_count;
+  delete history.properties.profile_repair_state;
+  delete history.properties.profile_repair_token;
+  delete history.properties.profile_repair_lease_until;
+  delete history.properties.profile_repair_attempt_count;
+  delete history.properties.profile_repair_completed_at;
   await writePrivateJSON(historyPath, history);
 
   const userPath = `${root}/base44/entities/User.jsonc`;

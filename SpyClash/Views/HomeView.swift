@@ -530,7 +530,7 @@ struct HomeView: View {
         let verticalPadding: CGFloat = compact ? (isSecondary ? 13 : 14) : 24
         let minimumHeight: CGFloat = compact ? (isSecondary ? 72 : 88) : 102
         let cardBackground = highlighted
-            ? SpyTheme.red.opacity(0.07)
+            ? SpyTheme.control
             : (isSecondary ? Color.white.opacity(0.015) : SpyTheme.control)
         let cardStroke = highlighted
             ? SpyTheme.red.opacity(0.56)
@@ -595,7 +595,17 @@ struct HomeView: View {
             .padding(.horizontal, compact ? 20 : 24)
             .padding(.vertical, verticalPadding)
             .frame(maxWidth: .infinity, minHeight: minimumHeight)
-            .background(cardBackground, in: CutCornerShape(cut: 14))
+            .background {
+                ZStack {
+                    CutCornerShape(cut: 14)
+                        .fill(cardBackground)
+
+                    if highlighted {
+                        CutCornerShape(cut: 14)
+                            .fill(SpyTheme.red.opacity(0.07))
+                    }
+                }
+            }
             .overlay(CutCornerShape(cut: 14).stroke(cardStroke, lineWidth: 1))
             .overlay(alignment: .topLeading) {
                 cornerMark(color: cornerColor)

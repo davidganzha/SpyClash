@@ -11,6 +11,8 @@ import {
   type LobbyWordPoolEntry,
 } from "./lobby-state-policy.ts";
 import { terminalIntentFromRoom } from "./room-result-policy.ts";
+import { replayEligiblePlayerEmails } from "./replay-policy.ts";
+import { activeGameLobbyEligiblePlayerEmails } from "./active-game-lobby-return-policy.ts";
 import { isDetectiveVotingActive } from "./detective-vote-policy.ts";
 import {
   canonicalClientCapabilities,
@@ -217,6 +219,30 @@ export function projectRoomForClient(
   const persistedVoteRequests = safeEmailList(room.vote_requests);
   const legacyUnscopedActiveVote = !clean(room.detective_vote_round_id) &&
     isDetectiveVotingActive(activeEmails, persistedVoteRequests);
+  const roomStatus = clean(room.status || "waiting").toLowerCase();
+  const replayEligibleEmails = roomStatus === "finished"
+    ? replayEligiblePlayerEmails(room)
+    : [];
+  const viewerMaySeeReplayEligibility = replayEligibleEmails.some((email) =>
+    normalizedEmail(email) === normalizedEmail(viewer?.email)
+  );
+  const returnToLobbyEligibleEmails = roomStatus === "playing"
+    ? activeGameLobbyEligiblePlayerEmails(room)
+    : [];
+  const viewerIsRetainedRoomPlayer = safeObjectList(room.players).some(
+    (player) =>
+      normalizedEmail(player?.email) === normalizedEmail(viewer?.email),
+  );
+  const viewerMaySeeReturnToLobbyEligibility = roomStatus === "playing" &&
+    viewerIsRetainedRoomPlayer;
+  const viewerReturnToLobbyEligibleEmails = returnToLobbyEligibleEmails.some(
+      (email) => normalizedEmail(email) === normalizedEmail(viewer?.email),
+    )
+    ? returnToLobbyEligibleEmails
+    : [];
+  const viewerMayAddressLobbyPlayers =
+    ["waiting", "ready_voting"].includes(roomStatus) &&
+    normalizedEmail(viewer?.email) === normalizedEmail(room?.host_email);
 
   return {
     id: clean(room.id),
@@ -224,7 +250,19 @@ export function projectRoomForClient(
     code: clean(room.code),
     host_email: clean(room.host_email),
     status: clean(room.status || "waiting"),
+    ...(viewerMaySeeReplayEligibility
+      ? { replay_eligible_player_emails: replayEligibleEmails }
+      : {}),
+    ...(viewerMaySeeReturnToLobbyEligibility
+      ? {
+        return_to_lobby_eligible_player_emails:
+          viewerReturnToLobbyEligibleEmails,
+      }
+      : {}),
     players: safeObjectList(room.players).map((player) => ({
+      ...(viewerMayAddressLobbyPlayers && clean(player.user_id)
+        ? { user_id: clean(player.user_id) }
+        : {}),
       email: clean(player.email),
       name: safeCommunityDisplayName(player.name),
       avatar: safeCommunityAvatar(player.avatar),

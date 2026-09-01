@@ -50,10 +50,16 @@ Deno.test("association spin settlement is recoverable by every active player", a
     stopAssociationSpin,
     "activePlayers(room).some((player) => player.email === user.email)",
   );
+  assertStringIncludes(
+    stopAssociationSpin,
+    "currentSpeakerEmail: room.current_asker_email",
+  );
   assertEquals(
-    stopAssociationSpin.includes("current_asker_email"),
+    stopAssociationSpin.includes(
+      "clean(room.current_asker_email) !== clean(user.email)",
+    ),
     false,
-    "spin settlement must not depend on the selected speaker's device",
+    "the current speaker anchors legacy order but any active device may settle it",
   );
   assertEquals(
     stopAssociationSpin.includes("host_email"),
@@ -94,11 +100,11 @@ Deno.test("waiting rejoin refreshes capability while explicit active departure s
   );
 
   const replay = source.slice(
-    source.indexOf("async function resetRoomForReplay"),
+    source.indexOf("function replayResetPatch"),
     source.indexOf("async function updateGameMode"),
   );
-  assertStringIncludes(replay, "const replayPlayers = players(room).filter(");
-  assertStringIncludes(replay, "departed_player_emails: []");
+  assertStringIncludes(replay, "replayResetMembershipPatch(room)");
+  assertStringIncludes(replay, "...replayMembership");
   assertStringIncludes(
     replay,
     "...lobbyMembershipClampPatch(room, replayPlayers.length)",
@@ -261,19 +267,52 @@ Deno.test("multi-spy history is retained for every role but excluded from rankin
       new URL("../../entities/GameHistory.jsonc", import.meta.url),
     ),
   );
-  const archive = source.slice(
-    source.indexOf("async function archiveRoomResult"),
+  const historyPipeline = source.slice(
+    source.indexOf("function terminalHistoryRecords"),
     source.indexOf("async function claimTerminalIntent"),
   );
-  assertStringIncludes(archive, "const spyEmails = canonicalSpyEmails(room)");
   assertStringIncludes(
-    archive,
+    historyPipeline,
+    "const spyEmails = canonicalSpyEmails(room)",
+  );
+  assertStringIncludes(
+    historyPipeline,
     "const isSpy = spyKeys.has(clean(player.email).toLocaleLowerCase())",
   );
-  assertStringIncludes(archive, "ranked: spyEmails.length === 1");
-  assertStringIncludes(archive, "spy_count: spyEmails.length");
-  assertStringIncludes(archive, 'role: isSpy ? "spy" : "detective"');
+  assertStringIncludes(
+    historyPipeline,
+    "const ranked = spyEmails.length === 1",
+  );
+  assertStringIncludes(historyPipeline, "ranked,");
+  assertStringIncludes(historyPipeline, "spy_count: spyEmails.length");
+  assertStringIncludes(
+    historyPipeline,
+    'role: isSpy ? "spy" : "detective"',
+  );
+  assertStringIncludes(
+    historyPipeline,
+    "result_key: gameHistoryResultKey(matchIdentity.id, player.user_id)",
+  );
+  assertStringIncludes(historyPipeline, "await persistGameHistoryResult({");
+  assertEquals(
+    historyPipeline.includes("reconcileCommunityProfileMirrors({"),
+    false,
+    "profile mirrors must not block the authoritative terminal commit",
+  );
+  const profileRepair = source.slice(
+    source.indexOf("async function rankedHistoryForMatch"),
+    source.indexOf("async function dispatchRoomPushBestEffort"),
+  );
+  assertStringIncludes(
+    profileRepair,
+    "reconcileCommunityProfileMirrors({",
+  );
+  assertStringIncludes(
+    profileRepair,
+    "knownHistoryRecords: [source]",
+  );
   assert("spy_count" in schema.properties);
+  assert("result_key" in schema.properties);
   assertEquals(schema.properties.spy_count.maximum, 3);
 });
 
@@ -395,6 +434,16 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     source.indexOf("async function finishRoom"),
     source.indexOf("async function createRoom"),
   );
+  const terminalClaim = source.slice(
+    source.indexOf("async function claimTerminalIntent"),
+    source.indexOf("async function finishRoom"),
+  );
+  assertStringIncludes(terminalClaim, "ready_players: []");
+  assertStringIncludes(finish, "ready_players: []");
+  assertStringIncludes(
+    finish,
+    "...(readyPlayers(latest).length ? { ready_players: [] } : {})",
+  );
   assertStringIncludes(finish, "game_finished_event_id: finishedEventID");
   const enqueueFinish = finish.indexOf("await enqueueGamePushEvents({");
   const finishRoomCommit = finish.indexOf(
@@ -456,7 +505,14 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     terminalSideEffects,
     "store: base44.asServiceRole.entities.GameRoom",
   );
-  assertStringIncludes(terminalSideEffects, "return run.room");
+  assertStringIncludes(
+    terminalSideEffects,
+    "return pushRun.room || profileRun.room",
+  );
+  assertStringIncludes(
+    terminalSideEffects,
+    'stateKey: "profile_side_effect_dispatch"',
+  );
   assert(
     pushAfterLease >= 0 && pushAfterLease < signalAfterPush &&
       signalAfterPush < durablePushCompletesClaim,
@@ -468,6 +524,16 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   );
   assertStringIncludes(deferredSignal, "await withRoomWriteLeases({");
   assertStringIncludes(deferredSignal, "attempts: 1");
+  const profileRepair = source.slice(
+    source.indexOf("async function rankedHistoryForMatch"),
+    source.indexOf("async function dispatchRoomPushBestEffort"),
+  );
+  assertStringIncludes(
+    profileRepair,
+    "fanoutCommunityProfileInvalidations({",
+  );
+  assertStringIncludes(profileRepair, "recipientUserIDs: [recipientUserID]");
+  assertStringIncludes(profileRepair, "profileUserIDs: [profileUserID]");
   assertStringIncludes(source, "if (isCommittedFinishedRoom(room)) {");
   assertStringIncludes(
     source,
@@ -678,8 +744,8 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     source.indexOf("async function votePlayAgain"),
     source.indexOf("async function resetRoomForReplay"),
   );
-  assertStringIncludes(replayVote, 'normalizedStatus(room) !== "finished"');
-  assertStringIncludes(replayVote, 'normalizedStatus(latest) !== "finished"');
+  assertStringIncludes(replayVote, "replayVoteTransition(room, user.email)");
+  assertStringIncludes(replayVote, "replayVoteTransition(latest, user.email)");
 });
 
 Deno.test("detective-vote cancellation events reset only at room and match lifecycle boundaries", async () => {
@@ -692,7 +758,7 @@ Deno.test("detective-vote cancellation events reset only at room and match lifec
       source.indexOf("async function joinRoom"),
     ),
     source.slice(
-      source.indexOf("async function resetRoomForReplay"),
+      source.indexOf("function replayResetPatch"),
       source.indexOf("async function updateGameMode"),
     ),
     source.slice(
@@ -792,7 +858,7 @@ Deno.test("authoritative lobby snapshots are revisioned, frozen into start, and 
   assertStringIncludes(start, "body?.expected_lobby_revision");
 
   const replay = source.slice(
-    source.indexOf("async function resetRoomForReplay"),
+    source.indexOf("function replayResetPatch"),
     source.indexOf("async function updateGameMode"),
   );
   assertStringIncludes(replay, "hasAuthoritativeLobbyState(room)");

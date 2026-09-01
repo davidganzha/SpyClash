@@ -519,8 +519,7 @@ struct OnboardingView: View {
             HapticManager.shared.fire(.milestone)
             Task {
                 await appState.finishOnboarding(
-                    source: selectedSource,
-                    enableNearbyTransport: permissions.status(for: .nearby) == .granted
+                    source: selectedSource
                 )
                 isFinishing = false
             }

@@ -103,6 +103,29 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
   );
 });
 
+Deno.test("membership removal can wake the removed participant without restoring room membership", () => {
+  const records = signalRecordsForRoom(
+    {
+      id: "room-1",
+      lobby_revision: 8,
+      room_revision: 22,
+      participant_user_ids: ["host-user", "remaining-user"],
+      players: [
+        { user_id: "host-user" },
+        { user_id: "remaining-user" },
+      ],
+    },
+    "active",
+    ["removed-user", "remaining-user", "removed-user"],
+  );
+
+  assertEquals(records.map((record) => record.user_id), [
+    "host-user",
+    "remaining-user",
+    "removed-user",
+  ]);
+});
+
 Deno.test("signal upsert uses one write for an existing participant row", async () => {
   const store = new MemorySignalStore();
   assertEquals(await upsertGameRoomSignal(store, signal), "created");

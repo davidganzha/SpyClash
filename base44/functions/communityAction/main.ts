@@ -806,9 +806,6 @@ Deno.serve(async (req) => {
         )
         ? clean(body.spy_card_badge)
         : "operative";
-      const language = ["en", "es", "ru", "uk"].includes(clean(body.language))
-        ? clean(body.language)
-        : "en";
       const updated = await withCommunityWriteLeases({
         lifecycleStore,
         userIDs: [current.id],
@@ -817,7 +814,6 @@ Deno.serve(async (req) => {
             base44.asServiceRole.entities.User.update(current.id, {
               display_name: displayName,
               avatar,
-              language,
               spy_card_theme: theme,
               spy_card_accent: accent,
               spy_card_badge: badge,

@@ -86,6 +86,103 @@ enum LocalSpyAssignmentPolicy {
     }
 }
 
+struct LocalAssociationTurnOrderState: Equatable {
+    let order: [Int]
+    let step: Int
+
+    var currentPlayerIndex: Int? {
+        order.indices.contains(step) ? order[step] : nil
+    }
+}
+
+enum LocalAssociationTurnOrderPolicy {
+    typealias Shuffle = ([Int]) -> [Int]
+
+    static func initial(
+        activePlayerIndices: [Int],
+        shuffle: Shuffle = { $0.shuffled() }
+    ) -> LocalAssociationTurnOrderState {
+        let active = unique(activePlayerIndices)
+        return LocalAssociationTurnOrderState(
+            order: normalizedShuffle(active, shuffle: shuffle),
+            step: 0
+        )
+    }
+
+    static func reconciled(
+        state: LocalAssociationTurnOrderState,
+        activePlayerIndices: [Int],
+        shuffle: Shuffle = { $0.shuffled() }
+    ) -> LocalAssociationTurnOrderState {
+        let active = unique(activePlayerIndices)
+        guard !active.isEmpty else {
+            return LocalAssociationTurnOrderState(order: [], step: 0)
+        }
+
+        let activeSet = Set(active)
+        var seen = Set<Int>()
+        var order = state.order.filter { activeSet.contains($0) && seen.insert($0).inserted }
+        if order.isEmpty {
+            return initial(activePlayerIndices: active, shuffle: shuffle)
+        }
+        order.append(contentsOf: active.filter { seen.insert($0).inserted })
+
+        if let current = state.currentPlayerIndex,
+           let retainedStep = order.firstIndex(of: current) {
+            return LocalAssociationTurnOrderState(order: order, step: retainedStep)
+        }
+
+        if state.order.indices.contains(state.step) {
+            for offset in 1...state.order.count {
+                let candidate = state.order[(state.step + offset) % state.order.count]
+                if let successorStep = order.firstIndex(of: candidate) {
+                    return LocalAssociationTurnOrderState(order: order, step: successorStep)
+                }
+            }
+        }
+
+        return LocalAssociationTurnOrderState(order: order, step: 0)
+    }
+
+    static func advanced(
+        state: LocalAssociationTurnOrderState,
+        activePlayerIndices: [Int],
+        shuffle: Shuffle = { $0.shuffled() }
+    ) -> LocalAssociationTurnOrderState {
+        let active = unique(activePlayerIndices)
+        let activeSet = Set(active)
+        let hadActiveSpeaker = state.currentPlayerIndex.map { activeSet.contains($0) } ?? false
+        let current = reconciled(
+            state: state,
+            activePlayerIndices: active,
+            shuffle: shuffle
+        )
+        guard hadActiveSpeaker, current.order.count > 1 else { return current }
+        return LocalAssociationTurnOrderState(
+            order: current.order,
+            step: (current.step + 1) % current.order.count
+        )
+    }
+
+    private static func unique(_ values: [Int]) -> [Int] {
+        var seen = Set<Int>()
+        return values.filter { seen.insert($0).inserted }
+    }
+
+    private static func normalizedShuffle(
+        _ active: [Int],
+        shuffle: Shuffle
+    ) -> [Int] {
+        let activeSet = Set(active)
+        var seen = Set<Int>()
+        var result = shuffle(active).filter {
+            activeSet.contains($0) && seen.insert($0).inserted
+        }
+        result.append(contentsOf: active.filter { seen.insert($0).inserted })
+        return result
+    }
+}
+
 struct LocalGameView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
@@ -339,6 +436,7 @@ struct LocalGameView: View {
 
     private func handleLocalScenePhaseChange(_ newScenePhase: ScenePhase) {
         guard newScenePhase != .active else { return }
+        dismissLocalSetupCapture(animated: false)
 
         var transaction = Transaction()
         transaction.disablesAnimations = true
@@ -580,14 +678,6 @@ struct LocalGameView: View {
 
     private var setupView: some View {
         ZStack(alignment: .top) {
-            if localSetupHasActiveCapture {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        dismissLocalSetupCapture()
-                    }
-            }
-
             VStack(alignment: .leading, spacing: SpyLobbyVisualLanguage.sectionSpacing) {
                 localSetupSlot(.mission) {
                     localMissionPanel
@@ -665,26 +755,12 @@ struct LocalGameView: View {
     private func localSetupSlot<Content: View>(_ panel: LocalSetupPanel, @ViewBuilder content: () -> Content) -> some View {
         let dimmed = localShouldDimPanel(panel)
 
-        ZStack {
-            content()
-                .modifier(SpyLobbySetupFocusEffect(dimmed: dimmed))
-
-            if dimmed {
-                Color.clear
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        dismissLocalSetupCapture()
-                    }
-            }
-        }
+        content()
+            .modifier(SpyLobbySetupFocusEffect(dimmed: dimmed))
     }
 
-    private var localSetupHasActiveCapture: Bool {
-        focusedLocalSetupField != nil || draggingPlayerID != nil
-    }
-
-    private func dismissLocalSetupCapture() {
-        withAnimation(reduceMotion ? nil : localSetupFocusAnimation) {
+    private func dismissLocalSetupCapture(animated: Bool = true) {
+        withAnimation(!animated || reduceMotion ? nil : localSetupFocusAnimation) {
             animatedLocalSetupPanel = nil
             focusedLocalSetupField = nil
         }
@@ -1272,15 +1348,6 @@ struct LocalGameView: View {
             localIntelPackSelection
             localIntelGeneratedPackControls
         }
-        .background {
-            if localIntelHasActiveCapture {
-                Color.black.opacity(0.001)
-                    .contentShape(Rectangle())
-                    .onTapGesture {
-                        dismissLocalSetupCapture()
-                    }
-            }
-        }
         .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: localHasCustomTheme)
         .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: localThemeAnalyzed)
         .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: generatedPack)
@@ -1350,10 +1417,6 @@ struct LocalGameView: View {
             localSaveAsWordPackButton
                 .transition(.opacity.combined(with: .move(edge: .top)))
         }
-    }
-
-    private var localIntelHasActiveCapture: Bool {
-        focusedLocalSetupField == .theme
     }
 
     private func localSetupPanel<Content: View>(
@@ -2032,7 +2095,11 @@ struct LocalGameView: View {
     private func localWordCountModeHint(_ mode: LocalWordCountMode) -> String {
         switch mode {
         case .recommended:
-            localized(en: "100 words", ru: "100 слов", es: "100 palabras", uk: "100 слів")
+            if WordPackRecommendedCountPolicy.isCountriesTheme(customTheme) {
+                localized(en: "Up to 100 words", ru: "До 100 слов", es: "Hasta 100 palabras", uk: "До 100 слів")
+            } else {
+                localized(en: "30 words", ru: "30 слов", es: "30 palabras", uk: "30 слів")
+            }
         case .custom:
             localized(
                 en: "\(Int(localCustomWordCount)) words",
@@ -3682,7 +3749,9 @@ struct LocalGameView: View {
         guard !theme.isEmpty, !isGenerating else { return }
 
         let existingPoolCount = generatedPack?.words.localCleanWords.count ?? 0
-        let initialTargetCount = localWordCountMode == .custom ? Int(localCustomWordCount) : 100
+        let initialTargetCount = localWordCountMode == .custom
+            ? Int(localCustomWordCount)
+            : WordPackRecommendedCountPolicy.requestCount(for: theme)
         let targetCount = min(
             localThemeGenerationLimit,
             max(existingPoolCount >= 2 ? existingPoolCount : initialTargetCount, 10)
@@ -3743,7 +3812,13 @@ struct LocalGameView: View {
                 aiRemaining: generated.aiRemaining
             )
             selectedPackID = "generated"
-            wordCount = Double(min(words.count, targetCount))
+            let selectedCount = localWordCountMode == .custom
+                ? min(words.count, targetCount)
+                : WordPackRecommendedCountPolicy.selectedCount(
+                    for: theme,
+                    availableCount: words.count
+                )
+            wordCount = Double(selectedCount)
             status = localized(en: "AI WORD POOL READY", ru: "AI-ПУЛ СЛОВ ГОТОВ", es: "BANCO IA LISTO", uk: "AI-ПУЛ СЛІВ ГОТОВИЙ")
             HapticManager.shared.fire(.milestone)
             persistLocalSettings()
@@ -3823,11 +3898,17 @@ struct LocalGameView: View {
                 aiRemaining: generated.aiRemaining
             )
             selectedPackID = "generated"
-            wordCount = Double(
-                wasUsingEntirePool
-                    ? merged.count
-                    : min(merged.count, max(selectedWordCount, 2))
-            )
+            let nextSelectedCount = if localWordCountMode == .recommended {
+                WordPackRecommendedCountPolicy.selectedCount(
+                    for: theme,
+                    availableCount: merged.count
+                )
+            } else if wasUsingEntirePool {
+                merged.count
+            } else {
+                min(merged.count, max(selectedWordCount, 2))
+            }
+            wordCount = Double(nextSelectedCount)
             status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO", uk: "AI-ПУЛ СЛІВ РОЗШИРЕНО")
             HapticManager.shared.fire(.milestone)
             persistLocalSettings()
@@ -4037,10 +4118,11 @@ struct LocalGameView: View {
 
     private func beginPlaying() {
         secondsRemaining = Int(duration * 60)
-        if let session,
-           session.mode == .associations,
-           associationOrder.count != activeLocalPlayerIndices(in: session).count {
-            resetAssociationFlow(playerIndices: activeLocalPlayerIndices(in: session), mode: session.mode)
+        if let session, session.mode == .associations {
+            reconcileAssociationFlow(
+                playerIndices: activeLocalPlayerIndices(in: session),
+                mode: session.mode
+            )
         }
         isLocalGamePaused = false
         setLocalPhase(.playing)
@@ -4443,8 +4525,29 @@ struct LocalGameView: View {
             return
         }
 
-        associationOrder = shuffledAssociationOrder(playerIndices: playerIndices, avoidingFirst: nil)
-        associationStep = 0
+        let state = LocalAssociationTurnOrderPolicy.initial(
+            activePlayerIndices: playerIndices
+        )
+        associationOrder = state.order
+        associationStep = state.step
+        associationRouletteDone = false
+    }
+
+    private func reconcileAssociationFlow(playerIndices: [Int], mode: LocalMode) {
+        guard mode == .associations, !playerIndices.isEmpty else {
+            resetAssociationFlow(playerIndices: [], mode: .questions)
+            return
+        }
+
+        let state = LocalAssociationTurnOrderPolicy.reconciled(
+            state: LocalAssociationTurnOrderState(
+                order: associationOrder,
+                step: associationStep
+            ),
+            activePlayerIndices: playerIndices
+        )
+        associationOrder = state.order
+        associationStep = state.step
         associationRouletteDone = false
     }
 
@@ -4452,24 +4555,16 @@ struct LocalGameView: View {
         guard !playerIndices.isEmpty else { return }
 
         questionIndex += 1
-        let nextStep = associationStep + 1
-        if nextStep >= associationOrder.count {
-            let last = associationOrder.last
-            associationOrder = shuffledAssociationOrder(playerIndices: playerIndices, avoidingFirst: last)
-            associationStep = 0
-        } else {
-            associationStep = nextStep
-        }
+        let state = LocalAssociationTurnOrderPolicy.advanced(
+            state: LocalAssociationTurnOrderState(
+                order: associationOrder,
+                step: associationStep
+            ),
+            activePlayerIndices: playerIndices
+        )
+        associationOrder = state.order
+        associationStep = state.step
         associationRouletteDone = false
-    }
-
-    private func shuffledAssociationOrder(playerIndices: [Int], avoidingFirst avoidedFirst: Int?) -> [Int] {
-        guard !playerIndices.isEmpty else { return [] }
-        var shuffled = playerIndices.shuffled()
-        if let avoidedFirst, shuffled.count > 1, shuffled.first == avoidedFirst {
-            shuffled.swapAt(0, 1)
-        }
-        return shuffled
     }
 
     private func resolveAccusation(_ index: Int, session: LocalSession) {
@@ -4488,7 +4583,7 @@ struct LocalGameView: View {
         case .continuePlaying:
             accusedIndex = nil
             questionIndex = 0
-            resetAssociationFlow(
+            reconcileAssociationFlow(
                 playerIndices: activeLocalPlayerIndices(in: session),
                 mode: session.mode
             )
@@ -4725,10 +4820,20 @@ struct LocalGameView: View {
            let generatedPack,
            generatedPack.words.localCleanWords.count >= 2 {
             selectedPackID = "generated"
-            wordCount = min(
-                max(wordCount, 2),
-                Double(min(generatedPack.words.localCleanWords.count, localThemeGenerationLimit))
+            let availableCount = min(
+                generatedPack.words.localCleanWords.count,
+                localThemeGenerationLimit
             )
+            wordCount = if localWordCountMode == .recommended {
+                Double(
+                    WordPackRecommendedCountPolicy.selectedCount(
+                        for: customTheme,
+                        availableCount: availableCount
+                    )
+                )
+            } else {
+                min(max(wordCount, 2), Double(availableCount))
+            }
         } else if localHasCustomTheme {
             generatedPack = nil
             selectedPackID = "generated"

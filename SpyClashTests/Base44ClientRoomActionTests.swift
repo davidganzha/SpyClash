@@ -92,6 +92,34 @@ final class Base44ClientRoomActionTests: XCTestCase {
         }
     }
 
+    func testUpdateProfileCarriesCurrentLanguageForOldBackendCompatibility() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 200,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"id":"user-1","email":"operative@example.com"}"#.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        _ = try await makeClient().updateProfile(
+            displayName: "Red Raven",
+            avatar: "🕵️",
+            language: .uk,
+            spyCardTheme: .field,
+            spyCardAccent: .signalRed,
+            spyCardBadge: .operative
+        )
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        XCTAssertEqual(body["action"] as? String, "update_profile")
+        XCTAssertEqual(body["language"] as? String, "uk")
+    }
+
     func testDeleteAccountPreservesStructuredRetryDelay() async throws {
         MockURLProtocol.requestHandler = { request in
             let response = HTTPURLResponse(
@@ -199,6 +227,130 @@ final class Base44ClientRoomActionTests: XCTestCase {
                     ($0["access_token"] as? String) == "test-token"
             }
         )
+    }
+
+    func testLobbyReturnVoteAndKickWrappersEncodeExplicitSafePayloads() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        let room = GameRoom.previewRoom(status: "waiting")
+        let stableTarget = Player(
+            email: "stable@example.com",
+            name: "Stable",
+            avatar: "🕵️",
+            userID: "user-stable"
+        )
+        let legacyTarget = Player(
+            email: "legacy@example.com",
+            name: "Legacy",
+            avatar: "🎭"
+        )
+
+        _ = try await client.voteReturnToLobby(room: room, vote: true)
+        _ = try await client.voteReturnToLobby(room: room, vote: false)
+        _ = try await client.kickPlayer(room: room, player: stableTarget)
+        _ = try await client.kickPlayer(room: room, player: legacyTarget)
+        _ = try await client.returnFinishedRoomToLobby(room: room)
+
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(bodies[0]["action"] as? String, "vote_return_to_lobby")
+        XCTAssertEqual(bodies[0]["return_to_lobby_vote"] as? Bool, true)
+        XCTAssertEqual(bodies[1]["return_to_lobby_vote"] as? Bool, false)
+
+        XCTAssertEqual(bodies[2]["action"] as? String, "kick_player")
+        XCTAssertEqual(bodies[2]["target_user_id"] as? String, "user-stable")
+        XCTAssertNil(bodies[2]["target_email"])
+
+        XCTAssertEqual(bodies[3]["action"] as? String, "kick_player")
+        XCTAssertNil(bodies[3]["target_user_id"])
+        XCTAssertEqual(bodies[3]["target_email"] as? String, "legacy@example.com")
+
+        XCTAssertEqual(bodies[4]["action"] as? String, "return_finished_room_to_lobby")
+        XCTAssertEqual(bodies[4]["room_id"] as? String, room.id)
+    }
+
+    func testFinishedLobbyReturnRecoversACommittedLostResponse() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let body = try XCTUnwrap(recorder.requestBodies().last)
+            let action = try XCTUnwrap(body["action"] as? String)
+            if action == "return_finished_room_to_lobby" {
+                throw URLError(.timedOut)
+            }
+            XCTAssertEqual(action, "get_room")
+            return MockURLProtocol.roomResponse(
+                for: request,
+                id: GameRoom.previewRoom(status: "finished").id,
+                status: "waiting",
+                matchID: nil
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        var finished = GameRoom.previewRoom(status: "finished")
+        finished.matchID = "match-finished"
+        let recovered = try await makeClient().returnFinishedRoomToLobby(room: finished)
+        XCTAssertEqual(recovered.normalizedStatus, "waiting")
+        XCTAssertNil(recovered.matchID)
+        XCTAssertEqual(
+            try recorder.requestBodies().compactMap { $0["action"] as? String },
+            ["return_finished_room_to_lobby", "get_room"]
+        )
+    }
+
+    func testFinishedLobbyReturnRecoveryRejectsAnotherActiveGeneration() {
+        var active = GameRoom.previewRoom(status: "playing")
+        active.matchID = "next-match"
+        XCTAssertFalse(
+            FinishedRoomLobbyReturnRecoveryPolicy.accepts(
+                room: active,
+                expectedRoomID: active.id
+            )
+        )
+    }
+
+    func testGameRoomDecodesAddressableLobbyPlayersAndCanonicalReturnVotes() throws {
+        let room = try JSONDecoder().decode(
+            GameRoom.self,
+            from: Data(
+                #"{"id":"room-1","code":"ABC123","status":"playing","players":[{"user_id":"user-1","email":"p1@example.com","name":"P1","avatar":"🕵️"},{"user_id":"user-2","email":"p2@example.com","name":"P2","avatar":"🎭"}],"ready_players":[" P1@EXAMPLE.COM ","p1@example.com","stale@example.com"]}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(room.playersList.map(\.userID), ["user-1", "user-2"])
+        XCTAssertTrue(room.hasReturnToLobbyVote(email: "p1@example.com"))
+        XCTAssertFalse(room.hasReturnToLobbyVote(email: "p2@example.com"))
+        XCTAssertEqual(room.returnToLobbyVoteCount, 1)
+    }
+
+    func testRefreshRoomPreservesTypedAccessRevocationOutcome() async throws {
+        MockURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 403,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            let payload = #"{"error":"Not a player in this room","code":"room_access_revoked"}"#
+            return (response, Data(payload.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        do {
+            _ = try await makeClient().refreshRoom(id: "room-kicked")
+            XCTFail("Expected a typed access-revoked response.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.statusCode, 403)
+            XCTAssertEqual(error.code, "room_access_revoked")
+            XCTAssertTrue(error.isRoomAccessRevoked)
+            XCTAssertFalse(LobbySyncRetryPolicy.isRetryable(error))
+        }
     }
 
     func testRoundActionRetriesOneTypedPreActionLeaseConflict() async throws {
@@ -625,6 +777,60 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertEqual(planBody["category"] as? String, "COUNTRIES")
     }
 
+    func testReplayPlanUsesPreservedAuthoritativeLobbyAfterGameplayPoolWasCleared() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        var resetRoom = GameRoom.previewRoom(status: "waiting")
+        resetRoom.matchID = nil
+        resetRoom.wordPool = []
+        resetRoom.secretWord = nil
+        resetRoom.word = nil
+        resetRoom.readyPlayers = []
+        resetRoom.lobbyRevision = 9
+        resetRoom.lobbyWordSource = "saved"
+        resetRoom.lobbySourcePackID = "saved-pack"
+        resetRoom.lobbySourceName = "Preserved deck"
+        resetRoom.lobbyCategory = "ARCHIVE"
+        resetRoom.lobbyWordCount = 2
+        resetRoom.lobbyWordPool = [
+            LobbyWordPoolEntry(word: "Cipher"),
+            LobbyWordPoolEntry(word: "Embassy"),
+            LobbyWordPoolEntry(word: "Disabled", enabled: false)
+        ]
+        let staleLocalPack = WordPack(
+            id: "stale-local",
+            name: "Stale",
+            category: "WRONG",
+            words: ["Wrong A", "Wrong B"],
+            ownerEmail: "operative@example.com",
+            isPublic: false
+        )
+
+        let plan = try client.makeGameStartPlan(
+            room: resetRoom,
+            wordPacks: [staleLocalPack],
+            selectedPackID: staleLocalPack.id,
+            gameMode: .associations,
+            durationSeconds: 60
+        )
+        _ = try await client.armRoulette(room: resetRoom, plan: plan)
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        let planBody = try XCTUnwrap(body["plan"] as? [String: Any])
+        let pool = try XCTUnwrap(planBody["word_pool"] as? [[String: Any]])
+        let transportedWords = try pool.map { try XCTUnwrap($0["word"] as? String) }
+
+        XCTAssertEqual(transportedWords, ["Cipher", "Embassy"])
+        XCTAssertEqual(planBody["category"] as? String, "ARCHIVE")
+        XCTAssertFalse(transportedWords.contains("Wrong A"))
+    }
+
     func testGameRoomDecodesAuthoritativeLobbyProjection() throws {
         let room = try JSONDecoder().decode(
             GameRoom.self,
@@ -833,7 +1039,13 @@ final class Base44ClientRoomActionTests: XCTestCase {
 
         RadarInvitePolicy.blocked.persist(for: "account-b", defaults: defaults)
         XCTAssertEqual(RadarInvitePolicy.stored(for: "account-a", defaults: defaults), .automatic)
-        XCTAssertEqual(RadarInvitePolicy.stored(for: "account-b", defaults: defaults), .blocked)
+        XCTAssertEqual(RadarInvitePolicy.stored(for: "account-b", defaults: defaults), .ask)
+    }
+
+    func testRadarInvitePolicyKeepsBlockedForWireCompatibilityButNotSelection() {
+        XCTAssertEqual(RadarInvitePolicy.selectableCases, [.ask, .automatic])
+        XCTAssertEqual(RadarInvitePolicy.blocked.selectableValue, .ask)
+        XCTAssertEqual(RadarInvitePolicy(rawValue: "blocked"), .blocked)
     }
 
     func testSpyUserDecodesSharedRadarInvitePolicyField() throws {
@@ -1048,7 +1260,7 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertNil(radar.incomingInvitation)
     }
 
-    func testRadarCombinedProfileAndBlockedPolicyRefreshDismissesInvite() {
+    func testRadarCombinedProfileAndLegacyBlockedPolicyMigratesToAsk() {
         let radar = RadarNearbyService()
         radar.configure(
             user: makeRadarUser(
@@ -1075,8 +1287,8 @@ final class Base44ClientRoomActionTests: XCTestCase {
             )
         )
 
-        XCTAssertNil(radar.incomingInvitation)
-        XCTAssertEqual(radar.invitePolicy, .blocked)
+        XCTAssertNotNil(radar.incomingInvitation)
+        XCTAssertEqual(radar.invitePolicy, .ask)
     }
 
     private func makeRadarUser(

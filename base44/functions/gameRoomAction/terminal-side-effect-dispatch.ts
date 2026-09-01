@@ -1,6 +1,9 @@
 import { roomWriteRevision, writeRoomWithCAS } from "./room-write-cas.ts";
 
 type Entity = Record<string, any>;
+export type TerminalSideEffectStateKey =
+  | "side_effect_dispatch"
+  | "profile_side_effect_dispatch";
 
 const DEFAULT_DISPATCH_LEASE_MILLISECONDS = 2 * 60 * 1_000;
 const CLAIM_ATTEMPTS = 6;
@@ -21,9 +24,12 @@ function rawTerminalIntent(room: Entity): Entity | null {
     : null;
 }
 
-function dispatchState(room: Entity): Entity | null {
+function dispatchState(
+  room: Entity,
+  stateKey: TerminalSideEffectStateKey,
+): Entity | null {
   const intent = rawTerminalIntent(room);
-  const state = intent?.side_effect_dispatch;
+  const state = intent?.[stateKey];
   return state && typeof state === "object" && !Array.isArray(state)
     ? state
     : null;
@@ -48,8 +54,9 @@ function dispatchLeaseActive(
   room: Entity,
   sourceEventID: string,
   now: Date,
+  stateKey: TerminalSideEffectStateKey,
 ): boolean {
-  const state = dispatchState(room);
+  const state = dispatchState(room, stateKey);
   if (clean(state?.event_id) !== sourceEventID) return false;
   const leaseUntil = Date.parse(clean(state?.lease_until));
   return clean(state?.state) === "processing" &&
@@ -60,6 +67,7 @@ export type TerminalSideEffectDispatchClaim = {
   roomID: string;
   sourceEventID: string;
   token: string;
+  stateKey: TerminalSideEffectStateKey;
   room: Entity;
 };
 
@@ -80,12 +88,14 @@ export async function claimTerminalSideEffectDispatch(input: {
   now?: Date;
   randomUUID?: () => string;
   leaseMilliseconds?: number;
+  stateKey?: TerminalSideEffectStateKey;
 }): Promise<TerminalSideEffectClaimResult> {
   const roomID = clean(input.room?.id);
   const sourceEventID = clean(input.room?.game_finished_event_id);
   if (!roomID || !sourceEventID) return { status: "stale", room: input.room };
   const now = input.now || new Date();
   const randomUUID = input.randomUUID || (() => crypto.randomUUID());
+  const stateKey = input.stateKey || "side_effect_dispatch";
   const leaseMilliseconds = Math.max(
     1_000,
     Number(input.leaseMilliseconds) || DEFAULT_DISPATCH_LEASE_MILLISECONDS,
@@ -97,12 +107,12 @@ export async function claimTerminalSideEffectDispatch(input: {
     if (!roomStillOwnsTerminalSource(room, sourceEventID)) {
       return { status: "stale", room };
     }
-    const state = dispatchState(room);
+    const state = dispatchState(room, stateKey);
     if (
       clean(state?.event_id) === sourceEventID &&
       clean(state?.state) === "completed"
     ) return { status: "completed", room };
-    if (dispatchLeaseActive(room, sourceEventID, now)) {
+    if (dispatchLeaseActive(room, sourceEventID, now, stateKey)) {
       return { status: "deferred", room };
     }
     if (roomWriteRevision(room) === null) {
@@ -124,7 +134,7 @@ export async function claimTerminalSideEffectDispatch(input: {
         patch: {
           terminal_intent: {
             ...rawTerminalIntent(room),
-            side_effect_dispatch: sideEffectDispatch,
+            [stateKey]: sideEffectDispatch,
           },
         },
         read: (id) => readRoom(input.store, id),
@@ -135,12 +145,12 @@ export async function claimTerminalSideEffectDispatch(input: {
       }
       return {
         status: "claimed",
-        claim: { roomID, sourceEventID, token, room: claimedRoom },
+        claim: { roomID, sourceEventID, token, stateKey, room: claimedRoom },
         room: claimedRoom,
       };
     } catch {
       room = await readRoom(input.store, roomID);
-      const reconciled = dispatchState(room || {});
+      const reconciled = dispatchState(room || {}, stateKey);
       if (
         roomStillOwnsTerminalSource(room, sourceEventID) &&
         clean(reconciled?.event_id) === sourceEventID &&
@@ -149,7 +159,7 @@ export async function claimTerminalSideEffectDispatch(input: {
       ) {
         return {
           status: "claimed",
-          claim: { roomID, sourceEventID, token, room },
+          claim: { roomID, sourceEventID, token, stateKey, room },
           room,
         };
       }
@@ -169,7 +179,7 @@ export async function completeTerminalSideEffectDispatch(input: {
 }): Promise<{ completed: boolean; room: Entity | null }> {
   const now = input.now || new Date();
   const room = await readRoom(input.store, input.claim.roomID);
-  const state = dispatchState(room || {});
+  const state = dispatchState(room || {}, input.claim.stateKey);
   if (
     !roomStillOwnsTerminalSource(room, input.claim.sourceEventID) ||
     clean(state?.event_id) !== input.claim.sourceEventID ||
@@ -186,7 +196,7 @@ export async function completeTerminalSideEffectDispatch(input: {
       patch: {
         terminal_intent: {
           ...rawTerminalIntent(room),
-          side_effect_dispatch: {
+          [input.claim.stateKey]: {
             ...state,
             state: "completed",
             lease_until: now.toISOString(),
@@ -197,7 +207,10 @@ export async function completeTerminalSideEffectDispatch(input: {
       read: (id) => readRoom(input.store, id),
       randomUUID: () => `terminal-dispatch-complete:${completionID}`,
     });
-    const completedState = dispatchState(completedRoom);
+    const completedState = dispatchState(
+      completedRoom,
+      input.claim.stateKey,
+    );
     return {
       completed:
         roomStillOwnsTerminalSource(completedRoom, input.claim.sourceEventID) &&
@@ -208,7 +221,7 @@ export async function completeTerminalSideEffectDispatch(input: {
     };
   } catch {
     const latest = await readRoom(input.store, input.claim.roomID);
-    const latestState = dispatchState(latest || {});
+    const latestState = dispatchState(latest || {}, input.claim.stateKey);
     return {
       completed:
         roomStillOwnsTerminalSource(latest, input.claim.sourceEventID) &&
@@ -232,6 +245,7 @@ export async function runTerminalSideEffectsSingleFlight(input: {
   now?: Date;
   randomUUID?: () => string;
   leaseMilliseconds?: number;
+  stateKey?: TerminalSideEffectStateKey;
 }): Promise<TerminalSideEffectRunResult> {
   const result = await claimTerminalSideEffectDispatch(input);
   if (result.status !== "claimed") {
