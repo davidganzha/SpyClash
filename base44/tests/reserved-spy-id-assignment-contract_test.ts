@@ -62,6 +62,10 @@ Deno.test("reserved SPY ID implementation is admin-only, digest-bound, leased, a
     'clean(operator?.role).toLocaleLowerCase() !== "admin"',
   );
   assertStringIncludes(source, "SPYCLASH_RESERVED_SPY_ID_EXPECTED_PLAN_DIGEST");
+  assertStringIncludes(
+    source,
+    "SPYCLASH_RESERVED_SPY_ID_BILLING_LIFECYCLE_SOURCE_SHA256",
+  );
   assertStringIncludes(source, "lockedPlan.planDigest !== expectedPlanDigest");
   assertStringIncludes(source, "withCommunityWriteLeases");
   assertStringIncludes(source, "BillingIdentityLifecycle");
@@ -102,6 +106,7 @@ Deno.test("reserved SPY ID wrapper defaults to dry-run and gates production appl
     'PRODUCTION_LOCK_DIR="$CUTOVER_DIR/.production-mutation.lock"',
   );
   assertStringIncludes(source, "run_assignment dry-run");
+  assertStringIncludes(source, "BILLING_LIFECYCLE_SOURCE_SHA256");
   assertStringIncludes(
     source,
     "Live state changed after review; run a new dry-run.",

@@ -221,6 +221,10 @@ const lifecycleSourceSHA256 = requireDigest(
   Deno.env.get("SPYCLASH_RESERVED_SPY_ID_LIFECYCLE_SOURCE_SHA256"),
   "SPYCLASH_RESERVED_SPY_ID_LIFECYCLE_SOURCE_SHA256",
 );
+const billingLifecycleSourceSHA256 = requireDigest(
+  Deno.env.get("SPYCLASH_RESERVED_SPY_ID_BILLING_LIFECYCLE_SOURCE_SHA256"),
+  "SPYCLASH_RESERVED_SPY_ID_BILLING_LIFECYCLE_SOURCE_SHA256",
+);
 const policySourceSHA256 = requireDigest(
   Deno.env.get("SPYCLASH_RESERVED_SPY_ID_POLICY_SOURCE_SHA256"),
   "SPYCLASH_RESERVED_SPY_ID_POLICY_SOURCE_SHA256",
@@ -321,6 +325,7 @@ async function buildPlan() {
     app_id: EXPECTED_APP_ID,
     source_sha256: sourceSHA256,
     lifecycle_source_sha256: lifecycleSourceSHA256,
+    billing_lifecycle_source_sha256: billingLifecycleSourceSHA256,
     policy_source_sha256: policySourceSHA256,
     profile_signal_source_sha256: profileSignalSourceSHA256,
     operator_identity_sha256: operatorIdentitySHA256,
@@ -362,6 +367,7 @@ function publicReport(
     phase,
     source_sha256: sourceSHA256,
     lifecycle_source_sha256: lifecycleSourceSHA256,
+    billing_lifecycle_source_sha256: billingLifecycleSourceSHA256,
     policy_source_sha256: policySourceSHA256,
     profile_signal_source_sha256: profileSignalSourceSHA256,
     operator_identity_sha256: operatorIdentitySHA256,

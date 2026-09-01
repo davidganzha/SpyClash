@@ -16,6 +16,7 @@ SEEN_APPLY=0
 
 SCRIPT="$ROOT/scripts/assign-reserved-spy-id.ts"
 LIFECYCLE_SCRIPT="$ROOT/base44/functions/communityAction/community-write-lifecycle.ts"
+BILLING_LIFECYCLE_SCRIPT="$ROOT/base44/functions/communityAction/billing-identity-lifecycle.ts"
 POLICY_SCRIPT="$ROOT/base44/functions/communityAction/community.ts"
 PROFILE_SIGNAL_SCRIPT="$ROOT/base44/functions/communityAction/profile-signal.ts"
 CUTOVER_DIR="$ROOT/.base44-cutover"
@@ -101,6 +102,7 @@ for internal_name in \
   SPYCLASH_RESERVED_SPY_ID_EXPECTED_CURRENT \
   SPYCLASH_RESERVED_SPY_ID_SOURCE_SHA256 \
   SPYCLASH_RESERVED_SPY_ID_LIFECYCLE_SOURCE_SHA256 \
+  SPYCLASH_RESERVED_SPY_ID_BILLING_LIFECYCLE_SOURCE_SHA256 \
   SPYCLASH_RESERVED_SPY_ID_POLICY_SOURCE_SHA256 \
   SPYCLASH_RESERVED_SPY_ID_PROFILE_SIGNAL_SOURCE_SHA256 \
   SPYCLASH_RESERVED_SPY_ID_LIFECYCLE_URL \
@@ -124,7 +126,7 @@ esac
 [ "$STAGE" = "$ROOT/.base44-cutover/reserved-spy-id-067-067" ] || exit 65
 [ "$PRODUCTION_LOCK_DIR" = "$ROOT/.base44-cutover/.production-mutation.lock" ] || exit 65
 
-for source_file in "$SCRIPT" "$LIFECYCLE_SCRIPT" "$POLICY_SCRIPT" "$PROFILE_SIGNAL_SCRIPT"; do
+for source_file in "$SCRIPT" "$LIFECYCLE_SCRIPT" "$BILLING_LIFECYCLE_SCRIPT" "$POLICY_SCRIPT" "$PROFILE_SIGNAL_SCRIPT"; do
   [ -f "$source_file" ] && [ ! -L "$source_file" ] || {
     echo "$source_file must be a regular non-symlink file." >&2
     exit 65
@@ -191,6 +193,7 @@ hash_file() {
 
 SOURCE_SHA256=$(hash_file "$SCRIPT")
 LIFECYCLE_SOURCE_SHA256=$(hash_file "$LIFECYCLE_SCRIPT")
+BILLING_LIFECYCLE_SOURCE_SHA256=$(hash_file "$BILLING_LIFECYCLE_SCRIPT")
 POLICY_SOURCE_SHA256=$(hash_file "$POLICY_SCRIPT")
 PROFILE_SIGNAL_SOURCE_SHA256=$(hash_file "$PROFILE_SIGNAL_SCRIPT")
 LIFECYCLE_URL="file://$LIFECYCLE_SCRIPT"
@@ -224,6 +227,7 @@ run_assignment() {
       SPYCLASH_RESERVED_SPY_ID_EXPECTED_CURRENT="$EXPECTED_CURRENT_SPY_ID" \
       SPYCLASH_RESERVED_SPY_ID_SOURCE_SHA256="$SOURCE_SHA256" \
       SPYCLASH_RESERVED_SPY_ID_LIFECYCLE_SOURCE_SHA256="$LIFECYCLE_SOURCE_SHA256" \
+      SPYCLASH_RESERVED_SPY_ID_BILLING_LIFECYCLE_SOURCE_SHA256="$BILLING_LIFECYCLE_SOURCE_SHA256" \
       SPYCLASH_RESERVED_SPY_ID_POLICY_SOURCE_SHA256="$POLICY_SOURCE_SHA256" \
       SPYCLASH_RESERVED_SPY_ID_PROFILE_SIGNAL_SOURCE_SHA256="$PROFILE_SIGNAL_SOURCE_SHA256" \
       SPYCLASH_RESERVED_SPY_ID_LIFECYCLE_URL="$LIFECYCLE_URL" \
@@ -243,6 +247,7 @@ run_assignment() {
       SPYCLASH_RESERVED_SPY_ID_EXPECTED_CURRENT="$EXPECTED_CURRENT_SPY_ID" \
       SPYCLASH_RESERVED_SPY_ID_SOURCE_SHA256="$SOURCE_SHA256" \
       SPYCLASH_RESERVED_SPY_ID_LIFECYCLE_SOURCE_SHA256="$LIFECYCLE_SOURCE_SHA256" \
+      SPYCLASH_RESERVED_SPY_ID_BILLING_LIFECYCLE_SOURCE_SHA256="$BILLING_LIFECYCLE_SOURCE_SHA256" \
       SPYCLASH_RESERVED_SPY_ID_POLICY_SOURCE_SHA256="$POLICY_SOURCE_SHA256" \
       SPYCLASH_RESERVED_SPY_ID_PROFILE_SIGNAL_SOURCE_SHA256="$PROFILE_SIGNAL_SOURCE_SHA256" \
       SPYCLASH_RESERVED_SPY_ID_LIFECYCLE_URL="$LIFECYCLE_URL" \
@@ -261,11 +266,13 @@ extract_report() {
     --arg app_id "$APP_ID" \
     --arg source "$SOURCE_SHA256" \
     --arg lifecycle "$LIFECYCLE_SOURCE_SHA256" \
+    --arg billing_lifecycle "$BILLING_LIFECYCLE_SOURCE_SHA256" \
     --arg policy "$POLICY_SOURCE_SHA256" \
     --arg profile_signal "$PROFILE_SIGNAL_SOURCE_SHA256" '
       .app_id == $app_id and
       .source_sha256 == $source and
       .lifecycle_source_sha256 == $lifecycle and
+      .billing_lifecycle_source_sha256 == $billing_lifecycle and
       .policy_source_sha256 == $policy and
       .profile_signal_source_sha256 == $profile_signal and
       .reserved_spy_id == "067-067" and
@@ -306,6 +313,7 @@ write_attempt() {
     --arg expected_current_spy_id "$EXPECTED_CURRENT_SPY_ID" \
     --arg source_sha256 "$SOURCE_SHA256" \
     --arg lifecycle_source_sha256 "$LIFECYCLE_SOURCE_SHA256" \
+    --arg billing_lifecycle_source_sha256 "$BILLING_LIFECYCLE_SOURCE_SHA256" \
     --arg policy_source_sha256 "$POLICY_SOURCE_SHA256" \
     --arg profile_signal_source_sha256 "$PROFILE_SIGNAL_SOURCE_SHA256" \
     --argjson status "$status" '{
@@ -320,6 +328,7 @@ write_attempt() {
       reserved_spy_id:"067-067",
       source_sha256:$source_sha256,
       lifecycle_source_sha256:$lifecycle_source_sha256,
+      billing_lifecycle_source_sha256:$billing_lifecycle_source_sha256,
       policy_source_sha256:$policy_source_sha256,
       profile_signal_source_sha256:$profile_signal_source_sha256
     }' > "$WORK/attempt.json"
@@ -374,6 +383,7 @@ jq -e \
   --arg expected "$EXPECTED_CURRENT_SPY_ID" \
   --arg source "$SOURCE_SHA256" \
   --arg lifecycle "$LIFECYCLE_SOURCE_SHA256" \
+  --arg billing_lifecycle "$BILLING_LIFECYCLE_SOURCE_SHA256" \
   --arg policy "$POLICY_SOURCE_SHA256" \
   --arg signal "$PROFILE_SIGNAL_SOURCE_SHA256" '
     .target_user_id == $target and
@@ -383,6 +393,7 @@ jq -e \
     .report.app_id == $app_id and
     .report.source_sha256 == $source and
     .report.lifecycle_source_sha256 == $lifecycle and
+    .report.billing_lifecycle_source_sha256 == $billing_lifecycle and
     .report.policy_source_sha256 == $policy and
     .report.profile_signal_source_sha256 == $signal
   ' "$MANIFEST" >/dev/null || {
