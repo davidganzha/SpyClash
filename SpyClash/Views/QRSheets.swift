@@ -103,17 +103,7 @@ struct RoomQRSheet: View {
                     .buttonStyle(SpyButtonStyle(variant: .red))
                     .accessibilityIdentifier("roomQR.share")
 
-                    Button {
-                        HapticManager.shared.fire(.buttonPress)
-                        isRadarPresented = true
-                    } label: {
-                        Label(
-                            localized(en: "FIND BY RADAR", ru: "НАЙТИ ПО РАДАРУ", es: "BUSCAR POR RADAR", uk: "ЗНАЙТИ ЧЕРЕЗ РАДАР"),
-                            systemImage: "dot.radiowaves.left.and.right"
-                        )
-                    }
-                    .buttonStyle(SpyButtonStyle(variant: .outline))
-                    .accessibilityIdentifier("roomQR.openRadar")
+                    roomInviteDiscoveryActions
 
                     Button {
                         UIPasteboard.general.string = joinURL.absoluteString
@@ -146,6 +136,57 @@ struct RoomQRSheet: View {
             RadarInviteView(room: room)
                 .spyGlobalToastLayer()
         }
+    }
+
+    @ViewBuilder
+    private var roomInviteDiscoveryActions: some View {
+        if appState.canOpenRoomFriends(roomID: room.id) {
+            HStack(spacing: 12) {
+                roomFriendsButton
+                roomRadarButton
+            }
+        } else {
+            roomRadarButton
+        }
+    }
+
+    private var roomFriendsButton: some View {
+        Button {
+            guard appState.openRoomFriends(roomID: room.id) else { return }
+            HapticManager.shared.fire(.buttonPress)
+        } label: {
+            Label(
+                localized(
+                    en: "INVITE FRIENDS",
+                    ru: "ПРИГЛАСИТЬ ДРУЗЕЙ",
+                    es: "INVITAR AMIGOS",
+                    uk: "ЗАПРОСИТИ ДРУЗІВ"
+                ),
+                systemImage: "person.2.fill"
+            )
+        }
+        .buttonStyle(SpyButtonStyle(variant: .outline))
+        .accessibilityHint(localized(
+            en: "Opens accepted friends in this room lobby",
+            ru: "Открывает принятых друзей в лобби этой комнаты",
+            es: "Abre los amigos aceptados en el lobby de esta sala",
+            uk: "Відкриває прийнятих друзів у лобі цієї кімнати"
+        ))
+        .accessibilityIdentifier("roomQR.openFriends")
+    }
+
+    private var roomRadarButton: some View {
+        Button {
+            HapticManager.shared.fire(.buttonPress)
+            isRadarPresented = true
+        } label: {
+            Label(
+                localized(en: "FIND BY RADAR", ru: "НАЙТИ ПО РАДАРУ", es: "BUSCAR POR RADAR", uk: "ЗНАЙТИ ЧЕРЕЗ РАДАР"),
+                systemImage: "dot.radiowaves.left.and.right"
+            )
+        }
+        .buttonStyle(SpyButtonStyle(variant: .outline))
+        .accessibilityIdentifier("roomQR.openRadar")
     }
 
     private func localized(en: String, ru: String, es: String, uk: String) -> String {

@@ -2011,6 +2011,7 @@ struct GameView: View {
     @State private var showsThemeBuilder = false
     @State private var appliedLobbyRevision = -1
     @State private var roomAccessPage = RoomAccessPagePolicy.roomCode
+    @State private var appearedRoomMissionPanelID: String?
     @State private var roomFriendsDirectory = RoomFriendsDirectoryState()
     @State private var roomFriendsLoadAttempt = 0
     @State private var isRoomCodeVisible = false
@@ -2257,6 +2258,10 @@ struct GameView: View {
         }
         .onChange(of: appState.activeRoom?.playersList.count) { _, _ in
             reconcileSpyCountForRosterChange()
+        }
+        .onChange(of: appState.roomFriendsNavigationRequest) { _, request in
+            guard request != nil else { return }
+            consumeRoomFriendsNavigationRequestIfNeeded()
         }
         .onChange(of: appState.lobbySettingsRollbackEpoch) { _, _ in
             guard let room = appState.activeRoom else { return }
@@ -2994,6 +2999,7 @@ struct GameView: View {
             }
         }
         .onAppear {
+            appearedRoomMissionPanelID = room.id
             roomFriendsDirectory.deactivate()
             roomFriendsLoadAttempt = 0
             roomAccessPage = initialRoomAccessPage
@@ -3007,8 +3013,10 @@ struct GameView: View {
             if RoomAccessPagePolicy.shouldStartRadar(on: roomAccessPage) {
                 appState.resumeRadarScanningIfActivated(requestCameraAccess: true)
             }
+            consumeRoomFriendsNavigationRequestIfNeeded()
         }
         .onChange(of: room.id) { _, _ in
+            appearedRoomMissionPanelID = room.id
             if RoomAccessPagePolicy.shouldStartRadar(on: roomAccessPage) {
                 roomRadar.stopScanning()
             }
@@ -3029,6 +3037,9 @@ struct GameView: View {
             roomFriendsLoadAttempt = 0
         }
         .onDisappear {
+            if appearedRoomMissionPanelID == room.id {
+                appearedRoomMissionPanelID = nil
+            }
             if RoomAccessPagePolicy.shouldStartRadar(on: roomAccessPage) {
                 roomRadar.stopScanning()
             }
@@ -5001,10 +5012,10 @@ struct GameView: View {
                     .frame(maxWidth: .infinity)
                     .accessibilityLabel(localized(en: "Invite players", ru: "Пригласить игроков", es: "Invitar jugadores", uk: "Запросити гравців"))
                     .accessibilityHint(localized(
-                        en: "Opens code, QR, share, and nearby radar options",
-                        ru: "Открывает код, QR, отправку и поиск по радару",
-                        es: "Abre codigo, QR, compartir y radar cercano",
-                        uk: "Відкриває код, QR, надсилання та пошук через радар"
+                        en: "Opens code, QR, share, friends, and nearby radar options",
+                        ru: "Открывает код, QR, отправку, друзей и поиск по радару",
+                        es: "Abre codigo, QR, compartir, amigos y radar cercano",
+                        uk: "Відкриває код, QR, надсилання, друзів і пошук через радар"
                     ))
                     .accessibilityIdentifier("onlineRoom.inviteMore")
                 } trailing: {
@@ -9712,6 +9723,8 @@ struct GameView: View {
             applyAuthoritativeLobbyState(from: room, force: true)
         }
 
+        consumeRoomFriendsNavigationRequestIfNeeded()
+
         if appState.shouldUsePreviewData {
             lobbyWordPacks = ProcessInfo.processInfo.arguments.contains("--spyclash-preview-no-wordpacks")
                 ? []
@@ -9721,6 +9734,16 @@ struct GameView: View {
         }
 
         await loadLobbyWordPacks()
+    }
+
+    private func consumeRoomFriendsNavigationRequestIfNeeded() {
+        guard let room = appState.activeRoom,
+              configuredRoomID == room.id,
+              appearedRoomMissionPanelID == room.id,
+              appState.consumeRoomFriendsNavigationRequest(for: room) else { return }
+        withAnimation(reduceMotion ? nil : .smooth(duration: 0.24)) {
+            roomAccessPage = RoomAccessPagePolicy.friends
+        }
     }
 
     private func loadLobbyWordPacks(force: Bool = false) async {

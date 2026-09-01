@@ -1585,6 +1585,76 @@ final class OnlineRoundStateTests: XCTestCase {
         )
     }
 
+    func testRoomFriendsNavigationOnlyTargetsTheCurrentWaitingLobby() throws {
+        let request = try XCTUnwrap(RoomFriendsNavigationPolicy.makeRequest(
+            sourceRoomID: " room-a ",
+            activeRoomID: "room-a",
+            activeRoomStatus: "WAITING"
+        ))
+
+        XCTAssertEqual(request.roomID, "room-a")
+        XCTAssertTrue(RoomFriendsNavigationPolicy.matches(
+            request,
+            activeRoomID: "room-a",
+            activeRoomStatus: "waiting"
+        ))
+        XCTAssertFalse(RoomFriendsNavigationPolicy.matches(
+            request,
+            activeRoomID: "room-b",
+            activeRoomStatus: "waiting"
+        ))
+        XCTAssertFalse(RoomFriendsNavigationPolicy.matches(
+            request,
+            activeRoomID: "room-a",
+            activeRoomStatus: "playing"
+        ))
+        XCTAssertFalse(RoomFriendsNavigationPolicy.shouldRetain(
+            request,
+            activeRoomID: "room-a",
+            activeRoomStatus: "ready_voting"
+        ))
+        XCTAssertFalse(RoomFriendsNavigationPolicy.shouldRetain(
+            request,
+            activeRoomID: nil,
+            activeRoomStatus: nil
+        ))
+        XCTAssertNil(RoomFriendsNavigationPolicy.makeRequest(
+            sourceRoomID: "room-a",
+            activeRoomID: "room-b",
+            activeRoomStatus: "waiting"
+        ))
+    }
+
+    @MainActor
+    func testAppStateRoomFriendsNavigationIsOneShotRepeatableAndInvalidatedByStatus() throws {
+        let appState = AppState()
+        var room = GameRoom.previewRoom(status: "waiting")
+        appState.allowRoomActivation(room.id)
+        appState.activeRoom = room
+        appState.selectedTab = .home
+        appState.presentedSheet = .roomQR(room)
+
+        XCTAssertFalse(appState.openRoomFriends(roomID: "another-room"))
+        XCTAssertNil(appState.roomFriendsNavigationRequest)
+        XCTAssertTrue(appState.openRoomFriends(roomID: room.id))
+        let firstRequestID = try XCTUnwrap(appState.roomFriendsNavigationRequest?.id)
+        XCTAssertEqual(appState.selectedTab, .game)
+        XCTAssertNil(appState.presentedSheet)
+        XCTAssertTrue(appState.consumeRoomFriendsNavigationRequest(for: room))
+        XCTAssertNil(appState.roomFriendsNavigationRequest)
+        XCTAssertFalse(appState.consumeRoomFriendsNavigationRequest(for: room))
+
+        XCTAssertTrue(appState.openRoomFriends(roomID: room.id))
+        XCTAssertNotEqual(appState.roomFriendsNavigationRequest?.id, firstRequestID)
+
+        room.status = "ready_voting"
+        appState.activeRoom = room
+        XCTAssertNil(appState.roomFriendsNavigationRequest)
+        XCTAssertFalse(appState.openRoomFriends(roomID: room.id))
+
+        appState.activeRoom = nil
+    }
+
     func testOnlineInteractiveControlsUseAccessibleHitTargetFloor() {
         XCTAssertGreaterThanOrEqual(
             OnlineInteractionHitTargetPolicy.minimumSize,

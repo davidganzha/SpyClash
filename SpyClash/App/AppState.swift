@@ -763,6 +763,7 @@ final class AppState: NSObject {
     var notificationFocusItemID: String?
     var notificationFocusRequestID = 0
     var localSetupRequestID = 0
+    private(set) var roomFriendsNavigationRequest: RoomFriendsNavigationRequest?
     private(set) var wordPacksRevision = 0
     var activeRoom: GameRoom? {
         didSet {
@@ -778,6 +779,14 @@ final class AppState: NSObject {
             }
             if activeRoom == nil {
                 isHomeLandingPresentationRequested = false
+            }
+            if let request = roomFriendsNavigationRequest,
+               !RoomFriendsNavigationPolicy.shouldRetain(
+                   request,
+                   activeRoomID: activeRoom?.id,
+                   activeRoomStatus: activeRoom?.normalizedStatus
+               ) {
+                roomFriendsNavigationRequest = nil
             }
             reconcileLobbySettingsSyncScope(from: oldValue, to: activeRoom)
             if oldValue?.id != activeRoom?.id {
@@ -2427,6 +2436,44 @@ final class AppState: NSObject {
         isShellChromeSuppressed = false
         localSetupRequestID += 1
         selectedTab = .local
+    }
+
+    func canOpenRoomFriends(roomID: String) -> Bool {
+        guard let activeRoom else { return false }
+        return RoomFriendsNavigationPolicy.canOpen(
+            sourceRoomID: roomID,
+            activeRoomID: activeRoom.id,
+            activeRoomStatus: activeRoom.normalizedStatus
+        )
+    }
+
+    @discardableResult
+    func openRoomFriends(roomID: String) -> Bool {
+        guard let activeRoom,
+              let request = RoomFriendsNavigationPolicy.makeRequest(
+                  sourceRoomID: roomID,
+                  activeRoomID: activeRoom.id,
+                  activeRoomStatus: activeRoom.normalizedStatus
+              ) else { return false }
+
+        pendingNotificationRoute = nil
+        isShellChromeSuppressed = false
+        shellRoute = .main
+        selectedTab = .game
+        presentedSheet = nil
+        roomFriendsNavigationRequest = request
+        return true
+    }
+
+    @discardableResult
+    func consumeRoomFriendsNavigationRequest(for room: GameRoom) -> Bool {
+        guard let request = roomFriendsNavigationRequest else { return false }
+        roomFriendsNavigationRequest = nil
+        return RoomFriendsNavigationPolicy.matches(
+            request,
+            activeRoomID: room.id,
+            activeRoomStatus: room.normalizedStatus
+        )
     }
 
     func openHomeRoot() {
@@ -4317,6 +4364,74 @@ enum RoomQRTarget: String, Hashable {
 
     mutating func toggle() {
         self = self == .web ? .ios : .web
+    }
+}
+
+struct RoomFriendsNavigationRequest: Equatable, Identifiable {
+    let id: UUID
+    let roomID: String
+}
+
+enum RoomFriendsNavigationPolicy {
+    static func canOpen(
+        sourceRoomID: String,
+        activeRoomID: String,
+        activeRoomStatus: String
+    ) -> Bool {
+        let sourceRoomID = cleaned(sourceRoomID)
+        let activeRoomID = cleaned(activeRoomID)
+        return !sourceRoomID.isEmpty
+            && sourceRoomID == activeRoomID
+            && normalized(activeRoomStatus) == "waiting"
+    }
+
+    static func makeRequest(
+        sourceRoomID: String,
+        activeRoomID: String,
+        activeRoomStatus: String
+    ) -> RoomFriendsNavigationRequest? {
+        guard canOpen(
+            sourceRoomID: sourceRoomID,
+            activeRoomID: activeRoomID,
+            activeRoomStatus: activeRoomStatus
+        ) else { return nil }
+        return RoomFriendsNavigationRequest(
+            id: UUID(),
+            roomID: cleaned(sourceRoomID)
+        )
+    }
+
+    static func matches(
+        _ request: RoomFriendsNavigationRequest,
+        activeRoomID: String,
+        activeRoomStatus: String
+    ) -> Bool {
+        canOpen(
+            sourceRoomID: request.roomID,
+            activeRoomID: activeRoomID,
+            activeRoomStatus: activeRoomStatus
+        )
+    }
+
+    static func shouldRetain(
+        _ request: RoomFriendsNavigationRequest,
+        activeRoomID: String?,
+        activeRoomStatus: String?
+    ) -> Bool {
+        guard let activeRoomID, let activeRoomStatus else { return false }
+        return matches(
+            request,
+            activeRoomID: activeRoomID,
+            activeRoomStatus: activeRoomStatus
+        )
+    }
+
+    private static func cleaned(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines)
+    }
+
+    private static func normalized(_ value: String) -> String {
+        cleaned(value).lowercased()
     }
 }
 
