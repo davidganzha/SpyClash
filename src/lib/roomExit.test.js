@@ -5,9 +5,14 @@ import {
   clearPendingRoomExit,
   exitRoomImmediately,
   markRoomExitPending,
+  pendingRoomExitAction,
   pendingRoomExitId,
   roomExitIsPending,
 } from "./roomExit.js";
+import {
+  GAME_ROOM_CLOSE_ACTION,
+  GAME_ROOM_LEAVE_ACTION,
+} from "./gameRoomExit.js";
 
 function memoryStorage(initial = {}) {
   const values = new Map(Object.entries(initial));
@@ -24,8 +29,24 @@ test("room exit clears the active room and records pending server cleanup", () =
   assert.equal(markRoomExitPending(" room-1 ", storage), "room-1");
   assert.equal(storage.getItem("spy_active_room_id"), null);
   assert.equal(pendingRoomExitId(storage), "room-1");
+  assert.equal(pendingRoomExitAction(storage), GAME_ROOM_LEAVE_ACTION);
   assert.equal(roomExitIsPending("room-1", storage), true);
   assert.equal(roomExitIsPending("room-2", storage), false);
+});
+
+test("pending cleanup preserves a host close_room action", () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-host" });
+
+  assert.equal(
+    markRoomExitPending("room-host", storage, GAME_ROOM_CLOSE_ACTION),
+    "room-host",
+  );
+  assert.equal(pendingRoomExitId(storage), "room-host");
+  assert.equal(pendingRoomExitAction(storage), GAME_ROOM_CLOSE_ACTION);
+
+  clearPendingRoomExit("room-host", storage);
+  assert.equal(pendingRoomExitId(storage), null);
+  assert.equal(pendingRoomExitAction(storage), null);
 });
 
 test("navigation happens before the server leave resolves", async () => {
@@ -95,6 +116,7 @@ test("a pending local-first exit can retry the same authoritative cleanup", asyn
 
   const firstAttempt = await exitRoomImmediately({
     roomId: "room-1",
+    action: GAME_ROOM_CLOSE_ACTION,
     storage,
     navigateHome: () => {},
     leaveRoom: async () => {
@@ -104,9 +126,11 @@ test("a pending local-first exit can retry the same authoritative cleanup", asyn
   });
   assert.equal(firstAttempt, false);
   assert.equal(pendingRoomExitId(storage), "room-1");
+  assert.equal(pendingRoomExitAction(storage), GAME_ROOM_CLOSE_ACTION);
 
   const retry = await exitRoomImmediately({
     roomId: "room-1",
+    action: pendingRoomExitAction(storage),
     storage,
     navigateHome: () => {},
     leaveRoom: async () => {

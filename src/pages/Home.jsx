@@ -10,6 +10,7 @@ import { localize } from "@/components/i18n";
 import { CircleHelp, QrCode } from "lucide-react";
 import PageChrome from "@/components/PageChrome";
 import {
+  closeGameRoom,
   createGameRoom,
   getActiveGameRoom,
   getGameRoom,
@@ -23,9 +24,11 @@ import { accountAvatarForDisplay } from "@/lib/avatars";
 import {
   clearPendingRoomExit,
   markRoomExitPending,
+  pendingRoomExitAction,
   pendingRoomExitId,
   roomExitIsPending,
 } from "@/lib/roomExit";
+import { GAME_ROOM_CLOSE_ACTION } from "@/lib/gameRoomExit";
 
 
 export default function Home() {
@@ -123,8 +126,12 @@ export default function Home() {
       if (u) {
         const savedRoomId = localStorage.getItem("spy_active_room_id");
         const dismissedRoomId = pendingRoomExitId();
+        const dismissedRoomAction = pendingRoomExitAction();
         if (dismissedRoomId) {
-          void leaveGameRoom(dismissedRoomId)
+          const retryRoomExit = dismissedRoomAction === GAME_ROOM_CLOSE_ACTION
+            ? closeGameRoom
+            : leaveGameRoom;
+          void retryRoomExit(dismissedRoomId)
             .then(() => clearPendingRoomExit(dismissedRoomId))
             .catch(() => {});
         }

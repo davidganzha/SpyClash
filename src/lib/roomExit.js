@@ -1,5 +1,11 @@
+import {
+  GAME_ROOM_LEAVE_ACTION,
+  normalizedGameRoomExitAction,
+} from "./gameRoomExit.js";
+
 const ACTIVE_ROOM_STORAGE_KEY = "spy_active_room_id";
 const PENDING_ROOM_EXIT_STORAGE_KEY = "spy_pending_room_exit_id";
+const PENDING_ROOM_EXIT_ACTION_STORAGE_KEY = "spy_pending_room_exit_action";
 
 function resolvedStorage(storage) {
   if (storage !== undefined) return storage;
@@ -34,13 +40,35 @@ export function roomExitIsPending(roomId, storage = undefined) {
   return Boolean(normalized) && pendingRoomExitId(storage) === normalized;
 }
 
-export function markRoomExitPending(roomId, storage = undefined) {
+export function pendingRoomExitAction(storage = undefined) {
+  const target = resolvedStorage(storage);
+  if (!pendingRoomExitId(target)) return null;
+  try {
+    return normalizedGameRoomExitAction(
+      target?.getItem(PENDING_ROOM_EXIT_ACTION_STORAGE_KEY),
+    );
+  } catch {
+    return GAME_ROOM_LEAVE_ACTION;
+  }
+}
+
+export function markRoomExitPending(
+  roomId,
+  storage = undefined,
+  action = GAME_ROOM_LEAVE_ACTION,
+) {
   const normalized = normalizedRoomId(roomId);
   if (!normalized) return null;
 
   try {
     const target = resolvedStorage(storage);
     target?.removeItem(ACTIVE_ROOM_STORAGE_KEY);
+    target?.removeItem(PENDING_ROOM_EXIT_STORAGE_KEY);
+    target?.removeItem(PENDING_ROOM_EXIT_ACTION_STORAGE_KEY);
+    target?.setItem(
+      PENDING_ROOM_EXIT_ACTION_STORAGE_KEY,
+      normalizedGameRoomExitAction(action),
+    );
     target?.setItem(PENDING_ROOM_EXIT_STORAGE_KEY, normalized);
   } catch {
     // Navigation must remain available when storage is unavailable.
@@ -55,6 +83,7 @@ export function clearPendingRoomExit(roomId = null, storage = undefined) {
     const normalized = normalizedRoomId(roomId);
     if (!normalized || pending === normalized) {
       target?.removeItem(PENDING_ROOM_EXIT_STORAGE_KEY);
+      target?.removeItem(PENDING_ROOM_EXIT_ACTION_STORAGE_KEY);
     }
   } catch {
     // The server leave already succeeded; storage cleanup is best effort.
@@ -63,11 +92,12 @@ export function clearPendingRoomExit(roomId = null, storage = undefined) {
 
 export function exitRoomImmediately({
   roomId,
+  action = GAME_ROOM_LEAVE_ACTION,
   leaveRoom,
   navigateHome,
   storage = undefined,
 }) {
-  const normalized = markRoomExitPending(roomId, storage);
+  const normalized = markRoomExitPending(roomId, storage, action);
   if (!normalized) return Promise.resolve(false);
 
   navigateHome();

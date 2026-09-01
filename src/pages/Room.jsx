@@ -20,6 +20,7 @@ import { useMembership } from "@/lib/MembershipContext";
 import { accountAvatarForDisplay } from "@/lib/avatars";
 import { listWordPacks } from "@/lib/wordPackActions";
 import {
+  closeGameRoom,
   getGameRoom,
   joinGameRoom,
   leaveGameRoom,
@@ -46,6 +47,10 @@ import {
 import { shouldAcceptOnlineRoomSnapshot } from "@/lib/onlineGamePresentation";
 import { createQuestionTurnOrder, questionPairForStep } from "@/lib/questionTurnOrder";
 import { exitRoomImmediately } from "@/lib/roomExit";
+import {
+  GAME_ROOM_CLOSE_ACTION,
+  gameRoomExitAction,
+} from "@/lib/gameRoomExit";
 import {
   isClientUpdateRequiredError,
   isAllowedSpyCount,
@@ -983,9 +988,24 @@ export default function Room() {
     }
   };
 
+  const isHost = gameRoomExitAction({
+    hostEmail: room?.host_email,
+    userEmail: user?.email,
+    closeForHost: true,
+  }) === GAME_ROOM_CLOSE_ACTION;
+
   const handleLeave = () => {
     const sourceRoom = roomRef.current;
-    if (!sourceRoom || !userRef.current || leavingRef.current) return;
+    const currentUser = userRef.current;
+    if (!sourceRoom || !currentUser || leavingRef.current) return;
+    const exitAction = gameRoomExitAction({
+      hostEmail: sourceRoom.host_email,
+      userEmail: currentUser.email,
+      closeForHost: isHost,
+    });
+    const performExit = exitAction === GAME_ROOM_CLOSE_ACTION
+      ? closeGameRoom
+      : leaveGameRoom;
     leavingRef.current = true;
     roomScopeGenerationRef.current += 1;
     try {
@@ -997,7 +1017,8 @@ export default function Room() {
     lobbySyncControllerRef.current?.dispose();
     void exitRoomImmediately({
       roomId: sourceRoom.id,
-      leaveRoom: leaveGameRoom,
+      action: exitAction,
+      leaveRoom: performExit,
       navigateHome: () => {
         try {
           localStorage.setItem("spy_return_to_online", "1");
@@ -1098,8 +1119,6 @@ export default function Room() {
       </div>
     </>);
 
-
-  const isHost = room.host_email === user.email;
   const authoritativeLobby = lobbyRevision(room) > 0;
   const players = room.players || [];
   const maxSpyCount = maxSpyCountForPlayerCount(players.length);

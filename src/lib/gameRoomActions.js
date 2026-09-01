@@ -15,6 +15,11 @@ import {
   withMultiSpyActionCapability,
   withMultiSpyPlayerCapability,
 } from "@/lib/multiSpyRules";
+import {
+  GAME_ROOM_CLOSE_ACTION,
+  GAME_ROOM_LEAVE_ACTION,
+  gameRoomExitPayload,
+} from "@/lib/gameRoomExit";
 
 export class GameRoomActionError extends Error {
   constructor(message, status, code = null, retryable = false) {
@@ -103,7 +108,17 @@ export async function createGameRoom({ player }) {
 }
 
 export async function leaveGameRoom(roomId) {
-  return await performGameRoomAction({ action: "leave_room", room_id: roomId });
+  return await performGameRoomAction(gameRoomExitPayload({
+    action: GAME_ROOM_LEAVE_ACTION,
+    roomId,
+  }));
+}
+
+export async function closeGameRoom(roomId) {
+  return await performGameRoomAction(gameRoomExitPayload({
+    action: GAME_ROOM_CLOSE_ACTION,
+    roomId,
+  }));
 }
 
 export async function runGameRoomAction(action, roomId, fields = {}) {

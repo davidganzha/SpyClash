@@ -14,6 +14,7 @@ import SpyGuessModal from "../components/SpyGuessModal";
 import GlitchText from "../components/ui/GlitchText";
 import { useGameSounds } from "../components/useGameSounds";
 import {
+  closeGameRoom,
   finalizeExpiredOnlineGame,
   getGameRoom,
   leaveGameRoom,
@@ -50,6 +51,10 @@ import {
   resultSpyPlayers,
 } from "@/lib/multiSpyRules";
 import { exitRoomImmediately } from "@/lib/roomExit";
+import {
+  GAME_ROOM_CLOSE_ACTION,
+  gameRoomExitAction,
+} from "@/lib/gameRoomExit";
 import { createPageUrl } from "@/utils";
 
 const ROUND_ACTIONS = new Set([
@@ -655,9 +660,17 @@ export default function Game() {
     navigate(createPageUrl("Room") + `?id=${room.id}`, { replace: true });
   }, [navigate, room?.id, room?.status, room?.winner]);
 
-  const handleLeave = useCallback(() => {
+  const exitCurrentRoom = useCallback((closeForHost) => {
     const currentRoom = roomRef.current;
     if (!currentRoom || leavingRef.current) return;
+    const exitAction = gameRoomExitAction({
+      hostEmail: currentRoom.host_email,
+      userEmail: user?.email,
+      closeForHost,
+    });
+    const performExit = exitAction === GAME_ROOM_CLOSE_ACTION
+      ? closeGameRoom
+      : leaveGameRoom;
     leavingRef.current = true;
     try {
       unsubRef.current?.();
@@ -667,10 +680,19 @@ export default function Game() {
     unsubRef.current = null;
     void exitRoomImmediately({
       roomId: currentRoom.id,
-      leaveRoom: leaveGameRoom,
+      action: exitAction,
+      leaveRoom: performExit,
       navigateHome: () => navigate(createPageUrl("Home"), { replace: true }),
     });
-  }, [navigate]);
+  }, [navigate, user?.email]);
+
+  const handleLeave = useCallback(() => {
+    exitCurrentRoom(false);
+  }, [exitCurrentRoom]);
+
+  const handleCloseOrLeave = useCallback(() => {
+    exitCurrentRoom(true);
+  }, [exitCurrentRoom]);
 
   const handleCardRead = useCallback(async () => {
     const currentRoom = roomRef.current;
@@ -786,6 +808,12 @@ export default function Game() {
 
   if (!room || !user) return <LoadingScreen t={t} />;
 
+  const activeExitPromisesClose = gameRoomExitAction({
+    hostEmail: room.host_email,
+    userEmail: user.email,
+    closeForHost: true,
+  }) === GAME_ROOM_CLOSE_ACTION;
+
   if (room.status === "finished" && room.winner) {
     return (
       <WinnerScreen
@@ -871,7 +899,7 @@ export default function Game() {
           setRevealed((value) => !value);
         }}
         onTogglePause={handleTogglePause}
-        onLeave={handleLeave}
+        onLeave={activeExitPromisesClose ? handleCloseOrLeave : handleLeave}
         onRoundAction={handleRoundAction}
         onAdvanceQuestion={handleAdvanceQuestion}
         onStopAssociationSpin={handleStopAssociationSpin}
