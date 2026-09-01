@@ -1239,6 +1239,54 @@ struct OnlineRoleRevealScene: View {
 
 // MARK: - Active online game
 
+struct OnlineVoteRequestFeedback: Equatable {
+    let displayedCount: Int
+    let isAwaitingServer: Bool
+    let isRecorded: Bool
+
+    static func resolve(
+        serverRequestEmails: [String],
+        currentUserEmail: String?,
+        submissionPending: Bool,
+        threshold: Int
+    ) -> OnlineVoteRequestFeedback {
+        let isRecorded = serverRequestEmails.contains {
+            OnlineVoteIdentityPolicy.matches($0, currentUserEmail)
+        }
+        let isAwaitingServer = submissionPending && !isRecorded
+        let displayedCount = min(
+            max(serverRequestEmails.count + (isAwaitingServer ? 1 : 0), 0),
+            max(threshold, 0)
+        )
+        return OnlineVoteRequestFeedback(
+            displayedCount: displayedCount,
+            isAwaitingServer: isAwaitingServer,
+            isRecorded: isRecorded
+        )
+    }
+}
+
+enum OnlineVoteCandidateFeedback: Equatable {
+    case idle
+    case awaitingServer
+    case recorded
+
+    static func resolve(
+        candidateEmail: String,
+        authoritativeVoteEmail: String?,
+        pendingVoteEmail: String?
+    ) -> OnlineVoteCandidateFeedback {
+        if OnlineVoteIdentityPolicy.matches(authoritativeVoteEmail, candidateEmail) {
+            return .recorded
+        }
+        if authoritativeVoteEmail == nil,
+           OnlineVoteIdentityPolicy.matches(pendingVoteEmail, candidateEmail) {
+            return .awaitingServer
+        }
+        return .idle
+    }
+}
+
 struct OnlineActiveGameScene: View {
     let room: GameRoom
     let language: AppLanguage
@@ -1253,8 +1301,10 @@ struct OnlineActiveGameScene: View {
     let canStopAssociationSpin: Bool
     let showsVoteRequest: Bool
     let canRequestVote: Bool
+    let isVoteRequestPending: Bool
     let canSpyGuess: Bool
     let canCastVote: Bool
+    let pendingVoteTargetEmail: String?
     let lobbyReturn: ActiveLobbyReturnPresentation
     let onToggleRole: () -> Void
     let onTogglePause: () -> Void
@@ -1285,8 +1335,10 @@ struct OnlineActiveGameScene: View {
         canStopAssociationSpin: Bool,
         showsVoteRequest: Bool,
         canRequestVote: Bool,
+        isVoteRequestPending: Bool = false,
         canSpyGuess: Bool,
         canCastVote: Bool = true,
+        pendingVoteTargetEmail: String? = nil,
         lobbyReturn: ActiveLobbyReturnPresentation = .unavailable,
         onToggleRole: @escaping () -> Void,
         onTogglePause: @escaping () -> Void,
@@ -1312,8 +1364,10 @@ struct OnlineActiveGameScene: View {
         self.canStopAssociationSpin = canStopAssociationSpin
         self.showsVoteRequest = showsVoteRequest
         self.canRequestVote = canRequestVote
+        self.isVoteRequestPending = isVoteRequestPending
         self.canSpyGuess = canSpyGuess
         self.canCastVote = canCastVote
+        self.pendingVoteTargetEmail = pendingVoteTargetEmail
         self.lobbyReturn = lobbyReturn
         self.onToggleRole = onToggleRole
         self.onTogglePause = onTogglePause
@@ -1905,10 +1959,12 @@ struct OnlineActiveGameScene: View {
             ScrollView(.vertical, showsIndicators: votingCandidates.count > 6) {
                 LazyVGrid(columns: [GridItem(.flexible()), GridItem(.flexible())], spacing: 8) {
                     ForEach(votingCandidates) { candidate in
-                    let selected = OnlineVoteIdentityPolicy.matches(
-                        myVote?.votedForEmail,
-                        candidate.email
+                    let feedback = OnlineVoteCandidateFeedback.resolve(
+                        candidateEmail: candidate.email,
+                        authoritativeVoteEmail: myVote?.votedForEmail,
+                        pendingVoteEmail: pendingVoteTargetEmail
                     )
+                    let selected = feedback != .idle
                     Button {
                         castVote(candidate.email)
                     } label: {
@@ -1925,12 +1981,19 @@ struct OnlineActiveGameScene: View {
                                 Text(candidate.avatar)
                                     .font(.system(size: 26))
 
-                                if selected {
+                                if feedback == .recorded {
                                     Image(systemName: "checkmark")
                                         .font(.system(size: 8, weight: .black))
                                         .foregroundStyle(.black)
                                         .frame(width: 17, height: 17)
                                         .background(SpyTheme.green, in: CutCornerShape(cut: 4))
+                                        .offset(x: 20, y: 20)
+                                } else if feedback == .awaitingServer {
+                                    ProgressView()
+                                        .controlSize(.mini)
+                                        .tint(.white)
+                                        .frame(width: 17, height: 17)
+                                        .background(SpyTheme.red, in: CutCornerShape(cut: 4))
                                         .offset(x: 20, y: 20)
                                 }
                             }
@@ -1950,17 +2013,22 @@ struct OnlineActiveGameScene: View {
                         }
                     }
                     .buttonStyle(SpyWebPressStyle())
-                    .disabled(!canCastVote || myVote != nil)
+                    .disabled(!canCastVote || myVote != nil || pendingVoteTargetEmail != nil)
                     .accessibilityIdentifier("onlineExperience.vote.\(accessibilityKey(candidate.email))")
+                    .accessibilityValue(candidateAccessibilityValue(feedback))
                     }
                 }
             }
             .frame(maxHeight: maxHeight)
 
-            Text(myVote == nil ? copy.voteIsFinal : copy.voteRecorded)
+            Text(voteSubmissionStatus)
                 .font(.system(size: 8, weight: .bold, design: .monospaced))
                 .tracking(1.2)
-                .foregroundStyle(myVote == nil ? SpyTheme.dim : SpyTheme.green)
+                .foregroundStyle(
+                    pendingVoteTargetEmail != nil
+                        ? SpyTheme.red
+                        : (myVote == nil ? SpyTheme.dim : SpyTheme.green)
+                )
         }
         .accessibilityIdentifier("onlineExperience.votingCandidates")
     }
@@ -1997,13 +2065,23 @@ struct OnlineActiveGameScene: View {
             } else if showsVoteRequest && !room.isVotingActive && !suppressesFallbackPrimaryAction {
                 Button(action: requestVote) {
                     HStack(spacing: 9) {
-                        Image(systemName: "person.3.fill")
-                        Text(copy.startVoteProgress(room.activeVoteRequests.count, room.voteThreshold))
+                        voteRequestStatusIcon
+                        Text(
+                            copy.startVoteProgress(
+                                voteRequestFeedback.displayedCount,
+                                room.voteThreshold
+                            )
+                        )
                     }
                 }
                 .buttonStyle(SpyCinematicButtonStyle(variant: .primary))
-                .disabled(!canRequestVote)
+                .disabled(
+                    !canRequestVote ||
+                        voteRequestFeedback.isAwaitingServer ||
+                        voteRequestFeedback.isRecorded
+                )
                 .accessibilityIdentifier("onlineExperience.action.vote")
+                .accessibilityValue(voteRequestAccessibilityValue)
             }
 
             HStack(spacing: 8) {
@@ -2016,10 +2094,19 @@ struct OnlineActiveGameScene: View {
 
                 if showsVoteRequest && !room.isVotingActive && !showsRoundResults && (roundCommand != nil || canSpyGuess) {
                     secondaryCommand(
-                        title: copy.voteProgress(room.activeVoteRequests.count, room.voteThreshold),
-                        systemImage: "person.3.fill",
+                        title: copy.voteProgress(
+                            voteRequestFeedback.displayedCount,
+                            room.voteThreshold
+                        ),
+                        systemImage: voteRequestFeedback.isRecorded
+                            ? "checkmark.circle.fill"
+                            : "person.3.fill",
                         accessibilityID: "onlineExperience.action.vote",
-                        isDisabled: !canRequestVote,
+                        isDisabled: !canRequestVote ||
+                            voteRequestFeedback.isAwaitingServer ||
+                            voteRequestFeedback.isRecorded,
+                        isPending: voteRequestFeedback.isAwaitingServer,
+                        accessibilityValue: voteRequestAccessibilityValue,
                         action: requestVote
                     )
                 }
@@ -2053,12 +2140,20 @@ struct OnlineActiveGameScene: View {
         systemImage: String,
         accessibilityID: String,
         isDisabled: Bool = false,
+        isPending: Bool = false,
+        accessibilityValue: String? = nil,
         action: @escaping () -> Void
     ) -> some View {
         Button(action: action) {
             HStack(spacing: 7) {
-                Image(systemName: systemImage)
-                    .font(.system(size: 13, weight: .bold))
+                if isPending {
+                    ProgressView()
+                        .controlSize(.small)
+                        .tint(.white)
+                } else {
+                    Image(systemName: systemImage)
+                        .font(.system(size: 13, weight: .bold))
+                }
                 Text(title)
                     .font(.system(size: 10, weight: .black))
                     .tracking(0.8)
@@ -2069,6 +2164,7 @@ struct OnlineActiveGameScene: View {
         .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
         .disabled(isDisabled)
         .accessibilityIdentifier(accessibilityID)
+        .accessibilityValue(accessibilityValue ?? "")
     }
 
     private var pausedOverlay: some View {
@@ -2307,6 +2403,60 @@ struct OnlineActiveGameScene: View {
         )
     }
 
+    private var voteRequestFeedback: OnlineVoteRequestFeedback {
+        OnlineVoteRequestFeedback.resolve(
+            serverRequestEmails: room.activeVoteRequests,
+            currentUserEmail: currentUserEmail,
+            submissionPending: isVoteRequestPending,
+            threshold: room.voteThreshold
+        )
+    }
+
+    @ViewBuilder
+    private var voteRequestStatusIcon: some View {
+        if voteRequestFeedback.isAwaitingServer {
+            ProgressView()
+                .controlSize(.small)
+                .tint(.white)
+        } else {
+            Image(
+                systemName: voteRequestFeedback.isRecorded
+                    ? "checkmark.circle.fill"
+                    : "person.3.fill"
+            )
+        }
+    }
+
+    private var voteRequestAccessibilityValue: String {
+        if voteRequestFeedback.isAwaitingServer {
+            return copy.voteRequestSending
+        }
+        if voteRequestFeedback.isRecorded {
+            return copy.voteRequestRecorded
+        }
+        return ""
+    }
+
+    private var voteSubmissionStatus: String {
+        if pendingVoteTargetEmail != nil {
+            return copy.voteSending
+        }
+        return myVote == nil ? copy.voteIsFinal : copy.voteRecorded
+    }
+
+    private func candidateAccessibilityValue(
+        _ feedback: OnlineVoteCandidateFeedback
+    ) -> String {
+        switch feedback {
+        case .idle:
+            ""
+        case .awaitingServer:
+            copy.voteSending
+        case .recorded:
+            copy.voteRecorded
+        }
+    }
+
     private func accessibilityKey(_ value: String) -> String {
         value.map { $0.isLetter || $0.isNumber ? $0 : "_" }.reduce("") { $0 + String($1) }
     }
@@ -2530,6 +2680,9 @@ struct SpyGameExperienceCopy {
     var chooseSuspect: String { text("CHOOSE A SUSPECT", "ELIGE UN SOSPECHOSO", "ВЫБЕРИ ПОДОЗРЕВАЕМОГО", "ОБЕРИ ПІДОЗРЮВАНОГО") }
     var voteIsFinal: String { text("THE VOTE IS FINAL", "EL VOTO ES DEFINITIVO", "ГОЛОС НЕЛЬЗЯ ИЗМЕНИТЬ", "ГОЛОС НЕ МОЖНА ЗМІНИТИ") }
     var voteRecorded: String { text("VOTE RECORDED", "VOTO REGISTRADO", "ГОЛОС ПРИНЯТ", "ГОЛОС ПРИЙНЯТО") }
+    var voteSending: String { text("SENDING VOTE", "ENVIANDO VOTO", "ОТПРАВЛЯЕМ ГОЛОС", "НАДСИЛАЄМО ГОЛОС") }
+    var voteRequestSending: String { text("SENDING REQUEST", "ENVIANDO SOLICITUD", "ОТПРАВЛЯЕМ ЗАПРОС", "НАДСИЛАЄМО ЗАПИТ") }
+    var voteRequestRecorded: String { text("REQUEST RECORDED", "SOLICITUD REGISTRADA", "ЗАПРОС ПРИНЯТ", "ЗАПИТ ПРИЙНЯТО") }
     var nextTurn: String { text("NEXT TURN", "SIGUIENTE TURNO", "СЛЕДУЮЩИЙ ХОД", "НАСТУПНИЙ ХІД") }
     var answerReceived: String { text("ANSWER RECEIVED", "RESPUESTA RECIBIDA", "ОТВЕТ ПОЛУЧЕН", "ВІДПОВІДЬ ОТРИМАНО") }
     var continueRound: String { text("CONTINUE ROUND", "CONTINUAR RONDA", "ПРОДОЛЖИТЬ РАУНД", "ПРОДОВЖИТИ РАУНД") }

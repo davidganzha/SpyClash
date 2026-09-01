@@ -38,9 +38,10 @@ struct OnboardingPermissionFlow: Equatable, Sendable {
         case complete
     }
 
+    // Camera and local-network access are contextual: QR scanning and Radar
+    // request them only after the user explicitly opens those features.
     static let order: [OnboardingPermissionKind] = [
-        .notifications,
-        .camera
+        .notifications
     ]
 
     private(set) var index = 0

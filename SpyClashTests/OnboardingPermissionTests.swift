@@ -8,7 +8,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
     func testPermissionFlowRequiresEveryStepButNotEveryGrant() {
         var flow = OnboardingPermissionFlow()
 
-        XCTAssertEqual(OnboardingPermissionFlow.order, [.notifications, .camera])
+        XCTAssertEqual(OnboardingPermissionFlow.order, [.notifications])
         XCTAssertEqual(flow.currentPermission, .notifications)
         XCTAssertEqual(flow.phase, .loading)
         XCTAssertFalse(flow.advance(after: .notifications))
@@ -33,11 +33,6 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         XCTAssertEqual(flow.phase, .resolved(.denied))
         XCTAssertFalse(flow.advance(after: .camera))
         XCTAssertTrue(flow.advance(after: .notifications))
-        XCTAssertEqual(flow.currentPermission, .camera)
-        XCTAssertEqual(flow.phase, .ready)
-
-        XCTAssertTrue(flow.resolveWithoutRequest(.granted, for: .camera))
-        XCTAssertTrue(flow.advance(after: .camera))
         XCTAssertTrue(flow.isComplete)
         XCTAssertNil(flow.currentPermission)
         XCTAssertEqual(flow.phase, .complete)
@@ -49,9 +44,6 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         XCTAssertTrue(flow.markReady(for: .notifications))
         XCTAssertTrue(flow.resolveWithoutRequest(.denied, for: .notifications))
         XCTAssertTrue(flow.advance(after: .notifications))
-
-        XCTAssertTrue(flow.resolveWithoutRequest(.unavailable, for: .camera))
-        XCTAssertTrue(flow.advance(after: .camera))
         XCTAssertTrue(flow.isComplete)
     }
 

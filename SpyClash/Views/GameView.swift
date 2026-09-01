@@ -12,6 +12,41 @@ enum LobbySyncFeedbackPhase: Equatable {
     }
 }
 
+enum OnlineInputPresentationPolicy {
+    struct Layout: Equatable {
+        let revealsTheme: Bool
+        let allowsWaitingFooter: Bool
+    }
+
+    static func layout(
+        isThemeFocused: Bool,
+        isSoftwareKeyboardVisible: Bool
+    ) -> Layout {
+        Layout(
+            revealsTheme: isThemeFocused && isSoftwareKeyboardVisible,
+            allowsWaitingFooter: !isSoftwareKeyboardVisible
+        )
+    }
+
+    static func shouldResetCapture(for scenePhase: ScenePhase) -> Bool {
+        scenePhase != .active
+    }
+
+    static func isSoftwareKeyboardVisible(
+        endFrame: CGRect?,
+        screenBounds: CGRect,
+        isLocal: Bool
+    ) -> Bool {
+        guard isLocal,
+              let endFrame,
+              endFrame.width > 0,
+              endFrame.height > 0 else { return false }
+
+        let overlap = endFrame.intersection(screenBounds)
+        return !overlap.isNull && overlap.width > 0 && overlap.height > 0
+    }
+}
+
 enum WaitingStartActionMode: Equatable {
     case action
     case syncing
@@ -1954,6 +1989,7 @@ struct LobbySyncFeedbackState: Equatable {
 struct GameView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var status = ""
     @State private var isStarting = false
@@ -2018,6 +2054,7 @@ struct GameView: View {
     @State private var lobbySyncFeedbackState = LobbySyncFeedbackState()
     @State private var detectiveVoteCancellationPresentation: DetectiveVoteCancellationEvent?
     @State private var handledDetectiveVoteCancellationEventIDs: Set<String> = []
+    @State private var isOnlineSoftwareKeyboardVisible = false
     @FocusState private var focusedOnlineSetupField: OnlineSetupField?
 
     private var copy: GameCopy {
@@ -2257,6 +2294,27 @@ struct GameView: View {
             }
             updateOnlineShellChromeSuppression()
         }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIResponder.keyboardWillChangeFrameNotification
+            )
+        ) { notification in
+            revealOnlineSoftwareKeyboardIfNeeded(notification)
+        }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: UIResponder.keyboardDidHideNotification
+            )
+        ) { _ in
+            isOnlineSoftwareKeyboardVisible = false
+        }
+        .onChange(of: scenePhase) { _, newScenePhase in
+            guard OnlineInputPresentationPolicy.shouldResetCapture(
+                for: newScenePhase
+            ) else { return }
+            dismissOnlineSetupCapture()
+            isOnlineSoftwareKeyboardVisible = false
+        }
         .onDisappear {
             appState.isShellChromeSuppressed = false
         }
@@ -2316,7 +2374,7 @@ struct GameView: View {
             .safeAreaInset(edge: .bottom, spacing: 0) {
                 if let room = appState.activeRoom,
                    showsWaitingFooter(for: room),
-                   !isOnlineTextInputFocused {
+                   onlineInputPresentation.allowsWaitingFooter {
                     waitingActionBar(room)
                         .transition(
                             .asymmetric(
@@ -2334,7 +2392,9 @@ struct GameView: View {
         PageChrome(
             eyebrow: copy.eyebrow,
             status: appState.activeRoom.map(roomStateLabel) ?? copy.standby,
-            scrollTarget: focusedOnlineSetupField == .theme ? onlineThemeScrollTarget : nil
+            scrollTarget: onlineInputPresentation.revealsTheme
+                ? onlineThemeScrollTarget
+                : nil
         ) {
             VStack(alignment: .leading, spacing: 18) {
                 Group {
@@ -2376,7 +2436,7 @@ struct GameView: View {
     private var waitingFooterSceneKey: String {
         guard let room = appState.activeRoom,
               showsWaitingFooter(for: room),
-              !isOnlineTextInputFocused
+              onlineInputPresentation.allowsWaitingFooter
         else { return "hidden" }
         return "waiting-\(room.id)"
     }
@@ -2416,8 +2476,11 @@ struct GameView: View {
         ].joined(separator: "|")
     }
 
-    private var isOnlineTextInputFocused: Bool {
-        focusedOnlineSetupField != nil
+    private var onlineInputPresentation: OnlineInputPresentationPolicy.Layout {
+        OnlineInputPresentationPolicy.layout(
+            isThemeFocused: focusedOnlineSetupField == .theme,
+            isSoftwareKeyboardVisible: isOnlineSoftwareKeyboardVisible
+        )
     }
 
     private var lobbySyncFeedbackSnapshot: LobbySyncFeedbackSnapshot {
@@ -2586,8 +2649,10 @@ struct GameView: View {
                 ) && !isTimeExpired(room),
                 showsVoteRequest: shouldShowVoteRequest(room),
                 canRequestVote: canCurrentUserRequestVote(room),
+                isVoteRequestPending: isRequestingVote,
                 canSpyGuess: canCurrentUserGuess(room),
                 canCastVote: canCurrentUserCastVote(room),
+                pendingVoteTargetEmail: pendingDetectiveVoteTargetEmail,
                 lobbyReturn: activeLobbyReturnPresentation(for: room),
                 onToggleRole: revealOnlineRole,
                 onTogglePause: {
@@ -2824,9 +2889,47 @@ struct GameView: View {
     }
 
     private func dismissOnlineSetupCapture() {
+        let shouldReconcileDeferredLobbyUpdate = deferredLobbyUpdate.isPending
         focusedOnlineSetupField = nil
         isDraggingOnlineDuration = false
         isDraggingOnlineWordCount = false
+        isDraggingOnlineSpyCount = false
+        if shouldReconcileDeferredLobbyUpdate {
+            reconcileAuthoritativeLobbyStateAfterSliderInteraction()
+        }
+    }
+
+    private func revealOnlineSoftwareKeyboardIfNeeded(
+        _ notification: Notification
+    ) {
+        let endFrame = (
+            notification.userInfo?[UIResponder.keyboardFrameEndUserInfoKey]
+                as? NSValue
+        )?.cgRectValue
+        let isLocal = (
+            notification.userInfo?[UIResponder.keyboardIsLocalUserInfoKey]
+                as? NSNumber
+        )?.boolValue ?? true
+        let screenBounds = (notification.object as? UIScreen)?
+            .coordinateSpace.bounds ?? activeKeyboardScreenBounds
+
+        guard OnlineInputPresentationPolicy.isSoftwareKeyboardVisible(
+            endFrame: endFrame,
+            screenBounds: screenBounds,
+            isLocal: isLocal
+        ) else { return }
+        isOnlineSoftwareKeyboardVisible = true
+    }
+
+    private var activeKeyboardScreenBounds: CGRect {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .sorted {
+                $0.activationState == .foregroundActive &&
+                    $1.activationState != .foregroundActive
+            }
+            .first?
+            .screen.coordinateSpace.bounds ?? .zero
     }
 
     private var focusedOnlineSetupPanel: OnlineSetupPanel? {

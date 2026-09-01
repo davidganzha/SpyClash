@@ -4918,3 +4918,136 @@ final class LocalAssociationTurnOrderPolicyTests: XCTestCase {
         XCTAssertEqual(shuffleCalls, 1)
     }
 }
+
+final class OnlineInputPresentationPolicyTests: XCTestCase {
+    func testHardwareKeyboardFocusDoesNotMoveTheLobby() {
+        XCTAssertEqual(
+            OnlineInputPresentationPolicy.layout(
+                isThemeFocused: true,
+                isSoftwareKeyboardVisible: false
+            ),
+            .init(revealsTheme: false, allowsWaitingFooter: true)
+        )
+    }
+
+    func testSoftwareKeyboardRevealsThemeAndSuppressesFooter() {
+        XCTAssertEqual(
+            OnlineInputPresentationPolicy.layout(
+                isThemeFocused: true,
+                isSoftwareKeyboardVisible: true
+            ),
+            .init(revealsTheme: true, allowsWaitingFooter: false)
+        )
+        XCTAssertEqual(
+            OnlineInputPresentationPolicy.layout(
+                isThemeFocused: false,
+                isSoftwareKeyboardVisible: true
+            ),
+            .init(revealsTheme: false, allowsWaitingFooter: false)
+        )
+    }
+
+    func testSceneInterruptionResetsOnlineInputCapture() {
+        XCTAssertFalse(
+            OnlineInputPresentationPolicy.shouldResetCapture(for: .active)
+        )
+        XCTAssertTrue(
+            OnlineInputPresentationPolicy.shouldResetCapture(for: .inactive)
+        )
+        XCTAssertTrue(
+            OnlineInputPresentationPolicy.shouldResetCapture(for: .background)
+        )
+    }
+
+    func testOnlyAnOnScreenLocalKeyboardCountsAsVisible() {
+        let screen = CGRect(x: 0, y: 0, width: 390, height: 844)
+        XCTAssertTrue(
+            OnlineInputPresentationPolicy.isSoftwareKeyboardVisible(
+                endFrame: CGRect(x: 0, y: 520, width: 390, height: 324),
+                screenBounds: screen,
+                isLocal: true
+            )
+        )
+        XCTAssertTrue(
+            OnlineInputPresentationPolicy.isSoftwareKeyboardVisible(
+                endFrame: CGRect(x: 110, y: 430, width: 260, height: 250),
+                screenBounds: screen,
+                isLocal: true
+            )
+        )
+        XCTAssertFalse(
+            OnlineInputPresentationPolicy.isSoftwareKeyboardVisible(
+                endFrame: CGRect(x: 0, y: 844, width: 390, height: 324),
+                screenBounds: screen,
+                isLocal: true
+            )
+        )
+        XCTAssertFalse(
+            OnlineInputPresentationPolicy.isSoftwareKeyboardVisible(
+                endFrame: .zero,
+                screenBounds: screen,
+                isLocal: true
+            )
+        )
+        XCTAssertFalse(
+            OnlineInputPresentationPolicy.isSoftwareKeyboardVisible(
+                endFrame: CGRect(x: 0, y: 520, width: 390, height: 324),
+                screenBounds: screen,
+                isLocal: false
+            )
+        )
+    }
+}
+
+final class OnlineVoteFeedbackPolicyTests: XCTestCase {
+    func testPendingVoteRequestAdvancesCountWithoutWaitingForServer() {
+        XCTAssertEqual(
+            OnlineVoteRequestFeedback.resolve(
+                serverRequestEmails: ["one@example.com"],
+                currentUserEmail: "me@example.com",
+                submissionPending: true,
+                threshold: 3
+            ),
+            .init(displayedCount: 2, isAwaitingServer: true, isRecorded: false)
+        )
+    }
+
+    func testServerEchoDoesNotDoubleCountPendingVoteRequest() {
+        XCTAssertEqual(
+            OnlineVoteRequestFeedback.resolve(
+                serverRequestEmails: ["one@example.com", "ME@example.com"],
+                currentUserEmail: "me@example.com",
+                submissionPending: true,
+                threshold: 3
+            ),
+            .init(displayedCount: 2, isAwaitingServer: false, isRecorded: true)
+        )
+    }
+
+    func testPendingCandidateBecomesAuthoritativeWithoutAmbiguity() {
+        XCTAssertEqual(
+            OnlineVoteCandidateFeedback.resolve(
+                candidateEmail: "suspect@example.com",
+                authoritativeVoteEmail: nil,
+                pendingVoteEmail: "SUSPECT@example.com"
+            ),
+            .awaitingServer
+        )
+        XCTAssertEqual(
+            OnlineVoteCandidateFeedback.resolve(
+                candidateEmail: "suspect@example.com",
+                authoritativeVoteEmail: "suspect@example.com",
+                pendingVoteEmail: "suspect@example.com"
+            ),
+            .recorded
+        )
+        XCTAssertEqual(
+            OnlineVoteCandidateFeedback.resolve(
+                candidateEmail: "other@example.com",
+                authoritativeVoteEmail: nil,
+                pendingVoteEmail: nil
+            ),
+            .idle
+        )
+    }
+}
