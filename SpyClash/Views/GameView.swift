@@ -1818,6 +1818,45 @@ struct DeferredLobbyUpdateState: Equatable {
 }
 
 enum LobbyPresentationPolicy {
+    enum AuthoritativeUpdateDisposition: Equatable {
+        case apply
+        case deferUpdate
+        case ignore
+    }
+
+    static func authoritativeUpdateDisposition(
+        appliedRevision: Int,
+        incomingRevision: Int,
+        currentState: LobbyStatePayload?,
+        authoritativeState: LobbyStatePayload?,
+        isEditingLobbySlider: Bool,
+        hasOptimisticChanges: Bool,
+        force: Bool,
+        hasLegacyPresentationChange: Bool
+    ) -> AuthoritativeUpdateDisposition {
+        if isEditingLobbySlider {
+            return .deferUpdate
+        }
+        if force {
+            return .apply
+        }
+        if incomingRevision < appliedRevision {
+            return .ignore
+        }
+        if hasOptimisticChanges {
+            return .deferUpdate
+        }
+        if incomingRevision > appliedRevision || hasLegacyPresentationChange {
+            return .apply
+        }
+        guard let currentState, let authoritativeState else {
+            return .ignore
+        }
+        return authoritativeState.equivalentForLobbySync(to: currentState)
+            ? .ignore
+            : .apply
+    }
+
     static func shouldAnimateRemoteUpdate(
         isHost: Bool,
         reduceMotion: Bool,
@@ -9268,30 +9307,47 @@ struct GameView: View {
 
     private func applyAuthoritativeLobbyState(from room: GameRoom, force: Bool = false) {
         let revision = max(room.lobbyRevision ?? 0, 0)
-        guard !LobbyPresentationPolicy.shouldDeferAuthoritativeUpdate(
+        let authoritativeState = appState.authoritativeLobbyStatePayload(from: room)
+        let currentState = authoritativeState.map { _ in
+            currentLobbyStatePayload(for: room)
+        }
+        let isEditingLobbySlider = LobbyPresentationPolicy.shouldDeferAuthoritativeUpdate(
             isDraggingDuration: isDraggingOnlineDuration,
             isDraggingWordCount: isDraggingOnlineWordCount,
             isDraggingSpyCount: isDraggingOnlineSpyCount
-        ) else {
-            deferredLobbyUpdate.record(force: force)
-            return
-        }
+        )
+        let hasProtectedOptimisticChanges = isHost(room) &&
+            appState.lobbySettingsSyncState.hasOptimisticChanges
         let hasLegacyPresentationChange = revision == 0 && (
             selectedGameMode != room.gameModeValue ||
                 Int(selectedDurationMinutes) != max(1, min((room.gameDurationSeconds ?? 900) / 60, 15))
         )
-        guard force || revision > appliedLobbyRevision || hasLegacyPresentationChange else {
+        switch LobbyPresentationPolicy.authoritativeUpdateDisposition(
+            appliedRevision: appliedLobbyRevision,
+            incomingRevision: revision,
+            currentState: currentState,
+            authoritativeState: authoritativeState,
+            isEditingLobbySlider: isEditingLobbySlider,
+            hasOptimisticChanges: hasProtectedOptimisticChanges,
+            force: force,
+            hasLegacyPresentationChange: hasLegacyPresentationChange
+        ) {
+        case .deferUpdate:
+            deferredLobbyUpdate.record(force: force)
+            return
+        case .ignore:
             deferredLobbyUpdate.clear()
             return
+        case .apply:
+            break
         }
-        guard force || !isHost(room) || !appState.lobbySettingsSyncState.hasOptimisticChanges else { return }
 
         selectedGameMode = room.gameModeValue
         selectedDurationMinutes = Double(max(1, min((room.gameDurationSeconds ?? 900) / 60, 15)))
         selectedSpyCount = Double(min(room.lobbySpyCountValue, room.maximumLobbySpyCount))
         selectedSpiesKnowEachOther = room.spiesKnowEachOther ?? false
 
-        guard let authoritativeState = appState.authoritativeLobbyStatePayload(from: room) else {
+        guard let authoritativeState else {
             appliedLobbyRevision = max(appliedLobbyRevision, revision)
             deferredLobbyUpdate.clear()
             return

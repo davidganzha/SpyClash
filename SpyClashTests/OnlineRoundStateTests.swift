@@ -3801,6 +3801,139 @@ final class LobbyStartGateTests: XCTestCase {
 }
 
 final class LobbyPresentationPolicyTests: XCTestCase {
+    func testEqualRevisionAuthoritativeSnapshotHealsThemeCategoryAndPool() {
+        var presented = payload(
+            mode: .questions,
+            duration: 300,
+            theme: "Countries"
+        )
+        var authoritative = payload(
+            mode: .questions,
+            duration: 300,
+            theme: "Landmarks"
+        )
+        authoritative.lobbyCategory = "Places"
+        authoritative.lobbyWordPool = [
+            LobbyWordPoolEntry(word: "Eiffel Tower", enabled: true),
+            LobbyWordPoolEntry(word: "Big Ben", enabled: false),
+            LobbyWordPoolEntry(word: "Colosseum", enabled: true)
+        ]
+        authoritative.lobbyWordCount = 2
+
+        let disposition = LobbyPresentationPolicy.authoritativeUpdateDisposition(
+            appliedRevision: 12,
+            incomingRevision: 12,
+            currentState: presented,
+            authoritativeState: authoritative,
+            isEditingLobbySlider: false,
+            hasOptimisticChanges: false,
+            force: false,
+            hasLegacyPresentationChange: false
+        )
+
+        XCTAssertEqual(disposition, .apply)
+        if disposition == .apply {
+            presented = authoritative
+        }
+        XCTAssertEqual(presented.lobbyTheme, "Landmarks")
+        XCTAssertEqual(presented.lobbyCategory, "Places")
+        XCTAssertEqual(
+            presented.lobbyWordPool.map(\.word),
+            ["Eiffel Tower", "Big Ben", "Colosseum"]
+        )
+        XCTAssertEqual(presented.lobbyWordPool.map(\.enabled), [true, false, true])
+    }
+
+    func testEqualRevisionSnapshotCannotOverwriteAnOptimisticLobbyEdit() {
+        let optimistic = payload(
+            mode: .associations,
+            duration: 600,
+            theme: "Optimistic landmarks"
+        )
+        let staleAuthoritative = payload(
+            mode: .questions,
+            duration: 300,
+            theme: "Previously confirmed countries"
+        )
+
+        XCTAssertEqual(
+            LobbyPresentationPolicy.authoritativeUpdateDisposition(
+                appliedRevision: 12,
+                incomingRevision: 12,
+                currentState: optimistic,
+                authoritativeState: staleAuthoritative,
+                isEditingLobbySlider: false,
+                hasOptimisticChanges: true,
+                force: false,
+                hasLegacyPresentationChange: false
+            ),
+            .deferUpdate
+        )
+        XCTAssertEqual(
+            LobbyPresentationPolicy.authoritativeUpdateDisposition(
+                appliedRevision: 12,
+                incomingRevision: 12,
+                currentState: optimistic,
+                authoritativeState: staleAuthoritative,
+                isEditingLobbySlider: false,
+                hasOptimisticChanges: false,
+                force: false,
+                hasLegacyPresentationChange: false
+            ),
+            .apply,
+            "Once the optimistic transaction ends, the same authoritative revision must be able to reconcile the presentation."
+        )
+    }
+
+    func testOlderSnapshotIsIgnoredEvenWhenItsStateDiffers() {
+        let presented = payload(
+            mode: .associations,
+            duration: 600,
+            theme: "Newer landmarks"
+        )
+        let stale = payload(
+            mode: .questions,
+            duration: 300,
+            theme: "Older countries"
+        )
+
+        XCTAssertEqual(
+            LobbyPresentationPolicy.authoritativeUpdateDisposition(
+                appliedRevision: 13,
+                incomingRevision: 12,
+                currentState: presented,
+                authoritativeState: stale,
+                isEditingLobbySlider: false,
+                hasOptimisticChanges: false,
+                force: false,
+                hasLegacyPresentationChange: false
+            ),
+            .ignore
+        )
+    }
+
+    func testEquivalentEqualRevisionSnapshotDoesNotReapplyPresentation() {
+        let presented = payload(
+            mode: .questions,
+            duration: 300,
+            theme: "Countries"
+        )
+
+        XCTAssertEqual(
+            LobbyPresentationPolicy.authoritativeUpdateDisposition(
+                appliedRevision: 12,
+                incomingRevision: 12,
+                currentState: presented,
+                authoritativeState: presented,
+                isEditingLobbySlider: false,
+                hasOptimisticChanges: false,
+                force: false,
+                hasLegacyPresentationChange: false
+            ),
+            .ignore
+        )
+    }
+
     func testPoolPreviewIsHiddenOnlyWhenTotalPoolIsEmpty() {
         XCTAssertFalse(
             LobbyPresentationPolicy.shouldShowPoolPreview(totalWordCount: 0)
