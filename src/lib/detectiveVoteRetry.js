@@ -103,6 +103,12 @@ export function isDetectiveVoteRecoveryBudgetExhausted(error) {
   return normalized(error?.code) === RECOVERY_BUDGET_EXHAUSTED_CODE;
 }
 
+export function isUncertainDetectiveVoteActionTimeout(action, error) {
+  return ["request_vote", "cast_detective_vote"].includes(action)
+    && Number(error?.status) === 408
+    && normalized(error?.code) === "room_action_timeout";
+}
+
 export function isRetryableDetectiveVoteCastConflict(action, error) {
   const code = normalized(error?.code);
   return action === "cast_detective_vote"

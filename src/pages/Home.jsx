@@ -23,6 +23,7 @@ import { useMembership } from "@/lib/MembershipContext";
 import { accountAvatarForDisplay } from "@/lib/avatars";
 import {
   clearPendingRoomExit,
+  completePendingRoomExit,
   markRoomExitPending,
   pendingRoomExitAction,
   pendingRoomExitId,
@@ -131,9 +132,11 @@ export default function Home() {
           const retryRoomExit = dismissedRoomAction === GAME_ROOM_CLOSE_ACTION
             ? closeGameRoom
             : leaveGameRoom;
-          void retryRoomExit(dismissedRoomId)
-            .then(() => clearPendingRoomExit(dismissedRoomId))
-            .catch(() => {});
+          void completePendingRoomExit({
+            roomId: dismissedRoomId,
+            action: dismissedRoomAction,
+            performExit: retryRoomExit,
+          });
         }
         const checkRoom = async () => {
           let found = null;

@@ -1,4 +1,5 @@
 import {
+  GAME_ROOM_CLOSE_ACTION,
   GAME_ROOM_LEAVE_ACTION,
   normalizedGameRoomExitAction,
 } from "./gameRoomExit.js";
@@ -6,6 +7,14 @@ import {
 const ACTIVE_ROOM_STORAGE_KEY = "spy_active_room_id";
 const PENDING_ROOM_EXIT_STORAGE_KEY = "spy_pending_room_exit_id";
 const PENDING_ROOM_EXIT_ACTION_STORAGE_KEY = "spy_pending_room_exit_action";
+export const PENDING_ROOM_CLOSE_RETRY_DELAYS_MILLISECONDS = Object.freeze([
+  1_000,
+  2_000,
+  4_000,
+  8_000,
+]);
+const defaultSleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const pendingRoomExitCompletions = new Map();
 
 function resolvedStorage(storage) {
   if (storage !== undefined) return storage;
@@ -90,6 +99,85 @@ export function clearPendingRoomExit(roomId = null, storage = undefined) {
   }
 }
 
+function pendingExitMatches(roomId, action, storage) {
+  return pendingRoomExitId(storage) === roomId
+    && pendingRoomExitAction(storage) === action;
+}
+
+async function runPendingRoomExitCompletion({
+  roomId,
+  action,
+  performExit,
+  storage,
+  sleep,
+  closeRetryDelaysMilliseconds,
+}) {
+  let failures = 0;
+  let attempted = false;
+  while (true) {
+    if (attempted && !pendingExitMatches(roomId, action, storage)) {
+      return true;
+    }
+    attempted = true;
+
+    try {
+      await performExit(roomId);
+      clearPendingRoomExit(roomId, storage);
+      return true;
+    } catch (error) {
+      if (confirmsRoomExit(error)) {
+        clearPendingRoomExit(roomId, storage);
+        return true;
+      }
+      if (action !== GAME_ROOM_CLOSE_ACTION) return false;
+      if (!pendingExitMatches(roomId, action, storage)) return true;
+
+      const delayIndex = Math.min(
+        failures,
+        Math.max(0, closeRetryDelaysMilliseconds.length - 1),
+      );
+      const delay = Number(closeRetryDelaysMilliseconds[delayIndex]);
+      if (!Number.isFinite(delay) || delay < 0) return false;
+      failures += 1;
+      await sleep(delay);
+    }
+  }
+}
+
+export function completePendingRoomExit({
+  roomId,
+  action = GAME_ROOM_LEAVE_ACTION,
+  performExit,
+  storage = undefined,
+  sleep = defaultSleep,
+  closeRetryDelaysMilliseconds = PENDING_ROOM_CLOSE_RETRY_DELAYS_MILLISECONDS,
+}) {
+  const normalizedRoom = normalizedRoomId(roomId);
+  const normalizedAction = normalizedGameRoomExitAction(action);
+  if (!normalizedRoom || typeof performExit !== "function") return Promise.resolve(false);
+
+  const completionKey = `${normalizedAction}:${normalizedRoom}`;
+  const inFlight = pendingRoomExitCompletions.get(completionKey);
+  if (inFlight) return inFlight;
+
+  const completion = runPendingRoomExitCompletion({
+    roomId: normalizedRoom,
+    action: normalizedAction,
+    performExit,
+    storage,
+    sleep,
+    closeRetryDelaysMilliseconds,
+  });
+  pendingRoomExitCompletions.set(completionKey, completion);
+  const clearSingleFlight = () => {
+    if (pendingRoomExitCompletions.get(completionKey) === completion) {
+      pendingRoomExitCompletions.delete(completionKey);
+    }
+  };
+  completion.then(clearSingleFlight, clearSingleFlight);
+  return completion;
+}
+
 export function exitRoomImmediately({
   roomId,
   action = GAME_ROOM_LEAVE_ACTION,
@@ -102,14 +190,10 @@ export function exitRoomImmediately({
 
   navigateHome();
   return Promise.resolve()
-    .then(() => leaveRoom(normalized))
-    .then(() => {
-      clearPendingRoomExit(normalized, storage);
-      return true;
-    })
-    .catch((error) => {
-      if (!confirmsRoomExit(error)) return false;
-      clearPendingRoomExit(normalized, storage);
-      return true;
-    });
+    .then(() => completePendingRoomExit({
+      roomId: normalized,
+      action,
+      performExit: leaveRoom,
+      storage,
+    }));
 }

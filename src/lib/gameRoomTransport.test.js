@@ -4,17 +4,27 @@ import test from "node:test";
 import {
   dispatchGameRoomAction,
   GAME_ROOM_READ_DEADLINE_MILLISECONDS,
+  GAME_ROOM_UNCERTAIN_MUTATION_DEADLINE_MILLISECONDS,
   gameRoomActionDeadlineMilliseconds,
   isRetryableRoomActionConflict,
 } from "./gameRoomTransport.js";
 
-test("only get_room receives the default three-second read deadline", () => {
+test("room reads and uncertain vote/close mutations receive bounded deadlines", () => {
   assert.equal(GAME_ROOM_READ_DEADLINE_MILLISECONDS, 3_000);
+  assert.equal(GAME_ROOM_UNCERTAIN_MUTATION_DEADLINE_MILLISECONDS, 2_000);
   assert.equal(
     gameRoomActionDeadlineMilliseconds({ action: "get_room" }),
     GAME_ROOM_READ_DEADLINE_MILLISECONDS,
   );
-  assert.equal(gameRoomActionDeadlineMilliseconds({ action: "leave_room" }), null);
+  for (const action of ["request_vote", "cast_detective_vote", "close_room"]) {
+    assert.equal(
+      gameRoomActionDeadlineMilliseconds({ action }),
+      GAME_ROOM_UNCERTAIN_MUTATION_DEADLINE_MILLISECONDS,
+    );
+  }
+  for (const action of ["leave_room", "pause_game", "advance_question"]) {
+    assert.equal(gameRoomActionDeadlineMilliseconds({ action }), null);
+  }
   assert.equal(gameRoomActionDeadlineMilliseconds({ action: "get_room" }, 25), 25);
 });
 
@@ -192,4 +202,21 @@ test("the get_room deadline also bounds a stalled response body", async () => {
       && error.code === "room_read_timeout",
   );
   assert.equal(requestSignal?.aborted, true);
+});
+
+test("a hung initial detective mutation surfaces uncertain commit timeout", async () => {
+  await assert.rejects(
+    dispatchGameRoomAction({
+      body: { action: "cast_detective_vote", room_id: "room-1" },
+      accessToken: null,
+      endpoint: "/unused",
+      headers: {},
+      invoke: async () => new Promise(() => {}),
+      request: async () => null,
+      deadlineMilliseconds: 20,
+    }),
+    (error) => error.status === 408
+      && error.code === "room_action_timeout"
+      && error.retryable === true,
+  );
 });

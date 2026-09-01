@@ -28,6 +28,12 @@ function normalizedFailure(error) {
 }
 
 export const GAME_ROOM_READ_DEADLINE_MILLISECONDS = 3_000;
+export const GAME_ROOM_UNCERTAIN_MUTATION_DEADLINE_MILLISECONDS = 2_000;
+const DEADLINED_UNCERTAIN_MUTATIONS = new Set([
+  "request_vote",
+  "cast_detective_vote",
+  "close_room",
+]);
 
 function normalizedDeadlineMilliseconds(value) {
   const milliseconds = Number(value);
@@ -38,8 +44,10 @@ function normalizedDeadlineMilliseconds(value) {
 
 export function gameRoomActionDeadlineMilliseconds(body, override = undefined) {
   if (override !== undefined) return normalizedDeadlineMilliseconds(override);
-  return String(body?.action || "").trim() === "get_room"
-    ? GAME_ROOM_READ_DEADLINE_MILLISECONDS
+  const action = String(body?.action || "").trim();
+  if (action === "get_room") return GAME_ROOM_READ_DEADLINE_MILLISECONDS;
+  return DEADLINED_UNCERTAIN_MUTATIONS.has(action)
+    ? GAME_ROOM_UNCERTAIN_MUTATION_DEADLINE_MILLISECONDS
     : null;
 }
 

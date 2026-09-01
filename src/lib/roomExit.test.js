@@ -3,10 +3,12 @@ import test from "node:test";
 
 import {
   clearPendingRoomExit,
+  completePendingRoomExit,
   exitRoomImmediately,
   markRoomExitPending,
   pendingRoomExitAction,
   pendingRoomExitId,
+  PENDING_ROOM_CLOSE_RETRY_DELAYS_MILLISECONDS,
   roomExitIsPending,
 } from "./roomExit.js";
 import {
@@ -116,7 +118,6 @@ test("a pending local-first exit can retry the same authoritative cleanup", asyn
 
   const firstAttempt = await exitRoomImmediately({
     roomId: "room-1",
-    action: GAME_ROOM_CLOSE_ACTION,
     storage,
     navigateHome: () => {},
     leaveRoom: async () => {
@@ -126,7 +127,7 @@ test("a pending local-first exit can retry the same authoritative cleanup", asyn
   });
   assert.equal(firstAttempt, false);
   assert.equal(pendingRoomExitId(storage), "room-1");
-  assert.equal(pendingRoomExitAction(storage), GAME_ROOM_CLOSE_ACTION);
+  assert.equal(pendingRoomExitAction(storage), GAME_ROOM_LEAVE_ACTION);
 
   const retry = await exitRoomImmediately({
     roomId: "room-1",
@@ -139,5 +140,70 @@ test("a pending local-first exit can retry the same authoritative cleanup", asyn
   });
   assert.equal(retry, true);
   assert.equal(leaveAttempts, 2);
+  assert.equal(pendingRoomExitId(storage), null);
+});
+
+test("pending idempotent close retries at a capped cadence until success", async () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-host" });
+  markRoomExitPending("room-host", storage, GAME_ROOM_CLOSE_ACTION);
+  const sleeps = [];
+  let attempts = 0;
+
+  const completed = await completePendingRoomExit({
+    roomId: "room-host",
+    action: GAME_ROOM_CLOSE_ACTION,
+    storage,
+    performExit: async () => {
+      attempts += 1;
+      if (attempts < 7) throw new Error("timeout");
+    },
+    sleep: async (milliseconds) => sleeps.push(milliseconds),
+  });
+
+  assert.equal(completed, true);
+  assert.equal(attempts, 7);
+  assert.deepEqual(sleeps, [1_000, 2_000, 4_000, 8_000, 8_000, 8_000]);
+  assert.equal(
+    Math.max(...sleeps),
+    PENDING_ROOM_CLOSE_RETRY_DELAYS_MILLISECONDS.at(-1),
+  );
+  assert.equal(pendingRoomExitId(storage), null);
+  assert.equal(pendingRoomExitAction(storage), null);
+});
+
+test("concurrent close recovery callers share one room-action worker", async () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-host" });
+  markRoomExitPending("room-host", storage, GAME_ROOM_CLOSE_ACTION);
+  let releaseAttempt;
+  const attemptGate = new Promise((resolve) => { releaseAttempt = resolve; });
+  let firstWorkerAttempts = 0;
+  let duplicateWorkerAttempts = 0;
+
+  const firstCompletion = completePendingRoomExit({
+    roomId: "room-host",
+    action: GAME_ROOM_CLOSE_ACTION,
+    storage,
+    performExit: async () => {
+      firstWorkerAttempts += 1;
+      await attemptGate;
+    },
+  });
+  const remountedCompletion = completePendingRoomExit({
+    roomId: "room-host",
+    action: GAME_ROOM_CLOSE_ACTION,
+    storage,
+    performExit: async () => {
+      duplicateWorkerAttempts += 1;
+    },
+  });
+
+  assert.equal(remountedCompletion, firstCompletion);
+  assert.equal(firstWorkerAttempts, 1);
+  assert.equal(duplicateWorkerAttempts, 0);
+  releaseAttempt();
+  assert.equal(await firstCompletion, true);
+  assert.equal(await remountedCompletion, true);
+  assert.equal(firstWorkerAttempts, 1);
+  assert.equal(duplicateWorkerAttempts, 0);
   assert.equal(pendingRoomExitId(storage), null);
 });

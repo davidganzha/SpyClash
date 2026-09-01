@@ -5,6 +5,7 @@ import {
   DETECTIVE_VOTE_RETRY_BUDGET_MILLISECONDS,
   DETECTIVE_VOTE_RETRY_MAX_ATTEMPTS,
   isDetectiveVoteRecoveryBudgetExhausted,
+  isUncertainDetectiveVoteActionTimeout,
   recoverDetectiveVoteCastConflict,
 } from "./detectiveVoteRetry.js";
 
@@ -63,6 +64,21 @@ function input(patch = {}) {
     ...patch,
   };
 }
+
+test("only timed-out detective vote mutations use uncertain-commit recovery", () => {
+  const timeout = {
+    status: 408,
+    code: "room_action_timeout",
+    retryable: true,
+  };
+  assert.equal(isUncertainDetectiveVoteActionTimeout("request_vote", timeout), true);
+  assert.equal(isUncertainDetectiveVoteActionTimeout("cast_detective_vote", timeout), true);
+  assert.equal(isUncertainDetectiveVoteActionTimeout("advance_question", timeout), false);
+  assert.equal(isUncertainDetectiveVoteActionTimeout("cast_detective_vote", {
+    ...timeout,
+    code: "active_lease",
+  }), false);
+});
 
 test("wrong action, untyped error, and changed match remain visible", async () => {
   const failures = [

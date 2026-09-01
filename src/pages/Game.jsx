@@ -29,6 +29,7 @@ import {
 import {
   isDetectiveVoteRecoveryBudgetExhausted,
   isRetryableDetectiveVoteCastConflict,
+  isUncertainDetectiveVoteActionTimeout,
   recoverDetectiveVoteCastConflict,
 } from "@/lib/detectiveVoteRetry";
 import {
@@ -350,6 +351,12 @@ export default function Game() {
       return updated;
     } catch (error) {
       let visibleError = error;
+      if (isUncertainDetectiveVoteActionTimeout(action, error)) {
+        // The server may have committed before the client deadline. Never
+        // replay an unknown vote mutation; adopt one authoritative read and
+        // let realtime/polling deliver any later commit.
+        return await adoptAuthoritativeVoteRefresh(`${action} uncertain commit`);
+      }
       if (isAuthoritativeDetectiveVoteRefreshConflict(action, error)) {
         return await adoptAuthoritativeVoteRefresh("detective vote state");
       }
