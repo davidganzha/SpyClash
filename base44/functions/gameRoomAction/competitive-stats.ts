@@ -5,6 +5,13 @@ export type CompetitiveStats = {
   losses: number;
 };
 
+export type CompetitiveRoleStats = {
+  spyGames: number;
+  spyWins: number;
+  detectiveGames: number;
+  detectiveWins: number;
+};
+
 type Entity = Record<string, unknown>;
 
 function clean(value: unknown): string {
@@ -100,6 +107,37 @@ export function aggregateCompetitiveStats(
     stats.rating += competitiveRatingDelta(record);
     if (record?.won === true) stats.wins += 1;
     else stats.losses += 1;
+    table.set(userID, stats);
+  }
+
+  return table;
+}
+
+export function aggregateCompetitiveRoleStats(
+  records: readonly Entity[],
+): Map<string, CompetitiveRoleStats> {
+  const table = new Map<string, CompetitiveRoleStats>();
+
+  for (const record of deduplicateCompetitiveHistory(records)) {
+    if (!isRankedOnlineHistory(record)) continue;
+    const userID = clean(record?.player_user_id);
+    if (!userID) continue;
+
+    const role = clean(record?.role).toLocaleLowerCase();
+    if (role !== "spy" && role !== "detective") continue;
+    const stats = table.get(userID) || {
+      spyGames: 0,
+      spyWins: 0,
+      detectiveGames: 0,
+      detectiveWins: 0,
+    };
+    if (role === "spy") {
+      stats.spyGames += 1;
+      if (record?.won === true) stats.spyWins += 1;
+    } else {
+      stats.detectiveGames += 1;
+      if (record?.won === true) stats.detectiveWins += 1;
+    }
     table.set(userID, stats);
   }
 

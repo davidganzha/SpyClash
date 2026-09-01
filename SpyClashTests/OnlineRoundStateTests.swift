@@ -4,6 +4,167 @@ import UIKit
 import XCTest
 @testable import SpyClash
 
+final class PublicSpyProfileContractTests: XCTestCase {
+    func testDecodesSeparateSpyAndDetectiveStatistics() throws {
+        let profile = try JSONDecoder().decode(
+            PublicSpyProfile.self,
+            from: Data(
+                #"""
+                {
+                  "id": "operative-21",
+                  "spy_id": "021-021",
+                  "display_name": "Role Split",
+                  "avatar": "🕵️",
+                  "spy_card_theme": "field",
+                  "spy_card_accent": "signal_red",
+                  "spy_card_badge": "operative",
+                  "rating": 240,
+                  "games_played": 15,
+                  "games_won": 9,
+                  "win_rate": 60,
+                  "spy_games_played": 7,
+                  "spy_games_won": 5,
+                  "spy_win_rate": 71,
+                  "detective_games_played": 8,
+                  "detective_games_won": 4,
+                  "detective_win_rate": 50
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(profile.rating, 240)
+        XCTAssertEqual(profile.gamesPlayed, 15)
+        XCTAssertEqual(profile.spyGamesPlayed, 7)
+        XCTAssertEqual(profile.spyGamesWon, 5)
+        XCTAssertEqual(profile.spyWinRate, 71)
+        XCTAssertEqual(profile.detectiveGamesPlayed, 8)
+        XCTAssertEqual(profile.detectiveGamesWon, 4)
+        XCTAssertEqual(profile.detectiveWinRate, 50)
+    }
+
+    func testLegacyProfileDefaultsMissingRoleStatisticsToZero() throws {
+        let profile = try JSONDecoder().decode(
+            PublicSpyProfile.self,
+            from: Data(
+                #"""
+                {
+                  "id": "legacy-operative",
+                  "spy_id": "000-021",
+                  "display_name": "Legacy",
+                  "avatar": "🕵️",
+                  "spy_card_theme": "field",
+                  "spy_card_accent": "signal_red",
+                  "spy_card_badge": "operative",
+                  "rating": 10,
+                  "games_played": 3,
+                  "games_won": 2,
+                  "win_rate": 67
+                }
+                """#.utf8
+            )
+        )
+
+        XCTAssertEqual(profile.gamesPlayed, 3, "Legacy aggregate games must remain available.")
+        XCTAssertEqual(profile.winRate, 67, "Legacy aggregate win rate must remain available.")
+        XCTAssertEqual(profile.spyGamesPlayed, 0)
+        XCTAssertEqual(profile.spyGamesWon, 0)
+        XCTAssertEqual(profile.spyWinRate, 0)
+        XCTAssertEqual(profile.detectiveGamesPlayed, 0)
+        XCTAssertEqual(profile.detectiveGamesWon, 0)
+        XCTAssertEqual(profile.detectiveWinRate, 0)
+    }
+
+    func testEncodesRoleStatisticsWithCommunitySnakeCaseKeys() throws {
+        let profile = PublicSpyProfile(
+            id: "operative-encode",
+            spyID: "021-999",
+            displayName: "Encoded",
+            avatar: "🕵️",
+            spyCardTheme: "dossier",
+            spyCardAccent: "clearance_amber",
+            spyCardBadge: "analyst",
+            rating: 75,
+            gamesPlayed: 12,
+            gamesWon: 7,
+            winRate: 58,
+            spyGamesPlayed: 5,
+            spyGamesWon: 2,
+            spyWinRate: 40,
+            detectiveGamesPlayed: 7,
+            detectiveGamesWon: 5,
+            detectiveWinRate: 71
+        )
+
+        let object = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: JSONEncoder().encode(profile)) as? [String: Any]
+        )
+        XCTAssertEqual(object["spy_games_played"] as? Int, 5)
+        XCTAssertEqual(object["spy_games_won"] as? Int, 2)
+        XCTAssertEqual(object["spy_win_rate"] as? Int, 40)
+        XCTAssertEqual(object["detective_games_played"] as? Int, 7)
+        XCTAssertEqual(object["detective_games_won"] as? Int, 5)
+        XCTAssertEqual(object["detective_win_rate"] as? Int, 71)
+    }
+
+    func testSpyCardCopyNamesBothRolesAndAnnouncesBothRatesInEveryLanguage() {
+        let profile = PublicSpyProfile(
+            id: "operative-copy",
+            spyID: "021-071",
+            displayName: "Copy Check",
+            avatar: "🕵️",
+            spyCardTheme: "field",
+            spyCardAccent: "verified_green",
+            spyCardBadge: "handler",
+            rating: 120,
+            gamesPlayed: 12,
+            gamesWon: 7,
+            winRate: 58,
+            spyGamesPlayed: 5,
+            spyGamesWon: 2,
+            spyWinRate: 40,
+            detectiveGamesPlayed: 7,
+            detectiveGamesWon: 5,
+            detectiveWinRate: 71
+        )
+        let expectedRoleTitles: [AppLanguage: (spy: String, detective: String)] = [
+            .en: ("SPY", "DETECTIVE"),
+            .es: ("ESPÍA", "DETECTIVE"),
+            .ru: ("ШПИОН", "ДЕТЕКТИВ"),
+            .uk: ("ШПИГУН", "ДЕТЕКТИВ")
+        ]
+        let expectedRateAnnouncements: [AppLanguage: (spy: String, detective: String)] = [
+            .en: ("spy win rate 40 percent", "detective win rate 71 percent"),
+            .es: ("victorias como espía 40 por ciento", "victorias como detective 71 por ciento"),
+            .ru: ("винрейт за шпиона 40 процентов", "винрейт за детектива 71 процентов"),
+            .uk: ("відсоток перемог за шпигуна 40", "відсоток перемог за детектива 71")
+        ]
+
+        for language in AppLanguage.allCases {
+            let copy = CommunitySpyCardCopy(language: language)
+            guard let titles = expectedRoleTitles[language],
+                  let announcements = expectedRateAnnouncements[language] else {
+                XCTFail("Missing expectations for \(language.rawValue)")
+                continue
+            }
+
+            XCTAssertEqual(copy.metricTitle(.spyRate), titles.spy)
+            XCTAssertEqual(copy.metricTitle(.detectiveRate), titles.detective)
+            XCTAssertNotEqual(copy.metricTitle(.spyRate), copy.metricTitle(.detectiveRate))
+
+            let accessibilityLabel = copy.accessibilityLabel(for: profile)
+            XCTAssertTrue(
+                accessibilityLabel.contains(announcements.spy),
+                "Missing spy win rate for \(language.rawValue)"
+            )
+            XCTAssertTrue(
+                accessibilityLabel.contains(announcements.detective),
+                "Missing detective win rate for \(language.rawValue)"
+            )
+        }
+    }
+}
+
 final class HomeHeroTypographyPolicyTests: XCTestCase {
     func testRussianAndUkrainianLandingTitlesUseCompactScale() {
         XCTAssertEqual(
@@ -839,14 +1000,21 @@ final class OnlineRoundStateTests: XCTestCase {
             )
         )
 
-        XCTAssertEqual(
-            GameHistoryAnalytics.roleWinRate("spy", in: records, competitiveOnly: true),
-            50
+        let spy = GameHistoryAnalytics.rolePerformance(
+            "spy",
+            in: records,
+            competitiveOnly: true
         )
-        XCTAssertEqual(
-            GameHistoryAnalytics.roleWinRate("detective", in: records, competitiveOnly: true),
-            100
+        XCTAssertEqual(spy, GameHistoryRolePerformance(games: 2, wins: 1))
+        XCTAssertEqual(spy.winRate, 50)
+
+        let detective = GameHistoryAnalytics.rolePerformance(
+            "detective",
+            in: records,
+            competitiveOnly: true
         )
+        XCTAssertEqual(detective, GameHistoryRolePerformance(games: 1, wins: 1))
+        XCTAssertEqual(detective.winRate, 100)
     }
 
     func testProfileHistoryMetricsDoNotPresentLoadingOrFailureAsZero() {

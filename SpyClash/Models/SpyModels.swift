@@ -3288,6 +3288,71 @@ struct PublicSpyProfile: Codable, Identifiable, Equatable {
     let gamesPlayed: Int
     let gamesWon: Int
     let winRate: Int
+    let spyGamesPlayed: Int
+    let spyGamesWon: Int
+    let spyWinRate: Int
+    let detectiveGamesPlayed: Int
+    let detectiveGamesWon: Int
+    let detectiveWinRate: Int
+
+    init(
+        id: String,
+        spyID: String,
+        displayName: String,
+        avatar: String,
+        spyCardTheme: String,
+        spyCardAccent: String,
+        spyCardBadge: String,
+        rating: Int,
+        gamesPlayed: Int,
+        gamesWon: Int,
+        winRate: Int,
+        spyGamesPlayed: Int = 0,
+        spyGamesWon: Int = 0,
+        spyWinRate: Int = 0,
+        detectiveGamesPlayed: Int = 0,
+        detectiveGamesWon: Int = 0,
+        detectiveWinRate: Int = 0
+    ) {
+        self.id = id
+        self.spyID = spyID
+        self.displayName = displayName
+        self.avatar = avatar
+        self.spyCardTheme = spyCardTheme
+        self.spyCardAccent = spyCardAccent
+        self.spyCardBadge = spyCardBadge
+        self.rating = rating
+        self.gamesPlayed = gamesPlayed
+        self.gamesWon = gamesWon
+        self.winRate = winRate
+        self.spyGamesPlayed = spyGamesPlayed
+        self.spyGamesWon = spyGamesWon
+        self.spyWinRate = spyWinRate
+        self.detectiveGamesPlayed = detectiveGamesPlayed
+        self.detectiveGamesWon = detectiveGamesWon
+        self.detectiveWinRate = detectiveWinRate
+    }
+
+    init(from decoder: Decoder) throws {
+        let container = try decoder.container(keyedBy: CodingKeys.self)
+        id = try container.decode(String.self, forKey: .id)
+        spyID = try container.decode(String.self, forKey: .spyID)
+        displayName = try container.decode(String.self, forKey: .displayName)
+        avatar = try container.decode(String.self, forKey: .avatar)
+        spyCardTheme = try container.decode(String.self, forKey: .spyCardTheme)
+        spyCardAccent = try container.decode(String.self, forKey: .spyCardAccent)
+        spyCardBadge = try container.decode(String.self, forKey: .spyCardBadge)
+        rating = try container.decode(Int.self, forKey: .rating)
+        gamesPlayed = try container.decode(Int.self, forKey: .gamesPlayed)
+        gamesWon = try container.decode(Int.self, forKey: .gamesWon)
+        winRate = try container.decode(Int.self, forKey: .winRate)
+        spyGamesPlayed = try container.decodeIfPresent(Int.self, forKey: .spyGamesPlayed) ?? 0
+        spyGamesWon = try container.decodeIfPresent(Int.self, forKey: .spyGamesWon) ?? 0
+        spyWinRate = try container.decodeIfPresent(Int.self, forKey: .spyWinRate) ?? 0
+        detectiveGamesPlayed = try container.decodeIfPresent(Int.self, forKey: .detectiveGamesPlayed) ?? 0
+        detectiveGamesWon = try container.decodeIfPresent(Int.self, forKey: .detectiveGamesWon) ?? 0
+        detectiveWinRate = try container.decodeIfPresent(Int.self, forKey: .detectiveWinRate) ?? 0
+    }
 
     enum CodingKeys: String, CodingKey {
         case id
@@ -3301,6 +3366,12 @@ struct PublicSpyProfile: Codable, Identifiable, Equatable {
         case gamesPlayed = "games_played"
         case gamesWon = "games_won"
         case winRate = "win_rate"
+        case spyGamesPlayed = "spy_games_played"
+        case spyGamesWon = "spy_games_won"
+        case spyWinRate = "spy_win_rate"
+        case detectiveGamesPlayed = "detective_games_played"
+        case detectiveGamesWon = "detective_games_won"
+        case detectiveWinRate = "detective_win_rate"
     }
 }
 
@@ -4451,6 +4522,16 @@ struct GameHistory: Codable, Identifiable, Hashable {
     }
 }
 
+struct GameHistoryRolePerformance: Equatable {
+    let games: Int
+    let wins: Int
+
+    var winRate: Int {
+        guard games > 0 else { return 0 }
+        return Int((Double(wins) / Double(games) * 100).rounded())
+    }
+}
+
 enum GameHistoryAnalytics {
     static func deduplicatedVisibleHistory(
         _ records: [GameHistory],
@@ -4496,12 +4577,12 @@ enum GameHistoryAnalytics {
         return Array(canonicalByKey.values)
     }
 
-    static func roleWinRate(
+    static func rolePerformance(
         _ role: String,
         in records: [GameHistory],
         competitiveOnly: Bool,
         currentUserID: String? = nil
-    ) -> Int {
+    ) -> GameHistoryRolePerformance {
         let normalizedRole = role
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
@@ -4517,9 +4598,24 @@ enum GameHistoryAnalytics {
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .lowercased() == normalizedRole
         }
-        guard !matches.isEmpty else { return 0 }
-        let wins = matches.filter { $0.won == true }.count
-        return Int((Double(wins) / Double(matches.count) * 100).rounded())
+        return GameHistoryRolePerformance(
+            games: matches.count,
+            wins: matches.filter { $0.won == true }.count
+        )
+    }
+
+    static func roleWinRate(
+        _ role: String,
+        in records: [GameHistory],
+        competitiveOnly: Bool,
+        currentUserID: String? = nil
+    ) -> Int {
+        rolePerformance(
+            role,
+            in: records,
+            competitiveOnly: competitiveOnly,
+            currentUserID: currentUserID
+        ).winRate
     }
 }
 

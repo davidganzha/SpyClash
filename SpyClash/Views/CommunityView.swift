@@ -2414,6 +2414,51 @@ enum CommunitySpyCardSize {
     case compact
 }
 
+enum CommunitySpyCardMetric {
+    case rating
+    case games
+    case spyRate
+    case detectiveRate
+}
+
+struct CommunitySpyCardCopy {
+    let language: AppLanguage
+
+    func metricTitle(_ metric: CommunitySpyCardMetric) -> String {
+        switch (metric, language) {
+        case (.rating, .ru): "РЕЙТИНГ"
+        case (.games, .ru): "ИГРЫ"
+        case (.spyRate, .ru): "ШПИОН"
+        case (.detectiveRate, .ru): "ДЕТЕКТИВ"
+        case (.rating, .es): "RANGO"
+        case (.games, .es): "JUEGOS"
+        case (.spyRate, .es): "ESPÍA"
+        case (.detectiveRate, .es): "DETECTIVE"
+        case (.rating, .uk): "РЕЙТИНГ"
+        case (.games, .uk): "ІГРИ"
+        case (.spyRate, .uk): "ШПИГУН"
+        case (.detectiveRate, .uk): "ДЕТЕКТИВ"
+        case (.rating, _): "RATING"
+        case (.games, _): "GAMES"
+        case (.spyRate, _): "SPY"
+        case (.detectiveRate, _): "DETECTIVE"
+        }
+    }
+
+    func accessibilityLabel(for profile: PublicSpyProfile) -> String {
+        switch language {
+        case .en:
+            "Spy card, \(profile.displayName), Spy ID \(profile.spyID), rating \(profile.rating), \(profile.gamesPlayed) games, spy win rate \(profile.spyWinRate) percent, \(profile.spyGamesWon) wins in \(profile.spyGamesPlayed) games, detective win rate \(profile.detectiveWinRate) percent, \(profile.detectiveGamesWon) wins in \(profile.detectiveGamesPlayed) games"
+        case .es:
+            "Tarjeta de espía, \(profile.displayName), identificador \(profile.spyID), rango \(profile.rating), \(profile.gamesPlayed) juegos, victorias como espía \(profile.spyWinRate) por ciento, \(profile.spyGamesWon) de \(profile.spyGamesPlayed), victorias como detective \(profile.detectiveWinRate) por ciento, \(profile.detectiveGamesWon) de \(profile.detectiveGamesPlayed)"
+        case .ru:
+            "Карта оперативника, \(profile.displayName), идентификатор \(profile.spyID), рейтинг \(profile.rating), игр \(profile.gamesPlayed), винрейт за шпиона \(profile.spyWinRate) процентов, побед \(profile.spyGamesWon) из \(profile.spyGamesPlayed), винрейт за детектива \(profile.detectiveWinRate) процентов, побед \(profile.detectiveGamesWon) из \(profile.detectiveGamesPlayed)"
+        case .uk:
+            "Картка оперативника, \(profile.displayName), ідентифікатор \(profile.spyID), рейтинг \(profile.rating), ігор \(profile.gamesPlayed), відсоток перемог за шпигуна \(profile.spyWinRate), перемог \(profile.spyGamesWon) із \(profile.spyGamesPlayed), відсоток перемог за детектива \(profile.detectiveWinRate), перемог \(profile.detectiveGamesWon) із \(profile.detectiveGamesPlayed)"
+        }
+    }
+}
+
 struct CommunitySpyCard: View {
     let profile: PublicSpyProfile
     let language: AppLanguage
@@ -2456,6 +2501,10 @@ struct CommunitySpyCard: View {
         SpyCardBadgeID(rawValue: profile.spyCardBadge) ?? .operative
     }
 
+    private var copy: CommunitySpyCardCopy {
+        CommunitySpyCardCopy(language: language)
+    }
+
     @ViewBuilder
     var body: some View {
         Group {
@@ -2471,12 +2520,7 @@ struct CommunitySpyCard: View {
     }
 
     private var spyCardAccessibilityLabel: String {
-        switch language {
-        case .en: "Spy card, \(profile.displayName), Spy ID \(profile.spyID)"
-        case .es: "Tarjeta de espía, \(profile.displayName), identificador \(profile.spyID)"
-        case .ru: "Карта оперативника, \(profile.displayName), идентификатор \(profile.spyID)"
-        case .uk: "Картка оперативника, \(profile.displayName), ідентифікатор \(profile.spyID)"
-        }
+        copy.accessibilityLabel(for: profile)
     }
 
     private var fullCard: some View {
@@ -2544,12 +2588,25 @@ struct CommunitySpyCard: View {
 
                     Spacer(minLength: 0)
 
-                    HStack(spacing: 9) {
-                        metric(metricTitle(.rating), value: signedRating, color: SpyTheme.red)
-                        metric(metricTitle(.games), value: "\(profile.gamesPlayed)", color: SpyTheme.amber)
-                        metric(metricTitle(.rate), value: "\(profile.winRate)%", color: SpyTheme.green)
+                    HStack(alignment: .top, spacing: 6) {
+                        metric(copy.metricTitle(.rating), value: signedRating, color: SpyTheme.red)
+                        metric(copy.metricTitle(.games), value: "\(profile.gamesPlayed)", color: SpyTheme.amber)
+                        roleMetric(
+                            copy.metricTitle(.spyRate),
+                            value: "\(profile.spyWinRate)%",
+                            wins: profile.spyGamesWon,
+                            games: profile.spyGamesPlayed,
+                            color: SpyTheme.red
+                        )
+                        roleMetric(
+                            copy.metricTitle(.detectiveRate),
+                            value: "\(profile.detectiveWinRate)%",
+                            wins: profile.detectiveGamesWon,
+                            games: profile.detectiveGamesPlayed,
+                            color: SpyTheme.green
+                        )
                     }
-                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .frame(maxWidth: .infinity)
                 }
                 .padding(.horizontal, 17)
                 .padding(.top, 14)
@@ -2637,10 +2694,11 @@ struct CommunitySpyCard: View {
 
                     Spacer(minLength: 0)
 
-                    HStack(spacing: 3 * scale) {
-                        compactMetric(metricTitle(.rating), value: signedRating, color: SpyTheme.red)
-                        compactMetric(metricTitle(.games), value: "\(profile.gamesPlayed)", color: SpyTheme.amber)
-                        compactMetric(metricTitle(.rate), value: "\(profile.winRate)%", color: SpyTheme.green)
+                    HStack(alignment: .top, spacing: 3 * scale) {
+                        compactMetric(copy.metricTitle(.rating), value: signedRating, color: SpyTheme.red)
+                        compactMetric(copy.metricTitle(.games), value: "\(profile.gamesPlayed)", color: SpyTheme.amber)
+                        compactMetric(copy.metricTitle(.spyRate), value: "\(profile.spyWinRate)%", color: SpyTheme.red)
+                        compactMetric(copy.metricTitle(.detectiveRate), value: "\(profile.detectiveWinRate)%", color: SpyTheme.green)
                     }
                 }
                 .padding(.horizontal, 8 * scale)
@@ -2674,8 +2732,6 @@ struct CommunitySpyCard: View {
         }
         .aspectRatio(1.50, contentMode: .fit)
     }
-
-    private enum Metric { case rating, games, rate }
 
     private var signedRating: String { "\(profile.rating >= 0 ? "+" : "")\(profile.rating)" }
 
@@ -2718,23 +2774,6 @@ struct CommunitySpyCard: View {
         }
     }
 
-    private func metricTitle(_ metric: Metric) -> String {
-        switch (metric, language) {
-        case (.rating, .ru): "РЕЙТИНГ"
-        case (.games, .ru): "ИГРЫ"
-        case (.rate, .ru): "ПОБЕДЫ"
-        case (.rating, .es): "RANGO"
-        case (.games, .es): "JUEGOS"
-        case (.rate, .es): "VICTORIAS"
-        case (.rating, .uk): "РЕЙТИНГ"
-        case (.games, .uk): "ІГРИ"
-        case (.rate, .uk): "ПЕРЕМОГИ"
-        case (.rating, _): "RATING"
-        case (.games, _): "GAMES"
-        case (.rate, _): "WIN RATE"
-        }
-    }
-
     private func metric(_ title: String, value: String, color: Color) -> some View {
         VStack(alignment: .leading, spacing: 2) {
             Text(value)
@@ -2745,7 +2784,34 @@ struct CommunitySpyCard: View {
                 .foregroundStyle(color.opacity(0.58))
                 .spyFitted(scale: 0.60)
         }
-        .frame(width: 58, alignment: .leading)
+        .frame(maxWidth: .infinity, alignment: .leading)
+    }
+
+    private func roleMetric(
+        _ title: String,
+        value: String,
+        wins: Int,
+        games: Int,
+        color: Color
+    ) -> some View {
+        VStack(alignment: .leading, spacing: 1) {
+            Text(value)
+                .font(SpyTheme.brandFont(size: 20))
+                .foregroundStyle(color)
+                .lineLimit(1)
+                .minimumScaleFactor(0.72)
+
+            Text(title)
+                .font(.system(size: 7, weight: .black, design: .monospaced))
+                .foregroundStyle(color.opacity(0.68))
+                .spyFitted(scale: 0.54)
+
+            Text("\(wins)/\(games)")
+                .font(.system(size: 6, weight: .bold, design: .monospaced))
+                .foregroundStyle(Color.white.opacity(0.36))
+                .lineLimit(1)
+        }
+        .frame(maxWidth: .infinity, alignment: .leading)
     }
 
     private func compactMetric(_ title: String, value: String, color: Color) -> some View {
@@ -2778,7 +2844,13 @@ private enum CommunityPreview {
         rating: 360,
         gamesPlayed: 19,
         gamesWon: 12,
-        winRate: 63
+        winRate: 63,
+        spyGamesPlayed: 9,
+        spyGamesWon: 5,
+        spyWinRate: 56,
+        detectiveGamesPlayed: 10,
+        detectiveGamesWon: 7,
+        detectiveWinRate: 70
     )
 
     static let cipher = PublicSpyProfile(
@@ -2792,7 +2864,13 @@ private enum CommunityPreview {
         rating: 150,
         gamesPlayed: 11,
         gamesWon: 7,
-        winRate: 64
+        winRate: 64,
+        spyGamesPlayed: 4,
+        spyGamesWon: 2,
+        spyWinRate: 50,
+        detectiveGamesPlayed: 7,
+        detectiveGamesWon: 5,
+        detectiveWinRate: 71
     )
 
     static let signal = PublicSpyProfile(
@@ -2806,7 +2884,13 @@ private enum CommunityPreview {
         rating: 90,
         gamesPlayed: 3,
         gamesWon: 3,
-        winRate: 100
+        winRate: 100,
+        spyGamesPlayed: 1,
+        spyGamesWon: 1,
+        spyWinRate: 100,
+        detectiveGamesPlayed: 2,
+        detectiveGamesWon: 2,
+        detectiveWinRate: 100
     )
 
     static let night = PublicSpyProfile(
@@ -2820,7 +2904,13 @@ private enum CommunityPreview {
         rating: 210,
         gamesPlayed: 16,
         gamesWon: 10,
-        winRate: 63
+        winRate: 63,
+        spyGamesPlayed: 7,
+        spyGamesWon: 3,
+        spyWinRate: 43,
+        detectiveGamesPlayed: 9,
+        detectiveGamesWon: 7,
+        detectiveWinRate: 78
     )
 
     static let directory = [me, cipher, signal, night]

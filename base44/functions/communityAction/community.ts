@@ -188,9 +188,26 @@ export async function requireAcceptedFriendshipForRoomInviteAction(
   );
 }
 
+function nonnegativeInteger(value: unknown): number {
+  const candidate = Number(value);
+  return Number.isFinite(candidate) && candidate >= 0
+    ? Math.trunc(candidate)
+    : 0;
+}
+
+function roundedWinRate(games: number, wins: number): number {
+  return games > 0 ? Math.round((wins / games) * 100) : 0;
+}
+
 export function publicProfile(user: Record<string, unknown>) {
-  const gamesPlayed = Number(user.games_played || 0);
-  const gamesWon = Number(user.games_won || 0);
+  const gamesPlayed = nonnegativeInteger(user.games_played);
+  const gamesWon = nonnegativeInteger(user.games_won);
+  const spyGamesPlayed = nonnegativeInteger(user.spy_games_played);
+  const spyGamesWon = nonnegativeInteger(user.spy_games_won);
+  const detectiveGamesPlayed = nonnegativeInteger(
+    user.detective_games_played,
+  );
+  const detectiveGamesWon = nonnegativeInteger(user.detective_games_won);
 
   return {
     id: String(user.id || ""),
@@ -205,6 +222,15 @@ export function publicProfile(user: Record<string, unknown>) {
     rating: Number(user.rating || 0),
     games_played: gamesPlayed,
     games_won: gamesWon,
-    win_rate: gamesPlayed > 0 ? Math.round((gamesWon / gamesPlayed) * 100) : 0,
+    win_rate: roundedWinRate(gamesPlayed, gamesWon),
+    spy_games_played: spyGamesPlayed,
+    spy_games_won: spyGamesWon,
+    spy_win_rate: roundedWinRate(spyGamesPlayed, spyGamesWon),
+    detective_games_played: detectiveGamesPlayed,
+    detective_games_won: detectiveGamesWon,
+    detective_win_rate: roundedWinRate(
+      detectiveGamesPlayed,
+      detectiveGamesWon,
+    ),
   };
 }

@@ -51,6 +51,10 @@ const postHistoricalUserFields = [
   "onboarding_version",
   "onboarding_completed_at",
   "acquisition_source",
+  "spy_games_played",
+  "spy_games_won",
+  "detective_games_played",
+  "detective_games_won",
 ];
 
 const expectedEntities = [

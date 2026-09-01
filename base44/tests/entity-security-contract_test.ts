@@ -348,6 +348,10 @@ Deno.test("built-in User security is preserved and authority mirrors are admin-w
       "rating",
       "games_played",
       "games_won",
+      "spy_games_played",
+      "spy_games_won",
+      "detective_games_played",
+      "detective_games_won",
       "ai_generations_today",
       "last_ai_generation_date",
       "spy_id",
@@ -359,6 +363,32 @@ Deno.test("built-in User security is preserved and authority mirrors are admin-w
     assert(
       !policyAllows(write, {}, owner),
       `regular users must not write User.${field}`,
+    );
+  }
+
+  for (
+    const field of [
+      "spy_games_played",
+      "spy_games_won",
+      "detective_games_played",
+      "detective_games_won",
+    ]
+  ) {
+    const property = user.properties[field];
+    assertEquals(property?.type, "integer", `User.${field} must be an integer`);
+    assertEquals(
+      property?.minimum,
+      0,
+      `User.${field} must be nonnegative`,
+    );
+    assertEquals(
+      property?.default,
+      undefined,
+      `User.${field} must remain optional without a migration default`,
+    );
+    assert(
+      !user.required?.includes(field),
+      `User.${field} must remain optional`,
     );
   }
 

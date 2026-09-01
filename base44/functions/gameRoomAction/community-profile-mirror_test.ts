@@ -115,7 +115,15 @@ Deno.test("community mirrors derive absolute ranked single-spy totals", async ()
   }]);
   assertEquals(users.updates, [{
     id: "user-a",
-    patch: { rating: -10, games_played: 2, games_won: 1 },
+    patch: {
+      rating: -10,
+      games_played: 2,
+      games_won: 1,
+      spy_games_played: 1,
+      spy_games_won: 0,
+      detective_games_played: 1,
+      detective_games_won: 1,
+    },
   }]);
   assertEquals(boundaries, ["user-a"]);
 });
@@ -149,6 +157,10 @@ Deno.test("community mirror reconciliation is idempotent across retries", async 
     rating: 30,
     games_played: 1,
     games_won: 1,
+    spy_games_played: 0,
+    spy_games_won: 0,
+    detective_games_played: 1,
+    detective_games_won: 1,
   });
   assertEquals(users.updates.length, 1);
   assertEquals(boundaryCalls, 1);
@@ -182,7 +194,15 @@ Deno.test("community mirror reads every history page before writing absolute tot
 
   assertEquals(users.updates, [{
     id: "user-a",
-    patch: { rating: 3_030, games_played: 101, games_won: 101 },
+    patch: {
+      rating: 3_030,
+      games_played: 101,
+      games_won: 101,
+      spy_games_played: 0,
+      spy_games_won: 0,
+      detective_games_played: 101,
+      detective_games_won: 101,
+    },
   }]);
 });
 
@@ -222,6 +242,10 @@ Deno.test("retry repairs a mirror after history persisted before the mirror writ
     rating: -10,
     games_played: 2,
     games_won: 1,
+    spy_games_played: 1,
+    spy_games_won: 0,
+    detective_games_played: 1,
+    detective_games_won: 1,
   });
 });
 
@@ -281,5 +305,9 @@ Deno.test("response-lost duplicate rows cannot inflate absolute mirrors", async 
     rating: 60,
     games_played: 1,
     games_won: 1,
+    spy_games_played: 1,
+    spy_games_won: 1,
+    detective_games_played: 0,
+    detective_games_won: 0,
   });
 });

@@ -354,7 +354,10 @@ struct ProfileView: View {
     }
 
     private var synchronizedSpyCard: some View {
-        CommunitySpyCard(
+        let spyPerformance = rolePerformance("spy")
+        let detectivePerformance = rolePerformance("detective")
+
+        return CommunitySpyCard(
             profile: PublicSpyProfile(
                 id: appState.user?.id ?? "current-user",
                 spyID: appState.user?.spyID ?? localized(en: "UNASSIGNED", ru: "НЕ НАЗНАЧЕН", es: "SIN ASIGNAR", uk: "НЕ ПРИЗНАЧЕНО"),
@@ -366,7 +369,13 @@ struct ProfileView: View {
                 rating: rating,
                 gamesPlayed: gamesCount,
                 gamesWon: appState.user?.gamesWon ?? 0,
-                winRate: winRate
+                winRate: winRate,
+                spyGamesPlayed: spyPerformance.games,
+                spyGamesWon: spyPerformance.wins,
+                spyWinRate: spyPerformance.winRate,
+                detectiveGamesPlayed: detectivePerformance.games,
+                detectiveGamesWon: detectivePerformance.wins,
+                detectiveWinRate: detectivePerformance.winRate
             ),
             language: appState.language
         )
@@ -1069,25 +1078,24 @@ struct ProfileView: View {
     }
 
     private var spyGames: Int {
-        competitiveHistory.filter { $0.role == "spy" }.count
+        rolePerformance("spy").games
     }
 
     private var detectiveGames: Int {
-        competitiveHistory.filter { $0.role == "detective" }.count
+        rolePerformance("detective").games
     }
 
     private var spyWinRate: Int {
-        GameHistoryAnalytics.roleWinRate(
-            "spy",
-            in: history,
-            competitiveOnly: !appState.shouldUsePreviewData,
-            currentUserID: appState.user?.id
-        )
+        rolePerformance("spy").winRate
     }
 
     private var detectiveWinRate: Int {
-        GameHistoryAnalytics.roleWinRate(
-            "detective",
+        rolePerformance("detective").winRate
+    }
+
+    private func rolePerformance(_ role: String) -> GameHistoryRolePerformance {
+        GameHistoryAnalytics.rolePerformance(
+            role,
             in: history,
             competitiveOnly: !appState.shouldUsePreviewData,
             currentUserID: appState.user?.id

@@ -39,6 +39,38 @@
         "write": { "user_condition": { "role": "admin" } }
       }
     },
+    "spy_games_played": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Server-authoritative count of deduplicated ranked online single-spy games played as the spy.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "spy_games_won": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Server-authoritative count of deduplicated ranked online single-spy games won as the spy.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "detective_games_played": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Server-authoritative count of deduplicated ranked online single-spy games played as a detective.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "detective_games_won": {
+      "type": "integer",
+      "minimum": 0,
+      "description": "Server-authoritative count of deduplicated ranked online single-spy games won as a detective.",
+      "rls": {
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
     "language": {
       "type": "string",
       "description": "User's preferred language",

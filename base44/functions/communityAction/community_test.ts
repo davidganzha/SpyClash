@@ -97,11 +97,45 @@ Deno.test("public profile never exposes private identity fields", () => {
     spy_id: "104-827",
     games_played: 4,
     games_won: 3,
+    spy_games_played: 2,
+    spy_games_won: 1,
+    detective_games_played: 2,
+    detective_games_won: 2,
   });
   if ("email" in profile || "full_name" in profile) {
     throw new Error("private identity leaked into public profile");
   }
   if (profile.win_rate !== 75) throw new Error("win rate is incorrect");
+  if (
+    profile.spy_games_played !== 2 || profile.spy_games_won !== 1 ||
+    profile.spy_win_rate !== 50
+  ) {
+    throw new Error("spy role statistics are incorrect");
+  }
+  if (
+    profile.detective_games_played !== 2 ||
+    profile.detective_games_won !== 2 ||
+    profile.detective_win_rate !== 100
+  ) {
+    throw new Error("detective role statistics are incorrect");
+  }
+});
+
+Deno.test("public profile keeps additive role statistics safe for legacy rows", () => {
+  const profile = publicProfile({
+    id: "legacy-user",
+    games_played: 0,
+    games_won: 0,
+    spy_games_played: -1,
+    spy_games_won: "invalid",
+  });
+  if (
+    profile.spy_games_played !== 0 || profile.spy_games_won !== 0 ||
+    profile.spy_win_rate !== 0 || profile.detective_games_played !== 0 ||
+    profile.detective_games_won !== 0 || profile.detective_win_rate !== 0
+  ) {
+    throw new Error("legacy role statistics did not use zero-safe projection");
+  }
 });
 
 Deno.test("community directory searches display names and formatted SPY IDs", () => {

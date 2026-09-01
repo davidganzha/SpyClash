@@ -1,5 +1,7 @@
 import {
+  aggregateCompetitiveRoleStats,
   aggregateCompetitiveStats,
+  type CompetitiveRoleStats,
   type CompetitiveStats,
 } from "./competitive-stats.ts";
 
@@ -104,6 +106,15 @@ function emptyStats(): CompetitiveStats {
   return { rating: 0, games: 0, wins: 0, losses: 0 };
 }
 
+function emptyRoleStats(): CompetitiveRoleStats {
+  return {
+    spyGames: 0,
+    spyWins: 0,
+    detectiveGames: 0,
+    detectiveWins: 0,
+  };
+}
+
 export async function reconcileCommunityProfileMirrors(input: {
   historyStore: CommunityProfileMirrorStore;
   userStore: CommunityProfileUserMirrorStore;
@@ -130,14 +141,25 @@ export async function reconcileCommunityProfileMirrors(input: {
 
     const stats = aggregateCompetitiveStats(history).get(userID) ||
       emptyStats();
+    const roleStats = aggregateCompetitiveRoleStats(history).get(userID) ||
+      emptyRoleStats();
     const patch = {
       rating: stats.rating,
       games_played: stats.games,
       games_won: stats.wins,
+      spy_games_played: roleStats.spyGames,
+      spy_games_won: roleStats.spyWins,
+      detective_games_played: roleStats.detectiveGames,
+      detective_games_won: roleStats.detectiveWins,
     };
     const unchanged = mirrorNumber(user.rating) === patch.rating &&
       mirrorNumber(user.games_played) === patch.games_played &&
-      mirrorNumber(user.games_won) === patch.games_won;
+      mirrorNumber(user.games_won) === patch.games_won &&
+      mirrorNumber(user.spy_games_played) === patch.spy_games_played &&
+      mirrorNumber(user.spy_games_won) === patch.spy_games_won &&
+      mirrorNumber(user.detective_games_played) ===
+        patch.detective_games_played &&
+      mirrorNumber(user.detective_games_won) === patch.detective_games_won;
     if (unchanged) {
       results.push({ userID, stats, status: "unchanged" });
       continue;
