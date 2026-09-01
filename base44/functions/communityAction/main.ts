@@ -1,7 +1,6 @@
 import { createClient, createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
   friendshipAllowsRoomInvite,
-  incomingRoomInviteHasAcceptedFriendship,
   isReservedManualSpyID,
   normalizeCommunityQuery,
   normalizeRadarInvitePolicy,
@@ -42,6 +41,7 @@ import {
 } from "./base44-context.ts";
 import { communityErrorResponse } from "./error-response.ts";
 import { filterAllFriendships } from "./friendship-pagination.ts";
+import { loadIncomingRoomInvites } from "./room-invite-pagination.ts";
 import { withCurrentProfileWriteLease } from "./profile-write-lifecycle.ts";
 import { fanoutProfileUpdate } from "./profile-signal.ts";
 
@@ -429,37 +429,39 @@ async function incomingRoomInvites(
     current.id,
   ),
 ) {
-  const [pending, accepted, relationships] = await Promise.all([
-    base44.asServiceRole.entities.RoomInvite.filter({
-      recipient_user_id: current.id,
-      status: "pending",
-    }),
-    base44.asServiceRole.entities.RoomInvite.filter({
-      recipient_user_id: current.id,
-      status: "accepted",
-    }),
+  const invitations = await loadIncomingRoomInvites(
+    base44.asServiceRole.entities.RoomInvite,
+    current.id,
     relationshipsPromise,
-  ]);
-  const invitations = newestFirst(
-    uniqueByID([...(pending || []), ...(accepted || [])]),
-  ).filter((invite) =>
-    incomingRoomInviteHasAcceptedFriendship(
-      invite,
-      relationships,
-      current.id,
-    )
   );
 
   const senderCache = new Map<string, Entity | null>();
-  return await Promise.all(invitations.map(async (invite) => {
-    const senderID = clean(invite.sender_user_id);
-    if (!senderCache.has(senderID)) {
-      const sender = await findUserByID(base44, senderID);
-      senderCache.set(
-        senderID,
-        sender ? await ensureUserProfile(base44, sender) : null,
-      );
+  const senderIDs = [
+    ...new Set(invitations.map((invite) => clean(invite.sender_user_id))),
+  ].filter(Boolean);
+  for (
+    let offset = 0;
+    offset < senderIDs.length;
+    offset += PROFILE_LOOKUP_CONCURRENCY
+  ) {
+    const entries = await Promise.all(
+      senderIDs.slice(offset, offset + PROFILE_LOOKUP_CONCURRENCY).map(
+        async (senderID) => {
+          const sender = await findUserByID(base44, senderID);
+          return [
+            senderID,
+            sender ? await ensureUserProfile(base44, sender) : null,
+          ] as const;
+        },
+      ),
+    );
+    for (const [senderID, sender] of entries) {
+      senderCache.set(senderID, sender);
     }
+  }
+
+  return invitations.map((invite) => {
+    const senderID = clean(invite.sender_user_id);
     const sender = senderCache.get(senderID);
     return {
       id: clean(invite.id),
@@ -469,7 +471,7 @@ async function incomingRoomInvites(
       created_at: clean(invite.created_at || invite.created_date),
       sender: sender ? publicProfile(sender) : null,
     };
-  })).then((items) => items.filter((item) => item.sender));
+  }).filter((item) => item.sender);
 }
 
 async function buildState(base44: any, rawUser: Entity) {
