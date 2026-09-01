@@ -243,6 +243,11 @@ enum SpyGuessSubmissionPhase: Equatable {
         return false
     }
 
+    var submittingWord: String? {
+        guard case let .submitting(word) = self else { return nil }
+        return word
+    }
+
     var failedWord: String? {
         guard case let .failed(word) = self else { return nil }
         return word
@@ -11517,6 +11522,13 @@ struct GameView: View {
             )
         }
         if appState.shouldUsePreviewData {
+#if DEBUG
+            if ProcessInfo.processInfo.arguments.contains(
+                "--spyclash-preview-slow-spy-guess"
+            ) {
+                try await Task.sleep(for: .seconds(10))
+            }
+#endif
             var previewRoom = room
             previewRoom.spyGuess = word.trimmingCharacters(in: .whitespacesAndNewlines)
             previewRoom.status = "finished"
@@ -12091,7 +12103,7 @@ private struct SpyGuessSheet: View {
                             .tracking(0.12)
                             .foregroundStyle(SpyTheme.dim)
                             .spyKicker()
-                        Text(copy.chooseWord)
+                        Text(submissionPhase.submittingWord == nil ? copy.chooseWord : copy.spyGuessLocked)
                             .font(.system(size: 28, weight: .black, design: .default))
                             .tracking(0.04)
                             .foregroundStyle(SpyTheme.red)
@@ -12110,87 +12122,154 @@ private struct SpyGuessSheet: View {
                     .disabled(blocksInteraction)
                 }
 
-                Text(copy.spyGuessHint)
-                    .font(SpyTheme.mono)
-                    .foregroundStyle(SpyTheme.muted)
-                    .lineSpacing(3)
+                if let submittingWord = submissionPhase.submittingWord {
+                    submissionAcknowledgement(for: submittingWord)
+                        .transition(.opacity.combined(with: .scale(scale: 0.98)))
+                } else {
+                    Text(copy.spyGuessHint)
+                        .font(SpyTheme.mono)
+                        .foregroundStyle(SpyTheme.muted)
+                        .lineSpacing(3)
 
-                if let failedWord = submissionPhase.failedWord {
-                    VStack(alignment: .leading, spacing: 10) {
-                        Text(localized(
-                            en: "YOUR GUESS WAS NOT CONFIRMED. NOTHING CHANGED — TRY AGAIN.",
-                            ru: "ВЫБОР НЕ ПОДТВЕРЖДЁН. НИЧЕГО НЕ ИЗМЕНИЛОСЬ — ПОПРОБУЙ ЕЩЁ РАЗ.",
-                            es: "NO SE CONFIRMO TU RESPUESTA. NADA CAMBIO — INTENTALO DE NUEVO.",
-                            uk: "ВИБІР НЕ ПІДТВЕРДЖЕНО. НІЧОГО НЕ ЗМІНИЛОСЯ — СПРОБУЙ ЩЕ РАЗ."
-                        ))
-                        .font(SpyTheme.micro)
-                        .tracking(0.06)
-                        .foregroundStyle(SpyTheme.amber)
-                        .spyFitted(lines: 3, scale: 0.58)
+                    if let failedWord = submissionPhase.failedWord {
+                        VStack(alignment: .leading, spacing: 10) {
+                            Text(localized(
+                                en: "YOUR GUESS WAS NOT CONFIRMED. NOTHING CHANGED — TRY AGAIN.",
+                                ru: "ВЫБОР НЕ ПОДТВЕРЖДЁН. НИЧЕГО НЕ ИЗМЕНИЛОСЬ — ПОПРОБУЙ ЕЩЁ РАЗ.",
+                                es: "NO SE CONFIRMO TU RESPUESTA. NADA CAMBIO — INTENTALO DE NUEVO.",
+                                uk: "ВИБІР НЕ ПІДТВЕРДЖЕНО. НІЧОГО НЕ ЗМІНИЛОСЯ — СПРОБУЙ ЩЕ РАЗ."
+                            ))
+                            .font(SpyTheme.micro)
+                            .tracking(0.06)
+                            .foregroundStyle(SpyTheme.amber)
+                            .spyFitted(lines: 3, scale: 0.58)
 
-                        Button {
-                            beginSubmission(failedWord)
-                        } label: {
-                            Label(
-                                localized(
-                                    en: "RETRY \(failedWord.uppercased())",
-                                    ru: "ПОВТОРИТЬ: \(failedWord.uppercased())",
-                                    es: "REINTENTAR: \(failedWord.uppercased())",
-                                    uk: "ПОВТОРИТИ: \(failedWord.uppercased())"
-                                ),
-                                systemImage: "arrow.clockwise"
-                            )
-                            .lineLimit(2)
-                            .minimumScaleFactor(0.56)
-                        }
-                        .buttonStyle(SpyButtonStyle(variant: .outline))
-                        .accessibilityIdentifier("onlineRoom.spyGuess.retry")
-                    }
-                    .padding(12)
-                    .background(SpyTheme.amber.opacity(0.08), in: CutCornerShape(cut: 8))
-                    .overlay(
-                        CutCornerShape(cut: 8)
-                            .stroke(SpyTheme.amber.opacity(0.46), lineWidth: 1)
-                    )
-                }
-
-                ScrollView {
-                    LazyVStack(spacing: 10) {
-                        ForEach(words) { entry in
-                            let isSelected = submissionPhase.selectedWord == entry.word
                             Button {
-                                beginSubmission(entry.word)
+                                beginSubmission(failedWord)
                             } label: {
-                                HStack {
-                                    Text(entry.word.uppercased())
-                                        .font(.system(size: 11, weight: .bold, design: .default))
-                                        .tracking(0.04)
-                                        .foregroundStyle(.white)
-                                        .spyFitted(lines: 2, scale: 0.54)
-                                    Spacer()
-                                    if submissionPhase.blocksInteraction, isSelected {
-                                        SpySpinner(size: 18, accent: SpyTheme.red)
-                                    } else if submissionPhase.failedWord == entry.word {
-                                        Image(systemName: "exclamationmark.triangle.fill")
-                                            .foregroundStyle(SpyTheme.amber)
-                                    } else {
-                                        Image(systemName: "scope")
-                                            .foregroundStyle(SpyTheme.red)
+                                Label(
+                                    localized(
+                                        en: "RETRY \(failedWord.uppercased())",
+                                        ru: "ПОВТОРИТЬ: \(failedWord.uppercased())",
+                                        es: "REINTENTAR: \(failedWord.uppercased())",
+                                        uk: "ПОВТОРИТИ: \(failedWord.uppercased())"
+                                    ),
+                                    systemImage: "arrow.clockwise"
+                                )
+                                .lineLimit(2)
+                                .minimumScaleFactor(0.56)
+                            }
+                            .buttonStyle(SpyButtonStyle(variant: .outline))
+                            .accessibilityIdentifier("onlineRoom.spyGuess.retry")
+                        }
+                        .padding(12)
+                        .background(SpyTheme.amber.opacity(0.08), in: CutCornerShape(cut: 8))
+                        .overlay(
+                            CutCornerShape(cut: 8)
+                                .stroke(SpyTheme.amber.opacity(0.46), lineWidth: 1)
+                        )
+                    }
+
+                    ScrollView {
+                        LazyVStack(spacing: 10) {
+                            ForEach(words) { entry in
+                                Button {
+                                    beginSubmission(entry.word)
+                                } label: {
+                                    HStack {
+                                        Text(entry.word.uppercased())
+                                            .font(.system(size: 11, weight: .bold, design: .default))
+                                            .tracking(0.04)
+                                            .foregroundStyle(.white)
+                                            .spyFitted(lines: 2, scale: 0.54)
+                                        Spacer()
+                                        if submissionPhase.failedWord == entry.word {
+                                            Image(systemName: "exclamationmark.triangle.fill")
+                                                .foregroundStyle(SpyTheme.amber)
+                                        } else {
+                                            Image(systemName: "scope")
+                                                .foregroundStyle(SpyTheme.red)
+                                        }
                                     }
                                 }
+                                .buttonStyle(SpyButtonStyle(variant: .ghost))
+                                .disabled(blocksInteraction)
+                                .accessibilityIdentifier("onlineRoom.spyGuess.word.\(entry.id)")
                             }
-                            .buttonStyle(SpyButtonStyle(variant: .ghost))
-                            .disabled(blocksInteraction)
-                            .opacity(blocksInteraction && !isSelected ? 0.48 : 1)
-                            .accessibilityIdentifier("onlineRoom.spyGuess.word.\(entry.id)")
                         }
+                        .padding(.bottom, 20)
                     }
-                    .padding(.bottom, 20)
                 }
             }
             .padding(20)
         }
         .interactiveDismissDisabled(blocksInteraction)
+        .animation(.easeOut(duration: 0.16), value: submissionPhase)
+    }
+
+    private func submissionAcknowledgement(for word: String) -> some View {
+        VStack(spacing: 22) {
+            Spacer(minLength: 12)
+
+            ZStack {
+                Circle()
+                    .fill(SpyTheme.red.opacity(0.14))
+                    .frame(width: 92, height: 92)
+                Circle()
+                    .stroke(SpyTheme.red.opacity(0.5), lineWidth: 1)
+                    .frame(width: 92, height: 92)
+                Image(systemName: "lock.fill")
+                    .font(.system(size: 30, weight: .black))
+                    .foregroundStyle(SpyTheme.red)
+            }
+
+            VStack(spacing: 8) {
+                Text(word.uppercased())
+                    .font(.system(size: 24, weight: .black, design: .default))
+                    .tracking(0.05)
+                    .foregroundStyle(.white)
+                    .spyFitted(lines: 2, scale: 0.56)
+                    .accessibilityIdentifier("onlineRoom.spyGuess.syncing.word")
+
+                Text(localized(
+                    en: "YOUR GUESS IS LOCKED ON THIS DEVICE",
+                    ru: "ВЫБОР ЗАФИКСИРОВАН НА ЭТОМ УСТРОЙСТВЕ",
+                    es: "TU RESPUESTA QUEDO BLOQUEADA EN ESTE DISPOSITIVO",
+                    uk: "ВИБІР ЗАФІКСОВАНО НА ЦЬОМУ ПРИСТРОЇ"
+                ))
+                .font(SpyTheme.micro)
+                .tracking(0.06)
+                .foregroundStyle(SpyTheme.muted)
+                .multilineTextAlignment(.center)
+                .spyFitted(lines: 2, scale: 0.58)
+            }
+
+            HStack(spacing: 10) {
+                SpySpinner(size: 18, accent: SpyTheme.red)
+                Text(localized(
+                    en: "CONFIRMING THE RESULT WITH THE SERVER...",
+                    ru: "ПОДТВЕРЖДАЕМ РЕЗУЛЬТАТ НА СЕРВЕРЕ...",
+                    es: "CONFIRMANDO EL RESULTADO CON EL SERVIDOR...",
+                    uk: "ПІДТВЕРДЖУЄМО РЕЗУЛЬТАТ НА СЕРВЕРІ..."
+                ))
+                .font(SpyTheme.micro)
+                .tracking(0.04)
+                .foregroundStyle(SpyTheme.dim)
+                .spyFitted(lines: 2, scale: 0.56)
+            }
+            .padding(.horizontal, 14)
+            .frame(minHeight: 48)
+            .background(SpyTheme.red.opacity(0.07), in: CutCornerShape(cut: 8))
+            .overlay(
+                CutCornerShape(cut: 8)
+                    .stroke(SpyTheme.red.opacity(0.35), lineWidth: 1)
+            )
+
+            Spacer()
+        }
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("onlineRoom.spyGuess.syncing")
     }
 
     private func beginSubmission(_ word: String) {
@@ -12202,6 +12281,9 @@ private struct SpyGuessSheet: View {
         HapticManager.shared.fire(.buttonPress)
 
         Task { @MainActor in
+            // Let SwiftUI commit the locked acknowledgement before any network
+            // work starts, so the first tap always has visible feedback.
+            await Task.yield()
             do {
                 try await onGuess(word)
                 HapticManager.shared.fire(.notification(.success))

@@ -1236,11 +1236,13 @@ final class OnlineRoundStateTests: XCTestCase {
         phase = try XCTUnwrap(SpyGuessSubmissionPhase.begin(word: "  Library  ", from: phase))
 
         XCTAssertEqual(phase.selectedWord, "Library")
+        XCTAssertEqual(phase.submittingWord, "Library")
         XCTAssertTrue(phase.blocksInteraction)
         XCTAssertNil(SpyGuessSubmissionPhase.begin(word: "Embassy", from: phase))
 
         phase = phase.failing()
         XCTAssertFalse(phase.blocksInteraction)
+        XCTAssertNil(phase.submittingWord)
         XCTAssertEqual(phase.failedWord, "Library")
         XCTAssertEqual(
             SpyGuessSubmissionPhase.begin(word: "Library", from: phase),
