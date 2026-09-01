@@ -2308,6 +2308,13 @@ struct GameView: View {
         ) { _ in
             isOnlineSoftwareKeyboardVisible = false
         }
+        .onReceive(
+            NotificationCenter.default.publisher(
+                for: ShellKeyboardDismissal.requested
+            )
+        ) { _ in
+            dismissOnlineSetupCapture()
+        }
         .onChange(of: scenePhase) { _, newScenePhase in
             guard OnlineInputPresentationPolicy.shouldResetCapture(
                 for: newScenePhase
@@ -6678,8 +6685,13 @@ struct GameView: View {
             selectedTheme: roomTheme,
             accessibilityIdentifier: "onlineRoom.themeSuggestions"
         ) { suggestion in
-            setRoomThemeDraft(suggestion)
+            selectOnlineThemeSuggestion(suggestion)
         }
+    }
+
+    private func selectOnlineThemeSuggestion(_ suggestion: String) {
+        dismissOnlineSetupCapture()
+        setRoomThemeDraft(suggestion)
     }
 
     private var roomWordCountModeSelector: some View {

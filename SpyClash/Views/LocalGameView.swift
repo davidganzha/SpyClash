@@ -416,6 +416,13 @@ struct LocalGameView: View {
             .onChange(of: appState.localSetupRequestID) { _, _ in consumeLocalSetupRequestIfNeeded() }
             .onChange(of: status) { _, message in publishLocalToast(message) }
             .onChange(of: localThemeError) { _, message in publishLocalThemeError(message) }
+            .onReceive(
+                NotificationCenter.default.publisher(
+                    for: ShellKeyboardDismissal.requested
+                )
+            ) { _ in
+                dismissLocalSetupCapture()
+            }
             .onDisappear(perform: handleLocalDisappear)
     }
 
@@ -765,6 +772,11 @@ struct LocalGameView: View {
             focusedLocalSetupField = nil
         }
         resetPlayerDragState()
+    }
+
+    private func selectLocalThemeSuggestion(_ suggestion: String) {
+        dismissLocalSetupCapture()
+        updateLocalThemeInput(suggestion)
     }
 
     private var localPlayersScrollTarget: String { "local-lobby-players" }
@@ -1341,7 +1353,7 @@ struct LocalGameView: View {
                 selectedTheme: customTheme,
                 accessibilityIdentifier: "localGame.themeSuggestions"
             ) { suggestion in
-                updateLocalThemeInput(suggestion)
+                selectLocalThemeSuggestion(suggestion)
             }
             localIntelThemeActions
             localIntelMessages

@@ -4,32 +4,56 @@ import UIKit
 @MainActor
 private enum ShellTextInputActivity {
     static var isActive: Bool {
-        UIApplication.shared.connectedScenes
-            .compactMap { $0 as? UIWindowScene }
-            .flatMap(\.windows)
-            .contains { window in
-                guard let responder = firstResponder(in: window) else { return false }
-                return responder is UITextField || responder is UITextView
-            }
+        applicationWindows.contains { hasActiveTextInput(in: $0) }
     }
 
     static func resignActiveInput() {
-        UIApplication.shared.sendAction(
-            #selector(UIResponder.resignFirstResponder),
-            to: nil,
-            from: nil,
-            for: nil
-        )
+        applicationWindows.forEach { $0.endEditing(true) }
     }
 
-    private static func firstResponder(in view: UIView) -> UIView? {
-        if view.isFirstResponder { return view }
-        for subview in view.subviews {
-            if let responder = firstResponder(in: subview) {
-                return responder
-            }
+    private static var applicationWindows: [UIWindow] {
+        UIApplication.shared.connectedScenes
+            .compactMap { $0 as? UIWindowScene }
+            .flatMap(\.windows)
+    }
+
+    private static func hasActiveTextInput(in view: UIView) -> Bool {
+        if view is UITextField || view is UITextView {
+            return view.isFirstResponder || containsFirstResponder(in: view)
         }
-        return nil
+        return view.subviews.contains { hasActiveTextInput(in: $0) }
+    }
+
+    private static func containsFirstResponder(in view: UIView) -> Bool {
+        view.isFirstResponder || view.subviews.contains {
+            containsFirstResponder(in: $0)
+        }
+    }
+}
+
+@MainActor
+enum ShellKeyboardDismissPolicy {
+    static func shouldDismissKeyboard(for touchedView: UIView?) -> Bool {
+        var candidate = touchedView
+        while let view = candidate {
+            if view is UITextField || view is UITextView {
+                return false
+            }
+            candidate = view.superview
+        }
+        return true
+    }
+}
+
+@MainActor
+enum ShellKeyboardDismissal {
+    static let requested = Notification.Name(
+        "com.spyclash.shell.keyboard-dismiss-requested"
+    )
+
+    static func request(in window: UIWindow?) {
+        window?.endEditing(true)
+        NotificationCenter.default.post(name: requested, object: nil)
     }
 }
 
@@ -66,7 +90,7 @@ private struct ShellKeyboardDismissGestureInstaller: UIViewRepresentable {
         }
 
         @objc private func handleTap() {
-            ShellTextInputActivity.resignActiveInput()
+            ShellKeyboardDismissal.request(in: installedWindow)
         }
 
         func gestureRecognizer(
@@ -75,14 +99,9 @@ private struct ShellKeyboardDismissGestureInstaller: UIViewRepresentable {
         ) -> Bool {
             guard ShellTextInputActivity.isActive else { return false }
 
-            var touchedView = touch.view
-            while let view = touchedView {
-                if view is UITextField || view is UITextView {
-                    return false
-                }
-                touchedView = view.superview
-            }
-            return true
+            return ShellKeyboardDismissPolicy.shouldDismissKeyboard(
+                for: touch.view
+            )
         }
 
         func gestureRecognizer(

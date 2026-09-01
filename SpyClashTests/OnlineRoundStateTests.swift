@@ -1,5 +1,6 @@
 import Foundation
 import AVFoundation
+import UIKit
 import XCTest
 @testable import SpyClash
 
@@ -4995,6 +4996,50 @@ final class OnlineInputPresentationPolicyTests: XCTestCase {
                 screenBounds: screen,
                 isLocal: false
             )
+        )
+    }
+}
+
+@MainActor
+final class ShellKeyboardDismissPolicyTests: XCTestCase {
+    func testDismissalRequestPublishesOwnerResetSignal() {
+        let notification = XCTNSNotificationExpectation(
+            name: ShellKeyboardDismissal.requested
+        )
+
+        ShellKeyboardDismissal.request(in: nil)
+
+        wait(for: [notification], timeout: 1)
+    }
+
+    func testTextInputAndItsDescendantsKeepTheEditingTap() {
+        let textField = UITextField()
+        let textFieldContent = UIView()
+        textField.addSubview(textFieldContent)
+        let textView = UITextView()
+
+        XCTAssertFalse(
+            ShellKeyboardDismissPolicy.shouldDismissKeyboard(for: textField)
+        )
+        XCTAssertFalse(
+            ShellKeyboardDismissPolicy.shouldDismissKeyboard(
+                for: textFieldContent
+            )
+        )
+        XCTAssertFalse(
+            ShellKeyboardDismissPolicy.shouldDismissKeyboard(for: textView)
+        )
+    }
+
+    func testButtonsAndBlankSurfacesAreEligibleForDismissal() {
+        XCTAssertTrue(
+            ShellKeyboardDismissPolicy.shouldDismissKeyboard(for: UIButton())
+        )
+        XCTAssertTrue(
+            ShellKeyboardDismissPolicy.shouldDismissKeyboard(for: UIView())
+        )
+        XCTAssertTrue(
+            ShellKeyboardDismissPolicy.shouldDismissKeyboard(for: nil)
         )
     }
 }
