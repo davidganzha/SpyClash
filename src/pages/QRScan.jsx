@@ -10,6 +10,10 @@ import { isClientUpdateRequiredError } from "@/lib/multiSpyRules";
 import { roomCodeFromPayload } from "@/lib/roomLinks";
 import { decodeQRCodeFrame, drawVideoCenterCrop } from "@/lib/qrFrameDecoder";
 import { accountAvatarForDisplay } from "@/lib/avatars";
+import {
+  clearPendingRoomExit,
+  pendingRoomExitMarker,
+} from "@/lib/roomExit";
 
 export default function QRScan() {
   const { t } = useLanguage();
@@ -62,11 +66,14 @@ export default function QRScan() {
     try {
       const displayName = currentUser.display_name || currentUser.full_name || currentUser.email.split("@")[0];
       const avatar = accountAvatarForDisplay(currentUser.avatar);
+      const pendingExit = pendingRoomExitMarker();
       const room = await joinGameRoom({
         roomCode,
         player: { name: displayName, avatar },
+        expectedMembershipID: pendingExit?.expectedMembershipID,
       });
 
+      clearPendingRoomExit(room.id, undefined, { force: true });
       localStorage.setItem("spy_active_room_id", room.id);
       setTimeout(() => navigate(createPageUrl("Room") + `?id=${room.id}`), 700);
     } catch (joinError) {

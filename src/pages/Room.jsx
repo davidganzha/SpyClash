@@ -46,10 +46,16 @@ import {
 } from "@/lib/lobbySync";
 import { shouldAcceptOnlineRoomSnapshot } from "@/lib/onlineGamePresentation";
 import { createQuestionTurnOrder, questionPairForStep } from "@/lib/questionTurnOrder";
-import { exitRoomImmediately } from "@/lib/roomExit";
+import {
+  clearPendingRoomExit,
+  exitRoomImmediately,
+  pendingRoomExitMarker,
+} from "@/lib/roomExit";
 import {
   GAME_ROOM_CLOSE_ACTION,
   gameRoomExitAction,
+  gameRoomExitExpectedMembershipID,
+  gameRoomExitExpectedRevision,
 } from "@/lib/gameRoomExit";
 import {
   isClientUpdateRequiredError,
@@ -433,8 +439,20 @@ export default function Room() {
     if (room.status === "waiting") {
       const displayName = u.display_name || u.full_name || u.email.split("@")[0];
       const avatar = accountAvatarForDisplay(u.avatar);
-      room = await joinGameRoom({ roomId: id, player: { name: displayName, avatar } });
+      const pendingExit = pendingRoomExitMarker();
+      const expectedMembershipID = gameRoomExitExpectedMembershipID(room)
+        || (pendingExit?.roomId === id
+          ? pendingExit.expectedMembershipID
+          : null);
+      room = await joinGameRoom({
+        roomId: id,
+        player: { name: displayName, avatar },
+        expectedMembershipID,
+      });
       if (!isCurrent()) return;
+      // A successful explicit rejoin starts a new membership generation. The
+      // prior local-first exit marker must no longer suppress this room.
+      clearPendingRoomExit(id, undefined, { force: true });
     }
     const finalRoom = room;
     prevPlayersRef.current = finalRoom.players || [];
@@ -1018,6 +1036,8 @@ export default function Room() {
     void exitRoomImmediately({
       roomId: sourceRoom.id,
       action: exitAction,
+      expectedRevision: gameRoomExitExpectedRevision(sourceRoom),
+      expectedMembershipID: gameRoomExitExpectedMembershipID(sourceRoom),
       performExit,
       performLeaveFallback: exitAction === GAME_ROOM_CLOSE_ACTION
         ? leaveGameRoom

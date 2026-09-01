@@ -55,6 +55,8 @@ import { exitRoomImmediately } from "@/lib/roomExit";
 import {
   GAME_ROOM_CLOSE_ACTION,
   gameRoomExitAction,
+  gameRoomExitExpectedMembershipID,
+  gameRoomExitExpectedRevision,
 } from "@/lib/gameRoomExit";
 import { createPageUrl } from "@/utils";
 
@@ -375,6 +377,7 @@ export default function Game() {
                 room_id: roomId,
                 target_email: targetEmail,
                 expected_vote_round_id: expectedVoteRoundID,
+                expected_match_id: currentRoom.match_id || undefined,
               }),
           });
           const latestRoom = roomRef.current;
@@ -688,6 +691,8 @@ export default function Game() {
     void exitRoomImmediately({
       roomId: currentRoom.id,
       action: exitAction,
+      expectedRevision: gameRoomExitExpectedRevision(currentRoom),
+      expectedMembershipID: gameRoomExitExpectedMembershipID(currentRoom),
       performExit,
       performLeaveFallback: exitAction === GAME_ROOM_CLOSE_ACTION
         ? leaveGameRoom
@@ -741,7 +746,9 @@ export default function Game() {
     if ((currentRoom.spectators || []).map(normalizedEmail).includes(viewerEmail)) return;
     if ((currentRoom.vote_requests || []).map(normalizedEmail).includes(viewerEmail)) return;
     soundsRef.current.alert();
-    await runSynchronizedAction("request_vote");
+    await runSynchronizedAction("request_vote", {
+      expected_match_id: currentRoom.match_id || undefined,
+    });
   }, [runSynchronizedAction, timeExpired, user?.email, voteCancellationScene]);
 
   const handleCastVote = useCallback(async (targetEmail) => {
@@ -778,6 +785,7 @@ export default function Game() {
     await runSynchronizedAction("cast_detective_vote", {
       target_email: targetEmail,
       expected_vote_round_id: voteRoundID,
+      expected_match_id: currentRoom.match_id || undefined,
     });
   }, [runSynchronizedAction, timeExpired, user?.email, voteCancellationScene]);
 
@@ -801,18 +809,29 @@ export default function Game() {
       || (currentRoom.spectators || []).map(normalizedEmail).includes(viewerEmail)
       || (currentRoom.eliminated_emails || []).map(normalizedEmail).includes(viewerEmail)
     ) return;
-    const updated = await runSynchronizedAction("submit_spy_guess", { guess: guessedWord });
+    const updated = await runSynchronizedAction("submit_spy_guess", {
+      guess: guessedWord,
+      expected_match_id: currentRoom.match_id || undefined,
+    });
     if (!updated) return;
     soundsRef.current[updated.winner === "spy" ? "win" : "lose"]();
     setShowSpyGuess(false);
   }, [runSynchronizedAction, timeExpired, user?.email, voteCancellationScene]);
 
   const handleVoteReplay = useCallback(async () => {
-    await runSynchronizedAction("vote_play_again");
+    const currentRoom = roomRef.current;
+    if (!currentRoom) return;
+    await runSynchronizedAction("vote_play_again", {
+      expected_match_id: currentRoom.match_id || undefined,
+    });
   }, [runSynchronizedAction]);
 
   const handleResetReplay = useCallback(async () => {
-    const updated = await runSynchronizedAction("reset_room_for_replay");
+    const currentRoom = roomRef.current;
+    if (!currentRoom) return;
+    const updated = await runSynchronizedAction("reset_room_for_replay", {
+      expected_match_id: currentRoom.match_id || undefined,
+    });
     if (updated?.id) navigate(createPageUrl("Room") + `?id=${updated.id}`);
   }, [navigate, runSynchronizedAction]);
 

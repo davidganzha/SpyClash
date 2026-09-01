@@ -8,6 +8,9 @@ import {
   markRoomExitPending,
   pendingRoomExitAction,
   pendingRoomExitId,
+  pendingRoomExitMarker,
+  pendingRoomExitMembershipID,
+  pendingRoomExitRevision,
   PENDING_ROOM_CLOSE_RETRY_DELAYS_MILLISECONDS,
   roomExitIsPending,
 } from "./roomExit.js";
@@ -32,6 +35,9 @@ test("room exit clears the active room and records pending server cleanup", () =
   assert.equal(storage.getItem("spy_active_room_id"), null);
   assert.equal(pendingRoomExitId(storage), "room-1");
   assert.equal(pendingRoomExitAction(storage), GAME_ROOM_LEAVE_ACTION);
+  assert.equal(pendingRoomExitRevision(storage), null);
+  assert.equal(pendingRoomExitMembershipID(storage), null);
+  assert.equal(storage.getItem("spy_pending_room_exit_revision"), null);
   assert.equal(roomExitIsPending("room-1", storage), true);
   assert.equal(roomExitIsPending("room-2", storage), false);
 });
@@ -46,9 +52,218 @@ test("pending cleanup preserves a host close_room action", () => {
   assert.equal(pendingRoomExitId(storage), "room-host");
   assert.equal(pendingRoomExitAction(storage), GAME_ROOM_CLOSE_ACTION);
 
-  clearPendingRoomExit("room-host", storage);
+  clearPendingRoomExit("room-host", storage, { force: true });
   assert.equal(pendingRoomExitId(storage), null);
   assert.equal(pendingRoomExitAction(storage), null);
+});
+
+test("ordinary cleanup requires the complete marker identity", () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-exact" });
+  markRoomExitPending(
+    "room-exact",
+    storage,
+    GAME_ROOM_CLOSE_ACTION,
+    7,
+    "membership-exact",
+  );
+
+  assert.equal(clearPendingRoomExit("room-exact", storage), false);
+  assert.equal(clearPendingRoomExit("room-exact", storage, {
+    action: GAME_ROOM_CLOSE_ACTION,
+    expectedRevision: 7,
+    expectedMembershipID: "membership-other",
+  }), false);
+  assert.equal(pendingRoomExitId(storage), "room-exact");
+  assert.equal(clearPendingRoomExit("room-exact", storage, {
+    action: GAME_ROOM_CLOSE_ACTION,
+    expectedRevision: 7,
+    expectedMembershipID: "membership-exact",
+  }), true);
+  assert.equal(pendingRoomExitId(storage), null);
+});
+
+test("legacy pending exits without a revision stay unversioned", async () => {
+  for (const storedRevision of [undefined, "", "   "]) {
+    const initial = {
+      spy_pending_room_exit_id: "room-legacy",
+      spy_pending_room_exit_action: GAME_ROOM_LEAVE_ACTION,
+    };
+    if (storedRevision !== undefined) {
+      initial.spy_pending_room_exit_revision = storedRevision;
+    }
+    const storage = memoryStorage(initial);
+    const receivedRevisions = [];
+
+    assert.equal(pendingRoomExitRevision(storage), null);
+    const completed = await completePendingRoomExit({
+      roomId: "room-legacy",
+      action: GAME_ROOM_LEAVE_ACTION,
+      expectedRevision: storedRevision,
+      storage,
+      performExit: async (_roomId, expectedRevision) => {
+        receivedRevisions.push(expectedRevision);
+      },
+    });
+
+    assert.equal(completed, true);
+    assert.deepEqual(receivedRevisions, [null]);
+    assert.equal(storage.getItem("spy_pending_room_exit_revision"), null);
+  }
+});
+
+test("pending room revision survives storage and every close retry", async () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-versioned" });
+  markRoomExitPending(
+    "room-versioned",
+    storage,
+    GAME_ROOM_CLOSE_ACTION,
+    42,
+  );
+  const receivedRevisions = [];
+  let attempts = 0;
+
+  assert.equal(storage.getItem("spy_pending_room_exit_revision"), "42");
+  assert.equal(pendingRoomExitRevision(storage), 42);
+  const completed = await completePendingRoomExit({
+    roomId: "room-versioned",
+    action: GAME_ROOM_CLOSE_ACTION,
+    expectedRevision: null,
+    storage,
+    performExit: async (_roomId, expectedRevision) => {
+      attempts += 1;
+      receivedRevisions.push(expectedRevision);
+      if (attempts < 3) throw new Error("timeout");
+    },
+    sleep: async () => {},
+  });
+
+  assert.equal(completed, true);
+  assert.deepEqual(receivedRevisions, [42, 42, 42]);
+  assert.equal(pendingRoomExitRevision(storage), null);
+  assert.equal(storage.getItem("spy_pending_room_exit_revision"), null);
+});
+
+test("pending membership generation survives storage and every exit attempt", async () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-generation" });
+  markRoomExitPending(
+    "room-generation",
+    storage,
+    GAME_ROOM_CLOSE_ACTION,
+    42,
+    "membership-generation-a",
+  );
+  const received = [];
+
+  const completed = await completePendingRoomExit({
+    roomId: "room-generation",
+    action: GAME_ROOM_CLOSE_ACTION,
+    storage,
+    performExit: async (roomId, expectedRevision, expectedMembershipID) => {
+      received.push({ roomId, expectedRevision, expectedMembershipID });
+    },
+  });
+
+  assert.equal(completed, true);
+  assert.deepEqual(received, [{
+    roomId: "room-generation",
+    expectedRevision: 42,
+    expectedMembershipID: "membership-generation-a",
+  }]);
+  assert.equal(pendingRoomExitMarker(storage), null);
+});
+
+test("an old exit completion cannot erase a newer membership marker", async () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-race" });
+  markRoomExitPending(
+    "room-race",
+    storage,
+    GAME_ROOM_LEAVE_ACTION,
+    10,
+    "membership-a",
+  );
+  let releaseOldExit;
+  let announceOldExit;
+  const oldExitGate = new Promise((resolve) => { releaseOldExit = resolve; });
+  const oldExitStarted = new Promise((resolve) => { announceOldExit = resolve; });
+
+  const oldCompletion = completePendingRoomExit({
+    roomId: "room-race",
+    action: GAME_ROOM_LEAVE_ACTION,
+    expectedRevision: 10,
+    expectedMembershipID: "membership-a",
+    storage,
+    performExit: async () => {
+      announceOldExit();
+      await oldExitGate;
+    },
+  });
+  await oldExitStarted;
+
+  // A successful rejoin intentionally retires A, then a later exit creates B.
+  assert.equal(clearPendingRoomExit("room-race", storage, { force: true }), true);
+  markRoomExitPending(
+    "room-race",
+    storage,
+    GAME_ROOM_CLOSE_ACTION,
+    12,
+    "membership-b",
+  );
+  releaseOldExit();
+
+  assert.equal(await oldCompletion, true);
+  assert.deepEqual(pendingRoomExitMarker(storage), {
+    roomId: "room-race",
+    action: GAME_ROOM_CLOSE_ACTION,
+    expectedRevision: 12,
+    expectedMembershipID: "membership-b",
+  });
+});
+
+test("an old forbidden close cannot replace a newer marker with its fallback", async () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-close-race" });
+  markRoomExitPending(
+    "room-close-race",
+    storage,
+    GAME_ROOM_CLOSE_ACTION,
+    20,
+    "membership-a",
+  );
+  let rejectOldClose;
+  let announceOldClose;
+  const oldCloseGate = new Promise((resolve, reject) => { rejectOldClose = reject; });
+  const oldCloseStarted = new Promise((resolve) => { announceOldClose = resolve; });
+  let fallbackAttempts = 0;
+
+  const oldCompletion = completePendingRoomExit({
+    roomId: "room-close-race",
+    action: GAME_ROOM_CLOSE_ACTION,
+    expectedRevision: 20,
+    expectedMembershipID: "membership-a",
+    storage,
+    performExit: async () => {
+      announceOldClose();
+      await oldCloseGate;
+    },
+    performLeaveFallback: async () => { fallbackAttempts += 1; },
+  });
+  await oldCloseStarted;
+  markRoomExitPending(
+    "room-close-race",
+    storage,
+    GAME_ROOM_LEAVE_ACTION,
+    21,
+    "membership-b",
+  );
+  rejectOldClose(Object.assign(new Error("host changed"), { status: 403 }));
+
+  assert.equal(await oldCompletion, true);
+  assert.equal(fallbackAttempts, 0);
+  assert.deepEqual(pendingRoomExitMarker(storage), {
+    roomId: "room-close-race",
+    action: GAME_ROOM_LEAVE_ACTION,
+    expectedRevision: 21,
+    expectedMembershipID: "membership-b",
+  });
 });
 
 test("navigation happens before the server leave resolves", async () => {
@@ -89,9 +304,9 @@ test("failed server cleanup keeps the room suppressed for a later retry", async 
 
   assert.equal(completed, false);
   assert.equal(pendingRoomExitId(storage), "room-1");
-  clearPendingRoomExit("different-room", storage);
+  clearPendingRoomExit("different-room", storage, { force: true });
   assert.equal(pendingRoomExitId(storage), "room-1");
-  clearPendingRoomExit("room-1", storage);
+  clearPendingRoomExit("room-1", storage, { force: true });
   assert.equal(pendingRoomExitId(storage), null);
 });
 

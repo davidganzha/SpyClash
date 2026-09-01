@@ -25,11 +25,15 @@ import {
   clearPendingRoomExit,
   completePendingRoomExit,
   markRoomExitPending,
-  pendingRoomExitAction,
-  pendingRoomExitId,
+  pendingRoomExitMarker,
   roomExitIsPending,
 } from "@/lib/roomExit";
-import { GAME_ROOM_CLOSE_ACTION } from "@/lib/gameRoomExit";
+import {
+  GAME_ROOM_CLOSE_ACTION,
+  GAME_ROOM_LEAVE_ACTION,
+  gameRoomExitExpectedMembershipID,
+  gameRoomExitExpectedRevision,
+} from "@/lib/gameRoomExit";
 
 
 export default function Home() {
@@ -107,11 +111,13 @@ export default function Home() {
           try {
             const displayName = u.display_name || u.full_name || u.email.split("@")[0];
             const avatar = accountAvatarForDisplay(u.avatar);
+            const pendingExit = pendingRoomExitMarker();
             const room = await joinGameRoom({
               roomCode: pendingJoin,
               player: { name: displayName, avatar },
+              expectedMembershipID: pendingExit?.expectedMembershipID,
             });
-            clearPendingRoomExit(room.id);
+            clearPendingRoomExit(room.id, undefined, { force: true });
             localStorage.setItem("spy_active_room_id", room.id);
             navigate(createPageUrl("Room") + `?id=${room.id}`);
             return;
@@ -126,17 +132,19 @@ export default function Home() {
       }
       if (u) {
         const savedRoomId = localStorage.getItem("spy_active_room_id");
-        const dismissedRoomId = pendingRoomExitId();
-        const dismissedRoomAction = pendingRoomExitAction();
-        if (dismissedRoomId) {
-          const retryRoomExit = dismissedRoomAction === GAME_ROOM_CLOSE_ACTION
+        const dismissedRoomExit = pendingRoomExitMarker();
+        const dismissedRoomId = dismissedRoomExit?.roomId || null;
+        if (dismissedRoomExit) {
+          const retryRoomExit = dismissedRoomExit.action === GAME_ROOM_CLOSE_ACTION
             ? closeGameRoom
             : leaveGameRoom;
           void completePendingRoomExit({
-            roomId: dismissedRoomId,
-            action: dismissedRoomAction,
+            roomId: dismissedRoomExit.roomId,
+            action: dismissedRoomExit.action,
+            expectedRevision: dismissedRoomExit.expectedRevision,
+            expectedMembershipID: dismissedRoomExit.expectedMembershipID,
             performExit: retryRoomExit,
-            performLeaveFallback: dismissedRoomAction === GAME_ROOM_CLOSE_ACTION
+            performLeaveFallback: dismissedRoomExit.action === GAME_ROOM_CLOSE_ACTION
               ? leaveGameRoom
               : null,
           });
@@ -174,11 +182,23 @@ export default function Home() {
   const handleLeaveActiveRoom = () => {
     if (!activeRoom || !user) { setActiveRoom(null); localStorage.removeItem("spy_active_room_id"); return; }
     const roomId = activeRoom.id;
-    markRoomExitPending(roomId);
+    const expectedRevision = gameRoomExitExpectedRevision(activeRoom);
+    const expectedMembershipID = gameRoomExitExpectedMembershipID(activeRoom);
+    markRoomExitPending(
+      roomId,
+      undefined,
+      GAME_ROOM_LEAVE_ACTION,
+      expectedRevision,
+      expectedMembershipID,
+    );
     setActiveRoom(null);
-    void leaveGameRoom(roomId)
-      .then(() => clearPendingRoomExit(roomId))
-      .catch(() => {});
+    void completePendingRoomExit({
+      roomId,
+      action: GAME_ROOM_LEAVE_ACTION,
+      expectedRevision,
+      expectedMembershipID,
+      performExit: leaveGameRoom,
+    });
   };
 
   const handleCreate = async () => {
@@ -213,11 +233,13 @@ export default function Home() {
     try {
       const displayName = user.display_name || user.full_name || user.email.split("@")[0];
       const avatar = accountAvatarForDisplay(user.avatar);
+      const pendingExit = pendingRoomExitMarker();
       const room = await joinGameRoom({
         roomCode: codeToUse,
         player: { name: displayName, avatar },
+        expectedMembershipID: pendingExit?.expectedMembershipID,
       });
-      clearPendingRoomExit(room.id);
+      clearPendingRoomExit(room.id, undefined, { force: true });
       localStorage.setItem("spy_active_room_id", room.id);
       navigate(createPageUrl("Room") + `?id=${room.id}`);
     } catch (error) {

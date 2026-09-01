@@ -20,6 +20,7 @@ import {
   GAME_ROOM_LEAVE_ACTION,
   gameRoomExitPayload,
 } from "@/lib/gameRoomExit";
+import { gameRoomJoinPayload } from "@/lib/gameRoomJoin";
 
 export class GameRoomActionError extends Error {
   constructor(message, status, code = null, retryable = false) {
@@ -107,17 +108,29 @@ export async function createGameRoom({ player }) {
   });
 }
 
-export async function leaveGameRoom(roomId) {
+export async function leaveGameRoom(
+  roomId,
+  expectedRevision = null,
+  expectedMembershipID = null,
+) {
   return await performGameRoomAction(gameRoomExitPayload({
     action: GAME_ROOM_LEAVE_ACTION,
     roomId,
+    expectedRevision,
+    expectedMembershipID,
   }));
 }
 
-export async function closeGameRoom(roomId) {
+export async function closeGameRoom(
+  roomId,
+  expectedRevision = null,
+  expectedMembershipID = null,
+) {
   return await performGameRoomAction(gameRoomExitPayload({
     action: GAME_ROOM_CLOSE_ACTION,
     roomId,
+    expectedRevision,
+    expectedMembershipID,
   }));
 }
 
@@ -276,15 +289,22 @@ export function subscribeGameRoom(roomId, onEvent, options = {}) {
 }
 
 /**
- * @param {{roomId?: string | null, roomCode?: string | null, player: any}} input
+ * @param {{roomId?: string | null, roomCode?: string | null, player: any, joinMembershipID?: string | null, expectedMembershipID?: string | null}} input
  */
-export async function joinGameRoom({ roomId = null, roomCode = null, player }) {
-  const payload = await performGameRoomAction({
-    action: "join_room",
-    room_id: roomId,
-    room_code: roomCode,
+export async function joinGameRoom({
+  roomId = null,
+  roomCode = null,
+  player,
+  joinMembershipID = null,
+  expectedMembershipID = null,
+}) {
+  const payload = await performGameRoomAction(gameRoomJoinPayload({
+    roomId,
+    roomCode,
     player: withMultiSpyPlayerCapability(player),
-  });
+    joinMembershipID,
+    expectedMembershipID,
+  }));
   if (!payload?.id) {
     throw new GameRoomActionError("Unable to join room", 502);
   }
