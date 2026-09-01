@@ -1,7 +1,12 @@
 #!/bin/sh
 set -eu
 
-ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd)
+ROOT=$(CDPATH= cd -- "$(dirname -- "$0")/.." && pwd -P)
+GIT_COMMON_DIR=$(cd "$ROOT" && git rev-parse --path-format=absolute --git-common-dir)
+CANONICAL_GIT_COMMON_DIR=$(CDPATH= cd -- "$GIT_COMMON_DIR" && pwd -P)
+CANONICAL_REPOSITORY_ROOT=$(
+  CDPATH= cd -- "$CANONICAL_GIT_COMMON_DIR/.." && pwd -P
+)
 EXPECTED_APP_ID=69a0e57fa939f578082f8091
 EXPECTED_ACTION=PARTNER_NOTE_67_ASSIGN_RESERVED_SPY_ID_067_067
 EXPECTED_POLICY_CONFIRMATION=COMMUNITY_ACTION_RESERVED_067_067_V1
@@ -24,9 +29,18 @@ STAGE="$CUTOVER_DIR/reserved-spy-id-067-067"
 MANIFEST="$STAGE/manifest.json"
 COMPLETION="$STAGE/completion.json"
 LAST_ATTEMPT="$STAGE/last-attempt.json"
-PRODUCTION_LOCK_DIR="$CUTOVER_DIR/.production-mutation.lock"
+CANONICAL_CUTOVER_DIR="$CANONICAL_REPOSITORY_ROOT/.base44-cutover"
+PRODUCTION_LOCK_DIR="$CANONICAL_REPOSITORY_ROOT/.base44-cutover/.production-mutation.lock"
 PRODUCTION_LOCK_OWNER="$PRODUCTION_LOCK_DIR/owner"
 WORK=
+PRODUCTION_LOCK_LIST=
+SOURCE_STAGE=
+STAGED_SCRIPT=
+STAGED_COMMUNITY_DIR=
+STAGED_LIFECYCLE_SCRIPT=
+STAGED_BILLING_LIFECYCLE_SCRIPT=
+STAGED_POLICY_SCRIPT=
+STAGED_PROFILE_SIGNAL_SCRIPT=
 PRODUCTION_LOCK_HELD=0
 
 usage() {
@@ -123,8 +137,15 @@ done
 case "$ROOT" in
   ""|/) echo "Unsafe repository root." >&2; exit 65 ;;
 esac
+case "$CANONICAL_REPOSITORY_ROOT" in
+  ""|/) echo "Unsafe canonical repository root." >&2; exit 65 ;;
+esac
+[ "$CANONICAL_GIT_COMMON_DIR" = "$CANONICAL_REPOSITORY_ROOT/.git" ] || {
+  echo "The canonical Git common directory is not a non-bare repository .git directory." >&2
+  exit 65
+}
 [ "$STAGE" = "$ROOT/.base44-cutover/reserved-spy-id-067-067" ] || exit 65
-[ "$PRODUCTION_LOCK_DIR" = "$ROOT/.base44-cutover/.production-mutation.lock" ] || exit 65
+[ "$PRODUCTION_LOCK_DIR" = "$CANONICAL_REPOSITORY_ROOT/.base44-cutover/.production-mutation.lock" ] || exit 65
 
 for source_file in "$SCRIPT" "$LIFECYCLE_SCRIPT" "$BILLING_LIFECYCLE_SCRIPT" "$POLICY_SCRIPT" "$PROFILE_SIGNAL_SCRIPT"; do
   [ -f "$source_file" ] && [ ! -L "$source_file" ] || {
@@ -134,12 +155,13 @@ for source_file in "$SCRIPT" "$LIFECYCLE_SCRIPT" "$BILLING_LIFECYCLE_SCRIPT" "$P
 done
 if [ -L "$CUTOVER_DIR" ] || [ -L "$STAGE" ] || \
   [ -L "$MANIFEST" ] || [ -L "$COMPLETION" ] || \
-  [ -L "$LAST_ATTEMPT" ] || [ -L "$PRODUCTION_LOCK_DIR" ]; then
+  [ -L "$LAST_ATTEMPT" ] || [ -L "$CANONICAL_CUTOVER_DIR" ] || \
+  [ -L "$PRODUCTION_LOCK_DIR" ] || [ -L "$PRODUCTION_LOCK_OWNER" ]; then
   echo "Reserved SPY ID evidence paths must not be symbolic links." >&2
   exit 65
 fi
 
-for command in awk chmod date dirname git id jq mkdir mktemp mv npx rm rmdir sed shasum stat tail uname; do
+for command in awk chmod cmp cp date dirname git id jq mkdir mktemp mv npx rm rmdir sed shasum sort stat tail uname; do
   command -v "$command" >/dev/null 2>&1 || {
     echo "Missing required command: $command" >&2
     exit 69
@@ -148,14 +170,18 @@ done
 for evidence_path in \
   ".base44-cutover/reserved-spy-id-067-067/manifest.json" \
   ".base44-cutover/reserved-spy-id-067-067/completion.json" \
-  ".base44-cutover/reserved-spy-id-067-067/last-attempt.json" \
-  ".base44-cutover/.production-mutation.lock/owner"
+  ".base44-cutover/reserved-spy-id-067-067/last-attempt.json"
 do
   (cd "$ROOT" && git check-ignore -q -- "$evidence_path") || {
     echo "$evidence_path is not protected by repository ignore rules." >&2
     exit 65
   }
 done
+(cd "$CANONICAL_REPOSITORY_ROOT" && \
+  git check-ignore -q -- ".base44-cutover/.production-mutation.lock/owner") || {
+  echo "The shared production lock is not protected by canonical repository ignore rules." >&2
+  exit 65
+}
 
 mkdir -p "$CUTOVER_DIR" "$STAGE"
 chmod 700 "$CUTOVER_DIR" "$STAGE"
@@ -165,20 +191,56 @@ case "$WORK" in
   *) echo "Unsafe temporary directory." >&2; exit 65 ;;
 esac
 chmod 700 "$WORK"
+PRODUCTION_LOCK_LIST="$WORK/production-locks"
+: > "$PRODUCTION_LOCK_LIST"
+chmod 600 "$PRODUCTION_LOCK_LIST"
+
+SOURCE_STAGE="$WORK/source-stage"
+STAGED_SCRIPT="$SOURCE_STAGE/assign-reserved-spy-id.ts"
+STAGED_COMMUNITY_DIR="$SOURCE_STAGE/communityAction"
+STAGED_LIFECYCLE_SCRIPT="$STAGED_COMMUNITY_DIR/community-write-lifecycle.ts"
+STAGED_BILLING_LIFECYCLE_SCRIPT="$STAGED_COMMUNITY_DIR/billing-identity-lifecycle.ts"
+STAGED_POLICY_SCRIPT="$STAGED_COMMUNITY_DIR/community.ts"
+STAGED_PROFILE_SIGNAL_SCRIPT="$STAGED_COMMUNITY_DIR/profile-signal.ts"
+mkdir -p "$SOURCE_STAGE" "$STAGED_COMMUNITY_DIR"
+chmod 700 "$SOURCE_STAGE" "$STAGED_COMMUNITY_DIR"
+
+stage_exact_source() {
+  stage_source=$1
+  stage_destination=$2
+  cp "$stage_source" "$stage_destination"
+  [ -f "$stage_destination" ] && [ ! -L "$stage_destination" ] && \
+    cmp -s "$stage_source" "$stage_destination" || {
+    echo "Could not stage exact source bytes for $stage_source." >&2
+    exit 65
+  }
+  chmod 400 "$stage_destination"
+}
 
 cleanup() {
   if [ "$PRODUCTION_LOCK_HELD" -eq 1 ] && \
-    [ -f "$PRODUCTION_LOCK_OWNER" ] && [ ! -L "$PRODUCTION_LOCK_OWNER" ] && \
-    [ "$(sed -n '1p' "$PRODUCTION_LOCK_OWNER")" = "$$" ] && \
-    [ "$(sed -n '2p' "$PRODUCTION_LOCK_OWNER")" = "$ROOT" ]; then
-    rm -f -- "$PRODUCTION_LOCK_OWNER"
-    rmdir "$PRODUCTION_LOCK_DIR" 2>/dev/null || {
-      echo "Could not release shared Base44 Production lock." >&2
-    }
+    [ -f "$PRODUCTION_LOCK_LIST" ] && [ ! -L "$PRODUCTION_LOCK_LIST" ]; then
+    while IFS= read -r held_lock_dir; do
+      [ -n "$held_lock_dir" ] || continue
+      held_lock_owner="$held_lock_dir/owner"
+      if [ -f "$held_lock_owner" ] && [ ! -L "$held_lock_owner" ] && \
+        [ "$(sed -n '1p' "$held_lock_owner")" = "$$" ] && \
+        [ "$(sed -n '2p' "$held_lock_owner")" = "$ROOT" ]; then
+        rm -f -- "$held_lock_owner"
+      fi
+      if [ -d "$held_lock_dir" ] && [ ! -L "$held_lock_dir" ]; then
+        rmdir "$held_lock_dir" 2>/dev/null || {
+          echo "Could not release shared Base44 Production lock: $held_lock_dir" >&2
+        }
+      fi
+    done < "$PRODUCTION_LOCK_LIST"
   fi
   case "$WORK" in
     "${TMPDIR:-/tmp}"/spyclash-reserved-spy-id.*)
       if [ -d "$WORK" ] && [ ! -L "$WORK" ]; then
+        if [ -d "$SOURCE_STAGE" ] && [ ! -L "$SOURCE_STAGE" ]; then
+          chmod 700 "$SOURCE_STAGE" "$STAGED_COMMUNITY_DIR" 2>/dev/null || true
+        fi
         rm -rf -- "$WORK"
       fi
       ;;
@@ -187,33 +249,115 @@ cleanup() {
 trap cleanup EXIT
 trap 'exit 130' HUP INT TERM
 
+stage_exact_source "$SCRIPT" "$STAGED_SCRIPT"
+stage_exact_source "$LIFECYCLE_SCRIPT" "$STAGED_LIFECYCLE_SCRIPT"
+stage_exact_source "$BILLING_LIFECYCLE_SCRIPT" "$STAGED_BILLING_LIFECYCLE_SCRIPT"
+stage_exact_source "$POLICY_SCRIPT" "$STAGED_POLICY_SCRIPT"
+stage_exact_source "$PROFILE_SIGNAL_SCRIPT" "$STAGED_PROFILE_SIGNAL_SCRIPT"
+chmod 500 "$SOURCE_STAGE" "$STAGED_COMMUNITY_DIR"
+
 hash_file() {
   shasum -a 256 "$1" | awk '{print $1}'
 }
 
-SOURCE_SHA256=$(hash_file "$SCRIPT")
-LIFECYCLE_SOURCE_SHA256=$(hash_file "$LIFECYCLE_SCRIPT")
-BILLING_LIFECYCLE_SOURCE_SHA256=$(hash_file "$BILLING_LIFECYCLE_SCRIPT")
-POLICY_SOURCE_SHA256=$(hash_file "$POLICY_SCRIPT")
-PROFILE_SIGNAL_SOURCE_SHA256=$(hash_file "$PROFILE_SIGNAL_SCRIPT")
-LIFECYCLE_URL="file://$LIFECYCLE_SCRIPT"
-PROFILE_SIGNAL_URL="file://$PROFILE_SIGNAL_SCRIPT"
+SOURCE_SHA256=$(hash_file "$STAGED_SCRIPT")
+LIFECYCLE_SOURCE_SHA256=$(hash_file "$STAGED_LIFECYCLE_SCRIPT")
+BILLING_LIFECYCLE_SOURCE_SHA256=$(hash_file "$STAGED_BILLING_LIFECYCLE_SCRIPT")
+POLICY_SOURCE_SHA256=$(hash_file "$STAGED_POLICY_SCRIPT")
+PROFILE_SIGNAL_SOURCE_SHA256=$(hash_file "$STAGED_PROFILE_SIGNAL_SCRIPT")
+LIFECYCLE_URL="file://$STAGED_LIFECYCLE_SCRIPT"
+PROFILE_SIGNAL_URL="file://$STAGED_PROFILE_SIGNAL_SCRIPT"
 
-acquire_production_lock() {
-  if ! mkdir "$PRODUCTION_LOCK_DIR" 2>/dev/null; then
-    echo "Another Base44 Production mutation is active or needs manual stale-lock review." >&2
-    exit 75
-  fi
-  chmod 700 "$PRODUCTION_LOCK_DIR"
-  {
-    echo "$$"
-    echo "$ROOT"
-    echo "$EXPECTED_ACTION"
-    date -u +%Y-%m-%dT%H:%M:%SZ
-  } > "$WORK/production-lock-owner"
-  chmod 600 "$WORK/production-lock-owner"
-  mv "$WORK/production-lock-owner" "$PRODUCTION_LOCK_OWNER"
-  PRODUCTION_LOCK_HELD=1
+path_owner() {
+  case "$(uname -s)" in
+    Darwin) stat -f '%u' "$1" ;;
+    *) stat -c '%u' "$1" ;;
+  esac
+}
+
+acquire_production_locks() {
+  worktree_roots="$WORK/registered-worktrees"
+  git -C "$ROOT" worktree list --porcelain |
+    awk '/^worktree / { sub(/^worktree /, ""); print }' |
+    sort -u > "$worktree_roots"
+  [ -s "$worktree_roots" ] || {
+    echo "Could not enumerate registered Git worktrees." >&2
+    exit 65
+  }
+
+  found_current=0
+  found_canonical=0
+  lock_index=0
+  while IFS= read -r registered_root; do
+    case "$registered_root" in
+      /*) ;;
+      *) echo "Unsafe registered Git worktree root." >&2; exit 65 ;;
+    esac
+    physical_root=$(CDPATH= cd -- "$registered_root" && pwd -P) || {
+      echo "Registered Git worktree is unavailable: $registered_root" >&2
+      exit 65
+    }
+    case "$physical_root" in
+      ""|/) echo "Unsafe physical Git worktree root." >&2; exit 65 ;;
+    esac
+    registered_common=$(git -C "$physical_root" rev-parse --path-format=absolute --git-common-dir)
+    physical_common=$(CDPATH= cd -- "$registered_common" && pwd -P) || exit 65
+    [ "$physical_common" = "$CANONICAL_GIT_COMMON_DIR" ] || {
+      echo "Registered worktree does not share the reviewed Git common directory." >&2
+      exit 65
+    }
+    [ "$physical_root" = "$ROOT" ] && found_current=1
+    [ "$physical_root" = "$CANONICAL_REPOSITORY_ROOT" ] && found_canonical=1
+
+    worktree_cutover_dir="$physical_root/.base44-cutover"
+    worktree_lock_dir="$worktree_cutover_dir/.production-mutation.lock"
+    worktree_lock_owner="$worktree_lock_dir/owner"
+    if [ -L "$worktree_cutover_dir" ] || [ -L "$worktree_lock_dir" ] || \
+      [ -L "$worktree_lock_owner" ]; then
+      echo "A registered worktree has an unsafe Base44 lock path." >&2
+      exit 65
+    fi
+    (cd "$physical_root" && \
+      git check-ignore -q -- ".base44-cutover/.production-mutation.lock/owner") || {
+      echo "A registered worktree does not ignore the shared production lock." >&2
+      exit 65
+    }
+    mkdir -p "$worktree_cutover_dir"
+    [ -d "$worktree_cutover_dir" ] && [ ! -L "$worktree_cutover_dir" ] && \
+      [ "$(path_owner "$worktree_cutover_dir")" = "$(id -u)" ] || {
+      echo "Could not prepare a registered worktree Base44 cutover directory." >&2
+      exit 65
+    }
+    chmod 700 "$worktree_cutover_dir"
+    if ! mkdir "$worktree_lock_dir" 2>/dev/null; then
+      echo "Another Base44 Production mutation is active or needs manual stale-lock review." >&2
+      exit 75
+    fi
+    PRODUCTION_LOCK_HELD=1
+    if ! printf '%s\n' "$worktree_lock_dir" >> "$PRODUCTION_LOCK_LIST"; then
+      rmdir "$worktree_lock_dir" 2>/dev/null || true
+      echo "Could not record an acquired Base44 Production lock." >&2
+      exit 65
+    fi
+    [ -d "$worktree_lock_dir" ] && [ ! -L "$worktree_lock_dir" ] && \
+      [ "$(path_owner "$worktree_lock_dir")" = "$(id -u)" ] || exit 65
+    chmod 700 "$worktree_lock_dir"
+    lock_index=$((lock_index + 1))
+    lock_owner_source="$WORK/production-lock-owner.$lock_index"
+    {
+      echo "$$"
+      echo "$ROOT"
+      echo "$EXPECTED_ACTION"
+      date -u +%Y-%m-%dT%H:%M:%SZ
+    } > "$lock_owner_source"
+    chmod 600 "$lock_owner_source"
+    mv "$lock_owner_source" "$worktree_lock_owner"
+  done < "$worktree_roots"
+
+  [ "$found_current" -eq 1 ] && [ "$found_canonical" -eq 1 ] || {
+    echo "Registered worktree inventory omitted a required lock root." >&2
+    exit 65
+  }
 }
 
 run_assignment() {
@@ -237,9 +381,9 @@ run_assignment() {
       SPYCLASH_RESERVED_SPY_ID_CONFIRM_APP_ID="$APP_ID" \
       SPYCLASH_RESERVED_SPY_ID_CONFIRM_TARGET_USER_ID="$TARGET_USER_ID" \
       SPYCLASH_RESERVED_SPY_ID_POLICY_DEPLOYED="$EXPECTED_POLICY_CONFIRMATION" \
-      npx --yes -p deno -p base44@0.1.4 -c \
+      npx --yes -p deno@2.9.5 -p base44@0.1.4 -c \
       "base44 --app-id \"$APP_ID\" exec" \
-      < "$SCRIPT" > "$run_output" 2>&1
+      < "$STAGED_SCRIPT" > "$run_output" 2>&1
   else
     env -u BASE44_APP_ID -u BASE44_PROJECTS_BASE44_APP_ID \
       SPYCLASH_RESERVED_SPY_ID_APPLY=0 \
@@ -252,9 +396,9 @@ run_assignment() {
       SPYCLASH_RESERVED_SPY_ID_PROFILE_SIGNAL_SOURCE_SHA256="$PROFILE_SIGNAL_SOURCE_SHA256" \
       SPYCLASH_RESERVED_SPY_ID_LIFECYCLE_URL="$LIFECYCLE_URL" \
       SPYCLASH_RESERVED_SPY_ID_PROFILE_SIGNAL_URL="$PROFILE_SIGNAL_URL" \
-      npx --yes -p deno -p base44@0.1.4 -c \
+      npx --yes -p deno@2.9.5 -p base44@0.1.4 -c \
       "base44 --app-id \"$APP_ID\" exec" \
-      < "$SCRIPT" > "$run_output" 2>&1
+      < "$STAGED_SCRIPT" > "$run_output" 2>&1
   fi
 }
 
@@ -422,6 +566,7 @@ jq -e \
   exit 77
 }
 
+acquire_production_locks
 if ! run_assignment dry-run "" "$WORK/preflight.raw"; then
   write_attempt apply-preflight-failed 1
   echo "Fresh read-only preflight failed; no records were changed." >&2
@@ -438,7 +583,6 @@ extract_report "$WORK/preflight.raw" "$WORK/preflight.json" || {
   exit 75
 }
 
-acquire_production_lock
 write_attempt mutation-started-postflight-required 0
 set +e
 run_assignment apply "$PLAN_DIGEST" "$WORK/apply.raw"

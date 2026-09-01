@@ -100,6 +100,34 @@ async function filteredRecords(
   throw new Error(`${entityName} exceeded the pagination safety ceiling.`);
 }
 
+async function listedRecords(
+  store: any,
+  entityName: string,
+): Promise<Entity[]> {
+  const records: Entity[] = [];
+  const seenIDs = new Set<string>();
+  for (let pageIndex = 0; pageIndex < MAX_PAGES; pageIndex += 1) {
+    const page = await store.list(
+      "created_date",
+      PAGE_SIZE,
+      pageIndex * PAGE_SIZE,
+    ) || [];
+    if (!Array.isArray(page) || page.length > PAGE_SIZE) {
+      throw new Error(`${entityName} returned an invalid page.`);
+    }
+    for (const record of page) {
+      const id = clean(record?.id);
+      if (!id || seenIDs.has(id)) {
+        throw new Error(`${entityName} returned an invalid identity set.`);
+      }
+      seenIDs.add(id);
+      records.push(record);
+    }
+    if (page.length < PAGE_SIZE) return records;
+  }
+  throw new Error(`${entityName} exceeded the pagination safety ceiling.`);
+}
+
 async function exactUser(userID: string): Promise<Entity | null> {
   const rows = await filteredRecords(
     base44.entities.User,
@@ -139,10 +167,12 @@ async function targetFriendships(targetUserID: string): Promise<Entity[]> {
 }
 
 async function holdersOfReservedSpyID(): Promise<Entity[]> {
-  return await filteredRecords(
+  const users = await listedRecords(
     base44.entities.User,
     "User",
-    { spy_id: RESERVED_SPY_ID },
+  );
+  return users.filter((user) =>
+    normalizeSpyID(user?.spy_id) === RESERVED_SPY_ID
   );
 }
 

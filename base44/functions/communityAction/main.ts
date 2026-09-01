@@ -1,6 +1,7 @@
 import { createClient, createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
   friendshipAllowsRoomInvite,
+  incomingRoomInviteHasAcceptedFriendship,
   isReservedManualSpyID,
   normalizeCommunityQuery,
   normalizeRadarInvitePolicy,
@@ -8,6 +9,7 @@ import {
   preferredSpyIDOwner,
   profileMatchesCommunityQuery,
   publicProfile,
+  requireAcceptedFriendshipForRoomInviteAction,
   roomAcceptsCommunityInvites,
   sanitizeProfileComment,
   stableSpyID,
@@ -39,6 +41,7 @@ import {
   hasTrustedBase44Context,
 } from "./base44-context.ts";
 import { communityErrorResponse } from "./error-response.ts";
+import { filterAllFriendships } from "./friendship-pagination.ts";
 import { withCurrentProfileWriteLease } from "./profile-write-lifecycle.ts";
 import { fanoutProfileUpdate } from "./profile-signal.ts";
 
@@ -265,12 +268,13 @@ async function relationshipsBetween(
   firstID: string,
   secondID: string,
 ) {
+  const store = base44.asServiceRole.entities.Friendship;
   const [outgoing, incoming] = await Promise.all([
-    base44.asServiceRole.entities.Friendship.filter({
+    filterAllFriendships(store, {
       requester_id: firstID,
       addressee_id: secondID,
     }),
-    base44.asServiceRole.entities.Friendship.filter({
+    filterAllFriendships(store, {
       requester_id: secondID,
       addressee_id: firstID,
     }),
@@ -279,9 +283,10 @@ async function relationshipsBetween(
 }
 
 async function relationshipsForUser(base44: any, userID: string) {
+  const store = base44.asServiceRole.entities.Friendship;
   const [requested, received] = await Promise.all([
-    base44.asServiceRole.entities.Friendship.filter({ requester_id: userID }),
-    base44.asServiceRole.entities.Friendship.filter({ addressee_id: userID }),
+    filterAllFriendships(store, { requester_id: userID }),
+    filterAllFriendships(store, { addressee_id: userID }),
   ]);
   return uniqueByID([...(requested || []), ...(received || [])]);
 }
@@ -435,10 +440,15 @@ async function incomingRoomInvites(
     }),
     relationshipsPromise,
   ]);
-  const blockedSenders = blockedCounterpartIDs(relationships, current.id);
   const invitations = newestFirst(
     uniqueByID([...(pending || []), ...(accepted || [])]),
-  ).filter((invite) => !blockedSenders.has(clean(invite.sender_user_id)));
+  ).filter((invite) =>
+    incomingRoomInviteHasAcceptedFriendship(
+      invite,
+      relationships,
+      current.id,
+    )
+  );
 
   const senderCache = new Map<string, Entity | null>();
   return await Promise.all(invitations.map(async (invite) => {
@@ -1240,8 +1250,9 @@ Deno.serve(async (req) => {
             });
           }
           const senderID = clean(invite.sender_user_id);
-          requireUnblockedRelationship(
-            await relationshipBetween(base44, current.id, senderID),
+          await requireAcceptedFriendshipForRoomInviteAction(
+            action,
+            () => relationshipsBetween(base44, current.id, senderID),
             current.id,
             senderID,
           );

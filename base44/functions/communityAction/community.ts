@@ -143,6 +143,51 @@ export function friendshipAllowsRoomInvite(
   );
 }
 
+export function incomingRoomInviteHasAcceptedFriendship(
+  invite: Record<string, unknown>,
+  friendships: Array<Record<string, unknown>>,
+  recipientUserID: unknown,
+): boolean {
+  const recipient = String(recipientUserID || "").trim();
+  const inviteRecipient = String(invite.recipient_user_id || "").trim();
+  const sender = String(invite.sender_user_id || "").trim();
+  return recipient !== "" && inviteRecipient === recipient &&
+    friendshipAllowsRoomInvite(friendships, recipient, sender);
+}
+
+export async function requireAcceptedFriendshipForRoomInviteAction(
+  action: unknown,
+  loadFriendships: () => Promise<Array<Record<string, unknown>>>,
+  firstUserID: unknown,
+  secondUserID: unknown,
+): Promise<void> {
+  const normalizedAction = String(action || "").trim().toLowerCase();
+  if (
+    normalizedAction === "decline_room_invite" ||
+    normalizedAction === "consume_room_invite"
+  ) {
+    return;
+  }
+  if (normalizedAction !== "accept_room_invite") {
+    throw Object.assign(new Error("Unsupported room invite action"), {
+      status: 400,
+    });
+  }
+  if (
+    friendshipAllowsRoomInvite(
+      await loadFriendships(),
+      firstUserID,
+      secondUserID,
+    )
+  ) {
+    return;
+  }
+  throw Object.assign(
+    new Error("Only accepted friends can accept room invites"),
+    { status: 403 },
+  );
+}
+
 export function publicProfile(user: Record<string, unknown>) {
   const gamesPlayed = Number(user.games_played || 0);
   const gamesWon = Number(user.games_won || 0);

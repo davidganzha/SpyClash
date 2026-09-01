@@ -1,5 +1,6 @@
 import {
   friendshipAllowsRoomInvite,
+  incomingRoomInviteHasAcceptedFriendship,
   isReservedManualSpyID,
   normalizeCommunityQuery,
   normalizeRadarInvitePolicy,
@@ -7,6 +8,7 @@ import {
   preferredSpyIDOwner,
   profileMatchesCommunityQuery,
   publicProfile,
+  requireAcceptedFriendshipForRoomInviteAction,
   roomAcceptsCommunityInvites,
   sanitizeProfileComment,
   stableSpyID,
@@ -180,4 +182,110 @@ Deno.test("room invites require one accepted unblocked friendship", () => {
   ) {
     throw new Error("unrelated accepted friendship allowed a room invite");
   }
+});
+
+Deno.test("incoming room invites disappear when friendship is removed", () => {
+  const accepted = [{
+    id: "friendship-1",
+    requester_id: "user-a",
+    addressee_id: "user-b",
+    status: "accepted",
+  }];
+
+  for (const status of ["pending", "accepted"]) {
+    const invite = {
+      id: `invite-${status}`,
+      sender_user_id: "user-a",
+      recipient_user_id: "user-b",
+      status,
+    };
+    if (!incomingRoomInviteHasAcceptedFriendship(invite, accepted, "user-b")) {
+      throw new Error(`accepted friend's ${status} invite was hidden`);
+    }
+    if (incomingRoomInviteHasAcceptedFriendship(invite, [], "user-b")) {
+      throw new Error(
+        `stale ${status} invite remained visible after friendship removal`,
+      );
+    }
+    if (incomingRoomInviteHasAcceptedFriendship(invite, accepted, "user-c")) {
+      throw new Error(`${status} invite was visible to a different recipient`);
+    }
+  }
+});
+
+Deno.test("room invite acceptance rechecks friendship without blocking cleanup", async () => {
+  let cleanupRelationshipLoads = 0;
+  for (const action of ["decline_room_invite", "consume_room_invite"]) {
+    await requireAcceptedFriendshipForRoomInviteAction(
+      action,
+      () => {
+        cleanupRelationshipLoads += 1;
+        throw new Error("cleanup loaded friendships");
+      },
+      "user-a",
+      "user-b",
+    );
+  }
+  if (cleanupRelationshipLoads !== 0) {
+    throw new Error("cleanup depended on a friendship lookup");
+  }
+
+  const invalidFriendships = [
+    [],
+    [{
+      requester_id: "user-a",
+      addressee_id: "user-b",
+      status: "pending",
+    }],
+    [{
+      requester_id: "user-a",
+      addressee_id: "user-b",
+      status: "declined",
+    }],
+    [{
+      requester_id: "user-a",
+      addressee_id: "user-b",
+      status: "blocked",
+    }],
+    [{
+      requester_id: "user-a",
+      addressee_id: "user-b",
+      status: "accepted",
+    }, {
+      requester_id: "user-b",
+      addressee_id: "user-a",
+      status: "blocked",
+    }],
+  ];
+  for (const friendships of invalidFriendships) {
+    let rejection: unknown = null;
+    try {
+      await requireAcceptedFriendshipForRoomInviteAction(
+        "accept_room_invite",
+        () => Promise.resolve(friendships),
+        "user-a",
+        "user-b",
+      );
+    } catch (error) {
+      rejection = error;
+    }
+    if (
+      !(rejection instanceof Error) ||
+      (rejection as Error & { status?: number }).status !== 403
+    ) {
+      throw new Error("accept_room_invite was not rejected without friendship");
+    }
+  }
+
+  await requireAcceptedFriendshipForRoomInviteAction(
+    "accept_room_invite",
+    () =>
+      Promise.resolve([{
+        requester_id: "user-a",
+        addressee_id: "user-b",
+        status: "accepted",
+      }]),
+    "user-a",
+    "user-b",
+  );
 });

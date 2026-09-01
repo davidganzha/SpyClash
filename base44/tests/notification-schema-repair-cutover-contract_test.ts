@@ -39,6 +39,7 @@ const postHistoricalGameRoomFields = [
   "detective_vote_cancellation_round_id",
   "detective_vote_cancellation_present_at",
   "detective_vote_cancellation_reason",
+  "replay_source_match_id",
 ];
 const postHistoricalUserFields = [
   "onboarding_completed",
