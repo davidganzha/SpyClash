@@ -1,10 +1,17 @@
 import { gameTimerSnapshot } from "./gameRoomSync.js";
 
 export const DETECTIVE_VOTE_RETRY_MAX_ATTEMPTS = 8;
+export const DETECTIVE_VOTE_RETRY_BUDGET_MILLISECONDS = 2_000;
 const RETRY_INITIAL_DELAY_MILLISECONDS = 250;
 const RETRY_DELAY_CAP_MILLISECONDS = 8_000;
+const RECOVERY_BUDGET_EXHAUSTED_CODE = "detective_vote_recovery_budget_exhausted";
 
 const defaultSleep = (milliseconds) => new Promise((resolve) => setTimeout(resolve, milliseconds));
+const defaultMonotonicNow = () => (
+  typeof performance !== "undefined" && typeof performance.now === "function"
+    ? performance.now()
+    : Date.now()
+);
 
 function clean(value) {
   return String(value ?? "").trim();
@@ -72,6 +79,28 @@ function retryDelayMilliseconds(attempt) {
     RETRY_DELAY_CAP_MILLISECONDS,
     RETRY_INITIAL_DELAY_MILLISECONDS * (2 ** Math.max(0, attempt)),
   );
+}
+
+function recoveryBudgetMilliseconds(value) {
+  const requested = Number(value);
+  if (!Number.isFinite(requested) || requested <= 0) {
+    return DETECTIVE_VOTE_RETRY_BUDGET_MILLISECONDS;
+  }
+  return Math.min(DETECTIVE_VOTE_RETRY_BUDGET_MILLISECONDS, requested);
+}
+
+function recoveryBudgetExhaustedError(cause) {
+  return Object.assign(new Error("Detective vote confirmation is still pending"), {
+    name: "DetectiveVoteRecoveryBudgetError",
+    status: 408,
+    code: RECOVERY_BUDGET_EXHAUSTED_CODE,
+    retryable: true,
+    cause,
+  });
+}
+
+export function isDetectiveVoteRecoveryBudgetExhausted(error) {
+  return normalized(error?.code) === RECOVERY_BUDGET_EXHAUSTED_CODE;
 }
 
 export function isRetryableDetectiveVoteCastConflict(action, error) {
@@ -177,6 +206,7 @@ function authoritativeResolution(initialRoom, room, actorEmail, targetEmail, now
 /**
  * Recovers one exact immutable detective cast after a typed lifecycle/CAS 409.
  * Every retry is preceded by an authoritative same-room/same-match refresh.
+ * Refreshes, waits, and casts share one hard two-second client-side budget.
  */
 export async function recoverDetectiveVoteCastConflict({
   action,
@@ -187,8 +217,10 @@ export async function recoverDetectiveVoteCastConflict({
   refreshRoom,
   castVote,
   now = () => Date.now(),
+  monotonicNow = defaultMonotonicNow,
   sleep = defaultSleep,
   maxAttempts = DETECTIVE_VOTE_RETRY_MAX_ATTEMPTS,
+  budgetMilliseconds = DETECTIVE_VOTE_RETRY_BUDGET_MILLISECONDS,
 }) {
   if (
     !isRetryableDetectiveVoteCastConflict(action, error)
@@ -208,9 +240,47 @@ export async function recoverDetectiveVoteCastConflict({
   const expectedVoteRoundID = clean(room.detective_vote_round_id);
   const originalTargetEmail = targetEmail;
   let lastError = error;
+  const recoveryDeadline = monotonicNow() + recoveryBudgetMilliseconds(budgetMilliseconds);
+
+  const runWithinBudget = async (operation) => {
+    const remainingMilliseconds = recoveryDeadline - monotonicNow();
+    if (remainingMilliseconds <= 0) {
+      throw recoveryBudgetExhaustedError(lastError);
+    }
+
+    let timeoutHandle = null;
+    try {
+      return await Promise.race([
+        Promise.resolve().then(operation),
+        new Promise((_, reject) => {
+          timeoutHandle = setTimeout(
+            () => reject(recoveryBudgetExhaustedError(lastError)),
+            Math.max(0, Math.floor(remainingMilliseconds)),
+          );
+        }),
+      ]);
+    } finally {
+      if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+    }
+  };
+
+  const sleepWithinBudget = async (requestedMilliseconds) => {
+    const remainingMilliseconds = recoveryDeadline - monotonicNow();
+    if (remainingMilliseconds <= 0) {
+      throw recoveryBudgetExhaustedError(lastError);
+    }
+    const boundedDelay = Math.min(requestedMilliseconds, remainingMilliseconds);
+    await runWithinBudget(() => sleep(boundedDelay));
+    if (
+      boundedDelay < requestedMilliseconds
+      || recoveryDeadline - monotonicNow() <= 0
+    ) {
+      throw recoveryBudgetExhaustedError(lastError);
+    }
+  };
 
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    const refreshed = await refreshRoom(roomID);
+    const refreshed = await runWithinBudget(() => refreshRoom(roomID));
     const resolution = authoritativeResolution(
       room,
       refreshed,
@@ -223,19 +293,19 @@ export async function recoverDetectiveVoteCastConflict({
 
     if (resolution === "wait") {
       if (attempt < attempts - 1) {
-        await sleep(retryDelayMilliseconds(attempt));
+        await sleepWithinBudget(retryDelayMilliseconds(attempt));
       }
       continue;
     }
 
-    await sleep(retryDelayMilliseconds(attempt));
+    await sleepWithinBudget(retryDelayMilliseconds(attempt));
     let castResult;
     try {
-      castResult = await castVote({
+      castResult = await runWithinBudget(() => castVote({
         roomId: roomID,
         targetEmail: originalTargetEmail,
         expectedVoteRoundID,
-      });
+      }));
     } catch (castError) {
       if (
         isRetryableDetectiveVoteCastConflict(action, castError)

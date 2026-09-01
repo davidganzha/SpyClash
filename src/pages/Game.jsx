@@ -26,6 +26,7 @@ import {
   expiredRoomFinalizationKey,
 } from "@/lib/expiredRoomFinalizer";
 import {
+  isDetectiveVoteRecoveryBudgetExhausted,
   isRetryableDetectiveVoteCastConflict,
   recoverDetectiveVoteCastConflict,
 } from "@/lib/detectiveVoteRetry";
@@ -384,6 +385,12 @@ export default function Game() {
             return recovered;
           }
         } catch (recoveryError) {
+          if (isDetectiveVoteRecoveryBudgetExhausted(recoveryError)) {
+            // The mutation may still commit after the client-side deadline.
+            // Release the global action lock and let realtime/polling adopt the
+            // authoritative vote instead of blindly replaying an unknown write.
+            return roomRef.current?.id === currentRoom.id ? roomRef.current : null;
+          }
           visibleError = recoveryError;
         }
       }

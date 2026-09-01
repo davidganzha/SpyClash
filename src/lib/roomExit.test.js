@@ -71,3 +71,49 @@ test("failed server cleanup keeps the room suppressed for a later retry", async 
   clearPendingRoomExit("room-1", storage);
   assert.equal(pendingRoomExitId(storage), null);
 });
+
+test("authoritative room absence completes pending local cleanup", async () => {
+  for (const status of [403, 404]) {
+    const storage = memoryStorage({ spy_active_room_id: "room-1" });
+    const completed = await exitRoomImmediately({
+      roomId: "room-1",
+      storage,
+      navigateHome: () => {},
+      leaveRoom: async () => {
+        throw Object.assign(new Error("already gone"), { status });
+      },
+    });
+
+    assert.equal(completed, true);
+    assert.equal(pendingRoomExitId(storage), null);
+  }
+});
+
+test("a pending local-first exit can retry the same authoritative cleanup", async () => {
+  const storage = memoryStorage({ spy_active_room_id: "room-1" });
+  let leaveAttempts = 0;
+
+  const firstAttempt = await exitRoomImmediately({
+    roomId: "room-1",
+    storage,
+    navigateHome: () => {},
+    leaveRoom: async () => {
+      leaveAttempts += 1;
+      throw new Error("offline");
+    },
+  });
+  assert.equal(firstAttempt, false);
+  assert.equal(pendingRoomExitId(storage), "room-1");
+
+  const retry = await exitRoomImmediately({
+    roomId: "room-1",
+    storage,
+    navigateHome: () => {},
+    leaveRoom: async () => {
+      leaveAttempts += 1;
+    },
+  });
+  assert.equal(retry, true);
+  assert.equal(leaveAttempts, 2);
+  assert.equal(pendingRoomExitId(storage), null);
+});

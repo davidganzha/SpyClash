@@ -2,7 +2,9 @@ import assert from "node:assert/strict";
 import test from "node:test";
 
 import {
+  DETECTIVE_VOTE_RETRY_BUDGET_MILLISECONDS,
   DETECTIVE_VOTE_RETRY_MAX_ATTEMPTS,
+  isDetectiveVoteRecoveryBudgetExhausted,
   recoverDetectiveVoteCastConflict,
 } from "./detectiveVoteRetry.js";
 
@@ -233,13 +235,20 @@ test("pending terminal with the exact vote replays recovery until finished", asy
   assert.deepEqual(sleeps, [250]);
 });
 
-test("active absent vote retries the same immutable cast with capped exhaustion", async () => {
+test("the common two-second budget caps immutable cast recovery", async () => {
+  assert.equal(DETECTIVE_VOTE_RETRY_BUDGET_MILLISECONDS, 2_000);
   const conflict = retryable("cas_contention");
   const sleeps = [];
   const payloads = [];
+  let elapsedMilliseconds = 0;
   const scoped = input({
     maxAttempts: 99,
-    sleep: async (milliseconds) => sleeps.push(milliseconds),
+    budgetMilliseconds: DETECTIVE_VOTE_RETRY_BUDGET_MILLISECONDS * 5,
+    monotonicNow: () => elapsedMilliseconds,
+    sleep: async (milliseconds) => {
+      sleeps.push(milliseconds);
+      elapsedMilliseconds += milliseconds;
+    },
     castVote: async (payload) => {
       payloads.push(payload);
       throw conflict;
@@ -248,15 +257,30 @@ test("active absent vote retries the same immutable cast with capped exhaustion"
 
   await assert.rejects(
     recoverDetectiveVoteCastConflict(scoped),
-    (error) => error === conflict,
+    (error) => isDetectiveVoteRecoveryBudgetExhausted(error)
+      && error.cause === conflict,
   );
-  assert.equal(payloads.length, DETECTIVE_VOTE_RETRY_MAX_ATTEMPTS);
-  assert.deepEqual(payloads, Array(DETECTIVE_VOTE_RETRY_MAX_ATTEMPTS).fill({
+  assert.ok(payloads.length < DETECTIVE_VOTE_RETRY_MAX_ATTEMPTS);
+  assert.deepEqual(payloads, Array(payloads.length).fill({
     roomId: "room-1",
     targetEmail: target,
     expectedVoteRoundID: "round-a",
   }));
-  assert.deepEqual(sleeps, [250, 500, 1_000, 2_000, 4_000, 8_000, 8_000, 8_000]);
+  assert.deepEqual(sleeps, [250, 500, 1_000, 250]);
+  assert.equal(elapsedMilliseconds, DETECTIVE_VOTE_RETRY_BUDGET_MILLISECONDS);
+});
+
+test("a hung authoritative refresh cannot hold vote recovery past its budget", async () => {
+  const scoped = input({
+    budgetMilliseconds: 20,
+    refreshRoom: () => new Promise(() => {}),
+  });
+
+  await assert.rejects(
+    recoverDetectiveVoteCastConflict(scoped),
+    (error) => isDetectiveVoteRecoveryBudgetExhausted(error)
+      && error.cause === scoped.error,
+  );
 });
 
 test("nonretryable cast failure is never hidden", async () => {

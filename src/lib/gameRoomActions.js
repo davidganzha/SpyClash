@@ -61,6 +61,7 @@ export async function performGameRoomAction(body, runtime = {}) {
       invoke: runtime.invoke
         || ((payload) => base44.functions.invoke("gameRoomAction", payload)),
       request: runtime.fetch || fetch,
+      deadlineMilliseconds: runtime.deadlineMilliseconds,
     });
   } catch (error) {
     throw new GameRoomActionError(

@@ -45,6 +45,7 @@ import {
 } from "@/lib/lobbySync";
 import { shouldAcceptOnlineRoomSnapshot } from "@/lib/onlineGamePresentation";
 import { createQuestionTurnOrder, questionPairForStep } from "@/lib/questionTurnOrder";
+import { exitRoomImmediately } from "@/lib/roomExit";
 import {
   isClientUpdateRequiredError,
   isAllowedSpyCount,
@@ -150,6 +151,7 @@ export default function Room() {
   const scrollReturnRef = useRef(null);
   const lockTimerRef = useRef(null);
   const rouletteCompletionKeyRef = useRef(null);
+  const leavingRef = useRef(false);
   const roomRef = useRef(null);
   const userRef = useRef(null);
   const roomScopeGenerationRef = useRef(0);
@@ -361,6 +363,7 @@ export default function Room() {
     lobbyDraftVersionRef.current += 1;
     themeInputEditingRef.current = { active: false, dirty: false };
     rouletteCompletionKeyRef.current = null;
+    leavingRef.current = false;
     setRoom(null);
     setUser(null);
     setStarting(false);
@@ -980,15 +983,30 @@ export default function Room() {
     }
   };
 
-  const handleLeave = async () => {
-    const scope = captureRoomScope();
+  const handleLeave = () => {
     const sourceRoom = roomRef.current;
-    if (!sourceRoom || !userRef.current || !isRoomScopeCurrent(scope)) return;
-    await leaveGameRoom(sourceRoom.id);
-    if (!isRoomScopeCurrent(scope)) return;
-    localStorage.removeItem("spy_active_room_id");
-    localStorage.setItem("spy_return_to_online", "1");
-    navigate(createPageUrl("Home"));
+    if (!sourceRoom || !userRef.current || leavingRef.current) return;
+    leavingRef.current = true;
+    roomScopeGenerationRef.current += 1;
+    try {
+      unsubRef.current?.();
+    } catch {
+      // Local navigation must not depend on realtime cleanup.
+    }
+    unsubRef.current = null;
+    lobbySyncControllerRef.current?.dispose();
+    void exitRoomImmediately({
+      roomId: sourceRoom.id,
+      leaveRoom: leaveGameRoom,
+      navigateHome: () => {
+        try {
+          localStorage.setItem("spy_return_to_online", "1");
+        } catch {
+          // Navigation remains available when storage is unavailable.
+        }
+        navigate(createPageUrl("Home"), { replace: true });
+      },
+    });
   };
 
   const copyCode = () => {

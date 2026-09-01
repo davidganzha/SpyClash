@@ -14,6 +14,11 @@ function normalizedRoomId(roomId) {
   return String(roomId ?? "").trim();
 }
 
+function confirmsRoomExit(error) {
+  const status = Number(error?.status || error?.response?.status);
+  return status === 403 || status === 404;
+}
+
 export function pendingRoomExitId(storage = undefined) {
   try {
     return normalizedRoomId(
@@ -72,5 +77,9 @@ export function exitRoomImmediately({
       clearPendingRoomExit(normalized, storage);
       return true;
     })
-    .catch(() => false);
+    .catch((error) => {
+      if (!confirmsRoomExit(error)) return false;
+      clearPendingRoomExit(normalized, storage);
+      return true;
+    });
 }

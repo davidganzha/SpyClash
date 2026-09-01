@@ -27,6 +27,62 @@ function normalizedFailure(error) {
   });
 }
 
+export const GAME_ROOM_READ_DEADLINE_MILLISECONDS = 3_000;
+
+function normalizedDeadlineMilliseconds(value) {
+  const milliseconds = Number(value);
+  return Number.isFinite(milliseconds) && milliseconds > 0
+    ? milliseconds
+    : null;
+}
+
+export function gameRoomActionDeadlineMilliseconds(body, override = undefined) {
+  if (override !== undefined) return normalizedDeadlineMilliseconds(override);
+  return String(body?.action || "").trim() === "get_room"
+    ? GAME_ROOM_READ_DEADLINE_MILLISECONDS
+    : null;
+}
+
+function actionDeadlineError(body) {
+  const isRoomRead = String(body?.action || "").trim() === "get_room";
+  return Object.assign(new Error(
+    isRoomRead ? "Room refresh timed out" : "Room action timed out",
+  ), {
+    name: "GameRoomActionTimeoutError",
+    status: 408,
+    code: isRoomRead ? "room_read_timeout" : "room_action_timeout",
+    retryable: true,
+  });
+}
+
+async function settleBeforeDeadline(operation, {
+  body,
+  deadlineMilliseconds,
+  onTimeout = null,
+}) {
+  const deadline = normalizedDeadlineMilliseconds(deadlineMilliseconds);
+  if (deadline === null) return await operation();
+
+  let timeoutHandle = null;
+  try {
+    return await Promise.race([
+      Promise.resolve().then(operation),
+      new Promise((_, reject) => {
+        timeoutHandle = setTimeout(() => {
+          reject(actionDeadlineError(body));
+          try {
+            onTimeout?.();
+          } catch {
+            // The deadline remains authoritative even if cancellation support fails.
+          }
+        }, deadline);
+      }),
+    ]);
+  } finally {
+    if (timeoutHandle !== null) clearTimeout(timeoutHandle);
+  }
+}
+
 export function isRetryableRoomActionConflict(error) {
   const code = String(error?.code || "").trim().toLowerCase();
   return Number(error?.status) === 409
@@ -41,34 +97,56 @@ export async function dispatchGameRoomAction({
   headers,
   invoke,
   request,
+  deadlineMilliseconds = undefined,
 }) {
+  const actionDeadlineMilliseconds = gameRoomActionDeadlineMilliseconds(
+    body,
+    deadlineMilliseconds,
+  );
   if (!accessToken) {
     try {
-      const result = await invoke(body);
+      const result = await settleBeforeDeadline(
+        () => invoke(body),
+        { body, deadlineMilliseconds: actionDeadlineMilliseconds },
+      );
       return result?.data ?? result;
     } catch (error) {
       throw normalizedFailure(error);
     }
   }
 
-  const response = await request(endpoint, {
-    method: "POST",
-    credentials: "omit",
-    headers,
-    body: JSON.stringify({
-      ...body,
-      access_token: accessToken,
-    }),
-  });
-  const payload = await response.json().catch(() => ({}));
+  const abortController = actionDeadlineMilliseconds !== null
+    && typeof AbortController === "function"
+    ? new AbortController()
+    : null;
+  return await settleBeforeDeadline(
+    async () => {
+      const response = await request(endpoint, {
+        method: "POST",
+        credentials: "omit",
+        headers,
+        body: JSON.stringify({
+          ...body,
+          access_token: accessToken,
+        }),
+        ...(abortController ? { signal: abortController.signal } : {}),
+      });
+      const payload = await response.json().catch(() => ({}));
 
-  if (!response.ok) {
-    throw Object.assign(new Error(payload?.error || "Room action failed"), {
-      status: response.status,
-      code: payload?.code || null,
-      retryable: payload?.retryable === true,
-    });
-  }
+      if (!response.ok) {
+        throw Object.assign(new Error(payload?.error || "Room action failed"), {
+          status: response.status,
+          code: payload?.code || null,
+          retryable: payload?.retryable === true,
+        });
+      }
 
-  return payload;
+      return payload;
+    },
+    {
+      body,
+      deadlineMilliseconds: actionDeadlineMilliseconds,
+      onTimeout: () => abortController?.abort(),
+    },
+  );
 }

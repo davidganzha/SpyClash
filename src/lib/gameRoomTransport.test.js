@@ -3,8 +3,20 @@ import test from "node:test";
 
 import {
   dispatchGameRoomAction,
+  GAME_ROOM_READ_DEADLINE_MILLISECONDS,
+  gameRoomActionDeadlineMilliseconds,
   isRetryableRoomActionConflict,
 } from "./gameRoomTransport.js";
+
+test("only get_room receives the default three-second read deadline", () => {
+  assert.equal(GAME_ROOM_READ_DEADLINE_MILLISECONDS, 3_000);
+  assert.equal(
+    gameRoomActionDeadlineMilliseconds({ action: "get_room" }),
+    GAME_ROOM_READ_DEADLINE_MILLISECONDS,
+  );
+  assert.equal(gameRoomActionDeadlineMilliseconds({ action: "leave_room" }), null);
+  assert.equal(gameRoomActionDeadlineMilliseconds({ action: "get_room" }, 25), 25);
+});
 
 test("cookie or SDK sessions invoke gameRoomAction when no storage token exists", async () => {
   const calls = [];
@@ -117,4 +129,67 @@ test("body-token failures preserve retryability metadata", async () => {
     }),
     (error) => isRetryableRoomActionConflict(error),
   );
+});
+
+test("a hung SDK get_room call fails at its read deadline", async () => {
+  await assert.rejects(
+    dispatchGameRoomAction({
+      body: { action: "get_room", room_id: "room-1" },
+      accessToken: null,
+      endpoint: "/unused",
+      headers: {},
+      invoke: async () => new Promise(() => {}),
+      request: async () => null,
+      deadlineMilliseconds: 20,
+    }),
+    (error) => error.status === 408
+      && error.code === "room_read_timeout"
+      && error.retryable === true,
+  );
+});
+
+test("a hung body-token get_room request is aborted at its read deadline", async () => {
+  let requestSignal = null;
+  await assert.rejects(
+    dispatchGameRoomAction({
+      body: { action: "get_room", room_id: "room-1" },
+      accessToken: "token-123",
+      endpoint: "/functions/gameRoomAction",
+      headers: {},
+      invoke: async () => null,
+      request: async (_url, options) => {
+        requestSignal = options.signal;
+        return new Promise(() => {});
+      },
+      deadlineMilliseconds: 20,
+    }),
+    (error) => error.status === 408
+      && error.code === "room_read_timeout",
+  );
+  assert.equal(requestSignal?.aborted, true);
+});
+
+test("the get_room deadline also bounds a stalled response body", async () => {
+  let requestSignal = null;
+  await assert.rejects(
+    dispatchGameRoomAction({
+      body: { action: "get_room", room_id: "room-1" },
+      accessToken: "token-123",
+      endpoint: "/functions/gameRoomAction",
+      headers: {},
+      invoke: async () => null,
+      request: async (_url, options) => {
+        requestSignal = options.signal;
+        return {
+          ok: true,
+          status: 200,
+          json: async () => new Promise(() => {}),
+        };
+      },
+      deadlineMilliseconds: 20,
+    }),
+    (error) => error.status === 408
+      && error.code === "room_read_timeout",
+  );
+  assert.equal(requestSignal?.aborted, true);
 });
