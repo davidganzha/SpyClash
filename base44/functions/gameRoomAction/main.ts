@@ -78,6 +78,10 @@ import {
 } from "./request-auth.ts";
 import { storedRoomParticipantUserIDs } from "./room-participant-identity.ts";
 import { commitGamePushEvents, enqueueGamePushEvents } from "./push-events.ts";
+import {
+  createTerminalPhaseTiming,
+  spyGuessResponseTiming,
+} from "./terminal-timing.ts";
 import { nextRoundNumber } from "./game-round.ts";
 import {
   internalPushSecret,
@@ -733,112 +737,145 @@ async function claimTerminalIntent(
 }
 
 async function finishRoom(base44, room, winner, terminalPatch = {}) {
-  assertServerRankedFinishSource(room);
-  const claimed = await claimTerminalIntent(
-    base44,
-    room,
-    winner,
-    terminalPatch,
-  );
-  const persistedPatch = terminalPatchFromIntent(claimed.intent);
-  const finishedPausePatch = finishGamePauseTransitionPatch(
-    claimed.room,
-    claimed.intent.decided_at,
-  );
-  const finishedEventID = `game-finished:${clean(claimed.intent.match_id)}`;
-  await enqueueGamePushEvents({
-    base44,
-    room: claimed.room,
-    eventType: "game_finished",
-    sourceEventID: finishedEventID,
-    matchID: clean(claimed.intent.match_id),
-    persist: async (writer) => {
-      await assertRoomPersistenceBoundary(base44);
-      return await writer();
-    },
-  });
-  const terminal = {
-    ...claimed.room,
-    ...persistedPatch,
-    ...finishedPausePatch,
-    status: "finished",
-    winner: claimed.intent.winner,
-    detective_vote_round_id: "",
-    ready_players: [],
-    game_finished_event_id: finishedEventID,
-  };
-  // The immutable CAS-claimed terminal intent is persisted first. A retry can
-  // only reconcile that same winner/payload, so history and room state cannot
-  // diverge even if either write phase is interrupted.
-  await archiveRoomResult(base44, terminal, claimed.intent.winner);
-  const finished = await updateRoomWithRetry(
-    base44,
-    claimed.room,
-    (latest) => {
-      const intent = terminalIntentFromRoom(latest);
-      if (!intent || intent.match_id !== claimed.intent.match_id) {
-        throw Object.assign(
-          new Error("The terminal decision changed during reconciliation."),
-          { status: 409, code: "terminal_intent_changed" },
-        );
-      }
-      const pausePatch = finishGamePauseTransitionPatch(
-        latest,
-        intent.decided_at,
-      );
-      if (normalizedStatus(latest) === "finished") {
-        if (clean(latest.winner) !== intent.winner) {
+  const terminalTiming = createTerminalPhaseTiming();
+  let terminalOutcome = "failed";
+  let timingRoom = room;
+
+  try {
+    terminalTiming.begin("terminal_claim");
+    assertServerRankedFinishSource(room);
+    const claimed = await claimTerminalIntent(
+      base44,
+      room,
+      winner,
+      terminalPatch,
+    );
+    timingRoom = claimed.room;
+    terminalTiming.complete("terminal_claim");
+    const persistedPatch = terminalPatchFromIntent(claimed.intent);
+    const finishedPausePatch = finishGamePauseTransitionPatch(
+      claimed.room,
+      claimed.intent.decided_at,
+    );
+    const finishedEventID = `game-finished:${clean(claimed.intent.match_id)}`;
+
+    terminalTiming.begin("push_enqueue");
+    await enqueueGamePushEvents({
+      base44,
+      room: claimed.room,
+      eventType: "game_finished",
+      sourceEventID: finishedEventID,
+      matchID: clean(claimed.intent.match_id),
+      persist: async (writer) => {
+        await assertRoomPersistenceBoundary(base44);
+        return await writer();
+      },
+    });
+    terminalTiming.complete("push_enqueue");
+    const terminal = {
+      ...claimed.room,
+      ...persistedPatch,
+      ...finishedPausePatch,
+      status: "finished",
+      winner: claimed.intent.winner,
+      detective_vote_round_id: "",
+      ready_players: [],
+      game_finished_event_id: finishedEventID,
+    };
+    // The immutable CAS-claimed terminal intent is persisted first. A retry can
+    // only reconcile that same winner/payload, so history and room state cannot
+    // diverge even if either write phase is interrupted.
+    terminalTiming.begin("history_archive");
+    await archiveRoomResult(base44, terminal, claimed.intent.winner);
+    terminalTiming.complete("history_archive");
+
+    terminalTiming.begin("room_commit");
+    const finished = await updateRoomWithRetry(
+      base44,
+      claimed.room,
+      (latest) => {
+        const intent = terminalIntentFromRoom(latest);
+        if (!intent || intent.match_id !== claimed.intent.match_id) {
           throw Object.assign(
-            new Error("The finished room conflicts with its terminal intent."),
-            { status: 409, code: "terminal_state_conflict" },
+            new Error("The terminal decision changed during reconciliation."),
+            { status: 409, code: "terminal_intent_changed" },
           );
         }
+        const pausePatch = finishGamePauseTransitionPatch(
+          latest,
+          intent.decided_at,
+        );
+        if (normalizedStatus(latest) === "finished") {
+          if (clean(latest.winner) !== intent.winner) {
+            throw Object.assign(
+              new Error(
+                "The finished room conflicts with its terminal intent.",
+              ),
+              { status: 409, code: "terminal_state_conflict" },
+            );
+          }
+          return {
+            ...pausePatch,
+            ...(detectiveVoteRoundID(latest)
+              ? { detective_vote_round_id: "" }
+              : {}),
+            ...(readyPlayers(latest).length ? { ready_players: [] } : {}),
+            ...(clean(latest.game_finished_event_id) === finishedEventID
+              ? {}
+              : { game_finished_event_id: finishedEventID }),
+          };
+        }
         return {
+          ...terminalPatchFromIntent(intent),
           ...pausePatch,
-          ...(detectiveVoteRoundID(latest)
-            ? { detective_vote_round_id: "" }
-            : {}),
-          ...(readyPlayers(latest).length ? { ready_players: [] } : {}),
-          ...(clean(latest.game_finished_event_id) === finishedEventID
-            ? {}
-            : { game_finished_event_id: finishedEventID }),
+          status: "finished",
+          winner: intent.winner,
+          detective_vote_round_id: "",
+          ready_players: [],
+          game_finished_event_id: finishedEventID,
         };
-      }
-      return {
-        ...terminalPatchFromIntent(intent),
-        ...pausePatch,
-        status: "finished",
-        winner: intent.winner,
-        detective_vote_round_id: "",
-        ready_players: [],
-        game_finished_event_id: finishedEventID,
-      };
-    },
-    (latest) =>
-      normalizedStatus(latest) === "finished" &&
-      clean(latest.winner) === claimed.intent.winner,
-    6,
-    { allowPendingTerminal: true },
-  );
-  const committed = await commitGamePushEvents({
-    store: base44.asServiceRole.entities.PushNotificationEvent,
-    persist: async (writer) => {
-      await assertRoomPersistenceBoundary(base44);
-      return await writer();
-    },
-    eventType: "game_finished",
-    sourceEventID: finishedEventID,
-  });
-  const expectedPushRecipients = uniqueStrings([
-    ...(finished.participant_user_ids || []),
-    ...players(finished).map((player) => player.user_id),
-  ]).length;
-  if (committed < expectedPushRecipients) {
-    throw Object.assign(new Error("Game finish push commit failed"), {
-      status: 503,
+      },
+      (latest) =>
+        normalizedStatus(latest) === "finished" &&
+        clean(latest.winner) === claimed.intent.winner,
+      6,
+      { allowPendingTerminal: true },
+    );
+    timingRoom = finished;
+    terminalTiming.complete("room_commit");
+
+    terminalTiming.begin("push_commit");
+    const committed = await commitGamePushEvents({
+      store: base44.asServiceRole.entities.PushNotificationEvent,
+      persist: async (writer) => {
+        await assertRoomPersistenceBoundary(base44);
+        return await writer();
+      },
+      eventType: "game_finished",
+      sourceEventID: finishedEventID,
     });
+    const expectedPushRecipients = uniqueStrings([
+      ...(finished.participant_user_ids || []),
+      ...players(finished).map((player) => player.user_id),
+    ]).length;
+    if (committed < expectedPushRecipients) {
+      throw Object.assign(new Error("Game finish push commit failed"), {
+        status: 503,
+      });
+    }
+    terminalTiming.complete("push_commit");
+    terminalOutcome = "completed";
+    return finished;
+  } finally {
+    try {
+      console.info(
+        "gameRoomAction terminal phase timing",
+        terminalTiming.report(terminalOutcome, players(timingRoom).length),
+      );
+    } catch {
+      // Timing diagnostics must never change the terminal game result.
+    }
   }
-  return finished;
 }
 
 async function createRoom(base44, user, body) {
@@ -2860,8 +2897,43 @@ function lifecycleHTTPStatus(error) {
 }
 
 Deno.serve(async (req) => {
+  const requestStartedAt = performance.now();
   let actionForLog = null;
   let roomIDForLog = null;
+  let actionStartedAt = null;
+  let actionCompletedAt = null;
+  let postCommitSideEffectsStartedAt = null;
+  let postCommitSideEffectsMS = 0;
+  const logSpyGuessResponseTiming = (outcome, responseReadyAt) => {
+    if (actionForLog !== "submit_spy_guess") return;
+    const completedAt = actionCompletedAt ?? responseReadyAt;
+    const startedAt = actionStartedAt ?? completedAt;
+    const sideEffectsMS = postCommitSideEffectsStartedAt === null
+      ? postCommitSideEffectsMS
+      : Math.max(
+        0,
+        Math.round(responseReadyAt - postCommitSideEffectsStartedAt),
+      );
+    try {
+      console.info(
+        "gameRoomAction spy-guess response timing",
+        spyGuessResponseTiming({
+          requestStartedAt,
+          actionStartedAt: startedAt,
+          actionCompletedAt: completedAt,
+          responseReadyAt,
+          postCommitSideEffectsMS: sideEffectsMS,
+          outcome,
+        }),
+      );
+    } catch {
+      // Response diagnostics must never change the gameplay response.
+    }
+  };
+  const respondWithSpyGuessTiming = (response, outcome) => {
+    logSpyGuessResponseTiming(outcome, performance.now());
+    return response;
+  };
   try {
     if (req.method !== "POST") {
       return jsonError("Method not allowed", 405);
@@ -3020,7 +3092,12 @@ Deno.serve(async (req) => {
     if (action === "leave_room" && roomLeaveAlreadyComplete(room, user.email)) {
       return Response.json({ success: true });
     }
-    if (!room) return jsonError("Room not found", 404);
+    if (!room) {
+      return respondWithSpyGuessTiming(
+        jsonError("Room not found", 404),
+        "failed",
+      );
+    }
     if (
       action !== "join_room" && action !== "leave_room" &&
       roomHasDepartedPlayer(room, user.email)
@@ -3102,7 +3179,7 @@ Deno.serve(async (req) => {
       user,
       actionBody,
     ) && canUseFastRoomAction(action, room, user);
-    const startedAt = performance.now();
+    actionStartedAt = performance.now();
     let readOnlyCastLeaseRecovery = false;
     let result;
     if (fastRoomAction) {
@@ -3279,11 +3356,12 @@ Deno.serve(async (req) => {
         });
       });
     }
+    actionCompletedAt = performance.now();
     if (fastRoomAction) {
       console.info("gameRoomAction fast-path timing", {
         action,
         room_id: clean(room.id),
-        duration_ms: Math.round(performance.now() - startedAt),
+        duration_ms: Math.round(performance.now() - actionStartedAt),
         room_revision: roomWriteRevision(result),
       });
     }
@@ -3291,14 +3369,28 @@ Deno.serve(async (req) => {
       // Finish push repair and ActivityKit delivery must complete after the
       // participant room leases are released and before realtime wakes every
       // client to unregister its token against the same account lease.
+      const sideEffectsStartedAt = performance.now();
+      postCommitSideEffectsStartedAt = sideEffectsStartedAt;
       result = await dispatchRoomSideEffectsAfterLeases(
         base44,
         result,
         action,
       );
-      if (!result) return jsonError("Room not found", 404);
+      postCommitSideEffectsMS = Math.round(
+        performance.now() - sideEffectsStartedAt,
+      );
+      postCommitSideEffectsStartedAt = null;
+      if (!result) {
+        return respondWithSpyGuessTiming(
+          jsonError("Room not found", 404),
+          "failed",
+        );
+      }
     }
-    return Response.json(result?.id ? roomForClient(result, user) : result);
+    return respondWithSpyGuessTiming(
+      Response.json(result?.id ? roomForClient(result, user) : result),
+      "completed",
+    );
   } catch (error) {
     const status = lifecycleHTTPStatus(error);
     console.error("gameRoomAction error", {
@@ -3307,10 +3399,12 @@ Deno.serve(async (req) => {
       code: safeLogLabel(error?.code),
       status,
     });
-    return jsonError(
+    const response = jsonError(
       error?.message || "Internal error",
       status,
       { code: error?.code, retryable: error?.retryable },
     );
+    logSpyGuessResponseTiming("failed", performance.now());
+    return response;
   }
 });
