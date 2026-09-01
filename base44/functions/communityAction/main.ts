@@ -41,6 +41,10 @@ import {
 } from "./base44-context.ts";
 import { communityErrorResponse } from "./error-response.ts";
 import { filterAllFriendships } from "./friendship-pagination.ts";
+import {
+  projectFriendshipStateForActor,
+  resolveFriendshipPair,
+} from "./friendship-pair-policy.ts";
 import { loadIncomingRoomInvites } from "./room-invite-pagination.ts";
 import { withCurrentProfileWriteLease } from "./profile-write-lifecycle.ts";
 import { fanoutProfileUpdate } from "./profile-signal.ts";
@@ -250,17 +254,11 @@ async function relationshipBetween(
   firstID: string,
   secondID: string,
 ) {
-  const outgoing = await base44.asServiceRole.entities.Friendship.filter({
-    requester_id: firstID,
-    addressee_id: secondID,
-  });
-  if (outgoing?.[0]) return outgoing[0];
-
-  const incoming = await base44.asServiceRole.entities.Friendship.filter({
-    requester_id: secondID,
-    addressee_id: firstID,
-  });
-  return incoming?.[0] || null;
+  return resolveFriendshipPair(
+    await relationshipsBetween(base44, firstID, secondID),
+    firstID,
+    secondID,
+  ).representative;
 }
 
 async function relationshipsBetween(
@@ -327,21 +325,13 @@ async function acceptedFriendProfiles(
     userID === viewerUserID ? targetRelationships : viewerRelationships,
     viewerUserID,
   );
-  const accepted = targetRelationships
-    .filter((friendship) => friendship.status === "accepted")
-    .filter((friendship) => {
-      const otherID = friendship.requester_id === userID
-        ? friendship.addressee_id
-        : friendship.requester_id;
-      return !viewerBlocked.has(clean(otherID));
-    })
+  const accepted = projectFriendshipStateForActor(targetRelationships, userID)
+    .friends
+    .filter((pair) => !viewerBlocked.has(pair.counterpartID))
     .slice(0, PROFILE_FRIEND_LIMIT);
 
-  const profiles = await Promise.all(accepted.map(async (friendship) => {
-    const otherID = friendship.requester_id === userID
-      ? friendship.addressee_id
-      : friendship.requester_id;
-    const user = await findUserByID(base44, otherID);
+  const profiles = await Promise.all(accepted.map(async (pair) => {
+    const user = await findUserByID(base44, pair.counterpartID);
     return user ? publicProfile(await ensureUserProfile(base44, user)) : null;
   }));
   return profiles.filter(Boolean);
@@ -481,16 +471,10 @@ async function buildState(base44: any, rawUser: Entity) {
     relationshipsPromise,
     incomingRoomInvites(base44, user, relationshipsPromise),
   ]);
-
-  const counterpartIDs = [
-    ...new Set(
-      all.map((friendship) =>
-        friendship.requester_id === user.id
-          ? clean(friendship.addressee_id)
-          : clean(friendship.requester_id)
-      ).filter(Boolean),
-    ),
-  ];
+  const relationshipProjection = projectFriendshipStateForActor(all, user.id);
+  const counterpartIDs = relationshipProjection.pairs.map((pair) =>
+    pair.counterpartID
+  );
   const profileEntries: Array<readonly [string, Entity | null]> = [];
   for (
     let offset = 0;
@@ -517,11 +501,13 @@ async function buildState(base44: any, rawUser: Entity) {
   const incoming = [];
   const outgoing = [];
   const blocked = [];
-  for (const friendship of all) {
-    const otherID = friendship.requester_id === user.id
-      ? clean(friendship.addressee_id)
-      : clean(friendship.requester_id);
-    const counterpart = profileCache.get(otherID);
+  for (const pair of relationshipProjection.pairs) {
+    const friendship = !pair.hasBlock && !pair.hasAccepted &&
+        pair.hasPendingIncoming
+      ? pair.pendingIncoming[0]
+      : pair.representative;
+    if (!friendship || pair.hasForeignBlock) continue;
+    const counterpart = profileCache.get(pair.counterpartID);
     if (!counterpart) continue;
 
     const record = {
@@ -530,13 +516,10 @@ async function buildState(base44: any, rawUser: Entity) {
       direction: friendship.requester_id === user.id ? "outgoing" : "incoming",
       profile: publicProfile(counterpart),
     };
-    if (friendship.status === "blocked") {
-      if (blockedByUserID(friendship) === user.id) blocked.push(record);
-    } else if (friendship.status === "accepted") friends.push(record);
-    else if (
-      friendship.status === "pending" && record.direction === "incoming"
-    ) incoming.push(record);
-    else if (friendship.status === "pending") outgoing.push(record);
+    if (pair.hasBlock) blocked.push(record);
+    else if (pair.hasAccepted) friends.push(record);
+    else if (pair.hasPendingIncoming) incoming.push(record);
+    else if (pair.hasPendingOutgoing) outgoing.push(record);
   }
 
   return {
@@ -1334,19 +1317,21 @@ Deno.serve(async (req) => {
             ensureUserProfile(base44, freshCurrent, persist),
             ensureUserProfile(base44, freshTarget, persist),
           ]);
-          const existing = await relationshipBetween(
-            base44,
+          const pair = resolveFriendshipPair(
+            await relationshipsBetween(
+              base44,
+              current.id,
+              target.id,
+            ),
             current.id,
             target.id,
           );
-          if (
-            existing?.status === "blocked" &&
-            blockedByUserID(existing) !== current.id
-          ) {
+          if (pair.hasForeignBlock) {
             throw Object.assign(new Error("Interaction unavailable"), {
               status: 403,
             });
           }
+          const existing = pair.representative;
           const now = new Date().toISOString();
           const payload = {
             requester_id: clean(existing?.requester_id) || current.id,
@@ -1364,7 +1349,7 @@ Deno.serve(async (req) => {
           if (existing) {
             await persist(() =>
               base44.asServiceRole.entities.Friendship.update(
-                existing.id,
+                clean(existing.id),
                 payload,
               )
             );
@@ -1375,6 +1360,16 @@ Deno.serve(async (req) => {
                 created_at: now,
               })
             );
+          }
+          if (existing) {
+            for (const redundant of pair.rows) {
+              if (clean(redundant.id) === clean(existing.id)) continue;
+              await persist(() =>
+                base44.asServiceRole.entities.Friendship.delete(
+                  clean(redundant.id),
+                )
+              );
+            }
           }
           await deleteBlockedPairContent({
             profileCommentStore: base44.asServiceRole.entities.ProfileComment,
@@ -1416,6 +1411,35 @@ Deno.serve(async (req) => {
             throw Object.assign(new Error("Relationship cannot be unblocked"), {
               status: 403,
             });
+          }
+          const requesterID = clean(friendship.requester_id);
+          const addresseeID = clean(friendship.addressee_id);
+          const counterpartID = requesterID === current.id
+            ? addresseeID
+            : requesterID;
+          const pair = resolveFriendshipPair(
+            await relationshipsBetween(
+              base44,
+              current.id,
+              counterpartID,
+            ),
+            current.id,
+            counterpartID,
+          );
+          if (pair.hasForeignBlock || !pair.hasOwnBlock) {
+            throw Object.assign(new Error("Relationship cannot be unblocked"), {
+              status: 403,
+            });
+          }
+          // Keep the explicitly selected own-block row until every stale
+          // duplicate is gone, so an interrupted cleanup remains fail-closed.
+          for (const redundant of pair.rows) {
+            if (clean(redundant.id) === clean(friendship.id)) continue;
+            await persist(() =>
+              base44.asServiceRole.entities.Friendship.delete(
+                clean(redundant.id),
+              )
+            );
           }
           await persist(() =>
             base44.asServiceRole.entities.Friendship.delete(friendship.id)
@@ -1531,21 +1555,50 @@ Deno.serve(async (req) => {
         initialFriendship.addressee_id,
       ],
       action: async ({ persist }) => {
-        const friendship = await findEntityByID(
+        const selectedFriendship = await findEntityByID(
           base44,
           "Friendship",
           friendshipID,
         );
-        if (!friendship || !isParticipant(friendship, current.id)) {
+        if (
+          !selectedFriendship ||
+          !isParticipant(selectedFriendship, current.id)
+        ) {
           throw Object.assign(new Error("Relationship not found"), {
             status: 404,
           });
         }
-        if (friendship.status === "blocked") {
+        const requesterID = clean(selectedFriendship.requester_id);
+        const addresseeID = clean(selectedFriendship.addressee_id);
+        const counterpartID = requesterID === current.id
+          ? addresseeID
+          : requesterID;
+        const pair = resolveFriendshipPair(
+          await relationshipsBetween(
+            base44,
+            current.id,
+            counterpartID,
+          ),
+          current.id,
+          counterpartID,
+        );
+        if (pair.hasBlock) {
           throw Object.assign(new Error("Relationship unavailable"), {
             status: 403,
           });
         }
+        const selectedPairFriendship = pair.rows.find((row) =>
+          clean(row.id) === clean(selectedFriendship.id)
+        );
+        if (!selectedPairFriendship) {
+          throw Object.assign(new Error("Relationship not found"), {
+            status: 503,
+          });
+        }
+        // Row-addressed actions retain the selected direction. In particular,
+        // crossed requests expose an incoming row that must remain acceptable
+        // even though the actor-aware pair representative is outgoing.
+        const friendship = selectedPairFriendship;
         if (
           ["accept", "decline"].includes(action) &&
           (friendship.addressee_id !== current.id ||
@@ -1567,26 +1620,81 @@ Deno.serve(async (req) => {
         if (action === "remove_friend" && friendship.status !== "accepted") {
           throw Object.assign(new Error("Not friends"), { status: 409 });
         }
-        if (["accept", "decline"].includes(action)) {
+        const redundantRows = pair.rows.filter((row) =>
+          clean(row.id) !== clean(friendship.id)
+        );
+        if (action === "accept") {
+          // Keep the selected incoming request pending until every duplicate
+          // is gone. A failed delete can then be retried with the same row id.
+          for (const redundant of redundantRows) {
+            await persist(() =>
+              base44.asServiceRole.entities.Friendship.delete(
+                clean(redundant.id),
+              )
+            );
+          }
           await persist(() =>
-            base44.asServiceRole.entities.Friendship.update(friendship.id, {
-              status: action === "accept" ? "accepted" : "declined",
-              blocked_by_id: null,
-              updated_at: new Date().toISOString(),
-            })
+            base44.asServiceRole.entities.Friendship.update(
+              clean(friendship.id),
+              {
+                status: "accepted",
+                blocked_by_id: null,
+                updated_at: new Date().toISOString(),
+              },
+            )
+          );
+        } else if (action === "decline") {
+          // Leave the effective pending row in place until every duplicate is
+          // removed; an interrupted decline can then be retried safely.
+          for (const redundant of redundantRows) {
+            await persist(() =>
+              base44.asServiceRole.entities.Friendship.delete(
+                clean(redundant.id),
+              )
+            );
+          }
+          await persist(() =>
+            base44.asServiceRole.entities.Friendship.update(
+              clean(friendship.id),
+              {
+                status: "declined",
+                blocked_by_id: null,
+                updated_at: new Date().toISOString(),
+              },
+            )
           );
         } else {
           if (action === "cancel_request") {
-            await cancelCommunityPushEvent({
-              store: base44.asServiceRole.entities.PushNotificationEvent,
-              persist,
-              eventType: "friend_request",
-              sourceEventID: clean(friendship.request_event_id),
-              reason: "friend_request_cancelled",
-            });
+            const sourceEventIDs = [
+              ...new Set(
+                pair.pending.map((row) => clean(row.request_event_id)).filter(
+                  Boolean,
+                ),
+              ),
+            ];
+            for (const sourceEventID of sourceEventIDs) {
+              await cancelCommunityPushEvent({
+                store: base44.asServiceRole.entities.PushNotificationEvent,
+                persist,
+                eventType: "friend_request",
+                sourceEventID,
+                reason: "friend_request_cancelled",
+              });
+            }
+          }
+          // Keep the effective row until last so partial cleanup cannot expose
+          // a weaker duplicate state as the relationship result.
+          for (const redundant of redundantRows) {
+            await persist(() =>
+              base44.asServiceRole.entities.Friendship.delete(
+                clean(redundant.id),
+              )
+            );
           }
           await persist(() =>
-            base44.asServiceRole.entities.Friendship.delete(friendship.id)
+            base44.asServiceRole.entities.Friendship.delete(
+              clean(friendship.id),
+            )
           );
         }
       },
