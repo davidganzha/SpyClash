@@ -44,6 +44,7 @@ import {
   roomScopeMatches,
 } from "@/lib/lobbySync";
 import { shouldAcceptOnlineRoomSnapshot } from "@/lib/onlineGamePresentation";
+import { createQuestionTurnOrder, questionPairForStep } from "@/lib/questionTurnOrder";
 import {
   isClientUpdateRequiredError,
   isAllowedSpyCount,
@@ -905,8 +906,10 @@ export default function Room() {
       setStarting(false);
       return;
     }
-    const firstAskerIdx = Math.floor(Math.random() * players.length);
-    let firstAnswererIdx = (firstAskerIdx + 1) % players.length;
+    const questionTurnOrder = createQuestionTurnOrder(players.length);
+    const firstQuestionPair = questionPairForStep(questionTurnOrder, 0);
+    const firstAskerIdx = firstQuestionPair.askerIndex;
+    const firstAnswererIdx = firstQuestionPair.answererIndex;
     const playerFeedback = players.map((p) => ({ email: p.email, likes: 0, dislikes: 0 }));
     const updateData = {
       status: "playing",

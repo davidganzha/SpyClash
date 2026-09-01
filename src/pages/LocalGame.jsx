@@ -22,6 +22,11 @@ import {
   normalizeSpyCount,
 } from "@/lib/multiSpyRules";
 import { listWordPacks } from "@/lib/wordPackActions";
+import {
+  createQuestionTurnOrder,
+  nextQuestionTurnStep,
+  questionPairForStep,
+} from "@/lib/questionTurnOrder";
 
 const MAX_LOCAL_PLAYERS = 10;
 
@@ -139,8 +144,7 @@ export default function LocalGame() {
   const [spyGuess, setSpyGuess] = useState(null);
   const [showRoulette, setShowRoulette] = useState(false);
   const [rouletteTarget, setRouletteTarget] = useState(null);
-  const [currentAskerIdx, setCurrentAskerIdx] = useState(0);
-  const [currentAnswererIdx, setCurrentAnswererIdx] = useState(1);
+  const [questionTurnStep, setQuestionTurnStep] = useState(0);
   const [showSavePackDialog, setShowSavePackDialog] = useState(false);
   const [associationIdx, setAssociationIdx] = useState(0); // current speaker idx in associations mode
   const [associationRouletteDone, setAssociationRouletteDone] = useState(false);
@@ -336,7 +340,9 @@ export default function LocalGame() {
     const spyIndexSet = new Set(spyIndices);
     const players = names.map((name, i) => ({ name, avatar: playerAvatars[i], isSpy: spyIndexSet.has(i) }));
     const dealOrder = [...Array(names.length).keys()];
-    setGameData({ word: data.word, category: data.category, pool: data.pool, spyIndices, players, dealOrder, gameMode, spiesKnowEachOther });
+    const questionTurnOrder = createQuestionTurnOrder(names.length);
+    setGameData({ word: data.word, category: data.category, pool: data.pool, spyIndices, players, dealOrder, questionTurnOrder, gameMode, spiesKnowEachOther });
+    setQuestionTurnStep(0);
     setCardPhaseIdx(0);
     setRevealed(false);
     setCardsReadCount(0);
@@ -1181,6 +1187,10 @@ export default function LocalGame() {
   }
 
   // Main playing view
+  const questionPair = questionPairForStep(gameData.questionTurnOrder, questionTurnStep);
+  const currentAskerIdx = questionPair?.askerIndex ?? 0;
+  const currentAnswererIdx = questionPair?.answererIndex ?? 1;
+
   return (
     <div style={{ maxWidth: 480, margin: "0 auto", padding: "12px 16px 16px", display: "flex", flexDirection: "column", gap: 10, height: "calc(100dvh - 80px)", boxSizing: "border-box" }}>
       {/* Header */}
@@ -1252,13 +1262,7 @@ export default function LocalGame() {
           <motion.button whileHover={{ scale: 1.01 }} whileTap={{ scale: 0.98 }}
         className="btn-outline"
         onClick={() => {
-          let nextAsker = (currentAskerIdx + 1) % gameData.players.length;
-          let nextAnswerer = (currentAnswererIdx + 1) % gameData.players.length;
-          if (nextAsker === nextAnswerer) {
-            nextAnswerer = (nextAnswerer + 1) % gameData.players.length;
-          }
-          setCurrentAskerIdx(nextAsker);
-          setCurrentAnswererIdx(nextAnswerer);
+          setQuestionTurnStep((step) => nextQuestionTurnStep(gameData.questionTurnOrder, step));
           sounds.click();
         }}
         style={{ width: "100%", fontSize: 10, padding: "10px 0", marginTop: 14, borderRadius: 6, clipPath: "none" }}>
