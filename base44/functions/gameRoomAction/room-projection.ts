@@ -314,9 +314,7 @@ export function projectRoomForClient(
     round_number: Number(room.round_number || 1),
     current_asker_email: clean(room.current_asker_email),
     current_answerer_email: clean(room.current_answerer_email),
-    current_answer: isAssociationState
-      ? clean(room.current_answer)
-      : safeCommunityTextForDisplay(room.current_answer, ""),
+    current_answer: isAssociationState ? clean(room.current_answer) : "",
     current_answer_feedback: room.current_answer_feedback ?? null,
     player_feedback: safeObjectList(room.player_feedback),
     questions_in_round: Number(room.questions_in_round || 0),

@@ -5142,6 +5142,219 @@ final class NavigationSwipeTests: XCTestCase {
     }
 }
 
+final class QuestionTurnOrderPolicyTests: XCTestCase {
+    func testInitialShuffleIsFrozenAcrossMultipleQuestionCyclesWithoutReorderingRoster() throws {
+        let roster = [0, 1, 2, 3]
+        var shuffleCalls = 0
+        let shuffle: ([Int]) -> [Int] = { values in
+            shuffleCalls += 1
+            return Array(values.reversed())
+        }
+        var state = QuestionTurnOrderPolicy.initial(
+            activeIDs: roster,
+            shuffle: shuffle
+        )
+        var pairs: [(Int, Int)] = []
+
+        for _ in 0..<(roster.count * 2) {
+            pairs.append((
+                try XCTUnwrap(state.currentAskerID),
+                try XCTUnwrap(state.currentAnswererID)
+            ))
+            state = QuestionTurnOrderPolicy.advanced(
+                state: state,
+                activeIDs: roster,
+                shuffle: shuffle
+            )
+        }
+
+        XCTAssertEqual(state.order, [3, 2, 1, 0])
+        XCTAssertEqual(
+            pairs.map { "\($0.0)>\($0.1)" },
+            ["3>2", "2>1", "1>0", "0>3", "3>2", "2>1", "1>0", "0>3"]
+        )
+        XCTAssertEqual(shuffleCalls, 1)
+        XCTAssertEqual(roster, [0, 1, 2, 3], "Turn order must not mutate the session roster.")
+    }
+
+    func testMalformedShuffleStillProducesEveryActivePlayerExactlyOnce() {
+        let state = QuestionTurnOrderPolicy.initial(
+            activeIDs: [0, 1, 2, 3, 3],
+            shuffle: { _ in [2, 2, 99] }
+        )
+
+        XCTAssertEqual(state.order, [2, 0, 1, 3])
+        XCTAssertEqual(Set(state.order).count, 4)
+    }
+
+    func testEliminatingAnswererKeepsAskerAndSelectsNextStableSuccessor() {
+        let reconciled = QuestionTurnOrderPolicy.reconciled(
+            state: QuestionTurnOrderState(order: [3, 1, 4, 0, 2], step: 1),
+            activeIDs: [0, 1, 2, 3]
+        )
+
+        XCTAssertEqual(reconciled.order, [3, 1, 0, 2])
+        XCTAssertEqual(reconciled.currentAskerID, 1)
+        XCTAssertEqual(reconciled.currentAnswererID, 0)
+    }
+
+    func testEliminatingAskerPromotesTheirAnswererWithoutSkippingAgain() {
+        let previous = QuestionTurnOrderState(order: [3, 1, 4, 0, 2], step: 1)
+        let reconciled = QuestionTurnOrderPolicy.reconciled(
+            state: previous,
+            activeIDs: [0, 2, 3, 4]
+        )
+        let advancedFromStaleState = QuestionTurnOrderPolicy.advanced(
+            state: previous,
+            activeIDs: [0, 2, 3, 4]
+        )
+
+        XCTAssertEqual(reconciled.order, [3, 4, 0, 2])
+        XCTAssertEqual(reconciled.currentAskerID, 4)
+        XCTAssertEqual(reconciled.currentAnswererID, 0)
+        XCTAssertEqual(advancedFromStaleState, reconciled)
+    }
+
+    func testReconciliationAppendsUnexpectedActivePlayerOnceWithoutReshufflingSurvivors() {
+        let reconciled = QuestionTurnOrderPolicy.reconciled(
+            state: QuestionTurnOrderState(order: [2, 0, 1], step: 2),
+            activeIDs: [0, 1, 2, 3, 3]
+        )
+
+        XCTAssertEqual(reconciled.order, [2, 0, 1, 3])
+        XCTAssertEqual(reconciled.currentAskerID, 1)
+        XCTAssertEqual(reconciled.currentAnswererID, 3)
+    }
+}
+
+final class OnlineQuestionPreviewRoundPolicyTests: XCTestCase {
+    func testEighthAnswerShowsResultsThenContinueAdvancesExactlyOnce() throws {
+        var room = GameRoom.previewRoom(status: "playing")
+        room.questionPhase = "asking"
+        room.questionsInRound = 7
+        room.currentAnswer = nil
+        let roster = room.playersList.map(\.email)
+        let initialAsker = try XCTUnwrap(room.currentAskerEmail).lowercased()
+        let initialAnswerer = try XCTUnwrap(room.currentAnswererEmail).lowercased()
+        let remaining = try XCTUnwrap(
+            roster.map { $0.lowercased() }.first { $0 != initialAsker && $0 != initialAnswerer }
+        )
+        let results = try XCTUnwrap(
+            OnlineQuestionPreviewRoundPolicy.transition(
+                .markAnswerHeard,
+                room: room,
+                shuffle: { Array($0.reversed()) }
+            )
+        )
+
+        XCTAssertEqual(results.onlineRoundPhase, .results)
+        XCTAssertEqual(results.questionsInRound, 7)
+        XCTAssertEqual(results.currentAskerEmail?.lowercased(), initialAsker)
+        XCTAssertEqual(results.currentAnswererEmail?.lowercased(), initialAnswerer)
+
+        let continued = try XCTUnwrap(
+            OnlineQuestionPreviewRoundPolicy.transition(
+                .continueRound,
+                room: results,
+                shuffle: { Array($0.reversed()) }
+            )
+        )
+
+        XCTAssertEqual(continued.onlineRoundPhase, .asking)
+        XCTAssertEqual(continued.questionsInRound, 0)
+        XCTAssertEqual(continued.roundNumber, (room.roundNumber ?? 1) + 1)
+        XCTAssertEqual(continued.currentAskerEmail?.lowercased(), initialAnswerer)
+        XCTAssertEqual(continued.currentAnswererEmail?.lowercased(), remaining)
+        XCTAssertEqual(continued.playersList.map(\.email), roster)
+
+        XCTAssertNil(
+            OnlineQuestionPreviewRoundPolicy.transition(
+                .continueRound,
+                room: continued,
+                shuffle: { Array($0.reversed()) }
+            ),
+            "Continue is valid only while the room is showing results."
+        )
+
+        let nextQuestion = try XCTUnwrap(
+            OnlineQuestionPreviewRoundPolicy.transition(
+                .markAnswerHeard,
+                room: continued,
+                shuffle: { Array($0.reversed()) }
+            )
+        )
+        XCTAssertEqual(nextQuestion.questionsInRound, 1)
+        XCTAssertEqual(nextQuestion.currentAskerEmail?.lowercased(), remaining)
+        XCTAssertEqual(nextQuestion.currentAnswererEmail?.lowercased(), initialAsker)
+    }
+
+    func testPersistedPreviewOrderIsReusedWithoutAnotherShuffle() throws {
+        var room = GameRoom.previewRoom(status: "playing")
+        let emails = room.playersList.map { $0.email.lowercased() }
+        let persistedOrder = [emails[1], emails[0], emails[2]]
+        room.currentAskerEmail = persistedOrder[1]
+        room.currentAnswererEmail = persistedOrder[2]
+        room.questionsInRound = 2
+        room.questionPhase = "asking"
+        room.currentAnswer = try encodedQuestionOrder(persistedOrder)
+        var shuffleCalls = 0
+        let advanced = try XCTUnwrap(
+            OnlineQuestionPreviewRoundPolicy.transition(
+                .markAnswerHeard,
+                room: room,
+                shuffle: { values in
+                    shuffleCalls += 1
+                    return Array(values.reversed())
+                }
+            )
+        )
+
+        XCTAssertEqual(advanced.currentAskerEmail, persistedOrder[2])
+        XCTAssertEqual(advanced.currentAnswererEmail, persistedOrder[0])
+        XCTAssertEqual(try decodedQuestionOrder(advanced.currentAnswer), persistedOrder)
+        XCTAssertEqual(shuffleCalls, 0)
+    }
+
+    func testPreviewReconcilesEliminationWithoutChangingRosterOrder() throws {
+        var room = GameRoom.previewRoom(status: "playing")
+        let roster = room.playersList.map(\.email)
+        let emails = roster.map { $0.lowercased() }
+        room.currentAnswer = try encodedQuestionOrder([emails[0], emails[2], emails[1]])
+        room.eliminatedEmails = [emails[2]]
+        room.currentAskerEmail = emails[0]
+        room.currentAnswererEmail = emails[1]
+        room.questionsInRound = 3
+        room.questionPhase = "asking"
+        let advanced = try XCTUnwrap(
+            OnlineQuestionPreviewRoundPolicy.transition(
+                .markAnswerHeard,
+                room: room,
+                shuffle: { $0 }
+            )
+        )
+
+        XCTAssertEqual(try decodedQuestionOrder(advanced.currentAnswer), [emails[0], emails[1]])
+        XCTAssertEqual(advanced.currentAskerEmail, emails[1])
+        XCTAssertEqual(advanced.currentAnswererEmail, emails[0])
+        XCTAssertEqual(advanced.playersList.map(\.email), roster)
+    }
+
+    private func encodedQuestionOrder(_ order: [String]) throws -> String {
+        let data = try JSONSerialization.data(
+            withJSONObject: ["kind": "question_turn_order_v1", "order": order]
+        )
+        return try XCTUnwrap(String(data: data, encoding: .utf8))
+    }
+
+    private func decodedQuestionOrder(_ value: String?) throws -> [String] {
+        let data = try XCTUnwrap(value?.data(using: .utf8))
+        let payload = try XCTUnwrap(
+            JSONSerialization.jsonObject(with: data) as? [String: Any]
+        )
+        return try XCTUnwrap(payload["order"] as? [String])
+    }
+}
+
 final class LocalAssociationTurnOrderPolicyTests: XCTestCase {
     func testInitialShuffleIsReusedAcrossEveryRoundWithoutSameSpeakerBoundary() throws {
         var shuffleCalls = 0

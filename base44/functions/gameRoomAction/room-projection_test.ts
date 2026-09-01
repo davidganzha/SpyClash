@@ -96,6 +96,30 @@ Deno.test("detective sees a safe secret only after authenticated room projection
   assertEquals(projected.spy_email, "");
 });
 
+Deno.test("Questions projection hides the internal persisted turn order", () => {
+  const projected = projectRoomForClient(
+    {
+      id: "room-question-order",
+      code: "ORDER1",
+      status: "playing",
+      game_mode: "questions",
+      current_answer: JSON.stringify({
+        kind: "question_turn_order_v1",
+        order: ["a@example.com", "b@example.com", "c@example.com"],
+      }),
+      players: [
+        { email: "a@example.com" },
+        { email: "b@example.com" },
+        { email: "c@example.com" },
+      ],
+    },
+    { email: "a@example.com" },
+  );
+
+  assert(projected);
+  assertEquals(projected.current_answer, "");
+});
+
 Deno.test("spectator cannot identify the spy before the room finishes", () => {
   const projected = projectRoomForClient(
     {

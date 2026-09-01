@@ -48,7 +48,11 @@ Deno.test("association spin settlement is recoverable by every active player", a
   assertStringIncludes(stopAssociationSpin, "requirePlayer(room, user)");
   assertStringIncludes(
     stopAssociationSpin,
-    "activePlayers(room).some((player) => player.email === user.email)",
+    'assertRoundActionMode(room, "associations")',
+  );
+  assertStringIncludes(
+    stopAssociationSpin,
+    "assertActiveRoundActor(activePlayers(room), user.email)",
   );
   assertStringIncludes(
     stopAssociationSpin,

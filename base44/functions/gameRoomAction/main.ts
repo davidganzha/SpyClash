@@ -120,8 +120,20 @@ import {
   initialAssociationTurn,
   reconcileAssociationTurnState,
 } from "./association-turn-order.ts";
-import { questionAdvancePatch } from "./question-round-policy.ts";
+import {
+  questionAdvancePatch,
+  questionContinueTurnPatch,
+} from "./question-round-policy.ts";
+import {
+  encodeQuestionTurnOrderState,
+  initialQuestionTurn,
+  questionRosterChangePatch,
+} from "./question-turn-order.ts";
 import { shouldSynchronizeLiveActivity } from "./room-push-policy.ts";
+import {
+  assertActiveRoundActor,
+  assertRoundActionMode,
+} from "./round-action-access.ts";
 import { reconcileTerminalFinalizationAfterLeaseConflict } from "./terminal-finalization-recovery.ts";
 import { assertExpectedTimerFinalizationScope } from "./terminal-finalization-scope.ts";
 import { runTerminalSideEffectsSingleFlight } from "./terminal-side-effect-dispatch.ts";
@@ -1587,12 +1599,24 @@ async function armRoulette(base44, room, user, body) {
     body?.expected_lobby_revision,
   );
   const assignment = serverSpyAssignment(room);
+  const initialQuestion = clean(startPayload?.game_mode) === "questions"
+    ? initialQuestionTurn({
+      activePlayers: roomPlayers,
+      currentAskerEmail: startPayload?.current_asker_email,
+      currentAnswererEmail: startPayload?.current_answerer_email,
+    })
+    : null;
   const startPatch = validatedStartPatch(room, startPayload, assignment);
   return await updateRoom(base44, room, {
     ...startPatch,
+    ...(initialQuestion
+      ? {
+        current_answer: encodeQuestionTurnOrderState(initialQuestion.state),
+      }
+      : {}),
     ...serverIntroStartPatch(),
     status: "roulette",
-    roulette_target_email: target,
+    roulette_target_email: initialQuestion?.askerEmail || target,
     game_started_at: null,
     game_paused_at: null,
     game_paused_total_seconds: 0,
@@ -1780,6 +1804,9 @@ async function resumeGame(base44, room, user) {
 
 async function advanceQuestion(base44, room, user) {
   requirePlayer(room, user);
+  assertRoundActionMode(room, "questions");
+  const active = activePlayers(room);
+  assertActiveRoundActor(active, user.email);
   if (clean(room.current_asker_email) !== clean(user.email)) {
     throw Object.assign(
       new Error("Only the current asker can advance the round"),
@@ -1788,12 +1815,14 @@ async function advanceQuestion(base44, room, user) {
       },
     );
   }
-  const active = activePlayers(room);
   return await updateRoom(base44, room, questionAdvancePatch(room, active));
 }
 
 async function advanceAssociation(base44, room, user) {
   requirePlayer(room, user);
+  assertRoundActionMode(room, "associations");
+  const active = activePlayers(room);
+  assertActiveRoundActor(active, user.email);
   if (clean(room.current_asker_email) !== clean(user.email)) {
     throw Object.assign(
       new Error("Only the current speaker can advance the round"),
@@ -1802,7 +1831,6 @@ async function advanceAssociation(base44, room, user) {
       },
     );
   }
-  const active = activePlayers(room);
   if (!active.length) {
     throw Object.assign(new Error("Need active operatives"), { status: 400 });
   }
@@ -1867,11 +1895,8 @@ async function startAssociation(base44, room, user) {
 
 async function stopAssociationSpin(base44, room, user) {
   requirePlayer(room, user);
-  if (!activePlayers(room).some((player) => player.email === user.email)) {
-    throw Object.assign(new Error("Only active players can stop the spin"), {
-      status: 403,
-    });
-  }
+  assertRoundActionMode(room, "associations");
+  assertActiveRoundActor(activePlayers(room), user.email);
   const state = reconcileAssociationTurnState({
     activePlayers: activePlayers(room),
     rawState: room.current_answer,
@@ -1893,6 +1918,7 @@ async function stopAssociationSpin(base44, room, user) {
 
 async function markAnswerHeard(base44, room, user) {
   requirePlayer(room, user);
+  assertRoundActionMode(room, "questions");
   if (clean(room.current_asker_email) !== clean(user.email)) {
     throw Object.assign(
       new Error("Only the current asker can confirm the answer"),
@@ -1914,16 +1940,19 @@ async function markAnswerHeard(base44, room, user) {
 
 async function continueRound(base44, room, user) {
   requirePlayer(room, user);
+  assertRoundActionMode(room, "questions");
+  assertActiveRoundActor(activePlayers(room), user.email);
   if (clean(room.question_phase) !== "results") {
     throw Object.assign(new Error("Round results are not active"), {
       status: 409,
     });
   }
+  const turnPatch = questionContinueTurnPatch(room, activePlayers(room));
   return await updateRoom(base44, room, {
+    ...turnPatch,
     question_phase: "asking",
     round_number: nextRoundNumber(room.round_number),
     questions_in_round: 0,
-    current_answer: "",
     current_answer_feedback: null,
     player_feedback: [],
   });
@@ -2081,19 +2110,31 @@ async function castDetectiveVote(base44, room, user, body) {
       const patch = { ...resolution.patch };
       if (
         resolution.decision.outcome === "eject" &&
-        !resolution.terminal_winner &&
-        clean(latest?.game_mode) === "associations"
+        !resolution.terminal_winner
       ) {
         const nextRoom = { ...latest, ...patch };
-        const associationTransition = associationRosterChangePatch({
-          activePlayers: activePlayers(nextRoom),
-          currentSpeakerEmail: latest.current_asker_email,
-          currentAnswererEmail: latest.current_answerer_email,
-          rawState: latest.current_answer,
-        });
-        Object.assign(patch, associationTransition.patch);
-        if (associationTransition.startsNewRound) {
-          patch.round_number = Number(latest.round_number || 1) + 1;
+        if (clean(latest?.game_mode) === "associations") {
+          const associationTransition = associationRosterChangePatch({
+            activePlayers: activePlayers(nextRoom),
+            currentSpeakerEmail: latest.current_asker_email,
+            currentAnswererEmail: latest.current_answerer_email,
+            rawState: latest.current_answer,
+          });
+          Object.assign(patch, associationTransition.patch);
+          if (associationTransition.startsNewRound) {
+            patch.round_number = Number(latest.round_number || 1) + 1;
+          }
+        } else if (clean(latest?.game_mode) === "questions") {
+          Object.assign(
+            patch,
+            questionRosterChangePatch({
+              activePlayers: activePlayers(nextRoom),
+              currentAskerEmail: latest.current_asker_email,
+              currentAnswererEmail: latest.current_answerer_email,
+              questionPhase: latest.question_phase,
+              rawState: latest.current_answer,
+            }),
+          );
         }
       }
       if (

@@ -19,6 +19,11 @@ import {
   spyTeamTerminalWinner,
   validatedLobbySpyCount,
 } from "./multi-spy-policy.ts";
+import {
+  encodeQuestionTurnOrderState,
+  parseQuestionTurnOrderState,
+  questionTurnOrderState,
+} from "./question-turn-order.ts";
 
 function players(count: number, capable = true) {
   return Array.from({ length: count }, (_, index) => ({
@@ -281,12 +286,22 @@ Deno.test("waiting leave clamps spy count and invalidates the lobby replay token
 
 Deno.test("active leave eliminates in place, transfers host, repairs vectors, and recalculates parity", () => {
   const activeRoom = room(6, 2);
+  activeRoom.game_mode = "questions";
   activeRoom.host_email = "p3@example.com";
   activeRoom.spectators = ["p6@example.com"];
   activeRoom.current_asker_email = "p3@example.com";
   activeRoom.current_answerer_email = "p4@example.com";
   activeRoom.roulette_target_email = "p3@example.com";
-  activeRoom.current_answer = "pending";
+  activeRoom.current_answer = encodeQuestionTurnOrderState(
+    questionTurnOrderState([
+      "p2@example.com",
+      "p3@example.com",
+      "p4@example.com",
+      "p5@example.com",
+      "p1@example.com",
+      "p6@example.com",
+    ]),
+  );
   activeRoom.current_answer_feedback = "like";
   activeRoom.question_phase = "answering";
   activeRoom.countdown_started_at = "2026-08-09T12:00:00.000Z";
@@ -308,10 +323,18 @@ Deno.test("active leave eliminates in place, transfers host, repairs vectors, an
   assertEquals("players" in transition.patch, false);
   assertEquals("cards_read" in transition.patch, false);
   assertEquals(transition.patch.current_asker_email, "p4@example.com");
-  assertEquals(transition.patch.current_answerer_email, "p1@example.com");
+  assertEquals(transition.patch.current_answerer_email, "p5@example.com");
   assertEquals(transition.patch.roulette_target_email, "p1@example.com");
   assertEquals(transition.patch.question_phase, "asking");
-  assertEquals(transition.patch.current_answer, "");
+  assertEquals(
+    parseQuestionTurnOrderState(transition.patch.current_answer).order,
+    [
+      "p2@example.com",
+      "p4@example.com",
+      "p5@example.com",
+      "p1@example.com",
+    ],
+  );
   assertEquals(transition.patch.current_answer_feedback, null);
   assertEquals(transition.patch.countdown_started_at, null);
   assertEquals(transition.terminalWinner, "spy");
@@ -319,16 +342,72 @@ Deno.test("active leave eliminates in place, transfers host, repairs vectors, an
 
 Deno.test("active leave preserves an unrelated valid question vector", () => {
   const activeRoom = room(6, 2);
+  activeRoom.game_mode = "questions";
   activeRoom.current_asker_email = "p3@example.com";
   activeRoom.current_answerer_email = "p4@example.com";
   activeRoom.roulette_target_email = "p5@example.com";
-  activeRoom.current_answer = "pending";
+  activeRoom.current_answer = encodeQuestionTurnOrderState(
+    questionTurnOrderState([
+      "p2@example.com",
+      "p3@example.com",
+      "p4@example.com",
+      "p5@example.com",
+      "p6@example.com",
+      "p1@example.com",
+    ]),
+  );
   activeRoom.question_phase = "answering";
   const transition = activeDepartureTransition(activeRoom, "p6@example.com");
-  assertEquals("current_asker_email" in transition.patch, false);
-  assertEquals("current_answerer_email" in transition.patch, false);
+  assertEquals(transition.patch.current_asker_email, "p3@example.com");
+  assertEquals(transition.patch.current_answerer_email, "p4@example.com");
   assertEquals("roulette_target_email" in transition.patch, false);
-  assertEquals("current_answer" in transition.patch, false);
+  assertEquals(
+    parseQuestionTurnOrderState(transition.patch.current_answer).order,
+    [
+      "p2@example.com",
+      "p3@example.com",
+      "p4@example.com",
+      "p5@example.com",
+      "p1@example.com",
+    ],
+  );
+  assertEquals("question_phase" in transition.patch, false);
+});
+
+Deno.test("question-results leave repairs the stored pair without reopening asking", () => {
+  const activeRoom = room(6, 2);
+  activeRoom.game_mode = "questions";
+  activeRoom.current_asker_email = "p3@example.com";
+  activeRoom.current_answerer_email = "p4@example.com";
+  activeRoom.current_answer = encodeQuestionTurnOrderState(
+    questionTurnOrderState([
+      "p1@example.com",
+      "p2@example.com",
+      "p3@example.com",
+      "p4@example.com",
+      "p5@example.com",
+      "p6@example.com",
+    ]),
+  );
+  activeRoom.question_phase = "results";
+  activeRoom.questions_in_round = 7;
+
+  const answererLeft = activeDepartureTransition(
+    activeRoom,
+    "p4@example.com",
+  );
+  assertEquals(answererLeft.terminalWinner, null);
+  assertEquals(answererLeft.patch.current_asker_email, "p3@example.com");
+  assertEquals(answererLeft.patch.current_answerer_email, "p5@example.com");
+  assertEquals("question_phase" in answererLeft.patch, false);
+  assertEquals("questions_in_round" in answererLeft.patch, false);
+
+  const askerLeft = activeDepartureTransition(activeRoom, "p3@example.com");
+  assertEquals(askerLeft.terminalWinner, null);
+  assertEquals(askerLeft.patch.current_asker_email, "p2@example.com");
+  assertEquals(askerLeft.patch.current_answerer_email, "p4@example.com");
+  assertEquals("question_phase" in askerLeft.patch, false);
+  assertEquals("questions_in_round" in askerLeft.patch, false);
 });
 
 Deno.test("association leave advances an active speaker by the persisted order without dropping state", () => {

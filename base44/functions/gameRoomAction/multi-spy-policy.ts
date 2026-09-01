@@ -1,4 +1,5 @@
 import { associationRosterChangePatch } from "./association-turn-order.ts";
+import { questionRosterChangePatch } from "./question-turn-order.ts";
 
 export const MULTI_SPY_CAPABILITY = "multi_spy_v1";
 export const MIN_GAME_PLAYERS = 3;
@@ -529,11 +530,24 @@ export function activeDepartureTransition(
     })
     : null;
   const associationPatch = associationTransition?.patch || null;
+  const questionPatch = clean(room?.game_mode) === "questions"
+    ? questionRosterChangePatch({
+      activePlayers: remainingActive.map((email) => ({ email })),
+      currentAskerEmail: room?.current_asker_email,
+      currentAnswererEmail: room?.current_answerer_email,
+      questionPhase: room?.question_phase,
+      rawState: room?.current_answer,
+    })
+    : null;
   const nextAsker = associationPatch
     ? clean(associationPatch.current_asker_email)
+    : questionPatch
+    ? clean(questionPatch.current_asker_email)
     : currentAsker || currentAnswerer || remainingActive[0] || "";
   const nextAnswerer = associationPatch
     ? clean(associationPatch.current_answerer_email)
+    : questionPatch
+    ? clean(questionPatch.current_answerer_email)
     : currentAnswerer &&
         normalizedEmail(currentAnswerer) !== normalizedEmail(nextAsker)
     ? currentAnswerer
@@ -559,7 +573,7 @@ export function activeDepartureTransition(
       ) => normalizedEmail(email) !== leavingKey),
     ...(nextHost !== clean(room?.host_email) ? { host_email: nextHost } : {}),
     ...(rouletteTargetChanged ? { roulette_target_email: rouletteTarget } : {}),
-    ...(questionVectorChanged && !associationPatch
+    ...(questionVectorChanged && !associationPatch && !questionPatch
       ? {
         current_asker_email: nextAsker,
         current_answerer_email: nextAnswerer,
@@ -569,6 +583,7 @@ export function activeDepartureTransition(
         countdown_started_at: null,
       }
       : {}),
+    ...(questionPatch || {}),
     ...(associationPatch || {}),
     ...(associationTransition?.startsNewRound
       ? { round_number: Number(room?.round_number || 1) + 1 }

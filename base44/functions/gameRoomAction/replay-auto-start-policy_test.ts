@@ -9,6 +9,7 @@ import {
   replayAutoStartAlreadyComplete,
   replayAutoStartPatch,
 } from "./replay-auto-start-policy.ts";
+import { parseQuestionTurnOrderState } from "./question-turn-order.ts";
 
 function finishedRoom(overrides: Record<string, unknown> = {}) {
   return {
@@ -143,6 +144,31 @@ Deno.test("departures clamp replay spy settings before a fresh assignment", () =
   assertEquals(patch.lobby_spy_count, 1);
   assertEquals(patch.lobby_revision, 8);
   assertEquals(patch.spy_emails.length, 1);
+});
+
+Deno.test("Questions replay freezes the server order without reordering the room roster", () => {
+  const patch = replayAutoStartPatch(
+    finishedRoom({
+      game_mode: "questions",
+    }),
+    {
+      expectedSourceMatchID: "match-finished-1",
+      randomIndex: deterministicRandom([0, 1, 2, 1, 0]),
+    },
+  );
+
+  assertEquals(
+    patch.players.map((player: Record<string, unknown>) => player.email),
+    ["a@example.com", "b@example.com", "c@example.com"],
+  );
+  assertEquals(parseQuestionTurnOrderState(patch.current_answer).order, [
+    "c@example.com",
+    "b@example.com",
+    "a@example.com",
+  ]);
+  assertEquals(patch.current_asker_email, "c@example.com");
+  assertEquals(patch.current_answerer_email, "b@example.com");
+  assertEquals(patch.roulette_target_email, "c@example.com");
 });
 
 Deno.test("replay completion marker makes response-loss retries exact and generation-scoped", () => {

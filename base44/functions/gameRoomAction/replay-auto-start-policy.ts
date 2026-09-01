@@ -14,6 +14,10 @@ import {
   replayVoteState,
 } from "./replay-policy.ts";
 import { serverIntroStartPatch } from "./room-result-policy.ts";
+import {
+  encodeQuestionTurnOrderState,
+  questionTurnOrderState,
+} from "./question-turn-order.ts";
 
 type Room = Record<string, any>;
 
@@ -246,7 +250,11 @@ export function replayAutoStartPatch(
     question_phase: "asking",
     questions_in_round: 0,
     round_number: 1,
-    current_answer: "",
+    current_answer: gameMode === "questions"
+      ? encodeQuestionTurnOrderState(
+        questionTurnOrderState(order.map((player) => player?.email)),
+      )
+      : "",
     current_answer_feedback: null,
     current_asker_email: askerEmail,
     current_answerer_email: answererEmail,

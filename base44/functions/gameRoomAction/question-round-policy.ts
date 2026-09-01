@@ -1,8 +1,9 @@
-type Entity = Record<string, any>;
+import {
+  advanceQuestionTurn,
+  encodeQuestionTurnOrderState,
+} from "./question-turn-order.ts";
 
-function clean(value: unknown): string {
-  return String(value ?? "").trim();
-}
+type Entity = Record<string, any>;
 
 export function questionAdvancePatch(
   room: Entity,
@@ -15,9 +16,9 @@ export function questionAdvancePatch(
   }
 
   const currentCount = Number(room.questions_in_round);
-  const nextQuestions = (Number.isInteger(currentCount) && currentCount >= 0
-    ? currentCount
-    : 0) + 1;
+  const nextQuestions =
+    (Number.isInteger(currentCount) && currentCount >= 0 ? currentCount : 0) +
+    1;
   if (nextQuestions >= 8) {
     return {
       question_phase: "results",
@@ -25,24 +26,36 @@ export function questionAdvancePatch(
     };
   }
 
-  const currentAnswererIndex = Math.max(
-    0,
-    activePlayers.findIndex((player) =>
-      clean(player?.email) === clean(room.current_answerer_email)
-    ),
-  );
-  const nextAskerIndex = currentAnswererIndex;
-  let nextAnswererIndex = (currentAnswererIndex + 1) % activePlayers.length;
-  if (nextAnswererIndex === nextAskerIndex) {
-    nextAnswererIndex = (nextAnswererIndex + 1) % activePlayers.length;
-  }
+  const turn = advanceQuestionTurn({
+    activePlayers,
+    rawState: room.current_answer,
+    currentAskerEmail: room.current_asker_email,
+    currentAnswererEmail: room.current_answerer_email,
+  });
 
   return {
-    current_asker_email: clean(activePlayers[nextAskerIndex]?.email),
-    current_answerer_email: clean(activePlayers[nextAnswererIndex]?.email),
+    current_asker_email: turn.askerEmail,
+    current_answerer_email: turn.answererEmail,
     questions_in_round: nextQuestions,
-    current_answer: "",
+    current_answer: encodeQuestionTurnOrderState(turn.state),
     question_phase: "asking",
     countdown_started_at: null,
+  };
+}
+
+export function questionContinueTurnPatch(
+  room: Entity,
+  activePlayers: Entity[],
+): Entity {
+  const turn = advanceQuestionTurn({
+    activePlayers,
+    rawState: room.current_answer,
+    currentAskerEmail: room.current_asker_email,
+    currentAnswererEmail: room.current_answerer_email,
+  });
+  return {
+    current_asker_email: turn.askerEmail,
+    current_answerer_email: turn.answererEmail,
+    current_answer: encodeQuestionTurnOrderState(turn.state),
   };
 }

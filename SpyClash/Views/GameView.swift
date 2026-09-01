@@ -10814,11 +10814,10 @@ struct GameView: View {
     private func advanceQuestionAfterCountdown(_ room: GameRoom) async {
         guard !isAdvancing, !room.isGamePaused, !isTimeExpired(room) else { return }
         if appState.shouldUsePreviewData {
-            var previewRoom = room
-            let nextCount = (previewRoom.questionsInRound ?? 0) + 1
-            previewRoom.questionsInRound = nextCount
-            previewRoom.questionPhase = nextCount >= 8 ? "results" : "asking"
-            previewRoom.countdownStartedAt = nil
+            guard let previewRoom = OnlineQuestionPreviewRoundPolicy.transition(
+                .markAnswerHeard,
+                room: room
+            ) else { return }
             appState.activeRoom = previewRoom
             return
         }
@@ -10878,30 +10877,27 @@ struct GameView: View {
         var previewRoom = room
         switch command {
         case .markAnswerHeard:
-            let active = previewRoom.activePlayers
-            let currentAnswererIndex = max(
-                0,
-                active.firstIndex { emailsMatch($0.email, previewRoom.currentAnswererEmail) } ?? 0
-            )
-            let nextCount = (previewRoom.questionsInRound ?? 0) + 1
-            if nextCount >= 8 {
-                previewRoom.questionPhase = "results"
-            } else if active.count >= 2 {
-                previewRoom.currentAskerEmail = active[currentAnswererIndex].email
-                previewRoom.currentAnswererEmail = active[(currentAnswererIndex + 1) % active.count].email
-                previewRoom.questionsInRound = nextCount
-                previewRoom.currentAnswer = ""
-                previewRoom.questionPhase = "asking"
-            }
-            previewRoom.countdownStartedAt = nil
+            guard let transition = OnlineQuestionPreviewRoundPolicy.transition(
+                command,
+                room: room
+            ) else { return }
+            previewRoom = transition
         case .continueRound:
-            previewRoom.questionPhase = "asking"
-            previewRoom.countdownStartedAt = nil
-            previewRoom.roundNumber = (previewRoom.roundNumber ?? 1) + 1
-            previewRoom.questionsInRound = 0
-            previewRoom.currentAnswer = ""
-            previewRoom.currentAnswerFeedback = nil
-            previewRoom.playerFeedback = []
+            if room.gameModeValue == .questions {
+                guard let transition = OnlineQuestionPreviewRoundPolicy.transition(
+                    command,
+                    room: room
+                ) else { return }
+                previewRoom = transition
+            } else {
+                previewRoom.questionPhase = "asking"
+                previewRoom.countdownStartedAt = nil
+                previewRoom.roundNumber = (previewRoom.roundNumber ?? 1) + 1
+                previewRoom.questionsInRound = 0
+                previewRoom.currentAnswer = ""
+                previewRoom.currentAnswerFeedback = nil
+                previewRoom.playerFeedback = []
+            }
         case .startAssociation:
             previewRoom.currentAskerEmail = previewRoom.activePlayers.first?.email
             previewRoom.currentAnswer = AssociationRoundState(spoken: [], spinning: true).encodedValue

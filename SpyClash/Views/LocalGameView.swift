@@ -250,6 +250,7 @@ struct LocalGameView: View {
     @State private var spyGuessHandoffConfirmed = false
     @State private var spyGuessReturnSealed = false
     @State private var questionIndex = 0
+    @State private var questionTurnOrder = QuestionTurnOrderState<Int>(order: [], step: 0)
     @State private var accusedIndex: Int?
     @State private var eliminatedPlayerIndices: Set<Int> = []
     @State private var localVoteVoterOrder: [Int] = []
@@ -4111,6 +4112,7 @@ struct LocalGameView: View {
             spiesKnowEachOther: spiesKnowEachOther
         )
         eliminatedPlayerIndices = []
+        resetQuestionFlow(playerIndices: Array(localPlayers.indices), mode: mode)
         resetAssociationFlow(playerIndices: Array(localPlayers.indices), mode: mode)
         revealIndex = 0
         cardRevealed = false
@@ -4211,11 +4213,10 @@ struct LocalGameView: View {
 
     private func beginPlaying() {
         secondsRemaining = Int(duration * 60)
-        if let session, session.mode == .associations {
-            reconcileAssociationFlow(
-                playerIndices: activeLocalPlayerIndices(in: session),
-                mode: session.mode
-            )
+        if let session {
+            let activeIndices = activeLocalPlayerIndices(in: session)
+            reconcileQuestionFlow(playerIndices: activeIndices, mode: session.mode)
+            reconcileAssociationFlow(playerIndices: activeIndices, mode: session.mode)
         }
         isLocalGamePaused = false
         setLocalPhase(.playing)
@@ -4588,13 +4589,15 @@ struct LocalGameView: View {
             return session.players[safe: orderedIndex]
         }
 
-        return session.players[safe: activeIndices[questionIndex % activeIndices.count]]
+        let fallbackIndex = activeIndices[questionIndex % activeIndices.count]
+        return session.players[safe: questionTurnOrder.currentAskerID ?? fallbackIndex]
     }
 
     private func currentAnswerer(in session: LocalSession) -> LocalPlayer? {
         let activeIndices = activeLocalPlayerIndices(in: session)
         guard !activeIndices.isEmpty else { return nil }
-        return session.players[safe: activeIndices[(questionIndex + 1) % activeIndices.count]]
+        let fallbackIndex = activeIndices[(questionIndex + 1) % activeIndices.count]
+        return session.players[safe: questionTurnOrder.currentAnswererID ?? fallbackIndex]
     }
 
     private func nextQuestion(in session: LocalSession) {
@@ -4607,7 +4610,39 @@ struct LocalGameView: View {
         }
 
         questionIndex = (questionIndex + 1) % activeIndices.count
+        questionTurnOrder = QuestionTurnOrderPolicy.advanced(
+            state: questionTurnOrder,
+            activeIDs: activeIndices
+        )
         HapticManager.shared.fire(.tabSelection)
+    }
+
+    private func resetQuestionFlow(
+        playerIndices: [Int],
+        mode: LocalMode,
+        shuffle: ([Int]) -> [Int] = { $0.shuffled() }
+    ) {
+        guard mode == .questions, !playerIndices.isEmpty else {
+            questionTurnOrder = QuestionTurnOrderState(order: [], step: 0)
+            return
+        }
+
+        questionTurnOrder = QuestionTurnOrderPolicy.initial(
+            activeIDs: playerIndices,
+            shuffle: shuffle
+        )
+    }
+
+    private func reconcileQuestionFlow(playerIndices: [Int], mode: LocalMode) {
+        guard mode == .questions, !playerIndices.isEmpty else {
+            resetQuestionFlow(playerIndices: [], mode: .associations)
+            return
+        }
+
+        questionTurnOrder = QuestionTurnOrderPolicy.reconciled(
+            state: questionTurnOrder,
+            activeIDs: playerIndices
+        )
     }
 
     private func resetAssociationFlow(playerIndices: [Int], mode: LocalMode) {
@@ -4676,6 +4711,10 @@ struct LocalGameView: View {
         case .continuePlaying:
             accusedIndex = nil
             questionIndex = 0
+            reconcileQuestionFlow(
+                playerIndices: activeLocalPlayerIndices(in: session),
+                mode: session.mode
+            )
             reconcileAssociationFlow(
                 playerIndices: activeLocalPlayerIndices(in: session),
                 mode: session.mode
@@ -4751,6 +4790,7 @@ struct LocalGameView: View {
         spyGuessReturnSealed = false
         clearLocalVoteRound()
         eliminatedPlayerIndices = []
+        resetQuestionFlow(playerIndices: [], mode: .associations)
         resetAssociationFlow(playerIndices: [], mode: .questions)
         appState.isShellChromeSuppressed = false
     }
@@ -4977,6 +5017,11 @@ struct LocalGameView: View {
         selectedPackID = ""
         session = preview
         eliminatedPlayerIndices = []
+        resetQuestionFlow(
+            playerIndices: Array(preview.players.indices),
+            mode: preview.mode,
+            shuffle: { $0 }
+        )
         resetAssociationFlow(playerIndices: Array(preview.players.indices), mode: preview.mode)
         revealIndex = min(1, preview.players.count - 1)
         cardRevealed = false
@@ -5012,9 +5057,23 @@ struct LocalGameView: View {
         case "playing", "active", "game":
             phase = .playing
             questionIndex = preview.mode == .associations ? 0 : 1
+            if preview.mode == .questions {
+                questionTurnOrder = QuestionTurnOrderPolicy.advanced(
+                    state: questionTurnOrder,
+                    activeIDs: Array(preview.players.indices),
+                    shuffle: { $0 }
+                )
+            }
         case "paused", "playing-paused":
             phase = .playing
             questionIndex = preview.mode == .associations ? 0 : 1
+            if preview.mode == .questions {
+                questionTurnOrder = QuestionTurnOrderPolicy.advanced(
+                    state: questionTurnOrder,
+                    activeIDs: Array(preview.players.indices),
+                    shuffle: { $0 }
+                )
+            }
             isLocalGamePaused = true
         case "spyguess", "spy-guess", "guess", "spyguess-handoff":
             phase = .spyGuess
