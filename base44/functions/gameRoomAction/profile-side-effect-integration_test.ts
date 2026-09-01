@@ -101,6 +101,7 @@ Deno.test("scheduled push recovery wakes profile repair without coupling deliver
     repair,
     'action: "repair_finished_profile_side_effects"',
   );
+  assertStringIncludes(repair, "internalFunctionBody(response).outcome");
   assertStringIncludes(recent, "await repairFinishedRoomCommunityProfiles(");
   assertStringIncludes(process, "await repairFinishedRoomCommunityProfiles(");
   assertStringIncludes(repair, "return false;");
@@ -108,6 +109,7 @@ Deno.test("scheduled push recovery wakes profile repair without coupling deliver
     durableDrain,
     'action: "drain_community_profile_repairs"',
   );
+  assertStringIncludes(durableDrain, "profileRepairDrainSummary(response)");
   assertStringIncludes(drain, "await drainDurableCommunityProfileRepairs(");
   assertStringIncludes(drain, "community_profile_repairs:");
 });

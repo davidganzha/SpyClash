@@ -60,6 +60,10 @@ import { pushErrorResponse } from "./error-response.ts";
 import { finishedProfileRepairAlreadyCompleted } from "./profile-repair-state.ts";
 import { createProcessEventTiming } from "./process-event-timing.ts";
 import { safePushErrorDetails } from "./safe-error.ts";
+import {
+  internalFunctionBody,
+  profileRepairDrainSummary,
+} from "./internal-function-response.ts";
 
 type Entity = Record<string, any>;
 const PAGE_SIZE = 100;
@@ -130,7 +134,7 @@ async function repairFinishedRoomCommunityProfiles(
     !clean(room?.game_finished_event_id)
   ) return false;
   try {
-    const result = await base44.asServiceRole.functions.invoke(
+    const response = await base44.asServiceRole.functions.invoke(
       "gameRoomAction",
       {
         action: "repair_finished_profile_side_effects",
@@ -140,7 +144,7 @@ async function repairFinishedRoomCommunityProfiles(
       },
     );
     return ["performed", "completed", "deferred"].includes(
-      clean(result?.outcome),
+      clean(internalFunctionBody(response).outcome),
     );
   } catch (error) {
     // Profile repair is a separate durable room outcome. It must never make
@@ -164,11 +168,15 @@ async function drainDurableCommunityProfileRepairs(
     return { ok: false, selected: 0, deferred: 0, reason: "secret_missing" };
   }
   try {
-    return await base44.asServiceRole.functions.invoke("gameRoomAction", {
-      action: "drain_community_profile_repairs",
-      internal_secret: internalSecret,
-      limit: Math.min(Math.max(Math.floor(limit) || 1, 1), 24),
-    });
+    const response = await base44.asServiceRole.functions.invoke(
+      "gameRoomAction",
+      {
+        action: "drain_community_profile_repairs",
+        internal_secret: internalSecret,
+        limit: Math.min(Math.max(Math.floor(limit) || 1, 1), 24),
+      },
+    );
+    return profileRepairDrainSummary(response);
   } catch (error) {
     // GameHistory, not an ephemeral finished room, remains the durable source.
     // APNs/outbox work below proceeds independently and a later drain retries.
