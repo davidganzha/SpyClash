@@ -1279,6 +1279,25 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertNil(encodedState["spy_count"])
     }
 
+    func testUpdateGameModeUsesDedicatedFastAction() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let room = GameRoom.previewRoom(status: "waiting")
+        _ = try await makeClient().updateGameMode(room: room, mode: .associations)
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        XCTAssertEqual(body["action"] as? String, "update_game_mode")
+        XCTAssertEqual(body["room_id"] as? String, room.id)
+        XCTAssertEqual(body["mode"] as? String, "associations")
+        XCTAssertNil(body["state"])
+        XCTAssertNil(body["expected_revision"])
+    }
+
     func testCreateAndJoinAdvertiseMultiSpyCapabilityInsidePlayerAndTopLevel() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in

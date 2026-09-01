@@ -338,6 +338,7 @@ enum RoomRefreshFailureDisposition: Equatable {
 
 enum GameRoomRealtimeSignalDisposition: Equatable {
     case ignore
+    case applyLobbyMode(GameRoomRealtimeLobbyModeProjection)
     case refresh(forceCatchUp: Bool)
     case close
 }
@@ -346,21 +347,91 @@ enum GameRoomRealtimeSignalPolicy {
     static func disposition(
         signal: GameRoomRealtimeSignal,
         activeRoomID: String?,
-        currentRevision: Int
+        activeRoomStatus: String? = nil,
+        currentRoomRevision: Int?,
+        currentLobbyRevision: Int = 0,
+        subscriptionGenerationIsCurrent: Bool = true
     ) -> GameRoomRealtimeSignalDisposition {
-        guard signal.roomID == activeRoomID else { return .ignore }
+        guard subscriptionGenerationIsCurrent,
+              signal.roomID == activeRoomID else { return .ignore }
 
-        let signalRevision = max(signal.roomRevision ?? signal.lobbyRevision, 0)
         if signal.state == "closed" {
-            return signalRevision >= max(currentRevision, 0) ? .close : .ignore
+            if let signalRoomRevision = signal.roomRevision {
+                // The first revisioned close after a legacy room migration is
+                // authoritative even when the unrelated lobby counter is much
+                // larger than the new room counter.
+                guard let currentRoomRevision else { return .close }
+                return signalRoomRevision >= max(currentRoomRevision, 0)
+                    ? .close
+                    : .ignore
+            }
+            return signal.lobbyRevision >= max(currentLobbyRevision, 0)
+                ? .close
+                : .ignore
         }
 
-        if signal.roomRevision == nil {
+        guard let signalRoomRevision = signal.roomRevision else {
             return .refresh(forceCatchUp: true)
         }
-        return signalRevision > max(currentRevision, 0)
+        guard let currentRoomRevision else {
+            // Never compare the fresh room-revision domain to a legacy lobby
+            // revision. One mediated read establishes the migration baseline.
+            return .refresh(forceCatchUp: true)
+        }
+        if let projection = signal.lobbyModeProjection,
+           activeRoomStatus == "waiting",
+           signalRoomRevision == max(currentRoomRevision, 0) + 1,
+           signal.lobbyRevision == max(currentLobbyRevision, 0) {
+            return .applyLobbyMode(projection)
+        }
+        return signalRoomRevision > max(currentRoomRevision, 0)
             ? .refresh(forceCatchUp: false)
             : .ignore
+    }
+}
+
+enum GameRoomRealtimeLobbyModeApplier {
+    static func applying(
+        signal: GameRoomRealtimeSignal,
+        projection: GameRoomRealtimeLobbyModeProjection,
+        to room: GameRoom
+    ) -> GameRoom {
+        var updated = room
+        updated.gameMode = projection.gameMode.rawValue
+        updated.lobbyRevision = signal.lobbyRevision
+        updated.roomRevision = signal.roomRevision
+        return updated
+    }
+}
+
+struct GameRoomRealtimeProjectionLatency: Equatable {
+    let commitToReceiveMilliseconds: Int?
+    let emitToReceiveMilliseconds: Int?
+
+    static func measure(
+        projection: GameRoomRealtimeLobbyModeProjection,
+        receivedAt: Date
+    ) -> GameRoomRealtimeProjectionLatency {
+        GameRoomRealtimeProjectionLatency(
+            commitToReceiveMilliseconds: milliseconds(
+                from: projection.committedAt,
+                to: receivedAt
+            ),
+            emitToReceiveMilliseconds: milliseconds(
+                from: projection.emittedAt,
+                to: receivedAt
+            )
+        )
+    }
+
+    private static func milliseconds(from raw: String?, to receivedAt: Date) -> Int? {
+        guard let raw else { return nil }
+        let fractional = ISO8601DateFormatter()
+        fractional.formatOptions = [.withInternetDateTime, .withFractionalSeconds]
+        let plain = ISO8601DateFormatter()
+        plain.formatOptions = [.withInternetDateTime]
+        guard let date = fractional.date(from: raw) ?? plain.date(from: raw) else { return nil }
+        return Int((receivedAt.timeIntervalSince(date) * 1_000).rounded())
     }
 }
 
@@ -375,10 +446,16 @@ enum GameRoomRealtimeRefreshRetryPolicy {
 
 struct ClosedRoomRevisionFence: Equatable {
     private struct Marker: Equatable {
-        let closedRevision: Int?
+        let closedRoomRevision: Int?
+        let closedLobbyRevision: Int?
         let closedMembershipID: String
         var reopenedMembershipID: String?
-        var reopenedRevision: Int?
+        var reopenedRoomRevision: Int?
+        var reopenedLobbyRevision: Int?
+
+        var hasKnownClosedRevision: Bool {
+            closedRoomRevision != nil || closedLobbyRevision != nil
+        }
     }
 
     private var markersByAccountAndRoom: [String: Marker] = [:]
@@ -386,56 +463,91 @@ struct ClosedRoomRevisionFence: Equatable {
     mutating func record(
         userID: String?,
         roomID: String,
-        revision: Int?,
+        roomRevision: Int?,
+        lobbyRevision: Int?,
         membershipID: String?
     ) {
         guard let key = key(userID: userID, roomID: roomID) else { return }
         let normalizedMembershipID = membershipID?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let normalizedRevision = revision.map { max($0, 0) }
-        let priorRevision = markersByAccountAndRoom[key]?.closedRevision
+        let normalizedRoomRevision = roomRevision.map { max($0, 0) }
+        let normalizedLobbyRevision = lobbyRevision.map { max($0, 0) }
+        let prior = markersByAccountAndRoom[key]
+        let closedRoomRevision: Int?
+        let closedLobbyRevision: Int?
+        if normalizedRoomRevision == nil, normalizedLobbyRevision == nil {
+            closedRoomRevision = nil
+            closedLobbyRevision = nil
+        } else if let normalizedRoomRevision {
+            closedRoomRevision = max(
+                normalizedRoomRevision,
+                prior?.closedRoomRevision ?? 0
+            )
+            closedLobbyRevision = normalizedLobbyRevision
+        } else if prior?.closedRoomRevision != nil {
+            // A legacy observation cannot downgrade an already revisioned
+            // close marker to the unrelated lobby counter.
+            closedRoomRevision = prior?.closedRoomRevision
+            closedLobbyRevision = prior?.closedLobbyRevision
+        } else {
+            closedRoomRevision = nil
+            closedLobbyRevision = normalizedLobbyRevision.map {
+                max($0, prior?.closedLobbyRevision ?? 0)
+            }
+        }
         markersByAccountAndRoom[key] = Marker(
-            // A nil revision means a 404/nil authoritative read. Preserve that
-            // as an unknown terminal boundary; guessing from the local room
-            // revision could admit a newer response that still predates close.
-            closedRevision: normalizedRevision.map {
-                max($0, priorRevision ?? 0)
-            },
+            // Both nil revisions mean a 404/nil authoritative read. Preserve
+            // that as an unknown terminal boundary; guessing from the local
+            // room could admit a response that still predates close.
+            closedRoomRevision: closedRoomRevision,
+            closedLobbyRevision: closedLobbyRevision,
             closedMembershipID: normalizedMembershipID,
             reopenedMembershipID: nil,
-            reopenedRevision: nil
+            reopenedRoomRevision: nil,
+            reopenedLobbyRevision: nil
         )
     }
 
     func permits(
         userID: String?,
         roomID: String,
-        revision: Int,
+        roomRevision: Int?,
+        lobbyRevision: Int?,
         membershipID: String?
     ) -> Bool {
         guard let key = key(userID: userID, roomID: roomID),
               let marker = markersByAccountAndRoom[key] else {
             return true
         }
-        if let reopenedMembershipID = marker.reopenedMembershipID,
-           let reopenedRevision = marker.reopenedRevision {
+        if let reopenedMembershipID = marker.reopenedMembershipID {
             let candidateMembershipID = membershipID?
                 .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
             return !candidateMembershipID.isEmpty &&
                 candidateMembershipID == reopenedMembershipID &&
-                max(revision, 0) >= reopenedRevision
+                RoomPollPolicy.acceptsSnapshot(
+                    currentRoomRevision: marker.reopenedRoomRevision,
+                    currentLobbyRevision: marker.reopenedLobbyRevision,
+                    fetchedRoomRevision: roomRevision,
+                    fetchedLobbyRevision: lobbyRevision
+                )
         }
-        guard let closedRevision = marker.closedRevision else { return false }
+        guard marker.hasKnownClosedRevision else { return false }
         // A close/kick signal is authoritative for this account's exact room
         // generation. Only an explicit later rejoin, which commits a strictly
         // newer room revision, may make that room adoptable again.
-        return max(revision, 0) > closedRevision
+        return RoomPollPolicy.isSnapshotNewer(
+            currentRoomRevision: marker.closedRoomRevision,
+            currentLobbyRevision: marker.closedLobbyRevision,
+            fetchedRoomRevision: roomRevision,
+            fetchedLobbyRevision: lobbyRevision
+        )
     }
 
     mutating func authorizeExplicitRejoin(
         userID: String?,
         roomID: String,
-        revision: Int,
+        roomRevision: Int?,
+        lobbyRevision: Int?,
         membershipID: String?
     ) -> Bool {
         guard let key = key(userID: userID, roomID: roomID),
@@ -444,18 +556,23 @@ struct ClosedRoomRevisionFence: Equatable {
         }
         let candidateMembershipID = membershipID?
             .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
-        let candidateRevision = max(revision, 0)
         guard !candidateMembershipID.isEmpty,
               marker.closedMembershipID.isEmpty ||
                 candidateMembershipID != marker.closedMembershipID,
-              marker.closedRevision.map({ candidateRevision > $0 }) ?? true else {
+              !marker.hasKnownClosedRevision || RoomPollPolicy.isSnapshotNewer(
+                  currentRoomRevision: marker.closedRoomRevision,
+                  currentLobbyRevision: marker.closedLobbyRevision,
+                  fetchedRoomRevision: roomRevision,
+                  fetchedLobbyRevision: lobbyRevision
+              ) else {
             return false
         }
         // Keep a generation fence after reopening. Removing the marker would
         // let an older pre-close response arrive after the explicit join and
         // replace the newly joined membership.
         marker.reopenedMembershipID = candidateMembershipID
-        marker.reopenedRevision = candidateRevision
+        marker.reopenedRoomRevision = roomRevision.map { max($0, 0) }
+        marker.reopenedLobbyRevision = lobbyRevision.map { max($0, 0) }
         markersByAccountAndRoom[key] = marker
         return true
     }
@@ -581,10 +698,44 @@ enum RoomPollPolicy {
     static let backgroundWakeCheckSeconds = 2.0
 
     static func acceptsSnapshot(
+        currentRoomRevision: Int?,
         currentLobbyRevision: Int?,
+        fetchedRoomRevision: Int?,
         fetchedLobbyRevision: Int?
     ) -> Bool {
-        max(fetchedLobbyRevision ?? 0, 0) >= max(currentLobbyRevision ?? 0, 0)
+        switch (currentRoomRevision, fetchedRoomRevision) {
+        case let (current?, fetched?):
+            return max(fetched, 0) >= max(current, 0)
+        case (nil, .some):
+            // The first room-revisioned response establishes the new revision
+            // domain. Its value is unrelated to the legacy lobby counter.
+            return true
+        case (.some, nil):
+            // Never regress a migrated client to an unversioned snapshot.
+            return false
+        case (nil, nil):
+            return max(fetchedLobbyRevision ?? 0, 0) >=
+                max(currentLobbyRevision ?? 0, 0)
+        }
+    }
+
+    static func isSnapshotNewer(
+        currentRoomRevision: Int?,
+        currentLobbyRevision: Int?,
+        fetchedRoomRevision: Int?,
+        fetchedLobbyRevision: Int?
+    ) -> Bool {
+        switch (currentRoomRevision, fetchedRoomRevision) {
+        case let (current?, fetched?):
+            return max(fetched, 0) > max(current, 0)
+        case (nil, .some):
+            return true
+        case (.some, nil):
+            return false
+        case (nil, nil):
+            return max(fetchedLobbyRevision ?? 0, 0) >
+                max(currentLobbyRevision ?? 0, 0)
+        }
     }
 
     static func disposition(
@@ -689,6 +840,57 @@ struct LobbyLatestWinsState: Equatable {
         )
     }
 
+    /// Rewrites only the mode of queued full-state mutations after the
+    /// dedicated mode endpoint commits. An older request already on the wire
+    /// cannot be changed, so a correction is queued behind it without dropping
+    /// its duration/deck edits.
+    @discardableResult
+    mutating func rebaseGameMode(
+        roomID: String,
+        mode: SpyGameMode,
+        fallbackState: LobbyStatePayload? = nil,
+        forceCorrection: Bool = false,
+        mutationID: UUID = UUID()
+    ) -> Bool {
+        if let pendingIntent, pendingIntent.roomID == roomID {
+            let rebased = pendingIntent.state.replacingGameMode(with: mode)
+            guard rebased != pendingIntent.state else { return false }
+            self.pendingIntent = LobbyLatestWinsIntent(
+                // The server binds one mutation id to one payload fingerprint.
+                // A rebased retry is a new mutation, not another attempt of the
+                // old payload whose response may have been lost.
+                mutationID: mutationID,
+                roomID: pendingIntent.roomID,
+                state: rebased,
+                retryCount: 0
+            )
+            return true
+        }
+
+        if let inFlightRequest,
+           inFlightRequest.intent.roomID == roomID,
+           inFlightRequest.intent.state.gameMode != mode {
+            pendingIntent = LobbyLatestWinsIntent(
+                mutationID: mutationID,
+                roomID: roomID,
+                state: inFlightRequest.intent.state.replacingGameMode(with: mode),
+                retryCount: 0
+            )
+            return true
+        }
+
+        guard forceCorrection,
+              let fallbackState,
+              fallbackState.gameMode != mode else { return false }
+        pendingIntent = LobbyLatestWinsIntent(
+            mutationID: mutationID,
+            roomID: roomID,
+            state: fallbackState.replacingGameMode(with: mode),
+            retryCount: 0
+        )
+        return true
+    }
+
     @discardableResult
     mutating func enqueueLatest(
         roomID: String,
@@ -782,7 +984,101 @@ struct LobbyLatestWinsState: Equatable {
     }
 }
 
+struct LobbyModeLatestWinsIntent: Equatable {
+    let requestID: UUID
+    let roomID: String
+    let mode: SpyGameMode
+    let retryCount: Int
+}
+
+struct LobbyModeLatestWinsState: Equatable {
+    private(set) var pendingIntent: LobbyModeLatestWinsIntent?
+    private(set) var inFlightIntent: LobbyModeLatestWinsIntent?
+
+    var hasOptimisticChanges: Bool {
+        pendingIntent != nil || inFlightIntent != nil
+    }
+
+    mutating func reset() {
+        pendingIntent = nil
+        inFlightIntent = nil
+    }
+
+    @discardableResult
+    mutating func enqueueLatest(
+        roomID: String,
+        mode: SpyGameMode,
+        confirmedMode: SpyGameMode,
+        requestID: UUID = UUID()
+    ) -> Bool {
+        if inFlightIntent?.roomID == roomID,
+           inFlightIntent?.mode == mode {
+            pendingIntent = nil
+            return false
+        }
+        if inFlightIntent == nil, confirmedMode == mode {
+            pendingIntent = nil
+            return false
+        }
+        if pendingIntent?.roomID == roomID, pendingIntent?.mode == mode {
+            return false
+        }
+        pendingIntent = LobbyModeLatestWinsIntent(
+            requestID: requestID,
+            roomID: roomID,
+            mode: mode,
+            retryCount: 0
+        )
+        return true
+    }
+
+    mutating func beginNext() -> LobbyModeLatestWinsIntent? {
+        guard inFlightIntent == nil, let pendingIntent else { return nil }
+        self.pendingIntent = nil
+        inFlightIntent = pendingIntent
+        return pendingIntent
+    }
+
+    @discardableResult
+    mutating func finish(_ intent: LobbyModeLatestWinsIntent) -> Bool {
+        guard inFlightIntent == intent else { return false }
+        inFlightIntent = nil
+        return pendingIntent == nil
+    }
+
+    @discardableResult
+    mutating func fail(
+        _ intent: LobbyModeLatestWinsIntent,
+        retry: Bool,
+        maximumRetries: Int = 2
+    ) -> Bool {
+        guard inFlightIntent == intent else { return false }
+        inFlightIntent = nil
+        guard retry,
+              intent.retryCount < maximumRetries,
+              pendingIntent == nil else { return false }
+        pendingIntent = LobbyModeLatestWinsIntent(
+            requestID: intent.requestID,
+            roomID: intent.roomID,
+            mode: intent.mode,
+            retryCount: intent.retryCount + 1
+        )
+        return true
+    }
+}
+
+private struct LobbyModeProtection: Equatable {
+    let roomID: String
+    let mode: SpyGameMode
+}
+
 extension LobbyStatePayload {
+    func replacingGameMode(with mode: SpyGameMode) -> LobbyStatePayload {
+        var copy = self
+        copy.gameMode = mode
+        return copy
+    }
+
     func equivalentForLobbySync(to other: LobbyStatePayload) -> Bool {
         gameMode == other.gameMode &&
             gameDurationSeconds == other.gameDurationSeconds &&
@@ -1068,6 +1364,7 @@ final class AppState: NSObject {
     private(set) var roomSyncRevision = 0
     private(set) var roomConnectionState: RoomConnectionState = .synced
     private(set) var lobbySettingsSyncState = LobbyLatestWinsState()
+    private(set) var lobbyModeSyncState = LobbyModeLatestWinsState()
     private(set) var lobbySettingsSyncFailure: String?
     private(set) var lobbySettingsSyncRoomID: String?
     private(set) var lobbySettingsRollbackEpoch = 0
@@ -1113,6 +1410,9 @@ final class AppState: NSObject {
     @ObservationIgnored private var lobbySettingsSyncRunID: UUID?
     @ObservationIgnored private var lobbySettingsSyncScope: LobbySettingsSyncScope?
     @ObservationIgnored private var lobbySettingsSyncUserID: String?
+    @ObservationIgnored private var lobbyModeSyncWorker: Task<Void, Never>?
+    @ObservationIgnored private var lobbyModeSyncRunID: UUID?
+    @ObservationIgnored private var lobbyModeProtection: LobbyModeProtection?
     @ObservationIgnored private var gameRoomRealtimeRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var pendingGameRoomRealtimeRevision = 0
     @ObservationIgnored private var gameRoomRealtimeCatchUpRequested = false
@@ -1161,8 +1461,8 @@ final class AppState: NSObject {
         self.radarNearby = radarNearby
         super.init()
 
-        gameRoomRealtime.onSignal = { [weak self] signal in
-            self?.handleGameRoomRealtimeSignal(signal)
+        gameRoomRealtime.onSignal = { [weak self] signal, generation in
+            self?.handleGameRoomRealtimeSignal(signal, serviceGeneration: generation)
         }
         gameRoomRealtime.onCatchUp = { [weak self] in
             self?.handleGameRoomRealtimeCatchUp()
@@ -1217,7 +1517,8 @@ final class AppState: NSObject {
         closedRoomRevisionFence.record(
             userID: user?.id,
             roomID: room.id,
-            revision: nil,
+            roomRevision: nil,
+            lobbyRevision: nil,
             membershipID: room.viewerMembershipID
         )
         if let ownerID = user?.id {
@@ -1274,7 +1575,8 @@ final class AppState: NSObject {
         guard closedRoomRevisionFence.authorizeExplicitRejoin(
             userID: user?.id,
             roomID: room.id,
-            revision: room.roomRevision ?? room.lobbyRevision ?? 0,
+            roomRevision: room.roomRevision,
+            lobbyRevision: room.lobbyRevision ?? 0,
             membershipID: room.viewerMembershipID
         ) else {
             throw Base44Error(
@@ -1326,7 +1628,8 @@ final class AppState: NSObject {
             closedRoomRevisionFence.permits(
                 userID: user?.id,
                 roomID: room.id,
-                revision: room.roomRevision ?? room.lobbyRevision ?? 0,
+                roomRevision: room.roomRevision,
+                lobbyRevision: room.lobbyRevision ?? 0,
                 membershipID: room.viewerMembershipID
             )
     }
@@ -1408,13 +1711,24 @@ final class AppState: NSObject {
               room.normalizedStatus == "waiting",
               room.hostEmail == user?.email else { return }
 
+        // Until a dedicated mode request is acknowledged, unrelated full-state
+        // edits carry the last authoritative mode, not the optimistic button
+        // value. The queue is rebased immediately after the mode commit.
+        let queuedState = lobbyModeSyncState.hasOptimisticChanges
+            ? state.replacingGameMode(with: room.gameModeValue)
+            : state
+        let queuedConfirmedState = confirmedState.map {
+            lobbyModeSyncState.hasOptimisticChanges
+                ? $0.replacingGameMode(with: room.gameModeValue)
+                : $0
+        }
         lobbySettingsSyncState.reconcile(
             confirmedRevision: room.lobbyRevision ?? 0
         )
         _ = lobbySettingsSyncState.enqueueLatest(
             roomID: roomID,
-            state: state,
-            confirmedState: confirmedState
+            state: queuedState,
+            confirmedState: queuedConfirmedState
         )
         lobbySettingsSyncFailure = nil
         if lobbySettingsSyncState.hasPendingIntent {
@@ -1422,9 +1736,34 @@ final class AppState: NSObject {
         }
     }
 
+    func enqueueLobbyGameMode(roomID: String, mode: SpyGameMode) {
+        guard let scope = lobbySettingsSyncScope,
+              scope.roomID == roomID,
+              scope.userID == user?.id,
+              let room = activeRoom,
+              room.id == roomID,
+              room.normalizedStatus == "waiting",
+              room.hostEmail == user?.email else { return }
+
+        _ = lobbyModeSyncState.enqueueLatest(
+            roomID: roomID,
+            mode: mode,
+            confirmedMode: room.gameModeValue
+        )
+        lobbySettingsSyncFailure = nil
+        if lobbyModeSyncState.pendingIntent != nil {
+            startLobbyModeWorker()
+        }
+    }
+
+    var hasOptimisticLobbySettingsChanges: Bool {
+        lobbySettingsSyncState.hasOptimisticChanges ||
+            lobbyModeSyncState.hasOptimisticChanges
+    }
+
     func hasUnconfirmedLobbySettings(for roomID: String) -> Bool {
         lobbySettingsSyncRoomID == roomID &&
-            lobbySettingsSyncState.hasOptimisticChanges
+            hasOptimisticLobbySettingsChanges
     }
 
     func confirmedLobbyRoom(
@@ -1440,8 +1779,16 @@ final class AppState: NSObject {
                 await worker.value
                 continue
             }
+            if let worker = lobbyModeSyncWorker {
+                await worker.value
+                continue
+            }
             if lobbySettingsSyncState.hasPendingIntent {
                 startLobbySettingsWorker(debounce: .zero)
+                continue
+            }
+            if lobbyModeSyncState.pendingIntent != nil {
+                startLobbyModeWorker()
                 continue
             }
             break
@@ -1454,7 +1801,7 @@ final class AppState: NSObject {
               room.id == roomID,
               room.hostEmail == user?.email,
               allowedStatuses.contains(room.normalizedStatus),
-              !lobbySettingsSyncState.hasOptimisticChanges else {
+              !hasOptimisticLobbySettingsChanges else {
             throw Base44Error(
                 message: "Lobby settings are still synchronizing.",
                 statusCode: 409
@@ -1521,14 +1868,301 @@ final class AppState: NSObject {
         lobbySettingsSyncWorker?.cancel()
         lobbySettingsSyncWorker = nil
         lobbySettingsSyncRunID = nil
+        lobbyModeSyncWorker?.cancel()
+        lobbyModeSyncWorker = nil
+        lobbyModeSyncRunID = nil
+        lobbyModeProtection = nil
         lobbySettingsSyncScope = desiredScope
         lobbySettingsSyncUserID = user?.id
         lobbySettingsSyncRoomID = room?.id
         lobbySettingsSyncState.reset(
             confirmedRevision: room?.lobbyRevision ?? 0
         )
+        lobbyModeSyncState.reset()
         lobbySettingsSyncFailure = nil
         lobbySettingsRollbackEpoch &+= 1
+    }
+
+    private func startLobbyModeWorker() {
+        guard lobbyModeSyncWorker == nil,
+              lobbyModeSyncState.pendingIntent != nil,
+              let scope = lobbySettingsSyncScope else { return }
+
+        let generation = lobbySettingsSyncGeneration
+        let runID = UUID()
+        lobbyModeSyncRunID = runID
+        lobbyModeSyncWorker = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await self.runLobbyModeWorker(
+                scope: scope,
+                generation: generation,
+                runID: runID
+            )
+        }
+    }
+
+    private func runLobbyModeWorker(
+        scope: LobbySettingsSyncScope,
+        generation: UUID,
+        runID: UUID
+    ) async {
+        defer {
+            finishLobbyModeWorker(
+                scope: scope,
+                generation: generation,
+                runID: runID
+            )
+        }
+
+        while !Task.isCancelled,
+              lobbyModeWorkerIsCurrent(
+                  scope: scope,
+                  generation: generation,
+                  runID: runID
+              ),
+              let intent = lobbyModeSyncState.beginNext() {
+            guard let room = activeRoom,
+                  room.id == scope.roomID,
+                  room.normalizedStatus == "waiting",
+                  room.hostEmail == user?.email else {
+                _ = lobbyModeSyncState.fail(intent, retry: false)
+                lobbySettingsRollbackEpoch &+= 1
+                return
+            }
+
+#if DEBUG
+            if shouldUsePreviewData {
+                var previewRoom = room
+                previewRoom.gameMode = intent.mode.rawValue
+                previewRoom.roomRevision = (room.roomRevision ?? 0) + 1
+                _ = lobbyModeSyncState.finish(intent)
+                recordCommittedLobbyMode(
+                    intent.mode,
+                    room: previewRoom,
+                    scope: scope
+                )
+                continue
+            }
+#endif
+
+            do {
+                let updatedRoom = try await client.updateGameMode(
+                    room: room,
+                    mode: intent.mode
+                )
+                guard lobbyModeWorkerIsCurrent(
+                    scope: scope,
+                    generation: generation,
+                    runID: runID
+                ),
+                      updatedRoom.id == scope.roomID,
+                      updatedRoom.normalizedStatus == "waiting",
+                      updatedRoom.gameModeValue == intent.mode,
+                      RoomPollPolicy.acceptsSnapshot(
+                          currentRoomRevision: room.roomRevision,
+                          currentLobbyRevision: room.lobbyRevision,
+                          fetchedRoomRevision: updatedRoom.roomRevision,
+                          fetchedLobbyRevision: updatedRoom.lobbyRevision
+                      ) else {
+                    throw Base44Error(
+                        message: "Game mode update was not confirmed.",
+                        statusCode: 502,
+                        retryable: true
+                    )
+                }
+
+                _ = lobbyModeSyncState.finish(intent)
+                recordCommittedLobbyMode(
+                    intent.mode,
+                    room: updatedRoom,
+                    scope: scope
+                )
+                lobbySettingsSyncFailure = nil
+            } catch is CancellationError {
+                _ = lobbyModeSyncState.fail(intent, retry: false)
+                return
+            } catch {
+                guard lobbyModeWorkerIsCurrent(
+                    scope: scope,
+                    generation: generation,
+                    runID: runID
+                ) else { return }
+
+                let retryable = LobbySyncRetryPolicy.isRetryable(error) ||
+                    LobbySyncRetryPolicy.isRevisionConflict(error)
+                let willRetry = lobbyModeSyncState.fail(intent, retry: retryable)
+                if willRetry {
+                    do {
+                        try await Task.sleep(
+                            for: intent.retryCount == 0
+                                ? .milliseconds(120)
+                                : .milliseconds(300)
+                        )
+                    } catch {
+                        return
+                    }
+                    continue
+                }
+
+                if let projected = activeRoom,
+                   projected.id == scope.roomID,
+                   projected.normalizedStatus == "waiting",
+                   projected.gameModeValue == intent.mode,
+                   RoomPollPolicy.isSnapshotNewer(
+                       currentRoomRevision: room.roomRevision,
+                       currentLobbyRevision: room.lobbyRevision,
+                       fetchedRoomRevision: projected.roomRevision,
+                       fetchedLobbyRevision: projected.lobbyRevision
+                   ) {
+                    // The personal realtime projection is itself an
+                    // authoritative post-commit receipt even if the initiator's
+                    // HTTP response was lost.
+                    recordCommittedLobbyMode(
+                        intent.mode,
+                        room: projected,
+                        scope: scope
+                    )
+                    lobbySettingsSyncFailure = nil
+                    continue
+                }
+
+                if let refreshed = try? await client.refreshRoom(id: scope.roomID),
+                   lobbyModeWorkerIsCurrent(
+                       scope: scope,
+                       generation: generation,
+                       runID: runID
+                   ),
+                   refreshed.normalizedStatus == "waiting",
+                   refreshed.gameModeValue == intent.mode {
+                    recordCommittedLobbyMode(
+                        intent.mode,
+                        room: refreshed,
+                        scope: scope
+                    )
+                    lobbySettingsSyncFailure = nil
+                    continue
+                }
+
+                if lobbyModeSyncState.pendingIntent == nil {
+                    if !lobbySettingsSyncState.hasOptimisticChanges {
+                        lobbyModeProtection = nil
+                    }
+                    lobbySettingsSyncFailure = error.localizedDescription
+                    lobbySettingsRollbackEpoch &+= 1
+                    if let refreshed = try? await client.refreshRoom(id: scope.roomID),
+                       lobbyModeWorkerIsCurrent(
+                           scope: scope,
+                           generation: generation,
+                           runID: runID
+                       ),
+                       RoomPollPolicy.acceptsSnapshot(
+                           currentRoomRevision: activeRoom?.roomRevision,
+                           currentLobbyRevision: activeRoom?.lobbyRevision,
+                           fetchedRoomRevision: refreshed.roomRevision,
+                           fetchedLobbyRevision: refreshed.lobbyRevision
+                       ) {
+                        if lobbyModeProtection?.roomID == scope.roomID {
+                            adoptLobbyMutationRoom(refreshed)
+                        } else {
+                            activeRoom = refreshed
+                        }
+                    }
+                }
+            }
+        }
+    }
+
+    private func recordCommittedLobbyMode(
+        _ mode: SpyGameMode,
+        room committedRoom: GameRoom,
+        scope: LobbySettingsSyncScope
+    ) {
+        guard activeRoom?.id == scope.roomID else { return }
+        let activeBeforeCommit = activeRoom
+        let fullStateCommittedAfterMode = RoomPollPolicy.isSnapshotNewer(
+            currentRoomRevision: committedRoom.roomRevision,
+            currentLobbyRevision: committedRoom.lobbyRevision,
+            fetchedRoomRevision: activeBeforeCommit?.roomRevision,
+            fetchedLobbyRevision: activeBeforeCommit?.lobbyRevision
+        ) &&
+            activeBeforeCommit?.gameModeValue != mode
+        let fallbackState = activeBeforeCommit.flatMap {
+            authoritativeLobbyStatePayload(from: $0)
+        }
+
+        _ = lobbySettingsSyncState.rebaseGameMode(
+            roomID: scope.roomID,
+            mode: mode,
+            fallbackState: fallbackState,
+            forceCorrection: fullStateCommittedAfterMode
+        )
+        lobbyModeProtection = lobbySettingsSyncState.hasOptimisticChanges
+            ? LobbyModeProtection(roomID: scope.roomID, mode: mode)
+            : nil
+        adoptLobbyMutationRoom(committedRoom)
+
+        if lobbySettingsSyncState.hasPendingIntent {
+            startLobbySettingsWorker(debounce: .zero)
+        }
+    }
+
+    private func adoptLobbyMutationRoom(_ incomingRoom: GameRoom) {
+        guard let currentRoom = activeRoom,
+              incomingRoom.id == currentRoom.id else { return }
+        let protection = lobbyModeProtection.flatMap {
+            $0.roomID == incomingRoom.id ? $0 : nil
+        }
+
+        if RoomPollPolicy.acceptsSnapshot(
+            currentRoomRevision: currentRoom.roomRevision,
+            currentLobbyRevision: currentRoom.lobbyRevision,
+            fetchedRoomRevision: incomingRoom.roomRevision,
+            fetchedLobbyRevision: incomingRoom.lobbyRevision
+        ) {
+            let authoritativeIncomingMode = incomingRoom.gameModeValue
+            var adopted = incomingRoom
+            if let protection {
+                adopted.gameMode = protection.mode.rawValue
+            }
+            activeRoom = adopted
+            if authoritativeIncomingMode == protection?.mode,
+               !lobbySettingsSyncState.hasOptimisticChanges {
+                lobbyModeProtection = nil
+            }
+        } else if let protection, currentRoom.gameModeValue != protection.mode {
+            var protectedCurrent = currentRoom
+            protectedCurrent.gameMode = protection.mode.rawValue
+            activeRoom = protectedCurrent
+        }
+    }
+
+    private func finishLobbyModeWorker(
+        scope: LobbySettingsSyncScope,
+        generation: UUID,
+        runID: UUID
+    ) {
+        guard lobbySettingsSyncScope == scope,
+              lobbySettingsSyncGeneration == generation,
+              lobbyModeSyncRunID == runID else { return }
+        lobbyModeSyncWorker = nil
+        lobbyModeSyncRunID = nil
+        if lobbyModeSyncState.pendingIntent != nil {
+            startLobbyModeWorker()
+        }
+    }
+
+    private func lobbyModeWorkerIsCurrent(
+        scope: LobbySettingsSyncScope,
+        generation: UUID,
+        runID: UUID
+    ) -> Bool {
+        lobbySettingsSyncScope == scope &&
+            lobbySettingsSyncGeneration == generation &&
+            lobbyModeSyncRunID == runID &&
+            user?.id == scope.userID &&
+            activeRoom?.id == scope.roomID &&
+            activeRoom?.normalizedStatus == "waiting" &&
+            activeRoom?.hostEmail == user?.email
     }
 
     private func startLobbySettingsWorker(debounce: Duration) {
@@ -1605,7 +2239,7 @@ final class AppState: NSObject {
                     generation: generation,
                     runID: runID
                 ) else { return }
-                activeRoom = previewRoom
+                adoptLobbyMutationRoom(previewRoom)
                 lobbySettingsSyncFailure = nil
                 continue
             }
@@ -1642,9 +2276,7 @@ final class AppState: NSObject {
                     generation: generation,
                     runID: runID
                 ) else { return }
-                if updatedRevision >= (activeRoom?.lobbyRevision ?? 0) {
-                    activeRoom = updatedRoom
-                }
+                adoptLobbyMutationRoom(updatedRoom)
                 lobbySettingsSyncFailure = nil
             } catch is CancellationError {
                 _ = lobbySettingsSyncState.fail(request, retry: false)
@@ -1676,10 +2308,12 @@ final class AppState: NSObject {
                         confirmedRevision: refreshed.lobbyRevision ?? 0
                     )
                     if RoomPollPolicy.acceptsSnapshot(
-                        currentLobbyRevision: activeRoom?.roomRevision ?? activeRoom?.lobbyRevision,
-                        fetchedLobbyRevision: refreshed.roomRevision ?? refreshed.lobbyRevision
+                        currentRoomRevision: activeRoom?.roomRevision,
+                        currentLobbyRevision: activeRoom?.lobbyRevision,
+                        fetchedRoomRevision: refreshed.roomRevision,
+                        fetchedLobbyRevision: refreshed.lobbyRevision
                     ) {
-                        activeRoom = refreshed
+                        adoptLobbyMutationRoom(refreshed)
                     }
                 }
 
@@ -1716,10 +2350,12 @@ final class AppState: NSObject {
                         confirmedRevision: reconciled.lobbyRevision ?? 0
                     )
                     if RoomPollPolicy.acceptsSnapshot(
-                        currentLobbyRevision: activeRoom?.roomRevision ?? activeRoom?.lobbyRevision,
-                        fetchedLobbyRevision: reconciled.roomRevision ?? reconciled.lobbyRevision
+                        currentRoomRevision: activeRoom?.roomRevision,
+                        currentLobbyRevision: activeRoom?.lobbyRevision,
+                        fetchedRoomRevision: reconciled.roomRevision,
+                        fetchedLobbyRevision: reconciled.lobbyRevision
                     ) {
-                        activeRoom = reconciled
+                        adoptLobbyMutationRoom(reconciled)
                     }
                     if wasCommitted {
                         _ = lobbySettingsSyncState.recordRecoveredServerConfirmation(
@@ -1732,6 +2368,23 @@ final class AppState: NSObject {
                 }
 
                 if !lobbySettingsSyncState.hasOptimisticChanges {
+                    if lobbyModeProtection?.roomID == scope.roomID {
+                        lobbyModeProtection = nil
+                        if let authoritative = try? await client.refreshRoom(id: scope.roomID),
+                           lobbySettingsWorkerIsCurrent(
+                               scope: scope,
+                               generation: generation,
+                               runID: runID
+                           ),
+                           RoomPollPolicy.acceptsSnapshot(
+                               currentRoomRevision: activeRoom?.roomRevision,
+                               currentLobbyRevision: activeRoom?.lobbyRevision,
+                               fetchedRoomRevision: authoritative.roomRevision,
+                               fetchedLobbyRevision: authoritative.lobbyRevision
+                           ) {
+                            activeRoom = authoritative
+                        }
+                    }
                     if base44Error?.isSpyCountInvalidForPlayerCount == true {
                         lobbySettingsSyncFailure = switch language {
                         case .en: "THE SPY COUNT WAS REDUCED FOR THE CURRENT ROSTER"
@@ -1880,8 +2533,10 @@ final class AppState: NSObject {
                     case .apply:
                         guard let refreshedRoom else { break }
                         if RoomPollPolicy.acceptsSnapshot(
-                            currentLobbyRevision: activeRoom?.roomRevision ?? activeRoom?.lobbyRevision,
-                            fetchedLobbyRevision: refreshedRoom.roomRevision ?? refreshedRoom.lobbyRevision
+                            currentRoomRevision: activeRoom?.roomRevision,
+                            currentLobbyRevision: activeRoom?.lobbyRevision,
+                            fetchedRoomRevision: refreshedRoom.roomRevision,
+                            fetchedLobbyRevision: refreshedRoom.lobbyRevision
                         ) {
                             activeRoom = refreshedRoom
                         }
@@ -2028,8 +2683,10 @@ final class AppState: NSObject {
                activeStatuses.contains(refreshedRoom.normalizedStatus),
                refreshedRoom.containsPlayer(email: self.user?.email) {
                 if self.activeRoom?.id != refreshedRoom.id || RoomPollPolicy.acceptsSnapshot(
-                    currentLobbyRevision: self.activeRoom?.roomRevision ?? self.activeRoom?.lobbyRevision,
-                    fetchedLobbyRevision: refreshedRoom.roomRevision ?? refreshedRoom.lobbyRevision
+                    currentRoomRevision: self.activeRoom?.roomRevision,
+                    currentLobbyRevision: self.activeRoom?.lobbyRevision,
+                    fetchedRoomRevision: refreshedRoom.roomRevision,
+                    fetchedLobbyRevision: refreshedRoom.lobbyRevision
                 ) {
                     self.activeRoom = refreshedRoom
                 }
@@ -2054,15 +2711,26 @@ final class AppState: NSObject {
 
     private func closeActiveRoomAfterRefresh(
         roomID: String,
-        authoritativeRevision: Int? = nil
+        authoritativeRoomRevision: Int? = nil,
+        authoritativeLobbyRevision: Int? = nil
     ) {
         guard let closingRoom = activeRoom, closingRoom.id == roomID else { return }
-        let localRevision = closingRoom.roomRevision ?? closingRoom.lobbyRevision ?? 0
-        let closingRevision = authoritativeRevision.map { max($0, localRevision) }
+        let closingRoomRevision = authoritativeRoomRevision.map {
+            max($0, closingRoom.roomRevision ?? 0)
+        }
+        let closingLobbyRevision: Int?
+        if authoritativeRoomRevision != nil {
+            closingLobbyRevision = authoritativeLobbyRevision.map { max($0, 0) }
+        } else {
+            closingLobbyRevision = authoritativeLobbyRevision.map {
+                max($0, closingRoom.lobbyRevision ?? 0)
+            }
+        }
         closedRoomRevisionFence.record(
             userID: user?.id,
             roomID: roomID,
-            revision: closingRevision,
+            roomRevision: closingRoomRevision,
+            lobbyRevision: closingLobbyRevision,
             membershipID: closingRoom.viewerMembershipID
         )
         // Invalidate every read generation before clearing the room. Requests
@@ -3340,19 +4008,69 @@ final class AppState: NSObject {
         )
     }
 
-    private func handleGameRoomRealtimeSignal(_ signal: GameRoomRealtimeSignal) {
-        let currentRevision = activeRoom?.roomRevision ?? activeRoom?.lobbyRevision ?? 0
+    private func handleGameRoomRealtimeSignal(
+        _ signal: GameRoomRealtimeSignal,
+        serviceGeneration: UUID
+    ) {
+        let receivedAt = Date()
         switch GameRoomRealtimeSignalPolicy.disposition(
             signal: signal,
             activeRoomID: activeRoom?.id,
-            currentRevision: currentRevision
+            activeRoomStatus: activeRoom?.normalizedStatus,
+            currentRoomRevision: activeRoom?.roomRevision,
+            currentLobbyRevision: activeRoom?.lobbyRevision ?? 0,
+            subscriptionGenerationIsCurrent: gameRoomRealtime.isCurrent(
+                generation: serviceGeneration
+            )
         ) {
         case .ignore:
             return
+        case .applyLobbyMode(let projection):
+            guard let currentRoom = activeRoom,
+                  let roomRevision = signal.roomRevision,
+                  currentRoom.id == signal.roomID,
+                  currentRoom.normalizedStatus == "waiting" else { return }
+            let room = GameRoomRealtimeLobbyModeApplier.applying(
+                signal: signal,
+                projection: projection,
+                to: currentRoom
+            )
+            activeRoom = room
+
+            if let scope = lobbySettingsSyncScope,
+               scope.roomID == room.id,
+               room.hostEmail == user?.email {
+                _ = lobbySettingsSyncState.rebaseGameMode(
+                    roomID: room.id,
+                    mode: projection.gameMode
+                )
+                lobbyModeProtection = lobbySettingsSyncState.hasOptimisticChanges
+                    ? LobbyModeProtection(
+                        roomID: room.id,
+                        mode: projection.gameMode
+                    )
+                    : nil
+                if lobbySettingsSyncState.hasPendingIntent {
+                    startLobbySettingsWorker(debounce: .zero)
+                }
+            }
+
+            let latency = GameRoomRealtimeProjectionLatency.measure(
+                projection: projection,
+                receivedAt: receivedAt
+            )
+            let commitMS = latency.commitToReceiveMilliseconds.map(String.init) ?? "unknown"
+            let emitMS = latency.emitToReceiveMilliseconds.map(String.init) ?? "unknown"
+            print(
+                "[LobbyModeRealtime] projection_id=\(projection.id) " +
+                    "commit_to_receive_ms=\(commitMS) emit_to_receive_ms=\(emitMS) " +
+                    "direct_apply=true room_revision=\(roomRevision)"
+            )
         case .close:
             closeActiveRoomAfterRefresh(
                 roomID: signal.roomID,
-                authoritativeRevision: signal.roomRevision ?? signal.lobbyRevision
+                authoritativeRoomRevision: signal.roomRevision,
+                authoritativeLobbyRevision: signal.lobbyRevision
             )
         case .refresh(let forceCatchUp):
             pendingGameRoomRealtimeRevision = max(
@@ -3491,8 +4209,12 @@ final class AppState: NSObject {
             transientFailureAttempts = 0
 
             let fetchedRevision = refreshedRoom.roomRevision ?? refreshedRoom.lobbyRevision ?? 0
-            let currentRevision = activeRoom?.roomRevision ?? activeRoom?.lobbyRevision ?? 0
-            if fetchedRevision >= currentRevision {
+            if RoomPollPolicy.acceptsSnapshot(
+                currentRoomRevision: activeRoom?.roomRevision,
+                currentLobbyRevision: activeRoom?.lobbyRevision,
+                fetchedRoomRevision: refreshedRoom.roomRevision,
+                fetchedLobbyRevision: refreshedRoom.lobbyRevision
+            ) {
                 activeRoom = refreshedRoom
             }
 

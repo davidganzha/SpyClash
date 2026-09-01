@@ -1,6 +1,6 @@
 {
   "name": "GameRoomSignal",
-  "description": "Per-participant realtime wake-up hint for an authoritative lobby revision. Clients fetch the mediated room projection after observing a signal; no room secret or raw lobby payload is stored here.",
+  "description": "Per-participant realtime hint for an authoritative room revision. Most signals wake a mediated room refresh; the explicitly discriminated lobby-mode projection carries only the safe committed mode and no room secret or raw lobby payload.",
   "type": "object",
   "properties": {
     "user_id": {
@@ -32,6 +32,31 @@
       "type": "string",
       "enum": ["active", "closed"],
       "description": "Whether the client should refresh an active room or discard a closed-room subscription."
+    },
+    "projection_kind": {
+      "type": "string",
+      "enum": ["none", "lobby_mode_v1"],
+      "description": "Explicit discriminator for an optional safe direct projection. Missing legacy values and none require an authoritative room refresh."
+    },
+    "projection_id": {
+      "type": "string",
+      "format": "uuid",
+      "description": "Unique id of this direct projection emission. Clients use it only when projection_kind is lobby_mode_v1."
+    },
+    "projected_game_mode": {
+      "type": "string",
+      "enum": ["questions", "associations"],
+      "description": "Safe committed lobby mode carried only by a lobby_mode_v1 projection."
+    },
+    "projection_committed_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server-side post-CAS timestamp approximation captured when the direct projection is constructed. It never reuses a potentially stale pre-CAS room updated_date."
+    },
+    "projection_emitted_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server emission timestamp used with projection_id to order repeated projections at one room revision."
     },
     "close_intent_id": {
       "type": "string",

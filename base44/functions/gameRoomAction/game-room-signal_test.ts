@@ -4,6 +4,8 @@ import {
   GameRoomSignalRecord,
   GameRoomSignalStore,
   hasDurableClosedRoomSignal,
+  lobbyModeSignalProjectionForRoom,
+  projectedLobbyModeFromSignal,
   signalRecordsForRecipients,
   signalRecordsForRoom,
   upsertGameRoomSignal,
@@ -99,6 +101,7 @@ const signal: GameRoomSignalRecord = {
   room_revision: 12,
   room_updated_at: "2026-08-06T12:00:00.000Z",
   state: "active",
+  projection_kind: "none",
 };
 
 Deno.test("room signals contain only deduplicated participant ids and wake-up metadata", () => {
@@ -124,6 +127,7 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
         room_revision: 21,
         room_updated_at: "2026-08-06T12:00:01.000Z",
         state: "active",
+        projection_kind: "none",
       },
       {
         user_id: "user-2",
@@ -132,6 +136,7 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
         room_revision: 21,
         room_updated_at: "2026-08-06T12:00:01.000Z",
         state: "active",
+        projection_kind: "none",
       },
       {
         user_id: "user-3",
@@ -140,6 +145,7 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
         room_revision: 21,
         room_updated_at: "2026-08-06T12:00:01.000Z",
         state: "active",
+        projection_kind: "none",
       },
     ],
   );
@@ -216,6 +222,164 @@ Deno.test("closed dominates active at equal revision but a newer revision can re
   );
   assertEquals(store.rows[0].state, "active");
   assertEquals(store.rows[0].room_revision, 13);
+});
+
+Deno.test("lobby mode projection carries only the safe committed direct fields", () => {
+  const projection = lobbyModeSignalProjectionForRoom(
+    {
+      id: "room-1",
+      game_mode: "associations",
+      updated_date: "2026-09-02T12:00:00.000Z",
+      word: "must not leak",
+      players: [{ email: "hidden@example.com" }],
+    },
+    {
+      projectionID: "00000000-0000-4000-8000-000000000001",
+      emittedAt: "2026-09-02T12:00:00.100Z",
+    },
+  );
+
+  assertEquals(projection, {
+    projection_kind: "lobby_mode_v1",
+    projection_id: "00000000-0000-4000-8000-000000000001",
+    projected_game_mode: "associations",
+    // The room timestamp is deliberately stale pre-CAS state. The direct
+    // metric must use the server time captured only after CAS returned.
+    projection_committed_at: "2026-09-02T12:00:00.100Z",
+    projection_emitted_at: "2026-09-02T12:00:00.100Z",
+  });
+
+  assertEquals(
+    lobbyModeSignalProjectionForRoom(
+      { game_mode: "questions" },
+      {
+        projectionID: "00000000-0000-4000-8000-000000000002",
+        emittedAt: "2026-09-02T12:00:01.250Z",
+      },
+    ),
+    {
+      projection_kind: "lobby_mode_v1",
+      projection_id: "00000000-0000-4000-8000-000000000002",
+      projected_game_mode: "questions",
+      projection_committed_at: "2026-09-02T12:00:01.250Z",
+      projection_emitted_at: "2026-09-02T12:00:01.250Z",
+    },
+  );
+});
+
+Deno.test("newer lobby mode projections update at one authoritative revision by timestamp and id", async () => {
+  const store = new MemorySignalStore();
+  const firstProjection = lobbyModeSignalProjectionForRoom(
+    { game_mode: "questions" },
+    {
+      projectionID: "00000000-0000-4000-8000-000000000001",
+      emittedAt: "2026-09-02T12:00:00.000Z",
+    },
+  )!;
+  const secondProjection = lobbyModeSignalProjectionForRoom(
+    { game_mode: "associations" },
+    {
+      projectionID: "00000000-0000-4000-8000-000000000002",
+      emittedAt: "2026-09-02T12:00:01.000Z",
+    },
+  )!;
+  const equalTimestampProjection = lobbyModeSignalProjectionForRoom(
+    { game_mode: "questions" },
+    {
+      projectionID: "00000000-0000-4000-8000-000000000003",
+      emittedAt: "2026-09-02T12:00:01.000Z",
+    },
+  )!;
+
+  assertEquals(
+    await upsertGameRoomSignal(store, { ...signal, ...firstProjection }),
+    "created",
+  );
+  assertEquals(
+    await upsertGameRoomSignal(store, { ...signal, ...secondProjection }),
+    "updated",
+  );
+  assertEquals(
+    projectedLobbyModeFromSignal(store.rows[0])?.projected_game_mode,
+    "associations",
+  );
+  assertEquals(
+    await upsertGameRoomSignal(store, {
+      ...signal,
+      ...firstProjection,
+    }),
+    "unchanged",
+  );
+  assertEquals(
+    await upsertGameRoomSignal(store, {
+      ...signal,
+      ...equalTimestampProjection,
+    }),
+    "updated",
+  );
+  assertEquals(
+    projectedLobbyModeFromSignal(store.rows[0])?.projected_game_mode,
+    "questions",
+  );
+  assertEquals(
+    await upsertGameRoomSignal(store, { ...signal, ...secondProjection }),
+    "unchanged",
+  );
+  assertEquals(
+    projectedLobbyModeFromSignal(store.rows[0])?.projected_game_mode,
+    "questions",
+  );
+});
+
+Deno.test("newer generic and closed signals deactivate retained direct projection fields", async () => {
+  const store = new MemorySignalStore();
+  const projection = lobbyModeSignalProjectionForRoom(
+    { game_mode: "associations" },
+    {
+      projectionID: "00000000-0000-4000-8000-000000000001",
+      emittedAt: "2026-09-02T12:00:00.000Z",
+    },
+  )!;
+  await upsertGameRoomSignal(store, { ...signal, ...projection });
+  assertEquals(
+    projectedLobbyModeFromSignal(store.rows[0])?.projected_game_mode,
+    "associations",
+  );
+
+  assertEquals(
+    await upsertGameRoomSignal(store, {
+      ...signal,
+      room_revision: 13,
+      room_updated_at: "2026-09-02T12:00:01.000Z",
+      projection_kind: "none",
+    }),
+    "updated",
+  );
+  // Base44 updates may retain omitted optional values. The explicit kind is
+  // therefore the only activation boundary and makes those values inert.
+  assertEquals(store.rows[0].projected_game_mode, "associations");
+  assertEquals(store.rows[0].projection_kind, "none");
+  assertEquals(projectedLobbyModeFromSignal(store.rows[0]), null);
+
+  await upsertGameRoomSignal(store, {
+    ...signal,
+    room_revision: 14,
+    ...projection,
+    projection_id: "00000000-0000-4000-8000-000000000004",
+    projection_emitted_at: "2026-09-02T12:00:02.000Z",
+  });
+  assertEquals(
+    await upsertGameRoomSignal(store, {
+      ...signal,
+      room_revision: 14,
+      state: "closed",
+      projection_kind: "none",
+    }),
+    "updated",
+  );
+  assertEquals(store.rows[0].state, "closed");
+  assertEquals(store.rows[0].projection_kind, "none");
+  assertEquals(projectedLobbyModeFromSignal(store.rows[0]), null);
 });
 
 Deno.test("signal upsert converges after a create race", async () => {

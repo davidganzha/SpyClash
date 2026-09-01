@@ -1,12 +1,38 @@
 import Foundation
 import SocketIO
 
+struct GameRoomRealtimeLobbyModeProjection: Equatable, Sendable {
+    static let kind = "lobby_mode_v1"
+
+    let id: String
+    let gameMode: SpyGameMode
+    let committedAt: String?
+    let emittedAt: String?
+}
+
 struct GameRoomRealtimeSignal: Equatable, Sendable {
     let roomID: String
     let lobbyRevision: Int
     let roomRevision: Int?
     let roomUpdatedAt: String?
     let state: String
+    let lobbyModeProjection: GameRoomRealtimeLobbyModeProjection?
+
+    init(
+        roomID: String,
+        lobbyRevision: Int,
+        roomRevision: Int?,
+        roomUpdatedAt: String?,
+        state: String,
+        lobbyModeProjection: GameRoomRealtimeLobbyModeProjection? = nil
+    ) {
+        self.roomID = roomID
+        self.lobbyRevision = lobbyRevision
+        self.roomRevision = roomRevision
+        self.roomUpdatedAt = roomUpdatedAt
+        self.state = state
+        self.lobbyModeProjection = lobbyModeProjection
+    }
 }
 
 enum GameRoomRealtimeSignalParser {
@@ -44,6 +70,25 @@ enum GameRoomRealtimeSignalParser {
             roomRevision = nil
         }
 
+        let lobbyModeProjection: GameRoomRealtimeLobbyModeProjection?
+        if eventData["projection_kind"] as? String == GameRoomRealtimeLobbyModeProjection.kind,
+           let projectionID = boundedProjectionID(eventData["projection_id"]),
+           let rawMode = (eventData["projected_game_mode"] as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased(),
+           let gameMode = SpyGameMode(rawValue: rawMode) {
+            lobbyModeProjection = GameRoomRealtimeLobbyModeProjection(
+                id: projectionID,
+                gameMode: gameMode,
+                committedAt: boundedTimestamp(eventData["projection_committed_at"]),
+                emittedAt: boundedTimestamp(eventData["projection_emitted_at"])
+            )
+        } else {
+            // A malformed or future projection remains only a wake-up hint. The
+            // existing authoritative get_room path will validate the snapshot.
+            lobbyModeProjection = nil
+        }
+
         return GameRoomRealtimeSignal(
             roomID: expectedRoomID,
             lobbyRevision: revision,
@@ -51,8 +96,28 @@ enum GameRoomRealtimeSignalParser {
             roomUpdatedAt: (eventData["room_updated_at"] as? String)?
                 .trimmingCharacters(in: .whitespacesAndNewlines)
                 .nilIfBlank,
-            state: state
+            state: state,
+            lobbyModeProjection: lobbyModeProjection
         )
+    }
+
+    private static func boundedProjectionID(_ value: Any?) -> String? {
+        guard let id = (value as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfBlank,
+              id.count <= 128,
+              id.unicodeScalars.allSatisfy({ scalar in
+                  CharacterSet.alphanumerics.contains(scalar) || "._:-".unicodeScalars.contains(scalar)
+              }) else { return nil }
+        return id
+    }
+
+    private static func boundedTimestamp(_ value: Any?) -> String? {
+        guard let timestamp = (value as? String)?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfBlank,
+              timestamp.count <= 64 else { return nil }
+        return timestamp
     }
 
     private static func nonNegativeInteger(_ value: Any?) -> Int? {
@@ -80,7 +145,7 @@ enum GameRoomRealtimeSignalParser {
 
 @MainActor
 final class GameRoomRealtimeService {
-    var onSignal: ((GameRoomRealtimeSignal) -> Void)?
+    var onSignal: ((GameRoomRealtimeSignal, UUID) -> Void)?
     var onCatchUp: (() -> Void)?
 
     private var manager: SocketManager?
@@ -141,7 +206,7 @@ final class GameRoomRealtimeService {
                 guard let self,
                       self.generation == generation,
                       let signal else { return }
-                self.onSignal?(signal)
+                self.onSignal?(signal, generation)
             }
         }
 
@@ -153,6 +218,10 @@ final class GameRoomRealtimeService {
         self.accessToken = token
         self.generation = generation
         socket.connect()
+    }
+
+    func isCurrent(generation: UUID) -> Bool {
+        self.generation == generation
     }
 
     func resume() {

@@ -3699,22 +3699,110 @@ final class OnlineRoundStateTests: XCTestCase {
     func testRoomPollPolicyRejectsLobbySnapshotOlderThanCurrentRevision() {
         XCTAssertFalse(
             RoomPollPolicy.acceptsSnapshot(
+                currentRoomRevision: nil,
                 currentLobbyRevision: 9,
+                fetchedRoomRevision: nil,
                 fetchedLobbyRevision: 8
             )
         )
         XCTAssertTrue(
             RoomPollPolicy.acceptsSnapshot(
+                currentRoomRevision: nil,
                 currentLobbyRevision: 9,
+                fetchedRoomRevision: nil,
                 fetchedLobbyRevision: 9
             )
         )
         XCTAssertTrue(
             RoomPollPolicy.acceptsSnapshot(
+                currentRoomRevision: nil,
                 currentLobbyRevision: nil,
+                fetchedRoomRevision: nil,
                 fetchedLobbyRevision: nil
             )
         )
+    }
+
+    func testRoomPollPolicyKeepsRoomAndLobbyRevisionDomainsSeparateDuringMigration() {
+        XCTAssertTrue(
+            RoomPollPolicy.acceptsSnapshot(
+                currentRoomRevision: nil,
+                currentLobbyRevision: 8,
+                fetchedRoomRevision: 1,
+                fetchedLobbyRevision: 8
+            ),
+            "The first room-revisioned snapshot must not be rejected against the unrelated lobby counter."
+        )
+        XCTAssertFalse(
+            RoomPollPolicy.acceptsSnapshot(
+                currentRoomRevision: 1,
+                currentLobbyRevision: 8,
+                fetchedRoomRevision: nil,
+                fetchedLobbyRevision: 9
+            ),
+            "A client on the room revision domain must not regress to a legacy snapshot."
+        )
+        XCTAssertFalse(
+            RoomPollPolicy.acceptsSnapshot(
+                currentRoomRevision: 2,
+                currentLobbyRevision: 8,
+                fetchedRoomRevision: 1,
+                fetchedLobbyRevision: 99
+            ),
+            "Lobby revision must not mask a stale room revision."
+        )
+        XCTAssertTrue(
+            RoomPollPolicy.isSnapshotNewer(
+                currentRoomRevision: nil,
+                currentLobbyRevision: 8,
+                fetchedRoomRevision: 1,
+                fetchedLobbyRevision: 8
+            )
+        )
+        XCTAssertFalse(
+            RoomPollPolicy.isSnapshotNewer(
+                currentRoomRevision: 1,
+                currentLobbyRevision: 8,
+                fetchedRoomRevision: nil,
+                fetchedLobbyRevision: 99
+            )
+        )
+    }
+
+    func testMigratedDirectModeCommitIsConfirmedAndAdoptedWithoutFalseCorrection() {
+        var requestRoom = GameRoom.previewRoom(status: "waiting")
+        requestRoom.roomRevision = nil
+        requestRoom.lobbyRevision = 8
+        requestRoom.gameMode = "questions"
+
+        var committedRoom = requestRoom
+        committedRoom.roomRevision = 1
+        committedRoom.gameMode = "associations"
+
+        let responseConfirmsCommit = RoomPollPolicy.acceptsSnapshot(
+            currentRoomRevision: requestRoom.roomRevision,
+            currentLobbyRevision: requestRoom.lobbyRevision,
+            fetchedRoomRevision: committedRoom.roomRevision,
+            fetchedLobbyRevision: committedRoom.lobbyRevision
+        )
+        let requestSnapshotCommittedAfterMode = RoomPollPolicy.isSnapshotNewer(
+            currentRoomRevision: committedRoom.roomRevision,
+            currentLobbyRevision: committedRoom.lobbyRevision,
+            fetchedRoomRevision: requestRoom.roomRevision,
+            fetchedLobbyRevision: requestRoom.lobbyRevision
+        )
+
+        XCTAssertTrue(responseConfirmsCommit)
+        XCTAssertFalse(
+            requestSnapshotCommittedAfterMode,
+            "The legacy request snapshot must not force a compensating full lobby write after migration."
+        )
+        if responseConfirmsCommit {
+            requestRoom = committedRoom
+        }
+        XCTAssertEqual(requestRoom.roomRevision, 1)
+        XCTAssertEqual(requestRoom.lobbyRevision, 8)
+        XCTAssertEqual(requestRoom.gameModeValue, .associations)
     }
 }
 
@@ -3895,6 +3983,115 @@ final class LobbyLatestWinsStateTests: XCTestCase {
         let request = try XCTUnwrap(state.beginNext())
         XCTAssertEqual(request.intent.state.gameDurationSeconds, 600)
         XCTAssertEqual(request.intent.state.gameMode, .associations)
+    }
+
+    func testDirectModeCommitRebasesPendingFullEditWithoutDroppingIt() throws {
+        var state = LobbyLatestWinsState()
+        state.reset(confirmedRevision: 4)
+        state.enqueue(roomID: "room-1", state: payload(duration: 720))
+
+        XCTAssertTrue(
+            state.rebaseGameMode(roomID: "room-1", mode: .associations)
+        )
+
+        let request = try XCTUnwrap(state.beginNext())
+        XCTAssertEqual(request.expectedRevision, 4)
+        XCTAssertEqual(request.intent.state.gameMode, .associations)
+        XCTAssertEqual(request.intent.state.gameDurationSeconds, 720)
+    }
+
+    func testRebasedPendingRetryGetsANewMutationIdentityAndFingerprint() throws {
+        var state = LobbyLatestWinsState()
+        let originalMutationID = UUID()
+        let rebasedMutationID = UUID()
+        state.reset(confirmedRevision: 4)
+        state.enqueue(
+            roomID: "room-1",
+            state: payload(duration: 720),
+            mutationID: originalMutationID
+        )
+        let failed = try XCTUnwrap(state.beginNext())
+        XCTAssertTrue(state.fail(failed, retry: true))
+
+        XCTAssertTrue(
+            state.rebaseGameMode(
+                roomID: "room-1",
+                mode: .associations,
+                mutationID: rebasedMutationID
+            )
+        )
+
+        let rebased = try XCTUnwrap(state.beginNext())
+        XCTAssertEqual(rebased.intent.mutationID, rebasedMutationID)
+        XCTAssertNotEqual(rebased.intent.mutationID, originalMutationID)
+        XCTAssertEqual(rebased.intent.retryCount, 0)
+        XCTAssertEqual(rebased.intent.state.gameMode, .associations)
+        XCTAssertEqual(rebased.intent.state.gameDurationSeconds, 720)
+    }
+
+    func testOlderInflightFullResponseCannotEraseCommittedDirectMode() throws {
+        var state = LobbyLatestWinsState()
+        state.reset(confirmedRevision: 4)
+        state.enqueue(roomID: "room-1", state: payload(duration: 720))
+        let staleInflight = try XCTUnwrap(state.beginNext())
+
+        XCTAssertTrue(
+            state.rebaseGameMode(roomID: "room-1", mode: .associations)
+        )
+        XCTAssertFalse(state.finish(staleInflight, confirmedRevision: 5))
+
+        let correction = try XCTUnwrap(state.beginNext())
+        XCTAssertEqual(correction.expectedRevision, 5)
+        XCTAssertEqual(correction.intent.state.gameMode, .associations)
+        XCTAssertEqual(correction.intent.state.gameDurationSeconds, 720)
+    }
+
+    func testCompletedNewerFullResponseQueuesAForcedModeCorrection() throws {
+        var state = LobbyLatestWinsState()
+        state.reset(confirmedRevision: 4)
+        state.enqueue(roomID: "room-1", state: payload(duration: 720))
+        let fullRequest = try XCTUnwrap(state.beginNext())
+        XCTAssertTrue(state.finish(fullRequest, confirmedRevision: 5))
+
+        XCTAssertTrue(
+            state.rebaseGameMode(
+                roomID: "room-1",
+                mode: .associations,
+                fallbackState: payload(duration: 720),
+                forceCorrection: true
+            )
+        )
+
+        let correction = try XCTUnwrap(state.beginNext())
+        XCTAssertEqual(correction.expectedRevision, 5)
+        XCTAssertEqual(correction.intent.state.gameMode, .associations)
+        XCTAssertEqual(correction.intent.state.gameDurationSeconds, 720)
+    }
+
+    func testDedicatedModeStateKeepsLatestTapWhileFirstRequestIsInflight() throws {
+        var state = LobbyModeLatestWinsState()
+        XCTAssertTrue(
+            state.enqueueLatest(
+                roomID: "room-1",
+                mode: .associations,
+                confirmedMode: .questions
+            )
+        )
+        let first = try XCTUnwrap(state.beginNext())
+
+        XCTAssertTrue(
+            state.enqueueLatest(
+                roomID: "room-1",
+                mode: .questions,
+                confirmedMode: .questions
+            )
+        )
+        XCTAssertFalse(state.finish(first))
+
+        let latest = try XCTUnwrap(state.beginNext())
+        XCTAssertEqual(latest.mode, .questions)
+        XCTAssertTrue(state.finish(latest))
+        XCTAssertFalse(state.hasOptimisticChanges)
     }
 
     func testIdenticalLatestPayloadIsRecognizedWithoutCreatingRevisionChurn() throws {
@@ -4747,36 +4944,43 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
         fence.record(
             userID: " user-a ",
             roomID: " room-1 ",
-            revision: 12,
+            roomRevision: 12,
+            lobbyRevision: nil,
             membershipID: "membership-old"
         )
 
         XCTAssertFalse(fence.permits(
-            userID: "user-a", roomID: "room-1", revision: 11,
+            userID: "user-a", roomID: "room-1", roomRevision: 11,
+            lobbyRevision: nil,
             membershipID: "membership-old"
         ))
         XCTAssertFalse(fence.permits(
-            userID: "user-a", roomID: "room-1", revision: 12,
+            userID: "user-a", roomID: "room-1", roomRevision: 12,
+            lobbyRevision: nil,
             membershipID: "membership-old"
         ))
         XCTAssertTrue(fence.permits(
-            userID: "user-a", roomID: "room-1", revision: 13,
+            userID: "user-a", roomID: "room-1", roomRevision: 13,
+            lobbyRevision: nil,
             membershipID: "membership-new"
         ))
         XCTAssertFalse(
             fence.permits(
-                userID: "user-a", roomID: "room-1", revision: 9,
+                userID: "user-a", roomID: "room-1", roomRevision: 9,
+                lobbyRevision: nil,
                 membershipID: "membership-old"
             ),
             "Accepting a later rejoin must not make an older in-flight response adoptable again."
         )
         XCTAssertTrue(fence.permits(
-            userID: "user-a", roomID: "room-2", revision: 0,
+            userID: "user-a", roomID: "room-2", roomRevision: 0,
+            lobbyRevision: nil,
             membershipID: nil
         ))
         XCTAssertTrue(
             fence.permits(
-                userID: "user-b", roomID: "room-1", revision: 12,
+                userID: "user-b", roomID: "room-1", roomRevision: 12,
+                lobbyRevision: nil,
                 membershipID: "membership-other"
             ),
             "A close observed by one signed-in account must not fence another account on the device."
@@ -4788,28 +4992,74 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
         fence.record(
             userID: "user-a",
             roomID: "room-1",
-            revision: nil,
+            roomRevision: nil,
+            lobbyRevision: nil,
             membershipID: "membership-old"
         )
 
         XCTAssertFalse(fence.permits(
-            userID: "user-a", roomID: "room-1", revision: 999,
+            userID: "user-a", roomID: "room-1", roomRevision: 999,
+            lobbyRevision: nil,
             membershipID: "membership-old"
         ))
         XCTAssertFalse(fence.authorizeExplicitRejoin(
-            userID: "user-a", roomID: "room-1", revision: 1_000,
+            userID: "user-a", roomID: "room-1", roomRevision: 1_000,
+            lobbyRevision: nil,
             membershipID: "membership-old"
         ))
         XCTAssertTrue(fence.authorizeExplicitRejoin(
-            userID: "user-a", roomID: "room-1", revision: 14,
+            userID: "user-a", roomID: "room-1", roomRevision: 14,
+            lobbyRevision: nil,
             membershipID: "membership-new"
         ))
         XCTAssertTrue(fence.permits(
-            userID: "user-a", roomID: "room-1", revision: 14,
+            userID: "user-a", roomID: "room-1", roomRevision: 14,
+            lobbyRevision: nil,
             membershipID: "membership-new"
         ))
         XCTAssertFalse(fence.permits(
-            userID: "user-a", roomID: "room-1", revision: 1_001,
+            userID: "user-a", roomID: "room-1", roomRevision: 1_001,
+            lobbyRevision: nil,
+            membershipID: "membership-old"
+        ))
+    }
+
+    func testRevisionedKickAfterLegacyRoomAllowsNewMembershipInRoomDomain() {
+        var fence = ClosedRoomRevisionFence()
+        fence.record(
+            userID: "user-a",
+            roomID: "room-1",
+            roomRevision: 1,
+            lobbyRevision: 8,
+            membershipID: "membership-old"
+        )
+
+        XCTAssertFalse(fence.authorizeExplicitRejoin(
+            userID: "user-a",
+            roomID: "room-1",
+            roomRevision: 2,
+            lobbyRevision: 8,
+            membershipID: "membership-old"
+        ))
+        XCTAssertTrue(fence.authorizeExplicitRejoin(
+            userID: "user-a",
+            roomID: "room-1",
+            roomRevision: 2,
+            lobbyRevision: 8,
+            membershipID: "membership-new"
+        ))
+        XCTAssertTrue(fence.permits(
+            userID: "user-a",
+            roomID: "room-1",
+            roomRevision: 2,
+            lobbyRevision: 8,
+            membershipID: "membership-new"
+        ))
+        XCTAssertFalse(fence.permits(
+            userID: "user-a",
+            roomID: "room-1",
+            roomRevision: 99,
+            lobbyRevision: 99,
             membershipID: "membership-old"
         ))
     }
@@ -4841,7 +5091,7 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
             GameRoomRealtimeSignalPolicy.disposition(
                 signal: stale,
                 activeRoomID: "room-1",
-                currentRevision: 12
+                currentRoomRevision: 12
             ),
             .ignore
         )
@@ -4849,7 +5099,7 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
             GameRoomRealtimeSignalPolicy.disposition(
                 signal: current,
                 activeRoomID: "room-1",
-                currentRevision: 12
+                currentRoomRevision: 12
             ),
             .close
         )
@@ -4857,7 +5107,7 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
             GameRoomRealtimeSignalPolicy.disposition(
                 signal: otherRoom,
                 activeRoomID: "room-1",
-                currentRevision: 12
+                currentRoomRevision: 12
             ),
             .ignore
         )
@@ -4883,7 +5133,7 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
             GameRoomRealtimeSignalPolicy.disposition(
                 signal: versioned,
                 activeRoomID: "room-1",
-                currentRevision: 12
+                currentRoomRevision: 12
             ),
             .refresh(forceCatchUp: false)
         )
@@ -4891,10 +5141,243 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
             GameRoomRealtimeSignalPolicy.disposition(
                 signal: legacy,
                 activeRoomID: "room-1",
-                currentRevision: 12
+                currentRoomRevision: 12
             ),
             .refresh(forceCatchUp: true)
         )
+    }
+
+    func testFirstRoomRevisionAfterLegacyMigrationNeverComparesAgainstLobbyRevision() {
+        let projection = GameRoomRealtimeLobbyModeProjection(
+            id: "mode-projection-1",
+            gameMode: .associations,
+            committedAt: nil,
+            emittedAt: nil
+        )
+        let migratedActive = GameRoomRealtimeSignal(
+            roomID: "room-1",
+            lobbyRevision: 8,
+            roomRevision: 1,
+            roomUpdatedAt: nil,
+            state: "active",
+            lobbyModeProjection: projection
+        )
+        let migratedClosed = GameRoomRealtimeSignal(
+            roomID: "room-1",
+            lobbyRevision: 8,
+            roomRevision: 1,
+            roomUpdatedAt: nil,
+            state: "closed"
+        )
+
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: migratedActive,
+                activeRoomID: "room-1",
+                activeRoomStatus: "waiting",
+                currentRoomRevision: nil,
+                currentLobbyRevision: 8
+            ),
+            .refresh(forceCatchUp: true)
+        )
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: migratedClosed,
+                activeRoomID: "room-1",
+                activeRoomStatus: "waiting",
+                currentRoomRevision: nil,
+                currentLobbyRevision: 8
+            ),
+            .close
+        )
+    }
+
+    func testMigrationCatchUpAdoptsFirstRoomRevisionedModeSnapshot() {
+        var current = GameRoom.previewRoom(status: "waiting")
+        current.roomRevision = nil
+        current.lobbyRevision = 8
+        current.gameMode = "questions"
+
+        var authoritative = current
+        authoritative.roomRevision = 1
+        authoritative.gameMode = "associations"
+
+        let signal = GameRoomRealtimeSignal(
+            roomID: current.id,
+            lobbyRevision: 8,
+            roomRevision: 1,
+            roomUpdatedAt: nil,
+            state: "active"
+        )
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: signal,
+                activeRoomID: current.id,
+                activeRoomStatus: current.normalizedStatus,
+                currentRoomRevision: current.roomRevision,
+                currentLobbyRevision: current.lobbyRevision ?? 0
+            ),
+            .refresh(forceCatchUp: true)
+        )
+
+        if RoomPollPolicy.acceptsSnapshot(
+            currentRoomRevision: current.roomRevision,
+            currentLobbyRevision: current.lobbyRevision,
+            fetchedRoomRevision: authoritative.roomRevision,
+            fetchedLobbyRevision: authoritative.lobbyRevision
+        ) {
+            current = authoritative
+        }
+
+        XCTAssertEqual(current.roomRevision, 1)
+        XCTAssertEqual(current.lobbyRevision, 8)
+        XCTAssertEqual(current.gameModeValue, .associations)
+    }
+
+    func testRealtimeSignalPolicyDirectlyAppliesOnlyContiguousWaitingModeProjection() {
+        let projection = GameRoomRealtimeLobbyModeProjection(
+            id: "mode-projection-1",
+            gameMode: .associations,
+            committedAt: "2026-09-02T12:00:00.000Z",
+            emittedAt: "2026-09-02T12:00:00.100Z"
+        )
+        let contiguous = GameRoomRealtimeSignal(
+            roomID: "room-1",
+            lobbyRevision: 7,
+            roomRevision: 13,
+            roomUpdatedAt: nil,
+            state: "active",
+            lobbyModeProjection: projection
+        )
+
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: contiguous,
+                activeRoomID: "room-1",
+                activeRoomStatus: "waiting",
+                currentRoomRevision: 12,
+                currentLobbyRevision: 7,
+                subscriptionGenerationIsCurrent: true
+            ),
+            .applyLobbyMode(projection)
+        )
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: contiguous,
+                activeRoomID: "room-1",
+                activeRoomStatus: "playing",
+                currentRoomRevision: 12,
+                currentLobbyRevision: 7,
+                subscriptionGenerationIsCurrent: true
+            ),
+            .refresh(forceCatchUp: false)
+        )
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: contiguous,
+                activeRoomID: "room-1",
+                activeRoomStatus: "waiting",
+                currentRoomRevision: 11,
+                currentLobbyRevision: 7,
+                subscriptionGenerationIsCurrent: true
+            ),
+            .refresh(forceCatchUp: false),
+            "A revision gap must use the full authoritative refresh."
+        )
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: contiguous,
+                activeRoomID: "room-1",
+                activeRoomStatus: "waiting",
+                currentRoomRevision: 12,
+                currentLobbyRevision: 7,
+                subscriptionGenerationIsCurrent: false
+            ),
+            .ignore
+        )
+
+        let advancedLobby = GameRoomRealtimeSignal(
+            roomID: "room-1",
+            lobbyRevision: 8,
+            roomRevision: 13,
+            roomUpdatedAt: nil,
+            state: "active",
+            lobbyModeProjection: projection
+        )
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: advancedLobby,
+                activeRoomID: "room-1",
+                activeRoomStatus: "waiting",
+                currentRoomRevision: 12,
+                currentLobbyRevision: 7
+            ),
+            .refresh(forceCatchUp: false),
+            "A lobby revision change may hide other fields and cannot use a mode-only delta."
+        )
+    }
+
+    func testProjectionLatencyMeasuresCommitAndEmitToReceive() throws {
+        let projection = GameRoomRealtimeLobbyModeProjection(
+            id: "projection-1",
+            gameMode: .associations,
+            committedAt: "2026-09-02T12:00:00.000Z",
+            emittedAt: "2026-09-02T12:00:00.125Z"
+        )
+        let receivedAt = try XCTUnwrap(
+            ISO8601DateFormatter().date(from: "2026-09-02T12:00:00Z")
+        ).addingTimeInterval(0.250)
+
+        XCTAssertEqual(
+            GameRoomRealtimeProjectionLatency.measure(
+                projection: projection,
+                receivedAt: receivedAt
+            ),
+            GameRoomRealtimeProjectionLatency(
+                commitToReceiveMilliseconds: 250,
+                emitToReceiveMilliseconds: 125
+            )
+        )
+    }
+
+    func testDirectModeProjectionChangesOnlyModeAndAuthoritativeRevisions() {
+        var room = GameRoom.previewRoom(status: "waiting")
+        room.gameMode = "questions"
+        room.roomRevision = 12
+        room.lobbyRevision = 7
+        room.gameDurationSeconds = 600
+        room.lobbyTheme = "Night cities"
+        room.lobbyWordPool = [
+            LobbyWordPoolEntry(id: "kyiv", word: "Kyiv"),
+            LobbyWordPoolEntry(id: "london", word: "London")
+        ]
+        let signal = GameRoomRealtimeSignal(
+            roomID: room.id,
+            lobbyRevision: 7,
+            roomRevision: 13,
+            roomUpdatedAt: nil,
+            state: "active"
+        )
+        let projection = GameRoomRealtimeLobbyModeProjection(
+            id: "projection-1",
+            gameMode: .associations,
+            committedAt: nil,
+            emittedAt: nil
+        )
+
+        let updated = GameRoomRealtimeLobbyModeApplier.applying(
+            signal: signal,
+            projection: projection,
+            to: room
+        )
+
+        XCTAssertEqual(updated.gameMode, "associations")
+        XCTAssertEqual(updated.roomRevision, 13)
+        XCTAssertEqual(updated.lobbyRevision, 7)
+        XCTAssertEqual(updated.gameDurationSeconds, 600)
+        XCTAssertEqual(updated.lobbyTheme, "Night cities")
+        XCTAssertEqual(updated.lobbyWordPool, room.lobbyWordPool)
+        XCTAssertEqual(updated.players, room.players)
     }
 
     func testRealtimeRefreshRetryPolicyIsImmediateAndBounded() {
@@ -5084,6 +5567,60 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
         )
     }
 
+    func testParsesSafeLobbyModeProjectionAndDropsMalformedProjectionOnly() throws {
+        let entityRoom = "entities:app-1:GameRoomSignal"
+        let baseData: [String: Any] = [
+            "user_id": "user-1",
+            "room_id": "room-1",
+            "lobby_revision": 8,
+            "room_revision": 14,
+            "state": "active",
+            "projection_kind": "lobby_mode_v1",
+            "projection_id": "mode:room-1:14",
+            "projected_game_mode": "associations",
+            "projection_committed_at": "2026-09-02T12:00:00.000Z",
+            "projection_emitted_at": "2026-09-02T12:00:00.100Z"
+        ]
+
+        func parse(_ data: [String: Any]) throws -> GameRoomRealtimeSignal? {
+            let event: [String: Any] = ["type": "update", "data": data]
+            let encoded = try JSONSerialization.data(withJSONObject: event)
+            let envelope: [String: Any] = [
+                "room": entityRoom,
+                "data": try XCTUnwrap(String(data: encoded, encoding: .utf8))
+            ]
+            return GameRoomRealtimeSignalParser.parse(
+                payload: [envelope],
+                expectedEntityRoom: entityRoom,
+                expectedUserID: "user-1",
+                expectedRoomID: "room-1"
+            )
+        }
+
+        let projected = try XCTUnwrap(parse(baseData))
+        XCTAssertEqual(
+            projected.lobbyModeProjection,
+            GameRoomRealtimeLobbyModeProjection(
+                id: "mode:room-1:14",
+                gameMode: .associations,
+                committedAt: "2026-09-02T12:00:00.000Z",
+                emittedAt: "2026-09-02T12:00:00.100Z"
+            )
+        )
+
+        var invalidMode = baseData
+        invalidMode["projected_game_mode"] = "secret-mode"
+        XCTAssertNil(try XCTUnwrap(parse(invalidMode)).lobbyModeProjection)
+
+        var invalidKind = baseData
+        invalidKind["projection_kind"] = "full_room_v1"
+        XCTAssertNil(try XCTUnwrap(parse(invalidKind)).lobbyModeProjection)
+
+        var invalidID = baseData
+        invalidID["projection_id"] = "projection\nforged"
+        XCTAssertNil(try XCTUnwrap(parse(invalidID)).lobbyModeProjection)
+    }
+
     func testAcceptsZeroAndRejectsMalformedOrNegativeRevision() throws {
         let entityRoom = "entities:app-1:GameRoomSignal"
         let event: [String: Any] = [
@@ -5222,8 +5759,10 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
         XCTAssertGreaterThan(requiredRevision, current.roomRevision ?? current.lobbyRevision ?? 0)
 
         if RoomPollPolicy.acceptsSnapshot(
-            currentLobbyRevision: current.roomRevision ?? current.lobbyRevision,
-            fetchedLobbyRevision: authoritative.roomRevision ?? authoritative.lobbyRevision
+            currentRoomRevision: current.roomRevision,
+            currentLobbyRevision: current.lobbyRevision,
+            fetchedRoomRevision: authoritative.roomRevision,
+            fetchedLobbyRevision: authoritative.lobbyRevision
         ) {
             current = authoritative
         }
@@ -5259,14 +5798,18 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
 
         XCTAssertTrue(
             RoomPollPolicy.acceptsSnapshot(
-                currentLobbyRevision: divergent.roomRevision ?? divergent.lobbyRevision,
-                fetchedLobbyRevision: authoritative.roomRevision ?? authoritative.lobbyRevision
+                currentRoomRevision: divergent.roomRevision,
+                currentLobbyRevision: divergent.lobbyRevision,
+                fetchedRoomRevision: authoritative.roomRevision,
+                fetchedLobbyRevision: authoritative.lobbyRevision
             ),
             "Reconnect catch-up must be able to replace a divergent snapshot at the same server revision."
         )
         if RoomPollPolicy.acceptsSnapshot(
-            currentLobbyRevision: divergent.roomRevision ?? divergent.lobbyRevision,
-            fetchedLobbyRevision: authoritative.roomRevision ?? authoritative.lobbyRevision
+            currentRoomRevision: divergent.roomRevision,
+            currentLobbyRevision: divergent.lobbyRevision,
+            fetchedRoomRevision: authoritative.roomRevision,
+            fetchedLobbyRevision: authoritative.lobbyRevision
         ) {
             divergent = authoritative
         }

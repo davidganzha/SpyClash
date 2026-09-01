@@ -1,4 +1,14 @@
 export type GameRoomSignalState = "active" | "closed";
+export type GameRoomSignalProjectionKind = "none" | "lobby_mode_v1";
+export type ProjectedLobbyGameMode = "questions" | "associations";
+
+export type LobbyModeGameRoomSignalProjection = {
+  projection_kind: "lobby_mode_v1";
+  projection_id: string;
+  projected_game_mode: ProjectedLobbyGameMode;
+  projection_committed_at?: string;
+  projection_emitted_at: string;
+};
 
 export type GameRoomSignalRecord = {
   user_id: string;
@@ -7,6 +17,11 @@ export type GameRoomSignalRecord = {
   room_revision: number;
   room_updated_at?: string;
   state: GameRoomSignalState;
+  projection_kind: GameRoomSignalProjectionKind;
+  projection_id?: string;
+  projected_game_mode?: ProjectedLobbyGameMode;
+  projection_committed_at?: string;
+  projection_emitted_at?: string;
   close_intent_id?: string;
   close_match_id?: string;
   close_completion?: Record<string, unknown>;
@@ -38,9 +53,116 @@ function revision(value: unknown): number {
   return Number.isInteger(candidate) && candidate >= 0 ? candidate : 0;
 }
 
+function explicitRevision(value: unknown): number | null {
+  const candidate = Number(value);
+  return Number.isInteger(candidate) && candidate >= 0 ? candidate : null;
+}
+
 function timestamp(value: unknown): number {
   const parsed = Date.parse(clean(value));
   return Number.isFinite(parsed) ? parsed : 0;
+}
+
+function isUUID(value: unknown): boolean {
+  return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-8][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i
+    .test(clean(value));
+}
+
+function projectedLobbyGameMode(
+  value: unknown,
+): ProjectedLobbyGameMode | null {
+  const mode = clean(value);
+  return mode === "questions" || mode === "associations" ? mode : null;
+}
+
+function projectionKind(value: unknown): GameRoomSignalProjectionKind {
+  return clean(value) === "lobby_mode_v1" ? "lobby_mode_v1" : "none";
+}
+
+function safeLobbyModeProjection(
+  value: unknown,
+): LobbyModeGameRoomSignalProjection | null {
+  if (!value || typeof value !== "object" || Array.isArray(value)) return null;
+  const candidate = value as Record<string, unknown>;
+  const mode = projectedLobbyGameMode(candidate.projected_game_mode);
+  const projectionID = clean(candidate.projection_id);
+  const emittedAt = clean(candidate.projection_emitted_at);
+  if (
+    projectionKind(candidate.projection_kind) !== "lobby_mode_v1" || !mode ||
+    !isUUID(projectionID) || timestamp(emittedAt) <= 0
+  ) return null;
+  const committedAt = clean(candidate.projection_committed_at);
+  return {
+    projection_kind: "lobby_mode_v1",
+    projection_id: projectionID,
+    projected_game_mode: mode,
+    ...(timestamp(committedAt) > 0
+      ? { projection_committed_at: committedAt }
+      : {}),
+    projection_emitted_at: emittedAt,
+  };
+}
+
+export function lobbyModeSignalProjectionForRoom(
+  room: Record<string, unknown>,
+  options: {
+    projectionID?: string;
+    emittedAt?: string;
+  } = {},
+): LobbyModeGameRoomSignalProjection | null {
+  const mode = projectedLobbyGameMode(room?.game_mode);
+  if (!mode) return null;
+  const projectionID = clean(options.projectionID) || crypto.randomUUID();
+  // `writeRoomWithCAS` deliberately avoids a post-commit read, so its merged
+  // result can still carry the pre-CAS `updated_date`. Capture one server time
+  // only after that CAS has returned and use it as the explicit commit-time
+  // approximation. This keeps the metric complete without a network hop and
+  // never pretends the stale entity timestamp belongs to the committed write.
+  const emittedAt = clean(options.emittedAt) || new Date().toISOString();
+  return safeLobbyModeProjection({
+    projection_kind: "lobby_mode_v1",
+    projection_id: projectionID,
+    projected_game_mode: mode,
+    projection_committed_at: emittedAt,
+    projection_emitted_at: emittedAt,
+  });
+}
+
+export function lobbyModeSignalProjectionForRepair(
+  committedRoom: Record<string, unknown>,
+  authoritativeRoom: Record<string, unknown>,
+  projection: unknown,
+): LobbyModeGameRoomSignalProjection | null {
+  const safeProjection = safeLobbyModeProjection(projection);
+  const committedRoomRevision = explicitRevision(committedRoom?.room_revision);
+  const authoritativeRoomRevision = explicitRevision(
+    authoritativeRoom?.room_revision,
+  );
+  const committedLobbyRevision = explicitRevision(
+    committedRoom?.lobby_revision,
+  );
+  const authoritativeLobbyRevision = explicitRevision(
+    authoritativeRoom?.lobby_revision,
+  );
+  if (
+    !safeProjection ||
+    !clean(committedRoom?.id) ||
+    clean(authoritativeRoom?.id) !== clean(committedRoom?.id) ||
+    committedRoomRevision === null ||
+    authoritativeRoomRevision !== committedRoomRevision ||
+    committedLobbyRevision === null ||
+    authoritativeLobbyRevision !== committedLobbyRevision ||
+    projectedLobbyGameMode(authoritativeRoom?.game_mode) !==
+      safeProjection.projected_game_mode
+  ) return null;
+  return safeProjection;
+}
+
+export function projectedLobbyModeFromSignal(
+  signal: Record<string, unknown>,
+): LobbyModeGameRoomSignalProjection | null {
+  if (clean(signal?.state) !== "active") return null;
+  return safeLobbyModeProjection(signal);
 }
 
 function unique(values: unknown[]): string[] {
@@ -83,10 +205,14 @@ function signalRecord(
   userID: string,
   state: GameRoomSignalState,
   closeReceipt?: GameRoomCloseReceipt,
+  projection?: LobbyModeGameRoomSignalProjection | null,
 ): GameRoomSignalRecord | null {
   const roomID = clean(room?.id);
   if (!roomID || !userID) return null;
   const roomUpdatedAt = clean(room?.updated_date);
+  const safeProjection = state === "active"
+    ? safeLobbyModeProjection(projection)
+    : null;
   return {
     user_id: userID,
     room_id: roomID,
@@ -94,6 +220,8 @@ function signalRecord(
     room_revision: revision(room?.room_revision),
     ...(timestamp(roomUpdatedAt) > 0 ? { room_updated_at: roomUpdatedAt } : {}),
     state,
+    projection_kind: safeProjection?.projection_kind || "none",
+    ...(safeProjection || {}),
     ...(clean(closeReceipt?.intent_id)
       ? {
         close_intent_id: clean(closeReceipt?.intent_id),
@@ -110,6 +238,7 @@ export function signalRecordsForRecipients(
   room: Record<string, unknown>,
   recipients: readonly GameRoomSignalRecipient[],
   closeReceipt?: GameRoomCloseReceipt,
+  projection?: LobbyModeGameRoomSignalProjection | null,
 ): GameRoomSignalRecord[] {
   const states = new Map<string, GameRoomSignalState>();
   for (const recipient of recipients) {
@@ -122,7 +251,7 @@ export function signalRecordsForRecipients(
     if (!currentState || nextState === "closed") states.set(userID, nextState);
   }
   return [...states.entries()].flatMap(([userID, state]) => {
-    const record = signalRecord(room, userID, state, closeReceipt);
+    const record = signalRecord(room, userID, state, closeReceipt, projection);
     return record ? [record] : [];
   });
 }
@@ -132,6 +261,7 @@ export function signalRecordsForRoom(
   state: GameRoomSignalState = "active",
   additionalRecipientUserIDs: unknown[] = [],
   closeReceipt?: GameRoomCloseReceipt,
+  projection?: LobbyModeGameRoomSignalProjection | null,
 ): GameRoomSignalRecord[] {
   const players = Array.isArray(room?.players) ? room.players : [];
   const participantIDs = unique([
@@ -147,6 +277,7 @@ export function signalRecordsForRoom(
     room,
     participantIDs.map((userID) => ({ user_id: userID, state })),
     closeReceipt,
+    projection,
   );
 }
 
@@ -184,6 +315,37 @@ export async function upsertGameRoomSignal(
       JSON.stringify(row?.close_completion || null) !==
         JSON.stringify(signal.close_completion)
     ) return true;
+    const existingProjectionKind = projectionKind(row?.projection_kind);
+    const nextProjectionKind = projectionKind(signal.projection_kind);
+    if (existingProjectionKind !== nextProjectionKind) {
+      // Every newly emitted generic/closed signal writes `none`. This explicit
+      // discriminator makes any legacy projection fields retained by the
+      // entity merge inert, while a valid direct projection may replace a
+      // generic hint at the same authoritative revision.
+      if (nextProjectionKind === "none") {
+        return timestamp(signal.room_updated_at) >=
+          timestamp(row?.room_updated_at);
+      }
+      return projectedLobbyModeFromSignal(signal) !== null;
+    }
+    if (nextProjectionKind === "lobby_mode_v1") {
+      const existingProjection = projectedLobbyModeFromSignal(row);
+      const nextProjection = projectedLobbyModeFromSignal(signal);
+      if (!nextProjection) return false;
+      if (!existingProjection) return true;
+      const existingEmittedAt = timestamp(
+        existingProjection.projection_emitted_at,
+      );
+      const nextEmittedAt = timestamp(nextProjection.projection_emitted_at);
+      if (nextEmittedAt > existingEmittedAt) return true;
+      if (nextEmittedAt < existingEmittedAt) return false;
+      // UUID is a deterministic tie-breaker for the rare same-millisecond
+      // emission. This prevents reordered duplicate deliveries from flipping
+      // the personal signal back and forth forever.
+      if (nextProjection.projection_id > existingProjection.projection_id) {
+        return true;
+      }
+    }
     return timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at);
   });
   if (updates.length) {
@@ -216,6 +378,7 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
   additionalRecipientUserIDs?: unknown[];
   recipients?: readonly GameRoomSignalRecipient[];
   closeReceipt?: GameRoomCloseReceipt;
+  projection?: LobbyModeGameRoomSignalProjection | null;
   allowCreate?: boolean;
   logError?: (message: string, error: unknown) => void;
 }): Promise<{ attempted: number; succeeded: number; failed: number }> {
@@ -224,12 +387,14 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
       input.room,
       input.recipients,
       input.closeReceipt,
+      input.projection,
     )
     : signalRecordsForRoom(
       input.room,
       input.state || "active",
       input.additionalRecipientUserIDs || [],
       input.closeReceipt,
+      input.projection,
     );
   if (!signals.length) return { attempted: 0, succeeded: 0, failed: 0 };
 

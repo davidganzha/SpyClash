@@ -107,6 +107,7 @@ Deno.test("gameRoomAction integrates lobby return, kick, and explicit host close
     source.indexOf("const FAST_ROOM_ACTIONS"),
     source.indexOf("function canUseFastRoomAction"),
   );
+  assertStringIncludes(fastActions, '"update_game_mode"');
   assertEquals(fastActions.includes('"vote_return_to_lobby"'), false);
   assertEquals(fastActions.includes('"kick_player"'), false);
   assertEquals(fastActions.includes('"close_room"'), false);
@@ -128,6 +129,8 @@ Deno.test("gameRoomAction integrates lobby return, kick, and explicit host close
   assertStringIncludes(signalPath, "transition.removedPlayer?.user_id");
   assertStringIncludes(signalPath, 'state: "closed"');
   assertStringIncludes(signalPath, "stageGameRoomSignalFanout(base44, {");
+  assertStringIncludes(signalPath, 'action === "update_game_mode"');
+  assertStringIncludes(signalPath, "lobbyModeSignalProjectionForRoom(result)");
   assertStringIncludes(
     signalPath,
     'recipients: recipients || roomSignalRecipients(result, "active")',
@@ -138,7 +141,15 @@ Deno.test("gameRoomAction integrates lobby return, kick, and explicit host close
     source.indexOf("async function assertLiveActivityEndQueueCoverage"),
   );
   assertStringIncludes(postLeaseSignal, "runPostLeaseSignalWithinDeadline({");
+  assertStringIncludes(
+    postLeaseSignal,
+    "runLatestRoomSignalAfterLeaseContention({",
+  );
   assertStringIncludes(postLeaseSignal, "withRoomWriteLeases({");
+  assertStringIncludes(postLeaseSignal, "attempts: 1");
+  assertStringIncludes(postLeaseSignal, "fetchRoom(base44, current.room.id)");
+  assertStringIncludes(postLeaseSignal, "assertExactRoomLeaseCoverage(");
+  assertStringIncludes(postLeaseSignal, "projection: staged.projection");
   assertStringIncludes(postLeaseSignal, "timeoutMS: 600");
 
   const deletePath = source.slice(

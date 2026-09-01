@@ -205,8 +205,10 @@ enum ReplayAutoStartPolicy {
                 currentUserEmail: currentUserEmail
             ) != .invalid &&
             RoomPollPolicy.acceptsSnapshot(
-                currentLobbyRevision: current.roomRevision ?? current.lobbyRevision,
-                fetchedLobbyRevision: candidate.roomRevision ?? candidate.lobbyRevision
+                currentRoomRevision: current.roomRevision,
+                currentLobbyRevision: current.lobbyRevision,
+                fetchedRoomRevision: candidate.roomRevision,
+                fetchedLobbyRevision: candidate.lobbyRevision
             )
     }
 
@@ -861,8 +863,10 @@ enum ActiveLobbyReturnPolicy {
               actorKey(accountUserID: accountUserID, email: currentUserEmail) == request.actorKey,
               cleaned(candidate.id) == request.scope.roomID,
               RoomPollPolicy.acceptsSnapshot(
-                  currentLobbyRevision: revision(of: current),
-                  fetchedLobbyRevision: revision(of: candidate)
+                  currentRoomRevision: current.roomRevision,
+                  currentLobbyRevision: current.lobbyRevision,
+                  fetchedRoomRevision: candidate.roomRevision,
+                  fetchedLobbyRevision: candidate.lobbyRevision
               ) else { return false }
 
         if candidate.normalizedStatus == "waiting" {
@@ -907,10 +911,6 @@ enum ActiveLobbyReturnPolicy {
             guard let email = normalizedEmail(value), eligible.contains(email) else { return nil }
             return email
         })
-    }
-
-    private static func revision(of room: GameRoom) -> Int? {
-        room.roomRevision ?? room.lobbyRevision
     }
 
     private static func cleanedEmail(_ value: String?) -> String? {
@@ -1173,8 +1173,10 @@ enum RoomKickPolicy {
             normalizedEmail(candidate.hostEmail) == request.scope.hostEmailKey &&
             targetIsAbsent(from: candidate, request: request) &&
             RoomPollPolicy.acceptsSnapshot(
-                currentLobbyRevision: current.roomRevision ?? current.lobbyRevision,
-                fetchedLobbyRevision: candidate.roomRevision ?? candidate.lobbyRevision
+                currentRoomRevision: current.roomRevision,
+                currentLobbyRevision: current.lobbyRevision,
+                fetchedRoomRevision: candidate.roomRevision,
+                fetchedLobbyRevision: candidate.lobbyRevision
             )
     }
 
@@ -1195,8 +1197,10 @@ enum RoomKickPolicy {
             normalizedEmail(candidate.hostEmail) == request.scope.hostEmailKey &&
             targetIsAbsent(from: candidate, request: request) &&
             RoomPollPolicy.acceptsSnapshot(
-                currentLobbyRevision: current.roomRevision ?? current.lobbyRevision,
-                fetchedLobbyRevision: candidate.roomRevision ?? candidate.lobbyRevision
+                currentRoomRevision: current.roomRevision,
+                currentLobbyRevision: current.lobbyRevision,
+                fetchedRoomRevision: candidate.roomRevision,
+                fetchedLobbyRevision: candidate.lobbyRevision
             )
     }
 
@@ -1484,13 +1488,11 @@ enum OnlineAuthoritativeRoomPolicy {
         scope.matches(current) &&
             scope.matches(candidate) &&
             RoomPollPolicy.acceptsSnapshot(
-                currentLobbyRevision: revision(of: current),
-                fetchedLobbyRevision: revision(of: candidate)
+                currentRoomRevision: current.roomRevision,
+                currentLobbyRevision: current.lobbyRevision,
+                fetchedRoomRevision: candidate.roomRevision,
+                fetchedLobbyRevision: candidate.lobbyRevision
             )
-    }
-
-    private static func revision(of room: GameRoom) -> Int? {
-        room.roomRevision ?? room.lobbyRevision
     }
 }
 
@@ -2354,7 +2356,7 @@ struct GameView: View {
             guard let room = appState.activeRoom else { return }
             applyAuthoritativeLobbyState(from: room, force: true)
         }
-        .onChange(of: appState.lobbySettingsSyncState.hasOptimisticChanges) { wasActive, isActive in
+        .onChange(of: appState.hasOptimisticLobbySettingsChanges) { wasActive, isActive in
             guard wasActive, !isActive, let room = appState.activeRoom else { return }
             applyAuthoritativeLobbyState(from: room)
         }
@@ -2598,7 +2600,7 @@ struct GameView: View {
 
         return LobbySyncFeedbackSnapshot(
             roomID: hostWaitingRoomID,
-            hasOptimisticChanges: appState.lobbySettingsSyncState.hasOptimisticChanges,
+            hasOptimisticChanges: appState.hasOptimisticLobbySettingsChanges,
             lastServerConfirmedMutationID: appState.lobbySettingsSyncState.lastServerConfirmedMutationID
         )
     }
@@ -2611,7 +2613,7 @@ struct GameView: View {
         WaitingStartActionMode.resolve(
             feedbackPhase: lobbySyncFeedbackState.phase,
             isEditingLobbySlider: isEditingLobbySlider,
-            hasOptimisticChanges: appState.lobbySettingsSyncState.hasOptimisticChanges,
+            hasOptimisticChanges: appState.hasOptimisticLobbySettingsChanges,
             hasSyncFailure: appState.lobbySettingsSyncFailure != nil,
             requiresServerConfirmation: roomThemeSelectionIsReady,
             isServerConfirmed: lobbyStateIsServerConfirmed(for: room)
@@ -4293,7 +4295,7 @@ struct GameView: View {
                     },
                     onCancel: {
                         isDraggingOnlineSpyCount = false
-                        if !appState.lobbySettingsSyncState.hasOptimisticChanges,
+                        if !appState.hasOptimisticLobbySettingsChanges,
                            let currentRoom = appState.activeRoom {
                             selectedSpyCount = Double(currentRoom.lobbySpyCountValue)
                         }
@@ -4719,7 +4721,7 @@ struct GameView: View {
                     },
                     onCancel: {
                         isDraggingOnlineDuration = false
-                        if !appState.lobbySettingsSyncState.hasOptimisticChanges,
+                        if !appState.hasOptimisticLobbySettingsChanges,
                            let currentRoom = appState.activeRoom {
                             selectedDurationMinutes = Double(
                                 max(1, min((currentRoom.gameDurationSeconds ?? 900) / 60, 15))
@@ -8502,7 +8504,7 @@ struct GameView: View {
     }
 
     private var roomThemeSelectionIsReady: Bool {
-        if !appState.lobbySettingsSyncState.hasOptimisticChanges,
+        if !appState.hasOptimisticLobbySettingsChanges,
            let room = appState.activeRoom,
            roomHasAuthoritativeLobbySelection(room) {
             let enabledCount = (room.lobbyWordPool ?? []).filter(\.enabled).count
@@ -8532,7 +8534,7 @@ struct GameView: View {
             roomRevision: room.lobbyRevision,
             authoritativeState: appState.authoritativeLobbyStatePayload(from: room),
             localState: currentLobbyStatePayload(for: room),
-            hasOptimisticChanges: appState.lobbySettingsSyncState.hasOptimisticChanges,
+            hasOptimisticChanges: appState.hasOptimisticLobbySettingsChanges,
             hasSyncFailure: appState.lobbySettingsSyncFailure != nil,
             isEditingLobbySlider: isEditingLobbySlider
         )
@@ -8620,7 +8622,7 @@ struct GameView: View {
     }
 
     private var lobbyWordPacksForStart: [WordPack] {
-        if !appState.lobbySettingsSyncState.hasOptimisticChanges,
+        if !appState.hasOptimisticLobbySettingsChanges,
            let room = appState.activeRoom,
            roomHasAuthoritativeLobbySelection(room) {
             let enabled = (room.lobbyWordPool ?? [])
@@ -8721,7 +8723,7 @@ struct GameView: View {
 
         if let room = appState.activeRoom,
            isHost(room),
-           (appState.lobbySettingsSyncState.hasOptimisticChanges || !roomHasAuthoritativeLobbySelection(room)),
+           (appState.hasOptimisticLobbySettingsChanges || !roomHasAuthoritativeLobbySelection(room)),
            case let .saved(id) = roomWordSource,
            let pack = lobbyWordPacks.first(where: { $0.id == id }) {
             let words = pack.words?.roomCleanWords ?? []
@@ -9562,7 +9564,7 @@ struct GameView: View {
             isDraggingSpyCount: isDraggingOnlineSpyCount
         )
         let hasProtectedOptimisticChanges = isHost(room) &&
-            appState.lobbySettingsSyncState.hasOptimisticChanges
+            appState.hasOptimisticLobbySettingsChanges
         let hasLegacyPresentationChange = revision == 0 && (
             selectedGameMode != room.gameModeValue ||
                 Int(selectedDurationMinutes) != max(1, min((room.gameDurationSeconds ?? 900) / 60, 15))
@@ -9687,7 +9689,7 @@ struct GameView: View {
         guard !isDraggingOnlineDuration,
               !isDraggingOnlineWordCount,
               !isDraggingOnlineSpyCount,
-              !appState.lobbySettingsSyncState.hasOptimisticChanges,
+              !appState.hasOptimisticLobbySettingsChanges,
               let room = appState.activeRoom else { return }
         let force = deferredLobbyUpdate.requiresForce ||
             appState.lobbySettingsSyncFailure != nil
@@ -9906,7 +9908,7 @@ struct GameView: View {
               isHost(currentRoom),
               currentRoom.normalizedStatus == "waiting" else { return }
         selectedGameMode = mode
-        scheduleLobbyStateSync(debounce: .milliseconds(90))
+        appState.enqueueLobbyGameMode(roomID: currentRoom.id, mode: mode)
         await Task.yield()
     }
 
@@ -10732,7 +10734,7 @@ struct GameView: View {
             HapticManager.shared.fire(.notification(.warning))
             return
         }
-        guard !appState.lobbySettingsSyncState.hasOptimisticChanges else { return }
+        guard !appState.hasOptimisticLobbySettingsChanges else { return }
         guard roomThemeSelectionIsReady, !isGeneratingRoomTheme else {
             status = localized(
                 en: "SELECT A DECK OR GENERATE THE THEME WORDS BEFORE STARTING",

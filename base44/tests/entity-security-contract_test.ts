@@ -257,6 +257,11 @@ Deno.test("GameRoomSignal exposes only the caller's wake-up row and keeps writes
     room_revision: 12,
     room_updated_at: "2026-08-06T12:00:00.000Z",
     state: "active",
+    projection_kind: "lobby_mode_v1",
+    projection_id: "00000000-0000-4000-8000-000000000001",
+    projected_game_mode: "associations",
+    projection_committed_at: "2026-08-06T12:00:00.000Z",
+    projection_emitted_at: "2026-08-06T12:00:00.100Z",
   };
   assert(policyAllows(signal.rls.read, ownerRow, owner));
   assert(!policyAllows(signal.rls.read, ownerRow, outsider));
@@ -265,6 +270,17 @@ Deno.test("GameRoomSignal exposes only the caller's wake-up row and keeps writes
     assertAdminOnlyPolicy(signal, operation);
   }
   assertEquals(signal.properties.state.enum, ["active", "closed"]);
+  assertEquals(signal.properties.projection_kind.enum, [
+    "none",
+    "lobby_mode_v1",
+  ]);
+  assertEquals(signal.properties.projected_game_mode.enum, [
+    "questions",
+    "associations",
+  ]);
+  assertEquals(signal.properties.projection_id.format, "uuid");
+  assertEquals(signal.properties.projection_committed_at.format, "date-time");
+  assertEquals(signal.properties.projection_emitted_at.format, "date-time");
   for (
     const field of [
       "close_intent_id",
@@ -288,6 +304,11 @@ Deno.test("GameRoomSignal exposes only the caller's wake-up row and keeps writes
       "close_intent_id",
       "close_match_id",
       "lobby_revision",
+      "projected_game_mode",
+      "projection_committed_at",
+      "projection_emitted_at",
+      "projection_id",
+      "projection_kind",
       "room_id",
       "room_revision",
       "room_updated_at",
@@ -476,6 +497,11 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
       "room_id",
       "lobby_revision",
       "state",
+      "projection_kind",
+      "projection_id",
+      "projected_game_mode",
+      "projection_committed_at",
+      "projection_emitted_at",
       "close_intent_id",
       "close_match_id",
       "close_completion",

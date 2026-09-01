@@ -91,7 +91,10 @@ import {
   spyGuessResponseTiming,
 } from "./terminal-timing.ts";
 import { runWithWallClockDeadline } from "./operation-deadline.ts";
-import { runPostLeaseSignalWithinDeadline } from "./post-lease-signal.ts";
+import {
+  runLatestRoomSignalAfterLeaseContention,
+  runPostLeaseSignalWithinDeadline,
+} from "./post-lease-signal.ts";
 import { nextRoundNumber } from "./game-round.ts";
 import {
   internalPushSecret,
@@ -124,6 +127,8 @@ import {
 import {
   fanoutGameRoomSignalsBestEffort,
   hasDurableClosedRoomSignal,
+  lobbyModeSignalProjectionForRepair,
+  lobbyModeSignalProjectionForRoom,
 } from "./game-room-signal.ts";
 import { fanoutCommunityProfileInvalidations } from "./community-profile-signal.ts";
 import {
@@ -793,6 +798,51 @@ function stageGameRoomSignalFanout(base44, input) {
   base44.__spyclashPendingGameRoomSignalFanout = input;
 }
 
+function authoritativeRoomForSignalRepair(currentRoom, observedRoom) {
+  if (!observedRoom?.id) return null;
+  const currentRevision = roomWriteRevision(currentRoom);
+  const observedRevision = roomWriteRevision(observedRoom);
+  if (currentRevision === null) return observedRoom;
+  if (observedRevision === null || observedRevision < currentRevision) {
+    // An eventually consistent read must never downgrade the already committed
+    // CAS result that entered this post-commit signal path.
+    return currentRoom;
+  }
+  return observedRoom;
+}
+
+function lobbyModeSignalCandidate(room, allowCreate, committedModeSignal) {
+  if (!room?.id) return null;
+  if (room?.close_intent || normalizedStatus(room) !== "waiting") {
+    return {
+      room,
+      recipients: [],
+      projection: null,
+      allowCreate,
+      obsolete: true,
+    };
+  }
+  const projection = lobbyModeSignalProjectionForRepair(
+    committedModeSignal?.room || {},
+    room,
+    committedModeSignal?.projection,
+  );
+  return {
+    room,
+    recipients: roomSignalRecipients(room, "active"),
+    projection,
+    allowCreate,
+    obsolete: false,
+  };
+}
+
+function authoritativeSignalReadPending() {
+  return Object.assign(
+    new Error("Authoritative room signal repair read is not visible yet."),
+    { code: "room_signal_authoritative_read_pending", retryable: true },
+  );
+}
+
 async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
   const staged = base44.__spyclashPendingGameRoomSignalFanout;
   delete base44.__spyclashPendingGameRoomSignalFanout;
@@ -804,24 +854,97 @@ async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
     recipients.map((recipient) => recipient?.user_id),
   );
   if (!userIDs.length) return true;
+  const initialCandidate = {
+    room: staged.room,
+    recipients,
+    projection: staged.projection,
+    allowCreate: staged.allowCreate !== false,
+    obsolete: false,
+  };
+  const isLobbyModeProjection = clean(staged.projection?.projection_kind) ===
+    "lobby_mode_v1";
+  const committedModeSignal = isLobbyModeProjection
+    ? { room: staged.room, projection: staged.projection }
+    : null;
   return await runPostLeaseSignalWithinDeadline({
     timeoutMS: 600,
     leasedOperation: async () => {
-      const result = await withRoomWriteLeases({
-        lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
-        userIDs,
-        attempts: 1,
-        action: async () =>
-          await fanoutGameRoomSignalsBestEffort({
-            store: base44.asServiceRole.entities.GameRoomSignal,
-            room: staged.room,
-            recipients,
-            allowCreate: staged.allowCreate !== false,
-            logError: (message, error) =>
-              console.error(message, error?.message || error),
-          }),
+      const attempt = async (candidate, context) => {
+        if (candidate.obsolete) return true;
+        const candidateUserIDs = uniqueStrings(
+          candidate.recipients.map((recipient) => recipient?.user_id),
+        );
+        if (!candidateUserIDs.length) return true;
+        return await withRoomWriteLeases({
+          lifecycleStore:
+            base44.asServiceRole.entities.BillingIdentityLifecycle,
+          userIDs: candidateUserIDs,
+          // The outer bounded mode repair owns retry timing so every retry can
+          // refetch the newest room revision before taking identity leases.
+          attempts: 1,
+          action: async (leaseContext) => {
+            let exact = candidate;
+            if (context.isRepair) {
+              const observed = await fetchRoom(base44, candidate.room.id);
+              if (!observed) throw authoritativeSignalReadPending();
+              const authoritative = authoritativeRoomForSignalRepair(
+                candidate.room,
+                observed,
+              );
+              if (!authoritative) throw authoritativeSignalReadPending();
+              exact = lobbyModeSignalCandidate(
+                authoritative,
+                candidate.allowCreate,
+                committedModeSignal,
+              );
+              if (exact.obsolete) return true;
+              assertExactRoomLeaseCoverage(
+                leaseContext,
+                exact.recipients.map((recipient) => recipient?.user_id),
+              );
+            }
+            const result = await fanoutGameRoomSignalsBestEffort({
+              store: base44.asServiceRole.entities.GameRoomSignal,
+              room: exact.room,
+              recipients: exact.recipients,
+              projection: exact.projection,
+              // Fast mode actions never recreate a signal removed by account
+              // cleanup. Leased non-fast callers preserve their prior policy.
+              allowCreate: exact.allowCreate,
+              logError: (message, error) =>
+                console.error(message, error?.message || error),
+            });
+            return Number(result?.failed) === 0;
+          },
+        });
+      };
+
+      if (!isLobbyModeProjection) {
+        return await attempt(initialCandidate, {
+          attempt: 1,
+          isRepair: false,
+        });
+      }
+
+      return await runLatestRoomSignalAfterLeaseContention({
+        initial: initialCandidate,
+        attempt,
+        loadLatest: async (current) => {
+          const observed = await fetchRoom(base44, current.room.id);
+          if (!observed) return null;
+          const authoritative = authoritativeRoomForSignalRepair(
+            current.room,
+            observed,
+          );
+          return authoritative
+            ? lobbyModeSignalCandidate(
+              authoritative,
+              current.allowCreate,
+              committedModeSignal,
+            )
+            : null;
+        },
       });
-      return Number(result?.failed) === 0;
     },
     // The independently owned lifecycle lease remains attached to late work,
     // while polling guarantees convergence if this bounded wake-up is delayed.
@@ -3405,6 +3528,7 @@ async function backfillRoomWriteRevision(base44, room) {
 }
 
 const FAST_ROOM_ACTIONS = new Set([
+  "update_game_mode",
   "mark_role_card_read",
   "pause_game",
   "resume_game",
@@ -3421,6 +3545,11 @@ function canUseFastRoomAction(action, room, user) {
   if (!FAST_ROOM_ACTIONS.has(action)) return false;
   if (roomWriteRevision(room) === null) return false;
   if (!roomHasParticipantIdentity(room, user)) return false;
+  if (
+    action === "update_game_mode" &&
+    (normalizedStatus(room) !== "waiting" ||
+      clean(room?.host_email) !== clean(user?.email))
+  ) return false;
   if (
     (action === "mark_role_card_read" || action === "request_vote") &&
     shouldSpyWin(room)
@@ -3693,6 +3822,9 @@ async function executeRoomActionWithSignal(
     stageGameRoomSignalFanout(base44, {
       room: result,
       recipients: recipients || roomSignalRecipients(result, "active"),
+      projection: action === "update_game_mode"
+        ? lobbyModeSignalProjectionForRoom(result)
+        : null,
       allowCreate: options.allowSignalCreate !== false,
     });
   }
