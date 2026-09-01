@@ -126,6 +126,22 @@ enum ReplayAutoStartRoomDisposition: Equatable {
     case invalid
 }
 
+enum FinishedRoomActionPolicy {
+    static func showsIndependentLeaveRoom(
+        hostEmail: String?,
+        currentUserEmail: String?
+    ) -> Bool {
+        let hostEmail = normalized(hostEmail)
+        let currentUserEmail = normalized(currentUserEmail)
+        guard !hostEmail.isEmpty, !currentUserEmail.isEmpty else { return true }
+        return hostEmail != currentUserEmail
+    }
+
+    private static func normalized(_ email: String?) -> String {
+        email?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+    }
+}
+
 enum ReplayAutoStartPolicy {
     static func request(
         for room: GameRoom,
@@ -6266,13 +6282,18 @@ struct GameView: View {
             }
             playersPanel(room)
             replayPanel(room)
-            Button {
-                Task { await leaveRoom(room) }
-            } label: {
-                Label(copy.leaveRoom, systemImage: "house.fill")
+            if FinishedRoomActionPolicy.showsIndependentLeaveRoom(
+                hostEmail: room.hostEmail,
+                currentUserEmail: appState.user?.email
+            ) {
+                Button {
+                    Task { await leaveRoom(room) }
+                } label: {
+                    Label(copy.leaveRoom, systemImage: "house.fill")
+                }
+                .buttonStyle(SpyButtonStyle(variant: .outline))
+                .accessibilityIdentifier("onlineRoom.finished.leaveRoom")
             }
-            .buttonStyle(SpyButtonStyle(variant: .outline))
-            .accessibilityIdentifier("onlineRoom.finished.leaveRoom")
         }
     }
 

@@ -1284,6 +1284,29 @@ final class OnlineRoundStateTests: XCTestCase {
         XCTAssertNil(FinishedRoomResultPolicy.wrongSpyGuess(in: room))
     }
 
+    func testFinishedRoomOnlyOffersIndependentLeaveRoomToNonHost() throws {
+        let room = GameRoom.previewRoom(status: "finished")
+        let hostEmail = try XCTUnwrap(room.hostEmail)
+        let nonHostEmail = try XCTUnwrap(
+            room.playersList.first(where: { $0.email != hostEmail })?.email
+        )
+
+        XCTAssertFalse(
+            FinishedRoomActionPolicy.showsIndependentLeaveRoom(
+                hostEmail: hostEmail,
+                currentUserEmail: "  \(hostEmail.uppercased())  "
+            ),
+            "The host already has vote-for-new-game and back-to-lobby actions; a third leave-room action must stay hidden"
+        )
+        XCTAssertTrue(
+            FinishedRoomActionPolicy.showsIndependentLeaveRoom(
+                hostEmail: hostEmail,
+                currentUserEmail: nonHostEmail
+            ),
+            "A non-host must retain the independent way to leave a finished room"
+        )
+    }
+
     func testReplayAutoStartRequiresUnanimousFinishedHostObservation() throws {
         var room = GameRoom.previewRoom(status: "finished")
         let hostEmail = try XCTUnwrap(room.hostEmail)
