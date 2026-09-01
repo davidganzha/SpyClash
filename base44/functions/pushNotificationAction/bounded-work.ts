@@ -3,6 +3,10 @@ export type BoundedWorkResult<T> = {
   unstarted: T[];
 };
 
+export type DeadlineResult<T> =
+  | { timedOut: false; value: T }
+  | { timedOut: true };
+
 export function clampDeadline(
   value: unknown,
   budgetMs: number,
@@ -12,6 +16,30 @@ export function clampDeadline(
   return Number.isFinite(requested) && requested > 0
     ? Math.min(requested, now + budgetMs)
     : now + budgetMs;
+}
+
+export async function runWithinDeadline<T>(input: {
+  deadlineEpochMs: number;
+  operation: () => Promise<T>;
+  nowEpochMs?: () => number;
+}): Promise<DeadlineResult<T>> {
+  const nowEpochMs = input.nowEpochMs || Date.now;
+  const remaining = Math.floor(input.deadlineEpochMs - nowEpochMs());
+  if (remaining <= 0) return { timedOut: true };
+
+  let timeoutID: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<DeadlineResult<T>>((resolve) => {
+    timeoutID = setTimeout(() => resolve({ timedOut: true }), remaining);
+  });
+  const operation = input.operation().then((value) => ({
+    timedOut: false as const,
+    value,
+  }));
+  try {
+    return await Promise.race([operation, timeout]);
+  } finally {
+    if (timeoutID !== undefined) clearTimeout(timeoutID);
+  }
 }
 
 export async function runBounded<T>(input: {

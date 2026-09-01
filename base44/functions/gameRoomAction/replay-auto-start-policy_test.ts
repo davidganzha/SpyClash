@@ -16,7 +16,17 @@ function finishedRoom(overrides: Record<string, unknown> = {}) {
     id: "room-1",
     status: "finished",
     match_id: "match-finished-1",
-    terminal_intent: { match_id: "match-finished-1", winner: "detectives" },
+    terminal_intent: {
+      match_id: "match-finished-1",
+      winner: "detectives",
+      game_finished_outbox_commit: {
+        source_event_id: "game-finished:match-finished-1",
+        match_id: "match-finished-1",
+        recipient_user_ids: ["user-a", "user-b", "user-c", "user-d"],
+        recipient_count: 4,
+        committed_at: "2026-09-01T11:59:59.000Z",
+      },
+    },
     host_email: "a@example.com",
     players: [
       {
@@ -228,6 +238,19 @@ Deno.test("auto-start fails closed for incomplete, stale, or undersized replay q
     }))
   ) as Error & { code?: string };
   assertEquals(tooSmall.code, "replay_not_enough_players");
+});
+
+Deno.test("unanimous replay cannot erase an uncommitted finished outbox", () => {
+  const error = assertThrows(() =>
+    replayAutoStartPatch(finishedRoom({
+      terminal_intent: {
+        match_id: "match-finished-1",
+        winner: "detectives",
+      },
+    }))
+  ) as Error & { code?: string; retryable?: boolean };
+  assertEquals(error.code, "terminal_outbox_unconfirmed");
+  assertEquals(error.retryable, true);
 });
 
 Deno.test("gameRoomAction commits replay auto-start from the voter path without host authority", async () => {

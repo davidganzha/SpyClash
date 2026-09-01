@@ -16,6 +16,59 @@ function stableUserIDs(room: Entity): string[] {
   return [...new Set([...mirrored, ...players].filter(Boolean))].sort();
 }
 
+export function gamePushRecipientUserIDs(room: Entity): string[] {
+  return stableUserIDs(room);
+}
+
+function committedEventMatches(
+  event: Entity,
+  eventType: "game_started" | "game_finished",
+  sourceEventID: string,
+  recipientUserID: string,
+): boolean {
+  const committedAt = Date.parse(clean(event?.inbox_committed_at));
+  return clean(event?.event_type) === eventType &&
+    clean(event?.source_event_id) === sourceEventID &&
+    clean(event?.recipient_user_id) === recipientUserID &&
+    clean(event?.dedupe_key) ===
+      [eventType, sourceEventID, recipientUserID].join(":") &&
+    event?.inbox_visible !== true && Number.isFinite(committedAt);
+}
+
+export async function gamePushCommitCoversRecipients(input: {
+  store: any;
+  eventType: "game_started" | "game_finished";
+  sourceEventID: string;
+  recipientUserIDs: readonly unknown[];
+}): Promise<boolean> {
+  const sourceEventID = clean(input.sourceEventID);
+  const recipientUserIDs = [
+    ...new Set(
+      input.recipientUserIDs.map(clean).filter(Boolean),
+    ),
+  ].sort();
+  if (!sourceEventID || !recipientUserIDs.length) return false;
+  const events = await input.store.filter(
+    {
+      source_event_id: sourceEventID,
+      event_type: input.eventType,
+    },
+    "created_date",
+    100,
+    0,
+  ) || [];
+  return recipientUserIDs.every((recipientUserID) =>
+    events.some((event: Entity) =>
+      committedEventMatches(
+        event,
+        input.eventType,
+        sourceEventID,
+        recipientUserID,
+      )
+    )
+  );
+}
+
 function inboxProjection(
   eventType: "game_started" | "game_finished",
   roomID: string,
@@ -194,13 +247,18 @@ export async function commitGamePushEvents(input: {
       committed += 1;
       continue;
     }
-    if (clean(event.state) === "cancelled") continue;
+    if (
+      clean(event.state) === "cancelled" &&
+      input.eventType !== "game_finished"
+    ) continue;
     pendingCommits.push(event);
   }
   if (pendingCommits.length) {
     committed += await input.persist(async () => {
       let updated = 0;
       for (const event of pendingCommits) {
+        const reviveCancelled = input.eventType === "game_finished" &&
+          clean(event.state) === "cancelled";
         const result: Entity = await input.store.updateMany({
           id: event.id,
           state: event.state,
@@ -215,6 +273,16 @@ export async function commitGamePushEvents(input: {
             ),
             inbox_visible: false,
             inbox_committed_at: now,
+            ...(reviveCancelled
+              ? {
+                state: "retry",
+                lease_token: "",
+                lease_until: now,
+                next_attempt_at: now,
+                attempt_count: 0,
+                last_error_code: "committed_finish_recovered",
+              }
+              : {}),
             revision: randomUUID(),
             updated_at: now,
           },

@@ -315,6 +315,15 @@ enum SpyGuessSubmissionPhase: Equatable {
     }
 }
 
+enum SpyGuessSheetPresentationPolicy {
+    static func shouldDismiss(authoritativeRoomStatus: String?) -> Bool {
+        let status = authoritativeRoomStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return status == "finished" || status == "ended"
+    }
+}
+
 enum RoomAccessPagePolicy {
     static let roomCode = 0
     static let roomQR = 1
@@ -1485,6 +1494,57 @@ enum OnlineAuthoritativeRoomPolicy {
     }
 }
 
+enum UncertainRoomMutationRefreshDisposition: Equatable {
+    case adopt
+    case retainCurrent
+    case reject
+}
+
+enum UncertainRoomMutationRecoveryPolicy {
+    static let maximumMutationAttempts = 1
+    static let maximumAuthoritativeReads = 1
+
+    static func shouldRefreshAfterFailure(_ error: Error) -> Bool {
+        guard !RequestCancellationPolicy.isCancellation(error) else { return false }
+        if let base44Error = error as? Base44Error {
+            return base44Error.statusCode == nil && base44Error.retryable
+        }
+        return LobbySyncRetryPolicy.isRetryable(error)
+    }
+
+    static func refreshDisposition(
+        candidate: GameRoom?,
+        over current: GameRoom,
+        scope: OnlineRoomMatchScope
+    ) -> UncertainRoomMutationRefreshDisposition {
+        guard scope.matches(current),
+              let candidate,
+              scope.matches(candidate) else { return .reject }
+        return OnlineAuthoritativeRoomPolicy.canAdopt(
+            candidate: candidate,
+            over: current,
+            scope: scope
+        ) ? .adopt : .retainCurrent
+    }
+
+    static func confirmsVoteRequest(
+        in room: GameRoom,
+        scope: OnlineRoomMatchScope,
+        actorEmail: String
+    ) -> Bool {
+        guard scope.matches(room) else { return false }
+        let actorKey = normalizedEmail(actorEmail)
+        guard !actorKey.isEmpty else { return false }
+        return room.voteRequestsList.contains {
+            normalizedEmail($0) == actorKey
+        }
+    }
+
+    private static func normalizedEmail(_ value: String) -> String {
+        value.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+    }
+}
+
 enum ExpiredRoomFinalizationCandidateDisposition: Equatable {
     case adopt
     case retryCurrent
@@ -1710,13 +1770,24 @@ enum DetectiveVoteConflictResolution: Equatable {
 }
 
 enum DetectiveVoteConflictRecoveryPolicy {
-    static let retryDelaysMilliseconds = [
-        250, 500, 1_000, 2_000, 4_000, 8_000, 8_000, 8_000
-    ]
+    static let retryDelaysMilliseconds = [250, 500, 1_000]
+    static let maximumRecoveryDurationMilliseconds = 2_000
 
-    static func delayMilliseconds(beforeRetry retry: Int) -> Int? {
+    static func delayMilliseconds(
+        beforeRetry retry: Int,
+        elapsedMilliseconds: Int = 0
+    ) -> Int? {
         guard retryDelaysMilliseconds.indices.contains(retry) else { return nil }
-        return retryDelaysMilliseconds[retry]
+        let delay = retryDelaysMilliseconds[retry]
+        let remaining = remainingBudgetMilliseconds(
+            elapsedMilliseconds: elapsedMilliseconds
+        )
+        guard delay <= remaining else { return nil }
+        return delay
+    }
+
+    static func remainingBudgetMilliseconds(elapsedMilliseconds: Int) -> Int {
+        max(maximumRecoveryDurationMilliseconds - max(elapsedMilliseconds, 0), 0)
     }
 
     static func isRecoverableConflict(_ error: Error) -> Bool {
@@ -2310,6 +2381,11 @@ struct GameView: View {
             if status == "roulette" || status == "playing" {
                 dismissOnlineSetupCapture()
                 replayAutoStartFailedOperationKey = nil
+            }
+            if SpyGuessSheetPresentationPolicy.shouldDismiss(
+                authoritativeRoomStatus: status
+            ) {
+                showSpyGuess = false
             }
             updateOnlineShellChromeSuppression()
         }
@@ -10202,7 +10278,11 @@ struct GameView: View {
                   accountUserID: appState.user?.id,
                   currentUserEmail: appState.user?.email
               ),
-              let refreshed = try? await appState.client.refreshRoom(id: request.scope.roomID),
+              let refreshed = try? await appState.client.refreshRoom(
+                  id: request.scope.roomID,
+                  timeoutInterval: RoomActionTransportPolicy.timeoutInterval(for: "get_room"),
+                  allowsTypedConflictRetry: false
+              ),
               !Task.isCancelled else { return false }
         return adoptRoomKickCandidate(
             refreshed,
@@ -11258,7 +11338,8 @@ struct GameView: View {
         guard detectiveVoteCancellationPresentation == nil,
               !room.isGamePaused,
               !isTimeExpired(room) else { return }
-        guard let user = appState.user else { return }
+        guard let user = appState.user,
+              let requestScope = OnlineRoomMatchScope(room: room) else { return }
         if appState.shouldUsePreviewData {
             var previewRoom = room
             if !previewRoom.voteRequestsList.contains(where: { emailsMatch($0, user.email) }) {
@@ -11269,12 +11350,85 @@ struct GameView: View {
             return
         }
         do {
-            appState.activeRoom = try await appState.client.requestVote(room: room, user: user)
+            let updated = try await appState.client.requestVote(room: room, user: user)
+            guard appState.user?.id == user.id,
+                  let currentRoom = appState.activeRoom,
+                  requestScope.matches(currentRoom) else { return }
+            if OnlineAuthoritativeRoomPolicy.canAdopt(
+                candidate: updated,
+                over: currentRoom,
+                scope: requestScope
+            ) {
+                appState.activeRoom = updated
+            }
+            guard appState.activeRoom?.voteRequestsList.contains(where: {
+                emailsMatch($0, user.email)
+            }) == true else { return }
             HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard !Task.isCancelled,
+                  !RequestCancellationPolicy.isCancellation(error) else { return }
+            if UncertainRoomMutationRecoveryPolicy.shouldRefreshAfterFailure(error) {
+                await reconcileUncertainVoteRequest(
+                    scope: requestScope,
+                    actor: user
+                )
+                return
+            }
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }
+    }
+
+    private func reconcileUncertainVoteRequest(
+        scope: OnlineRoomMatchScope,
+        actor: SpyUser
+    ) async {
+        guard !Task.isCancelled,
+              appState.user?.id == actor.id,
+              let activeRoom = appState.activeRoom,
+              scope.matches(activeRoom) else { return }
+
+        let refreshed: GameRoom?
+        do {
+            refreshed = try await appState.client.refreshRoom(
+                id: scope.roomID,
+                timeoutInterval: RoomActionTransportPolicy.timeoutInterval(for: "get_room"),
+                allowsTypedConflictRetry: false
+            )
+        } catch {
+            return
+        }
+
+        guard !Task.isCancelled,
+              appState.user?.id == actor.id,
+              let currentRoom = appState.activeRoom,
+              scope.matches(currentRoom) else { return }
+        switch UncertainRoomMutationRecoveryPolicy.refreshDisposition(
+            candidate: refreshed,
+            over: currentRoom,
+            scope: scope
+        ) {
+        case .adopt:
+            guard let refreshed else { return }
+            appState.activeRoom = refreshed
+        case .retainCurrent:
+            break
+        case .reject:
+            return
+        }
+
+        guard let authoritativeRoom = appState.activeRoom,
+              UncertainRoomMutationRecoveryPolicy.confirmsVoteRequest(
+                  in: authoritativeRoom,
+                  scope: scope,
+                  actorEmail: actor.email
+              ) else {
+            // The write outcome is still uncertain. Realtime and the scoped
+            // polling loop remain authoritative; never replay the mutation.
+            return
+        }
+        HapticManager.shared.fire(.notification(.success))
     }
 
     private func castVote(_ room: GameRoom, targetEmail: String) async {
@@ -11296,12 +11450,25 @@ struct GameView: View {
             HapticManager.shared.fire(.notification(.success))
             return
         }
+        let recoveryStartedAt = Date()
+        func elapsedRecoveryMilliseconds() -> Int {
+            max(Int(Date().timeIntervalSince(recoveryStartedAt) * 1_000), 0)
+        }
+
         var retry = 0
         while true {
             guard !Task.isCancelled,
                   castScope.matchesActor(appState.user?.email),
                   let activeRoom = appState.activeRoom,
                   castScope.room.matches(activeRoom) else { return }
+            let remainingRequestBudget = DetectiveVoteConflictRecoveryPolicy
+                .remainingBudgetMilliseconds(
+                    elapsedMilliseconds: elapsedRecoveryMilliseconds()
+                )
+            if retry > 0, remainingRequestBudget == 0 {
+                presentDetectiveVoteSyncDelayed()
+                return
+            }
 
             switch DetectiveVoteConflictRecoveryPolicy.resolution(
                 previous: room,
@@ -11329,7 +11496,10 @@ struct GameView: View {
                     room: room,
                     user: user,
                     targetEmail: castScope.targetEmail,
-                    expectedVoteRoundID: castScope.voteRoundID
+                    expectedVoteRoundID: castScope.voteRoundID,
+                    timeoutInterval: retry == 0
+                        ? nil
+                        : Double(remainingRequestBudget) / 1_000
                 )
                 guard !Task.isCancelled,
                       let currentRoom = appState.activeRoom,
@@ -11369,10 +11539,20 @@ struct GameView: View {
                               scope: castScope.room
                           ) else { return }
                     appState.activeRoom = updated
+                    let remainingReconciliationBudget = DetectiveVoteConflictRecoveryPolicy
+                        .remainingBudgetMilliseconds(
+                            elapsedMilliseconds: elapsedRecoveryMilliseconds()
+                        )
+                    guard remainingReconciliationBudget > 0 else {
+                        presentDetectiveVoteSyncDelayed()
+                        return
+                    }
                     switch await reconcileDetectiveVoteConflict(
                         previous: room,
                         cast: castScope,
-                        refreshAfterReject: true
+                        refreshAfterReject: true,
+                        refreshTimeoutInterval:
+                            Double(remainingReconciliationBudget) / 1_000
                     ) {
                     case .resolved, .stop:
                         return
@@ -11384,7 +11564,10 @@ struct GameView: View {
                         return
                     case .retry:
                         guard let delay = DetectiveVoteConflictRecoveryPolicy
-                            .delayMilliseconds(beforeRetry: retry) else {
+                            .delayMilliseconds(
+                                beforeRetry: retry,
+                                elapsedMilliseconds: elapsedRecoveryMilliseconds()
+                            ) else {
                             presentDetectiveVoteSyncDelayed()
                             return
                         }
@@ -11399,6 +11582,23 @@ struct GameView: View {
             } catch {
                 guard !Task.isCancelled,
                       !RequestCancellationPolicy.isCancellation(error) else { return }
+                if UncertainRoomMutationRecoveryPolicy.shouldRefreshAfterFailure(error) {
+                    switch await reconcileDetectiveVoteConflict(
+                        previous: room,
+                        cast: castScope,
+                        forceAuthoritativeRefresh: true,
+                        refreshTimeoutInterval:
+                            RoomActionTransportPolicy.timeoutInterval(for: "get_room")
+                    ) {
+                    case .resolved, .stop:
+                        return
+                    case .retry, .rejected, .failed:
+                        // The transport may have lost only the response. Do not
+                        // cast again; realtime/polling will settle the result.
+                        presentDetectiveVoteSyncDelayed()
+                        return
+                    }
+                }
                 if DetectiveVoteRoundChangedPolicy.shouldReconcile(
                     action: "cast_detective_vote",
                     error: error
@@ -11421,9 +11621,20 @@ struct GameView: View {
                     return
                 }
 
+                let remainingReconciliationBudget = DetectiveVoteConflictRecoveryPolicy
+                    .remainingBudgetMilliseconds(
+                        elapsedMilliseconds: elapsedRecoveryMilliseconds()
+                    )
+                guard remainingReconciliationBudget > 0 else {
+                    presentDetectiveVoteSyncDelayed()
+                    return
+                }
+
                 switch await reconcileDetectiveVoteConflict(
                     previous: room,
-                    cast: castScope
+                    cast: castScope,
+                    refreshTimeoutInterval:
+                        Double(remainingReconciliationBudget) / 1_000
                 ) {
                 case .resolved, .stop:
                     return
@@ -11435,7 +11646,10 @@ struct GameView: View {
                     return
                 case .retry:
                     guard let delay = DetectiveVoteConflictRecoveryPolicy
-                        .delayMilliseconds(beforeRetry: retry) else {
+                        .delayMilliseconds(
+                            beforeRetry: retry,
+                            elapsedMilliseconds: elapsedRecoveryMilliseconds()
+                        ) else {
                         presentDetectiveVoteSyncDelayed()
                         return
                     }
@@ -11504,34 +11718,42 @@ struct GameView: View {
     private func reconcileDetectiveVoteConflict(
         previous: GameRoom,
         cast: DetectiveVoteCastScope,
-        refreshAfterReject: Bool = false
+        refreshAfterReject: Bool = false,
+        forceAuthoritativeRefresh: Bool = false,
+        refreshTimeoutInterval: TimeInterval? = nil
     ) async -> DetectiveVoteConflictReconciliationOutcome {
         guard !Task.isCancelled,
               cast.matchesActor(appState.user?.email),
               let activeRoom = appState.activeRoom,
               cast.room.matches(activeRoom) else { return .stop }
-        switch DetectiveVoteConflictRecoveryPolicy.resolution(
-            previous: previous,
-            authoritative: activeRoom,
-            cast: cast,
-            now: Date()
-        ) {
-        case .persisted, .cancelled:
-            applyDetectiveVoteResponse(
+        if !forceAuthoritativeRefresh {
+            switch DetectiveVoteConflictRecoveryPolicy.resolution(
                 previous: previous,
                 authoritative: activeRoom,
-                scope: cast.room
-            )
-            return .resolved
-        case .superseded, .ejected, .finished, .deadline:
-            return .resolved
-        case .reject:
-            guard refreshAfterReject else { return .stop }
-        case .retry:
-            break
+                cast: cast,
+                now: Date()
+            ) {
+            case .persisted, .cancelled:
+                applyDetectiveVoteResponse(
+                    previous: previous,
+                    authoritative: activeRoom,
+                    scope: cast.room
+                )
+                return .resolved
+            case .superseded, .ejected, .finished, .deadline:
+                return .resolved
+            case .reject:
+                guard refreshAfterReject else { return .stop }
+            case .retry:
+                break
+            }
         }
         do {
-            guard let refreshed = try await appState.client.refreshRoom(id: cast.room.roomID) else {
+            guard let refreshed = try await appState.client.refreshRoom(
+                id: cast.room.roomID,
+                timeoutInterval: refreshTimeoutInterval,
+                allowsTypedConflictRetry: refreshTimeoutInterval == nil
+            ) else {
                 return .retry
             }
             guard !Task.isCancelled,
@@ -12244,6 +12466,7 @@ private struct SpyGuessSheet: View {
 
     @Environment(\.dismiss) private var dismiss
     @State private var submissionPhase = SpyGuessSubmissionPhase.idle
+    @State private var submissionTask: Task<Void, Never>?
 
     private var words: [WordPoolEntry] {
         room.enabledWordPool.sorted {
@@ -12368,6 +12591,10 @@ private struct SpyGuessSheet: View {
         }
         .interactiveDismissDisabled(blocksInteraction)
         .animation(.easeOut(duration: 0.16), value: submissionPhase)
+        .onDisappear {
+            submissionTask?.cancel()
+            submissionTask = nil
+        }
     }
 
     private func submissionAcknowledgement(for word: String) -> some View {
@@ -12443,19 +12670,23 @@ private struct SpyGuessSheet: View {
         submissionPhase = pending
         HapticManager.shared.fire(.buttonPress)
 
-        Task { @MainActor in
+        submissionTask?.cancel()
+        submissionTask = Task { @MainActor in
             // Let SwiftUI commit the locked acknowledgement before any network
             // work starts, so the first tap always has visible feedback.
             await Task.yield()
             do {
                 try await onGuess(word)
+                submissionTask = nil
                 HapticManager.shared.fire(.notification(.success))
                 dismiss()
             } catch {
                 guard !RequestCancellationPolicy.isCancellation(error) else {
+                    submissionTask = nil
                     submissionPhase = .idle
                     return
                 }
+                submissionTask = nil
                 submissionPhase = submissionPhase.failing()
                 HapticManager.shared.fire(.notification(.error))
             }

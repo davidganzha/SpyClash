@@ -74,6 +74,33 @@
       "default": false,
       "description": "Durable remote-end intent retained until ActivityKit accepts the terminal push or the token is revoked."
     },
+    "pending_force_end_commit_id": {
+      "type": "string",
+      "maxLength": 256,
+      "description": "Server-only exact committed game-finished or room-close receipt. It lets a terminal enqueue dominate stale GameRoom and signal replicas.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "terminal_probe_started_at": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server-only start of the post-registration terminal-state probe. A later active room commit can safely resolve the ambiguity.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "terminal_probe_until": {
+      "type": "string",
+      "format": "date-time",
+      "description": "Server-only deadline for the bounded post-registration terminal-state probe. While present, negative replica reads cannot leave a late token idle.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
     "last_apns_timestamp": { "type": "number" },
     "last_seen_at": { "type": "string", "format": "date-time" },
     "ended_at": { "type": "string", "format": "date-time" },

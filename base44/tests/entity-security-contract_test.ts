@@ -265,9 +265,28 @@ Deno.test("GameRoomSignal exposes only the caller's wake-up row and keeps writes
     assertAdminOnlyPolicy(signal, operation);
   }
   assertEquals(signal.properties.state.enum, ["active", "closed"]);
+  for (
+    const field of [
+      "close_intent_id",
+      "close_match_id",
+      "close_completion",
+    ]
+  ) {
+    const fieldPolicy = signal.properties[field]?.rls as
+      | Record<string, unknown>
+      | undefined;
+    assert(fieldPolicy, `${field} must remain server-only`);
+    assert(policyAllows(fieldPolicy.read, {}, admin));
+    assert(!policyAllows(fieldPolicy.read, {}, owner));
+    assert(policyAllows(fieldPolicy.write, {}, admin));
+    assert(!policyAllows(fieldPolicy.write, {}, owner));
+  }
   assertEquals(
     Object.keys(signal.properties).sort(),
     [
+      "close_completion",
+      "close_intent_id",
+      "close_match_id",
       "lobby_revision",
       "room_id",
       "room_revision",
@@ -450,8 +469,17 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
       "lobby_word_pool",
       "lobby_last_mutation_id",
       "lobby_last_mutation_fingerprint",
+      "close_intent",
     ],
-    GameRoomSignal: ["user_id", "room_id", "lobby_revision", "state"],
+    GameRoomSignal: [
+      "user_id",
+      "room_id",
+      "lobby_revision",
+      "state",
+      "close_intent_id",
+      "close_match_id",
+      "close_completion",
+    ],
     CommunityProfileSignal: [
       "recipient_user_id",
       "profile_user_id",
@@ -461,7 +489,13 @@ Deno.test("release schemas contain every additive identity and Live Activity fie
     WordPack: ["owner_user_id"],
     AppStoreAccount: ["reservation_state"],
     Entitlement: ["write_revision"],
-    LiveActivityRegistration: ["locale", "pending_force_end"],
+    LiveActivityRegistration: [
+      "locale",
+      "pending_force_end",
+      "pending_force_end_commit_id",
+      "terminal_probe_started_at",
+      "terminal_probe_until",
+    ],
     NotificationAnnouncement: [
       "importance",
       "status",

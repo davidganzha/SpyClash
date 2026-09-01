@@ -34,6 +34,17 @@ function recentlyQueued(event: PushEvent, now = new Date()): boolean {
   return Number.isFinite(created) && now.getTime() - created < 2 * 60 * 1_000;
 }
 
+function isCommittedGameFinishEvent(event: PushEvent): boolean {
+  const matchID = clean(event.match_id);
+  const sourceEventID = clean(event.source_event_id);
+  return clean(event.event_type) === "game_finished" &&
+    clean(event.source_type) === "game_room" && Boolean(matchID) &&
+    sourceEventID === `game-finished:${matchID}` &&
+    Boolean(clean(event.room_id)) && Boolean(clean(event.recipient_user_id)) &&
+    event.inbox_visible !== true &&
+    Boolean(clean(event.inbox_committed_at));
+}
+
 export function pushEventLifecycleUserIDs(event: PushEvent): string[] {
   const userIDs = [clean(event.recipient_user_id)];
   if (["friend_request", "room_invite"].includes(clean(event.event_type))) {
@@ -66,6 +77,14 @@ export async function validatePushSource(
   const actorID = clean(event.actor_user_id);
   if (!sourceEventID || !recipientID) {
     return { valid: false, reason: "invalid_event" };
+  }
+
+  // Once the server-only personal outbox projection is committed, this exact
+  // row is itself the durable terminal receipt. An eventually-consistent
+  // pre-finish GameRoom must not cancel it and erase the only ActivityKit
+  // marker available to a late token.
+  if (isCommittedGameFinishEvent(event)) {
+    return { valid: true, reason: "game_finish_committed" };
   }
 
   if (event.event_type === "global_announcement") {

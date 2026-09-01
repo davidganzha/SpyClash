@@ -158,6 +158,9 @@ final class GameRoomRealtimeService {
     func resume() {
         guard let socket else { return }
         if socket.status == .connected {
+            if let entityRoom {
+                socket.emit("join", entityRoom)
+            }
             onCatchUp?()
         } else {
             socket.connect()

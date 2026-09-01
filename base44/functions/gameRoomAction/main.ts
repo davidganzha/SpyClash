@@ -77,7 +77,12 @@ import {
   resolveRoomActionUser,
 } from "./request-auth.ts";
 import { storedRoomParticipantUserIDs } from "./room-participant-identity.ts";
-import { commitGamePushEvents, enqueueGamePushEvents } from "./push-events.ts";
+import {
+  commitGamePushEvents,
+  enqueueGamePushEvents,
+  gamePushCommitCoversRecipients,
+  gamePushRecipientUserIDs,
+} from "./push-events.ts";
 import {
   createOpaqueTimingID,
   createSpyGuessSideEffectTiming,
@@ -85,6 +90,8 @@ import {
   normalizeOpaqueTimingID,
   spyGuessResponseTiming,
 } from "./terminal-timing.ts";
+import { runWithWallClockDeadline } from "./operation-deadline.ts";
+import { runPostLeaseSignalWithinDeadline } from "./post-lease-signal.ts";
 import { nextRoundNumber } from "./game-round.ts";
 import {
   internalPushSecret,
@@ -96,6 +103,9 @@ import {
   gameDurationPatch,
   gameModePatch,
   leaveAlreadyComplete,
+  liveActivityEndQueueCoversRegistrations,
+  liveActivityEndQueueMatchesRoom,
+  loadActiveRoomLiveActivityRegistrations,
   roomHasGameDuration,
   roomHasGameMode,
   roomHasParticipantIdentity,
@@ -111,7 +121,10 @@ import {
   roomHasLobbyMutation,
   validateLobbyMutation,
 } from "./lobby-state-policy.ts";
-import { fanoutGameRoomSignalsBestEffort } from "./game-room-signal.ts";
+import {
+  fanoutGameRoomSignalsBestEffort,
+  hasDurableClosedRoomSignal,
+} from "./game-room-signal.ts";
 import { fanoutCommunityProfileInvalidations } from "./community-profile-signal.ts";
 import {
   advanceAssociationTurn,
@@ -142,6 +155,28 @@ import {
   roomWriteRevision,
   writeRoomWithCAS,
 } from "./room-write-cas.ts";
+import {
+  assertExpectedMembershipGeneration,
+  captureRoomExitMembershipGeneration,
+  playerMembershipGeneration,
+  validatedMembershipGeneration,
+} from "./room-membership-generation.ts";
+import {
+  exactRoomCloseCompletion,
+  exactRoomCloseIntent,
+  newRoomCloseCompletion,
+  newRoomCloseIntent,
+  roomCloseActivityEndCommitID,
+  roomCloseActivityEndIsQueued,
+  roomCloseCompletionCoversSignals,
+  roomCloseCompletionWithActivityEndQueued,
+  verifiedRoomCloseCompletionDominatesSnapshot,
+} from "./room-close-intent.ts";
+import {
+  assertTerminalOutboxCommitBeforeAuthorityReset,
+  terminalOutboxCommitIsProven,
+  terminalOutboxCommitPatch,
+} from "./terminal-outbox-commit.ts";
 import {
   bindDetectiveVoteRoundIdentity,
   canonicalDetectiveVotes,
@@ -464,6 +499,54 @@ function pendingTerminalIntent(room) {
   return intent && normalizedStatus(room) !== "finished" ? intent : null;
 }
 
+function terminalIntentNeedsReconciliation(room) {
+  const intent = terminalIntentFromRoom(room);
+  return intent && !terminalOutboxCommitIsProven(room) ? intent : null;
+}
+
+function assertActionMatchGeneration(room, body) {
+  const currentMatchID = clean(room?.match_id);
+  const clientMatchID = clean(body?.expected_match_id);
+  const serverCapturedMatchID = clean(body?.__server_action_match_id);
+  if (
+    !currentMatchID || (clientMatchID && clientMatchID !== currentMatchID) ||
+    (serverCapturedMatchID && serverCapturedMatchID !== currentMatchID)
+  ) {
+    throw Object.assign(
+      new Error("This action belongs to an older match. Refresh and retry."),
+      { status: 409, code: "room_match_generation_conflict" },
+    );
+  }
+  return currentMatchID;
+}
+
+function assertKickTargetMembershipGeneration(room, user, body) {
+  const transition = lobbyKickTransition(room, user.email, {
+    target_user_id: body?.target_user_id,
+    target_email: body?.target_email,
+  });
+  const currentGeneration = playerMembershipGeneration(
+    room,
+    transition.removedPlayer,
+  );
+  const clientGeneration = clean(body?.expected_target_membership_id);
+  const serverCapturedGeneration = clean(
+    body?.__server_kick_target_membership_id,
+  );
+  if (
+    !currentGeneration ||
+    (clientGeneration && clientGeneration !== currentGeneration) ||
+    (serverCapturedGeneration &&
+      serverCapturedGeneration !== currentGeneration)
+  ) {
+    throw Object.assign(
+      new Error("The kick target rejoined; refresh the lobby before retrying."),
+      { status: 409, code: "kick_target_membership_conflict" },
+    );
+  }
+  return { transition, generation: currentGeneration };
+}
+
 const EXPLICIT_TIMER_FINALIZE_ACTIONS = new Set([
   "finalize_expired_room",
   "finish_room",
@@ -480,7 +563,17 @@ async function waitForCommittedTerminalRoom(base44, room) {
   return latest;
 }
 
-function assertRoomMutationOpen(room, allowPendingTerminal = false) {
+function assertRoomMutationOpen(
+  room,
+  allowPendingTerminal = false,
+  allowCloseIntent = false,
+) {
+  if (!allowCloseIntent && room?.close_intent) {
+    throw Object.assign(
+      new Error("The room is already closing."),
+      { status: 409, code: "room_close_pending", retryable: true },
+    );
+  }
   if (!allowPendingTerminal && pendingTerminalIntent(room)) {
     throw Object.assign(
       new Error(
@@ -495,7 +588,11 @@ async function updateRoom(base44, room, data, options = {}) {
   if (options.allowActiveIdentityLeaseRecovery !== true) {
     await assertRoomPersistenceBoundary(base44);
   }
-  assertRoomMutationOpen(room, options.allowPendingTerminal === true);
+  assertRoomMutationOpen(
+    room,
+    options.allowPendingTerminal === true,
+    options.allowCloseIntent === true,
+  );
   return await writeRoomWithCAS({
     store: base44.asServiceRole.entities.GameRoom,
     room,
@@ -521,7 +618,11 @@ async function updateRoomWithRetry(
         throw Object.assign(new Error("Room not found"), { status: 404 });
       }
     }
-    assertRoomMutationOpen(latest, options.allowPendingTerminal === true);
+    assertRoomMutationOpen(
+      latest,
+      options.allowPendingTerminal === true,
+      options.allowCloseIntent === true,
+    );
 
     const patch = buildPatch(latest) || {};
     if (!Object.keys(patch).length) {
@@ -553,9 +654,23 @@ async function updateRoomWithRetry(
   );
 }
 
-async function endRoomLiveActivitiesBeforeDelete(base44, room) {
-  const roomID = clean(room?.id);
-  const matchID = clean(room?.match_id);
+async function enqueueRoomLiveActivityEnd(
+  base44,
+  room,
+  closeCompletion = null,
+) {
+  const roomID = clean(closeCompletion?.room_id || room?.id);
+  const matchID = clean(closeCompletion?.match_id || room?.match_id);
+  const closeIntent = exactRoomCloseIntent(room);
+  const terminalCommitID = closeCompletion
+    ? roomCloseActivityEndCommitID(closeCompletion)
+    : normalizedStatus(room) === "finished"
+    ? clean(room?.game_finished_event_id)
+    : closeIntent && matchID
+    ? `room-close:${matchID}:${clean(closeIntent.id)}`
+    : "";
+  // A waiting lobby has no ActivityKit match binding. The participant-lease
+  // phase still records a durable no-work queue receipt before deletion.
   if (!roomID || !matchID) return;
   const internalSecret = internalPushSecret(
     Deno.env.get("PUSH_INTERNAL_SECRET"),
@@ -567,11 +682,22 @@ async function endRoomLiveActivitiesBeforeDelete(base44, room) {
     );
   }
   try {
-    await base44.asServiceRole.functions.invoke("pushNotificationAction", {
-      action: "end_room_live_activities",
-      room_id: roomID,
-      match_id: matchID,
-      internal_secret: internalSecret,
+    await runWithWallClockDeadline({
+      timeoutMS: 2_000,
+      operation: () =>
+        base44.asServiceRole.functions.invoke("pushNotificationAction", {
+          action: "enqueue_room_live_activity_end",
+          room_id: roomID,
+          match_id: matchID,
+          ...(terminalCommitID ? { terminal_commit_id: terminalCommitID } : {}),
+          ...(closeCompletion ? { close_completion: closeCompletion } : {}),
+          internal_secret: internalSecret,
+        }),
+      timeoutError: () =>
+        Object.assign(
+          new Error("Live Activity end queue exceeded its deadline."),
+          { status: 503, code: "live_activity_end_queue_timeout" },
+        ),
     });
   } catch (error) {
     console.error(
@@ -580,32 +706,614 @@ async function endRoomLiveActivitiesBeforeDelete(base44, room) {
     );
     throw Object.assign(
       new Error("Could not queue the Lock Screen session end; retry."),
-      { status: 503, code: "live_activity_end_unavailable" },
+      {
+        status: 503,
+        code: clean(error?.code) || "live_activity_end_unavailable",
+        retryable: true,
+      },
     );
   }
+}
+
+function stageQueuedLiveActivityEndDelivery(base44, room) {
+  const roomID = clean(room?.id);
+  const matchID = clean(room?.match_id);
+  if (!roomID || !matchID) return;
+  base44.__spyclashPendingLiveActivityEndDelivery = {
+    roomID,
+    matchID,
+  };
+}
+
+function stageCompletedRoomClose(base44, room, completion) {
+  base44.__spyclashPendingCompletedRoomClose = { room, completion };
+}
+
+async function triggerQueuedLiveActivityEndDelivery(
+  base44,
+  roomIDValue,
+  matchIDValue,
+) {
+  const roomID = clean(roomIDValue);
+  const matchID = clean(matchIDValue);
+  const internalSecret = internalPushSecret(
+    Deno.env.get("PUSH_INTERNAL_SECRET"),
+  );
+  if (!internalSecret || !roomID || !matchID) return false;
+  // This is only a prompt attempt. The enqueue intent remains the durable
+  // boundary and the scheduled drain owns recovery if this nested invocation
+  // is cancelled or misses a registration that arrives concurrently.
+  const deliveryDeadlineEpochMS = Date.now() + 20_000;
+  try {
+    await runWithWallClockDeadline({
+      timeoutMS: 250,
+      operation: () =>
+        base44.asServiceRole.functions.invoke("pushNotificationAction", {
+          action: "deliver_queued_room_live_activity_end",
+          room_id: roomID,
+          match_id: matchID,
+          deadline_epoch_ms: deliveryDeadlineEpochMS,
+          internal_secret: internalSecret,
+        }),
+      timeoutError: () =>
+        Object.assign(
+          new Error("Prompt Live Activity end delivery was deferred."),
+          { status: 503, code: "live_activity_end_delivery_deferred" },
+        ),
+    });
+    return true;
+  } catch (error) {
+    console.warn(
+      "prompt Live Activity end delivery deferred",
+      error instanceof Error ? error.message : error,
+    );
+    return false;
+  }
+}
+
+async function triggerStagedLiveActivityEndDelivery(base44) {
+  const staged = base44.__spyclashPendingLiveActivityEndDelivery;
+  delete base44.__spyclashPendingLiveActivityEndDelivery;
+  if (!staged) return false;
+  return await triggerQueuedLiveActivityEndDelivery(
+    base44,
+    staged.roomID,
+    staged.matchID,
+  );
+}
+
+function roomSignalRecipients(room, state = "active") {
+  return uniqueStrings([
+    ...(room?.participant_user_ids || []),
+    ...players(room).map((player) => player.user_id),
+  ]).map((userID) => ({ user_id: userID, state }));
+}
+
+function stageGameRoomSignalFanout(base44, input) {
+  base44.__spyclashPendingGameRoomSignalFanout = input;
+}
+
+async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
+  const staged = base44.__spyclashPendingGameRoomSignalFanout;
+  delete base44.__spyclashPendingGameRoomSignalFanout;
+  if (!staged?.room?.id) return true;
+  const recipients = Array.isArray(staged.recipients)
+    ? staged.recipients
+    : roomSignalRecipients(staged.room, staged.state || "active");
+  const userIDs = uniqueStrings(
+    recipients.map((recipient) => recipient?.user_id),
+  );
+  if (!userIDs.length) return true;
+  return await runPostLeaseSignalWithinDeadline({
+    timeoutMS: 600,
+    leasedOperation: async () => {
+      const result = await withRoomWriteLeases({
+        lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+        userIDs,
+        attempts: 1,
+        action: async () =>
+          await fanoutGameRoomSignalsBestEffort({
+            store: base44.asServiceRole.entities.GameRoomSignal,
+            room: staged.room,
+            recipients,
+            allowCreate: staged.allowCreate !== false,
+            logError: (message, error) =>
+              console.error(message, error?.message || error),
+          }),
+      });
+      return Number(result?.failed) === 0;
+    },
+    // The independently owned lifecycle lease remains attached to late work,
+    // while polling guarantees convergence if this bounded wake-up is delayed.
+    logError: (message, error) =>
+      console.error(message, error?.message || error),
+  });
+}
+
+async function assertLiveActivityEndQueueCoverage(base44, room) {
+  const roomID = clean(room?.id);
+  const matchID = clean(room?.match_id);
+  if (!roomID || !matchID) return;
+  const registrations = await runWithWallClockDeadline({
+    timeoutMS: 600,
+    operation: async () =>
+      await loadActiveRoomLiveActivityRegistrations(
+        base44.asServiceRole.entities.LiveActivityRegistration,
+        roomID,
+      ),
+    timeoutError: () =>
+      Object.assign(
+        new Error("Live Activity end verification exceeded its deadline."),
+        {
+          status: 503,
+          code: "live_activity_end_verification_timeout",
+          retryable: true,
+        },
+      ),
+  });
+  if (!liveActivityEndQueueCoversRegistrations(room, registrations)) {
+    throw Object.assign(
+      new Error("A new Lock Screen token must be queued before closing."),
+      {
+        status: 503,
+        code: "live_activity_end_coverage_incomplete",
+        retryable: true,
+      },
+    );
+  }
+}
+
+async function ensureRoomCloseIntent(base44, room) {
+  const existing = exactRoomCloseIntent(room);
+  if (existing) return room;
+  if (room?.close_intent) {
+    throw Object.assign(
+      new Error("The room close intent is invalid."),
+      { status: 503, code: "room_close_intent_invalid", retryable: true },
+    );
+  }
+  const currentRevision = roomWriteRevision(room);
+  if (currentRevision === null) {
+    throw Object.assign(new Error("Room write revision is missing."), {
+      status: 503,
+      code: "room_revision_missing",
+      retryable: true,
+    });
+  }
+  const intent = newRoomCloseIntent({
+    room,
+    nextRoomRevision: currentRevision + 1,
+    participantUserIDs: roomSignalRecipients(room).map((recipient) =>
+      recipient.user_id
+    ),
+  });
+  return await updateRoom(base44, room, { close_intent: intent }, {
+    allowPendingTerminal: true,
+    allowCloseIntent: true,
+  });
+}
+
+async function persistClosedRoomSignals(base44, room) {
+  const intent = exactRoomCloseIntent(room);
+  if (!intent) {
+    throw Object.assign(new Error("Room close intent is required."), {
+      status: 503,
+      code: "room_close_intent_missing",
+      retryable: true,
+    });
+  }
+  await assertRoomPersistenceBoundary(base44);
+  const recipients = roomSignalRecipients(room, "closed");
+  const result = await fanoutGameRoomSignalsBestEffort({
+    store: base44.asServiceRole.entities.GameRoomSignal,
+    room,
+    recipients,
+    closeReceipt: {
+      intent_id: intent.id,
+      match_id: intent.match_id,
+    },
+    logError: (message, error) =>
+      console.error(message, error?.message || error),
+  });
+  if (Number(result?.failed) > 0) {
+    throw Object.assign(
+      new Error("Room closure signals could not be committed; retry."),
+      { status: 503, code: "room_close_signal_deferred", retryable: true },
+    );
+  }
+
+  // A per-recipient close receipt can be written before another recipient's
+  // write fails. Publish the completion tombstone only in a second pass after
+  // every close signal succeeded, so any one exact tombstone proves the whole
+  // participant fanout reached its durable boundary.
+  const completion = newRoomCloseCompletion({ room });
+  const completionResult = await fanoutGameRoomSignalsBestEffort({
+    store: base44.asServiceRole.entities.GameRoomSignal,
+    room,
+    recipients,
+    closeReceipt: {
+      intent_id: intent.id,
+      match_id: intent.match_id,
+      completion,
+    },
+    logError: (message, error) =>
+      console.error(message, error?.message || error),
+  });
+  if (Number(completionResult?.failed) > 0) {
+    throw Object.assign(
+      new Error("Room closure completion could not be committed; retry."),
+      { status: 503, code: "room_close_completion_deferred", retryable: true },
+    );
+  }
+  const persistedSignals = await base44.asServiceRole.entities.GameRoomSignal
+    .filter({ room_id: clean(room.id) }) || [];
+  if (!roomCloseCompletionCoversSignals(persistedSignals, completion)) {
+    throw Object.assign(
+      new Error("Room closure completion is not yet visible; retry."),
+      {
+        status: 503,
+        code: "room_close_completion_unverified",
+        retryable: true,
+      },
+    );
+  }
+  return completion;
+}
+
+function unconfirmedRoomCloseError() {
+  return Object.assign(
+    new Error("Room closure is not yet confirmed; retry."),
+    { status: 503, code: "room_close_unconfirmed", retryable: true },
+  );
+}
+
+function unconfirmedRoomExitError() {
+  return Object.assign(
+    new Error("Room exit is not yet confirmed; retry."),
+    { status: 503, code: "room_exit_unconfirmed", retryable: true },
+  );
+}
+
+function expectedRoomExitRevision(body) {
+  const value = body?.expected_revision;
+  if (value === null || value === undefined || clean(value) === "") return null;
+  const candidate = Number(value);
+  return Number.isInteger(candidate) && candidate >= 0 ? candidate : null;
+}
+
+function expectedRoomExitMembershipID(body) {
+  const candidate = clean(body?.expected_membership_id);
+  return candidate ? validatedMembershipGeneration(candidate) : "";
+}
+
+function boundRoomExitMembershipID(body) {
+  return expectedRoomExitMembershipID(body) ||
+    clean(body?.__server_room_exit_membership_id);
+}
+
+async function durableRoomExitIsCommitted(
+  base44,
+  roomIDValue,
+  userIDValue,
+  expectedRevisionValue,
+) {
+  const roomID = clean(roomIDValue);
+  const userID = clean(userIDValue);
+  const expectedRevision = expectedRoomExitRevision({
+    expected_revision: expectedRevisionValue,
+  });
+  if (
+    !roomID || !userID || expectedRevision === null
+  ) return false;
+  let signals;
+  try {
+    signals = await base44.asServiceRole.entities.GameRoomSignal.filter({
+      room_id: roomID,
+    }) || [];
+  } catch {
+    throw unconfirmedRoomExitError();
+  }
+  return hasDurableClosedRoomSignal(
+    signals,
+    roomID,
+    userID,
+    expectedRevision,
+  );
+}
+
+async function persistClosedRoomSignalForUserUnderLeases(
+  base44,
+  room,
+  userIDValue,
+  expectedRevisionValue,
+) {
+  const userID = clean(userIDValue);
+  const expectedRevision = expectedRoomExitRevision({
+    expected_revision: expectedRevisionValue,
+  });
+  const context = base44.__spyclashRoomWriteLeaseContext;
+  if (!context || !userID) throw unconfirmedRoomExitError();
+  if (
+    expectedRevision !== null &&
+    (roomWriteRevision(room) === null ||
+      roomWriteRevision(room) < expectedRevision)
+  ) throw unconfirmedRoomExitError();
+  await assertRoomWriterLeaseForUser(context, userID);
+  const closeIntent = exactRoomCloseIntent(room);
+  const result = await fanoutGameRoomSignalsBestEffort({
+    store: base44.asServiceRole.entities.GameRoomSignal,
+    room,
+    recipients: [{ user_id: userID, state: "closed" }],
+    ...(closeIntent
+      ? {
+        closeReceipt: {
+          intent_id: closeIntent.id,
+          match_id: closeIntent.match_id,
+        },
+      }
+      : {}),
+    logError: (message, error) =>
+      console.error(message, error?.message || error),
+  });
+  if (Number(result?.failed) > 0) throw unconfirmedRoomExitError();
+  const persisted = await base44.asServiceRole.entities.GameRoomSignal.filter({
+    user_id: userID,
+    room_id: clean(room?.id),
+  }) || [];
+  if (
+    !hasDurableClosedRoomSignal(
+      persisted,
+      room?.id,
+      userID,
+      expectedRevision ?? 0,
+    )
+  ) {
+    // `unchanged` can mean a stale departed-room snapshot lost to a newer
+    // active rejoin signal. Only the resulting latest personal signal may
+    // acknowledge the exit.
+    throw unconfirmedRoomExitError();
+  }
+}
+
+async function persistClosedRoomSignalForUser(
+  base44,
+  room,
+  userIDValue,
+  expectedRevisionValue,
+) {
+  const userID = clean(userIDValue);
+  if (!userID) throw unconfirmedRoomExitError();
+  await withRoomWriteLeases({
+    lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+    userIDs: [userID],
+    action: async (context) => {
+      base44.__spyclashRoomWriteLeaseContext = context;
+      try {
+        await persistClosedRoomSignalForUserUnderLeases(
+          base44,
+          room,
+          userID,
+          expectedRevisionValue,
+        );
+      } finally {
+        delete base44.__spyclashRoomWriteLeaseContext;
+      }
+    },
+  });
+}
+
+async function completedRoomCloseForHost(base44, roomIDValue, userIDValue) {
+  const roomID = clean(roomIDValue);
+  const userID = clean(userIDValue);
+  if (!roomID || !userID) return null;
+  let signals;
+  try {
+    signals = await base44.asServiceRole.entities.GameRoomSignal.filter({
+      room_id: roomID,
+    }) || [];
+  } catch {
+    throw unconfirmedRoomCloseError();
+  }
+  for (const signal of signals) {
+    if (clean(signal?.user_id) !== userID) continue;
+    const completion = exactRoomCloseCompletion(signal, roomID, userID);
+    if (
+      completion && clean(completion.host_user_id) === userID &&
+      roomCloseCompletionCoversSignals(signals, completion)
+    ) {
+      return completion;
+    }
+  }
+  return null;
+}
+
+function roomForCloseCompletion(completion) {
+  return {
+    id: clean(completion?.room_id),
+    match_id: clean(completion?.match_id),
+    close_intent: {
+      id: clean(completion?.intent_id),
+      room_id: clean(completion?.room_id),
+      match_id: clean(completion?.match_id),
+    },
+  };
+}
+
+async function persistRoomCloseActivityEndQueuedUnderLeases(
+  base44,
+  completion,
+) {
+  const participantUserIDs = uniqueStrings(
+    completion?.participant_user_ids || [],
+  );
+  const context = base44.__spyclashRoomWriteLeaseContext;
+  if (!context || !participantUserIDs.length) {
+    throw unconfirmedRoomCloseError();
+  }
+  assertExactRoomLeaseCoverage(context, participantUserIDs);
+  const roomID = clean(completion?.room_id);
+  const signals = await base44.asServiceRole.entities.GameRoomSignal.filter({
+    room_id: roomID,
+  }) || [];
+  if (!roomCloseCompletionCoversSignals(signals, completion)) {
+    throw unconfirmedRoomCloseError();
+  }
+  const durableQueuedCompletion = signals
+    .map((signal) => exactRoomCloseCompletion(signal, roomID))
+    .find((candidate) => roomCloseActivityEndIsQueued(candidate)) ||
+    (roomCloseActivityEndIsQueued(completion)
+      ? completion
+      : roomCloseCompletionWithActivityEndQueued({ completion }));
+
+  const rowsToUpdate = signals.filter((signal) => {
+    const exact = exactRoomCloseCompletion(signal, roomID, signal?.user_id);
+    return exact && clean(signal?.id) &&
+      participantUserIDs.includes(clean(signal?.user_id)) &&
+      !roomCloseActivityEndIsQueued(exact);
+  });
+  await Promise.all(
+    rowsToUpdate.map((signal) =>
+      base44.asServiceRole.entities.GameRoomSignal.update(clean(signal.id), {
+        close_completion: durableQueuedCompletion,
+      })
+    ),
+  );
+  const persisted = await base44.asServiceRole.entities.GameRoomSignal.filter({
+    room_id: roomID,
+  }) || [];
+  if (
+    !roomCloseCompletionCoversSignals(persisted, durableQueuedCompletion) ||
+    !participantUserIDs.every((userID) =>
+      persisted.some((signal) => {
+        const exact = exactRoomCloseCompletion(signal, roomID, userID);
+        return clean(exact?.intent_id) === clean(completion?.intent_id) &&
+          roomCloseActivityEndIsQueued(exact);
+      })
+    )
+  ) {
+    throw unconfirmedRoomCloseError();
+  }
+  return durableQueuedCompletion;
+}
+
+async function deleteCompletedRoomCloseUnderLeases(base44, completion) {
+  const participantUserIDs = uniqueStrings(
+    completion?.participant_user_ids || [],
+  );
+  const context = base44.__spyclashRoomWriteLeaseContext;
+  if (!context || !participantUserIDs.length) {
+    throw unconfirmedRoomCloseError();
+  }
+  assertExactRoomLeaseCoverage(context, participantUserIDs);
+  await assertRoomPersistenceBoundary(base44);
+  // The exact queue coverage is checked from durable registrations using the
+  // completion itself, so an eventually-consistent missing GameRoom read can
+  // never skip the ActivityKit phase. Only after that positive proof do all
+  // participant tombstones receive the durable queue-complete marker.
+  await assertLiveActivityEndQueueCoverage(
+    base44,
+    roomForCloseCompletion(completion),
+  );
+  completion = await persistRoomCloseActivityEndQueuedUnderLeases(
+    base44,
+    completion,
+  );
+  if (!roomCloseActivityEndIsQueued(completion)) {
+    throw unconfirmedRoomCloseError();
+  }
+  const latest = await fetchRoom(base44, clean(completion.room_id));
+  if (!verifiedRoomCloseCompletionDominatesSnapshot(completion, latest)) {
+    throw unconfirmedRoomCloseError();
+  }
+  await deleteRoomAndVerify({
+    roomID: clean(completion.room_id),
+    deleteByID: async (roomID) => {
+      try {
+        return await base44.asServiceRole.entities.GameRoom.delete(roomID);
+      } catch (error) {
+        if (lifecycleHTTPStatus(error) === 404) return null;
+        throw error;
+      }
+    },
+    fetchByID: (roomID) => fetchRoom(base44, roomID),
+    afterVerifiedDelete: async () => {
+      stageQueuedLiveActivityEndDelivery(base44, {
+        id: clean(completion.room_id),
+        match_id: clean(completion.match_id),
+      });
+    },
+    delay,
+  });
+  return { success: true };
+}
+
+async function recoverCompletedRoomClose(base44, completion, roomHint = null) {
+  const participantUserIDs = uniqueStrings(
+    completion?.participant_user_ids || [],
+  );
+  if (!participantUserIDs.length) throw unconfirmedRoomCloseError();
+  const closingRoom = roomHint ||
+    await fetchRoom(base44, clean(completion.room_id));
+  if (!verifiedRoomCloseCompletionDominatesSnapshot(completion, closingRoom)) {
+    throw unconfirmedRoomCloseError();
+  }
+  // This second phase runs after the original participant leases were
+  // released. The push function can therefore acquire its per-user leases and
+  // upgrade every prepared row with the exact close commit receipt. A stale
+  // pre-intent room replica cannot override the already verified full-fanout
+  // completion tombstone.
+  // Completion fanout is the durable authorization source after a crash. The
+  // push worker validates every participant tombstone, so it can enqueue the
+  // exact close marker even when GameRoom temporarily reads as missing.
+  await enqueueRoomLiveActivityEnd(base44, closingRoom, completion);
+  const result = await withRoomWriteLeases({
+    lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+    userIDs: participantUserIDs,
+    action: async (context) => {
+      base44.__spyclashRoomWriteLeaseContext = context;
+      try {
+        return await deleteCompletedRoomCloseUnderLeases(base44, completion);
+      } finally {
+        delete base44.__spyclashRoomWriteLeaseContext;
+      }
+    },
+  });
+  await triggerStagedLiveActivityEndDelivery(base44);
+  return result;
+}
+
+async function finalizeStagedRoomCloseAfterLeases(base44) {
+  const staged = base44.__spyclashPendingCompletedRoomClose;
+  delete base44.__spyclashPendingCompletedRoomClose;
+  if (!staged?.completion) return null;
+  return await recoverCompletedRoomClose(
+    base44,
+    staged.completion,
+    staged.room,
+  );
 }
 
 async function deleteRoom(base44, room, options = {}) {
   if (options.allowActiveIdentityLeaseRecovery !== true) {
     await assertRoomPersistenceBoundary(base44);
   }
-  const latest = await fetchRoom(base44, room.id);
-  if (!latest) return { success: true };
-  assertRoomMutationOpen(latest);
-  // The internal receiver durably marks every exact per-activity token before
-  // the ephemeral room is removed. If that boundary cannot be confirmed, keep
-  // the room so a caller retry can still produce a real ActivityKit `end`.
-  await endRoomLiveActivitiesBeforeDelete(base44, latest);
+  let latest = await fetchRoom(base44, room.id);
+  if (!latest) throw unconfirmedRoomCloseError();
+  assertRoomMutationOpen(
+    latest,
+    options.allowPendingTerminal === true,
+    true,
+  );
   if (options.allowActiveIdentityLeaseRecovery !== true) {
     await assertRoomPersistenceBoundary(base44);
   }
-  await deleteRoomAndVerify({
-    roomID: latest.id,
-    deleteByID: (roomID) =>
-      base44.asServiceRole.entities.GameRoom.delete(roomID),
-    fetchByID: (roomID) => fetchRoom(base44, roomID),
-    delay,
-  });
+  latest = await ensureTerminalOutboxCommitBeforeMutation(base44, latest);
+  // Phase one commits the logical closure and the complete participant
+  // tombstone under the original room leases. Physical deletion is staged for
+  // a post-lease phase so ActivityKit can acquire its own per-user leases.
+  const closingRoom = await ensureRoomCloseIntent(base44, latest);
+  const completion = await persistClosedRoomSignals(base44, closingRoom);
+  stageCompletedRoomClose(base44, closingRoom, completion);
   return { success: true };
 }
 
@@ -703,6 +1411,7 @@ async function claimTerminalIntent(
   requestedWinner,
   requestedPatch = {},
   attempts = 8,
+  expectedMatchID = "",
 ) {
   let latest = room;
 
@@ -710,6 +1419,15 @@ async function claimTerminalIntent(
     latest = await fetchRoom(base44, latest.id);
     if (!latest) {
       throw Object.assign(new Error("Room not found"), { status: 404 });
+    }
+    if (
+      clean(expectedMatchID) &&
+      clean(latest.match_id) !== clean(expectedMatchID)
+    ) {
+      throw Object.assign(
+        new Error("This terminal action belongs to an older match."),
+        { status: 409, code: "room_match_generation_conflict" },
+      );
     }
 
     const existing = terminalIntentFromRoom(latest);
@@ -770,6 +1488,8 @@ async function finishRoom(
       room,
       winner,
       terminalPatch,
+      8,
+      options.expectedMatchID,
     );
     timingRoom = claimed.room;
     terminalTiming.complete("terminal_claim");
@@ -793,6 +1513,7 @@ async function finishRoom(
       },
     });
     terminalTiming.complete("push_enqueue");
+
     const terminal = {
       ...claimed.room,
       ...persistedPatch,
@@ -860,7 +1581,10 @@ async function finishRoom(
         normalizedStatus(latest) === "finished" &&
         clean(latest.winner) === claimed.intent.winner,
       6,
-      { allowPendingTerminal: true },
+      {
+        allowPendingTerminal: true,
+        allowCloseIntent: options.allowCloseIntent === true,
+      },
     );
     timingRoom = finished;
     terminalTiming.complete("room_commit");
@@ -875,18 +1599,60 @@ async function finishRoom(
       eventType: "game_finished",
       sourceEventID: finishedEventID,
     });
-    const expectedPushRecipients = uniqueStrings([
-      ...(finished.participant_user_ids || []),
-      ...players(finished).map((player) => player.user_id),
-    ]).length;
-    if (committed < expectedPushRecipients) {
+    const expectedPushRecipientUserIDs = gamePushRecipientUserIDs(finished);
+    if (committed < expectedPushRecipientUserIDs.length) {
       throw Object.assign(new Error("Game finish push commit failed"), {
         status: 503,
+        code: "terminal_outbox_unconfirmed",
+        retryable: true,
       });
     }
+    const fullOutboxCommitted = await gamePushCommitCoversRecipients({
+      store: base44.asServiceRole.entities.PushNotificationEvent,
+      eventType: "game_finished",
+      sourceEventID: finishedEventID,
+      recipientUserIDs: expectedPushRecipientUserIDs,
+    });
+    if (!fullOutboxCommitted) {
+      throw Object.assign(
+        new Error("The complete game finish outbox is not yet visible."),
+        {
+          status: 503,
+          code: "terminal_outbox_unconfirmed",
+          retryable: true,
+        },
+      );
+    }
+    const outboxCommittedRoom = await updateRoomWithRetry(
+      base44,
+      finished,
+      (latest) => {
+        const intent = terminalIntentFromRoom(latest);
+        if (
+          !intent || intent.match_id !== claimed.intent.match_id ||
+          normalizedStatus(latest) !== "finished" ||
+          clean(latest.game_finished_event_id) !== finishedEventID
+        ) {
+          throw Object.assign(
+            new Error("The terminal authority changed before outbox commit."),
+            { status: 409, code: "terminal_intent_changed" },
+          );
+        }
+        return terminalOutboxCommitIsProven(latest)
+          ? {}
+          : terminalOutboxCommitPatch({
+            room: latest,
+            recipientUserIDs: expectedPushRecipientUserIDs,
+          });
+      },
+      (latest) => terminalOutboxCommitIsProven(latest),
+      6,
+      { allowPendingTerminal: true, allowCloseIntent: true },
+    );
+    timingRoom = outboxCommittedRoom;
     terminalTiming.complete("push_commit");
     terminalOutcome = "completed";
-    return finished;
+    return outboxCommittedRoom;
   } finally {
     try {
       console.info(
@@ -903,8 +1669,20 @@ async function finishRoom(
   }
 }
 
+async function ensureTerminalOutboxCommitBeforeMutation(base44, room) {
+  const intent = terminalIntentFromRoom(room);
+  if (!intent || terminalOutboxCommitIsProven(room)) return room;
+  return await finishRoom(base44, room, intent.winner, {}, {
+    expectedMatchID: intent.match_id,
+    allowCloseIntent: true,
+  });
+}
+
 async function createRoom(base44, user, body) {
-  const player = playerFromUser(user, body);
+  const player = {
+    ...playerFromUser(user, body),
+    membership_id: validatedMembershipGeneration(null),
+  };
   const code = await generateUniqueRoomCode(base44);
 
   await assertRoomPersistenceBoundary(base44);
@@ -953,7 +1731,10 @@ async function createRoom(base44, user, body) {
 }
 
 async function joinRoom(base44, room, user, body) {
-  const player = playerFromUser(user, body);
+  const player = {
+    ...playerFromUser(user, body),
+    membership_id: validatedMembershipGeneration(body?.join_membership_id),
+  };
   const alreadyJoined = playerInRoom(room, user.email);
   const alreadyDeparted = roomHasDepartedPlayer(room, user.email);
   if (lobbySpyCount(room) > 1 && !playerSupportsMultiSpy(player)) {
@@ -993,6 +1774,25 @@ async function joinRoom(base44, room, user, body) {
         const current = players(latest).find((candidate) =>
           candidate.email === user.email
         );
+        const currentMembershipID = playerMembershipGeneration(
+          latest,
+          current || {},
+        );
+        const expectedMembershipID = expectedRoomExitMembershipID(body);
+        const requestedMembershipID = clean(player.membership_id);
+        const mayRotateMembership = requestedMembershipID ===
+            currentMembershipID ||
+          (expectedMembershipID &&
+            expectedMembershipID === currentMembershipID);
+        const effectivePlayer = {
+          ...player,
+          // A delayed retry from an older explicit join cannot overwrite a
+          // newer rejoin. Rotation is a CAS from the viewer generation that
+          // the client actually observed; identical retries stay idempotent.
+          membership_id: mayRotateMembership
+            ? requestedMembershipID
+            : currentMembershipID,
+        };
         const participantIDs = uniqueStrings([
           ...(latest.participant_user_ids || []),
           user.id,
@@ -1006,18 +1806,20 @@ async function joinRoom(base44, room, user, body) {
         const departedPresent = roomHasDepartedPlayer(latest, user.email);
         if (
           clean(current?.user_id) === clean(user.id) &&
-          clean(current?.name) === clean(player.name) &&
-          clean(current?.avatar) === clean(player.avatar) &&
+          clean(current?.name) === clean(effectivePlayer.name) &&
+          clean(current?.avatar) === clean(effectivePlayer.avatar) &&
+          playerMembershipGeneration(latest, current || {}) ===
+            clean(effectivePlayer.membership_id) &&
           JSON.stringify(
               canonicalClientCapabilities(current?.client_capabilities),
             ) ===
-            JSON.stringify(player.client_capabilities) &&
+            JSON.stringify(effectivePlayer.client_capabilities) &&
           participantIDs.length ===
             (latest.participant_user_ids || []).length &&
           !tombstonePresent && !departedPresent
         ) return {};
         return {
-          players: mergePlayers(players(latest), player),
+          players: mergePlayers(players(latest), effectivePlayer),
           participant_user_ids: participantIDs,
           spectators: spectators(latest).filter((email) =>
             clean(email).toLocaleLowerCase() !==
@@ -1170,12 +1972,16 @@ async function kickPlayer(base44, room, user, body) {
   };
   // Validate authority, status and target before entering the retry loop. The
   // same policy is reapplied to every refreshed CAS snapshot below.
-  lobbyKickTransition(room, user.email, target);
+  assertKickTargetMembershipGeneration(room, user, body);
   return await updateRoomWithRetry(
     base44,
     room,
     (latest) => {
-      const transition = lobbyKickTransition(latest, user.email, target);
+      const { transition } = assertKickTargetMembershipGeneration(
+        latest,
+        user,
+        body,
+      );
       const remainingPlayerCount = Array.isArray(transition.patch.players)
         ? transition.patch.players.length
         : 0;
@@ -1215,6 +2021,7 @@ async function toggleReady(base44, room, user) {
 
 async function votePlayAgain(base44, room, user, body) {
   requirePlayer(room, user);
+  room = await ensureTerminalOutboxCommitBeforeMutation(base44, room);
   const expectedSourceMatchID = clean(body?.expected_match_id) ||
     (["roulette", "playing"].includes(normalizedStatus(room))
       ? clean(room?.replay_source_match_id)
@@ -1259,6 +2066,7 @@ function replayResetPatch(room, user, body, requiresReplayVotes = true) {
       { status: 409, code: "replay_before_terminal_commit" },
     );
   }
+  assertTerminalOutboxCommitBeforeAuthorityReset(room);
   if (requiresReplayVotes && !replayVoteState(room).unanimous) {
     throw Object.assign(
       new Error("Every remaining operative must vote before replay."),
@@ -1322,6 +2130,7 @@ function replayResetPatch(room, user, body, requiresReplayVotes = true) {
 }
 
 async function resetRoomForReplay(base44, room, user, body) {
+  room = await ensureTerminalOutboxCommitBeforeMutation(base44, room);
   replayResetPatch(room, user, body);
   return await updateRoomWithRetry(
     base44,
@@ -1344,6 +2153,7 @@ function finishedLobbyReturnAlreadyComplete(room) {
 
 async function returnFinishedRoomToLobby(base44, room, user, body) {
   requireHost(room, user);
+  room = await ensureTerminalOutboxCommitBeforeMutation(base44, room);
   if (finishedLobbyReturnAlreadyComplete(room)) return room;
   replayResetPatch(room, user, body, false);
   return await updateRoomWithRetry(
@@ -1958,8 +2768,18 @@ async function continueRound(base44, room, user) {
   });
 }
 
-async function requestVote(base44, room, user) {
+async function requestVote(base44, room, user, body) {
   requirePlayer(room, user);
+  const expectedMatchID = assertActionMatchGeneration(room, body);
+  if (normalizedStatus(room) !== "playing") {
+    throw Object.assign(
+      new Error("Voting can only start during a live match."),
+      {
+        status: 409,
+        code: "vote_match_inactive",
+      },
+    );
+  }
   if (!activePlayers(room).some((player) => player.email === user.email)) {
     throw Object.assign(new Error("Spectators cannot request a vote"), {
       status: 403,
@@ -1974,6 +2794,18 @@ async function requestVote(base44, room, user) {
     base44,
     room,
     (latest) => {
+      if (
+        assertActionMatchGeneration(latest, body) !== expectedMatchID ||
+        normalizedStatus(latest) !== "playing"
+      ) {
+        throw Object.assign(
+          new Error("The voting match is no longer active."),
+          {
+            status: 409,
+            code: "vote_match_inactive",
+          },
+        );
+      }
       const transition = detectiveVoteRequestTransition(
         activePlayers(latest).map((player) => player.email),
         voteRequests(latest),
@@ -1984,6 +2816,8 @@ async function requestVote(base44, room, user) {
       return transition.patch;
     },
     (latest) => {
+      assertActionMatchGeneration(latest, body);
+      if (normalizedStatus(latest) !== "playing") return false;
       const requested = voteRequests(latest).some((email) =>
         clean(email).toLocaleLowerCase() ===
           clean(user.email).toLocaleLowerCase()
@@ -2195,17 +3029,43 @@ async function castDetectiveVote(base44, room, user, body) {
 
 async function submitSpyGuess(base44, room, user, body, options = {}) {
   requirePlayer(room, user);
+  const expectedMatchID = assertActionMatchGeneration(room, body);
   assertActiveSpyGuesser(room, user.email);
 
   const guess = requireSafeCommunityText(clean(body?.guess), "Spy guess");
   const winner = spyGuessWinner(displayWord(room), guess);
   return await finishRoom(base44, room, winner, {
     spy_guess: guess,
-  }, options);
+  }, { ...options, expectedMatchID });
+}
+
+async function closeRoom(base44, room, user, options = {}) {
+  requirePlayer(room, user);
+  requireHost(room, user);
+  let closable = room;
+  const terminal = pendingTerminalIntent(closable);
+  if (terminal && !isCommittedFinishedRoom(closable)) {
+    closable = await finishRoom(base44, closable, terminal.winner, {}, {
+      allowCloseIntent: true,
+    });
+  }
+  closable = await ensureTerminalOutboxCommitBeforeMutation(base44, closable);
+  return await deleteRoom(base44, closable, {
+    allowPendingTerminal: true,
+    liveActivityEndQueuedRoomID: options.liveActivityEndQueuedRoomID,
+    liveActivityEndQueuedMatchID: options.liveActivityEndQueuedMatchID,
+  });
 }
 
 async function leaveRoom(base44, room, user, options = {}) {
+  room = await ensureTerminalOutboxCommitBeforeMutation(base44, room);
   if (roomLeaveAlreadyComplete(room, user.email)) return { success: true };
+  assertExpectedMembershipGeneration({
+    room,
+    user,
+    expected: options.expectedMembershipID,
+    expectedRevision: options.expectedRevision,
+  });
 
   if (!hostDepartureUsesMembershipTransition(room, user.email)) {
     return await deleteRoom(base44, room, options);
@@ -2215,6 +3075,12 @@ async function leaveRoom(base44, room, user, options = {}) {
     base44,
     room,
     (latest) => {
+      assertExpectedMembershipGeneration({
+        room: latest,
+        user,
+        expected: options.expectedMembershipID,
+        expectedRevision: options.expectedRevision,
+      });
       const leavingEmail = clean(user.email).toLocaleLowerCase();
       const leavingVotePatch = detectiveVoteLeavePatch(
         activePlayers(latest).map((player) => player.email),
@@ -2293,9 +3159,21 @@ async function leaveRoom(base44, room, user, options = {}) {
     options,
   );
   const terminal = pendingTerminalIntent(updated);
-  return terminal
+  const result = terminal
     ? await finishRoom(base44, updated, terminal.winner)
     : updated;
+  // The leaving account can have several devices subscribed to its exact
+  // wake-up row. Persist its closed state while the actor lifecycle lease is
+  // still held, including when this departure also commits a finished room.
+  // The later generic finished-room fanout is at the same room revision, where
+  // closed is monotonic and therefore cannot reopen this signal.
+  await persistClosedRoomSignalForUserUnderLeases(
+    base44,
+    result,
+    user.id,
+    options.expectedRevision,
+  );
+  return result;
 }
 
 async function userIDForEmail(base44, emailValue) {
@@ -2354,6 +3232,112 @@ async function roomLifecycleUserIDs(base44, room, actor) {
     ...await roomParticipantUserIDs(base44, room, actor),
     clean(actor?.id),
   ]);
+}
+
+function assertTerminalIntentRecoveryScope(room, expected = {}) {
+  const intent = terminalIntentFromRoom(room);
+  if (!intent) return null;
+  const expectedMatchID = clean(expected.matchID);
+  const expectedDecidedAt = clean(expected.decidedAt);
+  if (
+    (expectedMatchID && intent.match_id !== expectedMatchID) ||
+    (expectedDecidedAt && intent.decided_at !== expectedDecidedAt)
+  ) {
+    throw Object.assign(
+      new Error("The terminal intent generation changed before recovery."),
+      { status: 409, code: "terminal_intent_changed" },
+    );
+  }
+  return intent;
+}
+
+async function reconcileTerminalIntentWithFreshLeases(
+  base44,
+  roomIDValue,
+  expected = {},
+) {
+  const roomID = clean(roomIDValue);
+  if (!roomID) {
+    throw Object.assign(new Error("Room is required."), { status: 400 });
+  }
+  const acquisitionRoom = await fetchRoom(base44, roomID);
+  if (!acquisitionRoom) {
+    throw Object.assign(new Error("Room not found"), { status: 404 });
+  }
+  if (terminalOutboxCommitIsProven(acquisitionRoom)) return acquisitionRoom;
+  const acquisitionIntent = assertTerminalIntentRecoveryScope(
+    acquisitionRoom,
+    expected,
+  );
+  if (!acquisitionIntent) return acquisitionRoom;
+  const userIDs = await roomParticipantUserIDs(base44, acquisitionRoom, null);
+  if (!userIDs.length) {
+    throw Object.assign(new Error("Terminal participants are missing."), {
+      status: 503,
+      code: "terminal_participants_missing",
+    });
+  }
+  return await withRoomWriteLeases({
+    lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+    userIDs,
+    action: async (context) => {
+      base44.__spyclashRoomWriteLeaseContext = context;
+      try {
+        const latest = await fetchRoom(base44, roomID);
+        if (!latest) {
+          throw Object.assign(new Error("Room not found"), { status: 404 });
+        }
+        if (terminalOutboxCommitIsProven(latest)) return latest;
+        const intent = assertTerminalIntentRecoveryScope(latest, {
+          matchID: clean(expected.matchID) || acquisitionIntent.match_id,
+          decidedAt: clean(expected.decidedAt) || acquisitionIntent.decided_at,
+        });
+        if (!intent) return latest;
+        const latestUserIDs = await roomParticipantUserIDs(
+          base44,
+          latest,
+          null,
+        );
+        assertExactRoomLeaseCoverage(context, latestUserIDs);
+        return await finishRoom(base44, latest, intent.winner, {}, {
+          expectedMatchID: intent.match_id,
+        });
+      } finally {
+        delete base44.__spyclashRoomWriteLeaseContext;
+      }
+    },
+  });
+}
+
+async function triggerTerminalIntentRecovery(base44, room) {
+  const intent = terminalIntentNeedsReconciliation(room);
+  const internalSecret = internalPushSecret(
+    Deno.env.get("PUSH_INTERNAL_SECRET"),
+  );
+  if (!intent || !internalSecret || !clean(room?.id)) return false;
+  try {
+    await runWithWallClockDeadline({
+      timeoutMS: 300,
+      operation: () =>
+        base44.asServiceRole.functions.invoke("gameRoomAction", {
+          action: "reconcile_terminal_intent",
+          room_id: clean(room.id),
+          expected_match_id: intent.match_id,
+          expected_decided_at: intent.decided_at,
+          internal_secret: internalSecret,
+        }),
+      timeoutError: () => new Error("terminal recovery prompt accepted"),
+    });
+    return true;
+  } catch (error) {
+    // A wall-clock timeout means the durable nested invocation may still be
+    // running. Polling can safely prompt the same immutable intent again.
+    console.warn(
+      "terminal intent recovery prompt deferred",
+      error?.message || error,
+    );
+    return true;
+  }
 }
 
 async function backfillRoomParticipantUserIDs(base44, room, userIDs) {
@@ -2452,7 +3436,8 @@ function activeRoomStatus(room) {
 
 function roomIsVisibleToActiveParticipant(room, user) {
   return playerInRoom(room, user.email) &&
-    !roomHasDepartedPlayer(room, user.email) && activeRoomStatus(room);
+    !roomHasDepartedPlayer(room, user.email) && !room?.close_intent &&
+    activeRoomStatus(room);
 }
 
 async function activeRoomForUser(base44, user, preferredRoomID) {
@@ -2497,8 +3482,28 @@ async function executeRoomAction(
   body,
   options = {},
 ) {
+  if (room?.close_intent && action !== "close_room") {
+    if (
+      action === "leave_room" &&
+      clean(room.host_email) === clean(user.email)
+    ) {
+      assertExpectedMembershipGeneration({
+        room,
+        user,
+        expected: boundRoomExitMembershipID(body),
+        expectedRevision: expectedRoomExitRevision(body),
+      });
+      return await deleteRoom(base44, room, {
+        allowPendingTerminal: true,
+      });
+    }
+    throw Object.assign(new Error("This room is closed."), {
+      status: 404,
+      code: "room_closed",
+    });
+  }
   const terminal = pendingTerminalIntent(room);
-  if (terminal) {
+  if (terminal && action !== "close_room") {
     if (action === "join_room") {
       throw Object.assign(
         new Error("This match is finishing; joining is temporarily locked."),
@@ -2508,10 +3513,35 @@ async function executeRoomAction(
     // Any authenticated participant retry helps finish the immutable decision
     // before another mutation is allowed. The persisted intent, not this new
     // action's payload, remains the sole terminal source of truth.
+    if (action === "leave_room") {
+      const requestedMembershipID = boundRoomExitMembershipID(body);
+      assertExpectedMembershipGeneration({
+        room,
+        user,
+        expected: requestedMembershipID,
+        expectedRevision: expectedRoomExitRevision(body),
+      });
+      const finished = await finishRoom(
+        base44,
+        room,
+        terminal.winner,
+        {},
+        options,
+      );
+      return await leaveRoom(base44, finished, user, {
+        liveActivityEndQueuedRoomID: body?.__server_live_activity_end_room_id,
+        liveActivityEndQueuedMatchID: body?.__server_live_activity_end_match_id,
+        // This request itself advanced the revision while reconciling the
+        // immutable terminal intent. Bind the membership transition to that
+        // exact freshly committed generation.
+        expectedRevision: roomWriteRevision(finished),
+        expectedMembershipID: requestedMembershipID,
+      });
+    }
     return await finishRoom(base44, room, terminal.winner, {}, options);
   }
 
-  if (action !== "join_room") {
+  if (!["join_room", "close_room"].includes(action)) {
     room = await refreshActorCapabilities(base44, room, user, body);
   }
 
@@ -2572,7 +3602,7 @@ async function executeRoomAction(
     case "continue_round":
       return await continueRound(base44, room, user);
     case "request_vote":
-      return await requestVote(base44, room, user);
+      return await requestVote(base44, room, user, body);
     case "cast_detective_vote":
       return await castDetectiveVote(base44, room, user, body);
     case "submit_spy_guess":
@@ -2594,8 +3624,26 @@ async function executeRoomAction(
     }
     case "record_finished_online_game":
       return rejectRetiredResultRecording();
+    case "close_room":
+      assertExpectedMembershipGeneration({
+        room,
+        user,
+        expected: boundRoomExitMembershipID(body),
+        expectedRevision: expectedRoomExitRevision(body),
+      });
+      return await closeRoom(base44, room, user, {
+        liveActivityEndQueuedRoomID: body?.__server_live_activity_end_room_id,
+        liveActivityEndQueuedMatchID: body?.__server_live_activity_end_match_id,
+        expectedRevision: expectedRoomExitRevision(body),
+        expectedMembershipID: boundRoomExitMembershipID(body),
+      });
     case "leave_room":
-      return await leaveRoom(base44, room, user);
+      return await leaveRoom(base44, room, user, {
+        liveActivityEndQueuedRoomID: body?.__server_live_activity_end_room_id,
+        liveActivityEndQueuedMatchID: body?.__server_live_activity_end_match_id,
+        expectedRevision: expectedRoomExitRevision(body),
+        expectedMembershipID: boundRoomExitMembershipID(body),
+      });
     default:
       throw Object.assign(new Error(`Unsupported action: ${action}`), {
         status: 400,
@@ -2620,23 +3668,32 @@ async function executeRoomActionWithSignal(
     options,
   );
   if (result?.id && !shouldDeferFinishedRoomSignal(result)) {
-    let additionalRecipientUserIDs = [];
+    let recipients;
     if (action === "kick_player" && normalizedStatus(result) === "waiting") {
       const transition = lobbyKickTransition(room, user.email, {
         target_user_id: body?.target_user_id,
         target_email: body?.target_email,
       });
-      additionalRecipientUserIDs = uniqueStrings([
-        transition.removedPlayer?.user_id,
-      ]);
+      recipients = [
+        ...roomSignalRecipients(result, "active"),
+        ...uniqueStrings([transition.removedPlayer?.user_id]).map((userID) => ({
+          user_id: userID,
+          state: "closed",
+        })),
+      ];
+    } else if (
+      action === "leave_room" &&
+      roomLeaveAlreadyComplete(result, user.email)
+    ) {
+      recipients = [
+        ...roomSignalRecipients(result, "active"),
+        { user_id: clean(user.id), state: "closed" },
+      ];
     }
-    await fanoutGameRoomSignalsBestEffort({
-      store: base44.asServiceRole.entities.GameRoomSignal,
+    stageGameRoomSignalFanout(base44, {
       room: result,
-      additionalRecipientUserIDs,
+      recipients: recipients || roomSignalRecipients(result, "active"),
       allowCreate: options.allowSignalCreate !== false,
-      logError: (message, error) =>
-        console.error(message, error?.message || error),
     });
   }
   return result;
@@ -2659,17 +3716,27 @@ async function fanoutDeferredFinishedRoomSignal(base44, room) {
   ]);
   if (!userIDs.length) return true;
   try {
-    const result = await withRoomWriteLeases({
-      lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
-      userIDs,
-      attempts: 1,
-      action: async () =>
-        await fanoutGameRoomSignalsBestEffort({
-          store: base44.asServiceRole.entities.GameRoomSignal,
-          room,
-          logError: (message, error) =>
-            console.error(message, error?.message || error),
+    const result = await runWithWallClockDeadline({
+      timeoutMS: 600,
+      operation: () =>
+        withRoomWriteLeases({
+          lifecycleStore:
+            base44.asServiceRole.entities.BillingIdentityLifecycle,
+          userIDs,
+          attempts: 1,
+          action: async () =>
+            await fanoutGameRoomSignalsBestEffort({
+              store: base44.asServiceRole.entities.GameRoomSignal,
+              room,
+              logError: (message, error) =>
+                console.error(message, error?.message || error),
+            }),
         }),
+      timeoutError: () =>
+        Object.assign(
+          new Error("Finished room signal exceeded its response deadline."),
+          { status: 503, code: "finished_signal_deadline" },
+        ),
     });
     return Number(result?.failed) === 0;
   } catch (error) {
@@ -2863,6 +3930,24 @@ async function dispatchRoomPushBestEffort(
   }
   const timingID = normalizeOpaqueTimingID(options.timingID);
   const timing = options.sideEffectTiming;
+  const responseDeadlineEpochMS = Date.now() + 2_000;
+  const invokePushWithinResponseDeadline = (invocationBody) =>
+    runWithWallClockDeadline({
+      timeoutMS: Math.max(1, responseDeadlineEpochMS - Date.now()),
+      operation: () =>
+        base44.asServiceRole.functions.invoke(
+          "pushNotificationAction",
+          {
+            ...invocationBody,
+            deadline_epoch_ms: responseDeadlineEpochMS,
+          },
+        ),
+      timeoutError: () =>
+        Object.assign(
+          new Error("Room push dispatch exceeded its response deadline."),
+          { status: 503, code: "room_push_dispatch_timeout" },
+        ),
+    });
   timing?.begin("push_function_invoke");
   try {
     for (const sourceEventID of sourceEventIDs) {
@@ -2872,10 +3957,7 @@ async function dispatchRoomPushBestEffort(
         internal_secret: internalSecret,
         ...(timingID ? { timing_id: timingID } : {}),
       };
-      await base44.asServiceRole.functions.invoke(
-        "pushNotificationAction",
-        invocationBody,
-      );
+      await invokePushWithinResponseDeadline(invocationBody);
     }
     // process_event already synchronizes the matching ActivityKit generation
     // before it drains the ordinary alert. Avoid invoking the same terminal
@@ -2888,10 +3970,7 @@ async function dispatchRoomPushBestEffort(
         internal_secret: internalSecret,
         ...(timingID ? { timing_id: timingID } : {}),
       };
-      await base44.asServiceRole.functions.invoke(
-        "pushNotificationAction",
-        invocationBody,
-      );
+      await invokePushWithinResponseDeadline(invocationBody);
     }
     return true;
   } catch (error) {
@@ -2912,56 +3991,33 @@ async function dispatchRoomSideEffectsAfterLeases(
     await dispatchRoomPushBestEffort(base44, room, action, options);
     return room;
   }
-  // The durable history queue is authoritative for profile convergence and is
-  // attempted before APNs. A missing secret or push outage must never gate the
-  // participant's freshly mirrored competitive identity.
+  // The exact ActivityKit force-end intent was durably queued before the room
+  // response when possible; the push outbox and unregister path are durable
+  // fallbacks. The enqueue receiver owns its own lifecycle leases, so a caller
+  // deadline cannot leave late writes outside their safety boundary.
   const timing = options.sideEffectTiming;
-  timing?.begin("profile_repair");
-  let profileRun;
+  timing?.begin("live_activity_end_enqueue");
   try {
-    profileRun = await dispatchFinishedCommunityProfileSideEffects(
-      base44,
-      room,
-    );
+    await enqueueRoomLiveActivityEnd(base44, room);
+  } catch {
+    // The finished push event is already durable. Do not hold the gameplay
+    // result behind a transient internal invoke; token unregister also retains
+    // a force-end intent for an observed finished room.
   } finally {
-    timing?.complete("profile_repair");
+    timing?.complete("live_activity_end_enqueue");
   }
-  if (profileRun.outcome === "failed") {
-    console.error("terminal community profile repair deferred");
+  timing?.begin("signal_fanout");
+  try {
+    await fanoutDeferredFinishedRoomSignal(base44, room);
+  } finally {
+    timing?.complete("signal_fanout");
   }
-  const pushRun = await runTerminalSideEffectsSingleFlight({
-    store: base44.asServiceRole.entities.GameRoom,
-    room: profileRun.room || room,
-    dispatch: async (claimedRoom) => {
-      if (
-        !(await dispatchRoomPushBestEffort(
-          base44,
-          claimedRoom,
-          action,
-          options,
-        ))
-      ) {
-        return false;
-      }
-      // Polling is the realtime fallback. Once the durable push/ActivityKit
-      // pipeline succeeds, a transient signal write must not cause it to be
-      // replayed after the source lease expires.
-      timing?.begin("signal_fanout");
-      try {
-        await fanoutDeferredFinishedRoomSignal(base44, claimedRoom);
-      } finally {
-        timing?.complete("signal_fanout");
-      }
-      return true;
-    },
-  });
-  if (pushRun.outcome === "failed") {
-    // The bounded source claim expires for a later explicit retry. Independently,
-    // the scheduled push drain continues to repair and deliver the durable
-    // outbox even when the initiating request disappears.
-    console.error("terminal room side effects deferred");
-  }
-  return pushRun.room || profileRun.room;
+  await triggerQueuedLiveActivityEndDelivery(
+    base44,
+    room.id,
+    room.match_id,
+  );
+  return room;
 }
 
 async function dispatchFinishedCommunityProfileSideEffects(base44, room) {
@@ -3061,6 +4117,38 @@ Deno.serve(async (req) => {
     const accessToken = clean(body?.access_token);
     const base44 = createClientFromRequest(canonicalRoomActionRequest(req));
     const requestedAction = clean(body?.action);
+
+    if (requestedAction === "reconcile_terminal_intent") {
+      if (
+        !matchesInternalPushSecret(
+          Deno.env.get("PUSH_INTERNAL_SECRET"),
+          body?.internal_secret,
+        )
+      ) {
+        return jsonError("Unauthorized", 401);
+      }
+      const roomID = clean(body?.room_id);
+      let reconciled = await reconcileTerminalIntentWithFreshLeases(
+        base44,
+        roomID,
+        {
+          matchID: body?.expected_match_id,
+          decidedAt: body?.expected_decided_at,
+        },
+      );
+      reconciled = await dispatchRoomSideEffectsAfterLeases(
+        base44,
+        reconciled,
+        requestedAction,
+      );
+      return Response.json({
+        ok: terminalOutboxCommitIsProven(reconciled),
+        room_id: roomID,
+        match_id: clean(reconciled?.match_id),
+        status: normalizedStatus(reconciled),
+        source_event_id: clean(reconciled?.game_finished_event_id),
+      });
+    }
 
     if (requestedAction === "drain_community_profile_repairs") {
       if (
@@ -3184,7 +4272,11 @@ Deno.serve(async (req) => {
     }
 
     if (action === "get_active_room") {
-      const active = await activeRoomForUser(base44, user, roomId);
+      let active = await activeRoomForUser(base44, user, roomId);
+      if (active && terminalIntentNeedsReconciliation(active)) {
+        await triggerTerminalIntentRecovery(base44, active);
+        active = await fetchRoom(base44, active.id) || active;
+      }
       return Response.json(active ? roomForClient(active, user) : null);
     }
 
@@ -3196,11 +4288,9 @@ Deno.serve(async (req) => {
           base44.__spyclashRoomWriteLeaseContext = context;
           try {
             const created = await createRoom(base44, user, body);
-            await fanoutGameRoomSignalsBestEffort({
-              store: base44.asServiceRole.entities.GameRoomSignal,
+            stageGameRoomSignalFanout(base44, {
               room: created,
-              logError: (message, error) =>
-                console.error(message, error?.message || error),
+              recipients: roomSignalRecipients(created, "active"),
             });
             return created;
           } finally {
@@ -3208,22 +4298,94 @@ Deno.serve(async (req) => {
           }
         },
       });
+      await fanoutStagedGameRoomSignalsAfterLeases(base44);
       return Response.json(roomForClient(result, user));
+    }
+
+    // A full-fanout completion tombstone dominates an eventually consistent
+    // active or missing GameRoom replica. Finish an interrupted physical
+    // deletion under the original participant lease set before acknowledging
+    // the host retry.
+    if ((action === "close_room" || action === "leave_room") && roomId) {
+      const completion = await completedRoomCloseForHost(
+        base44,
+        roomId,
+        user.id,
+      );
+      if (completion) {
+        roomIDForLog = safeLogLabel(roomId);
+        return Response.json(
+          await recoverCompletedRoomClose(base44, completion),
+        );
+      }
     }
 
     let room = roomId
       ? await fetchRoom(base44, roomId)
       : await fetchRoomByCode(base44, body?.room_code || body?.code);
-    roomIDForLog = safeLogLabel(room?.id);
+    roomIDForLog = safeLogLabel(room?.id || roomId);
 
-    if (action === "leave_room" && roomLeaveAlreadyComplete(room, user.email)) {
+    if (action === "leave_room" && !room) {
+      const completion = await completedRoomCloseForHost(
+        base44,
+        roomId,
+        user.id,
+      );
+      if (completion) {
+        return Response.json(
+          await recoverCompletedRoomClose(base44, completion),
+        );
+      }
+      if (
+        !await durableRoomExitIsCommitted(
+          base44,
+          roomId,
+          user.id,
+          expectedRoomExitRevision(body),
+        )
+      ) {
+        throw unconfirmedRoomExitError();
+      }
       return Response.json({ success: true });
+    }
+    if (
+      action === "leave_room" &&
+      roomLeaveAlreadyComplete(room, user.email)
+    ) {
+      await persistClosedRoomSignalForUser(
+        base44,
+        room,
+        user.id,
+        expectedRoomExitRevision(body),
+      );
+      return Response.json({ success: true });
+    }
+    if (action === "close_room" && !room) {
+      throw unconfirmedRoomCloseError();
     }
     if (!room) {
       return respondWithSpyGuessTiming(
         jsonError("Room not found", 404),
         "failed",
       );
+    }
+    if (room?.close_intent && action !== "close_room") {
+      if (action === "leave_room") {
+        if (clean(room.host_email) !== clean(user.email)) {
+          await persistClosedRoomSignalForUser(
+            base44,
+            room,
+            user.id,
+            expectedRoomExitRevision(body),
+          );
+          return Response.json({ success: true });
+        }
+      } else {
+        return respondWithSpyGuessTiming(
+          jsonError("Room not found", 404, { code: "room_closed" }),
+          "failed",
+        );
+      }
     }
     if (
       action !== "join_room" && action !== "leave_room" &&
@@ -3237,10 +4399,19 @@ Deno.serve(async (req) => {
     if (action !== "join_room") assertRoomClientCompatible(room, user);
     if (action === "get_room") {
       requirePlayer(room, user);
+      if (terminalIntentNeedsReconciliation(room)) {
+        await triggerTerminalIntentRecovery(base44, room);
+        const reconciled = await fetchRoom(base44, room.id);
+        if (reconciled) room = reconciled;
+      }
       return Response.json(roomForClient(room, user));
     }
 
     if (action !== "join_room") requirePlayer(room, user);
+    // The pre-lease ActivityKit enqueue is externally visible. Prove host
+    // authority before invoking it, then closeRoom repeats the check on the
+    // refetched room under the participant lease set.
+    if (action === "close_room") requireHost(room, user);
 
     if (action === "finalize_expired_room") {
       assertExpectedTimerFinalizationScope(room, body);
@@ -3248,6 +4419,17 @@ Deno.serve(async (req) => {
 
     if (EXPLICIT_TIMER_FINALIZE_ACTIONS.has(action)) {
       if (normalizedStatus(room) === "finished") {
+        const unfinishedOutbox = terminalIntentNeedsReconciliation(room);
+        if (unfinishedOutbox) {
+          room = await reconcileTerminalIntentWithFreshLeases(
+            base44,
+            room.id,
+            {
+              matchID: unfinishedOutbox.match_id,
+              decidedAt: unfinishedOutbox.decided_at,
+            },
+          );
+        }
         room = await dispatchRoomSideEffectsAfterLeases(base44, room, action);
         if (!room) return jsonError("Room not found", 404);
         return Response.json(roomForClient(room, user));
@@ -3260,6 +4442,17 @@ Deno.serve(async (req) => {
           assertExpectedTimerFinalizationScope(room, body);
         }
         if (normalizedStatus(room) === "finished") {
+          const unfinishedOutbox = terminalIntentNeedsReconciliation(room);
+          if (unfinishedOutbox) {
+            room = await reconcileTerminalIntentWithFreshLeases(
+              base44,
+              room.id,
+              {
+                matchID: unfinishedOutbox.match_id,
+                decidedAt: unfinishedOutbox.decided_at,
+              },
+            );
+          }
           room = await dispatchRoomSideEffectsAfterLeases(
             base44,
             room,
@@ -3275,8 +4468,8 @@ Deno.serve(async (req) => {
     // before it can wait behind lifecycle leases. Client-supplied values are
     // overwritten, so only a genuinely concurrent request can reconcile a
     // vote that another final cast settles while this request is waiting.
-    const actionBody = action === "cast_detective_vote"
-      ? (() => {
+    const capturedActionBody = (() => {
+      if (action === "cast_detective_vote") {
         const explicitRoundID = explicitExpectedVoteRoundID(body);
         const enteredActiveRound = detectiveVoteCastEnteredActiveRound(
           room,
@@ -3295,8 +4488,60 @@ Deno.serve(async (req) => {
           __server_vote_cast_round_id: currentRoundID ||
             (enteredActiveRound && !explicitRoundID ? crypto.randomUUID() : ""),
         };
-      })()
-      : body;
+      }
+      if (["request_vote", "submit_spy_guess"].includes(action)) {
+        return {
+          ...body,
+          __server_action_match_id: clean(room.match_id),
+        };
+      }
+      if (action === "kick_player") {
+        const captured = assertKickTargetMembershipGeneration(
+          room,
+          user,
+          body,
+        );
+        return {
+          ...body,
+          __server_kick_target_membership_id: captured.generation,
+        };
+      }
+      if (action === "leave_room" || action === "close_room") {
+        return {
+          ...body,
+          // Never trust a caller-supplied private marker. Legacy clients omit
+          // both public CAS fields, so capture the server-visible membership
+          // before this request can wait behind another lifecycle writer.
+          __server_room_exit_membership_id: captureRoomExitMembershipGeneration(
+            {
+              room,
+              user,
+              expected: expectedRoomExitMembershipID(body),
+              expectedRevision: expectedRoomExitRevision(body),
+            },
+          ),
+        };
+      }
+      return body;
+    })();
+
+    const mustQueueLiveActivityEndBeforeLeases = clean(room.match_id) &&
+      action === "leave_room" && normalizedStatus(room) === "finished" &&
+      hostDepartureUsesMembershipTransition(room, user.email);
+    let liveActivityEndQueuedRoomID = "";
+    let liveActivityEndQueuedMatchID = "";
+    if (mustQueueLiveActivityEndBeforeLeases) {
+      await enqueueRoomLiveActivityEnd(base44, room);
+      liveActivityEndQueuedRoomID = clean(room.id);
+      liveActivityEndQueuedMatchID = clean(room.match_id);
+    }
+    const actionBody = {
+      ...capturedActionBody,
+      // Always overwrite the private marker after canonical request parsing;
+      // callers can never claim that the durable enqueue already happened.
+      __server_live_activity_end_room_id: liveActivityEndQueuedRoomID,
+      __server_live_activity_end_match_id: liveActivityEndQueuedMatchID,
+    };
 
     // Capability refresh mutates the authenticated participant record and must
     // use the full lifecycle lease path even when the gameplay action itself
@@ -3334,13 +4579,46 @@ Deno.serve(async (req) => {
           // the slower joiner with a user-visible 409.
           const acquisitionRoom = await fetchRoom(base44, room.id);
           if (!acquisitionRoom) {
-            if (action === "leave_room") return { success: true };
+            if (action === "leave_room") {
+              const completion = await completedRoomCloseForHost(
+                base44,
+                room.id,
+                user.id,
+              );
+              if (completion) {
+                return await recoverCompletedRoomClose(base44, completion);
+              }
+              if (
+                !await durableRoomExitIsCommitted(
+                  base44,
+                  room.id,
+                  user.id,
+                  expectedRoomExitRevision(actionBody),
+                )
+              ) throw unconfirmedRoomExitError();
+              return { success: true };
+            }
+            if (action === "close_room") {
+              const completion = await completedRoomCloseForHost(
+                base44,
+                room.id,
+                user.id,
+              );
+              if (!completion) throw unconfirmedRoomCloseError();
+              return await recoverCompletedRoomClose(base44, completion);
+            }
             throw Object.assign(new Error("Room not found"), { status: 404 });
           }
           if (
             action === "leave_room" &&
             roomLeaveAlreadyComplete(acquisitionRoom, user.email)
           ) {
+            await persistClosedRoomSignalForUser(
+              base44,
+              acquisitionRoom,
+              user.id,
+              expectedRoomExitRevision(actionBody),
+            );
             return { success: true };
           }
           if (action !== "join_room") requirePlayer(acquisitionRoom, user);
@@ -3366,7 +4644,40 @@ Deno.serve(async (req) => {
                 // leases, refetches membership, and tries once more safely.
                 const latestRoom = await fetchRoom(base44, room.id);
                 if (!latestRoom) {
-                  if (action === "leave_room") return { success: true };
+                  if (action === "leave_room") {
+                    const completion = await completedRoomCloseForHost(
+                      base44,
+                      room.id,
+                      user.id,
+                    );
+                    if (completion) {
+                      return await deleteCompletedRoomCloseUnderLeases(
+                        base44,
+                        completion,
+                      );
+                    }
+                    if (
+                      !await durableRoomExitIsCommitted(
+                        base44,
+                        room.id,
+                        user.id,
+                        expectedRoomExitRevision(actionBody),
+                      )
+                    ) throw unconfirmedRoomExitError();
+                    return { success: true };
+                  }
+                  if (action === "close_room") {
+                    const completion = await completedRoomCloseForHost(
+                      base44,
+                      room.id,
+                      user.id,
+                    );
+                    if (!completion) throw unconfirmedRoomCloseError();
+                    return await deleteCompletedRoomCloseUnderLeases(
+                      base44,
+                      completion,
+                    );
+                  }
                   throw Object.assign(new Error("Room not found"), {
                     status: 404,
                   });
@@ -3375,6 +4686,12 @@ Deno.serve(async (req) => {
                   action === "leave_room" &&
                   roomLeaveAlreadyComplete(latestRoom, user.email)
                 ) {
+                  await persistClosedRoomSignalForUserUnderLeases(
+                    base44,
+                    latestRoom,
+                    user.id,
+                    expectedRoomExitRevision(actionBody),
+                  );
                   return { success: true };
                 }
                 const latestParticipantUserIDs = await roomParticipantUserIDs(
@@ -3488,6 +4805,9 @@ Deno.serve(async (req) => {
       });
     }
     actionCompletedAt = performance.now();
+    await fanoutStagedGameRoomSignalsAfterLeases(base44);
+    await finalizeStagedRoomCloseAfterLeases(base44);
+    await triggerStagedLiveActivityEndDelivery(base44);
     if (fastRoomAction) {
       console.info("gameRoomAction fast-path timing", {
         action,
@@ -3497,9 +4817,9 @@ Deno.serve(async (req) => {
       });
     }
     if (result?.id && !readOnlyCastLeaseRecovery) {
-      // Finish push repair and ActivityKit delivery must complete after the
-      // participant room leases are released and before realtime wakes every
-      // client to unregister its token against the same account lease.
+      // Post-lease terminal work is limited to the minimal ActivityKit sync and
+      // bounded realtime signal. Durable history repair and ordinary push
+      // delivery are owned by the scheduled worker.
       const sideEffectsStartedAt = performance.now();
       postCommitSideEffectsStartedAt = sideEffectsStartedAt;
       result = await dispatchRoomSideEffectsAfterLeases(

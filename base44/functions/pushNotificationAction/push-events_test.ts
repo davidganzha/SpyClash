@@ -120,6 +120,32 @@ Deno.test("fresh outbox row retries instead of being lost before its source writ
   assertEquals(source.retryable, true);
 });
 
+Deno.test("committed finish outbox dominates a stale pre-finish room", async () => {
+  const event = {
+    event_type: "game_finished",
+    source_type: "game_room",
+    source_event_id: "game-finished:match-1",
+    recipient_user_id: "player-1",
+    room_id: "room-1",
+    match_id: "match-1",
+    inbox_visible: false,
+    inbox_committed_at: "2026-09-01T12:00:00.000Z",
+    state: "cancelled",
+  };
+  const base44 = service({
+    GameRoom: new Store([{
+      id: "room-1",
+      match_id: "match-1",
+      status: "playing",
+      participant_user_ids: ["player-1"],
+    }]),
+  });
+  assertEquals(await validatePushSource(base44, event), {
+    valid: true,
+    reason: "game_finish_committed",
+  });
+});
+
 Deno.test("outbox claim is exact-CAS and a completed event cannot be reclaimed", async () => {
   const store = new Store([{
     id: "event",

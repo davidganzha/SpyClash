@@ -3,9 +3,51 @@ import {
   fanoutGameRoomSignalsBestEffort,
   GameRoomSignalRecord,
   GameRoomSignalStore,
+  hasDurableClosedRoomSignal,
+  signalRecordsForRecipients,
   signalRecordsForRoom,
   upsertGameRoomSignal,
 } from "./game-room-signal.ts";
+
+Deno.test("only the latest personal room signal can prove a completed exit", () => {
+  const closed = {
+    user_id: "user-1",
+    room_id: "room-1",
+    room_revision: 4,
+    lobby_revision: 2,
+    state: "closed",
+  };
+  assertEquals(
+    hasDurableClosedRoomSignal([closed], "room-1", "user-1"),
+    true,
+  );
+  assertEquals(
+    hasDurableClosedRoomSignal([closed], "room-1", "user-1", 5),
+    false,
+  );
+  assertEquals(
+    hasDurableClosedRoomSignal(
+      [
+        closed,
+        { ...closed, room_revision: 5, state: "active" },
+      ],
+      "room-1",
+      "user-1",
+    ),
+    false,
+  );
+  assertEquals(
+    hasDurableClosedRoomSignal(
+      [
+        { ...closed, state: "active" },
+        closed,
+      ],
+      "room-1",
+      "user-1",
+    ),
+    true,
+  );
+});
 
 class MemorySignalStore implements GameRoomSignalStore {
   rows: Array<Record<string, unknown>> = [];
@@ -103,27 +145,29 @@ Deno.test("room signals contain only deduplicated participant ids and wake-up me
   );
 });
 
-Deno.test("membership removal can wake the removed participant without restoring room membership", () => {
-  const records = signalRecordsForRoom(
+Deno.test("membership removal emits active remaining and closed removed recipients", () => {
+  const records = signalRecordsForRecipients(
     {
       id: "room-1",
       lobby_revision: 8,
       room_revision: 22,
-      participant_user_ids: ["host-user", "remaining-user"],
-      players: [
-        { user_id: "host-user" },
-        { user_id: "remaining-user" },
-      ],
     },
-    "active",
-    ["removed-user", "remaining-user", "removed-user"],
+    [
+      { user_id: "host-user", state: "active" },
+      { user_id: "remaining-user", state: "active" },
+      { user_id: "removed-user", state: "closed" },
+      { user_id: "removed-user", state: "active" },
+    ],
   );
 
-  assertEquals(records.map((record) => record.user_id), [
-    "host-user",
-    "remaining-user",
-    "removed-user",
-  ]);
+  assertEquals(
+    records.map(({ user_id, state }) => ({ user_id, state })),
+    [
+      { user_id: "host-user", state: "active" },
+      { user_id: "remaining-user", state: "active" },
+      { user_id: "removed-user", state: "closed" },
+    ],
+  );
 });
 
 Deno.test("signal upsert uses one write for an existing participant row", async () => {
@@ -135,6 +179,42 @@ Deno.test("signal upsert uses one write for an existing participant row", async 
     "updated",
   );
   assertEquals(store.updateCalls, callsAfterCreate + 1);
+  assertEquals(store.rows[0].room_revision, 13);
+});
+
+Deno.test("closed dominates active at equal revision but a newer revision can reopen", async () => {
+  const store = new MemorySignalStore();
+  store.rows = [{ id: "signal-1", ...signal }];
+
+  assertEquals(
+    await upsertGameRoomSignal(store, {
+      ...signal,
+      room_updated_at: "2026-08-06T11:59:59.000Z",
+      state: "closed",
+    }),
+    "updated",
+  );
+  assertEquals(store.rows[0].state, "closed");
+
+  assertEquals(
+    await upsertGameRoomSignal(store, {
+      ...signal,
+      room_updated_at: "2026-08-06T12:00:01.000Z",
+      state: "active",
+    }),
+    "unchanged",
+  );
+  assertEquals(store.rows[0].state, "closed");
+
+  assertEquals(
+    await upsertGameRoomSignal(store, {
+      ...signal,
+      room_revision: 13,
+      state: "active",
+    }),
+    "updated",
+  );
+  assertEquals(store.rows[0].state, "active");
   assertEquals(store.rows[0].room_revision, 13);
 });
 
@@ -187,6 +267,122 @@ Deno.test("signal fanout reads the room rows once and emits addressable updates"
   assertEquals(store.filterCalls, 1);
   assertEquals(store.updateCalls, 2);
   assertEquals(store.rows.map((row) => row.room_revision), [22, 22]);
+});
+
+Deno.test("recipient-specific fanout writes active and closed states in one room read", async () => {
+  const store = new MemorySignalStore();
+  const result = await fanoutGameRoomSignalsBestEffort({
+    store,
+    room: {
+      id: "room-1",
+      lobby_revision: 8,
+      room_revision: 22,
+    },
+    recipients: [
+      { user_id: "remaining-user", state: "active" },
+      { user_id: "removed-user", state: "closed" },
+    ],
+  });
+
+  assertEquals(result, { attempted: 2, succeeded: 2, failed: 0 });
+  assertEquals(store.filterCalls, 1);
+  assertEquals(
+    store.rows.map(({ user_id, state }) => ({ user_id, state })),
+    [
+      { user_id: "remaining-user", state: "active" },
+      { user_id: "removed-user", state: "closed" },
+    ],
+  );
+});
+
+Deno.test("logical room close persists its server receipt before physical deletion", async () => {
+  const store = new MemorySignalStore();
+  store.rows = [{
+    id: "signal-1",
+    ...signal,
+    state: "active",
+    room_revision: 23,
+  }];
+  const result = await fanoutGameRoomSignalsBestEffort({
+    store,
+    room: {
+      id: "room-1",
+      lobby_revision: 9,
+      room_revision: 23,
+      participant_user_ids: ["user-1", "user-2"],
+    },
+    state: "closed",
+    closeReceipt: {
+      intent_id: "close-1",
+      // Waiting lobbies have no match yet and still need a durable close.
+      match_id: "",
+    },
+  });
+
+  assertEquals(result, { attempted: 2, succeeded: 2, failed: 0 });
+  assertEquals(
+    store.rows.map((row) => ({
+      user_id: row.user_id,
+      state: row.state,
+      close_intent_id: row.close_intent_id,
+      close_match_id: row.close_match_id,
+    })),
+    [
+      {
+        user_id: "user-1",
+        state: "closed",
+        close_intent_id: "close-1",
+        close_match_id: "",
+      },
+      {
+        user_id: "user-2",
+        state: "closed",
+        close_intent_id: "close-1",
+        close_match_id: "",
+      },
+    ],
+  );
+});
+
+Deno.test("full-fanout completion upgrades every exact closed receipt", async () => {
+  const store = new MemorySignalStore();
+  const room = {
+    id: "room-1",
+    match_id: "match-1",
+    lobby_revision: 9,
+    room_revision: 23,
+    participant_user_ids: ["user-1", "user-2"],
+  };
+  await fanoutGameRoomSignalsBestEffort({
+    store,
+    room,
+    state: "closed",
+    closeReceipt: { intent_id: "close-1", match_id: "match-1" },
+  });
+  const completion = {
+    intent_id: "close-1",
+    room_id: "room-1",
+    match_id: "match-1",
+    host_user_id: "user-1",
+    participant_user_ids: ["user-1", "user-2"],
+    participant_count: 2,
+    completed_at: "2026-09-01T12:01:00.000Z",
+  };
+  const result = await fanoutGameRoomSignalsBestEffort({
+    store,
+    room,
+    state: "closed",
+    closeReceipt: {
+      intent_id: "close-1",
+      match_id: "match-1",
+      completion,
+    },
+  });
+  assertEquals(result, { attempted: 2, succeeded: 2, failed: 0 });
+  assertEquals(
+    store.rows.map((row) => row.close_completion),
+    [completion, completion],
+  );
 });
 
 Deno.test("rapid gameplay never recreates a signal removed by account cleanup", async () => {

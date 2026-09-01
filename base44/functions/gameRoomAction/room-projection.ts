@@ -14,6 +14,7 @@ import { terminalIntentFromRoom } from "./room-result-policy.ts";
 import { replayEligiblePlayerEmails } from "./replay-policy.ts";
 import { activeGameLobbyEligiblePlayerEmails } from "./active-game-lobby-return-policy.ts";
 import { isDetectiveVotingActive } from "./detective-vote-policy.ts";
+import { viewerMembershipGeneration } from "./room-membership-generation.ts";
 import {
   canonicalClientCapabilities,
   canonicalSpyEmails,
@@ -246,6 +247,7 @@ export function projectRoomForClient(
 
   return {
     id: clean(room.id),
+    viewer_membership_id: viewerMembershipGeneration(room, viewer),
     match_id: clean(room.match_id),
     replay_source_match_id: clean(room.replay_source_match_id),
     code: clean(room.code),
@@ -263,6 +265,9 @@ export function projectRoomForClient(
     players: safeObjectList(room.players).map((player) => ({
       ...(viewerMayAddressLobbyPlayers && clean(player.user_id)
         ? { user_id: clean(player.user_id) }
+        : {}),
+      ...(viewerMayAddressLobbyPlayers && clean(player.membership_id)
+        ? { membership_id: clean(player.membership_id) }
         : {}),
       email: clean(player.email),
       name: safeCommunityDisplayName(player.name),

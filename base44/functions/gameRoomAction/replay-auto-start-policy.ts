@@ -14,6 +14,7 @@ import {
   replayVoteState,
 } from "./replay-policy.ts";
 import { serverIntroStartPatch } from "./room-result-policy.ts";
+import { assertTerminalOutboxCommitBeforeAuthorityReset } from "./terminal-outbox-commit.ts";
 import {
   encodeQuestionTurnOrderState,
   questionTurnOrderState,
@@ -157,6 +158,7 @@ export function replayAutoStartPatch(
       "replay_votes_incomplete",
     );
   }
+  assertTerminalOutboxCommitBeforeAuthorityReset(room);
 
   const sourceMatchID = assertExpectedReplaySourceMatch(
     room,

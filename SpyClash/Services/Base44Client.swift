@@ -5,6 +5,27 @@ enum AppleNativeAuthPhase {
     case establishingSession
 }
 
+enum RoomActionTransportPolicy {
+    static func timeoutInterval(for action: String) -> TimeInterval? {
+        switch action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
+        case "submit_spy_guess":
+            10
+        case "request_vote", "cast_detective_vote", "kick_player", "leave_room", "close_room":
+            8
+        case "get_room":
+            4
+        default:
+            nil
+        }
+    }
+}
+
+enum RoomExitRevisionPolicy {
+    static func expectedRevision(roomRevision: Int?) -> Int {
+        max(roomRevision ?? 0, 0)
+    }
+}
+
 /// The coordinator already retries Live Activity token mutations. Keeping
 /// those requests single-attempt at the HTTP layer prevents one coordinator
 /// retry from expanding into several identical backend writes.
@@ -294,9 +315,18 @@ final class Base44Client {
         }
     }
 
-    func refreshRoom(id: String) async throws -> GameRoom? {
+    func refreshRoom(
+        id: String,
+        timeoutInterval: TimeInterval? = nil,
+        allowsTypedConflictRetry: Bool = true
+    ) async throws -> GameRoom? {
         do {
-            return try await roomAction("get_room", roomID: id)
+            return try await roomAction(
+                "get_room",
+                roomID: id,
+                requestTimeoutInterval: timeoutInterval,
+                allowsTypedConflictRetry: allowsTypedConflictRetry
+            )
         } catch let error as Base44Error where error.statusCode == 404 {
             return nil
         }
@@ -327,7 +357,13 @@ final class Base44Client {
 
     func join(room: GameRoom, user: SpyUser) async throws -> GameRoom {
         let player = capablePlayer(for: user)
-        return try await roomAction("join_room", roomID: room.id, player: player)
+        return try await roomAction(
+            "join_room",
+            roomID: room.id,
+            player: player,
+            joinMembershipID: UUID().uuidString.lowercased(),
+            expectedMembershipID: room.viewerMembershipID
+        )
     }
 
     /// Re-joining a restored waiting room is intentionally idempotent. Besides
@@ -339,17 +375,24 @@ final class Base44Client {
         return try await join(room: room, user: user)
     }
 
-    func join(code: String, user: SpyUser) async throws -> GameRoom {
+    func join(
+        code: String,
+        user: SpyUser,
+        expectedMembershipID: String? = nil
+    ) async throws -> GameRoom {
         let player = capablePlayer(for: user)
         let normalizedCode = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         let retryDelays = [250, 650]
+        let joinMembershipID = UUID().uuidString.lowercased()
 
         for attempt in 0...retryDelays.count {
             do {
                 return try await roomAction(
                     "join_room",
                     roomCode: normalizedCode,
-                    player: player
+                    player: player,
+                    joinMembershipID: joinMembershipID,
+                    expectedMembershipID: expectedMembershipID
                 )
             } catch let error as Base44Error
                 where error.isRetryableRoomJoinConflict && attempt < retryDelays.count {
@@ -389,25 +432,41 @@ final class Base44Client {
         try await kickPlayer(
             room: room,
             targetUserID: player.userID,
-            targetEmail: player.email
+            targetEmail: player.email,
+            expectedTargetMembershipID: player.membershipID
         )
     }
 
     func kickPlayer(
         room: GameRoom,
         targetUserID: String?,
-        targetEmail: String
+        targetEmail: String,
+        expectedTargetMembershipID: String? = nil
     ) async throws -> GameRoom {
         let normalizedUserID = targetUserID?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .nilIfBlank
         let normalizedEmail = targetEmail
             .trimmingCharacters(in: .whitespacesAndNewlines)
+        let resolvedTargetMembershipID = expectedTargetMembershipID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfBlank ??
+            room.playersList.first(where: { candidate in
+                if let normalizedUserID {
+                    return candidate.userID?
+                        .trimmingCharacters(in: .whitespacesAndNewlines) == normalizedUserID
+                }
+                return candidate.email.trimmingCharacters(in: .whitespacesAndNewlines)
+                    .caseInsensitiveCompare(normalizedEmail) == .orderedSame
+            })?.membershipID?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .nilIfBlank
         return try await roomAction(
             "kick_player",
             roomID: room.id,
             targetUserID: normalizedUserID,
-            targetEmail: normalizedUserID == nil ? normalizedEmail : nil
+            targetEmail: normalizedUserID == nil ? normalizedEmail : nil,
+            expectedTargetMembershipID: resolvedTargetMembershipID
         )
     }
 
@@ -664,26 +723,37 @@ final class Base44Client {
 
 
     func requestVote(room: GameRoom, user: SpyUser) async throws -> GameRoom {
-        try await roomAction("request_vote", roomID: room.id)
+        try await roomAction(
+            "request_vote",
+            roomID: room.id,
+            expectedMatchID: room.matchID
+        )
     }
 
     func castDetectiveVote(
         room: GameRoom,
         user: SpyUser,
         targetEmail: String,
-        expectedVoteRoundID: String
+        expectedVoteRoundID: String,
+        timeoutInterval: TimeInterval? = nil
     ) async throws -> GameRoom {
         try await roomAction(
             "cast_detective_vote",
             roomID: room.id,
             targetEmail: targetEmail,
-            expectedDetectiveVoteRoundID: expectedVoteRoundID
+            expectedDetectiveVoteRoundID: expectedVoteRoundID,
+            requestTimeoutInterval: timeoutInterval
         )
     }
 
     func submitSpyGuess(room: GameRoom, user: SpyUser, guess: String) async throws -> GameRoom {
         let normalizedGuess = guess.trimmingCharacters(in: .whitespacesAndNewlines)
-        return try await roomAction("submit_spy_guess", roomID: room.id, guess: normalizedGuess)
+        return try await roomAction(
+            "submit_spy_guess",
+            roomID: room.id,
+            guess: normalizedGuess,
+            expectedMatchID: room.matchID
+        )
     }
 
     func finalizeExpiredRoom(room: GameRoom) async throws -> GameRoom {
@@ -696,19 +766,65 @@ final class Base44Client {
     }
 
     func leaveRoom(room: GameRoom, user: SpyUser) async throws {
-        try await leaveRoom(roomID: room.id)
+        try await leaveRoom(
+            roomID: room.id,
+            expectedRevision: RoomExitRevisionPolicy.expectedRevision(
+                roomRevision: room.roomRevision
+            ),
+            expectedMembershipID: room.viewerMembershipID
+        )
     }
 
-    func leaveRoom(roomID: String) async throws {
+    func leaveRoom(
+        roomID: String,
+        expectedRevision: Int? = nil,
+        expectedMembershipID: String? = nil
+    ) async throws {
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/functions/gameRoomAction",
             method: "POST",
-            body: GameRoomActionPayload(action: "leave_room", accessToken: token, roomID: roomID),
-            includeAuthorization: false
+            body: GameRoomActionPayload(
+                action: "leave_room",
+                accessToken: token,
+                roomID: roomID,
+                expectedRevision: expectedRevision,
+                expectedMembershipID: expectedMembershipID
+            ),
+            includeAuthorization: false,
+            timeoutInterval: RoomActionTransportPolicy.timeoutInterval(for: "leave_room")
         )
+    }
+
+    func closeRoom(
+        roomID: String,
+        expectedRevision: Int? = nil,
+        expectedMembershipID: String? = nil
+    ) async throws {
+        guard let token, !token.isEmpty else {
+            throw Base44Error(message: "Authentication required.", statusCode: 401)
+        }
+        do {
+            let _: EmptyResponse = try await request(
+                "/apps/\(Self.appID)/functions/gameRoomAction",
+                method: "POST",
+                body: GameRoomActionPayload(
+                    action: "close_room",
+                    accessToken: token,
+                    roomID: roomID,
+                    expectedRevision: expectedRevision,
+                    expectedMembershipID: expectedMembershipID
+                ),
+                includeAuthorization: false,
+                timeoutInterval: RoomActionTransportPolicy.timeoutInterval(for: "close_room")
+            )
+        } catch let error as Base44Error where error.statusCode == 404 {
+            // A repeated local-first host exit is already complete once the
+            // authoritative room no longer exists.
+            return
+        }
     }
 
     func wordPacks(ownerEmail _: String) async throws -> [WordPack] {
@@ -1556,16 +1672,21 @@ final class Base44Client {
         rouletteTargetEmail: String? = nil,
         targetUserID: String? = nil,
         targetEmail: String? = nil,
+        expectedTargetMembershipID: String? = nil,
         returnToLobbyVote: Bool? = nil,
         guess: String? = nil,
         winner: String? = nil,
         expectedDetectiveVoteRoundID: String? = nil,
+        joinMembershipID: String? = nil,
         mutationID: String? = nil,
         expectedRevision: Int? = nil,
+        expectedMembershipID: String? = nil,
         state: LobbyStatePayload? = nil,
         expectedLobbyRevision: Int? = nil,
         expectedMatchID: String? = nil,
-        expectedGameStartedAt: String? = nil
+        expectedGameStartedAt: String? = nil,
+        requestTimeoutInterval: TimeInterval? = nil,
+        allowsTypedConflictRetry: Bool = true
     ) async throws -> GameRoom {
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
@@ -1585,20 +1706,32 @@ final class Base44Client {
             rouletteTargetEmail: rouletteTargetEmail,
             targetUserID: targetUserID,
             targetEmail: targetEmail,
+            expectedTargetMembershipID: expectedTargetMembershipID,
             returnToLobbyVote: returnToLobbyVote,
             guess: guess,
             winner: winner,
             expectedDetectiveVoteRoundID: expectedDetectiveVoteRoundID,
+            joinMembershipID: joinMembershipID,
             mutationID: mutationID,
             expectedRevision: expectedRevision,
+            expectedMembershipID: expectedMembershipID,
             state: state,
             expectedLobbyRevision: expectedLobbyRevision,
             expectedMatchID: expectedMatchID,
             expectedGameStartedAt: expectedGameStartedAt
         )
         // Expired-room finalization owns an authoritative read/backoff loop in
-        // GameView. A second transport retry here used to double every write.
-        let retryDelays = action == "finalize_expired_room" ? [] : [250]
+        // GameView. Latency-sensitive vote/guess calls also keep their deadline
+        // at the coordinator boundary instead of silently doubling it here.
+        let callerOwnsConflictRetry = !allowsTypedConflictRetry ||
+            [
+                "finalize_expired_room",
+                "request_vote",
+                "cast_detective_vote",
+                "kick_player",
+                "submit_spy_guess"
+            ].contains(action)
+        let retryDelays = callerOwnsConflictRetry ? [] : [250]
         var attempt = 0
 
         while true {
@@ -1611,7 +1744,9 @@ final class Base44Client {
                     "/apps/\(Self.appID)/functions/gameRoomAction",
                     method: "POST",
                     body: payload,
-                    includeAuthorization: false
+                    includeAuthorization: false,
+                    timeoutInterval: requestTimeoutInterval
+                        ?? RoomActionTransportPolicy.timeoutInterval(for: action)
                 )
             } catch let error as Base44Error
                 where error.isRetryableRoomActionConflict && attempt < retryDelays.count {
@@ -1716,7 +1851,8 @@ final class Base44Client {
         method: String,
         query: [String: String] = [:],
         body: Body? = Optional<EmptyPayload>.none,
-        includeAuthorization: Bool = true
+        includeAuthorization: Bool = true,
+        timeoutInterval: TimeInterval? = nil
     ) async throws -> T {
         var components = URLComponents(url: Self.appBaseURL.appending(path: "/api\(path)"), resolvingAgainstBaseURL: false)!
         if !query.isEmpty {
@@ -1729,6 +1865,9 @@ final class Base44Client {
 
         var request = URLRequest(url: url)
         request.httpMethod = method
+        if let timeoutInterval, timeoutInterval > 0 {
+            request.timeoutInterval = timeoutInterval
+        }
         request.setValue("application/json", forHTTPHeaderField: "Accept")
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(Self.appBaseURL.absoluteString, forHTTPHeaderField: "Origin")
@@ -2447,12 +2586,15 @@ private struct GameRoomActionPayload: Encodable {
     let rouletteTargetEmail: String?
     let targetUserID: String?
     let targetEmail: String?
+    let expectedTargetMembershipID: String?
     let returnToLobbyVote: Bool?
     let guess: String?
     let winner: String?
     let expectedDetectiveVoteRoundID: String?
+    let joinMembershipID: String?
     let mutationID: String?
     let expectedRevision: Int?
+    let expectedMembershipID: String?
     let state: LobbyStatePayload?
     let expectedLobbyRevision: Int?
     let expectedMatchID: String?
@@ -2472,12 +2614,15 @@ private struct GameRoomActionPayload: Encodable {
         rouletteTargetEmail: String? = nil,
         targetUserID: String? = nil,
         targetEmail: String? = nil,
+        expectedTargetMembershipID: String? = nil,
         returnToLobbyVote: Bool? = nil,
         guess: String? = nil,
         winner: String? = nil,
         expectedDetectiveVoteRoundID: String? = nil,
+        joinMembershipID: String? = nil,
         mutationID: String? = nil,
         expectedRevision: Int? = nil,
+        expectedMembershipID: String? = nil,
         state: LobbyStatePayload? = nil,
         expectedLobbyRevision: Int? = nil,
         expectedMatchID: String? = nil,
@@ -2496,12 +2641,15 @@ private struct GameRoomActionPayload: Encodable {
         self.rouletteTargetEmail = rouletteTargetEmail
         self.targetUserID = targetUserID
         self.targetEmail = targetEmail
+        self.expectedTargetMembershipID = expectedTargetMembershipID
         self.returnToLobbyVote = returnToLobbyVote
         self.guess = guess
         self.winner = winner
         self.expectedDetectiveVoteRoundID = expectedDetectiveVoteRoundID
+        self.joinMembershipID = joinMembershipID
         self.mutationID = mutationID
         self.expectedRevision = expectedRevision
+        self.expectedMembershipID = expectedMembershipID
         self.state = state
         self.expectedLobbyRevision = expectedLobbyRevision
         self.expectedMatchID = expectedMatchID
@@ -2522,12 +2670,15 @@ private struct GameRoomActionPayload: Encodable {
         case rouletteTargetEmail = "roulette_target_email"
         case targetUserID = "target_user_id"
         case targetEmail = "target_email"
+        case expectedTargetMembershipID = "expected_target_membership_id"
         case returnToLobbyVote = "return_to_lobby_vote"
         case guess
         case winner
         case expectedDetectiveVoteRoundID = "expected_vote_round_id"
+        case joinMembershipID = "join_membership_id"
         case mutationID = "mutation_id"
         case expectedRevision = "expected_revision"
+        case expectedMembershipID = "expected_membership_id"
         case state
         case expectedLobbyRevision = "expected_lobby_revision"
         case expectedMatchID = "expected_match_id"

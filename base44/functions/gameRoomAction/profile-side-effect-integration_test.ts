@@ -16,7 +16,9 @@ Deno.test("terminal profile repair is post-commit, durable, and push-independent
   );
   const dispatch = source.slice(
     source.indexOf("async function dispatchRoomSideEffectsAfterLeases"),
-    source.indexOf("function lifecycleHTTPStatus"),
+    source.indexOf(
+      "async function dispatchFinishedCommunityProfileSideEffects",
+    ),
   );
 
   assertStringIncludes(archive, "persistGameHistoryResult({");
@@ -35,16 +37,14 @@ Deno.test("terminal profile repair is post-commit, durable, and push-independent
   assertStringIncludes(repair, "userIDs: [userID]");
   assertStringIncludes(repair, "recipientUserIDs: [recipientUserID]");
   assert(!repair.includes("userIDs,\n      attempts: 1"));
-  assertStringIncludes(dispatch, "const pushRun = await");
   assertStringIncludes(
     dispatch,
-    "profileRun = await dispatchFinishedCommunityProfileSideEffects(",
+    "await fanoutDeferredFinishedRoomSignal(base44, room)",
   );
-  assertStringIncludes(dispatch, 'stateKey: "profile_side_effect_dispatch"');
   assert(
-    dispatch.indexOf("profileRun = await") <
-      dispatch.indexOf("const pushRun = await"),
-    "profile repair must be attempted independently before APNs dispatch",
+    !dispatch.includes("dispatchFinishedCommunityProfileSideEffects(") &&
+      !dispatch.includes("runTerminalSideEffectsSingleFlight({"),
+    "durable profile repair must not extend the finished gameplay response",
   );
 });
 
@@ -83,15 +83,25 @@ Deno.test("scheduled push recovery wakes profile repair without coupling deliver
     repair,
     'action: "repair_finished_profile_side_effects"',
   );
-  assertStringIncludes(recent, "await repairFinishedRoomCommunityProfiles(");
+  assert(
+    !recent.includes("await repairFinishedRoomCommunityProfiles("),
+    "scheduled terminal/outbox scan must not be blocked by per-room profile invokes",
+  );
   assertStringIncludes(process, "await repairFinishedRoomCommunityProfiles(");
   assertStringIncludes(repair, "return false;");
   assertStringIncludes(
     durableDrain,
     'action: "drain_community_profile_repairs"',
   );
+  assertStringIncludes(durableDrain, "await runWithinDeadline({");
+  assertStringIncludes(durableDrain, 'reason: "deadline_exceeded"');
   assertStringIncludes(drain, "await drainDurableCommunityProfileRepairs(");
   assertStringIncludes(drain, "community_profile_repairs:");
+  assert(
+    drain.indexOf("await reconcileRecentRoomOutboxes(") <
+      drain.indexOf("await drainDurableCommunityProfileRepairs("),
+    "scheduled terminal/outbox repair must run before profile repair",
+  );
 });
 
 Deno.test("replay reset and room deletion cannot erase the durable history repair source", async () => {

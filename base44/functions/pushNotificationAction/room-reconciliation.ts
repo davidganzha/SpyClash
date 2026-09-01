@@ -187,11 +187,23 @@ export async function repairCommittedRoomPushEvents(input: {
       const existing = await input.eventStore.filter({
         dedupe_key: dedupeKey,
       }) || [];
-      if (
-        existing.some((row: Entity) =>
-          row.inbox_visible !== true && clean(row.inbox_committed_at)
-        )
-      ) continue;
+      const committed = existing.find((row: Entity) =>
+        row.inbox_visible !== true && clean(row.inbox_committed_at)
+      );
+      if (committed) {
+        if (
+          event.eventType === "game_finished" &&
+          clean(committed.state) === "cancelled" && clean(committed.id)
+        ) {
+          pendingCommits.push({
+            record: committed,
+            eventType: event.eventType,
+            roomID: clean(input.room.id),
+            reviveCancelled: true,
+          });
+        }
+        continue;
+      }
       const repairable = existing.find((row: Entity) =>
         clean(row.id) && clean(row.state) !== "cancelled"
       );
@@ -200,6 +212,25 @@ export async function repairCommittedRoomPushEvents(input: {
           record: repairable,
           eventType: event.eventType,
           roomID: clean(input.room.id),
+          reviveCancelled: false,
+        });
+        continue;
+      }
+      const cancelledFinish = event.eventType === "game_finished"
+        ? existing.find((row: Entity) =>
+          clean(row.id) && clean(row.state) === "cancelled"
+        )
+        : null;
+      if (cancelledFinish) {
+        // The room's exact finished commit is now authoritative. A worker may
+        // have exhausted this row while the room still exposed terminal_intent;
+        // revive and commit that same dedupe row instead of leaving the result
+        // permanently short of one recipient.
+        pendingCommits.push({
+          record: cancelledFinish,
+          eventType: event.eventType,
+          roomID: clean(input.room.id),
+          reviveCancelled: true,
         });
         continue;
       }
@@ -258,6 +289,17 @@ export async function repairCommittedRoomPushEvents(input: {
           ),
           inbox_visible: false,
           inbox_committed_at: now.toISOString(),
+          ...(pending.reviveCancelled
+            ? {
+              state: "retry",
+              lease_token: "",
+              lease_until: now.toISOString(),
+              next_attempt_at: now.toISOString(),
+              attempt_count: 0,
+              last_error_code: "committed_finish_recovered",
+              revision: randomUUID(),
+            }
+            : {}),
           updated_at: now.toISOString(),
         },
       });
@@ -268,7 +310,8 @@ export async function repairCommittedRoomPushEvents(input: {
       const current = await input.eventStore.filter({ id: event.id }) || [];
       if (
         current.some((row: Entity) =>
-          row.inbox_visible !== true && clean(row.inbox_committed_at)
+          row.inbox_visible !== true && clean(row.inbox_committed_at) &&
+          (!pending.reviveCancelled || clean(row.state) !== "cancelled")
         )
       ) {
         count += 1;

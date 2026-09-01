@@ -34,8 +34,13 @@ Deno.test("room writes use a custom monotonic CAS instead of system timestamps",
   );
   assertStringIncludes(
     source,
-    'action === "leave_room" && roomLeaveAlreadyComplete(room, user.email)',
+    'action === "close_room" && !room',
   );
+  assertStringIncludes(source, "completedRoomCloseForHost(");
+  assertStringIncludes(source, "recoverCompletedRoomClose(");
+  assertStringIncludes(source, "throw unconfirmedRoomCloseError()");
+  assertStringIncludes(source, "durableRoomExitIsCommitted(");
+  assertStringIncludes(source, "throw unconfirmedRoomExitError()");
 });
 
 Deno.test("association spin settlement is recoverable by every active player", async () => {
@@ -374,21 +379,16 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   );
 
   const roomDelete = source.slice(
-    source.indexOf("async function deleteRoom"),
-    source.indexOf("function randomRoomCode"),
+    source.indexOf("async function deleteCompletedRoomCloseUnderLeases"),
+    source.indexOf("async function recoverCompletedRoomClose"),
   );
-  const remoteEnd = roomDelete.indexOf(
-    "await endRoomLiveActivitiesBeforeDelete(base44, latest)",
-  );
-  const postEndLeaseCheck = roomDelete.indexOf(
-    "await assertRoomPersistenceBoundary(base44)",
-    remoteEnd,
+  const enqueueProof = roomDelete.indexOf(
+    "await assertLiveActivityEndQueueCoverage(",
   );
   const entityDelete = roomDelete.indexOf("await deleteRoomAndVerify({");
   assert(
-    remoteEnd >= 0 && remoteEnd < postEndLeaseCheck &&
-      postEndLeaseCheck < entityDelete,
-    "a persisted ActivityKit end intent and renewed lease must precede active room deletion",
+    enqueueProof >= 0 && enqueueProof < entityDelete,
+    "a confirmed independent ActivityKit enqueue must precede active room deletion",
   );
 
   const pushDispatchSource = source.slice(
@@ -499,38 +499,30 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   );
   const terminalSideEffects = source.slice(
     source.indexOf("async function dispatchRoomSideEffectsAfterLeases"),
-    source.indexOf("function lifecycleHTTPStatus"),
+    source.indexOf(
+      "async function dispatchFinishedCommunityProfileSideEffects",
+    ),
   );
-  const pushAfterLease = terminalSideEffects.indexOf(
-    "await dispatchRoomPushBestEffort(",
+  const liveActivityAfterLease = terminalSideEffects.indexOf(
+    "await enqueueRoomLiveActivityEnd(base44, room)",
   );
-  const signalAfterPush = terminalSideEffects.indexOf(
-    "await fanoutDeferredFinishedRoomSignal(base44, claimedRoom)",
-  );
-  const durablePushCompletesClaim = terminalSideEffects.indexOf(
-    "return true;",
-    signalAfterPush,
-  );
-  assertStringIncludes(
-    terminalSideEffects,
-    "runTerminalSideEffectsSingleFlight({",
-  );
-  assertStringIncludes(
-    terminalSideEffects,
-    "store: base44.asServiceRole.entities.GameRoom",
-  );
-  assertStringIncludes(
-    terminalSideEffects,
-    "return pushRun.room || profileRun.room",
-  );
-  assertStringIncludes(
-    terminalSideEffects,
-    'stateKey: "profile_side_effect_dispatch"',
+  const signalAfterActivity = terminalSideEffects.indexOf(
+    "await fanoutDeferredFinishedRoomSignal(base44, room)",
   );
   assert(
-    pushAfterLease >= 0 && pushAfterLease < signalAfterPush &&
-      signalAfterPush < durablePushCompletesClaim,
-    "finished push repair must complete before best-effort realtime wakes token cleanup",
+    liveActivityAfterLease >= 0 &&
+      liveActivityAfterLease < signalAfterActivity,
+    "the bounded durable ActivityKit end attempt must precede realtime token cleanup",
+  );
+  assertEquals(
+    terminalSideEffects.includes("runTerminalSideEffectsSingleFlight({"),
+    false,
+  );
+  assertEquals(
+    terminalSideEffects.includes(
+      "dispatchFinishedCommunityProfileSideEffects(",
+    ),
+    false,
   );
   const deferredSignal = source.slice(
     source.indexOf("async function fanoutDeferredFinishedRoomSignal"),

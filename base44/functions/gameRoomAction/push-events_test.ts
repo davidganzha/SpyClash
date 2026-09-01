@@ -1,5 +1,11 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
-import { enqueueGamePushEvents, gamePushExpiry } from "./push-events.ts";
+import {
+  commitGamePushEvents,
+  enqueueGamePushEvents,
+  gamePushCommitCoversRecipients,
+  gamePushExpiry,
+  gamePushRecipientUserIDs,
+} from "./push-events.ts";
 
 class Store {
   records: Record<string, any>[] = [];
@@ -108,6 +114,102 @@ Deno.test("a partial batched enqueue retries without duplicate recipients", asyn
     "a",
     "b",
   ]);
+});
+
+Deno.test("authoritative finish commit revives an exhausted pre-commit row", async () => {
+  const store = new Store();
+  store.records = [{
+    id: "event-a",
+    source_event_id: "game-finished:match-1",
+    event_type: "game_finished",
+    room_id: "room-1",
+    state: "cancelled",
+    lease_token: "old-worker",
+    revision: "cancelled-revision",
+    inbox_visible: false,
+    inbox_committed_at: null,
+  }];
+  const committed = await commitGamePushEvents({
+    store,
+    persist: async <T>(writer: () => Promise<T>) => await writer(),
+    eventType: "game_finished",
+    sourceEventID: "game-finished:match-1",
+    now: new Date("2026-07-15T12:00:00.000Z"),
+    randomUUID: () => "recovered-revision",
+  });
+  assertEquals(committed, 1);
+  assertEquals(store.records[0].state, "retry");
+  assertEquals(store.records[0].attempt_count, 0);
+  assertEquals(store.records[0].inbox_committed_at, "2026-07-15T12:00:00.000Z");
+  assertEquals(store.records[0].last_error_code, "committed_finish_recovered");
+});
+
+Deno.test("finish outbox proof requires an exact committed row for every terminal recipient", async () => {
+  const store = new Store();
+  const room = {
+    id: "room-1",
+    participant_user_ids: ["user-c", "user-a"],
+    players: [{ user_id: "user-b" }, { user_id: "user-a" }],
+  };
+  const sourceEventID = "game-finished:match-1";
+  const input = {
+    base44: { asServiceRole: { entities: { PushNotificationEvent: store } } },
+    room,
+    eventType: "game_finished" as const,
+    sourceEventID,
+    matchID: "match-1",
+    persist: async <T>(writer: () => Promise<T>) => await writer(),
+    now: new Date("2026-09-01T12:00:00.000Z"),
+    randomUUID: () => crypto.randomUUID(),
+  };
+  await enqueueGamePushEvents(input);
+  const recipients = gamePushRecipientUserIDs(room);
+  assertEquals(recipients, ["user-a", "user-b", "user-c"]);
+  assertEquals(
+    await gamePushCommitCoversRecipients({
+      store,
+      eventType: "game_finished",
+      sourceEventID,
+      recipientUserIDs: recipients,
+    }),
+    false,
+  );
+
+  await commitGamePushEvents({
+    store,
+    persist: input.persist,
+    eventType: "game_finished",
+    sourceEventID,
+    now: input.now,
+  });
+  assertEquals(
+    await gamePushCommitCoversRecipients({
+      store,
+      eventType: "game_finished",
+      sourceEventID,
+      recipientUserIDs: recipients,
+    }),
+    true,
+  );
+
+  store.records.find((row) => row.recipient_user_id === "user-b")!
+    .inbox_committed_at = null;
+  // An unrelated committed row must never substitute for the missing member.
+  store.records.push({
+    ...store.records[0],
+    id: "ghost",
+    recipient_user_id: "ghost",
+    dedupe_key: `game_finished:${sourceEventID}:ghost`,
+  });
+  assertEquals(
+    await gamePushCommitCoversRecipients({
+      store,
+      eventType: "game_finished",
+      sourceEventID,
+      recipientUserIDs: recipients,
+    }),
+    false,
+  );
 });
 
 Deno.test("game start alert expires with the match instead of lingering offline", () => {

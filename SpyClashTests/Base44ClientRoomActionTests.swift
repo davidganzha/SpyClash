@@ -4,6 +4,21 @@ import XCTest
 
 @MainActor
 final class Base44ClientRoomActionTests: XCTestCase {
+    func testRoomExitRevisionNeverSubstitutesLegacyLobbyRevision() {
+        XCTAssertEqual(
+            RoomExitRevisionPolicy.expectedRevision(roomRevision: nil),
+            0
+        )
+        XCTAssertEqual(
+            RoomExitRevisionPolicy.expectedRevision(roomRevision: 17),
+            17
+        )
+        XCTAssertEqual(
+            RoomExitRevisionPolicy.expectedRevision(roomRevision: -1),
+            0
+        )
+    }
+
     func testPublicDisplayNameSafetyBlocksKnownRootAcrossCommonEvasions() {
         let blockedVariants = [
             "zalupa",
@@ -243,7 +258,8 @@ final class Base44ClientRoomActionTests: XCTestCase {
             email: "stable@example.com",
             name: "Stable",
             avatar: "🕵️",
-            userID: "user-stable"
+            userID: "user-stable",
+            membershipID: "membership-stable-7"
         )
         let legacyTarget = Player(
             email: "legacy@example.com",
@@ -265,10 +281,15 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertEqual(bodies[2]["action"] as? String, "kick_player")
         XCTAssertEqual(bodies[2]["target_user_id"] as? String, "user-stable")
         XCTAssertNil(bodies[2]["target_email"])
+        XCTAssertEqual(
+            bodies[2]["expected_target_membership_id"] as? String,
+            "membership-stable-7"
+        )
 
         XCTAssertEqual(bodies[3]["action"] as? String, "kick_player")
         XCTAssertNil(bodies[3]["target_user_id"])
         XCTAssertEqual(bodies[3]["target_email"] as? String, "legacy@example.com")
+        XCTAssertNil(bodies[3]["expected_target_membership_id"])
 
         XCTAssertEqual(bodies[4]["action"] as? String, "return_finished_room_to_lobby")
         XCTAssertEqual(bodies[4]["room_id"] as? String, room.id)
@@ -490,6 +511,99 @@ final class Base44ClientRoomActionTests: XCTestCase {
         )
     }
 
+    func testDetectiveVoteCastDoesNotAddHiddenTransportRetry() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.leaseConflictResponse(
+                for: request,
+                code: "active_lease",
+                retryable: true
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let room = GameRoom.previewRoom(status: "voting")
+        let user = makeRadarUser(id: "actor", avatar: "🕵️", rating: 0, policy: .ask)
+        let target = try XCTUnwrap(room.playersList.dropFirst().first?.email)
+        do {
+            _ = try await makeClient().castDetectiveVote(
+                room: room,
+                user: user,
+                targetEmail: target,
+                expectedVoteRoundID: "vote-round-1",
+                timeoutInterval: 1.25
+            )
+            XCTFail("Expected the coordinator-owned vote conflict.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.statusCode, 409)
+            XCTAssertEqual(error.code, "active_lease")
+            XCTAssertTrue(error.retryable)
+        }
+
+        XCTAssertEqual(try recorder.requestBodies().count, 1)
+        XCTAssertEqual(recorder.requestTimeoutIntervals(), [1.25])
+    }
+
+    func testKickUsesOneBoundedMutationAttemptBeforeCoordinatorRecovery() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.leaseConflictResponse(
+                for: request,
+                code: "active_lease",
+                retryable: true
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let room = GameRoom.previewRoom(status: "waiting")
+        let target = try XCTUnwrap(room.playersList.dropFirst().first)
+        do {
+            _ = try await makeClient().kickPlayer(room: room, player: target)
+            XCTFail("Expected the coordinator-owned kick recovery path.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.statusCode, 409)
+            XCTAssertEqual(error.code, "active_lease")
+            XCTAssertTrue(error.retryable)
+        }
+
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(bodies.count, 1, "Kick must never replay a mutation inside the client.")
+        XCTAssertEqual(bodies[0]["action"] as? String, "kick_player")
+        XCTAssertEqual(recorder.requestTimeoutIntervals(), [8])
+    }
+
+    func testScopedUncertainCommitReadUsesOneBoundedRequest() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.leaseConflictResponse(
+                for: request,
+                code: "active_lease",
+                retryable: true
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        do {
+            _ = try await makeClient().refreshRoom(
+                id: "room-uncertain-commit",
+                timeoutInterval: RoomActionTransportPolicy.timeoutInterval(for: "get_room"),
+                allowsTypedConflictRetry: false
+            )
+            XCTFail("Expected the single authoritative read to surface its conflict.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.statusCode, 409)
+            XCTAssertEqual(error.code, "active_lease")
+        }
+
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(bodies.count, 1)
+        XCTAssertEqual(bodies[0]["action"] as? String, "get_room")
+        XCTAssertEqual(recorder.requestTimeoutIntervals(), [4])
+    }
+
     func testCompleteGameStartAdoptsAuthoritativePlayingRoomAfterConflictRetryExhausts() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in
@@ -691,12 +805,156 @@ final class Base44ClientRoomActionTests: XCTestCase {
         defer { MockURLProtocol.requestHandler = nil }
 
         let client = makeClient()
-        try await client.leaveRoom(roomID: "room-dismissed")
+        try await client.leaveRoom(
+            roomID: "room-dismissed",
+            expectedRevision: 17
+        )
 
         let body = try XCTUnwrap(recorder.requestBodies().first)
         XCTAssertEqual(body["action"] as? String, "leave_room")
         XCTAssertEqual(body["room_id"] as? String, "room-dismissed")
         XCTAssertEqual(body["access_token"] as? String, "test-token")
+        XCTAssertEqual(body["expected_revision"] as? Int, 17)
+        XCTAssertEqual(recorder.requestTimeoutIntervals().first, 8)
+    }
+
+    func testRoomIDCloseWrapperSendsDedicatedBoundedCleanupAction() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 204,
+                httpVersion: nil,
+                headerFields: nil
+            )!
+            return (response, Data())
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        try await makeClient().closeRoom(
+            roomID: "room-host-dismissed",
+            expectedRevision: 22
+        )
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        XCTAssertEqual(body["action"] as? String, "close_room")
+        XCTAssertEqual(body["room_id"] as? String, "room-host-dismissed")
+        XCTAssertEqual(body["access_token"] as? String, "test-token")
+        XCTAssertEqual(body["expected_revision"] as? Int, 22)
+        XCTAssertEqual(recorder.requestTimeoutIntervals().first, 8)
+    }
+
+    func testCloseRoomTreatsMissingRoomAsAlreadyClosed() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url),
+                statusCode: 404,
+                httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"message":"Room not found."}"#.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        try await makeClient().closeRoom(roomID: "room-already-closed")
+
+        XCTAssertEqual(try recorder.requestBodies().count, 1)
+        XCTAssertEqual(
+            try recorder.requestBodies().first?["action"] as? String,
+            "close_room"
+        )
+    }
+
+    func testLatencySensitiveRoomActionsUseBoundedRequestDeadlines() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        let room = GameRoom.previewRoom(status: "playing")
+        let user = makeRadarUser(id: "actor", avatar: "🕵️", rating: 0, policy: .ask)
+        let targetEmail = try XCTUnwrap(room.playersList.dropFirst().first?.email)
+
+        _ = try await client.requestVote(room: room, user: user)
+        _ = try await client.castDetectiveVote(
+            room: room,
+            user: user,
+            targetEmail: targetEmail,
+            expectedVoteRoundID: "vote-round-1"
+        )
+        _ = try await client.submitSpyGuess(room: room, user: user, guess: "Cipher")
+        _ = try await client.kickPlayer(
+            room: room,
+            player: try XCTUnwrap(room.playersList.dropFirst().first)
+        )
+        _ = try await client.refreshRoom(id: room.id)
+
+        XCTAssertEqual(
+            try recorder.requestBodies().map { try XCTUnwrap($0["action"] as? String) },
+            [
+                "request_vote",
+                "cast_detective_vote",
+                "submit_spy_guess",
+                "kick_player",
+                "get_room"
+            ]
+        )
+        XCTAssertEqual(recorder.requestTimeoutIntervals(), [8, 8, 10, 8, 4])
+        XCTAssertEqual(RoomActionTransportPolicy.timeoutInterval(for: "kick_player"), 8)
+
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(bodies[0]["expected_match_id"] as? String, room.matchID)
+        XCTAssertEqual(bodies[2]["expected_match_id"] as? String, room.matchID)
+    }
+
+    func testRawTargetKickResolvesMembershipGenerationFromRoomSnapshot() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        var room = GameRoom.previewRoom(status: "waiting")
+        var target = try XCTUnwrap(room.playersList.dropFirst().first)
+        target.userID = "target-user-current"
+        target.membershipID = "membership-target-current"
+        room.players = room.playersList.map {
+            $0.email == target.email ? target : $0
+        }
+
+        _ = try await makeClient().kickPlayer(
+            room: room,
+            targetUserID: target.userID,
+            targetEmail: target.email
+        )
+
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        XCTAssertEqual(body["action"] as? String, "kick_player")
+        XCTAssertEqual(body["target_user_id"] as? String, "target-user-current")
+        XCTAssertEqual(
+            body["expected_target_membership_id"] as? String,
+            "membership-target-current"
+        )
+    }
+
+    func testHostRoomProjectionDecodesTargetMembershipGenerationForKickCAS() throws {
+        let room = try JSONDecoder().decode(
+            GameRoom.self,
+            from: Data(
+                #"{"id":"room-host","code":"ABC123","status":"waiting","viewer_membership_id":"membership-host","players":[{"user_id":"target-user","membership_id":"membership-target","email":"target@example.com","name":"Target","avatar":"🕵️"}]}"#.utf8
+            )
+        )
+
+        XCTAssertEqual(room.viewerMembershipID, "membership-host")
+        XCTAssertEqual(room.playersList.first?.userID, "target-user")
+        XCTAssertEqual(room.playersList.first?.membershipID, "membership-target")
     }
 
     func testActiveRoomSendsPreferredIDAndDecodesNull() async throws {
@@ -1407,6 +1665,7 @@ private final class RequestRecorder: @unchecked Sendable {
     private let lock = NSLock()
     private var bodies: [[String: Any]] = []
     private var urls: [URL] = []
+    private var timeoutIntervals: [TimeInterval] = []
 
     func append(_ request: URLRequest) throws {
         let data = try Self.bodyData(from: request)
@@ -1416,6 +1675,7 @@ private final class RequestRecorder: @unchecked Sendable {
         if let url = request.url {
             urls.append(url)
         }
+        timeoutIntervals.append(request.timeoutInterval)
         lock.unlock()
     }
 
@@ -1429,6 +1689,13 @@ private final class RequestRecorder: @unchecked Sendable {
     func requestURLs() -> [URL] {
         lock.lock()
         let snapshot = urls
+        lock.unlock()
+        return snapshot
+    }
+
+    func requestTimeoutIntervals() -> [TimeInterval] {
+        lock.lock()
+        let snapshot = timeoutIntervals
         lock.unlock()
         return snapshot
     }

@@ -41,6 +41,83 @@ export function leaveAlreadyComplete(
     );
 }
 
+export function liveActivityEndQueueMatchesRoom(
+  room: Record<string, unknown> | null | undefined,
+  queuedRoomIDValue: unknown,
+  queuedMatchIDValue: unknown,
+): boolean {
+  const roomID = clean(room?.id);
+  const matchID = clean(room?.match_id);
+  return Boolean(
+    roomID && matchID &&
+      clean(queuedRoomIDValue) === roomID &&
+      clean(queuedMatchIDValue) === matchID,
+  );
+}
+
+export function liveActivityEndQueueCoversRegistrations(
+  room: Record<string, unknown> | null | undefined,
+  registrations: readonly Record<string, unknown>[],
+): boolean {
+  const roomID = clean(room?.id);
+  const matchID = clean(room?.match_id);
+  if (!roomID || !matchID) return true;
+  const closeIntent = room?.close_intent as Record<string, unknown> | undefined;
+  const expectedCommitID = clean(closeIntent?.id) &&
+      clean(closeIntent?.room_id) === roomID &&
+      clean(closeIntent?.match_id) === matchID
+    ? `room-close:${matchID}:${clean(closeIntent?.id)}`
+    : clean(room?.game_finished_event_id) === `game-finished:${matchID}`
+    ? `game-finished:${matchID}`
+    : "";
+
+  const exactActive = registrations.filter((registration) =>
+    clean(registration?.status).toLowerCase() === "active" &&
+    clean(registration?.token_kind) === "activity" &&
+    clean(registration?.room_id) === roomID &&
+    clean(registration?.match_id) === matchID &&
+    clean(registration?.provider_match_id) === matchID
+  );
+  return exactActive.every((registration) =>
+    registration?.pending_force_end === true &&
+    clean(registration?.pending_room_id) === roomID &&
+    clean(registration?.pending_match_id) === matchID &&
+    (!expectedCommitID ||
+      clean(registration?.pending_force_end_commit_id) === expectedCommitID) &&
+    ["retry", "processing"].includes(
+      clean(registration?.delivery_state).toLowerCase(),
+    )
+  );
+}
+
+export async function loadActiveRoomLiveActivityRegistrations(
+  store: {
+    filter: (
+      query: Record<string, unknown>,
+      sort: string,
+      limit: number,
+      skip: number,
+    ) => Promise<Record<string, unknown>[] | null | undefined>;
+  },
+  roomIDValue: unknown,
+  pageSize = 100,
+): Promise<Record<string, unknown>[]> {
+  const roomID = clean(roomIDValue);
+  if (!roomID) return [];
+  const boundedPageSize = Math.max(1, Math.floor(pageSize));
+  const registrations: Record<string, unknown>[] = [];
+  for (let skip = 0;; skip += boundedPageSize) {
+    const page = await store.filter(
+      { status: "active", room_id: roomID, token_kind: "activity" },
+      "created_date",
+      boundedPageSize,
+      skip,
+    ) || [];
+    registrations.push(...page);
+    if (page.length < boundedPageSize) return registrations;
+  }
+}
+
 export function assertLobbySettingsAccess(
   room: Record<string, unknown>,
   user: Record<string, unknown>,
@@ -118,6 +195,7 @@ export async function deleteRoomAndVerify(input: {
   roomID: string;
   deleteByID: (roomID: string) => Promise<unknown>;
   fetchByID: (roomID: string) => Promise<unknown | null | undefined>;
+  afterVerifiedDelete?: () => Promise<void>;
   delay?: (milliseconds: number) => Promise<void>;
   attempts?: number;
 }): Promise<void> {
@@ -130,7 +208,10 @@ export async function deleteRoomAndVerify(input: {
   // consistent verification read is retried.
   await input.deleteByID(input.roomID);
   for (let attempt = 0; attempt < attempts; attempt += 1) {
-    if (!await input.fetchByID(input.roomID)) return;
+    if (!await input.fetchByID(input.roomID)) {
+      await input.afterVerifiedDelete?.();
+      return;
+    }
     if (attempt + 1 < attempts) await wait(20 + attempt * 35);
   }
 

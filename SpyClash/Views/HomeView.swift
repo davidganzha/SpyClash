@@ -890,7 +890,7 @@ struct HomeView: View {
         await Task.yield()
         do {
             let room = try await appState.client.createRoom(for: user)
-            appState.allowRoomActivation(room.id)
+            try appState.confirmExplicitRoomActivation(room)
             withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
                 appState.activeRoom = room
                 appState.selectedTab = .game
@@ -917,8 +917,11 @@ struct HomeView: View {
         await Task.yield()
         do {
             let code = joinCode
-            let room = try await appState.client.join(code: code, user: user)
-            appState.allowRoomActivation(room.id)
+            let room = try await appState.joinRoomSnapshotForExplicitActivation(
+                code: code,
+                user: user
+            )
+            try appState.confirmExplicitRoomActivation(room)
             appState.activeRoom = room
             appState.selectedTab = .game
             statusText = copy.roomReady(room.code)

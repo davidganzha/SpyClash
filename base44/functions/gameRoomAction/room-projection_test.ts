@@ -50,15 +50,25 @@ Deno.test("active spy projection hides secret data and internal identities", () 
   assertEquals("user_id" in projected.players[0], false);
 });
 
-Deno.test("only the lobby host receives stable player ids for host-only membership actions", () => {
+Deno.test("only the lobby host receives stable player and membership ids for host-only actions", () => {
   const room = {
     id: "room-1",
     code: "ABC123",
     host_email: "host@example.com",
     status: "waiting",
     players: [
-      { user_id: "user-host", email: "host@example.com", name: "Host" },
-      { user_id: "user-guest", email: "guest@example.com", name: "Guest" },
+      {
+        user_id: "user-host",
+        membership_id: "membership-host",
+        email: "host@example.com",
+        name: "Host",
+      },
+      {
+        user_id: "user-guest",
+        membership_id: "membership-guest",
+        email: "guest@example.com",
+        name: "Guest",
+      },
     ],
   };
 
@@ -69,12 +79,20 @@ Deno.test("only the lobby host receives stable player ids for host-only membersh
     "user-host",
     "user-guest",
   ]);
+  assertEquals(hostProjection.players.map((player) => player.membership_id), [
+    "membership-host",
+    "membership-guest",
+  ]);
 
   const guestProjection = projectRoomForClient(room, {
     email: "guest@example.com",
   })!;
   assertEquals(
     guestProjection.players.some((player) => "user_id" in player),
+    false,
+  );
+  assertEquals(
+    guestProjection.players.some((player) => "membership_id" in player),
     false,
   );
 });

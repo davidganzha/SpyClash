@@ -115,6 +115,65 @@ Deno.test("finished rooms repair only the terminal event", async () => {
   );
 });
 
+Deno.test("finished-room repair revives a committed event cancelled from a stale read", async () => {
+  const store = new Store();
+  store.records = [unfinishedEvent("user-a", {
+    inbox_committed_at: "2026-07-26T11:59:59.000Z",
+    state: "cancelled",
+    last_error_code: "game_finish_stale",
+  })];
+  const repaired = await repairCommittedRoomPushEvents({
+    eventStore: store,
+    room: {
+      id: "room-1",
+      status: "finished",
+      match_id: "match-1",
+      game_finished_event_id: "finish-1",
+      participant_user_ids: ["user-a"],
+      updated_date: "2026-07-26T11:59:59.000Z",
+    },
+    persist: async <T>(writer: () => Promise<T>) => await writer(),
+    now: new Date("2026-07-26T12:00:00.000Z"),
+    randomUUID: () => "recovered-revision",
+  });
+  assertEquals(repaired, 1);
+  assertEquals(store.records[0].state, "retry");
+  assertEquals(store.records[0].revision, "recovered-revision");
+  assertEquals(store.records[0].last_error_code, "committed_finish_recovered");
+});
+
+Deno.test("finished-room repair commits and revives an exhausted pre-commit event", async () => {
+  const store = new Store();
+  store.records = [unfinishedEvent("user-a", {
+    inbox_committed_at: null,
+    state: "cancelled",
+    attempt_count: 8,
+    last_error_code: "game_finish_stale",
+  })];
+  const repaired = await repairCommittedRoomPushEvents({
+    eventStore: store,
+    room: {
+      id: "room-1",
+      status: "finished",
+      match_id: "match-1",
+      game_finished_event_id: "finish-1",
+      participant_user_ids: ["user-a"],
+      updated_date: "2026-07-26T11:59:59.000Z",
+    },
+    persist: async <T>(writer: () => Promise<T>) => await writer(),
+    now: new Date("2026-07-26T12:00:00.000Z"),
+    randomUUID: () => "recovered-uncommitted-revision",
+  });
+  assertEquals(repaired, 1);
+  assertEquals(store.records[0].state, "retry");
+  assertEquals(store.records[0].attempt_count, 0);
+  assertEquals(Boolean(store.records[0].inbox_committed_at), true);
+  assertEquals(
+    store.records[0].last_error_code,
+    "committed_finish_recovered",
+  );
+});
+
 Deno.test("partial lost batched commit is fully recoverable from the finished room", async () => {
   const store = new Store();
   store.records = [
@@ -212,6 +271,54 @@ Deno.test("process_event reconciles partial room outboxes before delivery", asyn
   assertEquals(existingLookup >= 0, true);
   assertEquals(repair > existingLookup, true);
   assertEquals(delivery > repair, true);
+});
+
+Deno.test("scheduled drain reconciles terminal outboxes before community profile work", async () => {
+  const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
+  const drain = source.slice(
+    source.indexOf("async function drain(base44"),
+    source.indexOf("\nDeno.serve"),
+  );
+  const outboxRepair = drain.indexOf("await reconcileRecentRoomOutboxes(");
+  const profileRepair = drain.indexOf(
+    "await drainDurableCommunityProfileRepairs(",
+  );
+  assertEquals(outboxRepair >= 0, true);
+  assertEquals(profileRepair > outboxRepair, true);
+
+  const profileDrain = source.slice(
+    source.indexOf("async function drainDurableCommunityProfileRepairs"),
+    source.indexOf("async function roomForSourceEvent"),
+  );
+  assertEquals(profileDrain.includes("await runWithinDeadline({"), true);
+  assertEquals(profileDrain.includes('reason: "deadline_exceeded"'), true);
+
+  const scheduledReconciliation = source.slice(
+    source.indexOf("async function reconcileRecentRoomOutboxes"),
+    source.indexOf("function internalRequest"),
+  );
+  assertEquals(
+    scheduledReconciliation.includes(
+      "await repairFinishedRoomCommunityProfiles(base44, room)",
+    ),
+    false,
+  );
+  assertEquals(
+    scheduledReconciliation.includes(
+      "ensureRoomReconciliationCheckpoint({",
+    ),
+    true,
+  );
+  assertEquals(
+    scheduledReconciliation.includes("loadRoomReconciliationPage({"),
+    true,
+  );
+  assertEquals(
+    scheduledReconciliation.includes(
+      "advanceRoomReconciliationCheckpoint({",
+    ),
+    true,
+  );
 });
 
 Deno.test("old terminal identities are not resurrected as fresh alerts", async () => {

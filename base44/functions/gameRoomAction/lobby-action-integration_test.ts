@@ -36,7 +36,7 @@ Deno.test("return-to-lobby remains an explicit pause escape but cannot bypass an
   assertEquals(elapsed.code, "game_timer_elapsed");
 });
 
-Deno.test("gameRoomAction integrates lobby return and kick through CAS and participant leases", async () => {
+Deno.test("gameRoomAction integrates lobby return, kick, and explicit host close through participant leases", async () => {
   const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
   const vote = source.slice(
     source.indexOf("async function voteReturnToLobby"),
@@ -60,13 +60,21 @@ Deno.test("gameRoomAction integrates lobby return and kick through CAS and parti
     source.indexOf("async function kickPlayer"),
     source.indexOf("async function toggleReady"),
   );
-  assertStringIncludes(kick, "lobbyKickTransition(latest, user.email, target)");
+  assertStringIncludes(
+    kick,
+    "assertKickTargetMembershipGeneration(room, user, body)",
+  );
+  assertStringIncludes(
+    kick,
+    "const { transition } = assertKickTargetMembershipGeneration(",
+  );
   assertStringIncludes(kick, "lobbyMembershipClampPatch(");
   assertStringIncludes(kick, "updateRoomWithRetry(");
   assertStringIncludes(kick, 'normalizedStatus(latest) === "waiting"');
 
   assertStringIncludes(source, 'case "vote_return_to_lobby":');
   assertStringIncludes(source, 'case "kick_player":');
+  assertStringIncludes(source, 'case "close_room":');
   assertStringIncludes(source, 'case "return_finished_room_to_lobby":');
 
   const finishedReset = source.slice(
@@ -101,6 +109,7 @@ Deno.test("gameRoomAction integrates lobby return and kick through CAS and parti
   );
   assertEquals(fastActions.includes('"vote_return_to_lobby"'), false);
   assertEquals(fastActions.includes('"kick_player"'), false);
+  assertEquals(fastActions.includes('"close_room"'), false);
 
   const leasedPath = source.slice(
     source.indexOf("const userIDs = await roomLifecycleUserIDs("),
@@ -115,8 +124,251 @@ Deno.test("gameRoomAction integrates lobby return and kick through CAS and parti
     source.indexOf("function isCommittedFinishedRoom"),
   );
   assertStringIncludes(signalPath, 'action === "kick_player"');
+  assertStringIncludes(signalPath, 'action === "leave_room"');
   assertStringIncludes(signalPath, "transition.removedPlayer?.user_id");
-  assertStringIncludes(signalPath, "additionalRecipientUserIDs,");
+  assertStringIncludes(signalPath, 'state: "closed"');
+  assertStringIncludes(signalPath, "stageGameRoomSignalFanout(base44, {");
+  assertStringIncludes(
+    signalPath,
+    'recipients: recipients || roomSignalRecipients(result, "active")',
+  );
+
+  const postLeaseSignal = source.slice(
+    source.indexOf("async function fanoutStagedGameRoomSignalsAfterLeases"),
+    source.indexOf("async function assertLiveActivityEndQueueCoverage"),
+  );
+  assertStringIncludes(postLeaseSignal, "runPostLeaseSignalWithinDeadline({");
+  assertStringIncludes(postLeaseSignal, "withRoomWriteLeases({");
+  assertStringIncludes(postLeaseSignal, "timeoutMS: 600");
+
+  const deletePath = source.slice(
+    source.indexOf("async function deleteRoom"),
+    source.indexOf("function randomRoomCode"),
+  );
+  const closeIntent = deletePath.indexOf(
+    "const closingRoom = await ensureRoomCloseIntent(base44, latest)",
+  );
+  const durableClosedSignal = deletePath.indexOf(
+    "await persistClosedRoomSignals(base44, closingRoom)",
+  );
+  const stagedClose = deletePath.indexOf(
+    "stageCompletedRoomClose(base44, closingRoom, completion)",
+  );
+  assert(
+    closeIntent >= 0 && closeIntent < durableClosedSignal &&
+      durableClosedSignal < stagedClose,
+    "logical close and durable recipient signals must commit before staging phase two",
+  );
+  assertEquals(
+    deletePath.includes("deleteRoomAndVerify({"),
+    false,
+    "phase one must release participant leases before physical deletion",
+  );
+
+  const completedDelete = source.slice(
+    source.indexOf("async function deleteCompletedRoomCloseUnderLeases"),
+    source.indexOf("async function recoverCompletedRoomClose"),
+  );
+  const queueCoverage = completedDelete.indexOf(
+    "await assertLiveActivityEndQueueCoverage(",
+  );
+  const queueReceipt = completedDelete.indexOf(
+    "await persistRoomCloseActivityEndQueuedUnderLeases(",
+  );
+  const physicalDelete = completedDelete.indexOf("await deleteRoomAndVerify({");
+  assert(
+    queueCoverage >= 0 && queueCoverage < queueReceipt &&
+      queueReceipt < physicalDelete,
+    "physical deletion requires exact queue coverage and a durable phase receipt",
+  );
+
+  const recovery = source.slice(
+    source.indexOf("async function recoverCompletedRoomClose"),
+    source.indexOf("async function finalizeStagedRoomCloseAfterLeases"),
+  );
+  assert(
+    recovery.indexOf("await enqueueRoomLiveActivityEnd(") <
+      recovery.indexOf("await withRoomWriteLeases({"),
+    "ActivityKit queueing must finish before participant leases are reacquired",
+  );
+
+  const handler = source.slice(source.indexOf("Deno.serve(async"));
+  const actionCompleted = handler.indexOf(
+    "actionCompletedAt = performance.now()",
+  );
+  const postLeaseWake = handler.indexOf(
+    "await fanoutStagedGameRoomSignalsAfterLeases(base44)",
+    actionCompleted,
+  );
+  const finalizeClose = handler.indexOf(
+    "await finalizeStagedRoomCloseAfterLeases(base44)",
+    postLeaseWake,
+  );
+  const promptEndDelivery = handler.indexOf(
+    "await triggerStagedLiveActivityEndDelivery(base44)",
+    finalizeClose,
+  );
+  assert(
+    actionCompleted >= 0 && actionCompleted < postLeaseWake &&
+      postLeaseWake < finalizeClose && finalizeClose < promptEndDelivery,
+    "kick/room signal fanout must begin only after mutation leases are released",
+  );
+
+  const close = source.slice(
+    source.indexOf("async function closeRoom"),
+    source.indexOf("async function leaveRoom"),
+  );
+  assertStringIncludes(close, "requirePlayer(room, user)");
+  assertStringIncludes(close, "requireHost(room, user)");
+  assertStringIncludes(
+    close,
+    "const terminal = pendingTerminalIntent(closable)",
+  );
+  assertStringIncludes(
+    close,
+    "closable = await finishRoom(base44, closable, terminal.winner, {}, {",
+  );
+  assertStringIncludes(close, "allowCloseIntent: true");
+  assertStringIncludes(
+    close,
+    "closable = await ensureTerminalOutboxCommitBeforeMutation(base44, closable)",
+  );
+  assertStringIncludes(close, "return await deleteRoom(base44, closable, {");
+  assertStringIncludes(close, "allowPendingTerminal: true");
+  assertStringIncludes(
+    close,
+    "liveActivityEndQueuedRoomID: options.liveActivityEndQueuedRoomID",
+  );
+  assertStringIncludes(
+    close,
+    "liveActivityEndQueuedMatchID: options.liveActivityEndQueuedMatchID",
+  );
+  assertEquals(close.includes("hostDepartureUsesMembershipTransition"), false);
+
+  const leave = source.slice(
+    source.indexOf("async function leaveRoom"),
+    source.indexOf("async function userIDForEmail"),
+  );
+  assertStringIncludes(leave, "hostDepartureUsesMembershipTransition(");
+
+  const deletion = source.slice(
+    source.indexOf("async function deleteRoom"),
+    source.indexOf("function randomRoomCode"),
+  );
+  assertStringIncludes(
+    deletion,
+    "const closingRoom = await ensureRoomCloseIntent(base44, latest)",
+  );
+  assertStringIncludes(
+    deletion,
+    "await persistClosedRoomSignals(base44, closingRoom)",
+  );
+  assertStringIncludes(
+    deletion,
+    "assertRoomMutationOpen(\n    latest,",
+  );
+  assertStringIncludes(
+    deletion,
+    "stageCompletedRoomClose(base44, closingRoom, completion)",
+  );
+  assertEquals(deletion.includes("afterVerifiedDelete:"), false);
+  assertEquals(deletion.includes("deleteRoomAndVerify({"), false);
+
+  const completedDeletion = source.slice(
+    source.indexOf("async function deleteCompletedRoomCloseUnderLeases"),
+    source.indexOf("async function recoverCompletedRoomClose"),
+  );
+  assertStringIncludes(
+    completedDeletion,
+    "await persistRoomCloseActivityEndQueuedUnderLeases(",
+  );
+  assertStringIncludes(completedDeletion, "afterVerifiedDelete:");
+
+  const preLeaseEnd = source.indexOf(
+    "if (mustQueueLiveActivityEndBeforeLeases)",
+  );
+  const preflightHost = source.lastIndexOf(
+    'if (action === "close_room") requireHost(room, user)',
+    preLeaseEnd,
+  );
+  const leasedMutation = source.indexOf(
+    "result = await retryRoomMembershipChangeBeforeAction",
+    preLeaseEnd,
+  );
+  assert(
+    preflightHost >= 0 && preflightHost < preLeaseEnd &&
+      preLeaseEnd < leasedMutation,
+    "room deletion must queue ActivityKit end before participant leases are acquired",
+  );
+  const preLeaseEndSource = source.slice(preLeaseEnd, leasedMutation);
+  assertStringIncludes(
+    preLeaseEndSource,
+    "await enqueueRoomLiveActivityEnd(base44, room)",
+  );
+  assertStringIncludes(
+    preLeaseEndSource,
+    "__server_live_activity_end_room_id: liveActivityEndQueuedRoomID",
+  );
+  assertStringIncludes(
+    preLeaseEndSource,
+    "__server_live_activity_end_match_id: liveActivityEndQueuedMatchID",
+  );
+
+  const missingRoomRetryStart = source.indexOf(
+    'if ((action === "close_room" || action === "leave_room") && roomId)',
+  );
+  const missingRoomRetry = source.slice(
+    missingRoomRetryStart,
+    source.indexOf("const capturedActionBody", missingRoomRetryStart),
+  );
+  assertStringIncludes(missingRoomRetry, "completedRoomCloseForHost(");
+  assertStringIncludes(missingRoomRetry, "recoverCompletedRoomClose(");
+  assertStringIncludes(missingRoomRetry, 'action === "close_room" && !room');
+  assertStringIncludes(missingRoomRetry, 'action === "leave_room"');
+  assertStringIncludes(missingRoomRetry, "roomLeaveAlreadyComplete(");
+  assertStringIncludes(missingRoomRetry, "durableRoomExitIsCommitted(");
+  assertStringIncludes(
+    missingRoomRetry,
+    "persistClosedRoomSignalForUser(",
+  );
+  assertStringIncludes(
+    source.slice(
+      source.indexOf(
+        "async function persistClosedRoomSignalForUserUnderLeases",
+      ),
+      source.indexOf("async function persistClosedRoomSignalForUser("),
+    ),
+    "hasDurableClosedRoomSignal(",
+  );
+  assertStringIncludes(
+    source,
+    "if (!latest) throw unconfirmedRoomCloseError()",
+  );
+  assertEquals(
+    source.includes(
+      '["leave_room", "close_room"].includes(action)',
+    ),
+    false,
+    "a transient missing read must never acknowledge an unproved host close",
+  );
+  assertStringIncludes(source, "throw unconfirmedRoomExitError()");
+
+  const closeIntentHelper = source.slice(
+    source.indexOf("async function ensureRoomCloseIntent"),
+    source.indexOf("async function deleteRoom"),
+  );
+  assertStringIncludes(closeIntentHelper, "newRoomCloseIntent({");
+  assertStringIncludes(closeIntentHelper, "persistClosedRoomSignals");
+  assertStringIncludes(closeIntentHelper, "newRoomCloseCompletion({ room })");
+  assertStringIncludes(
+    closeIntentHelper,
+    "roomCloseCompletionCoversSignals(",
+  );
+  assertEquals(
+    closeIntentHelper.includes("!matchID"),
+    false,
+    "waiting-lobby close and sole-player leave must not require a match id",
+  );
 
   const terminalGuard = source.indexOf(
     "const terminal = pendingTerminalIntent(room)",
@@ -128,6 +380,15 @@ Deno.test("gameRoomAction integrates lobby return and kick through CAS and parti
       actionSwitch < voteCase,
     "pending terminal reconciliation must win before lobby-return voting",
   );
+  const terminalGuardSource = source.slice(terminalGuard, actionSwitch);
+  assertStringIncludes(
+    terminalGuardSource,
+    'if (terminal && action !== "close_room")',
+  );
+  assertStringIncludes(
+    terminalGuardSource,
+    'if (!["join_room", "close_room"].includes(action))',
+  );
 
   const completeStart = source.slice(
     source.indexOf("async function completeGameStart"),
@@ -135,4 +396,46 @@ Deno.test("gameRoomAction integrates lobby return and kick through CAS and parti
   );
   assertStringIncludes(completeStart, 'status: "playing"');
   assertStringIncludes(completeStart, "ready_players: []");
+});
+
+Deno.test("legacy leave and close bind the server membership before lifecycle waits", async () => {
+  const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
+  const capturedStart = source.indexOf("const capturedActionBody");
+  const capturedEnd = source.indexOf(
+    "const mustQueueLiveActivityEndBeforeLeases",
+    capturedStart,
+  );
+  const captured = source.slice(capturedStart, capturedEnd);
+  assertStringIncludes(
+    captured,
+    'if (action === "leave_room" || action === "close_room")',
+  );
+  assertStringIncludes(captured, "captureRoomExitMembershipGeneration(");
+  assertStringIncludes(captured, "__server_room_exit_membership_id:");
+  assert(
+    captured.indexOf("...body") <
+      captured.indexOf("__server_room_exit_membership_id:"),
+    "the server capture must overwrite any caller-supplied private marker",
+  );
+
+  const execute = source.slice(
+    source.indexOf("async function executeRoomAction("),
+    source.indexOf("async function executeRoomActionWithSignal("),
+  );
+  assertEquals(
+    execute.match(/boundRoomExitMembershipID\(body\)/g)?.length,
+    5,
+    "every leave/close mutation guard must consume the captured generation",
+  );
+
+  const join = source.slice(
+    source.indexOf("async function joinRoom("),
+    source.indexOf("async function beginReadyCheck("),
+  );
+  assertStringIncludes(join, "expectedRoomExitMembershipID(body)");
+  assertEquals(
+    join.includes("boundRoomExitMembershipID(body)"),
+    false,
+    "a client private marker must never authorize membership rotation on join",
+  );
 });

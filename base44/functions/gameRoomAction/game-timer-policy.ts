@@ -153,7 +153,12 @@ export function assertGameActionAllowedByDeadline(
   const elapsedSeconds = gameActiveElapsedSeconds(room, nowMilliseconds);
   if (elapsedSeconds < state.durationSeconds) return;
 
-  if (["finalize_expired_room", "finish_room", "leave_room"].includes(action)) {
+  if (
+    ["finalize_expired_room", "finish_room", "leave_room", "close_room"]
+      .includes(
+        action,
+      )
+  ) {
     return;
   }
 

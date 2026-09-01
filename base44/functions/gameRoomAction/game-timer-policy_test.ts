@@ -181,6 +181,7 @@ Deno.test("paused room blocks every gameplay mutation but not recovery", () => {
       "pause_game",
       "resume_game",
       "leave_room",
+      "close_room",
       "finalize_expired_room",
       "finish_room",
     ]
@@ -211,7 +212,14 @@ Deno.test("the exact 0:00 boundary closes every gameplay action immediately", ()
       undefined,
     );
   }
-  for (const action of ["finalize_expired_room", "finish_room", "leave_room"]) {
+  for (
+    const action of [
+      "finalize_expired_room",
+      "finish_room",
+      "leave_room",
+      "close_room",
+    ]
+  ) {
     assertEquals(
       assertGameActionAllowedByDeadline(room, action, deadline),
       undefined,

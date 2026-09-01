@@ -1522,6 +1522,24 @@ final class OnlineRoundStateTests: XCTestCase {
         XCTAssertFalse(scope.confirmsCommit(in: committed))
     }
 
+    func testSpyGuessSheetDismissesForAuthoritativeFinishedStatus() {
+        XCTAssertTrue(
+            SpyGuessSheetPresentationPolicy.shouldDismiss(
+                authoritativeRoomStatus: "finished"
+            )
+        )
+        XCTAssertTrue(
+            SpyGuessSheetPresentationPolicy.shouldDismiss(
+                authoritativeRoomStatus: " ENDED "
+            )
+        )
+        XCTAssertFalse(
+            SpyGuessSheetPresentationPolicy.shouldDismiss(
+                authoritativeRoomStatus: "playing"
+            )
+        )
+    }
+
     func testRoomFriendsPolicyKeepsOnlyAcceptedDeduplicatedProfiles() throws {
         let me = roomFriendProfile(id: "me", name: "Host")
         let cipher = roomFriendProfile(id: "friend-cipher", name: "Cipher")
@@ -2657,6 +2675,133 @@ final class OnlineRoundStateTests: XCTestCase {
         )
     }
 
+    func testUncertainMutationRecoveryOnlyReadsAfterTransportOutcomeIsUnknown() {
+        XCTAssertEqual(UncertainRoomMutationRecoveryPolicy.maximumMutationAttempts, 1)
+        XCTAssertEqual(UncertainRoomMutationRecoveryPolicy.maximumAuthoritativeReads, 1)
+        XCTAssertTrue(
+            UncertainRoomMutationRecoveryPolicy.shouldRefreshAfterFailure(
+                Base44Error(message: "Network request failed.", retryable: true)
+            )
+        )
+        XCTAssertTrue(
+            UncertainRoomMutationRecoveryPolicy.shouldRefreshAfterFailure(
+                URLError(.timedOut)
+            )
+        )
+        XCTAssertFalse(
+            UncertainRoomMutationRecoveryPolicy.shouldRefreshAfterFailure(
+                Base44Error(
+                    message: "Lease busy",
+                    statusCode: 409,
+                    code: "active_lease",
+                    retryable: true
+                )
+            ),
+            "A typed pre-action conflict has a definitive response and is not a lost commit."
+        )
+        XCTAssertFalse(
+            UncertainRoomMutationRecoveryPolicy.shouldRefreshAfterFailure(
+                CancellationError()
+            )
+        )
+    }
+
+    func testUncertainVoteRequestAdoptsOnlyExactNonStaleCommit() throws {
+        var current = GameRoom.previewRoom(status: "playing")
+        current.roomRevision = 30
+        let scope = try XCTUnwrap(OnlineRoomMatchScope(room: current))
+        let actor = try XCTUnwrap(current.playersList.first?.email)
+
+        var committed = current
+        committed.roomRevision = 31
+        committed.voteRequests = [actor.uppercased()]
+        XCTAssertEqual(
+            UncertainRoomMutationRecoveryPolicy.refreshDisposition(
+                candidate: committed,
+                over: current,
+                scope: scope
+            ),
+            .adopt
+        )
+        XCTAssertTrue(
+            UncertainRoomMutationRecoveryPolicy.confirmsVoteRequest(
+                in: committed,
+                scope: scope,
+                actorEmail: "  \(actor.lowercased())  "
+            )
+        )
+
+        var absent = committed
+        absent.voteRequests = []
+        XCTAssertFalse(
+            UncertainRoomMutationRecoveryPolicy.confirmsVoteRequest(
+                in: absent,
+                scope: scope,
+                actorEmail: actor
+            ),
+            "An absent request remains uncertain and must not be reported as a definitive failure."
+        )
+
+        var stale = committed
+        stale.roomRevision = 29
+        XCTAssertEqual(
+            UncertainRoomMutationRecoveryPolicy.refreshDisposition(
+                candidate: stale,
+                over: current,
+                scope: scope
+            ),
+            .retainCurrent
+        )
+
+        var wrongMatch = committed
+        wrongMatch.matchID = "replacement-match"
+        XCTAssertEqual(
+            UncertainRoomMutationRecoveryPolicy.refreshDisposition(
+                candidate: wrongMatch,
+                over: current,
+                scope: scope
+            ),
+            .reject
+        )
+    }
+
+    func testUncertainDetectiveVoteRefreshCanConfirmExactPersistedCast() throws {
+        var previous = GameRoom.previewRoom(status: "voting", playerCount: 6)
+        previous.roomRevision = 44
+        let actor = try XCTUnwrap(previous.playersList.first?.email)
+        let target = try XCTUnwrap(previous.playersList.dropFirst().first?.email)
+        let cast = try XCTUnwrap(
+            DetectiveVoteCastScope(
+                room: previous,
+                actorEmail: actor,
+                targetEmail: target
+            )
+        )
+
+        var refreshed = previous
+        refreshed.roomRevision = 45
+        refreshed.detectiveVotes = [
+            VoteRecord(voterEmail: actor, votedForEmail: target)
+        ]
+        XCTAssertEqual(
+            UncertainRoomMutationRecoveryPolicy.refreshDisposition(
+                candidate: refreshed,
+                over: previous,
+                scope: cast.room
+            ),
+            .adopt
+        )
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.resolution(
+                previous: previous,
+                authoritative: refreshed,
+                cast: cast,
+                now: Date()
+            ),
+            .persisted
+        )
+    }
+
     func testTerminalRealtimeRevisionCannotBeRolledBackByOlderPlayingResponse() throws {
         var terminalCurrent = GameRoom.previewRoom(status: "playing")
         terminalCurrent.status = "finished"
@@ -3185,14 +3330,30 @@ final class OnlineRoundStateTests: XCTestCase {
         )
         XCTAssertEqual(
             DetectiveVoteConflictRecoveryPolicy.retryDelaysMilliseconds,
-            [250, 500, 1_000, 2_000, 4_000, 8_000, 8_000, 8_000]
+            [250, 500, 1_000]
         )
         XCTAssertEqual(
-            DetectiveVoteConflictRecoveryPolicy.delayMilliseconds(beforeRetry: 7),
-            8_000
+            DetectiveVoteConflictRecoveryPolicy.maximumRecoveryDurationMilliseconds,
+            2_000
+        )
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.delayMilliseconds(beforeRetry: 2),
+            1_000
         )
         XCTAssertNil(
-            DetectiveVoteConflictRecoveryPolicy.delayMilliseconds(beforeRetry: 8)
+            DetectiveVoteConflictRecoveryPolicy.delayMilliseconds(beforeRetry: 3)
+        )
+        XCTAssertNil(
+            DetectiveVoteConflictRecoveryPolicy.delayMilliseconds(
+                beforeRetry: 0,
+                elapsedMilliseconds: 1_900
+            )
+        )
+        XCTAssertEqual(
+            DetectiveVoteConflictRecoveryPolicy.remainingBudgetMilliseconds(
+                elapsedMilliseconds: 2_500
+            ),
+            0
         )
     }
 
@@ -3505,6 +3666,7 @@ final class OnlineRoundStateTests: XCTestCase {
     }
 
     func testRoomPollPolicyUsesRealtimeFallbackCadenceAndBoundedFailureBackoff() {
+        XCTAssertLessThanOrEqual(RoomPollPolicy.backgroundWakeCheckSeconds, 2)
         XCTAssertEqual(
             RoomPollPolicy.delaySeconds(
                 roomStatus: "waiting",
@@ -3520,12 +3682,17 @@ final class OnlineRoundStateTests: XCTestCase {
                 consecutiveFailures: 0,
                 isApplicationActive: true
             ),
-            4,
+            2,
             accuracy: 0.001
         )
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "ready_voting", consecutiveFailures: 0, isApplicationActive: true), 2)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "roulette", consecutiveFailures: 0, isApplicationActive: true), 2)
         XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 1, isApplicationActive: true), 8)
-        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 2, isApplicationActive: true), 16)
-        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 8, isApplicationActive: true), 30)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 2, isApplicationActive: true), 8)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "playing", consecutiveFailures: 1, isApplicationActive: true), 4)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "playing", consecutiveFailures: 2, isApplicationActive: true), 8)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "finished", consecutiveFailures: 0, isApplicationActive: true), 4)
+        XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 8, isApplicationActive: true), 8)
         XCTAssertEqual(RoomPollPolicy.delaySeconds(roomStatus: "waiting", consecutiveFailures: 0, isApplicationActive: false), 30)
     }
 
@@ -4556,6 +4723,314 @@ final class LobbyDraftPoolPolicyTests: XCTestCase {
 }
 
 final class GameRoomRealtimeSignalParserTests: XCTestCase {
+    func testRejectedOldMembershipSnapshotRetainsPermittedRejoinedRoom() {
+        var rejoinedRoom = GameRoom.previewRoom(status: "waiting")
+        rejoinedRoom.viewerMembershipID = "membership-new"
+
+        XCTAssertEqual(
+            ActiveRoomSnapshotAdmissionPolicy.fallbackAfterRejectingCandidate(
+                previousRoom: rejoinedRoom,
+                previousRoomIsPermitted: true
+            ),
+            rejoinedRoom
+        )
+        XCTAssertNil(
+            ActiveRoomSnapshotAdmissionPolicy.fallbackAfterRejectingCandidate(
+                previousRoom: rejoinedRoom,
+                previousRoomIsPermitted: false
+            )
+        )
+    }
+
+    func testClosedRoomRevisionFenceRejectsEveryPreCloseResponseAfterANewerRejoin() {
+        var fence = ClosedRoomRevisionFence()
+        fence.record(
+            userID: " user-a ",
+            roomID: " room-1 ",
+            revision: 12,
+            membershipID: "membership-old"
+        )
+
+        XCTAssertFalse(fence.permits(
+            userID: "user-a", roomID: "room-1", revision: 11,
+            membershipID: "membership-old"
+        ))
+        XCTAssertFalse(fence.permits(
+            userID: "user-a", roomID: "room-1", revision: 12,
+            membershipID: "membership-old"
+        ))
+        XCTAssertTrue(fence.permits(
+            userID: "user-a", roomID: "room-1", revision: 13,
+            membershipID: "membership-new"
+        ))
+        XCTAssertFalse(
+            fence.permits(
+                userID: "user-a", roomID: "room-1", revision: 9,
+                membershipID: "membership-old"
+            ),
+            "Accepting a later rejoin must not make an older in-flight response adoptable again."
+        )
+        XCTAssertTrue(fence.permits(
+            userID: "user-a", roomID: "room-2", revision: 0,
+            membershipID: nil
+        ))
+        XCTAssertTrue(
+            fence.permits(
+                userID: "user-b", roomID: "room-1", revision: 12,
+                membershipID: "membership-other"
+            ),
+            "A close observed by one signed-in account must not fence another account on the device."
+        )
+    }
+
+    func testUnknownClosedRoomFenceRequiresAnExplicitNewMembershipGeneration() {
+        var fence = ClosedRoomRevisionFence()
+        fence.record(
+            userID: "user-a",
+            roomID: "room-1",
+            revision: nil,
+            membershipID: "membership-old"
+        )
+
+        XCTAssertFalse(fence.permits(
+            userID: "user-a", roomID: "room-1", revision: 999,
+            membershipID: "membership-old"
+        ))
+        XCTAssertFalse(fence.authorizeExplicitRejoin(
+            userID: "user-a", roomID: "room-1", revision: 1_000,
+            membershipID: "membership-old"
+        ))
+        XCTAssertTrue(fence.authorizeExplicitRejoin(
+            userID: "user-a", roomID: "room-1", revision: 14,
+            membershipID: "membership-new"
+        ))
+        XCTAssertTrue(fence.permits(
+            userID: "user-a", roomID: "room-1", revision: 14,
+            membershipID: "membership-new"
+        ))
+        XCTAssertFalse(fence.permits(
+            userID: "user-a", roomID: "room-1", revision: 1_001,
+            membershipID: "membership-old"
+        ))
+    }
+
+    func testRealtimeSignalPolicyClosesOnlyExactNonStaleClosedRoom() {
+        let stale = GameRoomRealtimeSignal(
+            roomID: "room-1",
+            lobbyRevision: 7,
+            roomRevision: 11,
+            roomUpdatedAt: nil,
+            state: "closed"
+        )
+        let current = GameRoomRealtimeSignal(
+            roomID: "room-1",
+            lobbyRevision: 8,
+            roomRevision: 12,
+            roomUpdatedAt: nil,
+            state: "closed"
+        )
+        let otherRoom = GameRoomRealtimeSignal(
+            roomID: "room-2",
+            lobbyRevision: 99,
+            roomRevision: 99,
+            roomUpdatedAt: nil,
+            state: "closed"
+        )
+
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: stale,
+                activeRoomID: "room-1",
+                currentRevision: 12
+            ),
+            .ignore
+        )
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: current,
+                activeRoomID: "room-1",
+                currentRevision: 12
+            ),
+            .close
+        )
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: otherRoom,
+                activeRoomID: "room-1",
+                currentRevision: 12
+            ),
+            .ignore
+        )
+    }
+
+    func testRealtimeSignalPolicyRefreshesNewRevisionAndForcesLegacyCatchUp() {
+        let versioned = GameRoomRealtimeSignal(
+            roomID: "room-1",
+            lobbyRevision: 4,
+            roomRevision: 13,
+            roomUpdatedAt: nil,
+            state: "active"
+        )
+        let legacy = GameRoomRealtimeSignal(
+            roomID: "room-1",
+            lobbyRevision: 4,
+            roomRevision: nil,
+            roomUpdatedAt: nil,
+            state: "active"
+        )
+
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: versioned,
+                activeRoomID: "room-1",
+                currentRevision: 12
+            ),
+            .refresh(forceCatchUp: false)
+        )
+        XCTAssertEqual(
+            GameRoomRealtimeSignalPolicy.disposition(
+                signal: legacy,
+                activeRoomID: "room-1",
+                currentRevision: 12
+            ),
+            .refresh(forceCatchUp: true)
+        )
+    }
+
+    func testRealtimeRefreshRetryPolicyIsImmediateAndBounded() {
+        XCTAssertEqual(
+            GameRoomRealtimeRefreshRetryPolicy.retryDelaysMilliseconds,
+            [150, 350, 800]
+        )
+        XCTAssertEqual(
+            GameRoomRealtimeRefreshRetryPolicy.delayMilliseconds(afterFailedAttempt: 0),
+            150
+        )
+        XCTAssertEqual(
+            GameRoomRealtimeRefreshRetryPolicy.delayMilliseconds(afterFailedAttempt: 2),
+            800
+        )
+        XCTAssertNil(
+            GameRoomRealtimeRefreshRetryPolicy.delayMilliseconds(afterFailedAttempt: 3)
+        )
+    }
+
+    func testDismissedRoomExitModeUsesHostCloseAndCappedPersistentRetry() throws {
+        var room = GameRoom.previewRoom(status: "waiting")
+        let hostEmail = try XCTUnwrap(room.playersList.first?.email)
+        room.hostEmail = hostEmail
+
+        XCTAssertEqual(
+            DismissedRoomExitMode.resolve(
+                room: room,
+                currentUserEmail: "  \(hostEmail.uppercased())  "
+            ),
+            .close
+        )
+        XCTAssertEqual(
+            DismissedRoomExitMode.resolve(
+                room: room,
+                currentUserEmail: "guest@example.com"
+            ),
+            .leave
+        )
+        XCTAssertEqual(
+            DismissedRoomExitRetryPolicy.leaveRetryDelaysMilliseconds,
+            [250, 750]
+        )
+        XCTAssertEqual(
+            DismissedRoomExitRetryPolicy.closeRetryDelaysMilliseconds,
+            [1_000, 2_000, 4_000, 8_000]
+        )
+        XCTAssertNil(
+            DismissedRoomExitRetryPolicy.delayMilliseconds(
+                afterFailedAttempt: 2,
+                mode: .leave
+            )
+        )
+        XCTAssertEqual(
+            DismissedRoomExitRetryPolicy.delayMilliseconds(
+                afterFailedAttempt: 99,
+                mode: .close
+            ),
+            8_000
+        )
+        XCTAssertEqual(
+            DismissedRoomExitRetryPolicy.failureDisposition(
+                for: Base44Error(message: "Forbidden", statusCode: 403),
+                mode: .close
+            ),
+            .leaveThenStop
+        )
+        XCTAssertEqual(
+            DismissedRoomExitRetryPolicy.failureDisposition(
+                for: Base44Error(message: "Forbidden", statusCode: 403),
+                mode: .leave
+            ),
+            .stop
+        )
+        XCTAssertEqual(
+            DismissedRoomExitRetryPolicy.failureDisposition(
+                for: Base44Error(message: "Unavailable", statusCode: 503),
+                mode: .close
+            ),
+            .retry
+        )
+        XCTAssertEqual(
+            DismissedRoomExitRetryPolicy.failureDisposition(
+                for: Base44Error(
+                    message: "Room membership changed",
+                    statusCode: 409,
+                    code: "room_exit_membership_conflict"
+                ),
+                mode: .leave
+            ),
+            .stop
+        )
+    }
+
+    @MainActor
+    func testDismissedHostCloseRetriesThreeFailuresThenSucceedsWithoutReactivation() async {
+        enum TestFailure: Error { case transient }
+        var attempts = 0
+        var sleeps: [Int] = []
+
+        await DismissedRoomExitRetryPolicy.run(
+            mode: .close,
+            shouldContinue: { true },
+            operation: {
+                attempts += 1
+                if attempts <= 3 { throw TestFailure.transient }
+            },
+            sleep: { delay in sleeps.append(delay) }
+        )
+
+        XCTAssertEqual(attempts, 4)
+        XCTAssertEqual(sleeps, [1_000, 2_000, 4_000])
+    }
+
+    @MainActor
+    func testDismissedHostCloseFallsBackToLeaveOnceAfterAuthorityMoves() async {
+        var closeAttempts = 0
+        var leaveAttempts = 0
+        var sleeps = 0
+
+        await DismissedRoomExitRetryPolicy.run(
+            mode: .close,
+            shouldContinue: { true },
+            operation: {
+                closeAttempts += 1
+                throw Base44Error(message: "Host access required", statusCode: 403)
+            },
+            leaveFallback: { leaveAttempts += 1 },
+            sleep: { _ in sleeps += 1 }
+        )
+
+        XCTAssertEqual(closeAttempts, 1)
+        XCTAssertEqual(leaveAttempts, 1)
+        XCTAssertEqual(sleeps, 0)
+    }
+
     func testAcceptsOnlyExactUserRoomAndEntityEnvelope() throws {
         let entityRoom = "entities:app-1:GameRoomSignal"
         let event: [String: Any] = [

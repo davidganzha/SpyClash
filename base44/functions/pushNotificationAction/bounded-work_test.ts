@@ -1,5 +1,9 @@
 import { assertEquals } from "jsr:@std/assert@1";
-import { clampDeadline, runBounded } from "./bounded-work.ts";
+import {
+  clampDeadline,
+  runBounded,
+  runWithinDeadline,
+} from "./bounded-work.ts";
 
 Deno.test("deadline clamp preserves an already-expired caller deadline", () => {
   const now = 10_000;
@@ -54,4 +58,14 @@ Deno.test("injected clock stops new work after a completed item exhausts the dea
   assertEquals(started, [1]);
   assertEquals(result.completed, [1]);
   assertEquals(result.unstarted, [2, 3]);
+});
+
+Deno.test("wall-clock wrapper returns while an in-flight worker remains recoverable", async () => {
+  const startedAt = Date.now();
+  const result = await runWithinDeadline({
+    deadlineEpochMs: startedAt + 15,
+    operation: () => new Promise<string>(() => {}),
+  });
+  assertEquals(result, { timedOut: true });
+  assertEquals(Date.now() - startedAt < 250, true);
 });

@@ -12,7 +12,7 @@
     },
     "players": {
       "type": "array",
-      "description": "Server-normalized player objects {user_id, email, name, avatar}",
+      "description": "Server-normalized player objects {user_id, email, name, avatar, membership_id}; membership_id is rotated by an explicit join, projected to that viewer as viewer_membership_id, and exposed per player only to the lobby host for generation-safe moderation.",
       "items": { "type": "object" }
     },
     "participant_user_ids": {
@@ -256,6 +256,14 @@
       "type": "string",
       "maxLength": 64,
       "description": "Internal fingerprint binding the latest mutation id to its canonical snapshot.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "close_intent": {
+      "type": "object",
+      "description": "Server-owned two-phase room closure intent. Once committed, the room is logically closed; recipient signals are durably closed before physical deletion.",
       "rls": {
         "read": { "user_condition": { "role": "admin" } },
         "write": { "user_condition": { "role": "admin" } }

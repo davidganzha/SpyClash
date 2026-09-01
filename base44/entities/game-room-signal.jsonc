@@ -32,6 +32,32 @@
       "type": "string",
       "enum": ["active", "closed"],
       "description": "Whether the client should refresh an active room or discard a closed-room subscription."
+    },
+    "close_intent_id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Server-only durable receipt proving that this recipient signal was closed by an authorized room close intent.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "close_match_id": {
+      "type": "string",
+      "maxLength": 128,
+      "description": "Server-only match identity bound to the durable room close receipt.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
+    },
+    "close_completion": {
+      "type": "object",
+      "description": "Server-only tombstone written only after every participant received the exact closed signal. It carries the participant lease set needed to finish an interrupted physical deletion.",
+      "rls": {
+        "read": { "user_condition": { "role": "admin" } },
+        "write": { "user_condition": { "role": "admin" } }
+      }
     }
   },
   "required": ["user_id", "room_id", "lobby_revision", "state"],

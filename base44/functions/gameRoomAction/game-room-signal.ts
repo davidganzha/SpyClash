@@ -7,6 +7,20 @@ export type GameRoomSignalRecord = {
   room_revision: number;
   room_updated_at?: string;
   state: GameRoomSignalState;
+  close_intent_id?: string;
+  close_match_id?: string;
+  close_completion?: Record<string, unknown>;
+};
+
+export type GameRoomCloseReceipt = {
+  intent_id: unknown;
+  match_id: unknown;
+  completion?: Record<string, unknown>;
+};
+
+export type GameRoomSignalRecipient = {
+  user_id: unknown;
+  state: GameRoomSignalState;
 };
 
 export type GameRoomSignalStore = {
@@ -33,15 +47,93 @@ function unique(values: unknown[]): string[] {
   return [...new Set(values.map(clean).filter(Boolean))];
 }
 
+export function hasDurableClosedRoomSignal(
+  rows: readonly Record<string, unknown>[],
+  roomIDValue: unknown,
+  userIDValue: unknown,
+  minimumRoomRevisionValue: unknown = 0,
+): boolean {
+  const roomID = clean(roomIDValue);
+  const userID = clean(userIDValue);
+  const matching = rows.filter((row) =>
+    clean(row?.room_id) === roomID && clean(row?.user_id) === userID
+  );
+  if (!roomID || !userID || !matching.length) return false;
+  const minimumRoomRevision = revision(minimumRoomRevisionValue);
+  const latestRoomRevision = Math.max(
+    ...matching.map((row) => revision(row?.room_revision)),
+  );
+  if (latestRoomRevision < minimumRoomRevision) return false;
+  const atRoomRevision = matching.filter((row) =>
+    revision(row?.room_revision) === latestRoomRevision
+  );
+  const latestLobbyRevision = Math.max(
+    ...atRoomRevision.map((row) => revision(row?.lobby_revision)),
+  );
+  // Closure wins at one exact authoritative revision. A genuine later rejoin
+  // carries a higher room/lobby revision and therefore reopens the signal.
+  return atRoomRevision.some((row) =>
+    revision(row?.lobby_revision) === latestLobbyRevision &&
+    clean(row?.state) === "closed"
+  );
+}
+
+function signalRecord(
+  room: Record<string, unknown>,
+  userID: string,
+  state: GameRoomSignalState,
+  closeReceipt?: GameRoomCloseReceipt,
+): GameRoomSignalRecord | null {
+  const roomID = clean(room?.id);
+  if (!roomID || !userID) return null;
+  const roomUpdatedAt = clean(room?.updated_date);
+  return {
+    user_id: userID,
+    room_id: roomID,
+    lobby_revision: revision(room?.lobby_revision),
+    room_revision: revision(room?.room_revision),
+    ...(timestamp(roomUpdatedAt) > 0 ? { room_updated_at: roomUpdatedAt } : {}),
+    state,
+    ...(clean(closeReceipt?.intent_id)
+      ? {
+        close_intent_id: clean(closeReceipt?.intent_id),
+        close_match_id: clean(closeReceipt?.match_id),
+        ...(closeReceipt?.completion
+          ? { close_completion: closeReceipt.completion }
+          : {}),
+      }
+      : {}),
+  };
+}
+
+export function signalRecordsForRecipients(
+  room: Record<string, unknown>,
+  recipients: readonly GameRoomSignalRecipient[],
+  closeReceipt?: GameRoomCloseReceipt,
+): GameRoomSignalRecord[] {
+  const states = new Map<string, GameRoomSignalState>();
+  for (const recipient of recipients) {
+    const userID = clean(recipient?.user_id);
+    if (!userID) continue;
+    const nextState = recipient?.state === "closed" ? "closed" : "active";
+    const currentState = states.get(userID);
+    // A recipient can be present in a stale participant mirror and in an exact
+    // removed-recipient override. Closing must win within that same fanout.
+    if (!currentState || nextState === "closed") states.set(userID, nextState);
+  }
+  return [...states.entries()].flatMap(([userID, state]) => {
+    const record = signalRecord(room, userID, state, closeReceipt);
+    return record ? [record] : [];
+  });
+}
+
 export function signalRecordsForRoom(
   room: Record<string, unknown>,
   state: GameRoomSignalState = "active",
   additionalRecipientUserIDs: unknown[] = [],
+  closeReceipt?: GameRoomCloseReceipt,
 ): GameRoomSignalRecord[] {
-  const roomID = clean(room?.id);
-  if (!roomID) return [];
   const players = Array.isArray(room?.players) ? room.players : [];
-  const roomUpdatedAt = clean(room?.updated_date);
   const participantIDs = unique([
     ...(Array.isArray(room?.participant_user_ids)
       ? room.participant_user_ids
@@ -51,14 +143,11 @@ export function signalRecordsForRoom(
     ),
     ...additionalRecipientUserIDs,
   ]);
-  return participantIDs.map((userID) => ({
-    user_id: userID,
-    room_id: roomID,
-    lobby_revision: revision(room?.lobby_revision),
-    room_revision: revision(room?.room_revision),
-    ...(timestamp(roomUpdatedAt) > 0 ? { room_updated_at: roomUpdatedAt } : {}),
-    state,
-  }));
+  return signalRecordsForRecipients(
+    room,
+    participantIDs.map((userID) => ({ user_id: userID, state })),
+    closeReceipt,
+  );
 }
 
 export async function upsertGameRoomSignal(
@@ -78,9 +167,24 @@ export async function upsertGameRoomSignal(
     if (existingRoomRevision > signal.room_revision) return false;
     if (existingRoomRevision < signal.room_revision) return true;
     if (existingLobbyRevision > signal.lobby_revision) return false;
-    return existingLobbyRevision < signal.lobby_revision ||
-      timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at) ||
-      clean(row?.state) !== signal.state;
+    if (existingLobbyRevision < signal.lobby_revision) return true;
+    const existingState = clean(row?.state);
+    // At the same authoritative revision, closure is monotonic. A delayed
+    // active fanout must not reopen a kicked user or a deleted room, while a
+    // strictly newer revision can still represent a legitimate rejoin.
+    if (existingState === "closed" && signal.state === "active") return false;
+    if (existingState !== "closed" && signal.state === "closed") return true;
+    if (
+      clean(signal.close_intent_id) &&
+      (clean(row?.close_intent_id) !== clean(signal.close_intent_id) ||
+        clean(row?.close_match_id) !== clean(signal.close_match_id))
+    ) return true;
+    if (
+      signal.close_completion &&
+      JSON.stringify(row?.close_completion || null) !==
+        JSON.stringify(signal.close_completion)
+    ) return true;
+    return timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at);
   });
   if (updates.length) {
     await Promise.all(
@@ -110,14 +214,23 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
   room: Record<string, unknown>;
   state?: GameRoomSignalState;
   additionalRecipientUserIDs?: unknown[];
+  recipients?: readonly GameRoomSignalRecipient[];
+  closeReceipt?: GameRoomCloseReceipt;
   allowCreate?: boolean;
   logError?: (message: string, error: unknown) => void;
 }): Promise<{ attempted: number; succeeded: number; failed: number }> {
-  const signals = signalRecordsForRoom(
-    input.room,
-    input.state || "active",
-    input.additionalRecipientUserIDs || [],
-  );
+  const signals = input.recipients
+    ? signalRecordsForRecipients(
+      input.room,
+      input.recipients,
+      input.closeReceipt,
+    )
+    : signalRecordsForRoom(
+      input.room,
+      input.state || "active",
+      input.additionalRecipientUserIDs || [],
+      input.closeReceipt,
+    );
   if (!signals.length) return { attempted: 0, succeeded: 0, failed: 0 };
 
   let existing: Record<string, unknown>[];

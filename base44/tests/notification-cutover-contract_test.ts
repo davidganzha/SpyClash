@@ -21,6 +21,7 @@ const functionsURL = new URL("../functions/", import.meta.url);
 const expectedStepZeroSchemaDigest =
   "f09988b0e0b5c5e93a55c4738e47ba20b160bd536ee0cacd65337fa05fd674af";
 const postNotificationLobbyFields = [
+  "close_intent",
   "spy_emails",
   "lobby_spy_count",
   "spies_know_each_other",
@@ -45,6 +46,7 @@ const postNotificationLobbyFields = [
   "detective_vote_cancellation_round_id",
   "detective_vote_cancellation_present_at",
   "detective_vote_cancellation_reason",
+  "replay_source_match_id",
 ];
 const postHistoricalUserFields = [
   "onboarding_completed",
@@ -194,10 +196,13 @@ async function pinHistoricalNotificationEntityFixture(root: string) {
   for (const field of postNotificationLobbyFields) {
     delete room.properties[field];
   }
+  room.properties.players.description =
+    "Server-normalized player objects {user_id, email, name, avatar}";
   await writePrivateJSON(roomPath, room);
   const historyPath = `${root}/base44/entities/GameHistory.jsonc`;
   const history = JSON.parse(await Deno.readTextFile(historyPath));
   delete history.properties.spy_count;
+  delete history.properties.result_key;
   delete history.properties.profile_repair_state;
   delete history.properties.profile_repair_token;
   delete history.properties.profile_repair_lease_until;
@@ -221,6 +226,16 @@ async function pinHistoricalNotificationEntityFixture(root: string) {
   delete announcement.properties.title_uk;
   delete announcement.properties.body_uk;
   await writePrivateJSON(announcementPath, announcement);
+
+  const liveActivityPath =
+    `${root}/base44/entities/live-activity-registration.jsonc`;
+  const liveActivity = JSON.parse(
+    await Deno.readTextFile(liveActivityPath),
+  );
+  delete liveActivity.properties.pending_force_end_commit_id;
+  delete liveActivity.properties.terminal_probe_started_at;
+  delete liveActivity.properties.terminal_probe_until;
+  await writePrivateJSON(liveActivityPath, liveActivity);
 }
 
 async function writeFakeNetworkCommands(

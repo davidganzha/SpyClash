@@ -5,6 +5,24 @@ type Entity = Record<string, any>;
 const LIVE_DELIVERY_LEASE_MS = 90_000;
 export const MAX_LIVE_DELIVERY_ATTEMPTS = 8;
 
+export function forcedLiveEndFailurePatch(
+  canRetry: boolean,
+  now = new Date(),
+): Entity {
+  if (canRetry) return {};
+  return {
+    status: "ended",
+    ended_at: now.toISOString(),
+    pending_force_end: false,
+    pending_force_end_commit_id: null,
+    terminal_probe_started_at: null,
+    terminal_probe_until: null,
+    pending_room_id: null,
+    pending_match_id: null,
+    pending_room_revision: 0,
+  };
+}
+
 function exact(registration: Entity): Entity {
   return {
     id: registration.id,
@@ -81,6 +99,7 @@ export async function queueLiveRetry(input: {
   matchID: string;
   roomRevision: number;
   forceEnd?: boolean;
+  terminalCommitID?: string;
   now?: Date;
 }): Promise<boolean> {
   const now = input.now || new Date();
@@ -97,11 +116,43 @@ export async function queueLiveRetry(input: {
     const replacePending =
       clean(current.pending_match_id) !== clean(input.matchID) ||
       Number(input.roomRevision || 0) > currentPendingRevision;
+    const terminalCommitID = input.forceEnd === true
+      ? clean(input.terminalCommitID)
+      : "";
     const patch: Entity = {
       retry_requested: true,
       updated_at: now.toISOString(),
       ...(input.forceEnd === true ? { pending_force_end: true } : {}),
     };
+    // Ordinary room projections and a terminal ActivityKit end have separate
+    // retry budgets. Reset only on the first transition into a forced end;
+    // duplicate terminal enqueues must preserve the count so a poison token
+    // still reaches the bounded terminal outcome.
+    if (input.forceEnd === true && current.pending_force_end !== true) {
+      patch.delivery_attempt_count = 0;
+    }
+    let nextTerminalCommitID: string | null | undefined;
+    if (terminalCommitID) {
+      nextTerminalCommitID = terminalCommitID;
+    } else if (
+      input.forceEnd === true &&
+      clean(current.pending_match_id) !== clean(input.matchID)
+    ) {
+      // A receipt from an older ActivityKit generation must never authorize a
+      // prepared end for the newly bound match.
+      nextTerminalCommitID = null;
+    }
+    if (
+      nextTerminalCommitID !== undefined &&
+      clean(current.pending_force_end_commit_id) !==
+        clean(nextTerminalCommitID)
+    ) {
+      patch.pending_force_end_commit_id = nextTerminalCommitID;
+      // Authorization CASes this revision. Upgrading a prepared close to a
+      // committed finish must invalidate any stale active-room clear already
+      // holding the previous row snapshot.
+      patch.delivery_revision = crypto.randomUUID();
+    }
     if (clean(current.delivery_state) !== "processing") {
       patch.delivery_state = "retry";
       patch.next_attempt_at = now.toISOString();
@@ -150,21 +201,42 @@ export async function completeLiveDelivery(input: {
     delivery_state: "processing",
     delivery_revision: input.claimed.delivery_revision,
   };
-  if (input.state === "idle") completionFilter.retry_requested = false;
+  // A queue request made after this claim owns the next delivery. Every
+  // completion state must prove there is no such request before overwriting
+  // the processing row (especially a terminal forced-end failure).
+  completionFilter.retry_requested = false;
   const result = await input.store.updateMany(completionFilter, {
     $set: patch,
   });
   if (Number(result?.updated) === 1) return true;
-  if (input.state !== "idle") return false;
   // A newer room mutation can request another send while APNs is in flight.
-  // Preserve successful delivery fields, but leave a retry for that newer
-  // projection instead of losing it or globally scanning idle registrations.
+  // Leave its pending projection untouched and turn the claimed row back into
+  // a due retry. In particular, do not apply an older terminal failure patch
+  // that would clear pending_force_end or mark the registration ended.
+  const safeDeliveredPatch: Entity = {};
+  for (
+    const key of [
+      "last_revision",
+      "last_apns_timestamp",
+      "provider_match_id",
+      "started_match_ids",
+      "last_started_match_id",
+    ]
+  ) {
+    if (Object.hasOwn(input.patch || {}, key)) {
+      safeDeliveredPatch[key] = input.patch?.[key];
+    }
+  }
   const retryPatch: Entity = {
-    ...patch,
+    ...safeDeliveredPatch,
     delivery_state: "retry",
+    delivery_revision: (input.randomUUID || (() => crypto.randomUUID()))(),
+    delivery_lease_until: now.toISOString(),
     next_attempt_at: now.toISOString(),
+    last_error_code: clean(input.errorCode).slice(0, 80),
+    updated_at: now.toISOString(),
+    retry_requested: true,
   };
-  delete retryPatch.delivery_attempt_count;
   const queued = await input.store.updateMany({
     id: input.claimed.id,
     token_hash: input.claimed.token_hash,

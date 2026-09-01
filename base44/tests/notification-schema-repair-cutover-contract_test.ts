@@ -15,6 +15,7 @@ const expectedFinalDigest =
 const expectedHistoricalPlan =
   "a55997ac76faa1c166fc3d68b4df644a961d4f41c04ad9cfd16ef345e4b4127a";
 const postHistoricalGameRoomFields = [
+  "close_intent",
   "spy_emails",
   "lobby_spy_count",
   "spies_know_each_other",
@@ -192,6 +193,8 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
   for (const field of postHistoricalGameRoomFields) {
     delete roomProperties[field];
   }
+  (roomProperties.players as Record<string, unknown>).description =
+    "Server-normalized player objects {user_id, email, name, avatar}";
   const history = schemas.find((schema) => schema.name === "GameHistory")!;
   const historicalHistoryProperties = history.properties as Record<
     string,
@@ -204,6 +207,15 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
   delete historicalHistoryProperties.profile_repair_lease_until;
   delete historicalHistoryProperties.profile_repair_attempt_count;
   delete historicalHistoryProperties.profile_repair_completed_at;
+  const liveActivity = schemas.find((schema) =>
+    schema.name === "LiveActivityRegistration"
+  )!;
+  delete (liveActivity.properties as Record<string, unknown>)
+    .pending_force_end_commit_id;
+  delete (liveActivity.properties as Record<string, unknown>)
+    .terminal_probe_started_at;
+  delete (liveActivity.properties as Record<string, unknown>)
+    .terminal_probe_until;
   schemas.sort((left, right) => {
     const leftName = String(left.name);
     const rightName = String(right.name);

@@ -3567,10 +3567,12 @@ struct Player: Codable, Hashable, Identifiable {
     var name: String
     var avatar: String
     var userID: String? = nil
+    var membershipID: String? = nil
     var clientCapabilities: [String]? = nil
 
     enum CodingKeys: String, CodingKey {
         case userID = "user_id"
+        case membershipID = "membership_id"
         case email
         case name
         case avatar
@@ -3773,6 +3775,7 @@ struct PlayerFeedback: Codable, Hashable {
 
 struct GameRoom: Codable, Identifiable, Hashable {
     let id: String
+    var viewerMembershipID: String? = nil
     var code: String
     var hostEmail: String?
     var matchID: String?
@@ -4043,6 +4046,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
 
     enum CodingKeys: String, CodingKey {
         case id
+        case viewerMembershipID = "viewer_membership_id"
         case code
         case hostEmail = "host_email"
         case matchID = "match_id"
@@ -4231,6 +4235,7 @@ extension GameRoom {
 
         return GameRoom(
             id: "preview-room-\(status)",
+            viewerMembershipID: "preview-membership-\(status)",
             code: "R7VN87",
             hostEmail: players[0].email,
             matchID: ["playing", "finished"].contains(status) ? "preview-match-\(status)" : nil,

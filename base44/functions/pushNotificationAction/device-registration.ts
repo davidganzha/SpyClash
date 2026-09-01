@@ -17,6 +17,11 @@ import {
   requireLiveActivityKind,
 } from "./contracts.ts";
 import { digest, encryptPushToken, tokenBinding } from "./token-crypto.ts";
+import { queueLiveRetry } from "./live-delivery.ts";
+import {
+  committedRoomCloseReceipt,
+  roomCloseCommitReceiptID,
+} from "./forced-live-end-authorization.ts";
 
 type Entity = Record<string, any>;
 type Persist = <T>(writer: () => Promise<T>) => Promise<T>;
@@ -24,6 +29,7 @@ type Persist = <T>(writer: () => Promise<T>) => Promise<T>;
 const PAGE_SIZE = 100;
 const MAX_ACTIVE_DEVICES_PER_USER = 8;
 const MAX_ACTIVE_LIVE_TOKENS_PER_USER = 16;
+const TERMINAL_REGISTRATION_PROBE_MS = 30_000;
 // ActivityKit automatically ends a Live Activity after 8 hours and can retain
 // the ended UI for at most 4 more. A per-activity APNs token older than 12
 // hours cannot represent an updateable Activity anymore.
@@ -265,9 +271,52 @@ function roomHasUser(room: Entity, userID: string): boolean {
     room.players.some((player: Entity) => clean(player?.user_id) === userID);
 }
 
+function roomIsTerminal(room: Entity | null | undefined): boolean {
+  return Boolean(room?.close_intent) ||
+    ["finished", "ended", "closed"].includes(
+      clean(room?.status).toLowerCase(),
+    );
+}
+
+export async function committedGameFinishReceipt(input: {
+  eventStore?: any;
+  userID: string;
+  roomID: string;
+  matchID: string;
+}): Promise<string> {
+  if (!input.eventStore) return "";
+  const sourceEventID = `game-finished:${input.matchID}`;
+  const dedupeKey = `game_finished:${sourceEventID}:${input.userID}`;
+  const events = await input.eventStore.filter({ dedupe_key: dedupeKey }) || [];
+  return events.some((event: Entity) =>
+      clean(event.source_event_id) === sourceEventID &&
+      clean(event.event_type) === "game_finished" &&
+      clean(event.source_type) === "game_room" &&
+      clean(event.recipient_user_id) === input.userID &&
+      clean(event.room_id) === input.roomID &&
+      clean(event.match_id) === input.matchID &&
+      event.inbox_visible !== true &&
+      Boolean(clean(event.inbox_committed_at))
+    )
+    ? sourceEventID
+    : "";
+}
+
+function exactPendingForceEnd(
+  registration: Entity,
+  roomID: string,
+  matchID: string,
+): boolean {
+  return registration.pending_force_end === true &&
+    clean(registration.pending_room_id) === roomID &&
+    clean(registration.pending_match_id) === matchID;
+}
+
 export async function registerLiveActivity(input: {
   liveActivityStore: any;
   roomStore: any;
+  eventStore?: any;
+  signalStore?: any;
   userID: string;
   body: Record<string, unknown>;
   persist: Persist;
@@ -286,23 +335,47 @@ export async function registerLiveActivity(input: {
   let activityIDHash = "";
   let roomID = "";
   let matchID = "";
+  let boundRoom: Entity | null = null;
+  let boundRoomRevision = now.getTime();
+  let committedCloseID = "";
+  let committedFinishID = "";
+  let boundRoomMatchesRegistration = false;
   if (tokenKind === "activity") {
     const binding = requireActivityBinding(input.body);
     activityIDHash = await digest(binding.activityID, "live-activity");
     roomID = binding.roomID;
     matchID = binding.matchID;
-    const rooms = await input.roomStore.filter({ id: roomID }) || [];
+    const [rooms, closeReceipt, finishReceipt] = await Promise.all([
+      input.roomStore.filter({ id: roomID }),
+      committedRoomCloseReceipt({
+        signalStore: input.signalStore,
+        userID: input.userID,
+        roomID,
+        matchID,
+      }),
+      committedGameFinishReceipt({
+        eventStore: input.eventStore,
+        userID: input.userID,
+        roomID,
+        matchID,
+      }),
+    ]);
+    committedCloseID = closeReceipt;
+    committedFinishID = finishReceipt;
     const room = rooms[0];
-    const matchesCurrentMatch = room && matchID === clean(room.match_id);
-    if (
-      !room || !matchesCurrentMatch ||
-      !roomHasUser(room, input.userID)
-    ) {
-      throw new PushContractError(
-        "Live Activity is not bound to this player and match.",
-        403,
-        "invalid_live_activity_binding",
-      );
+    boundRoomMatchesRegistration = Boolean(
+      room && matchID === clean(room.match_id) &&
+        roomHasUser(room, input.userID),
+    );
+    // Missing, mismatched, or temporarily incomplete membership reads are not
+    // negative proof under cross-function replica lag. Persist the encrypted
+    // token as an isolated probation row below; marker-first reconciliation
+    // will either force-end it or accept only a genuinely later exact active
+    // room commit. Ordinary sync never projects it while membership is absent.
+    boundRoom = room || null;
+    const parsedRevision = Date.parse(clean(room?.updated_date));
+    if (boundRoomMatchesRegistration && Number.isFinite(parsedRevision)) {
+      boundRoomRevision = parsedRevision;
     }
   }
 
@@ -321,7 +394,10 @@ export async function registerLiveActivity(input: {
     );
   }
   for (const record of byToken) {
-    if (clean(record.user_id) !== input.userID) {
+    const durableForeignEnd = clean(record.status) === "active" &&
+      clean(record.token_kind) === "activity" &&
+      record.pending_force_end === true;
+    if (clean(record.user_id) !== input.userID && !durableForeignEnd) {
       await input.persist(() => input.liveActivityStore.delete(record.id));
     }
   }
@@ -335,7 +411,9 @@ export async function registerLiveActivity(input: {
   });
   const garbageActivityIDs = new Set(
     userActivityRows.filter((record) =>
-      clean(record.status) !== "active" || perActivityTokenExpired(record, now)
+      clean(record.status) !== "active" ||
+      (record.pending_force_end !== true &&
+        perActivityTokenExpired(record, now))
     ).map((record) => clean(record.id)).filter(Boolean),
   );
   for (const record of userActivityRows) {
@@ -359,20 +437,63 @@ export async function registerLiveActivity(input: {
     ...liveByToken.filter((record) => clean(record.user_id) === input.userID),
     ...byIdentity,
   ]);
+  const queuedTerminalRows = tokenKind === "activity"
+    ? userActivityRows.filter((record) =>
+      clean(record.status) === "active" &&
+      exactPendingForceEnd(record, roomID, matchID)
+    )
+    : [];
+  const exactRoomFinishID = `game-finished:${matchID}`;
+  const roomFinishID = boundRoomMatchesRegistration &&
+      clean(boundRoom?.game_finished_event_id) === exactRoomFinishID
+    ? exactRoomFinishID
+    : "";
+  const roomCloseIntent = boundRoomMatchesRegistration
+    ? boundRoom?.close_intent
+    : null;
+  const roomCloseID = clean(roomCloseIntent?.id) &&
+      clean(roomCloseIntent?.room_id) === roomID &&
+      clean(roomCloseIntent?.match_id) === matchID
+    ? roomCloseCommitReceiptID(matchID, roomCloseIntent.id)
+    : "";
+  committedFinishID = tokenKind === "activity"
+    ? roomFinishID || committedFinishID
+    : "";
+  committedCloseID = tokenKind === "activity"
+    ? roomCloseID || committedCloseID
+    : "";
+  const preserveForceEnd = tokenKind === "activity" &&
+    (Boolean(committedFinishID) || Boolean(committedCloseID) ||
+      queuedTerminalRows.length > 0);
+  const pendingForceEndCommitID = preserveForceEnd
+    ? committedFinishID || committedCloseID ||
+      clean(
+        queuedTerminalRows.find((record) =>
+          clean(record.pending_force_end_commit_id)
+        )?.pending_force_end_commit_id,
+      )
+    : "";
+  const needsTerminalProbe = tokenKind === "activity" && !preserveForceEnd;
+  const terminalProbeUntil = needsTerminalProbe
+    ? new Date(now.getTime() + TERMINAL_REGISTRATION_PROBE_MS).toISOString()
+    : null;
+  const pendingRoomRevision = preserveForceEnd
+    ? Math.max(
+      boundRoomRevision,
+      ...queuedTerminalRows.map((record) =>
+        Math.max(0, Number(record.pending_room_revision || 0))
+      ),
+    )
+    : 0;
   if (!existing) {
     const activeForUser = await matching(input.liveActivityStore, {
       user_id: input.userID,
       status: "active",
     });
-    // SpyClash has one active room per installation. A newly registered exact
-    // Activity supersedes any older per-activity token on that installation;
-    // exclude those replaceable rows from the cap, then delete them only after
-    // the new encrypted row has been persisted successfully.
-    const countableActive = activeForUser.filter((record) =>
-      !(tokenKind === "activity" &&
-        clean(record.token_kind) === "activity" &&
-        clean(record.installation_id_hash) === installationHash)
-    );
+    // ActivityKit can publish a late token for an older generation after a new
+    // Activity already exists on the same installation. Count every active row
+    // and never treat installation identity alone as proof of supersession.
+    const countableActive = activeForUser;
     if (countableActive.length >= MAX_ACTIVE_LIVE_TOKENS_PER_USER) {
       throw new PushContractError(
         "Too many Live Activity tokens are registered.",
@@ -407,16 +528,22 @@ export async function registerLiveActivity(input: {
       : clean(existing?.last_started_match_id)
       ? [clean(existing?.last_started_match_id)]
       : [],
-    delivery_state: "idle",
+    delivery_state: preserveForceEnd || needsTerminalProbe ? "retry" : "idle",
     delivery_revision: crypto.randomUUID(),
     delivery_lease_until: nowISO,
     delivery_attempt_count: 0,
-    next_attempt_at: null,
-    retry_requested: false,
-    pending_room_id: "",
-    pending_match_id: "",
-    pending_room_revision: 0,
-    pending_force_end: false,
+    next_attempt_at: preserveForceEnd || needsTerminalProbe ? nowISO : null,
+    retry_requested: preserveForceEnd || needsTerminalProbe,
+    pending_room_id: preserveForceEnd || needsTerminalProbe ? roomID : "",
+    pending_match_id: preserveForceEnd || needsTerminalProbe ? matchID : "",
+    pending_room_revision: preserveForceEnd || needsTerminalProbe
+      ? Math.max(pendingRoomRevision, boundRoomRevision)
+      : 0,
+    pending_force_end: preserveForceEnd,
+    pending_force_end_commit_id: pendingForceEndCommitID || null,
+    terminal_probe_started_at: needsTerminalProbe ? nowISO : null,
+    terminal_probe_until: terminalProbeUntil,
+    last_error_code: needsTerminalProbe ? "terminal_probe_pending" : "",
     ended_at: null,
     revoked_at: null,
     last_seen_at: nowISO,
@@ -433,13 +560,13 @@ export async function registerLiveActivity(input: {
     [
       ...liveByToken,
       ...byIdentity,
-      ...(tokenKind === "activity"
-        ? userActivityRows.filter((record) =>
-          !garbageActivityIDs.has(clean(record.id)) &&
-          clean(record.installation_id_hash) === installationHash
-        )
-        : []),
-    ].filter((record) => clean(record.user_id) === input.userID),
+    ].filter((record) =>
+      clean(record.user_id) === input.userID &&
+      !(clean(record.status) === "active" &&
+        clean(record.token_kind) === "activity" &&
+        record.pending_force_end === true &&
+        clean(record.id) !== clean(saved.id))
+    ),
     clean(saved.id),
     input.persist,
     input.liveActivityStore,
@@ -464,6 +591,48 @@ export async function unregisterInstallation(input: {
       installation_id_hash: installationHash,
     });
     for (const record of records) {
+      if (
+        store === input.liveActivityStore &&
+        clean(record.status) === "active" &&
+        clean(record.token_kind) === "activity" &&
+        record.pending_force_end === true
+      ) {
+        const deliveryState = clean(record.delivery_state);
+        const deliverable = deliveryState === "retry" ||
+          deliveryState === "processing";
+        if (!deliverable) {
+          const roomID = clean(record.pending_room_id || record.room_id);
+          const matchID = clean(record.pending_match_id || record.match_id);
+          if (roomID && matchID) {
+            const queued = await input.persist(() =>
+              queueLiveRetry({
+                store: input.liveActivityStore,
+                registrationID: clean(record.id),
+                roomID,
+                matchID,
+                roomRevision: Math.max(
+                  0,
+                  Number(record.pending_room_revision || 0),
+                ),
+                forceEnd: true,
+              })
+            );
+            if (!queued) {
+              const latest = (await matching(input.liveActivityStore, {
+                id: clean(record.id),
+              }))[0];
+              if (latest && clean(latest.status) === "active") {
+                throw new PushContractError(
+                  "Live Activity end could not be queued.",
+                  503,
+                  "live_end_queue_contention",
+                );
+              }
+            }
+          }
+        }
+        continue;
+      }
       await input.persist(() => store.delete(record.id));
     }
   }
@@ -471,9 +640,11 @@ export async function unregisterInstallation(input: {
 
 export async function unregisterLiveActivity(input: {
   liveActivityStore: any;
+  roomStore: any;
   userID: string;
   body: Record<string, unknown>;
   persist: Persist;
+  now?: Date;
 }): Promise<void> {
   const installationHash = await digest(
     requireInstallationID(input.body.installation_id),
@@ -501,6 +672,98 @@ export async function unregisterLiveActivity(input: {
   }
   const records = await matching(input.liveActivityStore, filter);
   for (const record of records) {
+    if (tokenKind === "activity" && record.pending_force_end === true) {
+      if (clean(record.status) === "active") {
+        const deliveryState = clean(record.delivery_state);
+        const deliverable = deliveryState === "retry" ||
+          deliveryState === "processing";
+        if (!deliverable) {
+          const roomID = clean(record.pending_room_id || record.room_id);
+          const matchID = clean(record.pending_match_id || record.match_id);
+          const queued = roomID && matchID &&
+            await input.persist(() =>
+              queueLiveRetry({
+                store: input.liveActivityStore,
+                registrationID: clean(record.id),
+                roomID,
+                matchID,
+                roomRevision: Math.max(
+                  0,
+                  Number(record.pending_room_revision || 0),
+                ),
+                forceEnd: true,
+                now: input.now || new Date(),
+              })
+            );
+          if (!queued) {
+            const latest = (await matching(input.liveActivityStore, {
+              id: clean(record.id),
+            }))[0];
+            if (latest && clean(latest.status) === "active") {
+              throw new PushContractError(
+                "Live Activity end could not be queued.",
+                503,
+                "live_end_queue_contention",
+              );
+            }
+          }
+        }
+        // The server has already committed a terminal ActivityKit intent. Keep
+        // its exact token row until the retry worker delivers or revokes it;
+        // the client's local unregister must not erase that durable boundary.
+        continue;
+      }
+      // Terminalized/revoked rows have already cleared or exhausted delivery.
+      await input.persist(() => input.liveActivityStore.delete(record.id));
+      continue;
+    }
+    if (
+      tokenKind === "activity" && clean(record.status) !== "active"
+    ) {
+      await input.persist(() => input.liveActivityStore.delete(record.id));
+      continue;
+    }
+    if (tokenKind === "activity") {
+      const roomID = clean(record.room_id);
+      const matchID = clean(record.match_id || record.provider_match_id);
+      if (roomID && matchID) {
+        const rooms = await matching(input.roomStore, { id: roomID });
+        const room = rooms.find((candidate) => clean(candidate.id) === roomID);
+        const exactActiveMatch = room && clean(room.match_id) === matchID &&
+          !roomIsTerminal(room);
+        if (!exactActiveMatch) {
+          const parsedRevision = Date.parse(clean(room?.updated_date));
+          const now = input.now || new Date();
+          const queued = await input.persist(() =>
+            queueLiveRetry({
+              store: input.liveActivityStore,
+              registrationID: clean(record.id),
+              roomID,
+              matchID,
+              roomRevision: Number.isFinite(parsedRevision)
+                ? parsedRevision
+                : now.getTime(),
+              forceEnd: true,
+              terminalCommitID: clean(room?.game_finished_event_id),
+              now,
+            })
+          );
+          if (!queued) {
+            const latest = (await matching(input.liveActivityStore, {
+              id: clean(record.id),
+            }))[0];
+            if (latest && clean(latest.status) === "active") {
+              throw new PushContractError(
+                "Live Activity end could not be queued.",
+                503,
+                "live_end_queue_contention",
+              );
+            }
+          }
+          continue;
+        }
+      }
+    }
     await input.persist(() => input.liveActivityStore.delete(record.id));
   }
 }

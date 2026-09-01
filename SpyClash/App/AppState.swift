@@ -336,7 +336,250 @@ enum RoomRefreshFailureDisposition: Equatable {
     case close
 }
 
+enum GameRoomRealtimeSignalDisposition: Equatable {
+    case ignore
+    case refresh(forceCatchUp: Bool)
+    case close
+}
+
+enum GameRoomRealtimeSignalPolicy {
+    static func disposition(
+        signal: GameRoomRealtimeSignal,
+        activeRoomID: String?,
+        currentRevision: Int
+    ) -> GameRoomRealtimeSignalDisposition {
+        guard signal.roomID == activeRoomID else { return .ignore }
+
+        let signalRevision = max(signal.roomRevision ?? signal.lobbyRevision, 0)
+        if signal.state == "closed" {
+            return signalRevision >= max(currentRevision, 0) ? .close : .ignore
+        }
+
+        if signal.roomRevision == nil {
+            return .refresh(forceCatchUp: true)
+        }
+        return signalRevision > max(currentRevision, 0)
+            ? .refresh(forceCatchUp: false)
+            : .ignore
+    }
+}
+
+enum GameRoomRealtimeRefreshRetryPolicy {
+    static let retryDelaysMilliseconds = [150, 350, 800]
+
+    static func delayMilliseconds(afterFailedAttempt attempt: Int) -> Int? {
+        guard retryDelaysMilliseconds.indices.contains(attempt) else { return nil }
+        return retryDelaysMilliseconds[attempt]
+    }
+}
+
+struct ClosedRoomRevisionFence: Equatable {
+    private struct Marker: Equatable {
+        let closedRevision: Int?
+        let closedMembershipID: String
+        var reopenedMembershipID: String?
+        var reopenedRevision: Int?
+    }
+
+    private var markersByAccountAndRoom: [String: Marker] = [:]
+
+    mutating func record(
+        userID: String?,
+        roomID: String,
+        revision: Int?,
+        membershipID: String?
+    ) {
+        guard let key = key(userID: userID, roomID: roomID) else { return }
+        let normalizedMembershipID = membershipID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let normalizedRevision = revision.map { max($0, 0) }
+        let priorRevision = markersByAccountAndRoom[key]?.closedRevision
+        markersByAccountAndRoom[key] = Marker(
+            // A nil revision means a 404/nil authoritative read. Preserve that
+            // as an unknown terminal boundary; guessing from the local room
+            // revision could admit a newer response that still predates close.
+            closedRevision: normalizedRevision.map {
+                max($0, priorRevision ?? 0)
+            },
+            closedMembershipID: normalizedMembershipID,
+            reopenedMembershipID: nil,
+            reopenedRevision: nil
+        )
+    }
+
+    func permits(
+        userID: String?,
+        roomID: String,
+        revision: Int,
+        membershipID: String?
+    ) -> Bool {
+        guard let key = key(userID: userID, roomID: roomID),
+              let marker = markersByAccountAndRoom[key] else {
+            return true
+        }
+        if let reopenedMembershipID = marker.reopenedMembershipID,
+           let reopenedRevision = marker.reopenedRevision {
+            let candidateMembershipID = membershipID?
+                .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+            return !candidateMembershipID.isEmpty &&
+                candidateMembershipID == reopenedMembershipID &&
+                max(revision, 0) >= reopenedRevision
+        }
+        guard let closedRevision = marker.closedRevision else { return false }
+        // A close/kick signal is authoritative for this account's exact room
+        // generation. Only an explicit later rejoin, which commits a strictly
+        // newer room revision, may make that room adoptable again.
+        return max(revision, 0) > closedRevision
+    }
+
+    mutating func authorizeExplicitRejoin(
+        userID: String?,
+        roomID: String,
+        revision: Int,
+        membershipID: String?
+    ) -> Bool {
+        guard let key = key(userID: userID, roomID: roomID),
+              var marker = markersByAccountAndRoom[key] else {
+            return true
+        }
+        let candidateMembershipID = membershipID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let candidateRevision = max(revision, 0)
+        guard !candidateMembershipID.isEmpty,
+              marker.closedMembershipID.isEmpty ||
+                candidateMembershipID != marker.closedMembershipID,
+              marker.closedRevision.map({ candidateRevision > $0 }) ?? true else {
+            return false
+        }
+        // Keep a generation fence after reopening. Removing the marker would
+        // let an older pre-close response arrive after the explicit join and
+        // replace the newly joined membership.
+        marker.reopenedMembershipID = candidateMembershipID
+        marker.reopenedRevision = candidateRevision
+        markersByAccountAndRoom[key] = marker
+        return true
+    }
+
+    private func key(userID: String?, roomID: String) -> String? {
+        let normalizedUserID = userID?
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+        let normalizedRoomID = roomID.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !normalizedUserID.isEmpty, !normalizedRoomID.isEmpty else { return nil }
+        return "\(normalizedUserID)\u{1F}\(normalizedRoomID)"
+    }
+}
+
+enum ActiveRoomSnapshotAdmissionPolicy {
+    static func fallbackAfterRejectingCandidate(
+        previousRoom: GameRoom?,
+        previousRoomIsPermitted: Bool
+    ) -> GameRoom? {
+        previousRoomIsPermitted ? previousRoom : nil
+    }
+}
+
+enum DismissedRoomExitMode: String, Equatable {
+    case leave
+    case close
+
+    static func resolve(room: GameRoom, currentUserEmail: String?) -> Self {
+        let host = room.hostEmail?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let currentUser = currentUserEmail?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        return host?.isEmpty == false && host == currentUser ? .close : .leave
+    }
+}
+
+enum DismissedRoomExitFailureDisposition: Equatable {
+    case retry
+    case stop
+    case leaveThenStop
+}
+
+enum DismissedRoomExitRetryPolicy {
+    static let leaveRetryDelaysMilliseconds = [250, 750]
+    static let closeRetryDelaysMilliseconds = [1_000, 2_000, 4_000, 8_000]
+
+    static func delayMilliseconds(
+        afterFailedAttempt attempt: Int,
+        mode: DismissedRoomExitMode
+    ) -> Int? {
+        guard attempt >= 0 else { return nil }
+        switch mode {
+        case .leave:
+            guard leaveRetryDelaysMilliseconds.indices.contains(attempt) else { return nil }
+            return leaveRetryDelaysMilliseconds[attempt]
+        case .close:
+            return closeRetryDelaysMilliseconds[
+                min(attempt, closeRetryDelaysMilliseconds.count - 1)
+            ]
+        }
+    }
+
+    static func failureDisposition(
+        for error: Error,
+        mode: DismissedRoomExitMode
+    ) -> DismissedRoomExitFailureDisposition {
+        guard let base44Error = error as? Base44Error,
+              let statusCode = base44Error.statusCode else { return .retry }
+        if statusCode == 409,
+           base44Error.code == "room_exit_membership_conflict" {
+            return .stop
+        }
+        if statusCode == 403, mode == .close { return .leaveThenStop }
+        if (400...499).contains(statusCode),
+           ![408, 409, 429].contains(statusCode) {
+            return .stop
+        }
+        return .retry
+    }
+
+    @MainActor
+    static func run(
+        mode: DismissedRoomExitMode,
+        shouldContinue: () -> Bool,
+        operation: () async throws -> Void,
+        leaveFallback: (() async -> Void)? = nil,
+        sleep: (Int) async throws -> Void
+    ) async {
+        var failedAttempts = 0
+        while shouldContinue(), !Task.isCancelled {
+            do {
+                try await operation()
+                return
+            } catch is CancellationError {
+                return
+            } catch {
+                switch failureDisposition(for: error, mode: mode) {
+                case .stop:
+                    return
+                case .leaveThenStop:
+                    await leaveFallback?()
+                    return
+                case .retry:
+                    break
+                }
+                guard let delay = delayMilliseconds(
+                    afterFailedAttempt: failedAttempts,
+                    mode: mode
+                ) else { return }
+                failedAttempts += 1
+                do {
+                    try await sleep(delay)
+                } catch {
+                    return
+                }
+            }
+        }
+    }
+}
+
 enum RoomPollPolicy {
+    static let backgroundWakeCheckSeconds = 2.0
+
     static func acceptsSnapshot(
         currentLobbyRevision: Int?,
         fetchedLobbyRevision: Int?
@@ -369,8 +612,14 @@ enum RoomPollPolicy {
     ) -> Double {
         guard isApplicationActive else { return 30 }
 
-        _ = roomStatus
-        return min(4 * pow(2, Double(min(consecutiveFailures, 3))), 30)
+        let status = roomStatus?
+            .trimmingCharacters(in: .whitespacesAndNewlines)
+            .lowercased()
+        let baseDelay = ["ready_voting", "roulette", "playing"].contains(status ?? "")
+            ? 2.0
+            : 4.0
+        let cappedFailures = min(max(consecutiveFailures, 0), 2)
+        return min(baseDelay * pow(2, Double(cappedFailures)), 8)
     }
 
     static func failureDisposition(for error: Error) -> RoomRefreshFailureDisposition {
@@ -773,9 +1022,19 @@ final class AppState: NSObject {
             let shouldHonorDismissedRoom = true
             #endif
             if shouldHonorDismissedRoom,
-               let room = activeRoom,
-               isDismissedRoom(room.id) {
-                activeRoom = nil
+               let candidateRoom = activeRoom,
+               !isActiveRoomSnapshotPermitted(candidateRoom) {
+                let previousRoomIsPermitted = oldValue.map {
+                    isActiveRoomSnapshotPermitted($0)
+                } ?? false
+                // Reject only the stale candidate. After an explicit rejoin,
+                // a delayed response from the old membership must not evict
+                // the valid new session that is already active.
+                activeRoom = ActiveRoomSnapshotAdmissionPolicy
+                    .fallbackAfterRejectingCandidate(
+                        previousRoom: oldValue,
+                        previousRoomIsPermitted: previousRoomIsPermitted
+                    )
             }
             if activeRoom == nil {
                 isHomeLandingPresentationRequested = false
@@ -848,6 +1107,7 @@ final class AppState: NSObject {
     @ObservationIgnored private var activationResumeTask: Task<Void, Never>?
     @ObservationIgnored private var activeRoomActivationRefreshTask: Task<Void, Never>?
     @ObservationIgnored private var roomRefreshRequestRevision = 0
+    @ObservationIgnored private var closedRoomRevisionFence = ClosedRoomRevisionFence()
     @ObservationIgnored private var lobbySettingsSyncWorker: Task<Void, Never>?
     @ObservationIgnored private var lobbySettingsSyncGeneration = UUID()
     @ObservationIgnored private var lobbySettingsSyncRunID: UUID?
@@ -882,10 +1142,15 @@ final class AppState: NSObject {
     }
     private(set) var authPresentationRequestID = 0
     @ObservationIgnored private var isOpeningPendingMatch = false
-    @ObservationIgnored private var dismissedRoomExitAttemptedID: String?
+    @ObservationIgnored private var dismissedRoomExitAttemptGeneration: UUID?
+    @ObservationIgnored private var dismissedRoomExitTask: Task<Void, Never>?
     private static let activeRoomIDStorageKey = "spyclash.activeRoomID"
     private static let dismissedRoomIDStorageKey = "spyclash.dismissedRoomID"
     private static let dismissedRoomOwnerStorageKey = "spyclash.dismissedRoomOwnerID"
+    private static let dismissedRoomExitModeStorageKey = "spyclash.dismissedRoomExitMode"
+    private static let dismissedRoomExitRevisionStorageKey = "spyclash.dismissedRoomExitRevision"
+    private static let dismissedRoomExitMembershipStorageKey = "spyclash.dismissedRoomExitMembership"
+    private static let dismissedRoomCodeStorageKey = "spyclash.dismissedRoomCode"
 
     override init() {
         let client = Base44Client()
@@ -944,9 +1209,42 @@ final class AppState: NSObject {
     }
 
     func leaveRoomImmediately(_ room: GameRoom) {
+        cancelDismissedRoomExitAttempt()
+        // Local-first leave/close is terminal for the membership generation
+        // visible on this device. Its exact server revision is not known yet,
+        // so require an explicit rejoin with a different membership before any
+        // same-room response can become active again.
+        closedRoomRevisionFence.record(
+            userID: user?.id,
+            roomID: room.id,
+            revision: nil,
+            membershipID: room.viewerMembershipID
+        )
         if let ownerID = user?.id {
             UserDefaults.standard.set(room.id, forKey: Self.dismissedRoomIDStorageKey)
             UserDefaults.standard.set(ownerID, forKey: Self.dismissedRoomOwnerStorageKey)
+            UserDefaults.standard.set(
+                room.code.uppercased(),
+                forKey: Self.dismissedRoomCodeStorageKey
+            )
+            let exitMode = DismissedRoomExitMode.resolve(
+                room: room,
+                currentUserEmail: user?.email
+            )
+            UserDefaults.standard.set(
+                exitMode.rawValue,
+                forKey: Self.dismissedRoomExitModeStorageKey
+            )
+            UserDefaults.standard.set(
+                RoomExitRevisionPolicy.expectedRevision(
+                    roomRevision: room.roomRevision
+                ),
+                forKey: Self.dismissedRoomExitRevisionStorageKey
+            )
+            UserDefaults.standard.set(
+                room.viewerMembershipID,
+                forKey: Self.dismissedRoomExitMembershipStorageKey
+            )
         }
 
         roomSyncOperation = nil
@@ -965,9 +1263,54 @@ final class AppState: NSObject {
         guard isDismissedRoom(roomID) else { return }
         UserDefaults.standard.removeObject(forKey: Self.dismissedRoomIDStorageKey)
         UserDefaults.standard.removeObject(forKey: Self.dismissedRoomOwnerStorageKey)
-        if dismissedRoomExitAttemptedID == roomID {
-            dismissedRoomExitAttemptedID = nil
+        UserDefaults.standard.removeObject(forKey: Self.dismissedRoomExitModeStorageKey)
+        UserDefaults.standard.removeObject(forKey: Self.dismissedRoomExitRevisionStorageKey)
+        UserDefaults.standard.removeObject(forKey: Self.dismissedRoomExitMembershipStorageKey)
+        UserDefaults.standard.removeObject(forKey: Self.dismissedRoomCodeStorageKey)
+        cancelDismissedRoomExitAttempt()
+    }
+
+    func confirmExplicitRoomActivation(_ room: GameRoom) throws {
+        guard closedRoomRevisionFence.authorizeExplicitRejoin(
+            userID: user?.id,
+            roomID: room.id,
+            revision: room.roomRevision ?? room.lobbyRevision ?? 0,
+            membershipID: room.viewerMembershipID
+        ) else {
+            throw Base44Error(
+                message: "The room rejoin generation could not be confirmed. Try again.",
+                statusCode: 409,
+                code: "room_rejoin_generation_unconfirmed",
+                retryable: true
+            )
         }
+        allowRoomActivation(room.id)
+    }
+
+    func joinRoomSnapshotForExplicitActivation(
+        code rawCode: String,
+        user: SpyUser
+    ) async throws -> GameRoom {
+        let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        let dismissedCode = UserDefaults.standard
+            .string(forKey: Self.dismissedRoomCodeStorageKey)?
+            .uppercased()
+        let expectedMembershipID = dismissedCode == code
+            ? UserDefaults.standard.string(
+                forKey: Self.dismissedRoomExitMembershipStorageKey
+            )
+            : nil
+        return try await client.join(
+            code: code,
+            user: user,
+            expectedMembershipID: expectedMembershipID
+        )
+    }
+
+    private func cancelDismissedRoomExitAttempt() {
+        dismissedRoomExitTask?.cancel()
+        dismissedRoomExitTask = nil
+        dismissedRoomExitAttemptGeneration = nil
     }
 
     private func isDismissedRoom(_ roomID: String) -> Bool {
@@ -978,6 +1321,16 @@ final class AppState: NSObject {
         return UserDefaults.standard.string(forKey: Self.dismissedRoomIDStorageKey) == roomID
     }
 
+    private func isActiveRoomSnapshotPermitted(_ room: GameRoom) -> Bool {
+        !isDismissedRoom(room.id) &&
+            closedRoomRevisionFence.permits(
+                userID: user?.id,
+                roomID: room.id,
+                revision: room.roomRevision ?? room.lobbyRevision ?? 0,
+                membershipID: room.viewerMembershipID
+            )
+    }
+
     private func retryDismissedRoomExitIfNeeded() {
 #if DEBUG
         guard !shouldUsePreviewData else { return }
@@ -985,14 +1338,58 @@ final class AppState: NSObject {
         guard let roomID = UserDefaults.standard
             .string(forKey: Self.dismissedRoomIDStorageKey),
               isDismissedRoom(roomID),
-              dismissedRoomExitAttemptedID != roomID else { return }
-        dismissedRoomExitAttemptedID = roomID
-        Task { @MainActor [weak self] in
-            do {
-                try await self?.client.leaveRoom(roomID: roomID)
-            } catch {
-                guard self?.dismissedRoomExitAttemptedID == roomID else { return }
-                self?.dismissedRoomExitAttemptedID = nil
+              dismissedRoomExitAttemptGeneration == nil else { return }
+        let exitMode = UserDefaults.standard
+            .string(forKey: Self.dismissedRoomExitModeStorageKey)
+            .flatMap { DismissedRoomExitMode(rawValue: $0) } ?? .leave
+        let expectedRevision = UserDefaults.standard
+            .object(forKey: Self.dismissedRoomExitRevisionStorageKey)
+            .flatMap { ($0 as? NSNumber)?.intValue }
+        let expectedMembershipID = UserDefaults.standard
+            .string(forKey: Self.dismissedRoomExitMembershipStorageKey)
+        let attemptGeneration = UUID()
+        dismissedRoomExitAttemptGeneration = attemptGeneration
+        dismissedRoomExitTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            await DismissedRoomExitRetryPolicy.run(
+                mode: exitMode,
+                shouldContinue: {
+                    self.dismissedRoomExitAttemptGeneration == attemptGeneration &&
+                        self.isDismissedRoom(roomID)
+                },
+                operation: {
+                    switch exitMode {
+                    case .leave:
+                        try await self.client.leaveRoom(
+                            roomID: roomID,
+                            expectedRevision: expectedRevision,
+                            expectedMembershipID: expectedMembershipID
+                        )
+                    case .close:
+                        try await self.client.closeRoom(
+                            roomID: roomID,
+                            expectedRevision: expectedRevision,
+                            expectedMembershipID: expectedMembershipID
+                        )
+                    }
+                },
+                leaveFallback: exitMode == .close ? {
+                    // Authority can legitimately move before this local-first
+                    // cleanup reaches the server. Stop close retries and make
+                    // one bounded membership cleanup as the former host.
+                    try? await self.client.leaveRoom(
+                        roomID: roomID,
+                        expectedRevision: expectedRevision,
+                        expectedMembershipID: expectedMembershipID
+                    )
+                } : nil,
+                sleep: { delay in
+                    try await Task.sleep(for: .milliseconds(delay))
+                }
+            )
+            if self.dismissedRoomExitAttemptGeneration == attemptGeneration {
+                self.dismissedRoomExitAttemptGeneration = nil
+                self.dismissedRoomExitTask = nil
             }
         }
     }
@@ -1525,7 +1922,25 @@ final class AppState: NSObject {
                     consecutiveFailures: failureTracker.consecutiveFailures,
                     isApplicationActive: isApplicationActive
                 )
-                try await Task.sleep(for: .seconds(delay))
+                if isApplicationActive {
+                    try await Task.sleep(for: .seconds(delay))
+                } else {
+                    // Preserve a 30-second background request cadence while
+                    // checking the lifecycle often enough that foregrounding
+                    // cannot inherit the remainder of that long sleep.
+                    var remainingBackgroundDelay = delay
+                    while remainingBackgroundDelay > 0,
+                          !Task.isCancelled,
+                          activeRoom?.id == roomID,
+                          !isApplicationActive {
+                        let chunk = min(
+                            remainingBackgroundDelay,
+                            RoomPollPolicy.backgroundWakeCheckSeconds
+                        )
+                        try await Task.sleep(for: .seconds(chunk))
+                        remainingBackgroundDelay -= chunk
+                    }
+                }
             } catch {
                 return
             }
@@ -1637,8 +2052,28 @@ final class AppState: NSObject {
         )
     }
 
-    private func closeActiveRoomAfterRefresh(roomID: String) {
-        guard activeRoom?.id == roomID else { return }
+    private func closeActiveRoomAfterRefresh(
+        roomID: String,
+        authoritativeRevision: Int? = nil
+    ) {
+        guard let closingRoom = activeRoom, closingRoom.id == roomID else { return }
+        let localRevision = closingRoom.roomRevision ?? closingRoom.lobbyRevision ?? 0
+        let closingRevision = authoritativeRevision.map { max($0, localRevision) }
+        closedRoomRevisionFence.record(
+            userID: user?.id,
+            roomID: roomID,
+            revision: closingRevision,
+            membershipID: closingRoom.viewerMembershipID
+        )
+        // Invalidate every read generation before clearing the room. Requests
+        // already in flight can still complete, but the revision fence in the
+        // activeRoom setter rejects their pre-close snapshots.
+        activeRoomActivationRefreshTask?.cancel()
+        activeRoomActivationRefreshTask = nil
+        gameRoomRealtimeRefreshTask?.cancel()
+        gameRoomRealtimeRefreshTask = nil
+        roomSyncRevision &+= 1
+        _ = nextRoomRefreshRequestRevision()
         activeRoom = nil
         if selectedTab == .game {
             selectedTab = .home
@@ -2906,18 +3341,31 @@ final class AppState: NSObject {
     }
 
     private func handleGameRoomRealtimeSignal(_ signal: GameRoomRealtimeSignal) {
-        guard activeRoom?.id == signal.roomID else { return }
-        pendingGameRoomRealtimeRevision = max(
-            pendingGameRoomRealtimeRevision,
-            signal.roomRevision ?? signal.lobbyRevision
-        )
-        // Versioned signals can be compared with an action response already
-        // installed in activeRoom. Legacy signals need a forced read because
-        // their lobby revision does not advance during gameplay.
-        if signal.roomRevision == nil {
-            gameRoomRealtimeCatchUpRequested = true
+        let currentRevision = activeRoom?.roomRevision ?? activeRoom?.lobbyRevision ?? 0
+        switch GameRoomRealtimeSignalPolicy.disposition(
+            signal: signal,
+            activeRoomID: activeRoom?.id,
+            currentRevision: currentRevision
+        ) {
+        case .ignore:
+            return
+        case .close:
+            closeActiveRoomAfterRefresh(
+                roomID: signal.roomID,
+                authoritativeRevision: signal.roomRevision ?? signal.lobbyRevision
+            )
+        case .refresh(let forceCatchUp):
+            pendingGameRoomRealtimeRevision = max(
+                pendingGameRoomRealtimeRevision,
+                signal.roomRevision ?? signal.lobbyRevision
+            )
+            // Legacy signals need a forced read because their lobby revision
+            // does not advance during gameplay.
+            if forceCatchUp {
+                gameRoomRealtimeCatchUpRequested = true
+            }
+            scheduleGameRoomRealtimeRefresh()
         }
-        scheduleGameRoomRealtimeRefresh()
     }
 
     private func handleGameRoomRealtimeCatchUp() {
@@ -2958,6 +3406,7 @@ final class AppState: NSObject {
         }
 
         var staleReadAttempts = 0
+        var transientFailureAttempts = 0
         while !Task.isCancelled, generation == gameRoomRealtimeGeneration {
             // Do not spin while a serialized room mutation owns the refresh
             // lane. `endRoomSync` restarts one bounded catch-up batch.
@@ -2973,6 +3422,7 @@ final class AppState: NSObject {
                 return
             }
             pendingGameRoomRealtimeRevision = 0
+            let refreshRevision = roomSyncRevision
 
             let refreshedRoom: GameRoom?
             do {
@@ -2987,6 +3437,23 @@ final class AppState: NSObject {
                 if RoomPollPolicy.failureDisposition(for: error) == .close {
                     closeActiveRoomAfterRefresh(roomID: roomID)
                     return
+                }
+                if LobbySyncRetryPolicy.isRetryable(error),
+                   let delay = GameRoomRealtimeRefreshRetryPolicy
+                    .delayMilliseconds(afterFailedAttempt: transientFailureAttempts) {
+                    transientFailureAttempts += 1
+                    pendingGameRoomRealtimeRevision = max(
+                        pendingGameRoomRealtimeRevision,
+                        requiredRevision
+                    )
+                    gameRoomRealtimeCatchUpRequested =
+                        gameRoomRealtimeCatchUpRequested || isCatchUp
+                    do {
+                        try await Task.sleep(for: .milliseconds(delay))
+                    } catch {
+                        return
+                    }
+                    continue
                 }
                 // Park the wake-up revision instead of recursively spinning on
                 // a failing endpoint. Polling, reconnect catch-up, activation,
@@ -3004,8 +3471,24 @@ final class AppState: NSObject {
             guard !Task.isCancelled,
                   generation == gameRoomRealtimeGeneration,
                   activeRoom?.id == roomID,
-                  roomSyncOperation == nil,
-                  let refreshedRoom else { return }
+                  roomSyncOperation == nil else { return }
+
+            guard roomSyncRevision == refreshRevision else {
+                pendingGameRoomRealtimeRevision = max(
+                    pendingGameRoomRealtimeRevision,
+                    requiredRevision
+                )
+                gameRoomRealtimeCatchUpRequested =
+                    gameRoomRealtimeCatchUpRequested || isCatchUp
+                continue
+            }
+
+            guard let refreshedRoom else {
+                closeActiveRoomAfterRefresh(roomID: roomID)
+                return
+            }
+
+            transientFailureAttempts = 0
 
             let fetchedRevision = refreshedRoom.roomRevision ?? refreshedRoom.lobbyRevision ?? 0
             let currentRevision = activeRoom?.roomRevision ?? activeRoom?.lobbyRevision ?? 0
@@ -3163,8 +3646,11 @@ final class AppState: NSObject {
         }
 
         do {
-            let room = try await client.join(code: code, user: user)
-            allowRoomActivation(room.id)
+            let room = try await joinRoomSnapshotForExplicitActivation(
+                code: code,
+                user: user
+            )
+            try confirmExplicitRoomActivation(room)
             activeRoom = room
             selectedTab = .game
             shellRoute = .main

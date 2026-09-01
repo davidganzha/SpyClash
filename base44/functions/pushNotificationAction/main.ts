@@ -7,6 +7,7 @@ import {
   PushContractError,
 } from "./contracts.ts";
 import {
+  committedGameFinishReceipt,
   deviceTokenOwnerIDs,
   registerDevice,
   registerLiveActivity,
@@ -26,7 +27,11 @@ import {
   validatePushSource,
 } from "./push-events.ts";
 import { sendAlertPush } from "./apns.ts";
-import { clampDeadline, runBounded } from "./bounded-work.ts";
+import {
+  clampDeadline,
+  runBounded,
+  runWithinDeadline,
+} from "./bounded-work.ts";
 import {
   sendLiveActivityTermination,
   sendLiveActivityUpdate,
@@ -34,6 +39,7 @@ import {
 import {
   claimLiveDelivery,
   completeLiveDelivery,
+  forcedLiveEndFailurePatch,
   liveDeliveryDue,
   liveRetryAt,
   MAX_LIVE_DELIVERY_ATTEMPTS,
@@ -59,6 +65,26 @@ import { canonicalBase44Request } from "./base44-context.ts";
 import { pushErrorResponse } from "./error-response.ts";
 import { finishedProfileRepairAlreadyCompleted } from "./profile-repair-state.ts";
 import { createProcessEventTiming } from "./process-event-timing.ts";
+import {
+  enqueueRoomLiveActivityEnd,
+  type RoomLiveActivityEndQueue,
+} from "./live-end-enqueue.ts";
+import { deliverQueuedRoomLiveActivityEnd } from "./queued-live-end-delivery.ts";
+import {
+  authorizeForcedLiveActivityEnd,
+  committedRoomCloseReceipt,
+  roomCloseCommitReceiptID,
+} from "./forced-live-end-authorization.ts";
+import { withBillingLifecycleContentionRetry } from "./billing-lifecycle-retry.ts";
+import {
+  advanceRoomReconciliationCheckpoint,
+  cursorAfterAttemptedRoomPage,
+  ensureRoomReconciliationCheckpoint,
+  loadRoomReconciliationPage,
+  type ReconciledRoomStatus,
+  type RoomReconciliationCheckpoint,
+  selectScheduledRoomReconciliationRooms,
+} from "./scheduled-room-reconciliation.ts";
 
 type Entity = Record<string, any>;
 const PAGE_SIZE = 100;
@@ -116,6 +142,51 @@ async function repairRoomPushOutbox(base44: any, room: Entity) {
   });
 }
 
+function pendingTerminalIntentScope(room: Entity): Entity | null {
+  const intent = room?.terminal_intent;
+  const matchID = clean(room?.match_id);
+  const decidedAt = clean(intent?.decided_at);
+  if (
+    clean(room?.status).toLowerCase() === "finished" || !matchID ||
+    clean(intent?.match_id) !== matchID ||
+    !["spy", "detectives"].includes(clean(intent?.winner)) ||
+    !decidedAt || !Number.isFinite(Date.parse(decidedAt))
+  ) return null;
+  return { matchID, decidedAt };
+}
+
+async function reconcilePendingTerminalRoom(
+  base44: any,
+  room: Entity,
+): Promise<Entity> {
+  const scope = pendingTerminalIntentScope(room);
+  if (!scope) return room;
+  const internalSecret = clean(Deno.env.get("PUSH_INTERNAL_SECRET"));
+  if (internalSecret.length < 32) return room;
+  try {
+    await runWithinDeadline({
+      deadlineEpochMs: Date.now() + 500,
+      operation: () =>
+        base44.asServiceRole.functions.invoke("gameRoomAction", {
+          action: "reconcile_terminal_intent",
+          room_id: clean(room.id),
+          expected_match_id: scope.matchID,
+          expected_decided_at: scope.decidedAt,
+          internal_secret: internalSecret,
+        }),
+    });
+    return (await allMatching(base44.asServiceRole.entities.GameRoom, {
+      id: clean(room.id),
+    }))[0] || room;
+  } catch (error) {
+    console.error(
+      "terminal intent reconciliation deferred",
+      (error as Error)?.message || error,
+    );
+    return room;
+  }
+}
+
 async function repairFinishedRoomCommunityProfiles(
   base44: any,
   room: Entity,
@@ -155,17 +226,31 @@ async function repairFinishedRoomCommunityProfiles(
 async function drainDurableCommunityProfileRepairs(
   base44: any,
   limit: number,
+  deadlineEpochMs: number,
 ): Promise<Entity> {
   const internalSecret = clean(Deno.env.get("PUSH_INTERNAL_SECRET"));
   if (internalSecret.length < 32) {
     return { ok: false, selected: 0, deferred: 0, reason: "secret_missing" };
   }
   try {
-    return await base44.asServiceRole.functions.invoke("gameRoomAction", {
-      action: "drain_community_profile_repairs",
-      internal_secret: internalSecret,
-      limit: Math.min(Math.max(Math.floor(limit) || 1, 1), 24),
+    const bounded = await runWithinDeadline({
+      deadlineEpochMs,
+      operation: () =>
+        base44.asServiceRole.functions.invoke("gameRoomAction", {
+          action: "drain_community_profile_repairs",
+          internal_secret: internalSecret,
+          limit: Math.min(Math.max(Math.floor(limit) || 1, 1), 24),
+        }),
     });
+    if (bounded.timedOut) {
+      return {
+        ok: false,
+        selected: 0,
+        deferred: 1,
+        reason: "deadline_exceeded",
+      };
+    }
+    return bounded.value as Entity;
   } catch (error) {
     // GameHistory, not an ephemeral finished room, remains the durable source.
     // APNs/outbox work below proceeds independently and a later drain retries.
@@ -193,35 +278,138 @@ async function reconcileRecentRoomOutboxes(
   base44: any,
   deadlineEpochMs: number,
 ): Promise<number> {
-  const rooms: Entity[] = [];
-  for (const status of ["playing", "finished"]) {
-    rooms.push(
-      ...await base44.asServiceRole.entities.GameRoom.filter(
-        { status },
+  const roomStore = base44.asServiceRole.entities.GameRoom;
+  const checkpointStore =
+    base44.asServiceRole.entities.NotificationAnnouncement;
+  const loadCheckpoint = async (
+    status: ReconciledRoomStatus,
+  ): Promise<RoomReconciliationCheckpoint | null> => {
+    try {
+      return await ensureRoomReconciliationCheckpoint({
+        store: checkpointStore,
+        status,
+      });
+    } catch (error) {
+      // The newest head and the first keyset page still run if checkpoint
+      // persistence is temporarily unavailable. No room state is mutated by
+      // the checkpoint itself.
+      console.error(
+        "room reconciliation checkpoint deferred",
+        status,
+        (error as Error)?.message || error,
+      );
+      return null;
+    }
+  };
+  const [finishedCheckpoint, playingCheckpoint] = await Promise.all([
+    loadCheckpoint("finished"),
+    loadCheckpoint("playing"),
+  ]);
+  const [finishedPage, playingPage, finishedNewest, playingNewest] =
+    await Promise.all([
+      loadRoomReconciliationPage({
+        roomStore,
+        status: "finished",
+        cursor: finishedCheckpoint?.cursor || "",
+        limit: 6,
+      }),
+      loadRoomReconciliationPage({
+        roomStore,
+        status: "playing",
+        cursor: playingCheckpoint?.cursor || "",
+        limit: 3,
+      }),
+      roomStore.filter(
+        { status: "finished" },
         "-updated_date",
-        8,
+        2,
         0,
-      ) || [],
-    );
-  }
-  const uniqueRooms = rooms.filter((room, index, all) =>
-    all.findIndex((candidate) => clean(candidate.id) === clean(room.id)) ===
-      index
-  );
+      ),
+      roomStore.filter(
+        { status: "playing" },
+        "-updated_date",
+        1,
+        0,
+      ),
+    ]);
+  const candidates = selectScheduledRoomReconciliationRooms({
+    finishedNewest: finishedNewest || [],
+    finishedCursorPage: finishedPage.rooms,
+    playingNewest: playingNewest || [],
+    playingCursorPage: playingPage.rooms,
+  });
+  const attemptedCursorRoomIDs: Record<
+    ReconciledRoomStatus,
+    Set<string>
+  > = {
+    finished: new Set<string>(),
+    playing: new Set<string>(),
+  };
   let created = 0;
   await runBounded({
-    items: uniqueRooms.slice(0, 12),
+    items: candidates,
     concurrency: 3,
     deadlineEpochMs,
-    worker: async (room) => {
+    worker: async (candidate) => {
+      const roomID = clean(candidate.room?.id);
       try {
-        created += await repairRoomPushOutbox(base44, room);
-      } catch {
-        // The committed room identity remains a durable repair source for the
-        // next scheduled pass or any later process_event call.
+        const room = await reconcilePendingTerminalRoom(
+          base44,
+          candidate.room,
+        );
+        try {
+          created += await repairRoomPushOutbox(base44, room);
+        } catch {
+          // The committed room identity remains a durable repair source for
+          // the next cursor wrap or any later process_event call.
+        }
+      } finally {
+        if (candidate.source === "cursor" && roomID) {
+          attemptedCursorRoomIDs[candidate.status].add(roomID);
+        }
       }
-      await repairFinishedRoomCommunityProfiles(base44, room);
     },
+  });
+  const nextFinishedCursor = cursorAfterAttemptedRoomPage({
+    previousCursor: finishedCheckpoint?.cursor || "",
+    page: finishedPage.rooms,
+    attemptedRoomIDs: attemptedCursorRoomIDs.finished,
+  });
+  const nextPlayingCursor = cursorAfterAttemptedRoomPage({
+    previousCursor: playingCheckpoint?.cursor || "",
+    page: playingPage.rooms,
+    attemptedRoomIDs: attemptedCursorRoomIDs.playing,
+  });
+  const checkpointAdvances: Promise<unknown>[] = [];
+  if (
+    finishedCheckpoint && nextFinishedCursor !== finishedCheckpoint.cursor
+  ) {
+    checkpointAdvances.push(
+      advanceRoomReconciliationCheckpoint({
+        store: checkpointStore,
+        status: "finished",
+        checkpoint: finishedCheckpoint,
+        cursor: nextFinishedCursor,
+      }),
+    );
+  }
+  if (playingCheckpoint && nextPlayingCursor !== playingCheckpoint.cursor) {
+    checkpointAdvances.push(
+      advanceRoomReconciliationCheckpoint({
+        store: checkpointStore,
+        status: "playing",
+        checkpoint: playingCheckpoint,
+        cursor: nextPlayingCursor,
+      }),
+    );
+  }
+  await Promise.all(checkpointAdvances).catch((error) => {
+    // A stale checkpoint only repeats an idempotent page. It must not undo the
+    // terminal/outbox repairs that already completed above.
+    console.error(
+      "room reconciliation cursor advance deferred",
+      (error as Error)?.message || error,
+    );
   });
   return created;
 }
@@ -267,6 +455,13 @@ async function revokeRegistration(
         $set: {
           status: "revoked",
           revoked_at: now,
+          pending_force_end: false,
+          pending_force_end_commit_id: null,
+          terminal_probe_started_at: null,
+          terminal_probe_until: null,
+          pending_room_id: null,
+          pending_match_id: null,
+          pending_room_revision: 0,
           updated_at: now,
           last_error_code: clean(reason).slice(0, 80),
         },
@@ -499,6 +694,366 @@ async function processOneEvent(base44: any, event: Entity): Promise<Entity> {
   }
 }
 
+type TerminalRegistrationProof =
+  | { state: "terminal"; commitID: string }
+  | { state: "pending_terminal"; room: Entity }
+  | { state: "active"; updatedAtMS: number }
+  | { state: "uncertain" };
+
+async function terminalRegistrationProof(
+  base44: any,
+  registration: Entity,
+): Promise<TerminalRegistrationProof> {
+  const userID = clean(registration.user_id);
+  const roomID = clean(registration.room_id);
+  const matchID = clean(registration.match_id);
+  const [rooms, finishCommitID, closeCommitID] = await Promise.all([
+    allMatching(base44.asServiceRole.entities.GameRoom, { id: roomID }),
+    committedGameFinishReceipt({
+      eventStore: base44.asServiceRole.entities.PushNotificationEvent,
+      userID,
+      roomID,
+      matchID,
+    }),
+    committedRoomCloseReceipt({
+      signalStore: base44.asServiceRole.entities.GameRoomSignal,
+      userID,
+      roomID,
+      matchID,
+    }),
+  ]);
+  if (finishCommitID) return { state: "terminal", commitID: finishCommitID };
+  if (closeCommitID) return { state: "terminal", commitID: closeCommitID };
+
+  const room = rooms.find((candidate) => clean(candidate.id) === roomID);
+  if (!room) return { state: "uncertain" };
+  if (clean(room.match_id) !== matchID) {
+    // A previous-match replica can race the first token for a newly active
+    // generation. Match mismatch alone is never a terminal authorization.
+    return { state: "uncertain" };
+  }
+  const participantIDs = new Set(
+    [
+      ...(Array.isArray(room.participant_user_ids)
+        ? room.participant_user_ids
+        : []),
+      ...(Array.isArray(room.players)
+        ? room.players.map((player: Entity) => player?.user_id)
+        : []),
+    ].map(clean).filter(Boolean),
+  );
+  if (!participantIDs.has(userID)) {
+    return { state: "uncertain" };
+  }
+  const status = clean(room.status).toLowerCase();
+  if (["finished", "ended", "closed"].includes(status)) {
+    const exactFinishID = `game-finished:${matchID}`;
+    return clean(room.game_finished_event_id) === exactFinishID
+      ? { state: "terminal", commitID: exactFinishID }
+      : { state: "uncertain" };
+  }
+  const intent = room.close_intent;
+  if (
+    clean(intent?.id) && clean(intent?.room_id) === roomID &&
+    clean(intent?.match_id) === matchID
+  ) {
+    return {
+      state: "terminal",
+      commitID: roomCloseCommitReceiptID(matchID, intent.id),
+    };
+  }
+  if (clean(room?.terminal_intent?.match_id) === matchID) {
+    // The terminal decision is durable, but the exact finished outbox receipt
+    // may still be committing. Never reinterpret this snapshot as a later
+    // active generation merely because updated_date advanced.
+    return { state: "pending_terminal", room };
+  }
+  const updatedAtMS = Date.parse(clean(room.updated_date));
+  return {
+    state: "active",
+    updatedAtMS: Number.isFinite(updatedAtMS) ? updatedAtMS : 0,
+  };
+}
+
+async function terminalProbeRegistration(
+  liveStore: any,
+  registrationID: string,
+  probeRevision: string,
+): Promise<Entity | null> {
+  const registration = (await allMatching(liveStore, {
+    id: registrationID,
+  }))[0];
+  if (
+    !registration || clean(registration.status) !== "active" ||
+    clean(registration.token_kind) !== "activity" ||
+    clean(registration.delivery_revision) !== probeRevision ||
+    !clean(registration.terminal_probe_started_at) ||
+    !clean(registration.terminal_probe_until)
+  ) return null;
+  return registration;
+}
+
+async function resolveTerminalRegistrationProbe(input: {
+  base44: any;
+  registration: Entity;
+  proof: TerminalRegistrationProof;
+}): Promise<{ outcome: string; registration: Entity | null }> {
+  const liveStore =
+    input.base44.asServiceRole.entities.LiveActivityRegistration;
+  const registrationID = clean(input.registration.id);
+  const probeRevision = clean(input.registration.delivery_revision);
+  const userID = clean(input.registration.user_id);
+  const roomID = clean(input.registration.room_id);
+  const matchID = clean(input.registration.match_id);
+  const startedAtMS = Date.parse(
+    clean(input.registration.terminal_probe_started_at),
+  );
+  const now = new Date();
+  let proof = input.proof;
+  let outcome = "changed";
+  let resolved: Entity | null = null;
+
+  await withPushWriterLeases({
+    lifecycleStore:
+      input.base44.asServiceRole.entities.BillingIdentityLifecycle,
+    userIDs: [userID],
+    action: async (persist) => {
+      const current = await terminalProbeRegistration(
+        liveStore,
+        registrationID,
+        probeRevision,
+      );
+      if (!current) return;
+      if (proof.state !== "terminal") {
+        // Negative/active evidence read before waiting for this lifecycle
+        // lease can become stale if finish/close commits while we are blocked.
+        // Re-read all marker-first sources under the lease before any clear.
+        proof = await terminalRegistrationProof(input.base44, current);
+      }
+      if (proof.state === "terminal") {
+        const terminalProof = proof;
+        const queued = await persist(() =>
+          queueLiveRetry({
+            store: liveStore,
+            registrationID,
+            roomID,
+            matchID,
+            roomRevision: Math.max(
+              0,
+              Number(current.pending_room_revision || 0),
+            ),
+            forceEnd: true,
+            terminalCommitID: terminalProof.commitID,
+            now,
+          })
+        );
+        if (!queued) return;
+        const queuedRow = (await allMatching(liveStore, {
+          id: registrationID,
+        }))[0];
+        if (!queuedRow) return;
+        await persist(() =>
+          liveStore.updateMany({
+            id: registrationID,
+            delivery_revision: queuedRow.delivery_revision,
+            terminal_probe_started_at: current.terminal_probe_started_at,
+          }, {
+            $set: {
+              terminal_probe_started_at: null,
+              terminal_probe_until: null,
+              last_error_code: "terminal_probe_committed",
+              updated_at: now.toISOString(),
+            },
+          })
+        );
+        resolved = (await allMatching(liveStore, { id: registrationID }))[0] ||
+          null;
+        outcome = "terminal";
+        return;
+      }
+
+      const probeUntilMS = Date.parse(clean(current.terminal_probe_until));
+      const provesBoundedActiveCommit = proof.state === "active" &&
+        Number.isFinite(startedAtMS) &&
+        Number.isFinite(probeUntilMS) && probeUntilMS <= now.getTime() &&
+        proof.updatedAtMS > 0;
+      const patch = provesBoundedActiveCommit
+        ? {
+          // The marker-first probation window elapsed while the exact room,
+          // match and membership remained active. Clear probation, but keep a
+          // due scoped projection so the newly accepted token immediately
+          // catches up instead of waiting for a later room mutation.
+          delivery_state: "retry",
+          delivery_revision: crypto.randomUUID(),
+          delivery_lease_until: now.toISOString(),
+          delivery_attempt_count: 0,
+          retry_requested: true,
+          next_attempt_at: now.toISOString(),
+          pending_room_id: roomID,
+          pending_match_id: matchID,
+          pending_room_revision: proof.state === "active"
+            ? proof.updatedAtMS
+            : 0,
+          pending_force_end: false,
+          pending_force_end_commit_id: null,
+          terminal_probe_started_at: null,
+          terminal_probe_until: null,
+          last_error_code: "terminal_probe_active_commit",
+          updated_at: now.toISOString(),
+        }
+        : {
+          delivery_state: "retry",
+          delivery_revision: crypto.randomUUID(),
+          delivery_lease_until: now.toISOString(),
+          retry_requested: false,
+          next_attempt_at: new Date(now.getTime() + 30_000).toISOString(),
+          last_error_code: "terminal_probe_unresolved",
+          updated_at: now.toISOString(),
+        };
+      const result = await persist(() =>
+        liveStore.updateMany({
+          id: registrationID,
+          delivery_revision: probeRevision,
+          terminal_probe_started_at: current.terminal_probe_started_at,
+          terminal_probe_until: current.terminal_probe_until,
+        }, { $set: patch })
+      ) as Entity;
+      if (Number(result?.updated) !== 1) return;
+      outcome = provesBoundedActiveCommit ? "active" : "deferred";
+      resolved = (await allMatching(liveStore, { id: registrationID }))[0] ||
+        null;
+    },
+  });
+  return { outcome, registration: resolved };
+}
+
+async function probeLiveActivityTerminal(
+  base44: any,
+  body: Entity,
+): Promise<Entity> {
+  const registrationID = clean(body.registration_id);
+  const probeRevision = clean(body.probe_revision);
+  if (!registrationID || !probeRevision) {
+    throw new PushContractError("Terminal probe identity is required.");
+  }
+  const operationDeadline = clampDeadline(body.deadline_epoch_ms, 30_000);
+  const backoffMS = [100, 200, 400, 800, 1_500, 3_000, 5_000] as const;
+  let retryIndex = 0;
+  let terminalRecoveryPrompted = false;
+
+  for (;;) {
+    const registration = await terminalProbeRegistration(
+      base44.asServiceRole.entities.LiveActivityRegistration,
+      registrationID,
+      probeRevision,
+    );
+    if (!registration) return { ok: true, outcome: "changed" };
+    const proof = await terminalRegistrationProof(base44, registration);
+    if (proof.state === "pending_terminal" && !terminalRecoveryPrompted) {
+      terminalRecoveryPrompted = true;
+      await reconcilePendingTerminalRoom(base44, proof.room);
+      continue;
+    }
+    if (proof.state === "terminal") {
+      const resolved = await resolveTerminalRegistrationProbe({
+        base44,
+        registration,
+        proof,
+      });
+      const forcedEnd = resolved.registration
+        ? await deliverForcedLiveActivityEnd({
+          base44,
+          registration: resolved.registration,
+          roomID: clean(resolved.registration.pending_room_id),
+          matchID: clean(resolved.registration.pending_match_id),
+          roomRevision: Math.max(
+            0,
+            Number(resolved.registration.pending_room_revision || 0),
+          ),
+          queuedPendingOnly: true,
+        })
+        : "skipped";
+      return { ok: true, outcome: resolved.outcome, forced_end: forcedEnd };
+    }
+
+    const now = Date.now();
+    const probeUntil = Date.parse(clean(registration.terminal_probe_until));
+    if (Number.isFinite(probeUntil) && now >= probeUntil) {
+      const resolved = await resolveTerminalRegistrationProbe({
+        base44,
+        registration,
+        proof,
+      });
+      if (resolved.outcome === "active" && resolved.registration) {
+        const catchUp = await syncLiveActivities(base44, {
+          room_id: clean(resolved.registration.pending_room_id),
+          match_id: clean(resolved.registration.pending_match_id),
+          registration_id: clean(resolved.registration.id),
+          deadline_epoch_ms: operationDeadline,
+        });
+        return { ok: true, outcome: resolved.outcome, catch_up: catchUp };
+      }
+      return { ok: true, outcome: resolved.outcome };
+    }
+    if (now >= operationDeadline) {
+      return { ok: true, outcome: "deferred" };
+    }
+    const requested = backoffMS[Math.min(retryIndex, backoffMS.length - 1)];
+    retryIndex += 1;
+    const remaining = Math.min(
+      operationDeadline - now,
+      Number.isFinite(probeUntil) ? probeUntil - now : requested,
+    );
+    if (remaining <= 0) continue;
+    await new Promise<void>((resolve) =>
+      setTimeout(resolve, Math.max(1, Math.min(requested, remaining)))
+    );
+  }
+}
+
+async function triggerLiveActivityTerminalProbe(
+  base44: any,
+  registration: Entity,
+): Promise<boolean> {
+  const registrationID = clean(registration?.id);
+  const probeRevision = clean(registration?.delivery_revision);
+  const probeUntil = Date.parse(clean(registration?.terminal_probe_until));
+  const internalSecret = clean(Deno.env.get("PUSH_INTERNAL_SECRET"));
+  if (
+    !registrationID || !probeRevision || !Number.isFinite(probeUntil) ||
+    internalSecret.length < 32
+  ) return false;
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    try {
+      const promptDeadline = Date.now() + 300;
+      // A timeout means invoke already started and is safe: the durable probe
+      // revision makes duplicate workers idempotent. Only an explicit invoke
+      // rejection needs another prompt attempt.
+      await runWithinDeadline({
+        deadlineEpochMs: promptDeadline,
+        operation: () =>
+          base44.asServiceRole.functions.invoke("pushNotificationAction", {
+            action: "probe_live_activity_terminal",
+            registration_id: registrationID,
+            probe_revision: probeRevision,
+            deadline_epoch_ms: probeUntil,
+            internal_secret: internalSecret,
+          }),
+      });
+      return true;
+    } catch (error) {
+      console.warn(
+        "live activity terminal probe prompt deferred",
+        (error as Error)?.message || error,
+      );
+      if (attempt < 2) {
+        await new Promise<void>((resolve) => setTimeout(resolve, 50));
+      }
+    }
+  }
+  return false;
+}
+
 async function syncLiveActivities(base44: any, body: Entity): Promise<Entity> {
   const deadlineEpochMs = clampDeadline(
     body.deadline_epoch_ms,
@@ -522,43 +1077,177 @@ async function syncLiveActivities(base44: any, body: Entity): Promise<Entity> {
       });
       const registration = rows[0];
       if (registration) {
-        try {
+        const exactActivityBinding = clean(registration.status) === "active" &&
+          clean(registration.token_kind) === "activity" &&
+          clean(registration.room_id) === roomID &&
+          clean(registration.match_id) === matchID &&
+          clean(registration.provider_match_id) === matchID;
+        const [finishCommitID, closeCommitID] = exactActivityBinding
+          ? await Promise.all([
+            committedGameFinishReceipt({
+              eventStore: base44.asServiceRole.entities.PushNotificationEvent,
+              userID: clean(registration.user_id),
+              roomID,
+              matchID,
+            }),
+            committedRoomCloseReceipt({
+              signalStore: base44.asServiceRole.entities.GameRoomSignal,
+              userID: registration.user_id,
+              roomID,
+              matchID,
+            }),
+          ])
+          : ["", ""];
+        const terminalCommitID = finishCommitID || closeCommitID;
+        if (terminalCommitID) {
+          let queued = false;
           await withPushWriterLeases({
             lifecycleStore:
               base44.asServiceRole.entities.BillingIdentityLifecycle,
             userIDs: [clean(registration.user_id)],
             action: async (persist) => {
-              const now = new Date().toISOString();
-              const isActivity = clean(registration.token_kind) === "activity";
-              await persist(() =>
-                liveStore.updateMany({
-                  id: registration.id,
-                  token_hash: registration.token_hash,
-                  status: "active",
-                  pending_match_id: matchID,
-                }, {
-                  $set: {
-                    status: isActivity ? "ended" : "active",
-                    ended_at: isActivity ? now : null,
-                    delivery_state: isActivity ? "failed" : "idle",
-                    retry_requested: false,
-                    next_attempt_at: null,
-                    pending_room_id: "",
-                    pending_match_id: "",
-                    pending_room_revision: 0,
-                    last_error_code: "stale_match_binding",
-                    updated_at: now,
-                  },
+              const current = (await allMatching(liveStore, {
+                id: clean(registration.id),
+              }))[0];
+              if (
+                !current || clean(current.status) !== "active" ||
+                clean(current.token_kind) !== "activity" ||
+                clean(current.user_id) !== clean(registration.user_id) ||
+                clean(current.room_id) !== roomID ||
+                clean(current.match_id) !== matchID ||
+                clean(current.provider_match_id) !== matchID
+              ) return;
+              queued = await persist(() =>
+                queueLiveRetry({
+                  store: liveStore,
+                  registrationID: clean(current.id),
+                  roomID,
+                  matchID,
+                  roomRevision: Math.max(
+                    0,
+                    Number(current.pending_room_revision || 0),
+                  ),
+                  forceEnd: true,
+                  terminalCommitID,
                 })
               );
             },
           });
-        } catch {
-          // Account deletion or a concurrent registration update owns the row.
+          const queuedRegistration = queued
+            ? (await allMatching(liveStore, {
+              id: clean(registration.id),
+            }))[0] || null
+            : null;
+          const forcedEnd = queuedRegistration
+            ? await deliverForcedLiveActivityEnd({
+              base44,
+              registration: queuedRegistration,
+              roomID,
+              matchID,
+              roomRevision: Math.max(
+                0,
+                Number(queuedRegistration.pending_room_revision || 0),
+              ),
+              queuedPendingOnly: true,
+            })
+            : "skipped";
+          return {
+            ok: true,
+            delivered: forcedEnd === "delivered" ? 1 : 0,
+            skipped: forcedEnd === "skipped" ? 1 : 0,
+            failed: forcedEnd === "failed" ? 1 : 0,
+            stale: true,
+            closing: true,
+          };
+        }
+        // A prepared forced end plus one missing-room/signal read is
+        // ambiguous under replica lag. Its durable row must survive for the
+        // next reconciliation instead of being terminalized as stale.
+        if (registration.pending_force_end === true) {
+          return {
+            ok: true,
+            delivered: 0,
+            skipped: 1,
+            failed: 0,
+            stale: true,
+            deferred: true,
+          };
+        }
+        if (exactActivityBinding) {
+          try {
+            await withPushWriterLeases({
+              lifecycleStore:
+                base44.asServiceRole.entities.BillingIdentityLifecycle,
+              userIDs: [clean(registration.user_id)],
+              action: async (persist) => {
+                const current = (await allMatching(liveStore, {
+                  id: clean(registration.id),
+                }))[0];
+                if (
+                  !current || clean(current.status) !== "active" ||
+                  clean(current.token_kind) !== "activity" ||
+                  clean(current.room_id) !== roomID ||
+                  clean(current.match_id) !== matchID ||
+                  clean(current.provider_match_id) !== matchID
+                ) return;
+                await persist(() =>
+                  queueLiveRetry({
+                    store: liveStore,
+                    registrationID: clean(current.id),
+                    roomID,
+                    matchID,
+                    roomRevision: Math.max(
+                      0,
+                      Number(current.pending_room_revision || 0),
+                    ),
+                  })
+                );
+              },
+            });
+          } catch {
+            // Account deletion or a concurrent registration update owns the row.
+          }
+          return {
+            ok: true,
+            delivered: 0,
+            skipped: 1,
+            failed: 0,
+            stale: true,
+            deferred: true,
+          };
         }
       }
     }
     return { ok: true, delivered: 0, skipped: 0, failed: 0, stale: true };
+  }
+  if (room.close_intent) {
+    // close_intent is the logical terminal commit. Reconciliation must own the
+    // durable forced-end queue as well: the original game action may have
+    // crashed after committing participant tombstones but before its
+    // post-lease enqueue phase. The idle sweep therefore repairs the exact
+    // close marker instead of permanently returning `closing`.
+    const intent = room.close_intent;
+    const exactIntent = clean(intent?.id) &&
+      clean(intent?.room_id) === roomID &&
+      clean(intent?.match_id) === matchID;
+    if (exactIntent) {
+      const repaired = await endRoomLiveActivities(base44, {
+        room_id: roomID,
+        match_id: matchID,
+        terminal_commit_id: roomCloseCommitReceiptID(matchID, intent.id),
+        deadline_epoch_ms: deadlineEpochMs,
+      }, room);
+      return { ...repaired, stale: true, closing: true, reconciled: true };
+    }
+    return {
+      ok: true,
+      delivered: 0,
+      skipped: 0,
+      failed: 0,
+      stale: true,
+      closing: true,
+      deferred: true,
+    };
   }
   const participantIDs = new Set(
     [
@@ -580,7 +1269,7 @@ async function syncLiveActivities(base44: any, body: Entity): Promise<Entity> {
       clean(registration.provider_match_id) === matchID;
   });
   const pushToStartRegistrations: Entity[] = [];
-  if (clean(room.status) !== "finished") {
+  if (clean(room.status) !== "finished" && !room.close_intent) {
     for (const userID of [...participantIDs].slice(0, 12)) {
       pushToStartRegistrations.push(
         ...await allMatching(
@@ -648,7 +1337,9 @@ async function syncLiveActivities(base44: any, body: Entity): Promise<Entity> {
   const liveStore = base44.asServiceRole.entities.LiveActivityRegistration;
   const processRegistration = async (registration: Entity) => {
     try {
-      const outcome = await withPushWriterLeases({
+      let pendingForcedEnd: Entity | null = null;
+      let pendingTerminalProbe: Entity | null = null;
+      let outcome = await withPushWriterLeases({
         lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
         userIDs: [clean(registration.user_id)],
         action: async (persist) => {
@@ -658,6 +1349,26 @@ async function syncLiveActivities(base44: any, body: Entity): Promise<Entity> {
           });
           const current = currentRows[0];
           if (!current || clean(current.status) !== "active") return "skipped";
+          if (
+            clean(current.token_kind) === "activity" &&
+            clean(current.terminal_probe_started_at) &&
+            clean(current.terminal_probe_until)
+          ) {
+            pendingTerminalProbe = current;
+            return "terminal_probe_pending";
+          }
+          if (
+            clean(current.token_kind) === "activity" &&
+            current.pending_force_end === true &&
+            clean(current.pending_room_id) &&
+            clean(current.pending_match_id)
+          ) {
+            // Never claim a committed terminal intent as an ordinary room
+            // projection. Release this lease, then let the forced-end path own
+            // a fresh lease and its terminal retry/cleanup semantics.
+            pendingForcedEnd = current;
+            return "force_end_pending";
+          }
           const claimed = await claimLiveDelivery({
             store: liveStore,
             registration: current,
@@ -671,24 +1382,104 @@ async function syncLiveActivities(base44: any, body: Entity): Promise<Entity> {
             { id: roomID },
           );
           const latestRoom = latestRows[0];
-          const exactActivityBinding =
-            clean(claimed.token_kind) !== "activity" ||
-            (clean(claimed.room_id) === roomID &&
-              clean(claimed.match_id) === matchID &&
-              clean(claimed.provider_match_id) === matchID);
+          const isActivity = clean(claimed.token_kind) === "activity";
+          const exactActivityBinding = isActivity &&
+            clean(claimed.room_id) === roomID &&
+            clean(claimed.match_id) === matchID &&
+            clean(claimed.provider_match_id) === matchID;
+          let terminalCommitID = "";
+          if (exactActivityBinding) {
+            const [finishCommitID, closeCommitID] = await Promise.all([
+              committedGameFinishReceipt({
+                eventStore: base44.asServiceRole.entities.PushNotificationEvent,
+                userID: clean(claimed.user_id),
+                roomID,
+                matchID,
+              }),
+              committedRoomCloseReceipt({
+                signalStore: base44.asServiceRole.entities.GameRoomSignal,
+                userID: clean(claimed.user_id),
+                roomID,
+                matchID,
+              }),
+            ]);
+            terminalCommitID = finishCommitID || closeCommitID;
+            if (
+              !terminalCommitID && latestRoom &&
+              clean(latestRoom.match_id) === matchID
+            ) {
+              const intent = latestRoom.close_intent;
+              if (
+                clean(intent?.id) && clean(intent?.room_id) === roomID &&
+                clean(intent?.match_id) === matchID
+              ) {
+                terminalCommitID = roomCloseCommitReceiptID(matchID, intent.id);
+              } else {
+                const exactFinishID = `game-finished:${matchID}`;
+                if (
+                  clean(latestRoom.game_finished_event_id) === exactFinishID
+                ) terminalCommitID = exactFinishID;
+              }
+            }
+          }
+          if (terminalCommitID) {
+            const nowISO = new Date().toISOString();
+            await persist(() =>
+              completeLiveDelivery({
+                store: liveStore,
+                claimed,
+                state: "retry",
+                nextAttemptAt: nowISO,
+                errorCode: "terminal_marker_committed",
+                patch: {
+                  delivery_attempt_count: 0,
+                  retry_requested: true,
+                  pending_room_id: roomID,
+                  pending_match_id: matchID,
+                  pending_room_revision: Math.max(
+                    roomRevision,
+                    Number(claimed.pending_room_revision || 0),
+                  ),
+                  pending_force_end: true,
+                  pending_force_end_commit_id: terminalCommitID,
+                  terminal_probe_started_at: null,
+                  terminal_probe_until: null,
+                },
+              })
+            );
+            const queued = (await allMatching(liveStore, {
+              id: clean(claimed.id),
+            }))[0];
+            if (queued?.pending_force_end === true) {
+              pendingForcedEnd = queued;
+              return "force_end_pending";
+            }
+            return "skipped";
+          }
+          const latestStatus = clean(latestRoom?.status).toLowerCase();
+          const uncommittedTerminalSnapshot = Boolean(
+            latestRoom?.close_intent ||
+              ["finished", "ended", "closed"].includes(latestStatus),
+          );
           if (
             !latestRoom || clean(latestRoom.match_id) !== matchID ||
-            !exactActivityBinding
+            (isActivity && !exactActivityBinding) ||
+            (isActivity && uncommittedTerminalSnapshot)
           ) {
-            await completeLiveDelivery({
-              store: liveStore,
-              claimed,
-              state: "failed",
-              errorCode: "stale_match_binding",
-              patch: clean(claimed.token_kind) === "activity"
-                ? { status: "ended", ended_at: new Date().toISOString() }
-                : {},
-            });
+            const shouldRetry = isActivity;
+            await persist(() =>
+              completeLiveDelivery({
+                store: liveStore,
+                claimed,
+                state: shouldRetry ? "retry" : "idle",
+                nextAttemptAt: shouldRetry
+                  ? new Date(Date.now() + 30_000).toISOString()
+                  : undefined,
+                errorCode: shouldRetry
+                  ? "terminal_source_unconfirmed"
+                  : "stale_match_binding",
+              })
+            );
             return "skipped";
           }
           const minimumTimestamp = Number(claimed.last_apns_timestamp || 0) + 1;
@@ -785,6 +1576,27 @@ async function syncLiveActivities(base44: any, body: Entity): Promise<Entity> {
           return "failed";
         },
       });
+      if (outcome === "terminal_probe_pending" && pendingTerminalProbe) {
+        const probe = pendingTerminalProbe as Entity;
+        const result = await probeLiveActivityTerminal(base44, {
+          registration_id: probe.id,
+          probe_revision: probe.delivery_revision,
+          deadline_epoch_ms: deadlineEpochMs,
+        });
+        outcome = clean(result?.forced_end) || "skipped";
+      } else if (outcome === "force_end_pending" && pendingForcedEnd) {
+        const forced = pendingForcedEnd as Entity;
+        outcome = await deliverForcedLiveActivityEnd({
+          base44,
+          registration: forced,
+          roomID: clean(forced.pending_room_id),
+          matchID: clean(forced.pending_match_id),
+          roomRevision: Math.max(
+            0,
+            Number(forced.pending_room_revision || 0),
+          ),
+        });
+      }
       if (outcome === "delivered") delivered += 1;
       else if (outcome === "failed") failed += 1;
       else skipped += 1;
@@ -876,7 +1688,7 @@ async function deliverForcedLiveActivityEnd(input: {
   roomID: string;
   matchID: string;
   roomRevision: number;
-  callerHoldsLifecycleLeases?: boolean;
+  queuedPendingOnly?: boolean;
 }): Promise<"delivered" | "failed" | "skipped"> {
   const liveStore =
     input.base44.asServiceRole.entities.LiveActivityRegistration;
@@ -887,7 +1699,8 @@ async function deliverForcedLiveActivityEnd(input: {
     const current = rows[0];
     if (
       !current || clean(current.status) !== "active" ||
-      clean(current.token_kind) !== "activity"
+      clean(current.token_kind) !== "activity" ||
+      clean(current.user_id) !== clean(input.registration.user_id)
     ) return "skipped" as const;
     const exactRoom = clean(current.room_id) === clean(input.roomID) &&
       clean(current.match_id) === clean(input.matchID) &&
@@ -895,13 +1708,35 @@ async function deliverForcedLiveActivityEnd(input: {
     const exactPendingEnd = current.pending_force_end === true &&
       clean(current.pending_room_id) === clean(input.roomID) &&
       clean(current.pending_match_id) === clean(input.matchID);
-    if (!exactRoom && !exactPendingEnd) return "skipped" as const;
+    if (
+      input.queuedPendingOnly
+        ? !exactPendingEnd
+        : !exactRoom && !exactPendingEnd
+    ) return "skipped" as const;
+    // The enqueue request makes the first attempt immediately due. Once APNs
+    // schedules a retry, repeated close/prompt invocations must respect that
+    // backoff instead of burning the terminal attempt budget in a burst.
+    if (exactPendingEnd && !liveDeliveryDue(current)) {
+      return "skipped" as const;
+    }
+    const authorization = await authorizeForcedLiveActivityEnd({
+      roomStore: input.base44.asServiceRole.entities.GameRoom,
+      signalStore: input.base44.asServiceRole.entities.GameRoomSignal,
+      liveStore,
+      registration: current,
+      roomID: input.roomID,
+      matchID: input.matchID,
+    });
+    if (authorization !== "committed") return "skipped" as const;
+    const roomRevision = input.queuedPendingOnly
+      ? Math.max(0, Number(current.pending_room_revision || 0))
+      : input.roomRevision;
     const claimed = await claimLiveDelivery({
       store: liveStore,
       registration: current,
       roomID: input.roomID,
       matchID: input.matchID,
-      roomRevision: input.roomRevision,
+      roomRevision,
       forceEnd: true,
     });
     if (!claimed) return "skipped" as const;
@@ -911,7 +1746,7 @@ async function deliverForcedLiveActivityEnd(input: {
         registration: claimed,
         roomID: input.roomID,
         matchID: input.matchID,
-        revision: input.roomRevision,
+        revision: roomRevision,
       });
     } catch {
       const attempts = Number(claimed.delivery_attempt_count || 1);
@@ -922,6 +1757,7 @@ async function deliverForcedLiveActivityEnd(input: {
         state: canRetry ? "retry" : "failed",
         nextAttemptAt: canRetry ? liveRetryAt(attempts) : undefined,
         errorCode: "credential_error",
+        patch: forcedLiveEndFailurePatch(canRetry),
       });
       return "failed" as const;
     }
@@ -934,6 +1770,9 @@ async function deliverForcedLiveActivityEnd(input: {
           status: "ended",
           ended_at: new Date().toISOString(),
           pending_force_end: false,
+          pending_force_end_commit_id: null,
+          terminal_probe_started_at: null,
+          terminal_probe_until: null,
           last_revision: result.revision,
         },
       });
@@ -952,10 +1791,10 @@ async function deliverForcedLiveActivityEnd(input: {
       state: canRetry ? "retry" : "failed",
       nextAttemptAt: canRetry ? liveRetryAt(attempts) : undefined,
       errorCode: result.reason,
+      patch: forcedLiveEndFailurePatch(canRetry),
     });
     return "failed" as const;
   };
-  if (input.callerHoldsLifecycleLeases) return await deliver();
   return await withPushWriterLeases({
     lifecycleStore:
       input.base44.asServiceRole.entities.BillingIdentityLifecycle,
@@ -967,77 +1806,119 @@ async function deliverForcedLiveActivityEnd(input: {
   });
 }
 
-async function endRoomLiveActivities(
+async function queueRoomLiveActivityEnd(
+  base44: any,
+  body: Entity,
+  validatedRoomSnapshot?: Entity,
+): Promise<RoomLiveActivityEndQueue> {
+  return await enqueueRoomLiveActivityEnd({
+    roomStore: base44.asServiceRole.entities.GameRoom,
+    liveStore: base44.asServiceRole.entities.LiveActivityRegistration,
+    lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+    signalStore: base44.asServiceRole.entities.GameRoomSignal,
+    validatedRoomSnapshot,
+    roomID: body.room_id,
+    matchID: body.match_id,
+    terminalCommitID: body.terminal_commit_id,
+    closeCompletion: body.close_completion,
+  });
+}
+
+async function enqueueRoomLiveActivityEndOnly(
   base44: any,
   body: Entity,
 ): Promise<Entity> {
-  const roomID = clean(body.room_id);
-  const matchID = clean(body.match_id);
-  if (!roomID || !matchID) {
-    throw new PushContractError("Room and match are required.");
-  }
-  const rooms = await allMatching(base44.asServiceRole.entities.GameRoom, {
-    id: roomID,
-  });
-  const room = rooms[0];
-  if (!room || clean(room.match_id) !== matchID) {
-    throw new PushContractError(
-      "The room end source is stale.",
-      409,
-      "stale_match_binding",
-    );
-  }
-  const roomRevision = Number.isFinite(Date.parse(clean(room.updated_date)))
-    ? Date.parse(clean(room.updated_date))
-    : Date.now();
-  const liveStore = base44.asServiceRole.entities.LiveActivityRegistration;
-  const leasedParticipantIDs = new Set(roomParticipantUserIDs(room));
-  const registrations = (await allMatching(liveStore, {
-    status: "active",
-    room_id: roomID,
-    token_kind: "activity",
-  })).filter((registration) =>
-    clean(registration.match_id) === matchID &&
-    clean(registration.provider_match_id) === matchID
+  const queued = await queueRoomLiveActivityEnd(base44, body);
+  return {
+    ok: true,
+    room_id: queued.roomID,
+    match_id: queued.matchID,
+    matched: queued.registrations.length,
+    queued: queued.queued,
+    skipped: queued.skipped,
+    already_queued: queued.alreadyQueued,
+    receipt: queued.receipt,
+  };
+}
+
+async function deliverQueuedRoomLiveActivityEndOnly(
+  base44: any,
+  body: Entity,
+): Promise<Entity> {
+  const deadlineEpochMs = clampDeadline(
+    body.deadline_epoch_ms,
+    LIVE_SYNC_BUDGET_MS,
   );
-
-  // Persist every terminal intent before the first APNs call. The caller keeps
-  // the current participant lifecycle leases. A stale activity belonging to a
-  // player who already left is leased here separately before touching its row.
-  for (const registration of registrations) {
-    const queue = async () =>
-      await queueLiveRetry({
-        store: liveStore,
-        registrationID: clean(registration.id),
-        roomID,
-        matchID,
-        roomRevision,
-        forceEnd: true,
-      });
-    const queued = leasedParticipantIDs.has(clean(registration.user_id))
-      ? await queue()
-      : await withPushWriterLeases({
-        lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
-        userIDs: [clean(registration.user_id)],
-        action: async (persist) => {
-          await persist(async () => undefined);
-          return await queue();
-        },
-      });
-    if (!queued) {
-      const latest = (await allMatching(liveStore, {
-        id: clean(registration.id),
-      }))[0];
-      if (latest && clean(latest.status) === "active") {
-        throw new PushContractError(
-          "Live Activity end could not be queued.",
-          503,
-          "live_end_queue_contention",
-        );
-      }
-    }
+  const bounded = await runWithinDeadline({
+    deadlineEpochMs,
+    operation: () =>
+      deliverQueuedRoomLiveActivityEnd({
+        liveStore: base44.asServiceRole.entities.LiveActivityRegistration,
+        roomID: body.room_id,
+        matchID: body.match_id,
+        deadlineEpochMs,
+        deliver: async ({ registration, roomID, matchID, roomRevision }) =>
+          await withBillingLifecycleContentionRetry({
+            deadlineEpochMs,
+            operation: () =>
+              deliverForcedLiveActivityEnd({
+                base44,
+                registration,
+                roomID,
+                matchID,
+                roomRevision,
+                queuedPendingOnly: true,
+              }),
+          }),
+      }),
+  });
+  if (bounded.timedOut) {
+    // Every selected row is still a durable pending force-end. A worker that
+    // already acquired a lifecycle lease may finish after this response; if it
+    // is interrupted, its delivery lease expires into the scheduled retry.
+    return {
+      ok: true,
+      room_id: clean(body.room_id),
+      match_id: clean(body.match_id),
+      matched: 0,
+      delivered: 0,
+      failed: 0,
+      skipped: 0,
+      deferred: 1,
+      timed_out: true,
+    };
   }
+  const result = bounded.value;
+  return {
+    ok: true,
+    room_id: result.roomID,
+    match_id: result.matchID,
+    matched: result.registrations.length,
+    delivered: result.delivered,
+    failed: result.failed,
+    skipped: result.skipped,
+    deferred: result.deferredRegistrations.length,
+  };
+}
 
+async function endRoomLiveActivities(
+  base44: any,
+  body: Entity,
+  validatedRoomSnapshot?: Entity,
+): Promise<Entity> {
+  // The durable force-end boundary is shared with the enqueue-only action.
+  // Compatibility callers continue into bounded APNs delivery below.
+  const queued = await queueRoomLiveActivityEnd(
+    base44,
+    body,
+    validatedRoomSnapshot,
+  );
+  const {
+    roomID,
+    matchID,
+    roomRevision,
+    registrations,
+  } = queued;
   let delivered = 0;
   let failed = 0;
   let skipped = 0;
@@ -1056,9 +1937,6 @@ async function endRoomLiveActivities(
         roomID,
         matchID,
         roomRevision,
-        callerHoldsLifecycleLeases: leasedParticipantIDs.has(
-          clean(registration.user_id),
-        ),
       });
       if (outcome === "delivered") delivered += 1;
       else if (outcome === "failed") failed += 1;
@@ -1068,6 +1946,10 @@ async function endRoomLiveActivities(
   return {
     ok: true,
     queued: registrations.length,
+    durably_queued: queued.queued,
+    skipped_during_enqueue: queued.skipped,
+    already_queued: queued.alreadyQueued,
+    enqueue_receipt: queued.receipt,
     delivered,
     failed,
     skipped,
@@ -1092,9 +1974,21 @@ async function drainLiveActivityRetries(
       ) || [],
     );
   }
-  const due = candidates.filter((registration) =>
-    liveDeliveryDue(registration)
+  candidates.push(
+    ...await store.filter(
+      { status: "active", retry_requested: true },
+      "updated_at",
+      12,
+      0,
+    ) || [],
   );
+  const dueByID = new Map<string, Entity>();
+  for (const registration of candidates) {
+    if (liveDeliveryDue(registration)) {
+      dueByID.set(clean(registration.id), registration);
+    }
+  }
+  const due = [...dueByID.values()];
   due.sort((left, right) =>
     Date.parse(clean(left.next_attempt_at || left.updated_at)) -
     Date.parse(clean(right.next_attempt_at || right.updated_at))
@@ -1123,7 +2017,18 @@ async function drainLiveActivityRetries(
         );
         if (!roomID || !matchID) continue;
         try {
-          if (registration.pending_force_end === true) {
+          if (
+            clean(registration.terminal_probe_started_at) &&
+            clean(registration.terminal_probe_until)
+          ) {
+            results.push(
+              await probeLiveActivityTerminal(base44, {
+                registration_id: registration.id,
+                probe_revision: registration.delivery_revision,
+                deadline_epoch_ms: deadlineEpochMs,
+              }),
+            );
+          } else if (registration.pending_force_end === true) {
             results.push({
               ok: true,
               forced_end: await deliverForcedLiveActivityEnd({
@@ -1203,7 +2108,7 @@ async function processEvents(
   body: Entity,
   timing?: ReturnType<typeof createProcessEventTiming>,
 ): Promise<Entity> {
-  const deadlineEpochMs = Date.now() + 50_000;
+  const deadlineEpochMs = clampDeadline(body.deadline_epoch_ms, 50_000);
   const sourceEventID = clean(body.source_event_id);
   if (!sourceEventID) throw new PushContractError("Source event is required.");
   let events = await allMatching(
@@ -1289,9 +2194,12 @@ async function processEvents(
 async function drain(base44: any, body: Entity): Promise<Entity> {
   const deadlineEpochMs = Date.now() + DRAIN_BUDGET_MS;
   const limit = normalizePushDrainLimit(body.limit);
-  const communityProfileRepairs = await drainDurableCommunityProfileRepairs(
+  // Terminal intent and committed recipient outboxes are the highest-priority
+  // recovery boundary. Run them before any nested profile worker so a slow or
+  // poisoned profile side effect cannot prevent room convergence.
+  const repairedEvents = await reconcileRecentRoomOutboxes(
     base44,
-    Math.min(24, limit),
+    Math.min(deadlineEpochMs, Date.now() + 10_000),
   );
   const announcementFanoutResults = await drainAnnouncementFanout({
     base44,
@@ -1301,10 +2209,6 @@ async function drain(base44: any, body: Entity): Promise<Entity> {
     base44,
     deadlineEpochMs: Math.min(deadlineEpochMs, Date.now() + 8_000),
   });
-  const repairedEvents = await reconcileRecentRoomOutboxes(
-    base44,
-    Math.min(deadlineEpochMs, Date.now() + 10_000),
-  );
   const liveResults = await drainLiveActivityRetries(
     base44,
     Math.min(6, limit),
@@ -1393,6 +2297,11 @@ async function drain(base44: any, body: Entity): Promise<Entity> {
       }
     },
   });
+  const communityProfileRepairs = await drainDurableCommunityProfileRepairs(
+    base44,
+    Math.min(24, limit),
+    Math.min(deadlineEpochMs, Date.now() + 3_000),
+  );
   return {
     ok: true,
     processed: results.length + liveResults.length +
@@ -1423,7 +2332,10 @@ Deno.serve(async (req) => {
       [
         "process_event",
         "drain",
+        "probe_live_activity_terminal",
         "sync_live_activity",
+        "enqueue_room_live_activity_end",
+        "deliver_queued_room_live_activity_end",
         "end_room_live_activities",
       ].includes(action)
     ) {
@@ -1465,6 +2377,19 @@ Deno.serve(async (req) => {
       }
       if (action === "sync_live_activity") {
         return Response.json(await syncLiveActivities(base44, body));
+      }
+      if (action === "probe_live_activity_terminal") {
+        return Response.json(await probeLiveActivityTerminal(base44, body));
+      }
+      if (action === "enqueue_room_live_activity_end") {
+        return Response.json(
+          await enqueueRoomLiveActivityEndOnly(base44, body),
+        );
+      }
+      if (action === "deliver_queued_room_live_activity_end") {
+        return Response.json(
+          await deliverQueuedRoomLiveActivityEndOnly(base44, body),
+        );
       }
       if (action === "end_room_live_activities") {
         return Response.json(await endRoomLiveActivities(base44, body));
@@ -1518,16 +2443,66 @@ Deno.serve(async (req) => {
           await registerLiveActivity({
             liveActivityStore,
             roomStore: base44.asServiceRole.entities.GameRoom,
+            eventStore: base44.asServiceRole.entities.PushNotificationEvent,
+            signalStore: base44.asServiceRole.entities.GameRoomSignal,
             userID: clean(user.id),
             body,
             persist,
             leasedUserIDs,
           }),
       });
+      let terminalDelivery = "";
+      if (
+        saved.pending_force_end === true &&
+        clean(saved.pending_room_id) && clean(saved.pending_match_id)
+      ) {
+        terminalDelivery = await deliverForcedLiveActivityEnd({
+          base44,
+          registration: saved,
+          roomID: clean(saved.pending_room_id),
+          matchID: clean(saved.pending_match_id),
+          roomRevision: Math.max(
+            0,
+            Number(saved.pending_room_revision || 0),
+          ),
+          queuedPendingOnly: true,
+        });
+        if (terminalDelivery === "skipped") {
+          const current = (await allMatching(liveActivityStore, {
+            id: clean(saved.id),
+          }))[0];
+          if (
+            current?.pending_force_end === true && liveDeliveryDue(current)
+          ) {
+            throw new PushContractError(
+              "Live Activity termination was deferred; retry registration.",
+              503,
+              "terminal_delivery_prompt_unconfirmed",
+            );
+          }
+        }
+      }
+      const probeAccepted = terminalDelivery
+        ? true
+        : await triggerLiveActivityTerminalProbe(base44, saved);
+      if (
+        clean(saved.terminal_probe_started_at) &&
+        clean(saved.terminal_probe_until) && !probeAccepted
+      ) {
+        // The row is already durable, but return a retryable response so the
+        // device keeps the token and promptly re-prompts instead of relying on
+        // the slower scheduled sweep.
+        throw new PushContractError(
+          "Live Activity reconciliation was deferred; retry registration.",
+          503,
+          "terminal_probe_prompt_unconfirmed",
+        );
+      }
       return Response.json({
         ok: true,
         registration_id: saved.id,
         updated_at: saved.updated_at,
+        ...(terminalDelivery ? { terminal_delivery: terminalDelivery } : {}),
       });
     }
     if (action === "unregister_device") {
@@ -1552,6 +2527,7 @@ Deno.serve(async (req) => {
         action: async (persist) =>
           await unregisterLiveActivity({
             liveActivityStore,
+            roomStore: base44.asServiceRole.entities.GameRoom,
             userID: clean(user.id),
             body,
             persist,
