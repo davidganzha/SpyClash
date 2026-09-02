@@ -8,6 +8,7 @@ EXPECTED_APP_ID="69a0e57fa939f578082f8091"
 EXPECTED_CLI_VERSION="0.0.56"
 EXPECTED_FUNCTION_COUNT=17
 EXPECTED_ENTITY_COUNT=24
+EXPECTED_GAME_ROOM_ACTION_RUNTIME_COUNT=43
 EXPECTED_GAME_ROOM_ACTION_HASH="61981ace27453bc04c013533519dbc49cd6a6d70bca85b68427ea75db2df1991"
 EXPECTED_GAME_ROOM_SIGNAL_HASH="bdfe7d186dbc3fcb08b5a4da849c2eec674401af9332d986de44f600dfe4c953"
 APP_FILE="$ROOT/base44/.app.jsonc"
@@ -17,6 +18,7 @@ OVERLAY_ROOT="$ROOT/cutovers/lobby-mode-realtime-pilot/overlays"
 PROJECTION_FIELDS="$OVERLAY_ROOT/game-room-signal-projection-fields.json"
 PROJECTION_SAFE_SIGNAL="$OVERLAY_ROOT/projection-safe-game-room-signal.ts"
 ENABLE_DIRECT_PATCH="$OVERLAY_ROOT/enable-direct-mode.patch"
+FLATTEN_FUNCTION="$ROOT/scripts/flatten-base44-pulled-function.sh"
 CUTOVER_ROOT="$ROOT/.base44-cutover/lobby-mode-realtime-pilot"
 WORK="$(mktemp -d "${TMPDIR:-/tmp}/spyclash-lobby-mode-pilot.XXXXXX")"
 REMOTE_SCHEMA="$WORK/remote-entities.json"
@@ -66,6 +68,14 @@ fail() {
   exit "${2:-65}"
 }
 
+assert_no_find_match() {
+  local message=$1 match
+  shift
+  match="$(find "$@" -print -quit)" || \
+    fail "Unable to inspect filesystem: $message" 77
+  [[ -z "$match" ]] || fail "$message" 77
+}
+
 hash_file() {
   shasum -a 256 "$1" | awk '{print $1}'
 }
@@ -96,7 +106,7 @@ base44_cli() {
     --app-id "$EXPECTED_APP_ID" "$@"
 }
 
-for command in awk basename chmod cmp cp curl date diff env find git grep head jq mkdir \
+for command in awk basename chmod cmp cp curl date diff env find git head jq mkdir \
   mktemp mv npx rm sed shasum sort stat tr wc; do
   command -v "$command" >/dev/null 2>&1 || fail "Missing command: $command" 69
 done
@@ -109,6 +119,8 @@ done
   fail "Base44 authentication must have mode 600." 77
 [[ -f "$PROJECTION_FIELDS" && -f "$PROJECTION_SAFE_SIGNAL" && \
   -f "$ENABLE_DIRECT_PATCH" ]] || fail "Pilot overlays are incomplete."
+[[ -x "$FLATTEN_FUNCTION" && ! -L "$FLATTEN_FUNCTION" ]] || \
+  fail "Function flatten helper is missing or unsafe." 77
 [[ "$ROOT" != "/" && ! -L "$CUTOVER_ROOT" ]] || \
   fail "Unsafe cutover root." 77
 
@@ -183,6 +195,15 @@ REMOTE_GAME_ROOM_ACTION="$REMOTE_FUNCTIONS/base44/functions/gameRoomAction"
 REMOTE_GAME_ROOM_ACTION_HASH="$(tree_hash "$REMOTE_GAME_ROOM_ACTION")"
 [[ "$REMOTE_GAME_ROOM_ACTION_HASH" == "$EXPECTED_GAME_ROOM_ACTION_HASH" ]] || \
   fail "BLOCKED_GAME_ROOM_ACTION_BASELINE_DRIFT" 77
+REMOTE_GAME_ROOM_RUNTIME="$REMOTE_GAME_ROOM_ACTION/base44/functions/gameRoomAction"
+[[ "$(jq -er '.name' "$REMOTE_GAME_ROOM_ACTION/function.jsonc")" == \
+  "gameRoomAction" ]] || fail "Unexpected remote gameRoomAction config." 77
+[[ "$(jq -er '.entry' "$REMOTE_GAME_ROOM_ACTION/function.jsonc")" == \
+  "base44/functions/gameRoomAction/entry.ts" && \
+  -f "$REMOTE_GAME_ROOM_RUNTIME/entry.ts" ]] || \
+  fail "Unsupported pulled gameRoomAction package layout." 77
+assert_no_find_match "Nested runtime directory in pulled gameRoomAction." \
+  "$REMOTE_GAME_ROOM_RUNTIME" -mindepth 1 -type d
 
 GENERATED_AT="$(date -u +'%Y-%m-%dT%H:%M:%SZ')"
 GENERATED_EPOCH="$(date -u +'%s')"
@@ -223,24 +244,32 @@ jq -S --slurpfile fields "$PROJECTION_FIELDS" \
 mv "$WORK/GameRoomSignal.candidate.jsonc" \
   "$STAGE/candidate/base44/entities/GameRoomSignal.jsonc"
 
-cp -R "$REMOTE_GAME_ROOM_ACTION" \
-  "$STAGE/rollback/base44/functions/gameRoomAction"
-ROLLBACK_SIGNAL="$STAGE/rollback/base44/functions/gameRoomAction/base44/functions/gameRoomAction/game-room-signal.ts"
-cp "$PROJECTION_SAFE_SIGNAL" "$ROLLBACK_SIGNAL"
-cp -R "$STAGE/rollback/base44/functions/gameRoomAction" \
-  "$STAGE/candidate/base44/functions/gameRoomAction"
+ROLLBACK_FUNCTION="$STAGE/rollback/base44/functions/gameRoomAction"
 CANDIDATE_FUNCTION="$STAGE/candidate/base44/functions/gameRoomAction"
+"$FLATTEN_FUNCTION" \
+  "$REMOTE_GAME_ROOM_ACTION" "$ROLLBACK_FUNCTION" \
+  gameRoomAction "$EXPECTED_GAME_ROOM_ACTION_RUNTIME_COUNT"
+ROLLBACK_SIGNAL="$ROLLBACK_FUNCTION/game-room-signal.ts"
+cp "$PROJECTION_SAFE_SIGNAL" "$ROLLBACK_SIGNAL"
+cp -R "$ROLLBACK_FUNCTION" "$CANDIDATE_FUNCTION"
 (
-  cd "$CANDIDATE_FUNCTION"
+  cd "$STAGE/candidate"
   git apply --check "$ENABLE_DIRECT_PATCH"
   git apply "$ENABLE_DIRECT_PATCH"
 )
+[[ "$(jq -er '.entry' "$CANDIDATE_FUNCTION/function.jsonc")" == "entry.ts" && \
+  -f "$CANDIDATE_FUNCTION/entry.ts" ]] || \
+  fail "Candidate function is not directly deployable." 77
+[[ "$(jq -er '.entry' "$ROLLBACK_FUNCTION/function.jsonc")" == "entry.ts" && \
+  -f "$ROLLBACK_FUNCTION/entry.ts" ]] || \
+  fail "Rollback function is not directly deployable." 77
 
 find "$STAGE" -type d -exec chmod 700 {} +
 find "$STAGE" -type f -exec chmod 600 {} +
-! find "$STAGE" -type l -print | grep -q . || fail "Symlink in cutover package."
-! find "$STAGE" -name '.app.json*' -print | grep -q . || \
-  fail "Generated package must remain unlinked from every Base44 app."
+assert_no_find_match "Symlink in cutover package." "$STAGE" -type l
+assert_no_find_match \
+  "Generated package must remain unlinked from every Base44 app." \
+  "$STAGE" -name '.app.json*'
 
 : > "$ENTITY_INVENTORY_JSONL"
 while IFS= read -r entity_name; do
@@ -279,7 +308,22 @@ REMOTE_ENTITY_SET_HASH="$(
 BASELINE_FUNCTION_HASH="$(tree_hash "$STAGE/snapshots/base44/functions/gameRoomAction")"
 CANDIDATE_ENTITIES_HASH="$(tree_hash "$STAGE/candidate/base44/entities")"
 CANDIDATE_FUNCTION_HASH="$(tree_hash "$CANDIDATE_FUNCTION")"
-ROLLBACK_FUNCTION_HASH="$(tree_hash "$STAGE/rollback/base44/functions/gameRoomAction")"
+ROLLBACK_FUNCTION_HASH="$(tree_hash "$ROLLBACK_FUNCTION")"
+EXPECTED_REMOTE_CANDIDATE="$WORK/expected-remote-candidate"
+EXPECTED_REMOTE_ROLLBACK="$WORK/expected-remote-rollback"
+mkdir -p \
+  "$EXPECTED_REMOTE_CANDIDATE/base44/functions/gameRoomAction" \
+  "$EXPECTED_REMOTE_ROLLBACK/base44/functions/gameRoomAction"
+cp "$REMOTE_GAME_ROOM_ACTION/function.jsonc" \
+  "$EXPECTED_REMOTE_CANDIDATE/function.jsonc"
+cp "$REMOTE_GAME_ROOM_ACTION/function.jsonc" \
+  "$EXPECTED_REMOTE_ROLLBACK/function.jsonc"
+find "$CANDIDATE_FUNCTION" -maxdepth 1 -type f ! -name function.jsonc \
+  -exec cp {} "$EXPECTED_REMOTE_CANDIDATE/base44/functions/gameRoomAction/" \;
+find "$ROLLBACK_FUNCTION" -maxdepth 1 -type f ! -name function.jsonc \
+  -exec cp {} "$EXPECTED_REMOTE_ROLLBACK/base44/functions/gameRoomAction/" \;
+EXPECTED_REMOTE_CANDIDATE_HASH="$(tree_hash "$EXPECTED_REMOTE_CANDIDATE")"
+EXPECTED_REMOTE_ROLLBACK_HASH="$(tree_hash "$EXPECTED_REMOTE_ROLLBACK")"
 CANDIDATE_PACKAGE_HASH="$(tree_hash "$STAGE/candidate")"
 ROLLBACK_PACKAGE_HASH="$(tree_hash "$STAGE/rollback")"
 PROJECTION_FIELDS_HASH="$(canonical_json_hash "$PROJECTION_FIELDS")"
@@ -300,6 +344,8 @@ jq -n \
   --arg candidate_entities_hash "$CANDIDATE_ENTITIES_HASH" \
   --arg candidate_function_hash "$CANDIDATE_FUNCTION_HASH" \
   --arg rollback_function_hash "$ROLLBACK_FUNCTION_HASH" \
+  --arg expected_remote_candidate_hash "$EXPECTED_REMOTE_CANDIDATE_HASH" \
+  --arg expected_remote_rollback_hash "$EXPECTED_REMOTE_ROLLBACK_HASH" \
   --arg candidate_package_hash "$CANDIDATE_PACKAGE_HASH" \
   --arg rollback_package_hash "$ROLLBACK_PACKAGE_HASH" \
   --arg projection_fields_hash "$PROJECTION_FIELDS_HASH" \
@@ -308,7 +354,7 @@ jq -n \
   --slurpfile entities "$STAGE/snapshots/entity-inventory.json" \
   --slurpfile functions "$STAGE/snapshots/function-inventory.json" '
   {
-    manifest_version: 1,
+    manifest_version: 2,
     action: $action,
     target_app_id: $target_app_id,
     generated_at: $generated_at,
@@ -339,17 +385,19 @@ jq -n \
       ],
       function: "gameRoomAction",
       candidate_runtime_files: [
-        "base44/functions/gameRoomAction/entry.ts",
-        "base44/functions/gameRoomAction/game-room-signal.ts"
+        "entry.ts",
+        "game-room-signal.ts"
       ],
       rollback_runtime_files: [
-        "base44/functions/gameRoomAction/game-room-signal.ts"
+        "game-room-signal.ts"
       ]
     },
     artifacts: {
       candidate_entities_tree_sha256: $candidate_entities_hash,
       candidate_function_tree_sha256: $candidate_function_hash,
       rollback_function_tree_sha256: $rollback_function_hash,
+      expected_remote_candidate_function_tree_sha256: $expected_remote_candidate_hash,
+      expected_remote_rollback_function_tree_sha256: $expected_remote_rollback_hash,
       baseline_function_tree_sha256: $baseline_function_hash,
       candidate_package_tree_sha256: $candidate_package_hash,
       rollback_package_tree_sha256: $rollback_package_hash,

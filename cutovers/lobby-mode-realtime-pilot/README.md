@@ -15,14 +15,22 @@ read-only снимки production и локальные файлы. Deploy в с
 
 - `candidate`: свежие 24 production entity-схемы, где только
   `GameRoomSignal` дополнен пятью необязательными projection-полями, и только
-  функция `gameRoomAction`.
+  функция `gameRoomAction`. Функция упакована в непосредственно deployable
+  flat-layout: `function.jsonc` и 43 соседних `.ts`-файла, без подкаталогов;
+  `entry` равен `entry.ts`.
 - `rollback`: только `gameRoomAction` в compatibility-off режиме. Новые поля
   остаются в schema, но generic-сигналы записывают `projection_kind: none`,
-  поэтому сохранённая projection становится неактивной.
+  поэтому сохранённая projection становится неактивной. Rollback строится
+  только из запечатанного pre-cutover baseline, а не из уже работающего
+  candidate, и имеет такой же flat-layout.
 - `snapshots`: свежий read-only baseline всех entity и полные деревья всех 17
   production-функций, включая точную исходную версию `gameRoomAction`.
+  Base44 CLI `functions pull` возвращает её в своём неизменённом nested-layout;
+  snapshot никогда не нормализуется и не используется напрямую для deploy.
 - `manifest.json`: app id, operator, Git commit, CLI version, inventories,
-  hashes и строгий allowlist будущих production-команд.
+  hashes и строгий allowlist будущих production-команд. Manifest v2 раздельно
+  запечатывает hash nested snapshot, hashes flat candidate/rollback и hashes
+  ожидаемого nested pull-back после каждого deploy.
 
 ## Подготовка
 
@@ -42,20 +50,34 @@ read-only снимки production и локальные файлы. Deploy в с
    `.base44-cutover/lobby-mode-realtime-pilot/<run-id>`.
 5. Запускает fail-closed verifier.
 
-Stage действителен 2 минуты. После этого verifier возвращает
-`BLOCKED_STALE_CUTOVER_PACKAGE`, и подготовку нужно повторить.
+Preflight-разрешение stage действительно 2 минуты. После этого режим
+`preflight` возвращает `BLOCKED_STALE_CUTOVER_PACKAGE`. Сам запечатанный пакет
+остаётся пригодным для read-only postflight-аудита и подготовленного rollback;
+нельзя пересобирать rollback из уже работающего production candidate.
 
 Повторная локальная проверка:
 
 ```sh
 ./scripts/verify-base44-lobby-mode-pilot.sh \
-  .base44-cutover/lobby-mode-realtime-pilot/<run-id>
+  .base44-cutover/lobby-mode-realtime-pilot/<run-id> preflight
 ```
 
 Каждый запуск verifier заново, только на чтение, получает все production-схемы
-и все 17 функций. Он требует полного совпадения с запечатанным baseline,
-включая hashes каждой non-target функции. Успешный результат заканчивается
-`READY_FOR_APPROVAL` и `production_mutated=false`.
+и все 17 функций. Во всех режимах он требует неизменности 16 non-target
+функций. Неизвестный режим отклоняется fail-closed.
+
+- `preflight` ожидает исходные function/schema и заканчивается
+  `READY_FOR_APPROVAL`.
+- `candidate-postflight` ожидает candidate function/schema и заканчивается
+  `POSTFLIGHT_VERIFIED`.
+- `rollback-preflight` подтверждает, что production ещё находится в candidate
+  state, и заканчивается `READY_FOR_ROLLBACK_APPROVAL`; это не заменяет новое
+  подтверждение пользователя.
+- `rollback-postflight` ожидает compatibility-off функцию при сохранённой
+  additive candidate schema и заканчивается `POSTFLIGHT_VERIFIED`.
+
+Verifier сам не изменяет production и всегда выводит
+`verification_mutated_production=false`.
 
 ## Production boundary
 
@@ -75,7 +97,7 @@ Stage действителен 2 минуты. После этого verifier в
 4. Только после этого из `candidate` выполнить точный
    `functions deploy gameRoomAction` из manifest.
 5. Повторно получить functions и доказать, что все 16 non-target functions
-   сохранили hashes.
+   сохранили hashes, запустив `candidate-postflight`.
 
 Нельзя использовать `base44 deploy`, неназванный `functions deploy`,
 `--force`, link/eject, site, auth, connector, secret или delete-команды.
@@ -111,6 +133,10 @@ Deploy сам по себе не означает успех. Пилот при�
 Rollback — отдельная production mutation и требует отдельного свежего
 подтверждения. После подтверждения можно deploy только `gameRoomAction` из
 каталога `rollback`, используя точный rollback argv из manifest.
+
+Непосредственно перед запросом подтверждения нужно запустить
+`rollback-preflight`; после deploy — `rollback-postflight`. Запрещено
+пересобирать rollback из live candidate: это сохранило бы включённый fast path.
 
 Старую entity schema автоматически возвращать нельзя: пять полей additive и
 optional, а полный schema push имеет риск затронуть другие entities.
