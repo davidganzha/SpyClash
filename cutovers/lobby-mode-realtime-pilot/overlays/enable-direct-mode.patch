@@ -1,0 +1,24 @@
+--- a/base44/functions/gameRoomAction/entry.ts
++++ b/base44/functions/gameRoomAction/entry.ts
+@@ -116,2 +116,3 @@
+   fanoutGameRoomSignalsBestEffort,
++  lobbyModeSignalProjectionForRoom,
+ } from "./game-room-signal.ts";
+@@ -2427,2 +2428,3 @@
+ const FAST_ROOM_ACTIONS = new Set([
++  "update_game_mode",
+   "mark_role_card_read",
+@@ -2443,2 +2445,7 @@
+   if (!roomHasParticipantIdentity(room, user)) return false;
++  if (
++    action === "update_game_mode" &&
++    (normalizedStatus(room) !== "waiting" ||
++      clean(room?.host_email) !== clean(user?.email))
++  ) return false;
+   if (
+@@ -2633,2 +2640,5 @@
+       additionalRecipientUserIDs,
++      projection: action === "update_game_mode"
++        ? lobbyModeSignalProjectionForRoom(result)
++        : null,
+       allowCreate: options.allowSignalCreate !== false,

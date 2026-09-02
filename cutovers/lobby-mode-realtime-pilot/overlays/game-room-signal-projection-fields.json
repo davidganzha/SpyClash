@@ -1,0 +1,33 @@
+{
+  "projection_kind": {
+    "type": "string",
+    "description": "Activation discriminator for optional safe direct projections; generic wake-up hints always write none.",
+    "enum": [
+      "none",
+      "lobby_mode_v1"
+    ]
+  },
+  "projection_id": {
+    "type": "string",
+    "description": "Opaque server-issued identity used to order duplicate direct projections.",
+    "format": "uuid"
+  },
+  "projected_game_mode": {
+    "type": "string",
+    "description": "Safe public lobby mode projected directly to this authenticated participant.",
+    "enum": [
+      "questions",
+      "associations"
+    ]
+  },
+  "projection_committed_at": {
+    "type": "string",
+    "description": "Server timestamp captured immediately after the authoritative room CAS commits.",
+    "format": "date-time"
+  },
+  "projection_emitted_at": {
+    "type": "string",
+    "description": "Server timestamp used with projection_id for deterministic direct-signal ordering.",
+    "format": "date-time"
+  }
+}
