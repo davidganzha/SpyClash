@@ -2,6 +2,7 @@ import { assertEquals, assertThrows } from "jsr:@std/assert@1";
 import {
   activeGameLobbyEligiblePlayerEmails,
   activeGameLobbyResetPatch,
+  activeGameLobbyReturnCanUseFastPath,
   activeGameLobbyReturnTransition,
 } from "./active-game-lobby-return-policy.ts";
 
@@ -230,6 +231,33 @@ Deno.test("cancelling a vote prevents a premature reset", () => {
   assertEquals(transition.didReset, false);
   assertEquals(transition.requiredVotes, 3);
   assertEquals(transition.patch, { ready_players: ["p1@example.com"] });
+});
+
+Deno.test("only a non-resetting return vote qualifies for the fast CAS path", () => {
+  assertEquals(
+    activeGameLobbyReturnCanUseFastPath(
+      activeRoom(),
+      "p1@example.com",
+      true,
+    ),
+    true,
+  );
+  assertEquals(
+    activeGameLobbyReturnCanUseFastPath(
+      activeRoom({ ready_players: ["p1@example.com"] }),
+      "p1@example.com",
+      false,
+    ),
+    true,
+  );
+  assertEquals(
+    activeGameLobbyReturnCanUseFastPath(
+      activeRoom({ ready_players: ["p1@example.com", "p2@example.com"] }),
+      "p3@example.com",
+      true,
+    ),
+    false,
+  );
 });
 
 Deno.test("the last current-player vote atomically resets gameplay and preserves the authoritative lobby", () => {

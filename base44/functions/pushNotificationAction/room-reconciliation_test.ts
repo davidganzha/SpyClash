@@ -292,6 +292,11 @@ Deno.test("scheduled drain reconciles terminal outboxes before community profile
   );
   assertEquals(profileDrain.includes("await runWithinDeadline({"), true);
   assertEquals(profileDrain.includes('reason: "deadline_exceeded"'), true);
+  assertEquals(
+    profileDrain.includes("profileRepairDrainSummary(bounded.value)"),
+    true,
+  );
+  assertEquals(profileDrain.includes("return bounded.value as Entity"), false);
 
   const scheduledReconciliation = source.slice(
     source.indexOf("async function reconcileRecentRoomOutboxes"),

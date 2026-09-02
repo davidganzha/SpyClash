@@ -253,7 +253,7 @@ final class Base44ClientRoomActionTests: XCTestCase {
         defer { MockURLProtocol.requestHandler = nil }
 
         let client = makeClient()
-        let room = GameRoom.previewRoom(status: "waiting")
+        let room = GameRoom.previewRoom(status: "playing")
         let stableTarget = Player(
             email: "stable@example.com",
             name: "Stable",
@@ -276,7 +276,9 @@ final class Base44ClientRoomActionTests: XCTestCase {
         let bodies = try recorder.requestBodies()
         XCTAssertEqual(bodies[0]["action"] as? String, "vote_return_to_lobby")
         XCTAssertEqual(bodies[0]["return_to_lobby_vote"] as? Bool, true)
+        XCTAssertEqual(bodies[0]["expected_match_id"] as? String, room.matchID)
         XCTAssertEqual(bodies[1]["return_to_lobby_vote"] as? Bool, false)
+        XCTAssertEqual(bodies[1]["expected_match_id"] as? String, room.matchID)
 
         XCTAssertEqual(bodies[2]["action"] as? String, "kick_player")
         XCTAssertEqual(bodies[2]["target_user_id"] as? String, "user-stable")
@@ -475,6 +477,34 @@ final class Base44ClientRoomActionTests: XCTestCase {
         _ = try await client.markAnswerHeard(room: room)
 
         XCTAssertEqual(try recorder.requestBodies().count, 2)
+    }
+
+    func testReturnToLobbyVoteRetriesWhenTheServerReroutesAFinalVoteToLeases() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if try recorder.requestBodies().count == 1 {
+                return MockURLProtocol.leaseConflictResponse(
+                    for: request,
+                    code: "return_to_lobby_requires_leases",
+                    retryable: true
+                )
+            }
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let room = GameRoom.previewRoom(status: "playing")
+        _ = try await makeClient().voteReturnToLobby(room: room, vote: true)
+
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(bodies.count, 2)
+        XCTAssertTrue(
+            bodies.allSatisfy { ($0["action"] as? String) == "vote_return_to_lobby" }
+        )
+        XCTAssertTrue(
+            bodies.allSatisfy { ($0["expected_match_id"] as? String) == room.matchID }
+        )
     }
 
     func testExpiredFinalizationOwnsRetryAndSendsExactMatchScope() async throws {

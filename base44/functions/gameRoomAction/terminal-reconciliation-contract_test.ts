@@ -55,6 +55,34 @@ Deno.test("trusted terminal finalizer reacquires the full participant lease set"
   assertEquals(route.indexOf("dispatchRoomSideEffectsAfterLeases(") > 0, true);
 });
 
+Deno.test("terminal recovery reuses a persisted intent before validating a new ranked finish", async () => {
+  const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
+  const claim = source.slice(
+    source.indexOf("async function claimTerminalIntent"),
+    source.indexOf("async function finishRoom"),
+  );
+  const existingIntent = claim.indexOf(
+    "const existing = terminalIntentFromRoom(latest)",
+  );
+  const existingReturn = claim.indexOf(
+    "if (existing) return { room: latest, intent: existing }",
+  );
+  const rankedGuard = claim.indexOf("assertServerRankedFinishSource(latest)");
+  assertEquals(
+    existingIntent >= 0 && existingIntent < existingReturn &&
+      existingReturn < rankedGuard,
+    true,
+  );
+
+  const finish = source.slice(
+    source.indexOf("async function finishRoom"),
+    source.indexOf("async function ensureTerminalOutboxCommitBeforeMutation"),
+  );
+  const terminalClaim = finish.slice(0, finish.indexOf("const claimed ="));
+  assertEquals(terminalClaim.includes("assertServerRankedFinishSource"), false);
+  assertStringIncludes(finish, "const claimed = await claimTerminalIntent(");
+});
+
 Deno.test("a finished room remains repairable until the full outbox receipt is durable", async () => {
   const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
   const finish = source.slice(

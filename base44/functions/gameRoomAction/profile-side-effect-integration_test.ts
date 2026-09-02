@@ -83,6 +83,7 @@ Deno.test("scheduled push recovery wakes profile repair without coupling deliver
     repair,
     'action: "repair_finished_profile_side_effects"',
   );
+  assertStringIncludes(repair, "internalFunctionBody(response).outcome");
   assert(
     !recent.includes("await repairFinishedRoomCommunityProfiles("),
     "scheduled terminal/outbox scan must not be blocked by per-room profile invokes",
@@ -92,6 +93,10 @@ Deno.test("scheduled push recovery wakes profile repair without coupling deliver
   assertStringIncludes(
     durableDrain,
     'action: "drain_community_profile_repairs"',
+  );
+  assertStringIncludes(
+    durableDrain,
+    "profileRepairDrainSummary(bounded.value)",
   );
   assertStringIncludes(durableDrain, "await runWithinDeadline({");
   assertStringIncludes(durableDrain, 'reason: "deadline_exceeded"');

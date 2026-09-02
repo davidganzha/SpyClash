@@ -66,6 +66,10 @@ import { pushErrorResponse } from "./error-response.ts";
 import { finishedProfileRepairAlreadyCompleted } from "./profile-repair-state.ts";
 import { createProcessEventTiming } from "./process-event-timing.ts";
 import {
+  internalFunctionBody,
+  profileRepairDrainSummary,
+} from "./internal-function-response.ts";
+import {
   enqueueRoomLiveActivityEnd,
   type RoomLiveActivityEndQueue,
 } from "./live-end-enqueue.ts";
@@ -200,7 +204,7 @@ async function repairFinishedRoomCommunityProfiles(
     !clean(room?.game_finished_event_id)
   ) return false;
   try {
-    const result = await base44.asServiceRole.functions.invoke(
+    const response = await base44.asServiceRole.functions.invoke(
       "gameRoomAction",
       {
         action: "repair_finished_profile_side_effects",
@@ -210,7 +214,7 @@ async function repairFinishedRoomCommunityProfiles(
       },
     );
     return ["performed", "completed", "deferred"].includes(
-      clean(result?.outcome),
+      clean(internalFunctionBody(response).outcome),
     );
   } catch (error) {
     // Profile repair is a separate durable room outcome. It must never make
@@ -250,7 +254,7 @@ async function drainDurableCommunityProfileRepairs(
         reason: "deadline_exceeded",
       };
     }
-    return bounded.value as Entity;
+    return profileRepairDrainSummary(bounded.value);
   } catch (error) {
     // GameHistory, not an ephemeral finished room, remains the durable source.
     // APNs/outbox work below proceeds independently and a later drain retries.
