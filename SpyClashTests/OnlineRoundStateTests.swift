@@ -4919,6 +4919,52 @@ final class LobbyDraftPoolPolicyTests: XCTestCase {
     }
 }
 
+final class AppStateRoomAccountIsolationTests: XCTestCase {
+    @MainActor
+    func testSameAccountRefreshKeepsRoomButAccountReplacementClearsIt() throws {
+        let appState = AppState()
+        let firstAccount = makeUser(id: "account-a")
+        appState.user = firstAccount
+
+        let room = GameRoom.previewRoom(status: "waiting")
+        appState.allowRoomActivation(room.id)
+        appState.activeRoom = room
+        let revisionBeforeRefresh = appState.roomSyncRevision
+
+        appState.user = makeUser(id: "account-a")
+        XCTAssertEqual(appState.activeRoom?.id, room.id)
+        XCTAssertEqual(appState.roomSyncRevision, revisionBeforeRefresh)
+
+        appState.user = makeUser(id: "account-b")
+        XCTAssertNil(appState.activeRoom)
+        XCTAssertGreaterThan(appState.roomSyncRevision, revisionBeforeRefresh)
+
+        appState.user = nil
+        appState.activeRoom = nil
+    }
+
+    private func makeUser(id: String) -> SpyUser {
+        SpyUser(
+            id: id,
+            email: "\(id)@spyclash.test",
+            fullName: nil,
+            displayName: "Operative",
+            avatar: "🕵️",
+            language: "en",
+            role: nil,
+            isVerified: true,
+            rating: nil,
+            gamesPlayed: nil,
+            gamesWon: nil,
+            remoteSpyID: nil,
+            spyCardTheme: nil,
+            spyCardAccent: nil,
+            spyCardBadge: nil,
+            radarInvitePolicy: nil
+        )
+    }
+}
+
 final class GameRoomRealtimeSignalParserTests: XCTestCase {
     func testRejectedOldMembershipSnapshotRetainsPermittedRejoinedRoom() {
         var rejoinedRoom = GameRoom.previewRoom(status: "waiting")
@@ -5469,6 +5515,24 @@ final class GameRoomRealtimeSignalParserTests: XCTestCase {
                 mode: .leave
             ),
             .stop
+        )
+        XCTAssertTrue(
+            DismissedRoomExitAccountPolicy.canContinue(
+                capturedAccessToken: "account-a-token",
+                currentAccessToken: "account-a-token"
+            )
+        )
+        XCTAssertFalse(
+            DismissedRoomExitAccountPolicy.canContinue(
+                capturedAccessToken: "account-a-token",
+                currentAccessToken: "account-b-token"
+            )
+        )
+        XCTAssertFalse(
+            DismissedRoomExitAccountPolicy.canContinue(
+                capturedAccessToken: "account-a-token",
+                currentAccessToken: nil
+            )
         )
     }
 

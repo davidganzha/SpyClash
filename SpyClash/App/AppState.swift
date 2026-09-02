@@ -616,6 +616,19 @@ enum DismissedRoomExitFailureDisposition: Equatable {
     case leaveThenStop
 }
 
+enum DismissedRoomExitAccountPolicy {
+    static func canContinue(
+        capturedAccessToken: String?,
+        currentAccessToken: String?
+    ) -> Bool {
+        guard let capturedAccessToken = capturedAccessToken?.nilIfBlank,
+              let currentAccessToken = currentAccessToken?.nilIfBlank else {
+            return false
+        }
+        return capturedAccessToken == currentAccessToken
+    }
+}
+
 enum DismissedRoomExitRetryPolicy {
     static let leaveRetryDelaysMilliseconds = [250, 750]
     static let closeRetryDelaysMilliseconds = [1_000, 2_000, 4_000, 8_000]
@@ -1247,6 +1260,9 @@ final class AppState: NSObject {
                 postAuthActiveRoomRestoreTask?.cancel()
                 postAuthActiveRoomRestoreTask = nil
                 postAuthActiveRoomRestoreUserID = nil
+                invalidateRoomContextForAccountChange(
+                    previousUserID: previousUserID
+                )
                 finishedMatchProfileRefreshTasks.values.forEach { $0.cancel() }
                 finishedMatchProfileRefreshTasks.removeAll()
                 finishedMatchProfileRefreshPolicy = FinishedMatchProfileRefreshPolicy()
@@ -1615,6 +1631,32 @@ final class AppState: NSObject {
         dismissedRoomExitAttemptGeneration = nil
     }
 
+    private func invalidateRoomContextForAccountChange(
+        previousUserID: String?
+    ) {
+        // A local-first leave may still be sleeping between retries. If the
+        // account token changes, allowing that task to continue would send the
+        // former membership's leave request as the replacement account.
+        cancelDismissedRoomExitAttempt()
+        activeRoomActivationRefreshTask?.cancel()
+        activeRoomActivationRefreshTask = nil
+        gameRoomRealtimeRefreshTask?.cancel()
+        gameRoomRealtimeRefreshTask = nil
+        roomSyncOperation = nil
+        roomSyncRevision &+= 1
+        _ = nextRoomRefreshRequestRevision()
+
+        // nil -> user is the normal cold-launch restore path. A known prior
+        // account, including logout, must never hand its in-memory or stored
+        // room reference to a different identity.
+        guard previousUserID != nil else { return }
+        if activeRoom != nil {
+            activeRoom = nil
+        } else {
+            clearStoredActiveRoom()
+        }
+    }
+
     private func isDismissedRoom(_ roomID: String) -> Bool {
         guard let ownerID = user?.id,
               UserDefaults.standard.string(forKey: Self.dismissedRoomOwnerStorageKey) == ownerID else {
@@ -1650,6 +1692,7 @@ final class AppState: NSObject {
             .flatMap { ($0 as? NSNumber)?.intValue }
         let expectedMembershipID = UserDefaults.standard
             .string(forKey: Self.dismissedRoomExitMembershipStorageKey)
+        guard let exitAccessToken = client.currentAccessToken else { return }
         let attemptGeneration = UUID()
         dismissedRoomExitAttemptGeneration = attemptGeneration
         dismissedRoomExitTask = Task { @MainActor [weak self] in
@@ -1658,9 +1701,17 @@ final class AppState: NSObject {
                 mode: exitMode,
                 shouldContinue: {
                     self.dismissedRoomExitAttemptGeneration == attemptGeneration &&
-                        self.isDismissedRoom(roomID)
+                        self.isDismissedRoom(roomID) &&
+                        DismissedRoomExitAccountPolicy.canContinue(
+                            capturedAccessToken: exitAccessToken,
+                            currentAccessToken: self.client.currentAccessToken
+                        )
                 },
                 operation: {
+                    guard DismissedRoomExitAccountPolicy.canContinue(
+                        capturedAccessToken: exitAccessToken,
+                        currentAccessToken: self.client.currentAccessToken
+                    ) else { throw CancellationError() }
                     switch exitMode {
                     case .leave:
                         try await self.client.leaveRoom(
@@ -1680,6 +1731,10 @@ final class AppState: NSObject {
                     // Authority can legitimately move before this local-first
                     // cleanup reaches the server. Stop close retries and make
                     // one bounded membership cleanup as the former host.
+                    guard DismissedRoomExitAccountPolicy.canContinue(
+                        capturedAccessToken: exitAccessToken,
+                        currentAccessToken: self.client.currentAccessToken
+                    ) else { return }
                     try? await self.client.leaveRoom(
                         roomID: roomID,
                         expectedRevision: expectedRevision,
@@ -4382,12 +4437,15 @@ final class AppState: NSObject {
         guard !code.isEmpty else {
             return false
         }
+        let joiningUserID = user.id
 
         do {
             let room = try await joinRoomSnapshotForExplicitActivation(
                 code: code,
                 user: user
             )
+            try Task.checkCancellation()
+            guard self.user?.id == joiningUserID else { return false }
             try confirmExplicitRoomActivation(room)
             activeRoom = room
             selectedTab = .game
@@ -4397,7 +4455,12 @@ final class AppState: NSObject {
             deepLinkStatus = language.home.roomReady(code)
             HapticManager.shared.fire(.milestone)
             return true
+        } catch is CancellationError {
+            return false
         } catch {
+            // A late response from the former account must neither alter the
+            // replacement account's navigation nor surface its stale 409.
+            guard self.user?.id == joiningUserID else { return false }
             if let base44Error = error as? Base44Error,
                base44Error.isClientUpdateRequired {
                 deepLinkStatus = switch language {

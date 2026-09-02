@@ -76,7 +76,13 @@ import {
   hasTrustedRoomActionContext,
   resolveRoomActionUser,
 } from "./request-auth.ts";
-import { storedRoomParticipantUserIDs } from "./room-participant-identity.ts";
+import {
+  allowsOrphanedActorIdentityRebind,
+  canRebindOrphanedActorIdentity,
+  roomIdentityLifecycleUserIDs,
+  roomParticipantIdentityBackfillPlan,
+  storedRoomParticipantUserIDs,
+} from "./room-participant-identity.ts";
 import {
   commitGamePushEvents,
   enqueueGamePushEvents,
@@ -2662,14 +2668,19 @@ async function repairDetectedCommittedGameStart(base44, detectedRoom, user) {
       assertExactRoomLeaseCoverage(context, userIDs),
     assertLeasesActive: (context) => assertRoomWriteLeases(context),
     migrate: async (candidate, userIDs) => {
+      const identityBackfillPlan = await prepareRoomParticipantIdentityBackfill(
+        base44,
+        candidate,
+        userIDs,
+      );
       const revisionMigratedRoom = await backfillRoomWriteRevision(
         base44,
         candidate,
       );
-      return await backfillRoomParticipantUserIDs(
+      return await applyRoomParticipantIdentityBackfill(
         base44,
         revisionMigratedRoom,
-        userIDs,
+        identityBackfillPlan,
       );
     },
     // The exact persisted match/event identity is checked immediately before
@@ -3315,12 +3326,29 @@ async function userIDForEmail(base44, emailValue) {
   return clean(exact[0]?.id) || null;
 }
 
-async function roomParticipantUserIDs(base44, room, actor) {
+async function userIDExists(base44, userIDValue) {
+  const userID = clean(userIDValue);
+  if (!userID) return false;
+  try {
+    const candidate = await base44.asServiceRole.entities.User.get(userID);
+    if (clean(candidate?.id) === userID) return true;
+    throw Object.assign(new Error("User identity lookup was inconclusive."), {
+      status: 503,
+      code: "participant_identity_lookup_failed",
+    });
+  } catch (error) {
+    if (Number(error?.status ?? error?.statusCode) === 404) return false;
+    throw error;
+  }
+}
+
+async function roomParticipantUserIDs(base44, room, actor, options = {}) {
   const stableUserIDs = storedRoomParticipantUserIDs({
     players: players(room),
     participantUserIDs: room?.participant_user_ids,
     hostEmail: room?.host_email,
     actor,
+    allowActorIdentityMigration: options.allowOrphanedActorRebind === true,
   });
   if (stableUserIDs) return stableUserIDs;
 
@@ -3350,11 +3378,22 @@ async function roomParticipantUserIDs(base44, room, actor) {
   return uniqueStrings(ids);
 }
 
-async function roomLifecycleUserIDs(base44, room, actor) {
-  return uniqueStrings([
-    ...await roomParticipantUserIDs(base44, room, actor),
-    clean(actor?.id),
-  ]);
+async function roomLifecycleUserIDs(
+  base44,
+  room,
+  actor,
+  options = {},
+  resolvedParticipantUserIDs = null,
+) {
+  const participantUserIDs = resolvedParticipantUserIDs ||
+    await roomParticipantUserIDs(base44, room, actor, options);
+  return roomIdentityLifecycleUserIDs({
+    participantUserIDs,
+    persistedParticipantUserIDs: room?.participant_user_ids,
+    players: players(room),
+    actor,
+    allowActorIdentityMigration: options.allowOrphanedActorRebind === true,
+  });
 }
 
 function assertTerminalIntentRecoveryScope(room, expected = {}) {
@@ -3463,51 +3502,107 @@ async function triggerTerminalIntentRecovery(base44, room) {
   }
 }
 
-async function backfillRoomParticipantUserIDs(base44, room, userIDs) {
-  const current = uniqueStrings(room?.participant_user_ids).sort();
+function participantIdentityMismatchError() {
+  return Object.assign(
+    new Error("Room participant identity does not match its account."),
+    { status: 409, code: "participant_identity_mismatch" },
+  );
+}
+
+async function authorizeOrphanedActorIdentityRebind(
+  base44,
+  room,
+  options = {},
+) {
+  if (options.allowOrphanedActorRebind !== true) return null;
+  const actor = options.actor || {};
+  const actorID = clean(actor?.id);
+  const actorEmail = clean(actor?.email).toLocaleLowerCase();
+  const actorRows = players(room).filter((player) =>
+    clean(player?.email).toLocaleLowerCase() === actorEmail
+  );
+  if (!actorID || !actorEmail || actorRows.length !== 1) return null;
+
+  const player = actorRows[0];
+  const suppliedUserID = clean(player?.user_id);
+  if (!suppliedUserID || suppliedUserID === actorID) return null;
+
+  const resolvedUserID = await userIDForEmail(base44, player?.email);
+  const storedUserExists = await userIDExists(base44, suppliedUserID);
+  if (
+    !canRebindOrphanedActorIdentity({
+      player,
+      actor,
+      hostEmail: room?.host_email,
+      resolvedUserID,
+      storedUserExists,
+    })
+  ) throw participantIdentityMismatchError();
+
+  const leaseContext = base44.__spyclashRoomWriteLeaseContext;
+  if (!leaseContext) throw participantIdentityMismatchError();
+  // The old lifecycle row is intentionally included. A completed or
+  // in-progress account deletion leaves it in `deleting`, so acquiring this
+  // writer lease fails closed instead of resurrecting stale rooms.
+  await assertRoomWriterLeaseForUser(leaseContext, suppliedUserID);
+  await assertRoomWriterLeaseForUser(leaseContext, resolvedUserID);
+  return {
+    playerEmail: actorEmail,
+    storedUserID: suppliedUserID,
+    resolvedUserID,
+  };
+}
+
+async function prepareRoomParticipantIdentityBackfill(
+  base44,
+  room,
+  userIDs,
+  options = {},
+) {
   const expected = uniqueStrings(userIDs).sort();
   const existingPlayers = players(room);
   const stablePlayerIDs = existingPlayers
     .map((player) => clean(player?.user_id))
     .filter(Boolean)
     .sort();
-  if (
-    stablePlayerIDs.length === existingPlayers.length &&
+  const current = uniqueStrings(room?.participant_user_ids).sort();
+  const alreadyStable = stablePlayerIDs.length === existingPlayers.length &&
     stablePlayerIDs.length === expected.length &&
     stablePlayerIDs.every((value, index) => value === expected[index]) &&
     current.length === expected.length &&
-    current.every((value, index) => value === expected[index])
-  ) return room;
-  let playersChanged = false;
-  const migratedPlayers = [];
+    current.every((value, index) => value === expected[index]);
+
+  // A fully indexed room already proved this mapping in
+  // roomParticipantUserIDs. Legacy/rebind paths resolve every player exactly
+  // once here and finish all identity validation before the first room write.
+  const resolvedUserIDsByEmail = [];
   for (const player of existingPlayers) {
-    const stableUserID = await userIDForEmail(base44, player?.email);
-    if (!stableUserID) {
+    const resolvedUserID = alreadyStable
+      ? clean(player?.user_id)
+      : await userIDForEmail(base44, player?.email);
+    if (!resolvedUserID) {
       throw Object.assign(new Error("Room participant identity is missing"), {
         status: 409,
         code: "participant_missing",
       });
     }
-    const suppliedUserID = clean(player?.user_id);
-    if (suppliedUserID && suppliedUserID !== stableUserID) {
-      throw Object.assign(
-        new Error("Room participant identity does not match its account."),
-        { status: 409, code: "participant_identity_mismatch" },
-      );
-    }
-    if (clean(player?.user_id) !== stableUserID) playersChanged = true;
-    migratedPlayers.push({ ...player, user_id: stableUserID });
+    resolvedUserIDsByEmail.push({
+      email: player?.email,
+      userID: resolvedUserID,
+    });
   }
-  if (
-    !playersChanged &&
-    current.length === expected.length &&
-    current.every((value, index) => value === expected[index])
-  ) return room;
-  const patch = {
-    participant_user_ids: expected,
-  };
-  if (playersChanged) patch.players = migratedPlayers;
-  return await updateRoom(base44, room, patch, {
+  return roomParticipantIdentityBackfillPlan({
+    players: existingPlayers,
+    persistedParticipantUserIDs: room?.participant_user_ids,
+    expectedParticipantUserIDs: expected,
+    resolvedUserIDsByEmail,
+    authorizedActorRebind: options.authorizedActorRebind,
+  });
+}
+
+async function applyRoomParticipantIdentityBackfill(base44, room, plan) {
+  if (!plan?.needsWrite) return room;
+  return await updateRoom(base44, room, plan.patch, {
     allowPendingTerminal: true,
   });
 }
@@ -4683,6 +4778,9 @@ Deno.serve(async (req) => {
       user,
       actionBody,
     ) && canUseFastRoomAction(action, room, user);
+    const participantIdentityOptions = {
+      allowOrphanedActorRebind: allowsOrphanedActorIdentityRebind(action),
+    };
     actionStartedAt = performance.now();
     let readOnlyCastLeaseRecovery = false;
     let result;
@@ -4759,6 +4857,7 @@ Deno.serve(async (req) => {
             base44,
             acquisitionRoom,
             user,
+            participantIdentityOptions,
           );
           return await withRoomWriteLeases({
             lifecycleStore:
@@ -4830,20 +4929,41 @@ Deno.serve(async (req) => {
                   base44,
                   latestRoom,
                   user,
+                  participantIdentityOptions,
                 );
-                const latestUserIDs = uniqueStrings([
-                  ...latestParticipantUserIDs,
-                  user.id,
-                ]);
+                const latestUserIDs = await roomLifecycleUserIDs(
+                  base44,
+                  latestRoom,
+                  user,
+                  participantIdentityOptions,
+                  latestParticipantUserIDs,
+                );
                 assertExactRoomLeaseCoverage(context, latestUserIDs);
+                const authorizedActorRebind =
+                  await authorizeOrphanedActorIdentityRebind(
+                    base44,
+                    latestRoom,
+                    {
+                      ...participantIdentityOptions,
+                      actor: user,
+                    },
+                  );
+                const identityBackfillPlan =
+                  await prepareRoomParticipantIdentityBackfill(
+                    base44,
+                    latestRoom,
+                    latestParticipantUserIDs,
+                    { authorizedActorRebind },
+                  );
+                await assertRoomWriteLeases(context);
                 const revisionMigratedRoom = await backfillRoomWriteRevision(
                   base44,
                   latestRoom,
                 );
-                const migratedRoom = await backfillRoomParticipantUserIDs(
+                const migratedRoom = await applyRoomParticipantIdentityBackfill(
                   base44,
                   revisionMigratedRoom,
-                  latestParticipantUserIDs,
+                  identityBackfillPlan,
                 );
                 markActionStarted();
                 return await executeRoomActionWithSignal(

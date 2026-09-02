@@ -890,6 +890,8 @@ struct HomeView: View {
         await Task.yield()
         do {
             let room = try await appState.client.createRoom(for: user)
+            try Task.checkCancellation()
+            guard appState.user?.id == user.id else { return }
             try appState.confirmExplicitRoomActivation(room)
             withAnimation(.spring(response: 0.42, dampingFraction: 0.82)) {
                 appState.activeRoom = room
@@ -898,7 +900,10 @@ struct HomeView: View {
             statusText = copy.roomReady(room.code)
             statusKind = .success
             HapticManager.shared.fire(.milestone)
+        } catch is CancellationError {
+            return
         } catch {
+            guard appState.user?.id == user.id else { return }
             statusText = roomErrorMessage(error)
             statusKind = .error
             HapticManager.shared.fire(.notification(.error))
@@ -921,13 +926,18 @@ struct HomeView: View {
                 code: code,
                 user: user
             )
+            try Task.checkCancellation()
+            guard appState.user?.id == user.id else { return }
             try appState.confirmExplicitRoomActivation(room)
             appState.activeRoom = room
             appState.selectedTab = .game
             statusText = copy.roomReady(room.code)
             statusKind = .success
             HapticManager.shared.fire(.milestone)
+        } catch is CancellationError {
+            return
         } catch {
+            guard appState.user?.id == user.id else { return }
             statusText = roomErrorMessage(error)
             statusKind = .error
             HapticManager.shared.fire(.notification(.error))
