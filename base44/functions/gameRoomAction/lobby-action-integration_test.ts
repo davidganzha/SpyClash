@@ -36,7 +36,7 @@ Deno.test("return-to-lobby remains an explicit pause escape but cannot bypass an
   assertEquals(elapsed.code, "game_timer_elapsed");
 });
 
-Deno.test("gameRoomAction integrates lobby return, kick, and explicit host close through participant leases", async () => {
+Deno.test("gameRoomAction fast-paths non-final lobby votes while resets and membership changes keep participant leases", async () => {
   const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
   const vote = source.slice(
     source.indexOf("async function voteReturnToLobby"),
@@ -45,6 +45,13 @@ Deno.test("gameRoomAction integrates lobby return, kick, and explicit host close
   assertStringIncludes(vote, "updateRoomWithRetry(");
   assertStringIncludes(vote, "activeGameLobbyReturnTransition(");
   assertStringIncludes(vote, "returnToLobbyVoteMatches(");
+  assertStringIncludes(vote, "assertActionMatchGeneration(room, body)");
+  assertStringIncludes(vote, "allowLobbyReturnReset ? 6 : 1");
+  assertStringIncludes(vote, "returnToLobbyResetRequiresLeases()");
+  assertStringIncludes(
+    source,
+    '["request_vote", "submit_spy_guess", "vote_return_to_lobby"]',
+  );
   assertStringIncludes(source, 'if (status !== "playing") return false;');
   for (
     const forbidden of ["finishRoom(", "archiveRoomResult(", "GameHistory"]
@@ -108,9 +115,26 @@ Deno.test("gameRoomAction integrates lobby return, kick, and explicit host close
     source.indexOf("function canUseFastRoomAction"),
   );
   assertStringIncludes(fastActions, '"update_game_mode"');
-  assertEquals(fastActions.includes('"vote_return_to_lobby"'), false);
+  assertStringIncludes(fastActions, '"vote_return_to_lobby"');
   assertEquals(fastActions.includes('"kick_player"'), false);
   assertEquals(fastActions.includes('"close_room"'), false);
+
+  const fastEligibility = source.slice(
+    source.indexOf("function canUseFastRoomAction"),
+    source.indexOf("function activeRoomStatus"),
+  );
+  assertStringIncludes(fastEligibility, 'action === "vote_return_to_lobby"');
+  assertStringIncludes(fastEligibility, "pendingTerminalIntent(room)");
+  assertStringIncludes(
+    fastEligibility,
+    "activeGameLobbyReturnCanUseFastPath(",
+  );
+
+  const fastDispatch = source.slice(
+    source.indexOf("if (fastRoomAction)"),
+    source.indexOf("} else {", source.indexOf("if (fastRoomAction)")),
+  );
+  assertStringIncludes(fastDispatch, "allowLobbyReturnReset: false");
 
   const leasedPath = source.slice(
     source.indexOf("const userIDs = await roomLifecycleUserIDs("),

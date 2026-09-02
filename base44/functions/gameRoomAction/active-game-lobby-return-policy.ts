@@ -224,3 +224,15 @@ export function activeGameLobbyReturnTransition(
     requiredVotes: eligiblePlayers.length,
   };
 }
+
+export function activeGameLobbyReturnCanUseFastPath(
+  room: Room,
+  actorEmailValue: unknown,
+  requestedVoteValue: unknown,
+): boolean {
+  return !activeGameLobbyReturnTransition(
+    room,
+    actorEmailValue,
+    requestedVoteValue,
+  ).didReset;
+}

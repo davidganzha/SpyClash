@@ -618,7 +618,7 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   );
   assertStringIncludes(
     leasedAction,
-    "actionBody,\n    ) && canUseFastRoomAction(action, room, user)",
+    "actionBody,\n    ) && canUseFastRoomAction(action, room, user, actionBody)",
   );
   assertStringIncludes(source, '"mark_role_card_read",');
   assertStringIncludes(source, '"request_vote",');

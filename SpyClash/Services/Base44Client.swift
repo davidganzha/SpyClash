@@ -424,7 +424,8 @@ final class Base44Client {
         try await roomAction(
             "vote_return_to_lobby",
             roomID: room.id,
-            returnToLobbyVote: vote
+            returnToLobbyVote: vote,
+            expectedMatchID: room.matchID
         )
     }
 
@@ -2409,7 +2410,11 @@ struct Base44Error: LocalizedError {
         let normalizedCode = code?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
-        return normalizedCode == "active_lease" || normalizedCode == "cas_contention"
+        return [
+            "active_lease",
+            "cas_contention",
+            "return_to_lobby_requires_leases"
+        ].contains(normalizedCode)
     }
 
     var isClientUpdateRequired: Bool {

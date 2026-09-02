@@ -34,7 +34,10 @@ import {
   repairCommunityProfileRecipients,
   runCommunityProfileRepair,
 } from "./community-profile-repair-queue.ts";
-import { activeGameLobbyReturnTransition } from "./active-game-lobby-return-policy.ts";
+import {
+  activeGameLobbyReturnCanUseFastPath,
+  activeGameLobbyReturnTransition,
+} from "./active-game-lobby-return-policy.ts";
 import { lobbyKickTransition } from "./lobby-kick-policy.ts";
 import { hostDepartureUsesMembershipTransition } from "./finished-room-departure-policy.ts";
 import {
@@ -2059,19 +2062,44 @@ function returnToLobbyVoteMatches(room, actorEmailValue, requestedVote) {
   return hasVote === requestedVote;
 }
 
-async function voteReturnToLobby(base44, room, user, body) {
+function returnToLobbyResetRequiresLeases() {
+  return Object.assign(
+    new Error(
+      "The final return-to-lobby vote must retry with lifecycle leases.",
+    ),
+    {
+      status: 409,
+      code: "return_to_lobby_requires_leases",
+      retryable: true,
+    },
+  );
+}
+
+async function voteReturnToLobby(base44, room, user, body, options = {}) {
   requirePlayer(room, user);
+  assertActionMatchGeneration(room, body);
   const requestedVote = body?.return_to_lobby_vote;
+  // Ordinary vote toggles are safe single-room CAS writes. A unanimous vote
+  // also rewrites roster and match state, so only the participant-leased path
+  // may commit that reset. One fast CAS attempt prevents a contention retry
+  // from re-evaluating a formerly ordinary vote as an unleased final vote.
+  const allowLobbyReturnReset = options.allowLobbyReturnReset !== false;
   return await updateRoomWithRetry(
     base44,
     room,
-    (latest) =>
-      activeGameLobbyReturnTransition(
+    (latest) => {
+      const transition = activeGameLobbyReturnTransition(
         latest,
         user.email,
         requestedVote,
-      ).patch,
+      );
+      if (transition.didReset && !allowLobbyReturnReset) {
+        throw returnToLobbyResetRequiresLeases();
+      }
+      return transition.patch;
+    },
     (latest) => returnToLobbyVoteMatches(latest, user.email, requestedVote),
+    allowLobbyReturnReset ? 6 : 1,
   );
 }
 
@@ -3539,9 +3567,10 @@ const FAST_ROOM_ACTIONS = new Set([
   "mark_answer_heard",
   "continue_round",
   "request_vote",
+  "vote_return_to_lobby",
 ]);
 
-function canUseFastRoomAction(action, room, user) {
+function canUseFastRoomAction(action, room, user, body) {
   if (!FAST_ROOM_ACTIONS.has(action)) return false;
   if (roomWriteRevision(room) === null) return false;
   if (!roomHasParticipantIdentity(room, user)) return false;
@@ -3554,6 +3583,16 @@ function canUseFastRoomAction(action, room, user) {
     (action === "mark_role_card_read" || action === "request_vote") &&
     shouldSpyWin(room)
   ) return false;
+  if (action === "vote_return_to_lobby") {
+    if (pendingTerminalIntent(room)) return false;
+    // The pure transition classifier fails closed for the unanimous reset.
+    // A fresh HTTP retry re-runs this decision against the latest revision.
+    return activeGameLobbyReturnCanUseFastPath(
+      room,
+      user.email,
+      body?.return_to_lobby_vote,
+    );
+  }
   return true;
 }
 
@@ -3691,7 +3730,7 @@ async function executeRoomAction(
     case "return_to_waiting":
       return await returnToWaiting(base44, room, user);
     case "vote_return_to_lobby":
-      return await voteReturnToLobby(base44, room, user, body);
+      return await voteReturnToLobby(base44, room, user, body, options);
     case "kick_player":
       return await kickPlayer(base44, room, user, body);
     case "toggle_ready":
@@ -4621,7 +4660,11 @@ Deno.serve(async (req) => {
             (enteredActiveRound && !explicitRoundID ? crypto.randomUUID() : ""),
         };
       }
-      if (["request_vote", "submit_spy_guess"].includes(action)) {
+      if (
+        ["request_vote", "submit_spy_guess", "vote_return_to_lobby"].includes(
+          action,
+        )
+      ) {
         return {
           ...body,
           __server_action_match_id: clean(room.match_id),
@@ -4682,7 +4725,7 @@ Deno.serve(async (req) => {
       room,
       user,
       actionBody,
-    ) && canUseFastRoomAction(action, room, user);
+    ) && canUseFastRoomAction(action, room, user, actionBody);
     actionStartedAt = performance.now();
     let readOnlyCastLeaseRecovery = false;
     let result;
@@ -4697,6 +4740,7 @@ Deno.serve(async (req) => {
           actionBody,
           {
             allowSignalCreate: false,
+            allowLobbyReturnReset: false,
             ...spyGuessTimingOptions,
           },
         );

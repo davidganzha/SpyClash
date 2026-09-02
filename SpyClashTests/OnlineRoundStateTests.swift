@@ -4839,6 +4839,14 @@ final class LobbySyncRetryPolicyTests: XCTestCase {
                 retryable: true
             ).isRetryableRoomActionConflict
         )
+        XCTAssertTrue(
+            Base44Error(
+                message: "The final return vote needs participant leases.",
+                statusCode: 409,
+                code: "return_to_lobby_requires_leases",
+                retryable: true
+            ).isRetryableRoomActionConflict
+        )
         XCTAssertFalse(
             Base44Error(
                 message: "Account identity is being updated.",
