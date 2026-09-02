@@ -283,7 +283,7 @@ struct OnboardingView: View {
     @ViewBuilder
     private func permissionHero(_ permission: OnboardingPermissionKind) -> some View {
         switch permissionDisplayStatus(permission) {
-        case .notDetermined:
+        case .notDetermined, .deferredToRadar:
             Image(systemName: permissionIcon(permission))
                 .font(.system(size: 50, weight: .semibold))
                 .foregroundStyle(SpyTheme.red)
@@ -329,8 +329,21 @@ struct OnboardingView: View {
             Button {
                 performBottomAction()
             } label: {
-                ZStack {
-                    if isFinishing {
+                Group {
+                    if let bottomActionTitle, !isFinishing {
+                        HStack(spacing: 10) {
+                            Text(bottomActionTitle)
+                                .font(.system(.headline, design: .rounded, weight: .bold))
+                                .lineLimit(1)
+                                .minimumScaleFactor(0.72)
+
+                            Image(systemName: bottomActionSystemImage)
+                                .font(.system(size: 17, weight: .black))
+                                .contentTransition(.symbolEffect(.replace))
+                        }
+                        .foregroundStyle(.white)
+                        .padding(.horizontal, 20)
+                    } else if isFinishing {
                         ProgressView()
                             .tint(.white)
                     } else {
@@ -340,7 +353,10 @@ struct OnboardingView: View {
                             .contentTransition(.symbolEffect(.replace))
                     }
                 }
-                .frame(width: 66, height: 54)
+                .frame(
+                    minWidth: bottomActionTitle == nil ? 66 : 148,
+                    minHeight: 54
+                )
                 .background(SpyTheme.red, in: RoundedRectangle(cornerRadius: 17, style: .continuous))
                 .shadow(color: SpyTheme.red.opacity(0.38), radius: 18, y: 7)
                 .contentShape(RoundedRectangle(cornerRadius: 17, style: .continuous))
@@ -380,6 +396,22 @@ struct OnboardingView: View {
             : "arrow.right"
     }
 
+    private var bottomActionTitle: String? {
+        guard step == .permissions else { return nil }
+        guard let permission = permissionFlow.currentPermission else {
+            return copy.finishAction
+        }
+
+        switch permissions.status(for: permission) {
+        case .notDetermined:
+            return copy.permissionAllowAction
+        case .granted, .denied, .unavailable, .deferredToRadar:
+            return copy.permissionContinueAction
+        case .requesting:
+            return copy.permissionRequesting
+        }
+    }
+
     private var bottomActionIdentifier: String {
         guard step == .permissions else {
             return "spyclash.onboarding.next"
@@ -391,17 +423,7 @@ struct OnboardingView: View {
     }
 
     private var bottomActionAccessibilityLabel: String {
-        guard step == .permissions else { return copy.nextAction }
-        guard let permission = permissionFlow.currentPermission else {
-            return copy.finishAction
-        }
-
-        switch permissions.status(for: permission) {
-        case .notDetermined, .granted, .denied, .unavailable:
-            return copy.nextAction
-        case .requesting:
-            return copy.permissionRequesting
-        }
+        bottomActionTitle ?? copy.nextAction
     }
 
     private var isBottomActionDisabled: Bool {
@@ -418,7 +440,7 @@ struct OnboardingView: View {
         guard case .ready = permissionFlow.phase else { return false }
 
         switch permissions.status(for: permission) {
-        case .notDetermined, .granted, .denied, .unavailable:
+        case .notDetermined, .granted, .denied, .unavailable, .deferredToRadar:
             return true
         case .requesting:
             return false
@@ -641,7 +663,7 @@ struct OnboardingView: View {
         switch status {
         case .notDetermined:
             beginPermissionRequest(permission)
-        case .granted, .denied, .unavailable:
+        case .granted, .denied, .unavailable, .deferredToRadar:
             showExistingPermissionResolution(status, for: permission)
         case .requesting:
             return
@@ -776,6 +798,8 @@ struct OnboardingView: View {
             return copy.permissionDenied
         case .unavailable:
             return copy.permissionUnavailable
+        case .deferredToRadar:
+            return copy.permissionDeferredToRadar
         }
     }
 
@@ -787,7 +811,7 @@ struct OnboardingView: View {
             SpyTheme.green
         case .unavailable:
             SpyTheme.dim
-        case .notDetermined, .requesting, .denied:
+        case .notDetermined, .requesting, .denied, .deferredToRadar:
             SpyTheme.red
         }
     }
@@ -870,6 +894,14 @@ private struct OnboardingCopy {
         localized(en: "Finish", es: "Finalizar", ru: "Завершить", uk: "Завершити")
     }
 
+    var permissionAllowAction: String {
+        localized(en: "Allow", es: "Permitir", ru: "Разрешить", uk: "Дозволити")
+    }
+
+    var permissionContinueAction: String {
+        localized(en: "Continue", es: "Continuar", ru: "Продолжить", uk: "Продовжити")
+    }
+
     var permissionRequesting: String {
         localized(en: "WAITING FOR IOS", es: "ESPERANDO A IOS", ru: "ОЖИДАНИЕ IOS", uk: "ОЧІКУВАННЯ IOS")
     }
@@ -897,6 +929,15 @@ private struct OnboardingCopy {
             es: "NO DISPONIBLE",
             ru: "НЕДОСТУПНО",
             uk: "НЕДОСТУПНО"
+        )
+    }
+
+    var permissionDeferredToRadar: String {
+        localized(
+            en: "REQUIRED · VERIFIED IN RADAR",
+            es: "OBLIGATORIO · SE VERIFICA EN EL RADAR",
+            ru: "ОБЯЗАТЕЛЬНО · ПРОВЕРКА В РАДАРЕ",
+            uk: "ОБОВ'ЯЗКОВО · ПЕРЕВІРКА В РАДАРІ"
         )
     }
 
@@ -933,7 +974,7 @@ private struct OnboardingCopy {
         case .camera:
             localized(en: "Camera", es: "Cámara", ru: "Камера", uk: "Камера")
         case .nearby:
-            localized(en: "Nearby players", es: "Jugadores cercanos", ru: "Игроки рядом", uk: "Гравці поруч")
+            localized(en: "Rangefinder", es: "Telémetro", ru: "Дальномер", uk: "Далекомір")
         }
     }
 
@@ -941,24 +982,24 @@ private struct OnboardingCopy {
         switch permission {
         case .notifications:
             localized(
-                en: "Room invites and important game events.",
-                es: "Invitaciones y eventos importantes de la partida.",
-                ru: "Приглашения и важные события игры.",
-                uk: "Запрошення та важливі події гри."
+                en: "Optional. Get room invites and important game events.",
+                es: "Opcional. Recibe invitaciones y eventos importantes de la partida.",
+                ru: "Необязательно. Получайте приглашения и важные события игры.",
+                uk: "Необов'язково. Отримуйте запрошення та важливі події гри."
             )
         case .camera:
             localized(
-                en: "Scan a room QR code to join.",
-                es: "Escanea el QR de una sala para entrar.",
-                ru: "Сканируйте QR-код для входа в комнату.",
-                uk: "Скануйте QR-код для входу до кімнати."
+                en: "Optional. Scan a room QR code to join.",
+                es: "Opcional. Escanea el QR de una sala para entrar.",
+                ru: "Необязательно. Сканируйте QR-код для входа в комнату.",
+                uk: "Необов'язково. Скануйте QR-код для входу до кімнати."
             )
         case .nearby:
             localized(
-                en: "Find nearby players with Radar.",
-                es: "Encuentra jugadores cercanos con el radar.",
-                ru: "Находите игроков рядом через радар.",
-                uk: "Знаходьте гравців поруч через радар."
+                en: "Required for Radar. iOS will ask for access when Radar connects to a real nearby iPhone.",
+                es: "Obligatorio para el radar. iOS pedirá acceso cuando se conecte a un iPhone real cercano.",
+                ru: "Обязателен для Радара. iOS запросит доступ, когда Радар подключится к реальному iPhone рядом.",
+                uk: "Обов'язковий для Радара. iOS запросить доступ, коли Радар підключиться до справжнього iPhone поруч."
             )
         }
     }

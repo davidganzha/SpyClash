@@ -1,6 +1,5 @@
 import AVFoundation
 import Foundation
-import Network
 import Observation
 import UserNotifications
 
@@ -18,10 +17,12 @@ enum OnboardingPermissionStatus: Equatable, Sendable {
     case granted
     case denied
     case unavailable
+    /// Nearby Interaction can only be verified once Radar has a real peer token.
+    case deferredToRadar
 
     var completesOnboardingStep: Bool {
         switch self {
-        case .granted, .denied, .unavailable:
+        case .granted, .denied, .unavailable, .deferredToRadar:
             true
         case .notDetermined, .requesting:
             false
@@ -38,10 +39,12 @@ struct OnboardingPermissionFlow: Equatable, Sendable {
         case complete
     }
 
-    // Camera and local-network access are contextual: QR scanning and Radar
-    // request them only after the user explicitly opens those features.
+    // Notifications and Camera are optional system requests. Nearby Interaction
+    // is explained here, then verified by Radar once a real peer token exists.
     static let order: [OnboardingPermissionKind] = [
-        .notifications
+        .notifications,
+        .camera,
+        .nearby
     ]
 
     private(set) var index = 0
@@ -127,9 +130,6 @@ struct OnboardingPermissionFlow: Equatable, Sendable {
 }
 
 enum OnboardingPermissionStatusMapping {
-    /// TN3179's `kDNSServiceErr_PolicyDenied` value returned by Bonjour.
-    static let localNetworkPolicyDeniedCode = -65_570
-
     static func notifications(
         _ authorizationStatus: UNAuthorizationStatus
     ) -> OnboardingPermissionStatus {
@@ -161,76 +161,22 @@ enum OnboardingPermissionStatusMapping {
             .unavailable
         }
     }
-
-    static func nearbyDNSServiceError(
-        _ code: Int
-    ) -> OnboardingPermissionStatus {
-        code == localNetworkPolicyDeniedCode ? .denied : .unavailable
-    }
-
-    static func nearbyBrowserState(
-        _ state: NWBrowser.State
-    ) -> OnboardingPermissionStatus? {
-        switch state {
-        case .setup:
-            nil
-        case .ready:
-            .granted
-        case .waiting(let error), .failed(let error):
-            nearby(error)
-        case .cancelled:
-            nil
-        @unknown default:
-            .unavailable
-        }
-    }
-
-    private static func nearby(_ error: NWError) -> OnboardingPermissionStatus {
-        guard case .dns(let code) = error else {
-            return .unavailable
-        }
-        return nearbyDNSServiceError(Int(code))
-    }
 }
 
 @MainActor
 @Observable
 final class OnboardingPermissionCoordinator {
-    static var canEvaluateNearbyPrivacy: Bool {
-#if targetEnvironment(simulator)
-        false
-#else
-        true
-#endif
-    }
-
     private(set) var notificationsStatus: OnboardingPermissionStatus = .notDetermined
     private(set) var cameraStatus: OnboardingPermissionStatus = .notDetermined
-    private(set) var nearbyStatus: OnboardingPermissionStatus
+    private(set) var nearbyStatus: OnboardingPermissionStatus = .deferredToRadar
 
     @ObservationIgnored
     private let pushNotifications: PushNotificationCoordinator
-    @ObservationIgnored
-    private let nearbyQueue = DispatchQueue(
-        label: "com.spyclash.onboarding.nearby-permission"
-    )
-    @ObservationIgnored
-    private var nearbyBrowser: NWBrowser?
-    @ObservationIgnored
-    private var nearbyRequestID: UUID?
-    @ObservationIgnored
-    private var nearbyTimeoutTask: Task<Void, Never>?
-    @ObservationIgnored
-    private var nearbyContinuation: CheckedContinuation<
-        OnboardingPermissionStatus,
-        Never
-    >?
     @ObservationIgnored
     private var activeRequest: OnboardingPermissionKind?
 
     init(pushNotifications: PushNotificationCoordinator = .shared) {
         self.pushNotifications = pushNotifications
-        nearbyStatus = Self.canEvaluateNearbyPrivacy ? .notDetermined : .unavailable
     }
 
     func status(
@@ -247,9 +193,8 @@ final class OnboardingPermissionCoordinator {
     }
 
     /// Refreshes permissions that expose a non-prompting status API.
-    ///
-    /// Local Network has no general status API. On a physical device its state
-    /// is learned only after the user explicitly requests `.nearby`.
+    /// Nearby Interaction deliberately remains deferred until Radar has a real
+    /// nearby peer token and can run an actual `NISession` configuration.
     func refresh() async {
         let notificationAuthorization = await pushNotifications
             .notificationAuthorizationStatus()
@@ -259,14 +204,14 @@ final class OnboardingPermissionCoordinator {
         cameraStatus = OnboardingPermissionStatusMapping.camera(
             AVCaptureDevice.authorizationStatus(for: .video)
         )
-
-        if !Self.canEvaluateNearbyPrivacy {
-            nearbyStatus = .unavailable
-        }
     }
 
     @discardableResult
     func request(_ permission: OnboardingPermissionKind) async -> Bool {
+        // There is no standalone Nearby Interaction authorization request.
+        // Radar performs the real request and verification with an external
+        // peer token; onboarding must never substitute a Local Network probe.
+        guard permission != .nearby else { return false }
         guard activeRequest == nil,
               status(for: permission) != .requesting else { return false }
         activeRequest = permission
@@ -282,7 +227,7 @@ final class OnboardingPermissionCoordinator {
         case .camera:
             await requestCamera()
         case .nearby:
-            await requestNearby()
+            return false
         }
         return true
     }
@@ -316,83 +261,5 @@ final class OnboardingPermissionCoordinator {
         cameraStatus = OnboardingPermissionStatusMapping.camera(
             AVCaptureDevice.authorizationStatus(for: .video)
         )
-    }
-
-    private func requestNearby() async {
-        guard Self.canEvaluateNearbyPrivacy else {
-            // Simulator does not enforce Local Network privacy. A successful
-            // browse there is transport evidence, not permission evidence.
-            nearbyStatus = .unavailable
-            return
-        }
-
-        nearbyStatus = .requesting
-        let result = await withTaskCancellationHandler {
-            await withCheckedContinuation { continuation in
-                beginNearbyRequest(continuation: continuation)
-            }
-        } onCancel: {
-            Task { @MainActor [weak self] in
-                self?.finishNearbyRequest(with: .unavailable)
-            }
-        }
-        nearbyStatus = result
-    }
-
-    private func beginNearbyRequest(
-        continuation: CheckedContinuation<OnboardingPermissionStatus, Never>
-    ) {
-        stopNearbyBrowser()
-
-        let requestID = UUID()
-        let browser = NWBrowser(
-            for: .bonjour(type: "_spyclash-radar._tcp", domain: nil),
-            using: .tcp
-        )
-        nearbyRequestID = requestID
-        nearbyContinuation = continuation
-        nearbyBrowser = browser
-
-        browser.stateUpdateHandler = { [weak self] state in
-            guard let mappedStatus = OnboardingPermissionStatusMapping
-                .nearbyBrowserState(state) else {
-                return
-            }
-            Task { @MainActor [weak self] in
-                guard self?.nearbyRequestID == requestID else { return }
-                self?.finishNearbyRequest(with: mappedStatus)
-            }
-        }
-        browser.start(queue: nearbyQueue)
-
-        nearbyTimeoutTask = Task { @MainActor [weak self] in
-            do {
-                try await Task.sleep(for: .seconds(10))
-            } catch {
-                return
-            }
-            guard self?.nearbyRequestID == requestID else { return }
-            self?.finishNearbyRequest(with: .unavailable)
-        }
-    }
-
-    private func finishNearbyRequest(with status: OnboardingPermissionStatus) {
-        guard nearbyRequestID != nil else { return }
-
-        let continuation = nearbyContinuation
-        nearbyContinuation = nil
-        nearbyRequestID = nil
-        nearbyTimeoutTask?.cancel()
-        nearbyTimeoutTask = nil
-        stopNearbyBrowser()
-        nearbyStatus = status
-        continuation?.resume(returning: status)
-    }
-
-    private func stopNearbyBrowser() {
-        let browser = nearbyBrowser
-        nearbyBrowser = nil
-        browser?.stateUpdateHandler = nil
-        browser?.cancel()
     }
 }

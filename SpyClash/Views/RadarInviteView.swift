@@ -36,6 +36,22 @@ struct RadarInviteView: View {
                                 HapticManager.shared.fire(.buttonPress)
                                 appState.retryRadarScanning(requestCameraAccess: true)
                             }
+                        } else if !RadarRangefinderAccessPolicy.allowsRadarUse(
+                            radar.rangefinderAccessState
+                        ) {
+                            RadarRangefinderAccessPrompt(
+                                language: appState.language,
+                                state: radar.rangefinderAccessState,
+                                allowAccessibilityIdentifier: "radar.rangefinder.allow",
+                                retryAccessibilityIdentifier: "radar.rangefinder.retry",
+                                settingsAccessibilityIdentifier: "radar.rangefinder.openSettings"
+                            ) {
+                                HapticManager.shared.fire(.buttonPress)
+                                appState.requestRadarRangefinderAccess()
+                            } retry: {
+                                HapticManager.shared.fire(.buttonPress)
+                                appState.retryRadarRangefinderAccess()
+                            }
                         } else {
                             identityGrid
                         }
@@ -335,6 +351,276 @@ struct RadarScanRecoveryPrompt: View {
             CutCornerShape(cut: 10)
                 .stroke(SpyTheme.strokeStrong.opacity(compact ? 0 : 1), lineWidth: 1)
         )
+    }
+
+    private func localized(en: String, ru: String, es: String, uk: String) -> String {
+        switch language {
+        case .ru: ru
+        case .es: es
+        case .uk: uk
+        default: en
+        }
+    }
+}
+
+struct RadarRangefinderAccessPrompt: View {
+    @Environment(\.openURL) private var openURL
+
+    let language: AppLanguage
+    let state: RadarRangefinderAccessState
+    let allowAccessibilityIdentifier: String
+    let retryAccessibilityIdentifier: String
+    let settingsAccessibilityIdentifier: String
+    var compact = false
+    let request: () -> Void
+    let retry: () -> Void
+
+    var body: some View {
+        VStack(spacing: compact ? 8 : 12) {
+            stateIcon
+
+            Text(title)
+                .font(.system(size: compact ? 8 : 10, weight: .black, design: .monospaced))
+                .tracking(0.10)
+                .foregroundStyle(.white)
+                .multilineTextAlignment(.center)
+
+            Text(message)
+                .font(.system(size: compact ? 7 : 9, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SpyTheme.dim)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+
+            controls
+        }
+        .padding(compact ? 10 : 18)
+        .frame(maxWidth: .infinity, maxHeight: compact ? .infinity : nil)
+        .background(
+            compact ? Color.clear : SpyTheme.panelDeep,
+            in: CutCornerShape(cut: 10)
+        )
+        .overlay(
+            CutCornerShape(cut: 10)
+                .stroke(SpyTheme.strokeStrong.opacity(compact ? 0 : 1), lineWidth: 1)
+        )
+        .accessibilityElement(children: .contain)
+        .accessibilityIdentifier("radar.rangefinder.gate")
+    }
+
+    @ViewBuilder
+    private var stateIcon: some View {
+        switch state {
+        case .waitingForPeer, .requesting:
+            ProgressView()
+                .tint(SpyTheme.amber)
+                .controlSize(compact ? .small : .regular)
+        case .ready:
+            Image(systemName: "scope")
+                .font(.system(size: compact ? 18 : 24, weight: .black))
+                .foregroundStyle(SpyTheme.amber)
+        case .denied, .unavailable:
+            Image(systemName: "location.slash.fill")
+                .font(.system(size: compact ? 18 : 24, weight: .black))
+                .foregroundStyle(SpyTheme.red)
+        case .granted:
+            Image(systemName: "checkmark.circle.fill")
+                .font(.system(size: compact ? 18 : 24, weight: .black))
+                .foregroundStyle(SpyTheme.green)
+        case .unsupported:
+            Image(systemName: "iphone")
+                .font(.system(size: compact ? 18 : 24, weight: .black))
+                .foregroundStyle(SpyTheme.dim)
+        }
+    }
+
+    @ViewBuilder
+    private var controls: some View {
+        switch state {
+        case .ready:
+            actionButton(
+                title: localized(
+                    en: "ALLOW RANGEFINDER",
+                    ru: "РАЗРЕШИТЬ ДАЛЬНОМЕР",
+                    es: "PERMITIR TELÉMETRO",
+                    uk: "ДОЗВОЛИТИ ДАЛЕКОМІР"
+                ),
+                systemImage: "scope",
+                identifier: allowAccessibilityIdentifier,
+                action: request
+            )
+        case .denied:
+            HStack(spacing: 8) {
+                actionButton(
+                    title: localized(
+                        en: "VERIFY AGAIN",
+                        ru: "ПРОВЕРИТЬ СНОВА",
+                        es: "VERIFICAR DE NUEVO",
+                        uk: "ПЕРЕВІРИТИ ЗНОВУ"
+                    ),
+                    systemImage: "arrow.clockwise",
+                    identifier: retryAccessibilityIdentifier,
+                    action: retry
+                )
+
+                Button(action: openSettings) {
+                    Label(
+                        localized(
+                            en: "SETTINGS",
+                            ru: "НАСТРОЙКИ",
+                            es: "AJUSTES",
+                            uk: "НАЛАШТУВАННЯ"
+                        ),
+                        systemImage: "gearshape"
+                    )
+                    .font(.system(size: compact ? 7 : 9, weight: .black, design: .monospaced))
+                    .frame(maxWidth: .infinity)
+                }
+                .buttonStyle(SpyButtonStyle(variant: .ghost))
+                .accessibilityIdentifier(settingsAccessibilityIdentifier)
+            }
+        case .unavailable:
+            actionButton(
+                title: localized(
+                    en: "RETRY",
+                    ru: "ПОВТОРИТЬ",
+                    es: "REINTENTAR",
+                    uk: "ПОВТОРИТИ"
+                ),
+                systemImage: "arrow.clockwise",
+                identifier: retryAccessibilityIdentifier,
+                action: retry
+            )
+        case .unsupported, .waitingForPeer, .requesting, .granted:
+            EmptyView()
+        }
+    }
+
+    private func actionButton(
+        title: String,
+        systemImage: String,
+        identifier: String,
+        action: @escaping () -> Void
+    ) -> some View {
+        Button(action: action) {
+            Label(title, systemImage: systemImage)
+                .font(.system(size: compact ? 7 : 9, weight: .black, design: .monospaced))
+                .frame(maxWidth: .infinity)
+        }
+        .buttonStyle(SpyButtonStyle(variant: .red))
+        .accessibilityIdentifier(identifier)
+    }
+
+    private func openSettings() {
+        guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+        openURL(url)
+    }
+
+    private var title: String {
+        switch state {
+        case .waitingForPeer:
+            localized(
+                en: "RANGEFINDER REQUIRES ANOTHER IPHONE",
+                ru: "ДЛЯ ДАЛЬНОМЕРА НУЖЕН ЕЩЁ ОДИН IPHONE",
+                es: "EL TELÉMETRO NECESITA OTRO IPHONE",
+                uk: "ДЛЯ ДАЛЕКОМІРА ПОТРІБЕН ЩЕ ОДИН IPHONE"
+            )
+        case .ready:
+            localized(
+                en: "RANGEFINDER ACCESS REQUIRED",
+                ru: "НУЖЕН ДОСТУП К ДАЛЬНОМЕРУ",
+                es: "SE REQUIERE ACCESO AL TELÉMETRO",
+                uk: "ПОТРІБЕН ДОСТУП ДО ДАЛЕКОМІРА"
+            )
+        case .requesting:
+            localized(
+                en: "WAITING FOR IOS",
+                ru: "ЖДЁМ ОТВЕТ IOS",
+                es: "ESPERANDO A IOS",
+                uk: "ЧЕКАЄМО НА ВІДПОВІДЬ IOS"
+            )
+        case .denied:
+            localized(
+                en: "RANGEFINDER ACCESS DENIED",
+                ru: "ДОСТУП К ДАЛЬНОМЕРУ ОТКЛОНЁН",
+                es: "ACCESO AL TELÉMETRO DENEGADO",
+                uk: "ДОСТУП ДО ДАЛЕКОМІРА ВІДХИЛЕНО"
+            )
+        case .unavailable:
+            localized(
+                en: "RANGEFINDER CHECK FAILED",
+                ru: "НЕ УДАЛОСЬ ПРОВЕРИТЬ ДАЛЬНОМЕР",
+                es: "FALLÓ LA VERIFICACIÓN DEL TELÉMETRO",
+                uk: "НЕ ВДАЛОСЯ ПЕРЕВІРИТИ ДАЛЕКОМІР"
+            )
+        case .granted:
+            localized(
+                en: "RANGEFINDER READY",
+                ru: "ДАЛЬНОМЕР ГОТОВ",
+                es: "TELÉMETRO LISTO",
+                uk: "ДАЛЕКОМІР ГОТОВИЙ"
+            )
+        case .unsupported:
+            localized(
+                en: "RANGEFINDER UNAVAILABLE",
+                ru: "ДАЛЬНОМЕР НЕДОСТУПЕН",
+                es: "TELÉMETRO NO DISPONIBLE",
+                uk: "ДАЛЕКОМІР НЕДОСТУПНИЙ"
+            )
+        }
+    }
+
+    private var message: String {
+        switch state {
+        case .waitingForPeer:
+            localized(
+                en: "Keep Radar open on another compatible physical iPhone nearby. Permission can be checked after the devices connect.",
+                ru: "Открой Радар на другом совместимом физическом iPhone рядом. После подключения появится кнопка разрешения.",
+                es: "Mantén Radar abierto en otro iPhone físico compatible cercano. El permiso se comprobará al conectarse.",
+                uk: "Відкрий Радар на іншому сумісному фізичному iPhone поруч. Після з’єднання з’явиться кнопка дозволу."
+            )
+        case .ready:
+            localized(
+                en: "A nearby iPhone is connected. Tap Allow, then confirm the iOS request.",
+                ru: "iPhone рядом подключён. Нажми «Разрешить» и подтверди запрос iOS.",
+                es: "Hay un iPhone cercano conectado. Pulsa Permitir y confirma la solicitud de iOS.",
+                uk: "iPhone поруч під’єднано. Натисни «Дозволити» й підтвердь запит iOS."
+            )
+        case .requesting:
+            localized(
+                en: "Confirm or deny the Rangefinder request in the iOS system window.",
+                ru: "Подтверди или отклони доступ к Дальномеру в системном окне iOS.",
+                es: "Confirma o rechaza el acceso al Telémetro en la ventana de iOS.",
+                uk: "Підтвердь або відхили доступ до Далекоміра в системному вікні iOS."
+            )
+        case .denied:
+            localized(
+                en: "Radar is locked. Enable Rangefinder in Settings, return here, then verify again.",
+                ru: "Радар заблокирован. Включи Дальномер в Настройках, вернись сюда и проверь снова.",
+                es: "Radar está bloqueado. Activa Telémetro en Ajustes, vuelve y verifica de nuevo.",
+                uk: "Радар заблоковано. Увімкни Далекомір у Налаштуваннях, повернися й перевір знову."
+            )
+        case .unavailable:
+            localized(
+                en: "Keep both iPhones unlocked with SpyClash open, then retry the check.",
+                ru: "Оставь оба iPhone разблокированными с открытым SpyClash и повтори проверку.",
+                es: "Mantén ambos iPhone desbloqueados con SpyClash abierto y vuelve a intentarlo.",
+                uk: "Залиш обидва iPhone розблокованими з відкритим SpyClash і повтори перевірку."
+            )
+        case .granted:
+            localized(
+                en: "Rangefinder access is enabled.",
+                ru: "Доступ к Дальномеру включён.",
+                es: "El acceso al Telémetro está activado.",
+                uk: "Доступ до Далекоміра ввімкнено."
+            )
+        case .unsupported:
+            localized(
+                en: "This device cannot perform a physical Rangefinder permission check.",
+                ru: "Это устройство не может выполнить физическую проверку Дальномера.",
+                es: "Este dispositivo no puede realizar la verificación física del Telémetro.",
+                uk: "Цей пристрій не може виконати фізичну перевірку Далекоміра."
+            )
+        }
     }
 
     private func localized(en: String, ru: String, es: String, uk: String) -> String {

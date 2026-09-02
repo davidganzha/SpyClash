@@ -1,5 +1,5 @@
 import AVFoundation
-import Network
+import NearbyInteraction
 import UserNotifications
 import XCTest
 @testable import SpyClash
@@ -8,7 +8,10 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
     func testPermissionFlowRequiresEveryStepButNotEveryGrant() {
         var flow = OnboardingPermissionFlow()
 
-        XCTAssertEqual(OnboardingPermissionFlow.order, [.notifications])
+        XCTAssertEqual(
+            OnboardingPermissionFlow.order,
+            [.notifications, .camera, .nearby]
+        )
         XCTAssertEqual(flow.currentPermission, .notifications)
         XCTAssertEqual(flow.phase, .loading)
         XCTAssertFalse(flow.advance(after: .notifications))
@@ -33,6 +36,16 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         XCTAssertEqual(flow.phase, .resolved(.denied))
         XCTAssertFalse(flow.advance(after: .camera))
         XCTAssertTrue(flow.advance(after: .notifications))
+        XCTAssertEqual(flow.currentPermission, .camera)
+
+        XCTAssertTrue(flow.resolveWithoutRequest(.unavailable, for: .camera))
+        XCTAssertTrue(flow.advance(after: .camera))
+        XCTAssertEqual(flow.currentPermission, .nearby)
+
+        XCTAssertTrue(
+            flow.resolveWithoutRequest(.deferredToRadar, for: .nearby)
+        )
+        XCTAssertTrue(flow.advance(after: .nearby))
         XCTAssertTrue(flow.isComplete)
         XCTAssertNil(flow.currentPermission)
         XCTAssertEqual(flow.phase, .complete)
@@ -44,6 +57,14 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         XCTAssertTrue(flow.markReady(for: .notifications))
         XCTAssertTrue(flow.resolveWithoutRequest(.denied, for: .notifications))
         XCTAssertTrue(flow.advance(after: .notifications))
+
+        XCTAssertTrue(flow.resolveWithoutRequest(.granted, for: .camera))
+        XCTAssertTrue(flow.advance(after: .camera))
+
+        XCTAssertTrue(
+            flow.resolveWithoutRequest(.deferredToRadar, for: .nearby)
+        )
+        XCTAssertTrue(flow.advance(after: .nearby))
         XCTAssertTrue(flow.isComplete)
     }
 
@@ -204,29 +225,19 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         )
     }
 
-    func testNearbyPolicyDeniedUsesTN3179DNSServiceCode() {
-        XCTAssertEqual(
-            OnboardingPermissionStatusMapping.localNetworkPolicyDeniedCode,
-            -65_570
-        )
-        XCTAssertEqual(
-            OnboardingPermissionStatusMapping.nearbyDNSServiceError(-65_570),
-            .denied
-        )
-        XCTAssertEqual(
-            OnboardingPermissionStatusMapping.nearbyDNSServiceError(-65_537),
-            .unavailable
-        )
-    }
+    @MainActor
+    func testNearbyAuthorizationIsDeferredToRadarWithoutOnboardingRequest() async {
+        let coordinator = OnboardingPermissionCoordinator()
 
-    func testNearbyBrowserReadyIsGrantedAndSetupHasNoResult() {
-        XCTAssertEqual(
-            OnboardingPermissionStatusMapping.nearbyBrowserState(.ready),
-            .granted
+        XCTAssertEqual(coordinator.status(for: .nearby), .deferredToRadar)
+        XCTAssertTrue(
+            coordinator.status(for: .nearby).completesOnboardingStep
         )
-        XCTAssertNil(
-            OnboardingPermissionStatusMapping.nearbyBrowserState(.setup)
-        )
+
+        let didStartSystemRequest = await coordinator.request(.nearby)
+
+        XCTAssertFalse(didStartSystemRequest)
+        XCTAssertEqual(coordinator.status(for: .nearby), .deferredToRadar)
     }
 
     func testPermissionKindsExposeStableUIIdentifiers() {
@@ -237,6 +248,88 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         XCTAssertEqual(
             OnboardingPermissionKind.allCases.map(\.id),
             ["notifications", "camera", "nearby"]
+        )
+    }
+
+    func testRadarRangefinderPolicyUsesUnsupportedFallbackOnlyWithoutProbeCapability() {
+        XCTAssertEqual(
+            RadarRangefinderAccessPolicy.initialState(canVerifyOnCurrentDevice: false),
+            .unsupported
+        )
+        XCTAssertEqual(
+            RadarRangefinderAccessPolicy.initialState(canVerifyOnCurrentDevice: true),
+            .waitingForPeer
+        )
+
+        for state in [
+            RadarRangefinderAccessState.waitingForPeer,
+            .ready,
+            .requesting,
+            .denied,
+            .unavailable
+        ] {
+            XCTAssertFalse(RadarRangefinderAccessPolicy.allowsRadarUse(state))
+        }
+        XCTAssertTrue(RadarRangefinderAccessPolicy.allowsRadarUse(.granted))
+        XCTAssertTrue(RadarRangefinderAccessPolicy.allowsRadarUse(.unsupported))
+    }
+
+    func testRadarRangefinderPolicyRecognizesOnlyExactNearbyInteractionDenial() {
+        let denial = NSError(
+            domain: NIErrorDomain,
+            code: NIError.Code.userDidNotAllow.rawValue
+        )
+        XCTAssertEqual(
+            RadarRangefinderAccessPolicy.stateAfterInvalidation(
+                denial,
+                canVerifyOnCurrentDevice: true
+            ),
+            .denied
+        )
+
+        let wrongDomain = NSError(
+            domain: "SpyClashTests",
+            code: NIError.Code.userDidNotAllow.rawValue
+        )
+        XCTAssertEqual(
+            RadarRangefinderAccessPolicy.stateAfterInvalidation(
+                wrongDomain,
+                canVerifyOnCurrentDevice: true
+            ),
+            .unavailable
+        )
+
+        let otherNearbyError = NSError(
+            domain: NIErrorDomain,
+            code: NIError.Code.invalidConfiguration.rawValue
+        )
+        XCTAssertEqual(
+            RadarRangefinderAccessPolicy.stateAfterInvalidation(
+                otherNearbyError,
+                canVerifyOnCurrentDevice: true
+            ),
+            .unavailable
+        )
+    }
+
+    func testRadarRangefinderPolicyMapsUnsupportedRuntimeWithoutBlockingRadar() {
+        let unsupported = NSError(
+            domain: NIErrorDomain,
+            code: NIError.Code.unsupportedPlatform.rawValue
+        )
+        XCTAssertEqual(
+            RadarRangefinderAccessPolicy.stateAfterInvalidation(
+                unsupported,
+                canVerifyOnCurrentDevice: true
+            ),
+            .unsupported
+        )
+        XCTAssertEqual(
+            RadarRangefinderAccessPolicy.stateAfterInvalidation(
+                unsupported,
+                canVerifyOnCurrentDevice: false
+            ),
+            .unsupported
         )
     }
 
@@ -257,6 +350,26 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
     }
 
 #if DEBUG
+    @MainActor
+    func testRadarOutgoingInvitationIsBlockedUntilRangefinderAccessIsGranted() async throws {
+        let radar = RadarNearbyService()
+        radar.installPreviewRangingPeers()
+        let peer = try XCTUnwrap(radar.peers.first)
+        let room = GameRoom.previewRoom(status: "waiting")
+
+        radar.installPreviewRangefinderAccessState(.denied)
+        let deniedResult = await radar.toggleInvitation(peer, to: room)
+        XCTAssertEqual(deniedResult, .unavailable)
+        XCTAssertNil(radar.invitationState(for: peer.id))
+
+        radar.installPreviewRangefinderAccessState(.granted)
+        let grantedResult = await radar.toggleInvitation(peer, to: room)
+        XCTAssertEqual(grantedResult, .sent)
+        XCTAssertEqual(radar.invitationState(for: peer.id), .waiting)
+
+        radar.stopScanning()
+    }
+
     @MainActor
     func testRadarRetryRecoversPreviewScanAfterUnavailableTransport() throws {
         let user = try JSONDecoder().decode(

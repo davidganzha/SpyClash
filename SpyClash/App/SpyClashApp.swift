@@ -17,7 +17,10 @@ struct SpyClashApp: App {
                 }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     let isActive = phase == .active
-                    appState.setRadarApplicationActive(isActive)
+                    appState.setRadarApplicationActive(
+                        isActive,
+                        stopTransportWhenInactive: phase == .background
+                    )
                     if isActive {
                         PushNotificationCoordinator.shared.applicationDidBecomeActive()
                         appState.resumeAfterActivation()

@@ -3374,6 +3374,25 @@ struct GameView: View {
                         }
                         .padding(.horizontal, 18)
                         .padding(.bottom, 12)
+                    } else if !RadarRangefinderAccessPolicy.allowsRadarUse(
+                        roomRadar.rangefinderAccessState
+                    ) {
+                        RadarRangefinderAccessPrompt(
+                            language: appState.language,
+                            state: roomRadar.rangefinderAccessState,
+                            allowAccessibilityIdentifier: "onlineRoom.rangefinder.allow",
+                            retryAccessibilityIdentifier: "onlineRoom.rangefinder.retry",
+                            settingsAccessibilityIdentifier: "onlineRoom.rangefinder.openSettings",
+                            compact: true
+                        ) {
+                            HapticManager.shared.fire(.buttonPress)
+                            appState.requestRadarRangefinderAccess()
+                        } retry: {
+                            HapticManager.shared.fire(.buttonPress)
+                            appState.retryRadarRangefinderAccess()
+                        }
+                        .padding(.horizontal, 18)
+                        .padding(.bottom, 12)
                     } else {
                         ScrollView(.vertical, showsIndicators: true) {
                             LazyVGrid(columns: columns, spacing: 8) {
@@ -3757,6 +3776,14 @@ struct GameView: View {
 
     private var roomRadarStatusColor: Color {
         if case .unavailable = roomRadar.scanState { return SpyTheme.red }
+        switch roomRadar.rangefinderAccessState {
+        case .denied, .unavailable:
+            return SpyTheme.red
+        case .waitingForPeer, .ready, .requesting:
+            return SpyTheme.amber
+        case .granted, .unsupported:
+            break
+        }
         return roomRadar.peers.isEmpty ? SpyTheme.amber : SpyTheme.green
     }
 
@@ -3768,6 +3795,45 @@ struct GameView: View {
                 es: "BÚSQUEDA LOCAL NO DISPONIBLE",
                 uk: "ЛОКАЛЬНИЙ ПОШУК НЕДОСТУПНИЙ"
             )
+        }
+        switch roomRadar.rangefinderAccessState {
+        case .waitingForPeer:
+            return localized(
+                en: "RANGEFINDER: WAITING FOR ANOTHER IPHONE",
+                ru: "ДАЛЬНОМЕР: ЖДЁМ ЕЩЁ ОДИН IPHONE",
+                es: "TELÉMETRO: ESPERANDO OTRO IPHONE",
+                uk: "ДАЛЕКОМІР: ЧЕКАЄМО НА ІНШИЙ IPHONE"
+            )
+        case .ready:
+            return localized(
+                en: "RANGEFINDER PERMISSION REQUIRED",
+                ru: "НУЖНО РАЗРЕШЕНИЕ ДАЛЬНОМЕРА",
+                es: "SE REQUIERE PERMISO DEL TELÉMETRO",
+                uk: "ПОТРІБЕН ДОЗВІЛ ДАЛЕКОМІРА"
+            )
+        case .requesting:
+            return localized(
+                en: "WAITING FOR IOS RANGEFINDER PERMISSION",
+                ru: "ЖДЁМ РАЗРЕШЕНИЕ IOS ДЛЯ ДАЛЬНОМЕРА",
+                es: "ESPERANDO EL PERMISO DE IOS",
+                uk: "ЧЕКАЄМО НА ДОЗВІЛ IOS"
+            )
+        case .denied:
+            return localized(
+                en: "RANGEFINDER PERMISSION DENIED",
+                ru: "ДОСТУП К ДАЛЬНОМЕРУ ОТКЛОНЁН",
+                es: "PERMISO DEL TELÉMETRO DENEGADO",
+                uk: "ДОСТУП ДО ДАЛЕКОМІРА ВІДХИЛЕНО"
+            )
+        case .unavailable:
+            return localized(
+                en: "RANGEFINDER CHECK FAILED",
+                ru: "ПРОВЕРКА ДАЛЬНОМЕРА НЕ УДАЛАСЬ",
+                es: "FALLÓ LA VERIFICACIÓN DEL TELÉMETRO",
+                uk: "ПЕРЕВІРКА ДАЛЕКОМІРА НЕ ВДАЛАСЯ"
+            )
+        case .granted, .unsupported:
+            break
         }
         if roomRadar.peers.isEmpty {
             return localized(

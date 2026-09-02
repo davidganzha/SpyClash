@@ -3834,6 +3834,16 @@ final class AppState: NSObject {
         radarNearby.retryScanning(requestCameraAccess: requestCameraAccess)
     }
 
+    func requestRadarRangefinderAccess() {
+        guard user != nil, isRadarActivated else { return }
+        radarNearby.requestRangefinderAccess()
+    }
+
+    func retryRadarRangefinderAccess() {
+        guard user != nil, isRadarActivated else { return }
+        radarNearby.retryRangefinderAccess()
+    }
+
     func retryRadarInvitePolicySync() {
         guard radarInvitePolicySyncState == .pendingRetry,
               let userID = user?.id,
@@ -4294,9 +4304,15 @@ final class AppState: NSObject {
         }
     }
 
-    func setRadarApplicationActive(_ isActive: Bool) {
+    func setRadarApplicationActive(
+        _ isActive: Bool,
+        stopTransportWhenInactive: Bool = true
+    ) {
         isApplicationActive = isActive
-        radarNearby.setApplicationActive(isActive)
+        radarNearby.setApplicationActive(
+            isActive,
+            stopTransportWhenInactive: stopTransportWhenInactive
+        )
         if isActive {
             gameRoomRealtime.resume()
         }
@@ -5214,6 +5230,27 @@ final class AppState: NSObject {
         }
 
         isUIPreviewMode = true
+        let requestedRangefinderPreviewState: RadarRangefinderAccessState? =
+            previewArgumentValue(
+                prefix: "--spyclash-preview-rangefinder=",
+                in: arguments
+            ).flatMap { value in
+                switch value {
+                case "waiting", "waiting-for-peer": .waitingForPeer
+                case "ready": .ready
+                case "requesting": .requesting
+                case "granted": .granted
+                case "denied": .denied
+                case "unavailable": .unavailable
+                case "unsupported": .unsupported
+                default: nil
+                }
+            }
+        if let requestedRangefinderPreviewState {
+            radarNearby.installPreviewRangefinderAccessState(
+                requestedRangefinderPreviewState
+            )
+        }
         let directPreviewValue = previewArgumentValue(
             prefix: "--spyclash-preview-direct=",
             in: arguments
@@ -5330,6 +5367,12 @@ final class AppState: NSObject {
 
         if arguments.contains("--spyclash-preview-radar-peers") {
             radarNearby.installPreviewRangingPeers()
+        }
+
+        if let requestedRangefinderPreviewState {
+            radarNearby.installPreviewRangefinderAccessState(
+                requestedRangefinderPreviewState
+            )
         }
 
         if arguments.contains("--spyclash-preview-toasts") {
