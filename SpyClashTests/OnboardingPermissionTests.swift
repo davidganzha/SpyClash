@@ -333,6 +333,30 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         )
     }
 
+    func testRadarRangefinderResumeWaitsForForegroundAndSuspensionEnded() {
+        XCTAssertFalse(
+            RadarRangefinderResumePolicy.canRun(
+                wasSuspended: true,
+                suspensionDidEnd: false,
+                isApplicationActive: true
+            )
+        )
+        XCTAssertFalse(
+            RadarRangefinderResumePolicy.canRun(
+                wasSuspended: true,
+                suspensionDidEnd: true,
+                isApplicationActive: false
+            )
+        )
+        XCTAssertTrue(
+            RadarRangefinderResumePolicy.canRun(
+                wasSuspended: true,
+                suspensionDidEnd: true,
+                isApplicationActive: true
+            )
+        )
+    }
+
     @MainActor
     func testRadarTransportStaysDormantWhileOnboardingBlocksAccess() throws {
         let user = try JSONDecoder().decode(

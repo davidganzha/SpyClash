@@ -222,6 +222,16 @@ enum RadarRangefinderAccessPolicy {
     }
 }
 
+enum RadarRangefinderResumePolicy {
+    static func canRun(
+        wasSuspended: Bool,
+        suspensionDidEnd: Bool,
+        isApplicationActive: Bool
+    ) -> Bool {
+        wasSuspended && suspensionDidEnd && isApplicationActive
+    }
+}
+
 enum RadarInviteDispatchResult: Equatable {
     case sent
     case cancelled
@@ -857,8 +867,7 @@ final class RadarNearbyService: NSObject {
                 rangefinderAccessState = previewRangefinderAccessState
             }
 #endif
-            if let nearbySession = activeRangefinderProbe?.nearbySession,
-               activeRangefinderProbe?.wasSuspended == true {
+            if let nearbySession = activeRangefinderProbe?.nearbySession {
                 _ = resumeRangefinderProbeIfNeeded(nearbySession)
             }
         } else if stopTransportWhenInactive {
@@ -2509,8 +2518,13 @@ final class RadarNearbyService: NSObject {
             rangefinderProbeIDsBySession[sessionID] = nil
             return true
         }
-        guard context.wasSuspended else { return true }
+        guard RadarRangefinderResumePolicy.canRun(
+            wasSuspended: context.wasSuspended,
+            suspensionDidEnd: context.suspensionDidEnd,
+            isApplicationActive: isApplicationActive
+        ) else { return true }
         context.wasSuspended = false
+        context.suspensionDidEnd = false
         let configuration = NINearbyPeerConfiguration(peerToken: peerToken)
         configuration.isExtendedDistanceMeasurementEnabled = false
         session.run(configuration)
@@ -3535,6 +3549,7 @@ private final class RadarRangefinderProbeContext {
     var peerToken: NIDiscoveryToken?
     var timeoutTask: Task<Void, Never>?
     var wasSuspended = false
+    var suspensionDidEnd = false
 
     init(id: String, peerID: MCPeerID) {
         self.id = id
@@ -3800,6 +3815,7 @@ extension RadarNearbyService: NISessionDelegate {
                     return
                 }
                 self.activeRangefinderProbe?.wasSuspended = true
+                self.activeRangefinderProbe?.suspensionDidEnd = false
                 return
             }
             self.suspendRanging(for: sendableSession.value)
@@ -3825,7 +3841,14 @@ extension RadarNearbyService: NISessionDelegate {
         let sendableSession = SendableNearbySession(value: session)
         Task { @MainActor [weak self] in
             guard let self else { return }
-            if self.resumeRangefinderProbeIfNeeded(sendableSession.value) {
+            let sessionID = ObjectIdentifier(sendableSession.value)
+            if self.rangefinderProbeIDsBySession[sessionID] != nil {
+                guard self.isActiveRangefinderProbeSession(sendableSession.value) else {
+                    self.rangefinderProbeIDsBySession[sessionID] = nil
+                    return
+                }
+                self.activeRangefinderProbe?.suspensionDidEnd = true
+                _ = self.resumeRangefinderProbeIfNeeded(sendableSession.value)
                 return
             }
             self.resumeRanging(for: sendableSession.value)
