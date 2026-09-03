@@ -48,6 +48,11 @@ import {
 import { loadIncomingRoomInvites } from "./room-invite-pagination.ts";
 import { withCurrentProfileWriteLease } from "./profile-write-lifecycle.ts";
 import { fanoutProfileUpdate } from "./profile-signal.ts";
+import {
+  friendshipDecisionDisposition,
+  roomInviteAcceptanceDisposition,
+} from "./mutation-idempotency.ts";
+import { loadPostCommitState } from "./post-commit-state.ts";
 
 type Entity = Record<string, any>;
 type Persist = <T>(writer: () => Promise<T>) => Promise<T>;
@@ -532,6 +537,12 @@ async function buildState(base44: any, rawUser: Entity) {
   };
 }
 
+async function buildStateAfterMutation(base44: any, current: Entity) {
+  return await loadPostCommitState({
+    load: () => buildState(base44, current),
+  });
+}
+
 async function buildDirectory(base44: any, body: Entity, current: Entity) {
   const query = normalizeCommunityQuery(body.query);
   const offset = integer(body.offset, 0, 0, 1_000_000);
@@ -930,7 +941,7 @@ Deno.serve(async (req) => {
         },
       });
       await processPushEventBestEffort(base44, queuedEventID);
-      return Response.json(await buildState(base44, current));
+      return Response.json(await buildStateAfterMutation(base44, current));
     }
 
     if (action === "add_comment") {
@@ -1208,7 +1219,7 @@ Deno.serve(async (req) => {
         inviteID,
       );
       if (!initialInvite) {
-        if (action !== "consume_room_invite") {
+        if (action === "accept_room_invite") {
           return errorResponse("Room invite not found", 404);
         }
         return Response.json({
@@ -1258,7 +1269,21 @@ Deno.serve(async (req) => {
             );
             return;
           }
-          if (invite.status !== "pending") {
+          const acceptanceDisposition = roomInviteAcceptanceDisposition(
+            invite,
+            current.id,
+          );
+          if (acceptanceDisposition === "already_applied") {
+            acceptedRoomCode = clean(invite.room_code).toUpperCase();
+            if (!acceptedRoomCode) {
+              throw Object.assign(
+                new Error("Accepted room invite has no room code"),
+                { status: 503 },
+              );
+            }
+            return;
+          }
+          if (acceptanceDisposition !== "apply") {
             throw Object.assign(new Error("Room invite cannot be accepted"), {
               status: 409,
             });
@@ -1289,7 +1314,7 @@ Deno.serve(async (req) => {
         },
       });
       return Response.json({
-        state: await buildState(base44, current),
+        state: await buildStateAfterMutation(base44, current),
         room_code: acceptedRoomCode,
       });
     }
@@ -1381,7 +1406,7 @@ Deno.serve(async (req) => {
           });
         },
       });
-      return Response.json(await buildState(base44, current));
+      return Response.json(await buildStateAfterMutation(base44, current));
     }
 
     if (action === "unblock") {
@@ -1446,7 +1471,7 @@ Deno.serve(async (req) => {
           );
         },
       });
-      return Response.json(await buildState(base44, current));
+      return Response.json(await buildStateAfterMutation(base44, current));
     }
 
     if (action === "report") {
@@ -1599,10 +1624,12 @@ Deno.serve(async (req) => {
         // crossed requests expose an incoming row that must remain acceptable
         // even though the actor-aware pair representative is outgoing.
         const friendship = selectedPairFriendship;
+        const decisionDisposition = ["accept", "decline"].includes(action)
+          ? friendshipDecisionDisposition(action, friendship, current.id)
+          : null;
         if (
-          ["accept", "decline"].includes(action) &&
-          (friendship.addressee_id !== current.id ||
-            friendship.status !== "pending")
+          decisionDisposition === "invalid_actor" ||
+          decisionDisposition === "invalid_state"
         ) {
           throw Object.assign(new Error("Request cannot be updated"), {
             status: 409,
@@ -1633,16 +1660,18 @@ Deno.serve(async (req) => {
               )
             );
           }
-          await persist(() =>
-            base44.asServiceRole.entities.Friendship.update(
-              clean(friendship.id),
-              {
-                status: "accepted",
-                blocked_by_id: null,
-                updated_at: new Date().toISOString(),
-              },
-            )
-          );
+          if (decisionDisposition === "apply") {
+            await persist(() =>
+              base44.asServiceRole.entities.Friendship.update(
+                clean(friendship.id),
+                {
+                  status: "accepted",
+                  blocked_by_id: null,
+                  updated_at: new Date().toISOString(),
+                },
+              )
+            );
+          }
         } else if (action === "decline") {
           // Leave the effective pending row in place until every duplicate is
           // removed; an interrupted decline can then be retried safely.
@@ -1653,16 +1682,18 @@ Deno.serve(async (req) => {
               )
             );
           }
-          await persist(() =>
-            base44.asServiceRole.entities.Friendship.update(
-              clean(friendship.id),
-              {
-                status: "declined",
-                blocked_by_id: null,
-                updated_at: new Date().toISOString(),
-              },
-            )
-          );
+          if (decisionDisposition === "apply") {
+            await persist(() =>
+              base44.asServiceRole.entities.Friendship.update(
+                clean(friendship.id),
+                {
+                  status: "declined",
+                  blocked_by_id: null,
+                  updated_at: new Date().toISOString(),
+                },
+              )
+            );
+          }
         } else {
           if (action === "cancel_request") {
             const sourceEventIDs = [
@@ -1699,7 +1730,7 @@ Deno.serve(async (req) => {
         }
       },
     });
-    return Response.json(await buildState(base44, current));
+    return Response.json(await buildStateAfterMutation(base44, current));
   } catch (error: any) {
     console.error("communityAction", error?.message, error?.stack);
     return communityErrorResponse(error);

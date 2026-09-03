@@ -322,6 +322,64 @@ Deno.test("push failure cannot gate independent profile completion", async () =>
   assertEquals(profileDispatches, 1);
 });
 
+Deno.test("profile and push use independent concurrent single-flight claims", async () => {
+  const store = new Store([room()]);
+  const started = new Set<string>();
+  let releaseDispatches!: () => void;
+  const dispatchGate = new Promise<void>((resolve) => {
+    releaseDispatches = resolve;
+  });
+  let bothStarted!: () => void;
+  const bothStartedGate = new Promise<void>((resolve) => {
+    bothStarted = resolve;
+  });
+  const dispatch = (name: string) => async () => {
+    started.add(name);
+    if (started.size === 2) bothStarted();
+    await dispatchGate;
+    return true;
+  };
+
+  const profile = runTerminalSideEffectsSingleFlight({
+    store,
+    room: room(),
+    stateKey: "profile_side_effect_dispatch",
+    now: new Date("2026-08-31T12:00:00.000Z"),
+    randomUUID: () => "profile-concurrent",
+    dispatch: dispatch("profile"),
+  });
+  const push = runTerminalSideEffectsSingleFlight({
+    store,
+    room: room(),
+    now: new Date("2026-08-31T12:00:00.000Z"),
+    randomUUID: () => "push-concurrent",
+    dispatch: dispatch("push"),
+  });
+
+  let timedOut = false;
+  const timeout = setTimeout(() => {
+    timedOut = true;
+    releaseDispatches();
+  }, 1_000);
+  await bothStartedGate;
+  clearTimeout(timeout);
+  assertEquals(timedOut, false);
+  assertEquals([...started].sort(), ["profile", "push"]);
+  releaseDispatches();
+
+  const [profileResult, pushResult] = await Promise.all([profile, push]);
+  assertEquals(profileResult.outcome, "performed");
+  assertEquals(pushResult.outcome, "performed");
+  assertEquals(
+    store.records[0].terminal_intent.profile_side_effect_dispatch.state,
+    "completed",
+  );
+  assertEquals(
+    store.records[0].terminal_intent.side_effect_dispatch.state,
+    "completed",
+  );
+});
+
 Deno.test("profile partial failure retries without replaying completed push", async () => {
   const store = new Store([room()]);
   let pushDispatches = 0;

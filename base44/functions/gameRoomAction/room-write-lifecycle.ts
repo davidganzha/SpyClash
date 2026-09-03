@@ -8,8 +8,21 @@ import {
 } from "./billing-identity-lifecycle.ts";
 import { committedGameStartIdentity } from "./committed-game-start-repair.ts";
 
-const ROOM_WRITE_LEASE_ATTEMPTS = 6;
-const ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS = [25, 50, 100, 200, 400];
+const ROOM_WRITE_LEASE_ATTEMPTS = 8;
+// Keep contention retries strictly before the room action begins. The bounded
+// delays total 2.575 seconds, long enough for a normal sibling request to
+// release its lifecycle lease without turning a transient collision into a
+// user-visible 409. The original typed lifecycle error is still returned after
+// the final attempt, and the action callback itself is never replayed.
+const ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS = [
+  25,
+  50,
+  100,
+  200,
+  400,
+  800,
+  1_000,
+];
 const ROOM_WRITE_LEASE_RELEASE_ATTEMPTS = 3;
 const COMPLETE_GAME_START_RECONCILIATION_BACKOFF_MILLISECONDS = [
   0,
@@ -19,6 +32,30 @@ const COMPLETE_GAME_START_RECONCILIATION_BACKOFF_MILLISECONDS = [
   400,
   800,
 ];
+
+function safeLifecycleLogError(error: unknown) {
+  const property = (key: string): unknown => {
+    if (
+      error === null ||
+      (typeof error !== "object" && typeof error !== "function")
+    ) return undefined;
+    try {
+      return Reflect.get(error, key);
+    } catch {
+      return undefined;
+    }
+  };
+  const scalar = (value: unknown, maximum: number): string =>
+    ["string", "number", "bigint", "boolean"].includes(typeof value)
+      ? String(value).trim().slice(0, maximum)
+      : "";
+  return {
+    message: scalar(property("message"), 500) ||
+      scalar(error, 500) || "Unknown room lifecycle release error",
+    status: scalar(property("status"), 3),
+    code: scalar(property("code"), 100),
+  };
+}
 
 type AcquireRoomWriterLease = (
   lifecycleStore: any,
@@ -312,7 +349,7 @@ export async function withRoomWriteLeases<T>(input: {
         actionFailed
           ? "gameRoomAction lease release failed after action error"
           : "gameRoomAction lease release failed after committed action",
-        releaseFailures,
+        releaseFailures.map(safeLifecycleLogError),
       );
     }
   }

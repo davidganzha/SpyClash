@@ -3,6 +3,7 @@ import {
   assertExpectedMembershipGeneration,
   captureRoomExitMembershipGeneration,
   playerMembershipGeneration,
+  validatedExpectedMembershipGeneration,
   validatedMembershipGeneration,
   viewerMembershipGeneration,
 } from "./room-membership-generation.ts";
@@ -94,7 +95,32 @@ Deno.test("legacy exit capture supports players without a persisted membership i
     expected: "",
   });
   assertEquals(captured, "legacy_room-legacy_legacy@example.com");
-  assertExpectedMembershipGeneration({ room, user, expected: captured });
+  const expected = validatedExpectedMembershipGeneration(captured);
+  assertExpectedMembershipGeneration({ room, user, expected });
+
+  const strictError = assertThrows(
+    () => validatedMembershipGeneration(captured),
+    Error,
+  ) as Error & { status?: number; code?: string };
+  assertEquals(strictError.status, 400);
+  assertEquals(strictError.code, "membership_generation_invalid");
+});
+
+Deno.test("expected membership tokens reject malformed non-opaque values", () => {
+  for (const invalid of [
+    { token: "membership_generation_3" },
+    `legacy_${"x".repeat(506)}`,
+    "legacy_room_user\u0000suffix",
+  ]) {
+    const error = assertThrows(
+      () => validatedExpectedMembershipGeneration(invalid),
+      Error,
+    ) as Error & { status?: number; code?: string };
+    assertEquals(error.status, 400);
+    assertEquals(error.code, "membership_generation_invalid");
+  }
+  assertEquals(validatedExpectedMembershipGeneration("  "), "");
+  assertEquals(validatedExpectedMembershipGeneration(undefined), "");
 });
 
 Deno.test("legacy revision is checked before the server captures membership", () => {

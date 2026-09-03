@@ -173,6 +173,7 @@ import {
   assertExpectedMembershipGeneration,
   captureRoomExitMembershipGeneration,
   playerMembershipGeneration,
+  validatedExpectedMembershipGeneration,
   validatedMembershipGeneration,
 } from "./room-membership-generation.ts";
 import {
@@ -1114,8 +1115,7 @@ function expectedRoomExitRevision(body) {
 }
 
 function expectedRoomExitMembershipID(body) {
-  const candidate = clean(body?.expected_membership_id);
-  return candidate ? validatedMembershipGeneration(candidate) : "";
+  return validatedExpectedMembershipGeneration(body?.expected_membership_id);
 }
 
 function boundRoomExitMembershipID(body) {
@@ -2717,6 +2717,7 @@ async function repairDetectedCommittedGameStart(base44, detectedRoom, user) {
       await fanoutGameRoomSignalsBestEffort({
         store: base44.asServiceRole.entities.GameRoomSignal,
         room: candidate,
+        allowCreate: false,
         logError: (message, error) =>
           console.error(message, error?.message || error),
       });
@@ -4078,10 +4079,17 @@ async function withSingleProfileRepairLease(base44, userIDValue, action) {
   }
 }
 
-async function repairCommunityProfileHistorySource(base44, source) {
+async function repairCommunityProfileHistorySource(
+  base44,
+  source,
+  options = {},
+) {
   const profileUserID = clean(source?.player_user_id);
   const matchID = clean(source?.match_id);
-  if (!profileUserID || !matchID) return true;
+  if (!profileUserID || !matchID) {
+    await options.afterMirror?.();
+    return true;
+  }
 
   const mirror = await withSingleProfileRepairLease(
     base44,
@@ -4098,61 +4106,118 @@ async function repairCommunityProfileHistorySource(base44, source) {
       return results[0]?.status !== "missing_user";
     },
   );
+  // A bounded terminal batch uses this barrier so every independent profile
+  // mirror releases its User lease before any overlapping recipient signal
+  // fanout begins. Non-terminal drains default to a batch size of one.
+  await options.afterMirror?.();
   if (mirror.status === "deferred") return false;
   if (mirror.status === "gone" || mirror.value !== true) return true;
 
-  const matchHistory = await rankedHistoryForMatch(base44, matchID);
-  const recipientUserIDs = uniqueStrings(
-    matchHistory.map((record) => record?.player_user_id),
-  );
-  const fanout = await repairCommunityProfileRecipients({
-    recipientUserIDs,
-    concurrency: 4,
-    repairRecipient: async (recipientUserID) => {
-      const outcome = await withSingleProfileRepairLease(
-        base44,
-        recipientUserID,
-        async () => {
-          const result = await fanoutCommunityProfileInvalidations({
-            signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
-            recipientUserIDs: [recipientUserID],
-            profileUserIDs: [profileUserID],
-            logError: (message, error) =>
-              console.error(message, error?.message || error),
-          });
-          return Number(result?.failed) === 0;
-        },
-      );
-      return outcome.status === "gone" ||
-        (outcome.status === "performed" && outcome.value === true);
-    },
-  });
-  return fanout.failedUserIDs.length === 0;
+  const fanout = async () => {
+    const matchHistory = await rankedHistoryForMatch(base44, matchID);
+    const recipientUserIDs = uniqueStrings(
+      matchHistory.map((record) => record?.player_user_id),
+    );
+    const result = await repairCommunityProfileRecipients({
+      recipientUserIDs,
+      concurrency: 4,
+      repairRecipient: async (recipientUserID) => {
+        const outcome = await withSingleProfileRepairLease(
+          base44,
+          recipientUserID,
+          async () => {
+            const signal = await fanoutCommunityProfileInvalidations({
+              signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
+              recipientUserIDs: [recipientUserID],
+              profileUserIDs: [profileUserID],
+              logError: (message, error) =>
+                console.error(message, error?.message || error),
+            });
+            return Number(signal?.failed) === 0;
+          },
+        );
+        return outcome.status === "gone" ||
+          (outcome.status === "performed" && outcome.value === true);
+      },
+    });
+    return result.failedUserIDs.length === 0;
+  };
+
+  // A recipient owns one CommunityProfileSignal row. Independent player
+  // mirrors may run concurrently, but their wake-up fanout must remain ordered
+  // so one profile cannot overwrite another profile's signal mid-write.
+  return typeof options.serializeFanout === "function"
+    ? await options.serializeFanout(fanout)
+    : await fanout();
 }
 
-async function runProfileRepairSources(base44, sources) {
+async function runProfileRepairSources(base44, sources, options = {}) {
   const outcomes = [];
-  // Every recipient owns one wake-up row. Keep affected profiles sequential
-  // while retaining bounded recipient concurrency inside each source so two
-  // profile updates cannot race to overwrite that shared row.
-  for (const source of sources) {
-    try {
-      outcomes.push(
-        await runCommunityProfileRepair({
+  const concurrency = Math.min(
+    Math.max(Math.floor(Number(options.concurrency)) || 1, 1),
+    4,
+  );
+  let fanoutTail = Promise.resolve();
+  const serializeFanout = async (fanout) => {
+    const run = fanoutTail.then(fanout, fanout);
+    fanoutTail = run.then(() => undefined, () => undefined);
+    return await run;
+  };
+
+  // Ranked participants update distinct User rows under distinct lifecycle
+  // leases. Bound their expensive history reads/mirror writes concurrently,
+  // while serializeFanout preserves the single wake-up row per recipient.
+  for (let offset = 0; offset < sources.length; offset += concurrency) {
+    const batch = sources.slice(offset, offset + concurrency);
+    let mirrorsSettled = 0;
+    let releaseMirrorBarrier;
+    const mirrorBarrier = new Promise((resolve) => {
+      releaseMirrorBarrier = resolve;
+    });
+    const settled = await Promise.allSettled(
+      batch.map((source) => {
+        let sourceSettled = false;
+        const settleSource = () => {
+          if (sourceSettled) return;
+          sourceSettled = true;
+          mirrorsSettled += 1;
+          if (mirrorsSettled === batch.length) releaseMirrorBarrier();
+        };
+        return runCommunityProfileRepair({
           store: base44.asServiceRole.entities.GameHistory,
           source,
-          repair: (claimedSource) =>
-            repairCommunityProfileHistorySource(base44, claimedSource),
+          repair: (claimedSource) => {
+            return repairCommunityProfileHistorySource(
+              base44,
+              claimedSource,
+              {
+                afterMirror: async () => {
+                  settleSource();
+                  await mirrorBarrier;
+                },
+                serializeFanout,
+              },
+            );
+          },
           logError: (message, error) =>
             console.error(message, error?.message || error),
-        }),
-      );
-    } catch (error) {
+        }).finally(() => {
+          // Completed/deferred sources never enter repair(), and an unexpected
+          // pre-barrier failure must not strand its batch behind the gate.
+          settleSource();
+        });
+      }),
+    );
+    for (const [index, result] of settled.entries()) {
+      if (result.status === "fulfilled") {
+        outcomes.push(result.value);
+        continue;
+      }
       console.error(
         "community profile repair claim deferred",
-        error?.message || error,
+        result.reason?.message || result.reason,
       );
-      outcomes.push({ outcome: "failed", source });
+      outcomes.push({ outcome: "failed", source: batch[index] });
     }
   }
   return outcomes;
@@ -4167,7 +4232,9 @@ async function repairFinishedCommunityProfilesAndSignals(base44, room) {
       )
     );
   if (!sources.length) return canonicalSpyEmails(room).length !== 1;
-  const outcomes = await runProfileRepairSources(base44, sources);
+  const outcomes = await runProfileRepairSources(base44, sources, {
+    concurrency: 4,
+  });
   return outcomes.every((result) =>
     ["performed", "completed", "missing"].includes(result.outcome)
   );

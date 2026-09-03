@@ -23,6 +23,27 @@ export function validatedMembershipGeneration(
   return candidate;
 }
 
+export function validatedExpectedMembershipGeneration(
+  value: unknown,
+): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value !== "string") {
+    throw Object.assign(new Error("Membership generation is invalid."), {
+      status: 400,
+      code: "membership_generation_invalid",
+    });
+  }
+  const candidate = value.trim();
+  if (!candidate) return "";
+  if (candidate.length > 512 || /[\u0000-\u001F\u007F]/.test(candidate)) {
+    throw Object.assign(new Error("Membership generation is invalid."), {
+      status: 400,
+      code: "membership_generation_invalid",
+    });
+  }
+  return candidate;
+}
+
 export function playerMembershipGeneration(
   room: Entity,
   player: Entity,

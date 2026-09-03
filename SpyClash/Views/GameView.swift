@@ -4645,6 +4645,10 @@ struct GameView: View {
                     }
                 }
 
+                if roomShouldShowPoolPreview {
+                    roomPoolPreview
+                }
+
                 if roomGeneratedWords.count >= 2 && roomHasCustomTheme {
                     roomSaveAsWordPackButton
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -5086,6 +5090,9 @@ struct GameView: View {
                 .overlay(Rectangle().stroke(SpyTheme.green.opacity(0.24), lineWidth: 1))
 
                 roomWordsSlider
+                if roomShouldShowPoolPreview {
+                    roomPoolPreview
+                }
                 roomExpandThemePoolButton
                 roomSaveAsWordPackButton
             }
@@ -6809,6 +6816,10 @@ struct GameView: View {
                     }
                 }
 
+                if roomShouldShowPoolPreview {
+                    roomPoolPreview
+                }
+
                 if roomGeneratedWords.count >= 2 && roomHasCustomTheme {
                     roomSaveAsWordPackButton
                         .transition(.opacity.combined(with: .move(edge: .top)))
@@ -7320,6 +7331,7 @@ struct GameView: View {
                 .fill(SpyTheme.green.opacity(0.32))
                 .frame(width: 76, height: 1)
         }
+        .accessibilityIdentifier("onlineRoom.poolPreview")
     }
 
     private func roomPoolWordGrid(

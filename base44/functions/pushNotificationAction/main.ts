@@ -65,6 +65,7 @@ import { canonicalBase44Request } from "./base44-context.ts";
 import { pushErrorResponse } from "./error-response.ts";
 import { finishedProfileRepairAlreadyCompleted } from "./profile-repair-state.ts";
 import { createProcessEventTiming } from "./process-event-timing.ts";
+import { safePushErrorDetails } from "./safe-error.ts";
 import {
   internalFunctionBody,
   profileRepairDrainSummary,
@@ -183,9 +184,11 @@ async function reconcilePendingTerminalRoom(
       id: clean(room.id),
     }))[0] || room;
   } catch (error) {
+    const details = safePushErrorDetails(error);
     console.error(
       "terminal intent reconciliation deferred",
-      (error as Error)?.message || error,
+      details.message,
+      details.status || 500,
     );
     return room;
   }
@@ -219,9 +222,11 @@ async function repairFinishedRoomCommunityProfiles(
   } catch (error) {
     // Profile repair is a separate durable room outcome. It must never make
     // APNs/outbox delivery fail, but a scheduled pass will keep retrying it.
+    const details = safePushErrorDetails(error);
     console.error(
       "finished room community profile repair deferred",
-      (error as Error)?.message || error,
+      details.message,
+      details.status || 500,
     );
     return false;
   }
@@ -258,9 +263,11 @@ async function drainDurableCommunityProfileRepairs(
   } catch (error) {
     // GameHistory, not an ephemeral finished room, remains the durable source.
     // APNs/outbox work below proceeds independently and a later drain retries.
+    const details = safePushErrorDetails(error);
     console.error(
       "durable community profile repair drain deferred",
-      (error as Error)?.message || error,
+      details.message,
+      details.status || 500,
     );
     return { ok: false, selected: 0, deferred: 1 };
   }
@@ -297,10 +304,12 @@ async function reconcileRecentRoomOutboxes(
       // The newest head and the first keyset page still run if checkpoint
       // persistence is temporarily unavailable. No room state is mutated by
       // the checkpoint itself.
+      const details = safePushErrorDetails(error);
       console.error(
         "room reconciliation checkpoint deferred",
         status,
-        (error as Error)?.message || error,
+        details.message,
+        details.status || 500,
       );
       return null;
     }
@@ -410,9 +419,11 @@ async function reconcileRecentRoomOutboxes(
   await Promise.all(checkpointAdvances).catch((error) => {
     // A stale checkpoint only repeats an idempotent page. It must not undo the
     // terminal/outbox repairs that already completed above.
+    const details = safePushErrorDetails(error);
     console.error(
       "room reconciliation cursor advance deferred",
-      (error as Error)?.message || error,
+      details.message,
+      details.status || 500,
     );
   });
   return created;
@@ -1046,9 +1057,11 @@ async function triggerLiveActivityTerminalProbe(
       });
       return true;
     } catch (error) {
+      const details = safePushErrorDetails(error);
       console.warn(
         "live activity terminal probe prompt deferred",
-        (error as Error)?.message || error,
+        details.message,
+        details.status || 500,
       );
       if (attempt < 2) {
         await new Promise<void>((resolve) => setTimeout(resolve, 50));

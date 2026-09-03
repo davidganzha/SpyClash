@@ -17,6 +17,8 @@ import {
   hasTrustedBase44Context,
 } from "./base44-context.ts";
 import { withWordPackWriterLease } from "./word-pack-write-lifecycle.ts";
+import { safeWordPackErrorDetails } from "./safe-error.ts";
+import { wordPackLifecycleErrorResponse } from "./lifecycle-error-response.ts";
 
 const PAGE_SIZE = 100;
 const MAX_PACKS = 500;
@@ -70,14 +72,6 @@ async function exactPack(store: any, id: string) {
     });
   }
   return rows[0] || null;
-}
-
-function lifecycleStatus(error: BillingIdentityLifecycleError) {
-  return ["deletion_in_progress", "active_lease", "cas_contention"].includes(
-      error.code,
-    )
-    ? 409
-    : 503;
 }
 
 Deno.serve(async (req) => {
@@ -159,13 +153,20 @@ Deno.serve(async (req) => {
       },
     });
   } catch (error) {
-    console.error("wordPackAction error", error);
+    const details = safeWordPackErrorDetails(error);
+    console.error(
+      "wordPackAction error",
+      details.message,
+      details.status,
+      details.code,
+    );
     if (error instanceof BillingIdentityLifecycleError) {
-      return jsonError(error, lifecycleStatus(error), error.code);
+      return wordPackLifecycleErrorResponse(error);
     }
-    const status = Number((error as { status?: unknown })?.status) || 500;
-    const code = cleanWordPackValue((error as { code?: unknown })?.code) ||
-      undefined;
-    return jsonError(error, status, code);
+    return jsonError(
+      details.message,
+      details.status || 500,
+      details.code || undefined,
+    );
   }
 });

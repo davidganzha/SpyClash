@@ -667,12 +667,16 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
   const signalRepair = committedStartRepair.indexOf(
     "fanoutGameRoomSignalsBestEffort({",
   );
+  const updateOnlyRepairSignal = committedStartRepair.indexOf(
+    "allowCreate: false",
+  );
   assert(
     freshLeaseAdapter >= 0 && freshLeaseAdapter < freshLeases &&
       freshLeases < exactCoverage && exactCoverage < activeLeaseAssertion &&
       activeLeaseAssertion < idempotentReconcile &&
-      idempotentReconcile < signalRepair,
-    "committed start repair must reacquire exact leases before enqueue and signal fanout",
+      idempotentReconcile < signalRepair &&
+      signalRepair < updateOnlyRepairSignal,
+    "committed start repair must reacquire exact leases before enqueue and use update-only signal fanout",
   );
 
   const committedRepairSource = await Deno.readTextFile(
@@ -684,7 +688,7 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     ),
   );
   const protectedLease = protectedRepair.indexOf(
-    "return await input.withFreshLeases(",
+    "const finalRoom = await input.withFreshLeases(",
   );
   const protectedReconcile = protectedRepair.indexOf(
     "const reconciledRoom = await input.reconcile(migratedRoom)",
@@ -699,7 +703,11 @@ Deno.test("online intro, pause, and timer fields are wired into dispatch", async
     protectedLease >= 0 && protectedLease < protectedReconcile &&
       protectedReconcile < protectedActiveLease &&
       protectedActiveLease < protectedFanout,
-    "enqueue reconciliation and signal repair must execute inside the fresh lease callback",
+    "enqueue reconciliation must remain leased before post-lease signal repair",
+  );
+  assertStringIncludes(
+    protectedRepair,
+    ");\n  await input.fanout(finalRoom);\n  return finalRoom;",
   );
 
   const lifecycleSource = await Deno.readTextFile(

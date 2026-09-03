@@ -36,6 +36,10 @@ Deno.test("terminal profile repair is post-commit, durable, and push-independent
   assertStringIncludes(repair, "runCommunityProfileRepair({");
   assertStringIncludes(repair, "userIDs: [userID]");
   assertStringIncludes(repair, "recipientUserIDs: [recipientUserID]");
+  assertStringIncludes(repair, "await Promise.allSettled(");
+  assertStringIncludes(repair, "await mirrorBarrier");
+  assertStringIncludes(repair, "serializeFanout");
+  assertStringIncludes(repair, "concurrency: 4");
   assert(!repair.includes("userIDs,\n      attempts: 1"));
   assertStringIncludes(
     dispatch,

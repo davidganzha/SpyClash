@@ -494,6 +494,33 @@ final class Base44ClientNotificationInboxTests: XCTestCase {
         XCTAssertEqual(bodies[4]["action_deep_link"] as? String, "spyclash://rooms")
     }
 
+    func testReceiptMutationRetriesTypedLeaseConflictAndThenSucceeds() async throws {
+        let recorder = NotificationRequestRecorder()
+        NotificationMockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if recorder.requests().count <= 2 {
+                let response = HTTPURLResponse(
+                    url: try XCTUnwrap(request.url),
+                    statusCode: 409,
+                    httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                let payload = #"{"error":"Inbox is busy.","code":"active_lease","retryable":true}"#
+                return (response, Data(payload.utf8))
+            }
+            return try NotificationMockURLProtocol.response(for: request)
+        }
+        defer { NotificationMockURLProtocol.requestHandler = nil }
+
+        let result = try await makeClient().notificationInboxMarkRead(itemID: "notice-1")
+
+        XCTAssertTrue(result.ok)
+        XCTAssertEqual(
+            try recorder.requestBodies().compactMap { $0["action"] as? String },
+            ["mark_read", "mark_read", "mark_read"]
+        )
+    }
+
     func testPushRegistrationExplicitlyEnablesAnnouncements() async throws {
         let recorder = NotificationRequestRecorder()
         NotificationMockURLProtocol.requestHandler = { request in

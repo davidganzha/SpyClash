@@ -4863,6 +4863,259 @@ final class LobbySyncRetryPolicyTests: XCTestCase {
         )
     }
 
+    func testJoinRetriesTypedLeaseConflictsAndHonorsBoundedServerDelay() {
+        XCTAssertEqual(
+            RoomJoinRetryPolicy.delayMilliseconds(
+                for: Base44Error(
+                    message: "Account identity is being updated.",
+                    statusCode: 409,
+                    code: "active_lease",
+                    retryable: true,
+                    retryAfterSeconds: 1
+                ),
+                completedRetries: 0
+            ),
+            1_000
+        )
+        XCTAssertEqual(
+            RoomJoinRetryPolicy.delayMilliseconds(
+                for: Base44Error(
+                    message: "Room membership changed while acquiring lifecycle leases.",
+                    statusCode: 409
+                ),
+                completedRetries: 1
+            ),
+            650
+        )
+        XCTAssertNil(
+            RoomJoinRetryPolicy.delayMilliseconds(
+                for: Base44Error(
+                    message: "Room is full.",
+                    statusCode: 409,
+                    code: "room_full",
+                    retryable: false
+                ),
+                completedRetries: 0
+            )
+        )
+    }
+
+    func testCommunityMutationRetryIsLimitedToIdempotentTypedOrTransientFailures() {
+        let activeLease = Base44Error(
+            message: "Account identity is being updated.",
+            statusCode: 409,
+            code: "active_lease",
+            retryable: true
+        )
+        XCTAssertEqual(
+            CommunityMutationRetryPolicy.delayMilliseconds(
+                action: "accept",
+                error: activeLease,
+                completedRetries: 0
+            ),
+            250
+        )
+        XCTAssertNil(
+            CommunityMutationRetryPolicy.delayMilliseconds(
+                action: "remove_friend",
+                error: activeLease,
+                completedRetries: 0
+            )
+        )
+        XCTAssertNil(
+            CommunityMutationRetryPolicy.delayMilliseconds(
+                action: "accept",
+                error: Base44Error(
+                    message: "Request cannot be updated",
+                    statusCode: 409
+                ),
+                completedRetries: 0
+            )
+        )
+        XCTAssertEqual(
+            CommunityMutationRetryPolicy.delayMilliseconds(
+                action: "consume_room_invite",
+                error: Base44Error(
+                    message: "Community is temporarily unavailable.",
+                    statusCode: 503,
+                    code: "community_unavailable",
+                    retryable: true,
+                    retryAfterSeconds: 2
+                ),
+                completedRetries: 1
+            ),
+            2_000
+        )
+        XCTAssertNil(
+            CommunityMutationRetryPolicy.delayMilliseconds(
+                action: "accept",
+                error: activeLease,
+                completedRetries: 2
+            )
+        )
+    }
+
+    func testNotificationMutationRetryCoversOnlyIdempotentReceiptFailures() {
+        let activeLease = Base44Error(
+            message: "Inbox is busy.",
+            statusCode: 409,
+            code: "active_lease",
+            retryable: true,
+            retryAfterSeconds: 1
+        )
+        XCTAssertEqual(
+            NotificationMutationRetryPolicy.delayMilliseconds(
+                action: "mark_read",
+                error: activeLease,
+                completedRetries: 0
+            ),
+            1_000
+        )
+        XCTAssertEqual(
+            NotificationMutationRetryPolicy.delayMilliseconds(
+                action: "mark_all_read",
+                error: Base44Error(
+                    message: "Unread counts are temporarily unavailable.",
+                    statusCode: 503,
+                    code: "notifications_unavailable",
+                    retryable: true
+                ),
+                completedRetries: 1
+            ),
+            650
+        )
+        XCTAssertNil(
+            NotificationMutationRetryPolicy.delayMilliseconds(
+                action: "publish_global",
+                error: activeLease,
+                completedRetries: 0
+            )
+        )
+        XCTAssertNil(
+            NotificationMutationRetryPolicy.delayMilliseconds(
+                action: "mark_read",
+                error: Base44Error(
+                    message: "Account deletion is in progress.",
+                    statusCode: 409,
+                    code: "deletion_in_progress",
+                    retryable: false
+                ),
+                completedRetries: 0
+            )
+        )
+    }
+
+    func testWordPackMutationRetryAcceptsOnlyTypedPreActionConflict() {
+        let activeLease = Base44Error(
+            message: "Account identity is being updated.",
+            statusCode: 409,
+            code: "active_lease",
+            retryable: true
+        )
+        XCTAssertEqual(
+            WordPackMutationRetryPolicy.delayMilliseconds(
+                action: "create",
+                error: activeLease,
+                completedRetries: 0
+            ),
+            250
+        )
+        XCTAssertNil(
+            WordPackMutationRetryPolicy.delayMilliseconds(
+                action: "list",
+                error: activeLease,
+                completedRetries: 0
+            )
+        )
+        XCTAssertNil(
+            WordPackMutationRetryPolicy.delayMilliseconds(
+                action: "create",
+                error: Base44Error(
+                    message: "Unknown write outcome.",
+                    statusCode: 503,
+                    code: "word_pack_unavailable",
+                    retryable: true
+                ),
+                completedRetries: 0
+            )
+        )
+        XCTAssertNil(
+            WordPackMutationRetryPolicy.delayMilliseconds(
+                action: "delete",
+                error: activeLease,
+                completedRetries: 2
+            )
+        )
+    }
+
+    func testRetryAfterDelayCapsBeforeConvertingSecondsToMilliseconds() {
+        let extremeLease = Base44Error(
+            message: "Account identity is being updated.",
+            statusCode: 409,
+            code: "active_lease",
+            retryable: true,
+            retryAfterSeconds: .max
+        )
+
+        XCTAssertEqual(
+            RoomJoinRetryPolicy.delayMilliseconds(
+                for: extremeLease,
+                completedRetries: 0
+            ),
+            2_000
+        )
+        XCTAssertEqual(
+            CommunityMutationRetryPolicy.delayMilliseconds(
+                action: "accept",
+                error: extremeLease,
+                completedRetries: 0
+            ),
+            3_000
+        )
+        XCTAssertEqual(
+            NotificationMutationRetryPolicy.delayMilliseconds(
+                action: "mark_read",
+                error: extremeLease,
+                completedRetries: 0
+            ),
+            3_000
+        )
+        XCTAssertEqual(
+            WordPackMutationRetryPolicy.delayMilliseconds(
+                action: "create",
+                error: extremeLease,
+                completedRetries: 0
+            ),
+            3_000
+        )
+    }
+
+    func testRoomInviteCleanupKeepsRetryable409ButClearsTerminalState() {
+        XCTAssertFalse(
+            CommunityRoomInviteCleanupPolicy.shouldClearAfterFailure(
+                Base44Error(
+                    message: "Account identity is being updated.",
+                    statusCode: 409,
+                    code: "active_lease",
+                    retryable: true
+                )
+            )
+        )
+        XCTAssertTrue(
+            CommunityRoomInviteCleanupPolicy.shouldClearAfterFailure(
+                Base44Error(
+                    message: "Room invite is not accepted",
+                    statusCode: 409
+                )
+            )
+        )
+        XCTAssertTrue(
+            CommunityRoomInviteCleanupPolicy.shouldClearAfterFailure(
+                Base44Error(message: "Room invite not found", statusCode: 404)
+            )
+        )
+    }
+
     func testOnlyTypedLobbyConflictTriggersRevisionRefresh() {
         XCTAssertTrue(
             LobbySyncRetryPolicy.isRevisionConflict(

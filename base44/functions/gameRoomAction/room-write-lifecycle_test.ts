@@ -348,9 +348,10 @@ Deno.test("exhausted room lease contention never invokes the action", async () =
   );
 
   assertEquals(error.code, "active_lease");
-  assertEquals(acquireCalls, 6);
+  assertEquals(acquireCalls, 8);
   assertEquals(actionCalls, 0);
-  assertEquals(delays, [25, 50, 100, 200, 400]);
+  assertEquals(delays, [25, 50, 100, 200, 400, 800, 1_000]);
+  assertEquals(delays.reduce((sum, value) => sum + value, 0), 2_575);
 });
 
 Deno.test("mark_role_card_read recovers after an active identity lease", async () => {
@@ -631,8 +632,15 @@ Deno.test("committed action result survives bounded release failure", async () =
   let releaseCalls = 0;
   const delays: number[] = [];
   let loggedFailures = 0;
+  const cyclicReleaseError: Record<string, unknown> = {
+    message: "release unavailable",
+    status: 503,
+    code: "lease_release_failed",
+  };
+  cyclicReleaseError.self = cyclicReleaseError;
   const originalConsoleError = console.error;
-  console.error = () => {
+  console.error = (...values: unknown[]) => {
+    JSON.stringify(values);
     loggedFailures += 1;
   };
 
@@ -643,7 +651,7 @@ Deno.test("committed action result survives bounded release failure", async () =
       acquire: (_store, userID) => Promise.resolve(lease(userID)),
       release: () => {
         releaseCalls += 1;
-        return Promise.reject(new Error("release unavailable"));
+        return Promise.reject(cyclicReleaseError);
       },
       delay: (milliseconds) => {
         delays.push(milliseconds);

@@ -46,8 +46,10 @@ function assertExactCommittedGameStart(
 
 /**
  * Repairs only the exact already-committed start observed by the read-only
- * reconciliation pass. Every outbox or signal write is delegated from inside
- * a newly acquired, exact current-participant lifecycle lease set.
+ * reconciliation pass. Identity-bearing outbox repair remains inside a newly
+ * acquired, exact current-participant lifecycle lease set. Realtime fanout is
+ * deliberately deferred until that lease set is released; callers must make
+ * that fanout update-only so account cleanup cannot be undone.
  */
 export async function repairCommittedGameStartWithFreshLeases<
   Room extends Record<string, unknown>,
@@ -77,7 +79,7 @@ export async function repairCommittedGameStartWithFreshLeases<
   assertExactCommittedGameStart(acquisitionRoom, input.expected);
   const acquisitionUserIDs = await input.lifecycleUserIDs(acquisitionRoom);
 
-  return await input.withFreshLeases(
+  const finalRoom = await input.withFreshLeases(
     acquisitionUserIDs,
     async (context) => {
       const latestRoom = await input.refetch();
@@ -104,8 +106,9 @@ export async function repairCommittedGameStartWithFreshLeases<
       const finalUserIDs = await input.currentUserIDs(finalRoom);
       await input.assertExactLeaseCoverage(context, finalUserIDs);
       await input.assertLeasesActive(context);
-      await input.fanout(finalRoom);
       return finalRoom;
     },
   );
+  await input.fanout(finalRoom);
+  return finalRoom;
 }
