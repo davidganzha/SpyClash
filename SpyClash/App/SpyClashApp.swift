@@ -125,7 +125,11 @@ private struct RootView: View {
         } else if appState.user == nil || appState.hasActiveAuthCinematic {
             WelcomeView()
         } else if appState.requiresOnboarding {
-            OnboardingView()
+            OnboardingView(
+                startsAtLocalNetworkPermission: appState
+                    .requiresLocalNetworkOnboardingUpgrade,
+                preservedSource: appState.preservedOnboardingAcquisitionSource
+            )
         } else {
             AppShellView()
         }
@@ -133,7 +137,11 @@ private struct RootView: View {
         if appState.user == nil || appState.hasActiveAuthCinematic {
             WelcomeView()
         } else if appState.requiresOnboarding {
-            OnboardingView()
+            OnboardingView(
+                startsAtLocalNetworkPermission: appState
+                    .requiresLocalNetworkOnboardingUpgrade,
+                preservedSource: appState.preservedOnboardingAcquisitionSource
+            )
         } else {
             AppShellView()
         }

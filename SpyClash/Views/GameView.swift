@@ -3105,7 +3105,7 @@ struct GameView: View {
             roomQRSheenProgress = -1
             roomQRIsLifted = false
             if RoomAccessPagePolicy.shouldStartRadar(on: roomAccessPage) {
-                appState.resumeRadarScanningIfActivated(requestCameraAccess: true)
+                appState.startRadarScanning(requestCameraAccess: true)
             }
             consumeRoomFriendsNavigationRequestIfNeeded()
         }
@@ -3350,50 +3350,46 @@ struct GameView: View {
                     .padding(.horizontal, 18)
                     .padding(.top, 15)
 
-                if appState.isRadarActivated {
-                    Text(roomRadarStatusText)
-                        .font(.system(size: 7.5, weight: .black, design: .monospaced))
-                        .tracking(0.16)
-                        .foregroundStyle(roomRadarStatusColor)
-                        .lineLimit(1)
-                        .minimumScaleFactor(0.62)
-                        .frame(maxWidth: .infinity, alignment: .leading)
-                        .frame(height: 26)
-                        .padding(.horizontal, 18)
-                        .contentTransition(.opacity)
+                Text(roomRadarStatusText)
+                    .font(.system(size: 7.5, weight: .black, design: .monospaced))
+                    .tracking(0.16)
+                    .foregroundStyle(roomRadarStatusColor)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.62)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                    .frame(height: 26)
+                    .padding(.horizontal, 18)
+                    .contentTransition(.opacity)
 
-                    if case .unavailable = roomRadar.scanState {
-                        RadarScanRecoveryPrompt(
-                            language: appState.language,
-                            retryAccessibilityIdentifier: "onlineRoom.retryRadar",
-                            settingsAccessibilityIdentifier: "onlineRoom.openRadarSettings",
-                            compact: true
-                        ) {
-                            HapticManager.shared.fire(.buttonPress)
-                            appState.retryRadarScanning(requestCameraAccess: true)
-                        }
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 12)
-                    } else if !RadarRangefinderAccessPolicy.allowsRadarUse(
-                        roomRadar.rangefinderAccessState
+                if case .unavailable = roomRadar.scanState {
+                    RadarScanRecoveryPrompt(
+                        language: appState.language,
+                        retryAccessibilityIdentifier: "onlineRoom.retryRadar",
+                        settingsAccessibilityIdentifier: "onlineRoom.openRadarSettings",
+                        compact: true
                     ) {
-                        RadarRangefinderAccessPrompt(
-                            language: appState.language,
-                            state: roomRadar.rangefinderAccessState,
-                            allowAccessibilityIdentifier: "onlineRoom.rangefinder.allow",
-                            retryAccessibilityIdentifier: "onlineRoom.rangefinder.retry",
-                            settingsAccessibilityIdentifier: "onlineRoom.rangefinder.openSettings",
-                            compact: true
-                        ) {
-                            HapticManager.shared.fire(.buttonPress)
-                            appState.requestRadarRangefinderAccess()
-                        } retry: {
-                            HapticManager.shared.fire(.buttonPress)
-                            appState.retryRadarRangefinderAccess()
+                        HapticManager.shared.fire(.buttonPress)
+                        appState.retryRadarScanning(requestCameraAccess: true)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 12)
+                } else {
+                    VStack(spacing: 0) {
+                        if roomRadarNeedsRangefinderRecovery {
+                            RadarRangefinderAccessPrompt(
+                                language: appState.language,
+                                state: roomRadarRecoveryState,
+                                retryAccessibilityIdentifier: "onlineRoom.rangefinder.retry",
+                                settingsAccessibilityIdentifier: "onlineRoom.rangefinder.openSettings",
+                                compact: true
+                            ) {
+                                HapticManager.shared.fire(.buttonPress)
+                                appState.retryRadarRangefinderAccess()
+                            }
+                            .padding(.horizontal, 18)
+                            .padding(.bottom, 6)
                         }
-                        .padding(.horizontal, 18)
-                        .padding(.bottom, 12)
-                    } else {
+
                         ScrollView(.vertical, showsIndicators: true) {
                             LazyVGrid(columns: columns, spacing: 8) {
                                 if roomRadar.peers.isEmpty {
@@ -3429,8 +3425,6 @@ struct GameView: View {
                         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
                         .accessibilityIdentifier("onlineRoom.radarDirectory")
                     }
-                } else {
-                    roomRadarActivationPrompt
                 }
             }
         }
@@ -3745,37 +3739,9 @@ struct GameView: View {
         }
     }
 
-    private var roomRadarActivationPrompt: some View {
-        VStack(spacing: 9) {
-            Text(localized(
-                en: "RADAR IS OFF UNTIL YOU ACTIVATE IT",
-                ru: "РАДАР ВЫКЛЮЧЕН ДО ТВОЕЙ АКТИВАЦИИ",
-                es: "RADAR ESTÁ APAGADO HASTA QUE LO ACTIVES",
-                uk: "РАДАР ВИМКНЕНО ДО ТВОЄЇ АКТИВАЦІЇ"
-            ))
-            .font(.system(size: 8, weight: .black, design: .monospaced))
-            .tracking(0.10)
-            .foregroundStyle(SpyTheme.dim)
-            .multilineTextAlignment(.center)
-
-            Button {
-                HapticManager.shared.fire(.buttonPress)
-                appState.activateRadarAndStartScanning(requestCameraAccess: true)
-            } label: {
-                SpyActionLabel(
-                    title: localized(en: "ACTIVATE RADAR", ru: "АКТИВИРОВАТЬ РАДАР", es: "ACTIVAR RADAR", uk: "АКТИВУВАТИ РАДАР"),
-                    systemImage: "antenna.radiowaves.left.and.right"
-                )
-            }
-            .buttonStyle(SpyButtonStyle(variant: .red))
-            .accessibilityIdentifier("onlineRoom.activateRadar")
-        }
-        .padding(.horizontal, 18)
-        .frame(maxWidth: .infinity, maxHeight: .infinity)
-    }
-
     private var roomRadarStatusColor: Color {
         if case .unavailable = roomRadar.scanState { return SpyTheme.red }
+        if roomRadar.hasRecoverableRangingFailure { return SpyTheme.red }
         switch roomRadar.rangefinderAccessState {
         case .denied, .unavailable:
             return SpyTheme.red
@@ -3787,6 +3753,28 @@ struct GameView: View {
         return roomRadar.peers.isEmpty ? SpyTheme.amber : SpyTheme.green
     }
 
+    private var roomRadarNeedsRangefinderRecovery: Bool {
+        if roomRadar.hasRecoverableRangingFailure { return true }
+        return switch roomRadar.rangefinderAccessState {
+        case .denied, .unavailable:
+            true
+        case .unsupported, .waitingForPeer, .ready, .requesting, .granted:
+            false
+        }
+    }
+
+    private var roomRadarRecoveryState: RadarRangefinderAccessState {
+        guard roomRadar.hasRecoverableRangingFailure else {
+            return roomRadar.rangefinderAccessState
+        }
+        switch roomRadar.rangefinderAccessState {
+        case .denied, .unsupported, .unavailable:
+            return roomRadar.rangefinderAccessState
+        case .waitingForPeer, .ready, .requesting, .granted:
+            return .unavailable
+        }
+    }
+
     private var roomRadarStatusText: String {
         if case .unavailable = roomRadar.scanState {
             return localized(
@@ -3796,41 +3784,50 @@ struct GameView: View {
                 uk: "ЛОКАЛЬНИЙ ПОШУК НЕДОСТУПНИЙ"
             )
         }
+        if roomRadar.hasRecoverableRangingFailure,
+           roomRadarRecoveryState == .unavailable {
+            return localized(
+                en: "RADAR ACTIVE · RANGEFINDER NEEDS RECONNECT",
+                ru: "РАДАР АКТИВЕН · НУЖНО ПЕРЕПОДКЛЮЧИТЬ ДАЛЬНОМЕР",
+                es: "RADAR ACTIVO · RECONECTA EL TELÉMETRO",
+                uk: "РАДАР АКТИВНИЙ · ПЕРЕПІДКЛЮЧИ ДАЛЕКОМІР"
+            )
+        }
         switch roomRadar.rangefinderAccessState {
         case .waitingForPeer:
             return localized(
-                en: "RANGEFINDER: WAITING FOR ANOTHER IPHONE",
-                ru: "ДАЛЬНОМЕР: ЖДЁМ ЕЩЁ ОДИН IPHONE",
-                es: "TELÉMETRO: ESPERANDO OTRO IPHONE",
-                uk: "ДАЛЕКОМІР: ЧЕКАЄМО НА ІНШИЙ IPHONE"
+                en: "RADAR ACTIVE · SCANNING FOR DEVICES",
+                ru: "РАДАР АКТИВЕН · ИЩЕМ УСТРОЙСТВА",
+                es: "RADAR ACTIVO · BUSCANDO DISPOSITIVOS",
+                uk: "РАДАР АКТИВНИЙ · ШУКАЄМО ПРИСТРОЇ"
             )
         case .ready:
             return localized(
-                en: "RANGEFINDER PERMISSION REQUIRED",
-                ru: "НУЖНО РАЗРЕШЕНИЕ ДАЛЬНОМЕРА",
-                es: "SE REQUIERE PERMISO DEL TELÉMETRO",
-                uk: "ПОТРІБЕН ДОЗВІЛ ДАЛЕКОМІРА"
+                en: "RADAR ACTIVE · CONNECTING RANGEFINDER",
+                ru: "РАДАР АКТИВЕН · ПОДКЛЮЧАЕМ ДАЛЬНОМЕР",
+                es: "RADAR ACTIVO · CONECTANDO TELÉMETRO",
+                uk: "РАДАР АКТИВНИЙ · ПІДКЛЮЧАЄМО ДАЛЕКОМІР"
             )
         case .requesting:
             return localized(
-                en: "WAITING FOR IOS RANGEFINDER PERMISSION",
-                ru: "ЖДЁМ РАЗРЕШЕНИЕ IOS ДЛЯ ДАЛЬНОМЕРА",
-                es: "ESPERANDO EL PERMISO DE IOS",
-                uk: "ЧЕКАЄМО НА ДОЗВІЛ IOS"
+                en: "RADAR ACTIVE · WAITING FOR IOS",
+                ru: "РАДАР АКТИВЕН · ЖДЁМ РАЗРЕШЕНИЕ IOS",
+                es: "RADAR ACTIVO · ESPERANDO A IOS",
+                uk: "РАДАР АКТИВНИЙ · ЧЕКАЄМО НА IOS"
             )
         case .denied:
             return localized(
-                en: "RANGEFINDER PERMISSION DENIED",
-                ru: "ДОСТУП К ДАЛЬНОМЕРУ ОТКЛОНЁН",
-                es: "PERMISO DEL TELÉMETRO DENEGADO",
-                uk: "ДОСТУП ДО ДАЛЕКОМІРА ВІДХИЛЕНО"
+                en: "RADAR ACTIVE · PRECISE DISTANCE IS OFF",
+                ru: "РАДАР АКТИВЕН · ТОЧНАЯ ДИСТАНЦИЯ ВЫКЛЮЧЕНА",
+                es: "RADAR ACTIVO · DISTANCIA PRECISA DESACTIVADA",
+                uk: "РАДАР АКТИВНИЙ · ТОЧНУ ВІДСТАНЬ ВИМКНЕНО"
             )
         case .unavailable:
             return localized(
-                en: "RANGEFINDER CHECK FAILED",
-                ru: "ПРОВЕРКА ДАЛЬНОМЕРА НЕ УДАЛАСЬ",
-                es: "FALLÓ LA VERIFICACIÓN DEL TELÉMETRO",
-                uk: "ПЕРЕВІРКА ДАЛЕКОМІРА НЕ ВДАЛАСЯ"
+                en: "RADAR ACTIVE · RANGEFINDER NEEDS RECONNECT",
+                ru: "РАДАР АКТИВЕН · НУЖНО ПЕРЕПОДКЛЮЧИТЬ ДАЛЬНОМЕР",
+                es: "RADAR ACTIVO · RECONECTA EL TELÉMETRO",
+                uk: "РАДАР АКТИВНИЙ · ПЕРЕПІДКЛЮЧИ ДАЛЕКОМІР"
             )
         case .granted, .unsupported:
             break
@@ -3856,7 +3853,7 @@ struct GameView: View {
             roomRadar.stopScanning()
         }
         if RoomAccessPagePolicy.shouldStartRadar(on: nextPage) {
-            appState.resumeRadarScanningIfActivated(requestCameraAccess: true)
+            appState.startRadarScanning(requestCameraAccess: true)
         }
     }
 

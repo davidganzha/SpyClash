@@ -4,6 +4,8 @@ struct OnboardingView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.accessibilityReduceMotion) private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
     @ScaledMetric(relativeTo: .largeTitle) private var stepTitleSize: CGFloat = 34
     @ScaledMetric(relativeTo: .title2) private var greetingSize: CGFloat = 24
 
@@ -17,6 +19,7 @@ struct OnboardingView: View {
     @State private var introMarkIsVisible = false
     @State private var revealedLanguageCount = 0
     @State private var isFinishing = false
+    @State private var isAwaitingLocalNetworkSettingsReturn = false
 
     private let languageOrder: [AppLanguage] = [.uk, .en, .es, .ru]
     private let sourceOrder: [OnboardingAcquisitionSource] = [
@@ -27,6 +30,20 @@ struct OnboardingView: View {
         .friendsOrFamily,
         .other
     ]
+
+    init(
+        startsAtLocalNetworkPermission: Bool = false,
+        preservedSource: OnboardingAcquisitionSource? = nil
+    ) {
+        if startsAtLocalNetworkPermission {
+            _permissionFlow = State(
+                initialValue: OnboardingPermissionFlow(startingAt: .nearby)
+            )
+            _step = State(initialValue: .permissions)
+            _selectedSource = State(initialValue: preservedSource ?? .other)
+        }
+    }
+
     var body: some View {
         ZStack {
             SpyTheme.black
@@ -79,6 +96,16 @@ struct OnboardingView: View {
             bottomAction
         }
         .preferredColorScheme(.dark)
+        .onAppear {
+            permissions.setApplicationActive(scenePhase == .active)
+        }
+        .onChange(of: scenePhase) { _, newPhase in
+            permissions.setApplicationActive(newPhase == .active)
+            guard newPhase == .active,
+                  isAwaitingLocalNetworkSettingsReturn else { return }
+            isAwaitingLocalNetworkSettingsReturn = false
+            recheckLocalNetworkAfterSettings()
+        }
         .onDisappear {
             permissionRequestTask?.cancel()
             permissionRequestTask = nil
@@ -264,7 +291,7 @@ struct OnboardingView: View {
                 .font(.system(.body, design: .rounded, weight: .medium))
                 .foregroundStyle(SpyTheme.muted)
                 .multilineTextAlignment(.center)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 3)
+                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 4)
                 .fixedSize(horizontal: false, vertical: true)
 
             if let statusText = permissionStatusText(permission) {
@@ -283,7 +310,7 @@ struct OnboardingView: View {
     @ViewBuilder
     private func permissionHero(_ permission: OnboardingPermissionKind) -> some View {
         switch permissionDisplayStatus(permission) {
-        case .notDetermined, .deferredToRadar:
+        case .notDetermined:
             Image(systemName: permissionIcon(permission))
                 .font(.system(size: 50, weight: .semibold))
                 .foregroundStyle(SpyTheme.red)
@@ -302,6 +329,10 @@ struct OnboardingView: View {
                 .foregroundStyle(SpyTheme.red)
         case .unavailable:
             Image(systemName: "minus.circle.fill")
+                .font(.system(size: 52, weight: .semibold))
+                .foregroundStyle(SpyTheme.dim)
+        case .unsupported:
+            Image(systemName: "iphone")
                 .font(.system(size: 52, weight: .semibold))
                 .foregroundStyle(SpyTheme.dim)
         }
@@ -391,9 +422,20 @@ struct OnboardingView: View {
     }
 
     private var bottomActionSystemImage: String {
-        step == .permissions && permissionFlow.currentPermission == nil
-            ? "checkmark"
-            : "arrow.right"
+        guard step == .permissions else { return "arrow.right" }
+        guard let permission = permissionFlow.currentPermission else {
+            return "checkmark"
+        }
+        guard permission == .nearby else { return "arrow.right" }
+
+        switch permissions.status(for: permission) {
+        case .denied:
+            return "gearshape"
+        case .unavailable:
+            return "arrow.clockwise"
+        case .notDetermined, .requesting, .granted, .unsupported:
+            return "arrow.right"
+        }
     }
 
     private var bottomActionTitle: String? {
@@ -405,7 +447,11 @@ struct OnboardingView: View {
         switch permissions.status(for: permission) {
         case .notDetermined:
             return copy.permissionAllowAction
-        case .granted, .denied, .unavailable, .deferredToRadar:
+        case .denied where permission == .nearby:
+            return copy.permissionSettingsAction
+        case .unavailable where permission == .nearby:
+            return copy.permissionRetryAction
+        case .granted, .denied, .unavailable, .unsupported:
             return copy.permissionContinueAction
         case .requesting:
             return copy.permissionRequesting
@@ -440,7 +486,7 @@ struct OnboardingView: View {
         guard case .ready = permissionFlow.phase else { return false }
 
         switch permissions.status(for: permission) {
-        case .notDetermined, .granted, .denied, .unavailable, .deferredToRadar:
+        case .notDetermined, .granted, .denied, .unavailable, .unsupported:
             return true
         case .requesting:
             return false
@@ -663,7 +709,19 @@ struct OnboardingView: View {
         switch status {
         case .notDetermined:
             beginPermissionRequest(permission)
-        case .granted, .denied, .unavailable, .deferredToRadar:
+        case .denied:
+            if permission == .nearby {
+                openLocalNetworkSettings()
+            } else {
+                showExistingPermissionResolution(status, for: permission)
+            }
+        case .unavailable:
+            if permission == .nearby {
+                beginPermissionRequest(permission)
+            } else {
+                showExistingPermissionResolution(status, for: permission)
+            }
+        case .granted, .unsupported:
             showExistingPermissionResolution(status, for: permission)
         case .requesting:
             return
@@ -683,9 +741,9 @@ struct OnboardingView: View {
 
         permissionRequestTask?.cancel()
         permissionRequestTask = Task { @MainActor in
-            let didStartSystemRequest = await permissions.request(permission)
+            let didStartRequest = await permissions.request(permission)
             guard !Task.isCancelled else { return }
-            guard didStartSystemRequest else {
+            guard didStartRequest else {
                 withAnimation(pageAnimation) {
                     _ = permissionFlow.cancelRequest(
                         for: permission,
@@ -700,6 +758,21 @@ struct OnboardingView: View {
                 requestID: requestID
             )
         }
+    }
+
+    private func openLocalNetworkSettings() {
+        guard let settingsURL = URL(string: UIApplication.openSettingsURLString) else {
+            return
+        }
+        isAwaitingLocalNetworkSettingsReturn = true
+        openURL(settingsURL)
+    }
+
+    private func recheckLocalNetworkAfterSettings() {
+        guard step == .permissions,
+              permissionFlow.currentPermission == .nearby,
+              case .ready = permissionFlow.phase else { return }
+        beginPermissionRequest(.nearby)
     }
 
     private func showExistingPermissionResolution(
@@ -735,7 +808,10 @@ struct OnboardingView: View {
                 status: resolvedStatus
             )
         }
-        guard didResolveRequest else { return }
+        guard didResolveRequest else {
+            permissionRequestTask = nil
+            return
+        }
 
         if resolvedStatus == .granted {
             HapticManager.shared.fire(.notification(.success))
@@ -754,7 +830,10 @@ struct OnboardingView: View {
         guard !Task.isCancelled,
               permissionFlow.currentPermission == permission,
               case .resolved(let status) = permissionFlow.phase,
-              status.completesOnboardingStep else { return }
+              OnboardingPermissionFlow.statusCompletesStep(
+                  status,
+                  for: permission
+              ) else { return }
         var didAdvance = false
         withAnimation(pageAnimation) {
             didAdvance = permissionFlow.advance(after: permission)
@@ -795,11 +874,15 @@ struct OnboardingView: View {
         case .granted:
             return copy.permissionGranted
         case .denied:
-            return copy.permissionDenied
+            return permission == .nearby
+                ? copy.localNetworkDenied
+                : copy.permissionDenied
         case .unavailable:
-            return copy.permissionUnavailable
-        case .deferredToRadar:
-            return copy.permissionDeferredToRadar
+            return permission == .nearby
+                ? copy.localNetworkUnavailable
+                : copy.permissionUnavailable
+        case .unsupported:
+            return copy.localNetworkUnsupported
         }
     }
 
@@ -809,9 +892,9 @@ struct OnboardingView: View {
         switch permissionDisplayStatus(permission) {
         case .granted:
             SpyTheme.green
-        case .unavailable:
+        case .unavailable, .unsupported:
             SpyTheme.dim
-        case .notDetermined, .requesting, .denied, .deferredToRadar:
+        case .notDetermined, .requesting, .denied:
             SpyTheme.red
         }
     }
@@ -902,6 +985,14 @@ private struct OnboardingCopy {
         localized(en: "Continue", es: "Continuar", ru: "Продолжить", uk: "Продовжити")
     }
 
+    var permissionSettingsAction: String {
+        localized(en: "Open Settings", es: "Abrir ajustes", ru: "Открыть настройки", uk: "Відкрити налаштування")
+    }
+
+    var permissionRetryAction: String {
+        localized(en: "Retry", es: "Reintentar", ru: "Повторить", uk: "Повторити")
+    }
+
     var permissionRequesting: String {
         localized(en: "WAITING FOR IOS", es: "ESPERANDO A IOS", ru: "ОЖИДАНИЕ IOS", uk: "ОЧІКУВАННЯ IOS")
     }
@@ -932,12 +1023,30 @@ private struct OnboardingCopy {
         )
     }
 
-    var permissionDeferredToRadar: String {
+    var localNetworkDenied: String {
         localized(
-            en: "REQUIRED · VERIFIED IN RADAR",
-            es: "OBLIGATORIO · SE VERIFICA EN EL RADAR",
-            ru: "ОБЯЗАТЕЛЬНО · ПРОВЕРКА В РАДАРЕ",
-            uk: "ОБОВ'ЯЗКОВО · ПЕРЕВІРКА В РАДАРІ"
+            en: "LOCAL NETWORK IS OFF · OPEN SETTINGS",
+            es: "RED LOCAL DESACTIVADA · ABRE AJUSTES",
+            ru: "ЛОКАЛЬНАЯ СЕТЬ ВЫКЛЮЧЕНА · ОТКРОЙТЕ НАСТРОЙКИ",
+            uk: "ЛОКАЛЬНУ МЕРЕЖУ ВИМКНЕНО · ВІДКРИЙТЕ НАЛАШТУВАННЯ"
+        )
+    }
+
+    var localNetworkUnavailable: String {
+        localized(
+            en: "CHECK FAILED · RETRY",
+            es: "FALLO EN LA COMPROBACIÓN · REINTENTA",
+            ru: "ПРОВЕРКА НЕ УДАЛАСЬ · ПОВТОРИТЕ",
+            uk: "ПЕРЕВІРКА НЕ ВДАЛАСЯ · ПОВТОРІТЬ"
+        )
+    }
+
+    var localNetworkUnsupported: String {
+        localized(
+            en: "SIMULATOR · CHECK ON A PHYSICAL IPHONE",
+            es: "SIMULADOR · COMPRUEBA EN UN IPHONE FÍSICO",
+            ru: "СИМУЛЯТОР · ПРОВЕРЬТЕ НА ФИЗИЧЕСКОМ IPHONE",
+            uk: "СИМУЛЯТОР · ПЕРЕВІРТЕ НА ФІЗИЧНОМУ IPHONE"
         )
     }
 
@@ -974,7 +1083,7 @@ private struct OnboardingCopy {
         case .camera:
             localized(en: "Camera", es: "Cámara", ru: "Камера", uk: "Камера")
         case .nearby:
-            localized(en: "Rangefinder", es: "Telémetro", ru: "Дальномер", uk: "Далекомір")
+            localized(en: "Local Network", es: "Red local", ru: "Локальная сеть", uk: "Локальна мережа")
         }
     }
 
@@ -996,10 +1105,10 @@ private struct OnboardingCopy {
             )
         case .nearby:
             localized(
-                en: "Required for Radar. iOS will ask for access when Radar connects to a real nearby iPhone.",
-                es: "Obligatorio para el radar. iOS pedirá acceso cuando se conecte a un iPhone real cercano.",
-                ru: "Обязателен для Радара. iOS запросит доступ, когда Радар подключится к реальному iPhone рядом.",
-                uk: "Обов'язковий для Радара. iOS запросить доступ, коли Радар підключиться до справжнього iPhone поруч."
+                en: "Required for Radar: allow Local Network to find nearby iPhones. iOS will request precise Rangefinder access automatically after a peer connects.",
+                es: "Obligatorio para Radar: permite la red local para encontrar iPhone cercanos. iOS pedirá acceso al telémetro preciso automáticamente al conectar un dispositivo.",
+                ru: "Обязательно для Радара: разрешите локальную сеть для поиска iPhone рядом. Доступ к точному дальномеру iOS запросит автоматически после подключения.",
+                uk: "Обов'язково для Радара: дозвольте локальну мережу для пошуку iPhone поруч. Доступ до точного далекоміра iOS запросить автоматично після підключення."
             )
         }
     }

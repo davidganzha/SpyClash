@@ -185,8 +185,8 @@ enum RadarRangefinderAccessState: Equatable {
     /// iOS exposes no standalone authorization status. A real nearby iPhone
     /// must supply its discovery token before SpyClash can verify access.
     case waitingForPeer
-    /// A compatible physical peer is connected. The user can now explicitly
-    /// ask iOS for Rangefinder access.
+    /// A compatible physical peer is connected and automatic verification can
+    /// begin.
     case ready
     case requesting
     case granted
@@ -199,10 +199,6 @@ enum RadarRangefinderAccessPolicy {
         canVerifyOnCurrentDevice: Bool
     ) -> RadarRangefinderAccessState {
         canVerifyOnCurrentDevice ? .waitingForPeer : .unsupported
-    }
-
-    static func allowsRadarUse(_ state: RadarRangefinderAccessState) -> Bool {
-        state == .granted || state == .unsupported
     }
 
     static func stateAfterInvalidation(
@@ -219,6 +215,162 @@ enum RadarRangefinderAccessPolicy {
         default:
             return .unavailable
         }
+    }
+
+    static func stateAfterRangingInvalidation(
+        _ error: NSError,
+        currentState: RadarRangefinderAccessState,
+        hasOtherActiveContext: Bool,
+        canVerifyOnCurrentDevice: Bool
+    ) -> RadarRangefinderAccessState {
+        let mappedState = stateAfterInvalidation(
+            error,
+            canVerifyOnCurrentDevice: canVerifyOnCurrentDevice
+        )
+        switch mappedState {
+        case .denied, .unsupported:
+            // These are device-wide capability/authorization outcomes.
+            return mappedState
+        case .unavailable:
+            // A transient failure belongs to this peer session. Do not turn a
+            // previously proven grant, or another live ranging context, into a
+            // global permission recovery screen.
+            guard currentState != .granted,
+                  !hasOtherActiveContext else { return currentState }
+            return .unavailable
+        case .waitingForPeer, .ready, .requesting, .granted:
+            return mappedState
+        }
+    }
+
+    static func stateAfterTransientPeerFailure(
+        currentState: RadarRangefinderAccessState,
+        hasOtherActiveContext: Bool
+    ) -> RadarRangefinderAccessState {
+        switch currentState {
+        case .denied, .unsupported, .granted:
+            return currentState
+        case .waitingForPeer, .ready, .requesting, .unavailable:
+            return hasOtherActiveContext ? currentState : .unavailable
+        }
+    }
+}
+
+enum RadarAutomaticRangefinderPolicy {
+    static func shouldBeginProbe(
+        from state: RadarRangefinderAccessState
+    ) -> Bool {
+        state == .waitingForPeer || state == .ready
+    }
+}
+
+enum RadarTransportRetryPolicy {
+    private static let retryDelaysMilliseconds = [1_000, 3_000, 8_000, 20_000]
+
+    static func delayMilliseconds(afterFailureCount failureCount: Int) -> Int? {
+        guard failureCount > 0,
+              retryDelaysMilliseconds.indices.contains(failureCount - 1) else {
+            return nil
+        }
+        return retryDelaysMilliseconds[failureCount - 1]
+    }
+}
+
+enum RadarRangingTokenRetryPolicy {
+    private static let retryDelaysMilliseconds = [750, 2_000]
+
+    static func delayMilliseconds(afterFailureCount failureCount: Int) -> Int? {
+        guard failureCount > 0,
+              retryDelaysMilliseconds.indices.contains(failureCount - 1) else {
+            return nil
+        }
+        return retryDelaysMilliseconds[failureCount - 1]
+    }
+}
+
+enum RadarLegacyRangingRetryPolicy {
+    private static let retryDelaysMilliseconds = [2_000, 5_000]
+
+    static func delayMilliseconds(afterFailureCount failureCount: Int) -> Int? {
+        guard failureCount > 0,
+              retryDelaysMilliseconds.indices.contains(failureCount - 1) else {
+            return nil
+        }
+        return retryDelaysMilliseconds[failureCount - 1]
+    }
+
+    static func allowsAttempt(afterFailureCount failureCount: Int) -> Bool {
+        failureCount <= retryDelaysMilliseconds.count
+    }
+}
+
+enum RadarPeerConnectionStrategy: Equatable {
+    case presence
+    case legacyRanging
+}
+
+enum RadarPeerProtocolPolicy {
+    /// Version 5 advertises connected-session ranging. New clients continue
+    /// accepting version 4 so one updated iPhone can initiate the legacy
+    /// ranging invitation expected by build 132. Version-4 clients ignore our
+    /// version-5 advertisement, preventing a competing presence connection.
+    static let advertisedVersion = "5"
+    static let acceptedVersions: Set<String> = ["4", advertisedVersion]
+
+    static func connectionStrategy(
+        peerVersion: String,
+        supportsPrecision: Bool,
+        supportsRangefinderProbe: Bool,
+        supportsConnectedRanging: Bool
+    ) -> RadarPeerConnectionStrategy {
+        if peerVersion == "4",
+           supportsPrecision,
+           supportsRangefinderProbe,
+           !supportsConnectedRanging {
+            return .legacyRanging
+        }
+        return .presence
+    }
+}
+
+enum RadarRangefinderProbeCollisionDecision: Equatable {
+    case continueLocalProbe
+    case yieldAndRespond
+}
+
+enum RadarRangefinderProbeCollisionPolicy {
+    static func decision(
+        localPeerID: String,
+        localProbeID: String,
+        incomingPeerID: String,
+        incomingProbeID: String
+    ) -> RadarRangefinderProbeCollisionDecision {
+        let localProposal = "\(localPeerID)\u{0}\(localProbeID)"
+        let incomingProposal = "\(incomingPeerID)\u{0}\(incomingProbeID)"
+        return localProposal <= incomingProposal
+            ? .continueLocalProbe
+            : .yieldAndRespond
+    }
+}
+
+enum RadarRangingExchangeCollisionPolicy {
+    static func shouldAcceptIncoming(
+        currentInitiatorPeerID: String,
+        currentExchangeID: String,
+        currentSupersedesExchangeID: String?,
+        incomingInitiatorPeerID: String,
+        incomingExchangeID: String,
+        incomingSupersedesExchangeID: String?
+    ) -> Bool {
+        if incomingSupersedesExchangeID == currentExchangeID {
+            return true
+        }
+        if currentSupersedesExchangeID == incomingExchangeID {
+            return false
+        }
+        let currentProposal = "\(currentInitiatorPeerID)\u{0}\(currentExchangeID)"
+        let incomingProposal = "\(incomingInitiatorPeerID)\u{0}\(incomingExchangeID)"
+        return incomingProposal < currentProposal
     }
 }
 
@@ -347,6 +499,91 @@ private struct RadarReceivedRoomInviteKey: Hashable {
     let invitationID: String
 }
 
+private struct RadarRangingExchange: Equatable {
+    let id: String
+    let initiatorPeerID: String
+    let supersedesExchangeID: String?
+}
+
+private struct RadarPendingRangingRecovery {
+    let peerID: MCPeerID
+    let preservedRemoteToken: NIDiscoveryToken?
+    let preservedRemoteTokenData: Data?
+    let supersedingExchangeID: String?
+    let retryingExchange: RadarRangingExchange?
+    let reason: String
+}
+
+private struct RadarPendingWireMessage {
+    let message: RadarWireMessage
+    let connectionEpoch: UInt64
+    let receiveSequence: UInt64
+}
+
+private struct RadarReceiveCursor {
+    let connectionEpoch: UInt64
+    let receiveSequence: UInt64
+}
+
+private struct RadarConnectionDelivery {
+    let connectionEpoch: UInt64
+    let receiveSequence: UInt64
+}
+
+private final class RadarConnectionEpochTracker: @unchecked Sendable {
+    private struct Key: Hashable {
+        let sessionID: ObjectIdentifier
+        let peerID: String
+    }
+
+    private let lock = NSLock()
+    private var epochs: [Key: UInt64] = [:]
+    private var receiveSequences: [Key: UInt64] = [:]
+
+    func record(
+        _ state: MCSessionState,
+        for peerID: String,
+        in session: MCSession
+    ) -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = Key(sessionID: ObjectIdentifier(session), peerID: peerID)
+        var epoch = epochs[key, default: 0]
+        switch state {
+        case .connected, .notConnected:
+            epoch &+= 1
+            receiveSequences[key] = 0
+        case .connecting:
+            break
+        @unknown default:
+            epoch &+= 1
+            receiveSequences[key] = 0
+        }
+        epochs[key] = epoch
+        return epoch
+    }
+
+    func recordReceive(for peerID: String, in session: MCSession) -> RadarConnectionDelivery {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = Key(sessionID: ObjectIdentifier(session), peerID: peerID)
+        let epoch = epochs[key, default: 0]
+        let sequence = receiveSequences[key, default: 0] &+ 1
+        receiveSequences[key] = sequence
+        return RadarConnectionDelivery(
+            connectionEpoch: epoch,
+            receiveSequence: sequence
+        )
+    }
+
+    func current(for peerID: String, in session: MCSession) -> UInt64 {
+        lock.lock()
+        defer { lock.unlock() }
+        let key = Key(sessionID: ObjectIdentifier(session), peerID: peerID)
+        return epochs[key, default: 0]
+    }
+}
+
 private enum RadarReceivedRoomInviteState {
     case pending
     case responded(RadarWireInviteResponse)
@@ -371,8 +608,15 @@ private struct RadarWireMessage: Codable {
     let inviteResponse: RadarWireInviteResponse?
     let availability: String?
     let presence: RadarPresenceSnapshot?
+    let rangingExchangeID: String?
+    let rangingExchangeInitiatorPeerID: String?
+    let supersedesRangingExchangeID: String?
 
     static var rangingRequest: RadarWireMessage {
+        rangingRequest(exchange: nil)
+    }
+
+    static func rangingRequest(exchange: RadarRangingExchange?) -> RadarWireMessage {
         RadarWireMessage(
             version: 1,
             kind: .rangingRequest,
@@ -390,7 +634,10 @@ private struct RadarWireMessage: Codable {
             invitationID: nil,
             inviteResponse: nil,
             availability: nil,
-            presence: nil
+            presence: nil,
+            rangingExchangeID: exchange?.id,
+            rangingExchangeInitiatorPeerID: exchange?.initiatorPeerID,
+            supersedesRangingExchangeID: exchange?.supersedesExchangeID
         )
     }
 
@@ -412,11 +659,17 @@ private struct RadarWireMessage: Codable {
             invitationID: nil,
             inviteResponse: nil,
             availability: nil,
-            presence: nil
+            presence: nil,
+            rangingExchangeID: nil,
+            rangingExchangeInitiatorPeerID: nil,
+            supersedesRangingExchangeID: nil
         )
     }
 
-    static func nearbyToken(_ token: Data) -> RadarWireMessage {
+    static func nearbyToken(
+        _ token: Data,
+        exchange: RadarRangingExchange? = nil
+    ) -> RadarWireMessage {
         RadarWireMessage(
             version: 1,
             kind: .nearbyToken,
@@ -434,7 +687,10 @@ private struct RadarWireMessage: Codable {
             invitationID: nil,
             inviteResponse: nil,
             availability: nil,
-            presence: nil
+            presence: nil,
+            rangingExchangeID: exchange?.id,
+            rangingExchangeInitiatorPeerID: exchange?.initiatorPeerID,
+            supersedesRangingExchangeID: exchange?.supersedesExchangeID
         )
     }
 
@@ -484,7 +740,10 @@ private struct RadarWireMessage: Codable {
             invitationID: id,
             inviteResponse: nil,
             availability: nil,
-            presence: nil
+            presence: nil,
+            rangingExchangeID: nil,
+            rangingExchangeInitiatorPeerID: nil,
+            supersedesRangingExchangeID: nil
         )
     }
 
@@ -518,7 +777,10 @@ private struct RadarWireMessage: Codable {
             invitationID: invitationID,
             inviteResponse: nil,
             availability: nil,
-            presence: nil
+            presence: nil,
+            rangingExchangeID: nil,
+            rangingExchangeInitiatorPeerID: nil,
+            supersedesRangingExchangeID: nil
         )
     }
 
@@ -543,7 +805,10 @@ private struct RadarWireMessage: Codable {
             invitationID: invitationID,
             inviteResponse: response,
             availability: nil,
-            presence: nil
+            presence: nil,
+            rangingExchangeID: nil,
+            rangingExchangeInitiatorPeerID: nil,
+            supersedesRangingExchangeID: nil
         )
     }
 
@@ -565,7 +830,10 @@ private struct RadarWireMessage: Codable {
             invitationID: invitationID,
             inviteResponse: nil,
             availability: nil,
-            presence: nil
+            presence: nil,
+            rangingExchangeID: nil,
+            rangingExchangeInitiatorPeerID: nil,
+            supersedesRangingExchangeID: nil
         )
     }
 
@@ -587,7 +855,10 @@ private struct RadarWireMessage: Codable {
             invitationID: nil,
             inviteResponse: nil,
             availability: presence.availability.rawValue,
-            presence: presence
+            presence: presence,
+            rangingExchangeID: nil,
+            rangingExchangeInitiatorPeerID: nil,
+            supersedesRangingExchangeID: nil
         )
     }
 }
@@ -621,7 +892,7 @@ final class RadarNearbyService: NSObject {
     // Bump discovery independently from the wire-message version whenever the
     // Multipeer identity contract changes. This prevents cached Bonjour peers
     // from an older random-ID build appearing as duplicate live devices.
-    private static let protocolVersion = "4"
+    private static let protocolVersion = RadarPeerProtocolPolicy.advertisedVersion
     private static let peerIDStorageKey = "spyclash.radar.multipeer-id"
 
     private static var canVerifyRangefinderAccess: Bool {
@@ -674,8 +945,34 @@ final class RadarNearbyService: NSObject {
     private var presenceRetryCounts: [String: Int] = [:]
     private var peerPresenceRevisions: [String: UInt64] = [:]
     private var rangefinderProbeCapablePeerIDs: Set<String> = []
+    private var connectedRangingCapablePeerIDs: Set<String> = []
     private var rangingControlPeerIDs: Set<String> = []
+    /// Per-peer generations protect the async request send from reviving a
+    /// connection that was stopped or replaced while `send` was suspended.
+    private var connectedRangingRequestAttempts: [String: UUID] = [:]
+    private var rangingTokenExchangeFailureCounts: [String: Int] = [:]
+    private var rangingRecoveryFailureCounts: [String: Int] = [:]
+    private var rangingExchanges: [String: RadarRangingExchange] = [:]
+    private var retiredRangingExchangeIDs: [String: Set<String>] = [:]
+    private var rangingRecoveryRunIDs: [String: UUID] = [:]
+    @ObservationIgnored private var rangingRecoveryTasks: [String: Task<Void, Never>] = [:]
+    private var pendingRangingRecoveries: [String: RadarPendingRangingRecovery] = [:]
+    private var pendingRangingSessionStartPeerIDs: Set<String> = []
+    private var pendingRangingContextRetryPeerIDs: Set<String> = []
+    private var pendingConnectedRangingRequests: [String: [RadarPendingWireMessage]] = [:]
+    private var pendingNearbyTokens: [String: [RadarPendingWireMessage]] = [:]
+    private var pendingRangefinderProbeRequests: [String: [RadarPendingWireMessage]] = [:]
+    private var pendingRangefinderProbeTokens: [String: [RadarPendingWireMessage]] = [:]
+    private var pendingLegacyRangingPeerIDs: Set<String> = []
+    private var terminalRangingFailurePeerIDs: Set<String> = []
+    private var lastAppliedLegacyTokenCursors: [String: RadarReceiveCursor] = [:]
+    private var pendingRangingConfigurationRefreshPeerIDs: Set<String> = []
+    private var connectionEpochs: [String: UInt64] = [:]
+    private var lastConnectedEpochs: [String: UInt64] = [:]
+    nonisolated private let connectionEpochTracker = RadarConnectionEpochTracker()
     private var rangingInviteAttempts: [String: UUID] = [:]
+    private var legacyRangingRetryCounts: [String: Int] = [:]
+    private var legacyRangingRetryRunIDs: [String: UUID] = [:]
     private var roomInviteConnectionAttempts: [String: String] = [:]
     private var invitationTimeoutRunIDs: [String: UUID] = [:]
     private var receivedRoomInvites: [RadarReceivedRoomInviteKey: RadarReceivedRoomInviteState] = [:]
@@ -695,12 +992,20 @@ final class RadarNearbyService: NSObject {
     private var pendingLocalPresenceSnapshot: RadarPresenceSnapshot?
     @ObservationIgnored private var presencePublishTask: Task<Void, Never>?
     private var presencePublishRunID: UUID?
+    @ObservationIgnored private var transportRetryTask: Task<Void, Never>?
+    private var transportRetryRunID: UUID?
+    @ObservationIgnored private var transportStabilityTask: Task<Void, Never>?
+    private var consecutiveTransportFailureCount = 0
 #if DEBUG
     private var usesPreviewRangingPeers = false
     private var previewScanFailureMessage: String?
     private var previewRangefinderAccessState: RadarRangefinderAccessState?
     private(set) var transportRebuildCountForTesting = 0
 #endif
+
+    var hasRecoverableRangingFailure: Bool {
+        !terminalRangingFailurePeerIDs.isEmpty
+    }
 
     override init() {
         invitePolicy = .ask
@@ -765,6 +1070,9 @@ final class RadarNearbyService: NSObject {
         guard identityChanged || policyChanged || transportAccessChanged else { return }
 
         self.allowsTransport = allowsTransport
+        if identityChanged || transportAccessChanged {
+            resetTransportRecoveryBudget()
+        }
 
         if accountChanged {
             // Account changes invalidate every invitation tied to the previous
@@ -844,6 +1152,9 @@ final class RadarNearbyService: NSObject {
         refreshIdleTimerProtection()
 
         if isActive {
+            if activityChanged {
+                resetTransportRecoveryBudget()
+            }
             supportsPreciseDistance = NISession.deviceCapabilities.supportsPreciseDistanceMeasurement
             supportsDirectionMeasurement = NISession.deviceCapabilities.supportsDirectionMeasurement
             supportsCameraAssistance = NISession.deviceCapabilities.supportsCameraAssistance
@@ -862,6 +1173,9 @@ final class RadarNearbyService: NSObject {
                advertiser == nil || multipeerSession == nil || localPeerID == nil {
                 rebuildTransportIfNeeded()
             }
+            if allowsTransport, wantsScanning {
+                startBrowserIfPossible()
+            }
 #if DEBUG
             if let previewRangefinderAccessState {
                 rangefinderAccessState = previewRangefinderAccessState
@@ -870,8 +1184,94 @@ final class RadarNearbyService: NSObject {
             if let nearbySession = activeRangefinderProbe?.nearbySession {
                 _ = resumeRangefinderProbeIfNeeded(nearbySession)
             }
+            resumePendingRangingWork()
+            reconcileRangefinderReadiness()
         } else if stopTransportWhenInactive {
             stopTransport(clearPeers: true)
+        }
+    }
+
+    private func resumePendingRangingWork() {
+        guard isApplicationActive, allowsTransport else { return }
+
+        for context in Array(rangingContexts.values) {
+            resumeRanging(for: context.nearbySession)
+        }
+
+        let configurationRefreshPeerIDs = pendingRangingConfigurationRefreshPeerIDs
+        pendingRangingConfigurationRefreshPeerIDs.removeAll()
+        for id in configurationRefreshPeerIDs {
+            guard let context = rangingContexts[id],
+                  let remoteToken = context.remoteToken,
+                  multipeerSession?.connectedPeers.contains(context.peerID) == true else {
+                continue
+            }
+            runRanging(
+                context,
+                with: remoteToken,
+                tokenData: context.remoteTokenData
+            )
+        }
+
+        let queuedMessagePeerIDs = Set(pendingConnectedRangingRequests.keys)
+            .union(pendingNearbyTokens.keys)
+            .union(pendingRangefinderProbeRequests.keys)
+            .union(pendingRangefinderProbeTokens.keys)
+        for id in queuedMessagePeerIDs {
+            guard let peerID = multipeerSession?.connectedPeers.first(where: {
+                $0.displayName == id
+            }) else { continue }
+            drainPendingRangingMessages(for: peerID)
+        }
+        if let activeRangefinderProbe,
+           activeRangefinderProbe.nearbySession == nil {
+            sendActiveRangefinderProbeRequest(activeRangefinderProbe)
+        }
+
+        let pendingSessionPeerIDs = pendingRangingSessionStartPeerIDs
+        pendingRangingSessionStartPeerIDs.removeAll()
+        for id in pendingSessionPeerIDs {
+            guard let peerID = multipeerSession?.connectedPeers.first(where: {
+                $0.displayName == id
+            }) else { continue }
+            if let context = rangingContexts[id] {
+                resumeRanging(for: context.nearbySession)
+            } else {
+                let exchange = connectedRangingCapablePeerIDs.contains(id)
+                    ? rangingExchanges[id]
+                    : nil
+                ensureRangingSession(for: peerID, exchange: exchange)
+            }
+        }
+
+        let pendingContextPeerIDs = pendingRangingContextRetryPeerIDs
+        pendingRangingContextRetryPeerIDs.removeAll()
+        for id in pendingContextPeerIDs {
+            guard let context = rangingContexts[id] else { continue }
+            Task { @MainActor [weak self, weak context] in
+                guard let self, let context else { return }
+                await self.performRangingSynchronizationRetry(context, for: id)
+            }
+        }
+
+        let recoveries = Array(pendingRangingRecoveries.values)
+        pendingRangingRecoveries.removeAll()
+        for recovery in recoveries {
+            scheduleRangingRecovery(
+                with: recovery.peerID,
+                preservedRemoteToken: recovery.preservedRemoteToken,
+                preservedRemoteTokenData: recovery.preservedRemoteTokenData,
+                supersedingExchangeID: recovery.supersedingExchangeID,
+                retryingExchange: recovery.retryingExchange,
+                reason: recovery.reason
+            )
+        }
+
+        let legacyPeerIDs = pendingLegacyRangingPeerIDs
+        pendingLegacyRangingPeerIDs.removeAll()
+        for id in legacyPeerIDs {
+            guard let peerID = discoveredPeerIDs[id] else { continue }
+            beginRangingHandshake(with: peerID)
         }
     }
 
@@ -907,6 +1307,7 @@ final class RadarNearbyService: NSObject {
             rebuildTransportIfNeeded()
         }
         startBrowserIfPossible()
+        reconcileRangefinderReadiness()
 #if DEBUG
         if usesPreviewRangingPeers {
             applyPreviewRangingPeers()
@@ -919,30 +1320,12 @@ final class RadarNearbyService: NSObject {
         // recover when startScanning() is called again. Tear down the complete
         // transport first so Retry always creates fresh Multipeer objects.
         debugLog("scan retry requested")
+        resetTransportRecoveryBudget()
 #if DEBUG
         previewScanFailureMessage = nil
 #endif
         stopTransport(clearPeers: true)
         startScanning(requestCameraAccess: requestCameraAccess)
-    }
-
-    func requestRangefinderAccess() {
-        let canStartRequest = rangefinderAccessState == .ready
-            || rangefinderAccessState == .denied
-            || rangefinderAccessState == .unavailable
-        guard Self.canVerifyRangefinderAccess,
-              allowsTransport,
-              isApplicationActive,
-              wantsScanning,
-              canStartRequest else {
-            return
-        }
-
-        guard let peerID = connectedPrecisionPeer() else {
-            rangefinderAccessState = .waitingForPeer
-            return
-        }
-        beginRangefinderProbe(with: peerID)
     }
 
     func retryRangefinderAccess() {
@@ -966,6 +1349,8 @@ final class RadarNearbyService: NSObject {
         multipeerSession?.disconnect()
         stopAllRanging()
         rangingInviteAttempts.removeAll()
+        legacyRangingRetryCounts.removeAll()
+        legacyRangingRetryRunIDs.removeAll()
         connectingPeerIDs.removeAll()
         pendingRoomInvites.removeAll()
         pendingInvitationIDs.removeAll()
@@ -981,7 +1366,11 @@ final class RadarNearbyService: NSObject {
         presenceRetryCounts.removeAll()
         peerPresenceRevisions.removeAll()
         rangefinderProbeCapablePeerIDs.removeAll()
+        connectedRangingCapablePeerIDs.removeAll()
         rangingControlPeerIDs.removeAll()
+        lastAppliedLegacyTokenCursors.removeAll()
+        pendingRangingConfigurationRefreshPeerIDs.removeAll()
+        clearAllRangingExchangeState()
         roomInviteConnectionAttempts.removeAll()
         invitationTimeoutRunIDs.removeAll()
         peers.removeAll()
@@ -1027,11 +1416,6 @@ final class RadarNearbyService: NSObject {
         _ peer: RadarNearbyPeer,
         to room: GameRoom
     ) async -> RadarInviteDispatchResult {
-        guard RadarRangefinderAccessPolicy.allowsRadarUse(
-            rangefinderAccessState
-        ) else {
-            return .unavailable
-        }
         switch RadarInvitationInteractionPolicy.action(
             invitePolicy: peer.invitePolicy,
             availability: peer.availability,
@@ -1467,13 +1851,15 @@ final class RadarNearbyService: NSObject {
                 "presence_rev": String(localPresenceRevision),
                 "source": RadarTransportSource.iphone.rawValue,
                 "precision": supportsPreciseDistance ? "1" : "0",
-                "rangefinder_probe": Self.canVerifyRangefinderAccess ? "1" : "0"
+                "rangefinder_probe": Self.canVerifyRangefinderAccess ? "1" : "0",
+                "connected_ranging": "1"
             ],
             serviceType: Self.serviceType
         )
         advertiser.delegate = self
         self.advertiser = advertiser
         advertiser.startAdvertisingPeer()
+        scheduleTransportStabilityReset(for: advertiser)
     }
 
     private func startBrowserIfPossible() {
@@ -1497,24 +1883,88 @@ final class RadarNearbyService: NSObject {
 
     private func markTransportUnavailable(_ message: String) {
         let shouldReportFailure = wantsScanning
+        consecutiveTransportFailureCount += 1
         debugLog("transport unavailable: \(message)")
         // Failed Multipeer objects are not restartable. Remove the complete
         // transport immediately so leaving and re-entering Radar cannot reuse
         // a broken advertiser, browser, or session.
         stopTransport(clearPeers: true)
         scanState = shouldReportFailure ? .unavailable(message) : .idle
+        scheduleTransportRetryIfNeeded()
+    }
+
+    private func scheduleTransportRetryIfNeeded() {
+        guard allowsTransport,
+              isApplicationActive,
+              identity != nil,
+              let delay = RadarTransportRetryPolicy.delayMilliseconds(
+                afterFailureCount: consecutiveTransportFailureCount
+              ) else { return }
+
+        let runID = UUID()
+        transportRetryRunID = runID
+        transportRetryTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(delay))
+            } catch {
+                return
+            }
+            guard let self,
+                  self.transportRetryRunID == runID,
+                  self.allowsTransport,
+                  self.isApplicationActive,
+                  self.identity != nil,
+                  self.advertiser == nil else { return }
+            self.transportRetryTask = nil
+            self.transportRetryRunID = nil
+            self.debugLog(
+                "transport automatic retry failure=\(self.consecutiveTransportFailureCount)"
+            )
+            self.rebuildTransportIfNeeded()
+        }
+    }
+
+    private func scheduleTransportStabilityReset(
+        for advertiser: MCNearbyServiceAdvertiser
+    ) {
+        transportStabilityTask?.cancel()
+        transportStabilityTask = Task { @MainActor [weak self, weak advertiser] in
+            do {
+                try await Task.sleep(for: .seconds(5))
+            } catch {
+                return
+            }
+            guard let self,
+                  let advertiser,
+                  self.advertiser === advertiser else { return }
+            self.consecutiveTransportFailureCount = 0
+            self.transportStabilityTask = nil
+        }
+    }
+
+    private func resetTransportRecoveryBudget() {
+        cancelTransportRecoveryTasks()
+        consecutiveTransportFailureCount = 0
+    }
+
+    private func cancelTransportRecoveryTasks() {
+        transportRetryTask?.cancel()
+        transportRetryTask = nil
+        transportRetryRunID = nil
+        transportStabilityTask?.cancel()
+        transportStabilityTask = nil
     }
 
     private func stopTransport(clearPeers: Bool) {
+        cancelTransportRecoveryTasks()
         clearRangefinderProbeResponders()
         if activeRangefinderProbe != nil {
             clearActiveRangefinderProbe(notifyPeer: false)
-            rangefinderAccessState = Self.canVerifyRangefinderAccess
-                ? .unavailable
-                : .unsupported
-        } else {
-            normalizeRangefinderStateAfterConnectionLoss()
         }
+        // Transport shutdown (including an ordinary background transition)
+        // is not a rangefinder failure. Put an interrupted automatic probe
+        // back into the resumable state instead of requiring a manual retry.
+        normalizeRangefinderStateAfterConnectionLoss()
         presencePublishTask?.cancel()
         presencePublishTask = nil
         presencePublishRunID = nil
@@ -1530,6 +1980,10 @@ final class RadarNearbyService: NSObject {
         advertiser = nil
         multipeerSession = nil
         localPeerID = nil
+        connectionEpochs.removeAll()
+        lastConnectedEpochs.removeAll()
+        lastAppliedLegacyTokenCursors.removeAll()
+        pendingRangingConfigurationRefreshPeerIDs.removeAll()
         discoveredPeerIDs.removeAll()
         browsedPeerIDs.removeAll()
         connectingPeerIDs.removeAll()
@@ -1538,8 +1992,12 @@ final class RadarNearbyService: NSObject {
         presenceRetryCounts.removeAll()
         peerPresenceRevisions.removeAll()
         rangefinderProbeCapablePeerIDs.removeAll()
+        connectedRangingCapablePeerIDs.removeAll()
         rangingControlPeerIDs.removeAll()
+        clearAllRangingExchangeState()
         rangingInviteAttempts.removeAll()
+        legacyRangingRetryCounts.removeAll()
+        legacyRangingRetryRunIDs.removeAll()
         roomInviteConnectionAttempts.removeAll()
         invitationTimeoutRunIDs.removeAll()
         pendingRoomInvites.removeAll()
@@ -1556,7 +2014,10 @@ final class RadarNearbyService: NSObject {
 
     private func recordFoundPeer(_ peerID: MCPeerID, discoveryInfo: [String: String]?) {
         guard allowsTransport else { return }
-        guard discoveryInfo?["v"] == Self.protocolVersion else { return }
+        guard let peerProtocolVersion = discoveryInfo?["v"],
+              RadarPeerProtocolPolicy.acceptedVersions.contains(
+                peerProtocolVersion
+              ) else { return }
 
         let id = peerID.displayName
         debugLog("discovered peer=\(id)")
@@ -1568,6 +2029,13 @@ final class RadarNearbyService: NSObject {
         let source = RadarTransportSource(rawValue: discoveryInfo?["source"] ?? "") ?? .iphone
         let peerSupportsPrecision = discoveryInfo?["precision"] == "1"
         let peerSupportsRangefinderProbe = discoveryInfo?["rangefinder_probe"] == "1"
+        let peerSupportsConnectedRanging = discoveryInfo?["connected_ranging"] == "1"
+        let connectionStrategy = RadarPeerProtocolPolicy.connectionStrategy(
+            peerVersion: peerProtocolVersion,
+            supportsPrecision: peerSupportsPrecision,
+            supportsRangefinderProbe: peerSupportsRangefinderProbe,
+            supportsConnectedRanging: peerSupportsConnectedRanging
+        )
         let previous = peers.first(where: { $0.id == id })
 
         discoveredPeerIDs[id] = peerID
@@ -1577,13 +2045,18 @@ final class RadarNearbyService: NSObject {
         } else {
             rangefinderProbeCapablePeerIDs.remove(id)
         }
+        if peerSupportsConnectedRanging {
+            connectedRangingCapablePeerIDs.insert(id)
+        } else {
+            connectedRangingCapablePeerIDs.remove(id)
+        }
         reconcileRangefinderReadiness()
         guard RadarPresenceVersionPolicy.shouldApply(
             incoming: presenceRevision,
             current: peerPresenceRevisions[id]
         ) else {
             debugLog("ignored stale discovery presence peer=\(id) revision=\(presenceRevision ?? 0)")
-            beginPresenceSubscription(with: peerID)
+            beginControlConnection(with: peerID, strategy: connectionStrategy)
             return
         }
         let normalizedPresenceRevision = presenceRevision ?? 0
@@ -1638,7 +2111,19 @@ final class RadarNearbyService: NSObject {
         // scope. Discovery and invitations do not need an active UWB/ARKit
         // session, so merely finding a card must never start the camera or
         // consume precision-ranging resources.
-        beginPresenceSubscription(with: peerID)
+        beginControlConnection(with: peerID, strategy: connectionStrategy)
+    }
+
+    private func beginControlConnection(
+        with peerID: MCPeerID,
+        strategy: RadarPeerConnectionStrategy
+    ) {
+        switch strategy {
+        case .presence:
+            beginPresenceSubscription(with: peerID)
+        case .legacyRanging:
+            beginRangingHandshake(with: peerID)
+        }
     }
 
     private func removeLostPeer(_ peerID: MCPeerID) {
@@ -1668,8 +2153,14 @@ final class RadarNearbyService: NSObject {
         presenceRetryCounts[id] = nil
         peerPresenceRevisions[id] = nil
         rangefinderProbeCapablePeerIDs.remove(id)
+        connectedRangingCapablePeerIDs.remove(id)
         rangingControlPeerIDs.remove(id)
+        lastAppliedLegacyTokenCursors[id] = nil
+        pendingRangingConfigurationRefreshPeerIDs.remove(id)
+        clearRangingExchangeState(for: id)
         rangingInviteAttempts[id] = nil
+        legacyRangingRetryCounts[id] = nil
+        legacyRangingRetryRunIDs[id] = nil
         roomInviteConnectionAttempts[id] = nil
         invitationTimeoutRunIDs[id] = nil
         pendingRoomInvites[id] = nil
@@ -1821,7 +2312,23 @@ final class RadarNearbyService: NSObject {
     private func beginRangingHandshake(with peerID: MCPeerID) {
         let id = peerID.displayName
         guard wantsScanning,
+              allowsTransport,
               supportsPreciseDistance,
+              rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported else {
+            pendingLegacyRangingPeerIDs.remove(id)
+            return
+        }
+        guard isApplicationActive else {
+            pendingLegacyRangingPeerIDs.insert(id)
+            return
+        }
+        pendingLegacyRangingPeerIDs.remove(id)
+        guard
+              RadarLegacyRangingRetryPolicy.allowsAttempt(
+                afterFailureCount: legacyRangingRetryCounts[id, default: 0]
+              ),
+              legacyRangingRetryRunIDs[id] == nil,
               let browser,
               let multipeerSession,
               !multipeerSession.connectedPeers.contains(peerID),
@@ -1916,8 +2423,11 @@ final class RadarNearbyService: NSObject {
 
         case .rangingRequest:
             debugLog("received ranging invitation peer=\(peerID.displayName)")
-            guard invitePolicy != .blocked,
+            guard allowsTransport,
+                  isApplicationActive,
                   supportsPreciseDistance,
+                  rangefinderAccessState != .denied,
+                  rangefinderAccessState != .unsupported,
                   let multipeerSession,
                   hasAvailableRemoteSessionSlot(for: peerID.displayName),
                   !connectingPeerIDs.contains(peerID.displayName),
@@ -1966,16 +2476,50 @@ final class RadarNearbyService: NSObject {
     private func handleSessionState(
         _ state: MCSessionState,
         peerID: MCPeerID,
-        session: MCSession
+        session: MCSession,
+        connectionEpoch: UInt64? = nil
     ) {
         guard multipeerSession === session else {
             debugLog("ignored stale multipeer state=\(state.rawValue) peer=\(peerID.displayName)")
             return
         }
         let id = peerID.displayName
+        var reconnectsExistingSession = false
+        if let connectionEpoch {
+            let acceptedEpoch = connectionEpochs[id, default: 0]
+            guard connectionEpoch >= acceptedEpoch else {
+                debugLog("ignored stale multipeer epoch=\(connectionEpoch) peer=\(id)")
+                return
+            }
+            reconnectsExistingSession = state == .connected
+                && lastConnectedEpochs[id].map { connectionEpoch > $0 } == true
+            connectionEpochs[id] = connectionEpoch
+        }
         debugLog("multipeer state=\(state.rawValue) peer=\(id)")
         switch state {
         case .connected:
+            if let connectionEpoch {
+                lastConnectedEpochs[id] = connectionEpoch
+            }
+            if reconnectsExistingSession, let connectionEpoch {
+                // A stale disconnect callback may arrive after this reconnect
+                // and is intentionally rejected by the epoch guard above. Do
+                // the connection-bound cleanup here as well so no NI token or
+                // exchange from the previous transport generation survives.
+                // Messages already delivered by this new epoch are retained
+                // and drained after the replacement handshake is ready.
+                clearRangefinderProbeResponders(for: id)
+                if let context = activeRangefinderProbe,
+                   context.peerID.displayName == id {
+                    clearActiveRangefinderProbe(notifyPeer: false)
+                    rangefinderAccessState = .waitingForPeer
+                }
+                stopRanging(with: id)
+                clearRangingExchangeState(
+                    for: id,
+                    preservingPendingMessagesFor: connectionEpoch
+                )
+            }
             connectingPeerIDs.remove(id)
             let roomInvitationID = roomInviteConnectionAttempts.removeValue(forKey: id)
             let hadRangingInviteAttempt = rangingInviteAttempts.removeValue(forKey: id) != nil
@@ -1989,8 +2533,14 @@ final class RadarNearbyService: NSObject {
             }
             if rangingControlPeerIDs.contains(id) || hadRangingInviteAttempt {
                 rangingControlPeerIDs.insert(id)
+                if hadRangingInviteAttempt {
+                    legacyRangingRetryCounts[id] = 0
+                    legacyRangingRetryRunIDs[id] = nil
+                    terminalRangingFailurePeerIDs.remove(id)
+                }
                 ensureRangingSession(for: peerID)
             }
+            drainPendingRangingMessages(for: peerID)
             let pendingInvite = pendingRoomInvites[id]
             if let invitationID = pendingInvite?.invitationID,
                pendingInvitationIDs[id] == invitationID {
@@ -2026,16 +2576,21 @@ final class RadarNearbyService: NSObject {
             }
 
         case .notConnected:
+            lastAppliedLegacyTokenCursors[id] = nil
             clearRangefinderProbeResponders(for: id)
             if let context = activeRangefinderProbe,
                context.peerID == peerID {
-                finishActiveRangefinderProbe(with: .unavailable)
+                clearActiveRangefinderProbe(notifyPeer: false)
+                rangefinderAccessState = Self.canVerifyRangefinderAccess
+                    ? .waitingForPeer
+                    : .unsupported
             }
             connectingPeerIDs.remove(id)
             let roomInvitationID = roomInviteConnectionAttempts.removeValue(forKey: id)
             let hadRangingInviteAttempt = rangingInviteAttempts.removeValue(forKey: id) != nil
             let wasRangingControl = rangingControlPeerIDs.remove(id) != nil
                 || hadRangingInviteAttempt
+            clearRangingExchangeState(for: id)
             let hadPresenceInviteAttempt = presenceInviteAttempts.removeValue(forKey: id) != nil
             let wasPresenceControl = presenceControlPeerIDs.remove(id) != nil
                 || hadPresenceInviteAttempt
@@ -2062,16 +2617,23 @@ final class RadarNearbyService: NSObject {
             connectingPeerIDs.insert(id)
 
         @unknown default:
+            lastAppliedLegacyTokenCursors[id] = nil
             clearRangefinderProbeResponders(for: id)
             if let context = activeRangefinderProbe,
                context.peerID == peerID {
-                finishActiveRangefinderProbe(with: .unavailable)
+                clearActiveRangefinderProbe(notifyPeer: false)
+                rangefinderAccessState = Self.canVerifyRangefinderAccess
+                    ? .waitingForPeer
+                    : .unsupported
             }
             connectingPeerIDs.remove(id)
             presenceControlPeerIDs.remove(id)
             presenceInviteAttempts[id] = nil
             rangingControlPeerIDs.remove(id)
+            clearRangingExchangeState(for: id)
             rangingInviteAttempts[id] = nil
+            legacyRangingRetryCounts[id] = nil
+            legacyRangingRetryRunIDs[id] = nil
             roomInviteConnectionAttempts[id] = nil
             stopRanging(with: id)
             reconcileRangefinderReadiness()
@@ -2082,23 +2644,63 @@ final class RadarNearbyService: NSObject {
     private func scheduleRangingRetry(with peerID: MCPeerID) {
         let id = peerID.displayName
         guard wantsScanning,
+              allowsTransport,
+              supportsPreciseDistance,
+              rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported,
               browsedPeerIDs.contains(id),
+              legacyRangingRetryRunIDs[id] == nil,
               rangingInviteAttempts[id] == nil,
               roomInviteConnectionAttempts[id] == nil else {
             return
         }
+        guard isApplicationActive else {
+            pendingLegacyRangingPeerIDs.insert(id)
+            return
+        }
 
+        let failureCount = legacyRangingRetryCounts[id, default: 0] + 1
+        legacyRangingRetryCounts[id] = failureCount
+        guard let delay = RadarLegacyRangingRetryPolicy.delayMilliseconds(
+            afterFailureCount: failureCount
+        ) else {
+            legacyRangingRetryRunIDs[id] = nil
+            terminalRangingFailurePeerIDs.insert(id)
+            updatePrecision(for: id, state: .unavailable, distance: nil, angle: nil)
+            rangefinderAccessState = RadarRangefinderAccessPolicy
+                .stateAfterTransientPeerFailure(
+                    currentState: rangefinderAccessState,
+                    hasOtherActiveContext: !rangingContexts.isEmpty
+                )
+            debugLog("legacy ranging retry exhausted peer=\(id)")
+            return
+        }
+        let runID = UUID()
+        legacyRangingRetryRunIDs[id] = runID
         Task { @MainActor [weak self] in
             // The receiver can report a failed handshake slightly later than
             // the browser side. Give both MCSession instances time to leave
             // `.connecting` before issuing another invitation.
-            try? await Task.sleep(for: .seconds(2))
+            do {
+                try await Task.sleep(for: .milliseconds(delay))
+            } catch {
+                return
+            }
             guard let self,
-                  self.wantsScanning,
+                  self.legacyRangingRetryRunIDs[id] == runID,
+                  self.legacyRangingRetryCounts[id] == failureCount else { return }
+            self.legacyRangingRetryRunIDs[id] = nil
+            guard self.wantsScanning,
+                  self.allowsTransport,
+                  self.supportsPreciseDistance,
+                  self.rangefinderAccessState != .denied,
+                  self.rangefinderAccessState != .unsupported,
                   self.browsedPeerIDs.contains(id),
                   self.discoveredPeerIDs[id]?.displayName == id,
                   !self.connectingPeerIDs.contains(id),
-                  self.rangingInviteAttempts[id] == nil else {
+                  self.rangingInviteAttempts[id] == nil else { return }
+            guard self.isApplicationActive else {
+                self.pendingLegacyRangingPeerIDs.insert(id)
                 return
             }
             self.debugLog("retrying ranging invitation peer=\(id)")
@@ -2106,15 +2708,42 @@ final class RadarNearbyService: NSObject {
         }
     }
 
-    private func ensureRangingSession(for peerID: MCPeerID) {
+    private func ensureRangingSession(
+        for peerID: MCPeerID,
+        exchange: RadarRangingExchange? = nil,
+        preservedRemoteToken: NIDiscoveryToken? = nil,
+        preservedRemoteTokenData: Data? = nil
+    ) {
         let id = peerID.displayName
+        if let exchange,
+           rangingExchanges[id] != exchange {
+            debugLog("NI session skipped stale exchange peer=\(id) exchange=\(exchange.id.prefix(6))")
+            return
+        }
+        if connectedRangingCapablePeerIDs.contains(id), exchange == nil {
+            debugLog("NI session skipped missing connected exchange peer=\(id)")
+            return
+        }
         guard supportsPreciseDistance,
-              rangingContexts[id] == nil,
+              rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported,
+              allowsTransport,
               let multipeerSession,
               multipeerSession.connectedPeers.contains(peerID) else {
+            pendingRangingSessionStartPeerIDs.remove(id)
+            debugLog("NI session skipped peer=\(id) precision=\(supportsPreciseDistance) access=\(String(describing: rangefinderAccessState))")
+            return
+        }
+        guard rangingContexts[id] == nil else {
             debugLog("NI session skipped peer=\(id) precision=\(supportsPreciseDistance) existing=\(rangingContexts[id] != nil)")
             return
         }
+        guard isApplicationActive else {
+            pendingRangingSessionStartPeerIDs.insert(id)
+            debugLog("NI session deferred until foreground peer=\(id)")
+            return
+        }
+        pendingRangingSessionStartPeerIDs.remove(id)
 
         let nearbySession = NISession()
         nearbySession.delegate = self
@@ -2128,30 +2757,274 @@ final class RadarNearbyService: NSObject {
             nearbySession.invalidate()
             debugLog("NI local token unavailable peer=\(id)")
             updatePrecision(for: id, state: .unavailable, distance: nil, angle: nil)
+            scheduleRangingRecovery(
+                with: peerID,
+                preservedRemoteToken: preservedRemoteToken,
+                preservedRemoteTokenData: preservedRemoteTokenData,
+                retryingExchange: exchange,
+                reason: "local-token-unavailable"
+            )
             return
         }
 
-        let rangingContext = RadarRangingContext(peerID: peerID, nearbySession: nearbySession)
+        let rangingContext = RadarRangingContext(
+            peerID: peerID,
+            nearbySession: nearbySession,
+            localTokenData: archivedToken,
+            exchange: exchange
+        )
         rangingContexts[id] = rangingContext
         rangingPeerIDsBySession[ObjectIdentifier(nearbySession)] = id
         refreshIdleTimerProtection()
         debugLog("NI session created peer=\(id); sending local token")
         updatePrecision(for: id, state: .available, distance: nil, angle: nil)
+        if let preservedRemoteToken {
+            runRanging(
+                rangingContext,
+                with: preservedRemoteToken,
+                tokenData: preservedRemoteTokenData
+            )
+        } else {
+            scheduleRangingTokenExchangeTimeout(rangingContext, for: id)
+        }
 
         Task { @MainActor [weak self] in
             guard let self else { return }
-            let sent = await self.send(.nearbyToken(archivedToken), to: peerID)
+            let sent = await self.send(
+                .nearbyToken(archivedToken, exchange: exchange),
+                to: peerID
+            )
             self.debugLog("NI local token sent=\(sent) peer=\(id)")
-            guard self.rangingContexts[id]?.nearbySession === nearbySession else { return }
+            guard self.rangingContexts[id] === rangingContext else { return }
+            if sent {
+                rangingContext.localTokenDeliveryConfirmed = true
+            }
+            guard self.isApplicationActive else {
+                if !sent {
+                    self.pendingRangingContextRetryPeerIDs.insert(id)
+                }
+                return
+            }
             if !sent {
-                self.stopRanging(with: id)
-                self.updatePrecision(for: id, state: .unavailable, distance: nil, angle: nil)
+                self.handleRangingTokenExchangeFailure(
+                    rangingContext,
+                    for: id,
+                    reason: "local-token-send"
+                )
             }
         }
     }
 
-    private func handleReceivedData(_ data: Data, from peerID: MCPeerID) {
-        guard allowsTransport else { return }
+    private func sendRangingSynchronization(
+        for context: RadarRangingContext,
+        includeRequest: Bool
+    ) async -> Bool {
+        let id = context.peerID.displayName
+        guard rangingContexts[id] === context,
+              allowsTransport,
+              isApplicationActive,
+              rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported,
+              multipeerSession?.connectedPeers.contains(context.peerID) == true else {
+            return false
+        }
+
+        if includeRequest, let exchange = context.exchange {
+            let requestSent = await send(
+                .rangingRequest(exchange: exchange),
+                to: context.peerID
+            )
+            guard rangingContexts[id] === context,
+                  rangingExchanges[id] == exchange,
+                  allowsTransport,
+                  isApplicationActive,
+                  multipeerSession?.connectedPeers.contains(context.peerID) == true,
+                  requestSent else { return false }
+        }
+
+        let tokenSent = await send(
+            .nearbyToken(
+                context.localTokenData,
+                exchange: context.exchange
+            ),
+            to: context.peerID
+        )
+        guard rangingContexts[id] === context,
+              allowsTransport,
+              isApplicationActive,
+              multipeerSession?.connectedPeers.contains(context.peerID) == true else {
+            return false
+        }
+        if tokenSent {
+            context.localTokenDeliveryConfirmed = true
+        }
+        return tokenSent
+    }
+
+    private func scheduleRangingTokenExchangeTimeout(
+        _ context: RadarRangingContext,
+        for id: String
+    ) {
+        context.tokenExchangeTimeoutTask?.cancel()
+        context.tokenExchangeTimeoutTask = Task { @MainActor [weak self, weak context] in
+            do {
+                try await Task.sleep(for: .seconds(8))
+            } catch {
+                return
+            }
+            guard let self,
+                  let context,
+                  self.rangingContexts[id] === context,
+                  context.remoteToken == nil else { return }
+            self.handleRangingTokenExchangeFailure(
+                context,
+                for: id,
+                reason: "remote-token-timeout"
+            )
+        }
+    }
+
+    private func handleRangingTokenExchangeFailure(
+        _ context: RadarRangingContext,
+        for id: String,
+        reason: String
+    ) {
+        guard rangingContexts[id] === context else { return }
+        let peerID = context.peerID
+        debugLog("NI token exchange failed peer=\(id) reason=\(reason)")
+        context.tokenExchangeTimeoutTask?.cancel()
+        context.tokenExchangeTimeoutTask = nil
+        context.tokenExchangeRetryTask?.cancel()
+        context.tokenExchangeRetryTask = nil
+        context.tokenExchangeRetryRunID = nil
+        updatePrecision(for: id, state: .unavailable, distance: nil, angle: nil)
+
+        guard rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported,
+              allowsTransport,
+              rangingControlPeerIDs.contains(id),
+              multipeerSession?.connectedPeers.contains(peerID) == true else {
+            pendingRangingContextRetryPeerIDs.remove(id)
+            stopRanging(with: id)
+            retireCurrentRangingExchange(for: id)
+            rangefinderAccessState = RadarRangefinderAccessPolicy
+                .stateAfterTransientPeerFailure(
+                    currentState: rangefinderAccessState,
+                    hasOtherActiveContext: !rangingContexts.isEmpty
+                )
+            return
+        }
+        guard isApplicationActive else {
+            pendingRangingContextRetryPeerIDs.insert(id)
+            debugLog("deferred NI token retry until foreground peer=\(id)")
+            return
+        }
+        pendingRangingContextRetryPeerIDs.remove(id)
+
+        let failureCount = rangingTokenExchangeFailureCounts[id, default: 0] + 1
+        rangingTokenExchangeFailureCounts[id] = failureCount
+        guard let delay = RadarRangingTokenRetryPolicy.delayMilliseconds(
+            afterFailureCount: failureCount
+        ) else {
+            let failedExchangeID = context.exchange?.id
+            let usesConnectedExchange = connectedRangingCapablePeerIDs.contains(id)
+            let preservedRemoteToken = usesConnectedExchange ? nil : context.remoteToken
+            let preservedRemoteTokenData = usesConnectedExchange
+                ? nil
+                : context.remoteTokenData
+            stopRanging(with: id)
+            retireCurrentRangingExchange(for: id)
+            rangefinderAccessState = RadarRangefinderAccessPolicy
+                .stateAfterTransientPeerFailure(
+                    currentState: rangefinderAccessState,
+                    hasOtherActiveContext: !rangingContexts.isEmpty
+                )
+            scheduleRangingRecovery(
+                with: peerID,
+                preservedRemoteToken: preservedRemoteToken,
+                preservedRemoteTokenData: preservedRemoteTokenData,
+                supersedingExchangeID: failedExchangeID,
+                reason: "token-exchange-exhausted"
+            )
+            return
+        }
+
+        let retryRunID = UUID()
+        context.tokenExchangeRetryRunID = retryRunID
+        context.tokenExchangeRetryTask = Task { @MainActor [weak self, weak context] in
+            do {
+                try await Task.sleep(for: .milliseconds(delay))
+            } catch {
+                return
+            }
+            guard let self,
+                  let context,
+                  self.rangingContexts[id] === context,
+                  context.tokenExchangeRetryRunID == retryRunID,
+                  self.rangingTokenExchangeFailureCounts[id] == failureCount else { return }
+            context.tokenExchangeRetryTask = nil
+            context.tokenExchangeRetryRunID = nil
+            await self.performRangingSynchronizationRetry(context, for: id)
+        }
+    }
+
+    private func performRangingSynchronizationRetry(
+        _ context: RadarRangingContext,
+        for id: String
+    ) async {
+        guard rangingContexts[id] === context,
+              allowsTransport,
+              rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported,
+              rangingControlPeerIDs.contains(id),
+              multipeerSession?.connectedPeers.contains(context.peerID) == true else {
+            return
+        }
+        guard isApplicationActive else {
+            pendingRangingContextRetryPeerIDs.insert(id)
+            return
+        }
+        pendingRangingContextRetryPeerIDs.remove(id)
+        let sent = await sendRangingSynchronization(
+            for: context,
+            includeRequest: context.exchange != nil
+        )
+        guard rangingContexts[id] === context else { return }
+        guard isApplicationActive else {
+            pendingRangingContextRetryPeerIDs.insert(id)
+            return
+        }
+        if sent {
+            if context.remoteToken == nil {
+                scheduleRangingTokenExchangeTimeout(context, for: id)
+            }
+        } else {
+            handleRangingTokenExchangeFailure(
+                context,
+                for: id,
+                reason: "synchronization-send"
+            )
+        }
+    }
+
+    private func handleReceivedData(
+        _ data: Data,
+        from peerID: MCPeerID,
+        connectionEpoch: UInt64,
+        receiveSequence: UInt64
+    ) {
+        let id = peerID.displayName
+        guard allowsTransport,
+              let multipeerSession,
+              connectionEpoch == connectionEpochTracker.current(
+                for: id,
+                in: multipeerSession
+              ),
+              connectionEpoch >= connectionEpochs[id, default: 0],
+              multipeerSession.connectedPeers.contains(peerID) else {
+            debugLog("ignored stale multipeer data epoch=\(connectionEpoch) peer=\(id)")
+            return
+        }
         guard let message = try? JSONDecoder().decode(RadarWireMessage.self, from: data),
               message.version == 1 else {
             return
@@ -2169,17 +3042,36 @@ final class RadarNearbyService: NSObject {
                 )
             }
         case .nearbyToken:
-            let id = peerID.displayName
-            guard rangingControlPeerIDs.contains(id) else {
-                debugLog("ignored NI token without ranging intent peer=\(id)")
+            handleNearbyToken(
+                message,
+                from: peerID,
+                connectionEpoch: connectionEpoch,
+                receiveSequence: receiveSequence
+            )
+        case .rangefinderProbeRequest:
+            guard isApplicationActive,
+                  presenceControlPeerIDs.contains(id),
+                  connectionEpoch == connectionEpochs[id] else {
+                enqueuePendingRangefinderProbeRequest(
+                    message,
+                    for: id,
+                    connectionEpoch: connectionEpoch,
+                    receiveSequence: receiveSequence
+                )
                 return
             }
-            debugLog("received NI token peer=\(id)")
-            guard let tokenData = message.token else { return }
-            startRanging(with: tokenData, from: peerID)
-        case .rangefinderProbeRequest:
             handleRangefinderProbeRequest(message, from: peerID)
         case .rangefinderProbeToken:
+            guard isApplicationActive,
+                  connectionEpoch == connectionEpochs[id] else {
+                enqueuePendingRangefinderProbeToken(
+                    message,
+                    for: id,
+                    connectionEpoch: connectionEpoch,
+                    receiveSequence: receiveSequence
+                )
+                return
+            }
             handleRangefinderProbeToken(message, from: peerID)
         case .rangefinderProbeComplete:
             handleRangefinderProbeCompletion(message, from: peerID)
@@ -2199,7 +3091,190 @@ final class RadarNearbyService: NSObject {
                 applyLegacyAvailability(availability, for: peerID.displayName)
             }
         case .rangingRequest:
-            break
+            guard isApplicationActive,
+                  presenceControlPeerIDs.contains(id),
+                  connectionEpoch == connectionEpochs[id],
+                  multipeerSession.connectedPeers.contains(peerID) else {
+                enqueuePendingConnectedRangingRequest(
+                    message,
+                    for: id,
+                    connectionEpoch: connectionEpoch,
+                    receiveSequence: receiveSequence
+                )
+                debugLog("deferred connected NI request peer=\(id)")
+                return
+            }
+            handleConnectedRangingRequest(message, from: peerID)
+        }
+    }
+
+    private func handleNearbyToken(
+        _ message: RadarWireMessage,
+        from peerID: MCPeerID,
+        connectionEpoch: UInt64,
+        receiveSequence: UInt64
+    ) {
+        let id = peerID.displayName
+        guard message.token != nil else { return }
+        guard rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported else {
+            pendingNearbyTokens[id] = nil
+            return
+        }
+        guard isApplicationActive,
+              rangingControlPeerIDs.contains(id),
+              connectionEpoch == connectionEpochs[id],
+              multipeerSession?.connectedPeers.contains(peerID) == true else {
+            enqueuePendingNearbyToken(
+                message,
+                for: id,
+                connectionEpoch: connectionEpoch,
+                receiveSequence: receiveSequence
+            )
+            debugLog("deferred NI token until connection is ready peer=\(id)")
+            return
+        }
+        debugLog("received NI token peer=\(id)")
+        guard let tokenData = message.token else { return }
+        startRanging(
+            with: tokenData,
+            exchangeID: message.rangingExchangeID,
+            exchangeInitiatorPeerID: message.rangingExchangeInitiatorPeerID,
+            supersedesExchangeID: message.supersedesRangingExchangeID,
+            connectionEpoch: connectionEpoch,
+            receiveSequence: receiveSequence,
+            from: peerID
+        )
+    }
+
+    private func enqueuePendingConnectedRangingRequest(
+        _ message: RadarWireMessage,
+        for id: String,
+        connectionEpoch: UInt64,
+        receiveSequence: UInt64
+    ) {
+        pendingConnectedRangingRequests[id, default: []].append(
+            RadarPendingWireMessage(
+                message: message,
+                connectionEpoch: connectionEpoch,
+                receiveSequence: receiveSequence
+            )
+        )
+        pendingConnectedRangingRequests[id]?.sort {
+            $0.receiveSequence < $1.receiveSequence
+        }
+        if pendingConnectedRangingRequests[id, default: []].count > 8 {
+            pendingConnectedRangingRequests[id]?.removeFirst()
+        }
+    }
+
+    private func enqueuePendingNearbyToken(
+        _ message: RadarWireMessage,
+        for id: String,
+        connectionEpoch: UInt64,
+        receiveSequence: UInt64
+    ) {
+        pendingNearbyTokens[id, default: []].append(
+            RadarPendingWireMessage(
+                message: message,
+                connectionEpoch: connectionEpoch,
+                receiveSequence: receiveSequence
+            )
+        )
+        pendingNearbyTokens[id]?.sort { $0.receiveSequence < $1.receiveSequence }
+        if pendingNearbyTokens[id, default: []].count > 8 {
+            pendingNearbyTokens[id]?.removeFirst()
+        }
+    }
+
+    private func enqueuePendingRangefinderProbeRequest(
+        _ message: RadarWireMessage,
+        for id: String,
+        connectionEpoch: UInt64,
+        receiveSequence: UInt64
+    ) {
+        pendingRangefinderProbeRequests[id, default: []].append(
+            RadarPendingWireMessage(
+                message: message,
+                connectionEpoch: connectionEpoch,
+                receiveSequence: receiveSequence
+            )
+        )
+        pendingRangefinderProbeRequests[id]?.sort {
+            $0.receiveSequence < $1.receiveSequence
+        }
+        if pendingRangefinderProbeRequests[id, default: []].count > 8 {
+            pendingRangefinderProbeRequests[id]?.removeFirst()
+        }
+    }
+
+    private func enqueuePendingRangefinderProbeToken(
+        _ message: RadarWireMessage,
+        for id: String,
+        connectionEpoch: UInt64,
+        receiveSequence: UInt64
+    ) {
+        pendingRangefinderProbeTokens[id, default: []].append(
+            RadarPendingWireMessage(
+                message: message,
+                connectionEpoch: connectionEpoch,
+                receiveSequence: receiveSequence
+            )
+        )
+        pendingRangefinderProbeTokens[id]?.sort {
+            $0.receiveSequence < $1.receiveSequence
+        }
+        if pendingRangefinderProbeTokens[id, default: []].count > 8 {
+            pendingRangefinderProbeTokens[id]?.removeFirst()
+        }
+    }
+
+    private func drainPendingRangingMessages(for peerID: MCPeerID) {
+        guard isApplicationActive,
+              allowsTransport,
+              multipeerSession?.connectedPeers.contains(peerID) == true else { return }
+        let id = peerID.displayName
+        guard let connectionEpoch = connectionEpochs[id] else { return }
+
+        let probeRequests = (pendingRangefinderProbeRequests.removeValue(forKey: id) ?? [])
+            .sorted { $0.receiveSequence < $1.receiveSequence }
+        for pending in probeRequests where pending.connectionEpoch == connectionEpoch {
+            guard presenceControlPeerIDs.contains(id) else { continue }
+            handleRangefinderProbeRequest(pending.message, from: peerID)
+        }
+        let probeTokens = (pendingRangefinderProbeTokens.removeValue(forKey: id) ?? [])
+            .sorted { $0.receiveSequence < $1.receiveSequence }
+        for pending in probeTokens where pending.connectionEpoch == connectionEpoch {
+            handleRangefinderProbeToken(pending.message, from: peerID)
+        }
+
+        let requests = (pendingConnectedRangingRequests.removeValue(forKey: id) ?? [])
+            .sorted { $0.receiveSequence < $1.receiveSequence }
+        for pending in requests where pending.connectionEpoch == connectionEpoch {
+            guard presenceControlPeerIDs.contains(id) else {
+                continue
+            }
+            handleConnectedRangingRequest(pending.message, from: peerID)
+        }
+        drainPendingNearbyTokens(for: peerID)
+    }
+
+    private func drainPendingNearbyTokens(for peerID: MCPeerID) {
+        guard isApplicationActive,
+              allowsTransport,
+              rangingControlPeerIDs.contains(peerID.displayName),
+              multipeerSession?.connectedPeers.contains(peerID) == true else { return }
+        let id = peerID.displayName
+        guard let connectionEpoch = connectionEpochs[id] else { return }
+        let messages = (pendingNearbyTokens.removeValue(forKey: id) ?? [])
+            .sorted { $0.receiveSequence < $1.receiveSequence }
+        for pending in messages where pending.connectionEpoch == connectionEpoch {
+            handleNearbyToken(
+                pending.message,
+                from: peerID,
+                connectionEpoch: connectionEpoch,
+                receiveSequence: pending.receiveSequence
+            )
         }
     }
 
@@ -2212,18 +3287,35 @@ final class RadarNearbyService: NSObject {
 
     private func markRangefinderPeerReadyIfNeeded(_ peerID: MCPeerID) {
         guard wantsScanning,
+              allowsTransport,
+              isApplicationActive,
               Self.canVerifyRangefinderAccess,
-              rangefinderAccessState == .waitingForPeer,
+              connectedRangingCapablePeerIDs.contains(peerID.displayName),
               rangefinderProbeCapablePeerIDs.contains(peerID.displayName),
               presenceControlPeerIDs.contains(peerID.displayName),
               multipeerSession?.connectedPeers.contains(peerID) == true else {
             return
         }
+
+        if rangefinderAccessState == .granted {
+            Task { @MainActor [weak self] in
+                await self?.beginConnectedRanging(with: peerID)
+            }
+            return
+        }
+
+        guard RadarAutomaticRangefinderPolicy.shouldBeginProbe(
+            from: rangefinderAccessState
+        ) else { return }
         rangefinderAccessState = .ready
         debugLog("rangefinder permission ready peer=\(peerID.displayName)")
+        beginRangefinderProbe(with: peerID)
     }
 
     private func beginRangefinderProbe(with peerID: MCPeerID) {
+        guard allowsTransport,
+              isApplicationActive,
+              wantsScanning else { return }
         guard activeRangefinderProbe == nil,
               rangefinderProbeCapablePeerIDs.contains(peerID.displayName),
               multipeerSession?.connectedPeers.contains(peerID) == true else {
@@ -2239,6 +3331,13 @@ final class RadarNearbyService: NSObject {
         rangefinderAccessState = .requesting
         debugLog("rangefinder permission requested peer=\(peerID.displayName) probe=\(context.id.prefix(6))")
 
+        sendActiveRangefinderProbeRequest(context)
+    }
+
+    private func scheduleRangefinderProbeRequestTimeout(
+        _ context: RadarRangefinderProbeContext
+    ) {
+        context.timeoutTask?.cancel()
         context.timeoutTask = Task { @MainActor [weak self, weak context] in
             do {
                 try await Task.sleep(for: .seconds(15))
@@ -2248,17 +3347,34 @@ final class RadarNearbyService: NSObject {
             guard let self,
                   let context,
                   self.activeRangefinderProbe === context else { return }
+            guard self.isApplicationActive else {
+                self.scheduleRangefinderProbeRequestTimeout(context)
+                return
+            }
             self.finishActiveRangefinderProbe(with: .unavailable)
         }
+    }
 
+    private func sendActiveRangefinderProbeRequest(
+        _ context: RadarRangefinderProbeContext
+    ) {
+        guard activeRangefinderProbe === context,
+              isApplicationActive,
+              context.nearbySession == nil else { return }
+        scheduleRangefinderProbeRequestTimeout(context)
+        let attemptID = UUID()
+        context.requestSendAttemptID = attemptID
         Task { @MainActor [weak self, weak context] in
             guard let self, let context else { return }
             let sent = await self.send(
                 .rangefinderProbeRequest(id: context.id),
-                to: peerID
+                to: context.peerID
             )
             guard self.activeRangefinderProbe === context,
+                  context.requestSendAttemptID == attemptID,
                   context.nearbySession == nil else { return }
+            context.requestSendAttemptID = nil
+            guard self.isApplicationActive else { return }
             if !sent {
                 self.finishActiveRangefinderProbe(with: .unavailable)
             }
@@ -2276,6 +3392,36 @@ final class RadarNearbyService: NSObject {
               multipeerSession?.connectedPeers.contains(peerID) == true,
               let probeID = message.invitationID,
               !probeID.isEmpty else { return }
+
+        // A passive advertiser may accept the presence session without ever
+        // browsing the initiator's discovery metadata. Receiving the probe is
+        // itself authenticated capability evidence for this connected peer.
+        rangefinderProbeCapablePeerIDs.insert(peerID.displayName)
+
+        if let activeRangefinderProbe,
+           activeRangefinderProbe.peerID == peerID,
+           let localPeerID {
+            switch RadarRangefinderProbeCollisionPolicy.decision(
+                localPeerID: localPeerID.displayName,
+                localProbeID: activeRangefinderProbe.id,
+                incomingPeerID: peerID.displayName,
+                incomingProbeID: probeID
+            ) {
+            case .continueLocalProbe:
+                debugLog(
+                    "kept local rangefinder probe peer=\(peerID.displayName) "
+                        + "probe=\(activeRangefinderProbe.id.prefix(6))"
+                )
+                return
+            case .yieldAndRespond:
+                debugLog(
+                    "yielded rangefinder probe peer=\(peerID.displayName) "
+                        + "probe=\(activeRangefinderProbe.id.prefix(6))"
+                )
+                clearActiveRangefinderProbe(notifyPeer: true)
+                rangefinderAccessState = .requesting
+            }
+        }
 
         let key = RadarRangefinderProbeKey(
             peerID: peerID.displayName,
@@ -2311,16 +3457,12 @@ final class RadarNearbyService: NSObject {
         rangefinderProbeResponders[key] = responder
         scheduleRangefinderResponderTimeout(responder, for: key)
 
-        Task { @MainActor [weak self, weak responder] in
-            guard let self, let responder else { return }
-            let sent = await self.send(
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            _ = await self.send(
                 .rangefinderProbeToken(id: probeID, token: tokenData),
                 to: peerID
             )
-            guard self.rangefinderProbeResponders[key] === responder else { return }
-            if !sent {
-                self.clearRangefinderProbeResponder(for: key)
-            }
         }
     }
 
@@ -2350,6 +3492,7 @@ final class RadarNearbyService: NSObject {
         nearbySession.delegateQueue = .main
         context.timeoutTask?.cancel()
         context.timeoutTask = nil
+        context.requestSendAttemptID = nil
         context.nearbySession = nearbySession
         context.peerToken = peerToken
         rangefinderProbeIDsBySession[ObjectIdentifier(nearbySession)] = context.id
@@ -2366,12 +3509,18 @@ final class RadarNearbyService: NSObject {
         from peerID: MCPeerID
     ) {
         guard let probeID = message.invitationID else { return }
-        clearRangefinderProbeResponder(
-            for: RadarRangefinderProbeKey(
-                peerID: peerID.displayName,
-                probeID: probeID
-            )
+        let key = RadarRangefinderProbeKey(
+            peerID: peerID.displayName,
+            probeID: probeID
         )
+        let wasResponding = rangefinderProbeResponders[key] != nil
+        clearRangefinderProbeResponder(for: key)
+        if wasResponding,
+           rangefinderAccessState == .requesting,
+           activeRangefinderProbe == nil,
+           rangingContexts[peerID.displayName] == nil {
+            rangefinderAccessState = wantsScanning ? .ready : .waitingForPeer
+        }
     }
 
     private func finishActiveRangefinderProbe(
@@ -2384,11 +3533,481 @@ final class RadarNearbyService: NSObject {
         rangefinderAccessState = state
         debugLog("rangefinder permission resolved state=\(String(describing: state))")
         Task { @MainActor [weak self] in
-            _ = await self?.send(
+            guard let self else { return }
+            _ = await self.send(
                 .rangefinderProbeComplete(id: probeID),
                 to: peerID
             )
+            guard state == .granted else { return }
+            self.beginConnectedRangingForEligiblePeers()
         }
+    }
+
+    private func beginConnectedRangingForEligiblePeers() {
+        guard allowsTransport,
+              isApplicationActive,
+              rangefinderAccessState == .granted else { return }
+        let eligiblePeers = multipeerSession?.connectedPeers.filter {
+            connectedRangingCapablePeerIDs.contains($0.displayName)
+                && rangefinderProbeCapablePeerIDs.contains($0.displayName)
+                && presenceControlPeerIDs.contains($0.displayName)
+        } ?? []
+        guard !eligiblePeers.isEmpty else { return }
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            for peerID in eligiblePeers {
+                guard self.allowsTransport,
+                      self.isApplicationActive,
+                      self.rangefinderAccessState == .granted else { return }
+                await self.beginConnectedRanging(with: peerID)
+            }
+        }
+    }
+
+    private func beginConnectedRanging(with peerID: MCPeerID) async {
+        let id = peerID.displayName
+        guard allowsTransport,
+              isApplicationActive,
+              supportsPreciseDistance,
+              rangefinderAccessState == .granted,
+              rangefinderProbeCapablePeerIDs.contains(id),
+              presenceControlPeerIDs.contains(id),
+              multipeerSession?.connectedPeers.contains(peerID) == true else {
+            return
+        }
+        guard !terminalRangingFailurePeerIDs.contains(id),
+              rangingRecoveryTasks[id] == nil,
+              pendingRangingRecoveries[id] == nil else { return }
+
+        if rangingContexts[id] != nil || connectedRangingRequestAttempts[id] != nil {
+            return
+        }
+
+        rangingControlPeerIDs.insert(id)
+        drainPendingNearbyTokens(for: peerID)
+        await initiateNewConnectedRangingExchange(
+            with: peerID,
+            reason: "permission-granted"
+        )
+    }
+
+    private func initiateNewConnectedRangingExchange(
+        with peerID: MCPeerID,
+        reason: String,
+        supersedingExchangeID: String? = nil
+    ) async {
+        let id = peerID.displayName
+        guard allowsTransport,
+              isApplicationActive,
+              supportsPreciseDistance,
+              rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported,
+              connectedRangingCapablePeerIDs.contains(id),
+              rangingControlPeerIDs.contains(id),
+              connectedRangingRequestAttempts[id] == nil,
+              multipeerSession?.connectedPeers.contains(peerID) == true,
+              let localPeerID else { return }
+
+        let exchange = RadarRangingExchange(
+            id: UUID().uuidString,
+            initiatorPeerID: localPeerID.displayName,
+            supersedesExchangeID: supersedingExchangeID ?? rangingExchanges[id]?.id
+        )
+        adoptRangingExchange(exchange, for: id)
+        await sendConnectedRangingRequest(
+            exchange,
+            to: peerID,
+            reason: reason
+        )
+    }
+
+    private func sendConnectedRangingRequest(
+        _ exchange: RadarRangingExchange,
+        to peerID: MCPeerID,
+        reason: String
+    ) async {
+        let id = peerID.displayName
+        guard allowsTransport,
+              isApplicationActive,
+              rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported,
+              rangingControlPeerIDs.contains(id),
+              rangingExchanges[id] == exchange,
+              connectedRangingRequestAttempts[id] == nil,
+              multipeerSession?.connectedPeers.contains(peerID) == true else { return }
+
+        let attemptID = UUID()
+        connectedRangingRequestAttempts[id] = attemptID
+        debugLog(
+            "starting connected NI exchange peer=\(id) exchange=\(exchange.id.prefix(6)) reason=\(reason)"
+        )
+        let sent = await send(
+            .rangingRequest(exchange: exchange),
+            to: peerID
+        )
+        guard connectedRangingRequestAttempts[id] == attemptID,
+              rangingExchanges[id] == exchange else {
+            // A disconnect, stop, or newer attempt superseded this suspended
+            // send. Its completion must not mutate the current transport.
+            return
+        }
+        connectedRangingRequestAttempts[id] = nil
+        guard allowsTransport,
+              rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported,
+              rangingControlPeerIDs.contains(id),
+              multipeerSession?.connectedPeers.contains(peerID) == true else {
+            return
+        }
+        guard isApplicationActive else {
+            if sent {
+                pendingRangingSessionStartPeerIDs.insert(id)
+            } else {
+                scheduleRangingRecovery(
+                    with: peerID,
+                    preservedRemoteToken: nil,
+                    retryingExchange: exchange,
+                    reason: "connected-request-send"
+                )
+            }
+            return
+        }
+        guard sent else {
+            updatePrecision(for: id, state: .unavailable, distance: nil, angle: nil)
+            rangefinderAccessState = RadarRangefinderAccessPolicy
+                .stateAfterTransientPeerFailure(
+                    currentState: rangefinderAccessState,
+                    hasOtherActiveContext: !rangingContexts.isEmpty
+                )
+            scheduleRangingRecovery(
+                with: peerID,
+                preservedRemoteToken: nil,
+                retryingExchange: exchange,
+                reason: "connected-request-send"
+            )
+            return
+        }
+        ensureRangingSession(for: peerID, exchange: exchange)
+    }
+
+    private func handleConnectedRangingRequest(
+        _ message: RadarWireMessage,
+        from peerID: MCPeerID
+    ) {
+        let id = peerID.displayName
+        guard allowsTransport,
+              isApplicationActive,
+              supportsPreciseDistance,
+              rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported,
+              presenceControlPeerIDs.contains(id),
+              multipeerSession?.connectedPeers.contains(peerID) == true,
+              let exchangeID = message.rangingExchangeID,
+              !exchangeID.isEmpty,
+              let exchangeInitiatorPeerID = message.rangingExchangeInitiatorPeerID,
+              !exchangeInitiatorPeerID.isEmpty,
+              exchangeInitiatorPeerID == id
+                || exchangeInitiatorPeerID == localPeerID?.displayName,
+              message.supersedesRangingExchangeID != exchangeID else {
+            debugLog("ignored connected ranging request peer=\(id)")
+            return
+        }
+        // A passive foreground advertiser may never browse the initiator's
+        // discovery metadata. The authenticated wire request itself proves the
+        // connected peer speaks the rangefinder protocol.
+        rangefinderProbeCapablePeerIDs.insert(id)
+        connectedRangingCapablePeerIDs.insert(id)
+        if activeRangefinderProbe?.peerID == peerID {
+            // The remote peer has already proven access and moved straight to
+            // real ranging. Supersede our permission-only probe so this device
+            // never runs two NI sessions for the same peer concurrently.
+            clearActiveRangefinderProbe(notifyPeer: true)
+        }
+        clearRangefinderProbeResponders(for: id)
+        rangingControlPeerIDs.insert(id)
+
+        let incomingExchange = RadarRangingExchange(
+            id: exchangeID,
+            initiatorPeerID: exchangeInitiatorPeerID,
+            supersedesExchangeID: message.supersedesRangingExchangeID
+        )
+        if retiredRangingExchangeIDs[id]?.contains(exchangeID) == true {
+            debugLog("ignored retired NI exchange peer=\(id) exchange=\(exchangeID.prefix(6))")
+            synchronizeCurrentRangingExchange(with: peerID, includeRequest: true)
+            return
+        }
+
+        if rangefinderAccessState != .granted {
+            rangefinderAccessState = .requesting
+        }
+
+        if let currentExchange = rangingExchanges[id] {
+            if currentExchange == incomingExchange {
+                cancelRangingRecovery(for: id)
+                ensureRangingSession(for: peerID, exchange: currentExchange)
+                synchronizeCurrentRangingExchange(with: peerID, includeRequest: false)
+                return
+            }
+            guard RadarRangingExchangeCollisionPolicy.shouldAcceptIncoming(
+                currentInitiatorPeerID: currentExchange.initiatorPeerID,
+                currentExchangeID: currentExchange.id,
+                currentSupersedesExchangeID: currentExchange.supersedesExchangeID,
+                incomingInitiatorPeerID: incomingExchange.initiatorPeerID,
+                incomingExchangeID: incomingExchange.id,
+                incomingSupersedesExchangeID: incomingExchange.supersedesExchangeID
+            ) else {
+                debugLog(
+                    "kept winning NI exchange peer=\(id) exchange=\(currentExchange.id.prefix(6))"
+                )
+                synchronizeCurrentRangingExchange(with: peerID, includeRequest: true)
+                return
+            }
+        }
+
+        adoptRangingExchange(incomingExchange, for: id)
+        ensureRangingSession(for: peerID, exchange: incomingExchange)
+        drainPendingNearbyTokens(for: peerID)
+    }
+
+    private func adoptRangingExchange(
+        _ exchange: RadarRangingExchange,
+        for id: String
+    ) {
+        guard rangingExchanges[id] != exchange else { return }
+        cancelRangingRecovery(for: id)
+        if let previousExchange = rangingExchanges[id] {
+            retiredRangingExchangeIDs[id, default: []].insert(previousExchange.id)
+        }
+        connectedRangingRequestAttempts[id] = nil
+        stopRanging(with: id)
+        rangingExchanges[id] = exchange
+    }
+
+    private func retireCurrentRangingExchange(for id: String) {
+        guard let exchange = rangingExchanges.removeValue(forKey: id) else { return }
+        retiredRangingExchangeIDs[id, default: []].insert(exchange.id)
+        connectedRangingRequestAttempts[id] = nil
+    }
+
+    private func synchronizeCurrentRangingExchange(
+        with peerID: MCPeerID,
+        includeRequest: Bool
+    ) {
+        let id = peerID.displayName
+        guard let exchange = rangingExchanges[id] else { return }
+        ensureRangingSession(for: peerID, exchange: exchange)
+        guard let context = rangingContexts[id] else { return }
+        Task { @MainActor [weak self, weak context] in
+            guard let self, let context else { return }
+            let sent = await self.sendRangingSynchronization(
+                for: context,
+                includeRequest: includeRequest
+            )
+            guard self.rangingContexts[id] === context,
+                  self.rangingExchanges[id] == exchange,
+                  !sent else { return }
+            self.handleRangingTokenExchangeFailure(
+                context,
+                for: id,
+                reason: "exchange-sync-send"
+            )
+        }
+    }
+
+    private func scheduleRangingRecovery(
+        with peerID: MCPeerID,
+        preservedRemoteToken: NIDiscoveryToken?,
+        preservedRemoteTokenData: Data? = nil,
+        supersedingExchangeID: String? = nil,
+        retryingExchange: RadarRangingExchange? = nil,
+        reason: String
+    ) {
+        let id = peerID.displayName
+        let supersededExchangeID = supersedingExchangeID ?? rangingExchanges[id]?.id
+        let recovery = RadarPendingRangingRecovery(
+            peerID: peerID,
+            preservedRemoteToken: preservedRemoteToken,
+            preservedRemoteTokenData: preservedRemoteTokenData,
+            supersedingExchangeID: supersededExchangeID,
+            retryingExchange: retryingExchange,
+            reason: reason
+        )
+        cancelRangingRecovery(for: id)
+        guard rangefinderAccessState != .denied,
+              rangefinderAccessState != .unsupported,
+              allowsTransport,
+              rangingControlPeerIDs.contains(id),
+              multipeerSession?.connectedPeers.contains(peerID) == true else {
+            pendingRangingRecoveries[id] = nil
+            retireCurrentRangingExchange(for: id)
+            updatePrecision(for: id, state: .unavailable, distance: nil, angle: nil)
+            rangefinderAccessState = RadarRangefinderAccessPolicy
+                .stateAfterTransientPeerFailure(
+                    currentState: rangefinderAccessState,
+                    hasOtherActiveContext: !rangingContexts.isEmpty
+                )
+            return
+        }
+        guard isApplicationActive else {
+            pendingRangingRecoveries[id] = recovery
+            debugLog("deferred NI recovery until foreground peer=\(id) reason=\(reason)")
+            return
+        }
+        pendingRangingRecoveries[id] = nil
+
+        let failureCount = rangingRecoveryFailureCounts[id, default: 0] + 1
+        rangingRecoveryFailureCounts[id] = failureCount
+        guard let delay = RadarRangingTokenRetryPolicy.delayMilliseconds(
+            afterFailureCount: failureCount
+        ) else {
+            terminalRangingFailurePeerIDs.insert(id)
+            retireCurrentRangingExchange(for: id)
+            updatePrecision(for: id, state: .unavailable, distance: nil, angle: nil)
+            rangefinderAccessState = RadarRangefinderAccessPolicy
+                .stateAfterTransientPeerFailure(
+                    currentState: rangefinderAccessState,
+                    hasOtherActiveContext: !rangingContexts.isEmpty
+                )
+            debugLog("NI recovery exhausted peer=\(id) reason=\(reason)")
+            return
+        }
+
+        let runID = UUID()
+        rangingRecoveryRunIDs[id] = runID
+        debugLog(
+            "scheduled NI recovery peer=\(id) failure=\(failureCount) reason=\(reason)"
+        )
+        rangingRecoveryTasks[id] = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .milliseconds(delay))
+            } catch {
+                return
+            }
+            guard let self,
+                  self.rangingRecoveryRunIDs[id] == runID,
+                  self.rangingRecoveryFailureCounts[id] == failureCount else { return }
+            self.rangingRecoveryRunIDs[id] = nil
+            self.rangingRecoveryTasks[id] = nil
+            guard self.rangefinderAccessState != .denied,
+                  self.rangefinderAccessState != .unsupported,
+                  self.allowsTransport,
+                  self.rangingControlPeerIDs.contains(id),
+                  self.rangingContexts[id] == nil,
+                  self.multipeerSession?.connectedPeers.contains(peerID) == true else {
+                return
+            }
+            guard self.isApplicationActive else {
+                if self.rangingRecoveryFailureCounts[id] == failureCount {
+                    self.rangingRecoveryFailureCounts[id] = max(0, failureCount - 1)
+                }
+                self.pendingRangingRecoveries[id] = recovery
+                self.debugLog("paused NI recovery until foreground peer=\(id)")
+                return
+            }
+            if let retryingExchange {
+                guard self.rangingExchanges[id] == retryingExchange else { return }
+                await self.sendConnectedRangingRequest(
+                    retryingExchange,
+                    to: peerID,
+                    reason: "automatic-request-retry"
+                )
+            } else if self.connectedRangingCapablePeerIDs.contains(id) {
+                await self.initiateNewConnectedRangingExchange(
+                    with: peerID,
+                    reason: "automatic-recovery",
+                    supersedingExchangeID: supersededExchangeID
+                )
+            } else {
+                self.ensureRangingSession(
+                    for: peerID,
+                    preservedRemoteToken: preservedRemoteToken,
+                    preservedRemoteTokenData: preservedRemoteTokenData
+                )
+            }
+        }
+    }
+
+    private func cancelRangingRecovery(for id: String) {
+        rangingRecoveryTasks[id]?.cancel()
+        rangingRecoveryTasks[id] = nil
+        rangingRecoveryRunIDs[id] = nil
+        pendingRangingRecoveries[id] = nil
+    }
+
+    private func clearRangingExchangeState(
+        for id: String,
+        preservingPendingMessagesFor connectionEpoch: UInt64? = nil
+    ) {
+        let connectedRequests = connectionEpoch.map { epoch in
+            pendingConnectedRangingRequests[id, default: []].filter {
+                $0.connectionEpoch == epoch
+            }
+        } ?? []
+        let nearbyTokens = connectionEpoch.map { epoch in
+            pendingNearbyTokens[id, default: []].filter {
+                $0.connectionEpoch == epoch
+            }
+        } ?? []
+        let probeRequests = connectionEpoch.map { epoch in
+            pendingRangefinderProbeRequests[id, default: []].filter {
+                $0.connectionEpoch == epoch
+            }
+        } ?? []
+        let probeTokens = connectionEpoch.map { epoch in
+            pendingRangefinderProbeTokens[id, default: []].filter {
+                $0.connectionEpoch == epoch
+            }
+        } ?? []
+        cancelRangingRecovery(for: id)
+        rangingExchanges[id] = nil
+        retiredRangingExchangeIDs[id] = nil
+        connectedRangingRequestAttempts[id] = nil
+        rangingTokenExchangeFailureCounts[id] = nil
+        rangingRecoveryFailureCounts[id] = nil
+        pendingRangingSessionStartPeerIDs.remove(id)
+        pendingRangingConfigurationRefreshPeerIDs.remove(id)
+        pendingRangingContextRetryPeerIDs.remove(id)
+        pendingConnectedRangingRequests[id] = nil
+        pendingNearbyTokens[id] = nil
+        pendingRangefinderProbeRequests[id] = nil
+        pendingRangefinderProbeTokens[id] = nil
+        pendingLegacyRangingPeerIDs.remove(id)
+        terminalRangingFailurePeerIDs.remove(id)
+        if !connectedRequests.isEmpty {
+            pendingConnectedRangingRequests[id] = connectedRequests
+        }
+        if !nearbyTokens.isEmpty {
+            pendingNearbyTokens[id] = nearbyTokens
+        }
+        if !probeRequests.isEmpty {
+            pendingRangefinderProbeRequests[id] = probeRequests
+        }
+        if !probeTokens.isEmpty {
+            pendingRangefinderProbeTokens[id] = probeTokens
+        }
+    }
+
+    private func clearAllRangingExchangeState() {
+        for task in rangingRecoveryTasks.values {
+            task.cancel()
+        }
+        rangingRecoveryTasks.removeAll()
+        rangingRecoveryRunIDs.removeAll()
+        rangingExchanges.removeAll()
+        retiredRangingExchangeIDs.removeAll()
+        connectedRangingRequestAttempts.removeAll()
+        rangingTokenExchangeFailureCounts.removeAll()
+        rangingRecoveryFailureCounts.removeAll()
+        pendingRangingRecoveries.removeAll()
+        pendingRangingSessionStartPeerIDs.removeAll()
+        pendingRangingConfigurationRefreshPeerIDs.removeAll()
+        pendingRangingContextRetryPeerIDs.removeAll()
+        pendingConnectedRangingRequests.removeAll()
+        pendingNearbyTokens.removeAll()
+        pendingRangefinderProbeRequests.removeAll()
+        pendingRangefinderProbeTokens.removeAll()
+        pendingLegacyRangingPeerIDs.removeAll()
+        terminalRangingFailurePeerIDs.removeAll()
     }
 
     private func clearActiveRangefinderProbe(notifyPeer: Bool) {
@@ -2426,6 +4045,10 @@ final class RadarNearbyService: NSObject {
             guard let self,
                   let context,
                   self.activeRangefinderProbe === context else { return }
+            guard self.isApplicationActive else {
+                self.scheduleActiveRangefinderResolutionTimeout(context)
+                return
+            }
             self.finishActiveRangefinderProbe(with: .unavailable)
         }
     }
@@ -2489,12 +4112,24 @@ final class RadarNearbyService: NSObject {
             rangefinderAccessState = .unsupported
             return
         }
+        guard allowsTransport, isApplicationActive else { return }
         guard activeRangefinderProbe == nil else { return }
-        guard rangefinderAccessState == .ready
+        guard rangefinderAccessState == .granted
+                || rangefinderAccessState == .ready
                 || rangefinderAccessState == .waitingForPeer else { return }
-        rangefinderAccessState = !wantsScanning || connectedPrecisionPeer() == nil
-            ? .waitingForPeer
-            : .ready
+        guard wantsScanning else {
+            rangefinderAccessState = .waitingForPeer
+            return
+        }
+        if rangefinderAccessState == .granted {
+            beginConnectedRangingForEligiblePeers()
+            return
+        }
+        guard let peerID = connectedPrecisionPeer() else {
+            rangefinderAccessState = .waitingForPeer
+            return
+        }
+        markRangefinderPeerReadyIfNeeded(peerID)
     }
 
     private func isActiveRangefinderProbeSession(_ session: NISession) -> Bool {
@@ -2531,15 +4166,53 @@ final class RadarNearbyService: NSObject {
         return true
     }
 
-    private func startRanging(with tokenData: Data, from peerID: MCPeerID) {
+    private func startRanging(
+        with tokenData: Data,
+        exchangeID: String?,
+        exchangeInitiatorPeerID: String?,
+        supersedesExchangeID: String?,
+        connectionEpoch: UInt64,
+        receiveSequence: UInt64,
+        from peerID: MCPeerID
+    ) {
+        let id = peerID.displayName
+        let exchange: RadarRangingExchange?
+        guard isApplicationActive else { return }
+        if connectedRangingCapablePeerIDs.contains(id) {
+            guard let exchangeID,
+                  let exchangeInitiatorPeerID,
+                  exchangeInitiatorPeerID == id
+                    || exchangeInitiatorPeerID == localPeerID?.displayName,
+                  retiredRangingExchangeIDs[id]?.contains(exchangeID) != true,
+                  let currentExchange = rangingExchanges[id],
+                  currentExchange == RadarRangingExchange(
+                    id: exchangeID,
+                    initiatorPeerID: exchangeInitiatorPeerID,
+                    supersedesExchangeID: supersedesExchangeID
+                  ) else {
+                let exchangeLabel = exchangeID.map { String($0.prefix(6)) } ?? "nil"
+                debugLog("ignored stale NI token peer=\(id) exchange=\(exchangeLabel)")
+                return
+            }
+            exchange = currentExchange
+        } else {
+            guard exchangeID == nil,
+                  exchangeInitiatorPeerID == nil,
+                  supersedesExchangeID == nil else {
+                debugLog("ignored versioned NI token on legacy connection peer=\(id)")
+                return
+            }
+            exchange = nil
+        }
+
         guard supportsPreciseDistance,
               let peerToken = try? NSKeyedUnarchiver.unarchivedObject(
                 ofClass: NIDiscoveryToken.self,
                 from: tokenData
               ) else {
-            debugLog("remote NI token decode failed peer=\(peerID.displayName)")
+            debugLog("remote NI token decode failed peer=\(id)")
             updatePrecision(
-                for: peerID.displayName,
+                for: id,
                 state: .unavailable,
                 distance: nil,
                 angle: nil
@@ -2547,9 +4220,58 @@ final class RadarNearbyService: NSObject {
             return
         }
 
-        ensureRangingSession(for: peerID)
-        guard let rangingContext = rangingContexts[peerID.displayName] else { return }
+        if exchange == nil {
+            let cursor = RadarReceiveCursor(
+                connectionEpoch: connectionEpoch,
+                receiveSequence: receiveSequence
+            )
+            if let lastCursor = lastAppliedLegacyTokenCursors[id] {
+                let isNewer = cursor.connectionEpoch > lastCursor.connectionEpoch
+                    || (
+                        cursor.connectionEpoch == lastCursor.connectionEpoch
+                            && cursor.receiveSequence > lastCursor.receiveSequence
+                    )
+                guard isNewer else {
+                    debugLog(
+                        "ignored reordered legacy NI token peer=\(id) sequence=\(receiveSequence)"
+                    )
+                    return
+                }
+            }
+            lastAppliedLegacyTokenCursors[id] = cursor
+        }
 
+        ensureRangingSession(for: peerID, exchange: exchange)
+        guard let rangingContext = rangingContexts[id],
+              rangingContext.exchange == exchange else { return }
+        if let existingTokenData = rangingContext.remoteTokenData {
+            guard existingTokenData != tokenData else {
+                debugLog("ignored duplicate NI token peer=\(id)")
+                return
+            }
+            guard exchange == nil else {
+                debugLog("ignored changed NI token inside one exchange peer=\(id)")
+                return
+            }
+        }
+        rangingContext.tokenExchangeTimeoutTask?.cancel()
+        rangingContext.tokenExchangeTimeoutTask = nil
+        if rangingContext.localTokenDeliveryConfirmed {
+            rangingContext.tokenExchangeRetryTask?.cancel()
+            rangingContext.tokenExchangeRetryTask = nil
+            rangingContext.tokenExchangeRetryRunID = nil
+        }
+        cancelRangingRecovery(for: id)
+
+        runRanging(rangingContext, with: peerToken, tokenData: tokenData)
+    }
+
+    private func runRanging(
+        _ rangingContext: RadarRangingContext,
+        with peerToken: NIDiscoveryToken,
+        tokenData: Data?
+    ) {
+        let id = rangingContext.peerID.displayName
         let configuration = NINearbyPeerConfiguration(peerToken: peerToken)
         configure(
             configuration,
@@ -2561,14 +4283,15 @@ final class RadarNearbyService: NSObject {
         // upgrade its local session to Camera Assistance for a wider bearing.
         rangingContext.didFallbackToBaseRanging = true
         rangingContext.remoteToken = peerToken
+        rangingContext.remoteTokenData = tokenData
         rangingContext.nearbySession.run(configuration)
-        debugLog("NI ranging run peer=\(peerID.displayName) camera=\(configuration.isCameraAssistanceEnabled)")
+        debugLog("NI ranging run peer=\(id) camera=\(configuration.isCameraAssistanceEnabled)")
         scheduleMeasurementAvailabilityCheck(
-            for: peerID.displayName,
+            for: id,
             nearbySession: rangingContext.nearbySession
         )
         updatePrecision(
-            for: peerID.displayName,
+            for: id,
             state: .measuring,
             distance: nil,
             angle: nil
@@ -2976,6 +4699,14 @@ final class RadarNearbyService: NSObject {
                 relativePosition: nil,
                 directionState: .unavailable
             )
+            if !context.localTokenDeliveryConfirmed,
+               context.tokenExchangeRetryTask == nil {
+                self.handleRangingTokenExchangeFailure(
+                    context,
+                    for: id,
+                    reason: "measurement-without-local-token-delivery"
+                )
+            }
         }
     }
 
@@ -3028,6 +4759,13 @@ final class RadarNearbyService: NSObject {
               let nearbyObject = nearbyObjects.first,
               let context = rangingContexts[id] else {
             return
+        }
+        if !context.didConfirmStableRanging {
+            context.didConfirmStableRanging = true
+            rangingTokenExchangeFailureCounts[id] = 0
+            rangingRecoveryFailureCounts[id] = 0
+            terminalRangingFailurePeerIDs.remove(id)
+            debugLog("NI recovery budget reset after live update peer=\(id)")
         }
 
         let now = Date.timeIntervalSinceReferenceDate
@@ -3380,9 +5118,14 @@ final class RadarNearbyService: NSObject {
         updateDirectionState(for: id, state: state)
     }
 
-    private func removeRangingObjects(for nearbySession: NISession) {
+    private func removeRangingObjects(
+        for nearbySession: NISession,
+        peerEnded: Bool,
+        timedOut: Bool
+    ) {
         guard let id = rangingPeerIDsBySession[ObjectIdentifier(nearbySession)],
-              let context = rangingContexts[id] else { return }
+              let context = rangingContexts[id],
+              context.nearbySession === nearbySession else { return }
 
         debugLog("NI removed peer=\(id)")
 
@@ -3398,10 +5141,52 @@ final class RadarNearbyService: NSObject {
             relativePosition: nil,
             directionState: defaultDirectionState
         )
+
+        if timedOut, let remoteToken = context.remoteToken {
+            guard rangefinderAccessState != .denied,
+                  rangefinderAccessState != .unsupported,
+                  allowsTransport,
+                  rangingControlPeerIDs.contains(id),
+                  multipeerSession?.connectedPeers.contains(context.peerID) == true else {
+                return
+            }
+            guard isApplicationActive else {
+                pendingRangingConfigurationRefreshPeerIDs.insert(id)
+                debugLog("deferred NI timeout restart until foreground peer=\(id)")
+                return
+            }
+            debugLog("restarting NI after timeout peer=\(id)")
+            runRanging(
+                context,
+                with: remoteToken,
+                tokenData: context.remoteTokenData
+            )
+            return
+        }
+
+        // Protocol-v4 peers do not explicitly restart their NI exchange when
+        // their session ends. Keep the Multipeer connection and resend our
+        // token through the normal bounded retry path so the legacy peer can
+        // recreate its session and return a fresh token automatically.
+        guard peerEnded,
+              context.exchange == nil,
+              context.remoteToken != nil,
+              context.tokenExchangeRetryTask == nil else { return }
+        context.remoteToken = nil
+        context.remoteTokenData = nil
+        handleRangingTokenExchangeFailure(
+            context,
+            for: id,
+            reason: "legacy-peer-ended"
+        )
     }
 
     private func suspendRanging(for nearbySession: NISession) {
-        guard let id = rangingPeerIDsBySession[ObjectIdentifier(nearbySession)] else { return }
+        guard let id = rangingPeerIDsBySession[ObjectIdentifier(nearbySession)],
+              let context = rangingContexts[id],
+              context.nearbySession === nearbySession else { return }
+        context.wasSuspended = true
+        context.suspensionDidEnd = false
         debugLog("NI suspended peer=\(id)")
         updatePrecision(
             for: id,
@@ -3415,12 +5200,21 @@ final class RadarNearbyService: NSObject {
 
     private func resumeRanging(for nearbySession: NISession) {
         guard let id = rangingPeerIDsBySession[ObjectIdentifier(nearbySession)],
-              let remoteToken = rangingContexts[id]?.remoteToken else {
+              let context = rangingContexts[id],
+              context.nearbySession === nearbySession,
+              let remoteToken = context.remoteToken,
+              RadarRangefinderResumePolicy.canRun(
+                wasSuspended: context.wasSuspended,
+                suspensionDidEnd: context.suspensionDidEnd,
+                isApplicationActive: isApplicationActive
+              ) else {
             return
         }
+        context.wasSuspended = false
+        context.suspensionDidEnd = false
         debugLog("NI suspension ended peer=\(id)")
         let configuration = NINearbyPeerConfiguration(peerToken: remoteToken)
-        let didFallback = rangingContexts[id]?.didFallbackToBaseRanging == true
+        let didFallback = context.didFallbackToBaseRanging
         configure(
             configuration,
             for: nearbySession,
@@ -3430,19 +5224,29 @@ final class RadarNearbyService: NSObject {
         updatePrecision(for: id, state: .measuring, distance: nil, angle: nil)
     }
 
+    @discardableResult
     private func invalidateRanging(
         for nearbySession: NISession,
         errorDescription: String
-    ) {
-        guard let id = rangingPeerIDsBySession[ObjectIdentifier(nearbySession)] else { return }
+    ) -> RadarRangingContext? {
+        guard let id = rangingPeerIDsBySession[ObjectIdentifier(nearbySession)] else {
+            return nil
+        }
         debugLog("NI invalidated peer=\(id) error=\(errorDescription)")
         rangingPeerIDsBySession[ObjectIdentifier(nearbySession)] = nil
-        rangingContexts[id] = nil
+        pendingRangingConfigurationRefreshPeerIDs.remove(id)
+        let context = rangingContexts.removeValue(forKey: id)
+        context?.tokenExchangeTimeoutTask?.cancel()
+        context?.tokenExchangeTimeoutTask = nil
+        context?.tokenExchangeRetryTask?.cancel()
+        context?.tokenExchangeRetryTask = nil
+        context?.tokenExchangeRetryRunID = nil
         updatePrecision(for: id, state: .unavailable, distance: nil, angle: nil)
         if rangingContexts.isEmpty {
             stopSpatialARSession()
         }
         refreshIdleTimerProtection()
+        return context
     }
 
     private func refreshIdleTimerProtection() {
@@ -3460,7 +5264,13 @@ final class RadarNearbyService: NSObject {
     }
 
     private func stopRanging(with id: String) {
+        pendingRangingConfigurationRefreshPeerIDs.remove(id)
         guard let context = rangingContexts.removeValue(forKey: id) else { return }
+        context.tokenExchangeTimeoutTask?.cancel()
+        context.tokenExchangeTimeoutTask = nil
+        context.tokenExchangeRetryTask?.cancel()
+        context.tokenExchangeRetryTask = nil
+        context.tokenExchangeRetryRunID = nil
         rangingPeerIDsBySession[ObjectIdentifier(context.nearbySession)] = nil
         context.nearbySession.delegate = nil
         context.nearbySession.invalidate()
@@ -3471,10 +5281,16 @@ final class RadarNearbyService: NSObject {
     }
 
     private func stopAllRanging() {
+        pendingRangingConfigurationRefreshPeerIDs.removeAll()
         let contexts = Array(rangingContexts.values)
         rangingContexts.removeAll()
         rangingPeerIDsBySession.removeAll()
         for context in contexts {
+            context.tokenExchangeTimeoutTask?.cancel()
+            context.tokenExchangeTimeoutTask = nil
+            context.tokenExchangeRetryTask?.cancel()
+            context.tokenExchangeRetryTask = nil
+            context.tokenExchangeRetryRunID = nil
             context.nearbySession.delegate = nil
             context.nearbySession.invalidate()
         }
@@ -3548,6 +5364,7 @@ private final class RadarRangefinderProbeContext {
     var nearbySession: NISession?
     var peerToken: NIDiscoveryToken?
     var timeoutTask: Task<Void, Never>?
+    var requestSendAttemptID: UUID?
     var wasSuspended = false
     var suspensionDidEnd = false
 
@@ -3579,20 +5396,37 @@ private final class RadarRangefinderProbeResponder {
 private final class RadarRangingContext {
     let peerID: MCPeerID
     let nearbySession: NISession
+    let localTokenData: Data
+    let exchange: RadarRangingExchange?
+    var tokenExchangeTimeoutTask: Task<Void, Never>?
+    var tokenExchangeRetryTask: Task<Void, Never>?
+    var tokenExchangeRetryRunID: UUID?
     var remoteToken: NIDiscoveryToken?
+    var remoteTokenData: Data?
+    var localTokenDeliveryConfirmed = false
     var lastPublishedAt: TimeInterval = 0
     var lastDistanceMeasurementAt: TimeInterval = 0
     var lastPositionMeasurementAt: TimeInterval = 0
     var smoothedDistanceMeters: Double?
     var smoothedRelativePosition: RadarRelativePosition?
     var didFallbackToBaseRanging = false
+    var didConfirmStableRanging = false
+    var wasSuspended = false
+    var suspensionDidEnd = false
 #if DEBUG
     var lastDiagnosticAt: TimeInterval = 0
 #endif
 
-    init(peerID: MCPeerID, nearbySession: NISession) {
+    init(
+        peerID: MCPeerID,
+        nearbySession: NISession,
+        localTokenData: Data,
+        exchange: RadarRangingExchange?
+    ) {
         self.peerID = peerID
         self.nearbySession = nearbySession
+        self.localTokenData = localTokenData
+        self.exchange = exchange
     }
 }
 
@@ -3711,6 +5545,11 @@ extension RadarNearbyService: MCSessionDelegate {
     nonisolated func session(_ session: MCSession, peer peerID: MCPeerID, didChange state: MCSessionState) {
         let activeSession = SendableMultipeerSession(value: session)
         let peer = SendableRadarPeerID(value: peerID)
+        let connectionEpoch = connectionEpochTracker.record(
+            state,
+            for: peerID.displayName,
+            in: session
+        )
         Task { @MainActor [weak self] in
             guard let self,
                   self.allowsTransport,
@@ -3718,7 +5557,8 @@ extension RadarNearbyService: MCSessionDelegate {
             self.handleSessionState(
                 state,
                 peerID: peer.value,
-                session: activeSession.value
+                session: activeSession.value,
+                connectionEpoch: connectionEpoch
             )
         }
     }
@@ -3730,11 +5570,20 @@ extension RadarNearbyService: MCSessionDelegate {
     ) {
         let activeSession = SendableMultipeerSession(value: session)
         let peer = SendableRadarPeerID(value: peerID)
+        let delivery = connectionEpochTracker.recordReceive(
+            for: peerID.displayName,
+            in: session
+        )
         Task { @MainActor [weak self] in
             guard let self,
                   self.allowsTransport,
                   self.multipeerSession === activeSession.value else { return }
-            self.handleReceivedData(data, from: peer.value)
+            self.handleReceivedData(
+                data,
+                from: peer.value,
+                connectionEpoch: delivery.connectionEpoch,
+                receiveSequence: delivery.receiveSequence
+            )
         }
     }
 
@@ -3777,7 +5626,15 @@ extension RadarNearbyService: NISessionDelegate {
             }
             guard let id = self.rangingPeerIDsBySession[
                 ObjectIdentifier(sendableSession.value)
-            ] else { return }
+            ],
+                  let context = self.rangingContexts[id],
+                  context.nearbySession === sendableSession.value else { return }
+            if context.localTokenDeliveryConfirmed {
+                self.rangingTokenExchangeFailureCounts[id] = 0
+                self.pendingRangingContextRetryPeerIDs.remove(id)
+            }
+            self.terminalRangingFailurePeerIDs.remove(id)
+            self.rangefinderAccessState = .granted
             self.debugLog("NI started peer=\(id)")
         }
     }
@@ -3799,8 +5656,14 @@ extension RadarNearbyService: NISessionDelegate {
         reason: NINearbyObject.RemovalReason
     ) {
         let sendableSession = SendableNearbySession(value: session)
+        let peerEnded = reason == .peerEnded
+        let timedOut = reason == .timeout
         Task { @MainActor [weak self] in
-            self?.removeRangingObjects(for: sendableSession.value)
+            self?.removeRangingObjects(
+                for: sendableSession.value,
+                peerEnded: peerEnded,
+                timedOut: timedOut
+            )
         }
     }
 
@@ -3851,6 +5714,11 @@ extension RadarNearbyService: NISessionDelegate {
                 _ = self.resumeRangefinderProbeIfNeeded(sendableSession.value)
                 return
             }
+            if let id = self.rangingPeerIDsBySession[sessionID],
+               let context = self.rangingContexts[id],
+               context.nearbySession === sendableSession.value {
+                context.suspensionDidEnd = true
+            }
             self.resumeRanging(for: sendableSession.value)
         }
     }
@@ -3874,10 +5742,55 @@ extension RadarNearbyService: NISessionDelegate {
                 self.finishActiveRangefinderProbe(with: state)
                 return
             }
-            self.invalidateRanging(
+            guard self.rangingPeerIDsBySession[sessionID] != nil else {
+                // The session was explicitly stopped while this delegate
+                // callback was queued. Its stale error must not overwrite the
+                // access state of a newer probe or ranging session.
+                return
+            }
+            let previousAccessState = self.rangefinderAccessState
+            let mappedState = RadarRangefinderAccessPolicy.stateAfterInvalidation(
+                nsError,
+                canVerifyOnCurrentDevice: Self.canVerifyRangefinderAccess
+            )
+            let invalidatedContext = self.invalidateRanging(
                 for: sendableSession.value,
                 errorDescription: errorDescription
             )
+            self.rangefinderAccessState = RadarRangefinderAccessPolicy
+                .stateAfterRangingInvalidation(
+                    nsError,
+                    currentState: previousAccessState,
+                    hasOtherActiveContext: !self.rangingContexts.isEmpty,
+                    canVerifyOnCurrentDevice: Self.canVerifyRangefinderAccess
+                )
+            if let invalidatedPeerID = invalidatedContext?.peerID.displayName,
+               invalidatedContext?.exchange != nil {
+                self.retireCurrentRangingExchange(for: invalidatedPeerID)
+            }
+            if mappedState == .unavailable,
+               let invalidatedContext,
+               self.allowsTransport,
+               self.rangingControlPeerIDs.contains(invalidatedContext.peerID.displayName),
+               self.multipeerSession?.connectedPeers.contains(invalidatedContext.peerID) == true {
+                let invalidatedPeerID = invalidatedContext.peerID.displayName
+                let usesConnectedExchange = self.connectedRangingCapablePeerIDs.contains(
+                    invalidatedPeerID
+                )
+                let preservedRemoteToken = usesConnectedExchange
+                    ? nil
+                    : invalidatedContext.remoteToken
+                let preservedRemoteTokenData = usesConnectedExchange
+                    ? nil
+                    : invalidatedContext.remoteTokenData
+                self.scheduleRangingRecovery(
+                    with: invalidatedContext.peerID,
+                    preservedRemoteToken: preservedRemoteToken,
+                    preservedRemoteTokenData: preservedRemoteTokenData,
+                    supersedingExchangeID: invalidatedContext.exchange?.id,
+                    reason: "session-invalidation"
+                )
+            }
         }
     }
 }

@@ -12,7 +12,9 @@ enum OnboardingAcquisitionSource: String, CaseIterable, Codable, Hashable, Ident
 }
 
 struct OnboardingSubmission: Codable, Equatable, Sendable {
-    static let currentVersion = 1
+    /// Version 2 adds the mandatory Local Network verification required by
+    /// always-on Radar. Existing version-1 accounts receive only this new step.
+    static let currentVersion = 2
 
     let language: AppLanguage
     let acquisitionSource: OnboardingAcquisitionSource
@@ -40,6 +42,26 @@ struct OnboardingSubmission: Codable, Equatable, Sendable {
 }
 
 enum OnboardingRoutingPolicy {
+    static func requiresLocalNetworkUpgrade(
+        remoteCompleted: Bool?,
+        remoteVersion: Int?,
+        localCompletedVersion: Int? = nil,
+        requiredVersion: Int = OnboardingSubmission.currentVersion
+    ) -> Bool {
+        let requiredVersion = max(1, requiredVersion)
+
+        if remoteCompleted == false {
+            return false
+        }
+
+        if remoteCompleted == true {
+            return (remoteVersion ?? 1) < requiredVersion
+        }
+
+        guard let localCompletedVersion else { return false }
+        return localCompletedVersion > 0 && localCompletedVersion < requiredVersion
+    }
+
     /// Resolves account routing without mutating local progress. An explicit
     /// server `false` is authoritative over all local state. A pending
     /// submission may bridge a missing or older positive server payload until
@@ -131,21 +153,6 @@ struct OnboardingProgressStore {
             for: user,
             requiredVersion: requiredVersion
         )
-    }
-
-    static func setNearbyTransportEnabled(
-        _ isEnabled: Bool,
-        for userID: String,
-        defaults: UserDefaults = .standard
-    ) {
-        Self(defaults: defaults).setNearbyTransportEnabled(isEnabled, for: userID)
-    }
-
-    static func isNearbyTransportEnabled(
-        for userID: String,
-        defaults: UserDefaults = .standard
-    ) -> Bool {
-        Self(defaults: defaults).isNearbyTransportEnabled(for: userID)
     }
 
     static func clear(
@@ -274,20 +281,6 @@ struct OnboardingProgressStore {
             localPendingVersion: pendingSubmission(for: user.id)?.version,
             requiredVersion: requiredVersion
         )
-    }
-
-    func setNearbyTransportEnabled(_ isEnabled: Bool, for userID: String) {
-        guard let key = accountKey("nearby-transport-enabled", userID: userID) else {
-            return
-        }
-        defaults.set(isEnabled, forKey: key)
-    }
-
-    func isNearbyTransportEnabled(for userID: String) -> Bool {
-        guard let key = accountKey("nearby-transport-enabled", userID: userID) else {
-            return false
-        }
-        return defaults.bool(forKey: key)
     }
 
     private func accountKey(_ field: String, userID: String) -> String? {

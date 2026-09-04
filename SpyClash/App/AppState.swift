@@ -1310,7 +1310,6 @@ final class AppState: NSObject {
     var onboardingLaunchMessage: String?
     private(set) var isFinishingOnboarding = false
     private(set) var radarInvitePolicySyncState: RadarInvitePolicySyncState = .localOnly
-    private(set) var radarActivationRevision = 0
     var selectedTab: AppTab = .home {
         didSet {
             if selectedTab != .home {
@@ -3049,6 +3048,23 @@ final class AppState: NSObject {
         return OnboardingProgressStore.shouldPresentOnboarding(for: user)
     }
 
+    var requiresLocalNetworkOnboardingUpgrade: Bool {
+        guard let user else { return false }
+        return OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
+            remoteCompleted: user.onboardingCompleted,
+            remoteVersion: user.onboardingVersion,
+            localCompletedVersion: OnboardingProgressStore.completedVersion(
+                for: user.id
+            )
+        )
+    }
+
+    var preservedOnboardingAcquisitionSource: OnboardingAcquisitionSource? {
+        guard let user else { return nil }
+        return user.acquisitionSource.flatMap(OnboardingAcquisitionSource.init(rawValue:))
+            ?? OnboardingProgressStore.pendingSubmission(for: user.id)?.acquisitionSource
+    }
+
     var isAuthTransitionActive: Bool {
         hasActiveAuthCinematic || requiresOnboarding || authHomeRevealPhase != .idle
     }
@@ -3857,25 +3873,8 @@ final class AppState: NSObject {
         queueRadarInvitePolicySync(selectablePolicy, userID: userID)
     }
 
-    var isRadarActivated: Bool {
-        _ = radarActivationRevision
-        guard let user, !requiresOnboarding else { return false }
-        return OnboardingProgressStore.isNearbyTransportEnabled(for: user.id)
-    }
-
-    func activateRadarAndStartScanning(requestCameraAccess: Bool = false) {
+    func startRadarScanning(requestCameraAccess: Bool = false) {
         guard let user, !requiresOnboarding else { return }
-        OnboardingProgressStore.setNearbyTransportEnabled(true, for: user.id)
-        radarActivationRevision &+= 1
-        reconcileRadarInvitePolicy(for: user, accountChanged: false)
-        radarNearby.startScanning(requestCameraAccess: requestCameraAccess)
-#if DEBUG
-        installPreviewRadarFailureIfRequested()
-#endif
-    }
-
-    func resumeRadarScanningIfActivated(requestCameraAccess: Bool = false) {
-        guard let user, isRadarActivated else { return }
         reconcileRadarInvitePolicy(for: user, accountChanged: false)
         radarNearby.startScanning(requestCameraAccess: requestCameraAccess)
 #if DEBUG
@@ -3884,18 +3883,13 @@ final class AppState: NSObject {
     }
 
     func retryRadarScanning(requestCameraAccess: Bool = false) {
-        guard let user, isRadarActivated else { return }
+        guard let user, !requiresOnboarding else { return }
         reconcileRadarInvitePolicy(for: user, accountChanged: false)
         radarNearby.retryScanning(requestCameraAccess: requestCameraAccess)
     }
 
-    func requestRadarRangefinderAccess() {
-        guard user != nil, isRadarActivated else { return }
-        radarNearby.requestRangefinderAccess()
-    }
-
     func retryRadarRangefinderAccess() {
-        guard user != nil, isRadarActivated else { return }
+        guard user != nil, !requiresOnboarding else { return }
         radarNearby.retryRangefinderAccess()
     }
 
@@ -3942,7 +3936,6 @@ final class AppState: NSObject {
             applyRemoteInvitePolicy: !hasPendingWrite,
             allowsTransport: user.map {
                 !OnboardingProgressStore.shouldPresentOnboarding(for: $0)
-                    && OnboardingProgressStore.isNearbyTransportEnabled(for: $0.id)
             } ?? false
         )
 

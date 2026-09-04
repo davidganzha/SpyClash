@@ -26,37 +26,28 @@ struct RadarInviteView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     header
-                    if appState.isRadarActivated {
-                        if case .unavailable = radar.scanState {
-                            RadarScanRecoveryPrompt(
-                                language: appState.language,
-                                retryAccessibilityIdentifier: "radar.retry",
-                                settingsAccessibilityIdentifier: "radar.openSettings"
-                            ) {
-                                HapticManager.shared.fire(.buttonPress)
-                                appState.retryRadarScanning(requestCameraAccess: true)
-                            }
-                        } else if !RadarRangefinderAccessPolicy.allowsRadarUse(
-                            radar.rangefinderAccessState
+                    if case .unavailable = radar.scanState {
+                        RadarScanRecoveryPrompt(
+                            language: appState.language,
+                            retryAccessibilityIdentifier: "radar.retry",
+                            settingsAccessibilityIdentifier: "radar.openSettings"
                         ) {
+                            HapticManager.shared.fire(.buttonPress)
+                            appState.retryRadarScanning(requestCameraAccess: true)
+                        }
+                    } else {
+                        if needsRangefinderRecovery {
                             RadarRangefinderAccessPrompt(
                                 language: appState.language,
-                                state: radar.rangefinderAccessState,
-                                allowAccessibilityIdentifier: "radar.rangefinder.allow",
+                                state: rangefinderRecoveryState,
                                 retryAccessibilityIdentifier: "radar.rangefinder.retry",
                                 settingsAccessibilityIdentifier: "radar.rangefinder.openSettings"
                             ) {
                                 HapticManager.shared.fire(.buttonPress)
-                                appState.requestRadarRangefinderAccess()
-                            } retry: {
-                                HapticManager.shared.fire(.buttonPress)
                                 appState.retryRadarRangefinderAccess()
                             }
-                        } else {
-                            identityGrid
                         }
-                    } else {
-                        activationCard
+                        identityGrid
                     }
                     privacyNote
 
@@ -73,7 +64,7 @@ struct RadarInviteView: View {
             }
         }
         .task {
-            appState.resumeRadarScanningIfActivated(requestCameraAccess: true)
+            appState.startRadarScanning(requestCameraAccess: true)
             guard !reduceMotion else { return }
             withAnimation(.easeInOut(duration: 0.9).repeatForever(autoreverses: true)) {
                 scanPulse = true
@@ -84,38 +75,26 @@ struct RadarInviteView: View {
         }
     }
 
-    private var activationCard: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "dot.radiowaves.left.and.right")
-                .font(.system(size: 26, weight: .black))
-                .foregroundStyle(SpyTheme.red)
-
-            Text(localized(
-                en: "Radar stays off until you activate it.",
-                ru: "Радар выключен, пока ты сам его не активируешь.",
-                es: "Radar permanece apagado hasta que lo actives.",
-                uk: "Радар вимкнений, доки ти сам його не активуєш."
-            ))
-            .font(.system(size: 10, weight: .semibold, design: .monospaced))
-            .foregroundStyle(SpyTheme.dim)
-            .multilineTextAlignment(.center)
-
-            Button {
-                HapticManager.shared.fire(.buttonPress)
-                appState.activateRadarAndStartScanning(requestCameraAccess: true)
-            } label: {
-                SpyActionLabel(
-                    title: localized(en: "ACTIVATE RADAR", ru: "АКТИВИРОВАТЬ РАДАР", es: "ACTIVAR RADAR", uk: "АКТИВУВАТИ РАДАР"),
-                    systemImage: "antenna.radiowaves.left.and.right"
-                )
-            }
-            .buttonStyle(SpyButtonStyle(variant: .red))
-            .accessibilityIdentifier("radar.activate")
+    private var needsRangefinderRecovery: Bool {
+        if radar.hasRecoverableRangingFailure { return true }
+        return switch radar.rangefinderAccessState {
+        case .denied, .unavailable:
+            true
+        case .unsupported, .waitingForPeer, .ready, .requesting, .granted:
+            false
         }
-        .padding(18)
-        .frame(maxWidth: .infinity)
-        .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 10))
-        .overlay(CutCornerShape(cut: 10).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+    }
+
+    private var rangefinderRecoveryState: RadarRangefinderAccessState {
+        guard radar.hasRecoverableRangingFailure else {
+            return radar.rangefinderAccessState
+        }
+        switch radar.rangefinderAccessState {
+        case .denied, .unsupported, .unavailable:
+            return radar.rangefinderAccessState
+        case .waitingForPeer, .ready, .requesting, .granted:
+            return .unavailable
+        }
     }
 
     private var header: some View {
@@ -342,7 +321,7 @@ struct RadarScanRecoveryPrompt: View {
             }
         }
         .padding(compact ? 10 : 18)
-        .frame(maxWidth: .infinity, maxHeight: compact ? .infinity : nil)
+        .frame(maxWidth: .infinity)
         .background(
             compact ? Color.clear : SpyTheme.panelDeep,
             in: CutCornerShape(cut: 10)
@@ -368,11 +347,9 @@ struct RadarRangefinderAccessPrompt: View {
 
     let language: AppLanguage
     let state: RadarRangefinderAccessState
-    let allowAccessibilityIdentifier: String
     let retryAccessibilityIdentifier: String
     let settingsAccessibilityIdentifier: String
     var compact = false
-    let request: () -> Void
     let retry: () -> Void
 
     var body: some View {
@@ -394,7 +371,7 @@ struct RadarRangefinderAccessPrompt: View {
             controls
         }
         .padding(compact ? 10 : 18)
-        .frame(maxWidth: .infinity, maxHeight: compact ? .infinity : nil)
+        .frame(maxWidth: .infinity)
         .background(
             compact ? Color.clear : SpyTheme.panelDeep,
             in: CutCornerShape(cut: 10)
@@ -404,7 +381,7 @@ struct RadarRangefinderAccessPrompt: View {
                 .stroke(SpyTheme.strokeStrong.opacity(compact ? 0 : 1), lineWidth: 1)
         )
         .accessibilityElement(children: .contain)
-        .accessibilityIdentifier("radar.rangefinder.gate")
+        .accessibilityIdentifier("radar.rangefinder.recovery")
     }
 
     @ViewBuilder
@@ -436,18 +413,6 @@ struct RadarRangefinderAccessPrompt: View {
     @ViewBuilder
     private var controls: some View {
         switch state {
-        case .ready:
-            actionButton(
-                title: localized(
-                    en: "ALLOW RANGEFINDER",
-                    ru: "РАЗРЕШИТЬ ДАЛЬНОМЕР",
-                    es: "PERMITIR TELÉMETRO",
-                    uk: "ДОЗВОЛИТИ ДАЛЕКОМІР"
-                ),
-                systemImage: "scope",
-                identifier: allowAccessibilityIdentifier,
-                action: request
-            )
         case .denied:
             HStack(spacing: 8) {
                 actionButton(
@@ -490,7 +455,7 @@ struct RadarRangefinderAccessPrompt: View {
                 identifier: retryAccessibilityIdentifier,
                 action: retry
             )
-        case .unsupported, .waitingForPeer, .requesting, .granted:
+        case .unsupported, .waitingForPeer, .ready, .requesting, .granted:
             EmptyView()
         }
     }
@@ -519,17 +484,17 @@ struct RadarRangefinderAccessPrompt: View {
         switch state {
         case .waitingForPeer:
             localized(
-                en: "RANGEFINDER REQUIRES ANOTHER IPHONE",
-                ru: "ДЛЯ ДАЛЬНОМЕРА НУЖЕН ЕЩЁ ОДИН IPHONE",
-                es: "EL TELÉMETRO NECESITA OTRO IPHONE",
-                uk: "ДЛЯ ДАЛЕКОМІРА ПОТРІБЕН ЩЕ ОДИН IPHONE"
+                en: "RADAR ACTIVE · SEARCHING",
+                ru: "РАДАР АКТИВЕН · ИДЁТ ПОИСК",
+                es: "RADAR ACTIVO · BUSCANDO",
+                uk: "РАДАР АКТИВНИЙ · ТРИВАЄ ПОШУК"
             )
         case .ready:
             localized(
-                en: "RANGEFINDER ACCESS REQUIRED",
-                ru: "НУЖЕН ДОСТУП К ДАЛЬНОМЕРУ",
-                es: "SE REQUIERE ACCESO AL TELÉMETRO",
-                uk: "ПОТРІБЕН ДОСТУП ДО ДАЛЕКОМІРА"
+                en: "CONNECTING RANGEFINDER",
+                ru: "ПОДКЛЮЧАЕМ ДАЛЬНОМЕР",
+                es: "CONECTANDO TELÉMETRO",
+                uk: "ПІДКЛЮЧАЄМО ДАЛЕКОМІР"
             )
         case .requesting:
             localized(
@@ -573,17 +538,17 @@ struct RadarRangefinderAccessPrompt: View {
         switch state {
         case .waitingForPeer:
             localized(
-                en: "Keep Radar open on another compatible physical iPhone nearby. Permission can be checked after the devices connect.",
-                ru: "Открой Радар на другом совместимом физическом iPhone рядом. После подключения появится кнопка разрешения.",
-                es: "Mantén Radar abierto en otro iPhone físico compatible cercano. El permiso se comprobará al conectarse.",
-                uk: "Відкрий Радар на іншому сумісному фізичному iPhone поруч. Після з’єднання з’явиться кнопка дозволу."
+                en: "Radar is already on. Keep SpyClash open on another compatible iPhone nearby; connection and the iOS request start automatically.",
+                ru: "Радар уже включён. Оставь SpyClash открытым на другом совместимом iPhone рядом — подключение и запрос iOS начнутся автоматически.",
+                es: "Radar ya está activo. Mantén SpyClash abierto en otro iPhone compatible cercano; la conexión y la solicitud de iOS comenzarán automáticamente.",
+                uk: "Радар уже ввімкнений. Залиш SpyClash відкритим на іншому сумісному iPhone поруч — підключення й запит iOS почнуться автоматично."
             )
         case .ready:
             localized(
-                en: "A nearby iPhone is connected. Tap Allow, then confirm the iOS request.",
-                ru: "iPhone рядом подключён. Нажми «Разрешить» и подтверди запрос iOS.",
-                es: "Hay un iPhone cercano conectado. Pulsa Permitir y confirma la solicitud de iOS.",
-                uk: "iPhone поруч під’єднано. Натисни «Дозволити» й підтвердь запит iOS."
+                en: "A nearby iPhone is connected. Rangefinder access starts automatically; confirm the iOS request if it appears.",
+                ru: "iPhone рядом подключён. Дальномер запускается автоматически — подтверди системный запрос iOS, если он появится.",
+                es: "Hay un iPhone cercano conectado. El Telémetro se inicia automáticamente; confirma la solicitud de iOS si aparece.",
+                uk: "iPhone поруч під’єднано. Далекомір запускається автоматично — підтвердь системний запит iOS, якщо він з’явиться."
             )
         case .requesting:
             localized(
@@ -594,10 +559,10 @@ struct RadarRangefinderAccessPrompt: View {
             )
         case .denied:
             localized(
-                en: "Radar is locked. Enable Rangefinder in Settings, return here, then verify again.",
-                ru: "Радар заблокирован. Включи Дальномер в Настройках, вернись сюда и проверь снова.",
-                es: "Radar está bloqueado. Activa Telémetro en Ajustes, vuelve y verifica de nuevo.",
-                uk: "Радар заблоковано. Увімкни Далекомір у Налаштуваннях, повернися й перевір знову."
+                en: "Precise distance is disabled by iOS. Local Radar still works; enable Rangefinder in Settings to restore distance.",
+                ru: "Точная дистанция отключена системой iOS. Локальный Радар продолжает работать; включи Дальномер в Настройках.",
+                es: "La distancia precisa está desactivada por iOS. El Radar local sigue funcionando; activa Telémetro en Ajustes.",
+                uk: "Точну дистанцію вимкнено системою iOS. Локальний Радар працює; увімкни Далекомір у Налаштуваннях."
             )
         case .unavailable:
             localized(

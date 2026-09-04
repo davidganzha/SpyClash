@@ -19,14 +19,14 @@ final class OnboardingTests: XCTestCase {
                 localPendingVersion: 1
             )
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             OnboardingRoutingPolicy.shouldPresentOnboarding(
                 remoteCompleted: nil,
                 remoteVersion: nil,
                 localCompletedVersion: 1
             )
         )
-        XCTAssertFalse(
+        XCTAssertTrue(
             OnboardingRoutingPolicy.shouldPresentOnboarding(
                 remoteCompleted: true,
                 remoteVersion: nil,
@@ -41,6 +41,49 @@ final class OnboardingTests: XCTestCase {
                 requiredVersion: 2
             )
         )
+        XCTAssertEqual(OnboardingSubmission.currentVersion, 2)
+    }
+
+    func testOnlyPreviouslyCompletedAccountsUseLocalNetworkUpgradeRoute() {
+        XCTAssertTrue(
+            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
+                remoteCompleted: true,
+                remoteVersion: 1
+            )
+        )
+        XCTAssertTrue(
+            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
+                remoteCompleted: true,
+                remoteVersion: nil
+            )
+        )
+        XCTAssertTrue(
+            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
+                remoteCompleted: nil,
+                remoteVersion: nil,
+                localCompletedVersion: 1
+            )
+        )
+        XCTAssertFalse(
+            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
+                remoteCompleted: false,
+                remoteVersion: 1,
+                localCompletedVersion: 1
+            )
+        )
+        XCTAssertFalse(
+            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
+                remoteCompleted: true,
+                remoteVersion: 2
+            )
+        )
+        XCTAssertFalse(
+            OnboardingRoutingPolicy.requiresLocalNetworkUpgrade(
+                remoteCompleted: nil,
+                remoteVersion: nil,
+                localCompletedVersion: nil
+            )
+        )
     }
 
     func testProgressIsAccountScopedAndRemoteStateIsVersionAware() throws {
@@ -53,6 +96,7 @@ final class OnboardingTests: XCTestCase {
         let submission = OnboardingSubmission(
             language: .uk,
             acquisitionSource: .chatGPT,
+            version: 1,
             completedAt: Date(timeIntervalSince1970: 1_700_000_000)
         )
 
@@ -102,18 +146,54 @@ final class OnboardingTests: XCTestCase {
         )
 
         try store.savePending(submission, for: "user-b")
-        XCTAssertFalse(store.isNearbyTransportEnabled(for: "user-a"))
-        store.setNearbyTransportEnabled(true, for: "user-a")
-        XCTAssertTrue(store.isNearbyTransportEnabled(for: "user-a"))
-        XCTAssertFalse(store.isNearbyTransportEnabled(for: "user-b"))
 
         OnboardingProgressStore.clear(for: "user-a", defaults: defaults)
         XCTAssertNil(store.completedVersion(for: "user-a"))
         XCTAssertNil(store.pendingSubmission(for: "user-a"))
-        XCTAssertFalse(store.isNearbyTransportEnabled(for: "user-a"))
         XCTAssertEqual(store.completedVersion(for: "user-b"), 1)
         XCTAssertEqual(store.pendingSubmission(for: "user-b"), submission)
     }
+
+#if DEBUG
+    @MainActor
+    func testCompletedOnboardingAutomaticallyEnablesForegroundRadarTransport() {
+        let appState = AppState()
+        defer {
+            appState.setRadarApplicationActive(false)
+            appState.logout()
+        }
+        appState.isRestoring = false
+        appState.user = SpyUser(
+            id: "always-on-radar-user",
+            email: "always-on-radar@example.com",
+            fullName: nil,
+            displayName: nil,
+            avatar: nil,
+            language: "en",
+            onboardingCompleted: true,
+            onboardingVersion: OnboardingSubmission.currentVersion,
+            role: nil,
+            isVerified: true,
+            rating: nil,
+            gamesPlayed: nil,
+            gamesWon: nil,
+            remoteSpyID: nil,
+            spyCardTheme: nil,
+            spyCardAccent: nil,
+            spyCardBadge: nil,
+            radarInvitePolicy: nil
+        )
+
+        let rebuildsBeforeActivation = appState.radarNearby.transportRebuildCountForTesting
+        appState.setRadarApplicationActive(true)
+
+        XCTAssertGreaterThan(
+            appState.radarNearby.transportRebuildCountForTesting,
+            rebuildsBeforeActivation
+        )
+        XCTAssertEqual(appState.radarNearby.scanState, .idle)
+    }
+#endif
 
     @MainActor
     func testLateDeferredRouteReCoversRevealAndMountsLatestDestination() async throws {
@@ -192,7 +272,7 @@ final class OnboardingTests: XCTestCase {
                 httpVersion: nil,
                 headerFields: ["Content-Type": "application/json"]
             )!
-            let payload = #"{"id":"user-1","email":"operative@example.com","language":"es","onboarding_completed":true,"onboarding_version":1,"onboarding_completed_at":"2023-11-14T22:13:20Z","acquisition_source":"friends_or_family"}"#
+            let payload = #"{"id":"user-1","email":"operative@example.com","language":"es","onboarding_completed":true,"onboarding_version":2,"onboarding_completed_at":"2023-11-14T22:13:20Z","acquisition_source":"friends_or_family"}"#
             return (response, Data(payload.utf8))
         }
         defer { OnboardingURLProtocol.requestHandler = nil }
@@ -210,7 +290,7 @@ final class OnboardingTests: XCTestCase {
         let user = try await client.completeOnboarding(submission)
 
         XCTAssertEqual(user.onboardingCompleted, true)
-        XCTAssertEqual(user.onboardingVersion, 1)
+        XCTAssertEqual(user.onboardingVersion, 2)
         let request = try XCTUnwrap(recorder.lastRequest())
         XCTAssertEqual(request.httpMethod, "PUT")
         XCTAssertEqual(
@@ -226,7 +306,7 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(body["language"] as? String, "es")
         XCTAssertEqual(body["acquisition_source"] as? String, "friends_or_family")
         XCTAssertEqual(body["onboarding_completed"] as? Bool, true)
-        XCTAssertEqual(body["onboarding_version"] as? Int, 1)
+        XCTAssertEqual(body["onboarding_version"] as? Int, 2)
         XCTAssertEqual(body["onboarding_completed_at"] as? String, "2023-11-14T22:13:20Z")
         XCTAssertEqual(body.count, 5)
         XCTAssertEqual(recorder.requestCount(), 1)
