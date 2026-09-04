@@ -398,6 +398,12 @@ struct AppShellView: View {
         )
         .sheet(item: $appState.presentedSheet) { destination in
             switch destination {
+            case .limitless:
+                PricingView()
+                    .spyGlobalToastLayer()
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.hidden)
+                    .presentationCornerRadius(0)
             case .qrScanner:
                 QRScannerSheet()
                     .spyGlobalToastLayer()
@@ -1079,6 +1085,8 @@ struct AppShellView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
             switch previewSheet {
+            case "limitless":
+                appState.presentedSheet = .limitless
             case "community":
                 appState.openCommunity()
             case "notifications", "inbox":

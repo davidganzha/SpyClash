@@ -987,6 +987,11 @@ async function handleAuthenticatedSync(
       entitlement,
       () => assertAppleAccountLease(accountStore, lease),
     );
+    await publishMembershipSignal({
+      store: base44.asServiceRole.entities.MembershipSignal,
+      userID: entitlement.user_id,
+      beforePersist: () => assertAppleAccountLease(accountStore, lease),
+    });
     if (tombstoneUserID) {
       await finalizeDeletedAppleAccountRebind({
         accountStore,
@@ -1126,6 +1131,11 @@ async function handleNotification(base44: any, signedPayload: string) {
       entitlement,
       () => assertAppleAccountLease(accountStore, lease),
     );
+    await publishMembershipSignal({
+      store: base44.asServiceRole.entities.MembershipSignal,
+      userID: entitlement.user_id,
+      beforePersist: () => assertAppleAccountLease(accountStore, lease),
+    });
     const released = await releaseAppleAccountLease(accountStore, lease);
     if (!released) {
       throw new RequestError(
@@ -1186,3 +1196,4 @@ Deno.serve(async (req) => {
     return Response.json({ error: message }, { status });
   }
 });
+import { publishMembershipSignal } from "./membership-signal.ts";

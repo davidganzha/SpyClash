@@ -60,6 +60,8 @@ make_fixture() {
   plist_add "$app/Info.plist" "Add :DTPlatformName string $platform"
   plist_add "$app/Info.plist" 'Add :NSSupportsLiveActivities bool true'
   touch "$app/SpyClash"
+  printf '%s\n' 'com.spyclash.ios.limitless.weekly' >>"$app/SpyClash"
+  touch "$app/.mock-storekit-linkage"
   chmod +x "$app/SpyClash"
   cp "$root/SpyClash/Resources/PrivacyInfo.xcprivacy" "$app/PrivacyInfo.xcprivacy"
 
@@ -124,6 +126,11 @@ expect_fail_with "signed mode rejects an unsigned Simulator bundle" \
   "$gate" --signed "$simulator_app"
 
 signed_app=$(make_fixture "$test_root/signed" iphoneos true)
+debug_dylib_app=$(make_fixture "$test_root/debug-dylib" iphonesimulator false)
+: >"$debug_dylib_app/SpyClash"
+printf '%s\n' 'com.spyclash.ios.limitless.weekly' >"$debug_dylib_app/SpyClash.debug.dylib"
+expect_pass "Simulator Debug checks the application dylib instead of the launch shim" "$gate" "$debug_dylib_app"
+
 expect_pass "auto validates effective entitlements for iphoneos" "$gate" "$signed_app"
 
 development_push_app=$(make_fixture "$test_root/development-push" iphoneos true)
@@ -224,23 +231,23 @@ expect_fail_with "gate rejects a leaked StoreKit configuration" \
   "$gate" "$storekit_config_app"
 
 storekit_linkage_app=$(make_fixture "$test_root/storekit-linkage" iphoneos true)
-touch "$storekit_linkage_app/.mock-storekit-linkage"
-expect_fail_with "gate rejects StoreKit framework linkage" \
-  'The Release executable still links StoreKit.framework.' \
+unlink "$storekit_linkage_app/.mock-storekit-linkage"
+expect_fail_with "gate rejects missing StoreKit framework linkage" \
+  'Apple IAP Release must link StoreKit.framework.' \
   "$gate" "$storekit_linkage_app"
 
 iap_marker_app=$(make_fixture "$test_root/iap-marker" iphoneos true)
-printf '%s\n' 'com.spyclash.ios.limitless.weekly' >>"$iap_marker_app/SpyClash"
-expect_fail_with "gate rejects native IAP markers" \
-  'The Release executable still contains native IAP markers.' \
+: >"$iap_marker_app/SpyClash"
+expect_fail_with "gate rejects missing native IAP product" \
+  'Apple IAP Release is missing the expected LIMITLESS product.' \
   "$gate" "$iap_marker_app"
 
 purchase_history_app=$(make_fixture "$test_root/purchase-history" iphoneos true)
 /usr/libexec/PlistBuddy \
-  -c 'Set :NSPrivacyCollectedDataTypes:0:NSPrivacyCollectedDataType NSPrivacyCollectedDataTypePurchaseHistory' \
+  -c 'Delete :NSPrivacyCollectedDataTypes:0' \
   "$purchase_history_app/PrivacyInfo.xcprivacy" >/dev/null
-expect_fail_with "gate rejects Purchase History in a free Release manifest" \
-  'Free Release privacy manifest still declares Purchase History.' \
+expect_fail_with "gate requires Purchase History for Apple IAP" \
+  'Apple IAP Release must declare Purchase History in its root privacy manifest.' \
   "$gate" "$purchase_history_app"
 
 nested_purchase_history_app=$(make_fixture "$test_root/nested-purchase-history" iphoneos true)
@@ -250,7 +257,7 @@ cp "$root/SpyClash/Resources/PrivacyInfo.xcprivacy" "$nested_purchase_history_ma
   -c 'Set :NSPrivacyCollectedDataTypes:0:NSPrivacyCollectedDataType NSPrivacyCollectedDataTypePurchaseHistory' \
   "$nested_purchase_history_manifest" >/dev/null
 expect_fail_with "gate rejects Purchase History in a nested privacy manifest" \
-  'Free Release privacy manifest still declares Purchase History.' \
+  'Purchase History must not be declared by the Live Activity extension or an unrelated bundled component.' \
   "$gate" "$nested_purchase_history_app"
 
 commerce_case=0

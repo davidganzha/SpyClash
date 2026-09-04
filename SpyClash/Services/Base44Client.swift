@@ -1537,6 +1537,29 @@ final class Base44Client {
         try await request("/apps/\(Self.appID)/functions/\(name)", method: "POST", body: body)
     }
 
+    func checkSubscription() async throws -> MembershipSnapshot {
+        try await membershipAction("checkSubscription", body: [:])
+    }
+
+    func prepareAppStorePurchase() async throws -> AppStorePurchaseContext {
+        try await membershipAction("app-store-entitlement", body: ["action": "prepare"])
+    }
+
+    func syncAppStoreTransaction(signedTransaction: String) async throws -> AppStoreEntitlementSyncResponse {
+        try await membershipAction("app-store-entitlement", body: [
+            "action": "sync_transaction", "signed_transaction": signedTransaction,
+        ])
+    }
+
+    private func membershipAction<T: Decodable>(_ name: String, body: [String: String]) async throws -> T {
+        let expectedToken = try requireAccessToken()
+        var payload = body
+        payload["access_token"] = expectedToken
+        let result: T = try await invokeFunction(name, body: payload)
+        guard currentAccessToken == expectedToken else { throw CancellationError() }
+        return result
+    }
+
     private func pushNotificationAction<T: Decodable>(
         _ payload: PushNotificationActionPayload
     ) async throws -> T {

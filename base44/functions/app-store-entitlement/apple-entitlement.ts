@@ -1,13 +1,26 @@
+import {
+  limitlessApplePurchaseEnabled,
+  limitlessEnabled,
+} from "./limitless-rollout.ts";
 export const SPYCLASH_IOS_BUNDLE_ID = "com.spyclash.ios";
 export const SPYCLASH_APPLE_APP_ID = 6793534085;
 // The historical product id cannot be renamed because Apple transactions and
 // server notifications refer to it permanently.
 export const LEGACY_SUBSCRIPTION_PRODUCT_ID =
   `${SPYCLASH_IOS_BUNDLE_ID}.limitless.weekly`;
-export const CASADA_PROTOCOL_ENABLED = true;
+export const CASADA_PROTOCOL_ENABLED = !limitlessEnabled();
 
-export function casadaPurchaseRetirement() {
-  if (!CASADA_PROTOCOL_ENABLED) return null;
+export function casadaPurchaseRetirement(
+  universalAccess = CASADA_PROTOCOL_ENABLED,
+  applePurchasesEnabled = limitlessApplePurchaseEnabled(),
+) {
+  if (!universalAccess) {
+    return applePurchasesEnabled ? null : {
+      status: 503,
+      message:
+        "New subscriptions are not available yet. Existing purchases can still be restored.",
+    };
+  }
   return {
     status: 409,
     message:

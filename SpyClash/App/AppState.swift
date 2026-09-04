@@ -1277,6 +1277,9 @@ enum SpyClashCustomRoute: Equatable {
 @Observable
 final class AppState: NSObject {
     let client: Base44Client
+    let membership: MembershipStore
+    let storeKit: StoreKitManager
+    let membershipRealtime: MembershipRealtimeService
     let notificationInbox: NotificationInboxStore
     let gameRoomRealtime: GameRoomRealtimeService
     let radarNearby: RadarNearbyService
@@ -1284,6 +1287,7 @@ final class AppState: NSObject {
         didSet {
             let previousUserID = oldValue?.id
             let accountChanged = previousUserID != user?.id
+            bindMembershipAccount()
             if accountChanged {
                 automaticRadarInvitationJoinTask?.cancel()
                 automaticRadarInvitationJoinTask = nil
@@ -1507,10 +1511,22 @@ final class AppState: NSObject {
         let client = Base44Client()
         let radarNearby = RadarNearbyService()
         self.client = client
+        self.membership = MembershipStore(client: client)
+        self.storeKit = StoreKitManager(client: client)
+        self.membershipRealtime = MembershipRealtimeService()
         self.notificationInbox = NotificationInboxStore(client: client)
         self.gameRoomRealtime = GameRoomRealtimeService()
         self.radarNearby = radarNearby
         super.init()
+
+        storeKit.onEntitlementChanged = { [weak self] in
+            await self?.membership.refresh() ?? false
+        }
+        membershipRealtime.onMembershipSignal = { [weak self] in
+            Task { @MainActor [weak self] in
+                _ = await self?.membership.refresh()
+            }
+        }
 
         gameRoomRealtime.onSignal = { [weak self] signal, generation in
             self?.handleGameRoomRealtimeSignal(signal, serviceGeneration: generation)
@@ -5808,12 +5824,15 @@ enum AppShellRoute: String, Hashable {
 }
 
 enum AppSheet: Identifiable, Hashable {
+    case limitless
     case qrScanner
     case roomQR(GameRoom)
     case legal(LegalSheetKind)
 
     var id: String {
         switch self {
+        case .limitless:
+            "limitless"
         case .qrScanner:
             "qrScanner"
         case .roomQR(let room):

@@ -1,4 +1,11 @@
 import { createClient, createClientFromRequest } from "npm:@base44/sdk@0.8.31";
+import { limitlessEnabled } from "./limitless-rollout.ts";
+import {
+  applyAdminGrant,
+  mergeEntitlements,
+  summarizeMembership,
+} from "./membership.ts";
+import { requiresPremiumProfileChange } from "./profile-membership.ts";
 import {
   friendshipAllowsRoomInvite,
   isReservedManualSpyID,
@@ -833,6 +840,50 @@ Deno.serve(async (req) => {
         )
         ? clean(body.spy_card_badge)
         : "operative";
+      const profilePatch = {
+        display_name: displayName,
+        avatar,
+        spy_card_theme: theme,
+        spy_card_accent: accent,
+        spy_card_badge: badge,
+      };
+      if (
+        limitlessEnabled() &&
+        requiresPremiumProfileChange(current, profilePatch)
+      ) {
+        let hasAccess = false;
+        try {
+          const [entitlements, grants] = await Promise.all([
+            base44.asServiceRole.entities.Entitlement.filter(
+              { user_id: current.id },
+              "-last_verified_at",
+              100,
+              0,
+            ),
+            base44.asServiceRole.entities.MembershipGrant.filter(
+              { user_id: current.id },
+              "-created_date",
+              100,
+              0,
+            ),
+          ]);
+          hasAccess = applyAdminGrant(
+            summarizeMembership(mergeEntitlements(entitlements, [])),
+            grants,
+          ).membership.active;
+        } catch {
+          return Response.json({
+            error: "Membership could not be verified. Retry shortly.",
+            code: "membership_unavailable",
+          }, { status: 503 });
+        }
+        if (!hasAccess) {
+          return Response.json({
+            error: "This customization requires LIMITLESS.",
+            code: "limitless_required",
+          }, { status: 403 });
+        }
+      }
       const updated = await withCommunityWriteLeases({
         lifecycleStore,
         userIDs: [current.id],

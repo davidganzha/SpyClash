@@ -170,6 +170,10 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     { id: "signal-target", user_id: "target", room_id: "room-1" },
     { id: "signal-safe", user_id: "other", room_id: "room-1" },
   ]);
+  const membershipSignals = new MockStore([
+    { id: "membership-target", user_id: "target", change_id: "1" },
+    { id: "membership-safe", user_id: "other", change_id: "2" },
+  ]);
   const communityProfileSignals = new MockStore([
     {
       id: "profile-signal-recipient",
@@ -207,12 +211,14 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     pushEventStore: pushEvents,
     notificationReceiptStore: notificationReceipts,
     gameRoomSignalStore: gameRoomSignals,
+    membershipSignalStore: membershipSignals,
     communityProfileSignalStore: communityProfileSignals,
     userID: "target",
     tombstoneUserID: "deleted:stable-target",
   });
 
   assertEquals(comments.records.map((record) => record.id), ["comment-safe"]);
+  assertEquals(membershipSignals.records.map((record) => record.id), ["membership-safe"]);
   assertEquals(invites.records.map((record) => record.id), ["invite-safe"]);
   assertEquals(grants.records.map((record) => record.id), ["grant-safe"]);
   assertEquals(reports.records, [

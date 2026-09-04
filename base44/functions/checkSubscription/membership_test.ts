@@ -132,6 +132,7 @@ Deno.test("expired and billing-retry records do not grant access", () => {
   );
   assert(
     isEntitlementActive({
+      provider: "apple",
       status: "grace_period",
       expires_at: "2026-07-20T12:00:00Z",
     }, now),

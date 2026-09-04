@@ -96,7 +96,11 @@ struct HistoryView: View {
             }
 
         } else {
-            advancedAnalyticsPanel
+            if appState.membership.benefits?.advancedStatistics == true {
+                advancedAnalyticsPanel
+            } else {
+                LimitlessEntry()
+            }
 
             ForEach(Array(visibleHistory.enumerated()), id: \.element.id) { index, item in
                 historyRow(item, index: index)
@@ -119,7 +123,8 @@ struct HistoryView: View {
     }
 
     private var visibleHistory: [GameHistory] {
-        sortedHistory
+        if appState.membership.benefits?.fullHistory == true { return sortedHistory }
+        return Array(sortedHistory.prefix(appState.membership.benefits?.historyLimit ?? 5))
     }
 
     private var metricsHistory: [GameHistory] {

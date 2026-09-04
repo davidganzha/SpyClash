@@ -1,7 +1,8 @@
-// `limitless` remains on the wire solely so already-shipped clients can decode
-// CASADA access. `protocol` is the canonical product meaning.
+import { limitlessEnabled } from "./limitless-rollout.ts";
+
+// CASADA is universal access; LIMITLESS resolves verified provider/admin access.
 export type MembershipTier = "free" | "limitless";
-export type AccessProtocol = "casada";
+export type AccessProtocol = "casada" | "limitless";
 
 export type MembershipBenefits = {
   ai_generations_daily_limit: number | null;
@@ -46,7 +47,7 @@ export const CASADA_BENEFITS: MembershipBenefits = Object.freeze({
 // CASADA deliberately makes generation and every previously paid capability
 // available to every authenticated user. Provider records remain historical
 // billing compatibility data, not an access gate.
-export const CASADA_PROTOCOL_ENABLED = true;
+export const CASADA_PROTOCOL_ENABLED = !limitlessEnabled();
 export const CASADA_COMPATIBILITY_EXPIRY = "9999-12-31T23:59:59Z";
 
 const ACCESS_GRANTING_STATUSES = new Set([
@@ -59,6 +60,9 @@ export function isActiveEntitlement(
   entitlement: EntitlementRecord,
   now = new Date(),
 ): boolean {
+  if (entitlement.provider !== "apple" && entitlement.provider !== "stripe") {
+    return false;
+  }
   if (!ACCESS_GRANTING_STATUSES.has(String(entitlement.status || ""))) {
     return false;
   }
@@ -90,15 +94,22 @@ export function resolveGenerationMembership(
     tier: (active ? "limitless" : "free") as MembershipTier,
     providers,
     benefits: active ? CASADA_BENEFITS : LEGACY_FREE_BENEFITS,
-    expires_at: null as string | null,
+    expires_at: activeEntitlements.reduce<string | null>(
+      (latest, item) =>
+        !latest || Date.parse(item.expires_at!) > Date.parse(latest)
+          ? item.expires_at!
+          : latest,
+      null,
+    ),
   };
 }
 
 export function applyCasadaGenerationAccess(
   membership: ReturnType<typeof resolveGenerationMembership>,
+  universalAccess = CASADA_PROTOCOL_ENABLED,
 ) {
-  if (!CASADA_PROTOCOL_ENABLED) {
-    return { ...membership, protocol: null };
+  if (!universalAccess) {
+    return { ...membership, protocol: "limitless" as AccessProtocol };
   }
   return {
     active: true,
@@ -131,12 +142,20 @@ export function applyAdminGenerationGrant(
   now = new Date(),
 ) {
   if (!hasActiveAdminGrant(grants, now)) return membership;
+  const activeGrants = grants.filter((grant) =>
+    hasActiveAdminGrant([grant], now)
+  );
+  const permanent = activeGrants.some((grant) => !grant.expires_at?.trim());
+  const expiry = permanent ? null : new Date(Math.max(
+    membership.expires_at ? Date.parse(membership.expires_at) : 0,
+    ...activeGrants.map((grant) => Date.parse(grant.expires_at!)),
+  )).toISOString();
   return {
     active: true,
     tier: "limitless" as const,
     providers: Array.from(new Set([...membership.providers, "admin"])),
     benefits: CASADA_BENEFITS,
-    expires_at: membership.expires_at,
+    expires_at: expiry,
   };
 }
 

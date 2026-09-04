@@ -333,7 +333,12 @@ do
       -c 'Print :NSPrivacyCollectedDataTypes' \
       "$inspected_privacy_manifest" 2>/dev/null \
       | grep -F 'NSPrivacyCollectedDataTypePurchaseHistory' >/dev/null; then
-    echo "Free Release privacy manifest still declares Purchase History." >&2
+    if [ "$inspected_privacy_manifest" != "$source_privacy" ] && [ "$inspected_privacy_manifest" != "$app/PrivacyInfo.xcprivacy" ]; then
+      echo "Purchase History must not be declared by the Live Activity extension or an unrelated bundled component." >&2
+      exit 1
+    fi
+  elif [ "$inspected_privacy_manifest" = "$source_privacy" ] || [ "$inspected_privacy_manifest" = "$app/PrivacyInfo.xcprivacy" ]; then
+    echo "Apple IAP Release must declare Purchase History in its root privacy manifest." >&2
     exit 1
   fi
 done
@@ -348,19 +353,23 @@ if [ "$storekit_count" -ne 0 ]; then
   exit 1
 fi
 
-linked_frameworks=$(otool -L "$app/$bundle_executable") || {
+inspection_executable="$app/$bundle_executable"
+# Xcode's Simulator Debug builds place application code in a separate dylib.
+# Signed device/Release validation still inspects the actual executable.
+if [ "$platform_name" = iphonesimulator ] && [ -f "$app/$bundle_executable.debug.dylib" ]; then
+  inspection_executable="$app/$bundle_executable.debug.dylib"
+fi
+linked_frameworks=$(otool -L "$inspection_executable") || {
   echo "Could not inspect linked frameworks in the Release executable." >&2
   exit 1
 }
-if printf '%s\n' "$linked_frameworks" | grep -F 'StoreKit.framework' >/dev/null; then
-  echo "The Release executable still links StoreKit.framework." >&2
+if ! printf '%s\n' "$linked_frameworks" | grep -F 'StoreKit.framework' >/dev/null; then
+  echo "Apple IAP Release must link StoreKit.framework." >&2
   exit 1
 fi
 
-if strings "$app/$bundle_executable" | grep -E \
-    'StoreKitManager|StoreKitProductState|StoreKitPurchaseState|SubscriptionStatus|MembershipStatusResponse|checkSubscription|premiumAvatars|com\.spyclash\.ios\.limitless|purchaseLimitless|restorePurchases|showManageSubscriptions|app-store-entitlement' \
-    >/dev/null; then
-  echo "The Release executable still contains native IAP markers." >&2
+if ! strings "$inspection_executable" | grep -F 'com.spyclash.ios.limitless.weekly' >/dev/null; then
+  echo "Apple IAP Release is missing the expected LIMITLESS product." >&2
   exit 1
 fi
 
@@ -396,4 +405,4 @@ case "$commerce_scan_status" in
     ;;
 esac
 
-echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), 1024px opaque App Store icon present, Live Activity extension embedded, $entitlement_gate_summary, no audio files or playback paths, privacy manifest exact and free of Purchase History, no StoreKit linkage, no native IAP markers or retired commerce copy."
+echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), 1024px opaque App Store icon present, Live Activity extension embedded, $entitlement_gate_summary, no audio files or playback paths, privacy manifest exact with Purchase History, Apple StoreKit and expected LIMITLESS product present, no local StoreKit configuration or retired commerce copy."

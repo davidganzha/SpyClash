@@ -15,6 +15,13 @@ struct SpyClashApp: App {
                 .task {
                     await appState.restoreSession()
                 }
+                .task(id: MembershipActivityScope(account: appState.membershipScope, active: scenePhase == .active)) {
+                    guard scenePhase == .active else {
+                        appState.membershipRealtime.stop()
+                        return
+                    }
+                    await appState.monitorMembership()
+                }
                 .onChange(of: scenePhase, initial: true) { _, phase in
                     let isActive = phase == .active
                     appState.setRadarApplicationActive(

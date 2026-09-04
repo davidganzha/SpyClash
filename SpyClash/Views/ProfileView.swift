@@ -89,9 +89,18 @@ struct ProfileView: View {
             VStack(alignment: .leading, spacing: 16) {
                 synchronizedSpyCard
                 profileCard
+                if appState.membership.snapshot?.isUniversal != true {
+                    LimitlessEntry()
+                }
                 languageCard
-                statsCard
+                if appState.membership.benefits?.advancedStatistics == true {
+                    statsCard
+                }
                 legalCard
+                if appState.membership.snapshot?.providers.contains("apple") == true {
+                    Text(LimitlessCopy(language: appState.language).deletionNotice)
+                        .font(.footnote).foregroundStyle(SpyTheme.muted)
+                }
                 dangerZoneCard
             }
             .padding(.horizontal, 18)
@@ -748,14 +757,20 @@ struct ProfileView: View {
 
     private func avatarButton(_ item: String, index: Int) -> some View {
         let isSelected = avatar == item
+        let locked = !LimitlessProfilePolicy.allows(item, current: appState.user?.avatar, freeValues: LimitlessProfilePolicy.freeAvatars, hasAccess: appState.membership.benefits?.premiumAvatars == true)
 
         return Button {
+            guard !locked else { appState.presentedSheet = .limitless; return }
             avatar = item
             HapticManager.shared.fire(.tabSelection)
         } label: {
             Text(item)
                 .font(.system(size: 24))
                 .frame(width: 44, height: 44)
+                .opacity(locked ? 0.5 : 1)
+                .overlay(alignment: .topTrailing) {
+                    if locked { Image(systemName: "lock.fill").font(.system(size: 9)).foregroundStyle(SpyTheme.red) }
+                }
                 .background(isSelected ? SpyTheme.red.opacity(0.12) : SpyTheme.panelDeep)
                 .overlay(Rectangle().stroke(isSelected ? SpyTheme.red : SpyTheme.stroke, lineWidth: 1))
         }
@@ -876,6 +891,7 @@ struct ProfileView: View {
         let color = cardAccentColor(item)
 
         return Button {
+            guard allowProfileChoice(item.rawValue, current: appState.user?.spyCardAccent, free: "signal_red") else { return }
             selectedCardAccent = item
             HapticManager.shared.fire(.tabSelection)
         } label: {
@@ -945,13 +961,23 @@ struct ProfileView: View {
     }
 
     private func selectCardTheme(_ item: SpyCardThemeID) {
+        guard allowProfileChoice(item.rawValue, current: appState.user?.spyCardTheme, free: "field") else { return }
         selectedCardTheme = item
         HapticManager.shared.fire(.tabSelection)
     }
 
     private func selectCardBadge(_ item: SpyCardBadgeID) {
+        guard allowProfileChoice(item.rawValue, current: appState.user?.spyCardBadge, free: "operative") else { return }
         selectedCardBadge = item
         HapticManager.shared.fire(.tabSelection)
+    }
+
+    private func allowProfileChoice(_ value: String, current: String?, free: String) -> Bool {
+        guard LimitlessProfilePolicy.allows(value, current: current, freeValues: [free], hasAccess: appState.membership.benefits?.premiumAvatars == true) else {
+            appState.presentedSheet = .limitless
+            return false
+        }
+        return true
     }
 
     private func cardThemeTitle(_ item: SpyCardThemeID) -> String {

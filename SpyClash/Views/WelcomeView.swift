@@ -297,17 +297,29 @@ enum LegalSheetKind: String, Identifiable, Hashable {
     }
 
     func sections(for language: AppLanguage) -> [LegalSection] {
-        let sections = switch language {
+        var sections = switch language {
         case .en: englishSections
         case .es: spanishSections
         case .ru: russianSections
         case .uk: ukrainianSections
+        }
+        if self == .terms {
+            sections.append(LegalSection(title: "LIMITLESS · APPLE", text: LimitlessCopy(language: language).renewal + " " + LimitlessCopy(language: language).deletionNotice))
         }
         guard self == .privacy, sections.indices.contains(2) else {
             return sections
         }
 
         var privacySections = sections
+        privacySections.append(LegalSection(
+            title: "LIMITLESS · APPLE",
+            text: localized(language,
+                en: "If you use Apple in-app purchases, we process signed transaction identifiers, product, subscription status and expiration, and an app-account token linked to your SpyClash account. Apple verifies the purchase; our backend uses these records to grant, restore, synchronize or revoke access and prevent duplicate purchases. We do not receive your payment-card details. Purchase history is linked to your account for app functionality, not advertising or tracking.",
+                es: "Si usas compras integradas de Apple, procesamos identificadores de transacciones firmadas, producto, estado y vencimiento de la suscripción y un token vinculado a tu cuenta SpyClash. Apple verifica la compra; nuestro servidor usa estos registros para activar, restaurar, sincronizar o revocar el acceso y evitar compras duplicadas. No recibimos los datos de tu tarjeta. El historial se vincula a tu cuenta para el funcionamiento de la app, no para publicidad o seguimiento.",
+                ru: "Если вы используете встроенные покупки Apple, мы обрабатываем идентификаторы подписанных транзакций, продукт, статус и срок подписки, а также токен, связанный с аккаунтом SpyClash. Apple проверяет покупку; наш сервер использует эти записи для предоставления, восстановления, синхронизации или отзыва доступа и предотвращения повторных покупок. Мы не получаем данные банковской карты. История покупок связана с аккаунтом для работы приложения, а не для рекламы или отслеживания.",
+                uk: "Якщо ви використовуєте вбудовані купівлі Apple, ми обробляємо ідентифікатори підписаних транзакцій, продукт, статус і строк підписки та токен, пов’язаний з акаунтом SpyClash. Apple перевіряє купівлю; наш сервер використовує ці записи для надання, відновлення, синхронізації або відкликання доступу та запобігання повторним купівлям. Ми не отримуємо дані банківської картки. Історія купівель пов’язана з акаунтом для роботи застосунку, а не для реклами чи відстеження."
+            )
+        ))
         let dataSharing = privacySections[2]
         let equivalentProtection = localized(
             language,

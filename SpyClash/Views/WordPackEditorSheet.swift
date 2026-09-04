@@ -24,6 +24,7 @@ struct WordPackEditorSheet: View {
     @State private var activeGenerationID: UUID?
     @State private var activeSaveID: UUID?
     @State private var operationTask: Task<Void, Never>?
+    @State private var accessSheet: LimitlessSheet?
     @FocusState private var focusedField: Field?
 
     private let initialDraft: WordPackDraft
@@ -130,6 +131,10 @@ struct WordPackEditorSheet: View {
             }
         }
         .interactiveDismissDisabled(isBusy || hasUnsavedChanges)
+        .sheet(item: $accessSheet) { _ in
+            PricingView().presentationDetents([.large])
+                .presentationDragIndicator(.hidden).presentationCornerRadius(0)
+        }
         .animation(.smooth(duration: 0.2), value: step)
         .animation(.smooth(duration: 0.2), value: showDiscardConfirmation)
         .animation(.smooth(duration: 0.2), value: showReplaceConfirmation)
@@ -301,6 +306,17 @@ struct WordPackEditorSheet: View {
     private var aiSetupContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             introBlock(title: flowCopy.aiSetupTitle, body: flowCopy.aiSetupBody)
+            if appState.membership.snapshot?.isUniversal != true {
+                let copy = LimitlessCopy(language: appState.language)
+                if let remaining = appState.membership.snapshot?.aiRemaining {
+                    Text("\(copy.remaining): \(remaining)")
+                        .font(.footnote).foregroundStyle(SpyTheme.muted)
+                }
+                if !appState.membership.hasAccess {
+                    Button("LIMITLESS") { accessSheet = LimitlessSheet() }
+                        .buttonStyle(SpyButtonStyle(variant: .outline))
+                }
+            }
 
             SpyPanel {
                 VStack(alignment: .leading, spacing: 18) {
@@ -920,6 +936,7 @@ struct WordPackEditorSheet: View {
     }
 
     private func performGeneration(_ request: WordPackAIGenerationRequest) async {
+        let expectedAccount = appState.membershipScope
         defer {
             if activeGenerationID == request.id {
                 isGenerating = false
@@ -946,12 +963,14 @@ struct WordPackEditorSheet: View {
             }
 
             guard !Task.isCancelled,
+                  appState.membershipScope == expectedAccount,
                   activeGenerationID == request.id,
                   currentAISignature == request.signature else {
                 return
             }
 
             draft.applyGenerated(generated, fallbackName: request.signature.theme)
+            appState.membership.updateAIUsage(used: generated.aiGenerationsToday, remaining: generated.aiRemaining)
             pendingAIRequest = nil
             lastSuccessfulAISignature = request.signature
             validationAttempted = false

@@ -1,4 +1,8 @@
 import Stripe from "npm:stripe@14";
+import {
+  limitlessApplePurchaseEnabled,
+  limitlessEnabled,
+} from "./limitless-rollout.ts";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
   canonicalBase44Request,
@@ -408,22 +412,28 @@ Deno.serve(async (req) => {
   let verifiedStripeEntitlements: EntitlementRecord[] = [];
   let stripeError: unknown = null;
   let persistenceWarnings: string[] = [];
-  try {
-    const result = await syncStripeEntitlements(
-      store,
-      base44.asServiceRole.entities.BillingIdentityLifecycle,
-      base44.asServiceRole.entities.User,
-      { id: user.id, email: user.email },
-      storedEntitlements,
-    );
-    verifiedStripeEntitlements = result.entitlements;
-    persistenceWarnings = result.persistenceWarnings;
-  } catch (error) {
-    stripeError = error;
-    console.error(
-      "Stripe subscription verification error:",
-      errorMessage(error),
-    );
+  // This rollout restores Apple IAP only. Do not depend on the deferred Stripe
+  // integration to classify a native FREE account or to restore Apple access.
+  // Existing provider records remain readable and retain their verified expiry.
+  const verifyStripeLive = !limitlessEnabled();
+  if (verifyStripeLive) {
+    try {
+      const result = await syncStripeEntitlements(
+        store,
+        base44.asServiceRole.entities.BillingIdentityLifecycle,
+        base44.asServiceRole.entities.User,
+        { id: user.id, email: user.email },
+        storedEntitlements,
+      );
+      verifiedStripeEntitlements = result.entitlements;
+      persistenceWarnings = result.persistenceWarnings;
+    } catch (error) {
+      stripeError = error;
+      console.error(
+        "Stripe subscription verification error:",
+        errorMessage(error),
+      );
+    }
   }
 
   const stripeAccountMismatch = stripeError instanceof
@@ -503,9 +513,15 @@ Deno.serve(async (req) => {
       ),
     sources: publicEntitlementSources(allEntitlements),
     checked_at: new Date().toISOString(),
+    apple_purchase_enabled: !membership.active &&
+      limitlessApplePurchaseEnabled(),
     provider_sync: {
       entitlements: entityReadError ? "degraded" : "ok",
-      stripe: stripeError ? "degraded" : "ok",
+      stripe: !verifyStripeLive
+        ? "not_required"
+        : stripeError
+        ? "degraded"
+        : "ok",
       persistence: persistenceWarnings.length ? "degraded" : "ok",
       admin_grant: adminGrantReadError ? "degraded" : "ok",
       quota: quotaReadError ? "degraded" : "ok",
