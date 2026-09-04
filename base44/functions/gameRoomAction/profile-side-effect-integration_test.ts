@@ -34,13 +34,23 @@ Deno.test("terminal profile repair is post-commit, durable, and push-independent
   assertStringIncludes(repair, "cached?.sources");
   assertStringIncludes(repair, "fanoutCommunityProfileInvalidations({");
   assertStringIncludes(repair, "runCommunityProfileRepair({");
-  assertStringIncludes(repair, "userIDs: [userID]");
+  assertStringIncludes(repair, "userIDs,");
+  assertStringIncludes(repair, "[profileUserID, recipientUserID]");
+  assertStringIncludes(repair, "beforeSignalWrite: async () =>");
+  assertStringIncludes(
+    repair,
+    "assertRoomWriterLeaseForUser(context, profileUserID)",
+  );
+  assertStringIncludes(
+    repair,
+    "assertRoomWriterLeaseForUser(context, recipientUserID)",
+  );
   assertStringIncludes(repair, "recipientUserIDs: [recipientUserID]");
   assertStringIncludes(repair, "await Promise.allSettled(");
   assertStringIncludes(repair, "await mirrorBarrier");
   assertStringIncludes(repair, "serializeFanout");
-  assertStringIncludes(repair, "concurrency: 4");
-  assert(!repair.includes("userIDs,\n      attempts: 1"));
+  assertStringIncludes(repair, "concurrency: 1");
+  assertStringIncludes(repair, "userIDs,\n      attempts: 1");
   assertStringIncludes(
     dispatch,
     "await fanoutDeferredFinishedRoomSignal(base44, room)",

@@ -848,11 +848,23 @@ Deno.serve(async (req) => {
           ),
       });
       try {
-        await fanoutProfileUpdate({
+        const fanout = await fanoutProfileUpdate({
           userStore: base44.asServiceRole.entities.User,
           signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
+          lifecycleStore,
           profileUserID: current.id,
+          logError: (message, error) =>
+            console.error(
+              message,
+              error instanceof Error ? error.message : error,
+            ),
         });
+        if (fanout.failed > 0) {
+          console.error("community profile fanout deferred", {
+            attempted: fanout.attempted,
+            failed: fanout.failed,
+          });
+        }
       } catch (fanoutError) {
         console.error("community profile fanout deferred", fanoutError);
       }

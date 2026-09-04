@@ -713,6 +713,8 @@ Deno.serve(async (req) => {
         notificationReceiptStore:
           base44.asServiceRole.entities.NotificationReadReceipt,
         gameRoomSignalStore: base44.asServiceRole.entities.GameRoomSignal,
+        communityProfileSignalStore:
+          base44.asServiceRole.entities.CommunityProfileSignal,
         userID: user.id,
         tombstoneUserID: retentionPatch.user_id,
       });

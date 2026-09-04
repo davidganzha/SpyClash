@@ -187,3 +187,30 @@ Deno.test("empty participant scope performs no signal-store reads", async () => 
   );
   assertEquals(signals.filterCalls, 0);
 });
+
+Deno.test("signal writes reassert both lifecycle owners at every persistence boundary", async () => {
+  const signals = new MemorySignalStore();
+  signals.rows = [{
+    id: "signal-a",
+    recipient_user_id: "user-a",
+    profile_user_id: "old-profile",
+    revision: 1,
+  }];
+  const assertions: string[] = [];
+
+  const result = await fanoutCommunityProfileInvalidations({
+    signalStore: signals,
+    recipientUserIDs: ["user-a", "user-b"],
+    profileUserIDs: ["profile-owner"],
+    revisionBase: 200,
+    beforeSignalWrite: (recipientUserID, profileUserID) => {
+      assertions.push(`${recipientUserID}:${profileUserID}`);
+    },
+  });
+
+  assertEquals(result, { attempted: 2, succeeded: 2, failed: 0 });
+  assertEquals(assertions.sort(), [
+    "user-a:profile-owner",
+    "user-b:profile-owner",
+  ]);
+});

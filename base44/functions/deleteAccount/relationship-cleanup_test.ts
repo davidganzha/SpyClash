@@ -170,6 +170,28 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     { id: "signal-target", user_id: "target", room_id: "room-1" },
     { id: "signal-safe", user_id: "other", room_id: "room-1" },
   ]);
+  const communityProfileSignals = new MockStore([
+    {
+      id: "profile-signal-recipient",
+      recipient_user_id: "target",
+      profile_user_id: "other",
+    },
+    {
+      id: "profile-signal-profile",
+      recipient_user_id: "other",
+      profile_user_id: "target",
+    },
+    {
+      id: "profile-signal-both",
+      recipient_user_id: "target",
+      profile_user_id: "target",
+    },
+    {
+      id: "profile-signal-safe",
+      recipient_user_id: "other",
+      profile_user_id: "third",
+    },
+  ]);
 
   await deleteAccountRelationshipRecords({
     profileCommentStore: comments,
@@ -185,6 +207,7 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     pushEventStore: pushEvents,
     notificationReceiptStore: notificationReceipts,
     gameRoomSignalStore: gameRoomSignals,
+    communityProfileSignalStore: communityProfileSignals,
     userID: "target",
     tombstoneUserID: "deleted:stable-target",
   });
@@ -239,6 +262,9 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
   assertEquals(gameRoomSignals.records.map((record) => record.id), [
     "signal-safe",
   ]);
+  assertEquals(communityProfileSignals.records.map((record) => record.id), [
+    "profile-signal-safe",
+  ]);
 
   // A lost response/retry must be idempotent and must not erase the retained
   // report or change its moderation evidence a second time.
@@ -256,6 +282,7 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     pushEventStore: pushEvents,
     notificationReceiptStore: notificationReceipts,
     gameRoomSignalStore: gameRoomSignals,
+    communityProfileSignalStore: communityProfileSignals,
     userID: "target",
     tombstoneUserID: "deleted:stable-target",
   });
@@ -270,5 +297,8 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
   ]);
   assertEquals(aiWordPackRequestResults.records.map((record) => record.id), [
     "request-safe",
+  ]);
+  assertEquals(communityProfileSignals.records.map((record) => record.id), [
+    "profile-signal-safe",
   ]);
 });

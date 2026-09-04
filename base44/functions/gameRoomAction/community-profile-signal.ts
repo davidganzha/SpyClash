@@ -22,6 +22,10 @@ async function writeSignal(input: {
   recipientUserID: string;
   profileUserID: string;
   revision: number;
+  beforeWrite?: (
+    recipientUserID: string,
+    profileUserID: string,
+  ) => void | Promise<void>;
 }): Promise<void> {
   const signal = {
     recipient_user_id: input.recipientUserID,
@@ -30,6 +34,7 @@ async function writeSignal(input: {
   };
   const existing = input.signalByRecipient.get(input.recipientUserID);
   if (clean(existing?.id)) {
+    await input.beforeWrite?.(input.recipientUserID, input.profileUserID);
     await input.store.update(clean(existing?.id), signal);
     input.signalByRecipient.set(input.recipientUserID, {
       ...existing,
@@ -39,6 +44,7 @@ async function writeSignal(input: {
   }
 
   try {
+    await input.beforeWrite?.(input.recipientUserID, input.profileUserID);
     const created = await input.store.create(signal) as Entity;
     const createdID = clean(created?.id);
     if (!createdID) throw new Error("Community profile signal id missing");
@@ -49,6 +55,7 @@ async function writeSignal(input: {
     }) || [];
     const writable = raced.find((row) => clean(row?.id));
     if (!writable) throw createError;
+    await input.beforeWrite?.(input.recipientUserID, input.profileUserID);
     await input.store.update(clean(writable.id), signal);
     input.signalByRecipient.set(input.recipientUserID, {
       ...writable,
@@ -69,6 +76,10 @@ export async function fanoutCommunityProfileInvalidations(input: {
   profileUserIDs: readonly unknown[];
   revisionBase?: number;
   logError?: (message: string, error: unknown) => void;
+  beforeSignalWrite?: (
+    recipientUserID: string,
+    profileUserID: string,
+  ) => void | Promise<void>;
 }): Promise<{ attempted: number; succeeded: number; failed: number }> {
   const profileUserIDs = unique(input.profileUserIDs);
   if (!profileUserIDs.length) {
@@ -134,6 +145,7 @@ export async function fanoutCommunityProfileInvalidations(input: {
               recipientUserID,
               profileUserID,
               revision: revisionBase + profileOffset,
+              beforeWrite: input.beforeSignalWrite,
             })
           ),
       );

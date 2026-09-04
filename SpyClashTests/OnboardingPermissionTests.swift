@@ -615,6 +615,134 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         )
     }
 
+    func testConnectedRangingExchangeIdentifiersRequireCanonicalizableUUIDs() throws {
+        let exchangeID = "09fe3da4-8a86-4d10-b108-3277daec1ec7"
+        let supersedesExchangeID = "888E481B-69B1-4639-8616-B933F33F6183"
+        let normalized = try XCTUnwrap(
+            RadarRangingExchangeIdentifierPolicy.normalized(
+                exchangeID: exchangeID,
+                supersedesExchangeID: supersedesExchangeID.lowercased()
+            )
+        )
+
+        XCTAssertEqual(normalized.exchangeID, exchangeID.uppercased())
+        XCTAssertEqual(
+            normalized.supersedesExchangeID,
+            supersedesExchangeID
+        )
+        XCTAssertNotNil(
+            RadarRangingExchangeIdentifierPolicy.normalized(
+                exchangeID: exchangeID,
+                supersedesExchangeID: nil
+            )
+        )
+        XCTAssertNil(
+            RadarRangingExchangeIdentifierPolicy.normalized(
+                exchangeID: "",
+                supersedesExchangeID: nil
+            )
+        )
+        XCTAssertNil(
+            RadarRangingExchangeIdentifierPolicy.normalized(
+                exchangeID: String(repeating: "a", count: 4_096),
+                supersedesExchangeID: nil
+            )
+        )
+        XCTAssertNil(
+            RadarRangingExchangeIdentifierPolicy.normalized(
+                exchangeID: exchangeID,
+                supersedesExchangeID: "not-a-uuid"
+            )
+        )
+        XCTAssertNil(
+            RadarRangingExchangeIdentifierPolicy.normalized(
+                exchangeID: exchangeID,
+                supersedesExchangeID: exchangeID.uppercased()
+            )
+        )
+    }
+
+    func testConnectedRangingExchangeAdmissionIsRollingAndBounded() throws {
+        var peerHistory: [TimeInterval] = []
+        for timestamp in [0.0, 1.0, 2.0] {
+            peerHistory = try XCTUnwrap(
+                RadarConnectedExchangeAdmissionPolicy.peerHistoryAfterAdmitting(
+                    at: timestamp,
+                    existing: peerHistory
+                )
+            )
+        }
+        XCTAssertNil(
+            RadarConnectedExchangeAdmissionPolicy.peerHistoryAfterAdmitting(
+                at: 3,
+                existing: peerHistory
+            )
+        )
+        XCTAssertEqual(peerHistory, [0, 1, 2])
+        XCTAssertEqual(
+            try XCTUnwrap(
+                RadarConnectedExchangeAdmissionPolicy.peerHistoryAfterAdmitting(
+                    at: 10.1,
+                    existing: peerHistory
+                )
+            ),
+            [1, 2, 10.1]
+        )
+        XCTAssertFalse(
+            RadarConnectedExchangeAdmissionPolicy.requiresAdmission(
+                repeatsCurrentExchange: true
+            )
+        )
+        XCTAssertTrue(
+            RadarConnectedExchangeAdmissionPolicy.requiresAdmission(
+                repeatsCurrentExchange: false
+            )
+        )
+
+        var globalHistory: [TimeInterval] = []
+        for index in 0..<RadarConnectedExchangeAdmissionPolicy.maximumGlobalAdoptions {
+            globalHistory = try XCTUnwrap(
+                RadarConnectedExchangeAdmissionPolicy.globalHistoryAfterAdmitting(
+                    at: TimeInterval(index) / 10,
+                    existing: globalHistory
+                )
+            )
+        }
+        XCTAssertNil(
+            RadarConnectedExchangeAdmissionPolicy.globalHistoryAfterAdmitting(
+                at: 5,
+                existing: globalHistory
+            )
+        )
+    }
+
+    func testRetiredRangingExchangeHistoryIsFIFOAndBounded() {
+        var history: [String] = []
+        for index in 0..<80 {
+            history = RadarRetiredRangingExchangePolicy.history(
+                afterRemembering: "exchange-\(index)",
+                in: history
+            )
+        }
+
+        XCTAssertEqual(
+            history.count,
+            RadarRetiredRangingExchangePolicy.maximumRememberedExchangeIDs
+        )
+        XCTAssertEqual(history.first, "exchange-16")
+        XCTAssertEqual(history.last, "exchange-79")
+        history = RadarRetiredRangingExchangePolicy.history(
+            afterRemembering: "exchange-20",
+            in: history
+        )
+        XCTAssertEqual(
+            history.count,
+            RadarRetiredRangingExchangePolicy.maximumRememberedExchangeIDs
+        )
+        XCTAssertEqual(history.last, "exchange-20")
+        XCTAssertEqual(history.filter { $0 == "exchange-20" }.count, 1)
+    }
+
     func testRadarRangefinderPolicyRecognizesOnlyExactNearbyInteractionDenial() {
         let denial = NSError(
             domain: NIErrorDomain,

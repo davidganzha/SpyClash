@@ -488,11 +488,13 @@ if (initialPlan.blockerTotal > 0) {
 
   let profileFanout = "completed";
   try {
-    await profileSignalModule.fanoutProfileUpdate({
+    const fanout = await profileSignalModule.fanoutProfileUpdate({
       userStore: base44.entities.User,
       signalStore: base44.entities.CommunityProfileSignal,
+      lifecycleStore: base44.entities.BillingIdentityLifecycle,
       profileUserID: targetUserID,
     });
+    if (Number(fanout?.failed) > 0) profileFanout = "deferred";
   } catch {
     profileFanout = "deferred";
   }

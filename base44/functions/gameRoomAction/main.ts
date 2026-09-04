@@ -4058,15 +4058,15 @@ function profileRepairLifecycleIsGone(error) {
     ["deletion_in_progress", "user_missing"].includes(clean(error.code));
 }
 
-async function withSingleProfileRepairLease(base44, userIDValue, action) {
-  const userID = clean(userIDValue);
-  if (!userID) return { status: "gone" };
+async function withProfileRepairLeases(base44, userIDValues, action) {
+  const userIDs = uniqueStrings(userIDValues);
+  if (!userIDs.length) return { status: "gone" };
   try {
     const value = await withRoomWriteLeases({
       lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
-      userIDs: [userID],
+      userIDs,
       attempts: 1,
-      action: (context) => action(context, userID),
+      action: (context) => action(context, userIDs),
     });
     return { status: "performed", value };
   } catch (error) {
@@ -4091,9 +4091,9 @@ async function repairCommunityProfileHistorySource(
     return true;
   }
 
-  const mirror = await withSingleProfileRepairLease(
+  const mirror = await withProfileRepairLeases(
     base44,
-    profileUserID,
+    [profileUserID],
     async (context) => {
       const results = await reconcileCommunityProfileMirrors({
         historyStore: base44.asServiceRole.entities.GameHistory,
@@ -4120,16 +4120,23 @@ async function repairCommunityProfileHistorySource(
     );
     const result = await repairCommunityProfileRecipients({
       recipientUserIDs,
-      concurrency: 4,
+      // Every recipient scope also owns the shared profile identity lease.
+      // Serialize these short writes so sibling scopes do not contend with one
+      // another and falsely defer an otherwise healthy durable repair source.
+      concurrency: 1,
       repairRecipient: async (recipientUserID) => {
-        const outcome = await withSingleProfileRepairLease(
+        const outcome = await withProfileRepairLeases(
           base44,
-          recipientUserID,
-          async () => {
+          [profileUserID, recipientUserID],
+          async (context) => {
             const signal = await fanoutCommunityProfileInvalidations({
               signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
               recipientUserIDs: [recipientUserID],
               profileUserIDs: [profileUserID],
+              beforeSignalWrite: async () => {
+                await assertRoomWriterLeaseForUser(context, profileUserID);
+                await assertRoomWriterLeaseForUser(context, recipientUserID);
+              },
               logError: (message, error) =>
                 console.error(message, error?.message || error),
             });

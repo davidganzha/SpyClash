@@ -374,6 +374,102 @@ enum RadarRangingExchangeCollisionPolicy {
     }
 }
 
+enum RadarRangingExchangeIdentifierPolicy {
+    static func normalized(
+        exchangeID: String?,
+        supersedesExchangeID: String?
+    ) -> (exchangeID: String, supersedesExchangeID: String?)? {
+        guard let exchangeID,
+              exchangeID.utf8.count == 36,
+              let parsedExchangeID = UUID(uuidString: exchangeID) else {
+            return nil
+        }
+        let normalizedExchangeID = parsedExchangeID.uuidString
+        let normalizedSupersedesExchangeID: String?
+        if let supersedesExchangeID {
+            guard supersedesExchangeID.utf8.count == 36,
+                  let parsedSupersedesExchangeID = UUID(
+                    uuidString: supersedesExchangeID
+                  ) else {
+                return nil
+            }
+            normalizedSupersedesExchangeID = parsedSupersedesExchangeID.uuidString
+        } else {
+            normalizedSupersedesExchangeID = nil
+        }
+        guard normalizedSupersedesExchangeID != normalizedExchangeID else {
+            return nil
+        }
+        return (normalizedExchangeID, normalizedSupersedesExchangeID)
+    }
+}
+
+enum RadarConnectedExchangeAdmissionPolicy {
+    static let maximumPeerAdoptions = 3
+    static let peerWindowSeconds: TimeInterval = 10
+    static let maximumGlobalAdoptions = 24
+    static let globalWindowSeconds: TimeInterval = 30
+
+    static func requiresAdmission(repeatsCurrentExchange: Bool) -> Bool {
+        !repeatsCurrentExchange
+    }
+
+    static func peerHistoryAfterAdmitting(
+        at timestamp: TimeInterval,
+        existing history: [TimeInterval]
+    ) -> [TimeInterval]? {
+        historyAfterAdmitting(
+            at: timestamp,
+            existing: history,
+            maximum: maximumPeerAdoptions,
+            windowSeconds: peerWindowSeconds
+        )
+    }
+
+    static func globalHistoryAfterAdmitting(
+        at timestamp: TimeInterval,
+        existing history: [TimeInterval]
+    ) -> [TimeInterval]? {
+        historyAfterAdmitting(
+            at: timestamp,
+            existing: history,
+            maximum: maximumGlobalAdoptions,
+            windowSeconds: globalWindowSeconds
+        )
+    }
+
+    private static func historyAfterAdmitting(
+        at timestamp: TimeInterval,
+        existing history: [TimeInterval],
+        maximum: Int,
+        windowSeconds: TimeInterval
+    ) -> [TimeInterval]? {
+        guard timestamp.isFinite else { return nil }
+        let cutoff = timestamp - windowSeconds
+        let recent = history.filter {
+            $0.isFinite && $0 > cutoff && $0 <= timestamp
+        }
+        guard recent.count < maximum else { return nil }
+        return recent + [timestamp]
+    }
+}
+
+enum RadarRetiredRangingExchangePolicy {
+    static let maximumRememberedExchangeIDs = 64
+
+    static func history(
+        afterRemembering exchangeID: String,
+        in existing: [String]
+    ) -> [String] {
+        var result = existing.filter { $0 != exchangeID }
+        result.append(exchangeID)
+        if result.count > maximumRememberedExchangeIDs {
+            result.removeFirst(result.count - maximumRememberedExchangeIDs)
+        }
+        return result
+    }
+}
+
 enum RadarRangefinderResumePolicy {
     static func canRun(
         wasSuspended: Bool,
@@ -953,7 +1049,9 @@ final class RadarNearbyService: NSObject {
     private var rangingTokenExchangeFailureCounts: [String: Int] = [:]
     private var rangingRecoveryFailureCounts: [String: Int] = [:]
     private var rangingExchanges: [String: RadarRangingExchange] = [:]
-    private var retiredRangingExchangeIDs: [String: Set<String>] = [:]
+    private var retiredRangingExchangeIDs: [String: [String]] = [:]
+    private var incomingRangingExchangeAdmissionTimes: [String: [TimeInterval]] = [:]
+    private var globalIncomingRangingExchangeAdmissionTimes: [TimeInterval] = []
     private var rangingRecoveryRunIDs: [String: UUID] = [:]
     @ObservationIgnored private var rangingRecoveryTasks: [String: Task<Void, Never>] = [:]
     private var pendingRangingRecoveries: [String: RadarPendingRangingRecovery] = [:]
@@ -3716,19 +3814,71 @@ final class RadarNearbyService: NSObject {
               rangefinderAccessState != .unsupported,
               presenceControlPeerIDs.contains(id),
               multipeerSession?.connectedPeers.contains(peerID) == true,
-              let exchangeID = message.rangingExchangeID,
-              !exchangeID.isEmpty,
+              let normalizedExchange = RadarRangingExchangeIdentifierPolicy.normalized(
+                exchangeID: message.rangingExchangeID,
+                supersedesExchangeID: message.supersedesRangingExchangeID
+              ),
               let exchangeInitiatorPeerID = message.rangingExchangeInitiatorPeerID,
               !exchangeInitiatorPeerID.isEmpty,
               exchangeInitiatorPeerID == id
-                || exchangeInitiatorPeerID == localPeerID?.displayName,
-              message.supersedesRangingExchangeID != exchangeID else {
+                || exchangeInitiatorPeerID == localPeerID?.displayName else {
             debugLog("ignored connected ranging request peer=\(id)")
             return
         }
+
+        let incomingExchange = RadarRangingExchange(
+            id: normalizedExchange.exchangeID,
+            initiatorPeerID: exchangeInitiatorPeerID,
+            supersedesExchangeID: normalizedExchange.supersedesExchangeID
+        )
+        if retiredRangingExchangeIDs[id]?.contains(incomingExchange.id) == true {
+            debugLog(
+                "ignored retired NI exchange peer=\(id) exchange=\(incomingExchange.id.prefix(6))"
+            )
+            synchronizeCurrentRangingExchange(with: peerID, includeRequest: true)
+            return
+        }
+
+        var repeatsCurrentExchange = false
+        if let currentExchange = rangingExchanges[id] {
+            if currentExchange == incomingExchange {
+                repeatsCurrentExchange = true
+            } else {
+                // Only this device can originate a fresh exchange carrying its
+                // local initiator identity. A remote echo of the exact current
+                // exchange remains valid and is handled above without quota.
+                guard incomingExchange.initiatorPeerID != localPeerID?.displayName,
+                      RadarRangingExchangeCollisionPolicy.shouldAcceptIncoming(
+                        currentInitiatorPeerID: currentExchange.initiatorPeerID,
+                        currentExchangeID: currentExchange.id,
+                        currentSupersedesExchangeID: currentExchange.supersedesExchangeID,
+                        incomingInitiatorPeerID: incomingExchange.initiatorPeerID,
+                        incomingExchangeID: incomingExchange.id,
+                        incomingSupersedesExchangeID: incomingExchange.supersedesExchangeID
+                      ) else {
+                    debugLog(
+                        "kept winning NI exchange peer=\(id) exchange=\(currentExchange.id.prefix(6))"
+                    )
+                    synchronizeCurrentRangingExchange(with: peerID, includeRequest: true)
+                    return
+                }
+            }
+        } else if incomingExchange.initiatorPeerID != id {
+            debugLog("ignored locally impersonated NI exchange peer=\(id)")
+            return
+        }
+
+        if RadarConnectedExchangeAdmissionPolicy.requiresAdmission(
+            repeatsCurrentExchange: repeatsCurrentExchange
+        ),
+           !admitIncomingRangingExchange(for: id) {
+            debugLog("rate-limited connected NI exchange peer=\(id)")
+            return
+        }
+
         // A passive foreground advertiser may never browse the initiator's
-        // discovery metadata. The authenticated wire request itself proves the
-        // connected peer speaks the rangefinder protocol.
+        // discovery metadata. A validated wire request from the connected peer
+        // proves that it speaks the rangefinder protocol.
         rangefinderProbeCapablePeerIDs.insert(id)
         connectedRangingCapablePeerIDs.insert(id)
         if activeRangefinderProbe?.peerID == peerID {
@@ -3739,48 +3889,51 @@ final class RadarNearbyService: NSObject {
         }
         clearRangefinderProbeResponders(for: id)
         rangingControlPeerIDs.insert(id)
-
-        let incomingExchange = RadarRangingExchange(
-            id: exchangeID,
-            initiatorPeerID: exchangeInitiatorPeerID,
-            supersedesExchangeID: message.supersedesRangingExchangeID
-        )
-        if retiredRangingExchangeIDs[id]?.contains(exchangeID) == true {
-            debugLog("ignored retired NI exchange peer=\(id) exchange=\(exchangeID.prefix(6))")
-            synchronizeCurrentRangingExchange(with: peerID, includeRequest: true)
-            return
-        }
-
         if rangefinderAccessState != .granted {
             rangefinderAccessState = .requesting
         }
 
-        if let currentExchange = rangingExchanges[id] {
-            if currentExchange == incomingExchange {
+        if repeatsCurrentExchange {
+            if let currentExchange = rangingExchanges[id] {
                 cancelRangingRecovery(for: id)
                 ensureRangingSession(for: peerID, exchange: currentExchange)
                 synchronizeCurrentRangingExchange(with: peerID, includeRequest: false)
-                return
             }
-            guard RadarRangingExchangeCollisionPolicy.shouldAcceptIncoming(
-                currentInitiatorPeerID: currentExchange.initiatorPeerID,
-                currentExchangeID: currentExchange.id,
-                currentSupersedesExchangeID: currentExchange.supersedesExchangeID,
-                incomingInitiatorPeerID: incomingExchange.initiatorPeerID,
-                incomingExchangeID: incomingExchange.id,
-                incomingSupersedesExchangeID: incomingExchange.supersedesExchangeID
-            ) else {
-                debugLog(
-                    "kept winning NI exchange peer=\(id) exchange=\(currentExchange.id.prefix(6))"
-                )
-                synchronizeCurrentRangingExchange(with: peerID, includeRequest: true)
-                return
-            }
+            return
         }
 
         adoptRangingExchange(incomingExchange, for: id)
         ensureRangingSession(for: peerID, exchange: incomingExchange)
         drainPendingNearbyTokens(for: peerID)
+    }
+
+    private func admitIncomingRangingExchange(for id: String) -> Bool {
+        let timestamp = ProcessInfo.processInfo.systemUptime
+        guard let peerHistory = RadarConnectedExchangeAdmissionPolicy
+            .peerHistoryAfterAdmitting(
+                at: timestamp,
+                existing: incomingRangingExchangeAdmissionTimes[id, default: []]
+            ),
+              let globalHistory = RadarConnectedExchangeAdmissionPolicy
+                .globalHistoryAfterAdmitting(
+                    at: timestamp,
+                    existing: globalIncomingRangingExchangeAdmissionTimes
+                ) else {
+            return false
+        }
+        incomingRangingExchangeAdmissionTimes[id] = peerHistory
+        globalIncomingRangingExchangeAdmissionTimes = globalHistory
+        return true
+    }
+
+    private func rememberRetiredRangingExchange(
+        _ exchangeID: String,
+        for id: String
+    ) {
+        retiredRangingExchangeIDs[id] = RadarRetiredRangingExchangePolicy.history(
+            afterRemembering: exchangeID,
+            in: retiredRangingExchangeIDs[id, default: []]
+        )
     }
 
     private func adoptRangingExchange(
@@ -3790,7 +3943,7 @@ final class RadarNearbyService: NSObject {
         guard rangingExchanges[id] != exchange else { return }
         cancelRangingRecovery(for: id)
         if let previousExchange = rangingExchanges[id] {
-            retiredRangingExchangeIDs[id, default: []].insert(previousExchange.id)
+            rememberRetiredRangingExchange(previousExchange.id, for: id)
         }
         connectedRangingRequestAttempts[id] = nil
         stopRanging(with: id)
@@ -3799,7 +3952,7 @@ final class RadarNearbyService: NSObject {
 
     private func retireCurrentRangingExchange(for id: String) {
         guard let exchange = rangingExchanges.removeValue(forKey: id) else { return }
-        retiredRangingExchangeIDs[id, default: []].insert(exchange.id)
+        rememberRetiredRangingExchange(exchange.id, for: id)
         connectedRangingRequestAttempts[id] = nil
     }
 
@@ -3975,6 +4128,7 @@ final class RadarNearbyService: NSObject {
         cancelRangingRecovery(for: id)
         rangingExchanges[id] = nil
         retiredRangingExchangeIDs[id] = nil
+        incomingRangingExchangeAdmissionTimes[id] = nil
         connectedRangingRequestAttempts[id] = nil
         rangingTokenExchangeFailureCounts[id] = nil
         rangingRecoveryFailureCounts[id] = nil
@@ -4009,6 +4163,8 @@ final class RadarNearbyService: NSObject {
         rangingRecoveryRunIDs.removeAll()
         rangingExchanges.removeAll()
         retiredRangingExchangeIDs.removeAll()
+        incomingRangingExchangeAdmissionTimes.removeAll()
+        globalIncomingRangingExchangeAdmissionTimes.removeAll()
         connectedRangingRequestAttempts.removeAll()
         rangingTokenExchangeFailureCounts.removeAll()
         rangingRecoveryFailureCounts.removeAll()
@@ -4193,16 +4349,21 @@ final class RadarNearbyService: NSObject {
         let exchange: RadarRangingExchange?
         guard isApplicationActive else { return }
         if connectedRangingCapablePeerIDs.contains(id) {
-            guard let exchangeID,
+            guard let normalizedExchange = RadarRangingExchangeIdentifierPolicy.normalized(
+                    exchangeID: exchangeID,
+                    supersedesExchangeID: supersedesExchangeID
+                  ),
                   let exchangeInitiatorPeerID,
                   exchangeInitiatorPeerID == id
                     || exchangeInitiatorPeerID == localPeerID?.displayName,
-                  retiredRangingExchangeIDs[id]?.contains(exchangeID) != true,
+                  retiredRangingExchangeIDs[id]?.contains(
+                    normalizedExchange.exchangeID
+                  ) != true,
                   let currentExchange = rangingExchanges[id],
                   currentExchange == RadarRangingExchange(
-                    id: exchangeID,
+                    id: normalizedExchange.exchangeID,
                     initiatorPeerID: exchangeInitiatorPeerID,
-                    supersedesExchangeID: supersedesExchangeID
+                    supersedesExchangeID: normalizedExchange.supersedesExchangeID
                   ) else {
                 let exchangeLabel = exchangeID.map { String($0.prefix(6)) } ?? "nil"
                 debugLog("ignored stale NI token peer=\(id) exchange=\(exchangeLabel)")
