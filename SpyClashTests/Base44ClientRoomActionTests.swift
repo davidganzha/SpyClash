@@ -1822,6 +1822,96 @@ final class Base44ClientRoomActionTests: XCTestCase {
         )
     }
 
+    func testAcceptingCapturedRadarInvitePreservesNewerInvite() async {
+        let radar = RadarNearbyService()
+        let first = RadarIncomingInvitation(
+            roomCode: "ABC123",
+            hostCallSign: "First Host",
+            hostAvatar: "🕵️",
+            wireInvitationID: "first-invite"
+        )
+        let second = RadarIncomingInvitation(
+            roomCode: "XYZ789",
+            hostCallSign: "Second Host",
+            hostAvatar: "🥷",
+            wireInvitationID: "second-invite"
+        )
+
+        radar.presentForConfirmation(first)
+        radar.presentForConfirmation(second)
+
+        let accepted = await radar.acceptIncomingInvitation(first)
+
+        XCTAssertTrue(accepted)
+        XCTAssertEqual(radar.incomingInvitation, second)
+    }
+
+    func testDecliningCapturedRadarInvitePreservesNewerInvite() {
+        let radar = RadarNearbyService()
+        let first = RadarIncomingInvitation(
+            roomCode: "ABC123",
+            hostCallSign: "First Host",
+            hostAvatar: "🕵️",
+            wireInvitationID: "first-invite"
+        )
+        let second = RadarIncomingInvitation(
+            roomCode: "XYZ789",
+            hostCallSign: "Second Host",
+            hostAvatar: "🥷",
+            wireInvitationID: "second-invite"
+        )
+
+        radar.presentForConfirmation(first)
+        radar.presentForConfirmation(second)
+
+        XCTAssertTrue(radar.declineIncomingInvitation(first))
+        XCTAssertEqual(radar.incomingInvitation, second)
+    }
+
+    func testRestoringCapturedRadarInviteNeverOverwritesNewerInvite() {
+        let radar = RadarNearbyService()
+        let first = RadarIncomingInvitation(
+            roomCode: "ABC123",
+            hostCallSign: "First Host",
+            hostAvatar: "🕵️",
+            wireInvitationID: "first-invite"
+        )
+        let second = RadarIncomingInvitation(
+            roomCode: "XYZ789",
+            hostCallSign: "Second Host",
+            hostAvatar: "🥷",
+            wireInvitationID: "second-invite"
+        )
+
+        radar.presentForConfirmation(first)
+        radar.presentForConfirmation(second)
+        radar.restoreIncomingInvitationIfVacant(first)
+
+        XCTAssertEqual(radar.incomingInvitation, second)
+    }
+
+    func testRadarInvitationJoinGateAllowsOnlyOneConcurrentJoin() throws {
+        var gate = RadarInvitationJoinGate()
+        let firstRunID = try XCTUnwrap(gate.begin())
+        let queuedInvitation = RadarIncomingInvitation(
+            roomCode: "XYZ789",
+            hostCallSign: "Queued Host",
+            hostAvatar: "🥷",
+            wireInvitationID: "queued-invite"
+        )
+
+        XCTAssertTrue(gate.isActive)
+        XCTAssertNil(gate.begin())
+
+        gate.queueAutomatic(queuedInvitation)
+        XCTAssertNil(gate.finish(UUID()))
+        XCTAssertTrue(gate.isActive)
+
+        XCTAssertEqual(gate.finish(firstRunID), queuedInvitation)
+        XCTAssertFalse(gate.isActive)
+        XCTAssertNotNil(gate.begin())
+    }
+
     func testBlockingRadarInvitesDismissesExistingIncomingCard() {
         let radar = RadarNearbyService()
         radar.presentForConfirmation(

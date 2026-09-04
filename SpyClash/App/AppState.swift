@@ -67,6 +67,37 @@ enum RadarInvitePolicySyncState: Equatable {
     case pendingRetry
 }
 
+struct RadarInvitationJoinGate {
+    private(set) var activeRunID: UUID?
+    private var queuedAutomaticInvitation: RadarIncomingInvitation?
+
+    var isActive: Bool {
+        activeRunID != nil
+    }
+
+    mutating func begin() -> UUID? {
+        guard activeRunID == nil else { return nil }
+        let runID = UUID()
+        activeRunID = runID
+        return runID
+    }
+
+    mutating func queueAutomatic(_ invitation: RadarIncomingInvitation) {
+        queuedAutomaticInvitation = invitation
+    }
+
+    mutating func clearQueuedAutomaticInvitation() {
+        queuedAutomaticInvitation = nil
+    }
+
+    mutating func finish(_ runID: UUID) -> RadarIncomingInvitation? {
+        guard activeRunID == runID else { return nil }
+        activeRunID = nil
+        defer { queuedAutomaticInvitation = nil }
+        return queuedAutomaticInvitation
+    }
+}
+
 enum RoomSyncOperation: Equatable {
     case creatingRoom
     case joiningRoom
@@ -1254,6 +1285,9 @@ final class AppState: NSObject {
             let previousUserID = oldValue?.id
             let accountChanged = previousUserID != user?.id
             if accountChanged {
+                automaticRadarInvitationJoinTask?.cancel()
+                automaticRadarInvitationJoinTask = nil
+                radarInvitationJoinGate.clearQueuedAutomaticInvitation()
                 onboardingSyncTask?.cancel()
                 onboardingSyncTask = nil
                 onboardingSyncUserID = nil
@@ -1440,6 +1474,8 @@ final class AppState: NSObject {
     @ObservationIgnored private var radarInvitePolicySyncRunID: UUID?
     private var pendingRadarInvitePolicy: RadarInvitePolicy?
     private var radarInvitePolicySyncOwnerUserID: String?
+    private var radarInvitationJoinGate = RadarInvitationJoinGate()
+    @ObservationIgnored private var automaticRadarInvitationJoinTask: Task<Void, Never>?
     @ObservationIgnored private var liveActivitySyncTask: Task<Void, Never>?
     @ObservationIgnored private var liveActivityPushTokenTasks: [String: Task<Void, Never>] = [:]
     @ObservationIgnored private var liveActivityStateTasks: [String: Task<Void, Never>] = [:]
@@ -4371,12 +4407,22 @@ final class AppState: NSObject {
     }
 
     @discardableResult
-    func acceptRadarInvitation() async -> Bool {
-        guard let invitation = radarNearby.incomingInvitation else { return false }
+    func acceptRadarInvitation(_ invitation: RadarIncomingInvitation) async -> Bool {
+        guard let runID = radarInvitationJoinGate.begin() else { return false }
+        defer { finishRadarInvitationJoin(runID) }
+        return await joinRadarInvitation(invitation)
+    }
+
+    var isRadarInvitationJoinInProgress: Bool {
+        radarInvitationJoinGate.isActive
+    }
+
+    private func joinRadarInvitation(_ invitation: RadarIncomingInvitation) async -> Bool {
+        guard radarNearby.isIncomingInvitationPending(invitation) else { return false }
 
         if let activeRoom,
            activeRoom.code.caseInsensitiveCompare(invitation.roomCode) == .orderedSame {
-            await radarNearby.acceptIncomingInvitation()
+            guard await radarNearby.acceptIncomingInvitation(invitation) else { return false }
             selectedTab = .game
             shellRoute = .main
             presentedSheet = nil
@@ -4385,14 +4431,17 @@ final class AppState: NSObject {
 
         let joined = await joinRoom(code: invitation.roomCode)
         if joined {
-            await radarNearby.acceptIncomingInvitation()
+            _ = await radarNearby.acceptIncomingInvitation(invitation)
+        } else {
+            radarNearby.restoreIncomingInvitationIfVacant(invitation)
         }
         return joined
     }
 
-    func declineRadarInvitation() {
-        radarNearby.declineIncomingInvitation()
-        HapticManager.shared.fire(.buttonPress)
+    func declineRadarInvitation(_ invitation: RadarIncomingInvitation) {
+        if radarNearby.declineIncomingInvitation(invitation) {
+            HapticManager.shared.fire(.buttonPress)
+        }
     }
 
     private func handleAutomaticRadarInvitation(_ invitation: RadarIncomingInvitation) {
@@ -4406,15 +4455,25 @@ final class AppState: NSObject {
             return
         }
 
-        guard activeRoom == nil else { return }
-        Task {
-            let joined = await joinRoom(code: invitation.roomCode)
-            if joined {
-                await radarNearby.acceptIncomingInvitation()
-            } else {
-                radarNearby.presentForConfirmation(invitation)
-            }
+        guard radarNearby.isIncomingInvitationPending(invitation) else { return }
+        guard let runID = radarInvitationJoinGate.begin() else {
+            radarInvitationJoinGate.queueAutomatic(invitation)
+            return
         }
+        automaticRadarInvitationJoinTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer {
+                self.automaticRadarInvitationJoinTask = nil
+                self.finishRadarInvitationJoin(runID)
+            }
+            _ = await self.joinRadarInvitation(invitation)
+        }
+    }
+
+    private func finishRadarInvitationJoin(_ runID: UUID) {
+        guard let invitation = radarInvitationJoinGate.finish(runID) else { return }
+        guard radarNearby.isIncomingInvitationPending(invitation) else { return }
+        handleAutomaticRadarInvitation(invitation)
     }
 
     @discardableResult

@@ -507,8 +507,8 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         )
     }
 
-    func testRadarProtocolKeepsOneWayBuild132RangingCompatibility() {
-        XCTAssertEqual(RadarPeerProtocolPolicy.advertisedVersion, "5")
+    func testRadarProtocolKeepsBidirectionalBuild132RangingCompatibility() {
+        XCTAssertEqual(RadarPeerProtocolPolicy.advertisedVersion, "4")
         XCTAssertEqual(RadarPeerProtocolPolicy.acceptedVersions, Set(["4", "5"]))
         XCTAssertEqual(
             RadarPeerProtocolPolicy.connectionStrategy(
@@ -518,6 +518,15 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
                 supportsConnectedRanging: false
             ),
             .legacyRanging
+        )
+        XCTAssertEqual(
+            RadarPeerProtocolPolicy.connectionStrategy(
+                peerVersion: "4",
+                supportsPrecision: true,
+                supportsRangefinderProbe: true,
+                supportsConnectedRanging: true
+            ),
+            .presence
         )
         XCTAssertEqual(
             RadarPeerProtocolPolicy.connectionStrategy(

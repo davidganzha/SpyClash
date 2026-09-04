@@ -310,12 +310,12 @@ enum RadarPeerConnectionStrategy: Equatable {
 }
 
 enum RadarPeerProtocolPolicy {
-    /// Version 5 advertises connected-session ranging. New clients continue
-    /// accepting version 4 so one updated iPhone can initiate the legacy
-    /// ranging invitation expected by build 132. Version-4 clients ignore our
-    /// version-5 advertisement, preventing a competing presence connection.
-    static let advertisedVersion = "5"
-    static let acceptedVersions: Set<String> = ["4", advertisedVersion]
+    /// Continue advertising version 4 so build 132 can discover updated
+    /// iPhones in either direction. Updated clients use the connected-ranging
+    /// capability flag to distinguish one another while still accepting the
+    /// transitional version-5 advertisement used by build 133.
+    static let advertisedVersion = "4"
+    static let acceptedVersions: Set<String> = ["4", "5"]
 
     static func connectionStrategy(
         peerVersion: String,
@@ -1641,22 +1641,36 @@ final class RadarNearbyService: NSObject {
         incomingInvitation = invitation
     }
 
-    func acceptIncomingInvitation() async {
-        guard let invitation = incomingInvitation else { return }
-        incomingInvitation = nil
-        guard invitePolicy != .blocked else {
-            await sendInviteResponse(.blocked, for: invitation)
-            return
-        }
-        await sendInviteResponse(.accepted, for: invitation)
+    func isIncomingInvitationPending(_ invitation: RadarIncomingInvitation) -> Bool {
+        canPresentIncomingInvitation(invitation)
     }
 
-    func declineIncomingInvitation() {
-        guard let invitation = incomingInvitation else { return }
-        incomingInvitation = nil
+    func restoreIncomingInvitationIfVacant(_ invitation: RadarIncomingInvitation) {
+        guard incomingInvitation == nil,
+              canPresentIncomingInvitation(invitation) else { return }
+        incomingInvitation = invitation
+    }
+
+    @discardableResult
+    func acceptIncomingInvitation(_ invitation: RadarIncomingInvitation) async -> Bool {
+        guard canPresentIncomingInvitation(invitation) else { return false }
+        clearIncomingInvitationIfMatching(invitation)
+        guard invitePolicy != .blocked else {
+            await sendInviteResponse(.blocked, for: invitation)
+            return false
+        }
+        await sendInviteResponse(.accepted, for: invitation)
+        return true
+    }
+
+    @discardableResult
+    func declineIncomingInvitation(_ invitation: RadarIncomingInvitation) -> Bool {
+        guard canPresentIncomingInvitation(invitation) else { return false }
+        clearIncomingInvitationIfMatching(invitation)
         Task { @MainActor [weak self] in
             await self?.sendInviteResponse(.declined, for: invitation)
         }
+        return true
     }
 
 #if DEBUG
@@ -4433,6 +4447,14 @@ final class RadarNearbyService: NSObject {
         guard let state = receivedRoomInvites[key] else { return false }
         if case .pending = state { return true }
         return false
+    }
+
+    private func clearIncomingInvitationIfMatching(
+        _ invitation: RadarIncomingInvitation
+    ) {
+        guard incomingInvitation?.wireInvitationID == invitation.wireInvitationID,
+              incomingInvitation?.sourcePeerID == invitation.sourcePeerID else { return }
+        incomingInvitation = nil
     }
 
     private func removePendingReceivedRoomInvite(

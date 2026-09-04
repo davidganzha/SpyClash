@@ -1539,17 +1539,17 @@ struct RadarIncomingInvitationOverlay: View {
 
             HStack(spacing: 10) {
                 Button {
-                    appState.declineRadarInvitation()
+                    appState.declineRadarInvitation(invitation)
                 } label: {
                     Text(localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR", uk: "ВІДХИЛИТИ"))
                 }
                 .buttonStyle(SpyButtonStyle(variant: .outline))
-                .disabled(isJoining)
+                .disabled(isJoining || appState.isRadarInvitationJoinInProgress)
 
                 Button {
                     Task {
                         isJoining = true
-                        _ = await appState.acceptRadarInvitation()
+                        _ = await appState.acceptRadarInvitation(invitation)
                         isJoining = false
                     }
                 } label: {
@@ -1561,7 +1561,7 @@ struct RadarIncomingInvitationOverlay: View {
                     ))
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
-                .disabled(isJoining)
+                .disabled(isJoining || appState.isRadarInvitationJoinInProgress)
             }
         }
         .padding(14)
