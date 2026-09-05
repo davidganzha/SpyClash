@@ -41,11 +41,13 @@
 		6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBA628FB7C9372162E4C619 /* HapticManager.swift */; };
 		70545E7667108CB8B2470745 /* InterfacePreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35921860BD3A7EB84F963F87 /* InterfacePreferencesTests.swift */; };
 		71EFCB4E56D0E1AFBB55CD75 /* SocketIO-MIT.txt in Resources */ = {isa = PBXBuildFile; fileRef = DB38FB6B74A483175220231A /* SocketIO-MIT.txt */; };
+		797BEEB7917EDFB044476582 /* LanguageSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = B2B3BFA42ABA9ED692193D49 /* LanguageSettingsView.swift */; };
 		7ABFCD782E22AF6AFF519942 /* GameRoomRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68BF1820775925C6C61E563 /* GameRoomRealtimeService.swift */; };
 		7B6D3EB62FE74629B61B73AE /* PricingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */; };
 		7CF9DC97F5FD59E2BD18E81D /* LimitlessUnlockOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEE68A515367ABB807A2007D /* LimitlessUnlockOverlay.swift */; };
 		7D6221160001A1F896D98689 /* SpyOrbSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */; };
 		7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 103786B1CACE81CF96C268EF /* AuthView.swift */; };
+		82066BE8C8996A1EF1CA9B42 /* InterfaceScalePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F44D41577074C530879C82C /* InterfaceScalePolicy.swift */; };
 		82D1D08C2F15D8C91C49A7A1 /* Rajdhani-OFL-1.1.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */; };
 		82D3EF58665CCD0D09A29F69 /* Base44ClientRoomActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */; };
 		83309EF2D0E5EEB230E46C36 /* SpyInterfacePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E76174123D2C9A9D699412 /* SpyInterfacePreferences.swift */; };
@@ -53,12 +55,14 @@
 		8D17771759D4330EBFEC4603 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 0F3E2F7BE3B86567F9077667 /* SocketIO */; };
 		94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75823698B8005677C73DFC1B /* AppState.swift */; };
 		98DA09BA0F4F02C29F67E3EA /* PushNotificationCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = A8B7F0D77CCD84E2E31D982D /* PushNotificationCoordinator.swift */; };
+		995DA7B9B7C449B4EB0B4EE5 /* SettingsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = A9352398D366E68916DEF273 /* SettingsUITests.swift */; };
 		A14016F54504B30BA64BB8DA /* ProfileView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6B25DFE515749E670224D319 /* ProfileView.swift */; };
 		A390D4427BA1EA3B2F024075 /* Starscream-Apache-2.0.txt in Resources */ = {isa = PBXBuildFile; fileRef = 8E4C198618FA43B34FF1B363 /* Starscream-Apache-2.0.txt */; };
 		A39D9B411FD1CC3B3D4DDE08 /* OnboardingTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BCA75CB0E2A17773B402C74 /* OnboardingTests.swift */; };
 		A744EDBB751A4EB73DFC2C44 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE1AF213121DB5A761660563 /* WelcomeView.swift */; };
 		A79E33F12838705CF1E207E5 /* SpyBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9065A7D0489C60903CBB7D5B /* SpyBackground.swift */; };
 		B5955F1C1AE643158073BD0F /* OnboardingModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = D6575BABB395718344476FA1 /* OnboardingModels.swift */; };
+		B71823E19311EDD342C0E90B /* SpyInterfaceScale.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8A763626AA7553FBDDD665B8 /* SpyInterfaceScale.swift */; };
 		BA98E60B487B564CAA1C023C /* SpyClashWidgetsBundle.swift in Sources */ = {isa = PBXBuildFile; fileRef = 760CBEBE89AEE2AA0F8A6E0E /* SpyClashWidgetsBundle.swift */; };
 		BCFB873ADEE34038600E185F /* MembershipRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */; };
 		BD9EDC5A7F4F7334FFA8354D /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
@@ -101,6 +105,13 @@
 			remoteGlobalIDString = 77A6DFFF9D8CFBF19BE6C3C9;
 			remoteInfo = SpyClash;
 		};
+		C8D320679A26AB0D706C67F2 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 19208BECA25401009A21A96A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 77A6DFFF9D8CFBF19BE6C3C9;
+			remoteInfo = SpyClash;
+		};
 /* End PBXContainerItemProxy section */
 
 /* Begin PBXCopyFilesBuildPhase section */
@@ -136,9 +147,11 @@
 		2BCA75CB0E2A17773B402C74 /* OnboardingTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingTests.swift; sourceTree = "<group>"; };
 		2C35AB10E88428C6F3D53699 /* AppState+Membership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Membership.swift"; sourceTree = "<group>"; };
 		2EA85E77102835211355B7C6 /* NotificationInboxModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInboxModels.swift; sourceTree = "<group>"; };
+		2F44D41577074C530879C82C /* InterfaceScalePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfaceScalePolicy.swift; sourceTree = "<group>"; };
 		34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashMatchActivityAttributes.swift; sourceTree = "<group>"; };
 		35921860BD3A7EB84F963F87 /* InterfacePreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfacePreferencesTests.swift; sourceTree = "<group>"; };
 		37FD3AD53D245670F659C1E4 /* SpyClashTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SpyClashTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
+		3CD32BA5F02442CAD3E5A34F /* SpyClashSettingsUITests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SpyClashSettingsUITests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		450DC5444292040544994868 /* MembershipStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipStore.swift; sourceTree = "<group>"; };
 		461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInCoordinator.swift; sourceTree = "<group>"; };
 		464F82CB598E4A8DCC748ADA /* ru */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = ru; path = ru.lproj/InfoPlist.strings; sourceTree = "<group>"; };
@@ -164,6 +177,7 @@
 		86974FE98CF9350796FC28D3 /* SpyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyModels.swift; sourceTree = "<group>"; };
 		8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitlessClearancePanel.swift; sourceTree = "<group>"; };
 		89A2672701BF2A5E11254E90 /* ru-UA */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ru-UA"; path = "ru-UA.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
+		8A763626AA7553FBDDD665B8 /* SpyInterfaceScale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyInterfaceScale.swift; sourceTree = "<group>"; };
 		8B5C87FEFE82151F2F7D6F6A /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
 		8E4C198618FA43B34FF1B363 /* Starscream-Apache-2.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Starscream-Apache-2.0.txt"; sourceTree = "<group>"; };
 		8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalGameView.swift; sourceTree = "<group>"; };
@@ -177,9 +191,11 @@
 		A6EDDA8AE23141F759D27B13 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		A845F2AA618E50DAC8D05962 /* InterfacePreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfacePreferences.swift; sourceTree = "<group>"; };
 		A8B7F0D77CCD84E2E31D982D /* PushNotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationCoordinator.swift; sourceTree = "<group>"; };
+		A9352398D366E68916DEF273 /* SettingsUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsUITests.swift; sourceTree = "<group>"; };
 		AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base44ClientRoomActionTests.swift; sourceTree = "<group>"; };
 		AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
 		B278BBFE3E1ED1E156E14A3E /* InterfaceSettingsControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfaceSettingsControls.swift; sourceTree = "<group>"; };
+		B2B3BFA42ABA9ED692193D49 /* LanguageSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LanguageSettingsView.swift; sourceTree = "<group>"; };
 		B7DA7D7405C80D4685A10F92 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		B81713411A03923224780579 /* WordPackDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPackDraft.swift; sourceTree = "<group>"; };
 		BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPrivateDecisionViews.swift; sourceTree = "<group>"; };
@@ -224,6 +240,14 @@
 			path = LiveActivityShared;
 			sourceTree = "<group>";
 		};
+		4FEE1C8E7136F696D81DA073 /* SpyClashSettingsUITests */ = {
+			isa = PBXGroup;
+			children = (
+				A9352398D366E68916DEF273 /* SettingsUITests.swift */,
+			);
+			path = SpyClashSettingsUITests;
+			sourceTree = "<group>";
+		};
 		5008CF1BFA9100F96B0FAB38 /* LICENSES */ = {
 			isa = PBXGroup;
 			children = (
@@ -249,6 +273,7 @@
 			children = (
 				5008CF1BFA9100F96B0FAB38 /* LICENSES */,
 				7D8A61AA4B945C23B44EC6D9 /* SpyClash */,
+				4FEE1C8E7136F696D81DA073 /* SpyClashSettingsUITests */,
 				BD3554173D3914B039B1A2E4 /* SpyClashTests */,
 				53542A2CB102A9F2E71DBD13 /* SpyClashWidgets */,
 				7B6BED41BFC5980A89ECA708 /* Products */,
@@ -267,6 +292,7 @@
 				16DD679CA8E36033E9AD5D76 /* HomeView.swift */,
 				B278BBFE3E1ED1E156E14A3E /* InterfaceSettingsControls.swift */,
 				97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */,
+				B2B3BFA42ABA9ED692193D49 /* LanguageSettingsView.swift */,
 				723E083EC43863E9B19D1DBD /* LeaderboardView.swift */,
 				8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */,
 				BEE68A515367ABB807A2007D /* LimitlessUnlockOverlay.swift */,
@@ -294,6 +320,7 @@
 			isa = PBXGroup;
 			children = (
 				79E76174123D2C9A9D699412 /* SpyInterfacePreferences.swift */,
+				8A763626AA7553FBDDD665B8 /* SpyInterfaceScale.swift */,
 				08CF05650D30ADCD231D6904 /* SpyLaserScanLayer.swift */,
 				E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */,
 			);
@@ -304,6 +331,7 @@
 			isa = PBXGroup;
 			children = (
 				A01D249EEE029FBB05286504 /* SpyClash.app */,
+				3CD32BA5F02442CAD3E5A34F /* SpyClashSettingsUITests.xctest */,
 				37FD3AD53D245670F659C1E4 /* SpyClashTests.xctest */,
 				EB074CEB86E78BFB857C6C47 /* SpyClashWidgets.appex */,
 			);
@@ -377,6 +405,7 @@
 			isa = PBXGroup;
 			children = (
 				A845F2AA618E50DAC8D05962 /* InterfacePreferences.swift */,
+				2F44D41577074C530879C82C /* InterfaceScalePolicy.swift */,
 				026F4AEBE8A76B12EE72FAC6 /* Membership.swift */,
 				2EA85E77102835211355B7C6 /* NotificationInboxModels.swift */,
 				D6575BABB395718344476FA1 /* OnboardingModels.swift */,
@@ -466,6 +495,24 @@
 			productReference = A01D249EEE029FBB05286504 /* SpyClash.app */;
 			productType = "com.apple.product-type.application";
 		};
+		9B56FFA5405221D0F9865ACB /* SpyClashSettingsUITests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = E1E4760531D3AC71421249B4 /* Build configuration list for PBXNativeTarget "SpyClashSettingsUITests" */;
+			buildPhases = (
+				BF6085DDC618AE5872D9F9D5 /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				4DAE0C720C8CC052BA76BFDB /* PBXTargetDependency */,
+			);
+			name = SpyClashSettingsUITests;
+			packageProductDependencies = (
+			);
+			productName = SpyClashSettingsUITests;
+			productReference = 3CD32BA5F02442CAD3E5A34F /* SpyClashSettingsUITests.xctest */;
+			productType = "com.apple.product-type.bundle.ui-testing";
+		};
 /* End PBXNativeTarget section */
 
 /* Begin PBXProject section */
@@ -484,6 +531,11 @@
 					};
 					77A6DFFF9D8CFBF19BE6C3C9 = {
 						DevelopmentTeam = 3Z64QKNL54;
+					};
+					9B56FFA5405221D0F9865ACB = {
+						DevelopmentTeam = 3Z64QKNL54;
+						ProvisioningStyle = Automatic;
+						TestTargetID = 77A6DFFF9D8CFBF19BE6C3C9;
 					};
 				};
 			};
@@ -509,6 +561,7 @@
 			projectRoot = "";
 			targets = (
 				77A6DFFF9D8CFBF19BE6C3C9 /* SpyClash */,
+				9B56FFA5405221D0F9865ACB /* SpyClashSettingsUITests */,
 				40E1B196DB508D0D139EDED8 /* SpyClashTests */,
 				2495D60CD15D3317F5BF4176 /* SpyClashWidgets */,
 			);
@@ -563,9 +616,11 @@
 				1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */,
 				32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */,
 				FF6A93820FD2EF393D1AEEC8 /* InterfacePreferences.swift in Sources */,
+				82066BE8C8996A1EF1CA9B42 /* InterfaceScalePolicy.swift in Sources */,
 				3EECB62484004A0F5B730CA2 /* InterfaceSettingsControls.swift in Sources */,
 				3D4E95B2D2AE210606FF2E93 /* InterfaceSettingsView.swift in Sources */,
 				E27A943CAA9C87A2F4E58CDB /* KeychainStore.swift in Sources */,
+				797BEEB7917EDFB044476582 /* LanguageSettingsView.swift in Sources */,
 				047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */,
 				C2A5F22F5F23B9D2106D8168 /* LimitlessClearancePanel.swift in Sources */,
 				7CF9DC97F5FD59E2BD18E81D /* LimitlessUnlockOverlay.swift in Sources */,
@@ -595,6 +650,7 @@
 				2296623A2D3D1D8A43A1A4DC /* SpyClashMatchLiveActivityController.swift in Sources */,
 				BE763CD2921B74DCF33CB0EF /* SpyGameIntroScene.swift in Sources */,
 				83309EF2D0E5EEB230E46C36 /* SpyInterfacePreferences.swift in Sources */,
+				B71823E19311EDD342C0E90B /* SpyInterfaceScale.swift in Sources */,
 				ECE4DEF51EEB914818148535 /* SpyLaserScanLayer.swift in Sources */,
 				2946A41A9575F0D1AEE2D809 /* SpyModels.swift in Sources */,
 				7D6221160001A1F896D98689 /* SpyOrbSceneView.swift in Sources */,
@@ -604,6 +660,14 @@
 				0E5B384245B705E4A0093F79 /* WordPackDraft.swift in Sources */,
 				44E47D108AEA998ECE556EB7 /* WordPackEditorSheet.swift in Sources */,
 				65B97F60EB8C89F0D594A552 /* WordPacksView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		BF6085DDC618AE5872D9F9D5 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				995DA7B9B7C449B4EB0B4EE5 /* SettingsUITests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -625,6 +689,11 @@
 /* End PBXSourcesBuildPhase section */
 
 /* Begin PBXTargetDependency section */
+		4DAE0C720C8CC052BA76BFDB /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 77A6DFFF9D8CFBF19BE6C3C9 /* SpyClash */;
+			targetProxy = C8D320679A26AB0D706C67F2 /* PBXContainerItemProxy */;
+		};
 		9DA2E9AEB533EC7E3B941702 /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = 2495D60CD15D3317F5BF4176 /* SpyClashWidgets */;
@@ -756,6 +825,26 @@
 			};
 			name = Release;
 		};
+		509C2AE77842D870341F0238 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.spyclash.ios.settings-uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = SpyClash;
+			};
+			name = Release;
+		};
 		B27C89F969CB99AC3F0B6B4C /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -790,7 +879,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 141;
+				CURRENT_PROJECT_VERSION = 142;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -848,7 +937,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 141;
+				CURRENT_PROJECT_VERSION = 142;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -901,6 +990,26 @@
 			};
 			name = Release;
 		};
+		E994F17748125A4D6A216D53 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.spyclash.ios.settings-uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = SpyClash;
+			};
+			name = Debug;
+		};
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
@@ -936,6 +1045,15 @@
 			buildConfigurations = (
 				4BB519F2F24F5D23AEDB46C3 /* Debug */,
 				4E1DB2AD0C9C81B11182EF13 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		E1E4760531D3AC71421249B4 /* Build configuration list for PBXNativeTarget "SpyClashSettingsUITests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				E994F17748125A4D6A216D53 /* Debug */,
+				509C2AE77842D870341F0238 /* Release */,
 			);
 			defaultConfigurationIsVisible = 0;
 			defaultConfigurationName = Debug;

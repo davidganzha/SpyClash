@@ -10,6 +10,7 @@ final class InterfaceSettingsTests: XCTestCase {
         XCTAssertEqual(value.labelSize, .standard)
         XCTAssertFalse(value.dockLabels)
         XCTAssertEqual(value.haptics, .standard)
+        XCTAssertEqual(value.interfaceScale, 1)
         XCTAssertEqual(value.matchingPreset, .original)
     }
 
@@ -40,7 +41,7 @@ final class InterfaceSettingsTests: XCTestCase {
     func testAllSettingsRoundTrip() throws {
         let original = InterfaceSettings(reduceMotion: true, backgroundEffects: false,
                                          enhancedContrast: true, labelSize: .compact,
-                                         dockLabels: true, haptics: .soft)
+                                         dockLabels: true, haptics: .soft, interfaceScale: 1.15)
         let decoded = try JSONDecoder().decode(InterfaceSettings.self, from: JSONEncoder().encode(original))
         XCTAssertEqual(original, decoded)
     }
@@ -66,6 +67,48 @@ final class InterfaceSettingsTests: XCTestCase {
         XCTAssertLessThan(InterfaceLabelSize.compact.scale, 1)
         XCTAssertGreaterThan(InterfaceLabelSize.large.scale, 1)
     }
+
+    func testInterfaceScaleClampsInvalidValuesAndDirectMutations() {
+        for value in [Double.nan, .infinity, -.infinity] {
+            XCTAssertEqual(InterfaceSettings(interfaceScale: value).interfaceScale, 1)
+        }
+        var settings = InterfaceSettings(interfaceScale: 4)
+        XCTAssertEqual(settings.interfaceScale, 1.2)
+        settings.interfaceScale = 0.5
+        XCTAssertEqual(settings.interfaceScale, 1)
+        settings.interfaceScale = .nan
+        XCTAssertEqual(settings.interfaceScale, 1)
+        settings.interfaceScale = 1.1
+        XCTAssertEqual(settings.interfaceScale, 1.1)
+        XCTAssertNil(settings.matchingPreset)
+    }
+
+    func testStoredInterfaceScaleRecoversIndependently() throws {
+        for (json, expected) in [("null", 1.0), ("\"invalid\"", 1.0), ("0", 1.0), ("3", 1.2), ("1.15", 1.15)] {
+            let data = Data("{\"interfaceScale\":\(json),\"dockLabels\":true}".utf8)
+            let value = try JSONDecoder().decode(InterfaceSettings.self, from: data)
+            XCTAssertEqual(value.interfaceScale, expected)
+            XCTAssertTrue(value.dockLabels)
+        }
+    }
+
+    func testLogicalViewportReflowsBeforeScalingWithoutCropping() {
+        for viewport in [CGSize(width: 375, height: 667), CGSize(width: 402, height: 800), CGSize(width: 1024, height: 1366)] {
+            for factor in [1.0, 1.05, 1.1, 1.15, 1.2] {
+                let logical = InterfaceScalePolicy.logicalSize(viewport: viewport, scale: factor)
+                XCTAssertEqual(logical.width * factor, viewport.width, accuracy: 0.001)
+                XCTAssertEqual(logical.height * factor, viewport.height, accuracy: 0.001)
+            }
+        }
+        XCTAssertEqual(InterfaceScalePolicy.logicalSize(viewport: .zero, scale: .nan), .zero)
+        XCTAssertEqual(InterfaceScalePolicy.logicalSize(viewport: CGSize(width: -1, height: -1), scale: 1), .zero)
+    }
+
+    func testAllPresetsRestoreOriginalInterfaceScale() {
+        for preset in InterfacePreset.allCases {
+            XCTAssertEqual(preset.settings.interfaceScale, 1)
+        }
+    }
 }
 
 @MainActor
@@ -83,6 +126,7 @@ final class InterfacePreferencesTests: XCTestCase {
             first.settings.dockLabels = true
             first.settings.haptics = .soft
             first.settings.labelSize = .large
+            first.settings.interfaceScale = 1.2
             let next = InterfacePreferences(defaults: defaults)
             XCTAssertEqual(next.settings, first.settings)
             XCTAssertNotNil(defaults.data(forKey: InterfacePreferences.storageKey))
@@ -97,6 +141,7 @@ final class InterfacePreferencesTests: XCTestCase {
             let prefs = InterfacePreferences(defaults: defaults)
             prefs.apply(.calm)
             XCTAssertEqual(InterfacePreferences(defaults: defaults).settings, InterfacePreset.calm.settings)
+            prefs.settings.interfaceScale = 1.2
             prefs.reset()
             XCTAssertEqual(prefs.settings, .init())
             XCTAssertNil(defaults.object(forKey: InterfacePreferences.storageKey))

@@ -75,6 +75,7 @@ struct NotificationsInboxView: View {
             }
             .sheet(item: $composerRoute) { _ in
                 NotificationGlobalComposerSheet(store: store, language: language)
+                    .spyInterfaceScale()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.visible)
                     .presentationBackground(SpyTheme.black)

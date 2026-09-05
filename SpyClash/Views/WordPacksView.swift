@@ -43,6 +43,7 @@ struct WordPacksView: View {
                 applySavedPack(savedPack)
             }
             .spyGlobalToastLayer()
+            .spyInterfaceScale()
         }
         .overlay {
             if showDeleteConfirmation, let deleteTarget {

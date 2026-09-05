@@ -400,30 +400,36 @@ struct AppShellView: View {
             switch destination {
             case .settings:
                 InterfaceSettingsView(language: appState.language)
+                    .spyGlobalToastLayer()
+                    .spyInterfaceScale()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
             case .limitless:
                 PricingView()
                     .spyGlobalToastLayer()
+                    .spyInterfaceScale()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
             case .qrScanner:
                 QRScannerSheet()
                     .spyGlobalToastLayer()
+                    .spyInterfaceScale()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
             case .roomQR(let room):
                 RoomQRSheet(room: room)
                     .spyGlobalToastLayer()
+                    .spyInterfaceScale()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
             case .legal(let kind):
                 LegalDocumentSheet(kind: kind)
                     .spyGlobalToastLayer()
+                    .spyInterfaceScale()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)

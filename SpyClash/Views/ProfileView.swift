@@ -52,7 +52,6 @@ struct ProfileView: View {
 
     @State private var displayName = ""
     @State private var avatar = "🕵️"
-    @State private var selectedLanguage: AppLanguage = .en
     @State private var selectedCardTheme: SpyCardThemeID = .field
     @State private var selectedCardAccent: SpyCardAccentID = .signalRed
     @State private var selectedCardBadge: SpyCardBadgeID = .operative
@@ -60,7 +59,6 @@ struct ProfileView: View {
     @State private var historyLoadState: ProfileHistoryLoadState = .idle
     @State private var historyRequestID = 0
     @State private var isSaving = false
-    @State private var isSavingLanguage = false
     @State private var isDeleting = false
     @State private var showDeleteConfirmation = false
     @State private var legalSheet: LegalSheetKind?
@@ -92,7 +90,6 @@ struct ProfileView: View {
                 if appState.membership.snapshot?.isUniversal != true {
                     LimitlessEntry()
                 }
-                languageCard
                 if appState.membership.benefits?.advancedStatistics == true {
                     statsCard
                 }
@@ -110,7 +107,6 @@ struct ProfileView: View {
         .task {
             displayName = appState.user?.callSign ?? ""
             avatar = appState.user?.avatar ?? "🕵️"
-            selectedLanguage = appState.language
             selectedCardTheme = SpyCardThemeID(rawValue: appState.user?.spyCardTheme ?? "") ?? .field
             selectedCardAccent = SpyCardAccentID(rawValue: appState.user?.spyCardAccent ?? "") ?? .signalRed
             selectedCardBadge = SpyCardBadgeID(rawValue: appState.user?.spyCardBadge ?? "") ?? .operative
@@ -140,6 +136,7 @@ struct ProfileView: View {
         .sheet(item: $legalSheet) { sheet in
             LegalDocumentSheet(kind: sheet)
                 .spyGlobalToastLayer()
+                .spyInterfaceScale()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)
@@ -154,9 +151,6 @@ struct ProfileView: View {
         }
         .onChange(of: status) { _, message in
             publishProfileToast(message)
-        }
-        .onChange(of: appState.language) { _, language in
-            selectedLanguage = language
         }
     }
 
@@ -483,8 +477,6 @@ struct ProfileView: View {
                     maxLength: 48
                 )
 
-                RadarPolicySettingsView()
-
                 Button {
                     Task { await save() }
                 } label: {
@@ -508,11 +500,6 @@ struct ProfileView: View {
         }
     }
 
-    private var languageCard: some View {
-        SpyPanel(motionDelay: 0.32) {
-            languageSelector
-        }
-    }
 
     private func publishProfileToast(_ message: String) {
         guard !message.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty else { return }
@@ -1046,54 +1033,6 @@ struct ProfileView: View {
         }
     }
 
-    private var languageSelector: some View {
-        VStack(alignment: .leading, spacing: 10) {
-            HStack(spacing: 8) {
-                Text(copy.languageLabel)
-                    .font(SpyTheme.micro)
-                    .tracking(0.12)
-                    .foregroundStyle(SpyTheme.dim)
-                    .spyKicker(lines: 2)
-
-                if isSavingLanguage {
-                    SpySpinner(size: 16, accent: SpyTheme.red)
-                }
-            }
-
-            HStack(spacing: 8) {
-                ForEach(AppLanguage.allCases) { language in
-                    languageChip(language)
-                }
-            }
-        }
-    }
-
-    private func languageChip(_ language: AppLanguage) -> some View {
-        let isSelected = selectedLanguage == language
-
-        return Button {
-            selectLanguage(language)
-        } label: {
-            VStack(spacing: 4) {
-                Text(language.shortCode)
-                    .font(.system(size: 13, weight: .black, design: .default))
-                    .tracking(0.04)
-
-                Text(language.title.uppercased())
-                    .font(.system(size: 9, weight: .bold, design: .default))
-                    .tracking(0.02)
-                    .spyFitted(lines: 2, scale: 0.66, alignment: .center)
-            }
-            .foregroundStyle(isSelected ? .white : SpyTheme.muted)
-            .frame(maxWidth: .infinity)
-            .frame(height: 54)
-            .background(isSelected ? SpyTheme.red : SpyTheme.dark)
-            .overlay(Rectangle().stroke(isSelected ? Color.clear : SpyTheme.strokeStrong))
-        }
-        .buttonStyle(SpyWebPressStyle())
-        .disabled(isSavingLanguage)
-        .animation(.smooth(duration: 0.24), value: isSelected)
-    }
 
     private var winCount: Int {
         competitiveHistory.filter { $0.won == true }.count
@@ -1285,29 +1224,6 @@ struct ProfileView: View {
         }
     }
 
-    private func selectLanguage(_ language: AppLanguage) {
-        guard selectedLanguage != language else { return }
-
-        selectedLanguage = language
-        status = ""
-        statusKind = nil
-        HapticManager.shared.fire(.tabSelection)
-
-        Task {
-            isSavingLanguage = true
-            defer { isSavingLanguage = false }
-
-            do {
-                try await appState.setLanguage(language)
-                status = language.languageSavedMessage
-                statusKind = .success
-            } catch {
-                status = language.languageFailedMessage
-                statusKind = .error
-                HapticManager.shared.fire(.notification(.warning))
-            }
-        }
-    }
 
     private func deleteAccount() async {
         isDeleting = true

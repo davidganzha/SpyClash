@@ -135,6 +135,7 @@ struct RoomQRSheet: View {
         .fullScreenCover(isPresented: $isRadarPresented) {
             RadarInviteView(room: room)
                 .spyGlobalToastLayer()
+                .spyInterfaceScale()
         }
     }
 

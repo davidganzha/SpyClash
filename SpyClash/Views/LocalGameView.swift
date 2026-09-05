@@ -349,6 +349,7 @@ struct LocalGameView: View {
                     cardTheme: localCardTheme,
                     cardAccent: localCardAccent
                 )
+                .spyInterfaceScale()
             }
     }
 

@@ -5,7 +5,7 @@ options:
     iOS: "17.0"
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 141
+    CURRENT_PROJECT_VERSION: 142
     MARKETING_VERSION: 1.0.1
     SWIFT_VERSION: 6.0
 packages:
@@ -130,7 +130,32 @@ targets:
         DEVELOPMENT_TEAM: 3Z64QKNL54
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: 1
+  SpyClashSettingsUITests:
+    type: bundle.ui-testing
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: SpyClashSettingsUITests
+    dependencies:
+      - target: SpyClash
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.spyclash.ios.settings-uitests
+        GENERATE_INFOPLIST_FILE: true
+        DEVELOPMENT_TEAM: 3Z64QKNL54
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: 1
 schemes:
+  SpyClash-Settings-UI:
+    build:
+      targets:
+        SpyClash: all
+    test:
+      config: Debug
+      targets:
+        - SpyClashSettingsUITests
+    management:
+      shared: true
   SpyClash:
     build:
       targets:

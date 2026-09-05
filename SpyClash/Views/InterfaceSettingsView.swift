@@ -6,11 +6,14 @@ struct InterfaceSettingsView: View {
     @Bindable var preferences: InterfacePreferences
     let language: AppLanguage
     @State private var showsResetConfirmation = false
+    @State private var scaleDraft: Double
+    @State private var isEditingScale = false
     @AccessibilityFocusState private var resetIsFocused: Bool
 
     init(language: AppLanguage, preferences: InterfacePreferences = .shared) {
         self.language = language
         self.preferences = preferences
+        _scaleDraft = State(initialValue: preferences.settings.interfaceScale)
     }
 
     var body: some View {
@@ -21,11 +24,14 @@ struct InterfaceSettingsView: View {
                 sheetHeader
                 ScrollView(showsIndicators: false) {
                     VStack(spacing: 16) {
-                        livePreview
+                        settingsHero
                         presetsPanel
+                        scalePanel
                         motionPanel
                         readabilityPanel
                         hapticsPanel
+                        languagePanel
+                        radarPanel
                         resetControls
                     }
                     .frame(maxWidth: SpyLobbyVisualLanguage.maxWidth)
@@ -49,6 +55,12 @@ struct InterfaceSettingsView: View {
         .interactiveDismissDisabled(showsResetConfirmation)
         .onChange(of: preferences.settings.haptics) { _, mode in
             if mode == .off { HapticManager.shared.stopFeedback() }
+        }
+        .onChange(of: preferences.settings.interfaceScale) { _, value in
+            if !isEditingScale { scaleDraft = value }
+        }
+        .onDisappear {
+            if isEditingScale { preferences.settings.interfaceScale = scaleDraft }
         }
         .onChange(of: showsResetConfirmation) { _, isPresented in
             resetIsFocused = isPresented
@@ -87,7 +99,7 @@ struct InterfaceSettingsView: View {
         }
     }
 
-    private var livePreview: some View {
+    private var settingsHero: some View {
         VStack(alignment: .leading, spacing: 14) {
             HStack(spacing: 8) {
                 Text("// " + t("PERSONAL CONFIG", "ЛИЧНАЯ КОНФИГУРАЦИЯ", "CONFIGURACIÓN PERSONAL", "ОСОБИСТА КОНФІГУРАЦІЯ"))
@@ -108,40 +120,6 @@ struct InterfaceSettingsView: View {
                 .minimumScaleFactor(0.65)
                 .accessibilityAddTraits(.isHeader)
 
-            HStack(spacing: 7) {
-                Rectangle().fill(SpyTheme.red).frame(width: 4, height: 4)
-                Text(currentModeTitle.uppercased())
-                    .foregroundStyle(SpyTheme.bodyText)
-                Spacer(minLength: 0)
-                Text(t("AUTO-SAVED", "АВТОСОХРАНЕНИЕ", "GUARDADO AUTO.", "АВТОЗБЕРЕЖЕННЯ"))
-                    .foregroundStyle(SpyTheme.muted)
-            }
-            .font(.system(size: 8, weight: .bold, design: .monospaced))
-            .tracking(0.6)
-            .lineLimit(1)
-            .minimumScaleFactor(0.65)
-
-            Rectangle().fill(SpyTheme.red.opacity(0.25)).frame(height: 1)
-
-            HStack(spacing: 14) {
-                VStack(alignment: .leading, spacing: 5) {
-                    Text(t("LIVE PREVIEW", "ЖИВОЙ ПРИМЕР", "VISTA PREVIA", "ЖИВИЙ ПРИКЛАД"))
-                        .font(.system(size: 9 * preferences.settings.labelSize.scale, weight: .bold, design: .monospaced))
-                        .foregroundStyle(preferences.settings.enhancedContrast ? SpyTheme.bodyText : SpyTheme.muted)
-                    Text(t("Changes apply instantly", "Изменения сразу в деле", "Cambios al instante", "Зміни одразу в дії"))
-                        .font(.system(size: 9, weight: .medium, design: .monospaced))
-                        .foregroundStyle(SpyTheme.muted)
-                }
-                .frame(maxWidth: .infinity, alignment: .leading)
-
-                HStack(spacing: 12) {
-                    previewNav("house", title: t("HOME", "ДОМОЙ", "INICIO", "ДОДОМУ"))
-                    previewNav("shippingbox", title: t("PACKS", "КОЛОДЫ", "MAZOS", "КОЛОДИ"))
-                    previewNav("person.crop.circle", title: t("PROFILE", "ПРОФИЛЬ", "PERFIL", "ПРОФІЛЬ"))
-                }
-                .frame(width: 128)
-            }
-            .frame(minHeight: 40)
         }
         .padding(20)
         .background {
@@ -159,7 +137,7 @@ struct InterfaceSettingsView: View {
                            startPoint: .topLeading, endPoint: .bottomTrailing), lineWidth: 1))
         .overlay(alignment: .topLeading) { CornerStroke(color: SpyTheme.red).padding(1) }
         .overlay(alignment: .bottomTrailing) { CornerStroke(color: SpyTheme.red).rotationEffect(.degrees(180)).padding(1) }
-        .accessibilityIdentifier("interface-settings.preview")
+        .accessibilityIdentifier("interface-settings.hero")
     }
 
     private var presetsPanel: some View {
@@ -178,8 +156,63 @@ struct InterfaceSettingsView: View {
         }
     }
 
+    private var scalePanel: some View {
+        settingsPanel("02", title: t("INTERFACE SCALE", "МАСШТАБ ИНТЕРФЕЙСА", "ESCALA DE INTERFAZ", "МАСШТАБ ІНТЕРФЕЙСУ")) {
+            HStack(alignment: .firstTextBaseline) {
+                controlTitle(t("Text, buttons, panels", "Текст, кнопки, панели", "Texto, botones, paneles", "Текст, кнопки, панелі"))
+                Spacer(minLength: 8)
+                Text("\(Int((scaleDraft * 100).rounded()))%")
+                    .font(SpyTheme.brandFont(size: 26))
+                    .monospacedDigit()
+                    .foregroundStyle(SpyTheme.red)
+                    .accessibilityIdentifier("interface-settings.scale-value")
+            }
+
+            Slider(
+                value: scaleBinding,
+                in: InterfaceScalePolicy.range,
+                step: InterfaceScalePolicy.step,
+                onEditingChanged: { editing in
+                    isEditingScale = editing
+                    if !editing { preferences.settings.interfaceScale = scaleDraft }
+                }
+            ) {
+                Text(t("Interface scale", "Масштаб интерфейса", "Escala de interfaz", "Масштаб інтерфейсу"))
+            }
+            .tint(SpyTheme.red)
+            .frame(minHeight: 44)
+            .accessibilityValue("\(Int((scaleDraft * 100).rounded()))%")
+            .accessibilityIdentifier("interface-settings.scale")
+
+            HStack {
+                Text("100%")
+                Spacer()
+                Text("120%")
+            }
+            .font(SpyTheme.micro)
+            .foregroundStyle(SpyTheme.muted)
+            .accessibilityHidden(true)
+
+            note(t("Applies when you release the slider. System keyboard and Apple purchase dialogs keep their standard size.",
+                   "Применяется после отпускания ползунка. Системная клавиатура и окна оплаты Apple сохраняют обычный размер.",
+                   "Se aplica al soltar. El teclado del sistema y los diálogos de compra de Apple mantienen su tamaño normal.",
+                   "Застосовується після відпускання повзунка. Системна клавіатура й вікна оплати Apple зберігають звичайний розмір."))
+        }
+    }
+
+    private var scaleBinding: Binding<Double> {
+        Binding(
+            get: { scaleDraft },
+            set: { value in
+                scaleDraft = InterfaceScalePolicy.clamped(value)
+                // Accessibility adjustments may not start a drag session.
+                if !isEditingScale { preferences.settings.interfaceScale = scaleDraft }
+            }
+        )
+    }
+
     private var motionPanel: some View {
-        settingsPanel("02", title: t("MOTION & BACKGROUND", "ДВИЖЕНИЕ И ФОН", "MOVIMIENTO Y FONDO", "РУХ І ФОН")) {
+        settingsPanel("03", title: t("MOTION & BACKGROUND", "ДВИЖЕНИЕ И ФОН", "MOVIMIENTO Y FONDO", "РУХ І ФОН")) {
             settingToggle(
                 t("Reduce motion", "Меньше движения", "Reducir movimiento", "Менше руху"),
                 detail: t("Simpler transitions. Game timers stay unchanged.",
@@ -209,7 +242,7 @@ struct InterfaceSettingsView: View {
     }
 
     private var readabilityPanel: some View {
-        settingsPanel("03", title: t("READABILITY", "ЧИТАЕМОСТЬ", "LEGIBILIDAD", "ЧИТАБЕЛЬНІСТЬ")) {
+        settingsPanel("04", title: t("READABILITY", "ЧИТАЕМОСТЬ", "LEGIBILIDAD", "ЧИТАБЕЛЬНІСТЬ")) {
             settingToggle(
                 t("Stronger contrast", "Усиленный контраст", "Más contraste", "Посилений контраст"),
                 detail: t("Brighter shared secondary text and borders.",
@@ -246,7 +279,7 @@ struct InterfaceSettingsView: View {
     }
 
     private var hapticsPanel: some View {
-        settingsPanel("04", title: t("HAPTIC FEEDBACK", "ТАКТИЛЬНЫЙ ОТКЛИК", "RESPUESTA HÁPTICA", "ТАКТИЛЬНИЙ ВІДГУК")) {
+        settingsPanel("05", title: t("HAPTIC FEEDBACK", "ТАКТИЛЬНЫЙ ОТКЛИК", "RESPUESTA HÁPTICA", "ТАКТИЛЬНИЙ ВІДГУК")) {
             InterfaceChoiceStrip(
                 values: InterfaceHaptics.allCases,
                 selection: optionalBinding($preferences.settings.haptics),
@@ -267,27 +300,39 @@ struct InterfaceSettingsView: View {
         }
     }
 
+    private var languagePanel: some View {
+        settingsPanel("06", title: t("LANGUAGE", "ЯЗЫК", "IDIOMA", "МОВА")) {
+            LanguageSettingsView()
+        }
+    }
+
+    private var radarPanel: some View {
+        settingsPanel("07", title: t("RADAR ACCESS", "ДОСТУП ПО РАДАРУ", "ACCESO POR RADAR", "ДОСТУП ЧЕРЕЗ РАДАР")) {
+            RadarPolicySettingsView()
+        }
+    }
+
     private var resetControls: some View {
         VStack(spacing: 14) {
             Button { showsResetConfirmation = true } label: {
-                SpyActionLabel(title: t("RESTORE ORIGINAL", "ВЕРНУТЬ ИСХОДНЫЕ", "RESTAURAR ORIGINAL", "ПОВЕРНУТИ ПОЧАТКОВІ"), systemImage: "arrow.counterclockwise")
+                SpyActionLabel(title: t("RESET INTERFACE", "СБРОСИТЬ ИНТЕРФЕЙС", "RESTABLECER INTERFAZ", "СКИНУТИ ІНТЕРФЕЙС"), systemImage: "arrow.counterclockwise")
             }
             .buttonStyle(SpyButtonStyle(variant: .ghost))
             .accessibilityIdentifier("interface-settings.reset")
-            note(t("LOCAL SETTINGS // Available to everyone. Profile, purchases and game data are unchanged.",
-                   "ЛОКАЛЬНО // Доступно всем. Профиль, покупки и игровые данные не меняются.",
-                   "AJUSTES LOCALES // Para todos. No cambia el perfil, las compras ni los datos de juego.",
-                   "ЛОКАЛЬНО // Доступно всім. Профіль, покупки й ігрові дані не змінюються."))
+            note(t("Reset affects appearance and haptics only. Language, radar invitations, profile and purchases stay unchanged.",
+                   "Сброс только оформления и отклика. Язык, приглашения по радару, профиль и покупки не меняются.",
+                   "Solo restablece el aspecto y la vibración. No cambia el idioma, las invitaciones del radar, el perfil ni las compras.",
+                   "Скидає лише оформлення та відгук. Мова, запрошення через радар, профіль і покупки не змінюються."))
         }
     }
 
     private var resetConfirmation: some View {
         SpyModal(
             title: t("Reset interface?", "Сбросить интерфейс?", "¿Restablecer interfaz?", "Скинути інтерфейс?"),
-            message: t("Only the settings on this page will return to their original values.",
-                       "Только параметры на этой странице вернутся к исходным значениям.",
-                       "Solo las opciones de esta página volverán a sus valores originales.",
-                       "Лише параметри на цій сторінці повернуться до початкових значень."),
+            message: t("Restore appearance and haptics. Language and radar invitation settings will stay unchanged.",
+                       "Вернуть исходное оформление и отклик. Язык и настройки приглашений по радару сохранятся.",
+                       "Restablecer aspecto y vibración. Se mantienen el idioma y los ajustes de invitaciones del radar.",
+                       "Повернути початкове оформлення та відгук. Мова й налаштування запрошень через радар збережуться."),
             systemImage: "arrow.counterclockwise"
         ) {
             VStack(spacing: 10) {
@@ -334,25 +379,12 @@ struct InterfaceSettingsView: View {
                 note(detail)
             }
         }
-        .toggleStyle(InterfaceSwitchStyle(
-            onTitle: t("ON", "ВКЛ", "SÍ", "УВІМК"),
-            offTitle: t("OFF", "ВЫКЛ", "NO", "ВИМК")
-        ))
+        .toggleStyle(.switch)
+        .tint(SpyTheme.red)
+        .frame(minHeight: 68)
         .accessibilityIdentifier("interface-settings.\(id)")
     }
 
-    private func previewNav(_ symbol: String, title: String) -> some View {
-        VStack(spacing: 5) {
-            Image(systemName: symbol).font(.system(size: 17, weight: .semibold))
-            if preferences.settings.dockLabels {
-                Text(title).font(.system(size: 6.5 * preferences.settings.labelSize.scale, weight: .bold, design: .monospaced))
-                    .lineLimit(1).minimumScaleFactor(0.65)
-            }
-        }
-        .foregroundStyle(SpyTheme.muted)
-        .frame(maxWidth: .infinity)
-        .accessibilityHidden(true)
-    }
 
     private var rule: some View { Rectangle().fill(SpyTheme.stroke).frame(height: 1) }
 
@@ -372,9 +404,6 @@ struct InterfaceSettingsView: View {
             .fixedSize(horizontal: false, vertical: true)
     }
 
-    private var currentModeTitle: String {
-        preferences.settings.matchingPreset.map(presetTitle) ?? t("Custom", "Свои настройки", "Personalizado", "Власні налаштування")
-    }
 
     private func optionalBinding<Value>(_ binding: Binding<Value>) -> Binding<Value?> {
         Binding(get: { binding.wrappedValue }, set: { if let value = $0 { binding.wrappedValue = value } })
@@ -411,10 +440,12 @@ struct InterfaceSettingsView: View {
 
 #Preview("Original") {
     InterfaceSettingsView(language: .ru, preferences: InterfacePreferences())
+        .environment(AppState())
 }
 
 #Preview("Readable") {
     let preferences = InterfacePreferences()
     preferences.apply(.readable)
     return InterfaceSettingsView(language: .ru, preferences: preferences)
+        .environment(AppState())
 }

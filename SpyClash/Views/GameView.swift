@@ -2443,6 +2443,7 @@ struct GameView: View {
                     try await submitSpyGuess(room, word: word)
                 }
                 .spyGlobalToastLayer()
+                .spyInterfaceScale()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)

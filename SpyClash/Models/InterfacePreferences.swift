@@ -30,6 +30,9 @@ enum InterfacePreset: String, CaseIterable, Identifiable {
 }
 
 struct InterfaceSettings: Codable, Equatable {
+    var interfaceScale: Double = 1 {
+        didSet { interfaceScale = InterfaceScalePolicy.clamped(interfaceScale) }
+    }
     var reduceMotion = false
     var backgroundEffects = true
     var enhancedContrast = false
@@ -40,7 +43,8 @@ struct InterfaceSettings: Codable, Equatable {
     init(
         reduceMotion: Bool = false, backgroundEffects: Bool = true,
         enhancedContrast: Bool = false, labelSize: InterfaceLabelSize = .standard,
-        dockLabels: Bool = false, haptics: InterfaceHaptics = .standard
+        dockLabels: Bool = false, haptics: InterfaceHaptics = .standard,
+        interfaceScale: Double = 1
     ) {
         self.reduceMotion = reduceMotion
         self.backgroundEffects = backgroundEffects
@@ -48,10 +52,11 @@ struct InterfaceSettings: Codable, Equatable {
         self.labelSize = labelSize
         self.dockLabels = dockLabels
         self.haptics = haptics
+        self.interfaceScale = InterfaceScalePolicy.clamped(interfaceScale)
     }
 
     private enum CodingKeys: String, CodingKey {
-        case reduceMotion, backgroundEffects, enhancedContrast, labelSize, dockLabels, haptics
+        case reduceMotion, backgroundEffects, enhancedContrast, labelSize, dockLabels, haptics, interfaceScale
     }
 
     init(from decoder: any Decoder) throws {
@@ -63,6 +68,7 @@ struct InterfaceSettings: Codable, Equatable {
         labelSize = (try? values.decode(InterfaceLabelSize.self, forKey: .labelSize)) ?? .standard
         dockLabels = (try? values.decode(Bool.self, forKey: .dockLabels)) ?? false
         haptics = (try? values.decode(InterfaceHaptics.self, forKey: .haptics)) ?? .standard
+        interfaceScale = InterfaceScalePolicy.clamped((try? values.decode(Double.self, forKey: .interfaceScale)) ?? 1)
     }
 
     func effectiveReduceMotion(system: Bool) -> Bool { system || reduceMotion }

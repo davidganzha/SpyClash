@@ -9,6 +9,7 @@ struct SpyClashApp: App {
     var body: some Scene {
         WindowGroup {
             RootView()
+                .spyInterfaceScale()
                 .environment(appState)
                 .preferredColorScheme(.dark)
                 .tint(SpyTheme.red)
@@ -104,6 +105,7 @@ private struct RootView: View {
         .sheet(isPresented: recoverySheetBinding) {
             AuthView()
                 .spyGlobalToastLayer()
+                .spyInterfaceScale()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)
@@ -487,6 +489,7 @@ private struct DebugAuthSheetPresenter: View {
             .sheet(isPresented: $showAuth) {
                 AuthView()
                     .spyGlobalToastLayer()
+                    .spyInterfaceScale()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)

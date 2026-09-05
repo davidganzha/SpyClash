@@ -78,6 +78,7 @@ struct HomeView: View {
         .sheet(item: $tutorialMode) { mode in
             HowToPlaySheet(initialMode: mode, language: appState.language)
                 .spyGlobalToastLayer()
+                .spyInterfaceScale()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)
@@ -85,6 +86,7 @@ struct HomeView: View {
         .sheet(isPresented: $isQRScannerPresented) {
             QRScannerSheet()
                 .spyGlobalToastLayer()
+                .spyInterfaceScale()
                 .presentationDetents([.large])
                 .presentationDragIndicator(.hidden)
                 .presentationCornerRadius(0)

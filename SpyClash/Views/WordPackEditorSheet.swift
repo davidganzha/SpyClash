@@ -132,7 +132,7 @@ struct WordPackEditorSheet: View {
         }
         .interactiveDismissDisabled(isBusy || hasUnsavedChanges)
         .sheet(item: $accessSheet) { _ in
-            PricingView().presentationDetents([.large])
+            PricingView().spyInterfaceScale().presentationDetents([.large])
                 .presentationDragIndicator(.hidden).presentationCornerRadius(0)
         }
         .animation(.smooth(duration: 0.2), value: step)

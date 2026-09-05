@@ -1264,12 +1264,6 @@ struct RadarPolicySettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            Text(localized(en: "// RADAR ACCESS", ru: "// ДОСТУП ПО РАДАРУ", es: "// ACCESO POR RADAR", uk: "// ДОСТУП ЧЕРЕЗ РАДАР"))
-                .font(SpyTheme.micro)
-                .tracking(0.10)
-                .foregroundStyle(SpyTheme.dim)
-                .spyKicker(lines: 2)
-
             Text(localized(
                 en: "What should happen when a nearby host taps your signal?",
                 ru: "Что делать, когда находящийся рядом хост нажимает на твой сигнал?",
@@ -1288,12 +1282,6 @@ struct RadarPolicySettingsView: View {
 
             syncStatus
         }
-        .padding(12)
-        .background(Color.black.opacity(0.42), in: RoundedRectangle(cornerRadius: 12, style: .continuous))
-        .overlay(
-            RoundedRectangle(cornerRadius: 12, style: .continuous)
-                .stroke(SpyTheme.stroke, lineWidth: 1)
-        )
     }
 
     private func policyButton(_ policy: RadarInvitePolicy) -> some View {
@@ -1333,7 +1321,8 @@ struct RadarPolicySettingsView: View {
             .contentShape(CutCornerShape(cut: 8))
         }
         .buttonStyle(SpyWebPressStyle())
-        .accessibilityIdentifier("profile.radarPolicy.\(policy.rawValue)")
+        .accessibilityAddTraits(selected ? .isSelected : [])
+        .accessibilityIdentifier("settings.radarPolicy.\(policy.rawValue)")
     }
 
     @ViewBuilder
@@ -1388,7 +1377,7 @@ struct RadarPolicySettingsView: View {
                 )
             }
             .buttonStyle(.plain)
-            .accessibilityIdentifier("profile.radarPolicy.retrySync")
+            .accessibilityIdentifier("settings.radarPolicy.retrySync")
         }
     }
 
