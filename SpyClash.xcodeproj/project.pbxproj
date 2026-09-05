@@ -26,6 +26,7 @@
 		397C0B1DBC891128B57E1133 /* WordPackDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D58811816F930A78503187 /* WordPackDraftTests.swift */; };
 		39840D09E8474E87D45E1555 /* OnlineRoundStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673C14A27AC3CD3669188134 /* OnlineRoundStateTests.swift */; };
 		3D4E95B2D2AE210606FF2E93 /* InterfaceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */; };
+		3EECB62484004A0F5B730CA2 /* InterfaceSettingsControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B278BBFE3E1ED1E156E14A3E /* InterfaceSettingsControls.swift */; };
 		44E47D108AEA998ECE556EB7 /* WordPackEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667D3929047FBC751174E868 /* WordPackEditorSheet.swift */; };
 		4BEBA1477C858A78FB3F338D /* SpyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */; };
 		4CEDDEDB003294AA9A16B703 /* Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 026F4AEBE8A76B12EE72FAC6 /* Membership.swift */; };
@@ -178,6 +179,7 @@
 		A8B7F0D77CCD84E2E31D982D /* PushNotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationCoordinator.swift; sourceTree = "<group>"; };
 		AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base44ClientRoomActionTests.swift; sourceTree = "<group>"; };
 		AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		B278BBFE3E1ED1E156E14A3E /* InterfaceSettingsControls.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfaceSettingsControls.swift; sourceTree = "<group>"; };
 		B7DA7D7405C80D4685A10F92 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		B81713411A03923224780579 /* WordPackDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPackDraft.swift; sourceTree = "<group>"; };
 		BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPrivateDecisionViews.swift; sourceTree = "<group>"; };
@@ -263,6 +265,7 @@
 				8B5C87FEFE82151F2F7D6F6A /* GameView.swift */,
 				22314E28DB2385F7A05ABC74 /* HistoryView.swift */,
 				16DD679CA8E36033E9AD5D76 /* HomeView.swift */,
+				B278BBFE3E1ED1E156E14A3E /* InterfaceSettingsControls.swift */,
 				97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */,
 				723E083EC43863E9B19D1DBD /* LeaderboardView.swift */,
 				8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */,
@@ -560,6 +563,7 @@
 				1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */,
 				32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */,
 				FF6A93820FD2EF393D1AEEC8 /* InterfacePreferences.swift in Sources */,
+				3EECB62484004A0F5B730CA2 /* InterfaceSettingsControls.swift in Sources */,
 				3D4E95B2D2AE210606FF2E93 /* InterfaceSettingsView.swift in Sources */,
 				E27A943CAA9C87A2F4E58CDB /* KeychainStore.swift in Sources */,
 				047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */,
@@ -786,7 +790,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 140;
+				CURRENT_PROJECT_VERSION = 141;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -844,7 +848,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 140;
+				CURRENT_PROJECT_VERSION = 141;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
