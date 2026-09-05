@@ -140,6 +140,74 @@ final class MembershipTests: XCTestCase {
         XCTAssertEqual(LimitlessPurchaseState.restoring.afterVerifiedUpdate(grantsAccess: true, membershipRefreshed: true), .restoring)
         XCTAssertEqual(LimitlessPurchaseState.idle.afterVerifiedUpdate(grantsAccess: true, membershipRefreshed: true), .idle)
     }
+
+    func testRestoredBenefitsMatchHistoricalFreeAndLimitlessLimits() {
+        XCTAssertEqual(MembershipBenefits.free.aiGenerationsDailyLimit, 10)
+        XCTAssertEqual(MembershipBenefits.free.historyLimit, 5)
+        XCTAssertFalse(MembershipBenefits.free.premiumAvatars)
+        XCTAssertFalse(MembershipBenefits.free.fullHistory)
+        XCTAssertFalse(MembershipBenefits.free.advancedStatistics)
+        XCTAssertNil(MembershipBenefits.limitless.aiGenerationsDailyLimit)
+        XCTAssertNil(MembershipBenefits.limitless.historyLimit)
+        XCTAssertTrue(MembershipBenefits.limitless.premiumAvatars)
+        XCTAssertTrue(MembershipBenefits.limitless.fullHistory)
+        XCTAssertTrue(MembershipBenefits.limitless.advancedStatistics)
+    }
+
+    func testUnlockPresentationRequiresVerifiedTransitionAndFeedbackIsOnce() async throws {
+        let client = MembershipTestClient()
+        let store = MembershipStore(client: client)
+        store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        _ = await store.refresh()
+        XCTAssertNil(store.unlockPresentationID)
+        client.result = .failure(MembershipError.unavailable)
+        _ = await store.refresh()
+        XCTAssertNil(store.unlockPresentationID)
+        client.result = .success(snapshot())
+        _ = await store.refresh()
+        let id = try XCTUnwrap(store.unlockPresentationID)
+        XCTAssertTrue(store.claimUnlockFeedback(id))
+        XCTAssertFalse(store.claimUnlockFeedback(id))
+        _ = await store.refresh()
+        XCTAssertEqual(store.unlockPresentationID, id)
+        store.dismissUnlock(UUID())
+        XCTAssertEqual(store.unlockPresentationID, id)
+        store.dismissUnlock(id)
+        _ = await store.refresh()
+        XCTAssertNil(store.unlockPresentationID)
+    }
+
+    func testInitialPaidStateAndUniversalAccessDoNotCelebratePurchase() async {
+        let client = MembershipTestClient()
+        client.result = .success(snapshot())
+        let store = MembershipStore(client: client)
+        store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        _ = await store.refresh()
+        XCTAssertNil(store.unlockPresentationID)
+        client.result = .success(.freePreview)
+        _ = await store.refresh()
+        client.result = .success(.universalPreview)
+        _ = await store.refresh()
+        XCTAssertNil(store.unlockPresentationID)
+    }
+
+    func testAccountRotationAndRevocationClearUnlockPresentation() async {
+        let client = MembershipTestClient()
+        let store = MembershipStore(client: client)
+        store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        _ = await store.refresh()
+        client.result = .success(snapshot())
+        _ = await store.refresh()
+        XCTAssertNotNil(store.unlockPresentationID)
+        client.result = .success(.freePreview)
+        _ = await store.refresh()
+        XCTAssertNil(store.unlockPresentationID)
+        client.result = .success(snapshot())
+        _ = await store.refresh()
+        XCTAssertNotNil(store.unlockPresentationID)
+        store.bind(MembershipScope(userID: "user", accessToken: "rotated"))
+        XCTAssertNil(store.unlockPresentationID)
+    }
 }
 
 @MainActor

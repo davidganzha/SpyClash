@@ -13,6 +13,7 @@ App Store upload or review submission was performed.
 - Restoration reference: `a9008aa`, the last complete native LIMITLESS snapshot.
 - Restoration checkpoint: **1.0.1 (136)**, commit `a6c1cd7`.
 - Production activation checkpoint: **1.0.1 (137)**, branch `davidganzha/restore-limitless`.
+- Historical presentation restoration: **1.0.1 (138)** on the same branch.
 - Working copy: `SpyClash.worktrees/restore-limitless`. Original checkout unchanged.
 - Stripe checkout/webhook files and the web worktree have no changes.
 
@@ -45,6 +46,37 @@ its price is not a live retail price.
 - AI quota and new premium profile selections are enforced server-side.
   History/statistics are presentation benefits: existing owner-scoped historical
   data reads are intentionally not removed or converted into a privacy boundary.
+
+## Historical presentation restored in build 138
+
+- The red `⚡ LIMITLESS` pull-down menu row comes from `e4c1997`; `348fc48`
+  removed it for alpha. Its staged horizontal reveal and press feedback are
+  retained in the current shell alongside Notifications, badges and gestures.
+- The pre-alpha `a9008aa` clearance card provides the visual reference: cut
+  corners, red edge/glow, scanner boot sequence, animated title, infinity
+  watermark, three numbered capabilities and the red purchase control.
+  The current Apple payment state machine and localized StoreKit price remain
+  authoritative; no historical checkout implementation or fixed price returns.
+- The three historical capability groups are unlimited daily AI generation;
+  premium avatars/Spycard skins, signals and badges; full match history plus
+  win-rate/role/advanced statistics. FREE remains 10 AI generations/day and the
+  latest 5 matches. Field, signal_red, operative and the basic avatars remain
+  free; the newer eagle stays free. Saved premium choices are not erased.
+- Profile swatches again show locks, including VoiceOver descriptions; tapping
+  a locked choice opens LIMITLESS without changing the choice. The compact
+  SPYCARD STUDIO structure is retained.
+- The card's entrance is explicitly a preview, not an entitlement grant. Only
+  verified access opens locks. Reduce Motion skips the scanner/reveal sequence;
+  dismissal cancels delayed presentation haptics. The historical Core Haptics
+  patterns are restored without audio playback.
+- The short `ACCESS SYNCHRONIZED` overlay returns only on a verified transition
+  from known non-active access to active, non-universal access. Initial paid
+  sign-in, an outage, a preview and universal access do not trigger it. Account
+  rotation/revocation clear it; sheet/root hosts share one feedback claim.
+- English, Russian, Spanish and Ukrainian presentation copy is included.
+  UI preview is visibly labeled and cannot purchase or change an account.
+- No backend, Stripe, product, App Store or production configuration changes
+  were made for this presentation checkpoint.
 
 ## Rollout — defaults closed, explicitly enabled in production
 
@@ -123,17 +155,26 @@ Reference: [Apple subscription integration and review guidance](https://develope
 
 Verified on 2026-09-05:
 
-- iOS suite on build 136: **401 passed, 0 failed, 0 skipped**. Build 137 changes
-  only the synchronized build number and this deployment evidence.
+- iOS suite on build 138: **405 passed, 0 failed, 0 skipped** (the original
+  401 plus historical-benefit/verified-unlock regression tests).
 - Affected backend suites: **228 passed, 0 failed**; all five function entry
   points pass `deno check`.
 - Release-gate regression suite: **43 passed, 0 failed**.
-- Debug and Release iPhone Simulator builds succeed. Build 137 was rebuilt in
+- Debug and Release iPhone Simulator builds succeed. Build 138 was rebuilt in
   Release and passed the actual Simulator release gate. The Release
   Simulator application passes the release gate in `--simulator` mode; this
   does not validate a device signature or App Store readiness.
 - Russian LIMITLESS screen visually inspected on the iPhone 17 Simulator using
   preview data. No purchase or live backend call occurs in that UI preview.
+- Build 138 runtime checks: opening the pull-down menu, tapping its LIMITLESS
+  row, dismissing the card, and tapping locked Blacksite all work. FREE avatar
+  and Spycard locks expose their accessibility values. The card keeps all three
+  locks closed for FREE, with preview/no-charge disclosure. Open-access preview
+  is checked separately; it is not an Apple purchase acceptance test.
+- Local Debug signing initially rejected Finder metadata on a generated
+  dependency bundle. Simulator-only builds/tests use `CODE_SIGNING_ALLOWED=NO`;
+  no device-signing configuration or entitlements were changed. Physical haptic
+  quality and real Apple sandbox purchase remain device acceptance items.
 
 The repository's release gate now requires StoreKit, the expected product and
 Purchase History, while retaining signing/widget/icon/audio/privacy checks and

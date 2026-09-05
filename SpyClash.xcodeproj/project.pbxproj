@@ -40,6 +40,7 @@
 		71EFCB4E56D0E1AFBB55CD75 /* SocketIO-MIT.txt in Resources */ = {isa = PBXBuildFile; fileRef = DB38FB6B74A483175220231A /* SocketIO-MIT.txt */; };
 		7ABFCD782E22AF6AFF519942 /* GameRoomRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68BF1820775925C6C61E563 /* GameRoomRealtimeService.swift */; };
 		7B6D3EB62FE74629B61B73AE /* PricingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */; };
+		7CF9DC97F5FD59E2BD18E81D /* LimitlessUnlockOverlay.swift in Sources */ = {isa = PBXBuildFile; fileRef = BEE68A515367ABB807A2007D /* LimitlessUnlockOverlay.swift */; };
 		7D6221160001A1F896D98689 /* SpyOrbSceneView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */; };
 		7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 103786B1CACE81CF96C268EF /* AuthView.swift */; };
 		82D1D08C2F15D8C91C49A7A1 /* Rajdhani-OFL-1.1.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */; };
@@ -59,6 +60,7 @@
 		BD9EDC5A7F4F7334FFA8354D /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
 		BE763CD2921B74DCF33CB0EF /* SpyGameIntroScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */; };
 		BEE92851841DC7FE6D053B92 /* MembershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FC834A8A03378CFB477BB4 /* MembershipTests.swift */; };
+		C2A5F22F5F23B9D2106D8168 /* LimitlessClearancePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */; };
 		C59197AFE6D361EBD8D48B44 /* NotificationInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */; };
 		C8CFAC00837A449DCC011D54 /* MembershipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450DC5444292040544994868 /* MembershipStore.swift */; };
 		CB22564E02BD266693DE55B4 /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */; };
@@ -153,6 +155,7 @@
 		7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyGameIntroScene.swift; sourceTree = "<group>"; };
 		84FC834A8A03378CFB477BB4 /* MembershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipTests.swift; sourceTree = "<group>"; };
 		86974FE98CF9350796FC28D3 /* SpyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyModels.swift; sourceTree = "<group>"; };
+		8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitlessClearancePanel.swift; sourceTree = "<group>"; };
 		89A2672701BF2A5E11254E90 /* ru-UA */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ru-UA"; path = "ru-UA.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		8B5C87FEFE82151F2F7D6F6A /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
 		8E4C198618FA43B34FF1B363 /* Starscream-Apache-2.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Starscream-Apache-2.0.txt"; sourceTree = "<group>"; };
@@ -170,6 +173,7 @@
 		B7DA7D7405C80D4685A10F92 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		B81713411A03923224780579 /* WordPackDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPackDraft.swift; sourceTree = "<group>"; };
 		BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPrivateDecisionViews.swift; sourceTree = "<group>"; };
+		BEE68A515367ABB807A2007D /* LimitlessUnlockOverlay.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitlessUnlockOverlay.swift; sourceTree = "<group>"; };
 		C8D58811816F930A78503187 /* WordPackDraftTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPackDraftTests.swift; sourceTree = "<group>"; };
 		CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationsInboxView.swift; sourceTree = "<group>"; };
 		CE1AF213121DB5A761660563 /* WelcomeView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WelcomeView.swift; sourceTree = "<group>"; };
@@ -252,6 +256,8 @@
 				22314E28DB2385F7A05ABC74 /* HistoryView.swift */,
 				16DD679CA8E36033E9AD5D76 /* HomeView.swift */,
 				723E083EC43863E9B19D1DBD /* LeaderboardView.swift */,
+				8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */,
+				BEE68A515367ABB807A2007D /* LimitlessUnlockOverlay.swift */,
 				7D83FC09C66C9373238F2E95 /* LocalCinematicGameplayViews.swift */,
 				8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */,
 				BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */,
@@ -543,6 +549,8 @@
 				32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */,
 				E27A943CAA9C87A2F4E58CDB /* KeychainStore.swift in Sources */,
 				047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */,
+				C2A5F22F5F23B9D2106D8168 /* LimitlessClearancePanel.swift in Sources */,
+				7CF9DC97F5FD59E2BD18E81D /* LimitlessUnlockOverlay.swift in Sources */,
 				0A99F706D2042A94AA6DC5DB /* LocalCinematicGameplayViews.swift in Sources */,
 				FE4AD779C9178990AE6FB3B2 /* LocalGameView.swift in Sources */,
 				8AAD0E7106FFD33A43390CC2 /* LocalPrivateDecisionViews.swift in Sources */,
@@ -762,7 +770,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 137;
+				CURRENT_PROJECT_VERSION = 138;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -820,7 +828,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 137;
+				CURRENT_PROJECT_VERSION = 138;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

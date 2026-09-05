@@ -776,6 +776,7 @@ struct ProfileView: View {
         }
         .buttonStyle(SpyWebPressStyle(pressedScale: 0.90))
         .accessibilityLabel(localized(en: "Avatar \(item)", ru: "Аватар \(item)", es: "Avatar \(item)", uk: "Аватар \(item)"))
+        .accessibilityValue(locked ? LimitlessCopy(language: appState.language).locked : "")
         .spyWebEntrance(delay: Double(index) * 0.04, duration: 0.35, y: 0, scale: 0.8)
     }
 
@@ -844,6 +845,7 @@ struct ProfileView: View {
 
     private func themeSwatch(_ item: SpyCardThemeID) -> some View {
         let isSelected = selectedCardTheme == item
+        let locked = profileChoiceLocked(item.rawValue, current: appState.user?.spyCardTheme, free: "field")
 
         return Button {
             selectCardTheme(item)
@@ -872,6 +874,11 @@ struct ProfileView: View {
                         .frame(width: 16, height: 16)
                         .background(spyCardAccentColor, in: Circle())
                         .padding(4)
+                } else if locked {
+                    Image(systemName: "lock.fill")
+                        .font(.system(size: 9, weight: .bold))
+                        .foregroundStyle(SpyTheme.red)
+                        .padding(5)
                 }
             }
             .frame(maxWidth: .infinity)
@@ -883,12 +890,14 @@ struct ProfileView: View {
         }
         .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
         .accessibilityLabel(cardThemeTitle(item))
+        .accessibilityValue(locked ? LimitlessCopy(language: appState.language).locked : "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func accentSwatch(_ item: SpyCardAccentID) -> some View {
         let isSelected = selectedCardAccent == item
         let color = cardAccentColor(item)
+        let locked = profileChoiceLocked(item.rawValue, current: appState.user?.spyCardAccent, free: "signal_red")
 
         return Button {
             guard allowProfileChoice(item.rawValue, current: appState.user?.spyCardAccent, free: "signal_red") else { return }
@@ -907,6 +916,10 @@ struct ProfileView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.58)
 
+                if locked {
+                    Image(systemName: "lock.fill").font(.system(size: 7)).foregroundStyle(SpyTheme.red)
+                }
+
             }
             .foregroundStyle(isSelected ? color : SpyTheme.muted)
             .padding(.horizontal, 7)
@@ -916,11 +929,13 @@ struct ProfileView: View {
         }
         .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
         .accessibilityLabel(cardAccentTitle(item))
+        .accessibilityValue(locked ? LimitlessCopy(language: appState.language).locked : "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
     private func badgeSwatch(_ item: SpyCardBadgeID) -> some View {
         let isSelected = selectedCardBadge == item
+        let locked = profileChoiceLocked(item.rawValue, current: appState.user?.spyCardBadge, free: "operative")
 
         return Button {
             selectCardBadge(item)
@@ -933,6 +948,10 @@ struct ProfileView: View {
                     .lineLimit(1)
                     .minimumScaleFactor(0.62)
 
+                if locked {
+                    Image(systemName: "lock.fill").font(.system(size: 7)).foregroundStyle(SpyTheme.red)
+                }
+
             }
             .font(.system(size: 6.5, weight: .black, design: .monospaced))
             .tracking(0.2)
@@ -944,6 +963,7 @@ struct ProfileView: View {
         }
         .buttonStyle(SpyWebPressStyle(pressedScale: 0.94))
         .accessibilityLabel(cardBadgeTitle(item))
+        .accessibilityValue(locked ? LimitlessCopy(language: appState.language).locked : "")
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
@@ -973,11 +993,15 @@ struct ProfileView: View {
     }
 
     private func allowProfileChoice(_ value: String, current: String?, free: String) -> Bool {
-        guard LimitlessProfilePolicy.allows(value, current: current, freeValues: [free], hasAccess: appState.membership.benefits?.premiumAvatars == true) else {
+        guard !profileChoiceLocked(value, current: current, free: free) else {
             appState.presentedSheet = .limitless
             return false
         }
         return true
+    }
+
+    private func profileChoiceLocked(_ value: String, current: String?, free: String) -> Bool {
+        !LimitlessProfilePolicy.allows(value, current: current, freeValues: [free], hasAccess: appState.membership.benefits?.premiumAvatars == true)
     }
 
     private func cardThemeTitle(_ item: SpyCardThemeID) -> String {

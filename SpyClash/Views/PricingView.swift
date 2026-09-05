@@ -22,29 +22,26 @@ struct PricingView: View {
                     .accessibilityLabel(copy.close)
                     .accessibilityIdentifier("limitless.close")
                 }
-                VStack(alignment: .leading, spacing: 10) {
-                    Image(systemName: "infinity")
-                        .font(.system(size: 48, weight: .bold))
-                        .foregroundStyle(SpyTheme.red)
-                    Text("LIMITLESS")
-                        .font(.system(size: 42, weight: .black, design: .monospaced))
-                        .minimumScaleFactor(0.6).lineLimit(1)
-                    Text(copy.subtitle).font(.subheadline).foregroundStyle(SpyTheme.muted)
-                }
-                SpyPanel {
-                    VStack(alignment: .leading, spacing: 18) {
-                        benefit("sparkles", copy.ai)
-                        benefit("person.crop.square", copy.customization)
-                        benefit("clock.arrow.circlepath", copy.history)
-                        benefit("chart.bar.xaxis", copy.statistics)
+                LimitlessClearancePanel(
+                    copy: copy,
+                    hasAccess: access.hasAccess,
+                    status: accessStatus,
+                    displayPrice: access.canPurchase ? store.product?.displayPrice : nil
+                ) {
+                    VStack(alignment: .leading, spacing: 14) {
+                        accessControls
+                        if let message = stateMessage {
+                            Text(message)
+                                .font(.footnote)
+                                .foregroundStyle(store.state == .failed ? SpyTheme.red : SpyTheme.muted)
+                                .accessibilityIdentifier("limitless.status")
+                        }
                     }
                 }
-                accessControls
-                if let message = stateMessage {
-                    Text(message)
-                        .font(.footnote)
-                        .foregroundStyle(store.state == .failed ? SpyTheme.red : SpyTheme.muted)
-                        .accessibilityIdentifier("limitless.status")
+                if access.isPreview {
+                    Text(copy.previewNotice)
+                        .font(.caption).foregroundStyle(SpyTheme.amber)
+                        .accessibilityIdentifier("limitless.preview-notice")
                 }
                 if access.snapshot?.isUniversal != true {
                     Button(copy.restore) { Task { await store.restore() } }
@@ -68,7 +65,10 @@ struct PricingView: View {
                     .font(.caption)
                 }
             }
-            .padding(24)
+            .frame(maxWidth: 480)
+            .padding(.horizontal, 16)
+            .padding(.bottom, 32)
+            .frame(maxWidth: .infinity)
         }
         .background(SpyBackground())
         .task {
@@ -79,6 +79,7 @@ struct PricingView: View {
             if canPurchase { Task { await store.loadProduct() } }
         }
         .accessibilityIdentifier("limitless.screen")
+        .spyLimitlessUnlockLayer()
     }
 
     @ViewBuilder
@@ -105,11 +106,10 @@ struct PricingView: View {
                 Text("\(copy.remaining): \(remaining)").font(.footnote).foregroundStyle(SpyTheme.muted)
             }
             if access.canPurchase, let product = store.product {
-                Text("\(product.displayPrice) / \(copy.week)")
-                    .font(.system(size: 28, weight: .bold, design: .monospaced))
                 Button(copy.subscribe) { Task { await store.purchase(membership: access) } }
-                    .buttonStyle(SpyButtonStyle(variant: .red))
+                    .buttonStyle(LimitlessCommandButtonStyle())
                     .disabled(!store.canPurchase || store.state.isBusy)
+                    .accessibilityHint("\(product.displayPrice) / \(copy.week)")
                     .accessibilityIdentifier("limitless.purchase")
             } else if store.isLoadingProduct {
                 ProgressView(copy.checking)
@@ -123,8 +123,11 @@ struct PricingView: View {
         }
     }
 
-    private func benefit(_ icon: String, _ text: String) -> some View {
-        Label(text, systemImage: icon).font(.subheadline).foregroundStyle(.white)
+    private var accessStatus: String {
+        if access.hasAccess { return "LIMITLESS" }
+        if access.isLoading { return copy.checking }
+        if access.snapshot == nil || access.errorMessage != nil { return copy.unverified }
+        return "FREE"
     }
 
     private var stateMessage: String? {
@@ -169,6 +172,21 @@ struct LimitlessCopy {
         switch language { case .en: en; case .ru: ru; case .es: es; case .uk: uk }
     }
     var close: String { text("Close", "Закрыть", "Cerrar", "Закрити") }
+    var previewNotice: String { text("UI preview — no payment or account change.", "Предпросмотр интерфейса — без оплаты и изменения аккаунта.", "Vista previa — sin pagos ni cambios en la cuenta.", "Попередній перегляд — без оплати й змін акаунта.") }
+    var unverified: String { text("UNVERIFIED", "НЕ ПРОВЕРЕН", "SIN VERIFICAR", "НЕ ПЕРЕВІРЕНО") }
+    var clearance: String { text("PREMIUM CLEARANCE", "ПРЕМИУМ ДОПУСК", "ACCESO PREMIUM", "ПРЕМІУМ ДОПУСК") }
+    var fieldKit: String { text("FIELD KIT // LEVEL 01", "ПОЛЕВОЙ НАБОР // УРОВЕНЬ 01", "EQUIPO DE CAMPO // NIVEL 01", "ПОЛЬОВИЙ НАБІР // РІВЕНЬ 01") }
+    var mission: String { text("REMOVE LIMITS FROM EVERY MISSION.", "СНИМИ ОГРАНИЧЕНИЯ С КАЖДОЙ МИССИИ.", "ELIMINA LOS LÍMITES DE CADA MISIÓN.", "ЗНІМИ ОБМЕЖЕННЯ З КОЖНОЇ МІСІЇ.") }
+    var appStorePrice: String { text("PRICE FROM APP STORE", "ЦЕНА ИЗ APP STORE", "PRECIO DE APP STORE", "ЦІНА З APP STORE") }
+    var capabilities: String { text("CAPABILITIES", "ВОЗМОЖНОСТИ", "CAPACIDADES", "МОЖЛИВОСТІ") }
+    var preview: String { text("PREVIEW", "ПРЕДПРОСМОТР", "VISTA PREVIA", "ПОПЕРЕДНІЙ ПЕРЕГЛЯД") }
+    var enabled: String { text("ACTIVE", "АКТИВНО", "ACTIVO", "АКТИВНО") }
+    var locked: String { text("Requires LIMITLESS", "Нужен LIMITLESS", "Requiere LIMITLESS", "Потрібен LIMITLESS") }
+    var scanning: String { text("ESTABLISHING SECURE LINK", "УСТАНОВКА ЗАЩИЩЁННОГО КАНАЛА", "ESTABLECIENDO CANAL SEGURO", "ВСТАНОВЛЕННЯ ЗАХИЩЕНОГО КАНАЛУ") }
+    var unlimitedTitle: String { text("UNLIMITED", "БЕЗЛИМИТ", "SIN LÍMITES", "БЕЗЛІМІТ") }
+    var customizationTitle: String { text("PROFILE CUSTOMIZATION", "КАСТОМИЗАЦИЯ ПРОФИЛЯ", "PERSONALIZA TU PERFIL", "КАСТОМІЗАЦІЯ ПРОФІЛЮ") }
+    var statisticsTitle: String { text("GAME STATISTICS", "СТАТИСТИКА ИГР", "ESTADÍSTICAS DE JUEGO", "СТАТИСТИКА ІГОР") }
+    var statisticsDetail: String { text("Full match history, win rates, roles and advanced analytics.", "Полная история матчей, процент побед, роли и расширенная аналитика.", "Historial completo, porcentaje de victorias, roles y análisis avanzado.", "Повна історія матчів, відсоток перемог, ролі й розширена аналітика.") }
     var subtitle: String { text("More ways to play. One SpyClash account.", "Больше возможностей для игры. Один аккаунт SpyClash.", "Más formas de jugar. Una cuenta SpyClash.", "Більше можливостей для гри. Один акаунт SpyClash.") }
     var ai: String { text("Unlimited AI word-pack generations", "Генерация наборов ИИ без дневного лимита", "Generaciones de paquetes con IA sin límite diario", "Генерація наборів ШІ без денного ліміту") }
     var customization: String { text("Premium avatars and Spycard styles", "Премиальные аватары и оформление Spycard", "Avatares y estilos Spycard premium", "Преміальні аватари й оформлення Spycard") }

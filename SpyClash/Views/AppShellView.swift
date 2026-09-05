@@ -2922,7 +2922,7 @@ private struct WebCommandMenuPanel: View {
     let close: () -> Void
 
     private let itemHeight: CGFloat = 40
-    private let totalItems: CGFloat = 6
+    private let totalItems: CGFloat = 7
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2985,9 +2985,16 @@ private struct WebCommandMenuPanel: View {
                     .accessibilityIdentifier("spy-command-menu.notifications")
                 }
 
-                revealDivider(index: 4)
+                revealItem(index: 4) {
+                    menuButton(icon: "⚡", title: "LIMITLESS", highlighted: true) {
+                        closeThen { appState.presentedSheet = .limitless }
+                    }
+                    .accessibilityIdentifier("spy-command-menu.limitless")
+                }
 
-                revealItem(index: 5) {
+                revealDivider(index: 5)
+
+                revealItem(index: 6) {
                     menuButton(
                         icon: "🚪",
                         title: localized(en: "LOGOUT", ru: "ВЫХОД", es: "SALIR", uk: "ВИЙТИ"),

@@ -18,6 +18,8 @@ final class MembershipStore {
     private(set) var isPreview = false
     private(set) var revision = 0
     private(set) var evaluationDate = Date()
+    private(set) var unlockPresentationID: UUID?
+    @ObservationIgnored private var unlockHapticsID: UUID?
     @ObservationIgnored private let client: any MembershipClientProtocol
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var refreshTask: Task<MembershipSnapshot, Error>?
@@ -47,6 +49,8 @@ final class MembershipStore {
         refreshTask = nil
         self.scope = scope
         snapshot = preview
+        unlockPresentationID = nil
+        unlockHapticsID = nil
         isPreview = preview != nil
         isLoading = false
         errorMessage = nil
@@ -72,7 +76,11 @@ final class MembershipStore {
             let next = try await task.value
             guard generation == expected, refreshID == expectedRefresh else { return false }
             guard next.isResolved else { throw MembershipError.unavailable }
+            let shouldCelebrate = snapshot != nil && !hasAccess &&
+                next.grantsAccess() && !next.isUniversal
             snapshot = next
+            if shouldCelebrate { unlockPresentationID = UUID() }
+            if !next.grantsAccess() { unlockPresentationID = nil }
             errorMessage = nil
             isLoading = false
             refreshTask = nil
@@ -94,6 +102,19 @@ final class MembershipStore {
         guard snapshot != nil else { return }
         snapshot?.aiGenerationsToday = used.map { max(0, $0) }
         snapshot?.aiRemaining = hasAccess ? nil : remaining.map { max(0, $0) }
+    }
+
+    // Root and presented sheets can both host the overlay. Announce/haptics once
+    // for the verified transition, regardless of which host appears first.
+    func claimUnlockFeedback(_ id: UUID) -> Bool {
+        guard unlockPresentationID == id, unlockHapticsID != id else { return false }
+        unlockHapticsID = id
+        return true
+    }
+
+    func dismissUnlock(_ id: UUID) {
+        guard unlockPresentationID == id else { return }
+        unlockPresentationID = nil
     }
 }
 
