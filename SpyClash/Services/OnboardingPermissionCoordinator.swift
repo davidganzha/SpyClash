@@ -20,6 +20,18 @@ enum OnboardingPermissionStatus: Equatable, Sendable {
     case unavailable
     /// Simulator cannot evaluate Local Network privacy or Nearby Interaction.
     case unsupported
+
+    var allowsRadarInvitationSettings: Bool {
+        self == .granted || self == .unsupported
+    }
+
+    var requiresLocalNetworkSettings: Bool { self == .denied }
+
+    /// A cached grant can be revoked outside the app. Recheck on foreground,
+    /// while allowing an existing system prompt/probe to finish uninterrupted.
+    var canRefreshLocalNetworkOnActivation: Bool {
+        self != .requesting && self != .unsupported
+    }
 }
 
 struct OnboardingPermissionFlow: Equatable, Sendable {
@@ -239,6 +251,15 @@ final class OnboardingPermissionCoordinator {
 #endif
     }
 
+    private static var simulatedLocalNetworkStatus: OnboardingPermissionStatus? {
+#if DEBUG && targetEnvironment(simulator)
+        if ProcessInfo.processInfo.arguments.contains("--spyclash-preview-local-network-denied") {
+            return .denied
+        }
+#endif
+        return nil
+    }
+
     private(set) var notificationsStatus: OnboardingPermissionStatus = .notDetermined
     private(set) var cameraStatus: OnboardingPermissionStatus = .notDetermined
     private(set) var localNetworkStatus: OnboardingPermissionStatus
@@ -277,9 +298,8 @@ final class OnboardingPermissionCoordinator {
 
     init(pushNotifications: PushNotificationCoordinator = .shared) {
         self.pushNotifications = pushNotifications
-        localNetworkStatus = Self.canEvaluateLocalNetworkPrivacy
-            ? .notDetermined
-            : .unsupported
+        localNetworkStatus = Self.simulatedLocalNetworkStatus
+            ?? (Self.canEvaluateLocalNetworkPrivacy ? .notDetermined : .unsupported)
     }
 
     func status(
@@ -325,7 +345,7 @@ final class OnboardingPermissionCoordinator {
         )
 
         if !Self.canEvaluateLocalNetworkPrivacy {
-            localNetworkStatus = .unsupported
+            localNetworkStatus = Self.simulatedLocalNetworkStatus ?? .unsupported
         }
     }
 
@@ -383,6 +403,10 @@ final class OnboardingPermissionCoordinator {
     }
 
     private func requestLocalNetwork() async {
+        if let simulatedStatus = Self.simulatedLocalNetworkStatus {
+            localNetworkStatus = simulatedStatus
+            return
+        }
         guard Self.canEvaluateLocalNetworkPrivacy else {
             // Simulator doesn't enforce Local Network privacy. A successful
             // browse there is transport evidence, not permission evidence.

@@ -9,6 +9,7 @@ struct WordPackDraft: Equatable {
     var name: String
     var category: String
     var wordsText: String
+    private(set) var excludedWordKeys: Set<String> = []
 
     init(name: String = "", category: String = "", wordsText: String = "") {
         self.name = name
@@ -34,8 +35,12 @@ struct WordPackDraft: Equatable {
         WordPackDraftNormalizer.analyzeWords(wordsText)
     }
 
+    var selectedWords: [String] {
+        wordAnalysis.words.filter { !excludedWordKeys.contains(Self.wordKey($0)) }
+    }
+
     var isValid: Bool {
-        !normalizedName.isEmpty && wordAnalysis.words.count >= 2
+        !normalizedName.isEmpty && selectedWords.count >= 2
     }
 
     var hasContent: Bool {
@@ -47,6 +52,30 @@ struct WordPackDraft: Equatable {
         name = generatedName
         category = generated.category.nilIfBlank ?? generatedName
         wordsText = generated.words.joined(separator: "\n")
+        excludedWordKeys.removeAll()
+    }
+
+    func isWordSelected(_ word: String) -> Bool {
+        !excludedWordKeys.contains(Self.wordKey(word))
+    }
+
+    mutating func toggleWord(_ word: String) {
+        let key = Self.wordKey(word)
+        guard wordAnalysis.words.contains(where: { Self.wordKey($0) == key }) else { return }
+        if !excludedWordKeys.insert(key).inserted {
+            excludedWordKeys.remove(key)
+        }
+    }
+
+    mutating func addWords(_ input: String) {
+        let additions = WordPackDraftNormalizer.analyzeWords(input).words
+        guard !additions.isEmpty else { return }
+        wordsText = ([wordsText] + additions).joined(separator: "\n")
+        excludedWordKeys.subtract(additions.map(Self.wordKey))
+    }
+
+    private static func wordKey(_ word: String) -> String {
+        WordPackDraftNormalizer.normalizedField(word).lowercased()
     }
 }
 

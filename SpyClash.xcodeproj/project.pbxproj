@@ -11,6 +11,7 @@
 		047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723E083EC43863E9B19D1DBD /* LeaderboardView.swift */; };
 		04ABFF97837288EEF867A306 /* SpyClashWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = EB074CEB86E78BFB857C6C47 /* SpyClashWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
 		0A99F706D2042A94AA6DC5DB /* LocalCinematicGameplayViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7D83FC09C66C9373238F2E95 /* LocalCinematicGameplayViews.swift */; };
+		0AD0D0575DA19A67B46A8E69 /* QRScannerTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8C9BF7C89321D9588B7D95E1 /* QRScannerTests.swift */; };
 		0E5B384245B705E4A0093F79 /* WordPackDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = B81713411A03923224780579 /* WordPackDraft.swift */; };
 		1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22314E28DB2385F7A05ABC74 /* HistoryView.swift */; };
 		138D4E2D9BDF375CF36C08F5 /* OnboardingPermissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6103AB3131936FE120B988 /* OnboardingPermissionTests.swift */; };
@@ -179,6 +180,7 @@
 		89A2672701BF2A5E11254E90 /* ru-UA */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = "ru-UA"; path = "ru-UA.lproj/InfoPlist.strings"; sourceTree = "<group>"; };
 		8A763626AA7553FBDDD665B8 /* SpyInterfaceScale.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyInterfaceScale.swift; sourceTree = "<group>"; };
 		8B5C87FEFE82151F2F7D6F6A /* GameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameView.swift; sourceTree = "<group>"; };
+		8C9BF7C89321D9588B7D95E1 /* QRScannerTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = QRScannerTests.swift; sourceTree = "<group>"; };
 		8E4C198618FA43B34FF1B363 /* Starscream-Apache-2.0.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Starscream-Apache-2.0.txt"; sourceTree = "<group>"; };
 		8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalGameView.swift; sourceTree = "<group>"; };
 		8EE75E34545D7FD03BFBF561 /* Base44Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base44Client.swift; sourceTree = "<group>"; };
@@ -385,6 +387,7 @@
 				0E6103AB3131936FE120B988 /* OnboardingPermissionTests.swift */,
 				2BCA75CB0E2A17773B402C74 /* OnboardingTests.swift */,
 				673C14A27AC3CD3669188134 /* OnlineRoundStateTests.swift */,
+				8C9BF7C89321D9588B7D95E1 /* QRScannerTests.swift */,
 				C8D58811816F930A78503187 /* WordPackDraftTests.swift */,
 			);
 			path = SpyClashTests;
@@ -682,6 +685,7 @@
 				138D4E2D9BDF375CF36C08F5 /* OnboardingPermissionTests.swift in Sources */,
 				A39D9B411FD1CC3B3D4DDE08 /* OnboardingTests.swift in Sources */,
 				39840D09E8474E87D45E1555 /* OnlineRoundStateTests.swift in Sources */,
+				0AD0D0575DA19A67B46A8E69 /* QRScannerTests.swift in Sources */,
 				397C0B1DBC891128B57E1133 /* WordPackDraftTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
@@ -879,7 +883,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 142;
+				CURRENT_PROJECT_VERSION = 143;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -937,7 +941,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 142;
+				CURRENT_PROJECT_VERSION = 143;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

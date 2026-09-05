@@ -452,6 +452,75 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         }
     }
 
+    func testRadarSettingsRequireVerifiedPermissionAndDeniedAccessUsesSettings() {
+        for status in [
+            OnboardingPermissionStatus.notDetermined, .requesting, .denied, .unavailable
+        ] {
+            XCTAssertFalse(status.allowsRadarInvitationSettings)
+        }
+        XCTAssertTrue(OnboardingPermissionStatus.granted.allowsRadarInvitationSettings)
+        // Simulator previews are available, but never claim a physical grant.
+        XCTAssertTrue(OnboardingPermissionStatus.unsupported.allowsRadarInvitationSettings)
+        XCTAssertTrue(OnboardingPermissionStatus.denied.requiresLocalNetworkSettings)
+        XCTAssertFalse(OnboardingPermissionStatus.notDetermined.requiresLocalNetworkSettings)
+        XCTAssertFalse(OnboardingPermissionStatus.unavailable.requiresLocalNetworkSettings)
+    }
+
+    func testForegroundRadarPermissionCheckRefreshesCachedGrantsWithoutCancellingPrompt() {
+        for status in [
+            OnboardingPermissionStatus.granted, .denied, .unavailable, .notDetermined
+        ] {
+            XCTAssertTrue(status.canRefreshLocalNetworkOnActivation)
+        }
+        XCTAssertFalse(OnboardingPermissionStatus.requesting.canRefreshLocalNetworkOnActivation)
+        XCTAssertFalse(OnboardingPermissionStatus.unsupported.canRefreshLocalNetworkOnActivation)
+    }
+
+    func testRadarAdvertisementCapsUTF8WithoutBreakingEmojiOrProtocolFields() {
+        let input = [
+            "v": "4", "spyid": "123-456", "theme": "blacksite",
+            "accent": "clearance_amber", "badge": "operative",
+            "name": String(repeating: "Я", count: 80),
+            "avatar": String(repeating: "👩‍👩‍👧‍👧", count: 12),
+            "policy": "automatic", "availability": "available",
+            "presence_rev": String(UInt64.max), "source": "iphone",
+            "precision": "1", "rangefinder_probe": "1", "connected_ranging": "1"
+        ]
+        let compact = RadarDiscoveryAdvertisement.compactProfileFields(input)
+        let txtByteCount = compact.reduce(0) { result, pair in
+            result + pair.key.utf8.count + pair.value.utf8.count + 2
+        }
+
+        XCTAssertLessThanOrEqual(txtByteCount, 400)
+        XCTAssertEqual(compact["avatar"], "👩‍👩‍👧‍👧")
+        XCTAssertEqual(compact["name"], String(repeating: "Я", count: 48))
+        for (key, value) in input where key != "name" && key != "avatar" {
+            XCTAssertEqual(compact[key], value)
+        }
+        for (key, value) in compact {
+            XCTAssertLessThanOrEqual(key.utf8.count + value.utf8.count + 1, 255)
+        }
+        XCTAssertEqual(input["avatar"], String(repeating: "👩‍👩‍👧‍👧", count: 12))
+    }
+
+    func testRadarAdvertisementFallsBackForAnOversizedSingleGrapheme() {
+        let oversizedGrapheme = "a" + String(repeating: "\u{0301}", count: 200)
+        XCTAssertEqual(oversizedGrapheme.count, 1)
+        let compact = RadarDiscoveryAdvertisement.compactProfileFields([
+            "name": oversizedGrapheme, "avatar": oversizedGrapheme
+        ])
+        XCTAssertEqual(compact["name"], "Operative")
+        XCTAssertEqual(compact["avatar"], "🕵️")
+    }
+
+    func testEmptyRadarDiscoveryRetriesWithBackoffAndStopsAfterThreeRefreshes() {
+        XCTAssertEqual(RadarEmptyDiscoveryRetryPolicy.delaySeconds(afterRefreshCount: 0), 12)
+        XCTAssertEqual(RadarEmptyDiscoveryRetryPolicy.delaySeconds(afterRefreshCount: 1), 24)
+        XCTAssertEqual(RadarEmptyDiscoveryRetryPolicy.delaySeconds(afterRefreshCount: 2), 48)
+        XCTAssertNil(RadarEmptyDiscoveryRetryPolicy.delaySeconds(afterRefreshCount: 3))
+        XCTAssertNil(RadarEmptyDiscoveryRetryPolicy.delaySeconds(afterRefreshCount: -1))
+    }
+
     func testRadarTransportRetryUsesBoundedBackoff() {
         XCTAssertEqual(
             RadarTransportRetryPolicy.delayMilliseconds(afterFailureCount: 1),
@@ -909,6 +978,44 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
     }
 
 #if DEBUG
+    @MainActor
+    func testEmptyDiscoveryRefreshKeepsSessionAndDefersToPendingInvitation() throws {
+        let user = try JSONDecoder().decode(
+            SpyUser.self,
+            from: Data(#"{"id":"empty-radar-user","email":"empty-radar@example.com"}"#.utf8)
+        )
+        let radar = RadarNearbyService()
+        defer { radar.configure(user: nil, allowsTransport: false) }
+        radar.configure(user: user)
+        radar.setApplicationActive(true)
+        radar.startScanning()
+        let initialRebuilds = radar.transportRebuildCountForTesting
+        let initialBrowserStarts = radar.browserStartCountForTesting
+
+        for _ in 0..<4 { radar.refreshEmptyDiscoveryIfNeeded() }
+
+        XCTAssertEqual(radar.browserStartCountForTesting, initialBrowserStarts + 3)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, initialRebuilds)
+        XCTAssertEqual(radar.scanState, .scanning)
+
+        radar.stopScanning()
+        radar.startScanning()
+        let browserStartsAfterReopen = radar.browserStartCountForTesting
+        let invitation = RadarIncomingInvitation(
+            roomCode: "ABC123", hostCallSign: "Host", hostAvatar: "🕵️"
+        )
+        radar.presentForConfirmation(invitation)
+        radar.refreshEmptyDiscoveryIfNeeded()
+
+        XCTAssertEqual(radar.browserStartCountForTesting, browserStartsAfterReopen)
+        XCTAssertEqual(radar.incomingInvitation, invitation)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, initialRebuilds)
+
+        radar.setApplicationActive(false)
+        radar.refreshEmptyDiscoveryIfNeeded()
+        XCTAssertEqual(radar.browserStartCountForTesting, browserStartsAfterReopen)
+    }
+
     @MainActor
     func testRadarOutgoingInvitationRemainsAvailableWithoutPreciseDistance() async throws {
         let radar = RadarNearbyService()

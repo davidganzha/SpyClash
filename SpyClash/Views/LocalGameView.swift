@@ -217,6 +217,7 @@ struct LocalGameView: View {
     @State private var selectedPackID = ""
     @State private var customTheme = ""
     @State private var generatedPack: GeneratedWordPack?
+    @State private var showsAllLocalPoolWords = false
     @State private var localSourceBeforeCustomTheme = ""
     @State private var packs: [WordPack] = []
     @State private var status = ""
@@ -422,8 +423,14 @@ struct LocalGameView: View {
 
     private var localSourceObservationBody: some View {
         localSettingsObservationBody
-            .onChange(of: selectedPackID) { _, _ in persistLocalSettings() }
-            .onChange(of: customTheme) { _, _ in persistLocalSettings() }
+            .onChange(of: selectedPackID) { _, _ in
+                showsAllLocalPoolWords = false
+                persistLocalSettings()
+            }
+            .onChange(of: customTheme) { _, _ in
+                showsAllLocalPoolWords = false
+                persistLocalSettings()
+            }
             .onChange(of: localWordCountMode) { _, _ in persistLocalSettings() }
             .onChange(of: localCustomWordCount) { _, _ in persistLocalSettings() }
     }
@@ -1442,6 +1449,8 @@ struct LocalGameView: View {
             localIntelMessages
             localIntelPackSelection
             localIntelGeneratedPackControls
+            localPoolPreview
+            localIntelSavePackAction
         }
         .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: localHasCustomTheme)
         .animation(reduceMotion ? nil : .smooth(duration: 0.28), value: localThemeAnalyzed)
@@ -1508,10 +1517,89 @@ struct LocalGameView: View {
             }
         }
 
+    }
+
+    @ViewBuilder
+    private var localIntelSavePackAction: some View {
         if (generatedPack?.words.localCleanWords.count ?? 0) >= 2, localHasCustomTheme {
             localSaveAsWordPackButton
                 .transition(.opacity.combined(with: .move(edge: .top)))
         }
+    }
+
+    @ViewBuilder
+    private var localPoolPreview: some View {
+        let words = localPlayablePool
+        if !words.isEmpty {
+            VStack(alignment: .leading, spacing: 12) {
+                HStack(alignment: .firstTextBaseline) {
+                    Text(localWordsLabel)
+                        .font(SpyTheme.micro)
+                        .foregroundStyle(SpyTheme.dim)
+                    Spacer()
+                    Text("\(words.count)")
+                        .font(.system(size: 16, weight: .black))
+                        .foregroundStyle(SpyTheme.green)
+                        .accessibilityIdentifier("localGame.poolPreview.count")
+                }
+
+                Text(localPoolTitle)
+                    .font(.system(size: 18, weight: .black))
+                    .foregroundStyle(.white)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], spacing: 8) {
+                    ForEach(showsAllLocalPoolWords ? words : Array(words.prefix(8)), id: \.self) { word in
+                        Text(word)
+                            .font(.system(size: 12, weight: .bold))
+                            .foregroundStyle(SpyTheme.bodyText)
+                            .multilineTextAlignment(.center)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .padding(.horizontal, 10)
+                            .padding(.vertical, 12)
+                            .frame(maxWidth: .infinity, minHeight: 44)
+                            .background(SpyTheme.control)
+                            .overlay(Rectangle().stroke(SpyTheme.stroke, lineWidth: 1))
+                            .accessibilityIdentifier("localGame.poolWord.\(word)")
+                    }
+                }
+
+                if words.count > 8 {
+                    Button {
+                        withAnimation(reduceMotion ? nil : .smooth(duration: 0.2)) {
+                            showsAllLocalPoolWords.toggle()
+                        }
+                    } label: {
+                        HStack {
+                            Text(showsAllLocalPoolWords
+                                ? localized(en: "SHOW LESS", ru: "ПОКАЗАТЬ МЕНЬШЕ", es: "VER MENOS", uk: "ПОКАЗАТИ МЕНШЕ")
+                                : localized(en: "SHOW ALL · \(words.count)", ru: "ПОКАЗАТЬ ВСЕ · \(words.count)", es: "VER TODAS · \(words.count)", uk: "ПОКАЗАТИ ВСІ · \(words.count)"))
+                            Spacer()
+                            Image(systemName: showsAllLocalPoolWords ? "chevron.up" : "chevron.down")
+                        }
+                        .font(.system(size: 10, weight: .black))
+                        .foregroundStyle(SpyTheme.muted)
+                        .padding(.horizontal, 12)
+                        .frame(minHeight: 44)
+                        .background(SpyTheme.panelDeep)
+                        .overlay(Rectangle().stroke(SpyTheme.strokeStrong, lineWidth: 1))
+                    }
+                    .buttonStyle(SpyWebPressStyle())
+                    .accessibilityIdentifier("localGame.toggleAllThemeWords")
+                }
+            }
+            .padding(12)
+            .background(SpyTheme.dark)
+            .overlay(Rectangle().stroke(SpyTheme.green.opacity(0.25), lineWidth: 1))
+            .accessibilityIdentifier("localGame.poolPreview")
+        }
+    }
+
+    private var localPoolTitle: String {
+        if selectedPackID == "generated", let generatedPack {
+            return generatedPack.category.nilIfBlank ?? customTheme
+        }
+        return packs.first(where: { $0.id == selectedPackID })?.name ?? ""
     }
 
     private func localSetupPanel<Content: View>(

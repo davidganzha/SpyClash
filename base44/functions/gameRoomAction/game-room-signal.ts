@@ -287,9 +287,11 @@ export async function upsertGameRoomSignal(
   options: {
     allowCreate?: boolean;
     existingRows?: Record<string, unknown>[];
+    beforeOperation?: () => void;
   } = {},
 ): Promise<"created" | "updated" | "unchanged" | "missing"> {
   const query = { user_id: signal.user_id, room_id: signal.room_id };
+  options.beforeOperation?.();
   const existing = options.existingRows ?? await store.filter(query) ?? [];
   const writable = existing.filter((row) => clean(row?.id));
   const updates = writable.filter((row) => {
@@ -349,22 +351,30 @@ export async function upsertGameRoomSignal(
     return timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at);
   });
   if (updates.length) {
-    await Promise.all(
-      updates.map((row) => store.update(clean(row.id), signal)),
+    const settled = await Promise.allSettled(
+      updates.map(async (row) => {
+        options.beforeOperation?.();
+        await store.update(clean(row.id), signal);
+      }),
     );
+    const failure = settled.find((result) => result.status === "rejected");
+    if (failure?.status === "rejected") throw failure.reason;
     return "updated";
   }
   if (writable.length) return "unchanged";
   if (options.allowCreate === false) return "missing";
 
   try {
+    options.beforeOperation?.();
     await store.create(signal);
     return "created";
   } catch (createError) {
+    options.beforeOperation?.();
     const raced = await store.filter(query) ?? [];
     const racedResult = await upsertGameRoomSignal(store, signal, {
       allowCreate: false,
       existingRows: raced,
+      beforeOperation: options.beforeOperation,
     });
     if (racedResult !== "missing") return racedResult;
     throw createError;
@@ -380,6 +390,7 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
   closeReceipt?: GameRoomCloseReceipt;
   projection?: LobbyModeGameRoomSignalProjection | null;
   allowCreate?: boolean;
+  beforeOperation?: () => void;
   logError?: (message: string, error: unknown) => void;
 }): Promise<{ attempted: number; succeeded: number; failed: number }> {
   const signals = input.recipients
@@ -400,6 +411,7 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
 
   let existing: Record<string, unknown>[];
   try {
+    input.beforeOperation?.();
     existing = await input.store.filter({ room_id: signals[0].room_id }) ?? [];
   } catch (error) {
     input.logError?.("room signal fanout deferred", error);
@@ -413,6 +425,7 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
     signals.map((signal) =>
       upsertGameRoomSignal(input.store, signal, {
         allowCreate: input.allowCreate !== false,
+        beforeOperation: input.beforeOperation,
         existingRows: existing.filter((row) =>
           clean(row?.user_id) === signal.user_id &&
           clean(row?.room_id) === signal.room_id

@@ -15,10 +15,10 @@ enum RadarInvitePolicy: String, CaseIterable, Identifiable, Codable {
 
     var id: String { rawValue }
 
-    static let selectableCases: [RadarInvitePolicy] = [.ask, .automatic]
+    static let selectableCases: [RadarInvitePolicy] = [.ask, .automatic, .blocked]
 
     var selectableValue: RadarInvitePolicy {
-        self == .blocked ? .ask : self
+        self
     }
 
     static func stored(
@@ -261,6 +261,39 @@ enum RadarAutomaticRangefinderPolicy {
         from state: RadarRangefinderAccessState
     ) -> Bool {
         state == .waitingForPeer || state == .ready
+    }
+}
+
+enum RadarDiscoveryAdvertisement {
+    /// Keep the TXT snapshot within Apple's ~400-byte discovery budget. The
+    /// remaining fixed protocol fields occupy at most 227 bytes. Trim only
+    /// presentation fields here; account/profile data and invitation payloads
+    /// retain their original values.
+    static func compactProfileFields(_ values: [String: String]) -> [String: String] {
+        var result = values
+        result["name"] = prefix(values["name"] ?? "", maxUTF8Bytes: 96, fallback: "Operative")
+        result["avatar"] = prefix(values["avatar"] ?? "", maxUTF8Bytes: 32, fallback: "🕵️")
+        return result
+    }
+
+    private static func prefix(_ value: String, maxUTF8Bytes: Int, fallback: String) -> String {
+        var result = ""
+        var byteCount = 0
+        for character in value {
+            let characterBytes = String(character).utf8.count
+            guard byteCount + characterBytes <= maxUTF8Bytes else { break }
+            result.append(character)
+            byteCount += characterBytes
+        }
+        return result.isEmpty ? fallback : result
+    }
+}
+
+enum RadarEmptyDiscoveryRetryPolicy {
+    static func delaySeconds(afterRefreshCount refreshCount: Int) -> Int? {
+        let delays = [12, 24, 48]
+        guard delays.indices.contains(refreshCount) else { return nil }
+        return delays[refreshCount]
     }
 }
 
@@ -999,6 +1032,8 @@ final class RadarNearbyService: NSObject {
 #endif
     }
 
+    let localNetworkPermissions = OnboardingPermissionCoordinator()
+
     private(set) var peers: [RadarNearbyPeer] = []
     private(set) var scanState: RadarScanState = .idle
     private(set) var incomingInvitation: RadarIncomingInvitation?
@@ -1090,6 +1125,9 @@ final class RadarNearbyService: NSObject {
     private var pendingLocalPresenceSnapshot: RadarPresenceSnapshot?
     @ObservationIgnored private var presencePublishTask: Task<Void, Never>?
     private var presencePublishRunID: UUID?
+    @ObservationIgnored private var emptyDiscoveryRecoveryTask: Task<Void, Never>?
+    private var emptyDiscoveryRecoveryRunID: UUID?
+    private var emptyDiscoveryRefreshCount = 0
     @ObservationIgnored private var transportRetryTask: Task<Void, Never>?
     private var transportRetryRunID: UUID?
     @ObservationIgnored private var transportStabilityTask: Task<Void, Never>?
@@ -1099,6 +1137,7 @@ final class RadarNearbyService: NSObject {
     private var previewScanFailureMessage: String?
     private var previewRangefinderAccessState: RadarRangefinderAccessState?
     private(set) var transportRebuildCountForTesting = 0
+    private(set) var browserStartCountForTesting = 0
 #endif
 
     var hasRecoverableRangingFailure: Bool {
@@ -1207,9 +1246,11 @@ final class RadarNearbyService: NSObject {
             return
         }
 
-        if transportAccessChanged || identityChanged || multipeerSession == nil || localPeerID == nil {
+        // Profile refreshes must preserve the session, discoveries, ranging
+        // exchanges and invitations owned by this same account.
+        if transportAccessChanged || accountChanged || multipeerSession == nil || localPeerID == nil {
             rebuildTransportIfNeeded()
-        } else if policyChanged {
+        } else if identityChanged || policyChanged {
             publishLocalPresence()
         } else {
             restartAdvertisingIfPossible()
@@ -1241,6 +1282,7 @@ final class RadarNearbyService: NSObject {
         _ isActive: Bool,
         stopTransportWhenInactive: Bool = true
     ) {
+        localNetworkPermissions.setApplicationActive(isActive)
         let activityChanged = isApplicationActive != isActive
         guard activityChanged || (!isActive && stopTransportWhenInactive) else { return }
         isApplicationActive = isActive
@@ -1251,6 +1293,7 @@ final class RadarNearbyService: NSObject {
 
         if isActive {
             if activityChanged {
+                emptyDiscoveryRefreshCount = 0
                 resetTransportRecoveryBudget()
             }
             supportsPreciseDistance = NISession.deviceCapabilities.supportsPreciseDistanceMeasurement
@@ -1386,6 +1429,9 @@ final class RadarNearbyService: NSObject {
             rangefinderAccessState = previewRangefinderAccessState
         }
 #endif
+        if !wantsScanning {
+            emptyDiscoveryRefreshCount = 0
+        }
         wantsScanning = true
         wantsCameraAssistance = requestCameraAccess
         if requestCameraAccess {
@@ -1413,11 +1459,19 @@ final class RadarNearbyService: NSObject {
 #endif
     }
 
+    func refreshTransportAfterLocalNetworkGrant() {
+        guard allowsTransport, isApplicationActive, identity != nil else { return }
+        resetTransportRecoveryBudget()
+        emptyDiscoveryRefreshCount = 0
+        rebuildTransportIfNeeded()
+    }
+
     func retryScanning(requestCameraAccess: Bool = false) {
         // A failed MCNearbyServiceBrowser or advertiser is not guaranteed to
         // recover when startScanning() is called again. Tear down the complete
         // transport first so Retry always creates fresh Multipeer objects.
         debugLog("scan retry requested")
+        emptyDiscoveryRefreshCount = 0
         resetTransportRecoveryBudget()
 #if DEBUG
         previewScanFailureMessage = nil
@@ -1437,6 +1491,7 @@ final class RadarNearbyService: NSObject {
     }
 
     func stopScanning() {
+        cancelEmptyDiscoveryRecovery()
         wantsScanning = false
         wantsCameraAssistance = false
         cameraAuthorizationRequestID = nil
@@ -1950,7 +2005,7 @@ final class RadarNearbyService: NSObject {
 
         let advertiser = MCNearbyServiceAdvertiser(
             peer: peerID,
-            discoveryInfo: [
+            discoveryInfo: RadarDiscoveryAdvertisement.compactProfileFields([
                 "v": Self.protocolVersion,
                 "spyid": identity.spyID,
                 "theme": identity.spyCardTheme.rawValue,
@@ -1965,7 +2020,7 @@ final class RadarNearbyService: NSObject {
                 "precision": supportsPreciseDistance ? "1" : "0",
                 "rangefinder_probe": Self.canVerifyRangefinderAccess ? "1" : "0",
                 "connected_ranging": "1"
-            ],
+            ]),
             serviceType: Self.serviceType
         )
         advertiser.delegate = self
@@ -1991,6 +2046,62 @@ final class RadarNearbyService: NSObject {
         self.browser = browser
         scanState = .scanning
         browser.startBrowsingForPeers()
+#if DEBUG
+        browserStartCountForTesting &+= 1
+#endif
+        scheduleEmptyDiscoveryRecoveryIfNeeded()
+    }
+
+    private func scheduleEmptyDiscoveryRecoveryIfNeeded() {
+        guard emptyDiscoveryRecoveryTask == nil,
+              wantsScanning, isApplicationActive, allowsTransport,
+              browser != nil, peers.isEmpty,
+              let delay = RadarEmptyDiscoveryRetryPolicy.delaySeconds(
+                afterRefreshCount: emptyDiscoveryRefreshCount
+              ) else { return }
+        let runID = UUID()
+        emptyDiscoveryRecoveryRunID = runID
+        emptyDiscoveryRecoveryTask = Task { @MainActor [weak self] in
+            do {
+                try await Task.sleep(for: .seconds(delay))
+            } catch {
+                return
+            }
+            guard let self, self.emptyDiscoveryRecoveryRunID == runID else { return }
+            self.emptyDiscoveryRecoveryTask = nil
+            self.emptyDiscoveryRecoveryRunID = nil
+            self.refreshEmptyDiscoveryIfNeeded()
+        }
+    }
+
+    /// Bonjour can remain silent without invoking didNotStartBrowsing. Refresh
+    /// only the empty browser; live MCSession/ranging/invitation state survives.
+    func refreshEmptyDiscoveryIfNeeded() {
+        cancelEmptyDiscoveryRecovery()
+        guard wantsScanning, isApplicationActive, allowsTransport,
+              browser != nil, peers.isEmpty,
+              RadarEmptyDiscoveryRetryPolicy.delaySeconds(
+                afterRefreshCount: emptyDiscoveryRefreshCount
+              ) != nil else { return }
+        guard connectingPeerIDs.isEmpty,
+              pendingRoomInvites.isEmpty,
+              pendingInvitationIDs.isEmpty,
+              incomingInvitation == nil else {
+            scheduleEmptyDiscoveryRecoveryIfNeeded()
+            return
+        }
+        emptyDiscoveryRefreshCount += 1
+        browser?.delegate = nil
+        browser?.stopBrowsingForPeers()
+        browser = nil
+        debugLog("refreshing empty discovery attempt=\(emptyDiscoveryRefreshCount)")
+        startBrowserIfPossible()
+    }
+
+    private func cancelEmptyDiscoveryRecovery() {
+        emptyDiscoveryRecoveryTask?.cancel()
+        emptyDiscoveryRecoveryTask = nil
+        emptyDiscoveryRecoveryRunID = nil
     }
 
     private func markTransportUnavailable(_ message: String) {
@@ -2068,6 +2179,7 @@ final class RadarNearbyService: NSObject {
     }
 
     private func stopTransport(clearPeers: Bool) {
+        cancelEmptyDiscoveryRecovery()
         cancelTransportRecoveryTasks()
         clearRangefinderProbeResponders()
         if activeRangefinderProbe != nil {
@@ -2287,6 +2399,7 @@ final class RadarNearbyService: NSObject {
         stopRanging(with: id)
         peers.removeAll { $0.id == id }
         reconcileRangefinderReadiness()
+        scheduleEmptyDiscoveryRecoveryIfNeeded()
     }
 
     @discardableResult

@@ -9,7 +9,9 @@ struct OnboardingView: View {
     @ScaledMetric(relativeTo: .largeTitle) private var stepTitleSize: CGFloat = 34
     @ScaledMetric(relativeTo: .title2) private var greetingSize: CGFloat = 24
 
-    @State private var permissions = OnboardingPermissionCoordinator()
+    private var permissions: OnboardingPermissionCoordinator {
+        appState.radarNearby.localNetworkPermissions
+    }
     @State private var permissionFlow = OnboardingPermissionFlow()
     @State private var permissionRequestTask: Task<Void, Never>?
     @State private var step = Step.language

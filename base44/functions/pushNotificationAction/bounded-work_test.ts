@@ -1,4 +1,4 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
   clampDeadline,
   runBounded,
@@ -68,4 +68,75 @@ Deno.test("wall-clock wrapper returns while an in-flight worker remains recovera
   });
   assertEquals(result, { timedOut: true });
   assertEquals(Date.now() - startedAt < 250, true);
+});
+
+Deno.test("local delivery deadline waits for started workers to release account leases", async () => {
+  let finish!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  let leaseHeld = true;
+  let responded = false;
+  const response = runWithinDeadline({
+    deadlineEpochMs: Date.now() + 10,
+    waitForStartedWork: true,
+    operation: async () => {
+      try {
+        await gate;
+        return "delivered";
+      } finally {
+        leaseHeld = false;
+      }
+    },
+  }).then((result) => {
+    responded = true;
+    return result;
+  });
+  await new Promise((resolve) => setTimeout(resolve, 20));
+  assertEquals(responded, false);
+  assertEquals(leaseHeld, true);
+  finish();
+  assertEquals(await response, { timedOut: false, value: "delivered" });
+  assertEquals(leaseHeld, false);
+});
+
+Deno.test("failed parallel worker waits for siblings and never starts another item", async () => {
+  let finish!: () => void;
+  const gate = new Promise<void>((resolve) => {
+    finish = resolve;
+  });
+  const started: number[] = [];
+  let siblingReleased = false;
+  let responded = false;
+  const response = runBounded({
+    items: [1, 2, 3],
+    concurrency: 2,
+    deadlineEpochMs: Date.now() + 5_000,
+    worker: async (item) => {
+      started.push(item);
+      if (item === 1) throw new Error("first worker failed");
+      try {
+        await gate;
+      } finally {
+        siblingReleased = true;
+      }
+    },
+  });
+  const observed = response.then(
+    () => {
+      responded = true;
+    },
+    () => {
+      responded = true;
+    },
+  );
+  await Promise.resolve();
+  await Promise.resolve();
+  assertEquals(responded, false);
+  assertEquals(siblingReleased, false);
+  finish();
+  await assertRejects(() => response, Error, "first worker failed");
+  await observed;
+  assertEquals(started, [1, 2]);
+  assertEquals(siblingReleased, true);
 });

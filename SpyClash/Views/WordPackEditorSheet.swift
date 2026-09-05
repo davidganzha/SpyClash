@@ -9,6 +9,7 @@ struct WordPackEditorSheet: View {
     let onSaved: (WordPack) -> Void
 
     @State private var draft: WordPackDraft
+    @State private var newWordsInput = ""
     @State private var step: Step
     @State private var method: WordPackCreationMethod?
     @State private var aiTheme = ""
@@ -563,6 +564,7 @@ struct WordPackEditorSheet: View {
 
     private var wordsSection: some View {
         let analysis = draft.wordAnalysis
+        let selectedCount = draft.selectedWords.count
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -573,34 +575,35 @@ struct WordPackEditorSheet: View {
 
                 Spacer()
 
-                Text("\(analysis.words.count) \(flowCopy.uniqueWords)")
+                Text("\(selectedCount) / \(analysis.words.count)")
                     .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundStyle(analysis.words.count >= 2 ? SpyTheme.green : SpyTheme.red)
+                    .foregroundStyle(selectedCount >= 2 ? SpyTheme.green : SpyTheme.red)
+                    .accessibilityLabel("\(selectedCount) \(flowCopy.uniqueWords)")
+                    .accessibilityIdentifier("wordPacks.editor.selectedWordCount")
             }
 
-            TextEditor(text: $draft.wordsText)
-                .focused($focusedField, equals: .words)
-                .font(SpyTheme.mono)
-                .foregroundStyle(.white)
-                .scrollContentBackground(.hidden)
-                .frame(minHeight: 190)
-                .padding(10)
-                .background(SpyTheme.panelDeep)
-                .overlay(
-                    Rectangle().stroke(
-                        focusedField == .words ? SpyTheme.red.opacity(0.75) : SpyTheme.stroke
-                    )
-                )
-                .accessibilityLabel(accessibleLabel(copy.wordsLabel))
-                .accessibilityHint(copy.wordsInputHint)
+            if !analysis.words.isEmpty {
+                Text(wordSelectionHint)
+                    .font(.system(size: 11, weight: .semibold))
+                    .foregroundStyle(SpyTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+
+                LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], spacing: 8) {
+                    ForEach(analysis.words, id: \.self) { word in
+                        wordSelectionButton(word)
+                    }
+                }
                 .accessibilityIdentifier("wordPacks.editor.words")
                 .disabled(isBusy)
+            }
+
+            addWordsField
 
             Text(copy.wordsInputHint)
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(SpyTheme.muted)
 
-            if validationAttempted && analysis.words.count < 2 {
+            if validationAttempted && selectedCount < 2 {
                 validationMessage(flowCopy.twoWordsRequired)
             } else if analysis.words.isEmpty {
                 Text(copy.emptyWordsHint)
@@ -624,13 +627,120 @@ struct WordPackEditorSheet: View {
                 )
             }
 
-            if analysis.words.count > WordPackDraftNormalizer.gameplayWordLimit {
+            if selectedCount > WordPackDraftNormalizer.gameplayWordLimit {
                 analysisMessage(
                     flowCopy.gameLimitHint,
                     systemName: "info.circle.fill",
                     accent: SpyTheme.amber
                 )
             }
+        }
+    }
+
+    private func wordSelectionButton(_ word: String) -> some View {
+        let isSelected = draft.isWordSelected(word)
+
+        return Button {
+            draft.toggleWord(word)
+            message = nil
+            HapticManager.shared.fire(.tabSelection)
+        } label: {
+            Text(word)
+                .font(.system(size: 12, weight: .bold))
+                .strikethrough(!isSelected, color: SpyTheme.muted)
+                .foregroundStyle(isSelected ? SpyTheme.bodyText : SpyTheme.dim)
+                .multilineTextAlignment(.center)
+                .fixedSize(horizontal: false, vertical: true)
+                .padding(.horizontal, 10)
+                .padding(.vertical, 12)
+                .frame(maxWidth: .infinity, minHeight: 48)
+                .background(isSelected ? SpyTheme.control : SpyTheme.black, in: CutCornerShape(cut: 6))
+                .overlay(
+                    CutCornerShape(cut: 6)
+                        .stroke(isSelected ? SpyTheme.strokeStrong : SpyTheme.strokeDim, lineWidth: 1)
+                )
+                .contentShape(CutCornerShape(cut: 6))
+        }
+        .buttonStyle(SpyWebPressStyle())
+        .accessibilityLabel(word)
+        .accessibilityValue(isSelected ? selectedWordLabel : excludedWordLabel)
+        .accessibilityHint(wordSelectionHint)
+        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityIdentifier("wordPacks.editor.word.\(word)")
+    }
+
+    private var addWordsField: some View {
+        HStack(spacing: 8) {
+            TextField(addWordsLabel, text: $newWordsInput)
+                .font(SpyTheme.mono)
+                .foregroundStyle(.white)
+                .focused($focusedField, equals: .words)
+                .textInputAutocapitalization(.words)
+                .submitLabel(.done)
+                .onSubmit { addEnteredWords() }
+                .padding(.leading, 12)
+                .accessibilityLabel(addWordsLabel)
+                .accessibilityIdentifier("wordPacks.editor.addWordsInput")
+
+            Button {
+                addEnteredWords()
+            } label: {
+                Image(systemName: "plus")
+                    .font(.system(size: 16, weight: .black))
+                    .foregroundStyle(SpyTheme.red)
+                    .frame(width: 48, height: 48)
+            }
+            .buttonStyle(SpyWebPressStyle())
+            .disabled(WordPackDraftNormalizer.analyzeWords(newWordsInput).words.isEmpty)
+            .accessibilityLabel(addWordsLabel)
+            .accessibilityIdentifier("wordPacks.editor.addWords")
+        }
+        .frame(minHeight: 48)
+        .background(SpyTheme.panelDeep, in: CutCornerShape(cut: 7))
+        .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.inputBorder, lineWidth: 1))
+        .disabled(isBusy)
+    }
+
+    private func addEnteredWords() {
+        guard !isBusy else { return }
+        draft.addWords(newWordsInput)
+        newWordsInput = ""
+        message = nil
+    }
+
+    private var wordSelectionHint: String {
+        switch appState.language {
+        case .en: "Tap a word to cross it out or restore it. Only selected words will be saved."
+        case .ru: "Нажми на слово, чтобы вычеркнуть или вернуть его. Сохранятся только выбранные слова."
+        case .es: "Toca una palabra para tacharla o recuperarla. Solo se guardan las seleccionadas."
+        case .uk: "Натисни на слово, щоб викреслити або повернути його. Збережуться лише обрані слова."
+        }
+    }
+
+    private var addWordsLabel: String {
+        switch appState.language {
+        case .en: "Add words"
+        case .ru: "Добавить слова"
+        case .es: "Añadir palabras"
+        case .uk: "Додати слова"
+        }
+    }
+
+    private var selectedWordLabel: String {
+        switch appState.language {
+        case .en: "Selected"
+        case .ru: "Выбрано"
+        case .es: "Seleccionada"
+        case .uk: "Обрано"
+        }
+    }
+
+    private var excludedWordLabel: String {
+        switch appState.language {
+        case .en: "Crossed out"
+        case .ru: "Вычеркнуто"
+        case .es: "Tachada"
+        case .uk: "Викреслено"
         }
     }
 
@@ -812,6 +922,9 @@ struct WordPackEditorSheet: View {
     }
 
     private var hasUnsavedChanges: Bool {
+        if !newWordsInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
+            return true
+        }
         if route.pack != nil {
             return draft != initialDraft
         }
@@ -970,6 +1083,7 @@ struct WordPackEditorSheet: View {
             }
 
             draft.applyGenerated(generated, fallbackName: request.signature.theme)
+            newWordsInput = ""
             appState.membership.updateAIUsage(used: generated.aiGenerationsToday, remaining: generated.aiRemaining)
             pendingAIRequest = nil
             lastSuccessfulAISignature = request.signature
@@ -1000,6 +1114,7 @@ struct WordPackEditorSheet: View {
     }
 
     private func saveTapped() {
+        addEnteredWords()
         validationAttempted = true
         message = nil
 
@@ -1047,7 +1162,7 @@ struct WordPackEditorSheet: View {
                     id: route.pack?.id ?? "preview-\(UUID().uuidString)",
                     name: draftToSave.normalizedName,
                     category: draftToSave.normalizedCategory.nilIfBlank ?? draftToSave.normalizedName,
-                    words: draftToSave.wordAnalysis.words,
+                    words: draftToSave.selectedWords,
                     ownerEmail: appState.user?.email,
                     isPublic: false
                 )
@@ -1061,13 +1176,13 @@ struct WordPackEditorSheet: View {
                         pack: pack,
                         name: draftToSave.normalizedName,
                         category: draftToSave.normalizedCategory,
-                        words: draftToSave.wordAnalysis.words
+                        words: draftToSave.selectedWords
                     )
                 } else {
                     savedPack = try await appState.client.createWordPack(
                         name: draftToSave.normalizedName,
                         category: draftToSave.normalizedCategory,
-                        words: draftToSave.wordAnalysis.words,
+                        words: draftToSave.selectedWords,
                         ownerEmail: email
                     )
                 }

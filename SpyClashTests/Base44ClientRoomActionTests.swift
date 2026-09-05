@@ -1676,12 +1676,12 @@ final class Base44ClientRoomActionTests: XCTestCase {
 
         RadarInvitePolicy.blocked.persist(for: "account-b", defaults: defaults)
         XCTAssertEqual(RadarInvitePolicy.stored(for: "account-a", defaults: defaults), .automatic)
-        XCTAssertEqual(RadarInvitePolicy.stored(for: "account-b", defaults: defaults), .ask)
+        XCTAssertEqual(RadarInvitePolicy.stored(for: "account-b", defaults: defaults), .blocked)
     }
 
-    func testRadarInvitePolicyKeepsBlockedForWireCompatibilityButNotSelection() {
-        XCTAssertEqual(RadarInvitePolicy.selectableCases, [.ask, .automatic])
-        XCTAssertEqual(RadarInvitePolicy.blocked.selectableValue, .ask)
+    func testRadarInvitePolicyPreservesAllThreeChoicesIncludingBlocked() {
+        XCTAssertEqual(RadarInvitePolicy.selectableCases, [.ask, .automatic, .blocked])
+        XCTAssertEqual(RadarInvitePolicy.blocked.selectableValue, .blocked)
         XCTAssertEqual(RadarInvitePolicy(rawValue: "blocked"), .blocked)
     }
 
@@ -1950,8 +1950,10 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertNil(radar.incomingInvitation)
     }
 
-    func testRadarProfileRefreshPreservesInviteButAccountChangeClearsIt() {
+    func testRadarProfileRefreshPreservesInviteAndTransportButAccountChangeClearsThem() {
         let radar = RadarNearbyService()
+        radar.setApplicationActive(true)
+        defer { radar.configure(user: nil, allowsTransport: false) }
         let originalUser = makeRadarUser(
             id: "account-a",
             avatar: "🕵️",
@@ -1977,17 +1979,23 @@ final class Base44ClientRoomActionTests: XCTestCase {
         )
 
         radar.configure(user: originalUser)
+        radar.startScanning()
+        let initialRebuilds = radar.transportRebuildCountForTesting
+        let initialBrowserStarts = radar.browserStartCountForTesting
         radar.presentForConfirmation(invitation)
         radar.configure(user: refreshedUser)
 
         XCTAssertEqual(radar.incomingInvitation, invitation)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, initialRebuilds)
+        XCTAssertEqual(radar.browserStartCountForTesting, initialBrowserStarts)
 
         radar.configure(user: nextAccount)
 
         XCTAssertNil(radar.incomingInvitation)
+        XCTAssertGreaterThan(radar.transportRebuildCountForTesting, initialRebuilds)
     }
 
-    func testRadarCombinedProfileAndLegacyBlockedPolicyMigratesToAsk() {
+    func testRadarCombinedProfileAndBlockedPolicyPreservesBlockAndRejectsInvitation() {
         let radar = RadarNearbyService()
         radar.configure(
             user: makeRadarUser(
@@ -2014,8 +2022,8 @@ final class Base44ClientRoomActionTests: XCTestCase {
             )
         )
 
-        XCTAssertNotNil(radar.incomingInvitation)
-        XCTAssertEqual(radar.invitePolicy, .ask)
+        XCTAssertNil(radar.incomingInvitation)
+        XCTAssertEqual(radar.invitePolicy, .blocked)
     }
 
     private func makeRadarUser(

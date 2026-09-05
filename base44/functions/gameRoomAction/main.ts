@@ -5,7 +5,10 @@ import {
   safeCommunityAvatar,
   safeCommunityDisplayName,
 } from "./content-safety.ts";
-import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
+import {
+  acquireBillingWriterLease,
+  BillingIdentityLifecycleError,
+} from "./billing-identity-lifecycle.ts";
 import {
   committedGameStartIdentity,
   repairCommittedGameStartWithFreshLeases,
@@ -878,8 +881,9 @@ async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
     : null;
   return await runPostLeaseSignalWithinDeadline({
     timeoutMS: 600,
-    leasedOperation: async () => {
+    leasedOperation: async (budget) => {
       const attempt = async (candidate, context) => {
+        budget.assertCanStart();
         if (candidate.obsolete) return true;
         const candidateUserIDs = uniqueStrings(
           candidate.recipients.map((recipient) => recipient?.user_id),
@@ -892,7 +896,12 @@ async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
           // The outer bounded mode repair owns retry timing so every retry can
           // refetch the newest room revision before taking identity leases.
           attempts: 1,
+          acquire: async (store, userID) => {
+            budget.assertCanStart();
+            return await acquireBillingWriterLease(store, userID);
+          },
           action: async (leaseContext) => {
+            budget.assertCanStart();
             let exact = candidate;
             if (context.isRepair) {
               const observed = await fetchRoom(base44, candidate.room.id);
@@ -921,6 +930,7 @@ async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
               // Fast mode actions never recreate a signal removed by account
               // cleanup. Leased non-fast callers preserve their prior policy.
               allowCreate: exact.allowCreate,
+              beforeOperation: budget.assertCanStart,
               logError: (message, error) =>
                 console.error(message, error?.message || error),
             });
@@ -940,6 +950,7 @@ async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
         initial: initialCandidate,
         attempt,
         loadLatest: async (current) => {
+          budget.assertCanStart();
           const observed = await fetchRoom(base44, current.room.id);
           if (!observed) return null;
           const authoritative = authoritativeRoomForSignalRepair(
@@ -956,8 +967,8 @@ async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
         },
       });
     },
-    // The independently owned lifecycle lease remains attached to late work,
-    // while polling guarantees convergence if this bounded wake-up is delayed.
+    // Await every started write and lease release before returning a response.
+    // Polling catches up any wake-up skipped after the work budget expires.
     logError: (message, error) =>
       console.error(message, error?.message || error),
   });
@@ -3982,29 +3993,32 @@ async function fanoutDeferredFinishedRoomSignal(base44, room) {
   ]);
   if (!userIDs.length) return true;
   try {
-    const result = await runWithWallClockDeadline({
+    return await runPostLeaseSignalWithinDeadline({
       timeoutMS: 600,
-      operation: () =>
+      leasedOperation: (budget) =>
         withRoomWriteLeases({
           lifecycleStore:
             base44.asServiceRole.entities.BillingIdentityLifecycle,
           userIDs,
           attempts: 1,
-          action: async () =>
-            await fanoutGameRoomSignalsBestEffort({
+          acquire: async (store, userID) => {
+            budget.assertCanStart();
+            return await acquireBillingWriterLease(store, userID);
+          },
+          action: async () => {
+            const result = await fanoutGameRoomSignalsBestEffort({
               store: base44.asServiceRole.entities.GameRoomSignal,
               room,
+              beforeOperation: budget.assertCanStart,
               logError: (message, error) =>
                 console.error(message, error?.message || error),
-            }),
+            });
+            return Number(result?.failed) === 0;
+          },
         }),
-      timeoutError: () =>
-        Object.assign(
-          new Error("Finished room signal exceeded its response deadline."),
-          { status: 503, code: "finished_signal_deadline" },
-        ),
+      logError: (message, error) =>
+        console.error(message, error?.message || error),
     });
-    return Number(result?.failed) === 0;
   } catch (error) {
     // Polling remains the fallback. Never recreate an identity-bearing signal
     // after account deletion has acquired its opposing lifecycle marker.

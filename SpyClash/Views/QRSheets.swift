@@ -374,6 +374,7 @@ private struct QRCodeRender {
 struct QRScannerSheet: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @Environment(\.scenePhase) private var scenePhase
 
     @State private var permission: CameraPermission = .checking
     @State private var statusText: String?
@@ -396,6 +397,15 @@ struct QRScannerSheet: View {
                     scannerState(icon: "viewfinder", title: copy.checkingCamera, detail: copy.cameraPreparing)
                 case .denied:
                     scannerState(icon: "camera.fill", title: copy.cameraLocked, detail: copy.cameraLockedDetail)
+                    Button {
+                        if let url = URL(string: UIApplication.openSettingsURLString) {
+                            UIApplication.shared.open(url)
+                        }
+                    } label: {
+                        Label(localized(en: "OPEN SETTINGS", ru: "ОТКРЫТЬ НАСТРОЙКИ", es: "ABRIR AJUSTES", uk: "ВІДКРИТИ ПАРАМЕТРИ"), systemImage: "gearshape")
+                    }
+                    .buttonStyle(SpyButtonStyle(variant: .outline))
+                    .padding(.horizontal, 18)
                 case .granted:
                     scannerFrame
                 }
@@ -413,13 +423,18 @@ struct QRScannerSheet: View {
         .task {
             await resolvePermission()
         }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active {
+                Task { await resolvePermission() }
+            }
+        }
     }
 
     private var scannerFrame: some View {
         ZStack {
             QRScannerRepresentable(isScanningEnabled: !didScan) { payload in
                 guard !didScan else { return }
-                guard let code = SpyLinkParser.roomCodeIfPresent(from: payload) else {
+                guard let code = SpyLinkParser.scannedRoomCode(from: payload) else {
                     let now = Date()
                     guard now.timeIntervalSince(lastInvalidScanAt) >= 1.5 else { return }
                     lastInvalidScanAt = now
@@ -459,6 +474,7 @@ struct QRScannerSheet: View {
             .overlay(CutCornerShape(cut: 18).stroke(SpyTheme.red.opacity(0.9), lineWidth: 2))
 
             scannerReticle
+                .allowsHitTesting(false)
         }
         .frame(height: 420)
         .padding(.horizontal, 18)
@@ -553,10 +569,10 @@ private enum CameraPermission {
     case denied
 }
 
-private struct QRScannerRepresentable: UIViewControllerRepresentable {
+struct QRScannerRepresentable: UIViewControllerRepresentable {
     let isScanningEnabled: Bool
     let onCode: (String) -> Void
-    let onError: () -> Void
+    let onError: @MainActor @Sendable () -> Void
 
     func makeCoordinator() -> Coordinator {
         Coordinator(isScanningEnabled: isScanningEnabled, onCode: onCode)
@@ -584,28 +600,32 @@ private struct QRScannerRepresentable: UIViewControllerRepresentable {
             didOutput metadataObjects: [AVMetadataObject],
             from connection: AVCaptureConnection
         ) {
-            guard isScanningEnabled,
-                  let readableObject = metadataObjects.first as? AVMetadataMachineReadableCodeObject,
-                  let stringValue = readableObject.stringValue else {
-                return
-            }
+            receivePayloads(metadataObjects.compactMap {
+                ($0 as? AVMetadataMachineReadableCodeObject)?.stringValue
+            })
+        }
 
-            isScanningEnabled = false
-            onCode(stringValue)
+        func receivePayloads(_ payloads: [String]) {
+            guard isScanningEnabled, let firstPayload = payloads.first else { return }
+            // Invalid payloads leave capture enabled; they cannot depend on a
+            // later SwiftUI redraw to recover from a rejected QR code.
+            if let validPayload = payloads.first(where: { SpyLinkParser.scannedRoomCode(from: $0) != nil }) {
+                isScanningEnabled = false
+                onCode(validPayload)
+            } else {
+                onCode(firstPayload)
+            }
         }
     }
 }
 
-private final class QRScannerController: UIViewController {
-    private let session = AVCaptureSession()
+final class QRScannerController: UIViewController {
+    private let capture: QRScannerCaptureSession
     private let previewLayer = AVCaptureVideoPreviewLayer()
-    private let coordinator: QRScannerRepresentable.Coordinator
-    private let onError: () -> Void
-    private var isConfigured = false
+    private var isCaptureVisible = false
 
-    init(coordinator: QRScannerRepresentable.Coordinator, onError: @escaping () -> Void) {
-        self.coordinator = coordinator
-        self.onError = onError
+    init(coordinator: QRScannerRepresentable.Coordinator, onError: @escaping @MainActor @Sendable () -> Void) {
+        capture = QRScannerCaptureSession(coordinator: coordinator, onError: onError)
         super.init(nibName: nil, bundle: nil)
     }
 
@@ -617,7 +637,15 @@ private final class QRScannerController: UIViewController {
     override func viewDidLoad() {
         super.viewDidLoad()
         view.backgroundColor = .black
-        configure()
+        previewLayer.session = capture.session
+        previewLayer.videoGravity = .resizeAspectFill
+        view.layer.addSublayer(previewLayer)
+        view.addGestureRecognizer(UITapGestureRecognizer(target: self, action: #selector(focus(_:))))
+        let notifications = NotificationCenter.default
+        notifications.addObserver(self, selector: #selector(resumeCapture), name: UIApplication.didBecomeActiveNotification, object: nil)
+        notifications.addObserver(self, selector: #selector(pauseCapture), name: UIApplication.willResignActiveNotification, object: nil)
+        notifications.addObserver(self, selector: #selector(resumeCapture), name: AVCaptureSession.interruptionEndedNotification, object: capture.session)
+        notifications.addObserver(self, selector: #selector(resumeCapture), name: AVCaptureSession.runtimeErrorNotification, object: capture.session)
     }
 
     override func viewDidLayoutSubviews() {
@@ -627,49 +655,121 @@ private final class QRScannerController: UIViewController {
 
     override func viewDidAppear(_ animated: Bool) {
         super.viewDidAppear(animated)
-        if isConfigured, !session.isRunning {
-            session.startRunning()
-        }
+        isCaptureVisible = true
+        resumeCapture()
     }
 
     override func viewWillDisappear(_ animated: Bool) {
         super.viewWillDisappear(animated)
-        if session.isRunning {
-            session.stopRunning()
+        isCaptureVisible = false
+        pauseCapture()
+    }
+
+    @objc private func resumeCapture() {
+        guard isCaptureVisible, isViewLoaded, view.window != nil, UIApplication.shared.applicationState == .active else { return }
+        capture.setRunning(true)
+    }
+
+    @objc private func pauseCapture() {
+        capture.setRunning(false)
+    }
+
+    @objc private func focus(_ gesture: UITapGestureRecognizer) {
+        let point = previewLayer.captureDevicePointConverted(fromLayerPoint: gesture.location(in: view))
+        capture.focus(at: point)
+    }
+}
+
+// All configuration and blocking start/stop operations are confined to this
+// queue. The immutable session reference is also used by the main-thread preview.
+private final class QRScannerCaptureSession: @unchecked Sendable {
+    let session = AVCaptureSession()
+    private let queue = DispatchQueue(label: "com.spyclash.qr-camera", qos: .userInitiated)
+    private let coordinator: QRScannerRepresentable.Coordinator
+    private let onError: @MainActor @Sendable () -> Void
+    private var device: AVCaptureDevice?
+    private var isConfigured = false
+
+    @MainActor
+    init(coordinator: QRScannerRepresentable.Coordinator, onError: @escaping @MainActor @Sendable () -> Void) {
+        self.coordinator = coordinator
+        self.onError = onError
+    }
+
+    func setRunning(_ running: Bool) {
+        queue.async { [self] in
+            if running {
+                guard configure() else {
+                    Task { @MainActor [onError] in onError() }
+                    return
+                }
+                if !session.isRunning { session.startRunning() }
+            } else if session.isRunning {
+                session.stopRunning()
+            }
         }
     }
 
-    private func configure() {
-        guard !isConfigured else { return }
+    func focus(at point: CGPoint) {
+        queue.async { [self] in
+            guard let device else { return }
+            configureFocus(device, at: point)
+        }
+    }
 
+    private func configureFocus(_ device: AVCaptureDevice, at point: CGPoint) {
+        guard (try? device.lockForConfiguration()) != nil else { return }
+        defer { device.unlockForConfiguration() }
+        if device.isFocusPointOfInterestSupported { device.focusPointOfInterest = point }
+        if device.isFocusModeSupported(.continuousAutoFocus) { device.focusMode = .continuousAutoFocus }
+        if device.isExposurePointOfInterestSupported { device.exposurePointOfInterest = point }
+        if device.isExposureModeSupported(.continuousAutoExposure) { device.exposureMode = .continuousAutoExposure }
+    }
+
+    private func configure() -> Bool {
+        guard !isConfigured else { return true }
+        session.beginConfiguration()
+        defer { session.commitConfiguration() }
+        // A failed attempt may have installed an input before its output failed.
+        session.inputs.forEach { session.removeInput($0) }
+        session.outputs.forEach { session.removeOutput($0) }
+        if session.canSetSessionPreset(.high) { session.sessionPreset = .high }
         guard let device = AVCaptureDevice.default(.builtInWideAngleCamera, for: .video, position: .back)
-            ?? AVCaptureDevice.default(for: .video),
-            let input = try? AVCaptureDeviceInput(device: device),
-            session.canAddInput(input) else {
-            onError()
-            return
-        }
-
+                ?? AVCaptureDevice.default(for: .video),
+              let input = try? AVCaptureDeviceInput(device: device),
+              session.canAddInput(input) else { return false }
         session.addInput(input)
-
         let output = AVCaptureMetadataOutput()
-        guard session.canAddOutput(output) else {
-            onError()
-            return
-        }
-
+        guard session.canAddOutput(output) else { return false }
         session.addOutput(output)
+        guard output.availableMetadataObjectTypes.contains(.qr) else { return false }
         output.setMetadataObjectsDelegate(coordinator, queue: .main)
         output.metadataObjectTypes = [.qr]
-
-        previewLayer.session = session
-        previewLayer.videoGravity = .resizeAspectFill
-        view.layer.addSublayer(previewLayer)
+        self.device = device
+        configureFocus(device, at: CGPoint(x: 0.5, y: 0.5))
         isConfigured = true
+        return true
     }
 }
 
 enum SpyLinkParser {
+    // Camera recognition must ignore unrelated QR URLs, even when their query
+    // happens to contain a field named "code". Manual paste parsing is unchanged.
+    static func scannedRoomCode(from payload: String) -> String? {
+        let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+        if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased() {
+            if scheme == "spyclash" {
+                if ["join", "room"].contains(url.host?.lowercased() ?? ""),
+                   let path = url.pathComponents.first(where: { $0 != "/" && !$0.isEmpty }),
+                   normalizedCode(path) == nil { return nil }
+            } else {
+                guard ["https", "http"].contains(scheme),
+                      ["spyclash.com", "www.spyclash.com"].contains(url.host?.lowercased() ?? "") else { return nil }
+            }
+        }
+        return roomCodeIfPresent(from: trimmed)
+    }
+
     static func roomCode(from payload: String) -> String {
         roomCodeIfPresent(from: payload) ?? payload
             .trimmingCharacters(in: .whitespacesAndNewlines)
@@ -755,18 +855,15 @@ enum QRCodeFactory {
 
         let fallback = UIImage(systemName: "qrcode")?
             .withTintColor(.white, renderingMode: .alwaysOriginal) ?? UIImage()
-        let backgroundColor = UIColor(
-            red: 10 / 255,
-            green: 10 / 255,
-            blue: 10 / 255,
-            alpha: 1
-        )
+        // Standard dark modules on an opaque white quiet zone remain readable
+        // by external cameras as well as the in-app scanner.
+        let backgroundColor = UIColor.white
 
         guard let output = filter.outputImage?
             .applyingFilter(
                 "CIFalseColor",
                 parameters: [
-                    "inputColor0": CIColor(color: .white),
+                    "inputColor0": CIColor(color: .black),
                     "inputColor1": CIColor(color: backgroundColor)
                 ]
             ) else {

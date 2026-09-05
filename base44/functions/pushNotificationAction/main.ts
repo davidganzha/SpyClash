@@ -1868,6 +1868,7 @@ async function deliverQueuedRoomLiveActivityEndOnly(
   );
   const bounded = await runWithinDeadline({
     deadlineEpochMs,
+    waitForStartedWork: true,
     operation: () =>
       deliverQueuedRoomLiveActivityEnd({
         liveStore: base44.asServiceRole.entities.LiveActivityRegistration,
@@ -1890,9 +1891,8 @@ async function deliverQueuedRoomLiveActivityEndOnly(
       }),
   });
   if (bounded.timedOut) {
-    // Every selected row is still a durable pending force-end. A worker that
-    // already acquired a lifecycle lease may finish after this response; if it
-    // is interrupted, its delivery lease expires into the scheduled retry.
+    // The deadline expired before starting. Started delivery workers are
+    // awaited through their account-lease cleanup before a response is sent.
     return {
       ok: true,
       room_id: clean(body.room_id),

@@ -1,6 +1,7 @@
 import SwiftUI
 
 struct InterfaceSettingsView: View {
+    @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
     @Environment(\.accessibilityReduceMotion) private var systemReduceMotion
     @Bindable var preferences: InterfacePreferences
@@ -307,7 +308,9 @@ struct InterfaceSettingsView: View {
     }
 
     private var radarPanel: some View {
-        settingsPanel("07", title: t("RADAR ACCESS", "ДОСТУП ПО РАДАРУ", "ACCESO POR RADAR", "ДОСТУП ЧЕРЕЗ РАДАР")) {
+        settingsPanel("07", title: appState.radarNearby.localNetworkPermissions.localNetworkStatus == .denied
+            ? t("RADAR BLOCKED", "РАДАР ЗАБЛОКИРОВАН", "RADAR BLOQUEADO", "РАДАР ЗАБЛОКОВАНО")
+            : t("RADAR ACCESS", "ДОСТУП ПО РАДАРУ", "ACCESO POR RADAR", "ДОСТУП ЧЕРЕЗ РАДАР")) {
             RadarPolicySettingsView()
         }
     }

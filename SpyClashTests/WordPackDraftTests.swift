@@ -68,6 +68,70 @@ final class WordPackDraftTests: XCTestCase {
         XCTAssertTrue(draft.isValid)
     }
 
+    func testCrossingOutWordsPreservesCardsButExcludesThemFromSavedWords() {
+        var draft = WordPackDraft(name: "Cities", wordsText: "Paris\nMadrid\nRome")
+
+        draft.toggleWord("  PARIS  ")
+
+        XCTAssertEqual(draft.wordAnalysis.words, ["Paris", "Madrid", "Rome"])
+        XCTAssertEqual(draft.selectedWords, ["Madrid", "Rome"])
+        XCTAssertFalse(draft.isWordSelected("Paris"))
+        XCTAssertTrue(draft.isValid)
+
+        draft.toggleWord("Paris")
+
+        XCTAssertEqual(draft.selectedWords, ["Paris", "Madrid", "Rome"])
+        XCTAssertTrue(draft.isWordSelected("Paris"))
+    }
+
+    func testCrossedOutWordsDoNotSatisfyTheMinimumWordCount() {
+        var draft = WordPackDraft(name: "Cities", wordsText: "Paris\nMadrid")
+
+        draft.toggleWord("Madrid")
+
+        XCTAssertFalse(draft.isValid)
+        XCTAssertEqual(draft.selectedWords, ["Paris"])
+        XCTAssertTrue(draft.hasContent)
+
+        draft.toggleWord("Paris")
+        XCTAssertFalse(draft.isValid)
+        XCTAssertTrue(draft.selectedWords.isEmpty)
+        XCTAssertEqual(draft.wordAnalysis.words.count, 2)
+    }
+
+    func testAddingWordsDeduplicatesAndRestoresAnExcludedWord() {
+        var draft = WordPackDraft(name: "Cities", wordsText: "Paris\nMadrid")
+        draft.toggleWord("Paris")
+
+        draft.addWords("  PARIS ; New   York\nRome,rome")
+
+        XCTAssertEqual(draft.selectedWords, ["Paris", "Madrid", "New York", "Rome"])
+        XCTAssertEqual(draft.wordAnalysis.words, draft.selectedWords)
+        XCTAssertTrue(draft.isWordSelected("Paris"))
+    }
+
+    func testGeneratedReplacementResetsExcludedWordsWithoutChangingSaveSnapshot() {
+        var draft = WordPackDraft(name: "Cities", wordsText: "Paris\nMadrid\nRome")
+        draft.toggleWord("Paris")
+        let saveSnapshot = draft
+
+        draft.applyGenerated(
+            GeneratedWordPack(
+                name: "New cities",
+                category: "Cities",
+                words: ["Paris", "Berlin"],
+                aiLimit: nil,
+                aiGenerationsToday: nil,
+                aiRemaining: nil
+            ),
+            fallbackName: "Cities"
+        )
+
+        XCTAssertEqual(draft.selectedWords, ["Paris", "Berlin"])
+        XCTAssertTrue(draft.excludedWordKeys.isEmpty)
+        XCTAssertEqual(saveSnapshot.selectedWords, ["Madrid", "Rome"])
+    }
+
     func testRecommendedWordCountUsesThirtyForOrdinaryThemes() {
         XCTAssertEqual(WordPackRecommendedCountPolicy.requestCount(for: "Landmarks"), 30)
         XCTAssertEqual(

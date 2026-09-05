@@ -3996,12 +3996,6 @@ final class AppState: NSObject {
             return
         }
         let remotePolicy = RadarInvitePolicy(rawValue: user.radarInvitePolicy ?? "")
-        if remotePolicy == .blocked {
-            if !hasPendingWrite {
-                queueRadarInvitePolicySync(.ask, userID: user.id)
-            }
-            return
-        }
         if remotePolicy != nil {
             if !hasPendingWrite {
                 radarInvitePolicySyncState = .synced

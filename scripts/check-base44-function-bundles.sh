@@ -8,8 +8,9 @@ functions_root="$root/base44/functions"
 # Base44 deploys each function directory as an isolated bundle. A relative
 # import that climbs above that directory may pass local Deno checks while the
 # deployed function fails because the sibling source was never uploaded.
+# Cross-function regression tests run locally and are excluded from deployment.
 violations="$(
-  rg -n --glob '*.ts' --glob '*.js' \
+  rg -n --glob '*.ts' --glob '*.js' --glob '!*_test.ts' \
     "from[[:space:]]+['\"]\\.\\./|import\\(['\"]\\.\\./" \
     "$functions_root" || true
 )"

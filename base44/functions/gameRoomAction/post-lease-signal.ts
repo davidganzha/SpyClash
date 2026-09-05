@@ -1,5 +1,3 @@
-import { runWithWallClockDeadline } from "./operation-deadline.ts";
-
 const LATEST_SIGNAL_REPAIR_BACKOFF_MILLISECONDS = [25, 50, 100, 200, 400];
 
 function clean(value: unknown): string {
@@ -77,21 +75,38 @@ export async function runLatestRoomSignalAfterLeaseContention<T>(input: {
   return false;
 }
 
+export type RoomSignalWorkBudget = {
+  assertCanStart: () => void;
+};
+
+/**
+ * The budget stops NEW work; it must never detach an acquired account lease.
+ * Returning a serverless response while a write/release is still in flight
+ * can terminate that work and leave every account writer blocked for its TTL.
+ */
 export async function runPostLeaseSignalWithinDeadline(input: {
   timeoutMS: number;
-  leasedOperation: () => Promise<boolean>;
+  leasedOperation: (budget: RoomSignalWorkBudget) => Promise<boolean>;
   logError?: (message: string, error: unknown) => void;
+  nowEpochMS?: () => number;
 }): Promise<boolean> {
-  try {
-    return await runWithWallClockDeadline({
-      timeoutMS: input.timeoutMS,
-      operation: input.leasedOperation,
-      timeoutError: () =>
-        Object.assign(new Error("Room signal fanout exceeded its deadline."), {
+  const nowEpochMS = input.nowEpochMS ?? Date.now;
+  const deadline = nowEpochMS() + Math.max(1, Math.floor(input.timeoutMS));
+  const budget: RoomSignalWorkBudget = {
+    assertCanStart: () => {
+      if (nowEpochMS() < deadline) return;
+      throw Object.assign(
+        new Error("Room signal fanout exceeded its deadline."),
+        {
           status: 503,
           code: "room_signal_deadline",
-        }),
-    });
+        },
+      );
+    },
+  };
+  try {
+    budget.assertCanStart();
+    return await input.leasedOperation(budget);
   } catch (error) {
     input.logError?.("room signal fanout deferred", error);
     return false;

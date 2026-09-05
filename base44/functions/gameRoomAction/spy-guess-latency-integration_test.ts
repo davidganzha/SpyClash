@@ -150,7 +150,9 @@ Deno.test("finished response attempts durable ActivityKit enqueue then bounded s
     roomSource.indexOf("async function fanoutDeferredFinishedRoomSignal"),
     roomSource.indexOf("async function rankedHistoryForMatch"),
   );
-  assertStringIncludes(signalHelper, "runWithWallClockDeadline({");
+  assertStringIncludes(signalHelper, "runPostLeaseSignalWithinDeadline({");
+  assertStringIncludes(signalHelper, "beforeOperation: budget.assertCanStart");
+  assertEquals(signalHelper.includes("runWithWallClockDeadline({"), false);
   assertStringIncludes(signalHelper, "timeoutMS: 600");
   const finishedBranch = sideEffects.slice(
     sideEffects.indexOf("// The exact ActivityKit force-end intent"),

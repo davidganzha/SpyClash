@@ -1261,8 +1261,40 @@ private struct NearbyStatusShape: Shape {
 
 struct RadarPolicySettingsView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
+    @Environment(\.scenePhase) private var scenePhase
+    @State private var verificationID = UUID()
+
+    private var permissions: OnboardingPermissionCoordinator {
+        appState.radarNearby.localNetworkPermissions
+    }
 
     var body: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            if permissions.localNetworkStatus.allowsRadarInvitationSettings {
+                invitationPolicyControls
+            } else {
+                localNetworkAccessControls
+            }
+        }
+        .task(id: verificationID) {
+            permissions.setApplicationActive(scenePhase == .active)
+            let previousStatus = permissions.localNetworkStatus
+            let requested = await permissions.request(.nearby)
+            guard requested, !Task.isCancelled,
+                  permissions.localNetworkStatus == .granted,
+                  previousStatus == .denied || previousStatus == .unavailable else { return }
+            appState.radarNearby.refreshTransportAfterLocalNetworkGrant()
+        }
+        .onChange(of: scenePhase) { _, phase in
+            permissions.setApplicationActive(phase == .active)
+            guard phase == .active,
+                  permissions.localNetworkStatus.canRefreshLocalNetworkOnActivation else { return }
+            verificationID = UUID()
+        }
+    }
+
+    private var invitationPolicyControls: some View {
         VStack(alignment: .leading, spacing: 10) {
             Text(localized(
                 en: "What should happen when a nearby host taps your signal?",
@@ -1282,6 +1314,65 @@ struct RadarPolicySettingsView: View {
 
             syncStatus
         }
+    }
+
+    private var localNetworkAccessControls: some View {
+        VStack(alignment: .leading, spacing: 12) {
+            Text(localNetworkAccessDetail)
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+                .foregroundStyle(SpyTheme.dim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            if permissions.localNetworkStatus == .requesting {
+                HStack(spacing: 10) {
+                    ProgressView().tint(SpyTheme.red)
+                    Text(localized(
+                        en: "CHECKING LOCAL NETWORK…",
+                        ru: "ПРОВЕРЯЕМ ЛОКАЛЬНУЮ СЕТЬ…",
+                        es: "COMPROBANDO LA RED LOCAL…",
+                        uk: "ПЕРЕВІРЯЄМО ЛОКАЛЬНУ МЕРЕЖУ…"
+                    ))
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                }
+                .accessibilityIdentifier("settings.radarPermission.checking")
+            } else {
+                Button {
+                    if permissions.localNetworkStatus.requiresLocalNetworkSettings,
+                       let url = URL(string: UIApplication.openSettingsURLString) {
+                        openURL(url)
+                    } else {
+                        verificationID = UUID()
+                    }
+                } label: {
+                    SpyActionLabel(
+                        title: localized(
+                            en: "ACTIVATE RADAR", ru: "АКТИВИРОВАТЬ РАДАР",
+                            es: "ACTIVAR RADAR", uk: "АКТИВУВАТИ РАДАР"
+                        ),
+                        systemImage: "dot.radiowaves.left.and.right"
+                    )
+                }
+                .buttonStyle(SpyButtonStyle(variant: .red))
+                .accessibilityIdentifier("settings.radarPermission.activate")
+            }
+        }
+    }
+
+    private var localNetworkAccessDetail: String {
+        if permissions.localNetworkStatus == .denied {
+            return localized(
+                en: "Local Network access is off. Activate Radar, turn on Local Network in iPhone Settings, then return here. We will check access before enabling invitations.",
+                ru: "Доступ к локальной сети выключен. Нажми «Активировать радар», включи «Локальная сеть» в настройках iPhone и вернись сюда. Мы проверим доступ перед включением приглашений.",
+                es: "El acceso a la red local está desactivado. Activa el radar, habilita Red local en Ajustes del iPhone y vuelve. Comprobaremos el acceso antes de habilitar las invitaciones.",
+                uk: "Доступ до локальної мережі вимкнено. Натисни «Активувати радар», увімкни «Локальна мережа» в налаштуваннях iPhone та повернися. Ми перевіримо доступ перед увімкненням запрошень."
+            )
+        }
+        return localized(
+            en: "Radar needs Local Network access to find nearby iPhones. Invitation settings appear once access is confirmed.",
+            ru: "Для поиска iPhone рядом радару нужен доступ к локальной сети. Настройки приглашений появятся после проверки доступа.",
+            es: "El radar necesita acceso a la red local para encontrar iPhones cercanos. Las opciones de invitación aparecerán tras confirmar el acceso.",
+            uk: "Для пошуку iPhone поруч радару потрібен доступ до локальної мережі. Налаштування запрошень з’являться після перевірки доступу."
+        )
     }
 
     private func policyButton(_ policy: RadarInvitePolicy) -> some View {

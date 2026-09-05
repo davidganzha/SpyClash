@@ -1,0 +1,322 @@
+diff --git a/base44/functions/gameRoomAction/game-room-signal.ts b/base44/functions/gameRoomAction/game-room-signal.ts
+index 6536551..d86c9c6 100644
+--- a/base44/functions/gameRoomAction/game-room-signal.ts
++++ b/base44/functions/gameRoomAction/game-room-signal.ts
+@@ -287,9 +287,11 @@ export async function upsertGameRoomSignal(
+   options: {
+     allowCreate?: boolean;
+     existingRows?: Record<string, unknown>[];
++    beforeOperation?: () => void;
+   } = {},
+ ): Promise<"created" | "updated" | "unchanged" | "missing"> {
+   const query = { user_id: signal.user_id, room_id: signal.room_id };
++  options.beforeOperation?.();
+   const existing = options.existingRows ?? await store.filter(query) ?? [];
+   const writable = existing.filter((row) => clean(row?.id));
+   const updates = writable.filter((row) => {
+@@ -349,22 +351,30 @@ export async function upsertGameRoomSignal(
+     return timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at);
+   });
+   if (updates.length) {
+-    await Promise.all(
+-      updates.map((row) => store.update(clean(row.id), signal)),
++    const settled = await Promise.allSettled(
++      updates.map(async (row) => {
++        options.beforeOperation?.();
++        await store.update(clean(row.id), signal);
++      }),
+     );
++    const failure = settled.find((result) => result.status === "rejected");
++    if (failure?.status === "rejected") throw failure.reason;
+     return "updated";
+   }
+   if (writable.length) return "unchanged";
+   if (options.allowCreate === false) return "missing";
+ 
+   try {
++    options.beforeOperation?.();
+     await store.create(signal);
+     return "created";
+   } catch (createError) {
++    options.beforeOperation?.();
+     const raced = await store.filter(query) ?? [];
+     const racedResult = await upsertGameRoomSignal(store, signal, {
+       allowCreate: false,
+       existingRows: raced,
++      beforeOperation: options.beforeOperation,
+     });
+     if (racedResult !== "missing") return racedResult;
+     throw createError;
+@@ -380,6 +390,7 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
+   closeReceipt?: GameRoomCloseReceipt;
+   projection?: LobbyModeGameRoomSignalProjection | null;
+   allowCreate?: boolean;
++  beforeOperation?: () => void;
+   logError?: (message: string, error: unknown) => void;
+ }): Promise<{ attempted: number; succeeded: number; failed: number }> {
+   const signals = input.recipients
+@@ -400,6 +411,7 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
+ 
+   let existing: Record<string, unknown>[];
+   try {
++    input.beforeOperation?.();
+     existing = await input.store.filter({ room_id: signals[0].room_id }) ?? [];
+   } catch (error) {
+     input.logError?.("room signal fanout deferred", error);
+@@ -413,6 +425,7 @@ export async function fanoutGameRoomSignalsBestEffort(input: {
+     signals.map((signal) =>
+       upsertGameRoomSignal(input.store, signal, {
+         allowCreate: input.allowCreate !== false,
++        beforeOperation: input.beforeOperation,
+         existingRows: existing.filter((row) =>
+           clean(row?.user_id) === signal.user_id &&
+           clean(row?.room_id) === signal.room_id
+diff --git a/base44/functions/gameRoomAction/entry.ts b/base44/functions/gameRoomAction/entry.ts
+index fa9fa19..62a3dbc 100644
+--- a/base44/functions/gameRoomAction/entry.ts
++++ b/base44/functions/gameRoomAction/entry.ts
+@@ -5,7 +5,10 @@ import {
+   safeCommunityAvatar,
+   safeCommunityDisplayName,
+ } from "./content-safety.ts";
+-import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
++import {
++  acquireBillingWriterLease,
++  BillingIdentityLifecycleError,
++} from "./billing-identity-lifecycle.ts";
+ import {
+   committedGameStartIdentity,
+   repairCommittedGameStartWithFreshLeases,
+@@ -878,8 +881,9 @@ async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
+     : null;
+   return await runPostLeaseSignalWithinDeadline({
+     timeoutMS: 600,
+-    leasedOperation: async () => {
++    leasedOperation: async (budget) => {
+       const attempt = async (candidate, context) => {
++        budget.assertCanStart();
+         if (candidate.obsolete) return true;
+         const candidateUserIDs = uniqueStrings(
+           candidate.recipients.map((recipient) => recipient?.user_id),
+@@ -892,7 +896,12 @@ async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
+           // The outer bounded mode repair owns retry timing so every retry can
+           // refetch the newest room revision before taking identity leases.
+           attempts: 1,
++          acquire: async (store, userID) => {
++            budget.assertCanStart();
++            return await acquireBillingWriterLease(store, userID);
++          },
+           action: async (leaseContext) => {
++            budget.assertCanStart();
+             let exact = candidate;
+             if (context.isRepair) {
+               const observed = await fetchRoom(base44, candidate.room.id);
+@@ -921,6 +930,7 @@ async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
+               // Fast mode actions never recreate a signal removed by account
+               // cleanup. Leased non-fast callers preserve their prior policy.
+               allowCreate: exact.allowCreate,
++              beforeOperation: budget.assertCanStart,
+               logError: (message, error) =>
+                 console.error(message, error?.message || error),
+             });
+@@ -940,6 +950,7 @@ async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
+         initial: initialCandidate,
+         attempt,
+         loadLatest: async (current) => {
++          budget.assertCanStart();
+           const observed = await fetchRoom(base44, current.room.id);
+           if (!observed) return null;
+           const authoritative = authoritativeRoomForSignalRepair(
+@@ -956,8 +967,8 @@ async function fanoutStagedGameRoomSignalsAfterLeases(base44) {
+         },
+       });
+     },
+-    // The independently owned lifecycle lease remains attached to late work,
+-    // while polling guarantees convergence if this bounded wake-up is delayed.
++    // Await every started write and lease release before returning a response.
++    // Polling catches up any wake-up skipped after the work budget expires.
+     logError: (message, error) =>
+       console.error(message, error?.message || error),
+   });
+@@ -3982,29 +3993,32 @@ async function fanoutDeferredFinishedRoomSignal(base44, room) {
+   ]);
+   if (!userIDs.length) return true;
+   try {
+-    const result = await runWithWallClockDeadline({
++    return await runPostLeaseSignalWithinDeadline({
+       timeoutMS: 600,
+-      operation: () =>
++      leasedOperation: (budget) =>
+         withRoomWriteLeases({
+           lifecycleStore:
+             base44.asServiceRole.entities.BillingIdentityLifecycle,
+           userIDs,
+           attempts: 1,
+-          action: async () =>
+-            await fanoutGameRoomSignalsBestEffort({
++          acquire: async (store, userID) => {
++            budget.assertCanStart();
++            return await acquireBillingWriterLease(store, userID);
++          },
++          action: async () => {
++            const result = await fanoutGameRoomSignalsBestEffort({
+               store: base44.asServiceRole.entities.GameRoomSignal,
+               room,
++              beforeOperation: budget.assertCanStart,
+               logError: (message, error) =>
+                 console.error(message, error?.message || error),
+-            }),
++            });
++            return Number(result?.failed) === 0;
++          },
+         }),
+-      timeoutError: () =>
+-        Object.assign(
+-          new Error("Finished room signal exceeded its response deadline."),
+-          { status: 503, code: "finished_signal_deadline" },
+-        ),
++      logError: (message, error) =>
++        console.error(message, error?.message || error),
+     });
+-    return Number(result?.failed) === 0;
+   } catch (error) {
+     // Polling remains the fallback. Never recreate an identity-bearing signal
+     // after account deletion has acquired its opposing lifecycle marker.
+diff --git a/base44/functions/gameRoomAction/post-lease-signal.ts b/base44/functions/gameRoomAction/post-lease-signal.ts
+index a6d8bf6..a486af7 100644
+--- a/base44/functions/gameRoomAction/post-lease-signal.ts
++++ b/base44/functions/gameRoomAction/post-lease-signal.ts
+@@ -1,5 +1,3 @@
+-import { runWithWallClockDeadline } from "./operation-deadline.ts";
+-
+ const LATEST_SIGNAL_REPAIR_BACKOFF_MILLISECONDS = [25, 50, 100, 200, 400];
+ 
+ function clean(value: unknown): string {
+@@ -77,21 +75,38 @@ export async function runLatestRoomSignalAfterLeaseContention<T>(input: {
+   return false;
+ }
+ 
++export type RoomSignalWorkBudget = {
++  assertCanStart: () => void;
++};
++
++/**
++ * The budget stops NEW work; it must never detach an acquired account lease.
++ * Returning a serverless response while a write/release is still in flight
++ * can terminate that work and leave every account writer blocked for its TTL.
++ */
+ export async function runPostLeaseSignalWithinDeadline(input: {
+   timeoutMS: number;
+-  leasedOperation: () => Promise<boolean>;
++  leasedOperation: (budget: RoomSignalWorkBudget) => Promise<boolean>;
+   logError?: (message: string, error: unknown) => void;
++  nowEpochMS?: () => number;
+ }): Promise<boolean> {
+-  try {
+-    return await runWithWallClockDeadline({
+-      timeoutMS: input.timeoutMS,
+-      operation: input.leasedOperation,
+-      timeoutError: () =>
+-        Object.assign(new Error("Room signal fanout exceeded its deadline."), {
++  const nowEpochMS = input.nowEpochMS ?? Date.now;
++  const deadline = nowEpochMS() + Math.max(1, Math.floor(input.timeoutMS));
++  const budget: RoomSignalWorkBudget = {
++    assertCanStart: () => {
++      if (nowEpochMS() < deadline) return;
++      throw Object.assign(
++        new Error("Room signal fanout exceeded its deadline."),
++        {
+           status: 503,
+           code: "room_signal_deadline",
+-        }),
+-    });
++        },
++      );
++    },
++  };
++  try {
++    budget.assertCanStart();
++    return await input.leasedOperation(budget);
+   } catch (error) {
+     input.logError?.("room signal fanout deferred", error);
+     return false;
+diff --git a/base44/functions/pushNotificationAction/bounded-work.ts b/base44/functions/pushNotificationAction/bounded-work.ts
+index 09514f4..0f9eb42 100644
+--- a/base44/functions/pushNotificationAction/bounded-work.ts
++++ b/base44/functions/pushNotificationAction/bounded-work.ts
+@@ -22,10 +22,15 @@ export async function runWithinDeadline<T>(input: {
+   deadlineEpochMs: number;
+   operation: () => Promise<T>;
+   nowEpochMs?: () => number;
++  /** Local workers can own lifecycle leases, so they must settle before response. */
++  waitForStartedWork?: boolean;
+ }): Promise<DeadlineResult<T>> {
+   const nowEpochMs = input.nowEpochMs || Date.now;
+   const remaining = Math.floor(input.deadlineEpochMs - nowEpochMs());
+   if (remaining <= 0) return { timedOut: true };
++  if (input.waitForStartedWork) {
++    return { timedOut: false, value: await input.operation() };
++  }
+ 
+   let timeoutID: ReturnType<typeof setTimeout> | undefined;
+   const timeout = new Promise<DeadlineResult<T>>((resolve) => {
+@@ -52,6 +57,7 @@ export async function runBounded<T>(input: {
+   const items = [...input.items];
+   const completed: T[] = [];
+   let nextIndex = 0;
++  let workerFailed = false;
+   const nowEpochMs = input.nowEpochMs || Date.now;
+   const concurrency = Math.max(
+     1,
+@@ -59,15 +65,24 @@ export async function runBounded<T>(input: {
+   );
+ 
+   const runner = async () => {
+-    while (nowEpochMs() < input.deadlineEpochMs) {
++    while (!workerFailed && nowEpochMs() < input.deadlineEpochMs) {
+       const index = nextIndex;
+       if (index >= items.length) return;
+       nextIndex += 1;
+       const item = items[index];
+-      await input.worker(item);
++      try {
++        await input.worker(item);
++      } catch (error) {
++        workerFailed = true;
++        throw error;
++      }
+       completed.push(item);
+     }
+   };
+-  await Promise.all(Array.from({ length: concurrency }, () => runner()));
++  const settled = await Promise.allSettled(
++    Array.from({ length: concurrency }, () => runner()),
++  );
++  const failure = settled.find((result) => result.status === "rejected");
++  if (failure?.status === "rejected") throw failure.reason;
+   return { completed, unstarted: items.slice(nextIndex) };
+ }
+diff --git a/base44/functions/pushNotificationAction/entry.ts b/base44/functions/pushNotificationAction/entry.ts
+index 8afeae9..d1e397d 100644
+--- a/base44/functions/pushNotificationAction/entry.ts
++++ b/base44/functions/pushNotificationAction/entry.ts
+@@ -1868,6 +1868,7 @@ async function deliverQueuedRoomLiveActivityEndOnly(
+   );
+   const bounded = await runWithinDeadline({
+     deadlineEpochMs,
++    waitForStartedWork: true,
+     operation: () =>
+       deliverQueuedRoomLiveActivityEnd({
+         liveStore: base44.asServiceRole.entities.LiveActivityRegistration,
+@@ -1890,9 +1891,8 @@ async function deliverQueuedRoomLiveActivityEndOnly(
+       }),
+   });
+   if (bounded.timedOut) {
+-    // Every selected row is still a durable pending force-end. A worker that
+-    // already acquired a lifecycle lease may finish after this response; if it
+-    // is interrupted, its delivery lease expires into the scheduled retry.
++    // The deadline expired before starting. Started delivery workers are
++    // awaited through their account-lease cleanup before a response is sent.
+     return {
+       ok: true,
+       room_id: clean(body.room_id),

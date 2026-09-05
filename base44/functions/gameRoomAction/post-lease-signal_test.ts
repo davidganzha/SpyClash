@@ -4,7 +4,7 @@ import {
   runPostLeaseSignalWithinDeadline,
 } from "./post-lease-signal.ts";
 
-Deno.test("caller deadline does not release the independent signal lease before late writes finish", async () => {
+Deno.test("signal response waits for a late write and its account lease cleanup", async () => {
   let releaseWrite!: () => void;
   let releaseLease!: () => void;
   const writeGate = new Promise<void>((resolve) => {
@@ -16,7 +16,8 @@ Deno.test("caller deadline does not release the independent signal lease before 
   const order: string[] = [];
   let leaseHeld = false;
 
-  const completed = await runPostLeaseSignalWithinDeadline({
+  let responded = false;
+  const response = runPostLeaseSignalWithinDeadline({
     timeoutMS: 20,
     leasedOperation: async () => {
       leaseHeld = true;
@@ -31,20 +32,48 @@ Deno.test("caller deadline does not release the independent signal lease before 
         releaseLease();
       }
     },
+  }).then((value) => {
+    responded = true;
+    return value;
   });
 
-  assertEquals(completed, false);
+  await new Promise((resolve) => setTimeout(resolve, 30));
+  assertEquals(responded, false);
   assertEquals(leaseHeld, true);
   assertEquals(order, ["lease-acquired"]);
 
   releaseWrite();
   await leaseReleased;
+  assertEquals(await response, true);
   assertEquals(leaseHeld, false);
   assertEquals(order, [
     "lease-acquired",
     "late-signal-write",
     "lease-released",
   ]);
+});
+
+Deno.test("signal budget skips later work and awaits cleanup before reporting deferral", async () => {
+  let epoch = 0;
+  const order: string[] = [];
+  const completed = await runPostLeaseSignalWithinDeadline({
+    timeoutMS: 600,
+    nowEpochMS: () => epoch,
+    leasedOperation: async (budget) => {
+      order.push("lease-acquired");
+      try {
+        epoch = 601;
+        budget.assertCanStart();
+        order.push("signal-created");
+        return true;
+      } finally {
+        await Promise.resolve();
+        order.push("lease-released");
+      }
+    },
+  });
+  assertEquals(completed, false);
+  assertEquals(order, ["lease-acquired", "lease-released"]);
 });
 
 Deno.test("latest signal repair never retries through account deletion", async () => {
