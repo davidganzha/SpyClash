@@ -241,7 +241,7 @@ enum ShellSupplementaryRefreshPolicy {
 
 struct AppShellView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
     @Namespace private var dockNamespace
     @State private var isCommandMenuPresented = AppShellView.initialCommandMenuPresentation
@@ -398,6 +398,11 @@ struct AppShellView: View {
         )
         .sheet(item: $appState.presentedSheet) { destination in
             switch destination {
+            case .settings:
+                InterfaceSettingsView(language: appState.language)
+                    .presentationDetents([.large])
+                    .presentationDragIndicator(.hidden)
+                    .presentationCornerRadius(0)
             case .limitless:
                 PricingView()
                     .spyGlobalToastLayer()
@@ -1085,6 +1090,8 @@ struct AppShellView: View {
 
         DispatchQueue.main.asyncAfter(deadline: .now() + 0.18) {
             switch previewSheet {
+            case "settings":
+                appState.presentedSheet = .settings
             case "limitless":
                 appState.presentedSheet = .limitless
             case "community":
@@ -1109,7 +1116,7 @@ struct AppShellView: View {
 }
 
 private struct RoomSynchronizationOverlay: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     let operation: RoomSyncOperation
     let language: AppLanguage
@@ -1151,7 +1158,7 @@ private struct RoomSynchronizationOverlay: View {
 }
 
 private struct RoomSynchronizationTerminalLine: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     let operation: RoomSyncOperation
     let language: AppLanguage
@@ -1220,7 +1227,7 @@ private struct RoomSynchronizationTerminalLine: View {
 private struct PullDownCommandMenu: View {
     @Binding var isPresented: Bool
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @State private var dragTranslation: CGFloat = 0
     @State private var didFireDragHaptic = false
 
@@ -2265,7 +2272,7 @@ private struct DockGlassSurface: ViewModifier {
 }
 
 private struct FloatingDock: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @Binding var selection: AppTab
     let tabs: [AppTab]
     let communitySelection: CommunityTab
@@ -2386,7 +2393,7 @@ private struct ShellDockItem {
 }
 
 private struct DockPressStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -2421,8 +2428,9 @@ private struct DockItem: View {
     var body: some View {
         let amount = selectionAmount
 
-        Image(systemName: symbol)
-            .font(.system(size: 25, weight: .semibold))
+        VStack(spacing: 3) {
+            Image(systemName: symbol)
+            .font(.system(size: InterfacePreferences.shared.settings.dockLabels ? 22 : 25, weight: .semibold))
             .modifier(
                 DockIconAppearance(
                     selectionPosition: selectionPosition,
@@ -2430,6 +2438,15 @@ private struct DockItem: View {
                     inactiveOpacity: inactiveOpacity
                 )
             )
+            if InterfacePreferences.shared.settings.dockLabels {
+                Text(accessibilityLabel)
+                    .font(.system(size: 8 * InterfacePreferences.shared.settings.labelSize.scale, weight: .bold, design: .monospaced))
+                    .foregroundStyle(amount > 0.5 ? SpyTheme.red : SpyTheme.muted)
+                    .lineLimit(1)
+                    .minimumScaleFactor(0.6)
+                    .accessibilityHidden(true)
+            }
+        }
             .frame(maxWidth: .infinity)
             .frame(height: 58)
             .overlay(alignment: .bottom) {
@@ -2532,7 +2549,7 @@ private struct WebPullDownCommandMenu: View {
     let communityAttentionCount: Int
     let notificationUnreadCount: Int
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     @State private var dragTranslation: CGFloat = 0
     @State private var didFireDragHaptic = false
@@ -2541,7 +2558,7 @@ private struct WebPullDownCommandMenu: View {
         GeometryReader { proxy in
             let topInset = proxy.safeAreaInsets.top > 0 ? proxy.safeAreaInsets.top : 54
             let topBarHeight = topInset + 80
-            let menuHeight = proxy.size.height * 0.50
+            let menuHeight = min(max(388, proxy.size.height * 0.50), proxy.size.height - topBarHeight)
             let revealedHeight = currentRevealHeight(menuHeight: menuHeight)
             let progress = clamp(revealedHeight / max(menuHeight, 1))
             let totalHeight = topBarHeight + revealedHeight
@@ -2922,7 +2939,7 @@ private struct WebCommandMenuPanel: View {
     let close: () -> Void
 
     private let itemHeight: CGFloat = 40
-    private let totalItems: CGFloat = 7
+    private let totalItems: CGFloat = 8
 
     var body: some View {
         VStack(spacing: 0) {
@@ -2992,9 +3009,19 @@ private struct WebCommandMenuPanel: View {
                     .accessibilityIdentifier("spy-command-menu.limitless")
                 }
 
-                revealDivider(index: 5)
+                revealItem(index: 5) {
+                    menuButton(
+                        icon: "⚙️",
+                        title: localized(en: "SETTINGS", ru: "НАСТРОЙКИ", es: "AJUSTES", uk: "НАЛАШТУВАННЯ")
+                    ) {
+                        closeThen { appState.presentedSheet = .settings }
+                    }
+                    .accessibilityIdentifier("spy-command-menu.settings")
+                }
 
-                revealItem(index: 6) {
+                revealDivider(index: 6)
+
+                revealItem(index: 7) {
                     menuButton(
                         icon: "🚪",
                         title: localized(en: "LOGOUT", ru: "ВЫХОД", es: "SALIR", uk: "ВИЙТИ"),
@@ -3063,7 +3090,7 @@ private struct WebCommandMenuPanel: View {
                     .frame(width: 28, alignment: .leading)
 
                 Text(title)
-                    .font(.system(size: 13, weight: .regular, design: .monospaced))
+                    .font(.system(size: 13 * InterfacePreferences.shared.settings.labelSize.scale, weight: .regular, design: .monospaced))
                     .tracking(3)
                     .lineLimit(1)
                     .minimumScaleFactor(0.72)

@@ -8,13 +8,12 @@ struct SpyBackground: View {
             ZStack {
                 SpyTheme.black
 
-                layoutAmbient(size: size)
-
-                pageAmbient(size: size)
-
-                gridLayer(size: size)
-
-                scanlines(size: size)
+                if InterfacePreferences.shared.settings.backgroundEffects {
+                    layoutAmbient(size: size)
+                    pageAmbient(size: size)
+                    gridLayer(size: size)
+                    scanlines(size: size)
+                }
             }
         }
         .ignoresSafeArea()
@@ -141,7 +140,7 @@ struct SpyBackground: View {
 
 struct PageChrome<Content: View>: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     let eyebrow: String
     let status: String
@@ -258,7 +257,7 @@ struct SpyPageStatusLine: View {
 }
 
 struct AnimatedTitle: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @State private var isVisible = false
 
     let text: String

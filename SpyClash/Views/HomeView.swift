@@ -37,7 +37,7 @@ struct HomeHeroTypographyPolicy {
 
 struct HomeView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @Environment(\.spyEntranceMotionEnabled) private var entranceMotionEnabled
     @Environment(\.spyEntrancePresentationActive) private var entrancePresentationActive
 
@@ -992,7 +992,7 @@ struct HomeView: View {
 }
 
 private struct HomeHeroTitle: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @Environment(\.spyEntranceMotionEnabled) private var entranceMotionEnabled
     @Environment(\.spyEntrancePresentationActive) private var entrancePresentationActive
     @State private var isVisible = false

@@ -115,7 +115,7 @@ struct LocalPrivateVoteView: View {
     let onSelectTarget: (Int) -> Void
     let onConfirmVote: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @AccessibilityFocusState private var headingFocused: Bool
 
     private var copy: LocalPrivateDecisionCopy { LocalPrivateDecisionCopy(language: language) }

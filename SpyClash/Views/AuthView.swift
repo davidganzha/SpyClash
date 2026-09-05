@@ -488,7 +488,7 @@ struct AuthView: View {
 
 struct AppleAuthCinematicOverlay: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     let stage: AppleAuthStage
 
@@ -578,7 +578,7 @@ struct AppleAuthCinematicOverlay: View {
 
 private struct StandardAuthCinematicOverlay: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     let stage: StandardAuthCinematicStage
 
@@ -664,7 +664,7 @@ private struct StandardAuthCinematicOverlay: View {
 }
 
 private struct FourPartAssemblingMark: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     let stage: StandardAuthCinematicStage
 
@@ -732,7 +732,7 @@ private struct FourPartAssemblingMark: View {
 }
 
 private struct SpyClashAssemblingMark: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     let stage: AppleAuthStage
 

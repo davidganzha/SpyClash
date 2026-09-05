@@ -196,7 +196,7 @@ private struct RootView: View {
 }
 
 private struct OnboardingLaunchMessageView: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @State private var phase = Phase.hidden
 
     let message: String

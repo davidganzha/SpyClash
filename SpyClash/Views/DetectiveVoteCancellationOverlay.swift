@@ -150,7 +150,7 @@ struct DetectiveVoteCancellationCopy: Equatable {
 }
 
 struct DetectiveVoteCancellationOverlay: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     let event: DetectiveVoteCancellationEvent
     let languageCode: String

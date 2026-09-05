@@ -23,7 +23,7 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
 
     let fixedProgress: Double?
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     init(
         participants: [SpyGameIntroParticipant<ParticipantID>],

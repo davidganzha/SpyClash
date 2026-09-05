@@ -89,7 +89,7 @@ struct LocalCinematicTimer: View {
     let totalSeconds: Int
     var turn: Int = 1
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     private var copy: LocalCinematicCopy { LocalCinematicCopy(language: language) }
     private var clampedRemaining: Int { max(secondsRemaining, 0) }
@@ -151,7 +151,7 @@ struct LocalCinematicOperativeRail: View {
     let participants: [LocalCinematicParticipant]
     let language: AppLanguage
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     private var copy: LocalCinematicCopy { LocalCinematicCopy(language: language) }
 

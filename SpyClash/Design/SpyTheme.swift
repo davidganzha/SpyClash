@@ -15,20 +15,29 @@ enum SpyTheme {
     static let graphiteElevated = card
     static let panel = card
     static let panelDeep = dark
-    static let stroke = Color(red: 30 / 255, green: 30 / 255, blue: 30 / 255)
-    static let inputBorder = Color(red: 42 / 255, green: 42 / 255, blue: 42 / 255)
-    static let strokeStrong = Color(red: 51 / 255, green: 51 / 255, blue: 51 / 255)
-    static let strokeDim = Color(red: 34 / 255, green: 34 / 255, blue: 34 / 255)
+    @MainActor static var stroke: Color { semanticGray(30, enhanced: 100) }
+    @MainActor static var inputBorder: Color { semanticGray(42, enhanced: 125) }
+    @MainActor static var strokeStrong: Color { semanticGray(51, enhanced: 140) }
+    @MainActor static var strokeDim: Color { semanticGray(34, enhanced: 100) }
     static let text = Color.white
     static let bodyText = Color(red: 204 / 255, green: 204 / 255, blue: 204 / 255)
-    static let muted = Color(red: 102 / 255, green: 102 / 255, blue: 102 / 255)
-    static let dim = Color(red: 85 / 255, green: 85 / 255, blue: 85 / 255)
-    static let faint = Color(red: 68 / 255, green: 68 / 255, blue: 68 / 255)
+    @MainActor static var muted: Color { semanticGray(102, enhanced: 184) }
+    @MainActor static var dim: Color { semanticGray(85, enhanced: 165) }
+    @MainActor static var faint: Color { semanticGray(68, enhanced: 145) }
+
+    @MainActor private static func semanticGray(_ original: Double, enhanced: Double) -> Color {
+        let value = (InterfacePreferences.shared.settings.enhancedContrast ? enhanced : original) / 255
+        return Color(red: value, green: value, blue: value)
+    }
 
     static let title = Font.system(size: 42, weight: .black, design: .default)
     static let section = Font.system(size: 22, weight: .bold, design: .default)
-    static let mono = Font.system(size: 13, weight: .medium, design: .monospaced)
-    static let micro = Font.system(size: 11, weight: .bold, design: .monospaced)
+    @MainActor static var mono: Font {
+        .system(size: 13 * InterfacePreferences.shared.settings.labelSize.scale, weight: .medium, design: .monospaced)
+    }
+    @MainActor static var micro: Font {
+        .system(size: 11 * InterfacePreferences.shared.settings.labelSize.scale, weight: .bold, design: .monospaced)
+    }
 
     static func brandFont(size: CGFloat) -> Font {
         .custom("Rajdhani-Bold", size: size)
@@ -98,7 +107,7 @@ extension EnvironmentValues {
 struct SpyWebPressStyle: ButtonStyle {
     var pressedScale: CGFloat = 0.98
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -108,7 +117,7 @@ struct SpyWebPressStyle: ButtonStyle {
 }
 
 private struct SpyWebEntranceModifier: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @Environment(\.spyEntranceMotionEnabled) private var entranceMotionEnabled
     @Environment(\.spyEntrancePresentationActive) private var entrancePresentationActive
     @State private var isVisible = false
@@ -200,7 +209,7 @@ struct SpyButtonStyle: ButtonStyle {
 
     let variant: Variant
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -485,7 +494,7 @@ struct SpyLobbySectionHeader: View {
 }
 
 struct SpyLobbyModeChoice: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     let symbol: String
     let title: String
@@ -690,7 +699,7 @@ struct SpyLobbyActionRow<Leading: View, Trailing: View>: View {
 }
 
 struct SpyLobbyFooterPressStyle: ButtonStyle {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -833,7 +842,7 @@ struct SpyLobbyPrimaryActionLabel: View {
 }
 
 struct SpyLobbySetupFocusEffect: ViewModifier {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     let dimmed: Bool
 
@@ -1701,7 +1710,7 @@ extension View {
 
 private struct GlobalToastLayer: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     var body: some View {
         VStack(alignment: .trailing, spacing: 8) {
@@ -1863,7 +1872,7 @@ enum SpyLoaderMotionPolicy {
 
 struct SpyLoader: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
     var label: String? = nil

@@ -203,7 +203,7 @@ enum LocalAssociationTurnOrderPolicy {
 
 struct LocalGameView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
     @Environment(\.scenePhase) private var scenePhase
 
@@ -5198,7 +5198,7 @@ private struct LocalForgotCardRequest: Identifiable {
 
 private struct LocalForgotCardRecoveryView: View {
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
     let request: LocalForgotCardRequest
@@ -5766,7 +5766,7 @@ private struct LocalGlitchText: View {
     let text: String
     var speedNanoseconds: UInt64 = 40_000_000
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @State private var displayed = ""
 
     private let glitchCharacters = Array("ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%")

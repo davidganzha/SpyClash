@@ -131,7 +131,7 @@ struct MissionRoleCard: View {
     let isRevealed: Bool
     var size: MissionRoleCardSize = .hero
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     init(
         role: MissionRoleCardContent,
@@ -467,7 +467,7 @@ private struct MissionCardEdgeRails: View {
 struct SpyCinematicBackdrop: View {
     var intensity: CGFloat = 1
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     var body: some View {
         TimelineView(.animation(minimumInterval: 1 / 24, paused: reduceMotion)) { timeline in
@@ -570,7 +570,7 @@ struct SpyCinematicButtonStyle: ButtonStyle {
 
     let variant: Variant
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     func makeBody(configuration: Configuration) -> some View {
         configuration.label
@@ -644,7 +644,7 @@ struct OnlineGameIntroScene: View {
     let room: GameRoom
     let language: AppLanguage
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     var body: some View {
         SpyGameIntroScene(
@@ -963,7 +963,7 @@ struct OnlineRoleRevealScene: View {
     let onConfirm: () -> Void
     let onLeave: () -> Void
 
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @State private var hasEntered = false
 
     init(

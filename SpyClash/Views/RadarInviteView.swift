@@ -4,7 +4,7 @@ import UIKit
 struct RadarInviteView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
 
     let room: GameRoom
 

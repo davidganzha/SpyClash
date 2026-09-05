@@ -25,6 +25,7 @@
 		32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16DD679CA8E36033E9AD5D76 /* HomeView.swift */; };
 		397C0B1DBC891128B57E1133 /* WordPackDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D58811816F930A78503187 /* WordPackDraftTests.swift */; };
 		39840D09E8474E87D45E1555 /* OnlineRoundStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673C14A27AC3CD3669188134 /* OnlineRoundStateTests.swift */; };
+		3D4E95B2D2AE210606FF2E93 /* InterfaceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */; };
 		44E47D108AEA998ECE556EB7 /* WordPackEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667D3929047FBC751174E868 /* WordPackEditorSheet.swift */; };
 		4BEBA1477C858A78FB3F338D /* SpyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */; };
 		4CEDDEDB003294AA9A16B703 /* Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 026F4AEBE8A76B12EE72FAC6 /* Membership.swift */; };
@@ -37,6 +38,7 @@
 		65B97F60EB8C89F0D594A552 /* WordPacksView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2863C15FC8DD7D0C969D6E78 /* WordPacksView.swift */; };
 		6BEB09CD45546EB59A434FFF /* QRSheets.swift in Sources */ = {isa = PBXBuildFile; fileRef = FA6E7B15464DD14D3E49671B /* QRSheets.swift */; };
 		6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5BBA628FB7C9372162E4C619 /* HapticManager.swift */; };
+		70545E7667108CB8B2470745 /* InterfacePreferencesTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 35921860BD3A7EB84F963F87 /* InterfacePreferencesTests.swift */; };
 		71EFCB4E56D0E1AFBB55CD75 /* SocketIO-MIT.txt in Resources */ = {isa = PBXBuildFile; fileRef = DB38FB6B74A483175220231A /* SocketIO-MIT.txt */; };
 		7ABFCD782E22AF6AFF519942 /* GameRoomRealtimeService.swift in Sources */ = {isa = PBXBuildFile; fileRef = E68BF1820775925C6C61E563 /* GameRoomRealtimeService.swift */; };
 		7B6D3EB62FE74629B61B73AE /* PricingView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */; };
@@ -45,6 +47,7 @@
 		7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 103786B1CACE81CF96C268EF /* AuthView.swift */; };
 		82D1D08C2F15D8C91C49A7A1 /* Rajdhani-OFL-1.1.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */; };
 		82D3EF58665CCD0D09A29F69 /* Base44ClientRoomActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */; };
+		83309EF2D0E5EEB230E46C36 /* SpyInterfacePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E76174123D2C9A9D699412 /* SpyInterfacePreferences.swift */; };
 		8AAD0E7106FFD33A43390CC2 /* LocalPrivateDecisionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */; };
 		8D17771759D4330EBFEC4603 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 0F3E2F7BE3B86567F9077667 /* SocketIO */; };
 		94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 75823698B8005677C73DFC1B /* AppState.swift */; };
@@ -78,6 +81,7 @@
 		F8ACF630FD7CF3AA355F0BEE /* OnboardingPermissionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E73CCDCA0692312901E5444 /* OnboardingPermissionCoordinator.swift */; };
 		FC61757D64D5967B87F90D6B /* CommunityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F58B6A8B6D7F70B21AE0D8 /* CommunityView.swift */; };
 		FE4AD779C9178990AE6FB3B2 /* LocalGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */; };
+		FF6A93820FD2EF393D1AEEC8 /* InterfacePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A845F2AA618E50DAC8D05962 /* InterfacePreferences.swift */; };
 		FF867ED1B30F3153F5913AC9 /* NotificationsInboxView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CBEA537D0BEEC5A171ABD419 /* NotificationsInboxView.swift */; };
 /* End PBXBuildFile section */
 
@@ -132,6 +136,7 @@
 		2C35AB10E88428C6F3D53699 /* AppState+Membership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = "AppState+Membership.swift"; sourceTree = "<group>"; };
 		2EA85E77102835211355B7C6 /* NotificationInboxModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInboxModels.swift; sourceTree = "<group>"; };
 		34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashMatchActivityAttributes.swift; sourceTree = "<group>"; };
+		35921860BD3A7EB84F963F87 /* InterfacePreferencesTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfacePreferencesTests.swift; sourceTree = "<group>"; };
 		37FD3AD53D245670F659C1E4 /* SpyClashTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SpyClashTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		450DC5444292040544994868 /* MembershipStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipStore.swift; sourceTree = "<group>"; };
 		461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSignInCoordinator.swift; sourceTree = "<group>"; };
@@ -150,6 +155,7 @@
 		75823698B8005677C73DFC1B /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
 		760CBEBE89AEE2AA0F8A6E0E /* SpyClashWidgetsBundle.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashWidgetsBundle.swift; sourceTree = "<group>"; };
 		79E0CCD1E46813B6962CBD4B /* GameRoomLiveActivityProjection.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRoomLiveActivityProjection.swift; sourceTree = "<group>"; };
+		79E76174123D2C9A9D699412 /* SpyInterfacePreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyInterfacePreferences.swift; sourceTree = "<group>"; };
 		7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		7D83FC09C66C9373238F2E95 /* LocalCinematicGameplayViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCinematicGameplayViews.swift; sourceTree = "<group>"; };
 		7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyGameIntroScene.swift; sourceTree = "<group>"; };
@@ -163,10 +169,12 @@
 		8EE75E34545D7FD03BFBF561 /* Base44Client.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base44Client.swift; sourceTree = "<group>"; };
 		9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "Rajdhani-OFL-1.1.txt"; sourceTree = "<group>"; };
 		9065A7D0489C60903CBB7D5B /* SpyBackground.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyBackground.swift; sourceTree = "<group>"; };
+		97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfaceSettingsView.swift; sourceTree = "<group>"; };
 		9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */ = {isa = PBXFileReference; path = PrivacyInfo.xcprivacy; sourceTree = "<group>"; };
 		9E7E31F61F4DBF12D419781A /* SpyClash.entitlements */ = {isa = PBXFileReference; lastKnownFileType = text.plist.entitlements; path = SpyClash.entitlements; sourceTree = "<group>"; };
 		A01D249EEE029FBB05286504 /* SpyClash.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SpyClash.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		A6EDDA8AE23141F759D27B13 /* en */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = en; path = en.lproj/InfoPlist.strings; sourceTree = "<group>"; };
+		A845F2AA618E50DAC8D05962 /* InterfacePreferences.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfacePreferences.swift; sourceTree = "<group>"; };
 		A8B7F0D77CCD84E2E31D982D /* PushNotificationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PushNotificationCoordinator.swift; sourceTree = "<group>"; };
 		AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Base44ClientRoomActionTests.swift; sourceTree = "<group>"; };
 		AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
@@ -255,6 +263,7 @@
 				8B5C87FEFE82151F2F7D6F6A /* GameView.swift */,
 				22314E28DB2385F7A05ABC74 /* HistoryView.swift */,
 				16DD679CA8E36033E9AD5D76 /* HomeView.swift */,
+				97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */,
 				723E083EC43863E9B19D1DBD /* LeaderboardView.swift */,
 				8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */,
 				BEE68A515367ABB807A2007D /* LimitlessUnlockOverlay.swift */,
@@ -281,6 +290,7 @@
 		7B5F5EE21DED3DDAA2C1A21D /* Design */ = {
 			isa = PBXGroup;
 			children = (
+				79E76174123D2C9A9D699412 /* SpyInterfacePreferences.swift */,
 				08CF05650D30ADCD231D6904 /* SpyLaserScanLayer.swift */,
 				E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */,
 			);
@@ -338,6 +348,7 @@
 			isa = PBXGroup;
 			children = (
 				AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */,
+				35921860BD3A7EB84F963F87 /* InterfacePreferencesTests.swift */,
 				84FC834A8A03378CFB477BB4 /* MembershipTests.swift */,
 				F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */,
 				0E6103AB3131936FE120B988 /* OnboardingPermissionTests.swift */,
@@ -362,6 +373,7 @@
 		F0907EF3730A23551A82884B /* Models */ = {
 			isa = PBXGroup;
 			children = (
+				A845F2AA618E50DAC8D05962 /* InterfacePreferences.swift */,
 				026F4AEBE8A76B12EE72FAC6 /* Membership.swift */,
 				2EA85E77102835211355B7C6 /* NotificationInboxModels.swift */,
 				D6575BABB395718344476FA1 /* OnboardingModels.swift */,
@@ -547,6 +559,8 @@
 				6E4C94E70834661C17C08E06 /* HapticManager.swift in Sources */,
 				1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */,
 				32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */,
+				FF6A93820FD2EF393D1AEEC8 /* InterfacePreferences.swift in Sources */,
+				3D4E95B2D2AE210606FF2E93 /* InterfaceSettingsView.swift in Sources */,
 				E27A943CAA9C87A2F4E58CDB /* KeychainStore.swift in Sources */,
 				047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */,
 				C2A5F22F5F23B9D2106D8168 /* LimitlessClearancePanel.swift in Sources */,
@@ -576,6 +590,7 @@
 				D6B23D48649F5025143180FD /* SpyClashMatchActivityAttributes.swift in Sources */,
 				2296623A2D3D1D8A43A1A4DC /* SpyClashMatchLiveActivityController.swift in Sources */,
 				BE763CD2921B74DCF33CB0EF /* SpyGameIntroScene.swift in Sources */,
+				83309EF2D0E5EEB230E46C36 /* SpyInterfacePreferences.swift in Sources */,
 				ECE4DEF51EEB914818148535 /* SpyLaserScanLayer.swift in Sources */,
 				2946A41A9575F0D1AEE2D809 /* SpyModels.swift in Sources */,
 				7D6221160001A1F896D98689 /* SpyOrbSceneView.swift in Sources */,
@@ -593,6 +608,7 @@
 			buildActionMask = 2147483647;
 			files = (
 				82D3EF58665CCD0D09A29F69 /* Base44ClientRoomActionTests.swift in Sources */,
+				70545E7667108CB8B2470745 /* InterfacePreferencesTests.swift in Sources */,
 				BEE92851841DC7FE6D053B92 /* MembershipTests.swift in Sources */,
 				C59197AFE6D361EBD8D48B44 /* NotificationInboxTests.swift in Sources */,
 				138D4E2D9BDF375CF36C08F5 /* OnboardingPermissionTests.swift in Sources */,
@@ -770,7 +786,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 139;
+				CURRENT_PROJECT_VERSION = 140;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -828,7 +844,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 139;
+				CURRENT_PROJECT_VERSION = 140;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

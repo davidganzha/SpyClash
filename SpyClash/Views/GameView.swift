@@ -2075,7 +2075,7 @@ struct LobbySyncFeedbackState: Equatable {
 
 struct GameView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @Environment(\.scenePhase) private var scenePhase
 
     @State private var status = ""
@@ -12165,7 +12165,7 @@ private struct RoomQRFlipSheen: View {
 }
 
 private struct RoomQRScanBeam: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     let isActive: Bool
     @State private var beamAtEnd = false
 
@@ -12217,7 +12217,7 @@ private struct RoomQRScanBeam: View {
 }
 
 private struct RoomCodeSpoilerField: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     let isActive: Bool
 
     var body: some View {
@@ -12267,7 +12267,7 @@ private struct RoomCodeSpoilerField: View {
 }
 
 private struct WaitingStartActionLabel: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @Environment(\.dynamicTypeSize) private var dynamicTypeSize
 
     let mode: WaitingStartActionMode

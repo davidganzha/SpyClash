@@ -5825,6 +5825,7 @@ enum AppShellRoute: String, Hashable {
 
 enum AppSheet: Identifiable, Hashable {
     case limitless
+    case settings
     case qrScanner
     case roomQR(GameRoom)
     case legal(LegalSheetKind)
@@ -5833,6 +5834,8 @@ enum AppSheet: Identifiable, Hashable {
         switch self {
         case .limitless:
             "limitless"
+        case .settings:
+            "settings"
         case .qrScanner:
             "qrScanner"
         case .roomQR(let room):

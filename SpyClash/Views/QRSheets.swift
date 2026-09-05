@@ -805,7 +805,7 @@ enum QRCodeFactory {
     }
 }
 
-@ViewBuilder
+@MainActor @ViewBuilder
 func sheetHeader(eyebrow: String, title: String, subtitle: String) -> some View {
     VStack(spacing: 10) {
         Text(eyebrow)

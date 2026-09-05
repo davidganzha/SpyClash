@@ -17,6 +17,12 @@ struct SpyLaserScanLayer: View {
     }
 
     var body: some View {
+        if InterfacePreferences.shared.settings.backgroundEffects {
+            scanLayer
+        }
+    }
+
+    private var scanLayer: some View {
         GeometryReader { proxy in
             TimelineView(
                 .animation(

@@ -3,7 +3,7 @@ import SwiftUI
 /// Visual blocks transplanted from e4c1997 PricingView, not reinterpreted.
 /// Only membership/product values and controls are supplied by the current IAP flow.
 struct LimitlessClearancePanel<Controls: View, Legal: View>: View {
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     let copy: LimitlessCopy
     let hasAccess: Bool
     let membershipCategoryLabel: String

@@ -19,6 +19,8 @@ final class HapticManager {
     private let rigidGenerator = UIImpactFeedbackGenerator(style: .rigid)
     private let notificationGenerator = UINotificationFeedbackGenerator()
     private var limitlessEngine: CHHapticEngine?
+    private var mode: InterfaceHaptics { InterfacePreferences.shared.settings.haptics }
+    private var intensityScale: CGFloat { mode.intensity }
     private init() {
         selectionGenerator.prepare()
         impactGenerator.prepare()
@@ -27,7 +29,14 @@ final class HapticManager {
     }
 
     func fire(_ type: HapticType, isEnabled: Bool = true) {
-        guard isEnabled else { return }
+        guard isEnabled, mode != .off else { return }
+
+        // Selection/notification generators have no intensity control.
+        // A light impact supplies the explicit soft setting for those events.
+        if mode == .soft {
+            impactGenerator.impactOccurred(intensity: 0.52 * intensityScale)
+            return
+        }
 
         switch type {
         case .buttonPress:
@@ -44,11 +53,14 @@ final class HapticManager {
     }
 
     func playToastDismissFeedback() {
-        rigidGenerator.impactOccurred(intensity: 0.22)
+        guard mode != .off else { return }
+        rigidGenerator.impactOccurred(intensity: 0.22 * intensityScale)
         rigidGenerator.prepare()
     }
 
     func prepareLimitlessPresentation() {
+        guard mode != .off else { return }
+        if limitlessEngine == nil { configureLimitlessEngine() }
         guard let limitlessEngine else {
             rigidGenerator.prepare()
             return
@@ -91,7 +103,7 @@ final class HapticManager {
     }
 
     private func configureLimitlessEngine() {
-        guard CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
+        guard mode != .off, CHHapticEngine.capabilitiesForHardware().supportsHaptics else {
             return
         }
 
@@ -101,7 +113,8 @@ final class HapticManager {
             engine.isAutoShutdownEnabled = true
             engine.resetHandler = { [weak self] in
                 Task { @MainActor in
-                    try? self?.limitlessEngine?.start()
+                    guard let self, self.mode != .off else { return }
+                    try? self.limitlessEngine?.start()
                 }
             }
             limitlessEngine = engine
@@ -111,8 +124,10 @@ final class HapticManager {
     }
 
     private func playLimitlessPattern(_ events: [CHHapticEvent], fallbackIntensity: CGFloat) {
+        guard mode != .off else { return }
+        if limitlessEngine == nil { configureLimitlessEngine() }
         guard let limitlessEngine else {
-            rigidGenerator.impactOccurred(intensity: fallbackIntensity)
+            rigidGenerator.impactOccurred(intensity: fallbackIntensity * intensityScale)
             rigidGenerator.prepare()
             return
         }
@@ -123,7 +138,7 @@ final class HapticManager {
             let player = try limitlessEngine.makePlayer(with: pattern)
             try player.start(atTime: CHHapticTimeImmediate)
         } catch {
-            rigidGenerator.impactOccurred(intensity: fallbackIntensity)
+            rigidGenerator.impactOccurred(intensity: fallbackIntensity * intensityScale)
             rigidGenerator.prepare()
         }
     }
@@ -136,7 +151,7 @@ final class HapticManager {
         CHHapticEvent(
             eventType: .hapticTransient,
             parameters: [
-                CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity),
+                CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity * Float(intensityScale)),
                 CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
             ],
             relativeTime: time
@@ -152,7 +167,7 @@ final class HapticManager {
         CHHapticEvent(
             eventType: .hapticContinuous,
             parameters: [
-                CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity),
+                CHHapticEventParameter(parameterID: .hapticIntensity, value: intensity * Float(intensityScale)),
                 CHHapticEventParameter(parameterID: .hapticSharpness, value: sharpness)
             ],
             relativeTime: time,
@@ -160,4 +175,7 @@ final class HapticManager {
         )
     }
 
+    func stopFeedback() {
+        limitlessEngine?.stop(completionHandler: nil)
+    }
 }

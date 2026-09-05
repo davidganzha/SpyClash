@@ -2,7 +2,7 @@ import SwiftUI
 
 struct WelcomeView: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     @State private var showAuth = false
     @State private var legalSheet: LegalSheetKind?
     @State private var isWordmarkVisible = false

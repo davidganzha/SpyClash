@@ -18,7 +18,7 @@ private struct LimitlessUnlockLayer: View {
 
 private struct LimitlessUnlockOverlay: View {
     @Environment(AppState.self) private var appState
-    @Environment(\.accessibilityReduceMotion) private var reduceMotion
+    @SpyReduceMotion private var reduceMotion
     let presentationID: UUID
 
     @State private var isVisible = false
