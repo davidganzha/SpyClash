@@ -14,6 +14,7 @@ App Store upload or review submission was performed.
 - Restoration checkpoint: **1.0.1 (136)**, commit `a6c1cd7`.
 - Production activation checkpoint: **1.0.1 (137)**, branch `davidganzha/restore-limitless`.
 - Historical presentation restoration: **1.0.1 (138)** on the same branch.
+- Direct historical layout transplant after visual feedback: **1.0.1 (139)**.
 - Working copy: `SpyClash.worktrees/restore-limitless`. Original checkout unchanged.
 - Stripe checkout/webhook files and the web worktree have no changes.
 
@@ -77,6 +78,37 @@ its price is not a live retail price.
   UI preview is visibly labeled and cannot purchase or change an account.
 - No backend, Stripe, product, App Store or production configuration changes
   were made for this presentation checkpoint.
+
+## Fidelity correction in build 139
+
+The user identified build 138's reconstructed layout as different from the
+remembered screen. Build 139 transplants the saved visual blocks from
+`e4c1997:SpyClash/Views/PricingView.swift` (identical to `a9008aa` for this file):
+
+- Original PageChrome, close control, inline bolt/header/current-status badge,
+  hero geometry, typography and price/capability-count row.
+- Original compact capability rows, original Russian/English/Spanish feature
+  text, panel boundaries, scanner, halo, flash and timed reveal sequence.
+- Original red primary-control composition, inline restore/manage controls,
+  App Store/cancellation caption and separate subscription-protocol card.
+- The primary panel, scanner, hero, status badge and capabilities section were
+  compared against the historical source after normalizing injected state,
+  Ukrainian localization, accessibility identifiers and the preview status
+  wording. Their layout bodies match that source.
+
+Current membership/StoreKit services were not rolled back. The visual button
+adapts to verified purchase, access refresh, product retry, pending and unavailable
+states; unknown/active access cannot start checkout. In UI preview it only shows
+a no-payment notice. Restore remains disabled in preview. The boot message says
+preview ready instead of implying a granted entitlement. Ukrainian copy and
+current Apple legal links/disclosures are retained.
+
+Build 139 verification: **408 iOS tests passed**, including primary-action gates
+and historical feature order/copy. Debug and Release Simulator builds succeed;
+runtime inspection confirms the restored composition, demo-button notice and
+working close control. No real purchase, server change, Stripe change or App
+Store publication is part of this correction. Visual acceptance remains with
+the user; the historical source is the reference, not a claim of user approval.
 
 ## Rollout — defaults closed, explicitly enabled in production
 

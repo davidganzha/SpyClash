@@ -2,6 +2,7 @@ import SwiftUI
 
 struct LimitlessSheet: Identifiable { let id = "limitless" }
 
+/// Restored page composition; purchases still use the current verified IAP services.
 struct PricingView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
@@ -11,122 +12,255 @@ struct PricingView: View {
     private var copy: LimitlessCopy { LimitlessCopy(language: appState.language) }
 
     var body: some View {
-        ScrollView {
-            VStack(alignment: .leading, spacing: 22) {
-                HStack {
-                    Text("SPYCLASH / ACCESS").font(SpyTheme.micro).foregroundStyle(SpyTheme.muted)
-                    Spacer()
-                    Button { dismiss() } label: {
-                        Image(systemName: "xmark").frame(width: 44, height: 44)
+        PageChrome(
+            eyebrow: copy.pricingEyebrow,
+            status: "LIMITLESS",
+            showsPageTopEdge: false,
+            topReserve: 0
+        ) {
+            LimitlessClearancePanel(
+                copy: copy,
+                hasAccess: access.hasAccess,
+                membershipCategoryLabel: accessStatus,
+                membershipCategoryAccent: access.hasAccess ? SpyTheme.green : accessIsUnknown ? SpyTheme.amber : SpyTheme.muted,
+                displayPrice: store.product?.displayPrice,
+                subscriptionPeriodLabel: copy.week.uppercased()
+            ) {
+                purchaseControls
+            } legal: {
+                legalDetails
+            }
+            .frame(maxWidth: 480)
+            .frame(maxWidth: .infinity)
+            .padding(.horizontal, 16)
+            .padding(.top, 18)
+            .padding(.bottom, 36)
+        }
+        .accessibilityIdentifier("limitless.screen")
+        .overlay {
+            GeometryReader { proxy in
+                sheetCloseButton
+                    .position(x: proxy.size.width - 44, y: max(66, proxy.safeAreaInsets.top - 6))
+            }
+        }
+        .task(id: access.scope) {
+            _ = await access.refresh()
+            if !access.isPreview, !Task.isCancelled { await store.loadProduct() }
+        }
+        .spyLimitlessUnlockLayer()
+    }
+
+    private var sheetCloseButton: some View {
+        Button { dismiss() } label: {
+            Image(systemName: "xmark")
+                .font(.system(size: 14, weight: .black))
+                .foregroundStyle(SpyTheme.muted)
+                .frame(width: 44, height: 44)
+                .background(SpyTheme.black.opacity(0.88), in: CutCornerShape(cut: 8))
+                .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+                .contentShape(CutCornerShape(cut: 8))
+        }
+        .buttonStyle(SpyWebPressStyle())
+        .accessibilityLabel(copy.close)
+        .accessibilityIdentifier("limitless.close")
+    }
+
+    private var purchaseControls: some View {
+        VStack(spacing: 10) {
+            Button { Task { await performPrimaryAction() } } label: {
+                HStack(spacing: 12) {
+                    Image(systemName: isBusy ? "antenna.radiowaves.left.and.right" : "bolt.fill")
+                        .font(.system(size: 17, weight: .black))
+                        .symbolEffect(.pulse, options: isBusy ? .repeating : .default, value: isBusy)
+
+                    VStack(alignment: .leading, spacing: 3) {
+                        Text(primaryActionTitle)
+                            .font(.system(size: 12, weight: .black, design: .monospaced))
+                            .tracking(0.08)
+                            .spyFitted(lines: 2, scale: 0.60)
+
+                        Text(primaryActionDetail)
+                            .font(.system(size: 8, weight: .bold, design: .monospaced))
+                            .tracking(0.06)
+                            .foregroundStyle(.white.opacity(0.68))
+                            .spyFitted(lines: 2, scale: 0.62)
                     }
-                    .accessibilityLabel(copy.close)
-                    .accessibilityIdentifier("limitless.close")
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                    Image(systemName: access.hasAccess || accessIsUnknown ? "arrow.clockwise" : "arrow.up.right")
+                        .font(.system(size: 14, weight: .black))
                 }
-                LimitlessClearancePanel(
-                    copy: copy,
-                    hasAccess: access.hasAccess,
-                    status: accessStatus,
-                    displayPrice: access.canPurchase ? store.product?.displayPrice : nil
-                ) {
-                    VStack(alignment: .leading, spacing: 14) {
-                        accessControls
-                        if let message = stateMessage {
-                            Text(message)
-                                .font(.footnote)
-                                .foregroundStyle(store.state == .failed ? SpyTheme.red : SpyTheme.muted)
-                                .accessibilityIdentifier("limitless.status")
-                        }
+                .padding(.horizontal, 18)
+                .frame(maxWidth: .infinity, minHeight: 62)
+            }
+            .buttonStyle(LimitlessCommandButtonStyle())
+            .disabled(primaryAction == .unavailable || primaryAction == .waiting)
+            .accessibilityIdentifier(primaryAction == .purchase ? "limitless.purchase" : "limitless.primary-action")
+            .accessibilityHint(access.isPreview ? copy.previewNotice : primaryActionDetail)
+
+            if access.snapshot?.isUniversal != true {
+                HStack(spacing: 8) {
+                    Button { Task { await store.restore() } } label: {
+                        secondaryActionLabel(copy.restore.uppercased(), systemImage: "arrow.clockwise")
                     }
-                }
-                if access.isPreview {
-                    Text(copy.previewNotice)
-                        .font(.caption).foregroundStyle(SpyTheme.amber)
-                        .accessibilityIdentifier("limitless.preview-notice")
-                }
-                if access.snapshot?.isUniversal != true {
-                    Button(copy.restore) { Task { await store.restore() } }
-                        .buttonStyle(SpyButtonStyle(variant: .outline))
-                        .disabled(store.state.isBusy || access.isPreview)
-                        .accessibilityIdentifier("limitless.restore")
+                    .buttonStyle(SpyWebPressStyle())
+                    .disabled(isBusy || access.isPreview)
+                    .accessibilityIdentifier("limitless.restore")
+
                     if access.snapshot?.providers.contains("apple") == true {
-                        Button(copy.manage) {
+                        Button {
                             Task {
                                 do { try await store.manageSubscriptions() }
                                 catch { appState.showToast(copy.unavailable, kind: .error) }
                             }
+                        } label: {
+                            secondaryActionLabel(copy.manageShort, systemImage: "slider.horizontal.3")
                         }
-                        .buttonStyle(SpyButtonStyle(variant: .ghost))
+                        .buttonStyle(SpyWebPressStyle())
+                        .disabled(isBusy || access.isPreview)
                     }
-                    Text(copy.renewal).font(.caption).foregroundStyle(SpyTheme.muted)
-                    HStack(spacing: 18) {
-                        Link(copy.privacy, destination: URL(string: "https://spyclash.com/PrivacyPolicy")!)
-                        Link(copy.terms, destination: URL(string: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")!)
-                    }
-                    .font(.caption)
                 }
             }
-            .frame(maxWidth: 480)
-            .padding(.horizontal, 16)
-            .padding(.bottom, 32)
-            .frame(maxWidth: .infinity)
+
+            HStack(spacing: 8) {
+                Image(systemName: "lock.shield.fill")
+                Text(copy.appStorePurchase)
+                Circle().frame(width: 3, height: 3)
+                Text(copy.cancelAnytime)
+            }
+            .font(.system(size: 8, weight: .bold, design: .monospaced))
+            .tracking(0.06)
+            .foregroundStyle(SpyTheme.faint)
+            .spyFitted(scale: 0.64, alignment: .center)
+
+            if let message = stateMessage {
+                Text(message)
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(store.state == .failed ? SpyTheme.red : SpyTheme.muted)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("limitless.status")
+            }
         }
-        .background(SpyBackground())
-        .task {
-            _ = await access.refresh()
-            if access.canPurchase { await store.loadProduct() }
-        }
-        .onChange(of: access.canPurchase) { _, canPurchase in
-            if canPurchase { Task { await store.loadProduct() } }
-        }
-        .accessibilityIdentifier("limitless.screen")
-        .spyLimitlessUnlockLayer()
     }
 
-    @ViewBuilder
-    private var accessControls: some View {
-        if access.snapshot?.isUniversal == true {
-            Label(copy.included, systemImage: "checkmark.shield.fill")
-                .foregroundStyle(SpyTheme.green)
-        } else if access.hasAccess {
-            Label(copy.active, systemImage: "checkmark.shield.fill")
-                .foregroundStyle(SpyTheme.green)
-            if let expiry = access.snapshot?.expiresAt {
-                Text("\(copy.until) \(expiry.formatted(date: .abbreviated, time: .omitted))")
-                    .font(.footnote).foregroundStyle(SpyTheme.muted)
+    private func secondaryActionLabel(_ title: String, systemImage: String) -> some View {
+        HStack(spacing: 7) {
+            Image(systemName: systemImage)
+            Text(title).spyFitted(lines: 2, scale: 0.58)
+        }
+        .font(.system(size: 8, weight: .black, design: .monospaced))
+        .tracking(0.06)
+        .foregroundStyle(SpyTheme.muted)
+        .padding(.horizontal, 10)
+        .frame(maxWidth: .infinity, minHeight: 42)
+        .background(SpyTheme.black.opacity(0.48), in: CutCornerShape(cut: 7))
+        .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+        .contentShape(CutCornerShape(cut: 7))
+    }
+
+    private var legalDetails: some View {
+        VStack(alignment: .leading, spacing: 10) {
+            HStack {
+                Text(copy.subscriptionProtocol)
+                    .font(.system(size: 9, weight: .black, design: .monospaced))
+                    .tracking(0.14).foregroundStyle(SpyTheme.dim)
+                Spacer()
+                Text(copy.autoRenews)
+                    .font(.system(size: 8, weight: .black, design: .monospaced))
+                    .tracking(0.08).foregroundStyle(SpyTheme.red.opacity(0.72))
             }
-        } else if access.isLoading {
-            ProgressView(copy.checking).tint(SpyTheme.red)
-        } else if access.snapshot == nil || access.errorMessage != nil {
-            Text(copy.unavailable).font(.footnote).foregroundStyle(SpyTheme.muted)
-            Button(copy.retry) { Task { _ = await access.refresh() } }
-                .buttonStyle(SpyButtonStyle(variant: .outline))
-        } else {
-            Text(copy.freeAllowance).font(.footnote).foregroundStyle(SpyTheme.muted)
-            if let remaining = access.snapshot?.aiRemaining {
-                Text("\(copy.remaining): \(remaining)").font(.footnote).foregroundStyle(SpyTheme.muted)
+
+            Text(access.snapshot?.isUniversal == true ? copy.included : copy.renewal)
+                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .lineSpacing(3).foregroundStyle(SpyTheme.dim)
+                .fixedSize(horizontal: false, vertical: true)
+
+            HStack(spacing: 12) {
+                legalLink(copy.terms.uppercased(), url: "https://www.apple.com/legal/internet-services/itunes/dev/stdeula/")
+                legalLink(copy.privacy.uppercased(), url: "https://spyclash.com/PrivacyPolicy")
             }
-            if access.canPurchase, let product = store.product {
-                Button(copy.subscribe) { Task { await store.purchase(membership: access) } }
-                    .buttonStyle(LimitlessCommandButtonStyle())
-                    .disabled(!store.canPurchase || store.state.isBusy)
-                    .accessibilityHint("\(product.displayPrice) / \(copy.week)")
-                    .accessibilityIdentifier("limitless.purchase")
-            } else if store.isLoadingProduct {
-                ProgressView(copy.checking)
-            } else {
-                Text(copy.notAvailableYet).font(.footnote).foregroundStyle(SpyTheme.muted)
-                if access.canPurchase {
-                    Button(copy.retry) { Task { await store.loadProduct() } }
-                        .buttonStyle(SpyButtonStyle(variant: .outline))
-                }
+
+            if access.isPreview {
+                Text(copy.previewNotice)
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(SpyTheme.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("limitless.preview-notice")
             }
+        }
+        .padding(14)
+        .background(SpyTheme.dark.opacity(0.78), in: CutCornerShape(cut: 10))
+        .overlay(CutCornerShape(cut: 10).stroke(SpyTheme.stroke.opacity(0.90), lineWidth: 1))
+    }
+
+    private func legalLink(_ title: String, url: String) -> some View {
+        Link(destination: URL(string: url)!) {
+            HStack(spacing: 6) {
+                Text(title).spyFitted(scale: 0.62)
+                Spacer(minLength: 0)
+                Image(systemName: "arrow.up.right")
+            }
+            .font(.system(size: 9, weight: .black, design: .monospaced))
+            .tracking(0.08).foregroundStyle(SpyTheme.muted)
+            .padding(.horizontal, 12)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .background(SpyTheme.black.opacity(0.55), in: CutCornerShape(cut: 7))
+            .overlay(CutCornerShape(cut: 7).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+            .contentShape(CutCornerShape(cut: 7))
+        }
+        .buttonStyle(SpyWebPressStyle())
+    }
+
+    private var isBusy: Bool { access.isLoading || store.state.isBusy || store.isLoadingProduct }
+    private var accessIsUnknown: Bool { access.snapshot == nil || access.errorMessage != nil }
+
+    private var primaryAction: LimitlessPrimaryAction {
+        .resolve(
+            isPreview: access.isPreview, hasAccess: access.hasAccess,
+            isBusy: isBusy, isPending: store.state == .pending,
+            accessIsUnknown: accessIsUnknown, canPurchase: access.canPurchase,
+            hasProduct: store.product != nil, storeCanPurchase: store.canPurchase
+        )
+    }
+
+    private var primaryActionTitle: String {
+        if store.state == .pending { return copy.pendingTitle }
+        if isBusy { return copy.checking.uppercased() }
+        if access.hasAccess { return copy.refreshAccess }
+        switch primaryAction {
+        case .preview, .purchase: return copy.historicalSubscribe
+        case .refresh: return copy.verifyMembership
+        case .loadProduct: return copy.retry.uppercased()
+        case .unavailable, .waiting: return copy.purchaseUnavailable
+        }
+    }
+
+    private var primaryActionDetail: String {
+        if access.isPreview { return copy.previewShort }
+        if access.hasAccess { return copy.verifyClearance }
+        if accessIsUnknown { return copy.unavailable }
+        if let price = store.product?.displayPrice {
+            return "\(price) / \(copy.week.uppercased()) // APP STORE"
+        }
+        return copy.appStorePrice
+    }
+
+    private func performPrimaryAction() async {
+        switch primaryAction {
+        case .preview: appState.showToast(copy.previewNotice, kind: .info)
+        case .refresh:
+            _ = await access.refresh()
+            if access.canPurchase { await store.loadProduct() }
+        case .loadProduct: await store.loadProduct()
+        case .purchase: await store.purchase(membership: access)
+        case .unavailable, .waiting: break
         }
     }
 
     private var accessStatus: String {
         if access.hasAccess { return "LIMITLESS" }
-        if access.isLoading { return copy.checking }
-        if access.snapshot == nil || access.errorMessage != nil { return copy.unverified }
+        if access.isLoading { return copy.syncing }
+        if accessIsUnknown { return copy.unverified }
         return "FREE"
     }
 
@@ -140,6 +274,29 @@ struct PricingView: View {
         default: nil
         }
     }
+}
+
+enum LimitlessPrimaryAction: Equatable {
+    case preview, refresh, loadProduct, purchase, unavailable, waiting
+
+    static func resolve(
+        isPreview: Bool, hasAccess: Bool, isBusy: Bool, isPending: Bool,
+        accessIsUnknown: Bool, canPurchase: Bool, hasProduct: Bool, storeCanPurchase: Bool
+    ) -> Self {
+        if isBusy || isPending { return .waiting }
+        if isPreview { return .preview }
+        if hasAccess || accessIsUnknown { return .refresh }
+        guard canPurchase else { return .unavailable }
+        guard hasProduct else { return .loadProduct }
+        return storeCanPurchase ? .purchase : .unavailable
+    }
+}
+
+struct LimitlessFeature: Identifiable {
+    let id: String
+    let title: String
+    let detail: String
+    let systemImage: String
 }
 
 struct LimitlessEntry: View {
@@ -172,6 +329,42 @@ struct LimitlessCopy {
         switch language { case .en: en; case .ru: ru; case .es: es; case .uk: uk }
     }
     var close: String { text("Close", "Закрыть", "Cerrar", "Закрити") }
+    var pricingEyebrow: String { text("// PRICING", "// ПОДПИСКА", "// PRICING", "// ПІДПИСКА") }
+    var historicalSubscribe: String { text("SUBSCRIBE NOW", "ОФОРМИТЬ ПОДПИСКУ", "SUSCRIBIRSE AHORA", "ОФОРМИТИ ПІДПИСКУ") }
+    var refreshAccess: String { text("REFRESH ACCESS", "ПРОВЕРИТЬ ДОСТУП", "ACTUALIZAR ACCESO", "ПЕРЕВІРИТИ ДОСТУП") }
+    var verifyMembership: String { text("VERIFY MEMBERSHIP", "ПРОВЕРИТЬ ПОДПИСКУ", "VERIFICAR MEMBRESIA", "ПЕРЕВІРИТИ ПІДПИСКУ") }
+    var verifyClearance: String { text("VERIFY PREMIUM CLEARANCE", "ПРОВЕРИТЬ ПРЕМИУМ ДОПУСК", "VERIFICAR ACCESO PREMIUM", "ПЕРЕВІРИТИ ПРЕМІУМ ДОПУСК") }
+    var pendingTitle: String { text("AWAITING APPROVAL", "ОЖИДАЕМ ПОДТВЕРЖДЕНИЯ", "ESPERANDO APROBACIÓN", "ОЧІКУЄМО ПІДТВЕРДЖЕННЯ") }
+    var purchaseUnavailable: String { text("PURCHASE UNAVAILABLE", "ПОКУПКА НЕДОСТУПНА", "COMPRA NO DISPONIBLE", "КУПІВЛЯ НЕДОСТУПНА") }
+    var previewShort: String { text("UI PREVIEW // NO PAYMENT", "ПРЕДПРОСМОТР // БЕЗ ОПЛАТЫ", "VISTA PREVIA // SIN PAGO", "ПЕРЕГЛЯД // БЕЗ ОПЛАТИ") }
+    var manageShort: String { text("MANAGE", "УПРАВЛЯТЬ", "GESTIONAR", "КЕРУВАТИ") }
+    var appStorePurchase: String { text("APP STORE PURCHASE", "ПОКУПКА В APP STORE", "COMPRA EN APP STORE", "КУПІВЛЯ В APP STORE") }
+    var cancelAnytime: String { text("CANCEL ANYTIME", "ОТМЕНА В ЛЮБОЙ МОМЕНТ", "CANCELA CUANDO QUIERAS", "СКАСУВАННЯ БУДЬ-КОЛИ") }
+    var subscriptionProtocol: String { text("SUBSCRIPTION PROTOCOL", "ПРОТОКОЛ ПОДПИСКИ", "PROTOCOLO DE SUSCRIPCION", "ПРОТОКОЛ ПІДПИСКИ") }
+    var autoRenews: String { text("AUTO-RENEWS", "АВТОПРОДЛЕНИЕ", "AUTORENOVACION", "АВТОПОДОВЖЕННЯ") }
+    var syncing: String { text("SYNCING", "СИНХРОНИЗАЦИЯ", "SINCRONIZANDO", "СИНХРОНІЗАЦІЯ") }
+    var features: [LimitlessFeature] {
+        [
+            LimitlessFeature(
+                id: "unlimited",
+                title: text("Limitless", "Безлимит", "Sin limites", "Безліміт"),
+                detail: text("Unlimited AI themes and word generation for every new mission.", "Неограниченная AI-генерация тем и слов для каждой новой миссии.", "Temas y palabras generados con IA sin limite para cada nueva mision.", "Необмежена ШІ-генерація тем і слів для кожної нової місії."),
+                systemImage: "infinity"
+            ),
+            LimitlessFeature(
+                id: "profile_customization",
+                title: text("Profile Customization", "Кастомизация профиля", "Personalizacion del perfil", "Кастомізація профілю"),
+                detail: text("Exclusive avatars, operative identity styles, and future cosmetic drops.", "Эксклюзивные аватары, стили ID оперативника и будущие косметические обновления.", "Avatares exclusivos, estilos de identidad y futuras recompensas cosmeticas.", "Ексклюзивні аватари, стилі ID оперативника й майбутні косметичні оновлення."),
+                systemImage: "paintbrush.pointed.fill"
+            ),
+            LimitlessFeature(
+                id: "game_statistics",
+                title: text("Game Statistics", "Статистика игр", "Estadisticas de juego", "Статистика ігор"),
+                detail: text("Complete match history, win rate, roles, and advanced analytics.", "Полная история матчей, процент побед, роли и расширенная аналитика.", "Historial completo, porcentaje de victorias, roles y analitica avanzada.", "Повна історія матчів, відсоток перемог, ролі й розширена аналітика."),
+                systemImage: "chart.bar.xaxis"
+            )
+        ]
+    }
     var previewNotice: String { text("UI preview — no payment or account change.", "Предпросмотр интерфейса — без оплаты и изменения аккаунта.", "Vista previa — sin pagos ni cambios en la cuenta.", "Попередній перегляд — без оплати й змін акаунта.") }
     var unverified: String { text("UNVERIFIED", "НЕ ПРОВЕРЕН", "SIN VERIFICAR", "НЕ ПЕРЕВІРЕНО") }
     var clearance: String { text("PREMIUM CLEARANCE", "ПРЕМИУМ ДОПУСК", "ACCESO PREMIUM", "ПРЕМІУМ ДОПУСК") }
@@ -214,4 +407,24 @@ struct LimitlessCopy {
     var synchronized: String { text("Purchase verified. Access synchronized.", "Покупка проверена. Доступ синхронизирован.", "Compra verificada. Acceso sincronizado.", "Купівлю перевірено. Доступ синхронізовано.") }
     var noPurchases: String { text("No active Apple purchase was found for this account.", "Активная покупка Apple для этого аккаунта не найдена.", "No se encontró una compra activa de Apple para esta cuenta.", "Активну купівлю Apple для цього акаунта не знайдено.") }
     var failed: String { text("The operation could not be verified. Retry or restore purchases. You will not be charged again by Restore.", "Не удалось подтвердить операцию. Повтори попытку или восстанови покупки. Восстановление не списывает оплату повторно.", "No se pudo verificar la operación. Reintenta o restaura las compras. Restaurar no vuelve a cobrar.", "Не вдалося підтвердити операцію. Повтори спробу або віднови покупки. Відновлення не списує оплату повторно.") }
+}
+
+private struct LimitlessCommandButtonStyle: ButtonStyle {
+    @Environment(\.isEnabled) private var isEnabled
+
+    func makeBody(configuration: Configuration) -> some View {
+        configuration.label
+            .foregroundStyle(.white)
+            .background(SpyTheme.red, in: CutCornerShape(cut: 10))
+            .overlay {
+                CutCornerShape(cut: 10)
+                    .stroke(Color.white.opacity(configuration.isPressed ? 0.16 : 0), lineWidth: 1)
+            }
+            .contentShape(CutCornerShape(cut: 10))
+            .shadow(color: SpyTheme.red.opacity(configuration.isPressed ? 0.16 : 0.30), radius: configuration.isPressed ? 8 : 18, y: 8)
+            .scaleEffect(configuration.isPressed ? 0.975 : 1)
+            .opacity(isEnabled ? 1 : 0.55)
+            .animation(.smooth(duration: 0.18), value: configuration.isPressed)
+            .animation(.easeOut(duration: 0.18), value: isEnabled)
+    }
 }

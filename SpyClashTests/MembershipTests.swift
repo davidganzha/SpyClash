@@ -154,6 +154,29 @@ final class MembershipTests: XCTestCase {
         XCTAssertTrue(MembershipBenefits.limitless.advancedStatistics)
     }
 
+    func testHistoricalPrimaryButtonNeverTreatsPreviewOrPendingAsPurchase() {
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: true, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: true), .preview)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: true, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: true), .waiting)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: true, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: true), .waiting)
+    }
+
+    func testHistoricalPrimaryButtonPreservesCurrentVerificationGates() {
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: true, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: true), .refresh)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: true, canPurchase: true, hasProduct: true, storeCanPurchase: true), .refresh)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: false, hasProduct: true, storeCanPurchase: true), .unavailable)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: false, storeCanPurchase: false), .loadProduct)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: false), .unavailable)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: true), .purchase)
+    }
+
+    func testHistoricalCapabilitiesKeepStableOrderAndOriginalRussianCopy() {
+        let copy = LimitlessCopy(language: .ru)
+        XCTAssertEqual(copy.features.map(\.id), ["unlimited", "profile_customization", "game_statistics"])
+        XCTAssertEqual(copy.features.map(\.title), ["Безлимит", "Кастомизация профиля", "Статистика игр"])
+        XCTAssertEqual(copy.historicalSubscribe, "ОФОРМИТЬ ПОДПИСКУ")
+        XCTAssertEqual(copy.features[0].detail, "Неограниченная AI-генерация тем и слов для каждой новой миссии.")
+    }
+
     func testUnlockPresentationRequiresVerifiedTransitionAndFeedbackIsOnce() async throws {
         let client = MembershipTestClient()
         let store = MembershipStore(client: client)
