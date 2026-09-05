@@ -4,12 +4,15 @@
 
 Native iOS + the canonical Base44 membership/Apple verifier integration.
 The user explicitly authorized IAP inside the build and deferred Stripe.
-No production deployment, configuration change, purchase, App Store upload or
-review submission is part of this checkpoint.
+After the local restoration checkpoint, the user explicitly confirmed production
+activation, including its impact on older iOS and web clients. The approved
+server deployment and two rollout flags are now active. No Apple payment,
+App Store upload or review submission was performed.
 
 - Baseline: build 135, commit `737d0d1` (current Radar/profile-fanout fixes).
 - Restoration reference: `a9008aa`, the last complete native LIMITLESS snapshot.
-- Checkpoint build: **1.0.1 (136)**, branch `davidganzha/restore-limitless`.
+- Restoration checkpoint: **1.0.1 (136)**, commit `a6c1cd7`.
+- Production activation checkpoint: **1.0.1 (137)**, branch `davidganzha/restore-limitless`.
 - Working copy: `SpyClash.worktrees/restore-limitless`. Original checkout unchanged.
 - Stripe checkout/webhook files and the web worktree have no changes.
 
@@ -43,7 +46,7 @@ its price is not a live retail price.
   History/statistics are presentation benefits: existing owner-scoped historical
   data reads are intentionally not removed or converted into a privacy boundary.
 
-## Rollout — disabled by default
+## Rollout — defaults closed, explicitly enabled in production
 
 | Server configuration | Result |
 | --- | --- |
@@ -53,21 +56,45 @@ its price is not a live retail price.
 
 These are **shared backend policy flags**, not per-device settings. Activating
 the first flag affects generation/customization requests from older iOS and web
-clients too. Do not enable it in production without an explicit migration
-decision, particularly while web/Stripe work is deferred.
+clients too. The user explicitly accepted this shared-client effect before
+production activation. Any future production change still needs fresh approval.
 
 The Apple-only resolution path does not call the deferred Stripe integration.
 Existing verified provider records remain readable until their stored expiry;
 the legacy Stripe implementation has not been upgraded or reactivated.
 
-## Future deployment set (requires fresh approval)
+## Approved production deployment — 2026-09-05
 
-1. Add `MembershipSignal` with owner-read/admin-write RLS.
-2. Deploy matching bundles for `app-store-entitlement`, `checkSubscription`,
-   `generateWordPack`, `communityAction`, and `deleteAccount`.
-   Deploy entity + deletion cleanup before enabling signal-producing functions.
-3. Keep rollout flags disabled until Apple sandbox acceptance and the shared
-   client migration plan are approved. Never deploy the stale web backend bundle.
+1. Added `MembershipSignal` with owner-read/admin-write RLS. All 24 pre-existing
+   entity definitions were preserved exactly; postflight schema count is 25.
+   The authoritative schema sync reported existing schemas as updated, but their
+   JSON definitions were independently verified unchanged.
+2. Deployed `deleteAccount` first, then `app-store-entitlement`,
+   `checkSubscription`, `communityAction`, and `generateWordPack` from `a6c1cd7`.
+   The prepared baseline also includes its profile-fanout lease/retry hardening
+   and CommunityProfileSignal account-deletion cleanup, absent from the former
+   production bundles. No newer remote changes were overwritten.
+3. Pulled all 17 functions back. The five deployed runtime bundles match the
+   reviewed local source byte-for-byte (63 runtime files); the other 12 function
+   bundles are unchanged, including Stripe checkout and webhook.
+4. Set only `SPYCLASH_LIMITLESS_ENABLED=true` and
+   `SPYCLASH_LIMITLESS_APPLE_PURCHASE_ENABLED=true` on canonical app
+   `69a0e57fa939f578082f8091`. No site, authentication or Stripe configuration
+   was changed. The user approved activation before sandbox purchase acceptance;
+   activation does not establish end-to-end Apple purchase readiness.
+5. Authenticated live `checkSubscription` changed from universal CASADA to
+   `protocol=limitless`, `tier=free`, `apple_purchase_enabled=true`, FREE benefits
+   of 10 AI generations/day and latest 5 matches, and healthy entitlement,
+   admin-grant and quota reads. Stripe resolution reports `not_required`.
+6. Authenticated `app-store-entitlement` `prepare` succeeded for
+   `com.spyclash.ios.limitless.weekly` with a valid account-binding UUID. This
+   exercises/reserves the normal account binding, not a charge or paid grant.
+   No account-binding value was exposed in the evidence.
+
+Backups and independent pull-back evidence are retained locally under
+`/tmp/spyclash-limitless-production.tAZyr4`. The production secret values were
+not printed or saved. Reverting flags or deploying a rollback requires a new
+explicit production instruction; do not apply the stale web backend bundle.
 
 Verify Apple configuration independently: `APPLE_IAP_BUNDLE_ID`,
 `APPLE_IAP_PRODUCT_ID`, `APPLE_IAP_APPLE_ID`, `APPLE_IAP_KEY_ID`,
@@ -96,11 +123,13 @@ Reference: [Apple subscription integration and review guidance](https://develope
 
 Verified on 2026-09-05:
 
-- iOS suite: **401 passed, 0 failed, 0 skipped**.
+- iOS suite on build 136: **401 passed, 0 failed, 0 skipped**. Build 137 changes
+  only the synchronized build number and this deployment evidence.
 - Affected backend suites: **228 passed, 0 failed**; all five function entry
   points pass `deno check`.
 - Release-gate regression suite: **43 passed, 0 failed**.
-- Debug and Release iPhone Simulator builds succeed. The actual Release
+- Debug and Release iPhone Simulator builds succeed. Build 137 was rebuilt in
+  Release and passed the actual Simulator release gate. The Release
   Simulator application passes the release gate in `--simulator` mode; this
   does not validate a device signature or App Store readiness.
 - Russian LIMITLESS screen visually inspected on the iPhone 17 Simulator using
@@ -116,10 +145,9 @@ UI-only smoke: launch Debug with `--spyclash-ui-preview`,
 `--spyclash-preview-limitless`, `--spyclash-preview-sheet=limitless`.
 This path does not make purchases or call the backend.
 
-Read-only production preflight found the existing `app-store-entitlement`
-function and all required Apple IAP secret names on SpyClash app
-`69a0e57fa939f578082f8091`. Neither rollout flag name is currently configured.
-Secret values were not displayed; presence alone does not verify key validity,
-product availability, agreements or sandbox acceptance. Production remains
-unchanged pending exact deployment/activation confirmation, including the
-effect on older clients described above.
+Read-only production preflight found the existing Apple verifier and all
+required Apple IAP secret names; both rollout flags were absent before this
+activation. Presence alone does not verify private-key validity, product
+availability, agreements, renewals or sandbox acceptance. Filtered error logs
+for the five deployed functions contained no matching entries in the initial
+post-deployment check; fresh real purchase traffic remains required.
