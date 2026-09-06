@@ -1,9 +1,17 @@
 # Scoped backend candidate — reliability 146
 
-This is a local, reviewable candidate for canonical SpyClash app
-`69a0e57fa939f578082f8091`. **No production mutation was performed.** It supersedes
+This is the historical preparation record for canonical SpyClash app
+`69a0e57fa939f578082f8091`. **No production mutation was performed during this preparation.** It supersedes
 the prepared authentication-only 145 candidate; neither candidate constitutes
 deployment approval.
+
+**Subsequent deployment:** fresh approval and deployment on 2026-09-06 are
+recorded [separately](deployment-2026-09-06.md). The original artifact and manifest
+below remain unchanged. Fresh production readback contains 169 selected files
+and 192 total files: the Google callback readback has the identical `main.ts` bytes as `entry.ts`
+and omits the historical, unimported `headers_test.ts`. That observed server/API
+representation difference was independently audited; the original exact-path
+postflight guard did not pass and was not weakened.
 
 The initial authenticated read-only pull/schema GET completed at
 **2026-09-06 15:43:20 UTC**: **17 functions, 190 runtime files, 25 entity schemas**.
@@ -29,7 +37,7 @@ inventory, the expected postflight is **17 functions / 193 runtime files**.
 
 The separate schema artifact contains **26 complete schemas**: the exact current
 remote 25 plus **`AiWordPackOperation`**, whose create/read/update/delete RLS all
-require the admin role. There is no update or deletion of an existing schema.
+require the admin role. There are no existing schema definition changes or deletions.
 This complete set is necessary because CLI `entities push` is authoritative.
 The historical fixed-20 migration scripts are not used.
 

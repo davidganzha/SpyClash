@@ -1,0 +1,273 @@
+{
+  "canonical_app_id": "69a0e57fa939f578082f8091",
+  "source_commit": "3e06164b64e94b5849e8974e681cae5a0b82bab4",
+  "runtime_patch_sha256": "bf66236735fdf3500dcdc0fb29ffb6b5d131a9c7334c57b53713488af6d83382",
+  "fresh_scope_approval_in_current_chat": true,
+  "cli_version": "0.1.0",
+  "schema_push_exit_code": 0,
+  "functions_deploy_exit_code": 0,
+  "function_deployment_started_at_utc": "2026-09-06T16:44:39Z",
+  "functions_deploy_confirmed_at_utc": "2026-09-06T16:46:33Z",
+  "postflight_fetched_at_utc": "2026-09-06T16:46:48.884637+00:00",
+  "schema_verification": {
+    "count": 26,
+    "match_candidate": true,
+    "prior_definitions_unchanged": 25,
+    "added": [
+      "AiWordPackOperation"
+    ]
+  },
+  "function_verification": {
+    "total_functions": 17,
+    "total_deployed_files": 192,
+    "target_functions": 12,
+    "target_deployed_files": 169,
+    "unselected_functions_unchanged": 5,
+    "functions": [
+      {
+        "function": "advanceRound",
+        "verified_file_count": 1,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "app-store-entitlement",
+        "verified_file_count": 10,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "appleAuthBroker",
+        "verified_file_count": 12,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "appleAuthCallback",
+        "verified_file_count": 3,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "autoRegisterUser",
+        "verified_file_count": 4,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "checkSubscription",
+        "verified_file_count": 8,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "communityAction",
+        "verified_file_count": 20,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "createCheckout",
+        "verified_file_count": 6,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "deleteAccount",
+        "verified_file_count": 12,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "gameRoomAction",
+        "verified_file_count": 48,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "generateWordPack",
+        "verified_file_count": 15,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "googleAuthCallback",
+        "verified_file_count": 2,
+        "entry_alias": "main.ts packaged as entry.ts",
+        "omitted_non_runtime_test": [
+          "headers_test.ts"
+        ],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "mobileAuthCallback",
+        "verified_file_count": 1,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "notificationAction",
+        "verified_file_count": 8,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "pushNotificationAction",
+        "verified_file_count": 28,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "stripe-entitlement-webhook",
+        "verified_file_count": 6,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      },
+      {
+        "function": "wordPackAction",
+        "verified_file_count": 8,
+        "entry_alias": null,
+        "omitted_non_runtime_test": [],
+        "configuration_matches": true,
+        "all_deployed_bytes_match": true
+      }
+    ]
+  },
+  "original_exact_path_guard_passed": false,
+  "independent_runtime_and_configuration_comparisons_passed": true,
+  "representation_difference": {
+    "function": "googleAuthCallback",
+    "entry": "main.ts returned by API as entry.ts with identical bytes",
+    "omitted": [
+      "headers_test.ts"
+    ],
+    "omitted_file_imported_by_runtime": false,
+    "cause": "Observed server/API representation; not attributed to CLI transformation or an established internal server cause."
+  },
+  "live_acceptance_proven": false,
+  "independent_audit": {
+    "checked_at_utc": "2026-09-06T16:56:16.290562+00:00",
+    "original_receipt_sha256": "f4f2e336a95b0244ed97105417539347edec10a2cc0efca6a66f9ad17c866d67",
+    "cli_provenance": {
+      "actual_version": "0.1.0",
+      "bundle_path": "/opt/homebrew/lib/node_modules/base44/dist/cli/index.js",
+      "bundle_sha256": "c661f676db0448d4d0534609e6b2f849fa05d09acbcdb5ff2e01d4352882efd9",
+      "conclusion": "CLI does not implement entry renaming or test exclusion. Delta is observed in server/API returned files; internal server cause is not proven.",
+      "deployment_log_path": "/var/folders/4j/wkjrm6cn0z9f5v932wqlmfz40000gn/T/spyclash-146-production-wsfvz47q/functions-deploy.log",
+      "npm_execution_log": "/Users/davidganzha/.npm/_logs/2026-09-06T16_44_38_091Z-debug-0.log",
+      "package_path": "/opt/homebrew/lib/node_modules/base44/package.json",
+      "source_findings": [
+        {
+          "finding": "API entry/files passed through",
+          "lines": [
+            243428,
+            243439
+          ],
+          "symbol": "FunctionInfoSchema"
+        },
+        {
+          "finding": "Payload sent as JSON without transformation",
+          "lines": [
+            243452,
+            243462
+          ],
+          "symbol": "deploySingleFunction"
+        },
+        {
+          "finding": "All **/*.{js,ts,json}; no test filter or ignore",
+          "lines": [
+            243537,
+            243556
+          ],
+          "symbol": "readFunction"
+        },
+        {
+          "finding": "Reads text and computes relative paths; no rename/filter",
+          "lines": [
+            243618,
+            243625
+          ],
+          "symbol": "loadFunctionCode"
+        },
+        {
+          "finding": "Passes entry/files/automations unchanged",
+          "lines": [
+            243627,
+            243635
+          ],
+          "symbol": "deployOne"
+        },
+        {
+          "finding": "Writes returned API entry/files; no rename/filter",
+          "lines": [
+            243688,
+            243711
+          ],
+          "symbol": "writeFunctions"
+        }
+      ]
+    },
+    "google_runtime_dependency_check": {
+      "approved_main_and_observed_entry_sha256": "df7ef54eb087b5aecf8d20f5561b63eb7031430cd67202310aef57194ee6e9ce",
+      "approved_main_equals_observed_entry": true,
+      "entry_static_imports": [
+        "./headers.ts"
+      ],
+      "headers_module_imports": [],
+      "headers_test_imported_by_runtime": false
+    },
+    "project_files": [
+      {
+        "matches_preflight_exactly": true,
+        "path": "base44/.app.jsonc",
+        "sha256": "8ad249b40cb4706c09ed39d814188eb9885e925e879c1256571d7d956ba2da6e"
+      },
+      {
+        "matches_preflight_exactly": true,
+        "path": "base44/config.jsonc",
+        "sha256": "21162d7114078e56b9ede12260fbfe4f7b4c3ba5261cc1314cb712924a424a5e"
+      }
+    ],
+    "unexpected_files": [],
+    "unexpected_directories": [],
+    "symlinks": [],
+    "unchanged_functions": [
+      "advanceRound",
+      "app-store-entitlement",
+      "appleAuthCallback",
+      "mobileAuthCallback",
+      "notificationAction"
+    ]
+  }
+}

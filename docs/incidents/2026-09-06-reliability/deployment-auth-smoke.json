@@ -1,0 +1,109 @@
+{
+  "started_at_utc": "2026-09-06T16:55:10.069Z",
+  "finished_at_utc": "2026-09-06T16:55:12.512Z",
+  "result": "PASS",
+  "fresh_google_start": {
+    "result": "PASS",
+    "hops": [
+      {
+        "host": "spyclash.com",
+        "status": 307
+      },
+      {
+        "host": "app.base44.com",
+        "status": 302
+      },
+      {
+        "host": "spyclash.com",
+        "status": 200
+      },
+      {
+        "host": "spyclash.com",
+        "status": 302
+      },
+      {
+        "host": "accounts.google.com",
+        "status": "STOP_BEFORE_GOOGLE"
+      },
+      {
+        "host": "spyclash.com",
+        "status": 200,
+        "role": "public_jwks"
+      }
+    ],
+    "signature_and_claims": "PASS",
+    "ttl_seconds": 300,
+    "clock_tolerance_seconds": 5
+  },
+  "invalid_state_checks": [
+    {
+      "route": "broker",
+      "format": "html",
+      "host": "spyclash.com",
+      "status": 400,
+      "result": "PASS",
+      "headers": {
+        "no_store": true,
+        "no_referrer": true,
+        "nosniff": true,
+        "no_redirect": true,
+        "both_transaction_cookies_cleared": true
+      },
+      "body": {
+        "content_type": true,
+        "generic_invalid_copy": true,
+        "fixed_fresh_links": true,
+        "no_script_or_auto_refresh": true,
+        "no_raw_json": true,
+        "restrictive_csp": true,
+        "no_input_reflection": true
+      }
+    },
+    {
+      "route": "proxy",
+      "format": "html",
+      "host": "spyclash.com",
+      "status": 400,
+      "result": "PASS",
+      "headers": {
+        "no_store": true,
+        "no_referrer": true,
+        "nosniff": true,
+        "no_redirect": true,
+        "both_transaction_cookies_cleared": true
+      },
+      "body": {
+        "content_type": true,
+        "generic_invalid_copy": true,
+        "fixed_fresh_links": true,
+        "no_script_or_auto_refresh": true,
+        "no_raw_json": true,
+        "restrictive_csp": true,
+        "no_input_reflection": true
+      }
+    },
+    {
+      "route": "proxy",
+      "format": "json",
+      "host": "spyclash.com",
+      "status": 400,
+      "result": "PASS",
+      "headers": {
+        "no_store": true,
+        "no_referrer": true,
+        "nosniff": true,
+        "no_redirect": true,
+        "both_transaction_cookies_cleared": true
+      },
+      "body": {
+        "content_type": true,
+        "unchanged_json_contract": true
+      }
+    }
+  ],
+  "limitations": [
+    "Public OAuth start and invalid-state recovery only; no Google sign-in, valid callback or token exchange.",
+    "No credentials, cookies, state tokens or full redirect URLs retained.",
+    "Does not prove the cause of the historical invalid_state screenshot, physical-device login or two-player gameplay."
+  ]
+}
