@@ -9,6 +9,12 @@ import {
 } from "npm:jose@5.10.0";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
+  type GoogleStateFailureReason,
+  googleStateFailureResponse,
+  googleStateJWTFailureReason,
+  isGoogleStateAction,
+} from "./google-state-recovery.ts";
+import {
   type AppleCredentialIdentityWriter,
   type AppleCredentialIssuanceBoundary,
   assertTrackedAppleSignInCredential,
@@ -112,6 +118,12 @@ class BrokerError extends Error {
   ) {
     super(message);
     this.name = "BrokerError";
+  }
+}
+
+class GoogleAuthorizationStateError extends BrokerError {
+  constructor(readonly reason: GoogleStateFailureReason) {
+    super("invalid_state", 400);
   }
 }
 
@@ -951,11 +963,12 @@ async function verifiedGoogleAuthorizationState(rawState: string | null) {
       GOOGLE_STATE_AUDIENCE,
       "google_state",
     );
-  } catch {
+  } catch (error) {
+    const reason = googleStateJWTFailureReason(error);
     console.error("appleAuthBroker Google state rejected", {
-      reason: "state_jwt_invalid",
+      reason,
     });
-    throw new BrokerError("invalid_state", 400);
+    throw new GoogleAuthorizationStateError(reason);
   }
 
   let oidc: OidcRequest;
@@ -1761,6 +1774,7 @@ function normalizedAction(action: string) {
 }
 
 function errorResponse(
+  req: Request,
   error: unknown,
   action: string,
   cookies?: ResponseCookies,
@@ -1771,6 +1785,15 @@ function errorResponse(
     : publicAppleError
     ? new BrokerError(publicAppleError.code, publicAppleError.status)
     : new BrokerError("server_error", 500);
+  if (brokerError.code === "invalid_state" && isGoogleStateAction(action)) {
+    return googleStateFailureResponse({
+      request: req,
+      action,
+      reason: error instanceof GoogleAuthorizationStateError
+        ? error.reason
+        : "state_invalid",
+    });
+  }
   const headers = new Headers(baseHeaders());
   if (brokerError.status === 405) {
     headers.set("Allow", action === "userinfo" ? "GET, POST" : "GET");
@@ -1842,6 +1865,6 @@ Deno.serve(async (req) => {
       : action === "google-callback"
       ? googleCallbackTerminalCookies()
       : undefined;
-    return errorResponse(error, action, callbackCookies);
+    return errorResponse(req, error, action, callbackCookies);
   }
 });

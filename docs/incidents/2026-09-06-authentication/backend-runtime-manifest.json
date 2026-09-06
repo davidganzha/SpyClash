@@ -1,0 +1,145 @@
+{
+  "canonical_app_id": "69a0e57fa939f578082f8091",
+  "operations": [
+    "functions deploy appleAuthBroker googleAuthCallback"
+  ],
+  "prepared_at_utc": "2026-09-06T14:53:18.542898+00:00",
+  "fresh_baseline_matches_previous_postflight": true,
+  "previous_postflight": "spyclash-approved-144-kqsvmp8q/postflight",
+  "project_config_sha256": "21162d7114078e56b9ede12260fbfe4f7b4c3ba5261cc1314cb712924a424a5e",
+  "schema_changes": false,
+  "secret_changes": false,
+  "site_changes": false,
+  "auth_configuration_changes": false,
+  "automation_changes": false,
+  "baseline_runtime_file_count": 14,
+  "candidate_runtime_file_count": 15,
+  "changed_runtime_file_count": 3,
+  "functions": [
+    {
+      "name": "appleAuthBroker",
+      "entry_basename": "entry.ts",
+      "baseline_file_count": 11,
+      "candidate_file_count": 12,
+      "changed_files": [
+        "entry.ts",
+        "google-state-recovery.ts"
+      ],
+      "normalized_config_sha256": "6ae7ac002e4fc83f2c6118376c076661fd16748ddfadd98dbfc9f6d902cc9bf8",
+      "files": [
+        {
+          "path": "apple-code-exchange.ts",
+          "baseline_sha256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8",
+          "candidate_sha256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8",
+          "changed": false
+        },
+        {
+          "path": "apple-credential-error-policy.ts",
+          "baseline_sha256": "7d35a9c2a03b934605e8ec87ce96862b3a1dc3a4b756d0f83cc77bd4b6ba3ab5",
+          "candidate_sha256": "7d35a9c2a03b934605e8ec87ce96862b3a1dc3a4b756d0f83cc77bd4b6ba3ab5",
+          "changed": false
+        },
+        {
+          "path": "apple-sign-in-credential.ts",
+          "baseline_sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+          "candidate_sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+          "changed": false
+        },
+        {
+          "path": "apple-token-compensation.ts",
+          "baseline_sha256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b",
+          "candidate_sha256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b",
+          "changed": false
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "baseline_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+          "candidate_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+          "changed": false
+        },
+        {
+          "path": "confirmation.ts",
+          "baseline_sha256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb",
+          "candidate_sha256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb",
+          "changed": false
+        },
+        {
+          "path": "entry.ts",
+          "baseline_sha256": "053fed0bf88d677a6a27722ebbc0ada869389b29ece4bab28b6452fd1b20b7a0",
+          "candidate_sha256": "8b56fcb05b9ebec3722a01490665dfe9c5768bd00f6f289588d153e671144891",
+          "changed": true
+        },
+        {
+          "path": "google-state-recovery.ts",
+          "baseline_sha256": null,
+          "candidate_sha256": "aa6cf334f74099ff70cbdb206ea63bea7c07c619ee8af44e4a18222d86756e88",
+          "changed": true
+        },
+        {
+          "path": "handoff.ts",
+          "baseline_sha256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7",
+          "candidate_sha256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7",
+          "changed": false
+        },
+        {
+          "path": "provider.ts",
+          "baseline_sha256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+          "candidate_sha256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+          "changed": false
+        },
+        {
+          "path": "service-role-request.ts",
+          "baseline_sha256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df",
+          "candidate_sha256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df",
+          "changed": false
+        },
+        {
+          "path": "transaction.ts",
+          "baseline_sha256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8",
+          "candidate_sha256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8",
+          "changed": false
+        }
+      ]
+    },
+    {
+      "name": "googleAuthCallback",
+      "entry_basename": "main.ts",
+      "baseline_file_count": 3,
+      "candidate_file_count": 3,
+      "changed_files": [
+        "main.ts"
+      ],
+      "normalized_config_sha256": "525a53c240fb7c3d4bc07cc69f4936e2f13bcfa630319a1233913fc58b4146be",
+      "files": [
+        {
+          "path": "headers.ts",
+          "baseline_sha256": "c27e3de50760cb1b080a82310a05ef0ac94c89f65f224dcdd229363f20aa5a56",
+          "candidate_sha256": "c27e3de50760cb1b080a82310a05ef0ac94c89f65f224dcdd229363f20aa5a56",
+          "changed": false
+        },
+        {
+          "path": "headers_test.ts",
+          "baseline_sha256": "388d366e7066548d4fa0766d2727f236118f4f2163cf745f359e51b392300e2d",
+          "candidate_sha256": "388d366e7066548d4fa0766d2727f236118f4f2163cf745f359e51b392300e2d",
+          "changed": false
+        },
+        {
+          "path": "main.ts",
+          "baseline_sha256": "d546011a1e57f6aa1764d885822524b993e8f5c9d7853ee0e4c8cc819d6e71d6",
+          "candidate_sha256": "df7ef54eb087b5aecf8d20f5561b63eb7031430cd67202310aef57194ee6e9ce",
+          "changed": true
+        }
+      ]
+    }
+  ],
+  "runtime_patch_sha256": "2dddcce0350882a5f3010c8680b73a6ee005c9dd78fc1987436f2402cc893aca",
+  "validation": {
+    "isolated_deno_tests_passed": 65,
+    "isolated_deno_tests_failed": 0,
+    "candidate_entry_typechecks_passed": 2,
+    "patch_reconstruction_matches_candidate": true,
+    "negative_guard_checks_passed": 6,
+    "production_runtime_invocations": 0,
+    "production_deployments": 0
+  }
+}

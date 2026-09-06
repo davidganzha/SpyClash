@@ -110,6 +110,8 @@ final class Base44Client {
         token?.isEmpty == false ? token : nil
     }
 
+    var sessionGeneration: UUID { tokenGeneration }
+
     init(session: URLSession = .shared) {
         self.session = session
     }
@@ -120,7 +122,7 @@ final class Base44Client {
     }
 
     func clearToken() {
-        if token != nil { tokenGeneration = UUID() }
+        tokenGeneration = UUID()
         token = nil
     }
 
@@ -134,7 +136,8 @@ final class Base44Client {
             method: "POST",
             body: ["email": email, "password": password]
         )
-        setToken(response.accessToken)
+        // The owning authentication attempt commits credentials only after
+        // checking it was not cancelled or replaced while this request ran.
         return response
     }
 
@@ -178,14 +181,8 @@ final class Base44Client {
         )
     }
 
-    func autoRegisterUser(email: String) async throws {
-        let _: EmptyResponse = try await invokeFunction("autoRegisterUser", body: ["email": email])
-    }
-
-    func autoRegisterUser(appleBindingTicket: String? = nil) async throws -> SpyUser {
-        guard let token, !token.isEmpty else {
-            throw Base44Error(message: "Authentication required.", statusCode: 401)
-        }
+    func autoRegisterUser(appleBindingTicket: String? = nil, accessToken: String? = nil) async throws -> SpyUser {
+        let token = try requireAccessToken(accessToken)
 
         // A valid SSO identity is not yet an app user at this point. Base44's
         // function gateway rejects that bearer token before autoRegisterUser
@@ -207,7 +204,10 @@ final class Base44Client {
 
         // Keep a safe fallback while older function deployments are still
         // propagating. The optimized backend always returns the verified user.
-        return try await currentUser()
+        return try await request(
+            "/apps/\(Self.appID)/entities/User/me", method: "GET",
+            authorizationToken: token
+        )
     }
 
     func registerPushDevice(
@@ -1970,6 +1970,7 @@ final class Base44Client {
         body: Body? = Optional<EmptyPayload>.none,
         encodedBody: Data? = nil,
         includeAuthorization: Bool = true,
+        authorizationToken: String? = nil,
         timeoutInterval: TimeInterval? = nil
     ) async throws -> T {
         var components = URLComponents(url: Self.appBaseURL.appending(path: "/api\(path)"), resolvingAgainstBaseURL: false)!
@@ -1990,7 +1991,7 @@ final class Base44Client {
         request.setValue("application/json", forHTTPHeaderField: "Content-Type")
         request.setValue(Self.appBaseURL.absoluteString, forHTTPHeaderField: "Origin")
         request.setValue(Self.appID, forHTTPHeaderField: "X-App-Id")
-        if includeAuthorization, let token {
+        if includeAuthorization, let token = authorizationToken ?? token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
         if let encodedBody {

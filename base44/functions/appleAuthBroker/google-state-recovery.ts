@@ -1,0 +1,147 @@
+import { errors } from "npm:jose@5.10.0";
+import {
+  clearUpstreamFallbackTransactionCookie,
+  clearUpstreamTransactionCookie,
+} from "./transaction.ts";
+
+export type GoogleStateFailureReason =
+  | "state_jwt_expired"
+  | "state_jwt_invalid"
+  | "state_invalid";
+
+export function googleStateJWTFailureReason(
+  error: unknown,
+): GoogleStateFailureReason {
+  // JOSE verifies the signature before checking expiry. Do not infer expiry
+  // from an unverified payload, error message, or a caller-supplied code.
+  return error instanceof errors.JWTExpired && error.claim === "exp"
+    ? "state_jwt_expired"
+    : "state_jwt_invalid";
+}
+
+export function isGoogleStateAction(action: string): boolean {
+  return action === "confirm-google-transaction" ||
+    action === "google-callback";
+}
+
+export function freshGoogleLoginURL(target: "app" | "website"): string {
+  const origin = "https://spyclash.com";
+  const appID = "69a0e57fa939f578082f8091";
+  const from = new URL(
+    target === "app" ? `/api/apps/${appID}/functions/mobileAuthCallback` : "/",
+    origin,
+  );
+  from.searchParams.set("auth_provider", "google");
+  const login = new URL(`/api/apps/${appID}/auth/sso/login`, origin);
+  login.searchParams.set("app_id", appID);
+  login.searchParams.set("from_url", from.toString());
+  return login.toString();
+}
+
+function acceptsHTML(request: Request): boolean {
+  return (request.headers.get("accept") || "").split(",").some((range) => {
+    const [type, ...parameters] = range.trim().toLowerCase().split(";");
+    if (type !== "text/html") return false;
+    const quality = parameters.map((value) => value.trim()).find((value) =>
+      value.startsWith("q=")
+    );
+    return quality === undefined || Number(quality.slice(2)) > 0;
+  });
+}
+
+const COPY = {
+  en: {
+    expired: "This sign-in session has expired",
+    invalid: "This sign-in could not be verified",
+    detail:
+      "Start a new Google sign-in. The previous attempt will not be continued.",
+    app: "Sign in to the app",
+    website: "Sign in to the website",
+    hint:
+      "You can also close this window and tap Google sign-in again in SpyClash.",
+  },
+  ru: {
+    expired: "Сеанс входа истёк",
+    invalid: "Не удалось подтвердить вход",
+    detail:
+      "Начните новый вход через Google. Предыдущая попытка продолжена не будет.",
+    app: "Войти в приложение",
+    website: "Войти на сайт",
+    hint:
+      "Можно также закрыть это окно и снова нажать вход через Google в SpyClash.",
+  },
+  uk: {
+    expired: "Сеанс входу завершився",
+    invalid: "Не вдалося підтвердити вхід",
+    detail:
+      "Почніть новий вхід через Google. Попередню спробу не буде продовжено.",
+    app: "Увійти в застосунок",
+    website: "Увійти на сайт",
+    hint:
+      "Також можна закрити це вікно й знову натиснути вхід через Google у SpyClash.",
+  },
+  es: {
+    expired: "Esta sesión de inicio ha caducado",
+    invalid: "No se pudo verificar este inicio de sesión",
+    detail:
+      "Inicia una nueva sesión con Google. No se continuará el intento anterior.",
+    app: "Entrar en la aplicación",
+    website: "Entrar en el sitio web",
+    hint:
+      "También puedes cerrar esta ventana y volver a pulsar el inicio con Google en SpyClash.",
+  },
+} as const;
+
+export function googleStateFailureResponse(input: {
+  request: Request;
+  action: string;
+  reason: GoogleStateFailureReason;
+}): Response {
+  const headers = new Headers({
+    "Cache-Control": "no-store",
+    Pragma: "no-cache",
+    "Referrer-Policy": "no-referrer",
+    "X-Content-Type-Options": "nosniff",
+    Vary: "Accept, Accept-Language",
+  });
+  headers.append("Set-Cookie", clearUpstreamTransactionCookie("None"));
+  headers.append("Set-Cookie", clearUpstreamFallbackTransactionCookie());
+  if (
+    input.request.method !== "GET" || !isGoogleStateAction(input.action) ||
+    !acceptsHTML(input.request)
+  ) {
+    return Response.json({
+      error: "invalid_state",
+      error_description: "invalid state",
+    }, {
+      status: 400,
+      headers,
+    });
+  }
+
+  const requestedLanguage = (input.request.headers.get("accept-language") || "")
+    .split(",")[0].trim().split(/[;-]/)[0].toLowerCase();
+  const language = Object.hasOwn(COPY, requestedLanguage)
+    ? requestedLanguage as keyof typeof COPY
+    : "en";
+  const copy = COPY[language];
+  const title = input.reason === "state_jwt_expired"
+    ? copy.expired
+    : copy.invalid;
+  // Both destinations are fresh canonical login entry points. Neither the
+  // expired/unverified state nor its claims, query parameters or Referer is read.
+  const appURL = freshGoogleLoginURL("app").replaceAll("&", "&amp;");
+  const websiteURL = freshGoogleLoginURL("website").replaceAll("&", "&amp;");
+  headers.set("Content-Type", "text/html; charset=utf-8");
+  headers.set(
+    "Content-Security-Policy",
+    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
+  );
+  return new Response(
+    `<!doctype html>
+<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SpyClash</title>
+<style>body{margin:0;background:#080808;color:#f4f4f5;font:17px -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:420px;margin:12vh auto;padding:24px}h1{font-size:28px;line-height:1.15}p{color:#bbb;line-height:1.5}a{display:block;margin:14px 0;padding:16px;text-align:center;border:1px solid #ef4444;border-radius:8px;color:#fff;text-decoration:none;font-weight:700}a.primary{background:#dc2626}small{display:block;color:#aaa;line-height:1.5;margin-top:24px}</style></head>
+<body><main><h1>${title}</h1><p>${copy.detail}</p><a class="primary" href="${appURL}" rel="noreferrer">${copy.app}</a><a href="${websiteURL}" rel="noreferrer">${copy.website}</a><small>${copy.hint}</small></main></body></html>`,
+    { status: 400, headers },
+  );
+}

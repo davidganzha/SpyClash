@@ -1389,6 +1389,10 @@ enum SpyClashCustomRoute: Equatable {
 @Observable
 final class AppState: NSObject {
     let client: Base44Client
+    @ObservationIgnored let sessionTokenRead: @MainActor () -> String?
+    @ObservationIgnored let sessionTokenSave: @MainActor (String) -> Void
+    @ObservationIgnored let sessionTokenClear: @MainActor () -> Void
+    @ObservationIgnored var webAuthenticationOverride: WebAuthenticationCoordinator?
     let membership: MembershipStore
     let storeKit: StoreKitManager
     let membershipRealtime: MembershipRealtimeService
@@ -1440,6 +1444,7 @@ final class AppState: NSObject {
     var isBusy = false
     private(set) var isApplicationActive = false
     private(set) var isAppleAuthorizationPending = false
+    private var appleAuthorizationRequestID: UUID?
     var authPhase: AuthPhase = .email
     var authError: String? {
         didSet {
@@ -1555,7 +1560,16 @@ final class AppState: NSObject {
     var isUIPreviewMode = false
 #endif
 
-    private var webAuthSession: ASWebAuthenticationSession?
+    @ObservationIgnored private var authenticationAttemptID: UUID?
+    @ObservationIgnored private var authenticationSessionGeneration: UUID?
+    @ObservationIgnored private lazy var webAuthentication = WebAuthenticationCoordinator(makeSession: { [weak self] url, completion in
+        let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "spyclash") { url, error in
+            Task { @MainActor in completion(url, error) }
+        }
+        session.presentationContextProvider = self
+        session.prefersEphemeralWebBrowserSession = true
+        return session
+    })
     private let appleSignInCoordinator = AppleSignInCoordinator()
     @ObservationIgnored private var standardAuthTimelineTask: Task<Void, Never>?
     @ObservationIgnored private var standardAuthRunID: UUID?
@@ -1619,10 +1633,23 @@ final class AppState: NSObject {
     private static let dismissedRoomExitMembershipStorageKey = "spyclash.dismissedRoomExitMembership"
     private static let dismissedRoomCodeStorageKey = "spyclash.dismissedRoomCode"
 
-    override init() {
-        let client = Base44Client()
+    override convenience init() {
+        self.init(client: Base44Client())
+    }
+
+    init(
+        client: Base44Client,
+        readStoredToken: @escaping @MainActor () -> String? = { KeychainStore.readToken() },
+        saveStoredToken: @escaping @MainActor (String) -> Void = { KeychainStore.saveToken($0) },
+        clearStoredToken: @escaping @MainActor () -> Void = { KeychainStore.clearToken() },
+        webAuthentication: WebAuthenticationCoordinator? = nil
+    ) {
         let radarNearby = RadarNearbyService()
         self.client = client
+        self.sessionTokenRead = readStoredToken
+        self.sessionTokenSave = saveStoredToken
+        self.sessionTokenClear = clearStoredToken
+        self.webAuthenticationOverride = webAuthentication
         self.membership = MembershipStore(client: client)
         self.storeKit = StoreKitManager(client: client)
         self.membershipRealtime = MembershipRealtimeService()
@@ -3250,33 +3277,66 @@ final class AppState: NSObject {
         hasActiveAuthCinematic || requiresOnboarding || authHomeRevealPhase != .idle
     }
 
+    @ObservationIgnored private var sessionRestoreAttemptID: UUID?
+    @ObservationIgnored private var permitsStoredSessionBootstrap = true
+
+    /// Explicit authentication and logout supersede any cold-start/foreground
+    /// lookup. Do not let a later activation reinstall a token from storage.
+    func invalidateSessionRestore() {
+        permitsStoredSessionBootstrap = false
+        sessionRestoreAttemptID = nil
+        isRestoring = false
+    }
+
+    private func ownsSessionRestore(_ attemptID: UUID, generation: UUID) -> Bool {
+        sessionRestoreAttemptID == attemptID &&
+            client.sessionGeneration == generation && !isBusy && !Task.isCancelled
+    }
+
     func restoreSession() async {
+        guard sessionRestoreAttemptID == nil, !isBusy else { return }
+        let attemptID = UUID()
+        sessionRestoreAttemptID = attemptID
         isRestoring = true
-        var shouldSynchronizeLiveActivity = true
+        defer {
+            if sessionRestoreAttemptID == attemptID {
+                sessionRestoreAttemptID = nil
+                isRestoring = false
+            }
+        }
 
 #if DEBUG
-        if activateUIPreviewModeIfRequested() {
-            return
-        }
+        if activateUIPreviewModeIfRequested() { return }
 #endif
 
-        if let token = KeychainStore.readToken() {
+        if !client.hasSessionToken, permitsStoredSessionBootstrap,
+           let token = sessionTokenRead()?.nilIfBlank {
             client.setToken(token)
+            permitsStoredSessionBootstrap = false
         }
+        guard client.hasSessionToken else { return }
+        var generation = client.sessionGeneration
+        var shouldSynchronizeLiveActivity = true
 
         do {
-            user = try await client.currentUser()
-            reconcileLanguagePreference(with: user?.language)
+            let restoredUser = try await client.currentUser()
+            guard ownsSessionRestore(attemptID, generation: generation) else { return }
+            user = restoredUser
+            reconcileLanguagePreference(with: restoredUser.language)
             retryDismissedRoomExitIfNeeded()
             await restoreActiveRoomIfPossible()
         } catch is CancellationError {
-            // A newer authentication attempt replaced this restore. Its own
-            // account transition owns notification and ActivityKit cleanup.
-            shouldSynchronizeLiveActivity = false
+            return
         } catch let error as Base44Error where error.statusCode == 401 {
-            // A confirmed credential rejection must also clean up ActivityKit
-            // when user was already nil on a cold launch (so user.didSet does
-            // not observe an account transition).
+            guard ownsSessionRestore(attemptID, generation: generation) else { return }
+            // Clear only the credentials this lookup rejected, before any
+            // cleanup suspension can let a newer login install its session.
+            permitsStoredSessionBootstrap = false
+            client.clearToken()
+            sessionTokenClear()
+            generation = client.sessionGeneration
+            user = nil
+            clearStoredActiveRoom()
             shouldSynchronizeLiveActivity = false
             PushNotificationCoordinator.shared.accountDidChange(isSignedIn: false)
             cancelLiveActivityPushTokenObservers()
@@ -3284,20 +3344,17 @@ final class AppState: NSObject {
             cancelLiveActivityPushToStartTokenObserver()
             cancelLiveActivityLifecycleObserver()
             await SpyClashMatchLiveActivityController.shared.endAll()
-            client.clearToken()
-            KeychainStore.clearToken()
-            user = nil
-            clearStoredActiveRoom()
         } catch {
-            // A temporary transport/server failure is not proof that the
-            // account was revoked. Preserve the token and any remotely driven
-            // Live Activity so the next activation can recover.
+            guard ownsSessionRestore(attemptID, generation: generation) else { return }
+            // Preserve a potentially valid credential. Foreground activation
+            // retries this lookup even when no user profile was loaded yet.
             shouldSynchronizeLiveActivity = false
 #if DEBUG
             print("Session restore deferred: \(error.localizedDescription)")
 #endif
         }
 
+        guard ownsSessionRestore(attemptID, generation: generation) else { return }
         isRestoring = false
         if shouldSynchronizeLiveActivity {
             synchronizeMatchLiveActivity(previousRoom: nil, room: activeRoom)
@@ -3306,9 +3363,14 @@ final class AppState: NSObject {
     }
 
     func login(email: String, password: String) async {
-        await performAuth {
+        await performAuth { attemptID in
             let response = try await self.client.login(email: email, password: password)
-            KeychainStore.saveToken(response.accessToken)
+            try self.requireCurrentAuthentication(attemptID)
+            guard !response.accessToken.isEmpty else {
+                throw WebAuthenticationError.invalidCallback
+            }
+            self.client.setToken(response.accessToken)
+            self.sessionTokenSave(response.accessToken)
             await self.beginStandardAuthCinematic(
                 with: response.user,
                 startDelay: .milliseconds(650)
@@ -3317,20 +3379,22 @@ final class AppState: NSObject {
     }
 
     func register(email: String, password: String) async {
-        await performAuth {
+        await performAuth { attemptID in
             try await self.client.register(email: email, password: password)
+            try self.requireCurrentAuthentication(attemptID)
             self.authPhase = .otp(email: email)
             HapticManager.shared.fire(.notification(.success))
         }
     }
 
     func verify(email: String, code: String) async {
-        await performAuth {
-            try? await self.client.autoRegisterUser(email: email)
+        await performAuth { attemptID in
             let response = try await self.client.verify(email: email, code: code)
+            try self.requireCurrentAuthentication(attemptID)
             if let token = response.accessToken, let verifiedUser = response.user {
+                guard !token.isEmpty else { throw WebAuthenticationError.invalidCallback }
                 self.client.setToken(token)
-                KeychainStore.saveToken(token)
+                self.sessionTokenSave(token)
                 await self.beginStandardAuthCinematic(
                     with: verifiedUser,
                     startDelay: .milliseconds(650)
@@ -3343,8 +3407,9 @@ final class AppState: NSObject {
     }
 
     func requestPasswordReset(email: String) async {
-        await performAuth {
+        await performAuth { attemptID in
             try await self.client.requestPasswordReset(email: email)
+            try self.requireCurrentAuthentication(attemptID)
             self.authPhase = .resetEmailSent(email: email)
             self.authNotice = self.language.auth.recoveryLinkNotice
             HapticManager.shared.fire(.notification(.success))
@@ -3352,8 +3417,9 @@ final class AppState: NSObject {
     }
 
     func resetPassword(token: String, newPassword: String) async {
-        await performAuth {
+        await performAuth { attemptID in
             try await self.client.resetPassword(token: token, newPassword: newPassword)
+            try self.requireCurrentAuthentication(attemptID)
             self.authPhase = .email
             self.authNotice = self.language.auth.passphraseUpdatedNotice
             HapticManager.shared.fire(.notification(.success))
@@ -3363,36 +3429,41 @@ final class AppState: NSObject {
     func loginWithGoogle() async {
         guard let callback = URL(string: "spyclash://auth") else { return }
         await loginWithWebProvider(
-            url: client.googleLoginURL(callbackURL: callback),
-            providerName: "Google",
-            missingTokenMessage: language.auth.googleMissingToken
+            url: client.googleLoginURL(callbackURL: callback)
         )
     }
 
-    func configureAppleSignInRequest(_ request: ASAuthorizationAppleIDRequest) {
-        guard !isBusy else { return }
-        authError = nil
-        authNotice = nil
+    func configureAppleSignInRequest(_ request: ASAuthorizationAppleIDRequest, requestID: UUID) {
+        guard let attemptID = beginAuthenticationAttempt() else { return }
 
         do {
             try appleSignInCoordinator.configure(request)
+            appleAuthorizationRequestID = requestID
             isAppleAuthorizationPending = true
             isBusy = true
         } catch {
             authError = error.localizedDescription
+            finishAuthenticationAttempt(attemptID)
             HapticManager.shared.fire(.notification(.error))
         }
     }
 
     func completeAppleSignIn(
-        _ result: Result<ASAuthorization, any Error>
+        _ result: Result<ASAuthorization, any Error>,
+        requestID: UUID
     ) async {
+        guard let attemptID = authenticationAttemptID,
+              isAppleAuthorizationPending,
+              appleAuthorizationRequestID == requestID else { return }
         let animationStartedAt = ContinuousClock.now
         authHomeRevealPhase = .idle
 
         defer {
-            isAppleAuthorizationPending = false
-            isBusy = false
+            if authenticationAttemptID == attemptID, appleAuthorizationRequestID == requestID {
+                appleAuthorizationRequestID = nil
+                isAppleAuthorizationPending = false
+                finishAuthenticationAttempt(attemptID)
+            }
         }
 
         do {
@@ -3407,6 +3478,7 @@ final class AppState: NSObject {
 
             appleAuthStage = .verifyingIdentity
             let nativeSession = try await client.appleNativeAccessToken(for: credential) { [weak self] phase in
+                guard self?.authenticationAttemptID == attemptID else { return }
                 switch phase {
                 case .verifyingIdentity:
                     self?.appleAuthStage = .verifyingIdentity
@@ -3414,18 +3486,21 @@ final class AppState: NSObject {
                     self?.appleAuthStage = .establishingSession
                 }
             }
+            try requireCurrentAuthentication(attemptID)
             appleAuthStage = .synchronizingProfile
             try await acceptProviderToken(
                 nativeSession.accessToken,
                 cinematic: .apple,
+                attemptID: attemptID,
                 appleBindingTicket: nativeSession.bindingTicket
             )
 
             let assemblyElapsed = animationStartedAt.duration(to: .now)
             let assemblyDuration = Duration.milliseconds(3_100)
             if assemblyElapsed < assemblyDuration {
-                try? await Task.sleep(for: assemblyDuration - assemblyElapsed)
+                try await Task.sleep(for: assemblyDuration - assemblyElapsed)
             }
+            try requireCurrentAuthentication(attemptID, checkSession: false)
 
             appleAuthStage = .accessGranted
             // The auth timeline already owns its completion surge.
@@ -3434,137 +3509,107 @@ final class AppState: NSObject {
             let totalElapsed = animationStartedAt.duration(to: .now)
             let remainingToFourSeconds = Duration.seconds(4) - totalElapsed
             let completionHold = max(remainingToFourSeconds, .milliseconds(850))
-            try? await Task.sleep(for: completionHold)
+            try await Task.sleep(for: completionHold)
+            try requireCurrentAuthentication(attemptID, checkSession: false)
 
-            await revealHomeAfterAppleAuth()
+            try await revealHomeAfterAppleAuth(attemptID: attemptID)
         } catch {
+            guard authenticationAttemptID == attemptID else { return }
             appleAuthStage = nil
             authHomeRevealPhase = .idle
-            authError = error.localizedDescription
-            HapticManager.shared.fire(.notification(.error))
+            if !(error is CancellationError) {
+                authError = error.localizedDescription
+                HapticManager.shared.fire(.notification(.error))
+            }
         }
     }
 
     func cancelAppleSignInRequest() {
         guard isAppleAuthorizationPending else { return }
         appleSignInCoordinator.cancelPendingRequest()
+        appleAuthorizationRequestID = nil
         isAppleAuthorizationPending = false
         appleAuthStage = nil
         authHomeRevealPhase = .idle
-        isBusy = false
+        if let attemptID = authenticationAttemptID { finishAuthenticationAttempt(attemptID) }
     }
 
     private func loginWithWebProvider(
-        url: URL,
-        providerName: String,
-        missingTokenMessage: String
+        url: URL
     ) async {
-        guard !isBusy else { return }
-        isBusy = true
-        authError = nil
-        authNotice = nil
-        defer { isBusy = false }
+        guard let attemptID = beginAuthenticationAttempt() else { return }
+        defer { finishAuthenticationAttempt(attemptID) }
 
-        await completeWebProviderLogin(
-            url: url,
-            providerName: providerName,
-            missingTokenMessage: missingTokenMessage
-        )
-    }
-
-    private func completeWebProviderLogin(
-        url: URL,
-        providerName: String,
-        missingTokenMessage: String
-    ) async {
-        await withCheckedContinuation { (continuation: CheckedContinuation<Void, Never>) in
-            let session = ASWebAuthenticationSession(url: url, callbackURLScheme: "spyclash") { [weak self] callbackURL, error in
-                Task { @MainActor in
-                    guard let self else {
-                        continuation.resume()
-                        return
-                    }
-
-                    self.webAuthSession = nil
-                    if let error {
-                        self.authError = (error as NSError).code == ASWebAuthenticationSessionError.canceledLogin.rawValue
-                            ? nil
-                            : error.localizedDescription
-                        if self.authError != nil {
-                            HapticManager.shared.fire(.notification(.error))
-                        }
-                        continuation.resume()
-                        return
-                    }
-
-                    guard let token = callbackURL?.queryItems["access_token"] else {
-                        self.authError = missingTokenMessage
-                        HapticManager.shared.fire(.notification(.error))
-                        continuation.resume()
-                        return
-                    }
-
-                    do {
-                        try await self.acceptProviderToken(token, cinematic: .standard)
-                    } catch {
-                        self.authError = error.localizedDescription
-                        HapticManager.shared.fire(.notification(.error))
-                    }
-                    continuation.resume()
-                }
+        do {
+            let callback = try await (webAuthenticationOverride ?? webAuthentication).authenticate(url: url)
+            try requireCurrentAuthentication(attemptID)
+            let token = try WebAuthenticationCallback.accessToken(from: callback)
+            try await acceptProviderToken(token, cinematic: .standard, attemptID: attemptID)
+        } catch {
+            guard authenticationAttemptID == attemptID,
+                  authenticationSessionGeneration == client.sessionGeneration else { return }
+            if error is CancellationError || (error as? WebAuthenticationError) == .cancelled {
+                return
             }
-
-            session.presentationContextProvider = self
-            // Keep the broker transaction cookie inside one clean Google
-            // authorization session. A persistent session can retain or lose
-            // a stale host cookie across app upgrades, which makes the secure
-            // callback binding fail with `invalid_state` before we receive the
-            // custom-scheme callback.
-            session.prefersEphemeralWebBrowserSession = true
-            webAuthSession = session
-            if !session.start() {
-                webAuthSession = nil
-                authError = "Unable to start \(providerName) sign-in."
-                HapticManager.shared.fire(.notification(.error))
-                continuation.resume()
-            }
+            authError = authenticationErrorMessage(error)
+            HapticManager.shared.fire(.notification(.error))
         }
     }
 
     private func acceptProviderToken(
         _ token: String,
         cinematic: ProviderAuthCinematic,
+        attemptID: UUID,
         appleBindingTicket: String? = nil
     ) async throws {
+        try requireCurrentAuthentication(attemptID)
+        // Verify the candidate without replacing the existing session. A
+        // temporary profile-sync failure must not erase saved credentials.
+        let authenticatedUser = try await client.autoRegisterUser(
+            appleBindingTicket: appleBindingTicket,
+            accessToken: token
+        )
+        try requireCurrentAuthentication(attemptID)
         client.setToken(token)
-        do {
-            let authenticatedUser = try await client.autoRegisterUser(
-                appleBindingTicket: appleBindingTicket
+        sessionTokenSave(token)
+        reconcileLanguagePreference(with: authenticatedUser.language)
+        if cinematic == .standard {
+            await beginStandardAuthCinematic(
+                with: authenticatedUser,
+                startDelay: .milliseconds(650)
             )
-            KeychainStore.saveToken(token)
-            reconcileLanguagePreference(with: authenticatedUser.language)
-            if cinematic == .standard {
-                await beginStandardAuthCinematic(
-                    with: authenticatedUser,
-                    startDelay: .milliseconds(650)
-                )
-            } else {
-                user = authenticatedUser
-            }
+            try requireCurrentAuthentication(attemptID, checkSession: false)
+        } else {
+            user = authenticatedUser
+        }
 #if DEBUG
-            // A direct UI preview must stop owning routing once a real
-            // provider login succeeds. Otherwise its launch argument keeps
-            // forcing Welcome/Auth even though the authenticated user exists.
-            isUIPreviewMode = false
+        isUIPreviewMode = false
 #endif
-            if cinematic == .apple {
-                startPostAuthActiveRoomRestoreIfNeeded()
-            }
+        if cinematic == .apple {
+            startPostAuthActiveRoomRestoreIfNeeded()
+        }
+    }
 
-        } catch {
-            client.clearToken()
-            KeychainStore.clearToken()
-            throw error
+    private func authenticationErrorMessage(_ error: Error) -> String {
+        guard let error = error as? WebAuthenticationError else { return error.localizedDescription }
+        let expired = error == .expired
+        switch language {
+        case .ru:
+            return expired
+                ? "Время входа истекло. Нажми «Продолжить с Google», чтобы начать заново."
+                : "Не удалось завершить вход. Попробуй войти ещё раз."
+        case .uk:
+            return expired
+                ? "Час входу минув. Натисни «Продовжити з Google», щоб почати знову."
+                : "Не вдалося завершити вхід. Спробуй увійти ще раз."
+        case .es:
+            return expired
+                ? "La sesión de acceso caducó. Pulsa Continuar con Google para empezar de nuevo."
+                : "No se pudo completar el acceso. Inténtalo de nuevo."
+        default:
+            return expired
+                ? "Sign-in expired. Tap Continue with Google to start again."
+                : "Unable to complete sign-in. Please try again."
         }
     }
 
@@ -3708,6 +3753,14 @@ final class AppState: NSObject {
 #endif
 
     func logout() {
+        invalidateSessionRestore()
+        authenticationAttemptID = nil
+        authenticationSessionGeneration = nil
+        webAuthentication.cancel()
+        webAuthenticationOverride?.cancel()
+        appleSignInCoordinator.cancelPendingRequest()
+        isAppleAuthorizationPending = false
+        isBusy = false
 #if DEBUG
         // Logout must always leave forced UI-preview routing. Otherwise a
         // device launched into the Apple-auth preview keeps rendering the
@@ -3730,7 +3783,7 @@ final class AppState: NSObject {
         HapticManager.shared.fire(.notification(.success))
         PushNotificationCoordinator.shared.prepareForLogout()
         client.clearToken()
-        KeychainStore.clearToken()
+        sessionTokenClear()
         user = nil
         authPhase = .email
         authError = nil
@@ -3757,32 +3810,23 @@ final class AppState: NSObject {
         isOpeningPendingMatch = false
     }
 
-    private func revealHomeAfterAppleAuth() async {
-        // Phase 1 is committed on its own render pass. This guarantees the
-        // black root curtain exists before RootView swaps Welcome for Home.
+    func revealHomeAfterAppleAuth(attemptID: UUID) async throws {
+        try requireCurrentAuthentication(attemptID, checkSession: false)
         authHomeRevealAnimationID = nil
         authHomeRevealPhase = .covered
-        try? await Task.sleep(for: .milliseconds(80))
-        guard !Task.isCancelled else {
-            appleAuthStage = nil
-            authHomeRevealPhase = .idle
-            return
-        }
+        try await Task.sleep(for: .milliseconds(80))
+        try requireCurrentAuthentication(attemptID, checkSession: false)
 
-        // Mount the authenticated destination under an already opaque, stable
-        // curtain and let the auth sheet disappear black-to-black.
         appleAuthStage = nil
         await waitForPostAuthActiveRoomRestoreIfNeeded()
+        try requireCurrentAuthentication(attemptID, checkSession: false)
         await prepareLatestPendingShellRouteForReveal()
-        try? await Task.sleep(for: .milliseconds(260))
-        guard !Task.isCancelled else {
-            authHomeRevealPhase = .idle
-            return
-        }
+        try requireCurrentAuthentication(attemptID, checkSession: false)
+        try await Task.sleep(for: .milliseconds(260))
+        try requireCurrentAuthentication(attemptID, checkSession: false)
 
-        // Start the one visible reveal only after Home and its entrance state
-        // have both had time to mount behind the curtain.
         await prepareLatestPendingShellRouteForReveal()
+        try requireCurrentAuthentication(attemptID, checkSession: false)
         _ = await animateAuthHomeRevealToIdle()
     }
 
@@ -4203,11 +4247,21 @@ final class AppState: NSObject {
     func resumeAfterActivation() {
         queuePendingOnboardingSyncIfNeeded()
         deferredActiveGameRetryGeneration = nil
-        guard user != nil,
-              !isRestoring,
+        guard !isRestoring,
+              !isBusy,
               !isAuthTransitionActive,
               !shouldUsePreviewData,
               activationResumeTask == nil else {
+            return
+        }
+
+        if user == nil {
+            guard client.hasSessionToken || permitsStoredSessionBootstrap else { return }
+            activationResumeTask = Task { @MainActor [weak self] in
+                guard let self else { return }
+                defer { self.activationResumeTask = nil }
+                await self.restoreSession()
+            }
             return
         }
 
@@ -5052,17 +5106,43 @@ final class AppState: NSObject {
         }
     }
 
-    private func performAuth(_ operation: @escaping () async throws -> Void) async {
-        guard !isBusy else { return }
+    func beginAuthenticationAttempt() -> UUID? {
+        guard !isBusy else { return nil }
+        invalidateSessionRestore()
+        let id = UUID()
+        authenticationAttemptID = id
+        authenticationSessionGeneration = client.sessionGeneration
         isBusy = true
         authError = nil
         authNotice = nil
-        defer { isBusy = false }
+        return id
+    }
 
+    private func requireCurrentAuthentication(_ id: UUID, checkSession: Bool = true) throws {
+        try Task.checkCancellation()
+        guard authenticationAttemptID == id,
+              !checkSession || authenticationSessionGeneration == client.sessionGeneration else {
+            throw CancellationError()
+        }
+    }
+
+    private func finishAuthenticationAttempt(_ id: UUID) {
+        guard authenticationAttemptID == id else { return }
+        authenticationAttemptID = nil
+        authenticationSessionGeneration = nil
+        isBusy = false
+    }
+
+    private func performAuth(_ operation: @escaping (UUID) async throws -> Void) async {
+        guard let attemptID = beginAuthenticationAttempt() else { return }
+        defer { finishAuthenticationAttempt(attemptID) }
         do {
-            try await operation()
+            try await operation(attemptID)
         } catch {
-            authError = error.localizedDescription
+            guard authenticationAttemptID == attemptID,
+                  authenticationSessionGeneration == client.sessionGeneration,
+                  !(error is CancellationError) else { return }
+            authError = authenticationErrorMessage(error)
             HapticManager.shared.fire(.notification(.error))
         }
     }

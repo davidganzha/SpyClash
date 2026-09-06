@@ -12,6 +12,7 @@ struct AuthView: View {
     @State private var authTransitionDirection: CGFloat = 1
     @State private var displayedAppleAuthStage: AppleAuthStage?
     @State private var displayedStandardAuthStage: StandardAuthCinematicStage?
+    @State private var appleButtonID = UUID()
 
     private var copy: AuthCopy {
         appState.language.auth
@@ -87,6 +88,9 @@ struct AuthView: View {
                     displayedStandardAuthStage = nil
                 }
             }
+        }
+        .onChange(of: appState.isBusy) { _, busy in
+            if !busy { appleButtonID = UUID() }
         }
         .interactiveDismissDisabled(appState.hasActiveAuthCinematic || appState.isBusy)
     }
@@ -386,14 +390,18 @@ struct AuthView: View {
     }
 
     private var appleButton: some View {
-        SignInWithAppleButton(.continue) { request in
+        // Both callbacks belong to this rendered button instance. Reading
+        // mutable @State inside onCompletion would relabel a late old result
+        // with the ID of the replacement request.
+        let requestID = appleButtonID
+        return SignInWithAppleButton(.continue) { request in
             HapticManager.shared.fire(.buttonPress)
             appState.authError = nil
             appState.authNotice = nil
-            appState.configureAppleSignInRequest(request)
+            appState.configureAppleSignInRequest(request, requestID: requestID)
         } onCompletion: { result in
             Task { @MainActor in
-                await appState.completeAppleSignIn(result)
+                await appState.completeAppleSignIn(result, requestID: requestID)
             }
         }
         .signInWithAppleButtonStyle(.white)
@@ -402,6 +410,7 @@ struct AuthView: View {
         .disabled(appState.isBusy)
         .opacity(appState.isBusy ? 0.62 : 1)
         .accessibilityLabel(copy.continueWithApple)
+        .id(requestID)
     }
 
     private var divider: some View {

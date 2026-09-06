@@ -35,7 +35,13 @@ Deno.serve(async (req) => {
       if (key !== "action") brokerURL.searchParams.append(key, value);
     }
 
-    const headers = new Headers({ Accept: "text/html,application/json" });
+    // Preserve content negotiation so API callers keep JSON errors while the
+    // browser can render the broker's recoverable sign-in failure page.
+    const headers = new Headers({
+      Accept: req.headers.get("accept") || "application/json",
+    });
+    const language = req.headers.get("accept-language");
+    if (language) headers.set("Accept-Language", language);
     const cookie = req.headers.get("cookie");
     if (cookie) headers.set("Cookie", cookie);
 
