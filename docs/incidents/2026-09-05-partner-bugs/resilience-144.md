@@ -1,6 +1,6 @@
 # Conflict recovery and contention reduction: Build 144
 
-Status: **implemented and locally verified, not deployed**. Production remains at the [approved September 6 hotfix](deployment-2026-09-06.md). iOS version is 1.0.1 / 144 in both project files. This document does not authorize a deployment.
+Status: **approved server changes deployed and pulled source verified** on September 6 at approximately 07:47:43 UTC. See the [deployment record](deployment-resilience-2026-09-06.md). The earlier [September 6 hotfix](deployment-2026-09-06.md) remains in place. iOS version is 1.0.1 / 144 in both project files; the client changes have not been delivered to phones. Live-game and process-kill acceptance remain open. This record does not authorize another deployment.
 
 ## Intended behavior
 
@@ -43,7 +43,7 @@ No physical device, App Store release, process-kill acceptance, paid AI call or 
 
 ## Exact server candidate
 
-Canonical app: `69a0e57fa939f578082f8091`. Proposed operation: `npx base44 functions deploy gameRoomAction generateWordPack` from the verified isolated deploy root below, after fresh explicit approval and a repeated baseline check. No schema, secret, site, automation, payment or additional-function change is included.
+Canonical app: `69a0e57fa939f578082f8091`. Completed operation: `npx base44 functions deploy gameRoomAction generateWordPack` from the verified isolated deploy root below, after fresh explicit approval and a repeated baseline check. No schema, secret, site, automation, payment or additional-function change was included.
 
 | Function | Runtime changes |
 | --- | --- |
@@ -53,7 +53,7 @@ Canonical app: `69a0e57fa939f578082f8091`. Proposed operation: `npx base44 funct
 The candidate intentionally takes the complete reviewed room lifecycle helper: in addition to bounded parallel validation/cleanup, production's six pre-action acquisition attempts become eight (2.575 seconds total backoff), and release-error logging is scalar-safe. The action callback is still never replayed. These two previously local improvements are now explicitly in scope. Shared billing lifecycle copies and the ten-minute TTL are unchanged. Other broader branch differences listed in [the previous scope](backend-deployment-scope.md#broader-branch-differences-deliberately-excluded) remain excluded.
 
 - Deploy root: `/var/folders/4j/wkjrm6cn0z9f5v932wqlmfz40000gn/T/spyclash-resilience-144-8uyzns5h/deploy`.
-- Current baseline recheck: sibling `fresh/`; isolated tests: sibling `verification/`; results: `candidate-tests.log` and `candidate-check.log` in the parent directory.
+- Initial baseline recheck: sibling `fresh/`; isolated tests: sibling `verification/`; results: `candidate-tests.log` and `candidate-check.log` in the parent directory. The final approved run's fresh preflight and postflight are recorded in the deployment record.
 - Persisted [runtime patch](resilience-144-runtime.patch), [hash manifest](resilience-144-runtime-manifest.json), and [read-only guard](verify-resilience-runtime.py) identify the exact candidate even if temporary staging expires.
 - Guard usage: `python3 verify-resilience-runtime.py <fresh-pull-root> --mode baseline` before deployment and `python3 verify-resilience-runtime.py <candidate-or-postflight-root> --mode candidate` for staging and pulled deployed code. Only the function entry path is normalized for configuration comparison.
 - To reconstruct, flatten both functions from a fresh pull that passes the baseline guard, preserve their configuration except normalized `entry: "entry.ts"`, then apply the committed runtime patch. The candidate guard and isolated tests must pass before deployment.

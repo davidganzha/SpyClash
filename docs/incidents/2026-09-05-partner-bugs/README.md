@@ -2,6 +2,8 @@
 
 Updated 2026-09-06, Europe/Bratislava. **Local fixes verified; the two-function server hotfix is deployed and its source verified. Physical-device and live-game acceptance remain open.** See [deployment record](deployment-2026-09-06.md).
 
+Follow-up: [Build 144 contention and conflict recovery changes](resilience-144.md) are locally verified, and their two-function [server deployment](deployment-resilience-2026-09-06.md) is complete. Current source version is 1.0.1 / 144; client delivery and physical/live-game acceptance remain open. The Build 143 details below describe the initial repair checkpoint.
+
 The supplied screenshots show Build 132. The main checkout remained Build 106. Work was isolated on `davidganzha/partner-bugfix-143`, based on the verified latest `origin/davidganzha/restore-limitless` commit `0b76fdb` / Build 142. It includes the recent Radar compatibility and interface changes. `MARKETING_VERSION` remains 1.0.1; both project build values are 143.
 
 ## Confirmed backend incident
