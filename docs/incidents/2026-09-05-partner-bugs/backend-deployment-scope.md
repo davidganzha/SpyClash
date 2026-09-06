@@ -1,8 +1,8 @@
 # Incident-only backend candidate
 
-Status: prepared and locally verified; **not deployed**. Any production action still needs fresh explicit approval in the current chat.
+Status: **deployed and source verified on 2026-09-06**, following explicit approval in the current chat. See [deployment record](deployment-2026-09-06.md). Live-game acceptance remains open. This record does not authorize a subsequent production action.
 
-Target: canonical SpyClash Base44 app `69a0e57fa939f578082f8091`. The proposed operation deploys exactly `gameRoomAction` and `pushNotificationAction` from the isolated candidate below. It changes five runtime files, with no entity/schema, secret, site, payment, or automation changes. The existing push drain remains every 15 minutes.
+Target: canonical SpyClash Base44 app `69a0e57fa939f578082f8091`. The completed operation deployed exactly `gameRoomAction` and `pushNotificationAction` from the isolated candidate below. It changed five runtime files, with no entity/schema, secret, site, payment, or automation changes. The existing push drain remains every 15 minutes.
 
 The production evidence identifies a shared account writer lease stranded after a 600 ms response timeout. The server reported in-flight work at response, and the lease remained until its ten-minute expiry. Subsequent lobby updates, joining, generation and pack writes collided with that lease. This document deliberately omits private account and room identifiers.
 

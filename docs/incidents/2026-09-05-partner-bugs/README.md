@@ -1,22 +1,22 @@
 # Partner bug report: Build 143
 
-Prepared 2026-09-06, Europe/Bratislava. **Local fixes verified; production unchanged.**
+Updated 2026-09-06, Europe/Bratislava. **Local fixes verified; the two-function server hotfix is deployed and its source verified. Physical-device and live-game acceptance remain open.** See [deployment record](deployment-2026-09-06.md).
 
 The supplied screenshots show Build 132. The main checkout remained Build 106. Work was isolated on `davidganzha/partner-bugfix-143`, based on the verified latest `origin/davidganzha/restore-limitless` commit `0b76fdb` / Build 142. It includes the recent Radar compatibility and interface changes. `MARKETING_VERSION` remains 1.0.1; both project build values are 143.
 
 ## Confirmed backend incident
 
-Fresh Base44 logs and lifecycle records confirmed `active_lease` across lobby create/join/update/close, generation and word-pack writes. A room change at 2026-09-05 21:05:21 UTC was followed by a 600 ms signal timeout and an HTTP response while local work remained in flight. The host account lease remained until approximately 21:15:21 UTC. The deployed source contains the same `Promise.race` defect. This is shared writer contention, not evidence that the user's identity was actually being migrated.
+Fresh Base44 logs and lifecycle records confirmed `active_lease` across lobby create/join/update/close, generation and word-pack writes. A room change at 2026-09-05 21:05:21 UTC was followed by a 600 ms signal timeout and an HTTP response while local work remained in flight. The host account lease remained until approximately 21:15:21 UTC. The pre-deployment production source contained the same `Promise.race` defect. This is shared writer contention, not evidence that the user's identity was actually being migrated.
 
 The fix stops starting secondary work after its time budget, waits for started work and lease cleanup, and prevents parallel failures from abandoning sibling writes. It covers lobby and finished-game signals and the analogous queued Live Activity delivery. Storage failure can still cause a release attempt to fail and fall back to the existing expiry; slow in-flight storage can extend response time. Account deletion guards and lease TTL are preserved.
 
-See [exact production candidate](backend-deployment-scope.md), [runtime patch](backend-incident-only.patch), and [hash manifest](backend-runtime-manifest.json). The deployable candidate changes exactly two functions and five runtime files from the observed production baseline. It deliberately excludes unrelated differences already present in the newer source branch. No deployment, secret/schema/site change, payment action or App Store upload was performed.
+See [exact deployed scope](backend-deployment-scope.md), [runtime patch](backend-incident-only.patch), and [hash manifest](backend-runtime-manifest.json). The deployed hotfix changes exactly two functions and five runtime files from the observed production baseline. It excludes unrelated differences already present in the newer source branch. No secret/schema/site change, payment action or App Store upload was performed. The iOS changes remain local Build 143.
 
 ## All reported items
 
 | # | Report | Implemented / verified | Remaining acceptance |
 | --- | --- | --- | --- |
-| 1 | Lobby joins fail with 409 | Confirmed shared account lease leak; local backend regression covers slow signal then successful join acquisition. | Deploy approved candidate; two authenticated clients create/join/rejoin and close rooms. |
+| 1 | Lobby joins fail with 409 | Confirmed shared account lease leak; local backend regression covers slow signal then successful join acquisition. Server hotfix deployed and source verified. | Two authenticated clients create/join/rejoin and close rooms. |
 | 2 | QR recognition/aiming unreliable | Standard black-on-white generated QR with quiet zone; capture config/start/stop on serial queue; continuous/tap focus, foreground/interruption recovery; invalid QR cannot latch scanner; valid code preferred among visible codes; camera Settings recovery. Rotated rendered codes decode at 224 px. | Physical camera, bright/dim screens, near/far/angled aiming; actual join after recognition. |
 | 3 | Intermittent theme generation 409 | Same live account lease cluster; generation writer can acquire immediately after completed cleanup in regression test. | Real generation after deployment. |
 | 4 | No local word list | Selected saved and generated pools display the exact `localPlayablePool` used for gameplay, with expand/collapse. Both screens checked in Simulator. | Human acceptance on phone. |
@@ -36,6 +36,7 @@ See [exact production candidate](backend-deployment-scope.md), [runtime patch](b
 - Integrated relevant backend tests: **647 passed**; isolated production-based candidate tests: **50 passed**; changed backend entry points/helpers type-check.
 - Cross-platform room/Community contracts, client entity boundaries, entity RLS completeness, runtime bundle isolation, and `git diff --check` pass. The runtime bundle guard excludes local `*_test.ts` integration files, matching deployment staging; runtime imports remain checked.
 - Candidate and fresh baseline guards verified **75 runtime files and two function configurations**. The guard's negative test rejects a changed runtime file.
+- Approved server deployment completed on 2026-09-06 at approximately 07:03:57 UTC (09:03:57 Europe/Bratislava). Fresh post-deployment pull verified **75/75 candidate runtime files and 2/2 configurations**. The other 15 functions, their 114 runtime files and configurations, and the 17-function inventory were unchanged. No post-deployment game traffic was observed in the immediate log check; gameplay recovery is not yet confirmed.
 - Simulator app installed/launched from the isolated Build 143 artifact. UI uses explicit local preview data; these screenshots are **not live backend game evidence**. No physical device was installed or tested.
 - Initial derived data under Documents encountered macOS resource-fork signing metadata. The successful build/test artifacts use isolated `/tmp/spyclash-partner-bugfix-143-derived`.
 
@@ -53,4 +54,4 @@ See [exact production candidate](backend-deployment-scope.md), [runtime patch](b
 
 After a user denies Local Network, iOS does not display the first permission alert again on demand. Activate therefore opens the app's system settings; SpyClash rechecks with Bonjour on return. [Apple TN3179](https://developer.apple.com/documentation/technotes/tn3179-understanding-local-network-privacy). Camera start/stop runs off the main thread following [Apple AVCaptureSession guidance](https://developer.apple.com/documentation/avfoundation/avcapturesession). Bonjour advertisement bounds follow [Apple MCNearbyServiceAdvertiser guidance](https://developer.apple.com/documentation/multipeerconnectivity/mcnearbyserviceadvertiser/init(peer:discoveryinfo:servicetype:)).
 
-Before calling the incident resolved, deploy only the freshly approved candidate, compare pulled deployed hashes, then exercise the exact reported scenarios with two authenticated physical clients. A clean build, hash comparison or simulated permission fixture cannot prove peer discovery or real-game convergence.
+The approved server candidate is deployed and pulled deployed hashes match. Before calling all reported issues resolved, exercise the exact reported scenarios with two authenticated physical clients using the required iOS build. A clean build, hash comparison or simulated permission fixture cannot prove peer discovery or real-game convergence.
