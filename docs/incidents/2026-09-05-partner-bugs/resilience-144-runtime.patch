@@ -1,0 +1,716 @@
+diff --git a/base44/functions/gameRoomAction/entry.ts b/base44/functions/gameRoomAction/entry.ts
+--- a/base44/functions/gameRoomAction/entry.ts
++++ b/base44/functions/gameRoomAction/entry.ts
+@@ -137,6 +137,7 @@
+   validateLobbyMutation,
+ } from "./lobby-state-policy.ts";
+ import {
++  compareAndSetGameRoomSignal,
+   fanoutGameRoomSignalsBestEffort,
+   hasDurableClosedRoomSignal,
+   lobbyModeSignalProjectionForRepair,
+@@ -1314,11 +1315,15 @@
+       participantUserIDs.includes(clean(signal?.user_id)) &&
+       !roomCloseActivityEndIsQueued(exact);
+   });
+-  await Promise.all(
++  // Reconcile from persisted rows even after a response-lost CAS. A stale
++  // receipt must not overwrite a newer close completion or signal generation.
++  await Promise.allSettled(
+     rowsToUpdate.map((signal) =>
+-      base44.asServiceRole.entities.GameRoomSignal.update(clean(signal.id), {
+-        close_completion: durableQueuedCompletion,
+-      })
++      compareAndSetGameRoomSignal(
++        base44.asServiceRole.entities.GameRoomSignal,
++        signal,
++        { close_completion: durableQueuedCompletion },
++      )
+     ),
+   );
+   const persisted = await base44.asServiceRole.entities.GameRoomSignal.filter({
+diff --git a/base44/functions/gameRoomAction/game-room-signal.ts b/base44/functions/gameRoomAction/game-room-signal.ts
+--- a/base44/functions/gameRoomAction/game-room-signal.ts
++++ b/base44/functions/gameRoomAction/game-room-signal.ts
+@@ -1,3 +1,8 @@
++import {
++  exactRoomCloseCompletion,
++  roomCloseActivityEndIsQueued,
++} from "./room-close-intent.ts";
++
+ export type GameRoomSignalState = "active" | "closed";
+ export type GameRoomSignalProjectionKind = "none" | "lobby_mode_v1";
+ export type ProjectedLobbyGameMode = "questions" | "associations";
+@@ -41,7 +46,10 @@
+ export type GameRoomSignalStore = {
+   filter(query: Record<string, unknown>): Promise<Record<string, unknown>[]>;
+   create(data: GameRoomSignalRecord): Promise<unknown>;
+-  update(id: string, data: GameRoomSignalRecord): Promise<unknown>;
++  updateMany(
++    filter: Record<string, unknown>,
++    update: { $set: Partial<GameRoomSignalRecord> },
++  ): Promise<{ updated?: number }>;
+ };
+
+ function clean(value: unknown): string {
+@@ -281,6 +289,121 @@
+   );
+ }
+
++// Match the ordering fields as well as entity metadata: updated_date alone
++// can repeat within one millisecond. Missing legacy fields must remain missing.
++const SIGNAL_CAS_FIELDS = [
++  "lobby_revision",
++  "room_revision",
++  "room_updated_at",
++  "state",
++  "projection_kind",
++  "projection_id",
++  "projected_game_mode",
++  "projection_committed_at",
++  "projection_emitted_at",
++  "close_intent_id",
++  "close_match_id",
++  "close_completion",
++  "updated_date",
++] as const;
++
++export async function compareAndSetGameRoomSignal(
++  store: GameRoomSignalStore,
++  existing: Record<string, unknown>,
++  patch: Partial<GameRoomSignalRecord>,
++): Promise<boolean> {
++  const filter: Record<string, unknown> = {};
++  for (const key of ["id", "user_id", "room_id"]) {
++    if (!clean(existing[key])) throw new Error("Room signal identity missing");
++    filter[key] = existing[key];
++  }
++  for (const key of SIGNAL_CAS_FIELDS) {
++    filter[key] = existing[key] === undefined
++      ? { $exists: false }
++      : existing[key];
++  }
++  const result = await store.updateMany(filter, { $set: patch });
++  if (result?.updated === 1) return true;
++  if (result?.updated === 0) return false;
++  throw new Error("Room signal CAS result is ambiguous");
++}
++
++function shouldUpdateGameRoomSignal(
++  row: Record<string, unknown>,
++  signal: GameRoomSignalRecord,
++): boolean {
++  const existingRoomRevision = revision(row?.room_revision);
++  const existingLobbyRevision = revision(row?.lobby_revision);
++  if (existingRoomRevision > signal.room_revision) return false;
++  if (existingRoomRevision < signal.room_revision) return true;
++  if (existingLobbyRevision > signal.lobby_revision) return false;
++  if (existingLobbyRevision < signal.lobby_revision) return true;
++  const existingState = clean(row?.state);
++  // At the same authoritative revision, closure is monotonic. A delayed
++  // active fanout must not reopen a kicked user or a deleted room, while a
++  // strictly newer revision can still represent a legitimate rejoin.
++  if (existingState === "closed" && signal.state === "active") return false;
++  if (existingState !== "closed" && signal.state === "closed") return true;
++  if (
++    clean(signal.close_intent_id) &&
++    (clean(row?.close_intent_id) !== clean(signal.close_intent_id) ||
++      clean(row?.close_match_id) !== clean(signal.close_match_id))
++  ) return true;
++  const existingCompletion = exactRoomCloseCompletion(row);
++  const nextCompletion = exactRoomCloseCompletion(signal);
++  if (
++    existingCompletion && nextCompletion &&
++    roomCloseActivityEndIsQueued(existingCompletion) &&
++    !roomCloseActivityEndIsQueued(nextCompletion) &&
++    existingCompletion.intent_id === nextCompletion.intent_id &&
++    existingCompletion.match_id === nextCompletion.match_id &&
++    existingCompletion.host_user_id === nextCompletion.host_user_id &&
++    JSON.stringify(existingCompletion.participant_user_ids) ===
++      JSON.stringify(nextCompletion.participant_user_ids)
++  ) {
++    // A retry of the earlier full-fanout receipt cannot revoke a later,
++    // durably queued Activity end for the same exact close generation.
++    return false;
++  }
++  if (
++    signal.close_completion &&
++    JSON.stringify(row?.close_completion || null) !==
++      JSON.stringify(signal.close_completion)
++  ) return true;
++  const existingProjectionKind = projectionKind(row?.projection_kind);
++  const nextProjectionKind = projectionKind(signal.projection_kind);
++  if (existingProjectionKind !== nextProjectionKind) {
++    // Every newly emitted generic/closed signal writes `none`. This explicit
++    // discriminator makes any legacy projection fields retained by the
++    // entity merge inert, while a valid direct projection may replace a
++    // generic hint at the same authoritative revision.
++    if (nextProjectionKind === "none") {
++      return timestamp(signal.room_updated_at) >=
++        timestamp(row?.room_updated_at);
++    }
++    return projectedLobbyModeFromSignal(signal) !== null;
++  }
++  if (nextProjectionKind === "lobby_mode_v1") {
++    const existingProjection = projectedLobbyModeFromSignal(row);
++    const nextProjection = projectedLobbyModeFromSignal(signal);
++    if (!nextProjection) return false;
++    if (!existingProjection) return true;
++    const existingEmittedAt = timestamp(
++      existingProjection.projection_emitted_at,
++    );
++    const nextEmittedAt = timestamp(nextProjection.projection_emitted_at);
++    if (nextEmittedAt > existingEmittedAt) return true;
++    if (nextEmittedAt < existingEmittedAt) return false;
++    // UUID is a deterministic tie-breaker for the rare same-millisecond
++    // emission. This prevents reordered duplicate deliveries from flipping
++    // the personal signal back and forth forever.
++    if (nextProjection.projection_id > existingProjection.projection_id) {
++      return true;
++    }
++  }
++  return timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at);
++}
++
+ export async function upsertGameRoomSignal(
+   store: GameRoomSignalStore,
+   signal: GameRoomSignalRecord,
+@@ -292,93 +415,71 @@
+ ): Promise<"created" | "updated" | "unchanged" | "missing"> {
+   const query = { user_id: signal.user_id, room_id: signal.room_id };
+   options.beforeOperation?.();
+-  const existing = options.existingRows ?? await store.filter(query) ?? [];
+-  const writable = existing.filter((row) => clean(row?.id));
+-  const updates = writable.filter((row) => {
+-    const existingRoomRevision = revision(row?.room_revision);
+-    const existingLobbyRevision = revision(row?.lobby_revision);
+-    if (existingRoomRevision > signal.room_revision) return false;
+-    if (existingRoomRevision < signal.room_revision) return true;
+-    if (existingLobbyRevision > signal.lobby_revision) return false;
+-    if (existingLobbyRevision < signal.lobby_revision) return true;
+-    const existingState = clean(row?.state);
+-    // At the same authoritative revision, closure is monotonic. A delayed
+-    // active fanout must not reopen a kicked user or a deleted room, while a
+-    // strictly newer revision can still represent a legitimate rejoin.
+-    if (existingState === "closed" && signal.state === "active") return false;
+-    if (existingState !== "closed" && signal.state === "closed") return true;
+-    if (
+-      clean(signal.close_intent_id) &&
+-      (clean(row?.close_intent_id) !== clean(signal.close_intent_id) ||
+-        clean(row?.close_match_id) !== clean(signal.close_match_id))
+-    ) return true;
+-    if (
+-      signal.close_completion &&
+-      JSON.stringify(row?.close_completion || null) !==
+-        JSON.stringify(signal.close_completion)
+-    ) return true;
+-    const existingProjectionKind = projectionKind(row?.projection_kind);
+-    const nextProjectionKind = projectionKind(signal.projection_kind);
+-    if (existingProjectionKind !== nextProjectionKind) {
+-      // Every newly emitted generic/closed signal writes `none`. This explicit
+-      // discriminator makes any legacy projection fields retained by the
+-      // entity merge inert, while a valid direct projection may replace a
+-      // generic hint at the same authoritative revision.
+-      if (nextProjectionKind === "none") {
+-        return timestamp(signal.room_updated_at) >=
+-          timestamp(row?.room_updated_at);
+-      }
+-      return projectedLobbyModeFromSignal(signal) !== null;
+-    }
+-    if (nextProjectionKind === "lobby_mode_v1") {
+-      const existingProjection = projectedLobbyModeFromSignal(row);
+-      const nextProjection = projectedLobbyModeFromSignal(signal);
+-      if (!nextProjection) return false;
+-      if (!existingProjection) return true;
+-      const existingEmittedAt = timestamp(
+-        existingProjection.projection_emitted_at,
+-      );
+-      const nextEmittedAt = timestamp(nextProjection.projection_emitted_at);
+-      if (nextEmittedAt > existingEmittedAt) return true;
+-      if (nextEmittedAt < existingEmittedAt) return false;
+-      // UUID is a deterministic tie-breaker for the rare same-millisecond
+-      // emission. This prevents reordered duplicate deliveries from flipping
+-      // the personal signal back and forth forever.
+-      if (nextProjection.projection_id > existingProjection.projection_id) {
+-        return true;
++  let existing = options.existingRows ?? await store.filter(query) ?? [];
++  let observedExisting = existing.length > 0;
++  let didUpdate = false;
++  let lastError: unknown = new Error("Room signal changed concurrently");
++  // Keep account leases while every runtime migrates to CAS. Removing them
++  // requires a separately verified drain of older blind-update writers.
++  for (let attempt = 0; attempt < 3; attempt += 1) {
++    const writable = existing.filter((row) =>
++      clean(row?.id) && row.user_id === signal.user_id &&
++      row.room_id === signal.room_id
++    );
++    const updates = writable.filter((row) =>
++      shouldUpdateGameRoomSignal(row, signal)
++    );
++    if (!updates.length) {
++      if (writable.length) return didUpdate ? "updated" : "unchanged";
++      // A deleted row must never be recreated by a delayed update, even when
++      // this caller originally had permission to create a missing signal.
++      if (observedExisting || options.allowCreate === false) return "missing";
++      try {
++        options.beforeOperation?.();
++        await store.create(signal);
++        return "created";
++      } catch (createError) {
++        options.beforeOperation?.();
++        const raced = await store.filter(query) ?? [];
++        const result = await upsertGameRoomSignal(store, signal, {
++          allowCreate: false,
++          existingRows: raced,
++          beforeOperation: options.beforeOperation,
++        });
++        if (result !== "missing") return result;
++        throw createError;
+       }
+     }
+-    return timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at);
+-  });
+-  if (updates.length) {
+-    const settled = await Promise.allSettled(
+-      updates.map(async (row) => {
+-        options.beforeOperation?.();
+-        await store.update(clean(row.id), signal);
+-      }),
++    const settled = await Promise.allSettled(updates.map(async (row) => {
++      options.beforeOperation?.();
++      return await compareAndSetGameRoomSignal(store, row, signal);
++    }));
++    didUpdate ||= settled.some((result) =>
++      result.status === "fulfilled" && result.value
+     );
++    if (
++      settled.every((result) => result.status === "fulfilled" && result.value)
++    ) {
++      return "updated";
++    }
+     const failure = settled.find((result) => result.status === "rejected");
+-    if (failure?.status === "rejected") throw failure.reason;
+-    return "updated";
+-  }
+-  if (writable.length) return "unchanged";
+-  if (options.allowCreate === false) return "missing";
+-
+-  try {
++    if (failure?.status === "rejected") lastError = failure.reason;
++    // A response-lost CAS may have committed. Refetch before deciding whether
++    // another write is still needed; equal/newer/closed winners are retained.
+     options.beforeOperation?.();
+-    await store.create(signal);
+-    return "created";
+-  } catch (createError) {
+-    options.beforeOperation?.();
+-    const raced = await store.filter(query) ?? [];
+-    const racedResult = await upsertGameRoomSignal(store, signal, {
+-      allowCreate: false,
+-      existingRows: raced,
+-      beforeOperation: options.beforeOperation,
+-    });
+-    if (racedResult !== "missing") return racedResult;
+-    throw createError;
+-  }
++    existing = await store.filter(query) ?? [];
++    observedExisting ||= existing.length > 0;
++  }
++  // Reconcile the last attempt too, including a commit whose response was lost.
++  const writable = existing.filter((row) =>
++    clean(row?.id) && row.user_id === signal.user_id &&
++    row.room_id === signal.room_id
++  );
++  if (!writable.length) return "missing";
++  if (writable.every((row) => !shouldUpdateGameRoomSignal(row, signal))) {
++    return didUpdate ? "updated" : "unchanged";
++  }
++  throw lastError;
+ }
+
+ export async function fanoutGameRoomSignalsBestEffort(input: {
+diff --git a/base44/functions/gameRoomAction/room-write-lifecycle.ts b/base44/functions/gameRoomAction/room-write-lifecycle.ts
+--- a/base44/functions/gameRoomAction/room-write-lifecycle.ts
++++ b/base44/functions/gameRoomAction/room-write-lifecycle.ts
+@@ -8,9 +8,25 @@
+ } from "./billing-identity-lifecycle.ts";
+ import { committedGameStartIdentity } from "./committed-game-start-repair.ts";
+
+-const ROOM_WRITE_LEASE_ATTEMPTS = 6;
+-const ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS = [25, 50, 100, 200, 400];
++const ROOM_WRITE_LEASE_ATTEMPTS = 8;
++// Keep contention retries strictly before the room action begins. The bounded
++// delays total 2.575 seconds, long enough for a normal sibling request to
++// release its lifecycle lease without turning a transient collision into a
++// user-visible 409. The original typed lifecycle error is still returned after
++// the final attempt, and the action callback itself is never replayed.
++const ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS = [
++  25,
++  50,
++  100,
++  200,
++  400,
++  800,
++  1_000,
++];
+ const ROOM_WRITE_LEASE_RELEASE_ATTEMPTS = 3;
++// Ownership acquisition remains ordered. Independent checks and exact-token
++// releases can overlap, without holding every participant behind N round trips.
++const ROOM_LEASE_IO_CONCURRENCY = 4;
+ const COMPLETE_GAME_START_RECONCILIATION_BACKOFF_MILLISECONDS = [
+   0,
+   50,
+@@ -19,6 +35,30 @@
+   400,
+   800,
+ ];
++
++function safeLifecycleLogError(error: unknown) {
++  const property = (key: string): unknown => {
++    if (
++      error === null ||
++      (typeof error !== "object" && typeof error !== "function")
++    ) return undefined;
++    try {
++      return Reflect.get(error, key);
++    } catch {
++      return undefined;
++    }
++  };
++  const scalar = (value: unknown, maximum: number): string =>
++    ["string", "number", "bigint", "boolean"].includes(typeof value)
++      ? String(value).trim().slice(0, maximum)
++      : "";
++  return {
++    message: scalar(property("message"), 500) ||
++      scalar(error, 500) || "Unknown room lifecycle release error",
++    status: scalar(property("status"), 3),
++    code: scalar(property("code"), 100),
++  };
++}
+
+ type AcquireRoomWriterLease = (
+   lifecycleStore: any,
+@@ -77,8 +117,18 @@
+ export async function assertRoomWriteLeases(
+   context: RoomWriteLeaseContext,
+ ): Promise<void> {
+-  for (const lease of context.leases) {
+-    await assertBillingWriterLease(context.lifecycleStore, lease);
++  for (
++    let offset = 0;
++    offset < context.leases.length;
++    offset += ROOM_LEASE_IO_CONCURRENCY
++  ) {
++    const results = await Promise.allSettled(
++      context.leases.slice(offset, offset + ROOM_LEASE_IO_CONCURRENCY).map(
++        (lease) => assertBillingWriterLease(context.lifecycleStore, lease),
++      ),
++    );
++    const failed = results.find((result) => result.status === "rejected");
++    if (failed?.status === "rejected") throw failed.reason;
+   }
+ }
+
+@@ -214,25 +264,36 @@
+   delay: RoomWriteLeaseDelay,
+ ): Promise<unknown[]> {
+   const failures: unknown[] = [];
+-  for (const lease of [...leases].reverse()) {
+-    let finalError: unknown;
+-    for (
+-      let attempt = 0;
+-      attempt < ROOM_WRITE_LEASE_RELEASE_ATTEMPTS;
+-      attempt += 1
+-    ) {
+-      try {
+-        await release(lifecycleStore, lease);
+-        finalError = undefined;
+-        break;
+-      } catch (error) {
+-        finalError = error;
+-        if (attempt < ROOM_WRITE_LEASE_RELEASE_ATTEMPTS - 1) {
+-          await delay(ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS[attempt]);
+-        }
+-      }
+-    }
+-    if (finalError !== undefined) failures.push(finalError);
++  const pending = [...leases].reverse();
++  for (
++    let offset = 0;
++    offset < pending.length;
++    offset += ROOM_LEASE_IO_CONCURRENCY
++  ) {
++    const results = await Promise.allSettled(
++      pending.slice(offset, offset + ROOM_LEASE_IO_CONCURRENCY).map(
++        async (lease) => {
++          for (
++            let attempt = 0;
++            attempt < ROOM_WRITE_LEASE_RELEASE_ATTEMPTS;
++            attempt += 1
++          ) {
++            try {
++              await release(lifecycleStore, lease);
++              return;
++            } catch (error) {
++              if (attempt === ROOM_WRITE_LEASE_RELEASE_ATTEMPTS - 1) {
++                throw error;
++              }
++              await delay(ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS[attempt]);
++            }
++          }
++        },
++      ),
++    );
++    for (const result of results) {
++      if (result.status === "rejected") failures.push(result.reason);
++    }
+   }
+   return failures;
+ }
+@@ -312,7 +373,7 @@
+         actionFailed
+           ? "gameRoomAction lease release failed after action error"
+           : "gameRoomAction lease release failed after committed action",
+-        releaseFailures,
++        releaseFailures.map(safeLifecycleLogError),
+       );
+     }
+   }
+diff --git a/base44/functions/generateWordPack/entry.ts b/base44/functions/generateWordPack/entry.ts
+--- a/base44/functions/generateWordPack/entry.ts
++++ b/base44/functions/generateWordPack/entry.ts
+@@ -29,6 +29,10 @@
+   type GenerationWriteGuard,
+   withGenerationWriterLease,
+ } from "./generation-write-lifecycle.ts";
++import {
++  createGenerationRetryTracker,
++  type GenerationRetryTracker,
++} from "./generation-retry-contract.ts";
+ import { invokeAIProviderWithRetry } from "./ai-provider-resilience.ts";
+ import {
+   lookupWordPackCache,
+@@ -269,6 +273,7 @@
+   alreadyUsed: string[] = [],
+   guard: GenerationWriteGuard,
+   state: AIInvocationState,
++  retryTracker: GenerationRetryTracker,
+ ): Promise<WordPackGenerationResult> {
+   const measured = async <T>(operation: () => Promise<T>): Promise<T> => {
+     const startedAt = Date.now();
+@@ -286,14 +291,17 @@
+       >({
+         operation: () => {
+           state.directAttempts += 1;
+-          return measured(async () => {
+-            await guard.assertAvailable();
+-            return await state.directProvider!.generate({
+-              theme,
+-              count,
+-              alreadyUsed,
+-            });
+-          });
++          return measured(() =>
++            retryTracker.runProvider(
++              guard,
++              () =>
++                state.directProvider!.generate({
++                  theme,
++                  count,
++                  alreadyUsed,
++                }),
++            )
++          );
+         },
+         onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
+           console.warn(
+@@ -325,18 +333,21 @@
+     {
+       operation: () => {
+         state.base44Attempts += 1;
+-        return measured(async () => {
+-          await guard.assertAvailable();
+-          return await base44.integrations.Core.InvokeLLM({
+-            model: BASE44_WORD_PACK_MODEL,
+-            prompt: buildWordPackPrompt({
+-              theme,
+-              count,
+-              alreadyUsed,
+-            }),
+-            response_json_schema: wordPackResponseSchema(theme, count),
+-          });
+-        });
++        return measured(() =>
++          retryTracker.runProvider(
++            guard,
++            () =>
++              base44.integrations.Core.InvokeLLM({
++                model: BASE44_WORD_PACK_MODEL,
++                prompt: buildWordPackPrompt({
++                  theme,
++                  count,
++                  alreadyUsed,
++                }),
++                response_json_schema: wordPackResponseSchema(theme, count),
++              }),
++          )
++        );
+       },
+       onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
+         console.warn(
+@@ -374,6 +385,7 @@
+ }
+
+ Deno.serve(async (req) => {
++  const retryTracker = createGenerationRetryTracker();
+   try {
+     if (req.method !== "POST") {
+       return Response.json({ error: "Method not allowed" }, { status: 405 });
+@@ -425,6 +437,7 @@
+         request: cacheRequest,
+       })
+       : null;
++    retryTracker.bindValidatedRequest(idempotency);
+
+     let entitlements: EntitlementRecord[] = [];
+     let entitlementReadError: unknown = null;
+@@ -485,7 +498,8 @@
+     return await withGenerationWriterLease({
+       lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+       userID: user.id,
+-      action: async (guard) => {
++      action: async (untrackedGuard) => {
++        const guard = retryTracker.trackWrites(untrackedGuard);
+         const quotaStore = base44.asServiceRole.entities.AiGenerationUsage;
+         const cacheStore = base44.asServiceRole.entities.AiWordPackCacheVariant;
+         const idempotencyStore =
+@@ -592,7 +606,7 @@
+             status: "unknown",
+             providers: membership.providers,
+             benefits: membership.benefits,
+-            retryable: true,
++            ...retryTracker.errorMetadata(error, 503),
+           }, { status: 503 });
+         }
+         const usage = generationUsageMetadata(
+@@ -674,6 +688,7 @@
+               excludedWords,
+               guard,
+               aiState,
++              retryTracker,
+             );
+             words = filterSafeCommunityStrings(
+               removeExcludedWords(firstPass?.words || [], excludedWords),
+@@ -689,6 +704,7 @@
+                 [...excludedWords, ...words],
+                 guard,
+                 aiState,
++                retryTracker,
+               );
+               const additionalWords = filterSafeCommunityStrings(
+                 removeExcludedWords(
+@@ -876,16 +892,14 @@
+     const status = lifecycleHTTPStatus(error);
+     const normalizedStatus = status >= 400 && status < 600 ? status : 500;
+     const code = String((error as { code?: unknown })?.code || "").trim();
+-    const retryable = (error as { retryable?: unknown })?.retryable === true;
++    const retryMetadata = retryTracker.errorMetadata(error, normalizedStatus);
+     return Response.json({
+       error: errorMessage(error),
+       ...(code ? { code } : {}),
+-      ...(retryable ? { retryable: true } : {}),
++      ...retryMetadata,
+     }, {
+       status: normalizedStatus,
+-      headers: retryable || normalizedStatus === 503
+-        ? { "retry-after": "2" }
+-        : undefined,
++      headers: retryMetadata.retryable ? { "retry-after": "2" } : undefined,
+     });
+   }
+ });
+diff --git a/base44/functions/generateWordPack/generation-retry-contract.ts b/base44/functions/generateWordPack/generation-retry-contract.ts
+new file mode 100644
+--- /dev/null
++++ b/base44/functions/generateWordPack/generation-retry-contract.ts
+@@ -0,0 +1,79 @@
++import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
++import type { PreparedWordPackIdempotency } from "./generation-idempotency.ts";
++import type { GenerationWriteGuard } from "./generation-write-lifecycle.ts";
++
++export type GenerationRetryMetadata = {
++  retryable: boolean;
++  retry_phase?: "before_effects" | "effects_may_have_started";
++  effects_started?: boolean;
++};
++
++/**
++ * This proof belongs to one invocation, not to the lifetime of a request_id.
++ * A client may only repeat a proven pre-effect conflict with the same payload;
++ * a missing response or a previous ambiguous failure is not permission to retry.
++ */
++export function createGenerationRetryTracker() {
++  let hasValidatedRequestIdentity = false;
++  let effectsStarted = false;
++
++  return {
++    bindValidatedRequest(identity: PreparedWordPackIdempotency | null): void {
++      hasValidatedRequestIdentity = identity !== null;
++    },
++
++    trackWrites(guard: GenerationWriteGuard): GenerationWriteGuard {
++      return {
++        boundary: <T>(operation: () => Promise<T>) =>
++          guard.boundary(() => {
++            // Acquisition/assertion can fail before this callback runs. Once
++            // storage is called, even a failed response can hide a commit.
++            effectsStarted = true;
++            return operation();
++          }),
++        assertAvailable: () => guard.assertAvailable(),
++      };
++    },
++
++    async runProvider<T>(
++      guard: GenerationWriteGuard,
++      operation: () => Promise<T>,
++    ): Promise<T> {
++      await guard.assertAvailable();
++      effectsStarted = true;
++      return await operation();
++    },
++
++    errorMetadata(error: unknown, status: number): GenerationRetryMetadata {
++      if (effectsStarted) {
++        return {
++          retryable: false,
++          retry_phase: "effects_may_have_started",
++          effects_started: true,
++        };
++      }
++
++      if (error instanceof BillingIdentityLifecycleError) {
++        const safeConflict = hasValidatedRequestIdentity && status === 409 &&
++          (error.code === "active_lease" || error.code === "cas_contention");
++        return safeConflict
++          ? {
++            retryable: true,
++            retry_phase: "before_effects",
++            effects_started: false,
++          }
++          : { retryable: false };
++      }
++
++      // Keep other existing error semantics, without issuing the stronger
++      // proof required for an automatic generation retry.
++      return {
++        retryable: (error as { retryable?: unknown })?.retryable === true,
++      };
++    },
++  };
++}
++
++export type GenerationRetryTracker = ReturnType<
++  typeof createGenerationRetryTracker
++>;

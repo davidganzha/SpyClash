@@ -1,0 +1,19 @@
+{
+  "commit": "a0e7b3a3a011cf8bdc5650673664794adc85709e",
+  "baseline_summary": "FAILED | 18 passed | 5 failed (1s)",
+  "current_summary": "FAILED | 734 passed | 5 failed (30s)",
+  "failure_names_and_locations_identical": true,
+  "assertion_blocks_identical_after_snapshot_path_normalization": true,
+  "failures": [
+    "all 24 canonical entity schemas are explicit and parseable => ./base44/tests/entity-security-contract_test.ts:170:6",
+    "Step A read-only prepare builds the exact 20 to 22 candidate without a mutation => ./base44/tests/notification-cutover-contract_test.ts:352:6",
+    "Step B read-only prepare binds exact Step A evidence and the 16 to 17 source delta => ./base44/tests/notification-cutover-contract_test.ts:519:6",
+    "canonical inventory is exactly 24 entities and 17 functions => ./base44/tests/notification-cutover-contract_test.ts:831:6",
+    "checked-in schemas still derive the exact approved 20-entity target => ./base44/tests/notification-schema-repair-cutover-contract_test.ts:121:6"
+  ],
+  "canonical_entity_count": 25,
+  "logs": [
+    "/tmp/spyclash-resilience-144-backend-complete.log",
+    "/var/folders/4j/wkjrm6cn0z9f5v932wqlmfz40000gn/T/spyclash-144-baseline-4l0uah8l/baseline-with-binding-tests.log"
+  ]
+}

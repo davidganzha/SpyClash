@@ -1,0 +1,410 @@
+{
+  "canonical_app_id": "69a0e57fa939f578082f8091",
+  "operations": [
+    "functions deploy gameRoomAction generateWordPack"
+  ],
+  "schema_changes": false,
+  "secret_changes": false,
+  "site_changes": false,
+  "automation_changes": false,
+  "prepared_at_utc": "2026-09-06T07:40:05.397409+00:00",
+  "functions": [
+    {
+      "name": "gameRoomAction",
+      "baseline_file_count": 48,
+      "candidate_file_count": 48,
+      "changed_files": [
+        "entry.ts",
+        "game-room-signal.ts",
+        "room-write-lifecycle.ts"
+      ],
+      "normalized_config_sha256": "963850abf94b5e0d085a9af141c4d697d15200970a6a34a6bea6dce90d598d70",
+      "files": [
+        {
+          "path": "active-game-lobby-return-policy.ts",
+          "baseline_sha256": "0a47ae87a667e380abe76cef4ccefda5d297f3410bb5c6be1fcaa26e04f1ed5c",
+          "candidate_sha256": "0a47ae87a667e380abe76cef4ccefda5d297f3410bb5c6be1fcaa26e04f1ed5c",
+          "changed": false
+        },
+        {
+          "path": "association-turn-order.ts",
+          "baseline_sha256": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa",
+          "candidate_sha256": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa",
+          "changed": false
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "baseline_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+          "candidate_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+          "changed": false
+        },
+        {
+          "path": "committed-game-start-repair.ts",
+          "baseline_sha256": "a52b0b5b5cfeaeeb66343bdc9683abfc718e983d2fc590c2f61496cd1a5f9426",
+          "candidate_sha256": "a52b0b5b5cfeaeeb66343bdc9683abfc718e983d2fc590c2f61496cd1a5f9426",
+          "changed": false
+        },
+        {
+          "path": "community-profile-backfill.ts",
+          "baseline_sha256": "b87dab40c10819cff33999a558c194ef1b56f5b6ae185202b0b75c348ff7463f",
+          "candidate_sha256": "b87dab40c10819cff33999a558c194ef1b56f5b6ae185202b0b75c348ff7463f",
+          "changed": false
+        },
+        {
+          "path": "community-profile-mirror.ts",
+          "baseline_sha256": "46fad25a7fcae7534ca6206f4bb6e7ff59ac559bf3f84aafd4a00fe60492d8a1",
+          "candidate_sha256": "46fad25a7fcae7534ca6206f4bb6e7ff59ac559bf3f84aafd4a00fe60492d8a1",
+          "changed": false
+        },
+        {
+          "path": "community-profile-repair-queue.ts",
+          "baseline_sha256": "c91e2d15b009802f4572753c53d93516a85d28f64c4d219cfccd164dd78b9107",
+          "candidate_sha256": "c91e2d15b009802f4572753c53d93516a85d28f64c4d219cfccd164dd78b9107",
+          "changed": false
+        },
+        {
+          "path": "community-profile-signal.ts",
+          "baseline_sha256": "729a55174262bc0a0cbcfc33d5316496d108daeced984c358d3e9a851bc3aa64",
+          "candidate_sha256": "729a55174262bc0a0cbcfc33d5316496d108daeced984c358d3e9a851bc3aa64",
+          "changed": false
+        },
+        {
+          "path": "competitive-stats.ts",
+          "baseline_sha256": "058bfd9029172554a0f648c8b23b78e788b7b1f6b9e89502974ff9bdc64d0a45",
+          "candidate_sha256": "058bfd9029172554a0f648c8b23b78e788b7b1f6b9e89502974ff9bdc64d0a45",
+          "changed": false
+        },
+        {
+          "path": "content-safety.ts",
+          "baseline_sha256": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b",
+          "candidate_sha256": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b",
+          "changed": false
+        },
+        {
+          "path": "detective-vote-lease-recovery.ts",
+          "baseline_sha256": "0d2095f5871f830378874adc33902af2b7a8cd6890288bf041af53349569bd9a",
+          "candidate_sha256": "0d2095f5871f830378874adc33902af2b7a8cd6890288bf041af53349569bd9a",
+          "changed": false
+        },
+        {
+          "path": "detective-vote-policy.ts",
+          "baseline_sha256": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4",
+          "candidate_sha256": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4",
+          "changed": false
+        },
+        {
+          "path": "detective-vote-write.ts",
+          "baseline_sha256": "9b9b0d3b5e24a1e6e0057b807de50b1ee12e956d3ac3cfb4f619762ffd2ce2ba",
+          "candidate_sha256": "9b9b0d3b5e24a1e6e0057b807de50b1ee12e956d3ac3cfb4f619762ffd2ce2ba",
+          "changed": false
+        },
+        {
+          "path": "entry.ts",
+          "baseline_sha256": "ab245a6d2c33b08dd584596856dfc20b519c5a801c24da974de0c53ed7dbe6b5",
+          "candidate_sha256": "6221f2da83cbed5a0c844da2dc437881eb8b7a63e2bda7b18faaad48dd7d97df",
+          "changed": true
+        },
+        {
+          "path": "finished-room-departure-policy.ts",
+          "baseline_sha256": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14",
+          "candidate_sha256": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14",
+          "changed": false
+        },
+        {
+          "path": "game-history-idempotency.ts",
+          "baseline_sha256": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0",
+          "candidate_sha256": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0",
+          "changed": false
+        },
+        {
+          "path": "game-room-signal.ts",
+          "baseline_sha256": "7d73ddd41d2cb4a302ac19afffdd59b04489e4723d8012c4d2d86ea04f290fd8",
+          "candidate_sha256": "bd084e043772a926aee7c268049ead7896008d3f937790a469927f2a33041f86",
+          "changed": true
+        },
+        {
+          "path": "game-round.ts",
+          "baseline_sha256": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af",
+          "candidate_sha256": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af",
+          "changed": false
+        },
+        {
+          "path": "game-timer-policy.ts",
+          "baseline_sha256": "33837768c2a60210a3ef2b5cc68ca1c76f821cfc5fdbd0e845f0ac5f595a78ee",
+          "candidate_sha256": "33837768c2a60210a3ef2b5cc68ca1c76f821cfc5fdbd0e845f0ac5f595a78ee",
+          "changed": false
+        },
+        {
+          "path": "internal-push.ts",
+          "baseline_sha256": "640c39a3d7342196b658de1e604463bc1e54cfb5429488a6216f9336660df9c3",
+          "candidate_sha256": "640c39a3d7342196b658de1e604463bc1e54cfb5429488a6216f9336660df9c3",
+          "changed": false
+        },
+        {
+          "path": "leaderboard.ts",
+          "baseline_sha256": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94",
+          "candidate_sha256": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94",
+          "changed": false
+        },
+        {
+          "path": "lobby-kick-policy.ts",
+          "baseline_sha256": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6",
+          "candidate_sha256": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6",
+          "changed": false
+        },
+        {
+          "path": "lobby-state-policy.ts",
+          "baseline_sha256": "de7c5c0ca28b277753c5b1816b0dc1088b34b4961418a805e493005931c4f4d6",
+          "candidate_sha256": "de7c5c0ca28b277753c5b1816b0dc1088b34b4961418a805e493005931c4f4d6",
+          "changed": false
+        },
+        {
+          "path": "multi-spy-policy.ts",
+          "baseline_sha256": "8a9ff1826c2b3d5c9033897eccebbd614471b9326aaff3af9797efaa23ec91e9",
+          "candidate_sha256": "8a9ff1826c2b3d5c9033897eccebbd614471b9326aaff3af9797efaa23ec91e9",
+          "changed": false
+        },
+        {
+          "path": "operation-deadline.ts",
+          "baseline_sha256": "4aac5455024ccc894aaec1e9c2e2b9c5473e9931811eb6d645a3cb1240c07416",
+          "candidate_sha256": "4aac5455024ccc894aaec1e9c2e2b9c5473e9931811eb6d645a3cb1240c07416",
+          "changed": false
+        },
+        {
+          "path": "post-lease-signal.ts",
+          "baseline_sha256": "e7787dbeb11743f73f4312a4930f09c3c17ce197fd436f2e81435f0be8ac3fe9",
+          "candidate_sha256": "e7787dbeb11743f73f4312a4930f09c3c17ce197fd436f2e81435f0be8ac3fe9",
+          "changed": false
+        },
+        {
+          "path": "push-events.ts",
+          "baseline_sha256": "fa8c67583414f203ae909e89067947624109823851b4e8e91da9bd9786ec1020",
+          "candidate_sha256": "fa8c67583414f203ae909e89067947624109823851b4e8e91da9bd9786ec1020",
+          "changed": false
+        },
+        {
+          "path": "question-round-policy.ts",
+          "baseline_sha256": "e59d66fb4c808ae68357907971d440c0a779351db7ce225e1675ca6b250929ad",
+          "candidate_sha256": "e59d66fb4c808ae68357907971d440c0a779351db7ce225e1675ca6b250929ad",
+          "changed": false
+        },
+        {
+          "path": "question-turn-order.ts",
+          "baseline_sha256": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef",
+          "candidate_sha256": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef",
+          "changed": false
+        },
+        {
+          "path": "replay-auto-start-policy.ts",
+          "baseline_sha256": "1c4cbbe426152c8120ea86353d0e1f5667d0ebbc491e9d7313868a92c1e2d0a7",
+          "candidate_sha256": "1c4cbbe426152c8120ea86353d0e1f5667d0ebbc491e9d7313868a92c1e2d0a7",
+          "changed": false
+        },
+        {
+          "path": "replay-policy.ts",
+          "baseline_sha256": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380",
+          "candidate_sha256": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380",
+          "changed": false
+        },
+        {
+          "path": "request-auth.ts",
+          "baseline_sha256": "b2d798a45345c3fe551fd98e17f592b0cc718a07e84c2b250c2ddadbbd204f2c",
+          "candidate_sha256": "b2d798a45345c3fe551fd98e17f592b0cc718a07e84c2b250c2ddadbbd204f2c",
+          "changed": false
+        },
+        {
+          "path": "room-close-intent.ts",
+          "baseline_sha256": "845ec36a3166365234d06ea703138e8d4dc6913c1578ef93a272489813832371",
+          "candidate_sha256": "845ec36a3166365234d06ea703138e8d4dc6913c1578ef93a272489813832371",
+          "changed": false
+        },
+        {
+          "path": "room-interaction-safety.ts",
+          "baseline_sha256": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c",
+          "candidate_sha256": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c",
+          "changed": false
+        },
+        {
+          "path": "room-membership-generation.ts",
+          "baseline_sha256": "c21fbd9497b2578de220a0f42d3e12b2e2502cd658c9984b542bd759fd1d98ee",
+          "candidate_sha256": "c21fbd9497b2578de220a0f42d3e12b2e2502cd658c9984b542bd759fd1d98ee",
+          "changed": false
+        },
+        {
+          "path": "room-participant-identity.ts",
+          "baseline_sha256": "ff9bd360e5b3e5f067632e59150e0a276ec400086e7efd2333eae62f418a786f",
+          "candidate_sha256": "ff9bd360e5b3e5f067632e59150e0a276ec400086e7efd2333eae62f418a786f",
+          "changed": false
+        },
+        {
+          "path": "room-projection.ts",
+          "baseline_sha256": "cf441648aa5649df432df18354c50bfa1821b5d97fdbe6713ff69fe5b8988d20",
+          "candidate_sha256": "cf441648aa5649df432df18354c50bfa1821b5d97fdbe6713ff69fe5b8988d20",
+          "changed": false
+        },
+        {
+          "path": "room-push-policy.ts",
+          "baseline_sha256": "634913e4f2372ecf276c7e9ffdb2d0226b94758652715533b344acacc1739df9",
+          "candidate_sha256": "634913e4f2372ecf276c7e9ffdb2d0226b94758652715533b344acacc1739df9",
+          "changed": false
+        },
+        {
+          "path": "room-result-policy.ts",
+          "baseline_sha256": "44d4934adc7710baa2d2eb66b1461ff75e4b034aa0fd0c45ca1c508e85929ec8",
+          "candidate_sha256": "44d4934adc7710baa2d2eb66b1461ff75e4b034aa0fd0c45ca1c508e85929ec8",
+          "changed": false
+        },
+        {
+          "path": "room-write-cas.ts",
+          "baseline_sha256": "3391d95a7b5e0cde2afa5ab0e3636ed2c18b083be8b1d4af669de151bb7c5bf5",
+          "candidate_sha256": "3391d95a7b5e0cde2afa5ab0e3636ed2c18b083be8b1d4af669de151bb7c5bf5",
+          "changed": false
+        },
+        {
+          "path": "room-write-lifecycle.ts",
+          "baseline_sha256": "f64761cbc2e70e7563c92a98aa365aed9261edf4fd29a4ef8b2c1ed756fb3a14",
+          "candidate_sha256": "ae252f841fb88c88aaa59ce2192747934c6409a09f2a53537d31fb357ae7ea12",
+          "changed": true
+        },
+        {
+          "path": "round-action-access.ts",
+          "baseline_sha256": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda",
+          "candidate_sha256": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda",
+          "changed": false
+        },
+        {
+          "path": "start-word-pool-policy.ts",
+          "baseline_sha256": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b",
+          "candidate_sha256": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b",
+          "changed": false
+        },
+        {
+          "path": "terminal-finalization-recovery.ts",
+          "baseline_sha256": "931c762ee30f73a958fa8b81783627e3117cfd7475e642983a0633f56579f502",
+          "candidate_sha256": "931c762ee30f73a958fa8b81783627e3117cfd7475e642983a0633f56579f502",
+          "changed": false
+        },
+        {
+          "path": "terminal-finalization-scope.ts",
+          "baseline_sha256": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12",
+          "candidate_sha256": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12",
+          "changed": false
+        },
+        {
+          "path": "terminal-outbox-commit.ts",
+          "baseline_sha256": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e",
+          "candidate_sha256": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e",
+          "changed": false
+        },
+        {
+          "path": "terminal-side-effect-dispatch.ts",
+          "baseline_sha256": "8ebe34fcdb72e556216b10f29ea5f68c086b1cc10ad0bbc7046e6618926ed939",
+          "candidate_sha256": "8ebe34fcdb72e556216b10f29ea5f68c086b1cc10ad0bbc7046e6618926ed939",
+          "changed": false
+        },
+        {
+          "path": "terminal-timing.ts",
+          "baseline_sha256": "4bb45dedb08cb0a625d2a99fd1ca09a132090a9cc60d1b2a5cafba8e5f5ee8ec",
+          "candidate_sha256": "4bb45dedb08cb0a625d2a99fd1ca09a132090a9cc60d1b2a5cafba8e5f5ee8ec",
+          "changed": false
+        }
+      ]
+    },
+    {
+      "name": "generateWordPack",
+      "baseline_file_count": 13,
+      "candidate_file_count": 14,
+      "changed_files": [
+        "entry.ts",
+        "generation-retry-contract.ts"
+      ],
+      "normalized_config_sha256": "b888fb6b96a1d5b3ac6d9388755658eb143bda25a148b29896ac1cd1e38b1f1e",
+      "files": [
+        {
+          "path": "ai-provider-resilience.ts",
+          "baseline_sha256": "98a314fafb31d5790b7c37730323ec93b80803be1c87be181a69d87bc868db45",
+          "candidate_sha256": "98a314fafb31d5790b7c37730323ec93b80803be1c87be181a69d87bc868db45",
+          "changed": false
+        },
+        {
+          "path": "base44-context.ts",
+          "baseline_sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+          "candidate_sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+          "changed": false
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "baseline_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+          "candidate_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+          "changed": false
+        },
+        {
+          "path": "content-safety.ts",
+          "baseline_sha256": "817ba01e58d5eb8036a59148a20cc3e6a9b30df0ee33f254bf84e56e98629042",
+          "candidate_sha256": "817ba01e58d5eb8036a59148a20cc3e6a9b30df0ee33f254bf84e56e98629042",
+          "changed": false
+        },
+        {
+          "path": "entry.ts",
+          "baseline_sha256": "348956815d26d1ca1769858f4ccd831b8cb4dce27a92dec8ed1da247569699f0",
+          "candidate_sha256": "f71bffe4d35dc706622626ea7b3ce83af59db62a56aa3bddb6d61548dcbc1ca4",
+          "changed": true
+        },
+        {
+          "path": "generation-cache.ts",
+          "baseline_sha256": "39365535caef5535036fb986c0746df4429a1e5cb9c20bb2df22810d5389e278",
+          "candidate_sha256": "39365535caef5535036fb986c0746df4429a1e5cb9c20bb2df22810d5389e278",
+          "changed": false
+        },
+        {
+          "path": "generation-idempotency.ts",
+          "baseline_sha256": "a077ce2573fd90b41de9e2cac1f8257e8272dbb18924f81d70ff27ccdd7dcb4d",
+          "candidate_sha256": "a077ce2573fd90b41de9e2cac1f8257e8272dbb18924f81d70ff27ccdd7dcb4d",
+          "changed": false
+        },
+        {
+          "path": "generation-retry-contract.ts",
+          "baseline_sha256": null,
+          "candidate_sha256": "a151164375bb5ca1cb692e074f9de29cf6fe7f4939b1acdf8360c110e45c4b17",
+          "changed": true
+        },
+        {
+          "path": "generation-write-lifecycle.ts",
+          "baseline_sha256": "e344365f7ca33d2c2e5ef369a452e057e030887896b1aa681914c1c2d5d62baa",
+          "candidate_sha256": "e344365f7ca33d2c2e5ef369a452e057e030887896b1aa681914c1c2d5d62baa",
+          "changed": false
+        },
+        {
+          "path": "limitless-rollout.ts",
+          "baseline_sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+          "candidate_sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+          "changed": false
+        },
+        {
+          "path": "membership.ts",
+          "baseline_sha256": "fe6e558ec55d5b5d9ce9f0d3edcca34cc5c763e5548c7ae6c925224fe5b5adcf",
+          "candidate_sha256": "fe6e558ec55d5b5d9ce9f0d3edcca34cc5c763e5548c7ae6c925224fe5b5adcf",
+          "changed": false
+        },
+        {
+          "path": "openai-word-pack-provider.ts",
+          "baseline_sha256": "6afa3ea0efbf37a61af3b727d06fa9b38181ce10dfbc715b6273687006117fb7",
+          "candidate_sha256": "6afa3ea0efbf37a61af3b727d06fa9b38181ce10dfbc715b6273687006117fb7",
+          "changed": false
+        },
+        {
+          "path": "quota.ts",
+          "baseline_sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be",
+          "candidate_sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be",
+          "changed": false
+        },
+        {
+          "path": "word-pack-quality.ts",
+          "baseline_sha256": "c0aa06a9708d6b3a08930f0d9df35d848652e36fd8a71f0a7e72c0f870e2b5e6",
+          "candidate_sha256": "c0aa06a9708d6b3a08930f0d9df35d848652e36fd8a71f0a7e72c0f870e2b5e6",
+          "changed": false
+        }
+      ]
+    }
+  ]
+}

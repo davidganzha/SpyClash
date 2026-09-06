@@ -1,5 +1,7 @@
-import { assertEquals } from "jsr:@std/assert@1";
+import { roomCloseCompletionWithActivityEndQueued } from "./room-close-intent.ts";
+import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
+  compareAndSetGameRoomSignal,
   fanoutGameRoomSignalsBestEffort,
   GameRoomSignalRecord,
   GameRoomSignalStore,
@@ -82,15 +84,29 @@ class MemorySignalStore implements GameRoomSignalStore {
     return Promise.resolve(row);
   }
 
-  update(id: string, signal: GameRoomSignalRecord) {
+  updateMany(
+    filter: Record<string, unknown>,
+    update: { $set: Partial<GameRoomSignalRecord> },
+  ) {
     this.updateCalls += 1;
-    if (this.failUsers.has(signal.user_id)) {
+    if (this.failUsers.has(String(update.$set.user_id))) {
       return Promise.reject(new Error("unavailable"));
     }
-    const index = this.rows.findIndex((row) => row.id === id);
-    if (index < 0) return Promise.reject(new Error("missing"));
-    this.rows[index] = { ...this.rows[index], ...signal };
-    return Promise.resolve(this.rows[index]);
+    let updated = 0;
+    for (let index = 0; index < this.rows.length; index += 1) {
+      if (
+        !Object.entries(filter).every(([key, value]) => {
+          if (value && typeof value === "object" && "$exists" in value) {
+            return (this.rows[index][key] !== undefined) === value.$exists;
+          }
+          return JSON.stringify(this.rows[index][key]) ===
+            JSON.stringify(value);
+        })
+      ) continue;
+      this.rows[index] = { ...this.rows[index], ...update.$set };
+      updated += 1;
+    }
+    return Promise.resolve({ updated });
   }
 }
 
@@ -558,4 +574,218 @@ Deno.test("rapid gameplay never recreates a signal removed by account cleanup", 
   assertEquals(store.rows, []);
   assertEquals(store.filterCalls, 1);
   assertEquals(store.updateCalls, 0);
+});
+
+function deferredSignalWrite() {
+  let resolve!: () => void;
+  const promise = new Promise<void>((done) => {
+    resolve = done;
+  });
+  return { promise, resolve };
+}
+
+for (const closedRevision of [13, 14]) {
+  Deno.test(`a delayed active CAS cannot reopen closed revision ${closedRevision}`, async () => {
+    const store = new MemorySignalStore();
+    store.rows = [{ id: "signal-1", ...signal }];
+    const started = deferredSignalWrite();
+    const finish = deferredSignalWrite();
+    const update = store.updateMany.bind(store);
+    let delay = true;
+    store.updateMany = async (filter, patch) => {
+      if (delay && patch.$set.state === "active") {
+        delay = false;
+        started.resolve();
+        await finish.promise;
+      }
+      return await update(filter, patch);
+    };
+    const stale = upsertGameRoomSignal(store, { ...signal, room_revision: 13 });
+    await started.promise;
+    await upsertGameRoomSignal(store, {
+      ...signal,
+      room_revision: closedRevision,
+      state: "closed",
+    });
+    finish.resolve();
+    assertEquals(await stale, "unchanged");
+    assertEquals(store.rows[0].room_revision, closedRevision);
+    assertEquals(store.rows[0].state, "closed");
+  });
+}
+
+Deno.test("reordered concurrent mode projections retain the newest direct projection", async () => {
+  const store = new MemorySignalStore();
+  store.rows = [{ id: "signal-1", ...signal }];
+  const earlier = lobbyModeSignalProjectionForRoom({ game_mode: "questions" }, {
+    projectionID: "00000000-0000-4000-8000-000000000001",
+    emittedAt: "2026-09-06T09:00:00.000Z",
+  })!;
+  const later = lobbyModeSignalProjectionForRoom(
+    { game_mode: "associations" },
+    {
+      projectionID: "00000000-0000-4000-8000-000000000002",
+      emittedAt: "2026-09-06T09:00:01.000Z",
+    },
+  )!;
+  const started = deferredSignalWrite();
+  const finish = deferredSignalWrite();
+  const update = store.updateMany.bind(store);
+  let delay = true;
+  store.updateMany = async (filter, patch) => {
+    if (delay) {
+      delay = false;
+      started.resolve();
+      await finish.promise;
+    }
+    return await update(filter, patch);
+  };
+  const stale = upsertGameRoomSignal(store, { ...signal, ...earlier });
+  await started.promise;
+  await upsertGameRoomSignal(store, { ...signal, ...later });
+  finish.resolve();
+  assertEquals(await stale, "unchanged");
+  assertEquals(projectedLobbyModeFromSignal(store.rows[0]), later);
+});
+
+for (const allowCreate of [true, false]) {
+  Deno.test(`account cleanup between read and CAS never recreates a signal (allowCreate=${allowCreate})`, async () => {
+    const store = new MemorySignalStore();
+    store.rows = [{ id: "signal-1", ...signal }];
+    const update = store.updateMany.bind(store);
+    store.updateMany = (filter, patch) => {
+      store.rows = [];
+      return update(filter, patch);
+    };
+    assertEquals(
+      await upsertGameRoomSignal(store, { ...signal, room_revision: 13 }, {
+        allowCreate,
+      }),
+      "missing",
+    );
+    assertEquals(store.rows, []);
+    assertEquals(store.nextID, 1);
+    assertEquals(store.updateCalls, 1);
+  });
+}
+
+Deno.test("a committed signal with a lost CAS response is reconciled without a second write", async () => {
+  const store = new MemorySignalStore();
+  store.rows = [{ id: "signal-1", ...signal }];
+  const update = store.updateMany.bind(store);
+  store.updateMany = async (filter, patch) => {
+    await update(filter, patch);
+    throw new Error("response lost after commit");
+  };
+  assertEquals(
+    await upsertGameRoomSignal(store, { ...signal, state: "closed" }),
+    "unchanged",
+  );
+  assertEquals(store.rows[0].state, "closed");
+  assertEquals(store.updateCalls, 1);
+  assertEquals(store.filterCalls, 2);
+});
+
+Deno.test("signal CAS contention is bounded and leaves the authoritative row intact", async () => {
+  const store = new MemorySignalStore();
+  store.rows = [{ id: "signal-1", ...signal }];
+  store.updateMany = () => {
+    store.updateCalls += 1;
+    return Promise.resolve({ updated: 0 });
+  };
+  await assertRejects(
+    () => upsertGameRoomSignal(store, { ...signal, room_revision: 13 }),
+    Error,
+    "changed concurrently",
+  );
+  assertEquals(store.updateCalls, 3);
+  assertEquals(store.filterCalls, 4);
+  assertEquals(store.rows[0].room_revision, 12);
+});
+
+Deno.test("a stale close completion CAS cannot overwrite a replacement completion", async () => {
+  const store = new MemorySignalStore();
+  const original = {
+    id: "signal-1",
+    ...signal,
+    state: "closed",
+    close_completion: { intent_id: "close-1" },
+  };
+  store.rows = [{
+    ...original,
+    close_completion: { intent_id: "close-2", activity_end_queued: true },
+  }];
+  assertEquals(
+    await compareAndSetGameRoomSignal(store, original, {
+      close_completion: { intent_id: "close-1", activity_end_queued: true },
+    }),
+    false,
+  );
+  assertEquals(store.rows[0].close_completion, {
+    intent_id: "close-2",
+    activity_end_queued: true,
+  });
+});
+
+Deno.test("a signal CAS does not match a row whose recipient binding changed", async () => {
+  const store = new MemorySignalStore();
+  const original = { id: "signal-1", ...signal };
+  store.rows = [{ ...original, user_id: "replacement" }];
+  assertEquals(
+    await compareAndSetGameRoomSignal(store, original, { room_revision: 13 }),
+    false,
+  );
+  assertEquals(store.rows[0].room_revision, 12);
+});
+
+Deno.test("a full-fanout receipt retry cannot revoke a concurrently queued Activity end", async () => {
+  const store = new MemorySignalStore();
+  const closed: GameRoomSignalRecord = {
+    ...signal,
+    state: "closed",
+    close_intent_id: "close-1",
+    close_match_id: "match-1",
+  };
+  const completion = {
+    intent_id: "close-1",
+    match_id: "match-1",
+    room_id: "room-1",
+    host_user_id: "user-1",
+    participant_user_ids: ["user-1"],
+    participant_count: 1,
+    completed_at: "2026-09-06T09:00:00.000Z",
+  };
+  const queued = roomCloseCompletionWithActivityEndQueued({
+    completion,
+    now: new Date("2026-09-06T09:00:01.000Z"),
+  });
+  const original = { id: "signal-1", ...closed };
+  store.rows = [original];
+  const started = deferredSignalWrite();
+  const finish = deferredSignalWrite();
+  const update = store.updateMany.bind(store);
+  let delay = true;
+  store.updateMany = async (filter, patch) => {
+    if (delay) {
+      delay = false;
+      started.resolve();
+      await finish.promise;
+    }
+    return await update(filter, patch);
+  };
+  const stale = upsertGameRoomSignal(store, {
+    ...closed,
+    close_completion: completion,
+  });
+  await started.promise;
+  assertEquals(
+    await compareAndSetGameRoomSignal(store, original, {
+      close_completion: queued,
+    }),
+    true,
+  );
+  finish.resolve();
+  assertEquals(await stale, "unchanged");
+  assertEquals(store.rows[0].close_completion, queued);
+  assertEquals(store.updateCalls, 2);
 });

@@ -29,6 +29,10 @@ import {
   type GenerationWriteGuard,
   withGenerationWriterLease,
 } from "./generation-write-lifecycle.ts";
+import {
+  createGenerationRetryTracker,
+  type GenerationRetryTracker,
+} from "./generation-retry-contract.ts";
 import { invokeAIProviderWithRetry } from "./ai-provider-resilience.ts";
 import {
   lookupWordPackCache,
@@ -269,6 +273,7 @@ async function invokeWordPackLLM(
   alreadyUsed: string[] = [],
   guard: GenerationWriteGuard,
   state: AIInvocationState,
+  retryTracker: GenerationRetryTracker,
 ): Promise<WordPackGenerationResult> {
   const measured = async <T>(operation: () => Promise<T>): Promise<T> => {
     const startedAt = Date.now();
@@ -286,14 +291,17 @@ async function invokeWordPackLLM(
       >({
         operation: () => {
           state.directAttempts += 1;
-          return measured(async () => {
-            await guard.assertAvailable();
-            return await state.directProvider!.generate({
-              theme,
-              count,
-              alreadyUsed,
-            });
-          });
+          return measured(() =>
+            retryTracker.runProvider(
+              guard,
+              () =>
+                state.directProvider!.generate({
+                  theme,
+                  count,
+                  alreadyUsed,
+                }),
+            )
+          );
         },
         onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
           console.warn(
@@ -325,18 +333,21 @@ async function invokeWordPackLLM(
     {
       operation: () => {
         state.base44Attempts += 1;
-        return measured(async () => {
-          await guard.assertAvailable();
-          return await base44.integrations.Core.InvokeLLM({
-            model: BASE44_WORD_PACK_MODEL,
-            prompt: buildWordPackPrompt({
-              theme,
-              count,
-              alreadyUsed,
-            }),
-            response_json_schema: wordPackResponseSchema(theme, count),
-          });
-        });
+        return measured(() =>
+          retryTracker.runProvider(
+            guard,
+            () =>
+              base44.integrations.Core.InvokeLLM({
+                model: BASE44_WORD_PACK_MODEL,
+                prompt: buildWordPackPrompt({
+                  theme,
+                  count,
+                  alreadyUsed,
+                }),
+                response_json_schema: wordPackResponseSchema(theme, count),
+              }),
+          )
+        );
       },
       onRetry: ({ attempt, nextAttempt, delayMilliseconds, error }) => {
         console.warn(
@@ -374,6 +385,7 @@ function lifecycleHTTPStatus(error: unknown): number {
 }
 
 Deno.serve(async (req) => {
+  const retryTracker = createGenerationRetryTracker();
   try {
     if (req.method !== "POST") {
       return Response.json({ error: "Method not allowed" }, { status: 405 });
@@ -425,6 +437,7 @@ Deno.serve(async (req) => {
         request: cacheRequest,
       })
       : null;
+    retryTracker.bindValidatedRequest(idempotency);
 
     let entitlements: EntitlementRecord[] = [];
     let entitlementReadError: unknown = null;
@@ -485,7 +498,8 @@ Deno.serve(async (req) => {
     return await withGenerationWriterLease({
       lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
       userID: user.id,
-      action: async (guard) => {
+      action: async (untrackedGuard) => {
+        const guard = retryTracker.trackWrites(untrackedGuard);
         const quotaStore = base44.asServiceRole.entities.AiGenerationUsage;
         const cacheStore = base44.asServiceRole.entities.AiWordPackCacheVariant;
         const idempotencyStore =
@@ -592,7 +606,7 @@ Deno.serve(async (req) => {
             status: "unknown",
             providers: membership.providers,
             benefits: membership.benefits,
-            retryable: true,
+            ...retryTracker.errorMetadata(error, 503),
           }, { status: 503 });
         }
         const usage = generationUsageMetadata(
@@ -674,6 +688,7 @@ Deno.serve(async (req) => {
               excludedWords,
               guard,
               aiState,
+              retryTracker,
             );
             words = filterSafeCommunityStrings(
               removeExcludedWords(firstPass?.words || [], excludedWords),
@@ -689,6 +704,7 @@ Deno.serve(async (req) => {
                 [...excludedWords, ...words],
                 guard,
                 aiState,
+                retryTracker,
               );
               const additionalWords = filterSafeCommunityStrings(
                 removeExcludedWords(
@@ -876,16 +892,14 @@ Deno.serve(async (req) => {
     const status = lifecycleHTTPStatus(error);
     const normalizedStatus = status >= 400 && status < 600 ? status : 500;
     const code = String((error as { code?: unknown })?.code || "").trim();
-    const retryable = (error as { retryable?: unknown })?.retryable === true;
+    const retryMetadata = retryTracker.errorMetadata(error, normalizedStatus);
     return Response.json({
       error: errorMessage(error),
       ...(code ? { code } : {}),
-      ...(retryable ? { retryable: true } : {}),
+      ...retryMetadata,
     }, {
       status: normalizedStatus,
-      headers: retryable || normalizedStatus === 503
-        ? { "retry-after": "2" }
-        : undefined,
+      headers: retryMetadata.retryable ? { "retry-after": "2" } : undefined,
     });
   }
 });

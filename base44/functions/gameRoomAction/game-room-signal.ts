@@ -1,3 +1,8 @@
+import {
+  exactRoomCloseCompletion,
+  roomCloseActivityEndIsQueued,
+} from "./room-close-intent.ts";
+
 export type GameRoomSignalState = "active" | "closed";
 export type GameRoomSignalProjectionKind = "none" | "lobby_mode_v1";
 export type ProjectedLobbyGameMode = "questions" | "associations";
@@ -41,7 +46,10 @@ export type GameRoomSignalRecipient = {
 export type GameRoomSignalStore = {
   filter(query: Record<string, unknown>): Promise<Record<string, unknown>[]>;
   create(data: GameRoomSignalRecord): Promise<unknown>;
-  update(id: string, data: GameRoomSignalRecord): Promise<unknown>;
+  updateMany(
+    filter: Record<string, unknown>,
+    update: { $set: Partial<GameRoomSignalRecord> },
+  ): Promise<{ updated?: number }>;
 };
 
 function clean(value: unknown): string {
@@ -281,6 +289,121 @@ export function signalRecordsForRoom(
   );
 }
 
+// Match the ordering fields as well as entity metadata: updated_date alone
+// can repeat within one millisecond. Missing legacy fields must remain missing.
+const SIGNAL_CAS_FIELDS = [
+  "lobby_revision",
+  "room_revision",
+  "room_updated_at",
+  "state",
+  "projection_kind",
+  "projection_id",
+  "projected_game_mode",
+  "projection_committed_at",
+  "projection_emitted_at",
+  "close_intent_id",
+  "close_match_id",
+  "close_completion",
+  "updated_date",
+] as const;
+
+export async function compareAndSetGameRoomSignal(
+  store: GameRoomSignalStore,
+  existing: Record<string, unknown>,
+  patch: Partial<GameRoomSignalRecord>,
+): Promise<boolean> {
+  const filter: Record<string, unknown> = {};
+  for (const key of ["id", "user_id", "room_id"]) {
+    if (!clean(existing[key])) throw new Error("Room signal identity missing");
+    filter[key] = existing[key];
+  }
+  for (const key of SIGNAL_CAS_FIELDS) {
+    filter[key] = existing[key] === undefined
+      ? { $exists: false }
+      : existing[key];
+  }
+  const result = await store.updateMany(filter, { $set: patch });
+  if (result?.updated === 1) return true;
+  if (result?.updated === 0) return false;
+  throw new Error("Room signal CAS result is ambiguous");
+}
+
+function shouldUpdateGameRoomSignal(
+  row: Record<string, unknown>,
+  signal: GameRoomSignalRecord,
+): boolean {
+  const existingRoomRevision = revision(row?.room_revision);
+  const existingLobbyRevision = revision(row?.lobby_revision);
+  if (existingRoomRevision > signal.room_revision) return false;
+  if (existingRoomRevision < signal.room_revision) return true;
+  if (existingLobbyRevision > signal.lobby_revision) return false;
+  if (existingLobbyRevision < signal.lobby_revision) return true;
+  const existingState = clean(row?.state);
+  // At the same authoritative revision, closure is monotonic. A delayed
+  // active fanout must not reopen a kicked user or a deleted room, while a
+  // strictly newer revision can still represent a legitimate rejoin.
+  if (existingState === "closed" && signal.state === "active") return false;
+  if (existingState !== "closed" && signal.state === "closed") return true;
+  if (
+    clean(signal.close_intent_id) &&
+    (clean(row?.close_intent_id) !== clean(signal.close_intent_id) ||
+      clean(row?.close_match_id) !== clean(signal.close_match_id))
+  ) return true;
+  const existingCompletion = exactRoomCloseCompletion(row);
+  const nextCompletion = exactRoomCloseCompletion(signal);
+  if (
+    existingCompletion && nextCompletion &&
+    roomCloseActivityEndIsQueued(existingCompletion) &&
+    !roomCloseActivityEndIsQueued(nextCompletion) &&
+    existingCompletion.intent_id === nextCompletion.intent_id &&
+    existingCompletion.match_id === nextCompletion.match_id &&
+    existingCompletion.host_user_id === nextCompletion.host_user_id &&
+    JSON.stringify(existingCompletion.participant_user_ids) ===
+      JSON.stringify(nextCompletion.participant_user_ids)
+  ) {
+    // A retry of the earlier full-fanout receipt cannot revoke a later,
+    // durably queued Activity end for the same exact close generation.
+    return false;
+  }
+  if (
+    signal.close_completion &&
+    JSON.stringify(row?.close_completion || null) !==
+      JSON.stringify(signal.close_completion)
+  ) return true;
+  const existingProjectionKind = projectionKind(row?.projection_kind);
+  const nextProjectionKind = projectionKind(signal.projection_kind);
+  if (existingProjectionKind !== nextProjectionKind) {
+    // Every newly emitted generic/closed signal writes `none`. This explicit
+    // discriminator makes any legacy projection fields retained by the
+    // entity merge inert, while a valid direct projection may replace a
+    // generic hint at the same authoritative revision.
+    if (nextProjectionKind === "none") {
+      return timestamp(signal.room_updated_at) >=
+        timestamp(row?.room_updated_at);
+    }
+    return projectedLobbyModeFromSignal(signal) !== null;
+  }
+  if (nextProjectionKind === "lobby_mode_v1") {
+    const existingProjection = projectedLobbyModeFromSignal(row);
+    const nextProjection = projectedLobbyModeFromSignal(signal);
+    if (!nextProjection) return false;
+    if (!existingProjection) return true;
+    const existingEmittedAt = timestamp(
+      existingProjection.projection_emitted_at,
+    );
+    const nextEmittedAt = timestamp(nextProjection.projection_emitted_at);
+    if (nextEmittedAt > existingEmittedAt) return true;
+    if (nextEmittedAt < existingEmittedAt) return false;
+    // UUID is a deterministic tie-breaker for the rare same-millisecond
+    // emission. This prevents reordered duplicate deliveries from flipping
+    // the personal signal back and forth forever.
+    if (nextProjection.projection_id > existingProjection.projection_id) {
+      return true;
+    }
+  }
+  return timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at);
+}
+
 export async function upsertGameRoomSignal(
   store: GameRoomSignalStore,
   signal: GameRoomSignalRecord,
@@ -292,93 +415,71 @@ export async function upsertGameRoomSignal(
 ): Promise<"created" | "updated" | "unchanged" | "missing"> {
   const query = { user_id: signal.user_id, room_id: signal.room_id };
   options.beforeOperation?.();
-  const existing = options.existingRows ?? await store.filter(query) ?? [];
-  const writable = existing.filter((row) => clean(row?.id));
-  const updates = writable.filter((row) => {
-    const existingRoomRevision = revision(row?.room_revision);
-    const existingLobbyRevision = revision(row?.lobby_revision);
-    if (existingRoomRevision > signal.room_revision) return false;
-    if (existingRoomRevision < signal.room_revision) return true;
-    if (existingLobbyRevision > signal.lobby_revision) return false;
-    if (existingLobbyRevision < signal.lobby_revision) return true;
-    const existingState = clean(row?.state);
-    // At the same authoritative revision, closure is monotonic. A delayed
-    // active fanout must not reopen a kicked user or a deleted room, while a
-    // strictly newer revision can still represent a legitimate rejoin.
-    if (existingState === "closed" && signal.state === "active") return false;
-    if (existingState !== "closed" && signal.state === "closed") return true;
-    if (
-      clean(signal.close_intent_id) &&
-      (clean(row?.close_intent_id) !== clean(signal.close_intent_id) ||
-        clean(row?.close_match_id) !== clean(signal.close_match_id))
-    ) return true;
-    if (
-      signal.close_completion &&
-      JSON.stringify(row?.close_completion || null) !==
-        JSON.stringify(signal.close_completion)
-    ) return true;
-    const existingProjectionKind = projectionKind(row?.projection_kind);
-    const nextProjectionKind = projectionKind(signal.projection_kind);
-    if (existingProjectionKind !== nextProjectionKind) {
-      // Every newly emitted generic/closed signal writes `none`. This explicit
-      // discriminator makes any legacy projection fields retained by the
-      // entity merge inert, while a valid direct projection may replace a
-      // generic hint at the same authoritative revision.
-      if (nextProjectionKind === "none") {
-        return timestamp(signal.room_updated_at) >=
-          timestamp(row?.room_updated_at);
-      }
-      return projectedLobbyModeFromSignal(signal) !== null;
-    }
-    if (nextProjectionKind === "lobby_mode_v1") {
-      const existingProjection = projectedLobbyModeFromSignal(row);
-      const nextProjection = projectedLobbyModeFromSignal(signal);
-      if (!nextProjection) return false;
-      if (!existingProjection) return true;
-      const existingEmittedAt = timestamp(
-        existingProjection.projection_emitted_at,
-      );
-      const nextEmittedAt = timestamp(nextProjection.projection_emitted_at);
-      if (nextEmittedAt > existingEmittedAt) return true;
-      if (nextEmittedAt < existingEmittedAt) return false;
-      // UUID is a deterministic tie-breaker for the rare same-millisecond
-      // emission. This prevents reordered duplicate deliveries from flipping
-      // the personal signal back and forth forever.
-      if (nextProjection.projection_id > existingProjection.projection_id) {
-        return true;
-      }
-    }
-    return timestamp(row?.room_updated_at) < timestamp(signal.room_updated_at);
-  });
-  if (updates.length) {
-    const settled = await Promise.allSettled(
-      updates.map(async (row) => {
-        options.beforeOperation?.();
-        await store.update(clean(row.id), signal);
-      }),
+  let existing = options.existingRows ?? await store.filter(query) ?? [];
+  let observedExisting = existing.length > 0;
+  let didUpdate = false;
+  let lastError: unknown = new Error("Room signal changed concurrently");
+  // Keep account leases while every runtime migrates to CAS. Removing them
+  // requires a separately verified drain of older blind-update writers.
+  for (let attempt = 0; attempt < 3; attempt += 1) {
+    const writable = existing.filter((row) =>
+      clean(row?.id) && row.user_id === signal.user_id &&
+      row.room_id === signal.room_id
     );
+    const updates = writable.filter((row) =>
+      shouldUpdateGameRoomSignal(row, signal)
+    );
+    if (!updates.length) {
+      if (writable.length) return didUpdate ? "updated" : "unchanged";
+      // A deleted row must never be recreated by a delayed update, even when
+      // this caller originally had permission to create a missing signal.
+      if (observedExisting || options.allowCreate === false) return "missing";
+      try {
+        options.beforeOperation?.();
+        await store.create(signal);
+        return "created";
+      } catch (createError) {
+        options.beforeOperation?.();
+        const raced = await store.filter(query) ?? [];
+        const result = await upsertGameRoomSignal(store, signal, {
+          allowCreate: false,
+          existingRows: raced,
+          beforeOperation: options.beforeOperation,
+        });
+        if (result !== "missing") return result;
+        throw createError;
+      }
+    }
+    const settled = await Promise.allSettled(updates.map(async (row) => {
+      options.beforeOperation?.();
+      return await compareAndSetGameRoomSignal(store, row, signal);
+    }));
+    didUpdate ||= settled.some((result) =>
+      result.status === "fulfilled" && result.value
+    );
+    if (
+      settled.every((result) => result.status === "fulfilled" && result.value)
+    ) {
+      return "updated";
+    }
     const failure = settled.find((result) => result.status === "rejected");
-    if (failure?.status === "rejected") throw failure.reason;
-    return "updated";
-  }
-  if (writable.length) return "unchanged";
-  if (options.allowCreate === false) return "missing";
-
-  try {
+    if (failure?.status === "rejected") lastError = failure.reason;
+    // A response-lost CAS may have committed. Refetch before deciding whether
+    // another write is still needed; equal/newer/closed winners are retained.
     options.beforeOperation?.();
-    await store.create(signal);
-    return "created";
-  } catch (createError) {
-    options.beforeOperation?.();
-    const raced = await store.filter(query) ?? [];
-    const racedResult = await upsertGameRoomSignal(store, signal, {
-      allowCreate: false,
-      existingRows: raced,
-      beforeOperation: options.beforeOperation,
-    });
-    if (racedResult !== "missing") return racedResult;
-    throw createError;
+    existing = await store.filter(query) ?? [];
+    observedExisting ||= existing.length > 0;
   }
+  // Reconcile the last attempt too, including a commit whose response was lost.
+  const writable = existing.filter((row) =>
+    clean(row?.id) && row.user_id === signal.user_id &&
+    row.room_id === signal.room_id
+  );
+  if (!writable.length) return "missing";
+  if (writable.every((row) => !shouldUpdateGameRoomSignal(row, signal))) {
+    return didUpdate ? "updated" : "unchanged";
+  }
+  throw lastError;
 }
 
 export async function fanoutGameRoomSignalsBestEffort(input: {

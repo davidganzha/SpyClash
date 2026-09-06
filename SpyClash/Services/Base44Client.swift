@@ -100,6 +100,7 @@ final class Base44Client {
 
     private let session: URLSession
     private var token: String?
+    private var tokenGeneration = UUID()
 
     var hasSessionToken: Bool {
         token?.isEmpty == false
@@ -114,10 +115,12 @@ final class Base44Client {
     }
 
     func setToken(_ token: String) {
+        if self.token != token { tokenGeneration = UUID() }
         self.token = token
     }
 
     func clearToken() {
+        if token != nil { tokenGeneration = UUID() }
         token = nil
     }
 
@@ -876,16 +879,36 @@ final class Base44Client {
         excluding excludedWords: [String] = [],
         preferFresh: Bool = false
     ) async throws -> GeneratedWordPack {
-        try await invokeFunction(
-            "generateWordPack",
-            body: GenerateWordPackPayload(
-                theme: theme.trimmingCharacters(in: .whitespacesAndNewlines),
-                count: count,
-                requestID: requestID,
-                excludedWords: excludedWords,
-                preferFresh: preferFresh
-            )
+        let expectedToken = try requireAccessToken()
+        let expectedTokenGeneration = tokenGeneration
+        let payload = GenerateWordPackPayload(
+            theme: theme.trimmingCharacters(in: .whitespacesAndNewlines),
+            count: count, requestID: requestID,
+            excludedWords: excludedWords, preferFresh: preferFresh
         )
+        let encodedPayload = try JSONEncoder.base44.encode(payload)
+        var completedRetries = 0
+        while true {
+            try Task.checkCancellation()
+            guard token == expectedToken, tokenGeneration == expectedTokenGeneration else { throw CancellationError() }
+            do {
+                let generated: GeneratedWordPack = try await request(
+                    "/apps/\(Self.appID)/functions/generateWordPack",
+                    method: "POST", encodedBody: encodedPayload
+                )
+                try Task.checkCancellation()
+                guard token == expectedToken, tokenGeneration == expectedTokenGeneration else { throw CancellationError() }
+                return generated
+            } catch let error as Base44Error {
+                try Task.checkCancellation()
+                guard token == expectedToken, tokenGeneration == expectedTokenGeneration else { throw CancellationError() }
+                guard let delay = WordGenerationRetryPolicy.delayMilliseconds(
+                    for: error, completedRetries: completedRetries
+                ) else { throw error }
+                completedRetries += 1
+                try await Task.sleep(for: .milliseconds(delay))
+            }
+        }
     }
 
     func gameHistory(userID: String, email: String, limit: Int? = nil) async throws -> [GameHistory] {
@@ -1945,6 +1968,7 @@ final class Base44Client {
         method: String,
         query: [String: String] = [:],
         body: Body? = Optional<EmptyPayload>.none,
+        encodedBody: Data? = nil,
         includeAuthorization: Bool = true,
         timeoutInterval: TimeInterval? = nil
     ) async throws -> T {
@@ -1969,7 +1993,9 @@ final class Base44Client {
         if includeAuthorization, let token {
             request.setValue("Bearer \(token)", forHTTPHeaderField: "Authorization")
         }
-        if let body {
+        if let encodedBody {
+            request.httpBody = encodedBody
+        } else if let body {
             request.httpBody = try JSONEncoder.base44.encode(body)
         }
 
@@ -1993,7 +2019,9 @@ final class Base44Client {
                 statusCode: http.statusCode,
                 code: apiError?.code,
                 retryable: apiError?.retryable ?? false,
-                retryAfterSeconds: retryAfterSeconds
+                retryAfterSeconds: retryAfterSeconds,
+                retryPhase: apiError?.retryPhase,
+                effectsStarted: apiError?.effectsStarted
             )
         }
 
@@ -2308,6 +2336,8 @@ private struct APIErrorEnvelope: Decodable {
     let code: String?
     let retryable: Bool?
     let retryAfterSeconds: Int?
+    let retryPhase: String?
+    let effectsStarted: Bool?
 
     enum CodingKeys: String, CodingKey {
         case message
@@ -2316,6 +2346,8 @@ private struct APIErrorEnvelope: Decodable {
         case code
         case retryable
         case retryAfterSeconds = "retry_after_seconds"
+        case retryPhase = "retry_phase"
+        case effectsStarted = "effects_started"
     }
 
     var resolvedMessage: String? { message ?? errorDescription ?? error }
@@ -2389,19 +2421,25 @@ struct Base44Error: LocalizedError {
     var code: String?
     var retryable = false
     var retryAfterSeconds: Int?
+    var retryPhase: String?
+    var effectsStarted: Bool?
 
     init(
         message: String,
         statusCode: Int? = nil,
         code: String? = nil,
         retryable: Bool = false,
-        retryAfterSeconds: Int? = nil
+        retryAfterSeconds: Int? = nil,
+        retryPhase: String? = nil,
+        effectsStarted: Bool? = nil
     ) {
         self.message = message
         self.statusCode = statusCode
         self.code = code
         self.retryable = retryable
         self.retryAfterSeconds = retryAfterSeconds
+        self.retryPhase = retryPhase
+        self.effectsStarted = effectsStarted
     }
 
     var errorDescription: String? {
@@ -2635,6 +2673,22 @@ enum NotificationMutationRetryPolicy {
             return fallback
         }
         return max(fallback, min(max(retryAfterSeconds, 0), 3) * 1_000)
+    }
+}
+
+enum WordGenerationRetryPolicy {
+    private static let fallbackDelays = [250, 650]
+
+    static func delayMilliseconds(for error: Base44Error, completedRetries: Int) -> Int? {
+        guard error.statusCode == 409,
+              ["active_lease", "cas_contention"].contains(error.code),
+              error.retryable,
+              error.retryPhase == "before_effects",
+              error.effectsStarted == false,
+              fallbackDelays.indices.contains(completedRetries) else { return nil }
+        let fallback = fallbackDelays[completedRetries]
+        guard let seconds = error.retryAfterSeconds else { return fallback }
+        return max(fallback, min(max(seconds, 0), 3) * 1_000)
     }
 }
 

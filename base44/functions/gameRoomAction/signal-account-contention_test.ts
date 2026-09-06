@@ -65,7 +65,7 @@ Deno.test("slow lobby signal releases the host before subsequent lobby, generati
                 signalCreates += 1;
                 return Promise.resolve({});
               },
-              update: () => Promise.resolve({}),
+              updateMany: () => Promise.resolve({ updated: 0 }),
             },
             beforeOperation: budget.assertCanStart,
           });
@@ -149,10 +149,11 @@ Deno.test("failed duplicate signal update waits for its sibling before releasing
                   room_revision: 1,
                 }))),
               create: () => Promise.resolve({}),
-              update: async (id) => {
-                if (id === "failed") throw new Error("update failed");
+              updateMany: async (filter) => {
+                if (filter.id === "failed") throw new Error("update failed");
                 writesStarted();
                 await gate;
+                return { updated: 1 };
               },
             },
             beforeOperation: budget.assertCanStart,

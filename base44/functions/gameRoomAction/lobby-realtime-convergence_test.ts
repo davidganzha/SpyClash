@@ -58,11 +58,25 @@ class MemorySignalStore implements GameRoomSignalStore {
     return Promise.resolve(row);
   }
 
-  update(id: string, data: GameRoomSignalRecord) {
-    const index = this.rows.findIndex((row) => row.id === id);
-    if (index < 0) return Promise.reject(new Error("missing signal"));
-    this.rows[index] = { ...this.rows[index], ...data };
-    return Promise.resolve(this.rows[index]);
+  updateMany(
+    filter: Record<string, unknown>,
+    update: { $set: Partial<GameRoomSignalRecord> },
+  ) {
+    let updated = 0;
+    for (let index = 0; index < this.rows.length; index += 1) {
+      if (
+        !Object.entries(filter).every(([key, value]) => {
+          if (value && typeof value === "object" && "$exists" in value) {
+            return (this.rows[index][key] !== undefined) === value.$exists;
+          }
+          return JSON.stringify(this.rows[index][key]) ===
+            JSON.stringify(value);
+        })
+      ) continue;
+      this.rows[index] = { ...this.rows[index], ...update.$set };
+      updated += 1;
+    }
+    return Promise.resolve({ updated });
   }
 }
 

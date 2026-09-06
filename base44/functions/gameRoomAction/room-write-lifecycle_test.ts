@@ -5,6 +5,7 @@ import {
 } from "./billing-identity-lifecycle.ts";
 import {
   assertExactRoomLeaseCoverage,
+  assertRoomWriteLeases,
   assertRoomWriterLeaseForUser,
   reconcileCommittedGameStartAfterActiveIdentityLease,
   recoverSafeRoomActionAfterActiveIdentityLease,
@@ -668,4 +669,152 @@ Deno.test("committed action result survives bounded release failure", async () =
   assertEquals(releaseCalls, 3);
   assertEquals(delays, [25, 50]);
   assertEquals(loggedFailures, 1);
+});
+
+function gate<T>() {
+  let resolve!: (value: T) => void;
+  let reject!: (reason: unknown) => void;
+  const promise = new Promise<T>((yes, no) => {
+    resolve = yes;
+    reject = no;
+  });
+  return { promise, resolve, reject };
+}
+
+Deno.test("participant validation overlaps four reads and awaits siblings before throwing", async () => {
+  const leases = Array.from(
+    { length: 6 },
+    (_, index) => lease(`user-${index}`),
+  );
+  const reads = leases.map(() => gate<Record<string, unknown>[]>());
+  const started: number[] = [];
+  const failure = new Error("storage unavailable");
+  const lifecycleStore = {
+    filter: ({ subject_key }: { subject_key: string }) => {
+      const index = leases.findIndex((value) =>
+        value.subjectKey === subject_key
+      );
+      started.push(index);
+      return reads[index].promise;
+    },
+  };
+  let settled = false;
+  const operation = assertRoomWriteLeases({
+    lifecycleStore,
+    leases,
+    userIDs: [],
+  })
+    .then(() => {
+      settled = true;
+    }, (error) => {
+      settled = true;
+      return error;
+    });
+  assertEquals(started, [0, 1, 2, 3]);
+  reads[0].reject(failure);
+  await Promise.resolve();
+  await Promise.resolve();
+  assertEquals(settled, false);
+  for (const index of [1, 2, 3]) {
+    const current = leases[index];
+    reads[index].resolve([{
+      id: current.recordID,
+      subject_key: current.subjectKey,
+      state: current.state,
+      lease_token: current.leaseToken,
+      lease_until: current.leaseUntil,
+      revision: current.revision,
+    }]);
+  }
+  assertEquals(await operation, failure);
+  assertEquals(started, [0, 1, 2, 3]);
+});
+
+Deno.test("participant releases overlap in bounded waves and response awaits the final release", async () => {
+  const userIDs = Array.from({ length: 6 }, (_, index) => `user-${index}`);
+  const releases = userIDs.map(() => gate<void>());
+  const firstWave = gate<void>();
+  const secondWave = gate<void>();
+  const started: number[] = [];
+  const acquired: string[] = [];
+  let settled = false;
+  const operation = withRoomWriteLeases({
+    lifecycleStore: {},
+    userIDs,
+    acquire: (_store, userID) => {
+      acquired.push(userID);
+      return Promise.resolve(lease(userID));
+    },
+    release: (_store, current) => {
+      const index = userIDs.findIndex((userID) =>
+        current.recordID === `${userID}-record`
+      );
+      started.push(index);
+      if (started.length === 4) firstWave.resolve();
+      if (started.length === 6) secondWave.resolve();
+      return releases[index].promise;
+    },
+    action: () => Promise.resolve("committed"),
+  }).then((value) => {
+    settled = true;
+    return value;
+  });
+  await firstWave.promise;
+  assertEquals(acquired, userIDs);
+  assertEquals(started, [5, 4, 3, 2]);
+  assertEquals(settled, false);
+  for (const index of [5, 4, 3]) releases[index].resolve();
+  await Promise.resolve();
+  assertEquals(started.length, 4);
+  releases[2].resolve();
+  await secondWave.promise;
+  assertEquals(started, [5, 4, 3, 2, 1, 0]);
+  releases[1].resolve();
+  await Promise.resolve();
+  assertEquals(settled, false);
+  releases[0].resolve();
+  assertEquals(await operation, "committed");
+});
+
+Deno.test("one exhausted cleanup never skips another participant or releases the response early", async () => {
+  const slow = gate<void>();
+  const slowStarted = gate<void>();
+  const failedFinished = gate<void>();
+  let failedAttempts = 0;
+  let settled = false;
+  let logs = 0;
+  const originalLog = console.error;
+  console.error = () => {
+    logs += 1;
+  };
+  try {
+    const operation = withRoomWriteLeases({
+      lifecycleStore: {},
+      userIDs: ["user-a", "user-b"],
+      acquire: (_store, userID) => Promise.resolve(lease(userID)),
+      delay: () => Promise.resolve(),
+      release: (_store, current) => {
+        if (current.recordID === "user-a-record") {
+          slowStarted.resolve();
+          return slow.promise;
+        }
+        failedAttempts += 1;
+        if (failedAttempts === 3) failedFinished.resolve();
+        return Promise.reject(new Error("release unavailable"));
+      },
+      action: () => Promise.resolve("committed once"),
+    }).then((value) => {
+      settled = true;
+      return value;
+    });
+    await slowStarted.promise;
+    await failedFinished.promise;
+    assertEquals(failedAttempts, 3);
+    assertEquals(settled, false);
+    slow.resolve();
+    assertEquals(await operation, "committed once");
+    assertEquals(logs, 1);
+  } finally {
+    console.error = originalLog;
+  }
 });

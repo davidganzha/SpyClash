@@ -645,6 +645,7 @@ enum DismissedRoomExitFailureDisposition: Equatable {
     case retry
     case stop
     case leaveThenStop
+    case deferUntilAuthentication
 }
 
 enum DismissedRoomExitAccountPolicy {
@@ -657,6 +658,98 @@ enum DismissedRoomExitAccountPolicy {
             return false
         }
         return capturedAccessToken == currentAccessToken
+    }
+}
+
+enum DismissedRoomExitOutcome: Equatable {
+    case completed
+    case terminal
+    case cancelled
+    case deferred
+
+    var resolvesIntent: Bool { self == .completed || self == .terminal }
+}
+
+struct DismissedRoomExitIntent: Codable, Equatable {
+    let id: UUID
+    let ownerID: String
+    let roomID: String
+    let membershipID: String?
+    var isResolved = false
+}
+
+/// The local dismissal fence must survive completed cleanup, but its network
+/// operation must not restart on every foreground/launch. Keep that receipt
+/// separately, bound to the exact user intent and membership generation.
+struct DismissedRoomExitIntentStore {
+    private static let storageKey = "spyclash.dismissedRoomExitIntent"
+    let defaults: UserDefaults
+
+    init(defaults: UserDefaults = .standard) {
+        self.defaults = defaults
+    }
+
+    @discardableResult
+    func begin(ownerID: String, roomID: String, membershipID: String?) -> DismissedRoomExitIntent {
+        let intent = DismissedRoomExitIntent(
+            id: UUID(), ownerID: ownerID, roomID: roomID,
+            membershipID: membershipID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank
+        )
+        save(intent)
+        return intent
+    }
+
+    func pendingIntent(ownerID: String, roomID: String, membershipID: String?) -> DismissedRoomExitIntent? {
+        let membershipID = membershipID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank
+        if let intent = current,
+           intent.ownerID == ownerID, intent.roomID == roomID,
+           intent.membershipID == membershipID {
+            return intent.isResolved ? nil : intent
+        }
+        // Upgrade a dismissal saved by an older build exactly once. Never
+        // replace its captured membership with a newer server membership.
+        return begin(ownerID: ownerID, roomID: roomID, membershipID: membershipID)
+    }
+
+    func matches(_ intent: DismissedRoomExitIntent) -> Bool {
+        current == intent
+    }
+
+    @discardableResult
+    func resolve(
+        _ intent: DismissedRoomExitIntent,
+        outcome: DismissedRoomExitOutcome,
+        currentOwnerID: String?,
+        capturedAccessToken: String?,
+        currentAccessToken: String?
+    ) -> Bool {
+        guard outcome.resolvesIntent,
+              currentOwnerID == intent.ownerID,
+              DismissedRoomExitAccountPolicy.canContinue(
+                capturedAccessToken: capturedAccessToken,
+                currentAccessToken: currentAccessToken
+              ),
+              matches(intent) else { return false }
+        var resolved = intent
+        resolved.isResolved = true
+        save(resolved)
+        return true
+    }
+
+    func clear() {
+        defaults.removeObject(forKey: Self.storageKey)
+    }
+
+    private var current: DismissedRoomExitIntent? {
+        defaults.data(forKey: Self.storageKey).flatMap {
+            try? JSONDecoder().decode(DismissedRoomExitIntent.self, from: $0)
+        }
+    }
+
+    private func save(_ intent: DismissedRoomExitIntent) {
+        if let data = try? JSONEncoder().encode(intent) {
+            defaults.set(data, forKey: Self.storageKey)
+        }
     }
 }
 
@@ -686,8 +779,11 @@ enum DismissedRoomExitRetryPolicy {
     ) -> DismissedRoomExitFailureDisposition {
         guard let base44Error = error as? Base44Error,
               let statusCode = base44Error.statusCode else { return .retry }
+        // An expired session has not performed the exit. Stop this attempt,
+        // retaining the exact intent for a later authenticated session.
+        if statusCode == 401 { return .deferUntilAuthentication }
         if statusCode == 409,
-           base44Error.code == "room_exit_membership_conflict" {
+           ["room_exit_membership_conflict", "room_exit_revision_conflict"].contains(base44Error.code) {
             return .stop
         }
         if statusCode == 403, mode == .close { return .leaveThenStop }
@@ -699,42 +795,58 @@ enum DismissedRoomExitRetryPolicy {
     }
 
     @MainActor
+    @discardableResult
     static func run(
         mode: DismissedRoomExitMode,
         shouldContinue: () -> Bool,
         operation: () async throws -> Void,
-        leaveFallback: (() async -> Void)? = nil,
+        leaveFallback: (() async throws -> Void)? = nil,
         sleep: (Int) async throws -> Void
-    ) async {
+    ) async -> DismissedRoomExitOutcome {
         var failedAttempts = 0
         while shouldContinue(), !Task.isCancelled {
             do {
                 try await operation()
-                return
+                guard shouldContinue(), !Task.isCancelled else { return .cancelled }
+                return .completed
             } catch is CancellationError {
-                return
+                return .cancelled
             } catch {
+                guard shouldContinue(), !Task.isCancelled else { return .cancelled }
                 switch failureDisposition(for: error, mode: mode) {
                 case .stop:
-                    return
+                    return .terminal
+                case .deferUntilAuthentication:
+                    return .deferred
                 case .leaveThenStop:
-                    await leaveFallback?()
-                    return
+                    guard let leaveFallback else { return .terminal }
+                    do {
+                        try await leaveFallback()
+                        guard shouldContinue(), !Task.isCancelled else { return .cancelled }
+                        return .completed
+                    } catch is CancellationError {
+                        return .cancelled
+                    } catch {
+                        guard shouldContinue(), !Task.isCancelled else { return .cancelled }
+                        return failureDisposition(for: error, mode: .leave) == .stop
+                            ? .terminal : .deferred
+                    }
                 case .retry:
                     break
                 }
                 guard let delay = delayMilliseconds(
                     afterFailedAttempt: failedAttempts,
                     mode: mode
-                ) else { return }
+                ) else { return .deferred }
                 failedAttempts += 1
                 do {
                     try await sleep(delay)
                 } catch {
-                    return
+                    return .cancelled
                 }
             }
         }
+        return .cancelled
     }
 }
 
@@ -1613,6 +1725,9 @@ final class AppState: NSObject {
                 room.viewerMembershipID,
                 forKey: Self.dismissedRoomExitMembershipStorageKey
             )
+            DismissedRoomExitIntentStore().begin(
+                ownerID: ownerID, roomID: room.id, membershipID: room.viewerMembershipID
+            )
         }
 
         roomSyncOperation = nil
@@ -1635,6 +1750,7 @@ final class AppState: NSObject {
         UserDefaults.standard.removeObject(forKey: Self.dismissedRoomExitRevisionStorageKey)
         UserDefaults.standard.removeObject(forKey: Self.dismissedRoomExitMembershipStorageKey)
         UserDefaults.standard.removeObject(forKey: Self.dismissedRoomCodeStorageKey)
+        DismissedRoomExitIntentStore().clear()
         cancelDismissedRoomExitAttempt()
     }
 
@@ -1743,16 +1859,22 @@ final class AppState: NSObject {
             .flatMap { ($0 as? NSNumber)?.intValue }
         let expectedMembershipID = UserDefaults.standard
             .string(forKey: Self.dismissedRoomExitMembershipStorageKey)
-        guard let exitAccessToken = client.currentAccessToken else { return }
+        let intentStore = DismissedRoomExitIntentStore()
+        guard let ownerID = user?.id,
+              let intent = intentStore.pendingIntent(
+                ownerID: ownerID, roomID: roomID, membershipID: expectedMembershipID
+              ),
+              let exitAccessToken = client.currentAccessToken else { return }
         let attemptGeneration = UUID()
         dismissedRoomExitAttemptGeneration = attemptGeneration
         dismissedRoomExitTask = Task { @MainActor [weak self] in
             guard let self else { return }
-            await DismissedRoomExitRetryPolicy.run(
+            let outcome = await DismissedRoomExitRetryPolicy.run(
                 mode: exitMode,
                 shouldContinue: {
                     self.dismissedRoomExitAttemptGeneration == attemptGeneration &&
                         self.isDismissedRoom(roomID) &&
+                        intentStore.matches(intent) &&
                         DismissedRoomExitAccountPolicy.canContinue(
                             capturedAccessToken: exitAccessToken,
                             currentAccessToken: self.client.currentAccessToken
@@ -1785,8 +1907,8 @@ final class AppState: NSObject {
                     guard DismissedRoomExitAccountPolicy.canContinue(
                         capturedAccessToken: exitAccessToken,
                         currentAccessToken: self.client.currentAccessToken
-                    ) else { return }
-                    try? await self.client.leaveRoom(
+                    ) else { throw CancellationError() }
+                    try await self.client.leaveRoom(
                         roomID: roomID,
                         expectedRevision: expectedRevision,
                         expectedMembershipID: expectedMembershipID
@@ -1797,6 +1919,13 @@ final class AppState: NSObject {
                 }
             )
             if self.dismissedRoomExitAttemptGeneration == attemptGeneration {
+                if self.isDismissedRoom(roomID), !Task.isCancelled {
+                    intentStore.resolve(
+                        intent, outcome: outcome, currentOwnerID: self.user?.id,
+                        capturedAccessToken: exitAccessToken,
+                        currentAccessToken: self.client.currentAccessToken
+                    )
+                }
                 self.dismissedRoomExitAttemptGeneration = nil
                 self.dismissedRoomExitTask = nil
             }

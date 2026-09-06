@@ -137,6 +137,7 @@ import {
   validateLobbyMutation,
 } from "./lobby-state-policy.ts";
 import {
+  compareAndSetGameRoomSignal,
   fanoutGameRoomSignalsBestEffort,
   hasDurableClosedRoomSignal,
   lobbyModeSignalProjectionForRepair,
@@ -1314,11 +1315,15 @@ async function persistRoomCloseActivityEndQueuedUnderLeases(
       participantUserIDs.includes(clean(signal?.user_id)) &&
       !roomCloseActivityEndIsQueued(exact);
   });
-  await Promise.all(
+  // Reconcile from persisted rows even after a response-lost CAS. A stale
+  // receipt must not overwrite a newer close completion or signal generation.
+  await Promise.allSettled(
     rowsToUpdate.map((signal) =>
-      base44.asServiceRole.entities.GameRoomSignal.update(clean(signal.id), {
-        close_completion: durableQueuedCompletion,
-      })
+      compareAndSetGameRoomSignal(
+        base44.asServiceRole.entities.GameRoomSignal,
+        signal,
+        { close_completion: durableQueuedCompletion },
+      )
     ),
   );
   const persisted = await base44.asServiceRole.entities.GameRoomSignal.filter({
