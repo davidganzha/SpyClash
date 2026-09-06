@@ -1,0 +1,33 @@
+{
+  "candidate_output_root": "/var/folders/4j/wkjrm6cn0z9f5v932wqlmfz40000gn/T/spyclash-reliability-146-3yodigo5/candidate-complete",
+  "candidate_runtime_patch_sha256": "bf66236735fdf3500dcdc0fb29ffb6b5d131a9c7334c57b53713488af6d83382",
+  "exact_entry_typecheck": {
+    "failed": 0,
+    "passed": 12
+  },
+  "full_candidate_suite": {
+    "failed": 0,
+    "log": "complete-full-tests.log",
+    "passed": 956,
+    "steps_passed": 13
+  },
+  "negative_guard_checks": {
+    "failed": 0,
+    "passed": 15
+  },
+  "previous_intermediate_full_suite": {
+    "failed": 5,
+    "log": "final-full-tests-complete-fixtures.log",
+    "passed": 950,
+    "resolution": "Connected committed-start, terminal-completion and profile-concurrency changes included; full final suite passed without exclusions."
+  },
+  "production_mutations": 0,
+  "profile_fence_fault_tests": {
+    "failed": 0,
+    "fixture": "profile-fence-candidate_test.ts",
+    "fixture_sha256": "7f553ef5d6418e5ef88c916292512d7c0fd5c4699512c00d929cf2ffa46f7096",
+    "log": "/tmp/spyclash-146-profile-fence-complete-candidate-tests.log",
+    "passed": 9
+  },
+  "readiness": "locally_verified_candidate"
+}

@@ -1,3 +1,4 @@
+import Foundation
 import XCTest
 @testable import SpyClash
 
@@ -195,6 +196,89 @@ final class WordPackDraftTests: XCTestCase {
             ),
             100
         )
+    }
+
+    func testUnknownGenerationOutcomeAllocatesNewIDOnlyOnNextExplicitRequest() {
+        let signature = WordPackAIGenerationSignature(theme: "Countries", count: 12)
+        var allocatedIDs: [UUID] = []
+        let allocate = {
+            let id = UUID()
+            allocatedIDs.append(id)
+            return id
+        }
+        let first = WordPackAIGenerationRequest.forExplicitGeneration(
+            signature: signature, reusing: nil, makeID: allocate
+        )
+        let error = Base44Error(
+            message: "Outcome unknown", statusCode: 503,
+            code: "generation_outcome_unknown", retryable: false
+        )
+        let pending = first.retainedAfterFailure(
+            error, failedRequest: first, activeGenerationID: first.id,
+            currentSignature: signature, accountUnchanged: true
+        )
+        XCTAssertNil(pending)
+        XCTAssertEqual(allocatedIDs, [first.id], "Failure handling must not create another generation")
+        XCTAssertNil(WordGenerationRetryPolicy.delayMilliseconds(for: error, completedRetries: 0))
+
+        let next = WordPackAIGenerationRequest.forExplicitGeneration(
+            signature: signature, reusing: pending, makeID: allocate
+        )
+        XCTAssertEqual(allocatedIDs, [first.id, next.id])
+        XCTAssertNotEqual(next.id, first.id)
+        XCTAssertEqual(next.signature, first.signature)
+    }
+
+    func testRecoverableOrUntypedGenerationFailurePreservesIDForResultReplay() {
+        let signature = WordPackAIGenerationSignature(theme: "Countries", count: 12)
+        let request = WordPackAIGenerationRequest(id: UUID(), signature: signature)
+        let errors: [Error] = [
+            URLError(.networkConnectionLost),
+            Base44Error(message: "generation_outcome_unknown", statusCode: 503),
+            Base44Error(message: "Busy", statusCode: 503, code: "generation_journal_unavailable", retryable: true),
+            Base44Error(message: "Busy", statusCode: 409, code: "active_lease", retryable: true),
+            Base44Error(message: "Unexpected status", statusCode: 409, code: "generation_outcome_unknown"),
+            CancellationError()
+        ]
+        for error in errors {
+            let pending = request.retainedAfterFailure(
+                error, failedRequest: request, activeGenerationID: request.id,
+                currentSignature: signature, accountUnchanged: true
+            )
+            let retry = WordPackAIGenerationRequest.forExplicitGeneration(
+                signature: signature, reusing: pending,
+                makeID: { XCTFail("A retry must retain the operation ID"); return UUID() }
+            )
+            XCTAssertEqual(retry, request)
+        }
+    }
+
+    func testStaleUnknownOutcomeCannotInvalidateAnotherRequestAccountOrSignature() {
+        let signature = WordPackAIGenerationSignature(theme: "Countries", count: 12)
+        let old = WordPackAIGenerationRequest(id: UUID(), signature: signature)
+        let replacement = WordPackAIGenerationRequest(id: UUID(), signature: signature)
+        let error = Base44Error(message: "Unknown", statusCode: 503, code: "generation_outcome_unknown")
+        XCTAssertEqual(replacement.retainedAfterFailure(
+            error, failedRequest: old, activeGenerationID: replacement.id,
+            currentSignature: signature, accountUnchanged: true
+        ), replacement)
+        XCTAssertEqual(old.retainedAfterFailure(
+            error, failedRequest: old, activeGenerationID: replacement.id,
+            currentSignature: signature, accountUnchanged: true
+        ), old)
+        XCTAssertEqual(old.retainedAfterFailure(
+            error, failedRequest: old, activeGenerationID: old.id,
+            currentSignature: signature, accountUnchanged: false
+        ), old)
+        XCTAssertEqual(old.retainedAfterFailure(
+            error, failedRequest: old, activeGenerationID: old.id,
+            currentSignature: WordPackAIGenerationSignature(theme: "Countries", count: 24),
+            accountUnchanged: true
+        ), old)
+        XCTAssertEqual(old.retainedAfterFailure(
+            error, failedRequest: old, activeGenerationID: nil,
+            currentSignature: signature, accountUnchanged: true
+        ), old)
     }
 
     func testLegacyRecommendedLobbyCountIsNormalizedAndRequiresOneServerSync() {

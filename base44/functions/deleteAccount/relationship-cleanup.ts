@@ -74,6 +74,7 @@ export async function deleteAccountRelationshipRecords(input: {
   gameHistoryStore: any;
   aiWordPackCacheVariantStore: any;
   aiWordPackRequestResultStore: any;
+  aiWordPackOperationStore: any;
   pushDeviceStore: any;
   liveActivityStore: any;
   pushEventStore: any;
@@ -128,6 +129,9 @@ export async function deleteAccountRelationshipRecords(input: {
     user_id: input.userID,
   });
   await deleteAllMatching(input.aiWordPackRequestResultStore, {
+    user_id: input.userID,
+  });
+  await deleteAllMatching(input.aiWordPackOperationStore, {
     user_id: input.userID,
   });
   await deleteAllMatching(input.pushDeviceStore, {

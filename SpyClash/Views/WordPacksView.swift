@@ -306,6 +306,7 @@ struct WordPacksView: View {
                         ) {
                             editor = .edit(pack)
                         }
+                        .accessibilityIdentifier("wordPacks.edit.\(pack.id)")
 
                         smallActionButton(
                             "trash.fill",

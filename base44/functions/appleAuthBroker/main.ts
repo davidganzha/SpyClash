@@ -121,6 +121,12 @@ class BrokerError extends Error {
   }
 }
 
+function rethrowBrokerServerError(error: unknown) {
+  // Key/configuration failures are service failures, not rejected credentials.
+  // Keep their typed status; errorResponse redacts internal details for 5xx.
+  if (error instanceof BrokerError && error.status >= 500) throw error;
+}
+
 class GoogleAuthorizationStateError extends BrokerError {
   constructor(readonly reason: GoogleStateFailureReason) {
     super("invalid_state", 400);
@@ -964,6 +970,7 @@ async function verifiedGoogleAuthorizationState(rawState: string | null) {
       "google_state",
     );
   } catch (error) {
+    rethrowBrokerServerError(error);
     const reason = googleStateJWTFailureReason(error);
     console.error("appleAuthBroker Google state rejected", {
       reason,
@@ -1148,7 +1155,8 @@ async function handleAuthorize(req: Request, params: URLSearchParams) {
         appleClientID,
         clearNativeCookie(),
       );
-    } catch {
+    } catch (error) {
+      rethrowBrokerServerError(error);
       // Invalid or expired bootstrap cookies do not reveal validation details;
       // clear them and continue with a normal Apple authorization.
     }
@@ -1222,7 +1230,8 @@ async function handleToken(req: Request, params: URLSearchParams) {
   let payload: JWTPayload;
   try {
     payload = await verifyBrokerJwt(code, clientId, "authorization_code");
-  } catch {
+  } catch (error) {
+    rethrowBrokerServerError(error);
     throw new BrokerError("invalid_grant", 400);
   }
 
@@ -1370,7 +1379,8 @@ async function handleUserinfo(req: Request) {
   let payload: JWTPayload;
   try {
     payload = await verifyBrokerJwt(token, USERINFO_AUDIENCE, "access_token");
-  } catch {
+  } catch (error) {
+    rethrowBrokerServerError(error);
     throw new BrokerError("invalid_token", 401);
   }
 
@@ -1581,7 +1591,8 @@ async function handleAppleCallback(req: Request, params: URLSearchParams) {
       APPLE_STATE_AUDIENCE,
       "apple_state",
     );
-  } catch {
+  } catch (error) {
+    rethrowBrokerServerError(error);
     throw new BrokerError("invalid_state", 400);
   }
   await assertBrowserTransaction(req, statePayload, "apple_callback");

@@ -1,0 +1,160 @@
+[
+  {
+    "entry": "main.ts",
+    "head_entry_matches_remote": false,
+    "local_entry_matches_remote": false,
+    "name": "advanceRound",
+    "remote_entry_sha256": "c592bf0b3cd3178de39d65df57f3c2590d57221f252180ebce23b5301f521f33",
+    "runtime_file_count": 1
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": false,
+    "local_entry_matches_remote": false,
+    "name": "app-store-entitlement",
+    "remote_entry_sha256": "9613d4407d6e0a13135628bf10d7dfc8bbf31f6d5af1f04a65d5e7b8ed678056",
+    "runtime_file_count": 10
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": false,
+    "head_helper_matches_remote": true,
+    "local_entry_matches_remote": false,
+    "name": "appleAuthBroker",
+    "remote_entry_sha256": "053fed0bf88d677a6a27722ebbc0ada869389b29ece4bab28b6452fd1b20b7a0",
+    "remote_helper_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+    "runtime_file_count": 11
+  },
+  {
+    "entry": "main.ts",
+    "head_entry_matches_remote": true,
+    "local_entry_matches_remote": true,
+    "name": "appleAuthCallback",
+    "remote_entry_sha256": "c904d7c057507acf6cdbf0ade19af70fa203c8828ea0b0de30282ef511b85174",
+    "runtime_file_count": 3
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": true,
+    "head_helper_matches_remote": true,
+    "local_entry_matches_remote": true,
+    "name": "autoRegisterUser",
+    "remote_entry_sha256": "ebd3244fb1796ab3b5d8b86eac9e6e374dbcf98bd4b5be51f2029e70b9b8c895",
+    "remote_helper_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+    "runtime_file_count": 4
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": true,
+    "head_helper_matches_remote": true,
+    "local_entry_matches_remote": true,
+    "name": "checkSubscription",
+    "remote_entry_sha256": "e155f9151994c5adc12fc7795cadac7674daf4d738b17578d96537a6bdf66835",
+    "remote_helper_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+    "runtime_file_count": 8
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": true,
+    "head_helper_matches_remote": true,
+    "local_entry_matches_remote": true,
+    "name": "communityAction",
+    "remote_entry_sha256": "e8a156e48a767194bc6e39e366cd093a47d18d2b260ad5cef0cdca025d4e1c6b",
+    "remote_helper_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+    "runtime_file_count": 20
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": true,
+    "head_helper_matches_remote": true,
+    "local_entry_matches_remote": true,
+    "name": "createCheckout",
+    "remote_entry_sha256": "ba870940b7294b700560f34eed704429b56b60ac799df256aa6822e4afb25068",
+    "remote_helper_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+    "runtime_file_count": 6
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": true,
+    "head_helper_matches_remote": true,
+    "local_entry_matches_remote": false,
+    "name": "deleteAccount",
+    "remote_entry_sha256": "7dfda139dc6eb894f14de163717c5b3cff7f89b8df3071aa8b1bc10a43bc3957",
+    "remote_helper_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+    "runtime_file_count": 12
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": false,
+    "head_helper_matches_remote": true,
+    "local_entry_matches_remote": false,
+    "name": "gameRoomAction",
+    "remote_entry_sha256": "6221f2da83cbed5a0c844da2dc437881eb8b7a63e2bda7b18faaad48dd7d97df",
+    "remote_helper_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+    "runtime_file_count": 48
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": true,
+    "head_helper_matches_remote": true,
+    "local_entry_matches_remote": false,
+    "name": "generateWordPack",
+    "remote_entry_sha256": "f71bffe4d35dc706622626ea7b3ce83af59db62a56aa3bddb6d61548dcbc1ca4",
+    "remote_helper_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+    "runtime_file_count": 14
+  },
+  {
+    "entry": "main.ts",
+    "head_entry_matches_remote": false,
+    "local_entry_matches_remote": false,
+    "name": "googleAuthCallback",
+    "remote_entry_sha256": "d546011a1e57f6aa1764d885822524b993e8f5c9d7853ee0e4c8cc819d6e71d6",
+    "runtime_file_count": 3
+  },
+  {
+    "entry": "main.ts",
+    "head_entry_matches_remote": true,
+    "local_entry_matches_remote": true,
+    "name": "mobileAuthCallback",
+    "remote_entry_sha256": "56ea4f51a4d2175b546fa8467f502b3237bc95260f76d3cd7892401f627e0e28",
+    "runtime_file_count": 1
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": true,
+    "local_entry_matches_remote": true,
+    "name": "notificationAction",
+    "remote_entry_sha256": "9ff1d76b55c63cd7d21893d49d20c93719ed35148f6cb3baddcb6c1d5c613f05",
+    "runtime_file_count": 8
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": false,
+    "head_helper_matches_remote": true,
+    "local_entry_matches_remote": false,
+    "name": "pushNotificationAction",
+    "remote_entry_sha256": "eba74c33a40c2d4949fcec7953e1d9d162a018024eed4a60fcea9fe20c028d19",
+    "remote_helper_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+    "runtime_file_count": 27
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": false,
+    "head_helper_matches_remote": true,
+    "local_entry_matches_remote": false,
+    "name": "stripe-entitlement-webhook",
+    "remote_entry_sha256": "c01a89a01ab750f4a0e785355ce41147fcada34cab005651e246e64b18842d9f",
+    "remote_helper_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+    "runtime_file_count": 6
+  },
+  {
+    "entry": "entry.ts",
+    "head_entry_matches_remote": true,
+    "head_helper_matches_remote": true,
+    "local_entry_matches_remote": true,
+    "name": "wordPackAction",
+    "remote_entry_sha256": "44fe41b30f4f9ee7f97e5472ee234d47c3f4a3486ed596d37199c9936b9aa4d8",
+    "remote_helper_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+    "runtime_file_count": 8
+  }
+]

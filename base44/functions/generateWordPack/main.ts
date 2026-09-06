@@ -33,7 +33,15 @@ import {
   createGenerationRetryTracker,
   type GenerationRetryTracker,
 } from "./generation-retry-contract.ts";
-import { invokeAIProviderWithRetry } from "./ai-provider-resilience.ts";
+import {
+  invokeAIProviderWithRetry,
+  isTransientAIProviderError,
+} from "./ai-provider-resilience.ts";
+import {
+  lookupCompletedWordPackOperation,
+  runWordPackOperation,
+  WordPackOperationError,
+} from "./generation-operation.ts";
 import {
   lookupWordPackCache,
   persistWordPackCacheVariant,
@@ -289,6 +297,7 @@ async function invokeWordPackLLM(
       const directResult = await invokeAIProviderWithRetry<
         WordPackGenerationResult
       >({
+        delays: [], // A transport error may hide completed provider work.
         operation: () => {
           state.directAttempts += 1;
           return measured(() =>
@@ -319,6 +328,12 @@ async function invokeWordPackLLM(
         0;
       return directResult;
     } catch (error) {
+      if (isTransientAIProviderError(error)) {
+        throw new WordPackOperationError(
+          "generation_outcome_unknown",
+          "AI did not confirm the previous attempt. It was not repeated automatically.",
+        );
+      }
       if (!shouldFallbackFromDirectWordPackProvider(error)) throw error;
       state.directProviderDisabled = true;
       state.fallbackUsed = true;
@@ -331,6 +346,7 @@ async function invokeWordPackLLM(
 
   const candidate = await invokeAIProviderWithRetry<WordPackSelfAuditCandidate>(
     {
+      delays: [], // Never automatically repeat an ambiguous provider call.
       operation: () => {
         state.base44Attempts += 1;
         return measured(() =>
@@ -507,10 +523,28 @@ Deno.serve(async (req) => {
 
         if (idempotency) {
           try {
-            const replay = await lookupIdempotentWordPackResult({
-              store: idempotencyStore,
-              identity: idempotency,
-            });
+            let journalError: unknown;
+            let replay;
+            try {
+              replay = await lookupCompletedWordPackOperation({
+                store: base44.asServiceRole.entities.AiWordPackOperation,
+                identity: idempotency,
+              });
+            } catch (error) {
+              if (error instanceof WordPackIdempotencyConflictError) {
+                throw error;
+              }
+              journalError = error;
+            }
+            if (!replay) {
+              replay = await lookupIdempotentWordPackResult({
+                store: idempotencyStore,
+                identity: idempotency,
+              });
+            }
+            // Either durable result is sufficient to replay. If both have no
+            // result, a failed journal read cannot authorize fresh effects.
+            if (!replay && journalError) throw journalError;
             if (replay) {
               let generationCount = Math.max(
                 0,
@@ -579,303 +613,353 @@ Deno.serve(async (req) => {
           }
         }
 
-        // Legacy metering remains available if CASADA is ever disabled. An
-        // exact request_id replay above still bypasses it because that replay
-        // is the same logical user action.
-        let reservation: QuotaReservation;
-        try {
-          reservation = await reserveGenerationQuota(
-            quotaStore,
-            user.id,
-            membership.tier,
-            guard,
-          );
-        } catch (error) {
-          if (error instanceof BillingIdentityLifecycleError) throw error;
-          console.error(
-            "generateWordPack quota reservation error:",
-            errorMessage(error),
-          );
-          return Response.json({
-            error: "AI usage could not be reserved. Try again shortly.",
-            code: "quota_unavailable",
-            active: membership.active,
-            tier: membership.tier,
-            protocol: membership.protocol,
-            expires_at: membership.expires_at,
-            status: "unknown",
-            providers: membership.providers,
-            benefits: membership.benefits,
-            ...retryTracker.errorMetadata(error, 503),
-          }, { status: 503 });
-        }
-        const usage = generationUsageMetadata(
-          membership.tier,
-          reservation.usedBefore,
-        );
-
-        if (!reservation.allowed) {
-          return Response.json(
-            {
-              error: "Daily AI generation limit reached. Try again tomorrow.",
-              code: "daily_ai_limit_reached",
+        const executeGeneration = async (): Promise<Response> => {
+          // Legacy metering remains available if CASADA is ever disabled. An
+          // exact request_id replay above still bypasses it because that replay
+          // is the same logical user action.
+          let reservation: QuotaReservation;
+          try {
+            reservation = await reserveGenerationQuota(
+              quotaStore,
+              user.id,
+              membership.tier,
+              guard,
+            );
+          } catch (error) {
+            if (error instanceof BillingIdentityLifecycleError) throw error;
+            console.error(
+              "generateWordPack quota reservation error:",
+              errorMessage(error),
+            );
+            return Response.json({
+              error: "AI usage could not be reserved. Try again shortly.",
+              code: "quota_unavailable",
               active: membership.active,
               tier: membership.tier,
               protocol: membership.protocol,
               expires_at: membership.expires_at,
-              status: membership.active ? "active" : "inactive",
+              status: "unknown",
               providers: membership.providers,
               benefits: membership.benefits,
-              ...usage,
-            },
-            { status: 429 },
+              ...retryTracker.errorMetadata(error, 503),
+            }, { status: 503 });
+          }
+          const usage = generationUsageMetadata(
+            membership.tier,
+            reservation.usedBefore,
           );
-        }
 
-        let words: string[] = [];
-        let category = theme;
-        let exhausted = false;
-        let cacheHit = false;
-        let cacheVariantKey: string | undefined;
-        let exhaustionVerificationUsed = false;
-        let aiState: AIInvocationState = {
-          directProvider: null,
-          directProviderDisabled: false,
-          directAttempts: 0,
-          base44Attempts: 0,
-          aiDurationMilliseconds: 0,
-          qualityRejectedCount: 0,
-          qualityReplacementCount: 0,
-          fallbackUsed: false,
-        };
-        try {
-          if (!preferFresh) {
-            try {
-              const hit = await lookupWordPackCache({
-                store: cacheStore,
-                request: cacheRequest,
-                selectionSeed: requestID ?? cacheRequest.cacheKey,
-              });
-              if (hit) {
-                const safeWords = filterSafeCommunityStrings(
-                  removeExcludedWords(hit.words, excludedWords),
-                ).slice(0, count);
-                if (
-                  safeWords.length >= 2 &&
-                  (safeWords.length >= count || hit.exhausted)
-                ) {
-                  words = safeWords;
-                  category = theme;
-                  exhausted = hit.exhausted;
-                  cacheHit = true;
-                  cacheVariantKey = hit.variantKey;
-                }
-              }
-            } catch (error) {
-              console.error(
-                "generateWordPack cache lookup error:",
-                errorMessage(error),
-              );
-            }
+          if (!reservation.allowed) {
+            return Response.json(
+              {
+                error: "Daily AI generation limit reached. Try again tomorrow.",
+                code: "daily_ai_limit_reached",
+                active: membership.active,
+                tier: membership.tier,
+                protocol: membership.protocol,
+                expires_at: membership.expires_at,
+                status: membership.active ? "active" : "inactive",
+                providers: membership.providers,
+                benefits: membership.benefits,
+                ...usage,
+              },
+              { status: 429 },
+            );
           }
 
-          if (!cacheHit) {
-            aiState = createAIInvocationState();
-            const firstPass = await invokeWordPackLLM(
-              base44,
-              theme,
-              count,
-              excludedWords,
-              guard,
-              aiState,
-              retryTracker,
-            );
-            words = filterSafeCommunityStrings(
-              removeExcludedWords(firstPass?.words || [], excludedWords),
-            ).slice(0, count);
-            assertNoKnownNamedThemeDrift(theme, words);
-            exhausted = firstPass?.exhausted === true && words.length < count;
-            if (exhausted) {
-              exhaustionVerificationUsed = true;
-              const verification = await invokeWordPackLLM(
+          let words: string[] = [];
+          let category = theme;
+          let exhausted = false;
+          let cacheHit = false;
+          let cacheVariantKey: string | undefined;
+          let exhaustionVerificationUsed = false;
+          let aiState: AIInvocationState = {
+            directProvider: null,
+            directProviderDisabled: false,
+            directAttempts: 0,
+            base44Attempts: 0,
+            aiDurationMilliseconds: 0,
+            qualityRejectedCount: 0,
+            qualityReplacementCount: 0,
+            fallbackUsed: false,
+          };
+          try {
+            if (!preferFresh) {
+              try {
+                const hit = await lookupWordPackCache({
+                  store: cacheStore,
+                  request: cacheRequest,
+                  selectionSeed: requestID ?? cacheRequest.cacheKey,
+                });
+                if (hit) {
+                  const safeWords = filterSafeCommunityStrings(
+                    removeExcludedWords(hit.words, excludedWords),
+                  ).slice(0, count);
+                  if (
+                    safeWords.length >= 2 &&
+                    (safeWords.length >= count || hit.exhausted)
+                  ) {
+                    words = safeWords;
+                    category = theme;
+                    exhausted = hit.exhausted;
+                    cacheHit = true;
+                    cacheVariantKey = hit.variantKey;
+                  }
+                }
+              } catch (error) {
+                console.error(
+                  "generateWordPack cache lookup error:",
+                  errorMessage(error),
+                );
+              }
+            }
+
+            if (!cacheHit) {
+              aiState = createAIInvocationState();
+              const firstPass = await invokeWordPackLLM(
                 base44,
                 theme,
-                Math.max(2, count - words.length),
-                [...excludedWords, ...words],
+                count,
+                excludedWords,
                 guard,
                 aiState,
                 retryTracker,
               );
-              const additionalWords = filterSafeCommunityStrings(
-                removeExcludedWords(
-                  verification.words,
+              words = filterSafeCommunityStrings(
+                removeExcludedWords(firstPass?.words || [], excludedWords),
+              ).slice(0, count);
+              assertNoKnownNamedThemeDrift(theme, words);
+              exhausted = firstPass?.exhausted === true && words.length < count;
+              if (exhausted) {
+                exhaustionVerificationUsed = true;
+                const verification = await invokeWordPackLLM(
+                  base44,
+                  theme,
+                  Math.max(2, count - words.length),
                   [...excludedWords, ...words],
-                ),
-              );
-              assertNoKnownNamedThemeDrift(theme, additionalWords);
-              words = uniqueWords([...words, ...additionalWords]).slice(
-                0,
-                count,
-              );
-              exhausted = verification.exhausted === true &&
-                words.length < count;
-            }
-            category = theme;
-            if (words.length < count && !exhausted) {
-              throw new WordPackQualityGateError();
-            }
-          }
-
-          if (words.length < 2) {
-            await releaseGenerationQuota(quotaStore, reservation, guard);
-            return Response.json({
-              error: "AI did not return enough playable words.",
-            }, { status: 502 });
-          }
-
-          if (!cacheHit) {
-            try {
-              const cached = await guard.boundary(() =>
-                persistWordPackCacheVariant({
-                  store: cacheStore,
-                  request: cacheRequest,
-                  result: {
-                    category: STORED_WORD_PACK_CATEGORY,
-                    words,
-                    exhausted,
-                  },
-                })
-              );
-              cacheVariantKey = cached.variant_key;
-            } catch (error) {
-              console.error(
-                "generateWordPack cache persistence error:",
-                errorMessage(error),
-              );
-            }
-          }
-
-          if (idempotency) {
-            try {
-              await guard.boundary(() =>
-                persistIdempotentWordPackResult({
-                  store: idempotencyStore,
-                  identity: idempotency,
-                  result: {
-                    category: STORED_WORD_PACK_CATEGORY,
-                    words,
-                    exhausted,
-                    cacheVariantKey,
-                  },
-                })
-              );
-            } catch (error) {
-              if (error instanceof WordPackIdempotencyConflictError) {
-                throw error;
+                  guard,
+                  aiState,
+                  retryTracker,
+                );
+                const additionalWords = filterSafeCommunityStrings(
+                  removeExcludedWords(
+                    verification.words,
+                    [...excludedWords, ...words],
+                  ),
+                );
+                assertNoKnownNamedThemeDrift(theme, additionalWords);
+                words = uniqueWords([...words, ...additionalWords]).slice(
+                  0,
+                  count,
+                );
+                exhausted = verification.exhausted === true &&
+                  words.length < count;
               }
-              console.error(
-                "generateWordPack idempotency persistence error:",
-                errorMessage(error),
-              );
-              throw new WordPackIdempotencyUnavailableError();
+              category = theme;
+              if (words.length < count && !exhausted) {
+                throw new WordPackQualityGateError();
+              }
             }
 
+            if (words.length < 2) {
+              await releaseGenerationQuota(quotaStore, reservation, guard);
+              return Response.json({
+                error: "AI did not return enough playable words.",
+              }, { status: 502 });
+            }
+
+            if (!cacheHit) {
+              try {
+                const cached = await guard.boundary(() =>
+                  persistWordPackCacheVariant({
+                    store: cacheStore,
+                    request: cacheRequest,
+                    result: {
+                      category: STORED_WORD_PACK_CATEGORY,
+                      words,
+                      exhausted,
+                    },
+                  })
+                );
+                cacheVariantKey = cached.variant_key;
+              } catch (error) {
+                console.error(
+                  "generateWordPack cache persistence error:",
+                  errorMessage(error),
+                );
+              }
+            }
+
+            if (idempotency) {
+              try {
+                await guard.boundary(() =>
+                  persistIdempotentWordPackResult({
+                    store: idempotencyStore,
+                    identity: idempotency,
+                    result: {
+                      category: STORED_WORD_PACK_CATEGORY,
+                      words,
+                      exhausted,
+                      cacheVariantKey,
+                    },
+                  })
+                );
+              } catch (error) {
+                if (error instanceof WordPackIdempotencyConflictError) {
+                  throw error;
+                }
+                console.error(
+                  "generateWordPack idempotency persistence error:",
+                  errorMessage(error),
+                );
+                throw new WordPackIdempotencyUnavailableError();
+              }
+
+              try {
+                await guard.boundary(() =>
+                  pruneExpiredWordPackRequestResults({
+                    store: idempotencyStore,
+                    userID: user.id,
+                    limit: 10,
+                  })
+                );
+              } catch (error) {
+                console.error(
+                  "generateWordPack idempotency prune error:",
+                  errorMessage(error),
+                );
+              }
+            }
+
+            // For idempotent clients this is strictly after the replay result
+            // commits, so cleanup latency cannot cause another provider call.
+            // Legacy clients also write reusable variants, so they must take
+            // part in bounded physical TTL cleanup as well.
             try {
               await guard.boundary(() =>
-                pruneExpiredWordPackRequestResults({
-                  store: idempotencyStore,
+                pruneExpiredWordPackCacheVariants({
+                  store: cacheStore,
                   userID: user.id,
                   limit: 10,
                 })
               );
             } catch (error) {
               console.error(
-                "generateWordPack idempotency prune error:",
+                "generateWordPack cache prune error:",
+                errorMessage(error),
+              );
+            }
+          } catch (error) {
+            await releaseGenerationQuota(quotaStore, reservation, guard);
+            throw error;
+          }
+
+          const generationCount = reservation.usedAfter;
+          if (membership.tier !== "limitless") {
+            try {
+              // Compatibility/display mirror only. The admin-only quota entity
+              // above remains authoritative.
+              await guard.boundary(() =>
+                base44.asServiceRole.entities.User.update(user.id, {
+                  ai_generations_today: generationCount,
+                  last_ai_generation_date: new Date().toISOString(),
+                })
+              );
+            } catch (error) {
+              // This User field is a compatibility/display mirror only. Quota is
+              // already committed in the server-owned entity, so a mirror or
+              // lease-assertion outage must not replace valid words with a 503.
+              console.error(
+                "generateWordPack usage mirror error:",
                 errorMessage(error),
               );
             }
           }
 
-          // For idempotent clients this is strictly after the replay result
-          // commits, so cleanup latency cannot cause another provider call.
-          // Legacy clients also write reusable variants, so they must take
-          // part in bounded physical TTL cleanup as well.
-          try {
-            await guard.boundary(() =>
-              pruneExpiredWordPackCacheVariants({
-                store: cacheStore,
-                userID: user.id,
-                limit: 10,
-              })
-            );
-          } catch (error) {
-            console.error(
-              "generateWordPack cache prune error:",
-              errorMessage(error),
-            );
-          }
-        } catch (error) {
-          await releaseGenerationQuota(quotaStore, reservation, guard);
-          throw error;
-        }
+          const source = cacheHit
+            ? "cache"
+            : aiState.base44Attempts > 0
+            ? "base44_integration"
+            : "openai_direct";
+          console.info(
+            "generateWordPack metrics:",
+            JSON.stringify({
+              ...wordPackTelemetryDimensions(cacheRequest),
+              returned_count: words.length,
+              cache_hit: cacheHit,
+              request_replayed: false,
+              direct_attempts: aiState.directAttempts,
+              base44_attempts: aiState.base44Attempts,
+              base44_model: BASE44_WORD_PACK_MODEL,
+              single_pass_quality_gate: true,
+              exhaustion_verification_used: exhaustionVerificationUsed,
+              ai_duration_ms: aiState.aiDurationMilliseconds,
+              quality_repair_used: aiState.qualityRejectedCount > 0 ||
+                aiState.qualityReplacementCount > 0,
+              quality_rejected_count: aiState.qualityRejectedCount,
+              quality_replacement_count: aiState.qualityReplacementCount,
+              fallback_used: aiState.fallbackUsed,
+              exhausted,
+              source,
+            }),
+          );
 
-        const generationCount = reservation.usedAfter;
-        if (membership.tier !== "limitless") {
-          try {
-            // Compatibility/display mirror only. The admin-only quota entity
-            // above remains authoritative.
-            await guard.boundary(() =>
-              base44.asServiceRole.entities.User.update(user.id, {
-                ai_generations_today: generationCount,
-                last_ai_generation_date: new Date().toISOString(),
-              })
-            );
-          } catch (error) {
-            // This User field is a compatibility/display mirror only. Quota is
-            // already committed in the server-owned entity, so a mirror or
-            // lease-assertion outage must not replace valid words with a 503.
-            console.error(
-              "generateWordPack usage mirror error:",
-              errorMessage(error),
-            );
-          }
-        }
-
-        const source = cacheHit
-          ? "cache"
-          : aiState.base44Attempts > 0
-          ? "base44_integration"
-          : "openai_direct";
-        console.info(
-          "generateWordPack metrics:",
-          JSON.stringify({
-            ...wordPackTelemetryDimensions(cacheRequest),
-            returned_count: words.length,
+          return Response.json({
+            name: category,
+            category,
+            words,
+            exhausted,
             cache_hit: cacheHit,
             request_replayed: false,
-            direct_attempts: aiState.directAttempts,
-            base44_attempts: aiState.base44Attempts,
-            base44_model: BASE44_WORD_PACK_MODEL,
-            single_pass_quality_gate: true,
-            exhaustion_verification_used: exhaustionVerificationUsed,
-            ai_duration_ms: aiState.aiDurationMilliseconds,
-            quality_repair_used: aiState.qualityRejectedCount > 0 ||
-              aiState.qualityReplacementCount > 0,
-            quality_rejected_count: aiState.qualityRejectedCount,
-            quality_replacement_count: aiState.qualityReplacementCount,
-            fallback_used: aiState.fallbackUsed,
-            exhausted,
-            source,
-          }),
-        );
+            active: membership.active,
+            tier: membership.tier,
+            protocol: membership.protocol,
+            expires_at: membership.expires_at,
+            status: membership.active ? "active" : "inactive",
+            providers: membership.providers,
+            benefits: membership.benefits,
+            ...generationUsageMetadata(membership.tier, generationCount),
+          });
+        };
 
+        // Legacy requests have no stable identity to recover. Current clients
+        // always supply a request_id; keep older explicit actions compatible.
+        if (!idempotency) return await executeGeneration();
+        const operation = await runWordPackOperation({
+          store: base44.asServiceRole.entities.AiWordPackOperation,
+          identity: idempotency,
+          guard,
+          execute: async () => {
+            const response = await executeGeneration();
+            const payload = response.ok ? await response.clone().json() : null;
+            return {
+              value: response,
+              replayCommitted: response.ok,
+              result: payload
+                ? {
+                  category: "AI GENERATED",
+                  words: payload.words,
+                  exhausted: payload.exhausted === true,
+                }
+                : null,
+            };
+          },
+        });
+        if (!operation.replayed) return operation.value;
+        let generationCount = Math.max(
+          0,
+          Math.floor(Number(user.ai_generations_today) || 0),
+        );
+        try {
+          generationCount = await currentGenerationCount(quotaStore, user.id);
+        } catch { /* display only */ }
         return Response.json({
-          name: category,
-          category,
-          words,
-          exhausted,
-          cache_hit: cacheHit,
-          request_replayed: false,
+          name: theme,
+          category: theme,
+          words: operation.result.words,
+          exhausted: operation.result.exhausted,
+          cache_hit: false,
+          request_replayed: true,
           active: membership.active,
           tier: membership.tier,
           protocol: membership.protocol,

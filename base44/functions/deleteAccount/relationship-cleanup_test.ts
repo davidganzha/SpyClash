@@ -133,6 +133,10 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
       theme_key: "awt1-other-hash",
     },
   ]);
+  const aiWordPackOperations = new MockStore([
+    { id: "operation-target", user_id: "target", state: "running" },
+    { id: "operation-safe", user_id: "other", state: "completed" },
+  ]);
   const aiWordPackRequestResults = new MockStore([
     {
       id: "request-target",
@@ -206,6 +210,7 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     gameHistoryStore: histories,
     aiWordPackCacheVariantStore: aiWordPackCacheVariants,
     aiWordPackRequestResultStore: aiWordPackRequestResults,
+    aiWordPackOperationStore: aiWordPackOperations,
     pushDeviceStore: pushDevices,
     liveActivityStore: liveActivities,
     pushEventStore: pushEvents,
@@ -218,7 +223,9 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
   });
 
   assertEquals(comments.records.map((record) => record.id), ["comment-safe"]);
-  assertEquals(membershipSignals.records.map((record) => record.id), ["membership-safe"]);
+  assertEquals(membershipSignals.records.map((record) => record.id), [
+    "membership-safe",
+  ]);
   assertEquals(invites.records.map((record) => record.id), ["invite-safe"]);
   assertEquals(grants.records.map((record) => record.id), ["grant-safe"]);
   assertEquals(reports.records, [
@@ -254,6 +261,9 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
   assertEquals(aiWordPackCacheVariants.records.map((record) => record.id), [
     "cache-safe",
   ]);
+  assertEquals(aiWordPackOperations.records.map((record) => record.id), [
+    "operation-safe",
+  ]);
   assertEquals(aiWordPackRequestResults.records.map((record) => record.id), [
     "request-safe",
   ]);
@@ -283,6 +293,7 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
     gameHistoryStore: histories,
     aiWordPackCacheVariantStore: aiWordPackCacheVariants,
     aiWordPackRequestResultStore: aiWordPackRequestResults,
+    aiWordPackOperationStore: aiWordPackOperations,
     pushDeviceStore: pushDevices,
     liveActivityStore: liveActivities,
     pushEventStore: pushEvents,
@@ -300,6 +311,9 @@ Deno.test("relationship cleanup erases content but tombstones both moderation id
   );
   assertEquals(aiWordPackCacheVariants.records.map((record) => record.id), [
     "cache-safe",
+  ]);
+  assertEquals(aiWordPackOperations.records.map((record) => record.id), [
+    "operation-safe",
   ]);
   assertEquals(aiWordPackRequestResults.records.map((record) => record.id), [
     "request-safe",

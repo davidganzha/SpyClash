@@ -1,4 +1,5 @@
 import { assertEquals } from "jsr:@std/assert@1";
+import { writeRoomWithCAS } from "./room-write-cas.ts";
 import {
   claimTerminalSideEffectDispatch,
   runTerminalSideEffectsSingleFlight,
@@ -378,6 +379,81 @@ Deno.test("profile and push use independent concurrent single-flight claims", as
     store.records[0].terminal_intent.side_effect_dispatch.state,
     "completed",
   );
+});
+
+Deno.test("finished guest departure CAS cannot orphan an already performed terminal effect", async () => {
+  const host = { user_id: "host", display_name: "Host" };
+  const guest = { user_id: "guest", display_name: "Guest" };
+  const initialRoom = room({ players: [host, guest] });
+  class GuestDepartureStore extends Store {
+    completionAttempts = 0;
+    guestDeparted = false;
+
+    override async updateMany(filter: Entity, update: Entity) {
+      if (
+        update.$set?.terminal_intent?.profile_side_effect_dispatch?.state ===
+          "completed"
+      ) {
+        this.completionAttempts += 1;
+        if (!this.guestDeparted) {
+          this.guestDeparted = true;
+          // The effect has run and completion has read revision 8. A finished
+          // guest leave now wins that revision with an unrelated players patch.
+          await writeRoomWithCAS({
+            store: this,
+            room: structuredClone(this.records[0]),
+            patch: { players: [host] },
+            randomUUID: () => "guest-departure",
+          });
+        }
+      }
+      return await super.updateMany(filter, update);
+    }
+  }
+  const store = new GuestDepartureStore([initialRoom]);
+  let dispatches = 0;
+  const dispatch = async () => {
+    dispatches += 1;
+    return true;
+  };
+  const result = await runTerminalSideEffectsSingleFlight({
+    store,
+    room: initialRoom,
+    stateKey: "profile_side_effect_dispatch",
+    now: new Date("2026-08-31T12:00:00.000Z"),
+    randomUUID: () => "profile-with-guest-departure",
+    dispatch,
+  });
+
+  assertEquals(store.guestDeparted, true);
+  assertEquals(store.completionAttempts, 2);
+  assertEquals(result.outcome, "performed");
+  assertEquals(dispatches, 1);
+  assertEquals(result.room?.players, [host]);
+  assertEquals(store.records[0].players, [host]);
+  assertEquals(store.records[0].room_revision, 10);
+  assertEquals(store.records[0].terminal_intent.winner, "spy");
+  assertEquals(
+    store.records[0].terminal_intent.profile_side_effect_dispatch.state,
+    "completed",
+  );
+  assertEquals(
+    store.records[0].terminal_intent.profile_side_effect_dispatch.token,
+    "terminal-dispatch:profile-with-guest-departure",
+  );
+
+  // Completion, rather than the expired processing lease, owns future retries.
+  const retry = await runTerminalSideEffectsSingleFlight({
+    store,
+    room: initialRoom,
+    stateKey: "profile_side_effect_dispatch",
+    now: new Date("2026-08-31T12:03:00.000Z"),
+    randomUUID: () => "after-original-lease-expiry",
+    dispatch,
+  });
+  assertEquals(retry.outcome, "completed");
+  assertEquals(retry.room?.players, [host]);
+  assertEquals(dispatches, 1);
 });
 
 Deno.test("profile partial failure retries without replaying completed push", async () => {

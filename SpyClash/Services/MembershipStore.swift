@@ -99,9 +99,13 @@ final class MembershipStore {
     }
 
     func updateAIUsage(used: Int?, remaining: Int?) {
-        guard snapshot != nil else { return }
-        snapshot?.aiGenerationsToday = used.map { max(0, $0) }
-        snapshot?.aiRemaining = hasAccess ? nil : remaining.map { max(0, $0) }
+        guard var next = snapshot else { return }
+        // hasAccess reads snapshot. Resolve it before replacing the observable
+        // value, so an optional-chained write cannot overlap that read.
+        let updatedRemaining = hasAccess ? nil : remaining.map { max(0, $0) }
+        next.aiGenerationsToday = used.map { max(0, $0) }
+        next.aiRemaining = updatedRemaining
+        snapshot = next
     }
 
     // Root and presented sheets can both host the overlay. Announce/haptics once

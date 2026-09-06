@@ -239,6 +239,39 @@ enum OnboardingPermissionStatusMapping {
 }
 
 @MainActor
+protocol LocalNetworkPermissionBrowser: AnyObject {
+    func start(onStateChange: @escaping @MainActor @Sendable (NWBrowser.State) -> Void)
+    func cancel()
+}
+
+@MainActor
+private final class SystemLocalNetworkPermissionBrowser: LocalNetworkPermissionBrowser {
+    private let browser: NWBrowser
+    private let queue = DispatchQueue(label: "com.spyclash.onboarding.local-network-permission")
+
+    init() {
+        let parameters = NWParameters.tcp
+        parameters.includePeerToPeer = true
+        browser = NWBrowser(
+            for: .bonjour(type: OnboardingPermissionCoordinator.radarBonjourServiceType, domain: nil),
+            using: parameters
+        )
+    }
+
+    func start(onStateChange: @escaping @MainActor @Sendable (NWBrowser.State) -> Void) {
+        browser.stateUpdateHandler = { state in
+            Task { @MainActor in onStateChange(state) }
+        }
+        browser.start(queue: queue)
+    }
+
+    func cancel() {
+        browser.stateUpdateHandler = nil
+        browser.cancel()
+    }
+}
+
+@MainActor
 @Observable
 final class OnboardingPermissionCoordinator {
     static let radarBonjourServiceType = "_spyclash-radar._tcp"
@@ -267,11 +300,15 @@ final class OnboardingPermissionCoordinator {
     @ObservationIgnored
     private let pushNotifications: PushNotificationCoordinator
     @ObservationIgnored
-    private let localNetworkQueue = DispatchQueue(
-        label: "com.spyclash.onboarding.local-network-permission"
-    )
+    private let canProbeLocalNetwork: Bool
     @ObservationIgnored
-    private var localNetworkBrowser: NWBrowser?
+    private let localNetworkPreviewStatus: OnboardingPermissionStatus?
+    @ObservationIgnored
+    private let makeLocalNetworkBrowser: @MainActor () -> any LocalNetworkPermissionBrowser
+    @ObservationIgnored
+    private let sleepForLocalNetwork: @MainActor (Duration) async throws -> Void
+    @ObservationIgnored
+    private var localNetworkBrowser: (any LocalNetworkPermissionBrowser)?
     @ObservationIgnored
     private var localNetworkBrowserGenerationID: UUID?
     @ObservationIgnored
@@ -296,10 +333,21 @@ final class OnboardingPermissionCoordinator {
     @ObservationIgnored
     private var activeRequest: OnboardingPermissionKind?
 
-    init(pushNotifications: PushNotificationCoordinator = .shared) {
+    init(
+        pushNotifications: PushNotificationCoordinator = .shared,
+        localNetworkBrowserFactory: (@MainActor () -> any LocalNetworkPermissionBrowser)? = nil,
+        localNetworkSleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
         self.pushNotifications = pushNotifications
-        localNetworkStatus = Self.simulatedLocalNetworkStatus
-            ?? (Self.canEvaluateLocalNetworkPrivacy ? .notDetermined : .unsupported)
+        // An injected browser models the permission protocol without invoking
+        // Bonjour or implying Simulator can verify physical privacy settings.
+        let canProbe = localNetworkBrowserFactory != nil || Self.canEvaluateLocalNetworkPrivacy
+        let previewStatus = localNetworkBrowserFactory == nil ? Self.simulatedLocalNetworkStatus : nil
+        canProbeLocalNetwork = canProbe
+        localNetworkPreviewStatus = previewStatus
+        makeLocalNetworkBrowser = localNetworkBrowserFactory ?? { SystemLocalNetworkPermissionBrowser() }
+        sleepForLocalNetwork = localNetworkSleep
+        localNetworkStatus = previewStatus ?? (canProbe ? .notDetermined : .unsupported)
     }
 
     func status(
@@ -344,8 +392,8 @@ final class OnboardingPermissionCoordinator {
             AVCaptureDevice.authorizationStatus(for: .video)
         )
 
-        if !Self.canEvaluateLocalNetworkPrivacy {
-            localNetworkStatus = Self.simulatedLocalNetworkStatus ?? .unsupported
+        if !canProbeLocalNetwork {
+            localNetworkStatus = localNetworkPreviewStatus ?? .unsupported
         }
     }
 
@@ -403,11 +451,11 @@ final class OnboardingPermissionCoordinator {
     }
 
     private func requestLocalNetwork() async {
-        if let simulatedStatus = Self.simulatedLocalNetworkStatus {
+        if let simulatedStatus = localNetworkPreviewStatus {
             localNetworkStatus = simulatedStatus
             return
         }
-        guard Self.canEvaluateLocalNetworkPrivacy else {
+        guard canProbeLocalNetwork else {
             // Simulator doesn't enforce Local Network privacy. A successful
             // browse there is transport evidence, not permission evidence.
             localNetworkStatus = .unsupported
@@ -468,56 +516,35 @@ final class OnboardingPermissionCoordinator {
         stopLocalNetworkBrowser()
 
         let generationID = UUID()
-        let parameters = NWParameters.tcp
-        parameters.includePeerToPeer = true
-        let browser = NWBrowser(
-            for: .bonjour(type: Self.radarBonjourServiceType, domain: nil),
-            using: parameters
-        )
+        let browser = makeLocalNetworkBrowser()
         localNetworkBrowserGenerationID = generationID
         localNetworkBrowser = browser
         isPostPromptLocalNetworkVerification = isVerification
 
-        browser.stateUpdateHandler = { [weak self] state in
+        browser.start { [weak self] state in
+            guard let self,
+                  self.localNetworkRequestID == requestID,
+                  self.localNetworkBrowserGenerationID == generationID else { return }
             if OnboardingPermissionStatusMapping
                 .isLocalNetworkPolicyDeniedWaiting(state) {
-                Task { @MainActor [weak self] in
-                    guard let self,
-                          self.localNetworkRequestID == requestID,
-                          self.localNetworkBrowserGenerationID == generationID else {
-                        return
-                    }
-                    self.pendingPolicyDeniedRequestID = requestID
-                    self.pendingPolicyDeniedBrowserGenerationID = generationID
-                    self.localNetworkTimeoutTask?.cancel()
-                    self.localNetworkTimeoutTask = nil
-                    self.schedulePolicyDeniedResolutionIfNeeded()
-                }
+                self.pendingPolicyDeniedRequestID = requestID
+                self.pendingPolicyDeniedBrowserGenerationID = generationID
+                self.localNetworkTimeoutTask?.cancel()
+                self.localNetworkTimeoutTask = nil
+                self.schedulePolicyDeniedResolutionIfNeeded()
                 return
             }
             guard let mappedStatus = OnboardingPermissionStatusMapping
                 .localNetworkBrowserState(state) else {
                 return
             }
-            Task { @MainActor [weak self] in
-                guard self?.localNetworkRequestID == requestID,
-                      self?.localNetworkBrowserGenerationID == generationID else {
-                    return
-                }
-                self?.finishLocalNetworkRequest(
-                    with: mappedStatus,
-                    requestID: requestID
-                )
-            }
+            self.finishLocalNetworkRequest(with: mappedStatus, requestID: requestID)
         }
-        browser.start(queue: localNetworkQueue)
 
         localNetworkTimeoutTask?.cancel()
-        localNetworkTimeoutTask = Task { @MainActor [weak self] in
+        localNetworkTimeoutTask = Task { @MainActor [weak self, sleepForLocalNetwork] in
             do {
-                try await Task.sleep(
-                    for: isVerification ? .seconds(5) : .seconds(30)
-                )
+                try await sleepForLocalNetwork(isVerification ? .seconds(5) : .seconds(30))
             } catch {
                 return
             }
@@ -540,14 +567,12 @@ final class OnboardingPermissionCoordinator {
               pendingPolicyDeniedBrowserGenerationID == generationID else { return }
         let isVerification = isPostPromptLocalNetworkVerification
         localNetworkDenialResolutionTask?.cancel()
-        localNetworkDenialResolutionTask = Task { @MainActor [weak self] in
+        localNetworkDenialResolutionTask = Task { @MainActor [weak self, sleepForLocalNetwork] in
             do {
                 // A first-run system alert moves the app inactive and cancels
                 // this task. Stable activity means either the alert returned
                 // or access had already been denied before this request.
-                try await Task.sleep(
-                    for: .milliseconds(isVerification ? 350 : 600)
-                )
+                try await sleepForLocalNetwork(.milliseconds(isVerification ? 350 : 600))
             } catch {
                 return
             }
@@ -601,7 +626,6 @@ final class OnboardingPermissionCoordinator {
         let browser = localNetworkBrowser
         localNetworkBrowser = nil
         localNetworkBrowserGenerationID = nil
-        browser?.stateUpdateHandler = nil
         browser?.cancel()
     }
 }

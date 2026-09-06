@@ -77,17 +77,21 @@ Deno.test("actual broker distinguishes expired browser state while refusing inva
       assertEquals(result.headers.getSetCookie().length, 2);
     }
     const api = await invoke(expired, "application/json");
+    assertEquals(api.status, 400);
     assertEquals(await api.json(), {
       error: "invalid_state",
       error_description: "invalid state",
     });
     const parts = expired.split(".");
     parts[2] = (parts[2][0] === "A" ? "B" : "A") + parts[2].slice(1);
-    const badSignature = await invoke(parts.join("."), "text/html");
-    assertStringIncludes(
-      await badSignature.text(),
-      "This sign-in could not be verified",
-    );
+    for (const action of ["google-callback", "confirm-google-transaction"]) {
+      const badSignature = await invoke(parts.join("."), "text/html", action);
+      assertEquals(badSignature.status, 400);
+      assertStringIncludes(
+        await badSignature.text(),
+        "This sign-in could not be verified",
+      );
+    }
     const missingCookie = await invoke(fresh, "text/html");
     assertEquals(missingCookie.status, 400);
     const body = await missingCookie.text();

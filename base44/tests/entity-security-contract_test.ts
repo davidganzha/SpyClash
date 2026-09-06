@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { canonicalEntityNames } from "./canonical-inventory.ts";
 
 type EntitySchema = {
   name: string;
@@ -31,54 +32,18 @@ const outsider: Principal = {
   role: "user",
 };
 
-const expectedEntityNames = [
-  "AiGenerationQuota",
-  "AiGenerationUsage",
-  "AiWordPackCacheVariant",
-  "AiWordPackRequestResult",
-  "AppStoreAccount",
-  "AppleSignInCredential",
-  "BillingIdentityLifecycle",
-  "CommunityProfileSignal",
-  "CommunityReport",
-  "Entitlement",
-  "Friendship",
-  "GameHistory",
-  "GameRoom",
-  "GameRoomSignal",
-  "LiveActivityRegistration",
-  "MembershipGrant",
-  "NotificationAnnouncement",
-  "NotificationReadReceipt",
-  "ProfileComment",
-  "PushDeviceRegistration",
-  "PushNotificationEvent",
-  "RoomInvite",
-  "User",
-  "WordPack",
-].sort();
-
-const serverOnlyEntities = [
-  "AiGenerationQuota",
-  "AiGenerationUsage",
-  "AiWordPackCacheVariant",
-  "AiWordPackRequestResult",
-  "AppStoreAccount",
-  "AppleSignInCredential",
-  "BillingIdentityLifecycle",
-  "CommunityReport",
-  "Entitlement",
-  "Friendship",
-  "GameRoom",
-  "LiveActivityRegistration",
-  "NotificationAnnouncement",
-  "NotificationReadReceipt",
-  "ProfileComment",
-  "PushDeviceRegistration",
-  "PushNotificationEvent",
-  "RoomInvite",
-  "WordPack",
-] as const;
+// All resources default to server-only CRUD unless this file explicitly tests
+// an owner-scoped read contract below. A new ledger cannot silently escape RLS.
+const serverOnlyEntities = canonicalEntityNames.filter((name) =>
+  ![
+    "User",
+    "GameHistory",
+    "GameRoomSignal",
+    "CommunityProfileSignal",
+    "MembershipGrant",
+    "MembershipSignal",
+  ].includes(name)
+);
 
 async function schemas(): Promise<Map<string, EntitySchema>> {
   const result = new Map<string, EntitySchema>();
@@ -167,9 +132,9 @@ function assertAdminOnlyPolicy(
   );
 }
 
-Deno.test("all 24 canonical entity schemas are explicit and parseable", async () => {
+Deno.test("all current canonical entity schemas are explicit and parseable", async () => {
   const all = await schemas();
-  assertEquals([...all.keys()].sort(), expectedEntityNames);
+  assertEquals([...all.keys()].sort(), canonicalEntityNames);
 
   for (const [name, schema] of all) {
     assertEquals(typeof schema.properties, "object", `${name}.properties`);
@@ -192,6 +157,20 @@ Deno.test("server-owned entities deny direct user CRUD and allow service-role ad
       assertAdminOnlyPolicy(schema, operation);
     }
   }
+});
+
+Deno.test("MembershipSignal only exposes the owner's wake-up hint and denies user writes", async () => {
+  const signal = (await schemas()).get("MembershipSignal");
+  assert(signal?.rls);
+  const row = { user_id: owner.id, change_id: "membership-change" };
+  assert(policyAllows(signal.rls.read, row, owner));
+  assert(policyAllows(signal.rls.read, row, admin));
+  assert(!policyAllows(signal.rls.read, row, outsider));
+  for (const operation of ["create", "update", "delete"] as const) {
+    assertAdminOnlyPolicy(signal, operation);
+  }
+  assertEquals(Object.keys(signal.properties).sort(), ["change_id", "user_id"]);
+  assertEquals(signal.required?.slice().sort(), ["change_id", "user_id"]);
 });
 
 Deno.test("GameHistory authorizes only owner reads while all writes stay server-owned", async () => {

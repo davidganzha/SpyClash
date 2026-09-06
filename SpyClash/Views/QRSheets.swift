@@ -589,6 +589,7 @@ struct QRScannerRepresentable: UIViewControllerRepresentable {
     final class Coordinator: NSObject, AVCaptureMetadataOutputObjectsDelegate {
         private let onCode: (String) -> Void
         var isScanningEnabled: Bool
+        var isCaptureActive = true
 
         init(isScanningEnabled: Bool, onCode: @escaping (String) -> Void) {
             self.isScanningEnabled = isScanningEnabled
@@ -606,7 +607,7 @@ struct QRScannerRepresentable: UIViewControllerRepresentable {
         }
 
         func receivePayloads(_ payloads: [String]) {
-            guard isScanningEnabled, let firstPayload = payloads.first else { return }
+            guard isCaptureActive, isScanningEnabled, let firstPayload = payloads.first else { return }
             // Invalid payloads leave capture enabled; they cannot depend on a
             // later SwiftUI redraw to recover from a rejected QR code.
             if let validPayload = payloads.first(where: { SpyLinkParser.scannedRoomCode(from: $0) != nil }) {
@@ -621,10 +622,13 @@ struct QRScannerRepresentable: UIViewControllerRepresentable {
 
 final class QRScannerController: UIViewController {
     private let capture: QRScannerCaptureSession
+    private let coordinator: QRScannerRepresentable.Coordinator
     private let previewLayer = AVCaptureVideoPreviewLayer()
     private var isCaptureVisible = false
 
     init(coordinator: QRScannerRepresentable.Coordinator, onError: @escaping @MainActor @Sendable () -> Void) {
+        self.coordinator = coordinator
+        coordinator.isCaptureActive = false
         capture = QRScannerCaptureSession(coordinator: coordinator, onError: onError)
         super.init(nibName: nil, bundle: nil)
     }
@@ -644,8 +648,8 @@ final class QRScannerController: UIViewController {
         let notifications = NotificationCenter.default
         notifications.addObserver(self, selector: #selector(resumeCapture), name: UIApplication.didBecomeActiveNotification, object: nil)
         notifications.addObserver(self, selector: #selector(pauseCapture), name: UIApplication.willResignActiveNotification, object: nil)
-        notifications.addObserver(self, selector: #selector(resumeCapture), name: AVCaptureSession.interruptionEndedNotification, object: capture.session)
-        notifications.addObserver(self, selector: #selector(resumeCapture), name: AVCaptureSession.runtimeErrorNotification, object: capture.session)
+        notifications.addObserver(self, selector: #selector(captureStateDidChange), name: AVCaptureSession.interruptionEndedNotification, object: capture.session)
+        notifications.addObserver(self, selector: #selector(captureStateDidChange), name: AVCaptureSession.runtimeErrorNotification, object: capture.session)
     }
 
     override func viewDidLayoutSubviews() {
@@ -667,11 +671,24 @@ final class QRScannerController: UIViewController {
 
     @objc private func resumeCapture() {
         guard isCaptureVisible, isViewLoaded, view.window != nil, UIApplication.shared.applicationState == .active else { return }
+        guard AVCaptureDevice.authorizationStatus(for: .video) == .authorized else {
+            pauseCapture()
+            return
+        }
+        coordinator.isCaptureActive = true
         capture.setRunning(true)
     }
 
     @objc private func pauseCapture() {
+        // Metadata already queued on main can arrive after the asynchronous
+        // stop. Fence it synchronously before the scanner leaves the screen.
+        coordinator.isCaptureActive = false
         capture.setRunning(false)
+    }
+
+    @objc nonisolated private func captureStateDidChange() {
+        // AVFoundation may post session notifications from its capture queue.
+        Task { @MainActor [weak self] in self?.resumeCapture() }
     }
 
     @objc private func focus(_ gesture: UITapGestureRecognizer) {

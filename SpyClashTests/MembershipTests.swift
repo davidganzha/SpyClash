@@ -112,6 +112,49 @@ final class MembershipTests: XCTestCase {
         XCTAssertFalse(store.canPurchase)
     }
 
+    func testGenerationUsageUpdatesSnapshotWithoutOverlappingAccessOrChangingEntitlement() {
+        let cases: [(MembershipSnapshot, Bool)] = [
+            (.freePreview, false),
+            (.universalPreview, true),
+            (snapshot(expiry: .distantFuture), true),
+            (snapshot(expiry: .distantPast), false)
+        ]
+        for (initial, hasAccess) in cases {
+            let store = MembershipStore(client: MembershipTestClient())
+            store.bind(MembershipScope(userID: "generation-user", accessToken: "fixture-token"), preview: initial)
+            var expected = initial
+            expected.aiGenerationsToday = 4
+            expected.aiRemaining = hasAccess ? nil : 6
+
+            // This exact call previously trapped in Swift's exclusivity check
+            // after a generated draft arrived, including in preview mode.
+            store.updateAIUsage(used: 4, remaining: 6)
+
+            XCTAssertEqual(store.snapshot, expected)
+            XCTAssertEqual(store.hasAccess, hasAccess)
+        }
+    }
+
+    func testGenerationUsageClampsNegativeCountersAndAcceptsAbsentCounters() {
+        let store = MembershipStore(client: MembershipTestClient())
+        store.bind(MembershipScope(userID: "free-user", accessToken: "fixture-token"), preview: .freePreview)
+        store.updateAIUsage(used: -2, remaining: -3)
+        XCTAssertEqual(store.snapshot?.aiGenerationsToday, 0)
+        XCTAssertEqual(store.snapshot?.aiRemaining, 0)
+        store.updateAIUsage(used: nil, remaining: nil)
+        XCTAssertNil(store.snapshot?.aiGenerationsToday)
+        XCTAssertNil(store.snapshot?.aiRemaining)
+        XCTAssertFalse(store.hasAccess)
+    }
+
+    func testGenerationUsageCannotCreateAnUnverifiedMembershipSnapshot() {
+        let store = MembershipStore(client: MembershipTestClient())
+        store.bind(MembershipScope(userID: "unresolved-user", accessToken: "fixture-token"))
+        store.updateAIUsage(used: 1, remaining: 9)
+        XCTAssertNil(store.snapshot)
+        XCTAssertFalse(store.hasAccess)
+    }
+
     func testRealtimeMustMatchBothEntityRoomAndAccount() {
         let rooms = ["entities:app:MembershipSignal"]
         let valid: [Any] = [["room": rooms[0], "data": #"{"type":"update","data":{"user_id":"user"}}"#]]

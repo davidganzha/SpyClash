@@ -2453,6 +2453,22 @@ struct Base44Error: LocalizedError {
         if isRetryableAccountDeletion {
             return accountDeletionRetryMessage(for: language)
         }
+        if normalizedCode == "generation_outcome_unknown" {
+            switch language {
+            case .ru: return "Результат предыдущей генерации не подтверждён. Автоматически она не повторяется. При необходимости запусти новую генерацию."
+            case .uk: return "Результат попередньої генерації не підтверджено. Вона не повторюється автоматично. За потреби запусти нову генерацію."
+            case .es: return "No se confirmó el resultado anterior. No se repetirá automáticamente. Inicia una nueva generación si lo necesitas."
+            case .en: return "The previous result was not confirmed. It will not be repeated automatically. Start a new generation if needed."
+            }
+        }
+        if normalizedCode == "generation_journal_unavailable" {
+            switch language {
+            case .ru: return "Сервис восстановления генерации временно недоступен. Дождись восстановления связи и попробуй снова."
+            case .uk: return "Сервіс відновлення генерації тимчасово недоступний. Дочекайся відновлення зв’язку та спробуй знову."
+            case .es: return "La recuperación de la generación no está disponible temporalmente. Espera a que se restablezca la conexión e inténtalo de nuevo."
+            case .en: return "Generation recovery is temporarily unavailable. Wait for the connection to recover and try again."
+            }
+        }
         guard language == .uk else { return message }
 
         if let localized = Self.ukrainianMessages[message] {

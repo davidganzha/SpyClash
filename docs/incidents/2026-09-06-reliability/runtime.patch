@@ -1,0 +1,3993 @@
+--- a/base44/functions/appleAuthBroker/billing-identity-lifecycle.ts
++++ b/base44/functions/appleAuthBroker/billing-identity-lifecycle.ts
+@@ -2,0 +3 @@
++const LEASE_CLEANUP_ATTEMPTS = 3;
+@@ -96 +97,10 @@
+-    return { id, subject_key: subjectKey, updated_date: updatedDate };
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
+@@ -483,14 +492,0 @@
+-async function singletonRecord(
+-  store: any,
+-  subjectKey: string,
+-): Promise<LifecycleRecord | undefined> {
+-  const records = await lifecycleRows(store, subjectKey);
+-  if (records.length > 1) {
+-    throw new BillingIdentityLifecycleError(
+-      "duplicate_records",
+-      "Conflicting billing lifecycle rows block persistence.",
+-    );
+-  }
+-  return records[0];
+-}
+-
+@@ -566,0 +563,63 @@
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+@@ -626,0 +686 @@
++      let failure: unknown;
+@@ -632,4 +692 @@
+-        if (
+-          error instanceof BillingIdentityLifecycleError &&
+-          error.code === "duplicate_records"
+-        ) throw error;
++        failure = error;
+@@ -636,0 +694,5 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
+@@ -642 +704 @@
+-    if (Number(result?.updated) === 1) {
++    if (result?.updated !== 0) {
+@@ -644,3 +706,9 @@
+-      // our CAS. Re-read the whole subject set before trusting the lease.
+-      if (await hasExactLease(store, candidate, now, randomUUID)) {
+-        return candidate;
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
+@@ -647,0 +716 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+@@ -751,21 +820,10 @@
+-  let result: any;
+-  try {
+-    result = await store.updateMany(
+-      {
+-        id: lease.recordID,
+-        subject_key: lease.subjectKey,
+-        state: lease.state,
+-        lease_token: lease.leaseToken,
+-        lease_until: lease.leaseUntil,
+-        revision: lease.revision,
+-      },
+-      {
+-        $set: {
+-          state: "active",
+-          lease_token: `released:${revision}`,
+-          lease_until: releasedAt,
+-          revision,
+-        },
+-      },
+-    );
+-  } catch {
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+@@ -773,11 +831,2 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (
+-        record && clean(record.id) === lease.recordID &&
+-        lifecycleState(record.state) === "active" &&
+-        clean(record.lease_until) === releasedAt &&
+-        clean(record.revision) === revision
+-      ) return;
+-      // A response-lost release may already have been followed by another
+-      // valid writer/deletion lease. Never turn that completed cleanup into a
+-      // false failure or overwrite the replacement lease.
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
+@@ -785,8 +834,2 @@
+-      // The bounded old lease or exact release remains fail-closed.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "ambiguous",
+-      "Billing lifecycle lease release could not be reconciled.",
+-    );
+-  }
+-  if (Number(result?.updated) !== 1) {
++      ambiguous = true;
++    }
+@@ -794,2 +837,9 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+@@ -797,7 +847,9 @@
+-      // Preserve the typed contention below when reconciliation is unreadable.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "cas_contention",
+-      "Billing lifecycle lease changed before release.",
+-    );
+-  }
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );
+--- a/base44/functions/appleAuthBroker/entry.ts
++++ b/base44/functions/appleAuthBroker/entry.ts
+@@ -10,0 +11,6 @@
++import {
++  type GoogleStateFailureReason,
++  googleStateFailureResponse,
++  googleStateJWTFailureReason,
++  isGoogleStateAction,
++} from "./google-state-recovery.ts";
+@@ -117,0 +124,12 @@
++function rethrowBrokerServerError(error: unknown) {
++  // Key/configuration failures are service failures, not rejected credentials.
++  // Keep their typed status; errorResponse redacts internal details for 5xx.
++  if (error instanceof BrokerError && error.status >= 500) throw error;
++}
++
++class GoogleAuthorizationStateError extends BrokerError {
++  constructor(readonly reason: GoogleStateFailureReason) {
++    super("invalid_state", 400);
++  }
++}
++
+@@ -954 +972,3 @@
+-  } catch {
++  } catch (error) {
++    rethrowBrokerServerError(error);
++    const reason = googleStateJWTFailureReason(error);
+@@ -956 +976 @@
+-      reason: "state_jwt_invalid",
++      reason,
+@@ -958 +978 @@
+-    throw new BrokerError("invalid_state", 400);
++    throw new GoogleAuthorizationStateError(reason);
+@@ -1138 +1158,2 @@
+-    } catch {
++    } catch (error) {
++      rethrowBrokerServerError(error);
+@@ -1212 +1233,2 @@
+-  } catch {
++  } catch (error) {
++    rethrowBrokerServerError(error);
+@@ -1360 +1382,2 @@
+-  } catch {
++  } catch (error) {
++    rethrowBrokerServerError(error);
+@@ -1571 +1594,2 @@
+-  } catch {
++  } catch (error) {
++    rethrowBrokerServerError(error);
+@@ -1763,0 +1788 @@
++  req: Request,
+@@ -1773,0 +1799,9 @@
++  if (brokerError.code === "invalid_state" && isGoogleStateAction(action)) {
++    return googleStateFailureResponse({
++      request: req,
++      action,
++      reason: error instanceof GoogleAuthorizationStateError
++        ? error.reason
++        : "state_invalid",
++    });
++  }
+@@ -1845 +1879 @@
+-    return errorResponse(error, action, callbackCookies);
++    return errorResponse(req, error, action, callbackCookies);
+--- /dev/null
++++ b/base44/functions/appleAuthBroker/google-state-recovery.ts
+@@ -0,0 +1,147 @@
++import { errors } from "npm:jose@5.10.0";
++import {
++  clearUpstreamFallbackTransactionCookie,
++  clearUpstreamTransactionCookie,
++} from "./transaction.ts";
++
++export type GoogleStateFailureReason =
++  | "state_jwt_expired"
++  | "state_jwt_invalid"
++  | "state_invalid";
++
++export function googleStateJWTFailureReason(
++  error: unknown,
++): GoogleStateFailureReason {
++  // JOSE verifies the signature before checking expiry. Do not infer expiry
++  // from an unverified payload, error message, or a caller-supplied code.
++  return error instanceof errors.JWTExpired && error.claim === "exp"
++    ? "state_jwt_expired"
++    : "state_jwt_invalid";
++}
++
++export function isGoogleStateAction(action: string): boolean {
++  return action === "confirm-google-transaction" ||
++    action === "google-callback";
++}
++
++export function freshGoogleLoginURL(target: "app" | "website"): string {
++  const origin = "https://spyclash.com";
++  const appID = "69a0e57fa939f578082f8091";
++  const from = new URL(
++    target === "app" ? `/api/apps/${appID}/functions/mobileAuthCallback` : "/",
++    origin,
++  );
++  from.searchParams.set("auth_provider", "google");
++  const login = new URL(`/api/apps/${appID}/auth/sso/login`, origin);
++  login.searchParams.set("app_id", appID);
++  login.searchParams.set("from_url", from.toString());
++  return login.toString();
++}
++
++function acceptsHTML(request: Request): boolean {
++  return (request.headers.get("accept") || "").split(",").some((range) => {
++    const [type, ...parameters] = range.trim().toLowerCase().split(";");
++    if (type !== "text/html") return false;
++    const quality = parameters.map((value) => value.trim()).find((value) =>
++      value.startsWith("q=")
++    );
++    return quality === undefined || Number(quality.slice(2)) > 0;
++  });
++}
++
++const COPY = {
++  en: {
++    expired: "This sign-in session has expired",
++    invalid: "This sign-in could not be verified",
++    detail:
++      "Start a new Google sign-in. The previous attempt will not be continued.",
++    app: "Sign in to the app",
++    website: "Sign in to the website",
++    hint:
++      "You can also close this window and tap Google sign-in again in SpyClash.",
++  },
++  ru: {
++    expired: "Сеанс входа истёк",
++    invalid: "Не удалось подтвердить вход",
++    detail:
++      "Начните новый вход через Google. Предыдущая попытка продолжена не будет.",
++    app: "Войти в приложение",
++    website: "Войти на сайт",
++    hint:
++      "Можно также закрыть это окно и снова нажать вход через Google в SpyClash.",
++  },
++  uk: {
++    expired: "Сеанс входу завершився",
++    invalid: "Не вдалося підтвердити вхід",
++    detail:
++      "Почніть новий вхід через Google. Попередню спробу не буде продовжено.",
++    app: "Увійти в застосунок",
++    website: "Увійти на сайт",
++    hint:
++      "Також можна закрити це вікно й знову натиснути вхід через Google у SpyClash.",
++  },
++  es: {
++    expired: "Esta sesión de inicio ha caducado",
++    invalid: "No se pudo verificar este inicio de sesión",
++    detail:
++      "Inicia una nueva sesión con Google. No se continuará el intento anterior.",
++    app: "Entrar en la aplicación",
++    website: "Entrar en el sitio web",
++    hint:
++      "También puedes cerrar esta ventana y volver a pulsar el inicio con Google en SpyClash.",
++  },
++} as const;
++
++export function googleStateFailureResponse(input: {
++  request: Request;
++  action: string;
++  reason: GoogleStateFailureReason;
++}): Response {
++  const headers = new Headers({
++    "Cache-Control": "no-store",
++    Pragma: "no-cache",
++    "Referrer-Policy": "no-referrer",
++    "X-Content-Type-Options": "nosniff",
++    Vary: "Accept, Accept-Language",
++  });
++  headers.append("Set-Cookie", clearUpstreamTransactionCookie("None"));
++  headers.append("Set-Cookie", clearUpstreamFallbackTransactionCookie());
++  if (
++    input.request.method !== "GET" || !isGoogleStateAction(input.action) ||
++    !acceptsHTML(input.request)
++  ) {
++    return Response.json({
++      error: "invalid_state",
++      error_description: "invalid state",
++    }, {
++      status: 400,
++      headers,
++    });
++  }
++
++  const requestedLanguage = (input.request.headers.get("accept-language") || "")
++    .split(",")[0].trim().split(/[;-]/)[0].toLowerCase();
++  const language = Object.hasOwn(COPY, requestedLanguage)
++    ? requestedLanguage as keyof typeof COPY
++    : "en";
++  const copy = COPY[language];
++  const title = input.reason === "state_jwt_expired"
++    ? copy.expired
++    : copy.invalid;
++  // Both destinations are fresh canonical login entry points. Neither the
++  // expired/unverified state nor its claims, query parameters or Referer is read.
++  const appURL = freshGoogleLoginURL("app").replaceAll("&", "&amp;");
++  const websiteURL = freshGoogleLoginURL("website").replaceAll("&", "&amp;");
++  headers.set("Content-Type", "text/html; charset=utf-8");
++  headers.set(
++    "Content-Security-Policy",
++    "default-src 'none'; style-src 'unsafe-inline'; base-uri 'none'; form-action 'none'; frame-ancestors 'none'; object-src 'none'",
++  );
++  return new Response(
++    `<!doctype html>
++<html lang="${language}"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width, initial-scale=1"><title>SpyClash</title>
++<style>body{margin:0;background:#080808;color:#f4f4f5;font:17px -apple-system,BlinkMacSystemFont,sans-serif}main{max-width:420px;margin:12vh auto;padding:24px}h1{font-size:28px;line-height:1.15}p{color:#bbb;line-height:1.5}a{display:block;margin:14px 0;padding:16px;text-align:center;border:1px solid #ef4444;border-radius:8px;color:#fff;text-decoration:none;font-weight:700}a.primary{background:#dc2626}small{display:block;color:#aaa;line-height:1.5;margin-top:24px}</style></head>
++<body><main><h1>${title}</h1><p>${copy.detail}</p><a class="primary" href="${appURL}" rel="noreferrer">${copy.app}</a><a href="${websiteURL}" rel="noreferrer">${copy.website}</a><small>${copy.hint}</small></main></body></html>`,
++    { status: 400, headers },
++  );
++}
+--- a/base44/functions/autoRegisterUser/billing-identity-lifecycle.ts
++++ b/base44/functions/autoRegisterUser/billing-identity-lifecycle.ts
+@@ -2,0 +3 @@
++const LEASE_CLEANUP_ATTEMPTS = 3;
+@@ -96 +97,10 @@
+-    return { id, subject_key: subjectKey, updated_date: updatedDate };
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
+@@ -483,14 +492,0 @@
+-async function singletonRecord(
+-  store: any,
+-  subjectKey: string,
+-): Promise<LifecycleRecord | undefined> {
+-  const records = await lifecycleRows(store, subjectKey);
+-  if (records.length > 1) {
+-    throw new BillingIdentityLifecycleError(
+-      "duplicate_records",
+-      "Conflicting billing lifecycle rows block persistence.",
+-    );
+-  }
+-  return records[0];
+-}
+-
+@@ -566,0 +563,63 @@
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+@@ -626,0 +686 @@
++      let failure: unknown;
+@@ -632,4 +692 @@
+-        if (
+-          error instanceof BillingIdentityLifecycleError &&
+-          error.code === "duplicate_records"
+-        ) throw error;
++        failure = error;
+@@ -636,0 +694,5 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
+@@ -642 +704 @@
+-    if (Number(result?.updated) === 1) {
++    if (result?.updated !== 0) {
+@@ -644,3 +706,9 @@
+-      // our CAS. Re-read the whole subject set before trusting the lease.
+-      if (await hasExactLease(store, candidate, now, randomUUID)) {
+-        return candidate;
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
+@@ -647,0 +716 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+@@ -751,21 +820,10 @@
+-  let result: any;
+-  try {
+-    result = await store.updateMany(
+-      {
+-        id: lease.recordID,
+-        subject_key: lease.subjectKey,
+-        state: lease.state,
+-        lease_token: lease.leaseToken,
+-        lease_until: lease.leaseUntil,
+-        revision: lease.revision,
+-      },
+-      {
+-        $set: {
+-          state: "active",
+-          lease_token: `released:${revision}`,
+-          lease_until: releasedAt,
+-          revision,
+-        },
+-      },
+-    );
+-  } catch {
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+@@ -773,11 +831,2 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (
+-        record && clean(record.id) === lease.recordID &&
+-        lifecycleState(record.state) === "active" &&
+-        clean(record.lease_until) === releasedAt &&
+-        clean(record.revision) === revision
+-      ) return;
+-      // A response-lost release may already have been followed by another
+-      // valid writer/deletion lease. Never turn that completed cleanup into a
+-      // false failure or overwrite the replacement lease.
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
+@@ -785,8 +834,2 @@
+-      // The bounded old lease or exact release remains fail-closed.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "ambiguous",
+-      "Billing lifecycle lease release could not be reconciled.",
+-    );
+-  }
+-  if (Number(result?.updated) !== 1) {
++      ambiguous = true;
++    }
+@@ -794,2 +837,9 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+@@ -797,7 +847,9 @@
+-      // Preserve the typed contention below when reconciliation is unreadable.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "cas_contention",
+-      "Billing lifecycle lease changed before release.",
+-    );
+-  }
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );
+--- a/base44/functions/checkSubscription/billing-identity-lifecycle.ts
++++ b/base44/functions/checkSubscription/billing-identity-lifecycle.ts
+@@ -2,0 +3 @@
++const LEASE_CLEANUP_ATTEMPTS = 3;
+@@ -96 +97,10 @@
+-    return { id, subject_key: subjectKey, updated_date: updatedDate };
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
+@@ -483,14 +492,0 @@
+-async function singletonRecord(
+-  store: any,
+-  subjectKey: string,
+-): Promise<LifecycleRecord | undefined> {
+-  const records = await lifecycleRows(store, subjectKey);
+-  if (records.length > 1) {
+-    throw new BillingIdentityLifecycleError(
+-      "duplicate_records",
+-      "Conflicting billing lifecycle rows block persistence.",
+-    );
+-  }
+-  return records[0];
+-}
+-
+@@ -566,0 +563,63 @@
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+@@ -626,0 +686 @@
++      let failure: unknown;
+@@ -632,4 +692 @@
+-        if (
+-          error instanceof BillingIdentityLifecycleError &&
+-          error.code === "duplicate_records"
+-        ) throw error;
++        failure = error;
+@@ -636,0 +694,5 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
+@@ -642 +704 @@
+-    if (Number(result?.updated) === 1) {
++    if (result?.updated !== 0) {
+@@ -644,3 +706,9 @@
+-      // our CAS. Re-read the whole subject set before trusting the lease.
+-      if (await hasExactLease(store, candidate, now, randomUUID)) {
+-        return candidate;
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
+@@ -647,0 +716 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+@@ -751,21 +820,10 @@
+-  let result: any;
+-  try {
+-    result = await store.updateMany(
+-      {
+-        id: lease.recordID,
+-        subject_key: lease.subjectKey,
+-        state: lease.state,
+-        lease_token: lease.leaseToken,
+-        lease_until: lease.leaseUntil,
+-        revision: lease.revision,
+-      },
+-      {
+-        $set: {
+-          state: "active",
+-          lease_token: `released:${revision}`,
+-          lease_until: releasedAt,
+-          revision,
+-        },
+-      },
+-    );
+-  } catch {
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+@@ -773,11 +831,2 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (
+-        record && clean(record.id) === lease.recordID &&
+-        lifecycleState(record.state) === "active" &&
+-        clean(record.lease_until) === releasedAt &&
+-        clean(record.revision) === revision
+-      ) return;
+-      // A response-lost release may already have been followed by another
+-      // valid writer/deletion lease. Never turn that completed cleanup into a
+-      // false failure or overwrite the replacement lease.
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
+@@ -785,8 +834,2 @@
+-      // The bounded old lease or exact release remains fail-closed.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "ambiguous",
+-      "Billing lifecycle lease release could not be reconciled.",
+-    );
+-  }
+-  if (Number(result?.updated) !== 1) {
++      ambiguous = true;
++    }
+@@ -794,2 +837,9 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+@@ -797,7 +847,9 @@
+-      // Preserve the typed contention below when reconciliation is unreadable.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "cas_contention",
+-      "Billing lifecycle lease changed before release.",
+-    );
+-  }
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );
+--- a/base44/functions/communityAction/billing-identity-lifecycle.ts
++++ b/base44/functions/communityAction/billing-identity-lifecycle.ts
+@@ -2,0 +3 @@
++const LEASE_CLEANUP_ATTEMPTS = 3;
+@@ -96 +97,10 @@
+-    return { id, subject_key: subjectKey, updated_date: updatedDate };
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
+@@ -483,14 +492,0 @@
+-async function singletonRecord(
+-  store: any,
+-  subjectKey: string,
+-): Promise<LifecycleRecord | undefined> {
+-  const records = await lifecycleRows(store, subjectKey);
+-  if (records.length > 1) {
+-    throw new BillingIdentityLifecycleError(
+-      "duplicate_records",
+-      "Conflicting billing lifecycle rows block persistence.",
+-    );
+-  }
+-  return records[0];
+-}
+-
+@@ -566,0 +563,63 @@
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+@@ -626,0 +686 @@
++      let failure: unknown;
+@@ -632,4 +692 @@
+-        if (
+-          error instanceof BillingIdentityLifecycleError &&
+-          error.code === "duplicate_records"
+-        ) throw error;
++        failure = error;
+@@ -636,0 +694,5 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
+@@ -642 +704 @@
+-    if (Number(result?.updated) === 1) {
++    if (result?.updated !== 0) {
+@@ -644,3 +706,9 @@
+-      // our CAS. Re-read the whole subject set before trusting the lease.
+-      if (await hasExactLease(store, candidate, now, randomUUID)) {
+-        return candidate;
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
+@@ -647,0 +716 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+@@ -751,21 +820,10 @@
+-  let result: any;
+-  try {
+-    result = await store.updateMany(
+-      {
+-        id: lease.recordID,
+-        subject_key: lease.subjectKey,
+-        state: lease.state,
+-        lease_token: lease.leaseToken,
+-        lease_until: lease.leaseUntil,
+-        revision: lease.revision,
+-      },
+-      {
+-        $set: {
+-          state: "active",
+-          lease_token: `released:${revision}`,
+-          lease_until: releasedAt,
+-          revision,
+-        },
+-      },
+-    );
+-  } catch {
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+@@ -773,11 +831,2 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (
+-        record && clean(record.id) === lease.recordID &&
+-        lifecycleState(record.state) === "active" &&
+-        clean(record.lease_until) === releasedAt &&
+-        clean(record.revision) === revision
+-      ) return;
+-      // A response-lost release may already have been followed by another
+-      // valid writer/deletion lease. Never turn that completed cleanup into a
+-      // false failure or overwrite the replacement lease.
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
+@@ -785,8 +834,2 @@
+-      // The bounded old lease or exact release remains fail-closed.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "ambiguous",
+-      "Billing lifecycle lease release could not be reconciled.",
+-    );
+-  }
+-  if (Number(result?.updated) !== 1) {
++      ambiguous = true;
++    }
+@@ -794,2 +837,9 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+@@ -797,7 +847,9 @@
+-      // Preserve the typed contention below when reconciliation is unreadable.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "cas_contention",
+-      "Billing lifecycle lease changed before release.",
+-    );
+-  }
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );
+--- a/base44/functions/createCheckout/billing-identity-lifecycle.ts
++++ b/base44/functions/createCheckout/billing-identity-lifecycle.ts
+@@ -2,0 +3 @@
++const LEASE_CLEANUP_ATTEMPTS = 3;
+@@ -96 +97,10 @@
+-    return { id, subject_key: subjectKey, updated_date: updatedDate };
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
+@@ -483,14 +492,0 @@
+-async function singletonRecord(
+-  store: any,
+-  subjectKey: string,
+-): Promise<LifecycleRecord | undefined> {
+-  const records = await lifecycleRows(store, subjectKey);
+-  if (records.length > 1) {
+-    throw new BillingIdentityLifecycleError(
+-      "duplicate_records",
+-      "Conflicting billing lifecycle rows block persistence.",
+-    );
+-  }
+-  return records[0];
+-}
+-
+@@ -566,0 +563,63 @@
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+@@ -626,0 +686 @@
++      let failure: unknown;
+@@ -632,4 +692 @@
+-        if (
+-          error instanceof BillingIdentityLifecycleError &&
+-          error.code === "duplicate_records"
+-        ) throw error;
++        failure = error;
+@@ -636,0 +694,5 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
+@@ -642 +704 @@
+-    if (Number(result?.updated) === 1) {
++    if (result?.updated !== 0) {
+@@ -644,3 +706,9 @@
+-      // our CAS. Re-read the whole subject set before trusting the lease.
+-      if (await hasExactLease(store, candidate, now, randomUUID)) {
+-        return candidate;
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
+@@ -647,0 +716 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+@@ -751,21 +820,10 @@
+-  let result: any;
+-  try {
+-    result = await store.updateMany(
+-      {
+-        id: lease.recordID,
+-        subject_key: lease.subjectKey,
+-        state: lease.state,
+-        lease_token: lease.leaseToken,
+-        lease_until: lease.leaseUntil,
+-        revision: lease.revision,
+-      },
+-      {
+-        $set: {
+-          state: "active",
+-          lease_token: `released:${revision}`,
+-          lease_until: releasedAt,
+-          revision,
+-        },
+-      },
+-    );
+-  } catch {
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+@@ -773,11 +831,2 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (
+-        record && clean(record.id) === lease.recordID &&
+-        lifecycleState(record.state) === "active" &&
+-        clean(record.lease_until) === releasedAt &&
+-        clean(record.revision) === revision
+-      ) return;
+-      // A response-lost release may already have been followed by another
+-      // valid writer/deletion lease. Never turn that completed cleanup into a
+-      // false failure or overwrite the replacement lease.
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
+@@ -785,8 +834,2 @@
+-      // The bounded old lease or exact release remains fail-closed.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "ambiguous",
+-      "Billing lifecycle lease release could not be reconciled.",
+-    );
+-  }
+-  if (Number(result?.updated) !== 1) {
++      ambiguous = true;
++    }
+@@ -794,2 +837,9 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+@@ -797,7 +847,9 @@
+-      // Preserve the typed contention below when reconciliation is unreadable.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "cas_contention",
+-      "Billing lifecycle lease changed before release.",
+-    );
+-  }
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );
+--- a/base44/functions/deleteAccount/billing-identity-lifecycle.ts
++++ b/base44/functions/deleteAccount/billing-identity-lifecycle.ts
+@@ -2,0 +3 @@
++const LEASE_CLEANUP_ATTEMPTS = 3;
+@@ -96 +97,10 @@
+-    return { id, subject_key: subjectKey, updated_date: updatedDate };
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
+@@ -483,14 +492,0 @@
+-async function singletonRecord(
+-  store: any,
+-  subjectKey: string,
+-): Promise<LifecycleRecord | undefined> {
+-  const records = await lifecycleRows(store, subjectKey);
+-  if (records.length > 1) {
+-    throw new BillingIdentityLifecycleError(
+-      "duplicate_records",
+-      "Conflicting billing lifecycle rows block persistence.",
+-    );
+-  }
+-  return records[0];
+-}
+-
+@@ -566,0 +563,63 @@
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+@@ -626,0 +686 @@
++      let failure: unknown;
+@@ -632,4 +692 @@
+-        if (
+-          error instanceof BillingIdentityLifecycleError &&
+-          error.code === "duplicate_records"
+-        ) throw error;
++        failure = error;
+@@ -636,0 +694,5 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
+@@ -642 +704 @@
+-    if (Number(result?.updated) === 1) {
++    if (result?.updated !== 0) {
+@@ -644,3 +706,9 @@
+-      // our CAS. Re-read the whole subject set before trusting the lease.
+-      if (await hasExactLease(store, candidate, now, randomUUID)) {
+-        return candidate;
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
+@@ -647,0 +716 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+@@ -751,21 +820,10 @@
+-  let result: any;
+-  try {
+-    result = await store.updateMany(
+-      {
+-        id: lease.recordID,
+-        subject_key: lease.subjectKey,
+-        state: lease.state,
+-        lease_token: lease.leaseToken,
+-        lease_until: lease.leaseUntil,
+-        revision: lease.revision,
+-      },
+-      {
+-        $set: {
+-          state: "active",
+-          lease_token: `released:${revision}`,
+-          lease_until: releasedAt,
+-          revision,
+-        },
+-      },
+-    );
+-  } catch {
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+@@ -773,11 +831,2 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (
+-        record && clean(record.id) === lease.recordID &&
+-        lifecycleState(record.state) === "active" &&
+-        clean(record.lease_until) === releasedAt &&
+-        clean(record.revision) === revision
+-      ) return;
+-      // A response-lost release may already have been followed by another
+-      // valid writer/deletion lease. Never turn that completed cleanup into a
+-      // false failure or overwrite the replacement lease.
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
+@@ -785,8 +834,2 @@
+-      // The bounded old lease or exact release remains fail-closed.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "ambiguous",
+-      "Billing lifecycle lease release could not be reconciled.",
+-    );
+-  }
+-  if (Number(result?.updated) !== 1) {
++      ambiguous = true;
++    }
+@@ -794,2 +837,9 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+@@ -797,7 +847,9 @@
+-      // Preserve the typed contention below when reconciliation is unreadable.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "cas_contention",
+-      "Billing lifecycle lease changed before release.",
+-    );
+-  }
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );
+--- a/base44/functions/deleteAccount/entry.ts
++++ b/base44/functions/deleteAccount/entry.ts
+@@ -708,0 +709,2 @@
++        aiWordPackOperationStore:
++          base44.asServiceRole.entities.AiWordPackOperation,
+--- a/base44/functions/deleteAccount/relationship-cleanup.ts
++++ b/base44/functions/deleteAccount/relationship-cleanup.ts
+@@ -76,0 +77 @@
++  aiWordPackOperationStore: any;
+@@ -132,0 +134,3 @@
++  await deleteAllMatching(input.aiWordPackOperationStore, {
++    user_id: input.userID,
++  });
+--- a/base44/functions/gameRoomAction/billing-identity-lifecycle.ts
++++ b/base44/functions/gameRoomAction/billing-identity-lifecycle.ts
+@@ -2,0 +3 @@
++const LEASE_CLEANUP_ATTEMPTS = 3;
+@@ -96 +97,10 @@
+-    return { id, subject_key: subjectKey, updated_date: updatedDate };
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
+@@ -483,14 +492,0 @@
+-async function singletonRecord(
+-  store: any,
+-  subjectKey: string,
+-): Promise<LifecycleRecord | undefined> {
+-  const records = await lifecycleRows(store, subjectKey);
+-  if (records.length > 1) {
+-    throw new BillingIdentityLifecycleError(
+-      "duplicate_records",
+-      "Conflicting billing lifecycle rows block persistence.",
+-    );
+-  }
+-  return records[0];
+-}
+-
+@@ -566,0 +563,63 @@
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+@@ -626,0 +686 @@
++      let failure: unknown;
+@@ -632,4 +692 @@
+-        if (
+-          error instanceof BillingIdentityLifecycleError &&
+-          error.code === "duplicate_records"
+-        ) throw error;
++        failure = error;
+@@ -636,0 +694,5 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
+@@ -642 +704 @@
+-    if (Number(result?.updated) === 1) {
++    if (result?.updated !== 0) {
+@@ -644,3 +706,9 @@
+-      // our CAS. Re-read the whole subject set before trusting the lease.
+-      if (await hasExactLease(store, candidate, now, randomUUID)) {
+-        return candidate;
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
+@@ -647,0 +716 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+@@ -751,21 +820,10 @@
+-  let result: any;
+-  try {
+-    result = await store.updateMany(
+-      {
+-        id: lease.recordID,
+-        subject_key: lease.subjectKey,
+-        state: lease.state,
+-        lease_token: lease.leaseToken,
+-        lease_until: lease.leaseUntil,
+-        revision: lease.revision,
+-      },
+-      {
+-        $set: {
+-          state: "active",
+-          lease_token: `released:${revision}`,
+-          lease_until: releasedAt,
+-          revision,
+-        },
+-      },
+-    );
+-  } catch {
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+@@ -773,11 +831,2 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (
+-        record && clean(record.id) === lease.recordID &&
+-        lifecycleState(record.state) === "active" &&
+-        clean(record.lease_until) === releasedAt &&
+-        clean(record.revision) === revision
+-      ) return;
+-      // A response-lost release may already have been followed by another
+-      // valid writer/deletion lease. Never turn that completed cleanup into a
+-      // false failure or overwrite the replacement lease.
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
+@@ -785,8 +834,2 @@
+-      // The bounded old lease or exact release remains fail-closed.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "ambiguous",
+-      "Billing lifecycle lease release could not be reconciled.",
+-    );
+-  }
+-  if (Number(result?.updated) !== 1) {
++      ambiguous = true;
++    }
+@@ -794,2 +837,9 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+@@ -797,7 +847,9 @@
+-      // Preserve the typed contention below when reconciliation is unreadable.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "cas_contention",
+-      "Billing lifecycle lease changed before release.",
+-    );
+-  }
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );
+--- a/base44/functions/gameRoomAction/committed-game-start-repair.ts
++++ b/base44/functions/gameRoomAction/committed-game-start-repair.ts
+@@ -49,2 +49,4 @@
+- * reconciliation pass. Every outbox or signal write is delegated from inside
+- * a newly acquired, exact current-participant lifecycle lease set.
++ * reconciliation pass. Identity-bearing outbox repair remains inside a newly
++ * acquired, exact current-participant lifecycle lease set. Realtime fanout is
++ * deliberately deferred until that lease set is released; callers must make
++ * that fanout update-only so account cleanup cannot be undone.
+@@ -80 +82 @@
+-  return await input.withFreshLeases(
++  const finalRoom = await input.withFreshLeases(
+@@ -107 +108,0 @@
+-      await input.fanout(finalRoom);
+@@ -110,0 +112,2 @@
++  await input.fanout(finalRoom);
++  return finalRoom;
+--- a/base44/functions/gameRoomAction/community-profile-signal.ts
++++ b/base44/functions/gameRoomAction/community-profile-signal.ts
+@@ -24,0 +25,4 @@
++  beforeWrite?: (
++    recipientUserID: string,
++    profileUserID: string,
++  ) => void | Promise<void>;
+@@ -32,0 +37 @@
++    await input.beforeWrite?.(input.recipientUserID, input.profileUserID);
+@@ -41,0 +47 @@
++    await input.beforeWrite?.(input.recipientUserID, input.profileUserID);
+@@ -51,0 +58 @@
++    await input.beforeWrite?.(input.recipientUserID, input.profileUserID);
+@@ -71,0 +79,4 @@
++  beforeSignalWrite?: (
++    recipientUserID: string,
++    profileUserID: string,
++  ) => void | Promise<void>;
+@@ -136,0 +148 @@
++              beforeWrite: input.beforeSignalWrite,
+--- a/base44/functions/gameRoomAction/entry.ts
++++ b/base44/functions/gameRoomAction/entry.ts
+@@ -179,0 +180 @@
++  validatedExpectedMembershipGeneration,
+@@ -1129,2 +1130 @@
+-  const candidate = clean(body?.expected_membership_id);
+-  return candidate ? validatedMembershipGeneration(candidate) : "";
++  return validatedExpectedMembershipGeneration(body?.expected_membership_id);
+@@ -2735,0 +2736 @@
++        allowCreate: false,
+@@ -4079,3 +4080,3 @@
+-async function withSingleProfileRepairLease(base44, userIDValue, action) {
+-  const userID = clean(userIDValue);
+-  if (!userID) return { status: "gone" };
++async function withProfileRepairLeases(base44, userIDValues, action) {
++  const userIDs = uniqueStrings(userIDValues);
++  if (!userIDs.length) return { status: "gone" };
+@@ -4085 +4086 @@
+-      userIDs: [userID],
++      userIDs,
+@@ -4087 +4088 @@
+-      action: (context) => action(context, userID),
++      action: (context) => action(context, userIDs),
+@@ -4100 +4101,5 @@
+-async function repairCommunityProfileHistorySource(base44, source) {
++async function repairCommunityProfileHistorySource(
++  base44,
++  source,
++  options = {},
++) {
+@@ -4103,3 +4108,6 @@
+-  if (!profileUserID || !matchID) return true;
+-
+-  const mirror = await withSingleProfileRepairLease(
++  if (!profileUserID || !matchID) {
++    await options.afterMirror?.();
++    return true;
++  }
++
++  const mirror = await withProfileRepairLeases(
+@@ -4107 +4115 @@
+-    profileUserID,
++    [profileUserID],
+@@ -4119,0 +4128,4 @@
++  // A bounded terminal batch uses this barrier so every independent profile
++  // mirror releases its User lease before any overlapping recipient signal
++  // fanout begins. Non-terminal drains default to a batch size of one.
++  await options.afterMirror?.();
+@@ -4123,30 +4135,46 @@
+-  const matchHistory = await rankedHistoryForMatch(base44, matchID);
+-  const recipientUserIDs = uniqueStrings(
+-    matchHistory.map((record) => record?.player_user_id),
+-  );
+-  const fanout = await repairCommunityProfileRecipients({
+-    recipientUserIDs,
+-    concurrency: 4,
+-    repairRecipient: async (recipientUserID) => {
+-      const outcome = await withSingleProfileRepairLease(
+-        base44,
+-        recipientUserID,
+-        async () => {
+-          const result = await fanoutCommunityProfileInvalidations({
+-            signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
+-            recipientUserIDs: [recipientUserID],
+-            profileUserIDs: [profileUserID],
+-            logError: (message, error) =>
+-              console.error(message, error?.message || error),
+-          });
+-          return Number(result?.failed) === 0;
+-        },
+-      );
+-      return outcome.status === "gone" ||
+-        (outcome.status === "performed" && outcome.value === true);
+-    },
+-  });
+-  return fanout.failedUserIDs.length === 0;
+-}
+-
+-async function runProfileRepairSources(base44, sources) {
++  const fanout = async () => {
++    const matchHistory = await rankedHistoryForMatch(base44, matchID);
++    const recipientUserIDs = uniqueStrings(
++      matchHistory.map((record) => record?.player_user_id),
++    );
++    const result = await repairCommunityProfileRecipients({
++      recipientUserIDs,
++      // Every recipient scope also owns the shared profile identity lease.
++      // Serialize these short writes so sibling scopes do not contend with one
++      // another and falsely defer an otherwise healthy durable repair source.
++      concurrency: 1,
++      repairRecipient: async (recipientUserID) => {
++        const outcome = await withProfileRepairLeases(
++          base44,
++          [profileUserID, recipientUserID],
++          async (context) => {
++            const signal = await fanoutCommunityProfileInvalidations({
++              signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
++              recipientUserIDs: [recipientUserID],
++              profileUserIDs: [profileUserID],
++              beforeSignalWrite: async () => {
++                await assertRoomWriterLeaseForUser(context, profileUserID);
++                await assertRoomWriterLeaseForUser(context, recipientUserID);
++              },
++              logError: (message, error) =>
++                console.error(message, error?.message || error),
++            });
++            return Number(signal?.failed) === 0;
++          },
++        );
++        return outcome.status === "gone" ||
++          (outcome.status === "performed" && outcome.value === true);
++      },
++    });
++    return result.failedUserIDs.length === 0;
++  };
++
++  // A recipient owns one CommunityProfileSignal row. Independent player
++  // mirrors may run concurrently, but their wake-up fanout must remain ordered
++  // so one profile cannot overwrite another profile's signal mid-write.
++  return typeof options.serializeFanout === "function"
++    ? await options.serializeFanout(fanout)
++    : await fanout();
++}
++
++async function runProfileRepairSources(base44, sources, options = {}) {
+@@ -4154,7 +4182,31 @@
+-  // Every recipient owns one wake-up row. Keep affected profiles sequential
+-  // while retaining bounded recipient concurrency inside each source so two
+-  // profile updates cannot race to overwrite that shared row.
+-  for (const source of sources) {
+-    try {
+-      outcomes.push(
+-        await runCommunityProfileRepair({
++  const concurrency = Math.min(
++    Math.max(Math.floor(Number(options.concurrency)) || 1, 1),
++    4,
++  );
++  let fanoutTail = Promise.resolve();
++  const serializeFanout = async (fanout) => {
++    const run = fanoutTail.then(fanout, fanout);
++    fanoutTail = run.then(() => undefined, () => undefined);
++    return await run;
++  };
++
++  // Ranked participants update distinct User rows under distinct lifecycle
++  // leases. Bound their expensive history reads/mirror writes concurrently,
++  // while serializeFanout preserves the single wake-up row per recipient.
++  for (let offset = 0; offset < sources.length; offset += concurrency) {
++    const batch = sources.slice(offset, offset + concurrency);
++    let mirrorsSettled = 0;
++    let releaseMirrorBarrier;
++    const mirrorBarrier = new Promise((resolve) => {
++      releaseMirrorBarrier = resolve;
++    });
++    const settled = await Promise.allSettled(
++      batch.map((source) => {
++        let sourceSettled = false;
++        const settleSource = () => {
++          if (sourceSettled) return;
++          sourceSettled = true;
++          mirrorsSettled += 1;
++          if (mirrorsSettled === batch.length) releaseMirrorBarrier();
++        };
++        return runCommunityProfileRepair({
+@@ -4163,2 +4215,13 @@
+-          repair: (claimedSource) =>
+-            repairCommunityProfileHistorySource(base44, claimedSource),
++          repair: (claimedSource) => {
++            return repairCommunityProfileHistorySource(
++              base44,
++              claimedSource,
++              {
++                afterMirror: async () => {
++                  settleSource();
++                  await mirrorBarrier;
++                },
++                serializeFanout,
++              },
++            );
++          },
+@@ -4167,3 +4230,12 @@
+-        }),
+-      );
+-    } catch (error) {
++        }).finally(() => {
++          // Completed/deferred sources never enter repair(), and an unexpected
++          // pre-barrier failure must not strand its batch behind the gate.
++          settleSource();
++        });
++      }),
++    );
++    for (const [index, result] of settled.entries()) {
++      if (result.status === "fulfilled") {
++        outcomes.push(result.value);
++        continue;
++      }
+@@ -4172 +4244 @@
+-        error?.message || error,
++        result.reason?.message || result.reason,
+@@ -4174 +4246 @@
+-      outcomes.push({ outcome: "failed", source });
++      outcomes.push({ outcome: "failed", source: batch[index] });
+@@ -4189 +4261,3 @@
+-  const outcomes = await runProfileRepairSources(base44, sources);
++  const outcomes = await runProfileRepairSources(base44, sources, {
++    concurrency: 4,
++  });
+--- a/base44/functions/gameRoomAction/room-membership-generation.ts
++++ b/base44/functions/gameRoomAction/room-membership-generation.ts
+@@ -17,0 +18,21 @@
++    throw Object.assign(new Error("Membership generation is invalid."), {
++      status: 400,
++      code: "membership_generation_invalid",
++    });
++  }
++  return candidate;
++}
++
++export function validatedExpectedMembershipGeneration(
++  value: unknown,
++): string {
++  if (value === null || value === undefined) return "";
++  if (typeof value !== "string") {
++    throw Object.assign(new Error("Membership generation is invalid."), {
++      status: 400,
++      code: "membership_generation_invalid",
++    });
++  }
++  const candidate = value.trim();
++  if (!candidate) return "";
++  if (candidate.length > 512 || /[\u0000-\u001F\u007F]/.test(candidate)) {
+--- a/base44/functions/gameRoomAction/terminal-side-effect-dispatch.ts
++++ b/base44/functions/gameRoomAction/terminal-side-effect-dispatch.ts
+@@ -181,10 +180,0 @@
+-  const room = await readRoom(input.store, input.claim.roomID);
+-  const state = dispatchState(room || {}, input.claim.stateKey);
+-  if (
+-    !roomStillOwnsTerminalSource(room, input.claim.sourceEventID) ||
+-    clean(state?.event_id) !== input.claim.sourceEventID ||
+-    clean(state?.state) !== "processing" ||
+-    clean(state?.token) !== input.claim.token ||
+-    roomWriteRevision(room) === null
+-  ) return { completed: false, room };
+-
+@@ -192,3 +182,9 @@
+-  try {
+-    const completedRoom = await writeRoomWithCAS({
+-      store: input.store,
++  let room = await readRoom(input.store, input.claim.roomID);
++
++  // Profile and push own independent fields inside terminal_intent, but both
++  // still advance the room CAS. Retry completion from the latest snapshot so
++  // concurrent independent workers preserve each other's state instead of
++  // leaving one already-performed side effect leased for a later replay.
++  for (let attempt = 0; attempt < CLAIM_ATTEMPTS; attempt += 1) {
++    const state = dispatchState(room || {}, input.claim.stateKey);
++    const ownsSource = roomStillOwnsTerminalSource(
+@@ -196,8 +192,25 @@
+-      patch: {
+-        terminal_intent: {
+-          ...rawTerminalIntent(room),
+-          [input.claim.stateKey]: {
+-            ...state,
+-            state: "completed",
+-            lease_until: now.toISOString(),
+-            completed_at: now.toISOString(),
++      input.claim.sourceEventID,
++    ) && clean(state?.event_id) === input.claim.sourceEventID &&
++      clean(state?.token) === input.claim.token;
++    if (ownsSource && clean(state?.state) === "completed") {
++      return { completed: true, room };
++    }
++    if (
++      !ownsSource || clean(state?.state) !== "processing" ||
++      roomWriteRevision(room) === null
++    ) return { completed: false, room };
++    if (!room) return { completed: false, room: null };
++
++    try {
++      const completedRoom = await writeRoomWithCAS({
++        store: input.store,
++        room,
++        patch: {
++          terminal_intent: {
++            ...rawTerminalIntent(room),
++            [input.claim.stateKey]: {
++              ...state,
++              state: "completed",
++              lease_until: now.toISOString(),
++              completed_at: now.toISOString(),
++            },
+@@ -206,10 +219,9 @@
+-      },
+-      read: (id) => readRoom(input.store, id),
+-      randomUUID: () => `terminal-dispatch-complete:${completionID}`,
+-    });
+-    const completedState = dispatchState(
+-      completedRoom,
+-      input.claim.stateKey,
+-    );
+-    return {
+-      completed:
++        read: (id) => readRoom(input.store, id),
++        randomUUID: () =>
++          `terminal-dispatch-complete:${completionID}:${attempt}`,
++      });
++      const completedState = dispatchState(
++        completedRoom,
++        input.claim.stateKey,
++      );
++      if (
+@@ -219,15 +231,8 @@
+-        clean(completedState?.token) === input.claim.token,
+-      room: completedRoom,
+-    };
+-  } catch {
+-    const latest = await readRoom(input.store, input.claim.roomID);
+-    const latestState = dispatchState(latest || {}, input.claim.stateKey);
+-    return {
+-      completed:
+-        roomStillOwnsTerminalSource(latest, input.claim.sourceEventID) &&
+-        clean(latestState?.event_id) === input.claim.sourceEventID &&
+-        clean(latestState?.state) === "completed" &&
+-        clean(latestState?.token) === input.claim.token,
+-      room: latest,
+-    };
+-  }
++        clean(completedState?.token) === input.claim.token
++      ) return { completed: true, room: completedRoom };
++      room = completedRoom;
++    } catch {
++      room = await readRoom(input.store, input.claim.roomID);
++    }
++  }
++  return { completed: false, room };
+--- a/base44/functions/generateWordPack/billing-identity-lifecycle.ts
++++ b/base44/functions/generateWordPack/billing-identity-lifecycle.ts
+@@ -2,0 +3 @@
++const LEASE_CLEANUP_ATTEMPTS = 3;
+@@ -96 +97,10 @@
+-    return { id, subject_key: subjectKey, updated_date: updatedDate };
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
+@@ -483,14 +492,0 @@
+-async function singletonRecord(
+-  store: any,
+-  subjectKey: string,
+-): Promise<LifecycleRecord | undefined> {
+-  const records = await lifecycleRows(store, subjectKey);
+-  if (records.length > 1) {
+-    throw new BillingIdentityLifecycleError(
+-      "duplicate_records",
+-      "Conflicting billing lifecycle rows block persistence.",
+-    );
+-  }
+-  return records[0];
+-}
+-
+@@ -566,0 +563,63 @@
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+@@ -626,0 +686 @@
++      let failure: unknown;
+@@ -632,4 +692 @@
+-        if (
+-          error instanceof BillingIdentityLifecycleError &&
+-          error.code === "duplicate_records"
+-        ) throw error;
++        failure = error;
+@@ -636,0 +694,5 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
+@@ -642 +704 @@
+-    if (Number(result?.updated) === 1) {
++    if (result?.updated !== 0) {
+@@ -644,3 +706,9 @@
+-      // our CAS. Re-read the whole subject set before trusting the lease.
+-      if (await hasExactLease(store, candidate, now, randomUUID)) {
+-        return candidate;
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
+@@ -647,0 +716 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+@@ -751,21 +820,10 @@
+-  let result: any;
+-  try {
+-    result = await store.updateMany(
+-      {
+-        id: lease.recordID,
+-        subject_key: lease.subjectKey,
+-        state: lease.state,
+-        lease_token: lease.leaseToken,
+-        lease_until: lease.leaseUntil,
+-        revision: lease.revision,
+-      },
+-      {
+-        $set: {
+-          state: "active",
+-          lease_token: `released:${revision}`,
+-          lease_until: releasedAt,
+-          revision,
+-        },
+-      },
+-    );
+-  } catch {
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+@@ -773,11 +831,2 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (
+-        record && clean(record.id) === lease.recordID &&
+-        lifecycleState(record.state) === "active" &&
+-        clean(record.lease_until) === releasedAt &&
+-        clean(record.revision) === revision
+-      ) return;
+-      // A response-lost release may already have been followed by another
+-      // valid writer/deletion lease. Never turn that completed cleanup into a
+-      // false failure or overwrite the replacement lease.
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
+@@ -785,8 +834,2 @@
+-      // The bounded old lease or exact release remains fail-closed.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "ambiguous",
+-      "Billing lifecycle lease release could not be reconciled.",
+-    );
+-  }
+-  if (Number(result?.updated) !== 1) {
++      ambiguous = true;
++    }
+@@ -794,2 +837,9 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+@@ -797,7 +847,9 @@
+-      // Preserve the typed contention below when reconciliation is unreadable.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "cas_contention",
+-      "Billing lifecycle lease changed before release.",
+-    );
+-  }
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );
+--- a/base44/functions/generateWordPack/entry.ts
++++ b/base44/functions/generateWordPack/entry.ts
+@@ -36 +36,9 @@
+-import { invokeAIProviderWithRetry } from "./ai-provider-resilience.ts";
++import {
++  invokeAIProviderWithRetry,
++  isTransientAIProviderError,
++} from "./ai-provider-resilience.ts";
++import {
++  lookupCompletedWordPackOperation,
++  runWordPackOperation,
++  WordPackOperationError,
++} from "./generation-operation.ts";
+@@ -291,0 +300 @@
++        delays: [], // A transport error may hide completed provider work.
+@@ -321,0 +331,6 @@
++      if (isTransientAIProviderError(error)) {
++        throw new WordPackOperationError(
++          "generation_outcome_unknown",
++          "AI did not confirm the previous attempt. It was not repeated automatically.",
++        );
++      }
+@@ -333,0 +349 @@
++      delays: [], // Never automatically repeat an ambiguous provider call.
+@@ -510,4 +526,22 @@
+-            const replay = await lookupIdempotentWordPackResult({
+-              store: idempotencyStore,
+-              identity: idempotency,
+-            });
++            let journalError: unknown;
++            let replay;
++            try {
++              replay = await lookupCompletedWordPackOperation({
++                store: base44.asServiceRole.entities.AiWordPackOperation,
++                identity: idempotency,
++              });
++            } catch (error) {
++              if (error instanceof WordPackIdempotencyConflictError) {
++                throw error;
++              }
++              journalError = error;
++            }
++            if (!replay) {
++              replay = await lookupIdempotentWordPackResult({
++                store: idempotencyStore,
++                identity: idempotency,
++              });
++            }
++            // Either durable result is sufficient to replay. If both have no
++            // result, a failed journal read cannot authorize fresh effects.
++            if (!replay && journalError) throw journalError;
+@@ -582,40 +616,21 @@
+-        // Legacy metering remains available if CASADA is ever disabled. An
+-        // exact request_id replay above still bypasses it because that replay
+-        // is the same logical user action.
+-        let reservation: QuotaReservation;
+-        try {
+-          reservation = await reserveGenerationQuota(
+-            quotaStore,
+-            user.id,
+-            membership.tier,
+-            guard,
+-          );
+-        } catch (error) {
+-          if (error instanceof BillingIdentityLifecycleError) throw error;
+-          console.error(
+-            "generateWordPack quota reservation error:",
+-            errorMessage(error),
+-          );
+-          return Response.json({
+-            error: "AI usage could not be reserved. Try again shortly.",
+-            code: "quota_unavailable",
+-            active: membership.active,
+-            tier: membership.tier,
+-            protocol: membership.protocol,
+-            expires_at: membership.expires_at,
+-            status: "unknown",
+-            providers: membership.providers,
+-            benefits: membership.benefits,
+-            ...retryTracker.errorMetadata(error, 503),
+-          }, { status: 503 });
+-        }
+-        const usage = generationUsageMetadata(
+-          membership.tier,
+-          reservation.usedBefore,
+-        );
+-
+-        if (!reservation.allowed) {
+-          return Response.json(
+-            {
+-              error: "Daily AI generation limit reached. Try again tomorrow.",
+-              code: "daily_ai_limit_reached",
++        const executeGeneration = async (): Promise<Response> => {
++          // Legacy metering remains available if CASADA is ever disabled. An
++          // exact request_id replay above still bypasses it because that replay
++          // is the same logical user action.
++          let reservation: QuotaReservation;
++          try {
++            reservation = await reserveGenerationQuota(
++              quotaStore,
++              user.id,
++              membership.tier,
++              guard,
++            );
++          } catch (error) {
++            if (error instanceof BillingIdentityLifecycleError) throw error;
++            console.error(
++              "generateWordPack quota reservation error:",
++              errorMessage(error),
++            );
++            return Response.json({
++              error: "AI usage could not be reserved. Try again shortly.",
++              code: "quota_unavailable",
+@@ -626 +641 @@
+-              status: membership.active ? "active" : "inactive",
++              status: "unknown",
+@@ -629,3 +644,6 @@
+-              ...usage,
+-            },
+-            { status: 429 },
++              ...retryTracker.errorMetadata(error, 503),
++            }, { status: 503 });
++          }
++          const usage = generationUsageMetadata(
++            membership.tier,
++            reservation.usedBefore,
+@@ -633,39 +651,57 @@
+-        }
+-
+-        let words: string[] = [];
+-        let category = theme;
+-        let exhausted = false;
+-        let cacheHit = false;
+-        let cacheVariantKey: string | undefined;
+-        let exhaustionVerificationUsed = false;
+-        let aiState: AIInvocationState = {
+-          directProvider: null,
+-          directProviderDisabled: false,
+-          directAttempts: 0,
+-          base44Attempts: 0,
+-          aiDurationMilliseconds: 0,
+-          qualityRejectedCount: 0,
+-          qualityReplacementCount: 0,
+-          fallbackUsed: false,
+-        };
+-        try {
+-          if (!preferFresh) {
+-            try {
+-              const hit = await lookupWordPackCache({
+-                store: cacheStore,
+-                request: cacheRequest,
+-                selectionSeed: requestID ?? cacheRequest.cacheKey,
+-              });
+-              if (hit) {
+-                const safeWords = filterSafeCommunityStrings(
+-                  removeExcludedWords(hit.words, excludedWords),
+-                ).slice(0, count);
+-                if (
+-                  safeWords.length >= 2 &&
+-                  (safeWords.length >= count || hit.exhausted)
+-                ) {
+-                  words = safeWords;
+-                  category = theme;
+-                  exhausted = hit.exhausted;
+-                  cacheHit = true;
+-                  cacheVariantKey = hit.variantKey;
++
++          if (!reservation.allowed) {
++            return Response.json(
++              {
++                error: "Daily AI generation limit reached. Try again tomorrow.",
++                code: "daily_ai_limit_reached",
++                active: membership.active,
++                tier: membership.tier,
++                protocol: membership.protocol,
++                expires_at: membership.expires_at,
++                status: membership.active ? "active" : "inactive",
++                providers: membership.providers,
++                benefits: membership.benefits,
++                ...usage,
++              },
++              { status: 429 },
++            );
++          }
++
++          let words: string[] = [];
++          let category = theme;
++          let exhausted = false;
++          let cacheHit = false;
++          let cacheVariantKey: string | undefined;
++          let exhaustionVerificationUsed = false;
++          let aiState: AIInvocationState = {
++            directProvider: null,
++            directProviderDisabled: false,
++            directAttempts: 0,
++            base44Attempts: 0,
++            aiDurationMilliseconds: 0,
++            qualityRejectedCount: 0,
++            qualityReplacementCount: 0,
++            fallbackUsed: false,
++          };
++          try {
++            if (!preferFresh) {
++              try {
++                const hit = await lookupWordPackCache({
++                  store: cacheStore,
++                  request: cacheRequest,
++                  selectionSeed: requestID ?? cacheRequest.cacheKey,
++                });
++                if (hit) {
++                  const safeWords = filterSafeCommunityStrings(
++                    removeExcludedWords(hit.words, excludedWords),
++                  ).slice(0, count);
++                  if (
++                    safeWords.length >= 2 &&
++                    (safeWords.length >= count || hit.exhausted)
++                  ) {
++                    words = safeWords;
++                    category = theme;
++                    exhausted = hit.exhausted;
++                    cacheHit = true;
++                    cacheVariantKey = hit.variantKey;
++                  }
+@@ -672,0 +709,5 @@
++              } catch (error) {
++                console.error(
++                  "generateWordPack cache lookup error:",
++                  errorMessage(error),
++                );
+@@ -674,5 +714,0 @@
+-            } catch (error) {
+-              console.error(
+-                "generateWordPack cache lookup error:",
+-                errorMessage(error),
+-              );
+@@ -680,21 +716,4 @@
+-          }
+-
+-          if (!cacheHit) {
+-            aiState = createAIInvocationState();
+-            const firstPass = await invokeWordPackLLM(
+-              base44,
+-              theme,
+-              count,
+-              excludedWords,
+-              guard,
+-              aiState,
+-              retryTracker,
+-            );
+-            words = filterSafeCommunityStrings(
+-              removeExcludedWords(firstPass?.words || [], excludedWords),
+-            ).slice(0, count);
+-            assertNoKnownNamedThemeDrift(theme, words);
+-            exhausted = firstPass?.exhausted === true && words.length < count;
+-            if (exhausted) {
+-              exhaustionVerificationUsed = true;
+-              const verification = await invokeWordPackLLM(
++
++            if (!cacheHit) {
++              aiState = createAIInvocationState();
++              const firstPass = await invokeWordPackLLM(
+@@ -703,2 +722,2 @@
+-                Math.max(2, count - words.length),
+-                [...excludedWords, ...words],
++                count,
++                excludedWords,
+@@ -709,3 +728,11 @@
+-              const additionalWords = filterSafeCommunityStrings(
+-                removeExcludedWords(
+-                  verification.words,
++              words = filterSafeCommunityStrings(
++                removeExcludedWords(firstPass?.words || [], excludedWords),
++              ).slice(0, count);
++              assertNoKnownNamedThemeDrift(theme, words);
++              exhausted = firstPass?.exhausted === true && words.length < count;
++              if (exhausted) {
++                exhaustionVerificationUsed = true;
++                const verification = await invokeWordPackLLM(
++                  base44,
++                  theme,
++                  Math.max(2, count - words.length),
+@@ -713,9 +740,22 @@
+-                ),
+-              );
+-              assertNoKnownNamedThemeDrift(theme, additionalWords);
+-              words = uniqueWords([...words, ...additionalWords]).slice(
+-                0,
+-                count,
+-              );
+-              exhausted = verification.exhausted === true &&
+-                words.length < count;
++                  guard,
++                  aiState,
++                  retryTracker,
++                );
++                const additionalWords = filterSafeCommunityStrings(
++                  removeExcludedWords(
++                    verification.words,
++                    [...excludedWords, ...words],
++                  ),
++                );
++                assertNoKnownNamedThemeDrift(theme, additionalWords);
++                words = uniqueWords([...words, ...additionalWords]).slice(
++                  0,
++                  count,
++                );
++                exhausted = verification.exhausted === true &&
++                  words.length < count;
++              }
++              category = theme;
++              if (words.length < count && !exhausted) {
++                throw new WordPackQualityGateError();
++              }
+@@ -723,3 +763,6 @@
+-            category = theme;
+-            if (words.length < count && !exhausted) {
+-              throw new WordPackQualityGateError();
++
++            if (words.length < 2) {
++              await releaseGenerationQuota(quotaStore, reservation, guard);
++              return Response.json({
++                error: "AI did not return enough playable words.",
++              }, { status: 502 });
+@@ -727,28 +770,21 @@
+-          }
+-
+-          if (words.length < 2) {
+-            await releaseGenerationQuota(quotaStore, reservation, guard);
+-            return Response.json({
+-              error: "AI did not return enough playable words.",
+-            }, { status: 502 });
+-          }
+-
+-          if (!cacheHit) {
+-            try {
+-              const cached = await guard.boundary(() =>
+-                persistWordPackCacheVariant({
+-                  store: cacheStore,
+-                  request: cacheRequest,
+-                  result: {
+-                    category: STORED_WORD_PACK_CATEGORY,
+-                    words,
+-                    exhausted,
+-                  },
+-                })
+-              );
+-              cacheVariantKey = cached.variant_key;
+-            } catch (error) {
+-              console.error(
+-                "generateWordPack cache persistence error:",
+-                errorMessage(error),
+-              );
++
++            if (!cacheHit) {
++              try {
++                const cached = await guard.boundary(() =>
++                  persistWordPackCacheVariant({
++                    store: cacheStore,
++                    request: cacheRequest,
++                    result: {
++                      category: STORED_WORD_PACK_CATEGORY,
++                      words,
++                      exhausted,
++                    },
++                  })
++                );
++                cacheVariantKey = cached.variant_key;
++              } catch (error) {
++                console.error(
++                  "generateWordPack cache persistence error:",
++                  errorMessage(error),
++                );
++              }
+@@ -756,3 +792,46 @@
+-          }
+-
+-          if (idempotency) {
++
++            if (idempotency) {
++              try {
++                await guard.boundary(() =>
++                  persistIdempotentWordPackResult({
++                    store: idempotencyStore,
++                    identity: idempotency,
++                    result: {
++                      category: STORED_WORD_PACK_CATEGORY,
++                      words,
++                      exhausted,
++                      cacheVariantKey,
++                    },
++                  })
++                );
++              } catch (error) {
++                if (error instanceof WordPackIdempotencyConflictError) {
++                  throw error;
++                }
++                console.error(
++                  "generateWordPack idempotency persistence error:",
++                  errorMessage(error),
++                );
++                throw new WordPackIdempotencyUnavailableError();
++              }
++
++              try {
++                await guard.boundary(() =>
++                  pruneExpiredWordPackRequestResults({
++                    store: idempotencyStore,
++                    userID: user.id,
++                    limit: 10,
++                  })
++                );
++              } catch (error) {
++                console.error(
++                  "generateWordPack idempotency prune error:",
++                  errorMessage(error),
++                );
++              }
++            }
++
++            // For idempotent clients this is strictly after the replay result
++            // commits, so cleanup latency cannot cause another provider call.
++            // Legacy clients also write reusable variants, so they must take
++            // part in bounded physical TTL cleanup as well.
+@@ -761,26 +840,2 @@
+-                persistIdempotentWordPackResult({
+-                  store: idempotencyStore,
+-                  identity: idempotency,
+-                  result: {
+-                    category: STORED_WORD_PACK_CATEGORY,
+-                    words,
+-                    exhausted,
+-                    cacheVariantKey,
+-                  },
+-                })
+-              );
+-            } catch (error) {
+-              if (error instanceof WordPackIdempotencyConflictError) {
+-                throw error;
+-              }
+-              console.error(
+-                "generateWordPack idempotency persistence error:",
+-                errorMessage(error),
+-              );
+-              throw new WordPackIdempotencyUnavailableError();
+-            }
+-
+-            try {
+-              await guard.boundary(() =>
+-                pruneExpiredWordPackRequestResults({
+-                  store: idempotencyStore,
++                pruneExpiredWordPackCacheVariants({
++                  store: cacheStore,
+@@ -793 +848,26 @@
+-                "generateWordPack idempotency prune error:",
++                "generateWordPack cache prune error:",
++                errorMessage(error),
++              );
++            }
++          } catch (error) {
++            await releaseGenerationQuota(quotaStore, reservation, guard);
++            throw error;
++          }
++
++          const generationCount = reservation.usedAfter;
++          if (membership.tier !== "limitless") {
++            try {
++              // Compatibility/display mirror only. The admin-only quota entity
++              // above remains authoritative.
++              await guard.boundary(() =>
++                base44.asServiceRole.entities.User.update(user.id, {
++                  ai_generations_today: generationCount,
++                  last_ai_generation_date: new Date().toISOString(),
++                })
++              );
++            } catch (error) {
++              // This User field is a compatibility/display mirror only. Quota is
++              // already committed in the server-owned entity, so a mirror or
++              // lease-assertion outage must not replace valid words with a 503.
++              console.error(
++                "generateWordPack usage mirror error:",
+@@ -799,55 +879,33 @@
+-          // For idempotent clients this is strictly after the replay result
+-          // commits, so cleanup latency cannot cause another provider call.
+-          // Legacy clients also write reusable variants, so they must take
+-          // part in bounded physical TTL cleanup as well.
+-          try {
+-            await guard.boundary(() =>
+-              pruneExpiredWordPackCacheVariants({
+-                store: cacheStore,
+-                userID: user.id,
+-                limit: 10,
+-              })
+-            );
+-          } catch (error) {
+-            console.error(
+-              "generateWordPack cache prune error:",
+-              errorMessage(error),
+-            );
+-          }
+-        } catch (error) {
+-          await releaseGenerationQuota(quotaStore, reservation, guard);
+-          throw error;
+-        }
+-
+-        const generationCount = reservation.usedAfter;
+-        if (membership.tier !== "limitless") {
+-          try {
+-            // Compatibility/display mirror only. The admin-only quota entity
+-            // above remains authoritative.
+-            await guard.boundary(() =>
+-              base44.asServiceRole.entities.User.update(user.id, {
+-                ai_generations_today: generationCount,
+-                last_ai_generation_date: new Date().toISOString(),
+-              })
+-            );
+-          } catch (error) {
+-            // This User field is a compatibility/display mirror only. Quota is
+-            // already committed in the server-owned entity, so a mirror or
+-            // lease-assertion outage must not replace valid words with a 503.
+-            console.error(
+-              "generateWordPack usage mirror error:",
+-              errorMessage(error),
+-            );
+-          }
+-        }
+-
+-        const source = cacheHit
+-          ? "cache"
+-          : aiState.base44Attempts > 0
+-          ? "base44_integration"
+-          : "openai_direct";
+-        console.info(
+-          "generateWordPack metrics:",
+-          JSON.stringify({
+-            ...wordPackTelemetryDimensions(cacheRequest),
+-            returned_count: words.length,
++          const source = cacheHit
++            ? "cache"
++            : aiState.base44Attempts > 0
++            ? "base44_integration"
++            : "openai_direct";
++          console.info(
++            "generateWordPack metrics:",
++            JSON.stringify({
++              ...wordPackTelemetryDimensions(cacheRequest),
++              returned_count: words.length,
++              cache_hit: cacheHit,
++              request_replayed: false,
++              direct_attempts: aiState.directAttempts,
++              base44_attempts: aiState.base44Attempts,
++              base44_model: BASE44_WORD_PACK_MODEL,
++              single_pass_quality_gate: true,
++              exhaustion_verification_used: exhaustionVerificationUsed,
++              ai_duration_ms: aiState.aiDurationMilliseconds,
++              quality_repair_used: aiState.qualityRejectedCount > 0 ||
++                aiState.qualityReplacementCount > 0,
++              quality_rejected_count: aiState.qualityRejectedCount,
++              quality_replacement_count: aiState.qualityReplacementCount,
++              fallback_used: aiState.fallbackUsed,
++              exhausted,
++              source,
++            }),
++          );
++
++          return Response.json({
++            name: category,
++            category,
++            words,
++            exhausted,
+@@ -856,14 +914,38 @@
+-            direct_attempts: aiState.directAttempts,
+-            base44_attempts: aiState.base44Attempts,
+-            base44_model: BASE44_WORD_PACK_MODEL,
+-            single_pass_quality_gate: true,
+-            exhaustion_verification_used: exhaustionVerificationUsed,
+-            ai_duration_ms: aiState.aiDurationMilliseconds,
+-            quality_repair_used: aiState.qualityRejectedCount > 0 ||
+-              aiState.qualityReplacementCount > 0,
+-            quality_rejected_count: aiState.qualityRejectedCount,
+-            quality_replacement_count: aiState.qualityReplacementCount,
+-            fallback_used: aiState.fallbackUsed,
+-            exhausted,
+-            source,
+-          }),
++            active: membership.active,
++            tier: membership.tier,
++            protocol: membership.protocol,
++            expires_at: membership.expires_at,
++            status: membership.active ? "active" : "inactive",
++            providers: membership.providers,
++            benefits: membership.benefits,
++            ...generationUsageMetadata(membership.tier, generationCount),
++          });
++        };
++
++        // Legacy requests have no stable identity to recover. Current clients
++        // always supply a request_id; keep older explicit actions compatible.
++        if (!idempotency) return await executeGeneration();
++        const operation = await runWordPackOperation({
++          store: base44.asServiceRole.entities.AiWordPackOperation,
++          identity: idempotency,
++          guard,
++          execute: async () => {
++            const response = await executeGeneration();
++            const payload = response.ok ? await response.clone().json() : null;
++            return {
++              value: response,
++              replayCommitted: response.ok,
++              result: payload
++                ? {
++                  category: "AI GENERATED",
++                  words: payload.words,
++                  exhausted: payload.exhausted === true,
++                }
++                : null,
++            };
++          },
++        });
++        if (!operation.replayed) return operation.value;
++        let generationCount = Math.max(
++          0,
++          Math.floor(Number(user.ai_generations_today) || 0),
+@@ -871 +953,3 @@
+-
++        try {
++          generationCount = await currentGenerationCount(quotaStore, user.id);
++        } catch { /* display only */ }
+@@ -873,6 +957,6 @@
+-          name: category,
+-          category,
+-          words,
+-          exhausted,
+-          cache_hit: cacheHit,
+-          request_replayed: false,
++          name: theme,
++          category: theme,
++          words: operation.result.words,
++          exhausted: operation.result.exhausted,
++          cache_hit: false,
++          request_replayed: true,
+--- /dev/null
++++ b/base44/functions/generateWordPack/generation-operation.ts
+@@ -0,0 +1,258 @@
++import type { PreparedWordPackIdempotency } from "./generation-idempotency.ts";
++import { WordPackIdempotencyConflictError } from "./generation-idempotency.ts";
++import {
++  normalizeGeneratedWordPack,
++  type WordPackResult,
++} from "./generation-cache.ts";
++import type { GenerationWriteGuard } from "./generation-write-lifecycle.ts";
++
++export type WordPackOperationRecord = {
++  id?: string;
++  request_key: string;
++  user_id: string;
++  request_id: string;
++  request_fingerprint: string;
++  operation_token: string;
++  state: "prepared" | "running" | "completed" | "failed";
++  updated_at: string;
++  result_words?: string[];
++  result_category?: string;
++  exhausted?: boolean;
++  completed_at?: string;
++};
++
++export type WordPackOperationStore = {
++  filter: (
++    query: Record<string, unknown>,
++    sort: string,
++    limit: number,
++    skip: number,
++  ) => Promise<WordPackOperationRecord[]>;
++  create: (record: WordPackOperationRecord) => Promise<WordPackOperationRecord>;
++  updateMany: (
++    query: Record<string, unknown>,
++    update: Record<string, Record<string, unknown>>,
++  ) => Promise<{ updated?: number }>;
++};
++
++export class WordPackOperationError extends Error {
++  readonly status = 503;
++  readonly retryable = false;
++  constructor(
++    readonly code:
++      | "generation_outcome_unknown"
++      | "generation_journal_unavailable",
++    message: string,
++  ) {
++    super(message);
++    this.name = "WordPackOperationError";
++  }
++}
++
++function unavailable(): WordPackOperationError {
++  return new WordPackOperationError(
++    "generation_journal_unavailable",
++    "Generation recovery is temporarily unavailable. No automatic new generation was started.",
++  );
++}
++
++function uncertain(): WordPackOperationError {
++  return new WordPackOperationError(
++    "generation_outcome_unknown",
++    "The previous generation has no confirmed result. It will not be repeated automatically. Start a new generation explicitly if needed.",
++  );
++}
++
++function matches(
++  row: WordPackOperationRecord,
++  identity: PreparedWordPackIdempotency,
++): boolean {
++  return row.request_key === identity.requestKey &&
++    row.user_id === identity.userID &&
++    row.request_id === identity.requestID &&
++    row.request_fingerprint === identity.requestFingerprint;
++}
++
++/** Fail closed on duplicate/invalid journal rows; never choose a fresh row over an older effect. */
++async function lookup(
++  store: WordPackOperationStore,
++  identity: PreparedWordPackIdempotency,
++): Promise<WordPackOperationRecord | null> {
++  const rows = await store.filter(
++    { request_key: identity.requestKey },
++    "created_date",
++    2,
++    0,
++  );
++  if (rows.some((row) => !matches(row, identity))) {
++    throw new WordPackIdempotencyConflictError();
++  }
++  if (rows.length > 1) throw unavailable();
++  const row = rows[0];
++  if (!row) return null;
++  if (
++    !row.id || !row.operation_token ||
++    !["prepared", "running", "completed", "failed"].includes(row.state)
++  ) throw unavailable();
++  return row;
++}
++
++function result(row: WordPackOperationRecord): WordPackResult {
++  try {
++    return normalizeGeneratedWordPack({
++      category: row.result_category,
++      words: row.result_words,
++      exhausted: row.exhausted,
++    });
++  } catch {
++    throw unavailable();
++  }
++}
++
++/** Read-only fast replay. A journal result does not depend on the legacy replay store. */
++export async function lookupCompletedWordPackOperation(input: {
++  store: WordPackOperationStore;
++  identity: PreparedWordPackIdempotency;
++}): Promise<WordPackResult | null> {
++  const row = await lookup(input.store, input.identity);
++  return row?.state === "completed" ? result(row) : null;
++}
++
++/**
++ * Called inside the existing per-account generation coordinator. The durable
++ * running marker commits BEFORE quota/provider work. A restarted invocation
++ * may replay a completed result, but can never rerun an ambiguous operation.
++ * Prepared rows are safe to take over: their exact-token CAS has not permitted
++ * effects. There is deliberately no time-based deletion/retry of running rows.
++ */
++export async function runWordPackOperation<T>(input: {
++  store: WordPackOperationStore;
++  identity: PreparedWordPackIdempotency;
++  guard: GenerationWriteGuard;
++  execute: () => Promise<
++    { value: T; result: WordPackResult | null; replayCommitted?: boolean }
++  >;
++  now?: () => Date;
++  randomUUID?: () => string;
++}): Promise<
++  { replayed: true; result: WordPackResult } | { replayed: false; value: T }
++> {
++  const now = input.now ?? (() => new Date());
++  const token = (input.randomUUID ?? (() => crypto.randomUUID()))();
++  let row: WordPackOperationRecord | null;
++  try {
++    row = await lookup(input.store, input.identity);
++    if (!row) {
++      const prepared: WordPackOperationRecord = {
++        request_key: input.identity.requestKey,
++        user_id: input.identity.userID,
++        request_id: input.identity.requestID,
++        request_fingerprint: input.identity.requestFingerprint,
++        operation_token: token,
++        state: "prepared",
++        updated_at: now().toISOString(),
++      };
++      // A lost create response can hide a durable row. Always reconcile before
++      // deciding to proceed; never create a second row as an automatic retry.
++      try {
++        await input.guard.boundary(() => input.store.create(prepared));
++      } catch { /* read below */ }
++      row = await lookup(input.store, input.identity);
++      if (!row) throw unavailable();
++    }
++    if (row.state === "completed") {
++      return { replayed: true, result: result(row) };
++    }
++    if (row.state !== "prepared") throw uncertain();
++    const observedToken = row.operation_token;
++    const observedUpdatedAt = row.updated_at;
++    let started: { updated?: number } | undefined;
++    try {
++      started = await input.guard.boundary(() =>
++        input.store.updateMany({
++          id: row!.id,
++          state: "prepared",
++          operation_token: observedToken,
++          updated_at: observedUpdatedAt,
++        }, {
++          $set: {
++            state: "running",
++            operation_token: token,
++            updated_at: now().toISOString(),
++          },
++        })
++      );
++    } catch {
++      // The CAS may have committed. Only this exact token may continue, and
++      // only after a fresh read confirms it. Otherwise no effects may start.
++    }
++    const confirmed = await lookup(input.store, input.identity);
++    if (
++      started?.updated === 0 || !confirmed || confirmed.state !== "running" ||
++      confirmed.operation_token !== token
++    ) throw uncertain();
++    row = confirmed;
++  } catch (error) {
++    if (
++      error instanceof WordPackOperationError ||
++      error instanceof WordPackIdempotencyConflictError
++    ) throw error;
++    throw unavailable();
++  }
++
++  // A kill here or inside execute leaves running: the next request refuses to
++  // repeat provider/quota effects, even after the account lease expires.
++  const execution = await input.execute();
++  const completedResult = execution.result
++    ? normalizeGeneratedWordPack(execution.result)
++    : null;
++  const finalState = completedResult ? "completed" : "failed";
++  const finalFields = {
++    state: finalState,
++    updated_at: now().toISOString(),
++    ...(completedResult
++      ? {
++        result_category: "AI GENERATED",
++        result_words: completedResult.words,
++        exhausted: completedResult.exhausted,
++        completed_at: now().toISOString(),
++      }
++      : {}),
++  };
++  // Exact CAS plus reconciliation tolerates a committed completion whose
++  // response was lost; retrying this write never repeats generation itself.
++  for (let attempt = 0; attempt < 3; attempt += 1) {
++    try {
++      await input.guard.boundary(() =>
++        input.store.updateMany({
++          id: row!.id,
++          state: "running",
++          operation_token: token,
++        }, { $set: finalFields })
++      );
++    } catch { /* reconcile exact persisted outcome */ }
++    try {
++      const saved = await lookup(input.store, input.identity);
++      if (saved?.operation_token === token && saved.state === finalState) {
++        if (
++          completedResult &&
++          JSON.stringify(result(saved).words) !==
++            JSON.stringify(completedResult.words)
++        ) throw unavailable();
++        return { replayed: false, value: execution.value };
++      }
++    } catch (error) {
++      if (error instanceof WordPackIdempotencyConflictError) throw error;
++    }
++  }
++  // The caller may already have committed a separately verified replay record.
++  // Preserve those valid words despite journal maintenance failure. The running
++  // marker remains durable and still forbids a second execution after a crash.
++  if (completedResult && execution.replayCommitted === true) {
++    console.warn(
++      "generateWordPack journal completion deferred; replay result committed",
++    );
++    return { replayed: false, value: execution.value };
++  }
++  throw unavailable();
++}
+--- a/base44/functions/googleAuthCallback/main.ts
++++ b/base44/functions/googleAuthCallback/main.ts
+@@ -38 +38,7 @@
+-    const headers = new Headers({ Accept: "text/html,application/json" });
++    // Preserve content negotiation so API callers keep JSON errors while the
++    // browser can render the broker's recoverable sign-in failure page.
++    const headers = new Headers({
++      Accept: req.headers.get("accept") || "application/json",
++    });
++    const language = req.headers.get("accept-language");
++    if (language) headers.set("Accept-Language", language);
+--- a/base44/functions/pushNotificationAction/billing-identity-lifecycle.ts
++++ b/base44/functions/pushNotificationAction/billing-identity-lifecycle.ts
+@@ -2,0 +3 @@
++const LEASE_CLEANUP_ATTEMPTS = 3;
+@@ -96 +97,10 @@
+-    return { id, subject_key: subjectKey, updated_date: updatedDate };
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
+@@ -483,14 +492,0 @@
+-async function singletonRecord(
+-  store: any,
+-  subjectKey: string,
+-): Promise<LifecycleRecord | undefined> {
+-  const records = await lifecycleRows(store, subjectKey);
+-  if (records.length > 1) {
+-    throw new BillingIdentityLifecycleError(
+-      "duplicate_records",
+-      "Conflicting billing lifecycle rows block persistence.",
+-    );
+-  }
+-  return records[0];
+-}
+-
+@@ -566,0 +563,63 @@
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+@@ -626,0 +686 @@
++      let failure: unknown;
+@@ -632,4 +692 @@
+-        if (
+-          error instanceof BillingIdentityLifecycleError &&
+-          error.code === "duplicate_records"
+-        ) throw error;
++        failure = error;
+@@ -636,0 +694,5 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
+@@ -642 +704 @@
+-    if (Number(result?.updated) === 1) {
++    if (result?.updated !== 0) {
+@@ -644,3 +706,9 @@
+-      // our CAS. Re-read the whole subject set before trusting the lease.
+-      if (await hasExactLease(store, candidate, now, randomUUID)) {
+-        return candidate;
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
+@@ -647,0 +716 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+@@ -751,21 +820,10 @@
+-  let result: any;
+-  try {
+-    result = await store.updateMany(
+-      {
+-        id: lease.recordID,
+-        subject_key: lease.subjectKey,
+-        state: lease.state,
+-        lease_token: lease.leaseToken,
+-        lease_until: lease.leaseUntil,
+-        revision: lease.revision,
+-      },
+-      {
+-        $set: {
+-          state: "active",
+-          lease_token: `released:${revision}`,
+-          lease_until: releasedAt,
+-          revision,
+-        },
+-      },
+-    );
+-  } catch {
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+@@ -773,11 +831,2 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (
+-        record && clean(record.id) === lease.recordID &&
+-        lifecycleState(record.state) === "active" &&
+-        clean(record.lease_until) === releasedAt &&
+-        clean(record.revision) === revision
+-      ) return;
+-      // A response-lost release may already have been followed by another
+-      // valid writer/deletion lease. Never turn that completed cleanup into a
+-      // false failure or overwrite the replacement lease.
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
+@@ -785,8 +834,2 @@
+-      // The bounded old lease or exact release remains fail-closed.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "ambiguous",
+-      "Billing lifecycle lease release could not be reconciled.",
+-    );
+-  }
+-  if (Number(result?.updated) !== 1) {
++      ambiguous = true;
++    }
+@@ -794,2 +837,9 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+@@ -797,7 +847,9 @@
+-      // Preserve the typed contention below when reconciliation is unreadable.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "cas_contention",
+-      "Billing lifecycle lease changed before release.",
+-    );
+-  }
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );
+--- a/base44/functions/pushNotificationAction/entry.ts
++++ b/base44/functions/pushNotificationAction/entry.ts
+@@ -67,0 +68 @@
++import { safePushErrorDetails } from "./safe-error.ts";
+@@ -185,0 +187 @@
++    const details = safePushErrorDetails(error);
+@@ -188 +190,2 @@
+-      (error as Error)?.message || error,
++      details.message,
++      details.status || 500,
+@@ -221,0 +225 @@
++    const details = safePushErrorDetails(error);
+@@ -224 +228,2 @@
+-      (error as Error)?.message || error,
++      details.message,
++      details.status || 500,
+@@ -260,0 +266 @@
++    const details = safePushErrorDetails(error);
+@@ -263 +269,2 @@
+-      (error as Error)?.message || error,
++      details.message,
++      details.status || 500,
+@@ -299,0 +307 @@
++      const details = safePushErrorDetails(error);
+@@ -303 +311,2 @@
+-        (error as Error)?.message || error,
++        details.message,
++        details.status || 500,
+@@ -412,0 +422 @@
++    const details = safePushErrorDetails(error);
+@@ -415 +425,2 @@
+-      (error as Error)?.message || error,
++      details.message,
++      details.status || 500,
+@@ -1048,0 +1060 @@
++      const details = safePushErrorDetails(error);
+@@ -1051 +1063,2 @@
+-        (error as Error)?.message || error,
++        details.message,
++        details.status || 500,
+--- a/base44/functions/pushNotificationAction/error-response.ts
++++ b/base44/functions/pushNotificationAction/error-response.ts
+@@ -3,6 +3 @@
+-
+-type ErrorShape = {
+-  status?: unknown;
+-  statusCode?: unknown;
+-  response?: { status?: unknown };
+-};
++import { safePushErrorDetails } from "./safe-error.ts";
+@@ -41,0 +37 @@
++  const details = safePushErrorDetails(error);
+@@ -44 +40,2 @@
+-    error instanceof Error ? error.message : error,
++    details.message,
++    details.status || 500,
+@@ -46,4 +43 @@
+-  const shape = error as ErrorShape | null;
+-  const status = Number(
+-    shape?.status ?? shape?.statusCode ?? shape?.response?.status ?? 0,
+-  );
++  const status = details.status;
+--- a/base44/functions/pushNotificationAction/inbox-backfill.ts
++++ b/base44/functions/pushNotificationAction/inbox-backfill.ts
+@@ -15,0 +16 @@
++import { safePushErrorDetails } from "./safe-error.ts";
+@@ -320,0 +322 @@
++          const details = safePushErrorDetails(rotationError);
+@@ -324,3 +326,2 @@
+-            rotationError instanceof Error
+-              ? rotationError.message
+-              : rotationError,
++            details.message,
++            details.status || 500,
+@@ -328,0 +330 @@
++        const details = safePushErrorDetails(error);
+@@ -332 +334,2 @@
+-          error instanceof Error ? error.message : error,
++          details.message,
++          details.status || 500,
+--- /dev/null
++++ b/base44/functions/pushNotificationAction/safe-error.ts
+@@ -0,0 +1,56 @@
++export type SafePushErrorDetails = Readonly<{
++  message: string;
++  status: number;
++}>;
++
++const MAX_LOG_MESSAGE_LENGTH = 500;
++
++function property(value: unknown, key: string): unknown {
++  if (
++    value === null ||
++    (typeof value !== "object" && typeof value !== "function")
++  ) return undefined;
++  try {
++    return Reflect.get(value, key);
++  } catch {
++    return undefined;
++  }
++}
++
++function scalarText(value: unknown): string {
++  let text = "";
++  if (typeof value === "string") text = value;
++  else if (
++    typeof value === "number" || typeof value === "bigint" ||
++    typeof value === "boolean"
++  ) text = String(value);
++  return text.trim().slice(0, MAX_LOG_MESSAGE_LENGTH);
++}
++
++function httpStatus(value: unknown): number {
++  const candidate = typeof value === "number"
++    ? value
++    : typeof value === "string" && /^\d{3}$/.test(value.trim())
++    ? Number(value)
++    : 0;
++  return Number.isInteger(candidate) && candidate >= 400 && candidate < 600
++    ? candidate
++    : 0;
++}
++
++/**
++ * Reduces arbitrary SDK rejection values to primitives safe for structured
++ * logging and JSON response selection. It deliberately never stringifies an
++ * object: Base44 SDK errors can contain request/response cycles.
++ */
++export function safePushErrorDetails(error: unknown): SafePushErrorDetails {
++  const response = property(error, "response");
++  const status = [
++    property(error, "status"),
++    property(error, "statusCode"),
++    property(response, "status"),
++  ].map(httpStatus).find(Boolean) || 0;
++  const message = scalarText(property(error, "message")) ||
++    scalarText(error) || "Unknown push backend error";
++  return { message, status };
++}
+--- a/base44/functions/stripe-entitlement-webhook/billing-identity-lifecycle.ts
++++ b/base44/functions/stripe-entitlement-webhook/billing-identity-lifecycle.ts
+@@ -2,0 +3 @@
++const LEASE_CLEANUP_ATTEMPTS = 3;
+@@ -96 +97,10 @@
+-    return { id, subject_key: subjectKey, updated_date: updatedDate };
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
+@@ -483,14 +492,0 @@
+-async function singletonRecord(
+-  store: any,
+-  subjectKey: string,
+-): Promise<LifecycleRecord | undefined> {
+-  const records = await lifecycleRows(store, subjectKey);
+-  if (records.length > 1) {
+-    throw new BillingIdentityLifecycleError(
+-      "duplicate_records",
+-      "Conflicting billing lifecycle rows block persistence.",
+-    );
+-  }
+-  return records[0];
+-}
+-
+@@ -566,0 +563,63 @@
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+@@ -626,0 +686 @@
++      let failure: unknown;
+@@ -632,4 +692 @@
+-        if (
+-          error instanceof BillingIdentityLifecycleError &&
+-          error.code === "duplicate_records"
+-        ) throw error;
++        failure = error;
+@@ -636,0 +694,5 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
+@@ -642 +704 @@
+-    if (Number(result?.updated) === 1) {
++    if (result?.updated !== 0) {
+@@ -644,3 +706,9 @@
+-      // our CAS. Re-read the whole subject set before trusting the lease.
+-      if (await hasExactLease(store, candidate, now, randomUUID)) {
+-        return candidate;
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
+@@ -647,0 +716 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+@@ -751,21 +820,10 @@
+-  let result: any;
+-  try {
+-    result = await store.updateMany(
+-      {
+-        id: lease.recordID,
+-        subject_key: lease.subjectKey,
+-        state: lease.state,
+-        lease_token: lease.leaseToken,
+-        lease_until: lease.leaseUntil,
+-        revision: lease.revision,
+-      },
+-      {
+-        $set: {
+-          state: "active",
+-          lease_token: `released:${revision}`,
+-          lease_until: releasedAt,
+-          revision,
+-        },
+-      },
+-    );
+-  } catch {
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+@@ -773,11 +831,2 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (
+-        record && clean(record.id) === lease.recordID &&
+-        lifecycleState(record.state) === "active" &&
+-        clean(record.lease_until) === releasedAt &&
+-        clean(record.revision) === revision
+-      ) return;
+-      // A response-lost release may already have been followed by another
+-      // valid writer/deletion lease. Never turn that completed cleanup into a
+-      // false failure or overwrite the replacement lease.
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
+@@ -785,8 +834,2 @@
+-      // The bounded old lease or exact release remains fail-closed.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "ambiguous",
+-      "Billing lifecycle lease release could not be reconciled.",
+-    );
+-  }
+-  if (Number(result?.updated) !== 1) {
++      ambiguous = true;
++    }
+@@ -794,2 +837,9 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+@@ -797,7 +847,9 @@
+-      // Preserve the typed contention below when reconciliation is unreadable.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "cas_contention",
+-      "Billing lifecycle lease changed before release.",
+-    );
+-  }
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );
+--- a/base44/functions/wordPackAction/billing-identity-lifecycle.ts
++++ b/base44/functions/wordPackAction/billing-identity-lifecycle.ts
+@@ -2,0 +3 @@
++const LEASE_CLEANUP_ATTEMPTS = 3;
+@@ -96 +97,10 @@
+-    return { id, subject_key: subjectKey, updated_date: updatedDate };
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
+@@ -483,14 +492,0 @@
+-async function singletonRecord(
+-  store: any,
+-  subjectKey: string,
+-): Promise<LifecycleRecord | undefined> {
+-  const records = await lifecycleRows(store, subjectKey);
+-  if (records.length > 1) {
+-    throw new BillingIdentityLifecycleError(
+-      "duplicate_records",
+-      "Conflicting billing lifecycle rows block persistence.",
+-    );
+-  }
+-  return records[0];
+-}
+-
+@@ -566,0 +563,63 @@
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+@@ -626,0 +686 @@
++      let failure: unknown;
+@@ -632,4 +692 @@
+-        if (
+-          error instanceof BillingIdentityLifecycleError &&
+-          error.code === "duplicate_records"
+-        ) throw error;
++        failure = error;
+@@ -636,0 +694,5 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
+@@ -642 +704 @@
+-    if (Number(result?.updated) === 1) {
++    if (result?.updated !== 0) {
+@@ -644,3 +706,9 @@
+-      // our CAS. Re-read the whole subject set before trusting the lease.
+-      if (await hasExactLease(store, candidate, now, randomUUID)) {
+-        return candidate;
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
+@@ -647,0 +716 @@
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+@@ -751,21 +820,10 @@
+-  let result: any;
+-  try {
+-    result = await store.updateMany(
+-      {
+-        id: lease.recordID,
+-        subject_key: lease.subjectKey,
+-        state: lease.state,
+-        lease_token: lease.leaseToken,
+-        lease_until: lease.leaseUntil,
+-        revision: lease.revision,
+-      },
+-      {
+-        $set: {
+-          state: "active",
+-          lease_token: `released:${revision}`,
+-          lease_until: releasedAt,
+-          revision,
+-        },
+-      },
+-    );
+-  } catch {
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+@@ -773,11 +831,2 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (
+-        record && clean(record.id) === lease.recordID &&
+-        lifecycleState(record.state) === "active" &&
+-        clean(record.lease_until) === releasedAt &&
+-        clean(record.revision) === revision
+-      ) return;
+-      // A response-lost release may already have been followed by another
+-      // valid writer/deletion lease. Never turn that completed cleanup into a
+-      // false failure or overwrite the replacement lease.
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
+@@ -785,8 +834,2 @@
+-      // The bounded old lease or exact release remains fail-closed.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "ambiguous",
+-      "Billing lifecycle lease release could not be reconciled.",
+-    );
+-  }
+-  if (Number(result?.updated) !== 1) {
++      ambiguous = true;
++    }
+@@ -794,2 +837,9 @@
+-      const record = await singletonRecord(store, lease.subjectKey);
+-      if (record && recordNoLongerCarriesLease(record, lease)) return;
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+@@ -797,7 +847,9 @@
+-      // Preserve the typed contention below when reconciliation is unreadable.
+-    }
+-    throw new BillingIdentityLifecycleError(
+-      "cas_contention",
+-      "Billing lifecycle lease changed before release.",
+-    );
+-  }
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );

@@ -2308,7 +2308,7 @@ struct LocalGameView: View {
     }
 
     private func playableLocalWords(_ words: [String]) -> [String] {
-        Array(words.localCleanWords.prefix(max(Int(wordCount), 1)))
+        LocalWordPool.playableWords(words, selectedCount: Int(wordCount))
     }
 
     private var localPlayablePool: [String] {
@@ -5026,7 +5026,10 @@ struct LocalGameView: View {
             )
         )
         spiesKnowEachOther = settings.spiesKnowEachOther ?? false
-        wordCount = min(max(settings.wordCount, 2), Double(localThemeGenerationLimit))
+        wordCount = LocalWordPool.restoredCount(
+            settings.wordCount,
+            hasCustomTheme: !settings.customTheme.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+        )
         mode = settings.mode == "classic" ? .associations : (LocalMode(rawValue: settings.mode) ?? .questions)
         selectedPackID = settings.selectedPackID == "builtin" ? "" : settings.selectedPackID
         localSourceBeforeCustomTheme = settings.sourceBeforeCustomTheme
@@ -6101,7 +6104,7 @@ private struct LocalGameSettings: Codable {
 }
 
 private let localAvatars = ["🕵️", "👤", "🤖", "🎭", "🧠", "💀", "🎯", "🔥", "👻", "🦅"]
-private let localThemeGenerationLimit = 200
+private let localThemeGenerationLimit = LocalWordPool.generationLimit
 
 private extension Array {
     subscript(safe index: Int) -> Element? {
@@ -6111,14 +6114,6 @@ private extension Array {
 
 private extension Array where Element == String {
     var localCleanWords: [String] {
-        var seen = Set<String>()
-        return compactMap { raw in
-            let word = raw.trimmingCharacters(in: .whitespacesAndNewlines)
-            guard !word.isEmpty else { return nil }
-            let key = word.lowercased()
-            guard !seen.contains(key) else { return nil }
-            seen.insert(key)
-            return word
-        }
+        LocalWordPool.cleanWords(self)
     }
 }

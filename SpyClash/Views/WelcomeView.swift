@@ -156,6 +156,7 @@ struct WelcomeView: View {
                     Label(copy.enterGame, systemImage: "rectangle.portrait.and.arrow.right")
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
+                .accessibilityIdentifier("welcome.login")
 
                 Button {
                     appState.authError = nil

@@ -706,6 +706,8 @@ Deno.serve(async (req) => {
           base44.asServiceRole.entities.AiWordPackCacheVariant,
         aiWordPackRequestResultStore:
           base44.asServiceRole.entities.AiWordPackRequestResult,
+        aiWordPackOperationStore:
+          base44.asServiceRole.entities.AiWordPackOperation,
         pushDeviceStore: base44.asServiceRole.entities.PushDeviceRegistration,
         liveActivityStore:
           base44.asServiceRole.entities.LiveActivityRegistration,

@@ -1,11 +1,11 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { readHistoricalNotificationSchemas } from "./notification-cutover-fixture.ts";
 
 const scriptURL = new URL(
   "../../scripts/repair-base44-final-schema-before-notifications.sh",
   import.meta.url,
 );
 const runbookURL = new URL("../NOTIFICATION_CUTOVER.md", import.meta.url);
-const entitiesURL = new URL("../entities/", import.meta.url);
 
 const expectedAppID = "69a0e57fa939f578082f8091";
 const expectedDriftedDigest =
@@ -14,44 +14,6 @@ const expectedFinalDigest =
   "f09988b0e0b5c5e93a55c4738e47ba20b160bd536ee0cacd65337fa05fd674af";
 const expectedHistoricalPlan =
   "a55997ac76faa1c166fc3d68b4df644a961d4f41c04ad9cfd16ef345e4b4127a";
-const postHistoricalGameRoomFields = [
-  "close_intent",
-  "spy_emails",
-  "lobby_spy_count",
-  "spies_know_each_other",
-  "incompatible_player_emails",
-  "departed_player_emails",
-  "room_revision",
-  "room_last_write_token",
-  "lobby_schema_version",
-  "lobby_revision",
-  "lobby_word_source",
-  "lobby_source_pack_id",
-  "lobby_source_name",
-  "lobby_theme",
-  "lobby_category",
-  "lobby_word_count",
-  "lobby_word_count_mode",
-  "lobby_word_pool",
-  "lobby_last_mutation_id",
-  "lobby_last_mutation_fingerprint",
-  "detective_vote_round_id",
-  "detective_vote_cancellation_event_id",
-  "detective_vote_cancellation_round_id",
-  "detective_vote_cancellation_present_at",
-  "detective_vote_cancellation_reason",
-  "replay_source_match_id",
-];
-const postHistoricalUserFields = [
-  "onboarding_completed",
-  "onboarding_version",
-  "onboarding_completed_at",
-  "acquisition_source",
-  "spy_games_played",
-  "spy_games_won",
-  "detective_games_played",
-  "detective_games_won",
-];
 
 function assertBefore(source: string, earlier: string, later: string) {
   const earlierIndex = source.indexOf(earlier);
@@ -59,17 +21,6 @@ function assertBefore(source: string, earlier: string, later: string) {
   assert(earlierIndex >= 0, `missing earlier boundary: ${earlier}`);
   assert(laterIndex >= 0, `missing later boundary: ${later}`);
   assert(earlierIndex < laterIndex, `${earlier} must precede ${later}`);
-}
-
-async function readLocalSchemas(): Promise<Array<Record<string, unknown>>> {
-  const schemas: Array<Record<string, unknown>> = [];
-  for await (const entry of Deno.readDir(entitiesURL)) {
-    if (!entry.isFile || !entry.name.endsWith(".jsonc")) continue;
-    schemas.push(
-      JSON.parse(await Deno.readTextFile(new URL(entry.name, entitiesURL))),
-    );
-  }
-  return schemas;
 }
 
 async function jqSortedDigest(value: unknown): Promise<string> {
@@ -118,11 +69,9 @@ Deno.test("notification Step 0 pins the incident snapshot and approved Step 6 ta
   assertStringIncludes(source, 'cmp -s "$historical" "$candidate"');
 });
 
-Deno.test("checked-in schemas still derive the exact approved 20-entity target", async () => {
-  const schemas = (await readLocalSchemas()).filter((schema) =>
+Deno.test("archived notification schemas derive the exact approved 20-entity target", async () => {
+  const schemas = (await readHistoricalNotificationSchemas()).filter((schema) =>
     ![
-      "GameRoomSignal",
-      "CommunityProfileSignal",
       "NotificationAnnouncement",
       "NotificationReadReceipt",
     ].includes(
@@ -178,9 +127,6 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
   delete userProperties.radar_invite_policy;
   const language = userProperties.language as Record<string, unknown>;
   language.enum = (language.enum as string[]).filter((value) => value !== "uk");
-  for (const field of postHistoricalUserFields) {
-    delete userProperties[field];
-  }
   userProperties.role = {
     default: "user",
     enum: ["admin", "user"],
@@ -188,34 +134,6 @@ Deno.test("checked-in schemas still derive the exact approved 20-entity target",
   };
   user.required = ["role"];
 
-  const room = schemas.find((schema) => schema.name === "GameRoom")!;
-  const roomProperties = room.properties as Record<string, unknown>;
-  for (const field of postHistoricalGameRoomFields) {
-    delete roomProperties[field];
-  }
-  (roomProperties.players as Record<string, unknown>).description =
-    "Server-normalized player objects {user_id, email, name, avatar}";
-  const history = schemas.find((schema) => schema.name === "GameHistory")!;
-  const historicalHistoryProperties = history.properties as Record<
-    string,
-    unknown
-  >;
-  delete historicalHistoryProperties.spy_count;
-  delete historicalHistoryProperties.result_key;
-  delete historicalHistoryProperties.profile_repair_state;
-  delete historicalHistoryProperties.profile_repair_token;
-  delete historicalHistoryProperties.profile_repair_lease_until;
-  delete historicalHistoryProperties.profile_repair_attempt_count;
-  delete historicalHistoryProperties.profile_repair_completed_at;
-  const liveActivity = schemas.find((schema) =>
-    schema.name === "LiveActivityRegistration"
-  )!;
-  delete (liveActivity.properties as Record<string, unknown>)
-    .pending_force_end_commit_id;
-  delete (liveActivity.properties as Record<string, unknown>)
-    .terminal_probe_started_at;
-  delete (liveActivity.properties as Record<string, unknown>)
-    .terminal_probe_until;
   schemas.sort((left, right) => {
     const leftName = String(left.name);
     const rightName = String(right.name);

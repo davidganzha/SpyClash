@@ -216,4 +216,32 @@ struct WordPackAIGenerationSignature: Equatable {
 struct WordPackAIGenerationRequest: Equatable {
     let id: UUID
     let signature: WordPackAIGenerationSignature
+
+    static func forExplicitGeneration(
+        signature: WordPackAIGenerationSignature,
+        reusing pending: Self?,
+        makeID: () -> UUID = UUID.init
+    ) -> Self {
+        if let pending, pending.signature == signature { return pending }
+        return Self(id: makeID(), signature: signature)
+    }
+
+    func retainedAfterFailure(
+        _ error: Error,
+        failedRequest: Self,
+        activeGenerationID: UUID?,
+        currentSignature: WordPackAIGenerationSignature,
+        accountUnchanged: Bool
+    ) -> Self? {
+        guard accountUnchanged,
+              self == failedRequest,
+              activeGenerationID == failedRequest.id,
+              currentSignature == failedRequest.signature,
+              let error = error as? Base44Error,
+              error.statusCode == 503,
+              error.code == "generation_outcome_unknown" else { return self }
+        // The server cannot replay this operation. Invalidate it, but only the
+        // next explicit Generate action may allocate and submit another ID.
+        return nil
+    }
 }

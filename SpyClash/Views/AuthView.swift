@@ -385,6 +385,7 @@ struct AuthView: View {
             }
         }
         .buttonStyle(SpyButtonStyle(variant: .ghost))
+        .accessibilityIdentifier("auth.google")
         .disabled(appState.isBusy)
         .opacity(appState.isBusy ? 0.62 : 1)
     }

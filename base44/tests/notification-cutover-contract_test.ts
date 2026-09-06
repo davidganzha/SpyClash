@@ -1,4 +1,9 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import {
+  canonicalEntityNames,
+  canonicalFunctionNames,
+} from "./canonical-inventory.ts";
+import { readHistoricalNotificationSchemas } from "./notification-cutover-fixture.ts";
 
 const schemaScriptURL = new URL(
   "../../scripts/cutover-base44-notification-schema.sh",
@@ -20,91 +25,6 @@ const entitiesURL = new URL("../entities/", import.meta.url);
 const functionsURL = new URL("../functions/", import.meta.url);
 const expectedStepZeroSchemaDigest =
   "f09988b0e0b5c5e93a55c4738e47ba20b160bd536ee0cacd65337fa05fd674af";
-const postNotificationLobbyFields = [
-  "close_intent",
-  "spy_emails",
-  "lobby_spy_count",
-  "spies_know_each_other",
-  "incompatible_player_emails",
-  "departed_player_emails",
-  "room_revision",
-  "room_last_write_token",
-  "lobby_schema_version",
-  "lobby_revision",
-  "lobby_word_source",
-  "lobby_source_pack_id",
-  "lobby_source_name",
-  "lobby_theme",
-  "lobby_category",
-  "lobby_word_count",
-  "lobby_word_count_mode",
-  "lobby_word_pool",
-  "lobby_last_mutation_id",
-  "lobby_last_mutation_fingerprint",
-  "detective_vote_round_id",
-  "detective_vote_cancellation_event_id",
-  "detective_vote_cancellation_round_id",
-  "detective_vote_cancellation_present_at",
-  "detective_vote_cancellation_reason",
-  "replay_source_match_id",
-];
-const postHistoricalUserFields = [
-  "onboarding_completed",
-  "onboarding_version",
-  "onboarding_completed_at",
-  "acquisition_source",
-  "spy_games_played",
-  "spy_games_won",
-  "detective_games_played",
-  "detective_games_won",
-];
-
-const expectedEntities = [
-  "AiGenerationQuota",
-  "AiGenerationUsage",
-  "AiWordPackCacheVariant",
-  "AiWordPackRequestResult",
-  "AppleSignInCredential",
-  "AppStoreAccount",
-  "BillingIdentityLifecycle",
-  "CommunityProfileSignal",
-  "CommunityReport",
-  "Entitlement",
-  "Friendship",
-  "GameHistory",
-  "GameRoom",
-  "GameRoomSignal",
-  "LiveActivityRegistration",
-  "MembershipGrant",
-  "NotificationAnnouncement",
-  "NotificationReadReceipt",
-  "ProfileComment",
-  "PushDeviceRegistration",
-  "PushNotificationEvent",
-  "RoomInvite",
-  "User",
-  "WordPack",
-].sort();
-
-const expectedFunctions = [
-  "advanceRound",
-  "app-store-entitlement",
-  "appleAuthBroker",
-  "appleAuthCallback",
-  "autoRegisterUser",
-  "checkSubscription",
-  "communityAction",
-  "createCheckout",
-  "deleteAccount",
-  "gameRoomAction",
-  "generateWordPack",
-  "googleAuthCallback",
-  "mobileAuthCallback",
-  "notificationAction",
-  "pushNotificationAction",
-  "stripe-entitlement-webhook",
-  "wordPackAction",
-].sort();
 
 function assertBefore(source: string, earlier: string, later: string) {
   const earlierIndex = source.indexOf(earlier);
@@ -189,53 +109,14 @@ async function makeFixture(): Promise<{
 }
 
 async function pinHistoricalNotificationEntityFixture(root: string) {
-  await Deno.remove(`${root}/base44/entities/game-room-signal.jsonc`);
-  await Deno.remove(`${root}/base44/entities/community-profile-signal.jsonc`);
-  const roomPath = `${root}/base44/entities/GameRoom.jsonc`;
-  const room = JSON.parse(await Deno.readTextFile(roomPath));
-  for (const field of postNotificationLobbyFields) {
-    delete room.properties[field];
+  // Do not reverse-engineer July's approved schema from today's live inventory.
+  // Future entities/fields must remain visible to the current security tests.
+  const directory = `${root}/base44/entities`;
+  await Deno.remove(directory, { recursive: true });
+  await Deno.mkdir(directory);
+  for (const schema of await readHistoricalNotificationSchemas()) {
+    await writePrivateJSON(`${directory}/${schema.name}.jsonc`, schema);
   }
-  room.properties.players.description =
-    "Server-normalized player objects {user_id, email, name, avatar}";
-  await writePrivateJSON(roomPath, room);
-  const historyPath = `${root}/base44/entities/GameHistory.jsonc`;
-  const history = JSON.parse(await Deno.readTextFile(historyPath));
-  delete history.properties.spy_count;
-  delete history.properties.result_key;
-  delete history.properties.profile_repair_state;
-  delete history.properties.profile_repair_token;
-  delete history.properties.profile_repair_lease_until;
-  delete history.properties.profile_repair_attempt_count;
-  delete history.properties.profile_repair_completed_at;
-  await writePrivateJSON(historyPath, history);
-
-  const userPath = `${root}/base44/entities/User.jsonc`;
-  const user = JSON.parse(await Deno.readTextFile(userPath));
-  user.properties.language.enum = user.properties.language.enum.filter(
-    (value: string) => value !== "uk",
-  );
-  for (const field of postHistoricalUserFields) {
-    delete user.properties[field];
-  }
-  await writePrivateJSON(userPath, user);
-
-  const announcementPath =
-    `${root}/base44/entities/notification-announcement.jsonc`;
-  const announcement = JSON.parse(await Deno.readTextFile(announcementPath));
-  delete announcement.properties.title_uk;
-  delete announcement.properties.body_uk;
-  await writePrivateJSON(announcementPath, announcement);
-
-  const liveActivityPath =
-    `${root}/base44/entities/live-activity-registration.jsonc`;
-  const liveActivity = JSON.parse(
-    await Deno.readTextFile(liveActivityPath),
-  );
-  delete liveActivity.properties.pending_force_end_commit_id;
-  delete liveActivity.properties.terminal_probe_started_at;
-  delete liveActivity.properties.terminal_probe_until;
-  await writePrivateJSON(liveActivityPath, liveActivity);
 }
 
 async function writeFakeNetworkCommands(
@@ -511,6 +392,61 @@ Deno.test("Step A read-only prepare builds the exact 20 to 22 candidate without 
     const commands = await Deno.readTextFile(fixture.log);
     assertStringIncludes(commands, "whoami");
     assertEquals(commands.includes("entities push"), false);
+
+    const tryReviewedMutation = (confirmation = manifest.plan_digest) =>
+      new Deno.Command("bash", {
+        args: [
+          `${fixture.root}/scripts/cutover-base44-notification-schema.sh`,
+          "--deploy",
+          "--plan-digest",
+          manifest.plan_digest,
+        ],
+        cwd: fixture.root,
+        env: {
+          HOME: fixture.home,
+          TMPDIR: `${fixture.root}/tmp`,
+          PATH: `${fixture.bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
+          MOCK_COMMAND_LOG: fixture.log,
+          MOCK_SCHEMA_PATH: remotePath,
+          BASE44_CONFIRM_APP_ID: "69a0e57fa939f578082f8091",
+          BASE44_CONFIRM_ACTION: "SPYCLASH_NOTIFICATION_STEP_A_SCHEMA",
+          BASE44_CONFIRM_NOTIFICATION_SCHEMA_PLAN_DIGEST: confirmation,
+        },
+        stdout: "piped",
+        stderr: "piped",
+      }).output();
+
+    // A valid historical fixture must not turn these deploy-mode guards into
+    // vacuous failures caused by the previously incorrect source inventory.
+    const unapproved = await tryReviewedMutation("0".repeat(64));
+    assertEquals(unapproved.code, 77);
+    assertStringIncludes(
+      new TextDecoder().decode(unapproved.stderr),
+      "BASE44_CONFIRM_NOTIFICATION_SCHEMA_PLAN_DIGEST",
+    );
+
+    const stagedUser =
+      `${fixture.root}/.base44-cutover/notification-step-a-schema/base44/entities/User.jsonc`;
+    const reviewedUser = await Deno.readTextFile(stagedUser);
+    await Deno.writeTextFile(stagedUser, `${reviewedUser}\n`);
+    const changedStage = await tryReviewedMutation();
+    assertEquals(changedStage.code, 77);
+    assertStringIncludes(
+      new TextDecoder().decode(changedStage.stderr),
+      "candidate bytes differ",
+    );
+    await Deno.writeTextFile(stagedUser, reviewedUser);
+
+    await Deno.copyFile(
+      new URL("membership-signal.jsonc", entitiesURL),
+      `${fixture.root}/base44/entities/MembershipSignal.jsonc`,
+    );
+    const expandedInventory = await tryReviewedMutation();
+    assertEquals(expandedInventory.code, 65);
+    assertEquals(
+      (await Deno.readTextFile(fixture.log)).includes("entities push"),
+      false,
+    );
   } finally {
     await Deno.remove(fixture.root, { recursive: true });
   }
@@ -653,6 +589,49 @@ Deno.test("Step B read-only prepare binds exact Step A evidence and the 16 to 17
       remoteFunctions,
       unchangedNames,
     );
+    const sourcePath =
+      `${fixture.root}/base44/functions/gameRoomAction/main.ts`;
+    const reviewedSource = await Deno.readTextFile(sourcePath);
+    await Deno.writeTextFile(
+      sourcePath,
+      `${reviewedSource}\n// unreviewed source drift\n`,
+    );
+    const driftedDeploy = await new Deno.Command("bash", {
+      args: [
+        `${fixture.root}/scripts/cutover-base44-notification-functions.sh`,
+        "--deploy",
+        "--plan-digest",
+        manifest.plan_digest,
+      ],
+      cwd: fixture.root,
+      env: {
+        HOME: fixture.home,
+        TMPDIR: `${fixture.root}/tmp`,
+        PATH: `${fixture.bin}:/usr/bin:/bin:/usr/sbin:/sbin`,
+        MOCK_COMMAND_LOG: fixture.log,
+        MOCK_SCHEMA_PATH: remoteSchemaPath,
+        MOCK_REMOTE_FUNCTIONS: remoteFunctions,
+        BASE44_CONFIRM_APP_ID: "69a0e57fa939f578082f8091",
+        BASE44_CONFIRM_ACTION: "SPYCLASH_NOTIFICATION_STEP_B_FUNCTIONS",
+        BASE44_CONFIRM_NOTIFICATION_FUNCTION_PLAN_DIGEST: manifest.plan_digest,
+      },
+      stdout: "piped",
+      stderr: "piped",
+    }).output();
+    assertEquals(driftedDeploy.code, 77);
+    assertStringIncludes(
+      new TextDecoder().decode(driftedDeploy.stderr),
+      "reviewed",
+    );
+    assertEquals(
+      (await Deno.readTextFile(fixture.log)).includes("functions deploy"),
+      false,
+    );
+    assertEquals(
+      await snapshotFunctionTrees(remoteFunctions, unchangedNames),
+      unchangedBefore,
+    );
+    await Deno.writeTextFile(sourcePath, reviewedSource);
     const deployResult = await new Deno.Command("bash", {
       args: [
         `${fixture.root}/scripts/cutover-base44-notification-functions.sh`,
@@ -828,14 +807,14 @@ Deno.test("Step B binds 16 to 17 sources and preserves all non-targets", async (
   assertEquals(source.includes("sites deploy"), false);
 });
 
-Deno.test("canonical inventory is exactly 24 entities and 17 functions", async () => {
+Deno.test("canonical inventory exactly matches the current reviewed entities and functions", async () => {
   const entityNames: string[] = [];
   for await (const entry of Deno.readDir(entitiesURL)) {
     if (!entry.isFile || !entry.name.endsWith(".jsonc")) continue;
     const schema = await readJSON(new URL(entry.name, entitiesURL));
     entityNames.push(String(schema.name));
   }
-  assertEquals(entityNames.sort(), expectedEntities);
+  assertEquals(entityNames.sort(), canonicalEntityNames);
 
   const functionNames: string[] = [];
   for await (const entry of Deno.readDir(functionsURL)) {
@@ -846,7 +825,7 @@ Deno.test("canonical inventory is exactly 24 entities and 17 functions", async (
     assertEquals(config.name, entry.name);
     functionNames.push(entry.name);
   }
-  assertEquals(functionNames.sort(), expectedFunctions);
+  assertEquals(functionNames.sort(), canonicalFunctionNames);
 });
 
 Deno.test("notification schema and worker activation match the reviewed contract", async () => {

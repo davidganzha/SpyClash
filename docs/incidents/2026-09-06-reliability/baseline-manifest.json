@@ -1,0 +1,1129 @@
+{
+  "canonical_app_id": "69a0e57fa939f578082f8091",
+  "fetched_at_utc": "2026-09-06T15:43:20.142142+00:00",
+  "function_names": [
+    "advanceRound",
+    "app-store-entitlement",
+    "appleAuthBroker",
+    "appleAuthCallback",
+    "autoRegisterUser",
+    "checkSubscription",
+    "communityAction",
+    "createCheckout",
+    "deleteAccount",
+    "gameRoomAction",
+    "generateWordPack",
+    "googleAuthCallback",
+    "mobileAuthCallback",
+    "notificationAction",
+    "pushNotificationAction",
+    "stripe-entitlement-webhook",
+    "wordPackAction"
+  ],
+  "functions": [
+    {
+      "entry_basename": "main.ts",
+      "files": [
+        {
+          "path": "main.ts",
+          "sha256": "c592bf0b3cd3178de39d65df57f3c2590d57221f252180ebce23b5301f521f33"
+        }
+      ],
+      "name": "advanceRound",
+      "normalized_config": {
+        "entry": "main.ts",
+        "name": "advanceRound"
+      },
+      "normalized_config_sha256": "2de90c521e14fa52d2996d0cd560d07b209ddef1b0634d785f1a9fbc1cb7820a"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "apple-account-binding.ts",
+          "sha256": "537e390b2f887a2d170234df9c8eb0bad1ea9788b6186a7d0d171d74af4f27fa"
+        },
+        {
+          "path": "apple-account-lease-guard.ts",
+          "sha256": "33ecec0a96aadfaf3e6269fb73560cbcb9b3acfac52896d3e7136bda1cba9e7d"
+        },
+        {
+          "path": "apple-account-reservation.ts",
+          "sha256": "35566ff83b77e7974bc5971678faf699639c4bf6490d7ec3329937c5e5f14cf0"
+        },
+        {
+          "path": "apple-entitlement.ts",
+          "sha256": "62053333424856b9a06b6d95de68dfd86c21982a49024dc70a3d226451e8303f"
+        },
+        {
+          "path": "base44-context.ts",
+          "sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f"
+        },
+        {
+          "path": "deleted-account-identity.ts",
+          "sha256": "a404ccf4f67033ab471ea3210e0db0f4558fc2c3effcf3db2431a863312321b7"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "9613d4407d6e0a13135628bf10d7dfc8bbf31f6d5af1f04a65d5e7b8ed678056"
+        },
+        {
+          "path": "limitless-rollout.ts",
+          "sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02"
+        },
+        {
+          "path": "membership-guard.ts",
+          "sha256": "606c793aab3b72dc65117259f2dd722e49a0fabb02a8b355246f0ff7ff18eb7d"
+        },
+        {
+          "path": "membership-signal.ts",
+          "sha256": "bd9dc2f3b388197df326e7ffab587e13ce8995fbc4ab23761ef1d065757912c4"
+        }
+      ],
+      "name": "app-store-entitlement",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "app-store-entitlement"
+      },
+      "normalized_config_sha256": "e7d27741db5a83b69dc2be519482efb86e1c5ce4e50d9f0a9e110ca641ab5400"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "apple-code-exchange.ts",
+          "sha256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8"
+        },
+        {
+          "path": "apple-credential-error-policy.ts",
+          "sha256": "7d35a9c2a03b934605e8ec87ce96862b3a1dc3a4b756d0f83cc77bd4b6ba3ab5"
+        },
+        {
+          "path": "apple-sign-in-credential.ts",
+          "sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078"
+        },
+        {
+          "path": "apple-token-compensation.ts",
+          "sha256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b"
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218"
+        },
+        {
+          "path": "confirmation.ts",
+          "sha256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "053fed0bf88d677a6a27722ebbc0ada869389b29ece4bab28b6452fd1b20b7a0"
+        },
+        {
+          "path": "handoff.ts",
+          "sha256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7"
+        },
+        {
+          "path": "provider.ts",
+          "sha256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d"
+        },
+        {
+          "path": "service-role-request.ts",
+          "sha256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df"
+        },
+        {
+          "path": "transaction.ts",
+          "sha256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8"
+        }
+      ],
+      "name": "appleAuthBroker",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "appleAuthBroker"
+      },
+      "normalized_config_sha256": "6ae7ac002e4fc83f2c6118376c076661fd16748ddfadd98dbfc9f6d902cc9bf8"
+    },
+    {
+      "entry_basename": "main.ts",
+      "files": [
+        {
+          "path": "headers.ts",
+          "sha256": "6dee1bca4d72acdc1bbfec02c649c6a8da498bd4f62055b819c4577c2c5e95f1"
+        },
+        {
+          "path": "headers_test.ts",
+          "sha256": "64df20663b1c949642a74760933642103f600fba8ad29227735fc42e9eb08999"
+        },
+        {
+          "path": "main.ts",
+          "sha256": "c904d7c057507acf6cdbf0ade19af70fa203c8828ea0b0de30282ef511b85174"
+        }
+      ],
+      "name": "appleAuthCallback",
+      "normalized_config": {
+        "entry": "main.ts",
+        "name": "appleAuthCallback"
+      },
+      "normalized_config_sha256": "0a7f18bc89a63245bf35781aef488c53528218fc3fd275874e1c41b23d1cea94"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "apple-sign-in-credential.ts",
+          "sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078"
+        },
+        {
+          "path": "base44-context.ts",
+          "sha256": "7f7b4e20791132f0ef9acf068df0e0d2335f01554a6ca17ee1c3d36aa8c74220"
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "ebd3244fb1796ab3b5d8b86eac9e6e374dbcf98bd4b5be51f2029e70b9b8c895"
+        }
+      ],
+      "name": "autoRegisterUser",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "autoRegisterUser"
+      },
+      "normalized_config_sha256": "46a6150923b0f709c359618becdc402b65e4a269ded35f450e9f620d99490f2b"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "base44-context.ts",
+          "sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de"
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "e155f9151994c5adc12fc7795cadac7674daf4d738b17578d96537a6bdf66835"
+        },
+        {
+          "path": "limitless-rollout.ts",
+          "sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02"
+        },
+        {
+          "path": "membership.ts",
+          "sha256": "7027cfbd69ccd7aad3189d603913829132119fed60189219a41e527d05def92b"
+        },
+        {
+          "path": "quota.ts",
+          "sha256": "456afef718eba6c4fd3e78cf8fc927d1713b99f1676b7d483f7f4fdb57911391"
+        },
+        {
+          "path": "stripe-binding.ts",
+          "sha256": "5b2d9be7fbea3ea2f960e59ef72ddf9c5850bfc5c1a63f6c0747f9fcad07638c"
+        },
+        {
+          "path": "stripe-entitlement-persistence.ts",
+          "sha256": "e5c30109b69a29bec7c2da558c74542b9daf6859dbe4fd1e407e878b1a2342f0"
+        }
+      ],
+      "name": "checkSubscription",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "checkSubscription"
+      },
+      "normalized_config_sha256": "d0f8fe0d4928809b8a9b673b3f3233806f6da4c2ea0bac20d78cf6f83963d992"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "base44-context.ts",
+          "sha256": "d872656a5f37f3e86493223e2b7cfa49268fd18d939d4f2601d7d510a9d93ab8"
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218"
+        },
+        {
+          "path": "community-moderation.ts",
+          "sha256": "26816825ba0a0dbc6381f4cd81d0c141d37471f8b7363184b5cca2e3b0a65d96"
+        },
+        {
+          "path": "community-safety.ts",
+          "sha256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937"
+        },
+        {
+          "path": "community-write-lifecycle.ts",
+          "sha256": "05b7cfee6f5a66359ec597a2f5508d6e02994258e7e32d6b222ab169d3fbe4ff"
+        },
+        {
+          "path": "community.ts",
+          "sha256": "8ba071e5b8e8c61d2518206ba0e39c79079b4431fbe26df1c0f3e5da78a7a15e"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "e8a156e48a767194bc6e39e366cd093a47d18d2b260ad5cef0cdca025d4e1c6b"
+        },
+        {
+          "path": "error-response.ts",
+          "sha256": "1276a5169dc11eb71cbaf4e7299d7f71df564c254affabf8318f58a671cd4013"
+        },
+        {
+          "path": "friendship-pagination.ts",
+          "sha256": "8f1cc27ae64953e02476b927ef081c21dc2740434b0809a2af457f62f8a238c0"
+        },
+        {
+          "path": "friendship-pair-policy.ts",
+          "sha256": "bae7b4d61a193d22e80a69c8da38fc4e33ae8b4e4e51e0af8ab31e77ecc4177f"
+        },
+        {
+          "path": "internal-push.ts",
+          "sha256": "0c122f25bfaf7287f28bed1197aa4f11d12fc964cf460a5f597bd9fc629c7c4f"
+        },
+        {
+          "path": "limitless-rollout.ts",
+          "sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02"
+        },
+        {
+          "path": "membership.ts",
+          "sha256": "7027cfbd69ccd7aad3189d603913829132119fed60189219a41e527d05def92b"
+        },
+        {
+          "path": "mutation-idempotency.ts",
+          "sha256": "5fd5250426199cdf18787ab76d1602e21192100ff54d2749fceeebba95806198"
+        },
+        {
+          "path": "post-commit-state.ts",
+          "sha256": "912efd37a857e5bdcaf254cfdc2dd8400507bd1d4231ef344fee91657cae24a2"
+        },
+        {
+          "path": "profile-membership.ts",
+          "sha256": "329a34560e5bb9683218bfed980b372f1ed64303c1985b3380c1da775ed40105"
+        },
+        {
+          "path": "profile-signal.ts",
+          "sha256": "6fc282d56c3f04cc1993970818096823d80ce1d54386cdf661f717ddbe469c6e"
+        },
+        {
+          "path": "profile-write-lifecycle.ts",
+          "sha256": "f68554ddaea350d983195220f1fece0d50b5624dc3b8503368312816bff8e83f"
+        },
+        {
+          "path": "push-events.ts",
+          "sha256": "f2e699ea16691b15b767ec2e31ef462846a9db2930d75109ca608f932ce6262a"
+        },
+        {
+          "path": "room-invite-pagination.ts",
+          "sha256": "f5412b2301acb2a9690f46f14f94e26dbdc0aff0160431c886d99d3b104c3d97"
+        }
+      ],
+      "name": "communityAction",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "communityAction"
+      },
+      "normalized_config_sha256": "9ba78d6263b72ffc0b001047d8c5303043c501c92a75368befec6accd7109e9a"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "base44-context.ts",
+          "sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de"
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218"
+        },
+        {
+          "path": "casada-checkout.ts",
+          "sha256": "3635ef0f267a8e060c5b708125ed9c7d426685dee122e209aca22b24ccc3abd1"
+        },
+        {
+          "path": "checkout-lifecycle.ts",
+          "sha256": "540bfdfc38ed7823efe68119d7be31085a57ef02f40b9c04d0b0de120819163a"
+        },
+        {
+          "path": "checkout-security.ts",
+          "sha256": "af4b3e8ec7bf003ac3edc1c2bf810e27caf5b286c8c79ea8b3cdd50d93a7f1f1"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "ba870940b7294b700560f34eed704429b56b60ac799df256aa6822e4afb25068"
+        }
+      ],
+      "name": "createCheckout",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "createCheckout"
+      },
+      "normalized_config_sha256": "6c5aee7e916cc3e04625c152f3be07fec564425878423a5cdc22e89150eb6028"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "account-deletion-protection.ts",
+          "sha256": "421da9f49b914e5cb4450a6aa28d841055c2398f1da7e0c0014537780a85b074"
+        },
+        {
+          "path": "account-deletion-response.ts",
+          "sha256": "3682b98ee8d6542408ea2f865aa2c4d4cac40b8b9cd55786e98ed44c3dd4d82f"
+        },
+        {
+          "path": "account-deletion.ts",
+          "sha256": "a24f3ee05a8177732d697475f9c71b60a20287b2b22ce210446e54fd967b30f9"
+        },
+        {
+          "path": "apple-account-binding.ts",
+          "sha256": "537e390b2f887a2d170234df9c8eb0bad1ea9788b6186a7d0d171d74af4f27fa"
+        },
+        {
+          "path": "apple-account-deletion-lease.ts",
+          "sha256": "5a00df78d5ba83084cba92f1b4407a2978b6220ca11acb1471d8b5ee934246e9"
+        },
+        {
+          "path": "apple-sign-in-credential.ts",
+          "sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078"
+        },
+        {
+          "path": "base44-context.ts",
+          "sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f"
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218"
+        },
+        {
+          "path": "deletion-state-machine.ts",
+          "sha256": "c1a389a62ef9aec1184b7d5e6ae980257d33870ccd918fc26217b9a1ccb4b446"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "7dfda139dc6eb894f14de163717c5b3cff7f89b8df3071aa8b1bc10a43bc3957"
+        },
+        {
+          "path": "relationship-cleanup.ts",
+          "sha256": "18192ac6cce84fea54ed8f38c5ad7bc1aa08d5d67190941d498d29d0ad00cf19"
+        },
+        {
+          "path": "user-deletion.ts",
+          "sha256": "0e481b3bf20b93cb8e3b8fc301f6e309b7e8a27def7bdfe3599ccf9c37c3716e"
+        }
+      ],
+      "name": "deleteAccount",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "deleteAccount"
+      },
+      "normalized_config_sha256": "d1d05938986612bcee9bf6706afdcf60be20bb3d99b204bad6ea44ad4bd61962"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "active-game-lobby-return-policy.ts",
+          "sha256": "0a47ae87a667e380abe76cef4ccefda5d297f3410bb5c6be1fcaa26e04f1ed5c"
+        },
+        {
+          "path": "association-turn-order.ts",
+          "sha256": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa"
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218"
+        },
+        {
+          "path": "committed-game-start-repair.ts",
+          "sha256": "a52b0b5b5cfeaeeb66343bdc9683abfc718e983d2fc590c2f61496cd1a5f9426"
+        },
+        {
+          "path": "community-profile-backfill.ts",
+          "sha256": "b87dab40c10819cff33999a558c194ef1b56f5b6ae185202b0b75c348ff7463f"
+        },
+        {
+          "path": "community-profile-mirror.ts",
+          "sha256": "46fad25a7fcae7534ca6206f4bb6e7ff59ac559bf3f84aafd4a00fe60492d8a1"
+        },
+        {
+          "path": "community-profile-repair-queue.ts",
+          "sha256": "c91e2d15b009802f4572753c53d93516a85d28f64c4d219cfccd164dd78b9107"
+        },
+        {
+          "path": "community-profile-signal.ts",
+          "sha256": "729a55174262bc0a0cbcfc33d5316496d108daeced984c358d3e9a851bc3aa64"
+        },
+        {
+          "path": "competitive-stats.ts",
+          "sha256": "058bfd9029172554a0f648c8b23b78e788b7b1f6b9e89502974ff9bdc64d0a45"
+        },
+        {
+          "path": "content-safety.ts",
+          "sha256": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b"
+        },
+        {
+          "path": "detective-vote-lease-recovery.ts",
+          "sha256": "0d2095f5871f830378874adc33902af2b7a8cd6890288bf041af53349569bd9a"
+        },
+        {
+          "path": "detective-vote-policy.ts",
+          "sha256": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4"
+        },
+        {
+          "path": "detective-vote-write.ts",
+          "sha256": "9b9b0d3b5e24a1e6e0057b807de50b1ee12e956d3ac3cfb4f619762ffd2ce2ba"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "6221f2da83cbed5a0c844da2dc437881eb8b7a63e2bda7b18faaad48dd7d97df"
+        },
+        {
+          "path": "finished-room-departure-policy.ts",
+          "sha256": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14"
+        },
+        {
+          "path": "game-history-idempotency.ts",
+          "sha256": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0"
+        },
+        {
+          "path": "game-room-signal.ts",
+          "sha256": "bd084e043772a926aee7c268049ead7896008d3f937790a469927f2a33041f86"
+        },
+        {
+          "path": "game-round.ts",
+          "sha256": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af"
+        },
+        {
+          "path": "game-timer-policy.ts",
+          "sha256": "33837768c2a60210a3ef2b5cc68ca1c76f821cfc5fdbd0e845f0ac5f595a78ee"
+        },
+        {
+          "path": "internal-push.ts",
+          "sha256": "640c39a3d7342196b658de1e604463bc1e54cfb5429488a6216f9336660df9c3"
+        },
+        {
+          "path": "leaderboard.ts",
+          "sha256": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94"
+        },
+        {
+          "path": "lobby-kick-policy.ts",
+          "sha256": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6"
+        },
+        {
+          "path": "lobby-state-policy.ts",
+          "sha256": "de7c5c0ca28b277753c5b1816b0dc1088b34b4961418a805e493005931c4f4d6"
+        },
+        {
+          "path": "multi-spy-policy.ts",
+          "sha256": "8a9ff1826c2b3d5c9033897eccebbd614471b9326aaff3af9797efaa23ec91e9"
+        },
+        {
+          "path": "operation-deadline.ts",
+          "sha256": "4aac5455024ccc894aaec1e9c2e2b9c5473e9931811eb6d645a3cb1240c07416"
+        },
+        {
+          "path": "post-lease-signal.ts",
+          "sha256": "e7787dbeb11743f73f4312a4930f09c3c17ce197fd436f2e81435f0be8ac3fe9"
+        },
+        {
+          "path": "push-events.ts",
+          "sha256": "fa8c67583414f203ae909e89067947624109823851b4e8e91da9bd9786ec1020"
+        },
+        {
+          "path": "question-round-policy.ts",
+          "sha256": "e59d66fb4c808ae68357907971d440c0a779351db7ce225e1675ca6b250929ad"
+        },
+        {
+          "path": "question-turn-order.ts",
+          "sha256": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef"
+        },
+        {
+          "path": "replay-auto-start-policy.ts",
+          "sha256": "1c4cbbe426152c8120ea86353d0e1f5667d0ebbc491e9d7313868a92c1e2d0a7"
+        },
+        {
+          "path": "replay-policy.ts",
+          "sha256": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380"
+        },
+        {
+          "path": "request-auth.ts",
+          "sha256": "b2d798a45345c3fe551fd98e17f592b0cc718a07e84c2b250c2ddadbbd204f2c"
+        },
+        {
+          "path": "room-close-intent.ts",
+          "sha256": "845ec36a3166365234d06ea703138e8d4dc6913c1578ef93a272489813832371"
+        },
+        {
+          "path": "room-interaction-safety.ts",
+          "sha256": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c"
+        },
+        {
+          "path": "room-membership-generation.ts",
+          "sha256": "c21fbd9497b2578de220a0f42d3e12b2e2502cd658c9984b542bd759fd1d98ee"
+        },
+        {
+          "path": "room-participant-identity.ts",
+          "sha256": "ff9bd360e5b3e5f067632e59150e0a276ec400086e7efd2333eae62f418a786f"
+        },
+        {
+          "path": "room-projection.ts",
+          "sha256": "cf441648aa5649df432df18354c50bfa1821b5d97fdbe6713ff69fe5b8988d20"
+        },
+        {
+          "path": "room-push-policy.ts",
+          "sha256": "634913e4f2372ecf276c7e9ffdb2d0226b94758652715533b344acacc1739df9"
+        },
+        {
+          "path": "room-result-policy.ts",
+          "sha256": "44d4934adc7710baa2d2eb66b1461ff75e4b034aa0fd0c45ca1c508e85929ec8"
+        },
+        {
+          "path": "room-write-cas.ts",
+          "sha256": "3391d95a7b5e0cde2afa5ab0e3636ed2c18b083be8b1d4af669de151bb7c5bf5"
+        },
+        {
+          "path": "room-write-lifecycle.ts",
+          "sha256": "ae252f841fb88c88aaa59ce2192747934c6409a09f2a53537d31fb357ae7ea12"
+        },
+        {
+          "path": "round-action-access.ts",
+          "sha256": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda"
+        },
+        {
+          "path": "start-word-pool-policy.ts",
+          "sha256": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b"
+        },
+        {
+          "path": "terminal-finalization-recovery.ts",
+          "sha256": "931c762ee30f73a958fa8b81783627e3117cfd7475e642983a0633f56579f502"
+        },
+        {
+          "path": "terminal-finalization-scope.ts",
+          "sha256": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12"
+        },
+        {
+          "path": "terminal-outbox-commit.ts",
+          "sha256": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e"
+        },
+        {
+          "path": "terminal-side-effect-dispatch.ts",
+          "sha256": "8ebe34fcdb72e556216b10f29ea5f68c086b1cc10ad0bbc7046e6618926ed939"
+        },
+        {
+          "path": "terminal-timing.ts",
+          "sha256": "4bb45dedb08cb0a625d2a99fd1ca09a132090a9cc60d1b2a5cafba8e5f5ee8ec"
+        }
+      ],
+      "name": "gameRoomAction",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "gameRoomAction"
+      },
+      "normalized_config_sha256": "963850abf94b5e0d085a9af141c4d697d15200970a6a34a6bea6dce90d598d70"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "ai-provider-resilience.ts",
+          "sha256": "98a314fafb31d5790b7c37730323ec93b80803be1c87be181a69d87bc868db45"
+        },
+        {
+          "path": "base44-context.ts",
+          "sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de"
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218"
+        },
+        {
+          "path": "content-safety.ts",
+          "sha256": "817ba01e58d5eb8036a59148a20cc3e6a9b30df0ee33f254bf84e56e98629042"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "f71bffe4d35dc706622626ea7b3ce83af59db62a56aa3bddb6d61548dcbc1ca4"
+        },
+        {
+          "path": "generation-cache.ts",
+          "sha256": "39365535caef5535036fb986c0746df4429a1e5cb9c20bb2df22810d5389e278"
+        },
+        {
+          "path": "generation-idempotency.ts",
+          "sha256": "a077ce2573fd90b41de9e2cac1f8257e8272dbb18924f81d70ff27ccdd7dcb4d"
+        },
+        {
+          "path": "generation-retry-contract.ts",
+          "sha256": "a151164375bb5ca1cb692e074f9de29cf6fe7f4939b1acdf8360c110e45c4b17"
+        },
+        {
+          "path": "generation-write-lifecycle.ts",
+          "sha256": "e344365f7ca33d2c2e5ef369a452e057e030887896b1aa681914c1c2d5d62baa"
+        },
+        {
+          "path": "limitless-rollout.ts",
+          "sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02"
+        },
+        {
+          "path": "membership.ts",
+          "sha256": "fe6e558ec55d5b5d9ce9f0d3edcca34cc5c763e5548c7ae6c925224fe5b5adcf"
+        },
+        {
+          "path": "openai-word-pack-provider.ts",
+          "sha256": "6afa3ea0efbf37a61af3b727d06fa9b38181ce10dfbc715b6273687006117fb7"
+        },
+        {
+          "path": "quota.ts",
+          "sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be"
+        },
+        {
+          "path": "word-pack-quality.ts",
+          "sha256": "c0aa06a9708d6b3a08930f0d9df35d848652e36fd8a71f0a7e72c0f870e2b5e6"
+        }
+      ],
+      "name": "generateWordPack",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "generateWordPack"
+      },
+      "normalized_config_sha256": "b888fb6b96a1d5b3ac6d9388755658eb143bda25a148b29896ac1cd1e38b1f1e"
+    },
+    {
+      "entry_basename": "main.ts",
+      "files": [
+        {
+          "path": "headers.ts",
+          "sha256": "c27e3de50760cb1b080a82310a05ef0ac94c89f65f224dcdd229363f20aa5a56"
+        },
+        {
+          "path": "headers_test.ts",
+          "sha256": "388d366e7066548d4fa0766d2727f236118f4f2163cf745f359e51b392300e2d"
+        },
+        {
+          "path": "main.ts",
+          "sha256": "d546011a1e57f6aa1764d885822524b993e8f5c9d7853ee0e4c8cc819d6e71d6"
+        }
+      ],
+      "name": "googleAuthCallback",
+      "normalized_config": {
+        "entry": "main.ts",
+        "name": "googleAuthCallback"
+      },
+      "normalized_config_sha256": "525a53c240fb7c3d4bc07cc69f4936e2f13bcfa630319a1233913fc58b4146be"
+    },
+    {
+      "entry_basename": "main.ts",
+      "files": [
+        {
+          "path": "main.ts",
+          "sha256": "56ea4f51a4d2175b546fa8467f502b3237bc95260f76d3cd7892401f627e0e28"
+        }
+      ],
+      "name": "mobileAuthCallback",
+      "normalized_config": {
+        "entry": "main.ts",
+        "name": "mobileAuthCallback"
+      },
+      "normalized_config_sha256": "eaa062293b85eacbb5cd767977a4d564ee9e3f0a3189a10e7218bcbc696b10b2"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "admin-publish-lifecycle.ts",
+          "sha256": "0955dd995e809b8872a165bc3409b0add2bc73cc8dd506c2642ce33b2355e346"
+        },
+        {
+          "path": "base44-context.ts",
+          "sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de"
+        },
+        {
+          "path": "contracts.ts",
+          "sha256": "7b53d15d41908c891b8b37597bc75b0c0767cd07f482ed8d4bbe2ad645b75aea"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "9ff1d76b55c63cd7d21893d49d20c93719ed35148f6cb3baddcb6c1d5c613f05"
+        },
+        {
+          "path": "error-response.ts",
+          "sha256": "d668f43d6fac0fcc4039e500386e964ff8e8d258d31cf410dd62115c81187d87"
+        },
+        {
+          "path": "inbox.ts",
+          "sha256": "e8dd795b58c8d367fda6aa0694978c5061fb4014b3b817ba0d1653880f5c482e"
+        },
+        {
+          "path": "receipt-lifecycle.ts",
+          "sha256": "dc69cd419316f049d506db20166903746f799d8e3b7e16b358ce9b8a5af7e181"
+        },
+        {
+          "path": "safe-error.ts",
+          "sha256": "dec6b320d4748c2ee8b962d6804b9b6c1b82bab26701c21789f4c1f6b41664a5"
+        }
+      ],
+      "name": "notificationAction",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "notificationAction"
+      },
+      "normalized_config_sha256": "82c733a03ba449ac5c6372e9b7537a7b262e6adc1aae92ae17bea5f677da1edf"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "announcement-fanout.ts",
+          "sha256": "078ec4d74b5bee0179d8e0a3b689164a09abc29305ac0f39581b469d7832aca3"
+        },
+        {
+          "path": "apns.ts",
+          "sha256": "a0a2e79c1d0b401735670265a132237b91b9f15bd6f07dcb9ad3262ac0897b6e"
+        },
+        {
+          "path": "base44-context.ts",
+          "sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f"
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218"
+        },
+        {
+          "path": "billing-lifecycle-retry.ts",
+          "sha256": "e11a9a72af82ba171164995aec3a3af9063196537cee876c09b0677493841796"
+        },
+        {
+          "path": "bounded-work.ts",
+          "sha256": "f7c050e38b3e8636b6da4bca8c42efc5112016c8969def508f09abb3927f725d"
+        },
+        {
+          "path": "contracts.ts",
+          "sha256": "b4d7d9415497055cfd9f6a187173b47a736f774b38baf1bda5713f4aefbcc79e"
+        },
+        {
+          "path": "device-registration.ts",
+          "sha256": "e223d9c997fe6fb922ada826f516c8a21986cc225426df34bc4aceea5ec9bf3e"
+        },
+        {
+          "path": "drain-policy.ts",
+          "sha256": "478580a3415ae9af80a9095d66e4578e088324358c4ac73de4668282675851e9"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "eba74c33a40c2d4949fcec7953e1d9d162a018024eed4a60fcea9fe20c028d19"
+        },
+        {
+          "path": "error-response.ts",
+          "sha256": "121375f689befc149dfa8ff8e64199b2566c9914b22c348ebf5c3bae6077094e"
+        },
+        {
+          "path": "forced-live-end-authorization.ts",
+          "sha256": "6d72506b6619a5e25c054e23a924a710cac0c825936127930ddb9e2188accffa"
+        },
+        {
+          "path": "inbox-backfill.ts",
+          "sha256": "86852f83ef5979a36f06bf050596e0a4cc495babbce8ec832d0e5e4c5e660a55"
+        },
+        {
+          "path": "inbox-projection.ts",
+          "sha256": "e11205b67f58970c7912ca48db1a40b3e445b0d95135ccf2ed240a0ee7ef206b"
+        },
+        {
+          "path": "internal-function-response.ts",
+          "sha256": "541c3a831e8dd1960cc57bfb52a399c62c3dd3c385b32d8537dcd085a1d3160f"
+        },
+        {
+          "path": "live-activity.ts",
+          "sha256": "8935874fc8a90ef4e26d4e8e3944d995c9ff24bdd550c47754f8cc848f49ea43"
+        },
+        {
+          "path": "live-delivery.ts",
+          "sha256": "24f90a5888b35c9ec28c1df7e09bd3f409c7c66b119a38fbf0d520013767d945"
+        },
+        {
+          "path": "live-end-enqueue.ts",
+          "sha256": "a9ca49bfc93fa0be0891b831d2cb9a42b78d2cecdb1d35bf8a3740e8e46b8c7e"
+        },
+        {
+          "path": "process-event-timing.ts",
+          "sha256": "3385cac9986998b01449033ee723f5f3ec0cb904eaae8185f08ed995fb806712"
+        },
+        {
+          "path": "profile-repair-state.ts",
+          "sha256": "1bcc9c14965cac9c409af84da14778c2b47645c3b53c24a6f0d0061723c7e2aa"
+        },
+        {
+          "path": "public-name-safety.ts",
+          "sha256": "9ad28b10f54a75597c1680278187c08844c2f83a4684a6c0793e3f115f9c75bf"
+        },
+        {
+          "path": "push-events.ts",
+          "sha256": "6d6c40195fd38c8e3a7e11d48e375890616a0c56da52b8be9ee044a43efe0b71"
+        },
+        {
+          "path": "queued-live-end-delivery.ts",
+          "sha256": "1cdfd4a3a40a29a5b0634af435b27f40a368ffecfbee6deb1688599b14e0c26e"
+        },
+        {
+          "path": "room-reconciliation.ts",
+          "sha256": "1377c99c6c7a9d527d56163c1dfc07f70f5a198b076cadfb31a730eb4d7e48d7"
+        },
+        {
+          "path": "scheduled-room-reconciliation.ts",
+          "sha256": "14a3219f5816322d7677728cd489013002baaaf0d05e81d9788420c9618d6c5f"
+        },
+        {
+          "path": "token-crypto.ts",
+          "sha256": "a3f0fe644dbc42226a7faed8f7ad6cf90f54abcb09f9f957432ed18a839543cd"
+        },
+        {
+          "path": "worker-auth.ts",
+          "sha256": "a7397b2fb1dc58d34836147de11e446997db1965eb05d23b4863c24b5712e4dd"
+        }
+      ],
+      "name": "pushNotificationAction",
+      "normalized_config": {
+        "automations": [
+          {
+            "description": "Cost-bounded retry worker. The automation creator must retain the admin role.",
+            "ends_after_count": null,
+            "ends_on_date": null,
+            "ends_type": "never",
+            "function_args": {
+              "action": "drain",
+              "limit": 64
+            },
+            "is_active": true,
+            "name": "drain_push_delivery_retries",
+            "repeat_interval": 15,
+            "repeat_on_day_of_month": null,
+            "repeat_on_days": null,
+            "repeat_unit": "minutes",
+            "schedule_mode": "recurring",
+            "schedule_type": "simple",
+            "start_time": null,
+            "type": "scheduled"
+          }
+        ],
+        "entry": "entry.ts",
+        "name": "pushNotificationAction"
+      },
+      "normalized_config_sha256": "495a994e63c768755c3f8e66b1a729adc4892c0851f186ea410e810ba3ba1eb8"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "base44-context.ts",
+          "sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f"
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "c01a89a01ab750f4a0e785355ce41147fcada34cab005651e246e64b18842d9f"
+        },
+        {
+          "path": "stripe-entitlement-persistence.ts",
+          "sha256": "e5c30109b69a29bec7c2da558c74542b9daf6859dbe4fd1e407e878b1a2342f0"
+        },
+        {
+          "path": "stripe-entitlement.ts",
+          "sha256": "4664c7f5b1739501afec8b2a6012e249167564575a8a9b86dd0237849a75f4c0"
+        },
+        {
+          "path": "stripe-event-resolution.ts",
+          "sha256": "d56fc0c1b1f0026f644eece09b34d36a403e955ec8594378221e751e32309326"
+        }
+      ],
+      "name": "stripe-entitlement-webhook",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "stripe-entitlement-webhook"
+      },
+      "normalized_config_sha256": "5ca18cbd4b37893ca22db5f307b18fe3ba096dd211f72331b6997c2cbce7e2cf"
+    },
+    {
+      "entry_basename": "entry.ts",
+      "files": [
+        {
+          "path": "base44-context.ts",
+          "sha256": "d872656a5f37f3e86493223e2b7cfa49268fd18d939d4f2601d7d510a9d93ab8"
+        },
+        {
+          "path": "billing-identity-lifecycle.ts",
+          "sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218"
+        },
+        {
+          "path": "content-safety.ts",
+          "sha256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937"
+        },
+        {
+          "path": "entry.ts",
+          "sha256": "44fe41b30f4f9ee7f97e5472ee234d47c3f4a3486ed596d37199c9936b9aa4d8"
+        },
+        {
+          "path": "lifecycle-error-response.ts",
+          "sha256": "fc02d09b7e1b80fc2ff70b181ac137b7f87e1371893bf1b64ebcdbc11453ebbe"
+        },
+        {
+          "path": "safe-error.ts",
+          "sha256": "7207e6720cae1ffcabd3a19332a04a52c1547757fecb864f85ffb1b621f31a11"
+        },
+        {
+          "path": "word-pack-write-lifecycle.ts",
+          "sha256": "3041744adec1befa87f5296b6acfb3e56adeaba4b8a4789d96dd13daf48d1375"
+        },
+        {
+          "path": "word-pack.ts",
+          "sha256": "9ea17fbe7789212b31594dfc960dd7a438b387abd09fea729663d423f78cb6b0"
+        }
+      ],
+      "name": "wordPackAction",
+      "normalized_config": {
+        "entry": "entry.ts",
+        "name": "wordPackAction"
+      },
+      "normalized_config_sha256": "f2fe7fb0089ece3f7e562d15eeb306347db4e5636cc7a935b244d95dc33c0f62"
+    }
+  ],
+  "project_config_sha256": "21162d7114078e56b9ede12260fbfe4f7b4c3ba5261cc1314cb712924a424a5e",
+  "raw_schema_response_sha256": "6c0d6a0d8d74c6ed198c48640dcb72c7fa390bb8229f792595e8b38367474417",
+  "schema_count": 25,
+  "schema_names": [
+    "AiGenerationQuota",
+    "AiGenerationUsage",
+    "AiWordPackCacheVariant",
+    "AiWordPackRequestResult",
+    "AppStoreAccount",
+    "AppleSignInCredential",
+    "BillingIdentityLifecycle",
+    "CommunityProfileSignal",
+    "CommunityReport",
+    "Entitlement",
+    "Friendship",
+    "GameHistory",
+    "GameRoom",
+    "GameRoomSignal",
+    "LiveActivityRegistration",
+    "MembershipGrant",
+    "MembershipSignal",
+    "NotificationAnnouncement",
+    "NotificationReadReceipt",
+    "ProfileComment",
+    "PushDeviceRegistration",
+    "PushNotificationEvent",
+    "RoomInvite",
+    "User",
+    "WordPack"
+  ],
+  "schema_set_sha256": "769eaa480754e7641caa9cbd723ba8ae988164cb16da8726b9ea1026584d45aa",
+  "schemas": [
+    {
+      "name": "AiGenerationQuota",
+      "sha256": "19e7924c3e35053c475af10ba1aca68adb750615ffa9c44d3018f1bb5c6eaf22"
+    },
+    {
+      "name": "AiGenerationUsage",
+      "sha256": "82ab10cd94264c90a9ec68d6f5c4714691ed4dba91a38569c9c6f1bfef94fe29"
+    },
+    {
+      "name": "AiWordPackCacheVariant",
+      "sha256": "052f493b5c70ce99e01ad142b5c84a72a01a7e50ff6f66f5fb7f12621026d91c"
+    },
+    {
+      "name": "AiWordPackRequestResult",
+      "sha256": "0778fe9415b4663a35dd68e10686d4449f07480b725cf38968f426b3ffca3ce9"
+    },
+    {
+      "name": "AppStoreAccount",
+      "sha256": "7fe689aa7269e24d21ab082253fcb00dbcb88eba2dbf34f3e1d8c0f8da03c530"
+    },
+    {
+      "name": "AppleSignInCredential",
+      "sha256": "1f13564c14e0936cd7e0651343d4047aefff1f13d57a94e171d00eb9043e74ea"
+    },
+    {
+      "name": "BillingIdentityLifecycle",
+      "sha256": "aae9886536f487e643422b93b1279575c7f4273d354fe7b1e45462e26bc00cfc"
+    },
+    {
+      "name": "CommunityProfileSignal",
+      "sha256": "ed67cc3abb77df44b302d2a5745673597217d4ec7aa3e340bbd6d63aa72b7b62"
+    },
+    {
+      "name": "CommunityReport",
+      "sha256": "76ec1473bc3300dd4597161b416fe02127ca4874b02f43df2da713b098b850cb"
+    },
+    {
+      "name": "Entitlement",
+      "sha256": "cd299b3d636c48f1f7edb548d172433072b13feb0567dff059e70f14f8ab9452"
+    },
+    {
+      "name": "Friendship",
+      "sha256": "0b7261f91ca0f5e91f8e894f0741807dcfcf51a3f011f5f3495687fa2810ed25"
+    },
+    {
+      "name": "GameHistory",
+      "sha256": "22ebd62d77fc884c801138fce83971d28d9e621611e638af05377febab646b3b"
+    },
+    {
+      "name": "GameRoom",
+      "sha256": "07071f54d6b0a0cc7f6c9668f246b108aba2d62c46c4b99607a6d1bade93cb2d"
+    },
+    {
+      "name": "GameRoomSignal",
+      "sha256": "88e1929892dbdd3de0ee02b12a1486a2b412051072d041834b66a0fcdd18153c"
+    },
+    {
+      "name": "LiveActivityRegistration",
+      "sha256": "ef86ac74971408e18dc82bc7dc0960d49f509d6df9dd5a751b47c3a4d51fc835"
+    },
+    {
+      "name": "MembershipGrant",
+      "sha256": "7024c22f9ac1031e377702441aa774fad186fc829053ebc12784367725f6021f"
+    },
+    {
+      "name": "MembershipSignal",
+      "sha256": "d69307948253c30e1fd24d1d13c31ee4b93f2796ba5264408f29ea01e43c63eb"
+    },
+    {
+      "name": "NotificationAnnouncement",
+      "sha256": "4907c4a1abe0b55c11929e55f286000346ec67ec06cf21c1607b5dcf3ec3ac92"
+    },
+    {
+      "name": "NotificationReadReceipt",
+      "sha256": "e768c51fe906bb0aa1c05bb83c77fceeb3739411b9822fbad240d7b82fa2859c"
+    },
+    {
+      "name": "ProfileComment",
+      "sha256": "1952b3485e5600ac35c43a616dc3d760e6c839b4fd373dd3144d7e53ed3a2937"
+    },
+    {
+      "name": "PushDeviceRegistration",
+      "sha256": "7dca234d1c4af9a7df1df0fd0a5d1f2cdd2d1d3db9f908126b8b3464008d1796"
+    },
+    {
+      "name": "PushNotificationEvent",
+      "sha256": "5c7a84ddadeec7d153549f2fe77ba7a4c8047454caba9aaaa1080d259e7685b4"
+    },
+    {
+      "name": "RoomInvite",
+      "sha256": "1c1f3919fd1480178f23ab055c7179318aa0c4c9aec69454d7f2b3537be62867"
+    },
+    {
+      "name": "User",
+      "sha256": "6aff711bcce9ded9ac8799287e81e45045d6dcccdaf6fa29f4556bbe09a02410"
+    },
+    {
+      "name": "WordPack",
+      "sha256": "9030d6227c87a6ece4eebdd942601e58b486880fea4cd3c46e775e210e53aef2"
+    }
+  ],
+  "source_head": "4b6daf7",
+  "stage_root": "/var/folders/4j/wkjrm6cn0z9f5v932wqlmfz40000gn/T/spyclash-reliability-146-3yodigo5"
+}

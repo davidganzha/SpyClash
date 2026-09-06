@@ -89,6 +89,7 @@ struct WordPackEditorSheet: View {
                         .padding(.bottom, 24)
                 }
                 .scrollDismissesKeyboard(.interactively)
+                .accessibilityIdentifier("wordPacks.editor.form")
 
                 footer
             }
@@ -1031,13 +1032,11 @@ struct WordPackEditorSheet: View {
         guard !isBusy, !cleanAITheme.isEmpty else { return }
 
         let signature = currentAISignature
-        let request: WordPackAIGenerationRequest
-        if let pendingAIRequest, pendingAIRequest.signature == signature {
-            request = pendingAIRequest
-        } else {
-            request = WordPackAIGenerationRequest(id: UUID(), signature: signature)
-            pendingAIRequest = request
-        }
+        let request = WordPackAIGenerationRequest.forExplicitGeneration(
+            signature: signature,
+            reusing: pendingAIRequest
+        )
+        pendingAIRequest = request
 
         activeGenerationID = request.id
         isGenerating = true
@@ -1103,7 +1102,17 @@ struct WordPackEditorSheet: View {
         } catch is CancellationError {
             return
         } catch {
-            guard activeGenerationID == request.id else { return }
+            guard !Task.isCancelled,
+                  appState.membershipScope == expectedAccount,
+                  activeGenerationID == request.id,
+                  currentAISignature == request.signature else { return }
+            pendingAIRequest = pendingAIRequest?.retainedAfterFailure(
+                error,
+                failedRequest: request,
+                activeGenerationID: activeGenerationID,
+                currentSignature: currentAISignature,
+                accountUnchanged: appState.membershipScope == expectedAccount
+            )
             message = EditorMessage(
                 text: error.localizedDescription.uppercased(),
                 kind: .error

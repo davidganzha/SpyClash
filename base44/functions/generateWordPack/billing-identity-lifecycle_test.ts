@@ -163,7 +163,7 @@ Deno.test("deleting state blocks writers and permits deletion retry after lease 
   assertEquals(retry.leaseToken === deletion.leaseToken, false);
 });
 
-Deno.test("lost writer response and unreadable reconciliation remain deletion-blocking", async () => {
+Deno.test("lost writer response and unreadable reconciliation clear unpublished acquisition", async () => {
   const store = new MockLifecycleStore([
     await inactiveRecord("user-1", "row-1"),
   ]);
@@ -183,20 +183,16 @@ Deno.test("lost writer response and unreadable reconciliation remain deletion-bl
   assertEquals(error.code, "ambiguous");
   assertEquals(
     isBillingIdentityLeaseActive(store.records[0].lease_until, NOW),
-    true,
+    false,
   );
 
-  const deletionError = await assertRejects(
-    () =>
-      acquireBillingDeletionMarker(
-        store,
-        "user-1",
-        () => NOW,
-        sequence("delete"),
-      ),
-    BillingIdentityLifecycleError,
+  const deletion = await acquireBillingDeletionMarker(
+    store,
+    "user-1",
+    () => NOW,
+    sequence("delete"),
   );
-  assertEquals(deletionError.code, "active_lease");
+  assertEquals(deletion.state, "deleting");
 });
 
 Deno.test("inactive duplicate initialization rows converge deterministically", async () => {

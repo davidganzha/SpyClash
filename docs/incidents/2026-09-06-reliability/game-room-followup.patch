@@ -1,0 +1,207 @@
+--- a/base44/functions/gameRoomAction/entry.ts
++++ b/base44/functions/gameRoomAction/entry.ts
+@@ -179,0 +180 @@
++  validatedExpectedMembershipGeneration,
+@@ -1129,2 +1130 @@
+-  const candidate = clean(body?.expected_membership_id);
+-  return candidate ? validatedMembershipGeneration(candidate) : "";
++  return validatedExpectedMembershipGeneration(body?.expected_membership_id);
+@@ -2735,0 +2736 @@
++        allowCreate: false,
+@@ -4079,3 +4080,3 @@
+-async function withSingleProfileRepairLease(base44, userIDValue, action) {
+-  const userID = clean(userIDValue);
+-  if (!userID) return { status: "gone" };
++async function withProfileRepairLeases(base44, userIDValues, action) {
++  const userIDs = uniqueStrings(userIDValues);
++  if (!userIDs.length) return { status: "gone" };
+@@ -4085 +4086 @@
+-      userIDs: [userID],
++      userIDs,
+@@ -4087 +4088 @@
+-      action: (context) => action(context, userID),
++      action: (context) => action(context, userIDs),
+@@ -4100 +4101,5 @@
+-async function repairCommunityProfileHistorySource(base44, source) {
++async function repairCommunityProfileHistorySource(
++  base44,
++  source,
++  options = {},
++) {
+@@ -4103,3 +4108,6 @@
+-  if (!profileUserID || !matchID) return true;
+-
+-  const mirror = await withSingleProfileRepairLease(
++  if (!profileUserID || !matchID) {
++    await options.afterMirror?.();
++    return true;
++  }
++
++  const mirror = await withProfileRepairLeases(
+@@ -4107 +4115 @@
+-    profileUserID,
++    [profileUserID],
+@@ -4119,0 +4128,4 @@
++  // A bounded terminal batch uses this barrier so every independent profile
++  // mirror releases its User lease before any overlapping recipient signal
++  // fanout begins. Non-terminal drains default to a batch size of one.
++  await options.afterMirror?.();
+@@ -4123,30 +4135,46 @@
+-  const matchHistory = await rankedHistoryForMatch(base44, matchID);
+-  const recipientUserIDs = uniqueStrings(
+-    matchHistory.map((record) => record?.player_user_id),
+-  );
+-  const fanout = await repairCommunityProfileRecipients({
+-    recipientUserIDs,
+-    concurrency: 4,
+-    repairRecipient: async (recipientUserID) => {
+-      const outcome = await withSingleProfileRepairLease(
+-        base44,
+-        recipientUserID,
+-        async () => {
+-          const result = await fanoutCommunityProfileInvalidations({
+-            signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
+-            recipientUserIDs: [recipientUserID],
+-            profileUserIDs: [profileUserID],
+-            logError: (message, error) =>
+-              console.error(message, error?.message || error),
+-          });
+-          return Number(result?.failed) === 0;
+-        },
+-      );
+-      return outcome.status === "gone" ||
+-        (outcome.status === "performed" && outcome.value === true);
+-    },
+-  });
+-  return fanout.failedUserIDs.length === 0;
+-}
+-
+-async function runProfileRepairSources(base44, sources) {
++  const fanout = async () => {
++    const matchHistory = await rankedHistoryForMatch(base44, matchID);
++    const recipientUserIDs = uniqueStrings(
++      matchHistory.map((record) => record?.player_user_id),
++    );
++    const result = await repairCommunityProfileRecipients({
++      recipientUserIDs,
++      // Every recipient scope also owns the shared profile identity lease.
++      // Serialize these short writes so sibling scopes do not contend with one
++      // another and falsely defer an otherwise healthy durable repair source.
++      concurrency: 1,
++      repairRecipient: async (recipientUserID) => {
++        const outcome = await withProfileRepairLeases(
++          base44,
++          [profileUserID, recipientUserID],
++          async (context) => {
++            const signal = await fanoutCommunityProfileInvalidations({
++              signalStore: base44.asServiceRole.entities.CommunityProfileSignal,
++              recipientUserIDs: [recipientUserID],
++              profileUserIDs: [profileUserID],
++              beforeSignalWrite: async () => {
++                await assertRoomWriterLeaseForUser(context, profileUserID);
++                await assertRoomWriterLeaseForUser(context, recipientUserID);
++              },
++              logError: (message, error) =>
++                console.error(message, error?.message || error),
++            });
++            return Number(signal?.failed) === 0;
++          },
++        );
++        return outcome.status === "gone" ||
++          (outcome.status === "performed" && outcome.value === true);
++      },
++    });
++    return result.failedUserIDs.length === 0;
++  };
++
++  // A recipient owns one CommunityProfileSignal row. Independent player
++  // mirrors may run concurrently, but their wake-up fanout must remain ordered
++  // so one profile cannot overwrite another profile's signal mid-write.
++  return typeof options.serializeFanout === "function"
++    ? await options.serializeFanout(fanout)
++    : await fanout();
++}
++
++async function runProfileRepairSources(base44, sources, options = {}) {
+@@ -4154,7 +4182,31 @@
+-  // Every recipient owns one wake-up row. Keep affected profiles sequential
+-  // while retaining bounded recipient concurrency inside each source so two
+-  // profile updates cannot race to overwrite that shared row.
+-  for (const source of sources) {
+-    try {
+-      outcomes.push(
+-        await runCommunityProfileRepair({
++  const concurrency = Math.min(
++    Math.max(Math.floor(Number(options.concurrency)) || 1, 1),
++    4,
++  );
++  let fanoutTail = Promise.resolve();
++  const serializeFanout = async (fanout) => {
++    const run = fanoutTail.then(fanout, fanout);
++    fanoutTail = run.then(() => undefined, () => undefined);
++    return await run;
++  };
++
++  // Ranked participants update distinct User rows under distinct lifecycle
++  // leases. Bound their expensive history reads/mirror writes concurrently,
++  // while serializeFanout preserves the single wake-up row per recipient.
++  for (let offset = 0; offset < sources.length; offset += concurrency) {
++    const batch = sources.slice(offset, offset + concurrency);
++    let mirrorsSettled = 0;
++    let releaseMirrorBarrier;
++    const mirrorBarrier = new Promise((resolve) => {
++      releaseMirrorBarrier = resolve;
++    });
++    const settled = await Promise.allSettled(
++      batch.map((source) => {
++        let sourceSettled = false;
++        const settleSource = () => {
++          if (sourceSettled) return;
++          sourceSettled = true;
++          mirrorsSettled += 1;
++          if (mirrorsSettled === batch.length) releaseMirrorBarrier();
++        };
++        return runCommunityProfileRepair({
+@@ -4163,2 +4215,13 @@
+-          repair: (claimedSource) =>
+-            repairCommunityProfileHistorySource(base44, claimedSource),
++          repair: (claimedSource) => {
++            return repairCommunityProfileHistorySource(
++              base44,
++              claimedSource,
++              {
++                afterMirror: async () => {
++                  settleSource();
++                  await mirrorBarrier;
++                },
++                serializeFanout,
++              },
++            );
++          },
+@@ -4167,3 +4230,12 @@
+-        }),
+-      );
+-    } catch (error) {
++        }).finally(() => {
++          // Completed/deferred sources never enter repair(), and an unexpected
++          // pre-barrier failure must not strand its batch behind the gate.
++          settleSource();
++        });
++      }),
++    );
++    for (const [index, result] of settled.entries()) {
++      if (result.status === "fulfilled") {
++        outcomes.push(result.value);
++        continue;
++      }
+@@ -4172 +4244 @@
+-        error?.message || error,
++        result.reason?.message || result.reason,
+@@ -4174 +4246 @@
+-      outcomes.push({ outcome: "failed", source });
++      outcomes.push({ outcome: "failed", source: batch[index] });
+@@ -4189 +4261,3 @@
+-  const outcomes = await runProfileRepairSources(base44, sources);
++  const outcomes = await runProfileRepairSources(base44, sources, {
++    concurrency: 4,
++  });

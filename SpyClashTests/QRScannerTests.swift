@@ -27,6 +27,35 @@ final class QRScannerTests: XCTestCase {
         XCTAssertEqual(received, ["https://spyclash.com/?join=ABC123"])
     }
 
+    func testQueuedCameraFramesCannotJoinWhileCaptureIsInactive() {
+        var received: [String] = []
+        let scanner = QRScannerRepresentable.Coordinator(isScanningEnabled: true) { received.append($0) }
+        scanner.receivePayloads(["https://example.com/menu"])
+        scanner.isCaptureActive = false
+        scanner.receivePayloads(["spyclash://join/ABC123"])
+        scanner.receivePayloads(["https://example.com/menu"])
+        XCTAssertEqual(received, ["https://example.com/menu"])
+        XCTAssertTrue(scanner.isScanningEnabled)
+        scanner.isCaptureActive = true
+        scanner.receivePayloads(["spyclash://join/ABC123"])
+        XCTAssertEqual(received.last, "spyclash://join/ABC123")
+        XCTAssertFalse(scanner.isScanningEnabled)
+    }
+
+    func testForegroundingDoesNotResubmitAJoinAlreadyInFlight() {
+        var received: [String] = []
+        let scanner = QRScannerRepresentable.Coordinator(isScanningEnabled: true) { received.append($0) }
+        scanner.receivePayloads(["spyclash://join/ABC123"])
+        scanner.isCaptureActive = false
+        scanner.isCaptureActive = true
+        scanner.receivePayloads(["spyclash://join/ABC123"])
+        XCTAssertEqual(received.count, 1)
+        scanner.isScanningEnabled = true
+        scanner.isCaptureActive = false
+        scanner.receivePayloads(["spyclash://join/ABC123"])
+        XCTAssertEqual(received.count, 1, "A late failed-join redraw cannot reactivate a dismissed camera")
+    }
+
     func testCameraRejectsMalformedAndForeignRoomLinks() {
         XCTAssertNil(SpyLinkParser.scannedRoomCode(from: "https://example.com/?join=ABC123"))
         XCTAssertNil(SpyLinkParser.scannedRoomCode(from: "spyclash://join/AB-C123"))
