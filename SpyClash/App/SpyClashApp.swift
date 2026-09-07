@@ -72,13 +72,6 @@ private struct RootView: View {
                 )
             }
         }
-        .overlay {
-            if appState.authHomeRevealPhase == .idle,
-               !appState.requiresOnboarding,
-               let invitation = appState.radarNearby.incomingInvitation {
-                RadarIncomingInvitationOverlay(invitation: invitation)
-            }
-        }
         .spyGlobalToastLayer()
         .alert(
             manualAppleRevocationTitle,
