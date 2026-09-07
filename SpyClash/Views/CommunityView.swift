@@ -119,6 +119,26 @@ struct CommunityProfileRequestState: Equatable {
     }
 }
 
+enum CommunityProfileRelationshipResolver {
+    static func resolve(
+        profileID: String,
+        fallback: CommunityRelationshipSummary?,
+        network: CommunityState?
+    ) -> CommunityRelationshipSummary? {
+        guard let network else { return fallback }
+        // A confirmed friendship must win over an old pending profile response
+        // or a duplicate request for the same person with a different record ID.
+        let record = network.blocked.first { $0.profile.id == profileID }
+            ?? network.friends.first { $0.profile.id == profileID }
+        guard let record else { return fallback }
+        return CommunityRelationshipSummary(
+            id: record.id,
+            status: record.status,
+            direction: record.direction
+        )
+    }
+}
+
 struct CommunityView: View {
     @Environment(AppState.self) private var appState
 
@@ -593,14 +613,23 @@ struct CommunityView: View {
         }
     }
 
+    private func resolvedRelationship(for detail: CommunityProfileDetail) -> CommunityRelationshipSummary? {
+        CommunityProfileRelationshipResolver.resolve(
+            profileID: detail.profile.id,
+            fallback: detail.relationship,
+            network: network
+        )
+    }
+
     @ViewBuilder
     private func relationshipCommands(_ detail: CommunityProfileDetail) -> some View {
-        SpyPanel(accent: relationshipAccent(detail.relationship), motionDelay: 0.05) {
+        let relationship = resolvedRelationship(for: detail)
+        SpyPanel(accent: relationshipAccent(relationship), motionDelay: 0.05) {
             VStack(alignment: .leading, spacing: 11) {
                 SpySceneKicker(
                     title: localized(en: "CONNECTION", ru: "СВЯЗЬ", es: "CONEXION", uk: "ЗВ’ЯЗОК"),
-                    status: relationshipTitle(detail.relationship),
-                    accent: relationshipAccent(detail.relationship)
+                    status: relationshipTitle(relationship),
+                    accent: relationshipAccent(relationship)
                 )
 
                 relationshipButtons(detail)
@@ -641,7 +670,7 @@ struct CommunityView: View {
 
     @ViewBuilder
     private func relationshipButtons(_ detail: CommunityProfileDetail) -> some View {
-        let relationship = detail.relationship
+        let relationship = resolvedRelationship(for: detail)
 
         if relationship == nil || relationship?.status == "declined" {
             communityActionButton(
@@ -669,7 +698,7 @@ struct CommunityView: View {
                     await relationshipAction("remove_friend", relationship.id)
                 }
             }
-        } else if let relationship, relationship.direction == "incoming" {
+        } else if let relationship, relationship.status == "pending", relationship.direction == "incoming" {
             HStack(spacing: 9) {
                 communityActionButton(
                     localized(en: "ACCEPT", ru: "ПРИНЯТЬ", es: "ACEPTAR", uk: "ПРИЙНЯТИ"),
@@ -694,7 +723,7 @@ struct CommunityView: View {
                     await relationshipDecision("decline", relationship.id)
                 }
             }
-        } else if let relationship {
+        } else if let relationship, relationship.status == "pending" {
             HStack(spacing: 9) {
                 connectionStatus(
                     localized(en: "REQUEST SENT", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA", uk: "ЗАПИТ НАДІСЛАНО"),

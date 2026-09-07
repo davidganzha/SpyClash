@@ -14,6 +14,8 @@ struct WordPackEditorSheet: View {
     @State private var method: WordPackCreationMethod?
     @State private var aiTheme = ""
     @State private var aiWordCount = 12
+    @State private var showWordCountEditor = false
+    @State private var wordCountInput = ""
     @State private var isGenerating = false
     @State private var isSaving = false
     @State private var validationAttempted = false
@@ -131,6 +133,20 @@ struct WordPackEditorSheet: View {
                 .accessibilityElement(children: .contain)
                 .accessibilityAddTraits(.isModal)
             }
+        }
+        .alert(copy.wordsToGenerate, isPresented: $showWordCountEditor) {
+            TextField("5–100", text: $wordCountInput)
+                .keyboardType(.numberPad)
+            Button("OK") {
+                guard let count = Int(wordCountInput.trimmingCharacters(in: .whitespacesAndNewlines)),
+                      (5...100).contains(count) else { return }
+                aiWordCount = count
+                generationInputChanged()
+            }
+            .disabled(!isWordCountInputValid)
+            Button(appState.language.wordPacks.cancel, role: .cancel) {}
+        } message: {
+            Text("5–100")
         }
         .interactiveDismissDisabled(isBusy || hasUnsavedChanges)
         .sheet(item: $accessSheet) { _ in
@@ -378,13 +394,23 @@ struct WordPackEditorSheet: View {
                     generationInputChanged()
                 }
 
-                Text("\(aiWordCount)")
-                    .font(.system(size: 18, weight: .black, design: .monospaced))
-                    .foregroundStyle(.white)
-                    .frame(maxWidth: .infinity, minHeight: 44)
-                    .background(SpyTheme.panelDeep)
-                    .overlay(Rectangle().stroke(SpyTheme.stroke))
-                    .accessibilityLabel("\(copy.wordsToGenerate): \(aiWordCount)")
+                Button {
+                    focusedField = nil
+                    wordCountInput = String(aiWordCount)
+                    showWordCountEditor = true
+                } label: {
+                    Text("\(aiWordCount)")
+                        .font(.system(size: 18, weight: .black, design: .monospaced))
+                        .foregroundStyle(.white)
+                        .frame(maxWidth: .infinity, minHeight: 44)
+                        .background(SpyTheme.panelDeep)
+                        .overlay(Rectangle().stroke(SpyTheme.stroke))
+                }
+                .buttonStyle(SpyWebPressStyle())
+                .disabled(isGenerating)
+                .accessibilityLabel(copy.wordsToGenerate)
+                .accessibilityValue(String(aiWordCount))
+                .accessibilityIdentifier("wordPacks.editor.wordCount")
 
                 countButton(
                     systemName: "plus",
@@ -422,6 +448,13 @@ struct WordPackEditorSheet: View {
             }
         }
         .accessibilityElement(children: .contain)
+    }
+
+    private var isWordCountInputValid: Bool {
+        guard let count = Int(wordCountInput.trimmingCharacters(in: .whitespacesAndNewlines)) else {
+            return false
+        }
+        return (5...100).contains(count)
     }
 
     private func countButton(
