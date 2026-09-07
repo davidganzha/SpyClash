@@ -4,6 +4,44 @@ import XCTest
 
 @MainActor
 final class Base44ClientRoomActionTests: XCTestCase {
+    func testWordPackGenerationRetriesLeaseConflictWithIdenticalRequest() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if try recorder.requestBodies().count == 1 {
+                return MockURLProtocol.leaseConflictResponse(for: request, code: "active_lease", retryable: true)
+            }
+            let response = HTTPURLResponse(url: request.url!, statusCode: 200, httpVersion: nil,
+                                           headerFields: ["Content-Type": "application/json"])!
+            return (response, Data(#"{"category":"Countries","words":["France","Spain"]}"#.utf8))
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+        let result = try await makeClient().generateWordPack(
+            theme: "Countries", count: 10, requestID: UUID(), excluding: ["Italy"], preferFresh: true
+        )
+        XCTAssertEqual(result.words, ["France", "Spain"])
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(bodies.count, 2)
+        XCTAssertTrue(NSDictionary(dictionary: bodies[0]).isEqual(to: bodies[1]))
+    }
+
+    func testWordPackGenerationRetryPolicyRejectsPermanentConflictsAndStops() {
+        for code in ["word_pack_request_id_conflict", "deletion_in_progress", "unknown"] {
+            XCTAssertNil(WordPackGenerationRetryPolicy.delayMilliseconds(
+                for: Base44Error(message: "Conflict", statusCode: 409, code: code, retryable: true),
+                completedRetries: 0
+            ))
+        }
+        for code in ["active_lease", "cas_contention"] {
+            let error = Base44Error(message: "Busy", statusCode: 409, code: code, retryable: true)
+            XCTAssertEqual(WordPackGenerationRetryPolicy.delayMilliseconds(for: error, completedRetries: 0), 2_000)
+            XCTAssertNil(WordPackGenerationRetryPolicy.delayMilliseconds(for: error, completedRetries: 3))
+            XCTAssertNil(WordPackGenerationRetryPolicy.delayMilliseconds(
+                for: Base44Error(message: "Busy", statusCode: 409, code: code, retryable: false), completedRetries: 0
+            ))
+        }
+    }
+
     func testPublicDisplayNameSafetyBlocksKnownRootAcrossCommonEvasions() {
         let blockedVariants = [
             "zalupa",

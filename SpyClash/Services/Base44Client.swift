@@ -623,16 +623,31 @@ final class Base44Client {
         excluding excludedWords: [String] = [],
         preferFresh: Bool = false
     ) async throws -> GeneratedWordPack {
-        try await invokeFunction(
-            "generateWordPack",
-            body: GenerateWordPackPayload(
-                theme: theme.trimmingCharacters(in: .whitespacesAndNewlines),
-                count: count,
-                requestID: requestID,
-                excludedWords: excludedWords,
-                preferFresh: preferFresh
-            )
+        let payload = GenerateWordPackPayload(
+            theme: theme.trimmingCharacters(in: .whitespacesAndNewlines),
+            count: count,
+            requestID: requestID,
+            excludedWords: excludedWords,
+            preferFresh: preferFresh
         )
+        let expectedToken = token
+        var completedRetries = 0
+        while true {
+            try Task.checkCancellation()
+            guard token == expectedToken else { throw CancellationError() }
+            do {
+                return try await invokeFunction("generateWordPack", body: payload)
+            } catch let error as Base44Error {
+                guard let delay = WordPackGenerationRetryPolicy.delayMilliseconds(
+                    for: error,
+                    completedRetries: completedRetries
+                ) else { throw error }
+                completedRetries += 1
+                // Preserve the request ID and inputs so a completed result can
+                // be replayed by the server instead of creating another request.
+                try await Task.sleep(for: .milliseconds(delay))
+            }
+        }
     }
 
     func gameHistory(userID: String, email: String, limit: Int? = nil) async throws -> [GameHistory] {
@@ -2174,6 +2189,17 @@ struct Base44Error: LocalizedError {
         code?
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased() ?? ""
+    }
+}
+
+enum WordPackGenerationRetryPolicy {
+    static func delayMilliseconds(for error: Base44Error, completedRetries: Int) -> Int? {
+        let delays = [2_000, 3_000, 5_000]
+        guard delays.indices.contains(completedRetries),
+              error.statusCode == 409, error.retryable,
+              ["active_lease", "cas_contention"].contains(error.code ?? "") else { return nil }
+        let serverDelay = min(max(error.retryAfterSeconds ?? 0, 0), 15) * 1_000
+        return max(delays[completedRetries], serverDelay)
     }
 }
 
