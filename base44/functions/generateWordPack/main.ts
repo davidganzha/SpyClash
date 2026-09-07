@@ -1,3 +1,4 @@
+import { cleanWord, uniqueWords } from "./word-normalization.ts";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import {
   canonicalBase44Request,
@@ -185,31 +186,6 @@ function clampCount(value: unknown) {
   const count = Number(value);
   if (!Number.isFinite(count)) return 12;
   return Math.max(5, Math.min(100, Math.round(count)));
-}
-
-function cleanWord(value: unknown) {
-  return String(value || "")
-    .replace(/^[\s,;.\-–—"'`]+|[\s,;.\-–—"'`]+$/g, "")
-    .replace(/\s+/g, " ")
-    .trim();
-}
-
-function uniqueWords(values: unknown[]) {
-  const seen = new Set<string>();
-  const words: string[] = [];
-
-  for (const rawValue of values || []) {
-    const pieces = String(rawValue || "").split(/[,;]/);
-    for (const piece of pieces) {
-      const word = cleanWord(piece).slice(0, 120).trim();
-      const key = word.toLowerCase();
-      if (!word || seen.has(key)) continue;
-      seen.add(key);
-      words.push(word);
-    }
-  }
-
-  return words;
 }
 
 function removeExcludedWords(values: unknown[], excludedWords: string[]) {

@@ -578,6 +578,16 @@ struct WordPackEditorSheet: View {
         .disabled(isBusy)
     }
 
+    private var wordsInputHint: String {
+        guard draft.preservesWordPunctuation else { return copy.wordsInputHint }
+        switch appState.language {
+        case .en: return "ONE ENTRY PER LINE"
+        case .ru: return "КАЖДОЕ СЛОВО ИЛИ ИМЯ — С НОВОЙ СТРОКИ"
+        case .es: return "UNA ENTRADA POR LÍNEA"
+        case .uk: return "КОЖНЕ СЛОВО АБО ІМ’Я — З НОВОГО РЯДКА"
+        }
+    }
+
     private var wordsSection: some View {
         let analysis = draft.wordAnalysis
 
@@ -609,11 +619,11 @@ struct WordPackEditorSheet: View {
                     )
                 )
                 .accessibilityLabel(accessibleLabel(copy.wordsLabel))
-                .accessibilityHint(copy.wordsInputHint)
+                .accessibilityHint(wordsInputHint)
                 .accessibilityIdentifier("wordPacks.editor.words")
                 .disabled(isBusy)
 
-            Text(copy.wordsInputHint)
+            Text(wordsInputHint)
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(SpyTheme.muted)
 

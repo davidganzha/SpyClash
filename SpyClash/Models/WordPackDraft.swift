@@ -9,6 +9,7 @@ struct WordPackDraft: Equatable {
     var name: String
     var category: String
     var wordsText: String
+    private(set) var preservesWordPunctuation = false
 
     init(name: String = "", category: String = "", wordsText: String = "") {
         self.name = name
@@ -19,6 +20,7 @@ struct WordPackDraft: Equatable {
     init(pack: WordPack) {
         name = pack.name
         category = pack.category ?? ""
+        preservesWordPunctuation = true
         wordsText = (pack.words ?? []).joined(separator: "\n")
     }
 
@@ -31,7 +33,7 @@ struct WordPackDraft: Equatable {
     }
 
     var wordAnalysis: WordPackWordAnalysis {
-        WordPackDraftNormalizer.analyzeWords(wordsText)
+        WordPackDraftNormalizer.analyzeWords(wordsText, splitPunctuation: !preservesWordPunctuation)
     }
 
     var isValid: Bool {
@@ -46,6 +48,7 @@ struct WordPackDraft: Equatable {
         let generatedName = generated.name?.nilIfBlank ?? fallbackName
         name = generatedName
         category = generated.category.nilIfBlank ?? generatedName
+        preservesWordPunctuation = true
         wordsText = generated.words.joined(separator: "\n")
     }
 }
@@ -70,13 +73,14 @@ enum WordPackDraftNormalizer {
         return String(collapsed.prefix(fieldLimit))
     }
 
-    static func analyzeWords(_ text: String) -> WordPackWordAnalysis {
+    static func analyzeWords(_ text: String, splitPunctuation: Bool = true) -> WordPackWordAnalysis {
         var words: [String] = []
         var seen = Set<String>()
         var duplicateCount = 0
         var shortenedCount = 0
 
-        for rawEntry in text.components(separatedBy: CharacterSet(charactersIn: ",;\n")) {
+        let separators = splitPunctuation ? CharacterSet(charactersIn: ",;\r\n") : .newlines
+        for rawEntry in text.components(separatedBy: separators) {
             let collapsed = collapsedWhitespace(rawEntry)
             guard !collapsed.isEmpty else { continue }
 

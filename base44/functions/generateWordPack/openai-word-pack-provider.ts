@@ -79,7 +79,7 @@ export const WORD_PACK_PROMPT_VERSION = "word-pack-2026-08-29-v5";
 export const BASE44_WORD_PACK_MODEL = "gpt_5_4" as const;
 
 export const WORD_PACK_CACHE_VERSION =
-  `${WORD_PACK_PROMPT_VERSION}-${BASE44_WORD_PACK_MODEL}-single-pass-theme-language`;
+  `${WORD_PACK_PROMPT_VERSION}-${BASE44_WORD_PACK_MODEL}-whole-items-v2`;
 
 export const WORD_PACK_CATEGORY_SCHEMA_DESCRIPTION =
   "A short, faithful display label for the exact requested theme, using the same language as the theme.";

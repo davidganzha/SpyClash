@@ -283,7 +283,7 @@ Deno.test("word-pack prompt requires exact named entities instead of adjacent te
   assertEquals(BASE44_WORD_PACK_MODEL, "gpt_5_4");
   assertEquals(
     WORD_PACK_CACHE_VERSION,
-    "word-pack-2026-08-29-v5-gpt_5_4-single-pass-theme-language",
+    "word-pack-2026-08-29-v5-gpt_5_4-whole-items-v2",
   );
   assert(WORD_PACK_SCHEMA_DESCRIPTION.includes("exact requested theme"));
   assert(!WORD_PACK_SCHEMA_DESCRIPTION.toLowerCase().includes("spyfall"));

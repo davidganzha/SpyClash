@@ -45,6 +45,26 @@ final class WordPackDraftTests: XCTestCase {
         XCTAssertFalse(draft.isValid)
     }
 
+    func testSavedPackNamesPreserveCommasWhenReopened() {
+        let pack = WordPack(id: "test", name: "Rappers", category: "Music",
+                            words: ["Tyler, The Creator", "Nas"])
+        let draft = WordPackDraft(pack: pack)
+        XCTAssertEqual(draft.wordAnalysis.words, pack.words)
+    }
+
+    func testGeneratedNamesPreservePunctuationThroughEditing() {
+        var draft = WordPackDraft()
+        draft.applyGenerated(GeneratedWordPack(
+            name: "Rappers", category: "Music",
+            words: ["Тайлер, The Creator", "Tyler, The Creator", "AC;DC"],
+            aiLimit: nil, aiGenerationsToday: nil, aiRemaining: nil
+        ), fallbackName: "Music")
+        XCTAssertEqual(draft.wordAnalysis.words, ["Тайлер, The Creator", "Tyler, The Creator", "AC;DC"])
+        draft.wordsText += "\n  TYLER, The Creator  \nNas"
+        XCTAssertEqual(draft.wordAnalysis.words, ["Тайлер, The Creator", "Tyler, The Creator", "AC;DC", "Nas"])
+        XCTAssertEqual(draft.wordAnalysis.duplicateCount, 1)
+    }
+
     func testGeneratedResultBecomesAnEditableUnsavedDraft() {
         var draft = WordPackDraft(
             name: "Manual",
