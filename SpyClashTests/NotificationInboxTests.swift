@@ -241,6 +241,36 @@ final class NotificationInboxModelTests: XCTestCase {
 
 @MainActor
 final class NotificationInboxStoreTests: XCTestCase {
+    func testLateSummaryCannotRestoreBadgeAfterPersonalFeedBecomesEmpty() async {
+        let client = NotificationInboxClientStub()
+        var pendingSummary: CheckedContinuation<NotificationInboxSummary, Never>?
+        client.summaryHandler = {
+            await withCheckedContinuation { pendingSummary = $0 }
+        }
+        client.listHandler = { scope, _, _ in
+            NotificationInboxPage(scope: scope, items: [], unread: .zero)
+        }
+        let store = NotificationInboxStore(client: client, accountID: "user-a")
+        let summaryTask = Task { await store.refreshSummary() }
+        while pendingSummary == nil { await Task.yield() }
+
+        await store.refresh(scope: .personal)
+        pendingSummary?.resume(returning: NotificationInboxSummary(
+            unread: NotificationInboxUnreadCounts(global: 0, personal: 1)
+        ))
+        await summaryTask.value
+
+        XCTAssertTrue(store.feed(for: .personal).items.isEmpty)
+        XCTAssertEqual(store.unread, .zero)
+        XCTAssertFalse(store.isSummaryLoading)
+
+        client.summaryHandler = {
+            NotificationInboxSummary(unread: NotificationInboxUnreadCounts(global: 0, personal: 2))
+        }
+        await store.refreshSummary()
+        XCTAssertEqual(store.unread.personal, 2, "A subsequent summary must still report new notifications.")
+    }
+
     func testRefreshLoadsRequestedScopeAndUnreadCounts() async {
         let client = NotificationInboxClientStub()
         client.listHandler = { scope, cursor, limit in
