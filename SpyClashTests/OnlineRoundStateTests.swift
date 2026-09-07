@@ -3241,6 +3241,29 @@ final class NavigationSwipeTests: XCTestCase {
         )
     }
 
+    func testConfirmedFriendshipOverridesStaleIncomingProfileRequest() {
+        func profile(_ id: String) -> PublicSpyProfile {
+            PublicSpyProfile(id: id, spyID: "123-456", displayName: id, avatar: "🕵️",
+                             spyCardTheme: "field", spyCardAccent: "signal_red", spyCardBadge: "operative",
+                             rating: 0, gamesPlayed: 0, gamesWon: 0, winRate: 0)
+        }
+        let me = profile("me")
+        let friend = profile("friend")
+        let state = CommunityState(
+            me: me,
+            friends: [CommunityRelationship(id: "accepted-id", status: "accepted", direction: "outgoing", profile: friend)],
+            incoming: [CommunityRelationship(id: "old-request", status: "pending", direction: "incoming", profile: friend)],
+            outgoing: []
+        )
+        let stale = CommunityRelationshipSummary(id: "old-request", status: "pending", direction: "incoming")
+        let resolved = CommunityProfileRelationshipResolver.resolve(profileID: friend.id, fallback: stale, network: state)
+        XCTAssertEqual(resolved?.status, "accepted")
+        XCTAssertEqual(resolved?.id, "accepted-id")
+        XCTAssertEqual(resolved?.direction, "outgoing")
+        XCTAssertEqual(CommunityProfileRelationshipResolver.resolve(profileID: "unrelated", fallback: stale, network: state), stale)
+        XCTAssertEqual(CommunityProfileRelationshipResolver.resolve(profileID: friend.id, fallback: stale, network: nil), stale)
+    }
+
     func testCommunityProfileResponseIsRejectedAfterNetworkInvalidatesRequest() {
         var state = CommunityProfileRequestState()
         let requestID = UUID()
