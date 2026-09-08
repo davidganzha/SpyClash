@@ -1701,9 +1701,29 @@ struct SpyModal<Content: View>: View {
 
 extension View {
     func spyGlobalToastLayer() -> some View {
-        overlay(alignment: .bottomTrailing) {
+        // Sheets have their own presentation layer. Mount invitations alongside
+        // global notices on every presentation surface so they cannot be hidden
+        // behind a QR scanner, tutorial, legal page, or word-pack editor.
+        overlay {
+            GlobalRadarInvitationLayer()
+        }
+        .overlay(alignment: .bottomTrailing) {
             GlobalToastLayer()
                 .zIndex(1_000_000)
+        }
+    }
+}
+
+private struct GlobalRadarInvitationLayer: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        if appState.authHomeRevealPhase == .idle,
+           !appState.requiresOnboarding,
+           let invitation = appState.radarNearby.incomingInvitation {
+            RadarIncomingInvitationOverlay(invitation: invitation)
+                .id(invitation.id)
+                .accessibilityAddTraits(.isModal)
         }
     }
 }

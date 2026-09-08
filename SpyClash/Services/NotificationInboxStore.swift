@@ -45,7 +45,9 @@ final class NotificationInboxStore {
     @ObservationIgnored private let pageSize: Int
 
     private(set) var accountID: String?
-    private(set) var unread = NotificationInboxUnreadCounts.zero
+    private(set) var unread = NotificationInboxUnreadCounts.zero {
+        didSet { unreadRevision &+= 1 }
+    }
     private(set) var isSummaryLoading = false
     private(set) var summaryError: String?
     private(set) var mutationError: String?
@@ -60,6 +62,7 @@ final class NotificationInboxStore {
     var selectedScope: NotificationInboxScope = .global
 
     @ObservationIgnored private var generation: UInt64 = 0
+    @ObservationIgnored private var unreadRevision: UInt64 = 0
     @ObservationIgnored private var activeMutationScopes: Set<NotificationInboxScope> = []
 
     init(
@@ -148,6 +151,7 @@ final class NotificationInboxStore {
         guard !isSummaryLoading, let context = requestContext() else { return }
 
         isSummaryLoading = true
+        let requestedUnreadRevision = unreadRevision
         summaryError = nil
         defer {
             if isCurrent(context) {
@@ -157,7 +161,8 @@ final class NotificationInboxStore {
 
         do {
             let response = try await client.notificationInboxSummary()
-            guard isCurrent(context) else { return }
+            guard isCurrent(context),
+                  unreadRevision == requestedUnreadRevision else { return }
             unread = response.unread
         } catch is CancellationError {
             return
