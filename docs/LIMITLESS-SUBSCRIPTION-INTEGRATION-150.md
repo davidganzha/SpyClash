@@ -39,9 +39,15 @@ Stripe remains deferred.
 ## External acceptance remains open
 
 This checkpoint has not deployed the revised backend or demonstrated a real
-Apple purchase. Full Sandbox purchase/restore requires a connected physical
-phone, an authenticated SpyClash account and a Sandbox tester. No connected
-physical device or configured Sandbox tester was available during preparation.
+Apple purchase. Full Sandbox purchase/restore requires a physical phone and an
+authenticated SpyClash account. Development-signed device testing requires a
+Sandbox tester; TestFlight uses the sandbox automatically and can exercise basic
+purchase/restore without a separately configured Sandbox account. A Sandbox
+account is needed for controlled billing-retry and accelerated renewal scenarios.
+No connected physical device or configured Sandbox tester was available during
+preparation.
+
+Reference: [Apple TestFlight purchase testing](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testing-subscriptions-and-in-app-purchases-in-testflight).
 
 Apple server TEST delivery must be requested and checked after the approved
 function deployment. The currently configured notification URLs must be checked
