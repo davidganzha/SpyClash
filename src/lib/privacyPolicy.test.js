@@ -69,12 +69,12 @@ test("privacy policy accurately describes the active cache-miss AI path", () => 
   assert.doesNotMatch(policySource, /cache does not retain[^\n]+provider-attempt results/i);
 });
 
-test("privacy policy identifies its August 2026 revision in all locales", () => {
+test("privacy policy identifies its September 2026 revision in all locales", () => {
   for (const marker of [
-    "Last updated: August 2026",
-    "Последнее обновление: август 2026 г.",
-    "Останнє оновлення: серпень 2026 р.",
-    "Última actualización: agosto de 2026",
+    "Last updated: September 2026",
+    "Последнее обновление: сентябрь 2026 г.",
+    "Останнє оновлення: вересень 2026 р.",
+    "Última actualización: septiembre de 2026",
   ]) {
     assert.ok(policySource.includes(marker));
   }

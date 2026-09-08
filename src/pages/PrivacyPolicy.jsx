@@ -130,7 +130,7 @@ export default function PrivacyPolicy() {
           <h1 style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 36, letterSpacing: 3, marginBottom: 8, color: "#fff" }}>
             {localize(lang, "PRIVACY POLICY", "ПОЛИТИКА КОНФИДЕНЦИАЛЬНОСТИ", "ПОЛІТИКА КОНФІДЕНЦІЙНОСТІ", "POLÍTICA DE PRIVACIDAD")}
           </h1>
-          <div style={{ color: "#444", fontSize: 11, letterSpacing: 2, marginBottom: 48 }}>{localize(lang, "Last updated: August 2026", "Последнее обновление: август 2026 г.", "Останнє оновлення: серпень 2026 р.", "Última actualización: agosto de 2026")}</div>
+          <div style={{ color: "#444", fontSize: 11, letterSpacing: 2, marginBottom: 48 }}>{localize(lang, "Last updated: September 2026", "Последнее обновление: сентябрь 2026 г.", "Останнє оновлення: вересень 2026 р.", "Última actualización: septiembre de 2026")}</div>
 
           <div style={{ display: "flex", flexDirection: "column", gap: 36 }}>
             {(PRIVACY_SECTIONS_BY_LANGUAGE[lang] ?? [
@@ -183,6 +183,20 @@ export default function PrivacyPolicy() {
                 </div>
               </Reveal>
             ))}
+            <Reveal delay={240}>
+              <div style={{ fontFamily: "'Rajdhani', sans-serif", fontWeight: 700, fontSize: 14, letterSpacing: 3, color: "#e53535", marginBottom: 10 }}>
+                LIMITLESS · APPLE
+              </div>
+              <div style={{ color: "#888", fontSize: 13, lineHeight: 1.9, letterSpacing: 0.5 }}>
+                {localize(
+                  lang,
+                  "If you use Apple in-app purchases, we process signed transaction identifiers, product, subscription status and expiration, and an app-account token linked to your SpyClash account. Apple verifies the purchase; our backend uses these records to grant, restore, synchronize or revoke access and prevent duplicate purchases. We do not receive your payment-card details. Purchase history is linked to your account for app functionality, not advertising or tracking.",
+                  "Если вы используете встроенные покупки Apple, мы обрабатываем идентификаторы подписанных транзакций, продукт, статус и срок подписки, а также токен, связанный с аккаунтом SpyClash. Apple проверяет покупку; наш сервер использует эти записи для предоставления, восстановления, синхронизации или отзыва доступа и предотвращения повторных покупок. Мы не получаем данные банковской карты. История покупок связана с аккаунтом для работы приложения, а не для рекламы или отслеживания.",
+                  "Якщо ви використовуєте вбудовані купівлі Apple, ми обробляємо ідентифікатори підписаних транзакцій, продукт, статус і строк підписки та токен, пов’язаний з акаунтом SpyClash. Apple перевіряє купівлю; наш сервер використовує ці записи для надання, відновлення, синхронізації або відкликання доступу та запобігання повторним купівлям. Ми не отримуємо дані банківської картки. Історія купівель пов’язана з акаунтом для роботи застосунку, а не для реклами чи відстеження.",
+                  "Si usas compras integradas de Apple, procesamos identificadores de transacciones firmadas, producto, estado y vencimiento de la suscripción y un token vinculado a tu cuenta SpyClash. Apple verifica la compra; nuestro servidor usa estos registros para activar, restaurar, sincronizar o revocar el acceso y evitar compras duplicadas. No recibimos los datos de tu tarjeta. El historial se vincula a tu cuenta para el funcionamiento de la app, no para publicidad o seguimiento.",
+                )}
+              </div>
+            </Reveal>
           </div>
 
           <div style={{ marginTop: 60, paddingTop: 24, borderTop: "1px solid #1a1a1a" }}>
