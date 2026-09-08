@@ -4,7 +4,6 @@ import {
   casadaPurchaseRetirement,
   entitlementStatusFromApple,
   normalizeAppleEntitlement,
-  requiresCanonicalSubscriptionStatus,
   shouldApplyProviderEvent,
   SPYCLASH_APPLE_APP_ID,
   SPYCLASH_IOS_BUNDLE_ID,
@@ -76,15 +75,24 @@ Deno.test("Apple status grants access only for active and grace period", () => {
   );
 });
 
-Deno.test("refund reversal requires canonical App Store status reconciliation", () => {
-  assert(
-    requiresCanonicalSubscriptionStatus("REFUND_REVERSED"),
-    "refund reversal did not trigger canonical reconciliation",
-  );
-  assert(
-    !requiresCanonicalSubscriptionStatus("REFUND"),
-    "ordinary refund incorrectly triggered reversal reconciliation",
-  );
+Deno.test("late lifecycle notifications cannot replace the current canonical renewal", () => {
+  for (
+    const notificationType of [
+      "REFUND",
+      "REVOKE",
+      "EXPIRED",
+      "DID_FAIL_TO_RENEW",
+    ]
+  ) {
+    assert(
+      entitlementStatusFromApple({
+        appleStatus: 1,
+        notificationType,
+        transaction: { expiresDate: Date.parse("2026-07-20T00:00:00Z") },
+      }) === "active",
+      `${notificationType} revoked the current renewal`,
+    );
+  }
 });
 
 Deno.test("refund reversal reinstates canonical active access despite historical revocation", () => {
@@ -164,9 +172,22 @@ Deno.test("older or duplicate provider events cannot overwrite newer state", () 
   );
   assert(
     !shouldApplyProviderEvent(current, {
-      provider_event_at: "2026-07-14T10:00:01Z",
+      provider_event_at: "2026-07-14T10:00:00Z",
       provider_event_id: "notification-new",
     }),
     "duplicate notification was accepted",
+  );
+});
+
+Deno.test("duplicate notification can recover a newer canonically verified status", () => {
+  assert(
+    shouldApplyProviderEvent({
+      provider_event_at: "2026-07-14T10:00:00Z",
+      provider_event_id: "notification-same",
+    }, {
+      provider_event_at: "2026-07-14T11:00:00Z",
+      provider_event_id: "notification-same",
+    }),
+    "a retry suppressed a newly verified renewal or revocation",
   );
 });

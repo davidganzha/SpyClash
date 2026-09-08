@@ -1,7 +1,6 @@
 import {
   AppStoreServerAPIClient,
   Environment,
-  type JWSRenewalInfoDecodedPayload,
   type JWSTransactionDecodedPayload,
   SignedDataVerifier,
 } from "npm:@apple/app-store-server-library@3.1.0";
@@ -15,7 +14,6 @@ import {
   LEGACY_SUBSCRIPTION_PRODUCT_ID,
   normalizeAppleEntitlement,
   publicAppleEntitlement,
-  requiresCanonicalSubscriptionStatus,
   shouldApplyProviderEvent,
   SPYCLASH_APPLE_APP_ID,
   SPYCLASH_IOS_BUNDLE_ID,
@@ -41,6 +39,16 @@ import {
   AppleAccountLeaseGuardError,
   assertAppleAccountLease,
 } from "./apple-account-lease-guard.ts";
+
+import {
+  AppleSubscriptionStatusError,
+  readCanonicalAppleSubscriptionStatus,
+} from "./apple-subscription-status.ts";
+
+import {
+  AppleNotificationDiagnosticError,
+  runAppleNotificationDiagnostic,
+} from "./apple-notification-diagnostic.ts";
 
 const BUNDLE_ID = Deno.env.get("APPLE_IAP_BUNDLE_ID") ||
   SPYCLASH_IOS_BUNDLE_ID;
@@ -182,7 +190,10 @@ function appleRootCertificates(): Promise<Buffer[]> {
       }
       return Buffer.from(await response.arrayBuffer());
     }),
-  );
+  ).catch((error) => {
+    appleRootCertificatesPromise = undefined;
+    throw error;
+  });
   return appleRootCertificatesPromise;
 }
 
@@ -224,6 +235,10 @@ function verifierFor(environment: Environment): Promise<SignedDataVerifier> {
           : undefined,
       )
     );
+    verifier = verifier.catch((error) => {
+      verifierPromises.delete(environment);
+      throw error;
+    });
     verifierPromises.set(environment, verifier);
   }
   return verifier;
@@ -284,61 +299,26 @@ async function canonicalSubscriptionStatus(
   verifier: SignedDataVerifier,
 ) {
   const client = appStoreAPIClient(environment);
-  if (!transaction.transactionId) {
-    throw new RequestError("Apple transaction ID is missing.", 422);
-  }
-
   try {
-    const response = await client.getAllSubscriptionStatuses(
-      transaction.transactionId,
-    );
-    const candidates = (response.data || []).flatMap((group) =>
-      group.lastTransactions || []
-    );
-    const candidate = candidates.find((item) =>
-      item.originalTransactionId === transaction.originalTransactionId
-    );
-    if (!candidate?.signedTransactionInfo) {
-      throw new RequestError(
-        "App Store did not return a current matching subscription.",
-        409,
-      );
-    }
-
-    const currentTransaction = await verifier.verifyAndDecodeTransaction(
-      candidate.signedTransactionInfo,
-    );
-    const renewal = candidate.signedRenewalInfo
-      ? await verifier.verifyAndDecodeRenewalInfo(candidate.signedRenewalInfo)
-      : undefined;
-    if (
-      currentTransaction.originalTransactionId !==
-        transaction.originalTransactionId ||
-      currentTransaction.productId !== PRODUCT_ID
-    ) {
-      throw new RequestError(
-        "App Store status response did not match the submitted subscription.",
-        409,
-      );
-    }
-    const status = Number(candidate.status);
-    if (!Number.isInteger(status) || status < 1 || status > 5) {
-      throw new RequestError(
-        "App Store returned an unsupported subscription status.",
-        503,
-      );
-    }
-    return {
-      transaction: currentTransaction,
-      renewal,
-      status,
-      checkedAtMilliseconds: Date.now(),
-    };
+    return await readCanonicalAppleSubscriptionStatus({
+      transaction,
+      expectedBundleID: BUNDLE_ID,
+      expectedProductID: PRODUCT_ID,
+      expectedEnvironment: environment,
+      expectedAppAppleID: SPYCLASH_APPLE_APP_ID,
+      getStatuses: (transactionID) =>
+        client.getAllSubscriptionStatuses(transactionID),
+      verifyTransaction: (jws) => verifier.verifyAndDecodeTransaction(jws),
+      verifyRenewal: (jws) => verifier.verifyAndDecodeRenewalInfo(jws),
+    });
   } catch (error) {
     console.error(
       "App Store Server API reconciliation failed:",
       errorMessage(error),
     );
+    if (error instanceof AppleSubscriptionStatusError) {
+      throw new RequestError(error.message, error.status);
+    }
     if (error instanceof RequestError) throw error;
     throw new RequestError(
       "App Store Server API reconciliation is temporarily unavailable.",
@@ -353,7 +333,7 @@ async function requireUser(base44: any) {
     if (typeof user?.id !== "string" || !user.id) {
       throw new Error("missing user");
     }
-    return user as { id: string; email?: string };
+    return user as { id: string; email?: string; role?: string };
   } catch {
     throw new RequestError("Authentication required.", 401);
   }
@@ -500,8 +480,8 @@ async function prepareAppleAccountBindingAfterVerification(input: {
   initialDecision: AppleAccountBindingDecision;
   lease: AppleAccountLease;
 }): Promise<string | null> {
-  // The lease is acquired only after Apple's canonical API response. Every
-  // entitlement writer for this token uses the same deterministic CAS row.
+  // The lease covers the canonical API read and every entitlement write for
+  // this token, using the same deterministic CAS row as account deletion.
   const accounts = input.lease.accounts;
   const decision = requireUsableBinding(accounts, input.authenticatedUserID);
   if (!canContinueAppleAccountBinding(input.initialDecision, decision)) {
@@ -945,32 +925,32 @@ async function handleAuthenticatedSync(
   const accounts = await accountsForToken(accountStore, transactionToken);
   const initialBinding = requireUsableBinding(accounts, user.id);
 
-  const canonical = await canonicalSubscriptionStatus(
-    verified.transaction,
-    verified.environment,
-    verified.verifier,
-  );
-  assertAllowedAppleTransaction(canonical.transaction);
-  const canonicalToken = canonical.transaction.appAccountToken ||
-    canonical.renewal?.appAccountToken || transactionToken;
-  if (canonicalUUID(canonicalToken) !== transactionToken) {
-    throw new RequestError(
-      "Apple subscription account token changed unexpectedly.",
-      409,
-    );
-  }
-
-  const entitlement = normalizeAppleEntitlement({
-    userID: user.id,
-    userEmail: user.email,
-    transaction: canonical.transaction,
-    renewal: canonical.renewal,
-    appleStatus: canonical.status,
-    eventAtMilliseconds: canonical.checkedAtMilliseconds,
-  });
   const lease = await acquireAppleAccountLease(accountStore, transactionToken);
   let leaseHeld = true;
   try {
+    const canonical = await canonicalSubscriptionStatus(
+      verified.transaction,
+      verified.environment,
+      verified.verifier,
+    );
+    assertAllowedAppleTransaction(canonical.transaction);
+    const canonicalToken = canonical.transaction.appAccountToken ||
+      canonical.renewal?.appAccountToken || transactionToken;
+    if (canonicalUUID(canonicalToken) !== transactionToken) {
+      throw new RequestError(
+        "Apple subscription account token changed unexpectedly.",
+        409,
+      );
+    }
+
+    const entitlement = normalizeAppleEntitlement({
+      userID: user.id,
+      userEmail: user.email,
+      transaction: canonical.transaction,
+      renewal: canonical.renewal,
+      appleStatus: canonical.status,
+      eventAtMilliseconds: canonical.checkedAtMilliseconds,
+    });
     const tombstoneUserID = await prepareAppleAccountBindingAfterVerification({
       accountStore,
       entitlementStore: base44.asServiceRole.entities.Entitlement,
@@ -1060,46 +1040,27 @@ async function handleNotification(base44: any, signedPayload: string) {
     // A future consumable or another subscription must not trigger retries.
     return Response.json({ success: true, ignored: true });
   }
-  let renewal: JWSRenewalInfoDecodedPayload | undefined =
-    notification.data?.signedRenewalInfo
-      ? await verifier.verifyAndDecodeRenewalInfo(
-        notification.data.signedRenewalInfo,
-      )
-      : undefined;
-
-  const notificationToken = canonicalUUID(
-    transaction.appAccountToken || renewal?.appAccountToken,
-  );
-
-  let canonicalTransaction = transaction;
-  let canonicalStatus = Number(notification.data?.status) || undefined;
-  let eventAtMilliseconds = notification.signedDate;
-  if (requiresCanonicalSubscriptionStatus(notification.notificationType)) {
-    const canonical = await canonicalSubscriptionStatus(
-      transaction,
-      environment,
-      verifier,
+  const notificationRenewal = notification.data?.signedRenewalInfo
+    ? await verifier.verifyAndDecodeRenewalInfo(
+      notification.data.signedRenewalInfo,
+    )
+    : undefined;
+  if (
+    notificationRenewal && (
+      notificationRenewal.originalTransactionId !==
+        transaction.originalTransactionId ||
+      notificationRenewal.productId !== transaction.productId ||
+      notificationRenewal.environment !== transaction.environment
+    )
+  ) {
+    throw new RequestError(
+      "Apple renewal does not match the notified subscription.",
+      422,
     );
-    assertAllowedAppleTransaction(canonical.transaction);
-    const canonicalToken = canonicalUUID(
-      canonical.transaction.appAccountToken ||
-        canonical.renewal?.appAccountToken ||
-        notificationToken,
-    );
-    if (canonicalToken !== notificationToken) {
-      throw new RequestError(
-        "Apple subscription account token changed unexpectedly.",
-        409,
-      );
-    }
-    canonicalTransaction = canonical.transaction;
-    renewal = canonical.renewal;
-    canonicalStatus = canonical.status;
-    // This row represents a fresh server-side reconciliation, not merely the
-    // earlier notification snapshot. Using the check time ensures a stale
-    // revoked row from a racing device sync cannot suppress reinstatement.
-    eventAtMilliseconds = canonical.checkedAtMilliseconds;
   }
+  const notificationToken = canonicalUUID(
+    transaction.appAccountToken || notificationRenewal?.appAccountToken,
+  );
 
   const accountStore = base44.asServiceRole.entities.AppStoreAccount;
   const lease = await acquireAppleAccountLease(accountStore, notificationToken);
@@ -1117,14 +1078,22 @@ async function handleNotification(base44: any, signedPayload: string) {
       );
     }
 
+    // Serialize the provider read with every writer for this token. A delayed
+    // REFUND/EXPIRED for an older period must not replace a current renewal,
+    // and an earlier device read must not overwrite a subsequent revocation.
+    const canonical = await canonicalSubscriptionStatus(
+      { ...transaction, appAccountToken: notificationToken },
+      environment,
+      verifier,
+    );
+    assertAllowedAppleTransaction(canonical.transaction);
     const entitlement = normalizeAppleEntitlement({
       userID: owner.userID,
-      transaction: canonicalTransaction,
-      renewal,
-      appleStatus: canonicalStatus,
-      notificationType: notification.notificationType,
+      transaction: canonical.transaction,
+      renewal: canonical.renewal,
+      appleStatus: canonical.status,
       notificationUUID: notification.notificationUUID,
-      eventAtMilliseconds,
+      eventAtMilliseconds: canonical.checkedAtMilliseconds,
     });
     const persisted = await upsertAppleEntitlement(
       base44.asServiceRole.entities.Entitlement,
@@ -1173,6 +1142,15 @@ Deno.serve(async (req) => {
     }
 
     switch (body.action) {
+      case "request_test_notification":
+      case "get_test_notification_status":
+        return Response.json(
+          await runAppleNotificationDiagnostic({
+            user: await requireUser(base44),
+            body,
+            clientFor: appStoreAPIClient,
+          }),
+        );
       case "prepare":
         return await handlePrepare(base44);
       case "sync_transaction":
@@ -1184,14 +1162,16 @@ Deno.serve(async (req) => {
         );
     }
   } catch (error) {
-    const status = error instanceof RequestError
+    const status = error instanceof RequestError ||
+        error instanceof AppleNotificationDiagnosticError
       ? error.status
       : error instanceof AppleAccountLeaseGuardError
       ? 503
       : 500;
-    const message = status >= 500
-      ? "Unable to verify App Store entitlement."
-      : errorMessage(error);
+    const message =
+      status >= 500 && !(error instanceof AppleNotificationDiagnosticError)
+        ? "Unable to verify App Store entitlement."
+        : errorMessage(error);
     console.error("app-store-entitlement failed:", errorMessage(error));
     return Response.json({ error: message }, { status });
   }

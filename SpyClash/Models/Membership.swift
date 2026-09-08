@@ -59,7 +59,9 @@ struct MembershipSnapshot: Decodable, Equatable {
         if active {
             return tier == .limitless &&
                 ["active", "trialing", "grace_period"].contains(status) &&
-                (isUniversal || providers.contains(where: { ["apple", "stripe", "admin"].contains($0) }))
+                (isUniversal ||
+                    (providers.contains(where: { ["apple", "stripe", "admin"].contains($0) }) &&
+                        (expiresAt != nil || providers.contains("admin"))))
         }
         return tier == .free && ["inactive", "free"].contains(status)
     }

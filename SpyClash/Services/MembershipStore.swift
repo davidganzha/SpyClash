@@ -24,13 +24,27 @@ final class MembershipStore {
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var refreshTask: Task<MembershipSnapshot, Error>?
     @ObservationIgnored private var refreshID = UUID()
+    @ObservationIgnored private var expiryTask: Task<Void, Never>?
+    @ObservationIgnored private let now: () -> Date
+    @ObservationIgnored private let sleep: (Duration) async throws -> Void
 
-    init(client: any MembershipClientProtocol) { self.client = client }
+    init(
+        client: any MembershipClientProtocol,
+        now: @escaping () -> Date = Date.init,
+        sleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
+        self.client = client
+        self.now = now
+        self.sleep = sleep
+        evaluationDate = now()
+    }
+
+    deinit { expiryTask?.cancel() }
 
     var hasAccess: Bool {
         // Reading observable evaluationDate invalidates dependent screens when a
         // verified expiry arrives, even if the subsequent network read fails.
-        snapshot?.grantsAccess(at: max(evaluationDate, Date())) == true
+        snapshot?.grantsAccess(at: max(evaluationDate, now())) == true
     }
     var benefits: MembershipBenefits? {
         guard let snapshot else { return nil }
@@ -38,7 +52,8 @@ final class MembershipStore {
     }
     var canPurchase: Bool {
         scope.isAuthenticated && !isPreview && !isLoading && errorMessage == nil &&
-        snapshot?.isResolved == true && snapshot?.checkoutRequired == true && !hasAccess
+        snapshot?.isResolved == true && snapshot?.active == false &&
+        snapshot?.checkoutRequired == true && !hasAccess
     }
 
     func bind(_ scope: MembershipScope, preview: MembershipSnapshot? = nil) {
@@ -47,6 +62,8 @@ final class MembershipStore {
         refreshID = UUID()
         refreshTask?.cancel()
         refreshTask = nil
+        expiryTask?.cancel()
+        expiryTask = nil
         self.scope = scope
         snapshot = preview
         unlockPresentationID = nil
@@ -55,13 +72,20 @@ final class MembershipStore {
         isLoading = false
         errorMessage = nil
         revision &+= 1
-        evaluationDate = Date()
+        evaluationDate = now()
+        scheduleExpiry()
     }
 
     @discardableResult
-    func refresh() async -> Bool {
+    func refresh(force: Bool = false) async -> Bool {
         guard scope.isAuthenticated, !isPreview else { return isPreview }
-        evaluationDate = Date()
+        evaluationDate = max(evaluationDate, now())
+        // A transaction or realtime signal describes a change after a read may
+        // have started. Its follow-up must not reuse that older response.
+        if force {
+            refreshTask?.cancel()
+            refreshTask = nil
+        }
         let expected = generation
         let task: Task<MembershipSnapshot, Error>
         if let refreshTask { task = refreshTask }
@@ -74,20 +98,27 @@ final class MembershipStore {
         let expectedRefresh = refreshID
         do {
             let next = try await task.value
-            guard generation == expected, refreshID == expectedRefresh else { return false }
+            guard generation == expected else { return false }
+            guard refreshID == expectedRefresh else {
+                return await awaitSupersedingRefresh(expectedGeneration: expected)
+            }
             guard next.isResolved else { throw MembershipError.unavailable }
             let shouldCelebrate = snapshot != nil && !hasAccess &&
-                next.grantsAccess() && !next.isUniversal
+                next.grantsAccess(at: now()) && !next.isUniversal
             snapshot = next
             if shouldCelebrate { unlockPresentationID = UUID() }
-            if !next.grantsAccess() { unlockPresentationID = nil }
+            if !next.grantsAccess(at: now()) { unlockPresentationID = nil }
             errorMessage = nil
             isLoading = false
             refreshTask = nil
             revision &+= 1
+            scheduleExpiry()
             return true
         } catch {
-            guard generation == expected, refreshID == expectedRefresh else { return false }
+            guard generation == expected else { return false }
+            guard refreshID == expectedRefresh else {
+                return await awaitSupersedingRefresh(expectedGeneration: expected)
+            }
             isLoading = false
             refreshTask = nil
             // Keep only the last verified snapshot; its expiry is still enforced.
@@ -95,6 +126,40 @@ final class MembershipStore {
             if !(error is CancellationError) { errorMessage = error.localizedDescription }
             revision &+= 1
             return false
+        }
+    }
+
+    private func awaitSupersedingRefresh(expectedGeneration: Int) async -> Bool {
+        guard generation == expectedGeneration else { return false }
+        // StoreKit delivery and realtime may both request a fresh read. The
+        // displaced caller joins the newer read instead of reporting a false
+        // purchase failure while that authoritative read is succeeding.
+        if refreshTask != nil {
+            let refreshed = await refresh()
+            return generation == expectedGeneration && refreshed
+        }
+        return snapshot?.isResolved == true && errorMessage == nil
+    }
+
+    private func scheduleExpiry() {
+        expiryTask?.cancel()
+        expiryTask = nil
+        guard let snapshot, !snapshot.isUniversal, snapshot.active,
+              let expiry = snapshot.expiresAt, expiry > now() else { return }
+        let expectedGeneration = generation
+        let wait = sleep
+        let delay = expiry.timeIntervalSince(now())
+        expiryTask = Task { [weak self] in
+            do { try await wait(.seconds(max(0, delay))) } catch { return }
+            guard !Task.isCancelled, let self,
+                  self.generation == expectedGeneration,
+                  self.snapshot?.expiresAt == expiry else { return }
+            // Invalidate observed access exactly at expiry even when the
+            // foreground poll is sleeping or its network request fails.
+            self.evaluationDate = max(self.now(), expiry)
+            self.unlockPresentationID = nil
+            self.revision &+= 1
+            self.expiryTask = nil
         }
     }
 

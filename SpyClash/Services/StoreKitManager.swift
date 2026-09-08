@@ -43,9 +43,92 @@ enum LimitlessPurchaseState: Equatable {
     case idle, preparing, purchasing, synchronizing, restoring, pending, purchased, restored, noPurchases, cancelled
     case failed
     var isBusy: Bool { [.preparing, .purchasing, .synchronizing, .restoring].contains(self) }
+    var canStartPurchase: Bool { !isBusy && self != .pending }
 
     func afterVerifiedUpdate(grantsAccess: Bool, membershipRefreshed: Bool) -> Self {
-        self == .pending && grantsAccess && membershipRefreshed ? .purchased : self
+        guard membershipRefreshed else { return self }
+        if self == .pending && grantsAccess { return .purchased }
+        if self == .failed { return grantsAccess ? .restored : .idle }
+        return self
+    }
+}
+
+@MainActor
+protocol AppStoreTransactionClient: AnyObject {
+    var currentAccessToken: String? { get }
+    func syncAppStoreTransaction(signedTransaction: String) async throws -> AppStoreEntitlementSyncResponse
+}
+
+extension Base44Client: AppStoreTransactionClient {}
+
+/// Acknowledges only canonically verified deliveries, scoped to the account that
+/// submitted them. The native manager verifies StoreKit's signature first.
+@MainActor
+final class AppStoreTransactionDeliveryStore {
+    private let client: any AppStoreTransactionClient
+    private var scope = MembershipScope(userID: nil, accessToken: nil)
+    private var generation = 0
+    private var deliveries: [String: Task<AppStoreEntitlementSyncResponse, Error>] = [:]
+
+    init(client: any AppStoreTransactionClient) { self.client = client }
+
+    func bind(_ next: MembershipScope) {
+        guard next != scope else { return }
+        generation &+= 1
+        deliveries.values.forEach { $0.cancel() }
+        deliveries.removeAll()
+        scope = next
+    }
+
+    func deliver(
+        signedTransaction: String,
+        productID: String,
+        finish: @escaping @MainActor () async -> Void
+    ) async throws -> AppStoreEntitlementSyncResponse {
+        let expected = generation
+        try requireScope(expected)
+        guard productID == StoreKitManager.limitlessProductID else { throw MembershipError.verificationFailed }
+        // A renewed/revoked representation of the same transaction ID must not
+        // coalesce with an older signed payload.
+        let key = "\(expected):\(signedTransaction)"
+        if let existing = deliveries[key] {
+            let response = try await existing.value
+            try requireScope(expected)
+            return response
+        }
+        let task = Task {
+            let response = try await client.syncAppStoreTransaction(signedTransaction: signedTransaction)
+            try requireScope(expected)
+            guard response.acceptsDelivery(for: productID) else { throw MembershipError.verificationFailed }
+            await finish()
+            try requireScope(expected)
+            return response
+        }
+        deliveries[key] = task
+        defer { deliveries.removeValue(forKey: key) }
+        let response = try await task.value
+        try requireScope(expected)
+        return response
+    }
+
+    private func requireScope(_ expected: Int) throws {
+        try Task.checkCancellation()
+        guard expected == generation, scope.isAuthenticated,
+              scope.accessToken == client.currentAccessToken else { throw CancellationError() }
+    }
+}
+
+struct AppStoreTransactionReconciliation {
+    private var deliveredPayloads = Set<String>()
+    private var activeOriginalIDs = Set<UInt64>()
+    var activeCount: Int { activeOriginalIDs.count }
+
+    func contains(_ signedPayload: String) -> Bool { deliveredPayloads.contains(signedPayload) }
+
+    mutating func record(signedPayload: String, originalID: UInt64, grantsAccess: Bool) {
+        deliveredPayloads.insert(signedPayload)
+        if grantsAccess { activeOriginalIDs.insert(originalID) }
+        else { activeOriginalIDs.remove(originalID) }
     }
 }
 
@@ -62,11 +145,12 @@ final class StoreKitManager {
     @ObservationIgnored private var generation = 0
     @ObservationIgnored private var updatesTask: Task<Void, Never>?
     @ObservationIgnored private var syncGeneration: Int?
-    @ObservationIgnored private var deliveries: [String: Task<AppStoreEntitlementSyncResponse, Error>] = [:]
-    @ObservationIgnored var onEntitlementChanged: (() async -> Bool)?
+    @ObservationIgnored private let deliveryStore: AppStoreTransactionDeliveryStore
+    @ObservationIgnored var onEntitlementChanged: (() async -> MembershipSnapshot?)?
 
     init(client: Base44Client) {
         self.client = client
+        self.deliveryStore = AppStoreTransactionDeliveryStore(client: client)
         // Listen from application launch, including pending purchases completed later.
         updatesTask = Task { [weak self] in
             for await verification in Transaction.updates {
@@ -78,11 +162,12 @@ final class StoreKitManager {
                 do {
                     let response = try await self.persist(verification, generation: expected)
                     try self.requireScope(expected)
-                    let refreshed = await self.onEntitlementChanged?() == true
+                    guard let refreshed = await self.onEntitlementChanged?() else { throw MembershipError.unavailable }
                     try self.requireScope(expected)
+                    self.errorMessage = nil
                     self.state = self.state.afterVerifiedUpdate(
-                        grantsAccess: response.entitlement.grantsAccess,
-                        membershipRefreshed: refreshed
+                        grantsAccess: response.entitlement.grantsAccess && refreshed.grantsAccess(),
+                        membershipRefreshed: true
                     )
                 } catch is CancellationError {
                     // Account rotation must not permanently stop the global listener.
@@ -90,6 +175,7 @@ final class StoreKitManager {
                 } catch {
                     guard expected == self.generation else { continue }
                     self.errorMessage = error.localizedDescription
+                    if !self.state.isBusy { self.state = .failed }
                 }
             }
         }
@@ -100,8 +186,7 @@ final class StoreKitManager {
     func bind(_ scope: MembershipScope) {
         guard self.scope != scope else { return }
         generation &+= 1
-        deliveries.values.forEach { $0.cancel() }
-        deliveries.removeAll()
+        deliveryStore.bind(scope)
         self.scope = scope
         state = .idle
         errorMessage = nil
@@ -109,7 +194,7 @@ final class StoreKitManager {
     }
 
     var canPurchase: Bool {
-        scope.isAuthenticated && product != nil && AppStore.canMakePayments && !state.isBusy
+        scope.isAuthenticated && product != nil && AppStore.canMakePayments && state.canStartPurchase
     }
 
     func loadProduct() async {
@@ -129,7 +214,7 @@ final class StoreKitManager {
     }
 
     func purchase(membership: MembershipStore) async {
-        guard !state.isBusy else { return }
+        guard state.canStartPurchase else { return }
         let expected = generation
         state = .preparing
         errorMessage = nil
@@ -153,7 +238,7 @@ final class StoreKitManager {
                 let response = try await persist(verification, generation: expected)
                 try requireScope(expected)
                 guard response.entitlement.grantsAccess else { throw MembershipError.verificationFailed }
-                guard await membership.refresh(), membership.hasAccess else { throw MembershipError.unavailable }
+                guard await membership.refresh(force: true), membership.hasAccess else { throw MembershipError.unavailable }
                 try requireScope(expected)
                 state = .purchased
             case .pending:
@@ -179,7 +264,8 @@ final class StoreKitManager {
             try requireScope(expected)
             let count = try await synchronize(expected)
             try requireScope(expected)
-            if await onEntitlementChanged?() == false { throw MembershipError.unavailable }
+            guard let refreshed = await onEntitlementChanged?(),
+                  count == 0 || refreshed.grantsAccess() else { throw MembershipError.unavailable }
             try requireScope(expected)
             state = count > 0 ? .restored : .noPurchases
         } catch {
@@ -193,67 +279,61 @@ final class StoreKitManager {
         syncGeneration = expected
         defer { if syncGeneration == expected { syncGeneration = nil } }
         do {
-            _ = try await synchronize(expected)
+            let count = try await synchronize(expected)
             try requireScope(expected)
-            _ = await onEntitlementChanged?()
+            guard let refreshed = await onEntitlementChanged?() else { throw MembershipError.unavailable }
+            try requireScope(expected)
+            errorMessage = nil
+            state = state.afterVerifiedUpdate(
+                grantsAccess: count > 0 && refreshed.grantsAccess(),
+                membershipRefreshed: true
+            )
         } catch {
             // Leave transactions unfinished on outages. Retried on activation/Restore.
             if expected == generation, !(error is CancellationError) {
                 errorMessage = error.localizedDescription
+                if !state.isBusy { state = .failed }
             }
         }
     }
 
     private func synchronize(_ expected: Int) async throws -> Int {
-        var seen = Set<UInt64>()
-        var active = Set<UInt64>()
+        var reconciliation = AppStoreTransactionReconciliation()
         for await result in Transaction.unfinished {
             try requireScope(expected)
-            guard result.unsafePayloadValue.productID == Self.limitlessProductID else { continue }
+            guard result.unsafePayloadValue.productID == Self.limitlessProductID,
+                  !reconciliation.contains(result.jwsRepresentation) else { continue }
             let response = try await persist(result, generation: expected)
-            if response.entitlement.grantsAccess { active.insert(result.unsafePayloadValue.originalID) }
-            seen.insert(result.unsafePayloadValue.id)
+            reconciliation.record(signedPayload: result.jwsRepresentation, originalID: result.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
         }
         for await result in Transaction.currentEntitlements {
             try requireScope(expected)
-            guard result.unsafePayloadValue.productID == Self.limitlessProductID else { continue }
+            guard result.unsafePayloadValue.productID == Self.limitlessProductID,
+                  !reconciliation.contains(result.jwsRepresentation) else { continue }
             let response = try await persist(result, generation: expected)
-            seen.insert(result.unsafePayloadValue.id)
-            if response.entitlement.grantsAccess { active.insert(result.unsafePayloadValue.originalID) }
-            else { active.remove(result.unsafePayloadValue.originalID) }
+            reconciliation.record(signedPayload: result.jwsRepresentation, originalID: result.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
         }
         // Refunded/expired purchases disappear from currentEntitlements but their
         // latest signed transaction must still reach the canonical server verifier.
         if let latest = await Transaction.latest(for: Self.limitlessProductID),
-           !seen.contains(latest.unsafePayloadValue.id) {
+           !reconciliation.contains(latest.jwsRepresentation) {
             let response = try await persist(latest, generation: expected)
-            if response.entitlement.grantsAccess { active.insert(latest.unsafePayloadValue.originalID) }
-            else { active.remove(latest.unsafePayloadValue.originalID) }
+            reconciliation.record(signedPayload: latest.jwsRepresentation, originalID: latest.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
         }
-        return active.count
+        return reconciliation.activeCount
     }
 
     private func persist(_ result: VerificationResult<Transaction>, generation expected: Int) async throws -> AppStoreEntitlementSyncResponse {
         try requireScope(expected)
         guard case .verified(let transaction) = result,
               transaction.productID == Self.limitlessProductID else { throw MembershipError.verificationFailed }
-        // The same transaction may arrive through purchase() and updates together.
-        // Coalesce only identical signed deliveries within the same account scope.
-        let deliveryKey = "\(expected):\(result.jwsRepresentation)"
-        if let existing = deliveries[deliveryKey] { return try await existing.value }
-        let task = Task {
-            let response = try await client.syncAppStoreTransaction(signedTransaction: result.jwsRepresentation)
-            try requireScope(expected)
-            guard response.acceptsDelivery(for: transaction.productID) else { throw MembershipError.verificationFailed }
-            // Also finish revoked transactions after persisted revocation.
-            // Never acknowledge unverified or failed deliveries.
-            await transaction.finish()
-            try requireScope(expected)
-            return response
-        }
-        deliveries[deliveryKey] = task
-        defer { deliveries.removeValue(forKey: deliveryKey) }
-        return try await task.value
+        let response = try await deliveryStore.deliver(
+            signedTransaction: result.jwsRepresentation,
+            productID: transaction.productID,
+            finish: { await transaction.finish() }
+        )
+        try requireScope(expected)
+        return response
     }
 
     func manageSubscriptions() async throws {

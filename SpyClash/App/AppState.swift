@@ -1659,11 +1659,12 @@ final class AppState: NSObject {
         super.init()
 
         storeKit.onEntitlementChanged = { [weak self] in
-            await self?.membership.refresh() ?? false
+            guard let self, await self.membership.refresh(force: true) else { return nil }
+            return self.membership.snapshot
         }
         membershipRealtime.onMembershipSignal = { [weak self] in
             Task { @MainActor [weak self] in
-                _ = await self?.membership.refresh()
+                _ = await self?.membership.refresh(force: true)
             }
         }
 

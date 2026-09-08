@@ -123,37 +123,8 @@ export function entitlementStatusFromApple(input: {
   transaction: AppleTransactionPayload;
   now?: Date;
 }): string {
-  const notificationType = String(input.notificationType || "").toUpperCase();
-  if (notificationType === "REFUND") return "refunded";
-  if (notificationType === "REVOKE") return "revoked";
-  // A REFUND_REVERSED notification requires the app to reinstate access when
-  // Apple's current subscription status grants it. The transaction included
-  // in the notification may still describe the previously refunded purchase,
-  // including its revocationDate, so the reconciled App Store Server API status
-  // must take precedence over that historical field.
-  if (notificationType === "REFUND_REVERSED") {
-    switch (input.appleStatus) {
-      case 1:
-        return "active";
-      case 2:
-        return "expired";
-      case 3:
-        return "billing_retry";
-      case 4:
-        return "grace_period";
-      case 5:
-        return "revoked";
-    }
-
-    const expiresAt = Number(input.transaction.expiresDate);
-    const now = input.now ?? new Date();
-    return Number.isFinite(expiresAt) && expiresAt > now.getTime()
-      ? "active"
-      : "expired";
-  }
-  if (input.transaction.revocationDate) return "revoked";
-  if (input.transaction.isUpgraded) return "expired";
-
+  // The canonical App Store status describes the current subscription chain.
+  // Notification names and revocation fields may refer to an older period.
   switch (input.appleStatus) {
     case 1:
       return "active";
@@ -167,18 +138,19 @@ export function entitlementStatusFromApple(input: {
       return "revoked";
   }
 
-  if (notificationType === "EXPIRED") return "expired";
+  const notificationType = String(input.notificationType || "").toUpperCase();
+  if (notificationType === "REFUND") return "refunded";
+  if (notificationType === "REVOKE" || input.transaction.revocationDate) {
+    return "revoked";
+  }
+  if (notificationType === "EXPIRED" || input.transaction.isUpgraded) {
+    return "expired";
+  }
   const expiresAt = Number(input.transaction.expiresDate);
   const now = input.now ?? new Date();
   return Number.isFinite(expiresAt) && expiresAt > now.getTime()
     ? "active"
     : "expired";
-}
-
-export function requiresCanonicalSubscriptionStatus(
-  notificationType: unknown,
-): boolean {
-  return String(notificationType || "").toUpperCase() === "REFUND_REVERSED";
 }
 
 export function normalizeAppleEntitlement(
@@ -257,19 +229,20 @@ export function shouldApplyProviderEvent(
   current: { provider_event_at?: string; provider_event_id?: string },
   incoming: { provider_event_at?: string; provider_event_id?: string },
 ): boolean {
-  if (
-    incoming.provider_event_id &&
-    current.provider_event_id === incoming.provider_event_id
-  ) {
-    return false;
-  }
-
   const currentTime = Date.parse(current.provider_event_at || "");
   const incomingTime = Date.parse(incoming.provider_event_at || "");
+  const duplicate = Boolean(
+    incoming.provider_event_id &&
+      current.provider_event_id === incoming.provider_event_id,
+  );
   if (Number.isFinite(currentTime) && Number.isFinite(incomingTime)) {
-    return incomingTime >= currentTime;
+    // Every writer now reads canonical status under the same account lease.
+    // Retrying a notification can discover a later renewal or revocation, so
+    // the same UUID must not suppress a strictly newer verified snapshot.
+    return incomingTime > currentTime ||
+      (incomingTime === currentTime && !duplicate);
   }
-  return true;
+  return !duplicate;
 }
 
 export function publicAppleEntitlement(record: AppleEntitlementRecord) {

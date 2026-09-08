@@ -36,7 +36,139 @@ final class MembershipTests: XCTestCase {
         XCTAssertFalse(snapshot(active: false).isResolved)
         XCTAssertFalse(snapshot(status: "unknown").isResolved)
         XCTAssertFalse(snapshot(providers: ["unknown"]).isResolved)
+        XCTAssertFalse(snapshot(expiry: nil).isResolved)
+        XCTAssertTrue(snapshot(providers: ["admin"], expiry: nil).isResolved)
         XCTAssertTrue(MembershipSnapshot.freePreview.isResolved)
+    }
+
+    func testExpiredActiveResponseCannotOfferAnotherPurchase() async {
+        let client = MembershipTestClient()
+        client.result = .success(snapshot(expiry: .distantPast, purchase: true))
+        let store = MembershipStore(client: client)
+        store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        _ = await store.refresh()
+        XCTAssertFalse(store.hasAccess)
+        XCTAssertFalse(store.canPurchase, "An active server response must be refreshed to verified FREE before checkout.")
+    }
+
+    func testAuthoritativeRefreshSupersedesOlderFreeReadAfterPurchase() async throws {
+        let client = MembershipTestClient()
+        var olderRead: CheckedContinuation<MembershipSnapshot, Error>?
+        let paid = snapshot()
+        client.handler = {
+            if client.requestCount == 1 {
+                return try await withCheckedThrowingContinuation { olderRead = $0 }
+            }
+            return paid
+        }
+        let store = MembershipStore(client: client)
+        store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        let old = Task { await store.refresh() }
+        for _ in 0..<100 where olderRead == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(olderRead)
+        let fresh = await store.refresh(force: true)
+        XCTAssertTrue(fresh)
+        XCTAssertTrue(store.hasAccess)
+        continuation.resume(returning: .freePreview)
+        let refreshedOldCaller = await old.value
+        XCTAssertTrue(refreshedOldCaller, "The caller observes the newer successful refresh, never its stale response.")
+        XCTAssertTrue(store.hasAccess)
+        XCTAssertEqual(client.requestCount, 2)
+        XCTAssertFalse(store.isLoading)
+    }
+
+    func testRevocationSignalSupersedesOlderActiveRead() async throws {
+        let client = MembershipTestClient()
+        var olderRead: CheckedContinuation<MembershipSnapshot, Error>?
+        client.handler = {
+            if client.requestCount == 1 {
+                return try await withCheckedThrowingContinuation { olderRead = $0 }
+            }
+            return .freePreview
+        }
+        let store = MembershipStore(client: client)
+        store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        let old = Task { await store.refresh() }
+        for _ in 0..<100 where olderRead == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(olderRead)
+        _ = await store.refresh(force: true)
+        continuation.resume(returning: snapshot())
+        _ = await old.value
+        XCTAssertFalse(store.hasAccess)
+        XCTAssertEqual(store.snapshot, .freePreview)
+        XCTAssertNil(store.unlockPresentationID)
+    }
+
+    func testOverlappingAuthoritativeRefreshesJoinNewestReadWithoutFalseFailure() async throws {
+        let client = MembershipTestClient()
+        var reads: [CheckedContinuation<MembershipSnapshot, Error>] = []
+        client.handler = { try await withCheckedThrowingContinuation { reads.append($0) } }
+        let store = MembershipStore(client: client)
+        store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        let transactionRefresh = Task { await store.refresh(force: true) }
+        for _ in 0..<100 where reads.count < 1 { await Task.yield() }
+        XCTAssertEqual(reads.count, 1)
+        let signalRefresh = Task { await store.refresh(force: true) }
+        for _ in 0..<100 where reads.count < 2 { await Task.yield() }
+        guard reads.count == 2 else { XCTFail("The signal must start a new read."); return }
+        reads[0].resume(throwing: CancellationError())
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertTrue(store.isLoading)
+        reads[1].resume(returning: snapshot())
+        let transactionResult = await transactionRefresh.value
+        let signalResult = await signalRefresh.value
+        XCTAssertTrue(transactionResult)
+        XCTAssertTrue(signalResult)
+        XCTAssertTrue(store.hasAccess)
+        XCTAssertNil(store.errorMessage)
+        XCTAssertFalse(store.isLoading)
+        XCTAssertEqual(client.requestCount, 2)
+    }
+
+    func testExpiryInvalidatesObservedAccessWithoutWaitingForNetworkPoll() async throws {
+        var clock = now
+        let expires = now.addingTimeInterval(5)
+        var expiryWait: CheckedContinuation<Void, Error>?
+        let client = MembershipTestClient()
+        client.result = .success(snapshot(expiry: expires))
+        let store = MembershipStore(client: client, now: { clock }, sleep: { _ in
+            try await withCheckedThrowingContinuation { expiryWait = $0 }
+        })
+        store.bind(MembershipScope(userID: "user", accessToken: "token"))
+        _ = await store.refresh()
+        for _ in 0..<100 where expiryWait == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(expiryWait)
+        let previousRevision = store.revision
+        XCTAssertTrue(store.hasAccess)
+        clock = expires
+        continuation.resume()
+        for _ in 0..<100 where store.revision == previousRevision { await Task.yield() }
+        XCTAssertGreaterThan(store.revision, previousRevision)
+        XCTAssertGreaterThanOrEqual(store.evaluationDate, expires)
+        XCTAssertFalse(store.hasAccess)
+        XCTAssertEqual(store.benefits, .free)
+        XCTAssertEqual(client.requestCount, 1)
+    }
+
+    func testOldAccountExpiryCannotInvalidateNewAccountState() async throws {
+        var expiryWait: CheckedContinuation<Void, Error>?
+        let clock = now
+        let client = MembershipTestClient()
+        client.result = .success(snapshot(expiry: now.addingTimeInterval(5)))
+        let store = MembershipStore(client: client, now: { clock }, sleep: { _ in
+            try await withCheckedThrowingContinuation { expiryWait = $0 }
+        })
+        store.bind(MembershipScope(userID: "first", accessToken: "one"))
+        _ = await store.refresh()
+        for _ in 0..<100 where expiryWait == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(expiryWait)
+        store.bind(MembershipScope(userID: "second", accessToken: "two"), preview: .universalPreview)
+        let revision = store.revision
+        continuation.resume()
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertTrue(store.hasAccess)
+        XCTAssertEqual(store.revision, revision)
+        XCTAssertEqual(store.evaluationDate, clock)
     }
 
     func testDecodeCurrentContractIncludingExplicitApplePurchaseFlag() throws {
@@ -177,11 +309,119 @@ final class MembershipTests: XCTestCase {
     }
 
     func testPendingApprovalClearsOnlyAfterVerifiedActiveUpdateAndRefresh() {
+        XCTAssertFalse(LimitlessPurchaseState.pending.canStartPurchase)
+        XCTAssertFalse(LimitlessPurchaseState.purchasing.canStartPurchase)
+        XCTAssertTrue(LimitlessPurchaseState.cancelled.canStartPurchase)
+        XCTAssertTrue(LimitlessPurchaseState.failed.canStartPurchase)
         XCTAssertEqual(LimitlessPurchaseState.pending.afterVerifiedUpdate(grantsAccess: true, membershipRefreshed: true), .purchased)
         XCTAssertEqual(LimitlessPurchaseState.pending.afterVerifiedUpdate(grantsAccess: false, membershipRefreshed: true), .pending)
         XCTAssertEqual(LimitlessPurchaseState.pending.afterVerifiedUpdate(grantsAccess: true, membershipRefreshed: false), .pending)
         XCTAssertEqual(LimitlessPurchaseState.restoring.afterVerifiedUpdate(grantsAccess: true, membershipRefreshed: true), .restoring)
         XCTAssertEqual(LimitlessPurchaseState.idle.afterVerifiedUpdate(grantsAccess: true, membershipRefreshed: true), .idle)
+        XCTAssertEqual(LimitlessPurchaseState.failed.afterVerifiedUpdate(grantsAccess: true, membershipRefreshed: true), .restored)
+        XCTAssertEqual(LimitlessPurchaseState.failed.afterVerifiedUpdate(grantsAccess: false, membershipRefreshed: true), .idle)
+        XCTAssertEqual(LimitlessPurchaseState.failed.afterVerifiedUpdate(grantsAccess: true, membershipRefreshed: false), .failed)
+    }
+
+    func testRestoreReconcilesChangedSignedPayloadAndRemovesRevokedAccess() {
+        var restore = AppStoreTransactionReconciliation()
+        XCTAssertEqual(restore.activeCount, 0)
+        restore.record(signedPayload: "transaction-42-active", originalID: 42, grantsAccess: true)
+        XCTAssertTrue(restore.contains("transaction-42-active"))
+        XCTAssertFalse(restore.contains("transaction-42-revoked"), "A newer signed representation of the same transaction must reach the verifier.")
+        restore.record(signedPayload: "transaction-42-revoked", originalID: 42, grantsAccess: false)
+        XCTAssertEqual(restore.activeCount, 0)
+        restore.record(signedPayload: "transaction-43-active", originalID: 42, grantsAccess: true)
+        restore.record(signedPayload: "transaction-44-active", originalID: 42, grantsAccess: true)
+        XCTAssertEqual(restore.activeCount, 1, "Renewals belong to one original subscription.")
+        restore.record(signedPayload: "transaction-44-expired", originalID: 42, grantsAccess: false)
+        XCTAssertEqual(restore.activeCount, 0)
+    }
+
+    func testSimultaneousTransactionDeliveriesAreCoalescedAndFinishedOnce() async throws {
+        let client = AppStoreDeliveryTestClient()
+        var pending: CheckedContinuation<AppStoreEntitlementSyncResponse, Error>?
+        client.handler = { _ in
+            try await withCheckedThrowingContinuation { pending = $0 }
+        }
+        let delivery = AppStoreTransactionDeliveryStore(client: client)
+        delivery.bind(MembershipScope(userID: "user", accessToken: "token"))
+        var finishes = 0
+        let first = Task { try await delivery.deliver(signedTransaction: "signed-fixture", productID: StoreKitManager.limitlessProductID, finish: { finishes += 1 }) }
+        for _ in 0..<100 where pending == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(pending)
+        let duplicate = Task { try await delivery.deliver(signedTransaction: "signed-fixture", productID: StoreKitManager.limitlessProductID, finish: { finishes += 1 }) }
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(client.requests.count, 1)
+        XCTAssertEqual(finishes, 0)
+        continuation.resume(returning: client.verifiedResponse)
+        _ = try await first.value
+        _ = try await duplicate.value
+        XCTAssertEqual(client.requests.count, 1)
+        XCTAssertEqual(finishes, 1)
+    }
+
+    func testFailedCanonicalDeliveryRemainsUnfinishedAndCanRetry() async throws {
+        let client = AppStoreDeliveryTestClient()
+        client.handler = { _ in throw MembershipError.unavailable }
+        let delivery = AppStoreTransactionDeliveryStore(client: client)
+        delivery.bind(MembershipScope(userID: "user", accessToken: "token"))
+        var finishes = 0
+        do {
+            _ = try await delivery.deliver(signedTransaction: "retry-fixture", productID: StoreKitManager.limitlessProductID, finish: { finishes += 1 })
+            XCTFail("An unavailable verifier must not acknowledge the transaction.")
+        } catch {}
+        XCTAssertEqual(finishes, 0)
+        client.handler = nil
+        _ = try await delivery.deliver(signedTransaction: "retry-fixture", productID: StoreKitManager.limitlessProductID, finish: { finishes += 1 })
+        XCTAssertEqual(finishes, 1)
+        XCTAssertEqual(client.requests.count, 2)
+    }
+
+    func testUnverifiedServerResponseNeverFinishesTransaction() async {
+        let client = AppStoreDeliveryTestClient()
+        client.handler = { _ in
+            AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: false, entitlement: client.verifiedResponse.entitlement)
+        }
+        let delivery = AppStoreTransactionDeliveryStore(client: client)
+        delivery.bind(MembershipScope(userID: "user", accessToken: "token"))
+        var finished = false
+        do {
+            _ = try await delivery.deliver(signedTransaction: "unconfirmed-fixture", productID: StoreKitManager.limitlessProductID, finish: { finished = true })
+            XCTFail("A success flag alone is insufficient.")
+        } catch {}
+        XCTAssertFalse(finished)
+    }
+
+    func testAccountRotationRejectsLateTransactionBeforeFinish() async throws {
+        let client = AppStoreDeliveryTestClient()
+        var pending: CheckedContinuation<AppStoreEntitlementSyncResponse, Error>?
+        client.handler = { _ in try await withCheckedThrowingContinuation { pending = $0 } }
+        let delivery = AppStoreTransactionDeliveryStore(client: client)
+        delivery.bind(MembershipScope(userID: "first", accessToken: "token"))
+        var finished = false
+        let old = Task { try await delivery.deliver(signedTransaction: "old-account-fixture", productID: StoreKitManager.limitlessProductID, finish: { finished = true }) }
+        for _ in 0..<100 where pending == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(pending)
+        client.currentAccessToken = "new-token"
+        delivery.bind(MembershipScope(userID: "second", accessToken: "new-token"))
+        continuation.resume(returning: client.verifiedResponse)
+        do { _ = try await old.value; XCTFail("The old account must not receive a completed delivery.") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertFalse(finished)
+    }
+
+    func testVerifiedRevocationIsFinishedWithoutGrantingAccess() async throws {
+        let client = AppStoreDeliveryTestClient()
+        client.handler = { _ in
+            AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: true, entitlement: AppStoreEntitlement(productID: StoreKitManager.limitlessProductID, status: "revoked", expiresAt: .distantPast))
+        }
+        let delivery = AppStoreTransactionDeliveryStore(client: client)
+        delivery.bind(MembershipScope(userID: "user", accessToken: "token"))
+        var finished = false
+        let response = try await delivery.deliver(signedTransaction: "revoked-fixture", productID: StoreKitManager.limitlessProductID, finish: { finished = true })
+        XCTAssertTrue(finished)
+        XCTAssertFalse(response.entitlement.grantsAccess)
     }
 
     func testRestoredBenefitsMatchHistoricalFreeAndLimitlessLimits() {
@@ -281,10 +521,29 @@ private final class MembershipTestClient: MembershipClientProtocol {
     var result: Result<MembershipSnapshot, Error> = .success(.freePreview)
     var suspend = false
     var continuation: CheckedContinuation<MembershipSnapshot, Error>?
+    var requestCount = 0
+    var handler: (() async throws -> MembershipSnapshot)?
     func checkSubscription() async throws -> MembershipSnapshot {
+        requestCount += 1
+        if let handler { return try await handler() }
         if suspend {
             return try await withCheckedThrowingContinuation { continuation = $0 }
         }
         return try result.get()
+    }
+}
+
+@MainActor
+private final class AppStoreDeliveryTestClient: AppStoreTransactionClient {
+    var currentAccessToken: String? = "token"
+    var requests: [String] = []
+    var handler: ((String) async throws -> AppStoreEntitlementSyncResponse)?
+    var verifiedResponse: AppStoreEntitlementSyncResponse {
+        AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: true, entitlement: AppStoreEntitlement(productID: StoreKitManager.limitlessProductID, status: "active", expiresAt: .distantFuture))
+    }
+    func syncAppStoreTransaction(signedTransaction: String) async throws -> AppStoreEntitlementSyncResponse {
+        requests.append(signedTransaction)
+        if let handler { return try await handler(signedTransaction) }
+        return verifiedResponse
     }
 }
