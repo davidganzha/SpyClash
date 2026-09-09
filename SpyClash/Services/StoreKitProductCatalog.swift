@@ -3,6 +3,27 @@ import Observation
 import OSLog
 import StoreKit
 
+enum StoreKitWeeklyPeriod {
+    static func matches(unit: Product.SubscriptionPeriod.Unit?, value: Int?) -> Bool {
+        (unit == .week && value == 1) || (unit == .day && value == 7)
+    }
+}
+
+enum StoreKitCatalogPeriodUnit: String, Equatable, Sendable {
+    case none, day, week, month, year, unknown
+
+    init(_ unit: Product.SubscriptionPeriod.Unit?) {
+        guard let unit else { self = .none; return }
+        switch unit {
+        case .day: self = .day
+        case .week: self = .week
+        case .month: self = .month
+        case .year: self = .year
+        @unknown default: self = .unknown
+        }
+    }
+}
+
 enum StoreKitProductLoadIssue: Equatable, Sendable {
     case notFound, unsupportedProduct, network, storeUnavailable, storefrontUnavailable
 }
@@ -16,6 +37,7 @@ struct StoreKitCatalogItem<Value: Sendable>: Sendable {
 
 enum StoreKitCatalogDiagnostic: Equatable, Sendable {
     case response(count: Int, contractMatched: Bool)
+    case productMetadata(idMatches: Bool, autoRenewable: Bool, periodUnit: StoreKitCatalogPeriodUnit, periodValue: Int?)
     case failure(domain: String, code: Int)
     case cancelled
 
@@ -30,6 +52,12 @@ enum StoreKitCatalogDiagnostic: Equatable, Sendable {
         switch self {
         case let .response(count, matched):
             Self.logger.info("Product lookup count=\(count, privacy: .public) contract_matched=\(matched, privacy: .public)")
+        case let .productMetadata(idMatches, autoRenewable, unit, value):
+            if let value {
+                Self.logger.info("Product metadata id_matches=\(idMatches, privacy: .public) auto_renewable=\(autoRenewable, privacy: .public) period_unit=\(unit.rawValue, privacy: .public) period_value=\(value, privacy: .public)")
+            } else {
+                Self.logger.info("Product metadata id_matches=\(idMatches, privacy: .public) auto_renewable=\(autoRenewable, privacy: .public) period_unit=\(unit.rawValue, privacy: .public) period_value=none")
+            }
         case let .failure(domain, code):
             Self.logger.error("Product lookup failed domain=\(domain, privacy: .public) code=\(code, privacy: .public)")
         case .cancelled:

@@ -11,6 +11,40 @@ final class StoreKitProductCatalogTests: XCTestCase {
         .init(id: id, isAutoRenewable: autoRenewable, isWeekly: weekly, value: "verified-product")
     }
 
+
+    func testWeeklyPeriodAcceptsOneWeekAndSevenDaysInTheCatalog() async {
+        for (unit, value) in [(Product.SubscriptionPeriod.Unit.week, 1), (.day, 7)] {
+            XCTAssertTrue(StoreKitWeeklyPeriod.matches(unit: unit, value: value))
+            let candidate = item(weekly: StoreKitWeeklyPeriod.matches(unit: unit, value: value))
+            let catalog = StoreKitProductCatalog(productID: productID, fetch: { [candidate] }, diagnostic: { _ in })
+            await catalog.load()
+            XCTAssertEqual(catalog.product, "verified-product")
+            XCTAssertNil(catalog.issue)
+        }
+    }
+
+    func testWeeklyPeriodRejectsMissingValuesAndAllOtherDurations() {
+        let invalid: [(Product.SubscriptionPeriod.Unit?, Int?)] = [
+            (nil, nil), (nil, 1), (nil, 7), (.week, nil), (.day, nil),
+            (.day, -1), (.day, 0), (.day, 1), (.day, 6), (.day, 8), (.day, 14),
+            (.week, 0), (.week, 2), (.week, 7), (.month, 1), (.month, 7), (.year, 1)
+        ]
+        for (unit, value) in invalid {
+            XCTAssertFalse(StoreKitWeeklyPeriod.matches(unit: unit, value: value), "Accepted a non-weekly duration")
+        }
+    }
+
+    func testPeriodDiagnosticsUseOnlyClosedMetadataFields() {
+        XCTAssertEqual(StoreKitCatalogPeriodUnit(nil), .none)
+        XCTAssertEqual(StoreKitCatalogPeriodUnit(.day), .day)
+        XCTAssertEqual(StoreKitCatalogPeriodUnit(.week), .week)
+        XCTAssertEqual(StoreKitCatalogPeriodUnit(.month), .month)
+        XCTAssertEqual(StoreKitCatalogPeriodUnit(.year), .year)
+        let metadata = StoreKitCatalogDiagnostic.productMetadata(idMatches: true, autoRenewable: true, periodUnit: .day, periodValue: 7)
+        XCTAssertEqual(metadata, .productMetadata(idMatches: true, autoRenewable: true, periodUnit: .day, periodValue: 7))
+        XCTAssertFalse(String(describing: metadata).contains(productID), "Diagnostics exposed an arbitrary product identifier")
+    }
+
     func testEmptyCatalogIsVisibleAndDiffersFromStoreFailure() async {
         var diagnostics: [StoreKitCatalogDiagnostic] = []
         let catalog = StoreKitProductCatalog<String>(productID: productID, fetch: { [] }, diagnostic: { diagnostics.append($0) })

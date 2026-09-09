@@ -32,8 +32,10 @@ the attached device console.
   No new certificate or profile was created; PotuzhnoSigning was not used for
   the resulting artifact. Repository signing settings remain unchanged.
 - Installed metadata on the connected phone confirms **1.0.2 (152)**.
-  The initial launch was blocked by the phone's locked screen; live catalog
-  response and visual acceptance remain pending.
+  The initial launch was blocked by the phone's locked screen. After unlocking,
+  a live process was verified and the user's screenshot showed
+  `unsupportedProduct`: Apple returned a product, but the native contract
+  rejected it. This narrowed the investigation to product parameters.
 
 ## Release boundary
 

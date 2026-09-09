@@ -155,11 +155,17 @@ final class StoreKitManager {
         self.deliveryStore = AppStoreTransactionDeliveryStore(client: client)
         self.productCatalog = StoreKitProductCatalog(productID: Self.limitlessProductID) {
             try await Product.products(for: [Self.limitlessProductID]).map {
-                StoreKitCatalogItem(
+                let period = $0.subscription?.subscriptionPeriod
+                StoreKitCatalogDiagnostic.productMetadata(
+                    idMatches: $0.id == Self.limitlessProductID,
+                    autoRenewable: $0.type == .autoRenewable,
+                    periodUnit: StoreKitCatalogPeriodUnit(period?.unit),
+                    periodValue: period?.value
+                ).log()
+                return StoreKitCatalogItem(
                     id: $0.id,
                     isAutoRenewable: $0.type == .autoRenewable,
-                    isWeekly: $0.subscription?.subscriptionPeriod.unit == .week &&
-                        $0.subscription?.subscriptionPeriod.value == 1,
+                    isWeekly: StoreKitWeeklyPeriod.matches(unit: period?.unit, value: period?.value),
                     value: $0
                 )
             }
