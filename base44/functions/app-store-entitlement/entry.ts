@@ -1,8 +1,10 @@
+import { ensureAppleFetchBodyCompatibility } from "./apple-fetch-body-compatibility.ts";
 import {
   AppStoreServerAPIClient,
   Environment,
   type JWSTransactionDecodedPayload,
   SignedDataVerifier,
+  VerificationException,
 } from "npm:@apple/app-store-server-library@3.1.0";
 import { createClientFromRequest } from "npm:@base44/sdk@0.8.31";
 import { Buffer } from "node:buffer";
@@ -49,6 +51,7 @@ import {
   AppleNotificationDiagnosticError,
   runAppleNotificationDiagnostic,
 } from "./apple-notification-diagnostic.ts";
+import { appleVerificationFailureDetails } from "./apple-verification-error.ts";
 
 const BUNDLE_ID = Deno.env.get("APPLE_IAP_BUNDLE_ID") ||
   SPYCLASH_IOS_BUNDLE_ID;
@@ -91,6 +94,9 @@ class RequestError extends Error {
 }
 
 function errorMessage(error: unknown): string {
+  if (error instanceof VerificationException) {
+    return JSON.stringify(appleVerificationFailureDetails(error));
+  }
   return error instanceof Error
     ? error.message
     : String(error || "Unknown error");
@@ -222,6 +228,7 @@ function assertAppleCommerceConfiguration() {
 }
 
 function verifierFor(environment: Environment): Promise<SignedDataVerifier> {
+  ensureAppleFetchBodyCompatibility();
   let verifier = verifierPromises.get(environment);
   if (!verifier) {
     verifier = appleRootCertificates().then((certificates) =>
@@ -1149,6 +1156,10 @@ Deno.serve(async (req) => {
             user: await requireUser(base44),
             body,
             clientFor: appStoreAPIClient,
+            verifyTestPayload: async (environment, signedPayload) =>
+              (await verifierFor(environment)).verifyAndDecodeNotification(
+                signedPayload,
+              ),
           }),
         );
       case "prepare":

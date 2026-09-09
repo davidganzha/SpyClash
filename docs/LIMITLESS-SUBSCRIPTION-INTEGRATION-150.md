@@ -38,8 +38,15 @@ Stripe remains deferred.
 
 ## External acceptance remains open
 
-This checkpoint has not deployed the revised backend or demonstrated a real
-Apple purchase. Full Sandbox purchase/restore requires a physical phone and an
+The revised backend has been deployed under the user's explicit approval.
+The signed 1.0.2 (150) archive passed validation, was uploaded, finished Apple
+processing with VALID / APP_STORE_ELIGIBLE, and is selected in the 1.0.2 draft.
+Public privacy policy changes were published on both domains and verified in
+four languages. App Privacy Purchase History was published for App Functionality,
+linked to the user, without tracking; all ten existing data types were preserved.
+
+No real Apple purchase has been demonstrated. Full Sandbox purchase/restore
+requires a physical phone and an
 authenticated SpyClash account. Development-signed device testing requires a
 Sandbox tester; TestFlight uses the sandbox automatically and can exercise basic
 purchase/restore without a separately configured Sandbox account. A Sandbox
@@ -49,16 +56,17 @@ preparation.
 
 Reference: [Apple TestFlight purchase testing](https://developer.apple.com/help/app-store-connect/test-a-beta-version/testing-subscriptions-and-in-app-purchases-in-testflight).
 
-Apple server TEST delivery must be requested and checked after the approved
-function deployment. The currently configured notification URLs must be checked
-through that result, not inferred from an unauthenticated browser GET.
+Apple TEST requests reached the deployed handler in both Sandbox and Production.
+They exposed a production runtime incompatibility in the Apple SDK's binary OCSP
+body reader, addressed by the scoped server follow-up in checkpoint 151. See
+`LIMITLESS-APPLE-RUNTIME-151.md` for the fix and live delivery verification.
 
-App Store Connect currently has a prepared 1.0.2 draft with build 149; build 150
-must replace it after archive validation and upload. The weekly subscription
-still needs its real review screenshot and matching review notes, verified review
-access, and submission with the app. Public privacy policy and App Privacy must
-include linked Purchase History for app functionality. Separate prepared web
-privacy artifacts are retained in the release folder.
+The weekly subscription's build 150 review notes are saved and verified. The
+product still needs its genuine review screenshot, working review credentials,
+and submission with the app. The app-level review notes must be refreshed before
+submission. Saved review credentials were rejected in real login attempts; no
+credentials were reset and no account was created. App Review submission and
+public iOS release have not occurred. Receipts are retained in the release folder.
 
 Archive/upload/portal receipts are maintained outside the source tree. A local
 build, passing tests, an upload, review submission and public release are distinct

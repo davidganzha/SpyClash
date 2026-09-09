@@ -1,4 +1,8 @@
 import { runAppleNotificationDiagnostic } from "./apple-notification-diagnostic.ts";
+import {
+  VerificationException,
+  VerificationStatus,
+} from "npm:@apple/app-store-server-library@3.1.0";
 
 function assert(condition: unknown, message: string) {
   if (!condition) throw new Error(message);
@@ -30,6 +34,14 @@ function fixture() {
         action: "request_test_notification",
         environment: "Sandbox",
       } as Record<string, unknown>,
+      verifyTestPayload: async (environment: string, signedPayload: string) => {
+        calls.push(`verify:${environment}`);
+        assert(
+          signedPayload === "private-signed-payload-must-never-be-returned",
+          "diagnostic verified a different payload",
+        );
+        return { notificationType: "TEST" };
+      },
       clientFor: (environment: string) => {
         calls.push(`client:${environment}`);
         return {
@@ -150,7 +162,8 @@ Deno.test("test status exposes delivery attempts but never the signed payload", 
   };
   const result = await runAppleNotificationDiagnostic(input);
   assert(
-    calls.join(",") === "client:Sandbox,status:opaque-test-token-123",
+    calls.join(",") ===
+      "client:Sandbox,status:opaque-test-token-123,verify:Sandbox",
     "wrong status request",
   );
   assert(
@@ -158,8 +171,48 @@ Deno.test("test status exposes delivery attempts but never the signed payload", 
     "missing delivery evidence",
   );
   assert(
+    result.verification?.valid === true,
+    "signed TEST was not checked with the production verifier",
+  );
+  assert(
     !JSON.stringify(result).includes("private-signed"),
     "signed payload leaked",
+  );
+});
+
+Deno.test("failed TEST verification exposes only bounded failure details alongside delivery evidence", async () => {
+  const { input } = fixture();
+  input.body = {
+    action: "get_test_notification_status",
+    environment: "Sandbox",
+    test_notification_token: "opaque-test-token-123",
+  };
+  input.verifyTestPayload = () =>
+    Promise.reject(
+      new VerificationException(
+        VerificationStatus.RETRYABLE_VERIFICATION_FAILURE,
+        new Error(
+          "private-signed-payload-must-never-be-returned https://example.test/?token=secret",
+        ),
+      ),
+    );
+  const result = await runAppleNotificationDiagnostic(input);
+  assert(
+    result.verification?.valid === false,
+    "verification failure was hidden",
+  );
+  assert(
+    result.verification?.status === "RETRYABLE_VERIFICATION_FAILURE",
+    "failure status was lost",
+  );
+  assert(
+    result.sendAttempts?.[0]?.sendAttemptResult === "SUCCESS",
+    "delivery evidence was conflated with verification result",
+  );
+  assert(!JSON.stringify(result).includes("private-signed"), "payload leaked");
+  assert(
+    !JSON.stringify(result).includes("secret"),
+    "nested cause message leaked",
   );
 });
 

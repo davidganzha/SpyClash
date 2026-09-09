@@ -3,6 +3,7 @@ import {
   Environment,
   type SendTestNotificationResponse,
 } from "npm:@apple/app-store-server-library@3.1.0";
+import { inspectAppleTestNotification } from "./apple-verification-error.ts";
 
 export class AppleNotificationDiagnosticError extends Error {
   constructor(message: string, readonly status: number) {
@@ -26,6 +27,10 @@ export async function runAppleNotificationDiagnostic(input: {
       token: string,
     ) => Promise<CheckTestNotificationResponse>;
   };
+  verifyTestPayload: (
+    environment: Environment,
+    signedPayload: string,
+  ) => Promise<{ notificationType?: string }>;
 }) {
   if (!input.user?.id || input.user.role !== "admin") {
     throw new AppleNotificationDiagnosticError(
@@ -77,10 +82,18 @@ export async function runAppleNotificationDiagnostic(input: {
       };
     }
     const response = await client.getTestNotificationStatus(token as string);
+    const verification = response.signedPayload
+      ? await inspectAppleTestNotification({
+        signedPayload: response.signedPayload,
+        verify: (signedPayload) =>
+          input.verifyTestPayload(environment, signedPayload),
+      })
+      : { valid: false, status: "MISSING_TEST_PAYLOAD" };
     return {
       success: true,
       environment,
       testNotificationToken: token as string,
+      verification,
       sendAttempts: (response.sendAttempts || []).slice(0, 6).map((
         attempt,
       ) => ({
