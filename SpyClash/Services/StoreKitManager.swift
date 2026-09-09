@@ -45,6 +45,12 @@ enum LimitlessPurchaseState: Equatable {
     var isBusy: Bool { [.preparing, .purchasing, .synchronizing, .restoring].contains(self) }
     var canStartPurchase: Bool { !isBusy && self != .pending }
 
+    func acceptsVerifiedBackgroundUpdate(operationMatches: Bool, grantsAccess: Bool) -> Bool {
+        // An approval may arrive before purchase() returns .pending. Its verified
+        // access can resolve pending, but never erase a newer failure or result.
+        !isBusy && (operationMatches || (self == .pending && grantsAccess))
+    }
+
     func afterVerifiedUpdate(grantsAccess: Bool, membershipRefreshed: Bool) -> Self {
         guard membershipRefreshed else { return self }
         if self == .pending && grantsAccess { return .purchased }
@@ -145,14 +151,23 @@ final class StoreKitManager {
     @ObservationIgnored private let client: Base44Client
     @ObservationIgnored private var scope = MembershipScope(userID: nil, accessToken: nil)
     @ObservationIgnored private var generation = 0
+    @ObservationIgnored private var operationRevision: UInt64 = 0
     @ObservationIgnored private var updatesTask: Task<Void, Never>?
     @ObservationIgnored private var syncGeneration: Int?
     @ObservationIgnored private let deliveryStore: AppStoreTransactionDeliveryStore
+    @ObservationIgnored private let syncAppStore: @MainActor () async throws -> Void
+    @ObservationIgnored private let reconcileTransactions: (@MainActor () async throws -> Int)?
     @ObservationIgnored var onEntitlementChanged: (() async -> MembershipSnapshot?)?
 
-    init(client: Base44Client) {
+    init(
+        client: Base44Client,
+        syncAppStore: @escaping @MainActor () async throws -> Void = { try await AppStore.sync() },
+        reconcileTransactions: (@MainActor () async throws -> Int)? = nil
+    ) {
         self.client = client
         self.deliveryStore = AppStoreTransactionDeliveryStore(client: client)
+        self.syncAppStore = syncAppStore
+        self.reconcileTransactions = reconcileTransactions
         self.productCatalog = StoreKitProductCatalog(productID: Self.limitlessProductID) {
             try await Product.products(for: [Self.limitlessProductID]).map {
                 let period = $0.subscription?.subscriptionPeriod
@@ -178,23 +193,21 @@ final class StoreKitManager {
                 guard self.scope.isAuthenticated,
                       verification.unsafePayloadValue.productID == Self.limitlessProductID else { continue }
                 let expected = self.generation
+                let operation = self.operationRevision
                 do {
                     let response = try await self.persist(verification, generation: expected)
                     try self.requireScope(expected)
                     guard let refreshed = await self.onEntitlementChanged?() else { throw MembershipError.unavailable }
                     try self.requireScope(expected)
-                    self.errorMessage = nil
-                    self.state = self.state.afterVerifiedUpdate(
+                    self.completeBackground(
                         grantsAccess: response.entitlement.grantsAccess && refreshed.grantsAccess(),
-                        membershipRefreshed: true
+                        operation: operation
                     )
                 } catch is CancellationError {
                     // Account rotation must not permanently stop the global listener.
                     continue
                 } catch {
-                    guard expected == self.generation else { continue }
-                    self.errorMessage = error.localizedDescription
-                    if !self.state.isBusy { self.state = .failed }
+                    self.failBackground(error, generation: expected, operation: operation)
                 }
             }
         }
@@ -205,6 +218,7 @@ final class StoreKitManager {
     func bind(_ scope: MembershipScope) {
         guard self.scope != scope else { return }
         generation &+= 1
+        operationRevision &+= 1
         deliveryStore.bind(scope)
         self.scope = scope
         state = .idle
@@ -223,8 +237,8 @@ final class StoreKitManager {
     func purchase(membership: MembershipStore) async {
         guard state.canStartPurchase else { return }
         let expected = generation
-        state = .preparing
-        errorMessage = nil
+        let operation = beginOperation(.preparing)
+        defer { endOperation(operation) }
         do {
             guard await membership.refresh(), membership.canPurchase else {
                 throw MembershipError.unavailable
@@ -256,18 +270,18 @@ final class StoreKitManager {
                 throw MembershipError.verificationFailed
             }
         } catch {
-            fail(error, generation: expected)
+            fail(error, generation: expected, operation: operation)
         }
     }
 
     func restore() async {
         guard !state.isBusy, scope.isAuthenticated else { return }
         let expected = generation
-        state = .restoring
-        errorMessage = nil
+        let operation = beginOperation(.restoring)
+        defer { endOperation(operation) }
         do {
             // Only the user's Restore button may trigger Apple's authentication prompt.
-            try await AppStore.sync()
+            try await syncAppStore()
             try requireScope(expected)
             let count = try await synchronize(expected)
             try requireScope(expected)
@@ -276,13 +290,14 @@ final class StoreKitManager {
             try requireScope(expected)
             state = count > 0 ? .restored : .noPurchases
         } catch {
-            fail(error, generation: expected)
+            fail(error, generation: expected, operation: operation)
         }
     }
 
     func synchronizeAfterActivation() async {
         guard scope.isAuthenticated, !state.isBusy, syncGeneration == nil else { return }
         let expected = generation
+        let operation = operationRevision
         syncGeneration = expected
         defer { if syncGeneration == expected { syncGeneration = nil } }
         do {
@@ -290,21 +305,23 @@ final class StoreKitManager {
             try requireScope(expected)
             guard let refreshed = await onEntitlementChanged?() else { throw MembershipError.unavailable }
             try requireScope(expected)
-            errorMessage = nil
-            state = state.afterVerifiedUpdate(
+            completeBackground(
                 grantsAccess: count > 0 && refreshed.grantsAccess(),
-                membershipRefreshed: true
+                operation: operation
             )
         } catch {
             // Leave transactions unfinished on outages. Retried on activation/Restore.
-            if expected == generation, !(error is CancellationError) {
-                errorMessage = error.localizedDescription
-                if !state.isBusy { state = .failed }
-            }
+            failBackground(error, generation: expected, operation: operation)
         }
     }
 
     private func synchronize(_ expected: Int) async throws -> Int {
+        if let reconcileTransactions {
+            try requireScope(expected)
+            let count = try await reconcileTransactions()
+            try requireScope(expected)
+            return count
+        }
         var reconciliation = AppStoreTransactionReconciliation()
         for await result in Transaction.unfinished {
             try requireScope(expected)
@@ -355,10 +372,48 @@ final class StoreKitManager {
               scope.accessToken == client.currentAccessToken else { throw CancellationError() }
     }
 
-    private func fail(_ error: Error, generation expected: Int) {
-        guard expected == generation else { return }
-        if error is CancellationError { state = .cancelled; return }
+    private func beginOperation(_ next: LimitlessPurchaseState) -> UInt64 {
+        operationRevision &+= 1
+        state = next
+        errorMessage = nil
+        return operationRevision
+    }
+
+    private func endOperation(_ expected: UInt64) {
+        // Also invalidate background work that began while the foreground
+        // operation was running. Its entitlement delivery/refresh still completes.
+        if operationRevision == expected { operationRevision &+= 1 }
+    }
+
+    private func ownsBackgroundResult(_ expected: UInt64) -> Bool {
+        expected == operationRevision && !state.isBusy
+    }
+
+    private func completeBackground(grantsAccess: Bool, operation: UInt64) {
+        guard state.acceptsVerifiedBackgroundUpdate(
+            operationMatches: operation == operationRevision, grantsAccess: grantsAccess
+        ) else { return }
+        errorMessage = nil
+        state = state.afterVerifiedUpdate(grantsAccess: grantsAccess, membershipRefreshed: true)
+    }
+
+    private func failBackground(_ error: Error, generation expected: Int, operation: UInt64) {
+        guard expected == generation, ownsBackgroundResult(operation),
+              !isCancellation(error) else { return }
         errorMessage = error.localizedDescription
         state = .failed
+    }
+
+    private func fail(_ error: Error, generation expected: Int, operation: UInt64) {
+        guard expected == generation, operation == operationRevision else { return }
+        if isCancellation(error) { state = .cancelled; return }
+        errorMessage = error.localizedDescription
+        state = .failed
+    }
+
+    private func isCancellation(_ error: Error) -> Bool {
+        if error is CancellationError { return true }
+        if let storeKitError = error as? StoreKitError, case .userCancelled = storeKitError { return true }
+        return false
     }
 }

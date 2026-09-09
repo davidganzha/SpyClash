@@ -1,4 +1,5 @@
 import Foundation
+import StoreKit
 import XCTest
 @testable import SpyClash
 
@@ -323,6 +324,16 @@ final class MembershipTests: XCTestCase {
         XCTAssertEqual(LimitlessPurchaseState.failed.afterVerifiedUpdate(grantsAccess: true, membershipRefreshed: false), .failed)
     }
 
+    func testVerifiedPendingApprovalCanOutliveForegroundOperationWithoutReplacingOtherResults() {
+        XCTAssertTrue(LimitlessPurchaseState.pending.acceptsVerifiedBackgroundUpdate(operationMatches: false, grantsAccess: true))
+        XCTAssertFalse(LimitlessPurchaseState.pending.acceptsVerifiedBackgroundUpdate(operationMatches: false, grantsAccess: false))
+        for state: LimitlessPurchaseState in [.idle, .preparing, .purchasing, .synchronizing, .restoring, .failed, .cancelled, .purchased, .restored, .noPurchases] {
+            XCTAssertFalse(state.acceptsVerifiedBackgroundUpdate(operationMatches: false, grantsAccess: true), "A stale update must preserve \(state).")
+        }
+        XCTAssertFalse(LimitlessPurchaseState.restoring.acceptsVerifiedBackgroundUpdate(operationMatches: true, grantsAccess: true))
+        XCTAssertTrue(LimitlessPurchaseState.failed.acceptsVerifiedBackgroundUpdate(operationMatches: true, grantsAccess: true))
+    }
+
     func testRestoreReconcilesChangedSignedPayloadAndRemovesRevokedAccess() {
         var restore = AppStoreTransactionReconciliation()
         XCTAssertEqual(restore.activeCount, 0)
@@ -336,6 +347,153 @@ final class MembershipTests: XCTestCase {
         XCTAssertEqual(restore.activeCount, 1, "Renewals belong to one original subscription.")
         restore.record(signedPayload: "transaction-44-expired", originalID: 42, grantsAccess: false)
         XCTAssertEqual(restore.activeCount, 0)
+    }
+
+    func testLateActivationFailureCannotReplaceSuccessfulRestore() async throws {
+        let membershipClient = MembershipTestClient()
+        membershipClient.result = .success(snapshot())
+        let membership = MembershipStore(client: membershipClient)
+        let scope = MembershipScope(userID: "user", accessToken: "token")
+        membership.bind(scope)
+        _ = await membership.refresh()
+        var backgroundRead: CheckedContinuation<Int, Error>?
+        var reconciliations = 0
+        var appleSyncs = 0
+        let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+            appleSyncs += 1
+        }, reconcileTransactions: {
+            reconciliations += 1
+            if reconciliations == 1 {
+                return try await withCheckedThrowingContinuation { backgroundRead = $0 }
+            }
+            return 1
+        })
+        manager.bind(scope)
+        manager.onEntitlementChanged = {
+            guard await membership.refresh(force: true) else { return nil }
+            return membership.snapshot
+        }
+
+        let background = Task { await manager.synchronizeAfterActivation() }
+        for _ in 0..<100 where backgroundRead == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(backgroundRead)
+        await manager.restore()
+        XCTAssertEqual(manager.state, .restored)
+        XCTAssertTrue(membership.hasAccess)
+        continuation.resume(throwing: URLError(.notConnectedToInternet))
+        await background.value
+
+        XCTAssertEqual(manager.state, .restored)
+        XCTAssertNil(manager.errorMessage)
+        XCTAssertTrue(membership.hasAccess)
+        XCTAssertEqual(appleSyncs, 1)
+        XCTAssertEqual(reconciliations, 2)
+        XCTAssertEqual(membershipClient.requestCount, 2, "Restore must still complete its canonical membership refresh.")
+    }
+
+    func testLateActivationSuccessPreservesRestoreFailureButAppliesCanonicalRevocation() async throws {
+        let membershipClient = MembershipTestClient()
+        membershipClient.result = .success(snapshot())
+        let membership = MembershipStore(client: membershipClient)
+        let scope = MembershipScope(userID: "user", accessToken: "token")
+        membership.bind(scope)
+        _ = await membership.refresh()
+        var backgroundRead: CheckedContinuation<Int, Error>?
+        let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+            throw MembershipError.unavailable
+        }, reconcileTransactions: {
+            try await withCheckedThrowingContinuation { backgroundRead = $0 }
+        })
+        manager.bind(scope)
+        manager.onEntitlementChanged = {
+            guard await membership.refresh(force: true) else { return nil }
+            return membership.snapshot
+        }
+
+        let background = Task { await manager.synchronizeAfterActivation() }
+        for _ in 0..<100 where backgroundRead == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(backgroundRead)
+        await manager.restore()
+        let restoreError = try XCTUnwrap(manager.errorMessage)
+        XCTAssertEqual(manager.state, .failed)
+        XCTAssertTrue(membership.hasAccess, "A failed Restore must not discard the previously verified entitlement.")
+        membershipClient.result = .success(.freePreview)
+        continuation.resume(returning: 0)
+        await background.value
+
+        XCTAssertEqual(manager.state, .failed)
+        XCTAssertEqual(manager.errorMessage, restoreError)
+        XCTAssertFalse(membership.hasAccess, "UI ownership must never suppress the canonical entitlement refresh.")
+        XCTAssertEqual(membership.snapshot, .freePreview)
+        XCTAssertEqual(membershipClient.requestCount, 2)
+    }
+
+    func testCancelledAppleRestoreDoesNotReconcileOrDiscardVerifiedAccess() async {
+        let membershipClient = MembershipTestClient()
+        membershipClient.result = .success(snapshot())
+        let membership = MembershipStore(client: membershipClient)
+        let scope = MembershipScope(userID: "user", accessToken: "token")
+        membership.bind(scope)
+        _ = await membership.refresh()
+        let verified = membership.snapshot
+        var reconciliations = 0
+        var refreshes = 0
+        let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+            throw StoreKitError.userCancelled
+        }, reconcileTransactions: {
+            reconciliations += 1
+            return 1
+        })
+        manager.bind(scope)
+        manager.onEntitlementChanged = {
+            refreshes += 1
+            guard await membership.refresh(force: true) else { return nil }
+            return membership.snapshot
+        }
+
+        await manager.restore()
+
+        XCTAssertEqual(manager.state, .cancelled)
+        XCTAssertNil(manager.errorMessage)
+        XCTAssertEqual(reconciliations, 0)
+        XCTAssertEqual(refreshes, 0)
+        XCTAssertEqual(membershipClient.requestCount, 1)
+        XCTAssertEqual(membership.snapshot, verified)
+        XCTAssertTrue(membership.hasAccess)
+    }
+
+    func testCurrentActivationCanRecoverAfterRestoreFailure() async {
+        let membershipClient = MembershipTestClient()
+        membershipClient.result = .success(snapshot())
+        let membership = MembershipStore(client: membershipClient)
+        let scope = MembershipScope(userID: "user", accessToken: "token")
+        membership.bind(scope)
+        _ = await membership.refresh()
+        let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+            throw MembershipError.unavailable
+        }, reconcileTransactions: { 1 })
+        manager.bind(scope)
+        manager.onEntitlementChanged = {
+            guard await membership.refresh(force: true) else { return nil }
+            return membership.snapshot
+        }
+
+        await manager.restore()
+        XCTAssertEqual(manager.state, .failed)
+        await manager.synchronizeAfterActivation()
+
+        XCTAssertEqual(manager.state, .restored)
+        XCTAssertNil(manager.errorMessage)
+        XCTAssertTrue(membership.hasAccess)
+        XCTAssertEqual(membershipClient.requestCount, 2)
+    }
+
+    private func makeStoreKitClient() -> Base44Client {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [UnexpectedStoreKitBackendURLProtocol.self]
+        let client = Base44Client(session: URLSession(configuration: configuration))
+        client.setToken("token")
+        return client
     }
 
     func testSimultaneousTransactionDeliveriesAreCoalescedAndFinishedOnce() async throws {
@@ -514,6 +672,16 @@ final class MembershipTests: XCTestCase {
         store.bind(MembershipScope(userID: "user", accessToken: "rotated"))
         XCTAssertNil(store.unlockPresentationID)
     }
+}
+
+private final class UnexpectedStoreKitBackendURLProtocol: URLProtocol, @unchecked Sendable {
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        XCTFail("StoreKit orchestration fixtures must not invoke the real backend.")
+        client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
+    }
+    override func stopLoading() {}
 }
 
 @MainActor

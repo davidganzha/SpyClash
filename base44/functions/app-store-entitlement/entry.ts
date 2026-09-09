@@ -52,6 +52,10 @@ import {
   runAppleNotificationDiagnostic,
 } from "./apple-notification-diagnostic.ts";
 import { appleVerificationFailureDetails } from "./apple-verification-error.ts";
+import {
+  appleRequestErrorResponse,
+  RequestError,
+} from "./apple-request-error.ts";
 
 const BUNDLE_ID = Deno.env.get("APPLE_IAP_BUNDLE_ID") ||
   SPYCLASH_IOS_BUNDLE_ID;
@@ -82,16 +86,6 @@ type AppleAccountLease = {
   leaseUntil: string;
   accounts: AppStoreAccountRecord[];
 };
-
-class RequestError extends Error {
-  status: number;
-
-  constructor(message: string, status = 400) {
-    super(message);
-    this.name = "RequestError";
-    this.status = status;
-  }
-}
 
 function errorMessage(error: unknown): string {
   if (error instanceof VerificationException) {
@@ -391,6 +385,7 @@ async function acquireAppleAccountLease(
       throw new RequestError(
         "Apple account binding is being updated. Retry shortly.",
         503,
+        "apple_account_binding_busy",
       );
     }
 
@@ -1184,7 +1179,7 @@ Deno.serve(async (req) => {
         ? "Unable to verify App Store entitlement."
         : errorMessage(error);
     console.error("app-store-entitlement failed:", errorMessage(error));
-    return Response.json({ error: message }, { status });
+    return appleRequestErrorResponse(error, message, status);
   }
 });
 import { publishMembershipSignal } from "./membership-signal.ts";

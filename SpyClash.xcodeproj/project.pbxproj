@@ -62,6 +62,7 @@
 		82066BE8C8996A1EF1CA9B42 /* InterfaceScalePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F44D41577074C530879C82C /* InterfaceScalePolicy.swift */; };
 		82D1D08C2F15D8C91C49A7A1 /* Rajdhani-OFL-1.1.txt in Resources */ = {isa = PBXBuildFile; fileRef = 9053338F106838BBB476DCE4 /* Rajdhani-OFL-1.1.txt */; };
 		82D3EF58665CCD0D09A29F69 /* Base44ClientRoomActionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */; };
+		82F3A622D857CFA9EEE1D578 /* AppStoreTransactionRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8380CFC8D36E6526C374E3F3 /* AppStoreTransactionRetryTests.swift */; };
 		83309EF2D0E5EEB230E46C36 /* SpyInterfacePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = 79E76174123D2C9A9D699412 /* SpyInterfacePreferences.swift */; };
 		8AAD0E7106FFD33A43390CC2 /* LocalPrivateDecisionViews.swift in Sources */ = {isa = PBXBuildFile; fileRef = BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */; };
 		8D17771759D4330EBFEC4603 /* SocketIO in Frameworks */ = {isa = PBXBuildFile; productRef = 0F3E2F7BE3B86567F9077667 /* SocketIO */; };
@@ -199,6 +200,7 @@
 		7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = KeychainStore.swift; sourceTree = "<group>"; };
 		7D83FC09C66C9373238F2E95 /* LocalCinematicGameplayViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalCinematicGameplayViews.swift; sourceTree = "<group>"; };
 		7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyGameIntroScene.swift; sourceTree = "<group>"; };
+		8380CFC8D36E6526C374E3F3 /* AppStoreTransactionRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppStoreTransactionRetryTests.swift; sourceTree = "<group>"; };
 		84FC834A8A03378CFB477BB4 /* MembershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipTests.swift; sourceTree = "<group>"; };
 		86974FE98CF9350796FC28D3 /* SpyModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyModels.swift; sourceTree = "<group>"; };
 		8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LimitlessClearancePanel.swift; sourceTree = "<group>"; };
@@ -415,6 +417,7 @@
 			isa = PBXGroup;
 			children = (
 				2F4E919DA47D72F73CF78184 /* AppleAuthenticationOwnershipTests.swift */,
+				8380CFC8D36E6526C374E3F3 /* AppStoreTransactionRetryTests.swift */,
 				5DC4D91498AF686C52E0DE27 /* AuthenticationFlowTests.swift */,
 				AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */,
 				9247DA8D3D9DC6DE5F651601 /* DismissedRoomExitCleanupTests.swift */,
@@ -731,6 +734,7 @@
 			isa = PBXSourcesBuildPhase;
 			buildActionMask = 2147483647;
 			files = (
+				82F3A622D857CFA9EEE1D578 /* AppStoreTransactionRetryTests.swift in Sources */,
 				7BD86047097EED150447E003 /* AppleAuthenticationOwnershipTests.swift in Sources */,
 				79D2F29EBBE51CA06170D437 /* AuthenticationFlowTests.swift in Sources */,
 				82D3EF58665CCD0D09A29F69 /* Base44ClientRoomActionTests.swift in Sources */,
@@ -947,7 +951,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 153;
+				CURRENT_PROJECT_VERSION = 154;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1005,7 +1009,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 153;
+				CURRENT_PROJECT_VERSION = 154;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

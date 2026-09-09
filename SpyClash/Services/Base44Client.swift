@@ -45,6 +45,19 @@ struct PushNotificationTransportRetryPolicy: Equatable, Sendable {
     }
 }
 
+enum AppStoreTransactionRetryPolicy {
+    static let retryDelaysMilliseconds = [500, 1_000, 2_000]
+
+    static func delayMilliseconds(for error: Error, completedRetries: Int) -> Int? {
+        guard let error = error as? Base44Error,
+              error.statusCode == 503,
+              error.code == "apple_account_binding_busy",
+              error.retryable,
+              retryDelaysMilliseconds.indices.contains(completedRetries) else { return nil }
+        return retryDelaysMilliseconds[completedRetries]
+    }
+}
+
 enum FinishedRoomLobbyReturnRecoveryPolicy {
     static func accepts(room: GameRoom?, expectedRoomID: String) -> Bool {
         guard let room,
@@ -99,6 +112,7 @@ final class Base44Client {
     static let appBaseURL = URL(string: "https://spyclash.com")!
 
     private let session: URLSession
+    private let appStoreRetrySleep: @MainActor (Duration) async throws -> Void
     private var token: String?
     private var tokenGeneration = UUID()
 
@@ -112,8 +126,12 @@ final class Base44Client {
 
     var sessionGeneration: UUID { tokenGeneration }
 
-    init(session: URLSession = .shared) {
+    init(
+        session: URLSession = .shared,
+        appStoreRetrySleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }
+    ) {
         self.session = session
+        self.appStoreRetrySleep = appStoreRetrySleep
     }
 
     func setToken(_ token: String) {
@@ -1569,9 +1587,43 @@ final class Base44Client {
     }
 
     func syncAppStoreTransaction(signedTransaction: String) async throws -> AppStoreEntitlementSyncResponse {
-        try await membershipAction("app-store-entitlement", body: [
-            "action": "sync_transaction", "signed_transaction": signedTransaction,
+        let expectedToken = try requireAccessToken()
+        let expectedGeneration = tokenGeneration
+        // Preserve the exact signed payload and original credentials across the
+        // bounded retry. A restored session with the same token is still a new scope.
+        let body = try JSONEncoder.base44.encode([
+            "action": "sync_transaction",
+            "signed_transaction": signedTransaction,
+            "access_token": expectedToken,
         ])
+        func requireScope() throws {
+            try Task.checkCancellation()
+            guard tokenGeneration == expectedGeneration,
+                  currentAccessToken == expectedToken else { throw CancellationError() }
+        }
+        var completedRetries = 0
+        while true {
+            try requireScope()
+            do {
+                let result: AppStoreEntitlementSyncResponse = try await request(
+                    "/apps/\(Self.appID)/functions/app-store-entitlement",
+                    method: "POST",
+                    body: Optional<EmptyPayload>.none,
+                    encodedBody: body,
+                    authorizationToken: expectedToken
+                )
+                try requireScope()
+                return result
+            } catch {
+                try requireScope()
+                guard let delay = AppStoreTransactionRetryPolicy.delayMilliseconds(
+                    for: error, completedRetries: completedRetries
+                ) else { throw error }
+                completedRetries += 1
+                try await appStoreRetrySleep(.milliseconds(delay))
+                try requireScope()
+            }
+        }
     }
 
     private func membershipAction<T: Decodable>(_ name: String, body: [String: String]) async throws -> T {
