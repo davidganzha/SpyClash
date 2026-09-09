@@ -133,6 +133,14 @@ struct PricingView: View {
             .foregroundStyle(SpyTheme.faint)
             .spyFitted(scale: 0.64, alignment: .center)
 
+            if !access.isPreview, !store.isLoadingProduct, let issue = store.productLoadIssue {
+                Text(copy.productLoadMessage(issue))
+                    .font(.system(size: 9, weight: .medium, design: .monospaced))
+                    .foregroundStyle(SpyTheme.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("limitless.product-load-error")
+            }
+
             if let message = stateMessage {
                 Text(message)
                     .font(.system(size: 9, weight: .medium, design: .monospaced))
@@ -391,6 +399,20 @@ struct LimitlessCopy {
     var checking: String { text("Checking access…", "Проверяем доступ…", "Verificando acceso…", "Перевіряємо доступ…") }
     var unavailable: String { text("Access could not be checked. Please retry before purchasing.", "Не удалось проверить доступ. Повтори проверку перед покупкой.", "No se pudo verificar el acceso. Reintenta antes de comprar.", "Не вдалося перевірити доступ. Повтори перевірку перед купівлею.") }
     var retry: String { text("Retry", "Повторить", "Reintentar", "Повторити") }
+    func productLoadMessage(_ issue: StoreKitProductLoadIssue) -> String {
+        switch issue {
+        case .notFound:
+            text("App Store hasn't returned this subscription yet. Wait a moment and retry.", "App Store пока не вернул подписку. Подожди немного и нажми «Повторить».", "App Store aún no ha devuelto esta suscripción. Espera un momento y reintenta.", "App Store поки не повернув підписку. Зачекай трохи й натисни «Повторити».")
+        case .unsupportedProduct:
+            text("App Store returned an unsupported subscription option. Please retry later.", "App Store вернул неподходящий вариант подписки. Повтори попытку позже.", "App Store devolvió una opción de suscripción no compatible. Reintenta más tarde.", "App Store повернув непідтримуваний варіант підписки. Спробуй пізніше.")
+        case .network:
+            text("Couldn't connect to App Store. Check your connection and retry.", "Не удалось связаться с App Store. Проверь подключение и повтори попытку.", "No se pudo conectar con App Store. Comprueba tu conexión y reintenta.", "Не вдалося зв'язатися з App Store. Перевір з'єднання й повтори спробу.")
+        case .storefrontUnavailable:
+            text("This subscription is unavailable in your current App Store region.", "Подписка недоступна в текущем регионе App Store.", "Esta suscripción no está disponible en tu región actual de App Store.", "Підписка недоступна в поточному регіоні App Store.")
+        case .storeUnavailable:
+            text("App Store couldn't load the subscription. Please retry.", "App Store не смог загрузить подписку. Повтори попытку.", "App Store no pudo cargar la suscripción. Reintenta.", "App Store не зміг завантажити підписку. Повтори спробу.")
+        }
+    }
     var freeAllowance: String { text("FREE: 10 AI generations per day and your 5 latest matches.", "FREE: 10 генераций ИИ в день и 5 последних матчей.", "FREE: 10 generaciones de IA al día y tus 5 últimas partidas.", "FREE: 10 генерацій ШІ на день і 5 останніх матчів.") }
     var remaining: String { text("AI generations remaining today", "Осталось генераций ИИ сегодня", "Generaciones de IA restantes hoy", "Залишилось генерацій ШІ сьогодні") }
     var week: String { text("week", "неделю", "semana", "тиждень") }

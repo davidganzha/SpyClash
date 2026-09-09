@@ -136,8 +136,10 @@ struct AppStoreTransactionReconciliation {
 @Observable
 final class StoreKitManager {
     static let limitlessProductID = "com.spyclash.ios.limitless.weekly"
-    private(set) var product: Product?
-    private(set) var isLoadingProduct = false
+    var product: Product? { productCatalog.product }
+    var isLoadingProduct: Bool { productCatalog.isLoading }
+    var productLoadIssue: StoreKitProductLoadIssue? { productCatalog.issue }
+    @ObservationIgnored private let productCatalog: StoreKitProductCatalog<Product>
     private(set) var state: LimitlessPurchaseState = .idle
     private(set) var errorMessage: String?
     @ObservationIgnored private let client: Base44Client
@@ -151,6 +153,17 @@ final class StoreKitManager {
     init(client: Base44Client) {
         self.client = client
         self.deliveryStore = AppStoreTransactionDeliveryStore(client: client)
+        self.productCatalog = StoreKitProductCatalog(productID: Self.limitlessProductID) {
+            try await Product.products(for: [Self.limitlessProductID]).map {
+                StoreKitCatalogItem(
+                    id: $0.id,
+                    isAutoRenewable: $0.type == .autoRenewable,
+                    isWeekly: $0.subscription?.subscriptionPeriod.unit == .week &&
+                        $0.subscription?.subscriptionPeriod.value == 1,
+                    value: $0
+                )
+            }
+        }
         // Listen from application launch, including pending purchases completed later.
         updatesTask = Task { [weak self] in
             for await verification in Transaction.updates {
@@ -198,19 +211,7 @@ final class StoreKitManager {
     }
 
     func loadProduct() async {
-        guard product == nil, !isLoadingProduct else { return }
-        isLoadingProduct = true
-        defer { isLoadingProduct = false }
-        do {
-            product = try await Product.products(for: [Self.limitlessProductID])
-                .first {
-                    $0.id == Self.limitlessProductID && $0.type == .autoRenewable &&
-                    $0.subscription?.subscriptionPeriod.unit == .week &&
-                    $0.subscription?.subscriptionPeriod.value == 1
-                }
-        } catch {
-            if !(error is CancellationError) { errorMessage = error.localizedDescription }
-        }
+        await productCatalog.load()
     }
 
     func purchase(membership: MembershipStore) async {

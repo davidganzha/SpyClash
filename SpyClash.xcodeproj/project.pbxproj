@@ -7,6 +7,7 @@
 	objects = {
 
 /* Begin PBXBuildFile section */
+		006CA900E7957F08B0E578D7 /* StoreKitProductCatalogTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA17B78E221F34E47BEC5A8D /* StoreKitProductCatalogTests.swift */; };
 		0332FBE99D5419C0A04F460A /* InfoPlist.strings in Resources */ = {isa = PBXBuildFile; fileRef = 22A24EBF700A367D8B269698 /* InfoPlist.strings */; };
 		047173A72BA9E8A6F6A0A7C1 /* LeaderboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 723E083EC43863E9B19D1DBD /* LeaderboardView.swift */; };
 		04ABFF97837288EEF867A306 /* SpyClashWidgets.appex in Embed Foundation Extensions */ = {isa = PBXBuildFile; fileRef = EB074CEB86E78BFB857C6C47 /* SpyClashWidgets.appex */; settings = {ATTRIBUTES = (RemoveHeadersOnCopy, ); }; };
@@ -80,6 +81,7 @@
 		BD9EDC5A7F4F7334FFA8354D /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
 		BE763CD2921B74DCF33CB0EF /* SpyGameIntroScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */; };
 		BEE92851841DC7FE6D053B92 /* MembershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FC834A8A03378CFB477BB4 /* MembershipTests.swift */; };
+		C15524D98D1FE51DC3D8990D /* StoreKitProductCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0396C303769401DA236C1527 /* StoreKitProductCatalog.swift */; };
 		C2A5F22F5F23B9D2106D8168 /* LimitlessClearancePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */; };
 		C59197AFE6D361EBD8D48B44 /* NotificationInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */; };
 		C8CFAC00837A449DCC011D54 /* MembershipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450DC5444292040544994868 /* MembershipStore.swift */; };
@@ -146,6 +148,7 @@
 /* Begin PBXFileReference section */
 		02196190F4444A14882CA7C3 /* OnlineGameExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineGameExperience.swift; sourceTree = "<group>"; };
 		026F4AEBE8A76B12EE72FAC6 /* Membership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Membership.swift; sourceTree = "<group>"; };
+		0396C303769401DA236C1527 /* StoreKitProductCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitProductCatalog.swift; sourceTree = "<group>"; };
 		05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyOrbSceneView.swift; sourceTree = "<group>"; };
 		0615AC062761EBDE879255B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		086A09C277F7D2F0BACA368C /* WebAuthenticationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthenticationCoordinator.swift; sourceTree = "<group>"; };
@@ -244,6 +247,7 @@
 		E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyTheme.swift; sourceTree = "<group>"; };
 		E5974161C5FAC304DACA7C96 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		E68BF1820775925C6C61E563 /* GameRoomRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRoomRealtimeService.swift; sourceTree = "<group>"; };
+		EA17B78E221F34E47BEC5A8D /* StoreKitProductCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitProductCatalogTests.swift; sourceTree = "<group>"; };
 		EB074CEB86E78BFB857C6C47 /* SpyClashWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = SpyClashWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
 		F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInboxTests.swift; sourceTree = "<group>"; };
 		F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingView.swift; sourceTree = "<group>"; };
@@ -425,6 +429,7 @@
 				673C14A27AC3CD3669188134 /* OnlineRoundStateTests.swift */,
 				8C9BF7C89321D9588B7D95E1 /* QRScannerTests.swift */,
 				6C5B707CA0A5ADFB4E85FD4B /* SessionRestoreTests.swift */,
+				EA17B78E221F34E47BEC5A8D /* StoreKitProductCatalogTests.swift */,
 				8ADE534BA93394DA3C6521FA /* WebAuthenticationCoordinatorTests.swift */,
 				5CF183979BDB403CB777230B /* WordGenerationRetryTests.swift */,
 				C8D58811816F930A78503187 /* WordPackDraftTests.swift */,
@@ -475,6 +480,7 @@
 				A8B7F0D77CCD84E2E31D982D /* PushNotificationCoordinator.swift */,
 				1B9250197E503D48B2502EFF /* RadarNearbyService.swift */,
 				DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */,
+				0396C303769401DA236C1527 /* StoreKitProductCatalog.swift */,
 				086A09C277F7D2F0BACA368C /* WebAuthenticationCoordinator.swift */,
 			);
 			path = Services;
@@ -702,6 +708,7 @@
 				7D6221160001A1F896D98689 /* SpyOrbSceneView.swift in Sources */,
 				4BEBA1477C858A78FB3F338D /* SpyTheme.swift in Sources */,
 				CB22564E02BD266693DE55B4 /* StoreKitManager.swift in Sources */,
+				C15524D98D1FE51DC3D8990D /* StoreKitProductCatalog.swift in Sources */,
 				D93473CC1D1FCBB38C3E07C9 /* WebAuthenticationCoordinator.swift in Sources */,
 				A744EDBB751A4EB73DFC2C44 /* WelcomeView.swift in Sources */,
 				0E5B384245B705E4A0093F79 /* WordPackDraft.swift in Sources */,
@@ -739,6 +746,7 @@
 				39840D09E8474E87D45E1555 /* OnlineRoundStateTests.swift in Sources */,
 				0AD0D0575DA19A67B46A8E69 /* QRScannerTests.swift in Sources */,
 				464C102A316C7FF1D32C01CF /* SessionRestoreTests.swift in Sources */,
+				006CA900E7957F08B0E578D7 /* StoreKitProductCatalogTests.swift in Sources */,
 				443DD0D2621445DE78FD2135 /* WebAuthenticationCoordinatorTests.swift in Sources */,
 				4C3014D482C6B40EA91792A3 /* WordGenerationRetryTests.swift in Sources */,
 				397C0B1DBC891128B57E1133 /* WordPackDraftTests.swift in Sources */,
@@ -939,7 +947,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 151;
+				CURRENT_PROJECT_VERSION = 152;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -997,7 +1005,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 151;
+				CURRENT_PROJECT_VERSION = 152;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
