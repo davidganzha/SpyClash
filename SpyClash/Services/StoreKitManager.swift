@@ -105,7 +105,7 @@ final class AppStoreTransactionDeliveryStore {
         let task = Task {
             let response = try await client.syncAppStoreTransaction(signedTransaction: signedTransaction)
             try requireScope(expected)
-            guard response.acceptsDelivery(for: productID) else { throw MembershipError.verificationFailed }
+            guard response.acceptsDelivery(for: productID) else { throw AppStoreDeliveryError.responseRejected }
             await finish()
             try requireScope(expected)
             return response
@@ -148,6 +148,7 @@ final class StoreKitManager {
     @ObservationIgnored private let productCatalog: StoreKitProductCatalog<Product>
     private(set) var state: LimitlessPurchaseState = .idle
     private(set) var errorMessage: String?
+    private(set) var operationFailure: StoreKitOperationFailure?
     @ObservationIgnored private let client: Base44Client
     @ObservationIgnored private var scope = MembershipScope(userID: nil, accessToken: nil)
     @ObservationIgnored private var generation = 0
@@ -195,7 +196,7 @@ final class StoreKitManager {
                 let expected = self.generation
                 let operation = self.operationRevision
                 do {
-                    let response = try await self.persist(verification, generation: expected)
+                    let response = try await self.persist(verification, generation: expected, origin: .update)
                     try self.requireScope(expected)
                     guard let refreshed = await self.onEntitlementChanged?() else { throw MembershipError.unavailable }
                     try self.requireScope(expected)
@@ -207,7 +208,7 @@ final class StoreKitManager {
                     // Account rotation must not permanently stop the global listener.
                     continue
                 } catch {
-                    self.failBackground(error, generation: expected, operation: operation)
+                    self.failBackground(error, generation: expected, operation: operation, origin: .update)
                 }
             }
         }
@@ -223,6 +224,7 @@ final class StoreKitManager {
         self.scope = scope
         state = .idle
         errorMessage = nil
+        operationFailure = nil
         syncGeneration = nil
     }
 
@@ -256,7 +258,7 @@ final class StoreKitManager {
             switch result {
             case .success(let verification):
                 state = .synchronizing
-                let response = try await persist(verification, generation: expected)
+                let response = try await persist(verification, generation: expected, origin: .purchase)
                 try requireScope(expected)
                 guard response.entitlement.grantsAccess else { throw MembershipError.verificationFailed }
                 guard await membership.refresh(force: true), membership.hasAccess else { throw MembershipError.unavailable }
@@ -279,18 +281,27 @@ final class StoreKitManager {
         let expected = generation
         let operation = beginOperation(.restoring)
         defer { endOperation(operation) }
+        // This context belongs to this invocation, so background work cannot
+        // change the stage reported for the user's Restore attempt.
+        var stage: StoreKitOperationStage = .appleSync
         do {
             // Only the user's Restore button may trigger Apple's authentication prompt.
             try await syncAppStore()
             try requireScope(expected)
-            let count = try await synchronize(expected)
+            stage = .reconciliation
+            let count = try await synchronize(expected, origin: .restore)
             try requireScope(expected)
-            guard let refreshed = await onEntitlementChanged?(),
-                  count == 0 || refreshed.grantsAccess() else { throw MembershipError.unavailable }
+            stage = .membershipRefresh
+            guard let refreshed = await onEntitlementChanged?() else { throw MembershipError.unavailable }
             try requireScope(expected)
+            stage = .accessCheck
+            guard count == 0 || refreshed.grantsAccess() else { throw MembershipError.unavailable }
             state = count > 0 ? .restored : .noPurchases
         } catch {
-            fail(error, generation: expected, operation: operation)
+            let reported: any Error = isCancellation(error) ? error : StoreKitOperationFailure.capture(
+                error, stage: stage, origin: .restore
+            )
+            fail(reported, generation: expected, operation: operation)
         }
     }
 
@@ -315,49 +326,69 @@ final class StoreKitManager {
         }
     }
 
-    private func synchronize(_ expected: Int) async throws -> Int {
+    private func synchronize(_ expected: Int, origin: StoreKitOperationOrigin = .activation) async throws -> Int {
         if let reconcileTransactions {
             try requireScope(expected)
-            let count = try await reconcileTransactions()
-            try requireScope(expected)
-            return count
+            do {
+                let count = try await reconcileTransactions()
+                try requireScope(expected)
+                return count
+            } catch {
+                if isCancellation(error) { throw error }
+                throw StoreKitOperationFailure.capture(error, stage: .reconciliation, origin: origin)
+            }
         }
         var reconciliation = AppStoreTransactionReconciliation()
         for await result in Transaction.unfinished {
             try requireScope(expected)
             guard result.unsafePayloadValue.productID == Self.limitlessProductID,
                   !reconciliation.contains(result.jwsRepresentation) else { continue }
-            let response = try await persist(result, generation: expected)
+            let response = try await persist(result, generation: expected, origin: origin, source: .unfinished)
             reconciliation.record(signedPayload: result.jwsRepresentation, originalID: result.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
         }
         for await result in Transaction.currentEntitlements {
             try requireScope(expected)
             guard result.unsafePayloadValue.productID == Self.limitlessProductID,
                   !reconciliation.contains(result.jwsRepresentation) else { continue }
-            let response = try await persist(result, generation: expected)
+            let response = try await persist(result, generation: expected, origin: origin, source: .current)
             reconciliation.record(signedPayload: result.jwsRepresentation, originalID: result.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
         }
         // Refunded/expired purchases disappear from currentEntitlements but their
         // latest signed transaction must still reach the canonical server verifier.
         if let latest = await Transaction.latest(for: Self.limitlessProductID),
            !reconciliation.contains(latest.jwsRepresentation) {
-            let response = try await persist(latest, generation: expected)
+            let response = try await persist(latest, generation: expected, origin: origin, source: .latest)
             reconciliation.record(signedPayload: latest.jwsRepresentation, originalID: latest.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
         }
         return reconciliation.activeCount
     }
 
-    private func persist(_ result: VerificationResult<Transaction>, generation expected: Int) async throws -> AppStoreEntitlementSyncResponse {
+    private func persist(
+        _ result: VerificationResult<Transaction>, generation expected: Int,
+        origin: StoreKitOperationOrigin, source: StoreKitTransactionSource = .none
+    ) async throws -> AppStoreEntitlementSyncResponse {
         try requireScope(expected)
-        guard case .verified(let transaction) = result,
-              transaction.productID == Self.limitlessProductID else { throw MembershipError.verificationFailed }
-        let response = try await deliveryStore.deliver(
-            signedTransaction: result.jwsRepresentation,
-            productID: transaction.productID,
-            finish: { await transaction.finish() }
-        )
-        try requireScope(expected)
-        return response
+        let transaction: Transaction
+        switch result {
+        case .verified(let verified): transaction = verified
+        case .unverified(_, let error):
+            throw StoreKitOperationFailure.capture(error, stage: .localVerification, origin: origin, source: source)
+        }
+        guard transaction.productID == Self.limitlessProductID else {
+            throw StoreKitOperationFailure.capture(MembershipError.verificationFailed, stage: .localVerification, origin: origin, source: source)
+        }
+        do {
+            let response = try await deliveryStore.deliver(
+                signedTransaction: result.jwsRepresentation,
+                productID: transaction.productID,
+                finish: { await transaction.finish() }
+            )
+            try requireScope(expected)
+            return response
+        } catch {
+            if isCancellation(error) { throw error }
+            throw StoreKitOperationFailure.capture(error, stage: .serverDelivery, origin: origin, source: source)
+        }
     }
 
     func manageSubscriptions() async throws {
@@ -376,6 +407,7 @@ final class StoreKitManager {
         operationRevision &+= 1
         state = next
         errorMessage = nil
+        operationFailure = nil
         return operationRevision
     }
 
@@ -394,20 +426,29 @@ final class StoreKitManager {
             operationMatches: operation == operationRevision, grantsAccess: grantsAccess
         ) else { return }
         errorMessage = nil
+        operationFailure = nil
         state = state.afterVerifiedUpdate(grantsAccess: grantsAccess, membershipRefreshed: true)
     }
 
-    private func failBackground(_ error: Error, generation expected: Int, operation: UInt64) {
+    private func failBackground(
+        _ error: Error, generation expected: Int, operation: UInt64,
+        origin: StoreKitOperationOrigin = .activation
+    ) {
         guard expected == generation, ownsBackgroundResult(operation),
               !isCancellation(error) else { return }
-        errorMessage = error.localizedDescription
-        state = .failed
+        recordFailure(StoreKitOperationFailure.capture(error, stage: .membershipRefresh, origin: origin))
     }
 
     private func fail(_ error: Error, generation expected: Int, operation: UInt64) {
         guard expected == generation, operation == operationRevision else { return }
         if isCancellation(error) { state = .cancelled; return }
-        errorMessage = error.localizedDescription
+        recordFailure(error)
+    }
+
+    private func recordFailure(_ error: any Error) {
+        operationFailure = error as? StoreKitOperationFailure
+        errorMessage = operationFailure?.supportCode ?? error.localizedDescription
+        operationFailure?.log()
         state = .failed
     }
 

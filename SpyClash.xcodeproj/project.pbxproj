@@ -83,6 +83,7 @@
 		BE763CD2921B74DCF33CB0EF /* SpyGameIntroScene.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7DA90F2A720D3C914DAEB5AD /* SpyGameIntroScene.swift */; };
 		BEE92851841DC7FE6D053B92 /* MembershipTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 84FC834A8A03378CFB477BB4 /* MembershipTests.swift */; };
 		C15524D98D1FE51DC3D8990D /* StoreKitProductCatalog.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0396C303769401DA236C1527 /* StoreKitProductCatalog.swift */; };
+		1F968F1A3DD2F712DD74040E /* StoreKitOperationFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = C6116D140A92D15E8BD5847B /* StoreKitOperationFailure.swift */; };
 		C2A5F22F5F23B9D2106D8168 /* LimitlessClearancePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */; };
 		C59197AFE6D361EBD8D48B44 /* NotificationInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */; };
 		C8CFAC00837A449DCC011D54 /* MembershipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450DC5444292040544994868 /* MembershipStore.swift */; };
@@ -150,6 +151,7 @@
 		02196190F4444A14882CA7C3 /* OnlineGameExperience.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineGameExperience.swift; sourceTree = "<group>"; };
 		026F4AEBE8A76B12EE72FAC6 /* Membership.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Membership.swift; sourceTree = "<group>"; };
 		0396C303769401DA236C1527 /* StoreKitProductCatalog.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitProductCatalog.swift; sourceTree = "<group>"; };
+		C6116D140A92D15E8BD5847B /* StoreKitOperationFailure.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitOperationFailure.swift; sourceTree = "<group>"; };
 		05EC9F49E8EAD9FFF41E783E /* SpyOrbSceneView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyOrbSceneView.swift; sourceTree = "<group>"; };
 		0615AC062761EBDE879255B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		086A09C277F7D2F0BACA368C /* WebAuthenticationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthenticationCoordinator.swift; sourceTree = "<group>"; };
@@ -484,6 +486,7 @@
 				1B9250197E503D48B2502EFF /* RadarNearbyService.swift */,
 				DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */,
 				0396C303769401DA236C1527 /* StoreKitProductCatalog.swift */,
+				C6116D140A92D15E8BD5847B /* StoreKitOperationFailure.swift */,
 				086A09C277F7D2F0BACA368C /* WebAuthenticationCoordinator.swift */,
 			);
 			path = Services;
@@ -712,6 +715,7 @@
 				4BEBA1477C858A78FB3F338D /* SpyTheme.swift in Sources */,
 				CB22564E02BD266693DE55B4 /* StoreKitManager.swift in Sources */,
 				C15524D98D1FE51DC3D8990D /* StoreKitProductCatalog.swift in Sources */,
+				1F968F1A3DD2F712DD74040E /* StoreKitOperationFailure.swift in Sources */,
 				D93473CC1D1FCBB38C3E07C9 /* WebAuthenticationCoordinator.swift in Sources */,
 				A744EDBB751A4EB73DFC2C44 /* WelcomeView.swift in Sources */,
 				0E5B384245B705E4A0093F79 /* WordPackDraft.swift in Sources */,
@@ -951,7 +955,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 154;
+				CURRENT_PROJECT_VERSION = 155;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -1009,7 +1013,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 154;
+				CURRENT_PROJECT_VERSION = 155;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;

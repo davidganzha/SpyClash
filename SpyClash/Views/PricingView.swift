@@ -278,7 +278,7 @@ struct PricingView: View {
         case .pending: copy.pending
         case .purchased, .restored: copy.synchronized
         case .noPurchases: copy.noPurchases
-        case .failed: copy.failed
+        case .failed: store.operationFailure.map { copy.operationFailed($0) } ?? copy.failed
         default: nil
         }
     }
@@ -428,6 +428,61 @@ struct LimitlessCopy {
     var pending: String { text("Awaiting Apple's purchase approval. Access will update after confirmation.", "Ожидаем одобрения покупки Apple. Доступ обновится после подтверждения.", "Esperando aprobación de Apple. El acceso se actualizará tras confirmar.", "Очікуємо схвалення купівлі Apple. Доступ оновиться після підтвердження.") }
     var synchronized: String { text("Purchase verified. Access synchronized.", "Покупка проверена. Доступ синхронизирован.", "Compra verificada. Acceso sincronizado.", "Купівлю перевірено. Доступ синхронізовано.") }
     var noPurchases: String { text("No active Apple purchase was found for this account.", "Активная покупка Apple для этого аккаунта не найдена.", "No se encontró una compra activa de Apple para esta cuenta.", "Активну купівлю Apple для цього акаунта не знайдено.") }
+    func operationFailed(_ failure: StoreKitOperationFailure) -> String {
+        let message: String
+        switch failure.stage {
+        case .appleSync:
+            message = text(
+                "Purchases could not be synchronized with App Store.",
+                "Не удалось синхронизировать покупки с App Store.",
+                "No se pudieron sincronizar las compras con App Store.",
+                "Не вдалося синхронізувати покупки з App Store."
+            )
+        case .localVerification:
+            message = text(
+                "The purchase returned by App Store could not be verified.",
+                "Не удалось проверить покупку, полученную от App Store.",
+                "No se pudo verificar la compra recibida de App Store.",
+                "Не вдалося перевірити купівлю, отриману від App Store."
+            )
+        case .serverDelivery:
+            message = text(
+                "Purchase verification with the server could not be completed.",
+                "Не удалось завершить проверку покупки на сервере.",
+                "No se pudo completar la verificación de la compra con el servidor.",
+                "Не вдалося завершити перевірку купівлі на сервері."
+            )
+        case .serverContract:
+            message = text(
+                "The server response did not confirm the purchase.",
+                "Ответ сервера не подтвердил покупку.",
+                "La respuesta del servidor no confirmó la compra.",
+                "Відповідь сервера не підтвердила купівлю."
+            )
+        case .membershipRefresh, .accessCheck:
+            message = text(
+                "Subscription access could not be updated.",
+                "Не удалось обновить доступ по подписке.",
+                "No se pudo actualizar el acceso de la suscripción.",
+                "Не вдалося оновити доступ за підпискою."
+            )
+        case .reconciliation:
+            message = text(
+                "Purchase synchronization could not be completed.",
+                "Не удалось завершить синхронизацию покупок.",
+                "No se pudo completar la sincronización de las compras.",
+                "Не вдалося завершити синхронізацію покупок."
+            )
+        }
+        let guidance = text(
+            "Try Restore Purchases again later. Restore won't charge you again.",
+            "Повтори восстановление покупок позже. Повторной оплаты не будет.",
+            "Intenta restaurar las compras más tarde. Restaurar no vuelve a cobrar.",
+            "Повтори відновлення покупок пізніше. Повторної оплати не буде."
+        )
+        let codeLabel = text("Support code", "Код для поддержки", "Código para soporte", "Код для підтримки")
+        return "\(message) \(guidance)\n\(codeLabel): \(failure.supportCode)"
+    }
     var failed: String { text("The operation could not be verified. Retry or restore purchases. You will not be charged again by Restore.", "Не удалось подтвердить операцию. Повтори попытку или восстанови покупки. Восстановление не списывает оплату повторно.", "No se pudo verificar la operación. Reintenta o restaura las compras. Restaurar no vuelve a cobrar.", "Не вдалося підтвердити операцію. Повтори спробу або віднови покупки. Відновлення не списує оплату повторно.") }
 }
 
