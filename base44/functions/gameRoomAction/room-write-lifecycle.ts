@@ -23,7 +23,9 @@ const ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS = [
   800,
   1_000,
 ];
-const ROOM_WRITE_LEASE_RELEASE_ATTEMPTS = 3;
+// Cleanup must outlast a brief shared storage outage. Retry only failed exact
+// leases, with one delay per round for the whole participant set.
+const ROOM_WRITE_LEASE_RELEASE_BACKOFF_MILLISECONDS = [250, 750, 1_500];
 // Ownership acquisition remains ordered. Independent checks and exact-token
 // releases can overlap, without holding every participant behind N round trips.
 const ROOM_LEASE_IO_CONCURRENCY = 4;
@@ -263,39 +265,38 @@ async function releaseRoomWriteLeases(
   release: ReleaseRoomWriterLease,
   delay: RoomWriteLeaseDelay,
 ): Promise<unknown[]> {
-  const failures: unknown[] = [];
-  const pending = [...leases].reverse();
+  let pending = [...leases].reverse();
   for (
-    let offset = 0;
-    offset < pending.length;
-    offset += ROOM_LEASE_IO_CONCURRENCY
+    let attempt = 0;
+    pending.length > 0;
+    attempt += 1
   ) {
-    const results = await Promise.allSettled(
-      pending.slice(offset, offset + ROOM_LEASE_IO_CONCURRENCY).map(
-        async (lease) => {
-          for (
-            let attempt = 0;
-            attempt < ROOM_WRITE_LEASE_RELEASE_ATTEMPTS;
-            attempt += 1
-          ) {
-            try {
-              await release(lifecycleStore, lease);
-              return;
-            } catch (error) {
-              if (attempt === ROOM_WRITE_LEASE_RELEASE_ATTEMPTS - 1) {
-                throw error;
-              }
-              await delay(ROOM_WRITE_LEASE_BACKOFF_MILLISECONDS[attempt]);
-            }
-          }
-        },
-      ),
-    );
-    for (const result of results) {
-      if (result.status === "rejected") failures.push(result.reason);
+    const failedLeases: BillingIdentityLease[] = [];
+    const failures: unknown[] = [];
+    for (
+      let offset = 0;
+      offset < pending.length;
+      offset += ROOM_LEASE_IO_CONCURRENCY
+    ) {
+      const batch = pending.slice(offset, offset + ROOM_LEASE_IO_CONCURRENCY);
+      const results = await Promise.allSettled(
+        batch.map(async (lease) => await release(lifecycleStore, lease)),
+      );
+      results.forEach((result, index) => {
+        if (result.status === "rejected") {
+          failedLeases.push(batch[index]);
+          failures.push(result.reason);
+        }
+      });
     }
+    if (!failures.length) return [];
+    if (attempt === ROOM_WRITE_LEASE_RELEASE_BACKOFF_MILLISECONDS.length) {
+      return failures;
+    }
+    await delay(ROOM_WRITE_LEASE_RELEASE_BACKOFF_MILLISECONDS[attempt]);
+    pending = failedLeases;
   }
-  return failures;
+  return [];
 }
 
 export async function withRoomWriteLeases<T>(input: {

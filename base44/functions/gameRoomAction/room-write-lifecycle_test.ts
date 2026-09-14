@@ -1,7 +1,9 @@
 import { assertEquals, assertRejects, assertThrows } from "jsr:@std/assert@1";
 import {
+  acquireBillingWriterLease,
   type BillingIdentityLease,
   BillingIdentityLifecycleError,
+  releaseBillingWriterLease,
 } from "./billing-identity-lifecycle.ts";
 import {
   assertExactRoomLeaseCoverage,
@@ -626,7 +628,7 @@ Deno.test("partial lease release failure aborts acquisition retry", async () => 
   assertEquals(error, releaseError);
   assertEquals(acquireCalls, 2);
   assertEquals(actionCalls, 0);
-  assertEquals(delayCalls, 2);
+  assertEquals(delayCalls, 3);
 });
 
 Deno.test("committed action result survives bounded release failure", async () => {
@@ -666,8 +668,8 @@ Deno.test("committed action result survives bounded release failure", async () =
     console.error = originalConsoleError;
   }
 
-  assertEquals(releaseCalls, 3);
-  assertEquals(delays, [25, 50]);
+  assertEquals(releaseCalls, 4);
+  assertEquals(delays, [250, 750, 1_500]);
   assertEquals(loggedFailures, 1);
 });
 
@@ -799,7 +801,7 @@ Deno.test("one exhausted cleanup never skips another participant or releases the
           return slow.promise;
         }
         failedAttempts += 1;
-        if (failedAttempts === 3) failedFinished.resolve();
+        if (failedAttempts === 4) failedFinished.resolve();
         return Promise.reject(new Error("release unavailable"));
       },
       action: () => Promise.resolve("committed once"),
@@ -808,13 +810,227 @@ Deno.test("one exhausted cleanup never skips another participant or releases the
       return value;
     });
     await slowStarted.promise;
-    await failedFinished.promise;
-    assertEquals(failedAttempts, 3);
+    assertEquals(failedAttempts, 1);
     assertEquals(settled, false);
     slow.resolve();
+    await failedFinished.promise;
     assertEquals(await operation, "committed once");
+    assertEquals(failedAttempts, 4);
     assertEquals(logs, 1);
   } finally {
     console.error = originalLog;
   }
+});
+
+function cleanupOutageFixture() {
+  type Row = Record<string, unknown>;
+  const records: Row[] = [];
+  const epoch = Date.parse("2026-09-12T16:18:00.000Z");
+  let elapsed = 0;
+  let outageUntil = 0;
+  let failedWrites = 0;
+  let sequence = 0;
+  const now = () => new Date(epoch + elapsed);
+  const randomUUID = () => `cleanup-fixture-${++sequence}`;
+  const store = {
+    filter(
+      filter: Row,
+      _sort: string,
+      limit: number,
+      skip: number,
+    ) {
+      if (elapsed < outageUntil) {
+        return Promise.reject(new Error("temporary lifecycle read outage"));
+      }
+      return Promise.resolve(
+        records.filter((record) =>
+          Object.entries(filter).every(([key, value]) => record[key] === value)
+        ).slice(skip, skip + limit).map((record) => ({ ...record })),
+      );
+    },
+    create(value: Row) {
+      const record = {
+        ...value,
+        id: `record-${records.length + 1}`,
+        created_date: now().toISOString(),
+        updated_date: now().toISOString(),
+      };
+      records.push(record);
+      return Promise.resolve({ ...record });
+    },
+    updateMany(filter: Row, update: { $set: Row }) {
+      if (elapsed < outageUntil) {
+        failedWrites += 1;
+        return Promise.reject(new Error("temporary lifecycle write outage"));
+      }
+      let updated = 0;
+      for (const record of records) {
+        if (
+          Object.entries(filter).every(([key, value]) => record[key] === value)
+        ) {
+          Object.assign(record, update.$set, {
+            updated_date: now().toISOString(),
+          });
+          updated += 1;
+        }
+      }
+      return Promise.resolve({ updated });
+    },
+  };
+  const delays: number[] = [];
+  return {
+    records,
+    delays,
+    store,
+    acquire: (lifecycleStore: unknown, userID: string) =>
+      acquireBillingWriterLease(lifecycleStore, userID, now, randomUUID),
+    release: (lifecycleStore: unknown, current: BillingIdentityLease) =>
+      releaseBillingWriterLease(lifecycleStore, current, now(), randomUUID),
+    delay: (milliseconds: number) => {
+      delays.push(milliseconds);
+      const wakeAt = elapsed + milliseconds;
+      // Concurrent waits advance the same clock instead of adding their
+      // durations together as though every participant slept serially.
+      return Promise.resolve().then(() => {
+        elapsed = Math.max(elapsed, wakeAt);
+      });
+    },
+    failFor: (milliseconds: number) => {
+      outageUntil = elapsed + milliseconds;
+    },
+    failedWrites: () => failedWrites,
+  };
+}
+
+for (
+  const [outageMilliseconds, expectedDelays, expectedFailedWrites] of [
+    [100, [250], 18],
+    [900, [250, 750], 36],
+    [2_000, [250, 750, 1_500], 54],
+  ] as const
+) {
+  Deno.test(`shared ${outageMilliseconds}ms cleanup outage releases every participant before returning`, async () => {
+    const fixture = cleanupOutageFixture();
+    const userIDs = Array.from({ length: 6 }, (_, index) => `account-${index}`);
+    let actionCalls = 0;
+    const result = await withRoomWriteLeases({
+      lifecycleStore: fixture.store,
+      userIDs,
+      acquire: fixture.acquire,
+      release: fixture.release,
+      delay: fixture.delay,
+      action: () => {
+        actionCalls += 1;
+        fixture.failFor(outageMilliseconds);
+        return Promise.resolve("committed once");
+      },
+    });
+
+    assertEquals(result, "committed once");
+    assertEquals(actionCalls, 1);
+    // Real lifecycle acquisition proves no account remains behind active_lease.
+    fixture.failFor(0);
+    for (const userID of userIDs) {
+      const next = await fixture.acquire(fixture.store, userID);
+      await fixture.release(fixture.store, next);
+    }
+    assertEquals(fixture.delays, [...expectedDelays]);
+    assertEquals(fixture.failedWrites(), expectedFailedWrites);
+  });
+}
+
+Deno.test("persistent cleanup outage has one bounded wait budget across more than four owners", async () => {
+  const fixture = cleanupOutageFixture();
+  const userIDs = Array.from({ length: 6 }, (_, index) => `account-${index}`);
+  let actionCalls = 0;
+  let logs = 0;
+  const originalLog = console.error;
+  console.error = () => {
+    logs += 1;
+  };
+  try {
+    const result = await withRoomWriteLeases({
+      lifecycleStore: fixture.store,
+      userIDs,
+      acquire: fixture.acquire,
+      release: fixture.release,
+      delay: fixture.delay,
+      action: () => {
+        actionCalls += 1;
+        fixture.failFor(10_000);
+        return Promise.resolve("committed once");
+      },
+    });
+    assertEquals(result, "committed once");
+  } finally {
+    console.error = originalLog;
+  }
+  assertEquals(actionCalls, 1);
+  assertEquals(fixture.delays, [250, 750, 1_500]);
+  assertEquals(fixture.failedWrites(), 72);
+  assertEquals(logs, 1);
+  fixture.failFor(0);
+  const error = await assertRejects(
+    () => fixture.acquire(fixture.store, userIDs[0]),
+    BillingIdentityLifecycleError,
+  );
+  assertEquals(error.code, "active_lease");
+});
+
+for (const state of ["active", "deleting"]) {
+  Deno.test(`cleanup retry preserves a replacement ${state} owner`, async () => {
+    const fixture = cleanupOutageFixture();
+    let replacement: Record<string, unknown> | undefined;
+    await withRoomWriteLeases({
+      lifecycleStore: fixture.store,
+      userIDs: ["account-1"],
+      acquire: fixture.acquire,
+      release: fixture.release,
+      delay: async (milliseconds) => {
+        await fixture.delay(milliseconds);
+        Object.assign(fixture.records[0], {
+          state,
+          lease_token: `${state}:replacement`,
+          lease_until: "2026-09-12T16:29:00.000Z",
+          revision: "replacement-revision",
+        });
+        replacement = { ...fixture.records[0] };
+      },
+      action: () => {
+        fixture.failFor(100);
+        return Promise.resolve("committed");
+      },
+    });
+    assertEquals(fixture.delays, [250]);
+    assertEquals(fixture.records[0], replacement);
+  });
+}
+
+Deno.test("cleanup rounds retry only failed owners", async () => {
+  const calls = new Map<string, number>();
+  const delays: number[] = [];
+  await withRoomWriteLeases({
+    lifecycleStore: {},
+    userIDs: ["account-a", "account-b", "account-c"],
+    acquire: (_store, userID) => Promise.resolve(lease(userID)),
+    release: (_store, current) => {
+      const count = (calls.get(current.recordID) || 0) + 1;
+      calls.set(current.recordID, count);
+      if (current.recordID === "account-b-record" && count < 3) {
+        return Promise.reject(new Error("temporary release outage"));
+      }
+      return Promise.resolve();
+    },
+    delay: (milliseconds) => {
+      delays.push(milliseconds);
+      return Promise.resolve();
+    },
+    action: () => Promise.resolve(),
+  });
+  assertEquals(Object.fromEntries(calls), {
+    "account-c-record": 1,
+    "account-b-record": 3,
+    "account-a-record": 1,
+  });
+  assertEquals(delays, [250, 750]);
 });
