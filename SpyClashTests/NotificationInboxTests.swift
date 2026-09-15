@@ -4,6 +4,36 @@ import XCTest
 
 @MainActor
 final class NotificationInboxModelTests: XCTestCase {
+    func testLiveActivityRetryPolicyRequiresAnExplicitSafeConflict() {
+        for policy in [LiveActivityRegistrationRetryPolicy.standard, .deferred] {
+            XCTAssertFalse(policy.isRetryableHTTPStatus(409))
+            for code in ["active_lease", "cas_contention", "activity_owner_changed"] {
+                XCTAssertTrue(policy.isRetryable(Base44Error(
+                    message: "Busy", statusCode: 409, code: code, retryable: true
+                )))
+                XCTAssertFalse(policy.isRetryable(Base44Error(
+                    message: "Busy", statusCode: 409, code: code, retryable: false
+                )))
+            }
+            for code in [nil, "deletion_in_progress", "stale_match_binding", "invalid_live_activity_binding", "unknown"] as [String?] {
+                XCTAssertFalse(policy.isRetryable(Base44Error(
+                    message: "Conflict", statusCode: 409, code: code, retryable: true
+                )))
+            }
+            XCTAssertFalse(policy.isRetryable(CancellationError()))
+            XCTAssertFalse(policy.isRetryable(URLError(.cancelled)))
+            XCTAssertTrue(policy.isRetryable(URLError(.timedOut)))
+            XCTAssertTrue(policy.isRetryable(Base44Error(message: "Unavailable", statusCode: 503)))
+        }
+    }
+
+    func testLiveActivityRetryRespectsBoundedServerBackoff() {
+        let policy = LiveActivityRegistrationRetryPolicy.standard
+        XCTAssertEqual(policy.delayMilliseconds(afterFailedAttempt: 1, retryAfterSeconds: 2), 2_000)
+        XCTAssertEqual(policy.delayMilliseconds(afterFailedAttempt: 1, retryAfterSeconds: -1), 400)
+        XCTAssertEqual(policy.delayMilliseconds(afterFailedAttempt: 2, retryAfterSeconds: Int.max), 15_000)
+    }
+
     func testLiveActivityTransportPolicyDoesNotMultiplyCoordinatorRetries() {
         for action in [
             "register_live_activity_token",
@@ -476,6 +506,72 @@ final class NotificationInboxStoreTests: XCTestCase {
 
 @MainActor
 final class Base44ClientNotificationInboxTests: XCTestCase {
+    func testDeviceRegistrationRetriesOnlyExplicitTypedSafeConflicts() async throws {
+        defer { NotificationMockURLProtocol.requestHandler = nil }
+        let cases: [(String?, Bool?, Int)] = [
+            ("active_lease", true, 2),
+            ("device_owner_changed", true, 2),
+            ("active_lease", false, 1),
+            ("active_lease", nil, 1),
+            ("deletion_in_progress", true, 1),
+            ("unknown", true, 1),
+            (nil, true, 1)
+        ]
+        for (code, retryable, expectedRequests) in cases {
+            let recorder = NotificationRequestRecorder()
+            NotificationMockURLProtocol.requestHandler = { request in
+                try recorder.append(request)
+                if recorder.requests().count == 1 {
+                    let response = HTTPURLResponse(
+                        url: request.url!, statusCode: 409, httpVersion: nil,
+                        headerFields: ["Content-Type": "application/json", "Retry-After": "0"]
+                    )!
+                    var body: [String: Any] = ["error": "Push registration is temporarily unavailable."]
+                    if let code { body["code"] = code }
+                    if let retryable { body["retryable"] = retryable }
+                    return (response, try JSONSerialization.data(withJSONObject: body))
+                }
+                return try NotificationMockURLProtocol.response(for: request)
+            }
+            do {
+                _ = try await makeClient().registerPushDevice(
+                    installationID: "installation-a", apnsToken: "apns-token", environment: .sandbox,
+                    alertAuthorized: true, locale: "en", appVersion: "1.0"
+                )
+                XCTAssertEqual(expectedRequests, 2)
+            } catch let error as Base44Error {
+                XCTAssertEqual(expectedRequests, 1)
+                XCTAssertEqual(error.statusCode, 409)
+                XCTAssertEqual(error.code, code)
+            }
+            XCTAssertEqual(recorder.requests().count, expectedRequests)
+        }
+    }
+
+    func testLiveActivityConflictPreservesRetryAfterForCoordinator() async throws {
+        let recorder = NotificationRequestRecorder()
+        NotificationMockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let response = HTTPURLResponse(
+                url: request.url!, statusCode: 409, httpVersion: nil,
+                headerFields: ["Content-Type": "application/json", "Retry-After": "2"]
+            )!
+            return (response, Data(#"{"error":"Busy","code":"active_lease","retryable":true}"#.utf8))
+        }
+        defer { NotificationMockURLProtocol.requestHandler = nil }
+        do {
+            try await makeClient().unregisterLiveActivityToken(
+                installationID: "installation-a", tokenKind: .activity,
+                activityID: "activity-a", matchID: "match-a"
+            )
+            XCTFail("Expected the conflict to reach the coordinator.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.retryAfterSeconds, 2)
+            XCTAssertTrue(LiveActivityRegistrationRetryPolicy.standard.isRetryable(error))
+        }
+        XCTAssertEqual(recorder.requests().count, 1)
+    }
+
     func testTypedWrappersSendExactNotificationActionPayloads() async throws {
         let recorder = NotificationRequestRecorder()
         NotificationMockURLProtocol.requestHandler = { request in

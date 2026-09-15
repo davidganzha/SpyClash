@@ -16,6 +16,10 @@ function retryable(
 
 export function pushErrorResponse(error: unknown): Response {
   if (error instanceof PushContractError) {
+    if (error.status === 409 &&
+      ["device_owner_changed", "activity_owner_changed"].includes(error.code)) {
+      return retryable(error.message, 409, error.code, 1);
+    }
     if (error.status === 429 || error.status === 503) {
       return retryable(error.message, error.status, error.code, 2);
     }
@@ -26,12 +30,14 @@ export function pushErrorResponse(error: unknown): Response {
   if (error instanceof BillingIdentityLifecycleError) {
     const conflict = ["deletion_in_progress", "active_lease", "cas_contention"]
       .includes(error.code);
-    return retryable(
-      "Push registration is temporarily unavailable.",
-      conflict ? 409 : 503,
-      error.code,
-      conflict ? 1 : 2,
-    );
+    return Response.json({
+      error: "Push registration is temporarily unavailable.",
+      code: error.code,
+      retryable: error.retryable,
+    }, {
+      status: conflict ? 409 : 503,
+      ...(error.retryable ? { headers: { "Retry-After": "1" } } : {}),
+    });
   }
 
   const details = safePushErrorDetails(error);

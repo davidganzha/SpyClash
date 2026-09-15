@@ -14,6 +14,22 @@ const lease: BillingIdentityLease = {
   revision: "revision-1",
 };
 
+Deno.test("a word-pack action conflict after persistence cannot replay the action", async () => {
+  let writes = 0;
+  const error = await assertRejects(() => withWordPackWriterLease({
+    lifecycleStore: {}, userID: "u",
+    acquire: async () => lease,
+    release: async () => {},
+    action: async () => {
+      writes += 1;
+      throw new BillingIdentityLifecycleError("cas_contention", "Late conflict");
+    },
+    delay: async () => {},
+  }), BillingIdentityLifecycleError);
+  assertEquals(writes, 1);
+  assertEquals(error.retryable, false);
+});
+
 Deno.test("committed word-pack write survives lease release failure", async () => {
   const releaseErrors: unknown[] = [];
   const result = await withWordPackWriterLease({
@@ -151,7 +167,9 @@ Deno.test("word-pack action contention is never replayed", async () => {
     BillingIdentityLifecycleError,
   );
 
-  assertEquals(error, actionError);
+  assertEquals(error.code, actionError.code);
+  assertEquals(error.message, actionError.message);
+  assertEquals(error.retryable, false);
   assertEquals(acquireCalls, 1);
   assertEquals(actionCalls, 1);
 });

@@ -52,13 +52,14 @@ export function notificationErrorResponse(error: unknown): Response {
   if (error instanceof NotificationContractError) {
     const retryableLifecycleConflict = error.status === 409 &&
       ["active_lease", "cas_contention"].includes(error.code);
-    const retryable = retryableLifecycleConflict || error.status === 429 ||
-      error.status === 503;
+    const explicitRetryable = (error as { retryable?: boolean }).retryable;
+    const retryable = explicitRetryable ?? (retryableLifecycleConflict ||
+      error.status === 429 || error.status === 503);
     return Response.json(
       {
         error: error.message,
         code: error.code,
-        ...(retryable ? { retryable: true } : {}),
+        ...(explicitRetryable !== undefined ? { retryable } : retryable ? { retryable: true } : {}),
       },
       {
         status: error.status,

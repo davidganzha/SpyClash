@@ -94,7 +94,7 @@ export type RoomWriteLeaseContext = {
 function roomMembershipChanged(): Error {
   return Object.assign(
     new Error("Room membership changed while acquiring lifecycle leases."),
-    { status: 409, code: "room_membership_changed" },
+    { status: 409, code: "room_membership_changed", retryable: true },
   );
 }
 

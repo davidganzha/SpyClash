@@ -32,22 +32,35 @@ struct LiveActivityRegistrationRetryPolicy: Equatable, Sendable {
     )
     static let deferredRetryDelaySeconds = 60
 
-    func delayMilliseconds(afterFailedAttempt attempt: Int) -> Int {
+    func delayMilliseconds(afterFailedAttempt attempt: Int, retryAfterSeconds: Int? = nil) -> Int {
         let exponent = min(max(0, attempt - 1), 20)
         let multiplier = 1 << exponent
-        return min(
+        let exponentialDelay = min(
             maximumDelayMilliseconds,
             initialDelayMilliseconds * multiplier
         )
+        let serverDelay = min(max(retryAfterSeconds ?? 0, 0), 15) * 1_000
+        return max(exponentialDelay, serverDelay)
     }
 
     func isRetryableHTTPStatus(_ statusCode: Int?) -> Bool {
         guard let statusCode else { return true }
         return statusCode == 408
-            || statusCode == 409
             || statusCode == 425
             || statusCode == 429
             || (500...599).contains(statusCode)
+    }
+
+    func isRetryable(_ error: Error) -> Bool {
+        if RequestCancellationPolicy.isCancellation(error) { return false }
+        guard let error = error as? Base44Error else { return true }
+        if error.statusCode == 409 {
+            let code = error.code?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+            return error.retryable && [
+                "active_lease", "cas_contention", "activity_owner_changed"
+            ].contains(code ?? "")
+        }
+        return isRetryableHTTPStatus(error.statusCode)
     }
 }
 
@@ -477,6 +490,7 @@ final class PushNotificationCoordinator {
                       await waitForLiveActivityRetry(
                           policy: policy,
                           failedAttempt: attempt,
+                          retryAfterSeconds: (error as? Base44Error)?.retryAfterSeconds,
                           accountGeneration: request.accountGeneration
                       ) else {
                     if retryable,
@@ -534,6 +548,7 @@ final class PushNotificationCoordinator {
                       await waitForLiveActivityRetry(
                           policy: policy,
                           failedAttempt: attempt,
+                          retryAfterSeconds: (error as? Base44Error)?.retryAfterSeconds,
                           accountGeneration: request.accountGeneration
                       ) else {
                     if retryable,
@@ -687,23 +702,18 @@ final class PushNotificationCoordinator {
         _ error: Error,
         policy: LiveActivityRegistrationRetryPolicy
     ) -> Bool {
-        if error is CancellationError { return false }
-        if let urlError = error as? URLError, urlError.code == .cancelled {
-            return false
-        }
-        if let base44Error = error as? Base44Error {
-            return policy.isRetryableHTTPStatus(base44Error.statusCode)
-        }
-        return true
+        policy.isRetryable(error)
     }
 
     private func waitForLiveActivityRetry(
         policy: LiveActivityRegistrationRetryPolicy,
         failedAttempt: Int,
+        retryAfterSeconds: Int?,
         accountGeneration: UInt64
     ) async -> Bool {
         let milliseconds = policy.delayMilliseconds(
-            afterFailedAttempt: failedAttempt
+            afterFailedAttempt: failedAttempt,
+            retryAfterSeconds: retryAfterSeconds
         )
         do {
             try await Task.sleep(for: .milliseconds(milliseconds))

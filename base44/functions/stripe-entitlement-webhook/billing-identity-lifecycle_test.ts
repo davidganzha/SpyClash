@@ -271,3 +271,9 @@ Deno.test("suspended writer cannot persist after lease expiry and deletion takeo
   );
   assertEquals(error.code, "active_lease");
 });
+
+Deno.test("post-action lifecycle conflict explicitly vetoes request replay", () => {
+  const error = new BillingIdentityLifecycleError("active_lease", "Late contention", false);
+  assertEquals(error.retryable, false);
+  assertEquals(error.code, "active_lease");
+});

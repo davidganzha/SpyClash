@@ -55,6 +55,7 @@ export function createGenerationRetryTracker() {
 
       if (error instanceof BillingIdentityLifecycleError) {
         const safeConflict = hasValidatedRequestIdentity && status === 409 &&
+          error.retryable === true &&
           (error.code === "active_lease" || error.code === "cas_contention");
         return safeConflict
           ? {

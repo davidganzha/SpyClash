@@ -4,7 +4,9 @@ import {
   registerLiveActivity,
   unregisterInstallation,
   unregisterLiveActivity,
+  withPushWriterLeases,
 } from "./device-registration.ts";
+import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
 import {
   claimLiveDelivery,
   completeLiveDelivery,
@@ -66,6 +68,23 @@ async function withEncryptionSecret<T>(action: () => Promise<T>): Promise<T> {
     else Deno.env.set("PUSH_TOKEN_ENCRYPTION_KEY", previous);
   }
 }
+
+Deno.test("push partial registration cannot be retried after its lease is replaced", async () => {
+  const store = new Store();
+  let writes = 0;
+  const error = await assertRejects(() => withPushWriterLeases({
+    lifecycleStore: store, userIDs: ["u"],
+    action: async (persist) => {
+      await persist(async () => { writes += 1; });
+      store.records[0].lease_token = "active:successor";
+      store.records[0].revision = "successor";
+      await persist(async () => { writes += 1; });
+    },
+  }), BillingIdentityLifecycleError);
+  assertEquals(writes, 1);
+  assertEquals(error.retryable, false);
+  assertEquals(store.records[0].lease_token, "active:successor");
+});
 
 Deno.test("APNs token can move accounts only while both deletion-safe leases are held", async () => {
   await withEncryptionSecret(async () => {

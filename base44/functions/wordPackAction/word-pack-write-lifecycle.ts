@@ -117,7 +117,9 @@ export async function withWordPackWriterLease<T>(input: {
   try {
     result = await input.action(lease);
   } catch (error) {
-    actionError = error;
+    actionError = error instanceof BillingIdentityLifecycleError
+      ? new BillingIdentityLifecycleError(error.code, error.message, false)
+      : error;
   }
 
   const releaseError = await releaseWithRetries({

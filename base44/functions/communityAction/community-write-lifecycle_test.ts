@@ -14,6 +14,24 @@ function sequence(prefix: string) {
   return () => `${prefix}-${++value}`;
 }
 
+Deno.test("community partial action cannot be retried after its lease is replaced", async () => {
+  const store = new MockLifecycleStore();
+  let writes = 0;
+  const error = await assertRejects(() => withCommunityWriteLeases({
+    lifecycleStore: store, userIDs: ["u"],
+    action: async ({ persist }) => {
+      await persist(async () => { writes += 1; });
+      store.records[0].lease_token = "active:successor";
+      store.records[0].revision = "successor";
+      await persist(async () => { writes += 1; });
+    },
+    delay: async () => {},
+  }), BillingIdentityLifecycleError);
+  assertEquals(writes, 1);
+  assertEquals(error.retryable, false);
+  assertEquals(store.records[0].lease_token, "active:successor");
+});
+
 function lease(userID: string, attempt = 1): BillingIdentityLease {
   return {
     recordID: `${userID}-record`,

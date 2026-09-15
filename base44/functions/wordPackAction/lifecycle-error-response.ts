@@ -16,13 +16,13 @@ export function wordPackLifecycleErrorResponse(
   error: BillingIdentityLifecycleError,
 ): Response {
   const status = lifecycleStatus(error);
-  const retryable = status === 409 &&
+  const retryable = error.retryable && status === 409 &&
     ["active_lease", "cas_contention"].includes(error.code);
   return Response.json(
     {
       error: error.message,
       code: error.code,
-      ...(retryable ? { retryable: true } : {}),
+      retryable,
     },
     {
       status,

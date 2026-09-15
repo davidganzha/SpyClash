@@ -206,6 +206,10 @@ import {
   scheduledDetectiveVoteCancellationEvent,
 } from "./detective-vote-policy.ts";
 import { commitDetectiveVoteCastWithRetry } from "./detective-vote-write.ts";
+import {
+  assertSameMatch,
+  commitRoomActionTransition,
+} from "./room-action-transition.ts";
 import { reconcileDetectiveVoteCastAfterActiveIdentityLease } from "./detective-vote-lease-recovery.ts";
 import {
   activeDepartureTransition,
@@ -620,6 +624,29 @@ async function updateRoom(base44, room, data, options = {}) {
   });
 }
 
+async function updateGameplayTransition(base44, room, user, action, patch) {
+  return await commitRoomActionTransition({
+    initialRoom: room,
+    patch,
+    validate: (latest) => {
+      requirePlayer(latest, user);
+      assertSameMatch(room, latest);
+      assertRoomMutationOpen(latest);
+      if (normalizedStatus(latest) !== "playing") {
+        throw Object.assign(new Error("The game is no longer active."), {
+          status: 409,
+          code: "room_action_inactive",
+        });
+      }
+      assertGameActionAllowedWhilePaused(latest, action);
+      assertGameActionAllowedByDeadline(latest, action);
+    },
+    write: (latest, data) => updateRoom(base44, latest, data),
+    read: (roomID) => fetchRoom(base44, roomID),
+    delay,
+  });
+}
+
 async function updateRoomWithRetry(
   base44,
   room,
@@ -669,7 +696,7 @@ async function updateRoomWithRetry(
 
   throw Object.assign(
     new Error("The room update could not be verified; retry the action."),
-    { status: 409, code: "room_write_unverified" },
+    { status: 409, code: "room_write_unverified", retryable: true },
   );
 }
 
@@ -2181,6 +2208,13 @@ async function toggleReady(base44, room, user) {
     base44,
     room,
     (latest) => {
+      requirePlayer(latest, user);
+      if (normalizedStatus(latest) !== "ready_voting") {
+        throw Object.assign(new Error("Ready check is not active"), {
+          status: 409,
+          code: "ready_check_inactive",
+        });
+      }
       const ready = readyPlayers(latest);
       const nextReady = shouldBeReady
         ? uniqueStrings([...ready, user.email])
@@ -2746,7 +2780,12 @@ async function markRoleCardRead(base44, room, user, options = {}) {
   const updatedReadRoom = await updateRoomWithRetry(
     base44,
     room,
-    (latest) => roleCardReadTransitionPatch(latest, user.email),
+    (latest) => {
+      requirePlayer(latest, user);
+      assertSameMatch(room, latest);
+      assertGameActionAllowedByDeadline(latest, "mark_role_card_read");
+      return roleCardReadTransitionPatch(latest, user.email);
+    },
     (latest) =>
       cardsRead(latest).some((email) =>
         clean(email).toLocaleLowerCase() ===
@@ -2771,21 +2810,25 @@ async function markRoleCardRead(base44, room, user, options = {}) {
 }
 
 async function pauseGame(base44, room, user) {
-  const pausedAt = new Date().toISOString();
   return await updateRoomWithRetry(
     base44,
     room,
-    (latest) => pauseGameTransitionPatch(latest, user.email, pausedAt),
+    (latest) => {
+      assertSameMatch(room, latest);
+      return pauseGameTransitionPatch(latest, user.email);
+    },
     (latest) => Boolean(clean(latest.game_paused_at)),
   );
 }
 
 async function resumeGame(base44, room, user) {
-  const resumedAt = new Date().toISOString();
   return await updateRoomWithRetry(
     base44,
     room,
-    (latest) => resumeGameTransitionPatch(latest, user.email, resumedAt),
+    (latest) => {
+      assertSameMatch(room, latest);
+      return resumeGameTransitionPatch(latest, user.email);
+    },
     (latest) => !clean(latest.game_paused_at),
   );
 }
@@ -2803,7 +2846,13 @@ async function advanceQuestion(base44, room, user) {
       },
     );
   }
-  return await updateRoom(base44, room, questionAdvancePatch(room, active));
+  return await updateGameplayTransition(
+    base44,
+    room,
+    user,
+    "advance_question",
+    questionAdvancePatch(room, active),
+  );
 }
 
 async function advanceAssociation(base44, room, user) {
@@ -2832,12 +2881,18 @@ async function advanceAssociation(base44, room, user) {
     ? Number(room.round_number || 1) + 1
     : Number(room.round_number || 1);
 
-  return await updateRoom(base44, room, {
-    round_number: nextRound,
-    current_asker_email: transition.speakerEmail,
-    current_answer: encodeAssociationTurnState(transition.state),
-    question_phase: "asking",
-  });
+  return await updateGameplayTransition(
+    base44,
+    room,
+    user,
+    "advance_association",
+    {
+      round_number: nextRound,
+      current_asker_email: transition.speakerEmail,
+      current_answer: encodeAssociationTurnState(transition.state),
+      question_phase: "asking",
+    },
+  );
 }
 
 async function startAssociation(base44, room, user) {
@@ -2874,11 +2929,17 @@ async function startAssociation(base44, room, user) {
       : room;
   }
   const initial = initialAssociationTurn({ activePlayers: active });
-  return await updateRoom(base44, room, {
-    current_asker_email: initial.speakerEmail,
-    current_answer: encodeAssociationTurnState(initial.state),
-    question_phase: "asking",
-  });
+  return await updateGameplayTransition(
+    base44,
+    room,
+    user,
+    "start_association",
+    {
+      current_asker_email: initial.speakerEmail,
+      current_answer: encodeAssociationTurnState(initial.state),
+      question_phase: "asking",
+    },
+  );
 }
 
 async function stopAssociationSpin(base44, room, user) {
@@ -2899,9 +2960,15 @@ async function stopAssociationSpin(base44, room, user) {
   if (!state.spinning && clean(room.current_answer) === encodedState) {
     return room;
   }
-  return await updateRoom(base44, room, {
-    current_answer: encodedState,
-  });
+  return await updateGameplayTransition(
+    base44,
+    room,
+    user,
+    "stop_association_spin",
+    {
+      current_answer: encodedState,
+    },
+  );
 }
 
 async function markAnswerHeard(base44, room, user) {
@@ -2936,7 +3003,7 @@ async function continueRound(base44, room, user) {
     });
   }
   const turnPatch = questionContinueTurnPatch(room, activePlayers(room));
-  return await updateRoom(base44, room, {
+  return await updateGameplayTransition(base44, room, user, "continue_round", {
     ...turnPatch,
     question_phase: "asking",
     round_number: nextRoundNumber(room.round_number),
@@ -2972,6 +3039,9 @@ async function requestVote(base44, room, user, body) {
     base44,
     room,
     (latest) => {
+      requirePlayer(latest, user);
+      assertGameActionAllowedWhilePaused(latest, "request_vote");
+      assertGameActionAllowedByDeadline(latest, "request_vote");
       if (
         assertActionMatchGeneration(latest, body) !== expectedMatchID ||
         normalizedStatus(latest) !== "playing"

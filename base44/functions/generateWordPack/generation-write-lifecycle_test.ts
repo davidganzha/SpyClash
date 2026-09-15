@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import {
+  acquireBillingWriterLease,
   BillingIdentityLifecycleError,
   billingIdentitySubjectKey,
 } from "./billing-identity-lifecycle.ts";
@@ -153,10 +154,94 @@ Deno.test("generation stops after bounded transient lease retries", async () => 
   );
 
   assertEquals(error.code, "active_lease");
+  assertEquals(error.retryable, true);
   assertEquals(acquireCalls, 4);
   assertEquals(actionCalls, 0);
   assertEquals(releaseCalls, 0);
   assertEquals(delays, [180, 520, 1_300]);
+});
+
+for (const code of ["active_lease", "cas_contention"] as const) {
+  Deno.test(`late generation ${code} cannot replay charged quota and provider work`, async () => {
+    const store = new MockLifecycleStore();
+    let requests = 0;
+    let quotaCharges = 0;
+    let providerCalls = 0;
+    let resultWrites = 0;
+    let lateAcquisitions = 0;
+    const run = () => {
+      requests += 1;
+      return withGenerationWriterLease({
+        lifecycleStore: store,
+        userID: "user-1",
+        nowFactory: () => START,
+        randomUUID: sequence(`generation-${requests}`),
+        acquire: (lifecycle, userID, now, uuid) => {
+          if (userID === "user-1" && providerCalls > 0) {
+            lateAcquisitions += 1;
+            throw new BillingIdentityLifecycleError(code, "late contention");
+          }
+          return acquireBillingWriterLease(lifecycle, userID, now, uuid);
+        },
+        delay: () => Promise.resolve(),
+        action: async (guard) => {
+          await guard.boundary(() => {
+            quotaCharges += 1;
+            return Promise.resolve();
+          });
+          await guard.assertAvailable();
+          providerCalls += 1;
+          await guard.boundary(() => {
+            resultWrites += 1;
+            return Promise.resolve();
+          });
+        },
+      });
+    };
+    const error = await assertRejects(run, BillingIdentityLifecycleError);
+    // Emulate the client's bounded retry decision from the public error flag.
+    if (error.retryable) {
+      await assertRejects(run, BillingIdentityLifecycleError);
+    }
+    assertEquals(error.code, code);
+    assertEquals(error.retryable, false);
+    assertEquals(requests, 1);
+    assertEquals(quotaCharges, 1);
+    assertEquals(providerCalls, 1);
+    assertEquals(resultWrites, 0);
+    assertEquals(lateAcquisitions, 4);
+  });
+}
+
+Deno.test("generation acquisition preserves an explicit non-retryable lifecycle decision", async () => {
+  let acquisitions = 0;
+  let actions = 0;
+  let delays = 0;
+  const error = await assertRejects(() =>
+    withGenerationWriterLease({
+      lifecycleStore: new MockLifecycleStore(),
+      userID: "user-1",
+      acquire: () => {
+        acquisitions += 1;
+        throw new BillingIdentityLifecycleError(
+          "active_lease",
+          "action already started",
+          false,
+        );
+      },
+      delay: () => {
+        delays += 1;
+        return Promise.resolve();
+      },
+      action: () => {
+        actions += 1;
+        return Promise.resolve();
+      },
+    }), BillingIdentityLifecycleError);
+  assertEquals(error.retryable, false);
+  assertEquals(acquisitions, 1);
+  assertEquals(actions, 0);
+  assertEquals(delays, 0);
 });
 
 Deno.test("generation does not retry account deletion in progress", async () => {

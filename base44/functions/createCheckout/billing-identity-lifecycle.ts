@@ -43,10 +43,11 @@ export class BillingIdentityLifecycleError extends Error {
   constructor(
     public readonly code: BillingIdentityLifecycleErrorCode,
     message: string,
+    retryable = code === "active_lease" || code === "cas_contention",
   ) {
     super(message);
     this.name = "BillingIdentityLifecycleError";
-    this.retryable = code === "active_lease" || code === "cas_contention";
+    this.retryable = retryable;
   }
 }
 

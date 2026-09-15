@@ -14,8 +14,13 @@ function clean(value: unknown): string {
 export function roomWriteRevision(
   room: Entity | null | undefined,
 ): number | null {
-  const candidate = Number(room?.room_revision);
-  return Number.isSafeInteger(candidate) && candidate >= 0 ? candidate : null;
+  const candidate = room?.room_revision;
+  // CAS matches the stored value, not its numeric coercion. Treating null,
+  // empty strings or false as revision zero creates a permanent CAS failure.
+  return typeof candidate === "number" && Number.isSafeInteger(candidate) &&
+      candidate >= 0
+    ? candidate
+    : null;
 }
 
 export function isRoomWriteCASConflict(error: unknown): boolean {

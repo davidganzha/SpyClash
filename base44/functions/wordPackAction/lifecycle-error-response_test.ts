@@ -29,6 +29,7 @@ Deno.test("word-pack deletion and ambiguous lifecycle stay fail-closed", async (
   assertEquals(await deletion.json(), {
     error: "Account deletion is in progress.",
     code: "deletion_in_progress",
+    retryable: false,
   });
 
   const ambiguous = wordPackLifecycleErrorResponse(
@@ -42,5 +43,15 @@ Deno.test("word-pack deletion and ambiguous lifecycle stay fail-closed", async (
   assertEquals(await ambiguous.json(), {
     error: "Lifecycle state is ambiguous.",
     code: "ambiguous",
+    retryable: false,
   });
+});
+
+Deno.test("word-pack lifecycle response preserves a post-action retry veto", async () => {
+  const response = wordPackLifecycleErrorResponse(
+    new BillingIdentityLifecycleError("cas_contention", "Late conflict", false),
+  );
+  assertEquals(response.status, 409);
+  assertEquals(response.headers.get("Retry-After"), null);
+  assertEquals((await response.json()).retryable, false);
 });

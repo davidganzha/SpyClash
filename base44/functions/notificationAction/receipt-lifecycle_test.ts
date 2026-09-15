@@ -1,5 +1,6 @@
 import { assertEquals, assertRejects } from "jsr:@std/assert@1";
 import { NotificationContractError } from "./contracts.ts";
+import { withSerializedAdminMutation } from "./admin-publish-lifecycle.ts";
 import { withNotificationWriteLease } from "./receipt-lifecycle.ts";
 
 type Row = Record<string, any>;
@@ -237,4 +238,76 @@ Deno.test("failed notification cleanup cannot turn a committed receipt into an e
   assertEquals(writes, 1);
   assertEquals(releaseCalls, 3);
   assertEquals(releaseErrors.length, 1);
+});
+
+Deno.test("notification receipt commit survives unavailable lease cleanup", async () => {
+  const store = new Store();
+  const update = store.updateMany.bind(store);
+  let releases = 0;
+  store.updateMany = async (filter, patch) => {
+    if (String(patch.$set?.lease_token).startsWith("released:")) {
+      releases += 1;
+      throw new Error("cleanup unavailable");
+    }
+    return await update(filter, patch);
+  };
+  let writes = 0;
+  const result = await withNotificationWriteLease({
+    lifecycleStore: store, userID: "u",
+    action: async (persist) => await persist(async () => { writes += 1; return "committed"; }),
+  });
+  assertEquals(result, "committed");
+  assertEquals(writes, 1);
+  assertEquals(releases, 9);
+});
+
+Deno.test("notification acquisition reconciles a lost successful CAS reply", async () => {
+  const store = new Store();
+  const update = store.updateMany.bind(store);
+  let lost = false;
+  store.updateMany = async (filter, patch) => {
+    const result = await update(filter, patch);
+    if (!lost && String(patch.$set?.lease_token).startsWith("active:")) {
+      lost = true;
+      throw new Error("response lost after acquiring");
+    }
+    return result;
+  };
+  let writes = 0;
+  await withNotificationWriteLease({
+    lifecycleStore: store, userID: "u",
+    action: async (persist) => await persist(async () => { writes += 1; }),
+  });
+  assertEquals(writes, 1);
+  assertEquals(lost, true);
+});
+
+Deno.test("admin mutation cannot replay a partially committed action on CAS conflict", async () => {
+  const store = new Store();
+  let actions = 0;
+  await assertRejects(() => withSerializedAdminMutation({
+    lifecycleStore: store, adminUserID: "admin", operationKey: "announcement",
+    action: async (persist) => {
+      await persist(async () => { actions += 1; });
+      throw new NotificationContractError("late conflict", 409, "cas_contention");
+    },
+  }), NotificationContractError);
+  assertEquals(actions, 1);
+});
+
+Deno.test("notification refuses a replaced lease before the next write", async () => {
+  const store = new Store();
+  let writes = 0;
+  const error = await assertRejects(() => withNotificationWriteLease({
+    lifecycleStore: store, userID: "u",
+    action: async (persist) => {
+      await persist(async () => { writes += 1; });
+      store.records[0].revision = "successor";
+      store.records[0].lease_token = "active:successor";
+      await persist(async () => { writes += 1; });
+    },
+  }), NotificationContractError);
+  assertEquals(writes, 1);
+  assertEquals((error as NotificationContractError & {retryable: boolean}).retryable, false);
+  assertEquals(store.records[0].lease_token, "active:successor");
 });

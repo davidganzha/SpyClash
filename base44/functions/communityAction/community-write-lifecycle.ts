@@ -189,6 +189,7 @@ export async function withCommunityWriteLeases<T>(input: {
     }
   }
 
+  let actionStarted = false;
   try {
     const assertLeases = async () => {
       const now = nowFactory();
@@ -197,6 +198,7 @@ export async function withCommunityWriteLeases<T>(input: {
       }
     };
     await assertLeases();
+    actionStarted = true;
     return await input.action({
       persist: async <R>(writer: () => Promise<R>) => {
         // This is the persistence boundary. Do not perform provider/entity
@@ -205,6 +207,11 @@ export async function withCommunityWriteLeases<T>(input: {
         return await writer();
       },
     });
+  } catch (error) {
+    if (actionStarted && error instanceof BillingIdentityLifecycleError) {
+      throw new BillingIdentityLifecycleError(error.code, error.message, false);
+    }
+    throw error;
   } finally {
     const releaseFailures = await releaseCommunityWriteLeases({
       lifecycleStore: input.lifecycleStore,

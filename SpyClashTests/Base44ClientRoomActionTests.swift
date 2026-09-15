@@ -4,6 +4,146 @@ import XCTest
 
 @MainActor
 final class Base44ClientRoomActionTests: XCTestCase {
+    func testJoinByCodeAndRestoredRoomShareOneTypedRetryBudget() async throws {
+        for joinByCode in [true, false] {
+            let recorder = RequestRecorder()
+            MockURLProtocol.requestHandler = { request in
+                try recorder.append(request)
+                switch try recorder.requestBodies().count {
+                case 1:
+                    return MockURLProtocol.leaseConflictResponse(
+                        for: request, code: "room_membership_changed", retryable: true
+                    )
+                case 2:
+                    return MockURLProtocol.leaseConflictResponse(
+                        for: request, code: "room_write_unverified", retryable: true
+                    )
+                default:
+                    return MockURLProtocol.roomResponse(for: request)
+                }
+            }
+            defer { MockURLProtocol.requestHandler = nil }
+            let client = makeClient()
+            let user = makeRadarUser(id: "joiner", avatar: "🕵️", rating: 0, policy: .ask)
+            if joinByCode {
+                _ = try await client.join(code: " abc123\n", user: user)
+            } else {
+                _ = try await client.resumeWaitingRoom(GameRoom.previewRoom(status: "waiting"), user: user)
+            }
+            let bodies = try recorder.requestBodies()
+            XCTAssertEqual(bodies.count, 3)
+            XCTAssertTrue(bodies.allSatisfy { NSDictionary(dictionary: $0).isEqual(to: bodies[0]) })
+            XCTAssertEqual(bodies[0]["action"] as? String, "join_room")
+            if joinByCode { XCTAssertEqual(bodies[0]["room_code"] as? String, "ABC123") }
+        }
+    }
+
+    func testJoinExhaustionPreservesTypedConflictWithoutMultiplyingAttempts() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.leaseConflictResponse(for: request, code: "active_lease", retryable: true)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+        do {
+            _ = try await makeClient().join(
+                code: "ABC123", user: makeRadarUser(id: "joiner", avatar: "🕵️", rating: 0, policy: .ask)
+            )
+            XCTFail("Expected bounded retry exhaustion.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.code, "active_lease")
+            XCTAssertTrue(error.retryable)
+        }
+        XCTAssertEqual(try recorder.requestBodies().count, 3)
+    }
+
+    func testJoinCancelsRetryWhenAccountChanges() async throws {
+        let firstRequest = expectation(description: "First join reached transport")
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            firstRequest.fulfill()
+            return MockURLProtocol.leaseConflictResponse(
+                for: request, code: "room_write_unverified", retryable: true
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+        let client = makeClient()
+        let user = makeRadarUser(id: "joiner", avatar: "🕵️", rating: 0, policy: .ask)
+        let joining = Task { try await client.join(code: "ABC123", user: user) }
+        await fulfillment(of: [firstRequest], timeout: 2)
+        client.setToken("other-account-token")
+        do {
+            _ = try await joining.value
+            XCTFail("A join from the old account must be cancelled.")
+        } catch {
+            XCTAssertTrue(RequestCancellationPolicy.isCancellation(error))
+        }
+        XCTAssertEqual(try recorder.requestBodies().count, 1)
+    }
+
+    func testJoinConflictPolicyNeverRetriesSafetyConflictsOrEnglishMessageMatches() {
+        for code in [nil, "participant_identity_mismatch", "participant_missing", "room_departed", "deletion_in_progress", "unknown"] as [String?] {
+            let error = Base44Error(
+                message: "Room membership changed; room update could not be verified; retry",
+                statusCode: 409, code: code, retryable: true
+            )
+            XCTAssertNil(RoomJoinRetryPolicy.delayMilliseconds(for: error, completedRetries: 0))
+        }
+        for code in ["active_lease", "cas_contention", "room_membership_changed", "room_write_unverified"] {
+            let error = Base44Error(message: "Busy", statusCode: 409, code: code, retryable: false)
+            XCTAssertNil(RoomJoinRetryPolicy.delayMilliseconds(for: error, completedRetries: 0))
+        }
+        let unverifiedWrite = Base44Error(message: "Busy", statusCode: 409, code: "room_write_unverified", retryable: true)
+        XCTAssertFalse(unverifiedWrite.isRetryableRoomActionConflict)
+        let lease = Base44Error(message: "Busy", statusCode: 409, code: "active_lease", retryable: true, retryAfterSeconds: 2)
+        XCTAssertEqual(RoomJoinRetryPolicy.delayMilliseconds(for: lease, completedRetries: 0), 2_000)
+    }
+
+    func testJoinRetryStopsWhenSessionRestoresTheSameToken() async throws {
+        let firstRequest = expectation(description: "First join reached transport")
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if try recorder.requestBodies().count == 1 { firstRequest.fulfill() }
+            return MockURLProtocol.leaseConflictResponse(for: request, code: "active_lease", retryable: true)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+        let client = makeClient()
+        let user = makeRadarUser(id: "joiner", avatar: "🕵️", rating: 0, policy: .ask)
+        let joining = Task { try await client.join(code: "ABC123", user: user) }
+        await fulfillment(of: [firstRequest], timeout: 2)
+        client.clearToken()
+        client.setToken("test-token")
+        do {
+            _ = try await joining.value
+            XCTFail("The old session must not continue after logout and restoration.")
+        } catch {
+            XCTAssertTrue(RequestCancellationPolicy.isCancellation(error))
+        }
+        XCTAssertEqual(try recorder.requestBodies().count, 1)
+    }
+
+    func testRoomInviteCleanupRetainsTransientUnknownAndSafetyConflicts() {
+        func resolves(_ error: Base44Error) -> Bool {
+            CommunityRoomInviteCleanupPolicy.shouldClearAfterFailure(error)
+        }
+        for code in [nil, "active_lease", "cas_contention", "deletion_in_progress", "unknown"] as [String?] {
+            XCTAssertFalse(resolves(Base44Error(
+                message: "Room invite is not accepted", statusCode: 409, code: code, retryable: true
+            )))
+        }
+        XCTAssertFalse(resolves(Base44Error(message: "Conflict", statusCode: 409)))
+        XCTAssertFalse(resolves(Base44Error(
+            message: "Room invite is not accepted", statusCode: 409, code: "other_conflict"
+        )))
+        XCTAssertTrue(resolves(Base44Error(message: "Missing", statusCode: 404)))
+        XCTAssertTrue(resolves(Base44Error(message: "Room invite is not accepted", statusCode: 409)))
+        XCTAssertTrue(resolves(Base44Error(
+            message: "Localized message", statusCode: 409, code: "room_invite_not_accepted"
+        )))
+    }
+
     func testRoomExitRevisionNeverSubstitutesLegacyLobbyRevision() {
         XCTAssertEqual(
             RoomExitRevisionPolicy.expectedRevision(roomRevision: nil),

@@ -128,3 +128,15 @@ Deno.test("cyclic notification messages use a bounded scalar fallback", () => {
     status: 429,
   });
 });
+
+Deno.test("notification retries only explicitly safe lifecycle contention", async () => {
+  for (const canRetry of [true, false]) {
+    const response = notificationErrorResponse(Object.assign(
+      new NotificationContractError("Lease changed", 409, "cas_contention"),
+      { retryable: canRetry },
+    ));
+    assertEquals(response.status, 409);
+    assertEquals((await response.json()).retryable, canRetry);
+    assertEquals(response.headers.has("Retry-After"), canRetry);
+  }
+});

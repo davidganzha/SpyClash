@@ -33,6 +33,7 @@ async function defaultGenerationLeaseDelay(
 
 function canRetryGenerationLeaseAcquisition(error: unknown): boolean {
   return error instanceof BillingIdentityLifecycleError &&
+    error.retryable === true &&
     (error.code === "active_lease" || error.code === "cas_contention");
 }
 
@@ -212,7 +213,20 @@ export async function withGenerationWriterLease<T>(input: {
     release,
     delay,
   });
-  if (actionError !== undefined) throw actionError;
+  if (actionError !== undefined) {
+    // This coordination lease protects the entire generation. Once action
+    // starts, a later account-boundary conflict cannot prove that earlier
+    // quota/provider/result writes did not happen. Retrying just that boundary
+    // above is safe; telling the client to repeat the whole generation is not.
+    if (actionError instanceof BillingIdentityLifecycleError) {
+      throw new BillingIdentityLifecycleError(
+        actionError.code,
+        actionError.message,
+        false,
+      );
+    }
+    throw actionError;
+  }
   if (coordinationReleaseError !== undefined) {
     console.error(
       "generateWordPack coordination lease release failed after committed action",

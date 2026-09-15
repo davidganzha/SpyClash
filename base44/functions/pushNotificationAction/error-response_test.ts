@@ -2,6 +2,7 @@ import { assertEquals } from "jsr:@std/assert@1";
 import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
 import { pushErrorResponse } from "./error-response.ts";
 import { safePushErrorDetails } from "./safe-error.ts";
+import { PushContractError } from "./contracts.ts";
 
 Deno.test("push lifecycle contention preserves its retryable code", async () => {
   const response = pushErrorResponse(
@@ -81,4 +82,25 @@ Deno.test("cyclic non-scalar SDK messages use a bounded scalar fallback", () => 
     JSON.stringify(details),
     '{"message":"Unknown push backend error","status":429}',
   );
+});
+
+Deno.test("push deletion and post-action lifecycle conflict stay nonretryable", async () => {
+  for (const error of [
+    new BillingIdentityLifecycleError("deletion_in_progress", "Deleting"),
+    new BillingIdentityLifecycleError("active_lease", "Expired mid-action", false),
+  ]) {
+    const response = pushErrorResponse(error);
+    assertEquals(response.status, 409);
+    assertEquals(response.headers.get("Retry-After"), null);
+    assertEquals((await response.json()).retryable, false);
+  }
+});
+
+Deno.test("push owner changes before persistence advertise bounded registration retry", async () => {
+  for (const code of ["device_owner_changed", "activity_owner_changed"]) {
+    const response = pushErrorResponse(new PushContractError("Owner changed", 409, code));
+    assertEquals(response.status, 409);
+    assertEquals(response.headers.get("Retry-After"), "1");
+    assertEquals(await response.json(), { error: "Owner changed", code, retryable: true });
+  }
 });

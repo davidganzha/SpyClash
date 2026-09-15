@@ -1,0 +1,25 @@
+{
+  "build": 157,
+  "ios": {
+    "passed": 563,
+    "failed": 0
+  },
+  "backend": {
+    "unique_passed_across_initial_and_fixture_rerun": 1157,
+    "steps": 13,
+    "remaining_failures": 0
+  },
+  "production_overlay": {
+    "unique_passed_across_initial_and_fixture_rerun": 522,
+    "remaining_failures": 0,
+    "entrypoints_typechecked": 6
+  },
+  "web": {
+    "passed": 147,
+    "failed": 0,
+    "build": true,
+    "typecheck": true,
+    "changed_files_lint": true
+  },
+  "deployed": false
+}

@@ -4881,7 +4881,9 @@ final class LobbySyncRetryPolicyTests: XCTestCase {
             RoomJoinRetryPolicy.delayMilliseconds(
                 for: Base44Error(
                     message: "Room membership changed while acquiring lifecycle leases.",
-                    statusCode: 409
+                    statusCode: 409,
+                    code: "room_membership_changed",
+                    retryable: true
                 ),
                 completedRetries: 1
             ),

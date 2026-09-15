@@ -2176,9 +2176,13 @@ struct CommunityView: View {
     private func consumeRoomInviteWithRetry(_ inviteID: String, userID: String) async {
         let delays = [0, 300, 900]
         for (index, delay) in delays.enumerated() {
-            guard appState.user?.id == userID else { return }
+            guard !Task.isCancelled, appState.user?.id == userID else { return }
             if delay > 0 {
-                try? await Task.sleep(for: .milliseconds(delay))
+                do {
+                    try await Task.sleep(for: .milliseconds(delay))
+                } catch {
+                    return
+                }
             }
             guard appState.user?.id == userID else { return }
 

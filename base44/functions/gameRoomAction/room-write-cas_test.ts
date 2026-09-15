@@ -90,4 +90,7 @@ Deno.test("room CAS reconciles a response-lost committed write by token", async 
 Deno.test("legacy rooms are kept off the unleased fast path", () => {
   assertEquals(roomWriteRevision({ id: "legacy" }), null);
   assertEquals(roomWriteRevision({ id: "current", room_revision: 0 }), 0);
+  for (const room_revision of [null, "", "0", false, true, [], {}, NaN]) {
+    assertEquals(roomWriteRevision({ room_revision }), null);
+  }
 });

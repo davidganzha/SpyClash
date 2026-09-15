@@ -2,6 +2,7 @@ import {
   acquireBillingWriterLease,
   assertBillingWriterLease,
   type BillingIdentityLease,
+  BillingIdentityLifecycleError,
   releaseBillingWriterLease,
 } from "./billing-identity-lifecycle.ts";
 import {
@@ -94,6 +95,7 @@ export async function withPushWriterLeases<T>(input: {
   }
   const leases: BillingIdentityLease[] = [];
   let actionError: unknown;
+  let actionStarted = false;
   try {
     for (const userID of userIDs) {
       leases.push(
@@ -106,12 +108,16 @@ export async function withPushWriterLeases<T>(input: {
       }
     };
     await assertAll();
+    actionStarted = true;
     return await input.action(async <R>(writer: () => Promise<R>) => {
       await assertAll();
       return await writer();
     });
   } catch (error) {
     actionError = error;
+    if (actionStarted && error instanceof BillingIdentityLifecycleError) {
+      throw new BillingIdentityLifecycleError(error.code, error.message, false);
+    }
     throw error;
   } finally {
     const failures: unknown[] = [];

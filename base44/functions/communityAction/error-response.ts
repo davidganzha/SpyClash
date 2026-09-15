@@ -2,6 +2,7 @@ import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
 
 type ErrorShape = {
   message?: unknown;
+  code?: unknown;
   status?: unknown;
   statusCode?: unknown;
   response?: { status?: unknown; headers?: Headers | Record<string, unknown> };
@@ -72,12 +73,12 @@ export function communityErrorResponse(error: unknown): Response {
       "cas_contention",
       "deletion_in_progress",
     ].includes(error.code);
-    return response(
-      error.message,
-      conflict ? 409 : 503,
-      error.code,
-      retryAfter(error, conflict ? 1 : 2),
-    );
+    return Response.json({
+      error: error.message, code: error.code, retryable: error.retryable,
+    }, {
+      status: conflict ? 409 : 503,
+      ...(error.retryable ? { headers: { "Retry-After": retryAfter(error, 1) } } : {}),
+    });
   }
 
   const status = statusFrom(error);
@@ -100,7 +101,9 @@ export function communityErrorResponse(error: unknown): Response {
   if (status >= 400 && status < 500) {
     const message = clean((error as ErrorShape | null)?.message) ||
       "Community request was rejected.";
-    return response(message, status);
+    const code = clean((error as ErrorShape | null)?.code);
+    return response(message, status,
+      code === "room_invite_not_accepted" ? code : undefined);
   }
   return response(
     "Community is temporarily unavailable.",

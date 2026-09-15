@@ -401,38 +401,15 @@ final class Base44Client {
         user: SpyUser,
         expectedMembershipID: String? = nil
     ) async throws -> GameRoom {
-        let expectedToken = try requireAccessToken()
         let player = capablePlayer(for: user)
         let normalizedCode = code.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        let joinMembershipID = UUID().uuidString.lowercased()
-        var completedRetries = 0
-
-        while true {
-            try Task.checkCancellation()
-            guard token == expectedToken else { throw CancellationError() }
-            do {
-                let room = try await roomAction(
-                    "join_room",
-                    roomCode: normalizedCode,
-                    player: player,
-                    joinMembershipID: joinMembershipID,
-                    expectedMembershipID: expectedMembershipID,
-                    allowsTypedConflictRetry: false
-                )
-                guard token == expectedToken else { throw CancellationError() }
-                return room
-            } catch let error as Base44Error {
-                guard token == expectedToken else { throw CancellationError() }
-                guard let delay = RoomJoinRetryPolicy.delayMilliseconds(
-                    for: error,
-                    completedRetries: completedRetries
-                ) else {
-                    throw error
-                }
-                completedRetries += 1
-                try await Task.sleep(for: .milliseconds(delay))
-            }
-        }
+        return try await roomAction(
+            "join_room",
+            roomCode: normalizedCode,
+            player: player,
+            joinMembershipID: UUID().uuidString.lowercased(),
+            expectedMembershipID: expectedMembershipID
+        )
     }
 
     private func capablePlayer(for user: SpyUser) -> Player {
@@ -1711,7 +1688,11 @@ final class Base44Client {
                     message: apiError?.resolvedMessage ?? "Base44 request failed.",
                     statusCode: response.statusCode,
                     code: apiError?.code,
-                    retryable: apiError?.retryable ?? false
+                    retryable: apiError?.retryable ?? false,
+                    retryAfterSeconds: apiError?.retryAfterSeconds
+                        ?? response.value(forHTTPHeaderField: "Retry-After").flatMap(Int.init),
+                    retryPhase: apiError?.retryPhase,
+                    effectsStarted: apiError?.effectsStarted
                 )
             }
 
@@ -1747,7 +1728,7 @@ final class Base44Client {
     ) -> Bool {
         if statusCode == 409 {
             guard retryPolicy.retriesTypedLeaseConflict,
-                  apiError?.retryable != false else {
+                  apiError?.retryable == true else {
                 return false
             }
             let code = apiError?.code?.trimmingCharacters(
@@ -1760,8 +1741,7 @@ final class Base44Client {
                     "device_owner_changed"
                 ].contains(code)
             }
-            return apiError?.resolvedMessage ==
-                "Push registration is temporarily unavailable."
+            return false
         }
         return statusCode == 408 || statusCode == 425 || statusCode == 429 ||
             (500...599).contains(statusCode)
@@ -1838,6 +1818,7 @@ final class Base44Client {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
 
+        let expectedGeneration = tokenGeneration
         let payload = GameRoomActionPayload(
             action: action,
             accessToken: token,
@@ -1877,12 +1858,11 @@ final class Base44Client {
                 "kick_player",
                 "submit_spy_guess"
             ].contains(action)
-        let retryDelays = callerOwnsConflictRetry ? [] : [250]
         var attempt = 0
 
         while true {
             try Task.checkCancellation()
-            guard self.token == token else { throw CancellationError() }
+            guard self.token == token, tokenGeneration == expectedGeneration else { throw CancellationError() }
             do {
                 // Provider/SSO tokens are valid Base44 identity tokens, but the
                 // functions gateway can reject them before the function runs.
@@ -1894,11 +1874,22 @@ final class Base44Client {
                     timeoutInterval: requestTimeoutInterval
                         ?? RoomActionTransportPolicy.timeoutInterval(for: action)
                 )
-                guard self.token == token else { throw CancellationError() }
+                try Task.checkCancellation()
+                guard self.token == token, tokenGeneration == expectedGeneration else { throw CancellationError() }
                 return room
-            } catch let error as Base44Error
-                where error.isRetryableRoomActionConflict && attempt < retryDelays.count {
-                let delay = retryDelays[attempt]
+            } catch let error as Base44Error {
+                guard !callerOwnsConflictRetry else { throw error }
+                let delay: Int?
+                if action == "join_room" {
+                    // One budget for QR, invitations and restored-room entry;
+                    // retries retain the same membership generation and payload.
+                    delay = RoomJoinRetryPolicy.delayMilliseconds(for: error, completedRetries: attempt)
+                } else if error.isRetryableRoomActionConflict && attempt == 0 {
+                    delay = max(250, min(max(error.retryAfterSeconds ?? 0, 0), 15) * 1_000)
+                } else {
+                    delay = nil
+                }
+                guard let delay else { throw error }
                 attempt += 1
                 try await Task.sleep(for: .milliseconds(delay))
             }
@@ -2598,12 +2589,10 @@ struct Base44Error: LocalizedError {
     ]
 
     var isRetryableRoomJoinConflict: Bool {
-        guard statusCode == 409 else { return false }
-        if isRetryableRoomActionConflict { return true }
-        let normalized = message.lowercased()
-        return normalized.contains("could not be verified")
-            || normalized.contains("room membership changed")
-            || normalized.contains("room changed; retry")
+        guard statusCode == 409, retryable else { return false }
+        return [
+            "active_lease", "cas_contention", "room_membership_changed", "room_write_unverified"
+        ].contains(normalizedCode)
     }
 
     var isRetryableRoomActionConflict: Bool {
@@ -2788,8 +2777,11 @@ enum WordPackMutationRetryPolicy {
 
 enum CommunityRoomInviteCleanupPolicy {
     static func shouldClearAfterFailure(_ error: Base44Error) -> Bool {
-        error.statusCode == 404 ||
-            (error.statusCode == 409 && !error.retryable)
+        if error.statusCode == 404 { return true }
+        guard error.statusCode == 409, !error.retryable else { return false }
+        let code = error.code?.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() ?? ""
+        return code == "room_invite_not_accepted" ||
+            (code.isEmpty && error.message == "Room invite is not accepted")
     }
 }
 

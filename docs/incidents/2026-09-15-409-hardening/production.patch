@@ -1,0 +1,1728 @@
+--- a/base44/functions/communityAction/community-write-lifecycle.ts
++++ b/base44/functions/communityAction/community-write-lifecycle.ts
+@@ -191,0 +192 @@
++  let actionStarted = false;
+@@ -199,0 +201 @@
++    actionStarted = true;
+@@ -207,0 +210,5 @@
++  } catch (error) {
++    if (actionStarted && error instanceof BillingIdentityLifecycleError) {
++      throw new BillingIdentityLifecycleError(error.code, error.message, false);
++    }
++    throw error;
+--- a/base44/functions/communityAction/main.ts
++++ b/base44/functions/communityAction/main.ts
+@@ -1327,0 +1328 @@
++                code: "room_invite_not_accepted",
+--- a/base44/functions/communityAction/billing-identity-lifecycle.ts
++++ b/base44/functions/communityAction/billing-identity-lifecycle.ts
+@@ -45,0 +46 @@
++    retryable = code === "active_lease" || code === "cas_contention",
+@@ -49 +50 @@
+-    this.retryable = code === "active_lease" || code === "cas_contention";
++    this.retryable = retryable;
+--- a/base44/functions/communityAction/error-response.ts
++++ b/base44/functions/communityAction/error-response.ts
+@@ -4,0 +5 @@
++  code?: unknown;
+@@ -75,6 +76,6 @@
+-    return response(
+-      error.message,
+-      conflict ? 409 : 503,
+-      error.code,
+-      retryAfter(error, conflict ? 1 : 2),
+-    );
++    return Response.json({
++      error: error.message, code: error.code, retryable: error.retryable,
++    }, {
++      status: conflict ? 409 : 503,
++      ...(error.retryable ? { headers: { "Retry-After": retryAfter(error, 1) } } : {}),
++    });
+@@ -103 +104,3 @@
+-    return response(message, status);
++    const code = clean((error as ErrorShape | null)?.code);
++    return response(message, status,
++      code === "room_invite_not_accepted" ? code : undefined);
+--- a/base44/functions/gameRoomAction/main.ts
++++ b/base44/functions/gameRoomAction/main.ts
+@@ -208,0 +209,4 @@
++import {
++  assertSameMatch,
++  commitRoomActionTransition,
++} from "./room-action-transition.ts";
+@@ -622,0 +627,23 @@
++async function updateGameplayTransition(base44, room, user, action, patch) {
++  return await commitRoomActionTransition({
++    initialRoom: room,
++    patch,
++    validate: (latest) => {
++      requirePlayer(latest, user);
++      assertSameMatch(room, latest);
++      assertRoomMutationOpen(latest);
++      if (normalizedStatus(latest) !== "playing") {
++        throw Object.assign(new Error("The game is no longer active."), {
++          status: 409,
++          code: "room_action_inactive",
++        });
++      }
++      assertGameActionAllowedWhilePaused(latest, action);
++      assertGameActionAllowedByDeadline(latest, action);
++    },
++    write: (latest, data) => updateRoom(base44, latest, data),
++    read: (roomID) => fetchRoom(base44, roomID),
++    delay,
++  });
++}
++
+@@ -672 +699 @@
+-    { status: 409, code: "room_write_unverified" },
++    { status: 409, code: "room_write_unverified", retryable: true },
+@@ -2183,0 +2211,7 @@
++      requirePlayer(latest, user);
++      if (normalizedStatus(latest) !== "ready_voting") {
++        throw Object.assign(new Error("Ready check is not active"), {
++          status: 409,
++          code: "ready_check_inactive",
++        });
++      }
+@@ -2749 +2783,6 @@
+-    (latest) => roleCardReadTransitionPatch(latest, user.email),
++    (latest) => {
++      requirePlayer(latest, user);
++      assertSameMatch(room, latest);
++      assertGameActionAllowedByDeadline(latest, "mark_role_card_read");
++      return roleCardReadTransitionPatch(latest, user.email);
++    },
+@@ -2774 +2812,0 @@
+-  const pausedAt = new Date().toISOString();
+@@ -2778 +2816,4 @@
+-    (latest) => pauseGameTransitionPatch(latest, user.email, pausedAt),
++    (latest) => {
++      assertSameMatch(room, latest);
++      return pauseGameTransitionPatch(latest, user.email);
++    },
+@@ -2784 +2824,0 @@
+-  const resumedAt = new Date().toISOString();
+@@ -2788 +2828,4 @@
+-    (latest) => resumeGameTransitionPatch(latest, user.email, resumedAt),
++    (latest) => {
++      assertSameMatch(room, latest);
++      return resumeGameTransitionPatch(latest, user.email);
++    },
+@@ -2806 +2849,7 @@
+-  return await updateRoom(base44, room, questionAdvancePatch(room, active));
++  return await updateGameplayTransition(
++    base44,
++    room,
++    user,
++    "advance_question",
++    questionAdvancePatch(room, active),
++  );
+@@ -2835,6 +2884,12 @@
+-  return await updateRoom(base44, room, {
+-    round_number: nextRound,
+-    current_asker_email: transition.speakerEmail,
+-    current_answer: encodeAssociationTurnState(transition.state),
+-    question_phase: "asking",
+-  });
++  return await updateGameplayTransition(
++    base44,
++    room,
++    user,
++    "advance_association",
++    {
++      round_number: nextRound,
++      current_asker_email: transition.speakerEmail,
++      current_answer: encodeAssociationTurnState(transition.state),
++      question_phase: "asking",
++    },
++  );
+@@ -2877,5 +2932,11 @@
+-  return await updateRoom(base44, room, {
+-    current_asker_email: initial.speakerEmail,
+-    current_answer: encodeAssociationTurnState(initial.state),
+-    question_phase: "asking",
+-  });
++  return await updateGameplayTransition(
++    base44,
++    room,
++    user,
++    "start_association",
++    {
++      current_asker_email: initial.speakerEmail,
++      current_answer: encodeAssociationTurnState(initial.state),
++      question_phase: "asking",
++    },
++  );
+@@ -2902,3 +2963,9 @@
+-  return await updateRoom(base44, room, {
+-    current_answer: encodedState,
+-  });
++  return await updateGameplayTransition(
++    base44,
++    room,
++    user,
++    "stop_association_spin",
++    {
++      current_answer: encodedState,
++    },
++  );
+@@ -2939 +3006 @@
+-  return await updateRoom(base44, room, {
++  return await updateGameplayTransition(base44, room, user, "continue_round", {
+@@ -2974,0 +3042,3 @@
++      requirePlayer(latest, user);
++      assertGameActionAllowedWhilePaused(latest, "request_vote");
++      assertGameActionAllowedByDeadline(latest, "request_vote");
+--- a/base44/functions/gameRoomAction/room-write-lifecycle.ts
++++ b/base44/functions/gameRoomAction/room-write-lifecycle.ts
+@@ -97 +97 @@
+-    { status: 409, code: "room_membership_changed" },
++    { status: 409, code: "room_membership_changed", retryable: true },
+--- a/base44/functions/gameRoomAction/billing-identity-lifecycle.ts
++++ b/base44/functions/gameRoomAction/billing-identity-lifecycle.ts
+@@ -45,0 +46 @@
++    retryable = code === "active_lease" || code === "cas_contention",
+@@ -49 +50 @@
+-    this.retryable = code === "active_lease" || code === "cas_contention";
++    this.retryable = retryable;
+--- a/base44/functions/gameRoomAction/room-write-cas.ts
++++ b/base44/functions/gameRoomAction/room-write-cas.ts
+@@ -17,2 +17,7 @@
+-  const candidate = Number(room?.room_revision);
+-  return Number.isSafeInteger(candidate) && candidate >= 0 ? candidate : null;
++  const candidate = room?.room_revision;
++  // CAS matches the stored value, not its numeric coercion. Treating null,
++  // empty strings or false as revision zero creates a permanent CAS failure.
++  return typeof candidate === "number" && Number.isSafeInteger(candidate) &&
++      candidate >= 0
++    ? candidate
++    : null;
+--- /dev/null
++++ b/base44/functions/gameRoomAction/room-action-transition.ts
+@@ -0,0 +1,107 @@
++import { isRoomWriteCASConflict } from "./room-write-cas.ts";
++
++type Room = Record<string, any>;
++
++function clean(value: unknown): string {
++  return String(value ?? "").trim();
++}
++
++export function assertSameMatch(initial: Room, latest: Room): void {
++  if (
++    clean(initial.id) !== clean(latest.id) ||
++    clean(initial.match_id) !== clean(latest.match_id)
++  ) {
++    throw Object.assign(new Error("The room has moved to a different match."), {
++      status: 409,
++      code: "room_action_stale",
++    });
++  }
++}
++
++// These fields neither choose the next question/speaker nor change player
++// eligibility. A final vote still changes spectators, status or terminal_intent
++// and therefore cannot be crossed. Fields written by the action stay protected.
++const INDEPENDENT_FIELDS = new Set([
++  "room_revision",
++  "room_last_write_token",
++  "updated_date",
++  "cards_read",
++  "vote_requests",
++  "detective_votes",
++  "detective_vote_round_id",
++]);
++
++function equivalent(left: unknown, right: unknown): boolean {
++  if (left === right) return true;
++  if (Array.isArray(left) || Array.isArray(right)) {
++    return Array.isArray(left) && Array.isArray(right) &&
++      left.length === right.length &&
++      left.every((value, index) => equivalent(value, right[index]));
++  }
++  if (
++    left && right && typeof left === "object" && typeof right === "object"
++  ) {
++    const a = left as Room;
++    const b = right as Room;
++    return [...new Set([...Object.keys(a), ...Object.keys(b)])].every((key) =>
++      equivalent(a[key], b[key])
++    );
++  }
++  return false;
++}
++
++function sameActionInputs(initial: Room, latest: Room, patch: Room): boolean {
++  return [...new Set([...Object.keys(initial), ...Object.keys(latest)])].every(
++    (key) => {
++      if (INDEPENDENT_FIELDS.has(key) && !(key in patch)) return true;
++      return equivalent(initial[key], latest[key]);
++    },
++  );
++}
++
++/**
++ * Rebase one already-computed gameplay transition only across independent
++ * acknowledgements/votes. Random choices are fixed and successful side effects
++ * are never replayed. A response-lost write is handled exclusively by the CAS
++ * token reconciler; only an explicit zero-write CAS conflict enters this loop.
++ */
++export async function commitRoomActionTransition(input: {
++  initialRoom: Room;
++  patch: Room;
++  validate: (room: Room) => void;
++  write: (room: Room, patch: Room) => Promise<Room>;
++  read: (roomID: string) => Promise<Room | null>;
++  delay?: (milliseconds: number) => Promise<void>;
++}): Promise<Room> {
++  let latest = input.initialRoom;
++  const wait = input.delay ??
++    ((milliseconds) =>
++      new Promise<void>((resolve) => setTimeout(resolve, milliseconds)));
++  for (let attempt = 0; attempt < 6; attempt += 1) {
++    input.validate(latest);
++    try {
++      return await input.write(latest, input.patch);
++    } catch (error) {
++      if (!isRoomWriteCASConflict(error) || attempt === 5) throw error;
++      await wait(20 + attempt * 35);
++      const refreshed = await input.read(clean(input.initialRoom.id));
++      if (!refreshed) {
++        throw Object.assign(new Error("Room not found"), { status: 404 });
++      }
++      assertSameMatch(input.initialRoom, refreshed);
++      input.validate(refreshed);
++      if (
++        sameActionInputs(
++          { ...input.initialRoom, ...input.patch },
++          refreshed,
++          input.patch,
++        )
++      ) return refreshed;
++      if (!sameActionInputs(input.initialRoom, refreshed, input.patch)) {
++        throw error;
++      }
++      latest = refreshed;
++    }
++  }
++  throw new Error("Room action retry exhausted unexpectedly.");
++}
+--- a/base44/functions/generateWordPack/generation-write-lifecycle.ts
++++ b/base44/functions/generateWordPack/generation-write-lifecycle.ts
+@@ -35,0 +36 @@
++    error.retryable === true &&
+@@ -215 +216,14 @@
+-  if (actionError !== undefined) throw actionError;
++  if (actionError !== undefined) {
++    // This coordination lease protects the entire generation. Once action
++    // starts, a later account-boundary conflict cannot prove that earlier
++    // quota/provider/result writes did not happen. Retrying just that boundary
++    // above is safe; telling the client to repeat the whole generation is not.
++    if (actionError instanceof BillingIdentityLifecycleError) {
++      throw new BillingIdentityLifecycleError(
++        actionError.code,
++        actionError.message,
++        false,
++      );
++    }
++    throw actionError;
++  }
+--- a/base44/functions/generateWordPack/main.ts
++++ b/base44/functions/generateWordPack/main.ts
+@@ -32,0 +33 @@
++import { createGenerationRetryTracker, type GenerationRetryTracker } from "./generation-retry-contract.ts";
+@@ -247,0 +249 @@
++  retryTracker: GenerationRetryTracker,
+@@ -265,8 +267,3 @@
+-          return measured(async () => {
+-            await guard.assertAvailable();
+-            return await state.directProvider!.generate({
+-              theme,
+-              count,
+-              alreadyUsed,
+-            });
+-          });
++          return measured(() => retryTracker.runProvider(guard, () =>
++            state.directProvider!.generate({ theme, count, alreadyUsed })
++          ));
+@@ -304,3 +301,2 @@
+-        return measured(async () => {
+-          await guard.assertAvailable();
+-          return await base44.integrations.Core.InvokeLLM({
++        return measured(() => retryTracker.runProvider(guard, () =>
++          base44.integrations.Core.InvokeLLM({
+@@ -314,2 +310,2 @@
+-          });
+-        });
++          })
++        ));
+@@ -352,0 +349 @@
++  const retryTracker = createGenerationRetryTracker();
+@@ -403,0 +401 @@
++    retryTracker.bindValidatedRequest(idempotency);
+@@ -464 +462,2 @@
+-      action: async (guard) => {
++      action: async (untrackedGuard) => {
++        const guard = retryTracker.trackWrites(untrackedGuard);
+@@ -571 +570 @@
+-            retryable: true,
++            ...retryTracker.errorMetadata(error, 503),
+@@ -652,0 +652 @@
++              retryTracker,
+@@ -667,0 +668 @@
++                retryTracker,
+@@ -855 +856 @@
+-    const retryable = (error as { retryable?: unknown })?.retryable === true;
++    const retryMetadata = retryTracker.errorMetadata(error, normalizedStatus);
+@@ -859 +860 @@
+-      ...(retryable ? { retryable: true } : {}),
++      ...retryMetadata,
+@@ -862,3 +863 @@
+-      headers: retryable || normalizedStatus === 503
+-        ? { "retry-after": "2" }
+-        : undefined,
++      headers: retryMetadata.retryable ? { "retry-after": "2" } : undefined,
+--- a/base44/functions/generateWordPack/billing-identity-lifecycle.ts
++++ b/base44/functions/generateWordPack/billing-identity-lifecycle.ts
+@@ -45,0 +46 @@
++    retryable = code === "active_lease" || code === "cas_contention",
+@@ -49 +50 @@
+-    this.retryable = code === "active_lease" || code === "cas_contention";
++    this.retryable = retryable;
+--- /dev/null
++++ b/base44/functions/generateWordPack/generation-retry-contract.ts
+@@ -0,0 +1,80 @@
++import { BillingIdentityLifecycleError } from "./billing-identity-lifecycle.ts";
++import type { PreparedWordPackIdempotency } from "./generation-idempotency.ts";
++import type { GenerationWriteGuard } from "./generation-write-lifecycle.ts";
++
++export type GenerationRetryMetadata = {
++  retryable: boolean;
++  retry_phase?: "before_effects" | "effects_may_have_started";
++  effects_started?: boolean;
++};
++
++/**
++ * This proof belongs to one invocation, not to the lifetime of a request_id.
++ * A client may only repeat a proven pre-effect conflict with the same payload;
++ * a missing response or a previous ambiguous failure is not permission to retry.
++ */
++export function createGenerationRetryTracker() {
++  let hasValidatedRequestIdentity = false;
++  let effectsStarted = false;
++
++  return {
++    bindValidatedRequest(identity: PreparedWordPackIdempotency | null): void {
++      hasValidatedRequestIdentity = identity !== null;
++    },
++
++    trackWrites(guard: GenerationWriteGuard): GenerationWriteGuard {
++      return {
++        boundary: <T>(operation: () => Promise<T>) =>
++          guard.boundary(() => {
++            // Acquisition/assertion can fail before this callback runs. Once
++            // storage is called, even a failed response can hide a commit.
++            effectsStarted = true;
++            return operation();
++          }),
++        assertAvailable: () => guard.assertAvailable(),
++      };
++    },
++
++    async runProvider<T>(
++      guard: GenerationWriteGuard,
++      operation: () => Promise<T>,
++    ): Promise<T> {
++      await guard.assertAvailable();
++      effectsStarted = true;
++      return await operation();
++    },
++
++    errorMetadata(error: unknown, status: number): GenerationRetryMetadata {
++      if (effectsStarted) {
++        return {
++          retryable: false,
++          retry_phase: "effects_may_have_started",
++          effects_started: true,
++        };
++      }
++
++      if (error instanceof BillingIdentityLifecycleError) {
++        const safeConflict = hasValidatedRequestIdentity && status === 409 &&
++          error.retryable === true &&
++          (error.code === "active_lease" || error.code === "cas_contention");
++        return safeConflict
++          ? {
++            retryable: true,
++            retry_phase: "before_effects",
++            effects_started: false,
++          }
++          : { retryable: false };
++      }
++
++      // Keep other existing error semantics, without issuing the stronger
++      // proof required for an automatic generation retry.
++      return {
++        retryable: (error as { retryable?: unknown })?.retryable === true,
++      };
++    },
++  };
++}
++
++export type GenerationRetryTracker = ReturnType<
++  typeof createGenerationRetryTracker
++>;
+--- a/base44/functions/notificationAction/error-response.ts
++++ b/base44/functions/notificationAction/error-response.ts
+@@ -55,2 +55,3 @@
+-    const retryable = retryableLifecycleConflict || error.status === 429 ||
+-      error.status === 503;
++    const explicitRetryable = (error as { retryable?: boolean }).retryable;
++    const retryable = explicitRetryable ?? (retryableLifecycleConflict ||
++      error.status === 429 || error.status === 503);
+@@ -61 +62 @@
+-        ...(retryable ? { retryable: true } : {}),
++        ...(explicitRetryable !== undefined ? { retryable } : retryable ? { retryable: true } : {}),
+--- a/base44/functions/notificationAction/receipt-lifecycle.ts
++++ b/base44/functions/notificationAction/receipt-lifecycle.ts
+@@ -2,0 +3,6 @@
++import {
++  acquireBillingWriterLease,
++  assertBillingWriterLease,
++  BillingIdentityLifecycleError,
++  releaseBillingWriterLease,
++} from "./billing-identity-lifecycle.ts";
+@@ -12,3 +17,0 @@
+-const MAX_ATTEMPTS = 6;
+-const LEASE_MS = 10 * 60 * 1_000;
+-const CLOCK_SKEW_MS = 5_000;
+@@ -37,28 +40,28 @@
+-function hex(bytes: ArrayBuffer): string {
+-  return Array.from(new Uint8Array(bytes))
+-    .map((byte) => byte.toString(16).padStart(2, "0"))
+-    .join("");
+-}
+-
+-async function subjectKey(userID: string): Promise<string> {
+-  const digest = await crypto.subtle.digest(
+-    "SHA-256",
+-    new TextEncoder().encode(`spyclash-billing-lifecycle:${userID}`),
+-  );
+-  return `billing:${hex(digest).slice(0, 40)}`;
+-}
+-
+-async function rows(store: any, key: string): Promise<Record<string, any>[]> {
+-  return await store.filter({ subject_key: key }, "created_date", 100, 0) || [];
+-}
+-
+-function activeLease(row: Record<string, any>, now: Date): boolean {
+-  const leaseUntil = Date.parse(clean(row.lease_until));
+-  return Number.isFinite(leaseUntil) &&
+-    leaseUntil > now.getTime() + CLOCK_SKEW_MS;
+-}
+-
+-async function convergeInactiveInitializers(
+-  store: any,
+-  matches: Record<string, any>[],
+-  now: Date,
++function publicLifecycleError(error: unknown, actionStarted: boolean): unknown {
++  if (!(error instanceof BillingIdentityLifecycleError)) return error;
++  const conflict = ["active_lease", "cas_contention", "deletion_in_progress"]
++    .includes(error.code);
++  return Object.assign(new NotificationContractError(
++    error.message, conflict ? 409 : 503, error.code,
++  ), { retryable: !actionStarted && error.retryable });
++}
++
++// Use the same exact-token protocol as all other writers. A lost CAS response
++// is reconciled, inactive duplicate initializers are quarantined before removal,
++// and an unconfirmed acquisition is safely fenced before returning an error.
++async function acquire(
++  store: any, userID: string, nowFactory: () => Date, randomUUID: () => string,
++): Promise<Lease> {
++  try {
++    return await acquireBillingWriterLease(store, userID, nowFactory, randomUUID);
++  } catch (error) {
++    throw publicLifecycleError(error, false);
++  }
++}
++
++async function assertLease(store: any, lease: Lease, now: Date): Promise<void> {
++  await assertBillingWriterLease(store, { ...lease, state: "active" }, now);
++}
++
++async function release(
++  store: any, lease: Lease, now: Date, randomUUID: () => string,
+@@ -66,151 +69 @@
+-  if (
+-    matches.some((row) =>
+-      clean(row.state) === "deleting" || activeLease(row, now)
+-    )
+-  ) {
+-    throw new NotificationContractError(
+-      "Inbox lifecycle rows are ambiguous.",
+-      503,
+-      "ambiguous_lifecycle",
+-    );
+-  }
+-  const canonical =
+-    [...matches].sort((left, right) =>
+-      clean(left.created_date).localeCompare(clean(right.created_date)) ||
+-      clean(left.id).localeCompare(clean(right.id))
+-    )[0];
+-  for (const duplicate of matches) {
+-    if (clean(duplicate.id) === clean(canonical.id)) continue;
+-    await store.delete(duplicate.id);
+-  }
+-}
+-
+-async function acquire(
+-  store: any,
+-  userID: string,
+-  nowFactory: () => Date,
+-  randomUUID: () => string,
+-): Promise<Lease> {
+-  const key = await subjectKey(userID);
+-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt += 1) {
+-    const now = nowFactory();
+-    const matches = await rows(store, key);
+-    if (!matches.length) {
+-      const revision = randomUUID();
+-      try {
+-        await store.create({
+-          subject_key: key,
+-          state: "active",
+-          lease_token: `initialized:${revision}`,
+-          lease_until: now.toISOString(),
+-          revision,
+-        });
+-      } catch {
+-        // A concurrent initializer may have won. Re-read through the loop.
+-      }
+-      continue;
+-    }
+-    if (matches.length !== 1) {
+-      await convergeInactiveInitializers(store, matches, now);
+-      continue;
+-    }
+-    const current = matches[0];
+-    if (clean(current.state) === "deleting") {
+-      throw new NotificationContractError(
+-        "Account deletion is in progress.",
+-        409,
+-        "deletion_in_progress",
+-      );
+-    }
+-    if (activeLease(current, now)) {
+-      throw new NotificationContractError(
+-        "Inbox is busy. Retry shortly.",
+-        409,
+-        "active_lease",
+-      );
+-    }
+-    const token = `notification:${randomUUID()}`;
+-    const revision = randomUUID();
+-    const nextLeaseUntil = new Date(now.getTime() + LEASE_MS).toISOString();
+-    const result = await store.updateMany({
+-      id: current.id,
+-      subject_key: key,
+-      state: current.state,
+-      lease_token: current.lease_token,
+-      revision: current.revision,
+-    }, {
+-      $set: {
+-        state: "active",
+-        lease_token: token,
+-        lease_until: nextLeaseUntil,
+-        revision,
+-      },
+-    });
+-    if (Number(result?.updated) === 1) {
+-      return {
+-        recordID: clean(current.id),
+-        subjectKey: key,
+-        leaseToken: token,
+-        leaseUntil: nextLeaseUntil,
+-        revision,
+-      };
+-    }
+-  }
+-  throw new NotificationContractError(
+-    "Inbox is busy. Retry shortly.",
+-    409,
+-    "cas_contention",
+-  );
+-}
+-
+-async function assertLease(store: any, lease: Lease, now: Date): Promise<void> {
+-  const matches = await store.filter(
+-    {
+-      id: lease.recordID,
+-      subject_key: lease.subjectKey,
+-      state: "active",
+-      lease_token: lease.leaseToken,
+-      revision: lease.revision,
+-    },
+-    "created_date",
+-    2,
+-    0,
+-  ) || [];
+-  if (
+-    matches.length !== 1 ||
+-    Date.parse(clean(matches[0].lease_until)) <= now.getTime() + CLOCK_SKEW_MS
+-  ) {
+-    throw new NotificationContractError(
+-      "Inbox write lease was lost.",
+-      409,
+-      "lease_lost",
+-    );
+-  }
+-}
+-
+-async function release(
+-  store: any,
+-  lease: Lease,
+-  now: Date,
+-  randomUUID: () => string,
+-): Promise<void> {
+-  const result = await store.updateMany({
+-    id: lease.recordID,
+-    subject_key: lease.subjectKey,
+-    state: "active",
+-    lease_token: lease.leaseToken,
+-    revision: lease.revision,
+-  }, {
+-    $set: {
+-      lease_token: `released:${randomUUID()}`,
+-      lease_until: now.toISOString(),
+-      revision: randomUUID(),
+-    },
+-  });
+-  if (Number(result?.updated) !== 1) {
+-    throw new NotificationContractError(
+-      "Inbox write lease release could not be verified.",
+-      503,
+-      "lease_release_failed",
+-    );
+-  }
++  await releaseBillingWriterLease(store, { ...lease, state: "active" }, now, randomUUID);
+@@ -317,0 +171 @@
++  let actionStarted = false;
+@@ -319,0 +174 @@
++    actionStarted = true;
+@@ -323,0 +179,2 @@
++  } catch (error) {
++    throw publicLifecycleError(error, actionStarted);
+--- /dev/null
++++ b/base44/functions/notificationAction/billing-identity-lifecycle.ts
+@@ -0,0 +1,946 @@
++const ENTITY_PAGE_SIZE = 100;
++const LIFECYCLE_ATTEMPTS = 6;
++const LEASE_CLEANUP_ATTEMPTS = 3;
++const CLOCK_SKEW_MILLISECONDS = 5_000;
++const DUPLICATE_CLEANUP_LEASE_UNTIL = "9999-12-31T23:59:59.999Z";
++
++// Must exceed the maximum runtime of one backend invocation. Every caller also
++// reasserts the exact token immediately at its persistence boundary.
++export const BILLING_IDENTITY_LEASE_MILLISECONDS = 10 * 60 * 1_000;
++
++type LifecycleRecord = {
++  id?: string;
++  subject_key?: string;
++  state?: string;
++  lease_until?: string;
++  lease_token?: string;
++  revision?: string;
++  created_date?: string;
++  updated_date?: string;
++};
++
++export type BillingIdentityLease = {
++  recordID: string;
++  subjectKey: string;
++  state: "active" | "deleting";
++  leaseToken: string;
++  leaseUntil: string;
++  revision: string;
++};
++
++export type BillingIdentityLifecycleErrorCode =
++  | "incomplete_state"
++  | "user_missing"
++  | "deletion_in_progress"
++  | "active_lease"
++  | "duplicate_records"
++  | "cas_contention"
++  | "ambiguous";
++
++export class BillingIdentityLifecycleError extends Error {
++  public readonly retryable: boolean;
++
++  constructor(
++    public readonly code: BillingIdentityLifecycleErrorCode,
++    message: string,
++    retryable = code === "active_lease" || code === "cas_contention",
++  ) {
++    super(message);
++    this.name = "BillingIdentityLifecycleError";
++    this.retryable = retryable;
++  }
++}
++
++function clean(value: unknown): string {
++  return String(value ?? "").trim();
++}
++
++function hex(bytes: ArrayBuffer): string {
++  return Array.from(new Uint8Array(bytes))
++    .map((byte) => byte.toString(16).padStart(2, "0"))
++    .join("");
++}
++
++export async function billingIdentitySubjectKey(
++  userIDValue: unknown,
++): Promise<string> {
++  const userID = clean(userIDValue);
++  if (!userID) {
++    throw new BillingIdentityLifecycleError(
++      "incomplete_state",
++      "A stable user id is required for lifecycle coordination.",
++    );
++  }
++  const digest = await crypto.subtle.digest(
++    "SHA-256",
++    new TextEncoder().encode(`spyclash-billing-lifecycle:${userID}`),
++  );
++  return `billing:${hex(digest).slice(0, 40)}`;
++}
++
++function lifecycleState(value: unknown): "active" | "deleting" {
++  return clean(value) === "deleting" ? "deleting" : "active";
++}
++
++function exactRevisionFilter(record: LifecycleRecord) {
++  const id = clean(record.id);
++  const subjectKey = clean(record.subject_key);
++  if (!id || !subjectKey) {
++    throw new BillingIdentityLifecycleError(
++      "incomplete_state",
++      "The billing lifecycle row has no stable identity.",
++    );
++  }
++  const revision = clean(record.revision);
++  if (revision) return { id, subject_key: subjectKey, revision };
++  const updatedDate = clean(record.updated_date);
++  if (updatedDate) {
++    return {
++      id,
++      subject_key: subjectKey,
++      updated_date: updatedDate,
++      // A legacy row has no usable revision yet. The first writer installs
++      // one, which must invalidate even a delayed CAS sharing its timestamp.
++      revision: record.revision === undefined
++        ? { $exists: false }
++        : record.revision,
++    };
++  }
++  throw new BillingIdentityLifecycleError(
++    "incomplete_state",
++    "The billing lifecycle row has no CAS revision.",
++  );
++}
++
++async function allMatchingRecords<T>(
++  store: any,
++  filter: Record<string, unknown>,
++): Promise<T[]> {
++  const records: T[] = [];
++  for (let skip = 0;; skip += ENTITY_PAGE_SIZE) {
++    const page: T[] = await store.filter(
++      filter,
++      "created_date",
++      ENTITY_PAGE_SIZE,
++      skip,
++    ) || [];
++    records.push(...page);
++    if (page.length < ENTITY_PAGE_SIZE) return records;
++  }
++}
++
++async function lifecycleRows(
++  store: any,
++  subjectKey: string,
++): Promise<LifecycleRecord[]> {
++  return await allMatchingRecords<LifecycleRecord>(store, {
++    subject_key: subjectKey,
++  });
++}
++
++function canonicalRecord(records: readonly LifecycleRecord[]): LifecycleRecord {
++  return [...records].sort((left, right) =>
++    clean(left.created_date).localeCompare(clean(right.created_date)) ||
++    clean(left.id).localeCompare(clean(right.id))
++  )[0];
++}
++
++export function isBillingIdentityLeaseActive(
++  leaseUntilValue: unknown,
++  now = new Date(),
++): boolean {
++  const leaseUntil = Date.parse(clean(leaseUntilValue));
++  return Number.isFinite(leaseUntil) &&
++    leaseUntil > now.getTime() + CLOCK_SKEW_MILLISECONDS;
++}
++
++function isInactiveInitializationRecord(
++  record: LifecycleRecord,
++  now: Date,
++): boolean {
++  const revision = clean(record.revision);
++  const leaseUntil = Date.parse(clean(record.lease_until));
++  return clean(record.state) === "active" &&
++    Number.isFinite(leaseUntil) &&
++    !isBillingIdentityLeaseActive(record.lease_until, now) &&
++    Boolean(revision) &&
++    clean(record.lease_token) === `initialized:${revision}`;
++}
++
++function isActiveWriterRecord(record: LifecycleRecord, now: Date): boolean {
++  return lifecycleState(record.state) === "active" &&
++    isBillingIdentityLeaseActive(record.lease_until, now) &&
++    clean(record.lease_token).startsWith("active:");
++}
++
++function isDuplicateCleanupRecord(record: LifecycleRecord): boolean {
++  const revision = clean(record.revision);
++  return clean(record.state) === "deleting" && Boolean(revision) &&
++    clean(record.lease_token) === `duplicate-cleanup:${revision}` &&
++    clean(record.lease_until) === DUPLICATE_CLEANUP_LEASE_UNTIL;
++}
++
++function sameDuplicateCleanupRecord(
++  left: LifecycleRecord,
++  right: LifecycleRecord,
++): boolean {
++  return clean(left.id) === clean(right.id) &&
++    clean(left.subject_key) === clean(right.subject_key) &&
++    clean(left.state) === clean(right.state) &&
++    clean(left.lease_token) === clean(right.lease_token) &&
++    clean(left.lease_until) === clean(right.lease_until) &&
++    clean(left.revision) === clean(right.revision) &&
++    isDuplicateCleanupRecord(left) && isDuplicateCleanupRecord(right);
++}
++
++async function exactLifecycleRecord(
++  store: any,
++  id: string,
++  subjectKey: string,
++): Promise<LifecycleRecord | undefined> {
++  const records = await allMatchingRecords<LifecycleRecord>(store, {
++    id,
++    subject_key: subjectKey,
++  });
++  if (records.length > 1) {
++    throw new BillingIdentityLifecycleError(
++      "ambiguous",
++      "Billing lifecycle cleanup identity is ambiguous.",
++    );
++  }
++  return records[0];
++}
++
++async function quarantineDuplicateInitializationRecord(
++  store: any,
++  record: LifecycleRecord,
++  subjectKey: string,
++  now: Date,
++  randomUUID: () => string,
++): Promise<LifecycleRecord | undefined> {
++  const id = clean(record.id);
++  const revision = clean(record.revision);
++  const leaseToken = clean(record.lease_token);
++  const leaseUntil = clean(record.lease_until);
++  if (
++    !id || clean(record.subject_key) !== subjectKey ||
++    !isInactiveInitializationRecord(record, now) ||
++    leaseToken !== `initialized:${revision}`
++  ) {
++    throw new BillingIdentityLifecycleError(
++      "duplicate_records",
++      "A duplicate lifecycle row changed before cleanup quarantine.",
++    );
++  }
++  const cleanupRevision = randomUUID();
++  const quarantined: LifecycleRecord = {
++    ...record,
++    state: "deleting",
++    lease_token: `duplicate-cleanup:${cleanupRevision}`,
++    lease_until: DUPLICATE_CLEANUP_LEASE_UNTIL,
++    revision: cleanupRevision,
++  };
++  let result: any;
++  try {
++    result = await store.updateMany(
++      {
++        id,
++        subject_key: subjectKey,
++        state: "active",
++        lease_token: leaseToken,
++        lease_until: leaseUntil,
++        revision,
++      },
++      {
++        $set: {
++          state: quarantined.state,
++          lease_token: quarantined.lease_token,
++          lease_until: quarantined.lease_until,
++          revision: quarantined.revision,
++        },
++      },
++    );
++  } catch {
++    try {
++      const current = await exactLifecycleRecord(store, id, subjectKey);
++      if (!current) return undefined;
++      if (isDuplicateCleanupRecord(current)) return current;
++    } catch {
++      // Unknown quarantine is fail-closed and remains non-destructive.
++    }
++    throw new BillingIdentityLifecycleError(
++      "ambiguous",
++      "Duplicate lifecycle quarantine could not be reconciled.",
++    );
++  }
++  if (Number(result?.updated) === 1) return quarantined;
++  try {
++    const current = await exactLifecycleRecord(store, id, subjectKey);
++    if (!current) return undefined;
++    if (isDuplicateCleanupRecord(current)) return current;
++  } catch (error) {
++    if (error instanceof BillingIdentityLifecycleError) throw error;
++    throw new BillingIdentityLifecycleError(
++      "ambiguous",
++      "Duplicate lifecycle quarantine could not be reconciled.",
++    );
++  }
++  throw new BillingIdentityLifecycleError(
++    "duplicate_records",
++    "A duplicate lifecycle row changed before cleanup quarantine.",
++  );
++}
++
++async function deleteDuplicateCleanupRecord(
++  store: any,
++  record: LifecycleRecord,
++  subjectKey: string,
++): Promise<void> {
++  const id = clean(record.id);
++  if (
++    !id || clean(record.subject_key) !== subjectKey ||
++    !isDuplicateCleanupRecord(record)
++  ) {
++    throw new BillingIdentityLifecycleError(
++      "duplicate_records",
++      "A duplicate lifecycle row was not safely quarantined.",
++    );
++  }
++  let expected = record;
++  for (let attempt = 0; attempt < LIFECYCLE_ATTEMPTS; attempt += 1) {
++    try {
++      await store.delete(id);
++    } catch {
++      // A delete response may be lost after the quarantine was removed.
++    }
++    try {
++      const current = await exactLifecycleRecord(store, id, subjectKey);
++      if (!current) return;
++      if (!sameDuplicateCleanupRecord(current, expected)) {
++        throw new BillingIdentityLifecycleError(
++          "duplicate_records",
++          "A quarantined lifecycle row changed before cleanup.",
++        );
++      }
++      expected = current;
++    } catch (error) {
++      if (error instanceof BillingIdentityLifecycleError) throw error;
++      if (attempt === LIFECYCLE_ATTEMPTS - 1) break;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Duplicate billing lifecycle cleanup could not be reconciled.",
++  );
++}
++
++async function convergeDuplicateInitializationRecords(
++  store: any,
++  records: readonly LifecycleRecord[],
++  subjectKey: string,
++  now: Date,
++  randomUUID: () => string = () => crypto.randomUUID(),
++): Promise<void> {
++  const cleanupRecords = records.filter(isDuplicateCleanupRecord);
++  const ordinaryRecords = records.filter((record) =>
++    !isDuplicateCleanupRecord(record)
++  );
++  // A previous response-lost cleanup is safe to resume before evaluating real
++  // deletion markers. Old deployed copies see the far-future deleting lease
++  // and cannot promote it while this bounded delete is retried.
++  for (const record of cleanupRecords) {
++    await deleteDuplicateCleanupRecord(store, record, subjectKey);
++  }
++  if (
++    ordinaryRecords.some((record) =>
++      !["active", "deleting"].includes(clean(record.state)) ||
++      (clean(record.lease_token) ===
++          `initialized:${clean(record.revision)}` &&
++        !isInactiveInitializationRecord(record, now))
++    )
++  ) {
++    throw new BillingIdentityLifecycleError(
++      "duplicate_records",
++      "Conflicting billing lifecycle rows require service-role repair.",
++    );
++  }
++  if (
++    ordinaryRecords.some((record) =>
++      lifecycleState(record.state) === "deleting"
++    )
++  ) {
++    throw new BillingIdentityLifecycleError(
++      "duplicate_records",
++      "Conflicting billing lifecycle rows require service-role repair.",
++    );
++  }
++
++  const activeRecords = ordinaryRecords.filter((record) =>
++    isBillingIdentityLeaseActive(record.lease_until, now)
++  );
++  if (
++    activeRecords.length > 1 ||
++    (activeRecords.length === 1 &&
++      !isActiveWriterRecord(activeRecords[0], now))
++  ) {
++    throw new BillingIdentityLifecycleError(
++      "duplicate_records",
++      "Conflicting billing lifecycle rows require service-role repair.",
++    );
++  }
++
++  const establishedRecords = ordinaryRecords.filter((record) =>
++    !isInactiveInitializationRecord(record, now)
++  );
++  if (establishedRecords.length > 1) {
++    throw new BillingIdentityLifecycleError(
++      "duplicate_records",
++      "Conflicting billing lifecycle rows require service-role repair.",
++    );
++  }
++
++  const canonical = ordinaryRecords.length
++    ? activeRecords[0] || establishedRecords[0] ||
++      canonicalRecord(ordinaryRecords)
++    : undefined;
++  if (canonical) {
++    for (const record of ordinaryRecords) {
++      if (clean(record.id) === clean(canonical.id)) continue;
++      if (!isInactiveInitializationRecord(record, now)) {
++        throw new BillingIdentityLifecycleError(
++          "duplicate_records",
++          "Conflicting billing lifecycle rows require service-role repair.",
++        );
++      }
++    }
++  }
++  for (const record of ordinaryRecords) {
++    if (canonical && clean(record.id) === clean(canonical.id)) continue;
++    const quarantined = await quarantineDuplicateInitializationRecord(
++      store,
++      record,
++      subjectKey,
++      now,
++      randomUUID,
++    );
++    if (quarantined) {
++      await deleteDuplicateCleanupRecord(store, quarantined, subjectKey);
++    }
++  }
++}
++
++async function ensureSingletonLifecycleRecord(
++  store: any,
++  subjectKey: string,
++  nowFactory: () => Date,
++  randomUUID: () => string,
++): Promise<LifecycleRecord> {
++  for (let attempt = 0; attempt < LIFECYCLE_ATTEMPTS; attempt += 1) {
++    const now = nowFactory();
++    const records = await lifecycleRows(store, subjectKey);
++    if (!records.length) {
++      const revision = randomUUID();
++      try {
++        await store.create({
++          subject_key: subjectKey,
++          state: "active",
++          lease_token: `initialized:${revision}`,
++          lease_until: now.toISOString(),
++          revision,
++        });
++      } catch {
++        try {
++          const created = await allMatchingRecords<LifecycleRecord>(store, {
++            subject_key: subjectKey,
++            revision,
++          });
++          if (created.length === 1) continue;
++        } catch {
++          // Creation may have applied. A later caller will converge it.
++        }
++        throw new BillingIdentityLifecycleError(
++          "ambiguous",
++          "Billing lifecycle initialization could not be reconciled.",
++        );
++      }
++      continue;
++    }
++    if (records.length === 1) {
++      if (isDuplicateCleanupRecord(records[0])) {
++        await deleteDuplicateCleanupRecord(store, records[0], subjectKey);
++        continue;
++      }
++      return records[0];
++    }
++
++    // A concurrent initializer can leave an inactive initialization row after
++    // another caller has already acquired the one real writer lease. Preserve
++    // that exact writer and remove only provable initialization artifacts.
++    // Multiple live leases or any deleting row remain fail-closed.
++    await convergeDuplicateInitializationRecords(
++      store,
++      records,
++      subjectKey,
++      now,
++      randomUUID,
++    );
++  }
++  throw new BillingIdentityLifecycleError(
++    "cas_contention",
++    "Billing lifecycle initialization did not stabilize.",
++  );
++}
++
++function candidateLease(
++  record: LifecycleRecord,
++  subjectKey: string,
++  state: "active" | "deleting",
++  now: Date,
++  randomUUID: () => string,
++): BillingIdentityLease {
++  const recordID = clean(record.id);
++  if (!recordID) {
++    throw new BillingIdentityLifecycleError(
++      "incomplete_state",
++      "The billing lifecycle row has no entity id.",
++    );
++  }
++  return {
++    recordID,
++    subjectKey,
++    state,
++    leaseToken: `${state}:${randomUUID()}`,
++    leaseUntil: new Date(
++      now.getTime() + BILLING_IDENTITY_LEASE_MILLISECONDS,
++    ).toISOString(),
++    revision: randomUUID(),
++  };
++}
++
++function leaseMatches(record: LifecycleRecord, lease: BillingIdentityLease) {
++  return clean(record.id) === lease.recordID &&
++    clean(record.subject_key) === lease.subjectKey &&
++    lifecycleState(record.state) === lease.state &&
++    clean(record.lease_token) === lease.leaseToken &&
++    clean(record.lease_until) === lease.leaseUntil &&
++    clean(record.revision) === lease.revision;
++}
++
++function recordNoLongerCarriesLease(
++  record: LifecycleRecord,
++  lease: BillingIdentityLease,
++): boolean {
++  return clean(record.id) === lease.recordID &&
++    clean(record.subject_key) === lease.subjectKey &&
++    (
++      lifecycleState(record.state) !== lease.state ||
++      clean(record.lease_token) !== lease.leaseToken ||
++      clean(record.lease_until) !== lease.leaseUntil
++    );
++}
++
++async function hasExactLease(
++  store: any,
++  lease: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string = () => crypto.randomUUID(),
++): Promise<boolean> {
++  for (let attempt = 0; attempt < LIFECYCLE_ATTEMPTS; attempt += 1) {
++    const records = await lifecycleRows(store, lease.subjectKey);
++    if (records.length <= 1) {
++      return Boolean(records[0] && leaseMatches(records[0], lease));
++    }
++    await convergeDuplicateInitializationRecords(
++      store,
++      records,
++      lease.subjectKey,
++      now,
++      randomUUID,
++    );
++  }
++  throw new BillingIdentityLifecycleError(
++    "cas_contention",
++    "Billing lifecycle lease reconciliation did not stabilize.",
++  );
++}
++
++function exactLeaseFilter(lease: BillingIdentityLease) {
++  return {
++    id: lease.recordID,
++    subject_key: lease.subjectKey,
++    state: lease.state,
++    lease_token: lease.leaseToken,
++    lease_until: lease.leaseUntil,
++    revision: lease.revision,
++  };
++}
++
++/** Only acquisition may use this: no caller has received permission to write. */
++async function abandonUnconfirmedLease(
++  store: any,
++  previous: LifecycleRecord,
++  candidate: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const previousFilter = exactRevisionFilter(previous);
++  const update = {
++    $set: {
++      // A retry of an existing deletion must keep its tombstone. Restoring
++      // active unconditionally would reopen writers after partial deletion.
++      state: lifecycleState(previous.state),
++      lease_token: `abandoned:${revision}`,
++      lease_until: now.toISOString(),
++      revision,
++    },
++  };
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
++      try {
++        const result = await store.updateMany(filter, update);
++        if (result?.updated === 1) return;
++      } catch {
++        // Both updates are exact, idempotent fences. The original acquisition
++        // may still commit after a lost response: invalidating its previous
++        // revision also prevents that late commit, without an unsafe unlock.
++      }
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        candidate.recordID,
++        candidate.subjectKey,
++      );
++      if (!record) return; // updateMany cannot recreate a deleted row.
++      const stillPrevious = record.revision === previous.revision &&
++        (clean(previous.revision) || record.updated_date === previous.updated_date);
++      if (!leaseMatches(record, candidate) && !stillPrevious) return;
++    } catch {
++      // If storage stays unavailable, retain the protection and report that
++      // cleanup is unconfirmed. Never clear a row by subject/user alone.
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "ambiguous",
++    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
++  );
++}
++
++async function acquireLease(
++  store: any,
++  userIDValue: unknown,
++  targetState: "active" | "deleting",
++  nowFactory: () => Date,
++  randomUUID: () => string,
++  allowDeletingTakeover = true,
++): Promise<BillingIdentityLease> {
++  const subjectKey = await billingIdentitySubjectKey(userIDValue);
++  for (let attempt = 0; attempt < LIFECYCLE_ATTEMPTS; attempt += 1) {
++    const now = nowFactory();
++    const current = await ensureSingletonLifecycleRecord(
++      store,
++      subjectKey,
++      nowFactory,
++      randomUUID,
++    );
++    const state = lifecycleState(current.state);
++    if (
++      state === "deleting" &&
++      (targetState === "active" || !allowDeletingTakeover)
++    ) {
++      throw new BillingIdentityLifecycleError(
++        "deletion_in_progress",
++        "Account deletion is in progress or already completed.",
++      );
++    }
++    if (isBillingIdentityLeaseActive(current.lease_until, now)) {
++      throw new BillingIdentityLifecycleError(
++        "active_lease",
++        state === "deleting"
++          ? "Another account deletion is in progress."
++          : "Account identity is being updated.",
++      );
++    }
++
++    const candidate = candidateLease(
++      current,
++      subjectKey,
++      targetState,
++      now,
++      randomUUID,
++    );
++    let result: any;
++    try {
++      result = await store.updateMany(
++        exactRevisionFilter(current),
++        {
++          $set: {
++            state: candidate.state,
++            lease_token: candidate.leaseToken,
++            lease_until: candidate.leaseUntil,
++            revision: candidate.revision,
++          },
++        },
++      );
++    } catch {
++      let failure: unknown;
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        failure = error;
++      }
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      if (
++        failure instanceof BillingIdentityLifecycleError &&
++        failure.code === "duplicate_records"
++      ) throw failure;
++      throw new BillingIdentityLifecycleError(
++        "ambiguous",
++        "Billing lifecycle lease result could not be reconciled.",
++      );
++    }
++    if (result?.updated !== 0) {
++      // A delayed concurrent initializer may have created a duplicate after
++      // our CAS. Re-read before trusting the lease, including when a malformed
++      // acknowledgement gives no definitive zero/one update count.
++      try {
++        if (await hasExactLease(store, candidate, now, randomUUID)) {
++          return candidate;
++        }
++      } catch (error) {
++        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++        throw error;
++      }
++      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
++      throw new BillingIdentityLifecycleError(
++        "duplicate_records",
++        "Billing lifecycle became ambiguous during lease acquisition.",
++      );
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    "cas_contention",
++    "Billing lifecycle changed concurrently.",
++  );
++}
++
++export async function acquireBillingWriterLease(
++  store: any,
++  userID: unknown,
++  nowFactory: () => Date = () => new Date(),
++  randomUUID: () => string = () => crypto.randomUUID(),
++): Promise<BillingIdentityLease> {
++  return await acquireLease(store, userID, "active", nowFactory, randomUUID);
++}
++
++export async function acquireBillingDeletionMarker(
++  store: any,
++  userID: unknown,
++  nowFactory: () => Date = () => new Date(),
++  randomUUID: () => string = () => crypto.randomUUID(),
++): Promise<BillingIdentityLease> {
++  return await acquireLease(store, userID, "deleting", nowFactory, randomUUID);
++}
++
++export async function acquireBillingIssuanceMarker(
++  store: any,
++  userID: unknown,
++  nowFactory: () => Date = () => new Date(),
++  randomUUID: () => string = () => crypto.randomUUID(),
++): Promise<BillingIdentityLease> {
++  // Issuance may create an external bearer token. It transitions only from
++  // active state and never takes over an expired deletion/quarantine row.
++  return await acquireLease(
++    store,
++    userID,
++    "deleting",
++    nowFactory,
++    randomUUID,
++    false,
++  );
++}
++
++async function assertExactActiveLease(
++  store: any,
++  lease: BillingIdentityLease,
++  now: Date,
++): Promise<void> {
++  if (!isBillingIdentityLeaseActive(lease.leaseUntil, now)) {
++    throw new BillingIdentityLifecycleError(
++      "active_lease",
++      "The billing lifecycle lease expired before persistence.",
++    );
++  }
++  if (!(await hasExactLease(store, lease, now))) {
++    throw new BillingIdentityLifecycleError(
++      "cas_contention",
++      "The billing lifecycle lease changed concurrently.",
++    );
++  }
++}
++
++export async function assertBillingWriterLease(
++  store: any,
++  lease: BillingIdentityLease,
++  now = new Date(),
++): Promise<void> {
++  if (lease.state !== "active") {
++    throw new BillingIdentityLifecycleError(
++      "incomplete_state",
++      "Writer lease required.",
++    );
++  }
++  await assertExactActiveLease(store, lease, now);
++}
++
++export async function assertBillingDeletionMarker(
++  store: any,
++  lease: BillingIdentityLease,
++  now = new Date(),
++): Promise<void> {
++  if (lease.state !== "deleting") {
++    throw new BillingIdentityLifecycleError(
++      "incomplete_state",
++      "Deletion marker required.",
++    );
++  }
++  await assertExactActiveLease(store, lease, now);
++}
++
++async function releaseLease(
++  store: any,
++  lease: BillingIdentityLease,
++  now: Date,
++  randomUUID: () => string,
++): Promise<void> {
++  const revision = randomUUID();
++  const releasedAt = now.toISOString();
++  const update = {
++    $set: {
++      state: "active",
++      lease_token: `released:${revision}`,
++      lease_until: releasedAt,
++      revision,
++    },
++  };
++  let ambiguous = false;
++  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
++    try {
++      const result = await store.updateMany(exactLeaseFilter(lease), update);
++      if (result?.updated === 1) return;
++    } catch {
++      ambiguous = true;
++    }
++    try {
++      const record = await exactLifecycleRecord(
++        store,
++        lease.recordID,
++        lease.subjectKey,
++      );
++      // Lost responses and a temporarily unreadable confirmation are retried
++      // here for every caller, including those without an outer retry loop.
++      // A deleted row or replacement owner needs no further cleanup by us.
++      if (!record || recordNoLongerCarriesLease(record, lease)) return;
++    } catch {
++      ambiguous = true;
++    }
++  }
++  throw new BillingIdentityLifecycleError(
++    ambiguous ? "ambiguous" : "cas_contention",
++    ambiguous
++      ? "Billing lifecycle lease release could not be reconciled."
++      : "Billing lifecycle lease changed before release.",
++  );
++}
++
++export async function releaseBillingWriterLease(
++  store: any,
++  lease: BillingIdentityLease,
++  now = new Date(),
++  randomUUID: () => string = () => crypto.randomUUID(),
++): Promise<void> {
++  if (lease.state !== "active") {
++    throw new BillingIdentityLifecycleError(
++      "incomplete_state",
++      "Writer lease required.",
++    );
++  }
++  await releaseLease(store, lease, now, randomUUID);
++}
++
++export async function releaseBillingDeletionMarker(
++  store: any,
++  lease: BillingIdentityLease,
++  now = new Date(),
++  randomUUID: () => string = () => crypto.randomUUID(),
++): Promise<void> {
++  if (lease.state !== "deleting") {
++    throw new BillingIdentityLifecycleError(
++      "incomplete_state",
++      "Deletion marker required.",
++    );
++  }
++  await releaseLease(store, lease, now, randomUUID);
++}
++
++export async function renewBillingDeletionMarker(
++  store: any,
++  lease: BillingIdentityLease,
++  now = new Date(),
++  randomUUID: () => string = () => crypto.randomUUID(),
++): Promise<void> {
++  if (lease.state !== "deleting") {
++    throw new BillingIdentityLifecycleError(
++      "incomplete_state",
++      "Deletion marker required.",
++    );
++  }
++  const renewedUntil = new Date(Math.max(
++    now.getTime() + BILLING_IDENTITY_LEASE_MILLISECONDS,
++    (Date.parse(lease.leaseUntil) || 0) + 1_000,
++  )).toISOString();
++  const revision = randomUUID();
++  const renewed = { ...lease, leaseUntil: renewedUntil, revision };
++  let result: any;
++  try {
++    result = await store.updateMany(
++      {
++        id: lease.recordID,
++        subject_key: lease.subjectKey,
++        state: "deleting",
++        lease_token: lease.leaseToken,
++        lease_until: lease.leaseUntil,
++        revision: lease.revision,
++      },
++      { $set: { lease_until: renewedUntil, revision } },
++    );
++  } catch {
++    try {
++      if (await hasExactLease(store, renewed, now)) {
++        lease.leaseUntil = renewedUntil;
++        lease.revision = revision;
++        return;
++      }
++    } catch {
++      // State remains deleting even if the exact renewal is unknown.
++    }
++    throw new BillingIdentityLifecycleError(
++      "ambiguous",
++      "Deletion marker renewal could not be reconciled.",
++    );
++  }
++  if (
++    Number(result?.updated) !== 1 ||
++    !(await hasExactLease(store, renewed, now))
++  ) {
++    throw new BillingIdentityLifecycleError(
++      "cas_contention",
++      "Deletion marker changed before renewal.",
++    );
++  }
++  lease.leaseUntil = renewedUntil;
++  lease.revision = revision;
++}
+--- a/base44/functions/pushNotificationAction/billing-identity-lifecycle.ts
++++ b/base44/functions/pushNotificationAction/billing-identity-lifecycle.ts
+@@ -45,0 +46 @@
++    retryable = code === "active_lease" || code === "cas_contention",
+@@ -49 +50 @@
+-    this.retryable = code === "active_lease" || code === "cas_contention";
++    this.retryable = retryable;
+--- a/base44/functions/pushNotificationAction/error-response.ts
++++ b/base44/functions/pushNotificationAction/error-response.ts
+@@ -18,0 +19,4 @@
++    if (error.status === 409 &&
++      ["device_owner_changed", "activity_owner_changed"].includes(error.code)) {
++      return retryable(error.message, 409, error.code, 1);
++    }
+@@ -29,6 +33,8 @@
+-    return retryable(
+-      "Push registration is temporarily unavailable.",
+-      conflict ? 409 : 503,
+-      error.code,
+-      conflict ? 1 : 2,
+-    );
++    return Response.json({
++      error: "Push registration is temporarily unavailable.",
++      code: error.code,
++      retryable: error.retryable,
++    }, {
++      status: conflict ? 409 : 503,
++      ...(error.retryable ? { headers: { "Retry-After": "1" } } : {}),
++    });
+--- a/base44/functions/pushNotificationAction/device-registration.ts
++++ b/base44/functions/pushNotificationAction/device-registration.ts
+@@ -4,0 +5 @@
++  BillingIdentityLifecycleError,
+@@ -96,0 +98 @@
++  let actionStarted = false;
+@@ -108,0 +111 @@
++    actionStarted = true;
+@@ -114,0 +118,3 @@
++    if (actionStarted && error instanceof BillingIdentityLifecycleError) {
++      throw new BillingIdentityLifecycleError(error.code, error.message, false);
++    }
+--- a/base44/functions/wordPackAction/lifecycle-error-response.ts
++++ b/base44/functions/wordPackAction/lifecycle-error-response.ts
+@@ -19 +19 @@
+-  const retryable = status === 409 &&
++  const retryable = error.retryable && status === 409 &&
+@@ -25 +25 @@
+-      ...(retryable ? { retryable: true } : {}),
++      retryable,
+--- a/base44/functions/wordPackAction/word-pack-write-lifecycle.ts
++++ b/base44/functions/wordPackAction/word-pack-write-lifecycle.ts
+@@ -120 +120,3 @@
+-    actionError = error;
++    actionError = error instanceof BillingIdentityLifecycleError
++      ? new BillingIdentityLifecycleError(error.code, error.message, false)
++      : error;
+--- a/base44/functions/wordPackAction/billing-identity-lifecycle.ts
++++ b/base44/functions/wordPackAction/billing-identity-lifecycle.ts
+@@ -45,0 +46 @@
++    retryable = code === "active_lease" || code === "cas_contention",
+@@ -49 +50 @@
+-    this.retryable = code === "active_lease" || code === "cas_contention";
++    this.retryable = retryable;

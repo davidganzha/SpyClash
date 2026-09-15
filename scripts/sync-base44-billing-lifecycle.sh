@@ -13,6 +13,7 @@ if [ "${1:-}" = "--check" ]; then
     "$ROOT/base44/functions/autoRegisterUser/billing-identity-lifecycle.ts" \
     "$ROOT/base44/functions/deleteAccount/billing-identity-lifecycle.ts" \
     "$ROOT/base44/functions/communityAction/billing-identity-lifecycle.ts" \
+    "$ROOT/base44/functions/notificationAction/billing-identity-lifecycle.ts" \
     "$ROOT/base44/functions/gameRoomAction/billing-identity-lifecycle.ts" \
     "$ROOT/base44/functions/pushNotificationAction/billing-identity-lifecycle.ts" \
     "$ROOT/base44/functions/generateWordPack/billing-identity-lifecycle.ts" \
@@ -37,6 +38,7 @@ for target in \
   "$ROOT/base44/functions/autoRegisterUser/billing-identity-lifecycle.ts" \
   "$ROOT/base44/functions/deleteAccount/billing-identity-lifecycle.ts" \
   "$ROOT/base44/functions/communityAction/billing-identity-lifecycle.ts" \
+    "$ROOT/base44/functions/notificationAction/billing-identity-lifecycle.ts" \
   "$ROOT/base44/functions/gameRoomAction/billing-identity-lifecycle.ts" \
   "$ROOT/base44/functions/pushNotificationAction/billing-identity-lifecycle.ts" \
   "$ROOT/base44/functions/generateWordPack/billing-identity-lifecycle.ts" \

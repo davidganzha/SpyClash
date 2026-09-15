@@ -1,0 +1,786 @@
+{
+  "app_id": "69a0e57fa939f578082f8091",
+  "source_base_commit": "cf82a56b9a4e78606c30004e165c30e5bb582fce",
+  "build": 157,
+  "functions": [
+    "communityAction",
+    "gameRoomAction",
+    "generateWordPack",
+    "notificationAction",
+    "pushNotificationAction",
+    "wordPackAction"
+  ],
+  "schema_changes": [],
+  "stage_path": "/tmp/spyclash-409-157-deploy",
+  "runtime_files": [
+    {
+      "path": "base44/functions/communityAction/membership.ts",
+      "before_sha256": "7027cfbd69ccd7aad3189d603913829132119fed60189219a41e527d05def92b",
+      "candidate_sha256": "7027cfbd69ccd7aad3189d603913829132119fed60189219a41e527d05def92b",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/mutation-idempotency.ts",
+      "before_sha256": "5fd5250426199cdf18787ab76d1602e21192100ff54d2749fceeebba95806198",
+      "candidate_sha256": "5fd5250426199cdf18787ab76d1602e21192100ff54d2749fceeebba95806198",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/community-moderation.ts",
+      "before_sha256": "26816825ba0a0dbc6381f4cd81d0c141d37471f8b7363184b5cca2e3b0a65d96",
+      "candidate_sha256": "26816825ba0a0dbc6381f4cd81d0c141d37471f8b7363184b5cca2e3b0a65d96",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/push-events.ts",
+      "before_sha256": "f2e699ea16691b15b767ec2e31ef462846a9db2930d75109ca608f932ce6262a",
+      "candidate_sha256": "f2e699ea16691b15b767ec2e31ef462846a9db2930d75109ca608f932ce6262a",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/profile-membership.ts",
+      "before_sha256": "329a34560e5bb9683218bfed980b372f1ed64303c1985b3380c1da775ed40105",
+      "candidate_sha256": "329a34560e5bb9683218bfed980b372f1ed64303c1985b3380c1da775ed40105",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/profile-signal.ts",
+      "before_sha256": "6fc282d56c3f04cc1993970818096823d80ce1d54386cdf661f717ddbe469c6e",
+      "candidate_sha256": "6fc282d56c3f04cc1993970818096823d80ce1d54386cdf661f717ddbe469c6e",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/friendship-pagination.ts",
+      "before_sha256": "8f1cc27ae64953e02476b927ef081c21dc2740434b0809a2af457f62f8a238c0",
+      "candidate_sha256": "8f1cc27ae64953e02476b927ef081c21dc2740434b0809a2af457f62f8a238c0",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/community-write-lifecycle.ts",
+      "before_sha256": "05b7cfee6f5a66359ec597a2f5508d6e02994258e7e32d6b222ab169d3fbe4ff",
+      "candidate_sha256": "fe9d3443f00516661dfbfafb5776f84f8a30ee6d8344deba6f0ec4d1235fa8fd",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/communityAction/community-safety.ts",
+      "before_sha256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937",
+      "candidate_sha256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/main.ts",
+      "before_sha256": "e8a156e48a767194bc6e39e366cd093a47d18d2b260ad5cef0cdca025d4e1c6b",
+      "candidate_sha256": "b7ba8898156509b0a0dcbf4485a211ce3a9eefc712d34fc845e761038cfcd5f2",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/communityAction/community.ts",
+      "before_sha256": "8ba071e5b8e8c61d2518206ba0e39c79079b4431fbe26df1c0f3e5da78a7a15e",
+      "candidate_sha256": "8ba071e5b8e8c61d2518206ba0e39c79079b4431fbe26df1c0f3e5da78a7a15e",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/post-commit-state.ts",
+      "before_sha256": "912efd37a857e5bdcaf254cfdc2dd8400507bd1d4231ef344fee91657cae24a2",
+      "candidate_sha256": "912efd37a857e5bdcaf254cfdc2dd8400507bd1d4231ef344fee91657cae24a2",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/base44-context.ts",
+      "before_sha256": "d872656a5f37f3e86493223e2b7cfa49268fd18d939d4f2601d7d510a9d93ab8",
+      "candidate_sha256": "d872656a5f37f3e86493223e2b7cfa49268fd18d939d4f2601d7d510a9d93ab8",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/profile-write-lifecycle.ts",
+      "before_sha256": "f68554ddaea350d983195220f1fece0d50b5624dc3b8503368312816bff8e83f",
+      "candidate_sha256": "f68554ddaea350d983195220f1fece0d50b5624dc3b8503368312816bff8e83f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/friendship-pair-policy.ts",
+      "before_sha256": "bae7b4d61a193d22e80a69c8da38fc4e33ae8b4e4e51e0af8ab31e77ecc4177f",
+      "candidate_sha256": "bae7b4d61a193d22e80a69c8da38fc4e33ae8b4e4e51e0af8ab31e77ecc4177f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/limitless-rollout.ts",
+      "before_sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+      "candidate_sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/billing-identity-lifecycle.ts",
+      "before_sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "candidate_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/communityAction/error-response.ts",
+      "before_sha256": "1276a5169dc11eb71cbaf4e7299d7f71df564c254affabf8318f58a671cd4013",
+      "candidate_sha256": "9169ce855f4d527cc168fd2760e6417681f5b0a9dd52332d2705c993f80117d0",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/communityAction/internal-push.ts",
+      "before_sha256": "0c122f25bfaf7287f28bed1197aa4f11d12fc964cf460a5f597bd9fc629c7c4f",
+      "candidate_sha256": "0c122f25bfaf7287f28bed1197aa4f11d12fc964cf460a5f597bd9fc629c7c4f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/communityAction/room-invite-pagination.ts",
+      "before_sha256": "f5412b2301acb2a9690f46f14f94e26dbdc0aff0160431c886d99d3b104c3d97",
+      "candidate_sha256": "f5412b2301acb2a9690f46f14f94e26dbdc0aff0160431c886d99d3b104c3d97",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/multi-spy-policy.ts",
+      "before_sha256": "8a9ff1826c2b3d5c9033897eccebbd614471b9326aaff3af9797efaa23ec91e9",
+      "candidate_sha256": "8a9ff1826c2b3d5c9033897eccebbd614471b9326aaff3af9797efaa23ec91e9",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/room-result-policy.ts",
+      "before_sha256": "44d4934adc7710baa2d2eb66b1461ff75e4b034aa0fd0c45ca1c508e85929ec8",
+      "candidate_sha256": "44d4934adc7710baa2d2eb66b1461ff75e4b034aa0fd0c45ca1c508e85929ec8",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/content-safety.ts",
+      "before_sha256": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b",
+      "candidate_sha256": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/game-round.ts",
+      "before_sha256": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af",
+      "candidate_sha256": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/room-interaction-safety.ts",
+      "before_sha256": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c",
+      "candidate_sha256": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/game-room-signal.ts",
+      "before_sha256": "bd084e043772a926aee7c268049ead7896008d3f937790a469927f2a33041f86",
+      "candidate_sha256": "bd084e043772a926aee7c268049ead7896008d3f937790a469927f2a33041f86",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/detective-vote-write.ts",
+      "before_sha256": "9b9b0d3b5e24a1e6e0057b807de50b1ee12e956d3ac3cfb4f619762ffd2ce2ba",
+      "candidate_sha256": "9b9b0d3b5e24a1e6e0057b807de50b1ee12e956d3ac3cfb4f619762ffd2ce2ba",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/game-timer-policy.ts",
+      "before_sha256": "33837768c2a60210a3ef2b5cc68ca1c76f821cfc5fdbd0e845f0ac5f595a78ee",
+      "candidate_sha256": "33837768c2a60210a3ef2b5cc68ca1c76f821cfc5fdbd0e845f0ac5f595a78ee",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/detective-vote-policy.ts",
+      "before_sha256": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4",
+      "candidate_sha256": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/game-history-idempotency.ts",
+      "before_sha256": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0",
+      "candidate_sha256": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/push-events.ts",
+      "before_sha256": "fa8c67583414f203ae909e89067947624109823851b4e8e91da9bd9786ec1020",
+      "candidate_sha256": "fa8c67583414f203ae909e89067947624109823851b4e8e91da9bd9786ec1020",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/room-push-policy.ts",
+      "before_sha256": "634913e4f2372ecf276c7e9ffdb2d0226b94758652715533b344acacc1739df9",
+      "candidate_sha256": "634913e4f2372ecf276c7e9ffdb2d0226b94758652715533b344acacc1739df9",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/lobby-kick-policy.ts",
+      "before_sha256": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6",
+      "candidate_sha256": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/main.ts",
+      "before_sha256": "808707edc1d14f2644bba2714dcb9a64110ee9a4910d2dc32b5dcbeb1c36943e",
+      "candidate_sha256": "8be55aed2f0f25f518d9a13f1da18706a2643d0ec0f1291f8796ceb4c4a6775f",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/gameRoomAction/round-action-access.ts",
+      "before_sha256": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda",
+      "candidate_sha256": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/room-membership-generation.ts",
+      "before_sha256": "97f10bf14a8dff24547a372e7bd26f423b17660eb524f7e3bf75965478fbc10b",
+      "candidate_sha256": "97f10bf14a8dff24547a372e7bd26f423b17660eb524f7e3bf75965478fbc10b",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/room-participant-identity.ts",
+      "before_sha256": "ff9bd360e5b3e5f067632e59150e0a276ec400086e7efd2333eae62f418a786f",
+      "candidate_sha256": "ff9bd360e5b3e5f067632e59150e0a276ec400086e7efd2333eae62f418a786f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/committed-game-start-repair.ts",
+      "before_sha256": "210018fba04774a6f51f01295f730edbaf07d9f00365e5edd08b0682fcf72a4f",
+      "candidate_sha256": "210018fba04774a6f51f01295f730edbaf07d9f00365e5edd08b0682fcf72a4f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/room-write-lifecycle.ts",
+      "before_sha256": "96c73111d67d59737e2df91f00674798a971f92224efc673dec3ac0b0dab34b7",
+      "candidate_sha256": "1b5c80cd5f15a44edcb08c1f94e68b86a1b955b20e6dfe10c723f4a6bdc6d337",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/gameRoomAction/finished-room-departure-policy.ts",
+      "before_sha256": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14",
+      "candidate_sha256": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/terminal-timing.ts",
+      "before_sha256": "4bb45dedb08cb0a625d2a99fd1ca09a132090a9cc60d1b2a5cafba8e5f5ee8ec",
+      "candidate_sha256": "4bb45dedb08cb0a625d2a99fd1ca09a132090a9cc60d1b2a5cafba8e5f5ee8ec",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/detective-vote-lease-recovery.ts",
+      "before_sha256": "0d2095f5871f830378874adc33902af2b7a8cd6890288bf041af53349569bd9a",
+      "candidate_sha256": "0d2095f5871f830378874adc33902af2b7a8cd6890288bf041af53349569bd9a",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/terminal-finalization-scope.ts",
+      "before_sha256": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12",
+      "candidate_sha256": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/question-round-policy.ts",
+      "before_sha256": "e59d66fb4c808ae68357907971d440c0a779351db7ce225e1675ca6b250929ad",
+      "candidate_sha256": "e59d66fb4c808ae68357907971d440c0a779351db7ce225e1675ca6b250929ad",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/request-auth.ts",
+      "before_sha256": "b2d798a45345c3fe551fd98e17f592b0cc718a07e84c2b250c2ddadbbd204f2c",
+      "candidate_sha256": "b2d798a45345c3fe551fd98e17f592b0cc718a07e84c2b250c2ddadbbd204f2c",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/terminal-finalization-recovery.ts",
+      "before_sha256": "931c762ee30f73a958fa8b81783627e3117cfd7475e642983a0633f56579f502",
+      "candidate_sha256": "931c762ee30f73a958fa8b81783627e3117cfd7475e642983a0633f56579f502",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/question-turn-order.ts",
+      "before_sha256": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef",
+      "candidate_sha256": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/replay-policy.ts",
+      "before_sha256": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380",
+      "candidate_sha256": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/replay-auto-start-policy.ts",
+      "before_sha256": "1c4cbbe426152c8120ea86353d0e1f5667d0ebbc491e9d7313868a92c1e2d0a7",
+      "candidate_sha256": "1c4cbbe426152c8120ea86353d0e1f5667d0ebbc491e9d7313868a92c1e2d0a7",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/post-lease-signal.ts",
+      "before_sha256": "e7787dbeb11743f73f4312a4930f09c3c17ce197fd436f2e81435f0be8ac3fe9",
+      "candidate_sha256": "e7787dbeb11743f73f4312a4930f09c3c17ce197fd436f2e81435f0be8ac3fe9",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/association-turn-order.ts",
+      "before_sha256": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa",
+      "candidate_sha256": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/operation-deadline.ts",
+      "before_sha256": "4aac5455024ccc894aaec1e9c2e2b9c5473e9931811eb6d645a3cb1240c07416",
+      "candidate_sha256": "4aac5455024ccc894aaec1e9c2e2b9c5473e9931811eb6d645a3cb1240c07416",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/community-profile-backfill.ts",
+      "before_sha256": "b87dab40c10819cff33999a558c194ef1b56f5b6ae185202b0b75c348ff7463f",
+      "candidate_sha256": "b87dab40c10819cff33999a558c194ef1b56f5b6ae185202b0b75c348ff7463f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/leaderboard.ts",
+      "before_sha256": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94",
+      "candidate_sha256": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/room-projection.ts",
+      "before_sha256": "cf441648aa5649df432df18354c50bfa1821b5d97fdbe6713ff69fe5b8988d20",
+      "candidate_sha256": "cf441648aa5649df432df18354c50bfa1821b5d97fdbe6713ff69fe5b8988d20",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/terminal-outbox-commit.ts",
+      "before_sha256": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e",
+      "candidate_sha256": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/active-game-lobby-return-policy.ts",
+      "before_sha256": "0a47ae87a667e380abe76cef4ccefda5d297f3410bb5c6be1fcaa26e04f1ed5c",
+      "candidate_sha256": "0a47ae87a667e380abe76cef4ccefda5d297f3410bb5c6be1fcaa26e04f1ed5c",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/billing-identity-lifecycle.ts",
+      "before_sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "candidate_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/gameRoomAction/community-profile-repair-queue.ts",
+      "before_sha256": "c91e2d15b009802f4572753c53d93516a85d28f64c4d219cfccd164dd78b9107",
+      "candidate_sha256": "c91e2d15b009802f4572753c53d93516a85d28f64c4d219cfccd164dd78b9107",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/lobby-state-policy.ts",
+      "before_sha256": "de7c5c0ca28b277753c5b1816b0dc1088b34b4961418a805e493005931c4f4d6",
+      "candidate_sha256": "de7c5c0ca28b277753c5b1816b0dc1088b34b4961418a805e493005931c4f4d6",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/community-profile-signal.ts",
+      "before_sha256": "0b033a02d72eaa637418f71a3de2569f9879f9d1b4e411bd8d0e83834adcee3c",
+      "candidate_sha256": "0b033a02d72eaa637418f71a3de2569f9879f9d1b4e411bd8d0e83834adcee3c",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/start-word-pool-policy.ts",
+      "before_sha256": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b",
+      "candidate_sha256": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/community-profile-mirror.ts",
+      "before_sha256": "46fad25a7fcae7534ca6206f4bb6e7ff59ac559bf3f84aafd4a00fe60492d8a1",
+      "candidate_sha256": "46fad25a7fcae7534ca6206f4bb6e7ff59ac559bf3f84aafd4a00fe60492d8a1",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/internal-push.ts",
+      "before_sha256": "640c39a3d7342196b658de1e604463bc1e54cfb5429488a6216f9336660df9c3",
+      "candidate_sha256": "640c39a3d7342196b658de1e604463bc1e54cfb5429488a6216f9336660df9c3",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/competitive-stats.ts",
+      "before_sha256": "058bfd9029172554a0f648c8b23b78e788b7b1f6b9e89502974ff9bdc64d0a45",
+      "candidate_sha256": "058bfd9029172554a0f648c8b23b78e788b7b1f6b9e89502974ff9bdc64d0a45",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/room-write-cas.ts",
+      "before_sha256": "3391d95a7b5e0cde2afa5ab0e3636ed2c18b083be8b1d4af669de151bb7c5bf5",
+      "candidate_sha256": "521ebf106eecf129572d14f9e7ccdc9b33ad0b1dd08048789f7a48776e4c67a9",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/gameRoomAction/terminal-side-effect-dispatch.ts",
+      "before_sha256": "46b3268fd557f59092d09437a6e91f5d33a5ac185c1d85299bbd1b1e07685934",
+      "candidate_sha256": "46b3268fd557f59092d09437a6e91f5d33a5ac185c1d85299bbd1b1e07685934",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/room-close-intent.ts",
+      "before_sha256": "845ec36a3166365234d06ea703138e8d4dc6913c1578ef93a272489813832371",
+      "candidate_sha256": "845ec36a3166365234d06ea703138e8d4dc6913c1578ef93a272489813832371",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/gameRoomAction/room-action-transition.ts",
+      "before_sha256": null,
+      "candidate_sha256": "788531fd2b86fd2838b733027331f25fc0e66a89ff45161f8114357f884972dd",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/generateWordPack/content-safety.ts",
+      "before_sha256": "817ba01e58d5eb8036a59148a20cc3e6a9b30df0ee33f254bf84e56e98629042",
+      "candidate_sha256": "817ba01e58d5eb8036a59148a20cc3e6a9b30df0ee33f254bf84e56e98629042",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/openai-word-pack-provider.ts",
+      "before_sha256": "a18de5916448dcc3dd8216c14b5fd1e659281cfb56f3e5888c8a487472e028bb",
+      "candidate_sha256": "a18de5916448dcc3dd8216c14b5fd1e659281cfb56f3e5888c8a487472e028bb",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-cache.ts",
+      "before_sha256": "39365535caef5535036fb986c0746df4429a1e5cb9c20bb2df22810d5389e278",
+      "candidate_sha256": "39365535caef5535036fb986c0746df4429a1e5cb9c20bb2df22810d5389e278",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-write-lifecycle.ts",
+      "before_sha256": "e344365f7ca33d2c2e5ef369a452e057e030887896b1aa681914c1c2d5d62baa",
+      "candidate_sha256": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/generateWordPack/membership.ts",
+      "before_sha256": "e86e4b4fda3a800bbbab709cf65514ff6de4327478f4e1b9ff4da7635c1c5728",
+      "candidate_sha256": "e86e4b4fda3a800bbbab709cf65514ff6de4327478f4e1b9ff4da7635c1c5728",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/main.ts",
+      "before_sha256": "b70b1c3a2678958833b9135bc28cfb74e10aff20571917163fa0dddd4f58ac05",
+      "candidate_sha256": "8d4980fde482ef6a104ebb005471f4473e6ca1cab1c18a3743b980880fcbe1ee",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/generateWordPack/word-pack-quality.ts",
+      "before_sha256": "c0aa06a9708d6b3a08930f0d9df35d848652e36fd8a71f0a7e72c0f870e2b5e6",
+      "candidate_sha256": "c0aa06a9708d6b3a08930f0d9df35d848652e36fd8a71f0a7e72c0f870e2b5e6",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-idempotency.ts",
+      "before_sha256": "a077ce2573fd90b41de9e2cac1f8257e8272dbb18924f81d70ff27ccdd7dcb4d",
+      "candidate_sha256": "a077ce2573fd90b41de9e2cac1f8257e8272dbb18924f81d70ff27ccdd7dcb4d",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/quota.ts",
+      "before_sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be",
+      "candidate_sha256": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/base44-context.ts",
+      "before_sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "candidate_sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/ai-provider-resilience.ts",
+      "before_sha256": "98a314fafb31d5790b7c37730323ec93b80803be1c87be181a69d87bc868db45",
+      "candidate_sha256": "98a314fafb31d5790b7c37730323ec93b80803be1c87be181a69d87bc868db45",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/word-normalization.ts",
+      "before_sha256": "fa65bd50a34f22c7e7f6b680407cf5dc8db0308e03b05a57d1667715df594111",
+      "candidate_sha256": "fa65bd50a34f22c7e7f6b680407cf5dc8db0308e03b05a57d1667715df594111",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/generateWordPack/billing-identity-lifecycle.ts",
+      "before_sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "candidate_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/generateWordPack/generation-retry-contract.ts",
+      "before_sha256": null,
+      "candidate_sha256": "4f598d2801f0931334f0cb57e4a3e4a4c4e7ff5c066b8cd3108d5ac53977f2e3",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/notificationAction/admin-publish-lifecycle.ts",
+      "before_sha256": "0955dd995e809b8872a165bc3409b0add2bc73cc8dd506c2642ce33b2355e346",
+      "candidate_sha256": "0955dd995e809b8872a165bc3409b0add2bc73cc8dd506c2642ce33b2355e346",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/notificationAction/contracts.ts",
+      "before_sha256": "7b53d15d41908c891b8b37597bc75b0c0767cd07f482ed8d4bbe2ad645b75aea",
+      "candidate_sha256": "7b53d15d41908c891b8b37597bc75b0c0767cd07f482ed8d4bbe2ad645b75aea",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/notificationAction/inbox.ts",
+      "before_sha256": "e8dd795b58c8d367fda6aa0694978c5061fb4014b3b817ba0d1653880f5c482e",
+      "candidate_sha256": "e8dd795b58c8d367fda6aa0694978c5061fb4014b3b817ba0d1653880f5c482e",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/notificationAction/main.ts",
+      "before_sha256": "9ff1d76b55c63cd7d21893d49d20c93719ed35148f6cb3baddcb6c1d5c613f05",
+      "candidate_sha256": "9ff1d76b55c63cd7d21893d49d20c93719ed35148f6cb3baddcb6c1d5c613f05",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/notificationAction/safe-error.ts",
+      "before_sha256": "dec6b320d4748c2ee8b962d6804b9b6c1b82bab26701c21789f4c1f6b41664a5",
+      "candidate_sha256": "dec6b320d4748c2ee8b962d6804b9b6c1b82bab26701c21789f4c1f6b41664a5",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/notificationAction/base44-context.ts",
+      "before_sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "candidate_sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/notificationAction/error-response.ts",
+      "before_sha256": "d668f43d6fac0fcc4039e500386e964ff8e8d258d31cf410dd62115c81187d87",
+      "candidate_sha256": "629774cd6805299fb4fb4ee993249b4910aef819d78b10f316ea80ee78cdec0c",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/notificationAction/receipt-lifecycle.ts",
+      "before_sha256": "dc69cd419316f049d506db20166903746f799d8e3b7e16b358ce9b8a5af7e181",
+      "candidate_sha256": "86e3beda25beb8b952932c10168f0cb2b4125001ad49c4f8cddc0d6534f64820",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/notificationAction/billing-identity-lifecycle.ts",
+      "before_sha256": null,
+      "candidate_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/queued-live-end-delivery.ts",
+      "before_sha256": "1cdfd4a3a40a29a5b0634af435b27f40a368ffecfbee6deb1688599b14e0c26e",
+      "candidate_sha256": "1cdfd4a3a40a29a5b0634af435b27f40a368ffecfbee6deb1688599b14e0c26e",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/billing-lifecycle-retry.ts",
+      "before_sha256": "e11a9a72af82ba171164995aec3a3af9063196537cee876c09b0677493841796",
+      "candidate_sha256": "e11a9a72af82ba171164995aec3a3af9063196537cee876c09b0677493841796",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/drain-policy.ts",
+      "before_sha256": "478580a3415ae9af80a9095d66e4578e088324358c4ac73de4668282675851e9",
+      "candidate_sha256": "478580a3415ae9af80a9095d66e4578e088324358c4ac73de4668282675851e9",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/bounded-work.ts",
+      "before_sha256": "f7c050e38b3e8636b6da4bca8c42efc5112016c8969def508f09abb3927f725d",
+      "candidate_sha256": "f7c050e38b3e8636b6da4bca8c42efc5112016c8969def508f09abb3927f725d",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/process-event-timing.ts",
+      "before_sha256": "3385cac9986998b01449033ee723f5f3ec0cb904eaae8185f08ed995fb806712",
+      "candidate_sha256": "3385cac9986998b01449033ee723f5f3ec0cb904eaae8185f08ed995fb806712",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/push-events.ts",
+      "before_sha256": "6d6c40195fd38c8e3a7e11d48e375890616a0c56da52b8be9ee044a43efe0b71",
+      "candidate_sha256": "6d6c40195fd38c8e3a7e11d48e375890616a0c56da52b8be9ee044a43efe0b71",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/token-crypto.ts",
+      "before_sha256": "a3f0fe644dbc42226a7faed8f7ad6cf90f54abcb09f9f957432ed18a839543cd",
+      "candidate_sha256": "a3f0fe644dbc42226a7faed8f7ad6cf90f54abcb09f9f957432ed18a839543cd",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/live-activity.ts",
+      "before_sha256": "8935874fc8a90ef4e26d4e8e3944d995c9ff24bdd550c47754f8cc848f49ea43",
+      "candidate_sha256": "8935874fc8a90ef4e26d4e8e3944d995c9ff24bdd550c47754f8cc848f49ea43",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/apns.ts",
+      "before_sha256": "a0a2e79c1d0b401735670265a132237b91b9f15bd6f07dcb9ad3262ac0897b6e",
+      "candidate_sha256": "a0a2e79c1d0b401735670265a132237b91b9f15bd6f07dcb9ad3262ac0897b6e",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/contracts.ts",
+      "before_sha256": "b4d7d9415497055cfd9f6a187173b47a736f774b38baf1bda5713f4aefbcc79e",
+      "candidate_sha256": "b4d7d9415497055cfd9f6a187173b47a736f774b38baf1bda5713f4aefbcc79e",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/main.ts",
+      "before_sha256": "c7c4d29a2979413a79ebeb95620d77b136837a15aa030fbc857c151aac3ee375",
+      "candidate_sha256": "c7c4d29a2979413a79ebeb95620d77b136837a15aa030fbc857c151aac3ee375",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/live-delivery.ts",
+      "before_sha256": "24f90a5888b35c9ec28c1df7e09bd3f409c7c66b119a38fbf0d520013767d945",
+      "candidate_sha256": "24f90a5888b35c9ec28c1df7e09bd3f409c7c66b119a38fbf0d520013767d945",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/safe-error.ts",
+      "before_sha256": "0d1202d4771fee8f71680be830906b8d66b330d1f8cbffaf33ff9623896e7de8",
+      "candidate_sha256": "0d1202d4771fee8f71680be830906b8d66b330d1f8cbffaf33ff9623896e7de8",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/forced-live-end-authorization.ts",
+      "before_sha256": "6d72506b6619a5e25c054e23a924a710cac0c825936127930ddb9e2188accffa",
+      "candidate_sha256": "6d72506b6619a5e25c054e23a924a710cac0c825936127930ddb9e2188accffa",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/worker-auth.ts",
+      "before_sha256": "a7397b2fb1dc58d34836147de11e446997db1965eb05d23b4863c24b5712e4dd",
+      "candidate_sha256": "a7397b2fb1dc58d34836147de11e446997db1965eb05d23b4863c24b5712e4dd",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/room-reconciliation.ts",
+      "before_sha256": "1377c99c6c7a9d527d56163c1dfc07f70f5a198b076cadfb31a730eb4d7e48d7",
+      "candidate_sha256": "1377c99c6c7a9d527d56163c1dfc07f70f5a198b076cadfb31a730eb4d7e48d7",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/internal-function-response.ts",
+      "before_sha256": "541c3a831e8dd1960cc57bfb52a399c62c3dd3c385b32d8537dcd085a1d3160f",
+      "candidate_sha256": "541c3a831e8dd1960cc57bfb52a399c62c3dd3c385b32d8537dcd085a1d3160f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/live-end-enqueue.ts",
+      "before_sha256": "a9ca49bfc93fa0be0891b831d2cb9a42b78d2cecdb1d35bf8a3740e8e46b8c7e",
+      "candidate_sha256": "a9ca49bfc93fa0be0891b831d2cb9a42b78d2cecdb1d35bf8a3740e8e46b8c7e",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/base44-context.ts",
+      "before_sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f",
+      "candidate_sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/public-name-safety.ts",
+      "before_sha256": "9ad28b10f54a75597c1680278187c08844c2f83a4684a6c0793e3f115f9c75bf",
+      "candidate_sha256": "9ad28b10f54a75597c1680278187c08844c2f83a4684a6c0793e3f115f9c75bf",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/billing-identity-lifecycle.ts",
+      "before_sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "candidate_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/scheduled-room-reconciliation.ts",
+      "before_sha256": "14a3219f5816322d7677728cd489013002baaaf0d05e81d9788420c9618d6c5f",
+      "candidate_sha256": "14a3219f5816322d7677728cd489013002baaaf0d05e81d9788420c9618d6c5f",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/error-response.ts",
+      "before_sha256": "b59fefe8b7bb2279fa5b18bfce23d408be364945b83d1759a4ea962d9a977d2d",
+      "candidate_sha256": "762746fd270c11c602dec6036cbc79b9d07a5c10f3b7ee3860667d36efeda886",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/device-registration.ts",
+      "before_sha256": "e223d9c997fe6fb922ada826f516c8a21986cc225426df34bc4aceea5ec9bf3e",
+      "candidate_sha256": "e00dee5ca29f2f1773985eb5572e085e508ed728fe0b6639a7d8aed6b5c52fae",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/announcement-fanout.ts",
+      "before_sha256": "078ec4d74b5bee0179d8e0a3b689164a09abc29305ac0f39581b469d7832aca3",
+      "candidate_sha256": "078ec4d74b5bee0179d8e0a3b689164a09abc29305ac0f39581b469d7832aca3",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/inbox-backfill.ts",
+      "before_sha256": "08296169c537ea94416000372089444cbb64872496eac00959b8824ecb4841f4",
+      "candidate_sha256": "08296169c537ea94416000372089444cbb64872496eac00959b8824ecb4841f4",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/profile-repair-state.ts",
+      "before_sha256": "1bcc9c14965cac9c409af84da14778c2b47645c3b53c24a6f0d0061723c7e2aa",
+      "candidate_sha256": "1bcc9c14965cac9c409af84da14778c2b47645c3b53c24a6f0d0061723c7e2aa",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/pushNotificationAction/inbox-projection.ts",
+      "before_sha256": "e11205b67f58970c7912ca48db1a40b3e445b0d95135ccf2ed240a0ee7ef206b",
+      "candidate_sha256": "e11205b67f58970c7912ca48db1a40b3e445b0d95135ccf2ed240a0ee7ef206b",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/wordPackAction/content-safety.ts",
+      "before_sha256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937",
+      "candidate_sha256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/wordPackAction/main.ts",
+      "before_sha256": "44fe41b30f4f9ee7f97e5472ee234d47c3f4a3486ed596d37199c9936b9aa4d8",
+      "candidate_sha256": "44fe41b30f4f9ee7f97e5472ee234d47c3f4a3486ed596d37199c9936b9aa4d8",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/wordPackAction/safe-error.ts",
+      "before_sha256": "7207e6720cae1ffcabd3a19332a04a52c1547757fecb864f85ffb1b621f31a11",
+      "candidate_sha256": "7207e6720cae1ffcabd3a19332a04a52c1547757fecb864f85ffb1b621f31a11",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/wordPackAction/lifecycle-error-response.ts",
+      "before_sha256": "fc02d09b7e1b80fc2ff70b181ac137b7f87e1371893bf1b64ebcdbc11453ebbe",
+      "candidate_sha256": "037b99406a060ddc33fe2b9f57969547987b522b51bd56e5a13fafe39cf861ca",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/wordPackAction/word-pack-write-lifecycle.ts",
+      "before_sha256": "3041744adec1befa87f5296b6acfb3e56adeaba4b8a4789d96dd13daf48d1375",
+      "candidate_sha256": "b2086dbfbb824e50191a2f00893aa613e109888cdae58b942f541ad2205c1c7d",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/wordPackAction/base44-context.ts",
+      "before_sha256": "d872656a5f37f3e86493223e2b7cfa49268fd18d939d4f2601d7d510a9d93ab8",
+      "candidate_sha256": "d872656a5f37f3e86493223e2b7cfa49268fd18d939d4f2601d7d510a9d93ab8",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/wordPackAction/word-pack.ts",
+      "before_sha256": "9ea17fbe7789212b31594dfc960dd7a438b387abd09fea729663d423f78cb6b0",
+      "candidate_sha256": "9ea17fbe7789212b31594dfc960dd7a438b387abd09fea729663d423f78cb6b0",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/wordPackAction/billing-identity-lifecycle.ts",
+      "before_sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "candidate_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "changed": true
+    }
+  ],
+  "normalization": "Strip per-function base44/functions/<name>/ prefix and rename declared entry.ts to main.ts; imports stay relative."
+}

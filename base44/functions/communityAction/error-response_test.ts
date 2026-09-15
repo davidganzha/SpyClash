@@ -58,3 +58,26 @@ Deno.test("intentional community validation errors stay public", async () => {
   assertEquals(response.status, 404);
   assertEquals(await body(response), { error: "Operative not found" });
 });
+
+Deno.test("community lifecycle deletion and late action failure do not advertise retry", async () => {
+  for (const error of [
+    new BillingIdentityLifecycleError("deletion_in_progress", "Deleting"),
+    new BillingIdentityLifecycleError("cas_contention", "Late conflict", false),
+  ]) {
+    const response = communityErrorResponse(error);
+    assertEquals(response.status, 409);
+    assertEquals(response.headers.get("Retry-After"), null);
+    assertEquals((await body(response)).retryable, false);
+  }
+});
+
+Deno.test("community preserves the specific invite cleanup conflict code", async () => {
+  const response = communityErrorResponse(Object.assign(
+    new Error("Room invite is not accepted"),
+    { status: 409, code: "room_invite_not_accepted" },
+  ));
+  assertEquals(response.status, 409);
+  assertEquals(await body(response), {
+    error: "Room invite is not accepted", code: "room_invite_not_accepted",
+  });
+});

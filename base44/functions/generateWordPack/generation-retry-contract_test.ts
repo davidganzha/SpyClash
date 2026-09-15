@@ -92,6 +92,23 @@ for (const code of ["active_lease", "cas_contention"] as const) {
   });
 }
 
+Deno.test("validated request identity cannot override an explicit unsafe lifecycle decision", async () => {
+  const subject = await tracker();
+  for (const code of ["active_lease", "cas_contention"] as const) {
+    assertEquals(
+      subject.errorMetadata(
+        new BillingIdentityLifecycleError(
+          code,
+          "action already started",
+          false,
+        ),
+        409,
+      ),
+      { retryable: false },
+    );
+  }
+});
+
 Deno.test("deletion, forged codes and unrelated errors cannot acquire a pre-effect proof", async () => {
   const subject = await tracker();
   assertEquals(

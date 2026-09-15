@@ -1325,6 +1325,7 @@ Deno.serve(async (req) => {
             if (invite.status !== "accepted") {
               throw Object.assign(new Error("Room invite is not accepted"), {
                 status: 409,
+                code: "room_invite_not_accepted",
               });
             }
             await persist(() =>
