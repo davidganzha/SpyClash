@@ -3,13 +3,14 @@ function failureStatus(error) {
 }
 
 function failureCode(error) {
-  return error?.code || error?.data?.code || error?.response?.data?.code || null;
+  // Axios may set code=ERR_BAD_REQUEST while the server supplies the actual
+  // conflict code in the response body. Domain codes must win.
+  return error?.response?.data?.code || error?.data?.code || error?.code || null;
 }
 
 function failureRetryable(error) {
-  return error?.retryable === true
-    || error?.data?.retryable === true
-    || error?.response?.data?.retryable === true;
+  return (error?.response?.data?.retryable ?? error?.data?.retryable ??
+    error?.retryable) === true;
 }
 
 function failureMessage(error) {
@@ -19,7 +20,7 @@ function failureMessage(error) {
     || "Room action failed";
 }
 
-function normalizedFailure(error) {
+export function normalizeActionFailure(error) {
   return Object.assign(new Error(failureMessage(error)), {
     status: failureStatus(error),
     code: failureCode(error),
@@ -47,7 +48,7 @@ export async function dispatchGameRoomAction({
       const result = await invoke(body);
       return result?.data ?? result;
     } catch (error) {
-      throw normalizedFailure(error);
+      throw normalizeActionFailure(error);
     }
   }
 

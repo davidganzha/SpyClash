@@ -1,4 +1,5 @@
 import { base44 } from "@/api/base44Client";
+import { dispatchWordPackGeneration } from "@/lib/wordPackTransport";
 
 /**
  * Generates a word pool for a custom theme using AI.
@@ -8,12 +9,12 @@ import { base44 } from "@/api/base44Client";
  * @returns {Promise<{words: string[], display_category: string}>}
  */
 export async function generateWordPool(theme, wordCount = 25, excludedWords = []) {
-  const response = await base44.functions.invoke("generateWordPack", {
+  const result = await dispatchWordPackGeneration({
     theme,
     count: wordCount,
-    exclude_words: excludedWords,
+    excludedWords,
+    invoke: (payload) => base44.functions.invoke("generateWordPack", payload),
   });
-  const result = response?.data ?? response ?? {};
 
   return {
     ...result,

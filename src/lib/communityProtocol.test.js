@@ -6,6 +6,7 @@ import {
   communityPollIntervalMilliseconds,
   createCommunityRequest,
   isExactSpyIDQuery,
+  isRoomInviteCleanupComplete,
   joinCommunityRoomInvite,
   relationshipForProfile,
   shouldPauseCommunityPolling,
@@ -130,4 +131,23 @@ test("transient consume failure preserves cleanup while allowing joined room", a
   assert.equal(result.room.id, "room-1");
   assert.equal(result.cleanupPending, true);
   assert.deepEqual(calls, ["remember", "consume"]);
+});
+
+test("a 409 during invite consumption preserves the cleanup even after the room join succeeded", async () => {
+  for (const code of ["active_lease", "cas_contention", "outcome_unknown", null]) {
+    let cleared = false;
+    const result = await joinCommunityRoomInvite({
+      invite: { id: "invite-1", status: "accepted", room_code: "ABC123" },
+      player: { name: "RAVEN" },
+      acceptInvite: async () => {},
+      joinRoom: async () => ({ id: "room-1" }),
+      rememberCleanup: async () => {},
+      consumeInvite: async () => { throw { status: 409, code, retryable: true }; },
+      clearCleanup: async () => { cleared = true; },
+    });
+    assert.equal(result.cleanupPending, true);
+    assert.equal(cleared, false);
+  }
+  assert.equal(isRoomInviteCleanupComplete({ status: 404 }), true);
+  assert.equal(isRoomInviteCleanupComplete({ status: 409 }), false);
 });

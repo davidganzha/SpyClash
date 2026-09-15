@@ -1,14 +1,19 @@
 import { appParams } from "@/lib/app-params";
-import { createCommunityRequest, isExactSpyIDQuery } from "@/lib/communityProtocol";
+import {
+  createCommunityRequest,
+  isExactSpyIDQuery,
+  isRoomInviteCleanupComplete,
+} from "@/lib/communityProtocol";
 
 const ROOM_INVITE_CLEANUP_KEY = "spy_pending_community_room_invite_cleanup";
 
 export class CommunityActionError extends Error {
-  constructor(message, status, code = null) {
+  constructor(message, status, code = null, retryable = false) {
     super(message);
     this.name = "CommunityActionError";
     this.status = status;
     this.code = code;
+    this.retryable = retryable;
   }
 }
 
@@ -41,15 +46,18 @@ export async function performCommunityAction(body, options = {}) {
     });
     const payload = await response.json().catch(() => ({}));
     if (response.ok) return payload;
-    if (response.status === 503 && attempt < retryDelays.length) {
-      await delay(retryDelays[attempt]);
-      continue;
-    }
-    throw new CommunityActionError(
+    const error = new CommunityActionError(
       payload?.error || "Community action failed",
       response.status,
       payload?.code || null,
+      payload?.retryable === true,
     );
+    const retryable = options.retryTransient && response.status === 503;
+    if (retryable && attempt < retryDelays.length) {
+      await delay(retryDelays[attempt]);
+      continue;
+    }
+    throw error;
   }
 }
 
@@ -150,7 +158,7 @@ export async function retryPendingRoomInviteCleanups() {
       clearRoomInviteCleanup(inviteId);
       cleared += 1;
     } catch (error) {
-      if (error?.status === 404 || error?.status === 409) {
+      if (isRoomInviteCleanupComplete(error)) {
         clearRoomInviteCleanup(inviteId);
         cleared += 1;
       }

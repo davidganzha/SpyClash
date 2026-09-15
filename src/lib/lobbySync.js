@@ -7,7 +7,7 @@ const DEFAULT_RETRY_DELAYS_MILLISECONDS = [180, 450];
 
 /** @typedef {Record<string, any>} LobbyRoom */
 /** @typedef {ReturnType<typeof normalizeLobbyState>} LobbyState */
-/** @typedef {{mutationID: string, sequence: number, retryCount: number, state: LobbyState}} LobbyIntent */
+/** @typedef {{mutationID: string, sequence: number, retryCount: number, state: LobbyState, baseState: LobbyState}} LobbyIntent */
 /** @typedef {{intent: LobbyIntent, expectedRevision: number}} LobbyRequest */
 
 function clean(value) {
@@ -179,8 +179,13 @@ export function isLobbyRevisionConflict(error) {
 }
 
 export function isRetryableLobbySyncError(error) {
-  if (isLobbyRevisionConflict(error) || error?.retryable === true) return true;
+  if (isLobbyRevisionConflict(error)) return true;
   const status = Number(error?.status);
+  if (status === 409) {
+    return error?.retryable === true &&
+      ["active_lease", "cas_contention"].includes(clean(error?.code).toLowerCase());
+  }
+  if (error?.retryable === false) return false;
   return [408, 425, 429].includes(status) || (status >= 500 && status <= 599);
 }
 
@@ -284,8 +289,7 @@ export function createLobbySyncController({
     try {
       const refreshed = await refreshRoom(roomID);
       if (generation !== requestGeneration || disposed) return null;
-      if (refreshed) adoptConfirmedRoom(refreshed);
-      return refreshed || null;
+      return refreshed && adoptConfirmedRoom(refreshed) ? refreshed : null;
     } catch {
       return null;
     }
@@ -300,6 +304,18 @@ export function createLobbySyncController({
     return true;
   };
 
+  const rejectStaleIntent = (error = null) => {
+    pendingIntent = null;
+    inFlightRequest = null;
+    lastError = error || Object.assign(new Error("Lobby settings changed on another device. Review the current settings and try again."), {
+      status: 409,
+      code: "lobby_revision_conflict",
+      retryable: false,
+    });
+    if (confirmedRoom) onRollback(confirmedRoom, lastError);
+    publishPhase();
+  };
+
   const run = async (requestGeneration) => {
     if (runningGeneration !== requestGeneration || generation !== requestGeneration) return;
 
@@ -308,6 +324,18 @@ export function createLobbySyncController({
     ) {
       const intent = pendingIntent;
       pendingIntent = null;
+      // Full snapshots are only safe against the state the editor started
+      // from. Refreshing the revision alone would overwrite another device.
+      if (confirmedRoom &&
+        !lobbyStatesEquivalent(lobbyStateFromRoom(confirmedRoom), intent.baseState)) {
+        if (lobbyStatesEquivalent(lobbyStateFromRoom(confirmedRoom), intent.state)) {
+          onConfirmedRoom(confirmedRoom, intent.mutationID);
+          publishPhase();
+        } else {
+          rejectStaleIntent();
+        }
+        continue;
+      }
       const request = {
         intent,
         expectedRevision: confirmedRevision,
@@ -339,7 +367,9 @@ export function createLobbySyncController({
         inFlightRequest = null;
         if (updatedRevision < confirmedRevision) {
           if (!lobbyStatesEquivalent(lobbyStateFromRoom(confirmedRoom), intent.state)) {
-            queueIntentForRetry(intent);
+            // The write succeeded and was then superseded. Replaying its ID
+            // cannot resurrect the edit and can loop forever on cached results.
+            rejectStaleIntent();
           } else if (!pendingIntent) {
             onConfirmedRoom(confirmedRoom, intent.mutationID);
           }
@@ -371,7 +401,16 @@ export function createLobbySyncController({
           continue;
         }
 
+        if (confirmedRoom &&
+          !lobbyStatesEquivalent(lobbyStateFromRoom(confirmedRoom), intent.baseState)) {
+          rejectStaleIntent(isRetryableLobbySyncError(error) ? null : error);
+          continue;
+        }
+
         if (pendingIntent && pendingIntent.sequence > intent.sequence) {
+          // The failed predecessor did not change the authoritative settings;
+          // the newest local snapshot still includes those local edits.
+          pendingIntent = { ...pendingIntent, baseState: cloneLobbyState(intent.baseState) };
           publishPhase();
           continue;
         }
@@ -473,11 +512,14 @@ export function createLobbySyncController({
       }
 
       sequence += 1;
+      const baseState = inFlightRequest?.intent.state || pendingIntent?.baseState ||
+        lobbyStateFromRoom(confirmedRoom);
       pendingIntent = {
         mutationID: makeMutationID(),
         sequence,
         retryCount: 0,
         state: normalized,
+        baseState: cloneLobbyState(baseState),
       };
       lastError = null;
       publishPhase();

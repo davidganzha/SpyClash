@@ -283,11 +283,11 @@ test("latest wins writer serializes A then newest C and rejects A as a UI snapsh
   assert.equal(confirmed[0].lobby_revision, 3);
 });
 
-test("revision conflict reloads and retries the same mutation id at the fresh revision", async () => {
+test("revision-only conflict retries the same mutation id without changing another device's settings", async () => {
   const calls = [];
   const sleeps = [];
   const desired = lobbyState({ game_mode: "associations" });
-  const external = lobbyState({ game_duration_seconds: 780 });
+  const external = lobbyState();
   let refreshCalls = 0;
 
   const controller = createLobbySyncController({
@@ -320,10 +320,11 @@ test("revision conflict reloads and retries the same mutation id at the fresh re
   assert.deepEqual(sleeps, [180]);
 });
 
-test("a response older than an observed room revision is never applied and is retried", async () => {
+test("a successful edit superseded by another device is rolled back without replaying", async () => {
   const first = deferred();
   const calls = [];
   const confirmed = [];
+  const rollback = [];
   const desired = lobbyState({ lobby_theme: "Web", lobby_category: "Web" });
   const iosState = lobbyState({ lobby_theme: "iOS", lobby_category: "iOS" });
 
@@ -335,6 +336,7 @@ test("a response older than an observed room revision is never applied and is re
     },
     refreshRoom: async () => roomAt(3, iosState),
     onConfirmedRoom: (room) => confirmed.push(room),
+    onRollback: (room) => rollback.push(room),
     makeMutationID: () => "stable-stale-response-id",
     sleep: async () => {},
     debounceMilliseconds: 0,
@@ -348,13 +350,131 @@ test("a response older than an observed room revision is never applied and is re
   first.resolve(roomAt(2, desired));
   await controller.waitForIdle();
 
-  assert.deepEqual(calls.map((call) => call.expectedRevision), [1, 3]);
+  assert.deepEqual(calls.map((call) => call.expectedRevision), [1]);
   assert.deepEqual(calls.map((call) => call.mutationID), [
     "stable-stale-response-id",
-    "stable-stale-response-id",
   ]);
-  assert.equal(confirmed.length, 1);
-  assert.equal(confirmed[0].lobby_revision, 4);
+  assert.equal(confirmed.length, 0);
+  assert.equal(rollback.length, 1);
+  assert.equal(rollback[0].lobby_revision, 3);
+  assert.equal(controller.snapshot().error.code, "lobby_revision_conflict");
+});
+
+test("revision conflict preserves another device's settings and discards stale full snapshots", async () => {
+  const calls = [];
+  const rollback = [];
+  const external = lobbyState({ game_duration_seconds: 780 });
+  const controller = createLobbySyncController({
+    updateLobbyState: async (request) => {
+      calls.push(request);
+      throw Object.assign(new Error("Lobby changed"), {
+        status: 409,
+        code: "lobby_revision_conflict",
+      });
+    },
+    refreshRoom: async () => roomAt(3, external),
+    onRollback: (room) => rollback.push(room),
+    debounceMilliseconds: 0,
+  });
+  controller.reset(roomAt(2, lobbyState()));
+  controller.enqueue(lobbyState({ game_mode: "associations" }));
+  controller.flush();
+  await controller.waitForIdle();
+  assert.equal(calls.length, 1);
+  assert.equal(rollback[0].game_duration_seconds, 780);
+  assert.equal(controller.snapshot().error.retryable, false);
+});
+
+test("a realtime change before debounce expires prevents a stale snapshot write", async () => {
+  const calls = [];
+  const rollback = [];
+  const controller = createLobbySyncController({
+    updateLobbyState: async (request) => {
+      calls.push(request);
+      return roomAt(4, request.state);
+    },
+    refreshRoom: async () => null,
+    onRollback: (room) => rollback.push(room),
+    debounceMilliseconds: 10_000,
+  });
+  controller.reset(roomAt(2, lobbyState()));
+  controller.enqueue(lobbyState({ game_mode: "associations" }));
+  controller.reconcile(roomAt(3, lobbyState({ game_duration_seconds: 780 })));
+  controller.flush();
+  await controller.waitForIdle();
+  assert.equal(calls.length, 0);
+  assert.equal(rollback[0].game_duration_seconds, 780);
+});
+
+test("an unknown-outcome conflict is refreshed once and never blindly replayed", async () => {
+  let calls = 0;
+  const controller = createLobbySyncController({
+    updateLobbyState: async () => {
+      calls += 1;
+      throw Object.assign(new Error("Outcome unknown"), {
+        status: 409,
+        code: "outcome_unknown",
+        retryable: true,
+      });
+    },
+    refreshRoom: async () => roomAt(1, lobbyState()),
+    debounceMilliseconds: 0,
+  });
+  controller.reset(roomAt(1, lobbyState()));
+  controller.enqueue(lobbyState({ game_mode: "associations" }));
+  controller.flush();
+  await controller.waitForIdle();
+  assert.equal(calls, 1);
+  assert.equal(controller.snapshot().error.code, "outcome_unknown");
+});
+
+test("the newest pending local edit survives a rejected predecessor when remote settings did not change", async () => {
+  const first = deferred();
+  const calls = [];
+  const confirmed = [];
+  const controller = createLobbySyncController({
+    updateLobbyState: async (request) => {
+      calls.push(request);
+      if (calls.length === 1) return first.promise;
+      return roomAt(2, request.state);
+    },
+    refreshRoom: async () => roomAt(1, lobbyState()),
+    onConfirmedRoom: (room) => confirmed.push(room),
+    debounceMilliseconds: 0,
+  });
+  controller.reset(roomAt(1, lobbyState()));
+  controller.enqueue(lobbyState({ lobby_theme: "A" }));
+  controller.flush();
+  await waitUntil(() => calls.length === 1);
+  controller.enqueue(lobbyState({ lobby_theme: "B" }));
+  first.reject(Object.assign(new Error("Busy"), {
+    status: 409, code: "active_lease", retryable: true,
+  }));
+  await controller.waitForIdle();
+  assert.equal(calls.length, 2);
+  assert.equal(calls[1].state.lobby_theme, "B");
+  assert.equal(confirmed[0].lobby_theme, "B");
+});
+
+test("wrong-room refresh cannot confirm a lost write or replace the rollback snapshot", async () => {
+  let confirmed = 0;
+  const rollback = [];
+  const desired = lobbyState({ game_mode: "associations" });
+  const controller = createLobbySyncController({
+    updateLobbyState: async () => {
+      throw Object.assign(new Error("Conflict"), { status: 409, code: "outcome_unknown" });
+    },
+    refreshRoom: async () => roomAt(2, desired, { id: "different-room" }),
+    onConfirmedRoom: () => { confirmed += 1; },
+    onRollback: (room) => rollback.push(room),
+    debounceMilliseconds: 0,
+  });
+  controller.reset(roomAt(1, lobbyState()));
+  controller.enqueue(desired);
+  controller.flush();
+  await controller.waitForIdle();
+  assert.equal(confirmed, 0);
+  assert.equal(rollback[0].id, "room-1");
 });
 
 test("lost success response is reconciled by equivalent refreshed state without another write", async () => {

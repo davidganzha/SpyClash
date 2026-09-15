@@ -83,6 +83,12 @@ export function stateWithoutRoomInvite(state, inviteId) {
   };
 }
 
+export function isRoomInviteCleanupComplete(error) {
+  // A conflict does not prove consumption: the server may still hold an
+  // identity lease. Keep the cleanup queued until success or absence is proven.
+  return Number(error?.status) === 404;
+}
+
 export async function joinCommunityRoomInvite({
   invite,
   player,
@@ -109,7 +115,7 @@ export async function joinCommunityRoomInvite({
     await consumeInvite(invite.id);
     await clearCleanup(invite.id);
   } catch (error) {
-    if (error?.status === 404 || error?.status === 409) {
+    if (isRoomInviteCleanupComplete(error)) {
       await clearCleanup(invite.id);
     } else {
       cleanupPending = true;

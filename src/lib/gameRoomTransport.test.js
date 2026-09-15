@@ -118,3 +118,23 @@ test("body-token failures preserve retryability metadata", async () => {
     (error) => isRetryableRoomActionConflict(error),
   );
 });
+
+test("SDK and Axios wrapper codes cannot hide the server conflict code or override a retry veto", async () => {
+  for (const shape of [
+    { status: 409, code: "ERR_BAD_REQUEST", data: { code: "active_lease", retryable: true } },
+    { code: "ERR_BAD_REQUEST", response: { status: 409, data: { code: "active_lease", retryable: true } } },
+    { status: 409, code: "ERR_BAD_REQUEST", retryable: true, data: { code: "outcome_unknown", retryable: false } },
+  ]) {
+    await assert.rejects(dispatchGameRoomAction({
+      body: { action: "start_game" },
+      accessToken: null,
+      invoke: async () => { throw shape; },
+    }), (error) => {
+      const payload = shape.data || shape.response.data;
+      assert.equal(error.code, payload.code);
+      assert.equal(error.status, 409);
+      assert.equal(error.retryable, payload.retryable);
+      return true;
+    });
+  }
+});
