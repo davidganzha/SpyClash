@@ -21,5 +21,16 @@
     "typecheck": true,
     "changed_files_lint": true
   },
-  "deployed": false
+  "deployed": true,
+  "deployment_scope": "six named backend functions only",
+  "deployment_postflight": {
+    "functions": 17,
+    "runtime_files": 197,
+    "target_runtime_files_matching": 128,
+    "unselected_functions_unchanged": 11,
+    "all_function_configs_unchanged": true
+  },
+  "ios_published": false,
+  "web_published": false,
+  "authenticated_two_client_acceptance": false
 }

@@ -1,0 +1,1301 @@
+{
+  "checked_at_utc": "2026-09-15T15:15:35.159335+00:00",
+  "app_id": "69a0e57fa939f578082f8091",
+  "code_commit": "d487470d050debd452679a8e3f1b850eb993e90f",
+  "functions": [
+    "advanceRound",
+    "app-store-entitlement",
+    "appleAuthBroker",
+    "appleAuthCallback",
+    "autoRegisterUser",
+    "checkSubscription",
+    "communityAction",
+    "createCheckout",
+    "deleteAccount",
+    "gameRoomAction",
+    "generateWordPack",
+    "googleAuthCallback",
+    "mobileAuthCallback",
+    "notificationAction",
+    "pushNotificationAction",
+    "stripe-entitlement-webhook",
+    "wordPackAction"
+  ],
+  "target_functions": [
+    "communityAction",
+    "gameRoomAction",
+    "generateWordPack",
+    "notificationAction",
+    "pushNotificationAction",
+    "wordPackAction"
+  ],
+  "function_count": 17,
+  "runtime_count": 197,
+  "target_runtime_count": 128,
+  "unselected_function_count": 11,
+  "unselected_runtime_count": 69,
+  "target_hashes_match": true,
+  "all_function_configs_unchanged": true,
+  "unselected_runtime_unchanged": true,
+  "schema_operations": 0,
+  "site_operations": 0,
+  "runtime_files": {
+    "base44/functions/wordPackAction/content-safety.ts": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937",
+    "base44/functions/wordPackAction/main.ts": "44fe41b30f4f9ee7f97e5472ee234d47c3f4a3486ed596d37199c9936b9aa4d8",
+    "base44/functions/wordPackAction/safe-error.ts": "7207e6720cae1ffcabd3a19332a04a52c1547757fecb864f85ffb1b621f31a11",
+    "base44/functions/wordPackAction/lifecycle-error-response.ts": "037b99406a060ddc33fe2b9f57969547987b522b51bd56e5a13fafe39cf861ca",
+    "base44/functions/wordPackAction/word-pack-write-lifecycle.ts": "b2086dbfbb824e50191a2f00893aa613e109888cdae58b942f541ad2205c1c7d",
+    "base44/functions/wordPackAction/base44-context.ts": "d872656a5f37f3e86493223e2b7cfa49268fd18d939d4f2601d7d510a9d93ab8",
+    "base44/functions/wordPackAction/word-pack.ts": "9ea17fbe7789212b31594dfc960dd7a438b387abd09fea729663d423f78cb6b0",
+    "base44/functions/wordPackAction/billing-identity-lifecycle.ts": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+    "base44/functions/checkSubscription/membership.ts": "7027cfbd69ccd7aad3189d603913829132119fed60189219a41e527d05def92b",
+    "base44/functions/checkSubscription/stripe-binding.ts": "5b2d9be7fbea3ea2f960e59ef72ddf9c5850bfc5c1a63f6c0747f9fcad07638c",
+    "base44/functions/checkSubscription/main.ts": "e155f9151994c5adc12fc7795cadac7674daf4d738b17578d96537a6bdf66835",
+    "base44/functions/checkSubscription/stripe-entitlement-persistence.ts": "e5c30109b69a29bec7c2da558c74542b9daf6859dbe4fd1e407e878b1a2342f0",
+    "base44/functions/checkSubscription/quota.ts": "456afef718eba6c4fd3e78cf8fc927d1713b99f1676b7d483f7f4fdb57911391",
+    "base44/functions/checkSubscription/base44-context.ts": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+    "base44/functions/checkSubscription/limitless-rollout.ts": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+    "base44/functions/checkSubscription/billing-identity-lifecycle.ts": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+    "base44/functions/stripe-entitlement-webhook/main.ts": "c01a89a01ab750f4a0e785355ce41147fcada34cab005651e246e64b18842d9f",
+    "base44/functions/stripe-entitlement-webhook/stripe-entitlement-persistence.ts": "e5c30109b69a29bec7c2da558c74542b9daf6859dbe4fd1e407e878b1a2342f0",
+    "base44/functions/stripe-entitlement-webhook/stripe-event-resolution.ts": "d56fc0c1b1f0026f644eece09b34d36a403e955ec8594378221e751e32309326",
+    "base44/functions/stripe-entitlement-webhook/base44-context.ts": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f",
+    "base44/functions/stripe-entitlement-webhook/stripe-entitlement.ts": "4664c7f5b1739501afec8b2a6012e249167564575a8a9b86dd0237849a75f4c0",
+    "base44/functions/stripe-entitlement-webhook/billing-identity-lifecycle.ts": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+    "base44/functions/communityAction/membership.ts": "7027cfbd69ccd7aad3189d603913829132119fed60189219a41e527d05def92b",
+    "base44/functions/communityAction/mutation-idempotency.ts": "5fd5250426199cdf18787ab76d1602e21192100ff54d2749fceeebba95806198",
+    "base44/functions/communityAction/community-moderation.ts": "26816825ba0a0dbc6381f4cd81d0c141d37471f8b7363184b5cca2e3b0a65d96",
+    "base44/functions/communityAction/push-events.ts": "f2e699ea16691b15b767ec2e31ef462846a9db2930d75109ca608f932ce6262a",
+    "base44/functions/communityAction/profile-membership.ts": "329a34560e5bb9683218bfed980b372f1ed64303c1985b3380c1da775ed40105",
+    "base44/functions/communityAction/profile-signal.ts": "6fc282d56c3f04cc1993970818096823d80ce1d54386cdf661f717ddbe469c6e",
+    "base44/functions/communityAction/friendship-pagination.ts": "8f1cc27ae64953e02476b927ef081c21dc2740434b0809a2af457f62f8a238c0",
+    "base44/functions/communityAction/community-write-lifecycle.ts": "fe9d3443f00516661dfbfafb5776f84f8a30ee6d8344deba6f0ec4d1235fa8fd",
+    "base44/functions/communityAction/community-safety.ts": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937",
+    "base44/functions/communityAction/main.ts": "b7ba8898156509b0a0dcbf4485a211ce3a9eefc712d34fc845e761038cfcd5f2",
+    "base44/functions/communityAction/community.ts": "8ba071e5b8e8c61d2518206ba0e39c79079b4431fbe26df1c0f3e5da78a7a15e",
+    "base44/functions/communityAction/post-commit-state.ts": "912efd37a857e5bdcaf254cfdc2dd8400507bd1d4231ef344fee91657cae24a2",
+    "base44/functions/communityAction/base44-context.ts": "d872656a5f37f3e86493223e2b7cfa49268fd18d939d4f2601d7d510a9d93ab8",
+    "base44/functions/communityAction/profile-write-lifecycle.ts": "f68554ddaea350d983195220f1fece0d50b5624dc3b8503368312816bff8e83f",
+    "base44/functions/communityAction/friendship-pair-policy.ts": "bae7b4d61a193d22e80a69c8da38fc4e33ae8b4e4e51e0af8ab31e77ecc4177f",
+    "base44/functions/communityAction/limitless-rollout.ts": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+    "base44/functions/communityAction/billing-identity-lifecycle.ts": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+    "base44/functions/communityAction/error-response.ts": "9169ce855f4d527cc168fd2760e6417681f5b0a9dd52332d2705c993f80117d0",
+    "base44/functions/communityAction/internal-push.ts": "0c122f25bfaf7287f28bed1197aa4f11d12fc964cf460a5f597bd9fc629c7c4f",
+    "base44/functions/communityAction/room-invite-pagination.ts": "f5412b2301acb2a9690f46f14f94e26dbdc0aff0160431c886d99d3b104c3d97",
+    "base44/functions/notificationAction/admin-publish-lifecycle.ts": "0955dd995e809b8872a165bc3409b0add2bc73cc8dd506c2642ce33b2355e346",
+    "base44/functions/notificationAction/contracts.ts": "7b53d15d41908c891b8b37597bc75b0c0767cd07f482ed8d4bbe2ad645b75aea",
+    "base44/functions/notificationAction/inbox.ts": "e8dd795b58c8d367fda6aa0694978c5061fb4014b3b817ba0d1653880f5c482e",
+    "base44/functions/notificationAction/main.ts": "9ff1d76b55c63cd7d21893d49d20c93719ed35148f6cb3baddcb6c1d5c613f05",
+    "base44/functions/notificationAction/safe-error.ts": "dec6b320d4748c2ee8b962d6804b9b6c1b82bab26701c21789f4c1f6b41664a5",
+    "base44/functions/notificationAction/base44-context.ts": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+    "base44/functions/notificationAction/billing-identity-lifecycle.ts": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+    "base44/functions/notificationAction/error-response.ts": "629774cd6805299fb4fb4ee993249b4910aef819d78b10f316ea80ee78cdec0c",
+    "base44/functions/notificationAction/receipt-lifecycle.ts": "86e3beda25beb8b952932c10168f0cb2b4125001ad49c4f8cddc0d6534f64820",
+    "base44/functions/generateWordPack/content-safety.ts": "817ba01e58d5eb8036a59148a20cc3e6a9b30df0ee33f254bf84e56e98629042",
+    "base44/functions/generateWordPack/openai-word-pack-provider.ts": "a18de5916448dcc3dd8216c14b5fd1e659281cfb56f3e5888c8a487472e028bb",
+    "base44/functions/generateWordPack/generation-cache.ts": "39365535caef5535036fb986c0746df4429a1e5cb9c20bb2df22810d5389e278",
+    "base44/functions/generateWordPack/generation-write-lifecycle.ts": "0b50f5159baf5271e085ca8363d030be840039e3a1b1ba236ad9f4d4e4e6179f",
+    "base44/functions/generateWordPack/membership.ts": "e86e4b4fda3a800bbbab709cf65514ff6de4327478f4e1b9ff4da7635c1c5728",
+    "base44/functions/generateWordPack/main.ts": "8d4980fde482ef6a104ebb005471f4473e6ca1cab1c18a3743b980880fcbe1ee",
+    "base44/functions/generateWordPack/generation-retry-contract.ts": "4f598d2801f0931334f0cb57e4a3e4a4c4e7ff5c066b8cd3108d5ac53977f2e3",
+    "base44/functions/generateWordPack/word-pack-quality.ts": "c0aa06a9708d6b3a08930f0d9df35d848652e36fd8a71f0a7e72c0f870e2b5e6",
+    "base44/functions/generateWordPack/generation-idempotency.ts": "a077ce2573fd90b41de9e2cac1f8257e8272dbb18924f81d70ff27ccdd7dcb4d",
+    "base44/functions/generateWordPack/quota.ts": "4b77aeff53148483316fd5d443b2bbc03b6ff2fcf13b19acc90609f42c2c36be",
+    "base44/functions/generateWordPack/base44-context.ts": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+    "base44/functions/generateWordPack/ai-provider-resilience.ts": "98a314fafb31d5790b7c37730323ec93b80803be1c87be181a69d87bc868db45",
+    "base44/functions/generateWordPack/word-normalization.ts": "fa65bd50a34f22c7e7f6b680407cf5dc8db0308e03b05a57d1667715df594111",
+    "base44/functions/generateWordPack/billing-identity-lifecycle.ts": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+    "base44/functions/googleAuthCallback/headers.ts": "c27e3de50760cb1b080a82310a05ef0ac94c89f65f224dcdd229363f20aa5a56",
+    "base44/functions/googleAuthCallback/main.ts": "df7ef54eb087b5aecf8d20f5561b63eb7031430cd67202310aef57194ee6e9ce",
+    "base44/functions/createCheckout/checkout-security.ts": "af4b3e8ec7bf003ac3edc1c2bf810e27caf5b286c8c79ea8b3cdd50d93a7f1f1",
+    "base44/functions/createCheckout/casada-checkout.ts": "3635ef0f267a8e060c5b708125ed9c7d426685dee122e209aca22b24ccc3abd1",
+    "base44/functions/createCheckout/main.ts": "ba870940b7294b700560f34eed704429b56b60ac799df256aa6822e4afb25068",
+    "base44/functions/createCheckout/checkout-lifecycle.ts": "540bfdfc38ed7823efe68119d7be31085a57ef02f40b9c04d0b0de120819163a",
+    "base44/functions/createCheckout/base44-context.ts": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+    "base44/functions/createCheckout/billing-identity-lifecycle.ts": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+    "base44/functions/appleAuthCallback/main.ts": "c904d7c057507acf6cdbf0ade19af70fa203c8828ea0b0de30282ef511b85174",
+    "base44/functions/appleAuthCallback/headers.ts": "6dee1bca4d72acdc1bbfec02c649c6a8da498bd4f62055b819c4577c2c5e95f1",
+    "base44/functions/gameRoomAction/multi-spy-policy.ts": "8a9ff1826c2b3d5c9033897eccebbd614471b9326aaff3af9797efaa23ec91e9",
+    "base44/functions/gameRoomAction/room-result-policy.ts": "44d4934adc7710baa2d2eb66b1461ff75e4b034aa0fd0c45ca1c508e85929ec8",
+    "base44/functions/gameRoomAction/content-safety.ts": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b",
+    "base44/functions/gameRoomAction/game-round.ts": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af",
+    "base44/functions/gameRoomAction/room-action-transition.ts": "788531fd2b86fd2838b733027331f25fc0e66a89ff45161f8114357f884972dd",
+    "base44/functions/gameRoomAction/room-interaction-safety.ts": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c",
+    "base44/functions/gameRoomAction/game-room-signal.ts": "bd084e043772a926aee7c268049ead7896008d3f937790a469927f2a33041f86",
+    "base44/functions/gameRoomAction/detective-vote-write.ts": "9b9b0d3b5e24a1e6e0057b807de50b1ee12e956d3ac3cfb4f619762ffd2ce2ba",
+    "base44/functions/gameRoomAction/game-timer-policy.ts": "33837768c2a60210a3ef2b5cc68ca1c76f821cfc5fdbd0e845f0ac5f595a78ee",
+    "base44/functions/gameRoomAction/detective-vote-policy.ts": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4",
+    "base44/functions/gameRoomAction/game-history-idempotency.ts": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0",
+    "base44/functions/gameRoomAction/push-events.ts": "fa8c67583414f203ae909e89067947624109823851b4e8e91da9bd9786ec1020",
+    "base44/functions/gameRoomAction/room-push-policy.ts": "634913e4f2372ecf276c7e9ffdb2d0226b94758652715533b344acacc1739df9",
+    "base44/functions/gameRoomAction/lobby-kick-policy.ts": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6",
+    "base44/functions/gameRoomAction/main.ts": "8be55aed2f0f25f518d9a13f1da18706a2643d0ec0f1291f8796ceb4c4a6775f",
+    "base44/functions/gameRoomAction/round-action-access.ts": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda",
+    "base44/functions/gameRoomAction/room-membership-generation.ts": "97f10bf14a8dff24547a372e7bd26f423b17660eb524f7e3bf75965478fbc10b",
+    "base44/functions/gameRoomAction/room-participant-identity.ts": "ff9bd360e5b3e5f067632e59150e0a276ec400086e7efd2333eae62f418a786f",
+    "base44/functions/gameRoomAction/committed-game-start-repair.ts": "210018fba04774a6f51f01295f730edbaf07d9f00365e5edd08b0682fcf72a4f",
+    "base44/functions/gameRoomAction/room-write-lifecycle.ts": "1b5c80cd5f15a44edcb08c1f94e68b86a1b955b20e6dfe10c723f4a6bdc6d337",
+    "base44/functions/gameRoomAction/finished-room-departure-policy.ts": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14",
+    "base44/functions/gameRoomAction/terminal-timing.ts": "4bb45dedb08cb0a625d2a99fd1ca09a132090a9cc60d1b2a5cafba8e5f5ee8ec",
+    "base44/functions/gameRoomAction/detective-vote-lease-recovery.ts": "0d2095f5871f830378874adc33902af2b7a8cd6890288bf041af53349569bd9a",
+    "base44/functions/gameRoomAction/terminal-finalization-scope.ts": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12",
+    "base44/functions/gameRoomAction/question-round-policy.ts": "e59d66fb4c808ae68357907971d440c0a779351db7ce225e1675ca6b250929ad",
+    "base44/functions/gameRoomAction/request-auth.ts": "b2d798a45345c3fe551fd98e17f592b0cc718a07e84c2b250c2ddadbbd204f2c",
+    "base44/functions/gameRoomAction/terminal-finalization-recovery.ts": "931c762ee30f73a958fa8b81783627e3117cfd7475e642983a0633f56579f502",
+    "base44/functions/gameRoomAction/question-turn-order.ts": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef",
+    "base44/functions/gameRoomAction/replay-policy.ts": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380",
+    "base44/functions/gameRoomAction/replay-auto-start-policy.ts": "1c4cbbe426152c8120ea86353d0e1f5667d0ebbc491e9d7313868a92c1e2d0a7",
+    "base44/functions/gameRoomAction/post-lease-signal.ts": "e7787dbeb11743f73f4312a4930f09c3c17ce197fd436f2e81435f0be8ac3fe9",
+    "base44/functions/gameRoomAction/association-turn-order.ts": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa",
+    "base44/functions/gameRoomAction/operation-deadline.ts": "4aac5455024ccc894aaec1e9c2e2b9c5473e9931811eb6d645a3cb1240c07416",
+    "base44/functions/gameRoomAction/community-profile-backfill.ts": "b87dab40c10819cff33999a558c194ef1b56f5b6ae185202b0b75c348ff7463f",
+    "base44/functions/gameRoomAction/leaderboard.ts": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94",
+    "base44/functions/gameRoomAction/room-projection.ts": "cf441648aa5649df432df18354c50bfa1821b5d97fdbe6713ff69fe5b8988d20",
+    "base44/functions/gameRoomAction/terminal-outbox-commit.ts": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e",
+    "base44/functions/gameRoomAction/active-game-lobby-return-policy.ts": "0a47ae87a667e380abe76cef4ccefda5d297f3410bb5c6be1fcaa26e04f1ed5c",
+    "base44/functions/gameRoomAction/billing-identity-lifecycle.ts": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+    "base44/functions/gameRoomAction/community-profile-repair-queue.ts": "c91e2d15b009802f4572753c53d93516a85d28f64c4d219cfccd164dd78b9107",
+    "base44/functions/gameRoomAction/lobby-state-policy.ts": "de7c5c0ca28b277753c5b1816b0dc1088b34b4961418a805e493005931c4f4d6",
+    "base44/functions/gameRoomAction/community-profile-signal.ts": "0b033a02d72eaa637418f71a3de2569f9879f9d1b4e411bd8d0e83834adcee3c",
+    "base44/functions/gameRoomAction/start-word-pool-policy.ts": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b",
+    "base44/functions/gameRoomAction/community-profile-mirror.ts": "46fad25a7fcae7534ca6206f4bb6e7ff59ac559bf3f84aafd4a00fe60492d8a1",
+    "base44/functions/gameRoomAction/internal-push.ts": "640c39a3d7342196b658de1e604463bc1e54cfb5429488a6216f9336660df9c3",
+    "base44/functions/gameRoomAction/competitive-stats.ts": "058bfd9029172554a0f648c8b23b78e788b7b1f6b9e89502974ff9bdc64d0a45",
+    "base44/functions/gameRoomAction/room-write-cas.ts": "521ebf106eecf129572d14f9e7ccdc9b33ad0b1dd08048789f7a48776e4c67a9",
+    "base44/functions/gameRoomAction/terminal-side-effect-dispatch.ts": "46b3268fd557f59092d09437a6e91f5d33a5ac185c1d85299bbd1b1e07685934",
+    "base44/functions/gameRoomAction/room-close-intent.ts": "845ec36a3166365234d06ea703138e8d4dc6913c1578ef93a272489813832371",
+    "base44/functions/pushNotificationAction/queued-live-end-delivery.ts": "1cdfd4a3a40a29a5b0634af435b27f40a368ffecfbee6deb1688599b14e0c26e",
+    "base44/functions/pushNotificationAction/billing-lifecycle-retry.ts": "e11a9a72af82ba171164995aec3a3af9063196537cee876c09b0677493841796",
+    "base44/functions/pushNotificationAction/drain-policy.ts": "478580a3415ae9af80a9095d66e4578e088324358c4ac73de4668282675851e9",
+    "base44/functions/pushNotificationAction/bounded-work.ts": "f7c050e38b3e8636b6da4bca8c42efc5112016c8969def508f09abb3927f725d",
+    "base44/functions/pushNotificationAction/process-event-timing.ts": "3385cac9986998b01449033ee723f5f3ec0cb904eaae8185f08ed995fb806712",
+    "base44/functions/pushNotificationAction/push-events.ts": "6d6c40195fd38c8e3a7e11d48e375890616a0c56da52b8be9ee044a43efe0b71",
+    "base44/functions/pushNotificationAction/token-crypto.ts": "a3f0fe644dbc42226a7faed8f7ad6cf90f54abcb09f9f957432ed18a839543cd",
+    "base44/functions/pushNotificationAction/live-activity.ts": "8935874fc8a90ef4e26d4e8e3944d995c9ff24bdd550c47754f8cc848f49ea43",
+    "base44/functions/pushNotificationAction/apns.ts": "a0a2e79c1d0b401735670265a132237b91b9f15bd6f07dcb9ad3262ac0897b6e",
+    "base44/functions/pushNotificationAction/contracts.ts": "b4d7d9415497055cfd9f6a187173b47a736f774b38baf1bda5713f4aefbcc79e",
+    "base44/functions/pushNotificationAction/main.ts": "c7c4d29a2979413a79ebeb95620d77b136837a15aa030fbc857c151aac3ee375",
+    "base44/functions/pushNotificationAction/live-delivery.ts": "24f90a5888b35c9ec28c1df7e09bd3f409c7c66b119a38fbf0d520013767d945",
+    "base44/functions/pushNotificationAction/safe-error.ts": "0d1202d4771fee8f71680be830906b8d66b330d1f8cbffaf33ff9623896e7de8",
+    "base44/functions/pushNotificationAction/forced-live-end-authorization.ts": "6d72506b6619a5e25c054e23a924a710cac0c825936127930ddb9e2188accffa",
+    "base44/functions/pushNotificationAction/worker-auth.ts": "a7397b2fb1dc58d34836147de11e446997db1965eb05d23b4863c24b5712e4dd",
+    "base44/functions/pushNotificationAction/room-reconciliation.ts": "1377c99c6c7a9d527d56163c1dfc07f70f5a198b076cadfb31a730eb4d7e48d7",
+    "base44/functions/pushNotificationAction/internal-function-response.ts": "541c3a831e8dd1960cc57bfb52a399c62c3dd3c385b32d8537dcd085a1d3160f",
+    "base44/functions/pushNotificationAction/live-end-enqueue.ts": "a9ca49bfc93fa0be0891b831d2cb9a42b78d2cecdb1d35bf8a3740e8e46b8c7e",
+    "base44/functions/pushNotificationAction/base44-context.ts": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f",
+    "base44/functions/pushNotificationAction/public-name-safety.ts": "9ad28b10f54a75597c1680278187c08844c2f83a4684a6c0793e3f115f9c75bf",
+    "base44/functions/pushNotificationAction/billing-identity-lifecycle.ts": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+    "base44/functions/pushNotificationAction/scheduled-room-reconciliation.ts": "14a3219f5816322d7677728cd489013002baaaf0d05e81d9788420c9618d6c5f",
+    "base44/functions/pushNotificationAction/error-response.ts": "762746fd270c11c602dec6036cbc79b9d07a5c10f3b7ee3860667d36efeda886",
+    "base44/functions/pushNotificationAction/device-registration.ts": "e00dee5ca29f2f1773985eb5572e085e508ed728fe0b6639a7d8aed6b5c52fae",
+    "base44/functions/pushNotificationAction/announcement-fanout.ts": "078ec4d74b5bee0179d8e0a3b689164a09abc29305ac0f39581b469d7832aca3",
+    "base44/functions/pushNotificationAction/inbox-backfill.ts": "08296169c537ea94416000372089444cbb64872496eac00959b8824ecb4841f4",
+    "base44/functions/pushNotificationAction/profile-repair-state.ts": "1bcc9c14965cac9c409af84da14778c2b47645c3b53c24a6f0d0061723c7e2aa",
+    "base44/functions/pushNotificationAction/inbox-projection.ts": "e11205b67f58970c7912ca48db1a40b3e445b0d95135ccf2ed240a0ee7ef206b",
+    "base44/functions/deleteAccount/relationship-cleanup.ts": "13fa2fcbea347d9d9153300ebd6d930c94809f4c6bc8987d81c78056669b7749",
+    "base44/functions/deleteAccount/account-deletion-response.ts": "3682b98ee8d6542408ea2f865aa2c4d4cac40b8b9cd55786e98ed44c3dd4d82f",
+    "base44/functions/deleteAccount/user-deletion.ts": "0e481b3bf20b93cb8e3b8fc301f6e309b7e8a27def7bdfe3599ccf9c37c3716e",
+    "base44/functions/deleteAccount/account-deletion.ts": "a24f3ee05a8177732d697475f9c71b60a20287b2b22ce210446e54fd967b30f9",
+    "base44/functions/deleteAccount/apple-account-deletion-lease.ts": "5a00df78d5ba83084cba92f1b4407a2978b6220ca11acb1471d8b5ee934246e9",
+    "base44/functions/deleteAccount/main.ts": "db06e45624aef90d869fcff90c97cd09807d742ae28c203d58ccf0db0f314197",
+    "base44/functions/deleteAccount/apple-account-binding.ts": "537e390b2f887a2d170234df9c8eb0bad1ea9788b6186a7d0d171d74af4f27fa",
+    "base44/functions/deleteAccount/deletion-state-machine.ts": "c1a389a62ef9aec1184b7d5e6ae980257d33870ccd918fc26217b9a1ccb4b446",
+    "base44/functions/deleteAccount/base44-context.ts": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f",
+    "base44/functions/deleteAccount/account-deletion-protection.ts": "421da9f49b914e5cb4450a6aa28d841055c2398f1da7e0c0014537780a85b074",
+    "base44/functions/deleteAccount/apple-sign-in-credential.ts": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+    "base44/functions/deleteAccount/billing-identity-lifecycle.ts": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+    "base44/functions/app-store-entitlement/apple-request-error.ts": "2076182b42bad690b473aed412d9b78efdeb9cd851bd370abc0914c1dd5276b6",
+    "base44/functions/app-store-entitlement/apple-verification-error.ts": "0bf8b8584c5264fb71ba653906d22df5aa470ca640632a833b5bc2056f8b13a8",
+    "base44/functions/app-store-entitlement/membership-guard.ts": "606c793aab3b72dc65117259f2dd722e49a0fabb02a8b355246f0ff7ff18eb7d",
+    "base44/functions/app-store-entitlement/apple-fetch-body-compatibility.ts": "f31ec810da06076cbe1e64e46e0eac41c119a16a4a9869890bebbbee64432577",
+    "base44/functions/app-store-entitlement/apple-entitlement.ts": "cbc76d8a7500defa7170c00668f796b83831c1d0fa2af61d0ac01ab52f2e9664",
+    "base44/functions/app-store-entitlement/main.ts": "be234bfaa9cdc728ac4aadedbf19f1f5d0319664ca51536ada31557ff0c981cb",
+    "base44/functions/app-store-entitlement/apple-notification-diagnostic.ts": "9957f51258ee712fb62b17513af18a2e91cbda72515772c316729329e122aae5",
+    "base44/functions/app-store-entitlement/apple-account-binding.ts": "537e390b2f887a2d170234df9c8eb0bad1ea9788b6186a7d0d171d74af4f27fa",
+    "base44/functions/app-store-entitlement/deleted-account-identity.ts": "a404ccf4f67033ab471ea3210e0db0f4558fc2c3effcf3db2431a863312321b7",
+    "base44/functions/app-store-entitlement/apple-account-lease-guard.ts": "33ecec0a96aadfaf3e6269fb73560cbcb9b3acfac52896d3e7136bda1cba9e7d",
+    "base44/functions/app-store-entitlement/base44-context.ts": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f",
+    "base44/functions/app-store-entitlement/limitless-rollout.ts": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+    "base44/functions/app-store-entitlement/membership-signal.ts": "bd9dc2f3b388197df326e7ffab587e13ce8995fbc4ab23761ef1d065757912c4",
+    "base44/functions/app-store-entitlement/apple-account-reservation.ts": "35566ff83b77e7974bc5971678faf699639c4bf6490d7ec3329937c5e5f14cf0",
+    "base44/functions/app-store-entitlement/apple-subscription-status.ts": "3dcd0223033f0524e14c75c4745ced9f19910aede55a3ef4639cf1e46ace5366",
+    "base44/functions/autoRegisterUser/main.ts": "ebd3244fb1796ab3b5d8b86eac9e6e374dbcf98bd4b5be51f2029e70b9b8c895",
+    "base44/functions/autoRegisterUser/base44-context.ts": "7f7b4e20791132f0ef9acf068df0e0d2335f01554a6ca17ee1c3d36aa8c74220",
+    "base44/functions/autoRegisterUser/apple-sign-in-credential.ts": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+    "base44/functions/autoRegisterUser/billing-identity-lifecycle.ts": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+    "base44/functions/appleAuthBroker/google-state-recovery.ts": "aa6cf334f74099ff70cbdb206ea63bea7c07c619ee8af44e4a18222d86756e88",
+    "base44/functions/appleAuthBroker/main.ts": "67db2417fcdac5e926432b8682242f4bde4e08596817e97c4c0ba762f4244631",
+    "base44/functions/appleAuthBroker/confirmation.ts": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb",
+    "base44/functions/appleAuthBroker/apple-code-exchange.ts": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8",
+    "base44/functions/appleAuthBroker/service-role-request.ts": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df",
+    "base44/functions/appleAuthBroker/apple-token-compensation.ts": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b",
+    "base44/functions/appleAuthBroker/transaction.ts": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8",
+    "base44/functions/appleAuthBroker/handoff.ts": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7",
+    "base44/functions/appleAuthBroker/apple-credential-error-policy.ts": "7d35a9c2a03b934605e8ec87ce96862b3a1dc3a4b756d0f83cc77bd4b6ba3ab5",
+    "base44/functions/appleAuthBroker/provider.ts": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+    "base44/functions/appleAuthBroker/apple-sign-in-credential.ts": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+    "base44/functions/appleAuthBroker/billing-identity-lifecycle.ts": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+    "base44/functions/mobileAuthCallback/main.ts": "56ea4f51a4d2175b546fa8467f502b3237bc95260f76d3cd7892401f627e0e28",
+    "base44/functions/advanceRound/main.ts": "c592bf0b3cd3178de39d65df57f3c2590d57221f252180ebce23b5301f521f33"
+  },
+  "configs": {
+    "wordPackAction": {
+      "name": "wordPackAction",
+      "entry": "base44/functions/wordPackAction/entry.ts"
+    },
+    "checkSubscription": {
+      "name": "checkSubscription",
+      "entry": "base44/functions/checkSubscription/entry.ts"
+    },
+    "stripe-entitlement-webhook": {
+      "name": "stripe-entitlement-webhook",
+      "entry": "base44/functions/stripe-entitlement-webhook/entry.ts"
+    },
+    "communityAction": {
+      "name": "communityAction",
+      "entry": "base44/functions/communityAction/entry.ts"
+    },
+    "notificationAction": {
+      "name": "notificationAction",
+      "entry": "base44/functions/notificationAction/entry.ts"
+    },
+    "generateWordPack": {
+      "name": "generateWordPack",
+      "entry": "base44/functions/generateWordPack/entry.ts"
+    },
+    "googleAuthCallback": {
+      "name": "googleAuthCallback",
+      "entry": "base44/functions/googleAuthCallback/entry.ts"
+    },
+    "createCheckout": {
+      "name": "createCheckout",
+      "entry": "base44/functions/createCheckout/entry.ts"
+    },
+    "appleAuthCallback": {
+      "name": "appleAuthCallback",
+      "entry": "main.ts"
+    },
+    "gameRoomAction": {
+      "name": "gameRoomAction",
+      "entry": "base44/functions/gameRoomAction/entry.ts"
+    },
+    "pushNotificationAction": {
+      "name": "pushNotificationAction",
+      "entry": "base44/functions/pushNotificationAction/entry.ts",
+      "automations": [
+        {
+          "name": "drain_push_delivery_retries",
+          "description": "Cost-bounded retry worker. The automation creator must retain the admin role.",
+          "function_args": {
+            "action": "drain",
+            "limit": 64
+          },
+          "is_active": false,
+          "type": "scheduled",
+          "schedule_mode": "recurring",
+          "schedule_type": "simple",
+          "repeat_unit": "minutes",
+          "repeat_interval": 15,
+          "start_time": null,
+          "repeat_on_days": null,
+          "repeat_on_day_of_month": null,
+          "ends_type": "never",
+          "ends_on_date": null,
+          "ends_after_count": null
+        }
+      ]
+    },
+    "deleteAccount": {
+      "name": "deleteAccount",
+      "entry": "base44/functions/deleteAccount/entry.ts"
+    },
+    "app-store-entitlement": {
+      "name": "app-store-entitlement",
+      "entry": "base44/functions/app-store-entitlement/entry.ts"
+    },
+    "autoRegisterUser": {
+      "name": "autoRegisterUser",
+      "entry": "base44/functions/autoRegisterUser/entry.ts"
+    },
+    "appleAuthBroker": {
+      "name": "appleAuthBroker",
+      "entry": "base44/functions/appleAuthBroker/entry.ts"
+    },
+    "mobileAuthCallback": {
+      "name": "mobileAuthCallback",
+      "entry": "main.ts"
+    },
+    "advanceRound": {
+      "name": "advanceRound",
+      "entry": "main.ts"
+    }
+  },
+  "packaging_normalizations": [
+    {
+      "function": "wordPackAction",
+      "from": "base44/functions/wordPackAction/content-safety.ts",
+      "to": "content-safety.ts"
+    },
+    {
+      "function": "wordPackAction",
+      "from": "base44/functions/wordPackAction/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "wordPackAction",
+      "from": "base44/functions/wordPackAction/safe-error.ts",
+      "to": "safe-error.ts"
+    },
+    {
+      "function": "wordPackAction",
+      "from": "base44/functions/wordPackAction/lifecycle-error-response.ts",
+      "to": "lifecycle-error-response.ts"
+    },
+    {
+      "function": "wordPackAction",
+      "from": "base44/functions/wordPackAction/word-pack-write-lifecycle.ts",
+      "to": "word-pack-write-lifecycle.ts"
+    },
+    {
+      "function": "wordPackAction",
+      "from": "base44/functions/wordPackAction/base44-context.ts",
+      "to": "base44-context.ts"
+    },
+    {
+      "function": "wordPackAction",
+      "from": "base44/functions/wordPackAction/word-pack.ts",
+      "to": "word-pack.ts"
+    },
+    {
+      "function": "wordPackAction",
+      "from": "base44/functions/wordPackAction/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    },
+    {
+      "function": "checkSubscription",
+      "from": "base44/functions/checkSubscription/membership.ts",
+      "to": "membership.ts"
+    },
+    {
+      "function": "checkSubscription",
+      "from": "base44/functions/checkSubscription/stripe-binding.ts",
+      "to": "stripe-binding.ts"
+    },
+    {
+      "function": "checkSubscription",
+      "from": "base44/functions/checkSubscription/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "checkSubscription",
+      "from": "base44/functions/checkSubscription/stripe-entitlement-persistence.ts",
+      "to": "stripe-entitlement-persistence.ts"
+    },
+    {
+      "function": "checkSubscription",
+      "from": "base44/functions/checkSubscription/quota.ts",
+      "to": "quota.ts"
+    },
+    {
+      "function": "checkSubscription",
+      "from": "base44/functions/checkSubscription/base44-context.ts",
+      "to": "base44-context.ts"
+    },
+    {
+      "function": "checkSubscription",
+      "from": "base44/functions/checkSubscription/limitless-rollout.ts",
+      "to": "limitless-rollout.ts"
+    },
+    {
+      "function": "checkSubscription",
+      "from": "base44/functions/checkSubscription/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    },
+    {
+      "function": "stripe-entitlement-webhook",
+      "from": "base44/functions/stripe-entitlement-webhook/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "stripe-entitlement-webhook",
+      "from": "base44/functions/stripe-entitlement-webhook/stripe-entitlement-persistence.ts",
+      "to": "stripe-entitlement-persistence.ts"
+    },
+    {
+      "function": "stripe-entitlement-webhook",
+      "from": "base44/functions/stripe-entitlement-webhook/stripe-event-resolution.ts",
+      "to": "stripe-event-resolution.ts"
+    },
+    {
+      "function": "stripe-entitlement-webhook",
+      "from": "base44/functions/stripe-entitlement-webhook/base44-context.ts",
+      "to": "base44-context.ts"
+    },
+    {
+      "function": "stripe-entitlement-webhook",
+      "from": "base44/functions/stripe-entitlement-webhook/stripe-entitlement.ts",
+      "to": "stripe-entitlement.ts"
+    },
+    {
+      "function": "stripe-entitlement-webhook",
+      "from": "base44/functions/stripe-entitlement-webhook/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/membership.ts",
+      "to": "membership.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/mutation-idempotency.ts",
+      "to": "mutation-idempotency.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/community-moderation.ts",
+      "to": "community-moderation.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/push-events.ts",
+      "to": "push-events.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/profile-membership.ts",
+      "to": "profile-membership.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/profile-signal.ts",
+      "to": "profile-signal.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/friendship-pagination.ts",
+      "to": "friendship-pagination.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/community-write-lifecycle.ts",
+      "to": "community-write-lifecycle.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/community-safety.ts",
+      "to": "community-safety.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/community.ts",
+      "to": "community.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/post-commit-state.ts",
+      "to": "post-commit-state.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/base44-context.ts",
+      "to": "base44-context.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/profile-write-lifecycle.ts",
+      "to": "profile-write-lifecycle.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/friendship-pair-policy.ts",
+      "to": "friendship-pair-policy.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/limitless-rollout.ts",
+      "to": "limitless-rollout.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/error-response.ts",
+      "to": "error-response.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/internal-push.ts",
+      "to": "internal-push.ts"
+    },
+    {
+      "function": "communityAction",
+      "from": "base44/functions/communityAction/room-invite-pagination.ts",
+      "to": "room-invite-pagination.ts"
+    },
+    {
+      "function": "notificationAction",
+      "from": "base44/functions/notificationAction/admin-publish-lifecycle.ts",
+      "to": "admin-publish-lifecycle.ts"
+    },
+    {
+      "function": "notificationAction",
+      "from": "base44/functions/notificationAction/contracts.ts",
+      "to": "contracts.ts"
+    },
+    {
+      "function": "notificationAction",
+      "from": "base44/functions/notificationAction/inbox.ts",
+      "to": "inbox.ts"
+    },
+    {
+      "function": "notificationAction",
+      "from": "base44/functions/notificationAction/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "notificationAction",
+      "from": "base44/functions/notificationAction/safe-error.ts",
+      "to": "safe-error.ts"
+    },
+    {
+      "function": "notificationAction",
+      "from": "base44/functions/notificationAction/base44-context.ts",
+      "to": "base44-context.ts"
+    },
+    {
+      "function": "notificationAction",
+      "from": "base44/functions/notificationAction/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    },
+    {
+      "function": "notificationAction",
+      "from": "base44/functions/notificationAction/error-response.ts",
+      "to": "error-response.ts"
+    },
+    {
+      "function": "notificationAction",
+      "from": "base44/functions/notificationAction/receipt-lifecycle.ts",
+      "to": "receipt-lifecycle.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/content-safety.ts",
+      "to": "content-safety.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/openai-word-pack-provider.ts",
+      "to": "openai-word-pack-provider.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/generation-cache.ts",
+      "to": "generation-cache.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/generation-write-lifecycle.ts",
+      "to": "generation-write-lifecycle.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/membership.ts",
+      "to": "membership.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/generation-retry-contract.ts",
+      "to": "generation-retry-contract.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/word-pack-quality.ts",
+      "to": "word-pack-quality.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/generation-idempotency.ts",
+      "to": "generation-idempotency.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/quota.ts",
+      "to": "quota.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/base44-context.ts",
+      "to": "base44-context.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/ai-provider-resilience.ts",
+      "to": "ai-provider-resilience.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/word-normalization.ts",
+      "to": "word-normalization.ts"
+    },
+    {
+      "function": "generateWordPack",
+      "from": "base44/functions/generateWordPack/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    },
+    {
+      "function": "googleAuthCallback",
+      "from": "base44/functions/googleAuthCallback/headers.ts",
+      "to": "headers.ts"
+    },
+    {
+      "function": "googleAuthCallback",
+      "from": "base44/functions/googleAuthCallback/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "createCheckout",
+      "from": "base44/functions/createCheckout/checkout-security.ts",
+      "to": "checkout-security.ts"
+    },
+    {
+      "function": "createCheckout",
+      "from": "base44/functions/createCheckout/casada-checkout.ts",
+      "to": "casada-checkout.ts"
+    },
+    {
+      "function": "createCheckout",
+      "from": "base44/functions/createCheckout/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "createCheckout",
+      "from": "base44/functions/createCheckout/checkout-lifecycle.ts",
+      "to": "checkout-lifecycle.ts"
+    },
+    {
+      "function": "createCheckout",
+      "from": "base44/functions/createCheckout/base44-context.ts",
+      "to": "base44-context.ts"
+    },
+    {
+      "function": "createCheckout",
+      "from": "base44/functions/createCheckout/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/multi-spy-policy.ts",
+      "to": "multi-spy-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/room-result-policy.ts",
+      "to": "room-result-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/content-safety.ts",
+      "to": "content-safety.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/game-round.ts",
+      "to": "game-round.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/room-action-transition.ts",
+      "to": "room-action-transition.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/room-interaction-safety.ts",
+      "to": "room-interaction-safety.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/game-room-signal.ts",
+      "to": "game-room-signal.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/detective-vote-write.ts",
+      "to": "detective-vote-write.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/game-timer-policy.ts",
+      "to": "game-timer-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/detective-vote-policy.ts",
+      "to": "detective-vote-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/game-history-idempotency.ts",
+      "to": "game-history-idempotency.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/push-events.ts",
+      "to": "push-events.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/room-push-policy.ts",
+      "to": "room-push-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/lobby-kick-policy.ts",
+      "to": "lobby-kick-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/round-action-access.ts",
+      "to": "round-action-access.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/room-membership-generation.ts",
+      "to": "room-membership-generation.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/room-participant-identity.ts",
+      "to": "room-participant-identity.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/committed-game-start-repair.ts",
+      "to": "committed-game-start-repair.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/room-write-lifecycle.ts",
+      "to": "room-write-lifecycle.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/finished-room-departure-policy.ts",
+      "to": "finished-room-departure-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/terminal-timing.ts",
+      "to": "terminal-timing.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/detective-vote-lease-recovery.ts",
+      "to": "detective-vote-lease-recovery.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/terminal-finalization-scope.ts",
+      "to": "terminal-finalization-scope.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/question-round-policy.ts",
+      "to": "question-round-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/request-auth.ts",
+      "to": "request-auth.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/terminal-finalization-recovery.ts",
+      "to": "terminal-finalization-recovery.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/question-turn-order.ts",
+      "to": "question-turn-order.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/replay-policy.ts",
+      "to": "replay-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/replay-auto-start-policy.ts",
+      "to": "replay-auto-start-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/post-lease-signal.ts",
+      "to": "post-lease-signal.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/association-turn-order.ts",
+      "to": "association-turn-order.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/operation-deadline.ts",
+      "to": "operation-deadline.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/community-profile-backfill.ts",
+      "to": "community-profile-backfill.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/leaderboard.ts",
+      "to": "leaderboard.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/room-projection.ts",
+      "to": "room-projection.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/terminal-outbox-commit.ts",
+      "to": "terminal-outbox-commit.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/active-game-lobby-return-policy.ts",
+      "to": "active-game-lobby-return-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/community-profile-repair-queue.ts",
+      "to": "community-profile-repair-queue.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/lobby-state-policy.ts",
+      "to": "lobby-state-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/community-profile-signal.ts",
+      "to": "community-profile-signal.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/start-word-pool-policy.ts",
+      "to": "start-word-pool-policy.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/community-profile-mirror.ts",
+      "to": "community-profile-mirror.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/internal-push.ts",
+      "to": "internal-push.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/competitive-stats.ts",
+      "to": "competitive-stats.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/room-write-cas.ts",
+      "to": "room-write-cas.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/terminal-side-effect-dispatch.ts",
+      "to": "terminal-side-effect-dispatch.ts"
+    },
+    {
+      "function": "gameRoomAction",
+      "from": "base44/functions/gameRoomAction/room-close-intent.ts",
+      "to": "room-close-intent.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/queued-live-end-delivery.ts",
+      "to": "queued-live-end-delivery.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/billing-lifecycle-retry.ts",
+      "to": "billing-lifecycle-retry.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/drain-policy.ts",
+      "to": "drain-policy.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/bounded-work.ts",
+      "to": "bounded-work.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/process-event-timing.ts",
+      "to": "process-event-timing.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/push-events.ts",
+      "to": "push-events.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/token-crypto.ts",
+      "to": "token-crypto.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/live-activity.ts",
+      "to": "live-activity.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/apns.ts",
+      "to": "apns.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/contracts.ts",
+      "to": "contracts.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/live-delivery.ts",
+      "to": "live-delivery.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/safe-error.ts",
+      "to": "safe-error.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/forced-live-end-authorization.ts",
+      "to": "forced-live-end-authorization.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/worker-auth.ts",
+      "to": "worker-auth.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/room-reconciliation.ts",
+      "to": "room-reconciliation.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/internal-function-response.ts",
+      "to": "internal-function-response.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/live-end-enqueue.ts",
+      "to": "live-end-enqueue.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/base44-context.ts",
+      "to": "base44-context.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/public-name-safety.ts",
+      "to": "public-name-safety.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/scheduled-room-reconciliation.ts",
+      "to": "scheduled-room-reconciliation.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/error-response.ts",
+      "to": "error-response.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/device-registration.ts",
+      "to": "device-registration.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/announcement-fanout.ts",
+      "to": "announcement-fanout.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/inbox-backfill.ts",
+      "to": "inbox-backfill.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/profile-repair-state.ts",
+      "to": "profile-repair-state.ts"
+    },
+    {
+      "function": "pushNotificationAction",
+      "from": "base44/functions/pushNotificationAction/inbox-projection.ts",
+      "to": "inbox-projection.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/relationship-cleanup.ts",
+      "to": "relationship-cleanup.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/account-deletion-response.ts",
+      "to": "account-deletion-response.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/user-deletion.ts",
+      "to": "user-deletion.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/account-deletion.ts",
+      "to": "account-deletion.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/apple-account-deletion-lease.ts",
+      "to": "apple-account-deletion-lease.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/apple-account-binding.ts",
+      "to": "apple-account-binding.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/deletion-state-machine.ts",
+      "to": "deletion-state-machine.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/base44-context.ts",
+      "to": "base44-context.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/account-deletion-protection.ts",
+      "to": "account-deletion-protection.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/apple-sign-in-credential.ts",
+      "to": "apple-sign-in-credential.ts"
+    },
+    {
+      "function": "deleteAccount",
+      "from": "base44/functions/deleteAccount/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/apple-request-error.ts",
+      "to": "apple-request-error.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/apple-verification-error.ts",
+      "to": "apple-verification-error.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/membership-guard.ts",
+      "to": "membership-guard.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/apple-fetch-body-compatibility.ts",
+      "to": "apple-fetch-body-compatibility.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/apple-entitlement.ts",
+      "to": "apple-entitlement.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/apple-notification-diagnostic.ts",
+      "to": "apple-notification-diagnostic.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/apple-account-binding.ts",
+      "to": "apple-account-binding.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/deleted-account-identity.ts",
+      "to": "deleted-account-identity.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/apple-account-lease-guard.ts",
+      "to": "apple-account-lease-guard.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/base44-context.ts",
+      "to": "base44-context.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/limitless-rollout.ts",
+      "to": "limitless-rollout.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/membership-signal.ts",
+      "to": "membership-signal.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/apple-account-reservation.ts",
+      "to": "apple-account-reservation.ts"
+    },
+    {
+      "function": "app-store-entitlement",
+      "from": "base44/functions/app-store-entitlement/apple-subscription-status.ts",
+      "to": "apple-subscription-status.ts"
+    },
+    {
+      "function": "autoRegisterUser",
+      "from": "base44/functions/autoRegisterUser/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "autoRegisterUser",
+      "from": "base44/functions/autoRegisterUser/base44-context.ts",
+      "to": "base44-context.ts"
+    },
+    {
+      "function": "autoRegisterUser",
+      "from": "base44/functions/autoRegisterUser/apple-sign-in-credential.ts",
+      "to": "apple-sign-in-credential.ts"
+    },
+    {
+      "function": "autoRegisterUser",
+      "from": "base44/functions/autoRegisterUser/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/google-state-recovery.ts",
+      "to": "google-state-recovery.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/entry.ts",
+      "to": "main.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/confirmation.ts",
+      "to": "confirmation.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/apple-code-exchange.ts",
+      "to": "apple-code-exchange.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/service-role-request.ts",
+      "to": "service-role-request.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/apple-token-compensation.ts",
+      "to": "apple-token-compensation.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/transaction.ts",
+      "to": "transaction.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/handoff.ts",
+      "to": "handoff.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/apple-credential-error-policy.ts",
+      "to": "apple-credential-error-policy.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/provider.ts",
+      "to": "provider.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/apple-sign-in-credential.ts",
+      "to": "apple-sign-in-credential.ts"
+    },
+    {
+      "function": "appleAuthBroker",
+      "from": "base44/functions/appleAuthBroker/billing-identity-lifecycle.ts",
+      "to": "billing-identity-lifecycle.ts"
+    }
+  ],
+  "postdeploy_logs": "No logs returned for selected functions since preflight; not gameplay acceptance"
+}

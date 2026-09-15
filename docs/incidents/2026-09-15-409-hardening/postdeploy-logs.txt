@@ -1,0 +1,3 @@
+Fetched logs
+No logs found matching the filters.
+Update available: 0.1.4 → 0.1.15. Run: npm install -g base44@latest
