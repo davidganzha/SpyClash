@@ -1,6 +1,8 @@
 # Recurring account-wide 409 after room lease cleanup fails
 
-Status: local fix and deployment candidate prepared; **not deployed**.
+Status: **deployed on 2026-09-15; exact production postflight verified**.
+See `deployment-receipt.json`. The user confirmed the exact two-function scope
+immediately before this deployment.
 Source branch: `davidganzha/fix-recurring-409-release`, based on `346045e`.
 Bookkeeping version: iOS `1.0.1 (156)`; no new iOS artifact was built or installed.
 
@@ -96,4 +98,20 @@ manifest; after deployment, verify all 17 functions against candidate hashes.
   and a different app binding. Bundle isolation and `git diff --check` pass.
 
 Tests use fake storage and make no production mutations. Real authenticated
-two-client gameplay and post-deployment traffic remain unverified.
+two-client gameplay remains unverified.
+
+## Production deployment on 2026-09-15
+
+- A new full read-only pull matched all 17 functions / 195 runtime files in
+  the approved baseline. The isolated candidate was reconstructed and verified.
+- At 11:54:29 UTC, Base44 CLI 0.1.0 began the named two-function deployment.
+  Both functions reported deployed; CLI exit status was zero by 11:55:39 UTC.
+- At 11:56:01 UTC, an independent fresh pull matched the exact candidate hashes
+  for all 17 functions and 195 runtime files. Only the two approved modules
+  differ from baseline. All function configurations and 15 unselected functions
+  remain unchanged.
+- The short log window 11:54:29–11:55:40 UTC contained no requests for the two
+  functions. This is not evidence of successful gameplay.
+- The read-only postflight lifecycle count and timestamp are recorded in the
+  receipt. No account lock or data record was manually changed.
+- No schema, website, secret, auth setting or App Store operation was performed.

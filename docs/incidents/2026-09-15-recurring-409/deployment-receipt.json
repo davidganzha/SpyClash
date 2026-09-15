@@ -1,0 +1,48 @@
+{
+  "canonical_app_id": "69a0e57fa939f578082f8091",
+  "changed_runtime_files": [
+    {
+      "after_sha256": "96c73111d67d59737e2df91f00674798a971f92224efc673dec3ac0b0dab34b7",
+      "before_sha256": "ae252f841fb88c88aaa59ce2192747934c6409a09f2a53537d31fb357ae7ea12",
+      "function": "gameRoomAction",
+      "path": "room-write-lifecycle.ts"
+    },
+    {
+      "after_sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "before_sha256": "6f2b9916d031bab022e17897c2cf71a401a6941302a109e42414d04b205a6218",
+      "function": "generateWordPack",
+      "path": "billing-identity-lifecycle.ts"
+    }
+  ],
+  "cli_success_confirmed_at_utc": "2026-09-15T11:55:39Z",
+  "deployed_functions": [
+    "gameRoomAction",
+    "generateWordPack"
+  ],
+  "function_configurations_unchanged": true,
+  "live_two_client_acceptance": "not_performed",
+  "postflight_lifecycle": {
+    "as_of": "2026-09-15T11:55:51.637Z",
+    "record_count": 98,
+    "sample_saturated": false,
+    "unexpired_leases": 0
+  },
+  "postflight_log_window": {
+    "entries": 0,
+    "functions": [
+      "gameRoomAction",
+      "generateWordPack"
+    ],
+    "interpretation": "No game traffic in the inspected short window; gameplay acceptance remains open.",
+    "since_utc": "2026-09-15T11:54:29Z",
+    "until_utc": "2026-09-15T11:55:40Z"
+  },
+  "postflight_verified_at_utc": "2026-09-15T11:56:01.108559+00:00",
+  "selected_runtime_files": 61,
+  "source_commit": "537fb97e0d732f5f564beb3da67b0e0099e2efd4",
+  "started_at_utc": "2026-09-15T11:54:29Z",
+  "status": "deployed_and_exact_postflight_verified",
+  "unselected_functions_unchanged": 15,
+  "verified_functions": 17,
+  "verified_runtime_files": 195
+}
