@@ -1,0 +1,51 @@
+name: Multiplayer conflict regression
+
+on:
+  push:
+    paths:
+      - 'base44/**'
+      - 'SpyClash/**'
+      - 'SpyClashTests/**'
+      - 'scripts/**'
+      - 'project.yml'
+      - 'SpyClash.xcodeproj/**'
+      - '.github/workflows/409-resilience.yml'
+  pull_request:
+    paths:
+      - 'base44/**'
+      - 'SpyClash/**'
+      - 'SpyClashTests/**'
+      - 'scripts/**'
+      - 'project.yml'
+      - 'SpyClash.xcodeproj/**'
+      - '.github/workflows/409-resilience.yml'
+
+permissions:
+  contents: read
+
+concurrency:
+  group: conflict-regression-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  backend-conflicts:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - uses: denoland/setup-deno@v2
+        with:
+          deno-version: v2.9.5
+      - run: sh scripts/check-409-resilience.sh
+  client-conflicts:
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: sh scripts/check-409-client.sh

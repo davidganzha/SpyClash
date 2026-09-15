@@ -4,6 +4,100 @@ import XCTest
 
 @MainActor
 final class Base44ClientRoomActionTests: XCTestCase {
+    func testExpiredQueuedCommandNeverSendsAndNextCommandCanProceed() async throws {
+        let queue = RoomMutationQueue()
+        let owner = try await queue.acquire()
+        do {
+            _ = try await queue.acquire(timeout: 0.01)
+            XCTFail("Expected queue deadline")
+        } catch let error as URLError {
+            XCTAssertEqual(error.code, .timedOut)
+        }
+        queue.release(owner)
+        let next = try await queue.acquire(timeout: 1)
+        queue.release(next)
+    }
+
+    func testRoomMutationQueuePreservesOrderAndSkipsCancelledWaiter() async throws {
+        let queue = RoomMutationQueue()
+        let owner = try await queue.acquire()
+        let entered = expectation(description: "queued cancellation")
+        let cancelled = Task { @MainActor in
+            entered.fulfill()
+            let ticket = try await queue.acquire()
+            defer { queue.release(ticket) }
+            try Task.checkCancellation()
+            XCTFail("Cancelled command must not execute")
+        }
+        await fulfillment(of: [entered], timeout: 2)
+        cancelled.cancel()
+        do { try await cancelled.value; XCTFail("Expected cancellation") }
+        catch { XCTAssertTrue(error is CancellationError) }
+
+        var order: [Int] = []
+        let firstEntered = expectation(description: "first waiter")
+        let first = Task { @MainActor in
+            firstEntered.fulfill()
+            let ticket = try await queue.acquire()
+            defer { queue.release(ticket) }
+            order.append(1)
+        }
+        await fulfillment(of: [firstEntered], timeout: 2)
+        let second = Task { @MainActor in
+            let ticket = try await queue.acquire()
+            defer { queue.release(ticket) }
+            order.append(2)
+        }
+        XCTAssertEqual(order, [])
+        queue.release(owner)
+        try await first.value
+        try await second.value
+        XCTAssertEqual(order, [1, 2])
+    }
+    func testRoomActionRejectsResponseFromPreviousSessionAndReleasesQueue() async throws {
+        let entered = expectation(description: "old session request sent")
+        let unblock = DispatchSemaphore(value: 0)
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if try recorder.requestBodies().count == 1 {
+                entered.fulfill()
+                _ = unblock.wait(timeout: .now() + 5)
+            }
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil; unblock.signal() }
+        let client = makeClient()
+        let pending = Task { try await client.markAnswerHeard(room: .previewRoom(status: "playing")) }
+        await fulfillment(of: [entered], timeout: 2)
+        client.setToken("replacement-token")
+        unblock.signal()
+        do { _ = try await pending.value; XCTFail("Expected stale session cancellation") }
+        catch { XCTAssertTrue(RequestCancellationPolicy.isCancellation(error)) }
+        _ = try await client.markAnswerHeard(room: .previewRoom(status: "playing"))
+        XCTAssertEqual(try recorder.requestBodies().last?["access_token"] as? String, "replacement-token")
+    }
+    func testRoomActionDropsOldConflictEvenWhenLoginReturnsTheSameToken() async throws {
+        let entered = expectation(description: "old request pending")
+        let unblock = DispatchSemaphore(value: 0)
+        MockURLProtocol.requestHandler = { request in
+            entered.fulfill()
+            _ = unblock.wait(timeout: .now() + 5)
+            return MockURLProtocol.leaseConflictResponse(
+                for: request, code: "participant_identity_mismatch", retryable: false
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil; unblock.signal() }
+        let client = makeClient()
+        let pending = Task { try await client.markAnswerHeard(room: .previewRoom(status: "playing")) }
+        await fulfillment(of: [entered], timeout: 2)
+        client.clearToken()
+        client.setToken("test-token")
+        unblock.signal()
+        do { _ = try await pending.value; XCTFail("Expected previous session cancellation") }
+        catch { XCTAssertTrue(RequestCancellationPolicy.isCancellation(error)) }
+    }
+
     func testJoinByCodeAndRestoredRoomShareOneTypedRetryBudget() async throws {
         for joinByCode in [true, false] {
             let recorder = RequestRecorder()

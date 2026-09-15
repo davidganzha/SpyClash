@@ -1,5 +1,63 @@
 import Foundation
 
+/// Serializes this client's room writes while reads continue independently.
+/// A cancelled waiter is removed without taking ownership or sending a request.
+@MainActor
+final class RoomMutationQueue {
+    private var owner: UUID?
+    private struct Waiter {
+        let id: UUID
+        let continuation: CheckedContinuation<Void, Error>
+        let expiry: Task<Void, Never>?
+    }
+    private var waiters: [Waiter] = []
+
+    func acquire(timeout: TimeInterval? = nil) async throws -> UUID {
+        let id = UUID()
+        try await withTaskCancellationHandler {
+            try Task.checkCancellation()
+            try await withCheckedThrowingContinuation { (continuation: CheckedContinuation<Void, Error>) in
+                if owner == nil {
+                    owner = id
+                    continuation.resume()
+                } else {
+                    let expiry = timeout.map { seconds in
+                        Task { @MainActor in
+                            do { try await Task.sleep(for: .seconds(max(0, seconds))) }
+                            catch { return }
+                            self.cancelWaiter(id, error: URLError(.timedOut))
+                        }
+                    }
+                    waiters.append(Waiter(id: id, continuation: continuation, expiry: expiry))
+                }
+            }
+        } onCancel: {
+            Task { @MainActor in self.cancelWaiter(id) }
+        }
+        return id
+    }
+
+    func release(_ id: UUID) {
+        guard owner == id else { return }
+        if waiters.isEmpty {
+            owner = nil
+        } else {
+            let next = waiters.removeFirst()
+            next.expiry?.cancel()
+            owner = next.id
+            next.continuation.resume()
+        }
+    }
+
+    private func cancelWaiter(_ id: UUID, error: Error = CancellationError()) {
+        guard let index = waiters.firstIndex(where: { $0.id == id }) else { return }
+        let waiter = waiters.remove(at: index)
+        waiter.expiry?.cancel()
+        waiter.continuation.resume(throwing: error)
+    }
+}
+
+
 enum AppleNativeAuthPhase {
     case verifyingIdentity
     case establishingSession
@@ -115,6 +173,7 @@ final class Base44Client {
     private let appStoreRetrySleep: @MainActor (Duration) async throws -> Void
     private var token: String?
     private var tokenGeneration = UUID()
+    private let roomMutations = RoomMutationQueue()
 
     var hasSessionToken: Bool {
         token?.isEmpty == false
@@ -793,19 +852,36 @@ final class Base44Client {
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
-        let _: EmptyResponse = try await request(
-            "/apps/\(Self.appID)/functions/gameRoomAction",
-            method: "POST",
-            body: GameRoomActionPayload(
-                action: "leave_room",
-                accessToken: token,
-                roomID: roomID,
-                expectedRevision: expectedRevision,
-                expectedMembershipID: expectedMembershipID
-            ),
-            includeAuthorization: false,
-            timeoutInterval: RoomActionTransportPolicy.timeoutInterval(for: "leave_room")
-        )
+        let generation = tokenGeneration
+        let started = ContinuousClock.now
+        let budget = RoomActionTransportPolicy.timeoutInterval(for: "leave_room") ?? 8
+        let ticket = try await roomMutations.acquire(timeout: budget)
+        defer { roomMutations.release(ticket) }
+        try Task.checkCancellation()
+        guard self.token == token, tokenGeneration == generation else { throw CancellationError() }
+        let elapsed = started.duration(to: .now)
+        let waited = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
+        do {
+            let _: EmptyResponse = try await request(
+                "/apps/\(Self.appID)/functions/gameRoomAction",
+                method: "POST",
+                body: GameRoomActionPayload(
+                    action: "leave_room",
+                    accessToken: token,
+                    roomID: roomID,
+                    expectedRevision: expectedRevision,
+                    expectedMembershipID: expectedMembershipID
+                ),
+                includeAuthorization: false,
+                timeoutInterval: max(0.001, budget - floor(waited * 1_000) / 1_000)
+            )
+            try Task.checkCancellation()
+            guard self.token == token, tokenGeneration == generation else { throw CancellationError() }
+        } catch {
+            try Task.checkCancellation()
+            guard self.token == token, tokenGeneration == generation else { throw CancellationError() }
+            throw error
+        }
     }
 
     func closeRoom(
@@ -816,6 +892,15 @@ final class Base44Client {
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
+        let generation = tokenGeneration
+        let started = ContinuousClock.now
+        let budget = RoomActionTransportPolicy.timeoutInterval(for: "close_room") ?? 8
+        let ticket = try await roomMutations.acquire(timeout: budget)
+        defer { roomMutations.release(ticket) }
+        try Task.checkCancellation()
+        guard self.token == token, tokenGeneration == generation else { throw CancellationError() }
+        let elapsed = started.duration(to: .now)
+        let waited = Double(elapsed.components.seconds) + Double(elapsed.components.attoseconds) / 1e18
         do {
             let _: EmptyResponse = try await request(
                 "/apps/\(Self.appID)/functions/gameRoomAction",
@@ -828,9 +913,14 @@ final class Base44Client {
                     expectedMembershipID: expectedMembershipID
                 ),
                 includeAuthorization: false,
-                timeoutInterval: RoomActionTransportPolicy.timeoutInterval(for: "close_room")
+                timeoutInterval: max(0.001, budget - floor(waited * 1_000) / 1_000)
             )
-        } catch let error as Base44Error where error.statusCode == 404 {
+            try Task.checkCancellation()
+            guard self.token == token, tokenGeneration == generation else { throw CancellationError() }
+        } catch {
+            try Task.checkCancellation()
+            guard self.token == token, tokenGeneration == generation else { throw CancellationError() }
+            guard let failure = error as? Base44Error, failure.statusCode == 404 else { throw error }
             // A repeated local-first host exit is already complete once the
             // authoritative room no longer exists.
             return
@@ -1858,6 +1948,14 @@ final class Base44Client {
                 "kick_player",
                 "submit_spy_guess"
             ].contains(action)
+        let admissionStarted = ContinuousClock.now
+        let requestBudget = requestTimeoutInterval ?? RoomActionTransportPolicy.timeoutInterval(for: action)
+        let ticket = action == "get_room" ? nil : try await roomMutations.acquire(timeout: requestBudget ?? 15)
+        defer { if let ticket { roomMutations.release(ticket) } }
+        let queueDuration = admissionStarted.duration(to: .now)
+        let rawQueueSeconds = Double(queueDuration.components.seconds) + Double(queueDuration.components.attoseconds) / 1e18
+        let queueSeconds = ticket == nil ? 0 : floor(rawQueueSeconds * 1_000) / 1_000
+        let remainingTimeout = requestBudget.map { max(0.001, $0 - queueSeconds) }
         var attempt = 0
 
         while true {
@@ -1871,13 +1969,14 @@ final class Base44Client {
                     method: "POST",
                     body: payload,
                     includeAuthorization: false,
-                    timeoutInterval: requestTimeoutInterval
-                        ?? RoomActionTransportPolicy.timeoutInterval(for: action)
+                    timeoutInterval: remainingTimeout
                 )
                 try Task.checkCancellation()
                 guard self.token == token, tokenGeneration == expectedGeneration else { throw CancellationError() }
                 return room
             } catch let error as Base44Error {
+                try Task.checkCancellation()
+                guard self.token == token, tokenGeneration == expectedGeneration else { throw CancellationError() }
                 guard !callerOwnsConflictRetry else { throw error }
                 let delay: Int?
                 if action == "join_room" {
