@@ -68,13 +68,17 @@ struct StoreKitOperationFailure: Error, Equatable, Sendable {
             }
         }
         if let storeError = error as? StoreKitError {
+            if #available(iOS 18.4, *), case .unsupported = storeError {
+                return "STOREKIT_UNSUPPORTED"
+            }
             switch storeError {
+            case .unknown: return "STOREKIT_UNKNOWN"
             case .userCancelled: return "APPLE_CANCELLED"
             case .networkError(let underlying): return "NETWORK/" + errorCode(underlying, depth: depth + 1)
             case .systemError(let underlying): return "SYSTEM/" + errorCode(underlying, depth: depth + 1)
             case .notAvailableInStorefront: return "STOREFRONT"
             case .notEntitled: return "NOT_ENTITLED"
-            default: return "STOREKIT_UNKNOWN"
+            default: return "STOREKIT_UNRECOGNIZED"
             }
         }
         if let server = error as? Base44Error {

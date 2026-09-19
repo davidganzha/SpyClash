@@ -386,7 +386,7 @@ final class MembershipTests: XCTestCase {
         XCTAssertEqual(manager.state, .restored)
         XCTAssertNil(manager.errorMessage)
         XCTAssertTrue(membership.hasAccess)
-        XCTAssertEqual(appleSyncs, 1)
+        XCTAssertEqual(appleSyncs, 0)
         XCTAssertEqual(reconciliations, 2)
         XCTAssertEqual(membershipClient.requestCount, 2, "Restore must still complete its canonical membership refresh.")
     }
@@ -399,10 +399,15 @@ final class MembershipTests: XCTestCase {
         membership.bind(scope)
         _ = await membership.refresh()
         var backgroundRead: CheckedContinuation<Int, Error>?
+        var reconciliations = 0
         let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
             throw MembershipError.unavailable
         }, reconcileTransactions: {
-            try await withCheckedThrowingContinuation { backgroundRead = $0 }
+            reconciliations += 1
+            if reconciliations == 1 {
+                return try await withCheckedThrowingContinuation { backgroundRead = $0 }
+            }
+            return 0
         })
         manager.bind(scope)
         manager.onEntitlementChanged = {
@@ -428,7 +433,7 @@ final class MembershipTests: XCTestCase {
         XCTAssertEqual(membershipClient.requestCount, 2)
     }
 
-    func testCancelledAppleRestoreDoesNotReconcileOrDiscardVerifiedAccess() async {
+    func testCancelledAppleRestoreDoesNotRepeatReconciliationOrDiscardVerifiedAccess() async {
         let membershipClient = MembershipTestClient()
         membershipClient.result = .success(snapshot())
         let membership = MembershipStore(client: membershipClient)
@@ -442,7 +447,7 @@ final class MembershipTests: XCTestCase {
             throw StoreKitError.userCancelled
         }, reconcileTransactions: {
             reconciliations += 1
-            return 1
+            return 0
         })
         manager.bind(scope)
         manager.onEntitlementChanged = {
@@ -455,7 +460,7 @@ final class MembershipTests: XCTestCase {
 
         XCTAssertEqual(manager.state, .cancelled)
         XCTAssertNil(manager.errorMessage)
-        XCTAssertEqual(reconciliations, 0)
+        XCTAssertEqual(reconciliations, 1)
         XCTAssertEqual(refreshes, 0)
         XCTAssertEqual(membershipClient.requestCount, 1)
         XCTAssertEqual(membership.snapshot, verified)
@@ -469,9 +474,13 @@ final class MembershipTests: XCTestCase {
         let scope = MembershipScope(userID: "user", accessToken: "token")
         membership.bind(scope)
         _ = await membership.refresh()
+        var reconciliations = 0
         let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
             throw MembershipError.unavailable
-        }, reconcileTransactions: { 1 })
+        }, reconcileTransactions: {
+            reconciliations += 1
+            return reconciliations == 1 ? 0 : 1
+        })
         manager.bind(scope)
         manager.onEntitlementChanged = {
             guard await membership.refresh(force: true) else { return nil }
@@ -486,6 +495,199 @@ final class MembershipTests: XCTestCase {
         XCTAssertNil(manager.errorMessage)
         XCTAssertTrue(membership.hasAccess)
         XCTAssertEqual(membershipClient.requestCount, 2)
+    }
+
+    func testRestoreAvailablePurchaseDoesNotRequireAppleSignIn() async {
+        var appleSyncs = 0
+        var refreshes = 0
+        let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+            appleSyncs += 1
+            throw StoreKitError.unknown
+        }, reconcileTransactions: { 1 })
+        manager.bind(MembershipScope(userID: "user", accessToken: "token"))
+        manager.onEntitlementChanged = {
+            refreshes += 1
+            return self.snapshot()
+        }
+
+        await manager.restore()
+
+        XCTAssertEqual(manager.state, .restored)
+        XCTAssertNil(manager.operationFailure)
+        XCTAssertNil(manager.errorMessage)
+        XCTAssertEqual(appleSyncs, 0, "Already verified purchases must not depend on forced Apple authentication.")
+        XCTAssertEqual(refreshes, 1)
+    }
+
+    func testRestoreMissingPurchasesForcesSyncBeforeRechecking() async {
+        var events: [String] = []
+        var reads = 0
+        let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+            events.append("apple")
+        }, reconcileTransactions: {
+            reads += 1
+            events.append("history")
+            return reads == 1 ? 0 : 1
+        })
+        manager.bind(MembershipScope(userID: "user", accessToken: "token"))
+        manager.onEntitlementChanged = {
+            events.append("access")
+            return self.snapshot()
+        }
+
+        await manager.restore()
+
+        XCTAssertEqual(manager.state, .restored)
+        XCTAssertEqual(events, ["history", "apple", "history", "access"])
+    }
+
+    func testFailedAppleSyncCannotUseCachedMembershipAsRestoreProof() async {
+        var reads = 0
+        var refreshes = 0
+        let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+            throw StoreKitError.unknown
+        }, reconcileTransactions: {
+            reads += 1
+            return 0
+        })
+        manager.bind(MembershipScope(userID: "user", accessToken: "token"))
+        manager.onEntitlementChanged = {
+            refreshes += 1
+            return self.snapshot()
+        }
+
+        await manager.restore()
+
+        XCTAssertEqual(manager.state, .failed)
+        XCTAssertEqual(manager.operationFailure?.supportCode, "IAP-RESTORE-APPLE-NONE: STOREKIT_UNKNOWN")
+        XCTAssertEqual(reads, 1)
+        XCTAssertEqual(refreshes, 0, "An active app membership alone is not proof of an Apple restore.")
+    }
+
+    func testRestoreReportsNoPurchasesOnlyAfterSuccessfulAppleSync() async {
+        var appleSyncs = 0
+        var reads = 0
+        let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+            appleSyncs += 1
+        }, reconcileTransactions: {
+            reads += 1
+            return 0
+        })
+        manager.bind(MembershipScope(userID: "user", accessToken: "token"))
+        manager.onEntitlementChanged = { .freePreview }
+
+        await manager.restore()
+
+        XCTAssertEqual(manager.state, .noPurchases)
+        XCTAssertNil(manager.operationFailure)
+        XCTAssertEqual(appleSyncs, 1)
+        XCTAssertEqual(reads, 2)
+    }
+
+    func testRestoreVerifiedTransactionStillRequiresFreshActiveMembership() async {
+        let outcomes: [(MembershipSnapshot?, StoreKitOperationStage)] = [
+            (nil, .membershipRefresh),
+            (.freePreview, .accessCheck),
+            (snapshot(status: "revoked"), .accessCheck),
+            (snapshot(expiry: .distantPast), .accessCheck)
+        ]
+        for (result, expectedStage) in outcomes {
+            var appleSyncs = 0
+            let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+                appleSyncs += 1
+            }, reconcileTransactions: { 1 })
+            manager.bind(MembershipScope(userID: "user", accessToken: "token"))
+            manager.onEntitlementChanged = { result }
+
+            await manager.restore()
+
+            XCTAssertEqual(manager.state, .failed)
+            XCTAssertEqual(manager.operationFailure?.stage, expectedStage)
+            XCTAssertEqual(appleSyncs, 0)
+        }
+    }
+
+    func testRestoreDoesNotBypassTransactionVerificationOrDeliveryErrors() async {
+        for stage: StoreKitOperationStage in [.localVerification, .serverDelivery, .serverContract] {
+            var appleSyncs = 0
+            var refreshes = 0
+            let failure = StoreKitOperationFailure.capture(
+                MembershipError.verificationFailed, stage: stage, origin: .restore, source: .current
+            )
+            let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+                appleSyncs += 1
+            }, reconcileTransactions: { throw failure })
+            manager.bind(MembershipScope(userID: "user", accessToken: "token"))
+            manager.onEntitlementChanged = {
+                refreshes += 1
+                return self.snapshot()
+            }
+
+            await manager.restore()
+
+            XCTAssertEqual(manager.state, .failed)
+            XCTAssertEqual(manager.operationFailure, failure)
+            XCTAssertEqual(appleSyncs, 0)
+            XCTAssertEqual(refreshes, 0)
+        }
+    }
+
+    func testRestoreAccountSwitchDuringHistoryReadDiscardsOldResult() async throws {
+        var historyRead: CheckedContinuation<Int, Error>?
+        var appleSyncs = 0
+        var refreshes = 0
+        let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+            appleSyncs += 1
+        }, reconcileTransactions: {
+            try await withCheckedThrowingContinuation { historyRead = $0 }
+        })
+        manager.bind(MembershipScope(userID: "user", accessToken: "token"))
+        manager.onEntitlementChanged = {
+            refreshes += 1
+            return self.snapshot()
+        }
+        let restore = Task { await manager.restore() }
+        for _ in 0..<100 where historyRead == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(historyRead)
+        manager.bind(MembershipScope(userID: "other-user", accessToken: "other-token"))
+        continuation.resume(returning: 1)
+        await restore.value
+
+        XCTAssertEqual(manager.state, .idle)
+        XCTAssertNil(manager.operationFailure)
+        XCTAssertEqual(appleSyncs, 0)
+        XCTAssertEqual(refreshes, 0)
+    }
+
+    func testConcurrentRestoreDoesNotDuplicateHistoryRead() async throws {
+        var historyRead: CheckedContinuation<Int, Error>?
+        var reads = 0
+        let manager = StoreKitManager(client: makeStoreKitClient(), syncAppStore: {
+            XCTFail("An available verified transaction should not need forced sync")
+        }, reconcileTransactions: {
+            reads += 1
+            return try await withCheckedThrowingContinuation { historyRead = $0 }
+        })
+        manager.bind(MembershipScope(userID: "user", accessToken: "token"))
+        manager.onEntitlementChanged = { self.snapshot() }
+        let restore = Task { await manager.restore() }
+        for _ in 0..<100 where historyRead == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(historyRead)
+        await manager.restore()
+        continuation.resume(returning: 1)
+        await restore.value
+
+        XCTAssertEqual(manager.state, .restored)
+        XCTAssertEqual(reads, 1)
+    }
+
+    func testRestoreDiagnosticDistinguishesUnknownAndUnsupportedStoreKitErrors() {
+        let unknown = StoreKitOperationFailure.capture(StoreKitError.unknown, stage: .appleSync, origin: .restore)
+        XCTAssertEqual(unknown.reason, "STOREKIT_UNKNOWN")
+        if #available(iOS 18.4, *) {
+            let unsupported = StoreKitOperationFailure.capture(StoreKitError.unsupported, stage: .appleSync, origin: .restore)
+            XCTAssertEqual(unsupported.reason, "STOREKIT_UNSUPPORTED")
+        }
     }
 
     private func makeStoreKitClient() -> Base44Client {

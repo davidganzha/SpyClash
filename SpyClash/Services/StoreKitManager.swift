@@ -283,14 +283,23 @@ final class StoreKitManager {
         defer { endOperation(operation) }
         // This context belongs to this invocation, so background work cannot
         // change the stage reported for the user's Restore attempt.
-        var stage: StoreKitOperationStage = .appleSync
+        var stage: StoreKitOperationStage = .reconciliation
         do {
-            // Only the user's Restore button may trigger Apple's authentication prompt.
-            try await syncAppStore()
+            // StoreKit keeps transaction history available without forcing an
+            // account prompt. synchronize() accepts only signed transactions
+            // acknowledged by the server's current subscription-status check.
+            var count = try await synchronize(expected, origin: .restore)
             try requireScope(expected)
-            stage = .reconciliation
-            let count = try await synchronize(expected, origin: .restore)
-            try requireScope(expected)
+            if count == 0 {
+                // Ask Apple for missing purchases only from this explicit user
+                // action. A failed sync must not become a successful empty restore.
+                stage = .appleSync
+                try await syncAppStore()
+                try requireScope(expected)
+                stage = .reconciliation
+                count = try await synchronize(expected, origin: .restore)
+                try requireScope(expected)
+            }
             stage = .membershipRefresh
             guard let refreshed = await onEntitlementChanged?() else { throw MembershipError.unavailable }
             try requireScope(expected)
