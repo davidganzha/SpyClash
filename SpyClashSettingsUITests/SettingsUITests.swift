@@ -19,6 +19,36 @@ final class SettingsUITests: XCTestCase {
         app.terminate()
     }
 
+    func testLimitlessDockAndDropdownFollowAccess() {
+        app.terminate()
+        app.launchArguments = ["--spyclash-ui-preview", "--spyclash-preview-tab=home",
+                               "--spyclash-preview-lang=ru", "--spyclash-preview-limitless"]
+        app.launch()
+        let upgrade = app.buttons["dock.limitless"]
+        XCTAssertTrue(upgrade.waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'dock.'")).count, 4)
+        attachScreenshot("free-four-dock-buttons")
+        upgrade.tap()
+        XCTAssertTrue(app.buttons["limitless.close"].waitForExistence(timeout: 5))
+        app.buttons["limitless.close"].tap()
+        app.buttons["dock.profile"].tap()
+        XCTAssertTrue(app.buttons["dock.profile"].isHittable)
+        app.buttons["spy-command-menu-drag-handle"].tap()
+        XCTAssertTrue(app.buttons["spy-command-menu.settings"].waitForExistence(timeout: 5))
+        XCTAssertFalse(app.buttons["spy-command-menu.limitless"].exists)
+        attachScreenshot("dropdown-without-limitless")
+
+        app.terminate()
+        // The default preview fixture grants access; no live purchases are made.
+        app.launchArguments = ["--spyclash-ui-preview", "--spyclash-preview-tab=home",
+                               "--spyclash-preview-lang=ru"]
+        app.launch()
+        XCTAssertTrue(app.buttons["dock.home"].waitForExistence(timeout: 10))
+        XCTAssertEqual(app.buttons.matching(NSPredicate(format: "identifier BEGINSWITH 'dock.'")).count, 3)
+        XCTAssertFalse(app.buttons["dock.limitless"].exists)
+        attachScreenshot("active-access-three-dock-buttons")
+    }
+
     func testScaleResizesControlsPersistsAndResets() {
         let close = app.buttons["interface-settings.close"]
         let originalWidth = close.frame.width
@@ -37,8 +67,7 @@ final class SettingsUITests: XCTestCase {
         close.tap()
         XCTAssertTrue(app.buttons["spy-command-menu-drag-handle"].isHittable)
         attachScreenshot("profile-120-percent")
-        app.buttons["spy-command-menu-drag-handle"].tap()
-        let limitless = app.buttons["spy-command-menu.limitless"]
+        let limitless = app.buttons["dock.limitless"]
         XCTAssertTrue(limitless.waitForExistence(timeout: 5))
         limitless.tap()
         let pricingClose = app.buttons["limitless.close"]

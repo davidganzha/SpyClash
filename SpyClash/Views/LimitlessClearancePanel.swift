@@ -212,15 +212,7 @@ struct LimitlessClearancePanel<Controls: View, Legal: View>: View {
                 accessStatusBadge
             }
 
-            ZStack(alignment: .leading) {
-                Text("∞")
-                    .font(.system(size: 132, weight: .black, design: .default))
-                    .foregroundStyle(SpyTheme.red.opacity(0.055))
-                    .offset(x: 128, y: -8)
-                    .scaleEffect(heroIsRevealed ? 1 : 0.68)
-                    .rotationEffect(.degrees(heroIsRevealed ? 0 : -9))
-                    .accessibilityHidden(true)
-
+            VStack(alignment: .leading, spacing: 7) {
                 VStack(alignment: .leading, spacing: 7) {
                     ZStack(alignment: .leading) {
                         Text("LIMITLESS")
@@ -248,7 +240,19 @@ struct LimitlessClearancePanel<Controls: View, Legal: View>: View {
                     .foregroundStyle(SpyTheme.muted)
                     .spyFitted(lines: 2, scale: 0.65)
                 }
+
+                Text("∞")
+                    .font(.system(size: 88, weight: .black, design: .default))
+                    .foregroundStyle(SpyTheme.red.opacity(0.13))
+                    .frame(width: 132, height: 48)
+                    .scaleEffect(heroIsRevealed ? 1 : 0.68)
+                    .rotationEffect(.degrees(heroIsRevealed ? 0 : -9))
+                    .padding(.trailing, 14)
+                    .frame(maxWidth: .infinity, alignment: .trailing)
+                    .padding(.top, 6)
+                    .accessibilityHidden(true)
             }
+            .padding(.top, 32)
             .frame(maxWidth: .infinity, alignment: .leading)
             .clipped()
 

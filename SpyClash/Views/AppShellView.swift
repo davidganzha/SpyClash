@@ -346,7 +346,10 @@ struct AppShellView: View {
                         primarySwipeTarget: primarySwipeTarget,
                         primarySwipeProgress: primarySwipeProgress,
                         namespace: dockNamespace,
-                        language: appState.language
+                        language: appState.language,
+                        showsLimitless: !appState.membership.hasAccess,
+                        animatesLimitless: shouldShowDock && appState.presentedSheet == nil && !isCommandMenuPresented,
+                        limitlessAction: { appState.presentedSheet = .limitless }
                     ) { tab in
                         requestCommunityTab(tab)
                     }
@@ -2288,6 +2291,9 @@ private struct FloatingDock: View {
     let primarySwipeProgress: CGFloat
     let namespace: Namespace.ID
     let language: AppLanguage
+    let showsLimitless: Bool
+    let animatesLimitless: Bool
+    let limitlessAction: () -> Void
     let communityAction: (CommunityTab) -> Void
 
     var body: some View {
@@ -2303,6 +2309,8 @@ private struct FloatingDock: View {
                         inactiveOpacity: item.inactiveOpacity,
                         badgeCount: item.badgeCount,
                         showsMatchedSelectionLine: isCommunity,
+                        showsLimitlessHighlight: item.isLimitless,
+                        animatesLimitless: animatesLimitless,
                         namespace: namespace,
                         accessibilityLabel: item.accessibilityLabel,
                         language: language
@@ -2310,6 +2318,7 @@ private struct FloatingDock: View {
                 }
                 .buttonStyle(DockPressStyle())
                 .accessibilityLabel(item.accessibilityLabel)
+                .accessibilityIdentifier(item.accessibilityIdentifier)
             }
         }
         .padding(.horizontal, 8)
@@ -2319,7 +2328,7 @@ private struct FloatingDock: View {
             if !isCommunity {
                 DockSelectionIndicator(
                     position: primaryDockPosition,
-                    itemCount: tabs.count
+                    itemCount: dockItems.count
                 )
                 .fill(SpyTheme.red)
                 .frame(height: 2)
@@ -2332,31 +2341,51 @@ private struct FloatingDock: View {
         .padding(.horizontal, 10)
         .padding(.bottom, 8)
         .animation(dockSelectionAnimation, value: selection.dockRepresentative)
+        .animation(reduceMotion ? nil : .easeInOut(duration: 0.20), value: showsLimitless)
     }
 
     private var dockItems: [ShellDockItem] {
+        var items: [ShellDockItem]
         if isCommunity {
             let selectedIndex = CommunityTab.allCases.firstIndex(of: communitySelection) ?? 1
-            return CommunityTab.allCases.map { tab in
+            items = CommunityTab.allCases.map { tab in
                 ShellDockItem(
                     symbol: tab.symbol,
                     selectionPosition: CGFloat(selectedIndex),
                     inactiveOpacity: tab == .exit ? 0.70 : 0.44,
                     badgeCount: tab == .network ? communityAttentionCount : 0,
-                    accessibilityLabel: tab.accessibilityLabel(language: language)
+                    accessibilityLabel: tab.accessibilityLabel(language: language),
+                    accessibilityIdentifier: "dock.community.\(tab.rawValue)",
+                    isLimitless: false
+                )
+            }
+        } else {
+            items = tabs.map { tab in
+                ShellDockItem(
+                    symbol: tab.symbol,
+                    selectionPosition: primaryDockPosition,
+                    inactiveOpacity: 0.44,
+                    badgeCount: 0,
+                    accessibilityLabel: language.tabTitle(tab),
+                    accessibilityIdentifier: "dock.\(tab.rawValue)",
+                    isLimitless: false
                 )
             }
         }
-
-        return tabs.enumerated().map { index, tab in
-            ShellDockItem(
-                symbol: tab.symbol,
-                selectionPosition: primaryDockPosition,
+        if showsLimitless {
+            items.append(ShellDockItem(
+                symbol: "bolt.fill",
+                selectionPosition: isCommunity
+                    ? CGFloat(CommunityTab.allCases.firstIndex(of: communitySelection) ?? 1)
+                    : primaryDockPosition,
                 inactiveOpacity: 0.44,
                 badgeCount: 0,
-                accessibilityLabel: language.tabTitle(tab)
-            )
+                accessibilityLabel: "LIMITLESS",
+                accessibilityIdentifier: "dock.limitless",
+                isLimitless: true
+            ))
         }
+        return items
     }
 
     private var primaryDockPosition: CGFloat {
@@ -2378,7 +2407,10 @@ private struct FloatingDock: View {
     }
 
     private func handleTap(at index: Int) {
-        if isCommunity {
+        if dockItems.indices.contains(index), dockItems[index].isLimitless {
+            HapticManager.shared.fire(.tabSelection)
+            limitlessAction()
+        } else if isCommunity {
             guard CommunityTab.allCases.indices.contains(index) else { return }
             HapticManager.shared.fire(.tabSelection)
             communityAction(CommunityTab.allCases[index])
@@ -2396,6 +2428,8 @@ private struct ShellDockItem {
     let inactiveOpacity: Double
     let badgeCount: Int
     let accessibilityLabel: String
+    let accessibilityIdentifier: String
+    let isLimitless: Bool
 }
 
 private struct DockPressStyle: ButtonStyle {
@@ -2427,6 +2461,8 @@ private struct DockItem: View {
     let inactiveOpacity: Double
     let badgeCount: Int
     let showsMatchedSelectionLine: Bool
+    let showsLimitlessHighlight: Bool
+    let animatesLimitless: Bool
     let namespace: Namespace.ID
     let accessibilityLabel: String
     let language: AppLanguage
@@ -2435,15 +2471,21 @@ private struct DockItem: View {
         let amount = selectionAmount
 
         VStack(spacing: 3) {
-            Image(systemName: symbol)
+            Group {
+                if showsLimitlessHighlight {
+                    LimitlessDockBolt(animates: animatesLimitless)
+                } else {
+                    Image(systemName: symbol)
+                        .modifier(
+                            DockIconAppearance(
+                                selectionPosition: selectionPosition,
+                                itemIndex: CGFloat(itemIndex),
+                                inactiveOpacity: inactiveOpacity
+                            )
+                        )
+                }
+            }
             .font(.system(size: InterfacePreferences.shared.settings.dockLabels ? 22 : 25, weight: .semibold))
-            .modifier(
-                DockIconAppearance(
-                    selectionPosition: selectionPosition,
-                    itemIndex: CGFloat(itemIndex),
-                    inactiveOpacity: inactiveOpacity
-                )
-            )
             if InterfacePreferences.shared.settings.dockLabels {
                 Text(accessibilityLabel)
                     .font(.system(size: 8 * InterfacePreferences.shared.settings.labelSize.scale, weight: .bold, design: .monospaced))
@@ -2496,6 +2538,39 @@ private struct DockItem: View {
 
     private var selectionAmount: CGFloat {
         min(max(1 - abs(selectionPosition - CGFloat(itemIndex)), 0), 1)
+    }
+}
+
+private struct LimitlessDockBolt: View {
+    @SpyReduceMotion private var reduceMotion
+    @Environment(\.scenePhase) private var scenePhase
+    let animates: Bool
+
+    var body: some View {
+        Image(systemName: "bolt.fill")
+            .foregroundStyle(SpyTheme.red.opacity(reduceMotion ? 0.72 : 0.46))
+            .overlay {
+                if !reduceMotion {
+                    TimelineView(.animation(minimumInterval: 1.0 / 24.0, paused: !animates || scenePhase != .active)) { context in
+                        let cycle = context.date.timeIntervalSinceReferenceDate.truncatingRemainder(dividingBy: 4.8)
+                        let progress = min(cycle / 1.8, 1)
+                        GeometryReader { geometry in
+                            LinearGradient(
+                                colors: [.clear, SpyTheme.red.opacity(0.55), SpyTheme.red, SpyTheme.red.opacity(0.55), .clear],
+                                startPoint: .leading, endPoint: .trailing
+                            )
+                            .frame(width: geometry.size.width * 0.8, height: geometry.size.height * 2)
+                            .rotationEffect(.degrees(24))
+                            .offset(
+                                x: geometry.size.width * (-1.3 + 3 * progress),
+                                y: -geometry.size.height * 0.5
+                            )
+                        }
+                    }
+                    .mask(Image(systemName: "bolt.fill"))
+                    .allowsHitTesting(false)
+                }
+            }
     }
 }
 
@@ -3009,13 +3084,6 @@ private struct WebCommandMenuPanel: View {
                 }
 
                 revealItem(index: 4) {
-                    menuButton(icon: "⚡", title: "LIMITLESS", highlighted: true) {
-                        closeThen { appState.presentedSheet = .limitless }
-                    }
-                    .accessibilityIdentifier("spy-command-menu.limitless")
-                }
-
-                revealItem(index: 5) {
                     menuButton(
                         icon: "⚙️",
                         title: localized(en: "SETTINGS", ru: "НАСТРОЙКИ", es: "AJUSTES", uk: "НАЛАШТУВАННЯ")
@@ -3025,9 +3093,9 @@ private struct WebCommandMenuPanel: View {
                     .accessibilityIdentifier("spy-command-menu.settings")
                 }
 
-                revealDivider(index: 6)
+                revealDivider(index: 5)
 
-                revealItem(index: 7) {
+                revealItem(index: 6) {
                     menuButton(
                         icon: "🚪",
                         title: localized(en: "LOGOUT", ru: "ВЫХОД", es: "SALIR", uk: "ВИЙТИ"),
