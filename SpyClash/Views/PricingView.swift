@@ -6,6 +6,7 @@ struct LimitlessSheet: Identifiable { let id = "limitless" }
 struct PricingView: View {
     @Environment(AppState.self) private var appState
     @Environment(\.dismiss) private var dismiss
+    @State private var actionFeedback: LimitlessActionFeedback?
 
     private var access: MembershipStore { appState.membership }
     private var store: StoreKitManager { appState.storeKit }
@@ -46,6 +47,10 @@ struct PricingView: View {
         .task(id: access.scope) {
             _ = await access.refresh()
             if !access.isPreview, !Task.isCancelled { await store.loadProduct() }
+        }
+        .onChange(of: access.scope) { _, _ in actionFeedback = nil }
+        .alert(item: $actionFeedback) { feedback in
+            Alert(title: Text(feedback.title), message: Text(feedback.message), dismissButton: .default(Text("OK")))
         }
         .spyLimitlessUnlockLayer()
     }
@@ -100,8 +105,11 @@ struct PricingView: View {
 
             if access.snapshot?.isUniversal != true {
                 HStack(spacing: 8) {
-                    Button { Task { await store.restore() } } label: {
-                        secondaryActionLabel(copy.restore.uppercased(), systemImage: "arrow.clockwise")
+                    Button { Task { await performRestore() } } label: {
+                        secondaryActionLabel(
+                            (store.state == .restoring ? copy.restoring : copy.restore).uppercased(),
+                            systemImage: "arrow.clockwise", isLoading: store.state == .restoring
+                        )
                     }
                     .buttonStyle(SpyWebPressStyle())
                     .disabled(isBusy || access.isPreview)
@@ -151,9 +159,13 @@ struct PricingView: View {
         }
     }
 
-    private func secondaryActionLabel(_ title: String, systemImage: String) -> some View {
+    private func secondaryActionLabel(_ title: String, systemImage: String, isLoading: Bool = false) -> some View {
         HStack(spacing: 7) {
-            Image(systemName: systemImage)
+            if isLoading {
+                ProgressView().controlSize(.mini).tint(SpyTheme.red)
+            } else {
+                Image(systemName: systemImage)
+            }
             Text(title).spyFitted(lines: 2, scale: 0.58)
         }
         .font(.system(size: 8, weight: .black, design: .monospaced))
@@ -233,6 +245,7 @@ struct PricingView: View {
 
     private var primaryActionTitle: String {
         if store.state == .pending { return copy.pendingTitle }
+        if store.state == .restoring { return copy.restoring.uppercased() }
         if isBusy { return copy.checking.uppercased() }
         if access.hasAccess { return copy.refreshAccess }
         switch primaryAction {
@@ -257,12 +270,36 @@ struct PricingView: View {
         switch primaryAction {
         case .preview: appState.showToast(copy.previewNotice, kind: .info)
         case .refresh:
-            _ = await access.refresh()
+            actionFeedback = nil
+            let expected = access.scope
+            let verified = await access.refresh()
+            guard !Task.isCancelled, expected == access.scope else { return }
+            actionFeedback = LimitlessActionFeedback(
+                title: copy.refreshAccess,
+                message: verified ? (access.hasAccess ? copy.accessConfirmed : copy.accessNotActive) : copy.unavailable
+            )
             if access.canPurchase { await store.loadProduct() }
         case .loadProduct: await store.loadProduct()
         case .purchase: await store.purchase(membership: access)
         case .unavailable, .waiting: break
         }
+    }
+
+    private func performRestore() async {
+        guard !isBusy else { return }
+        actionFeedback = nil
+        let expected = access.scope
+        await store.restore()
+        guard !Task.isCancelled, expected == access.scope else { return }
+        let message: String
+        switch store.state {
+        case .restored: message = copy.restoreConfirmed
+        case .noPurchases: message = copy.noPurchases
+        case .cancelled: message = copy.restoreCancelled
+        case .failed: message = store.operationFailure.map { copy.operationFailed($0) } ?? copy.failed
+        default: message = copy.failed
+        }
+        actionFeedback = LimitlessActionFeedback(title: copy.restore, message: message)
     }
 
     private var accessStatus: String {
@@ -274,14 +311,22 @@ struct PricingView: View {
 
     private var stateMessage: String? {
         switch store.state {
-        case .preparing, .purchasing, .synchronizing, .restoring: copy.processing
+        case .preparing, .purchasing, .synchronizing: copy.processing
+        case .restoring: copy.restoring
         case .pending: copy.pending
-        case .purchased, .restored: copy.synchronized
+        case .purchased: copy.synchronized
+        case .restored: copy.restoreConfirmed
         case .noPurchases: copy.noPurchases
         case .failed: store.operationFailure.map { copy.operationFailed($0) } ?? copy.failed
         default: nil
         }
     }
+}
+
+private struct LimitlessActionFeedback: Identifiable {
+    let id = UUID()
+    let title: String
+    let message: String
 }
 
 enum LimitlessPrimaryAction: Equatable {
@@ -418,6 +463,11 @@ struct LimitlessCopy {
     var week: String { text("week", "неделю", "semana", "тиждень") }
     var subscribe: String { text("Subscribe with Apple", "Оформить через Apple", "Suscribirse con Apple", "Оформити через Apple") }
     var restore: String { text("Restore purchases", "Восстановить покупки", "Restaurar compras", "Відновити покупки") }
+    var restoring: String { text("Restoring purchases…", "Восстанавливаем покупки…", "Restaurando compras…", "Відновлюємо покупки…") }
+    var restoreConfirmed: String { text("An active App Store purchase was found and verified. LIMITLESS access is confirmed.", "Активная покупка App Store найдена и проверена. Доступ LIMITLESS подтверждён.", "Se encontró y verificó una compra activa de App Store. El acceso LIMITLESS está confirmado.", "Активну купівлю App Store знайдено та перевірено. Доступ LIMITLESS підтверджено.") }
+    var restoreCancelled: String { text("Purchase restoration was cancelled.", "Восстановление покупок отменено.", "Se canceló la restauración de compras.", "Відновлення купівель скасовано.") }
+    var accessConfirmed: String { text("LIMITLESS access is active on your SpyClash account.", "Доступ LIMITLESS в твоём аккаунте SpyClash активен.", "El acceso LIMITLESS está activo en tu cuenta de SpyClash.", "Доступ LIMITLESS у твоєму акаунті SpyClash активний.") }
+    var accessNotActive: String { text("Your SpyClash account has no active LIMITLESS access. If you have an App Store subscription, use Restore purchases.", "В твоём аккаунте SpyClash нет активного доступа LIMITLESS. Если у тебя есть подписка App Store, нажми «Восстановить покупки».", "Tu cuenta de SpyClash no tiene acceso LIMITLESS activo. Si tienes una suscripción de App Store, usa Restaurar compras.", "У твоєму акаунті SpyClash немає активного доступу LIMITLESS. Якщо маєш підписку App Store, натисни «Відновити покупки».") }
     var manage: String { text("Manage Apple subscription", "Управлять подпиской Apple", "Gestionar suscripción de Apple", "Керувати підпискою Apple") }
     var notAvailableYet: String { text("New subscriptions are currently unavailable.", "Оформление новых подписок пока недоступно.", "Las nuevas suscripciones no están disponibles.", "Оформлення нових підписок поки недоступне.") }
     var renewal: String { text("Weekly auto-renewable subscription. Apple charges your account after confirmation. It renews unless cancelled at least 24 hours before the current period ends. Manage or cancel in your Apple account settings.", "Еженедельная подписка с автопродлением. Apple спишет оплату после подтверждения. Подписка продлевается, если не отменить её минимум за 24 часа до конца периода. Управление и отмена — в настройках аккаунта Apple.", "Suscripción semanal con renovación automática. Apple cobra tras confirmar. Se renueva salvo que la canceles al menos 24 horas antes del fin del período. Gestiona o cancela en tu cuenta de Apple.", "Щотижнева підписка з автоподовженням. Apple спише оплату після підтвердження. Підписка подовжується, якщо не скасувати її щонайменше за 24 години до кінця періоду. Керування й скасування — у налаштуваннях акаунта Apple.") }
