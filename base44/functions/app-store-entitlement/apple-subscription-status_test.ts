@@ -4,7 +4,11 @@ import {
   type JWSTransactionDecodedPayload,
   type StatusResponse,
 } from "npm:@apple/app-store-server-library@3.1.0";
-import { normalizeAppleEntitlement } from "./apple-entitlement.ts";
+import {
+  MONTHLY_SUBSCRIPTION_PRODUCT_ID,
+  normalizeAppleEntitlement,
+  SUPPORTED_SUBSCRIPTION_PRODUCT_IDS,
+} from "./apple-entitlement.ts";
 import { hasActiveMembership } from "./membership-guard.ts";
 import { readCanonicalAppleSubscriptionStatus } from "./apple-subscription-status.ts";
 
@@ -67,7 +71,7 @@ function fixture() {
   const input = {
     transaction: submitted,
     expectedBundleID: "com.spyclash.ios",
-    expectedProductID: PRODUCT,
+    expectedProductIDs: SUPPORTED_SUBSCRIPTION_PRODUCT_IDS,
     expectedEnvironment: Environment.SANDBOX,
     expectedAppAppleID: 6793534085,
     getStatuses: async (transactionID: string) => {
@@ -111,6 +115,79 @@ Deno.test("refunded old period reconciles to the current paid renewal", async ()
   assert(
     hasActiveMembership([entitlement], new Date(NOW)),
     "current renewal lost access",
+  );
+});
+
+Deno.test("weekly and monthly restore reconcile their current period with rollout disabled", async () => {
+  for (const product of SUPPORTED_SUBSCRIPTION_PRODUCT_IDS) {
+    const { input, current, renewal } = fixture();
+    input.transaction.productId = product;
+    current.productId = product;
+    renewal.productId = product;
+    const result = await readCanonicalAppleSubscriptionStatus(input);
+    const entitlement = normalizeAppleEntitlement({
+      userID: "user-1",
+      transaction: result.transaction,
+      renewal: result.renewal,
+      appleStatus: result.status,
+      now: new Date(NOW),
+    });
+    assert(entitlement.product_id === product, "restored product changed");
+    assert(
+      hasActiveMembership([entitlement], new Date(NOW)),
+      "existing paid access lost",
+    );
+  }
+});
+
+Deno.test("current supported product may change within the same verified subscription chain", async () => {
+  for (const currentProduct of SUPPORTED_SUBSCRIPTION_PRODUCT_IDS) {
+    const { input, current, renewal } = fixture();
+    input.transaction.productId = currentProduct === PRODUCT
+      ? MONTHLY_SUBSCRIPTION_PRODUCT_ID
+      : PRODUCT;
+    current.productId = currentProduct;
+    renewal.productId = currentProduct;
+    const result = await readCanonicalAppleSubscriptionStatus(input);
+    assert(
+      result.transaction.productId === currentProduct,
+      "crossgrade did not reconcile current product",
+    );
+    assert(
+      result.transaction.originalTransactionId ===
+        input.transaction.originalTransactionId,
+      "subscription chain changed",
+    );
+    assert(
+      result.transaction.appAccountToken === TOKEN,
+      "crossgrade changed owner",
+    );
+  }
+});
+
+Deno.test("monthly support does not admit another product or subscription chain", async () => {
+  for (
+    const patch of [
+      { productId: "com.spyclash.ios.limitless.yearly" },
+      {
+        originalTransactionId: "another-subscription",
+        productId: MONTHLY_SUBSCRIPTION_PRODUCT_ID,
+      },
+    ]
+  ) {
+    const { input, current, renewal } = fixture();
+    Object.assign(current, patch);
+    Object.assign(renewal, patch);
+    await rejects(
+      () => readCanonicalAppleSubscriptionStatus(input),
+      "did not match",
+    );
+  }
+  const { input } = fixture();
+  input.transaction.productId = "com.spyclash.ios.limitless.yearly";
+  await rejects(
+    () => readCanonicalAppleSubscriptionStatus(input),
+    "not a supported subscription",
   );
 });
 

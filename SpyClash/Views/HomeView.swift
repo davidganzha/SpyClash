@@ -37,6 +37,7 @@ struct HomeHeroTypographyPolicy {
 
 struct HomeView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.openURL) private var openURL
     @SpyReduceMotion private var reduceMotion
     @Environment(\.spyEntranceMotionEnabled) private var entranceMotionEnabled
     @Environment(\.spyEntrancePresentationActive) private var entrancePresentationActive
@@ -219,6 +220,11 @@ struct HomeView: View {
                 }
 
                 Spacer(minLength: 20)
+
+                if showsLandingActions && stage == .main {
+                    reviewFooter
+                        .padding(.bottom, 16)
+                }
             }
             .frame(maxWidth: 414)
             .frame(maxWidth: .infinity)
@@ -233,6 +239,90 @@ struct HomeView: View {
         Color.clear
             .frame(maxWidth: .infinity)
             .frame(height: 80)
+    }
+
+    private var reviewFooter: some View {
+        Button(action: openAppStoreReview) {
+            VStack(spacing: 7) {
+                HStack(spacing: 5) {
+                    ForEach(0..<5) { _ in
+                        Image(systemName: "star")
+                    }
+                }
+                .font(.system(size: 11, weight: .semibold))
+                .foregroundStyle(SpyTheme.red)
+                .accessibilityHidden(true)
+
+                Text(localized(
+                    en: "Rate your experience",
+                    ru: "Оцените игру",
+                    es: "Valora tu experiencia",
+                    uk: "Оцініть гру"
+                ))
+                .font(.footnote.weight(.semibold))
+                .foregroundStyle(SpyTheme.bodyText)
+
+                HStack(spacing: 5) {
+                    Text(localized(
+                        en: "Leave a review on the App Store",
+                        ru: "Оставить отзыв в App Store",
+                        es: "Deja una reseña en el App Store",
+                        uk: "Залишити відгук в App Store"
+                    ))
+                    Image(systemName: "arrow.up.right")
+                        .accessibilityHidden(true)
+                }
+                .font(.caption)
+                .foregroundStyle(SpyTheme.bodyText.opacity(0.8))
+            }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+            .padding(.horizontal, 12)
+            .padding(.vertical, 10)
+            .frame(maxWidth: .infinity, minHeight: 44)
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(SpyWebPressStyle())
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel(localized(
+            en: "Leave a review for SpyClash",
+            ru: "Оставить отзыв о SpyClash",
+            es: "Deja una reseña de SpyClash",
+            uk: "Залишити відгук про SpyClash"
+        ))
+        .accessibilityHint(localized(
+            en: "Opens the App Store",
+            ru: "Открывает App Store",
+            es: "Abre el App Store",
+            uk: "Відкриває App Store"
+        ))
+        .accessibilityIdentifier("home.leaveReview")
+    }
+
+    private func openAppStoreReview() {
+        // App identity matches SPYCLASH_APPLE_APP_ID in apple-entitlement.ts.
+        guard let url = URL(string: "https://apps.apple.com/app/id6793534085?action=write-review") else {
+            showAppStoreReviewError()
+            return
+        }
+        HapticManager.shared.fire(.buttonPress)
+        openURL(url) { accepted in
+            if !accepted {
+                showAppStoreReviewError()
+            }
+        }
+    }
+
+    private func showAppStoreReviewError() {
+        appState.showToast(
+            localized(
+                en: "Couldn't open the App Store. Please try again.",
+                ru: "Не удалось открыть App Store. Попробуйте ещё раз.",
+                es: "No se pudo abrir el App Store. Inténtalo de nuevo.",
+                uk: "Не вдалося відкрити App Store. Спробуйте ще раз."
+            ),
+            kind: .error
+        )
     }
 
     private var homeShellStatus: String {

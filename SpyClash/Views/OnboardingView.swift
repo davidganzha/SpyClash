@@ -12,7 +12,7 @@ struct OnboardingView: View {
     private var permissions: OnboardingPermissionCoordinator {
         appState.radarNearby.localNetworkPermissions
     }
-    @State private var permissionFlow = OnboardingPermissionFlow()
+    @State private var permissionFlow: OnboardingPermissionFlow
     @State private var permissionRequestTask: Task<Void, Never>?
     @State private var step = Step.language
     @State private var selectedLanguage: AppLanguage?
@@ -37,10 +37,11 @@ struct OnboardingView: View {
         startsAtLocalNetworkPermission: Bool = false,
         preservedSource: OnboardingAcquisitionSource? = nil
     ) {
+        _permissionFlow = State(initialValue: OnboardingPermissionFlow(
+            startingAt: startsAtLocalNetworkPermission ? .nearby : nil,
+            includesNearby: OnboardingPermissionCoordinator.shouldPresentLocalNetworkOnboarding
+        ))
         if startsAtLocalNetworkPermission {
-            _permissionFlow = State(
-                initialValue: OnboardingPermissionFlow(startingAt: .nearby)
-            )
             _step = State(initialValue: .permissions)
             _selectedSource = State(initialValue: preservedSource ?? .other)
         }
@@ -289,7 +290,10 @@ struct OnboardingView: View {
                 .multilineTextAlignment(.center)
                 .minimumScaleFactor(0.72)
 
-            Text(copy.permissionBody(permission))
+            Text(copy.permissionBody(
+                permission,
+                supportsRangefinder: appState.radarNearby.supportsPreciseDistance
+            ))
                 .font(.system(.body, design: .rounded, weight: .medium))
                 .foregroundStyle(SpyTheme.muted)
                 .multilineTextAlignment(.center)
@@ -1089,7 +1093,10 @@ private struct OnboardingCopy {
         }
     }
 
-    func permissionBody(_ permission: OnboardingPermissionKind) -> String {
+    func permissionBody(
+        _ permission: OnboardingPermissionKind,
+        supportsRangefinder: Bool
+    ) -> String {
         switch permission {
         case .notifications:
             localized(
@@ -1106,12 +1113,21 @@ private struct OnboardingCopy {
                 uk: "Необов'язково. Скануйте QR-код для входу до кімнати."
             )
         case .nearby:
-            localized(
-                en: "Required for Radar: allow Local Network to find nearby iPhones. iOS will request precise Rangefinder access automatically after a peer connects.",
-                es: "Obligatorio para Radar: permite la red local para encontrar iPhone cercanos. iOS pedirá acceso al telémetro preciso automáticamente al conectar un dispositivo.",
-                ru: "Обязательно для Радара: разрешите локальную сеть для поиска iPhone рядом. Доступ к точному дальномеру iOS запросит автоматически после подключения.",
-                uk: "Обов'язково для Радара: дозвольте локальну мережу для пошуку iPhone поруч. Доступ до точного далекоміра iOS запросить автоматично після підключення."
-            )
+            if supportsRangefinder {
+                localized(
+                    en: "Required for Radar: allow Local Network to find nearby iPhones. iOS will request precise Rangefinder access automatically after a peer connects.",
+                    es: "Obligatorio para Radar: permite la red local para encontrar iPhone cercanos. iOS pedirá acceso al telémetro preciso automáticamente al conectar un dispositivo.",
+                    ru: "Обязательно для Радара: разрешите локальную сеть для поиска iPhone рядом. Доступ к точному дальномеру iOS запросит автоматически после подключения.",
+                    uk: "Обов'язково для Радара: дозвольте локальну мережу для пошуку iPhone поруч. Доступ до точного далекоміра iOS запросить автоматично після підключення."
+                )
+            } else {
+                localized(
+                    en: "Required for Radar: allow Local Network to find nearby iPhones.",
+                    es: "Obligatorio para Radar: permite la red local para encontrar iPhone cercanos.",
+                    ru: "Обязательно для Радара: разрешите локальную сеть для поиска iPhone рядом.",
+                    uk: "Обов'язково для Радара: дозвольте локальну мережу для пошуку iPhone поруч."
+                )
+            }
         }
     }
 

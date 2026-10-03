@@ -1649,8 +1649,11 @@ final class Base44Client {
         try await membershipAction("checkSubscription", body: [:])
     }
 
-    func prepareAppStorePurchase() async throws -> AppStorePurchaseContext {
-        try await membershipAction("app-store-entitlement", body: ["action": "prepare"])
+    func prepareAppStorePurchase(productID: String) async throws -> AppStorePurchaseContext {
+        try await membershipAction("app-store-entitlement", body: [
+            "action": "prepare",
+            "requested_product_id": productID,
+        ])
     }
 
     func syncAppStoreTransaction(signedTransaction: String) async throws -> AppStoreEntitlementSyncResponse {

@@ -1,4 +1,5 @@
 import {
+  limitlessAppleMonthlyPurchaseEnabled,
   limitlessApplePurchaseEnabled,
   limitlessEnabled,
 } from "./limitless-rollout.ts";
@@ -8,7 +9,44 @@ export const SPYCLASH_APPLE_APP_ID = 6793534085;
 // server notifications refer to it permanently.
 export const LEGACY_SUBSCRIPTION_PRODUCT_ID =
   `${SPYCLASH_IOS_BUNDLE_ID}.limitless.weekly`;
+export const MONTHLY_SUBSCRIPTION_PRODUCT_ID =
+  `${SPYCLASH_IOS_BUNDLE_ID}.limitless.monthly`;
+export const SUPPORTED_SUBSCRIPTION_PRODUCT_IDS = [
+  LEGACY_SUBSCRIPTION_PRODUCT_ID,
+  MONTHLY_SUBSCRIPTION_PRODUCT_ID,
+] as const;
 export const CASADA_PROTOCOL_ENABLED = !limitlessEnabled();
+
+export function isSupportedAppleSubscriptionProduct(
+  productID: unknown,
+): productID is typeof SUPPORTED_SUBSCRIPTION_PRODUCT_IDS[number] {
+  return SUPPORTED_SUBSCRIPTION_PRODUCT_IDS.some((id) => id === productID);
+}
+
+export function applePurchaseProductSelection(
+  requestedProductID: unknown,
+  monthlyPurchasesEnabled = limitlessAppleMonthlyPurchaseEnabled(),
+): { productID: string } | { status: 422 | 503; message: string } {
+  // Older clients omit the selector and must keep their original contract.
+  const productID = requestedProductID === undefined
+    ? LEGACY_SUBSCRIPTION_PRODUCT_ID
+    : requestedProductID;
+  if (!isSupportedAppleSubscriptionProduct(productID)) {
+    return {
+      status: 422,
+      message: "Unsupported App Store subscription product.",
+    };
+  }
+  if (
+    productID === MONTHLY_SUBSCRIPTION_PRODUCT_ID && !monthlyPurchasesEnabled
+  ) {
+    return {
+      status: 503,
+      message: "Monthly subscriptions are not available yet.",
+    };
+  }
+  return { productID };
+}
 
 export function casadaPurchaseRetirement(
   universalAccess = CASADA_PROTOCOL_ENABLED,

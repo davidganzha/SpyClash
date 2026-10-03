@@ -52,21 +52,32 @@ struct OnboardingPermissionFlow: Equatable, Sendable {
         .nearby
     ]
 
+    let permissions: [OnboardingPermissionKind]
     private(set) var index = 0
     private(set) var phase: Phase = .loading
 
-    init(startingAt permission: OnboardingPermissionKind? = nil) {
-        if let permission,
-           let requestedIndex = Self.order.firstIndex(of: permission) {
-            index = requestedIndex
+    init(
+        startingAt permission: OnboardingPermissionKind? = nil,
+        includesNearby: Bool = true
+    ) {
+        permissions = Self.order.filter { includesNearby || $0 != .nearby }
+        if let permission {
+            if let requestedIndex = permissions.firstIndex(of: permission) {
+                index = requestedIndex
+            } else {
+                // An existing account may need only the Local Network upgrade.
+                // Unsupported devices have no remaining permission to request.
+                index = permissions.count
+                phase = .complete
+            }
         }
     }
 
     var currentPermission: OnboardingPermissionKind? {
-        guard phase != .complete, Self.order.indices.contains(index) else {
+        guard phase != .complete, permissions.indices.contains(index) else {
             return nil
         }
-        return Self.order[index]
+        return permissions[index]
     }
 
     var isComplete: Bool {
@@ -136,7 +147,7 @@ struct OnboardingPermissionFlow: Equatable, Sendable {
               Self.statusCompletesStep(status, for: permission) else { return false }
 
         index += 1
-        phase = Self.order.indices.contains(index) ? .ready : .complete
+        phase = permissions.indices.contains(index) ? .ready : .complete
         return true
     }
 
@@ -282,6 +293,13 @@ final class OnboardingPermissionCoordinator {
 #else
         true
 #endif
+    }
+
+    /// Nearby discovery uses Local Network, independently of optional UWB
+    /// ranging. Keep denied-access recovery visible on supported devices;
+    /// only omit the step where the permission cannot be evaluated at all.
+    static var shouldPresentLocalNetworkOnboarding: Bool {
+        canEvaluateLocalNetworkPrivacy || simulatedLocalNetworkStatus != nil
     }
 
     private static var simulatedLocalNetworkStatus: OnboardingPermissionStatus? {

@@ -5,17 +5,22 @@ import XCTest
 
 @MainActor
 final class StoreKitProductCatalogTests: XCTestCase {
-    private let productID = "catalog.weekly"
+    private let productID = StoreKitSubscriptionProduct.weekly.rawValue
 
-    private func item(id: String = "catalog.weekly", autoRenewable: Bool = true, weekly: Bool = true) -> StoreKitCatalogItem<String> {
-        .init(id: id, isAutoRenewable: autoRenewable, isWeekly: weekly, value: "verified-product")
+    private func item(
+        id: String = StoreKitSubscriptionProduct.weekly.rawValue,
+        autoRenewable: Bool = true,
+        unit: StoreKitCatalogPeriodUnit = .week,
+        periodValue: Int? = 1
+    ) -> StoreKitCatalogItem<String> {
+        .init(id: id, isAutoRenewable: autoRenewable, periodUnit: unit, periodValue: periodValue, value: "verified-product")
     }
 
 
     func testWeeklyPeriodAcceptsOneWeekAndSevenDaysInTheCatalog() async {
         for (unit, value) in [(Product.SubscriptionPeriod.Unit.week, 1), (.day, 7)] {
             XCTAssertTrue(StoreKitWeeklyPeriod.matches(unit: unit, value: value))
-            let candidate = item(weekly: StoreKitWeeklyPeriod.matches(unit: unit, value: value))
+            let candidate = item(unit: .init(unit), periodValue: value)
             let catalog = StoreKitProductCatalog(productID: productID, fetch: { [candidate] }, diagnostic: { _ in })
             await catalog.load()
             XCTAssertEqual(catalog.product, "verified-product")
@@ -45,6 +50,38 @@ final class StoreKitProductCatalogTests: XCTestCase {
         XCTAssertFalse(String(describing: metadata).contains(productID), "Diagnostics exposed an arbitrary product identifier")
     }
 
+    func testMonthlyCatalogAcceptsOnlyOneMonthForTheRequestedMonthlyID() async {
+        let monthlyID = StoreKitSubscriptionProduct.monthly.rawValue
+        let monthly = item(id: monthlyID, unit: .month)
+        let catalog = StoreKitProductCatalog(productID: monthlyID, fetch: { [monthly] }, diagnostic: { _ in })
+        await catalog.load()
+        XCTAssertEqual(catalog.product, "verified-product")
+        XCTAssertNil(catalog.issue)
+
+        let rejected = [
+            item(), item(id: monthlyID, autoRenewable: false, unit: .month),
+            item(id: monthlyID, unit: .week), item(id: monthlyID, unit: .day, periodValue: 30),
+            item(id: monthlyID, unit: .month, periodValue: 0),
+            item(id: monthlyID, unit: .month, periodValue: 2),
+            item(id: monthlyID, unit: .month, periodValue: nil),
+            item(id: monthlyID, unit: .none), item(id: monthlyID, unit: .year)
+        ]
+        for candidate in rejected {
+            let invalid = StoreKitProductCatalog(productID: monthlyID, fetch: { [candidate] }, diagnostic: { _ in })
+            await invalid.load()
+            XCTAssertNil(invalid.product)
+            XCTAssertEqual(invalid.issue, .unsupportedProduct)
+        }
+    }
+
+    func testUnknownRequestedProductCannotLoadEvenWithMatchingIDAndPeriod() async {
+        let unknown = item(id: "unknown.monthly", unit: .month)
+        let catalog = StoreKitProductCatalog(productID: unknown.id, fetch: { [unknown] }, diagnostic: { _ in })
+        await catalog.load()
+        XCTAssertNil(catalog.product)
+        XCTAssertEqual(catalog.issue, .unsupportedProduct)
+    }
+
     func testEmptyCatalogIsVisibleAndDiffersFromStoreFailure() async {
         var diagnostics: [StoreKitCatalogDiagnostic] = []
         let catalog = StoreKitProductCatalog<String>(productID: productID, fetch: { [] }, diagnostic: { diagnostics.append($0) })
@@ -56,7 +93,7 @@ final class StoreKitProductCatalogTests: XCTestCase {
     }
 
     func testProductIDTypeAndWeeklyPeriodAllRemainRequired() async {
-        for candidate in [item(id: "other-product"), item(autoRenewable: false), item(weekly: false)] {
+        for candidate in [item(id: "other-product"), item(autoRenewable: false), item(unit: .month)] {
             var diagnostics: [StoreKitCatalogDiagnostic] = []
             let catalog = StoreKitProductCatalog(productID: productID, fetch: { [candidate] }, diagnostic: { diagnostics.append($0) })
             await catalog.load()

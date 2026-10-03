@@ -148,12 +148,42 @@ final class AppStoreTransactionRetryTests: XCTestCase {
         let client = makeClient(server: server, sleep: { _ in XCTFail("Prepare must not retry") })
         defer { AppStoreRetryURLProtocol.handler = nil }
         do {
-            _ = try await client.prepareAppStorePurchase()
+            _ = try await client.prepareAppStorePurchase(productID: StoreKitManager.limitlessProductID)
             XCTFail("Preparation unexpectedly succeeded")
         } catch let error as Base44Error {
             XCTAssertEqual(error.statusCode, 503)
         } catch { XCTFail("Unexpected error: \(error)") }
         XCTAssertEqual(server.requests().count, 1)
+    }
+
+    func testMonthlyPreparationSendsExplicitProductAndDoesNotAcceptOldServerWeeklyResponse() async throws {
+        let response = #"{"product_id":"com.spyclash.ios.limitless.weekly","app_account_token":"11111111-1111-1111-1111-111111111111"}"#
+        let server = AppStoreRetryServer(responses: [(200, response)])
+        let client = makeClient(server: server)
+        defer { AppStoreRetryURLProtocol.handler = nil }
+        let monthly = StoreKitManager.limitlessProductID
+
+        let prepared = try await client.prepareAppStorePurchase(productID: monthly)
+
+        let request = try XCTUnwrap(server.requests().first)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: request.body) as? [String: String])
+        XCTAssertEqual(body["action"], "prepare")
+        XCTAssertEqual(body["requested_product_id"], monthly)
+        XCTAssertEqual(body["access_token"], "original-token")
+        XCTAssertFalse(prepared.acceptsPurchase(for: monthly), "An old server must not silently sell the weekly product")
+    }
+
+    func testSyncDecodesSubmittedProductForVerifiedMonthlyCrossgrade() async throws {
+        let response = #"{"success":true,"server_status_verified":true,"submitted_product_id":"com.spyclash.ios.limitless.weekly","entitlement":{"product_id":"com.spyclash.ios.limitless.monthly","status":"active","expires_at":"2099-01-01T00:00:00Z"}}"#
+        let server = AppStoreRetryServer(responses: [(200, response)])
+        let client = makeClient(server: server)
+        defer { AppStoreRetryURLProtocol.handler = nil }
+
+        let result = try await client.syncAppStoreTransaction(signedTransaction: signedTransaction)
+
+        XCTAssertEqual(result.submittedProductID, StoreKitManager.legacyWeeklyProductID)
+        XCTAssertTrue(result.acceptsDelivery(for: StoreKitManager.legacyWeeklyProductID))
+        XCTAssertEqual(result.entitlement.productID, StoreKitManager.limitlessProductID)
     }
 }
 

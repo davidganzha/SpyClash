@@ -309,6 +309,43 @@ final class MembershipTests: XCTestCase {
         XCTAssertFalse(revoked.grantsAccess)
     }
 
+    func testMonthlyCheckoutRejectsLegacyOrUnexpectedPreparationProduct() {
+        let monthly = StoreKitManager.limitlessProductID
+        let weekly = StoreKitManager.legacyWeeklyProductID
+        XCTAssertEqual(monthly, "com.spyclash.ios.limitless.monthly")
+        XCTAssertEqual(weekly, "com.spyclash.ios.limitless.weekly")
+        let prepared = AppStorePurchaseContext(productID: monthly, appAccountToken: UUID())
+        XCTAssertTrue(prepared.acceptsPurchase(for: monthly))
+        XCTAssertFalse(prepared.acceptsPurchase(for: weekly))
+        XCTAssertFalse(AppStorePurchaseContext(productID: weekly, appAccountToken: UUID()).acceptsPurchase(for: monthly))
+        XCTAssertFalse(AppStorePurchaseContext(productID: "unknown", appAccountToken: UUID()).acceptsPurchase(for: "unknown"))
+    }
+
+    func testCrossgradeDeliveryRequiresVerifiedSubmittedProductAndKnownCanonicalProduct() {
+        let weekly = StoreKitManager.legacyWeeklyProductID
+        let monthly = StoreKitManager.limitlessProductID
+        for (submitted, canonical) in [(weekly, monthly), (monthly, weekly)] {
+            let entitlement = AppStoreEntitlement(productID: canonical, status: "active", expiresAt: .distantFuture)
+            let withoutSubmission = AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: true, entitlement: entitlement)
+            XCTAssertFalse(withoutSubmission.acceptsDelivery(for: submitted))
+            XCTAssertTrue(AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: true, entitlement: entitlement, submittedProductID: submitted).acceptsDelivery(for: submitted))
+            XCTAssertFalse(AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: true, entitlement: entitlement, submittedProductID: canonical).acceptsDelivery(for: submitted))
+            XCTAssertFalse(AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: false, entitlement: entitlement, submittedProductID: submitted).acceptsDelivery(for: submitted))
+        }
+        let unknown = AppStoreEntitlement(productID: "unknown", status: "active", expiresAt: .distantFuture)
+        XCTAssertFalse(AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: true, entitlement: unknown, submittedProductID: weekly).acceptsDelivery(for: weekly))
+        XCTAssertFalse(AppStoreEntitlementSyncResponse(success: true, serverStatusVerified: true, entitlement: unknown).acceptsDelivery(for: "unknown"))
+    }
+
+    func testMonthlyOfferCopyUsesMonthlyPeriodInEveryLanguage() {
+        for (language, month) in [(AppLanguage.en, "month"), (.ru, "месяц"), (.es, "mes"), (.uk, "місяць")] {
+            let copy = LimitlessCopy(language: language)
+            XCTAssertEqual(copy.month, month)
+            XCTAssertFalse(copy.renewal.isEmpty)
+        }
+        XCTAssertTrue(LimitlessCopy(language: .en).renewal.hasPrefix("Monthly"))
+    }
+
     func testPendingApprovalClearsOnlyAfterVerifiedActiveUpdateAndRefresh() {
         XCTAssertFalse(LimitlessPurchaseState.pending.canStartPurchase)
         XCTAssertFalse(LimitlessPurchaseState.purchasing.canStartPurchase)
@@ -784,6 +821,37 @@ final class MembershipTests: XCTestCase {
         XCTAssertFalse(response.entitlement.grantsAccess)
     }
 
+    func testLegacyAndMonthlyDeliveriesRemainSupportedIncludingCanonicalCrossgrades() async throws {
+        let client = AppStoreDeliveryTestClient()
+        let delivery = AppStoreTransactionDeliveryStore(client: client)
+        delivery.bind(MembershipScope(userID: "user", accessToken: "token"))
+        var finishes = 0
+        for submitted in StoreKitSubscriptionProduct.allCases {
+            for canonical in StoreKitSubscriptionProduct.allCases {
+                client.handler = { _ in
+                    AppStoreEntitlementSyncResponse(
+                        success: true, serverStatusVerified: true,
+                        entitlement: AppStoreEntitlement(productID: canonical.rawValue, status: "active", expiresAt: .distantFuture),
+                        submittedProductID: submitted == canonical ? nil : submitted.rawValue
+                    )
+                }
+                let response = try await delivery.deliver(
+                    signedTransaction: "fixture-\(submitted)-to-\(canonical)",
+                    productID: submitted.rawValue, finish: { finishes += 1 }
+                )
+                XCTAssertEqual(response.entitlement.productID, canonical.rawValue)
+            }
+        }
+        XCTAssertEqual(finishes, 4)
+        XCTAssertEqual(client.requests.count, 4)
+        do {
+            _ = try await delivery.deliver(signedTransaction: "unknown-fixture", productID: "unknown", finish: { finishes += 1 })
+            XCTFail("Unknown products must never reach the verifier or finish")
+        } catch {}
+        XCTAssertEqual(finishes, 4)
+        XCTAssertEqual(client.requests.count, 4)
+    }
+
     func testRestoredBenefitsMatchHistoricalFreeAndLimitlessLimits() {
         XCTAssertEqual(MembershipBenefits.free.aiGenerationsDailyLimit, 10)
         XCTAssertEqual(MembershipBenefits.free.historyLimit, 5)
@@ -797,19 +865,117 @@ final class MembershipTests: XCTestCase {
         XCTAssertTrue(MembershipBenefits.limitless.advancedStatistics)
     }
 
-    func testHistoricalPrimaryButtonNeverTreatsPreviewOrPendingAsPurchase() {
-        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: true, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: true), .preview)
-        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: true, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: true), .waiting)
-        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: true, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: true), .waiting)
+    func testSubscribeIntentNeverTreatsPreviewOrPendingAsPurchase() {
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: true, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, canMakePayments: true), .preview)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: true, accessIsUnknown: false, canPurchase: true, canMakePayments: true), .waiting)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: true, isPending: false, accessIsUnknown: true, canPurchase: false, canMakePayments: true), .waiting)
     }
 
-    func testHistoricalPrimaryButtonPreservesCurrentVerificationGates() {
-        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: true, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: true), .refresh)
-        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: true, canPurchase: true, hasProduct: true, storeCanPurchase: true), .refresh)
-        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: false, hasProduct: true, storeCanPurchase: true), .unavailable)
-        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: false, storeCanPurchase: false), .loadProduct)
-        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: false), .unavailable)
-        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: true), .purchase)
+    func testSubscribeIntentRechecksUnknownAccessButRefreshNeverOffersAnotherPurchase() {
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: true, isBusy: false, isPending: false, accessIsUnknown: true, canPurchase: false, canMakePayments: true), .refresh)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: true, canPurchase: false, canMakePayments: true), .purchase)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: false, canMakePayments: true), .refresh)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, canMakePayments: false), .refresh)
+        XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, canMakePayments: true), .purchase)
+    }
+
+    func testPurchaseBlockExplanationDistinguishesServerDeviceAndStaleAccess() {
+        XCTAssertEqual(LimitlessPurchaseBlockReason.resolve(hasAccess: false, accessIsUnknown: false, canPurchase: false, canMakePayments: true, serverPurchaseEnabled: false), .serverUnavailable)
+        XCTAssertEqual(LimitlessPurchaseBlockReason.resolve(hasAccess: false, accessIsUnknown: false, canPurchase: true, canMakePayments: false, serverPurchaseEnabled: true), .deviceRestricted)
+        XCTAssertEqual(LimitlessPurchaseBlockReason.resolve(hasAccess: false, accessIsUnknown: false, canPurchase: false, canMakePayments: true, serverPurchaseEnabled: true), .accessNeedsRefresh)
+        XCTAssertNil(LimitlessPurchaseBlockReason.resolve(hasAccess: true, accessIsUnknown: false, canPurchase: false, canMakePayments: false, serverPurchaseEnabled: false))
+        XCTAssertNil(LimitlessPurchaseBlockReason.resolve(hasAccess: false, accessIsUnknown: true, canPurchase: false, canMakePayments: true, serverPurchaseEnabled: false))
+    }
+
+    func testSubscribePreflightStopsBeforeAppleForUnknownActiveOrDisabledMembership() async {
+        let cases: [(Result<MembershipSnapshot, Error>, String)] = [
+            (.failure(URLError(.notConnectedToInternet)), "ACCESS_UNVERIFIED"),
+            (.success(snapshot()), "ALREADY_ACTIVE"),
+            (.success(snapshot(active: false, tier: .free, status: "inactive", providers: [], expiry: nil, purchase: false)), "PURCHASE_DISABLED")
+        ]
+        for (result, reason) in cases {
+            let client = MembershipTestClient()
+            client.result = result
+            let membership = MembershipStore(client: client)
+            let scope = MembershipScope(userID: "user", accessToken: "token")
+            membership.bind(scope)
+            let manager = StoreKitManager(client: makeStoreKitClient())
+            manager.bind(scope)
+
+            await manager.purchase(membership: membership)
+
+            XCTAssertEqual(client.requestCount, 1)
+            XCTAssertNil(manager.product, "Rejected preflight must stop before requesting an Apple product.")
+            XCTAssertEqual(manager.state, .failed)
+            XCTAssertEqual(manager.operationFailure?.origin, .purchase)
+            XCTAssertEqual(manager.operationFailure?.stage, .purchaseEligibility)
+            XCTAssertEqual(manager.operationFailure?.reason, reason)
+        }
+    }
+
+    func testSubscribeRetryRefreshesMembershipAndDoesNotReuseAnUnknownFailure() async {
+        let client = MembershipTestClient()
+        client.result = .failure(MembershipError.unavailable)
+        let membership = MembershipStore(client: client)
+        let scope = MembershipScope(userID: "user", accessToken: "token")
+        membership.bind(scope)
+        let manager = StoreKitManager(client: makeStoreKitClient())
+        manager.bind(scope)
+        await manager.purchase(membership: membership)
+        XCTAssertEqual(manager.operationFailure?.reason, "ACCESS_UNVERIFIED")
+
+        client.result = .success(snapshot())
+        await manager.purchase(membership: membership)
+
+        XCTAssertEqual(client.requestCount, 2)
+        XCTAssertTrue(membership.hasAccess)
+        XCTAssertEqual(manager.operationFailure?.reason, "ALREADY_ACTIVE")
+        XCTAssertNil(manager.product, "Recovery to active membership must never enter checkout.")
+    }
+
+    func testConcurrentSubscribeIntentsShareOnePreflightAndCannotBuyAfterAccountSwitch() async throws {
+        let client = MembershipTestClient()
+        client.suspend = true
+        let membership = MembershipStore(client: client)
+        let scope = MembershipScope(userID: "user", accessToken: "token")
+        membership.bind(scope)
+        let manager = StoreKitManager(client: makeStoreKitClient())
+        manager.bind(scope)
+        let first = Task { await manager.purchase(membership: membership) }
+        for _ in 0..<100 where client.continuation == nil { await Task.yield() }
+        let pending = try XCTUnwrap(client.continuation)
+        await manager.purchase(membership: membership)
+        XCTAssertEqual(client.requestCount, 1)
+        XCTAssertEqual(manager.state, .preparing)
+
+        let other = MembershipScope(userID: "other", accessToken: "other-token")
+        membership.bind(other)
+        manager.bind(other)
+        pending.resume(returning: snapshot(active: false, tier: .free, status: "inactive", providers: [], expiry: nil, purchase: true))
+        await first.value
+        XCTAssertNil(manager.product)
+        XCTAssertNil(manager.operationFailure)
+        XCTAssertEqual(manager.state, .idle)
+    }
+
+    func testPurchasePreparationFailureExplainsNoPaymentAndPreservesSafeDiagnostic() {
+        let failure = StoreKitOperationFailure.capture(
+            NSError(domain: "private-account-url", code: 503, userInfo: [NSLocalizedDescriptionKey: "private-token"]),
+            stage: .purchasePreparation, origin: .purchase
+        )
+        XCTAssertEqual(failure.supportCode, "IAP-BUY-PREPARE-NONE: OTHER_503")
+        for language: AppLanguage in [.en, .ru, .es, .uk] {
+            let message = LimitlessCopy(language: language).operationFailed(failure)
+            XCTAssertTrue(message.contains(failure.supportCode))
+            XCTAssertFalse(message.contains("private-token"))
+            XCTAssertFalse(message.contains("private-account-url"))
+        }
+        let message = LimitlessCopy(language: .en).operationFailed(failure)
+        XCTAssertTrue(message.contains("No payment was started"))
+        XCTAssertFalse(message.contains("Try Restore"))
+        let delivered = StoreKitOperationFailure.capture(MembershipError.verificationFailed, stage: .serverDelivery, origin: .purchase)
+        XCTAssertFalse(LimitlessCopy(language: .en).operationFailed(delivered).contains("No payment was started"))
+        XCTAssertEqual(StoreKitOperationFailure.capture(delivered, stage: .applePurchase, origin: .purchase), delivered)
     }
 
     func testHistoricalCapabilitiesKeepStableOrderAndOriginalRussianCopy() {

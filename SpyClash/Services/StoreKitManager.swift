@@ -10,18 +10,33 @@ struct AppStorePurchaseContext: Decodable {
         case productID = "product_id"
         case appAccountToken = "app_account_token"
     }
+    func acceptsPurchase(for displayedProductID: String) -> Bool {
+        displayedProductID == StoreKitSubscriptionProduct.monthly.rawValue &&
+        productID == displayedProductID
+    }
 }
 
 struct AppStoreEntitlementSyncResponse: Decodable {
     let success: Bool
     let serverStatusVerified: Bool
     let entitlement: AppStoreEntitlement
+    let submittedProductID: String?
     enum CodingKeys: String, CodingKey {
         case success, entitlement
         case serverStatusVerified = "server_status_verified"
+        case submittedProductID = "submitted_product_id"
+    }
+    init(success: Bool, serverStatusVerified: Bool, entitlement: AppStoreEntitlement, submittedProductID: String? = nil) {
+        self.success = success
+        self.serverStatusVerified = serverStatusVerified
+        self.entitlement = entitlement
+        self.submittedProductID = submittedProductID
     }
     func acceptsDelivery(for productID: String) -> Bool {
-        success && serverStatusVerified && entitlement.productID == productID
+        success && serverStatusVerified &&
+        StoreKitSubscriptionProduct.supports(productID) &&
+        StoreKitSubscriptionProduct.supports(entitlement.productID) &&
+        (entitlement.productID == productID || submittedProductID == productID)
     }
 }
 
@@ -93,7 +108,7 @@ final class AppStoreTransactionDeliveryStore {
     ) async throws -> AppStoreEntitlementSyncResponse {
         let expected = generation
         try requireScope(expected)
-        guard productID == StoreKitManager.limitlessProductID else { throw MembershipError.verificationFailed }
+        guard StoreKitSubscriptionProduct.supports(productID) else { throw MembershipError.verificationFailed }
         // A renewed/revoked representation of the same transaction ID must not
         // coalesce with an older signed payload.
         let key = "\(expected):\(signedTransaction)"
@@ -141,7 +156,8 @@ struct AppStoreTransactionReconciliation {
 @MainActor
 @Observable
 final class StoreKitManager {
-    static let limitlessProductID = "com.spyclash.ios.limitless.weekly"
+    static let limitlessProductID = StoreKitSubscriptionProduct.monthly.rawValue
+    static let legacyWeeklyProductID = StoreKitSubscriptionProduct.weekly.rawValue
     var product: Product? { productCatalog.product }
     var isLoadingProduct: Bool { productCatalog.isLoading }
     var productLoadIssue: StoreKitProductLoadIssue? { productCatalog.issue }
@@ -181,7 +197,8 @@ final class StoreKitManager {
                 return StoreKitCatalogItem(
                     id: $0.id,
                     isAutoRenewable: $0.type == .autoRenewable,
-                    isWeekly: StoreKitWeeklyPeriod.matches(unit: period?.unit, value: period?.value),
+                    periodUnit: StoreKitCatalogPeriodUnit(period?.unit),
+                    periodValue: period?.value,
                     value: $0
                 )
             }
@@ -192,7 +209,7 @@ final class StoreKitManager {
                 guard !Task.isCancelled else { return }
                 guard let self else { return }
                 guard self.scope.isAuthenticated,
-                      verification.unsafePayloadValue.productID == Self.limitlessProductID else { continue }
+                      StoreKitSubscriptionProduct.supports(verification.unsafePayloadValue.productID) else { continue }
                 let expected = self.generation
                 let operation = self.operationRevision
                 do {
@@ -228,8 +245,10 @@ final class StoreKitManager {
         syncGeneration = nil
     }
 
+    var canMakePayments: Bool { AppStore.canMakePayments }
+
     var canPurchase: Bool {
-        scope.isAuthenticated && product != nil && AppStore.canMakePayments && state.canStartPurchase
+        scope.isAuthenticated && product != nil && canMakePayments && state.canStartPurchase
     }
 
     func loadProduct() async {
@@ -241,17 +260,25 @@ final class StoreKitManager {
         let expected = generation
         let operation = beginOperation(.preparing)
         defer { endOperation(operation) }
+        var stage: StoreKitOperationStage = .purchaseEligibility
         do {
-            guard await membership.refresh(), membership.canPurchase else {
-                throw MembershipError.unavailable
-            }
+            let verified = await membership.refresh()
             try requireScope(expected)
+            guard verified else { throw AppStorePurchasePreflightError.accessUnverified }
+            guard !membership.hasAccess else { throw AppStorePurchasePreflightError.alreadyActive }
+            guard membership.canPurchase else { throw AppStorePurchasePreflightError.purchaseDisabled }
+            guard canMakePayments else { throw AppStorePurchasePreflightError.paymentsRestricted }
+            stage = .productLoading
             await loadProduct()
             try requireScope(expected)
-            guard let product, AppStore.canMakePayments else { throw MembershipError.unavailable }
-            let context = try await client.prepareAppStorePurchase()
+            guard let product else { throw AppStorePurchasePreflightError.productUnavailable }
+            stage = .purchaseEligibility
+            guard canMakePayments else { throw AppStorePurchasePreflightError.paymentsRestricted }
+            stage = .purchasePreparation
+            let context = try await client.prepareAppStorePurchase(productID: product.id)
             try requireScope(expected)
-            guard context.productID == Self.limitlessProductID else { throw MembershipError.verificationFailed }
+            guard context.acceptsPurchase(for: product.id) else { throw MembershipError.verificationFailed }
+            stage = .applePurchase
             state = .purchasing
             let result = try await product.purchase(options: [.appAccountToken(context.appAccountToken)])
             try requireScope(expected)
@@ -260,7 +287,9 @@ final class StoreKitManager {
                 state = .synchronizing
                 let response = try await persist(verification, generation: expected, origin: .purchase)
                 try requireScope(expected)
+                stage = .accessCheck
                 guard response.entitlement.grantsAccess else { throw MembershipError.verificationFailed }
+                stage = .membershipRefresh
                 guard await membership.refresh(force: true), membership.hasAccess else { throw MembershipError.unavailable }
                 try requireScope(expected)
                 state = .purchased
@@ -272,7 +301,10 @@ final class StoreKitManager {
                 throw MembershipError.verificationFailed
             }
         } catch {
-            fail(error, generation: expected, operation: operation)
+            let reported: any Error = isCancellation(error) ? error : StoreKitOperationFailure.capture(
+                error, stage: stage, origin: .purchase
+            )
+            fail(reported, generation: expected, operation: operation)
         }
     }
 
@@ -350,24 +382,27 @@ final class StoreKitManager {
         var reconciliation = AppStoreTransactionReconciliation()
         for await result in Transaction.unfinished {
             try requireScope(expected)
-            guard result.unsafePayloadValue.productID == Self.limitlessProductID,
+            guard StoreKitSubscriptionProduct.supports(result.unsafePayloadValue.productID),
                   !reconciliation.contains(result.jwsRepresentation) else { continue }
             let response = try await persist(result, generation: expected, origin: origin, source: .unfinished)
             reconciliation.record(signedPayload: result.jwsRepresentation, originalID: result.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
         }
         for await result in Transaction.currentEntitlements {
             try requireScope(expected)
-            guard result.unsafePayloadValue.productID == Self.limitlessProductID,
+            guard StoreKitSubscriptionProduct.supports(result.unsafePayloadValue.productID),
                   !reconciliation.contains(result.jwsRepresentation) else { continue }
             let response = try await persist(result, generation: expected, origin: origin, source: .current)
             reconciliation.record(signedPayload: result.jwsRepresentation, originalID: result.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
         }
         // Refunded/expired purchases disappear from currentEntitlements but their
         // latest signed transaction must still reach the canonical server verifier.
-        if let latest = await Transaction.latest(for: Self.limitlessProductID),
-           !reconciliation.contains(latest.jwsRepresentation) {
-            let response = try await persist(latest, generation: expected, origin: origin, source: .latest)
-            reconciliation.record(signedPayload: latest.jwsRepresentation, originalID: latest.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
+        for product in StoreKitSubscriptionProduct.allCases {
+            try requireScope(expected)
+            if let latest = await Transaction.latest(for: product.rawValue),
+               !reconciliation.contains(latest.jwsRepresentation) {
+                let response = try await persist(latest, generation: expected, origin: origin, source: .latest)
+                reconciliation.record(signedPayload: latest.jwsRepresentation, originalID: latest.unsafePayloadValue.originalID, grantsAccess: response.entitlement.grantsAccess)
+            }
         }
         return reconciliation.activeCount
     }
@@ -383,7 +418,7 @@ final class StoreKitManager {
         case .unverified(_, let error):
             throw StoreKitOperationFailure.capture(error, stage: .localVerification, origin: origin, source: source)
         }
-        guard transaction.productID == Self.limitlessProductID else {
+        guard StoreKitSubscriptionProduct.supports(transaction.productID) else {
             throw StoreKitOperationFailure.capture(MembershipError.verificationFailed, stage: .localVerification, origin: origin, source: source)
         }
         do {

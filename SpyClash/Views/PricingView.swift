@@ -25,7 +25,7 @@ struct PricingView: View {
                 membershipCategoryLabel: accessStatus,
                 membershipCategoryAccent: access.hasAccess ? SpyTheme.green : accessIsUnknown ? SpyTheme.amber : SpyTheme.muted,
                 displayPrice: store.product?.displayPrice,
-                subscriptionPeriodLabel: copy.week.uppercased()
+                subscriptionPeriodLabel: copy.month.uppercased()
             ) {
                 purchaseControls
             } legal: {
@@ -72,7 +72,11 @@ struct PricingView: View {
 
     private var purchaseControls: some View {
         VStack(spacing: 10) {
-            Button { Task { await performPrimaryAction() } } label: {
+            Button {
+                let action = primaryAction
+                let scope = access.scope
+                Task { await performPrimaryAction(action, scope: scope) }
+            } label: {
                 HStack(spacing: 12) {
                     Image(systemName: isBusy ? "antenna.radiowaves.left.and.right" : "bolt.fill")
                         .font(.system(size: 17, weight: .black))
@@ -92,14 +96,14 @@ struct PricingView: View {
                     }
                     .frame(maxWidth: .infinity, alignment: .leading)
 
-                    Image(systemName: access.hasAccess || accessIsUnknown ? "arrow.clockwise" : "arrow.up.right")
+                    Image(systemName: primaryAction == .refresh ? "arrow.clockwise" : "arrow.up.right")
                         .font(.system(size: 14, weight: .black))
                 }
                 .padding(.horizontal, 18)
                 .frame(maxWidth: .infinity, minHeight: 62)
             }
             .buttonStyle(LimitlessCommandButtonStyle())
-            .disabled(primaryAction == .unavailable || primaryAction == .waiting)
+            .disabled(primaryAction == .waiting)
             .accessibilityIdentifier(primaryAction == .purchase ? "limitless.purchase" : "limitless.primary-action")
             .accessibilityHint(access.isPreview ? copy.previewNotice : primaryActionDetail)
 
@@ -140,6 +144,14 @@ struct PricingView: View {
             .tracking(0.06)
             .foregroundStyle(SpyTheme.faint)
             .spyFitted(scale: 0.64, alignment: .center)
+
+            if !access.isPreview, let reason = purchaseBlockReason {
+                Text(copy.purchaseBlockMessage(reason))
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(SpyTheme.amber)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("limitless.purchase-blocked")
+            }
 
             if !access.isPreview, !store.isLoadingProduct, let issue = store.productLoadIssue {
                 Text(copy.productLoadMessage(issue))
@@ -234,12 +246,18 @@ struct PricingView: View {
     private var isBusy: Bool { access.isLoading || store.state.isBusy || store.isLoadingProduct }
     private var accessIsUnknown: Bool { access.snapshot == nil || access.errorMessage != nil }
 
+    private var purchaseBlockReason: LimitlessPurchaseBlockReason? {
+        .resolve(hasAccess: access.hasAccess, accessIsUnknown: accessIsUnknown,
+                 canPurchase: access.canPurchase, canMakePayments: store.canMakePayments,
+                 serverPurchaseEnabled: access.snapshot?.checkoutRequired == true)
+    }
+
     private var primaryAction: LimitlessPrimaryAction {
         .resolve(
             isPreview: access.isPreview, hasAccess: access.hasAccess,
             isBusy: isBusy, isPending: store.state == .pending,
             accessIsUnknown: accessIsUnknown, canPurchase: access.canPurchase,
-            hasProduct: store.product != nil, storeCanPurchase: store.canPurchase
+            canMakePayments: store.canMakePayments
         )
     }
 
@@ -251,37 +269,48 @@ struct PricingView: View {
         switch primaryAction {
         case .preview, .purchase: return copy.historicalSubscribe
         case .refresh: return copy.verifyMembership
-        case .loadProduct: return copy.retry.uppercased()
-        case .unavailable, .waiting: return copy.purchaseUnavailable
+        case .waiting: return copy.purchaseUnavailable
         }
     }
 
     private var primaryActionDetail: String {
         if access.isPreview { return copy.previewShort }
         if access.hasAccess { return copy.verifyClearance }
-        if accessIsUnknown { return copy.unavailable }
+        if let reason = purchaseBlockReason { return copy.purchaseBlockMessage(reason) }
+        if accessIsUnknown { return copy.purchasePreflight }
         if let price = store.product?.displayPrice {
-            return "\(price) / \(copy.week.uppercased()) // APP STORE"
+            return "\(price) / \(copy.month.uppercased()) // APP STORE"
         }
         return copy.appStorePrice
     }
 
-    private func performPrimaryAction() async {
-        switch primaryAction {
+    private func performPrimaryAction(_ action: LimitlessPrimaryAction, scope expected: MembershipScope) async {
+        guard !Task.isCancelled, expected == access.scope else { return }
+        switch action {
         case .preview: appState.showToast(copy.previewNotice, kind: .info)
         case .refresh:
             actionFeedback = nil
-            let expected = access.scope
             let verified = await access.refresh()
             guard !Task.isCancelled, expected == access.scope else { return }
             actionFeedback = LimitlessActionFeedback(
                 title: copy.refreshAccess,
-                message: verified ? (access.hasAccess ? copy.accessConfirmed : copy.accessNotActive) : copy.unavailable
+                message: verified
+                    ? (access.hasAccess ? copy.accessConfirmed : purchaseBlockReason.map { copy.purchaseBlockMessage($0) } ?? copy.accessNotActive)
+                    : copy.unavailable
             )
             if access.canPurchase { await store.loadProduct() }
-        case .loadProduct: await store.loadProduct()
-        case .purchase: await store.purchase(membership: access)
-        case .unavailable, .waiting: break
+        case .purchase:
+            // Only an explicitly labelled Subscribe action may enter checkout.
+            actionFeedback = nil
+            await store.purchase(membership: access)
+            guard !Task.isCancelled, expected == access.scope else { return }
+            if store.state == .failed {
+                actionFeedback = LimitlessActionFeedback(
+                    title: copy.subscribe,
+                    message: store.operationFailure.map { copy.operationFailed($0) } ?? copy.failed
+                )
+            }
+        case .waiting: break
         }
     }
 
@@ -330,18 +359,33 @@ private struct LimitlessActionFeedback: Identifiable {
 }
 
 enum LimitlessPrimaryAction: Equatable {
-    case preview, refresh, loadProduct, purchase, unavailable, waiting
+    case preview, refresh, purchase, waiting
 
     static func resolve(
         isPreview: Bool, hasAccess: Bool, isBusy: Bool, isPending: Bool,
-        accessIsUnknown: Bool, canPurchase: Bool, hasProduct: Bool, storeCanPurchase: Bool
+        accessIsUnknown: Bool, canPurchase: Bool, canMakePayments: Bool
     ) -> Self {
         if isBusy || isPending { return .waiting }
         if isPreview { return .preview }
-        if hasAccess || accessIsUnknown { return .refresh }
-        guard canPurchase else { return .unavailable }
-        guard hasProduct else { return .loadProduct }
-        return storeCanPurchase ? .purchase : .unavailable
+        if hasAccess || !canMakePayments { return .refresh }
+        // This is purchase intent, not authorization. StoreKitManager rechecks
+        // membership and the server flag before asking Apple to show checkout.
+        if accessIsUnknown { return .purchase }
+        return canPurchase ? .purchase : .refresh
+    }
+}
+
+enum LimitlessPurchaseBlockReason: Equatable {
+    case serverUnavailable, deviceRestricted, accessNeedsRefresh
+
+    static func resolve(
+        hasAccess: Bool, accessIsUnknown: Bool, canPurchase: Bool,
+        canMakePayments: Bool, serverPurchaseEnabled: Bool
+    ) -> Self? {
+        guard !hasAccess else { return nil }
+        guard canMakePayments else { return .deviceRestricted }
+        guard !accessIsUnknown, !canPurchase else { return nil }
+        return serverPurchaseEnabled ? .accessNeedsRefresh : .serverUnavailable
     }
 }
 
@@ -443,6 +487,17 @@ struct LimitlessCopy {
     var until: String { text("Access until", "Доступ до", "Acceso hasta", "Доступ до") }
     var checking: String { text("Checking access…", "Проверяем доступ…", "Verificando acceso…", "Перевіряємо доступ…") }
     var unavailable: String { text("Access could not be checked. Please retry before purchasing.", "Не удалось проверить доступ. Повтори проверку перед покупкой.", "No se pudo verificar el acceso. Reintenta antes de comprar.", "Не вдалося перевірити доступ. Повтори перевірку перед купівлею.") }
+    var purchasePreflight: String { text("We'll check access before opening Apple's purchase confirmation.", "Проверим доступ и откроем подтверждение покупки Apple.", "Verificaremos el acceso antes de abrir la confirmación de compra de Apple.", "Перевіримо доступ і відкриємо підтвердження купівлі Apple.") }
+    func purchaseBlockMessage(_ reason: LimitlessPurchaseBlockReason) -> String {
+        switch reason {
+        case .serverUnavailable:
+            text("New subscriptions are temporarily unavailable. Retry the access check later; existing purchases can still be restored.", "Новые подписки временно недоступны. Повтори проверку позже; существующие покупки можно восстановить.", "Las nuevas suscripciones no están disponibles temporalmente. Reintenta la verificación más tarde; las compras existentes se pueden restaurar.", "Нові підписки тимчасово недоступні. Повтори перевірку пізніше; наявні купівлі можна відновити.")
+        case .deviceRestricted:
+            text("In-app purchases are disabled on this device. Check Screen Time or device restrictions, then retry.", "Покупки в приложениях запрещены на этом устройстве. Проверь ограничения «Экранного времени» или устройства и повтори попытку.", "Las compras dentro de apps están desactivadas en este dispositivo. Revisa Tiempo de uso o las restricciones del dispositivo y reintenta.", "Купівлі в застосунках заборонені на цьому пристрої. Перевір обмеження «Екранного часу» або пристрою й повтори спробу.")
+        case .accessNeedsRefresh:
+            text("Your subscription status needs to be checked again before a new purchase.", "Перед новой покупкой нужно повторно проверить статус подписки.", "Es necesario volver a verificar tu suscripción antes de una nueva compra.", "Перед новою купівлею потрібно повторно перевірити статус підписки.")
+        }
+    }
     var retry: String { text("Retry", "Повторить", "Reintentar", "Повторити") }
     func productLoadMessage(_ issue: StoreKitProductLoadIssue) -> String {
         switch issue {
@@ -460,7 +515,7 @@ struct LimitlessCopy {
     }
     var freeAllowance: String { text("FREE: 10 AI generations per day and your 5 latest matches.", "FREE: 10 генераций ИИ в день и 5 последних матчей.", "FREE: 10 generaciones de IA al día y tus 5 últimas partidas.", "FREE: 10 генерацій ШІ на день і 5 останніх матчів.") }
     var remaining: String { text("AI generations remaining today", "Осталось генераций ИИ сегодня", "Generaciones de IA restantes hoy", "Залишилось генерацій ШІ сьогодні") }
-    var week: String { text("week", "неделю", "semana", "тиждень") }
+    var month: String { text("month", "месяц", "mes", "місяць") }
     var subscribe: String { text("Subscribe with Apple", "Оформить через Apple", "Suscribirse con Apple", "Оформити через Apple") }
     var restore: String { text("Restore purchases", "Восстановить покупки", "Restaurar compras", "Відновити покупки") }
     var restoring: String { text("Restoring purchases…", "Восстанавливаем покупки…", "Restaurando compras…", "Відновлюємо покупки…") }
@@ -470,7 +525,7 @@ struct LimitlessCopy {
     var accessNotActive: String { text("Your SpyClash account has no active LIMITLESS access. If you have an App Store subscription, use Restore purchases.", "В твоём аккаунте SpyClash нет активного доступа LIMITLESS. Если у тебя есть подписка App Store, нажми «Восстановить покупки».", "Tu cuenta de SpyClash no tiene acceso LIMITLESS activo. Si tienes una suscripción de App Store, usa Restaurar compras.", "У твоєму акаунті SpyClash немає активного доступу LIMITLESS. Якщо маєш підписку App Store, натисни «Відновити покупки».") }
     var manage: String { text("Manage Apple subscription", "Управлять подпиской Apple", "Gestionar suscripción de Apple", "Керувати підпискою Apple") }
     var notAvailableYet: String { text("New subscriptions are currently unavailable.", "Оформление новых подписок пока недоступно.", "Las nuevas suscripciones no están disponibles.", "Оформлення нових підписок поки недоступне.") }
-    var renewal: String { text("Weekly auto-renewable subscription. Apple charges your account after confirmation. It renews unless cancelled at least 24 hours before the current period ends. Manage or cancel in your Apple account settings.", "Еженедельная подписка с автопродлением. Apple спишет оплату после подтверждения. Подписка продлевается, если не отменить её минимум за 24 часа до конца периода. Управление и отмена — в настройках аккаунта Apple.", "Suscripción semanal con renovación automática. Apple cobra tras confirmar. Se renueva salvo que la canceles al menos 24 horas antes del fin del período. Gestiona o cancela en tu cuenta de Apple.", "Щотижнева підписка з автоподовженням. Apple спише оплату після підтвердження. Підписка подовжується, якщо не скасувати її щонайменше за 24 години до кінця періоду. Керування й скасування — у налаштуваннях акаунта Apple.") }
+    var renewal: String { text("Monthly auto-renewable subscription. Apple charges your account after confirmation. It renews unless cancelled at least 24 hours before the current period ends. Manage or cancel in your Apple account settings.", "Ежемесячная подписка с автопродлением. Apple спишет оплату после подтверждения. Подписка продлевается, если не отменить её минимум за 24 часа до конца периода. Управление и отмена — в настройках аккаунта Apple.", "Suscripción mensual con renovación automática. Apple cobra tras confirmar. Se renueva salvo que la canceles al menos 24 horas antes del fin del período. Gestiona o cancela en tu cuenta de Apple.", "Щомісячна підписка з автоподовженням. Apple спише оплату після підтвердження. Підписка подовжується, якщо не скасувати її щонайменше за 24 години до кінця періоду. Керування й скасування — у налаштуваннях акаунта Apple.") }
     var privacy: String { text("Privacy", "Конфиденциальность", "Privacidad", "Конфіденційність") }
     var terms: String { text("Terms", "Условия", "Condiciones", "Умови") }
     var deletionNotice: String { text("Deleting your SpyClash account does not cancel an Apple subscription. Cancel it in your Apple account settings.", "Удаление аккаунта SpyClash не отменяет подписку Apple. Отмени её в настройках аккаунта Apple.", "Eliminar tu cuenta SpyClash no cancela la suscripción de Apple. Cancélala en los ajustes de tu cuenta Apple.", "Видалення акаунта SpyClash не скасовує підписку Apple. Скасуй її в налаштуваннях акаунта Apple.") }
@@ -481,6 +536,19 @@ struct LimitlessCopy {
     func operationFailed(_ failure: StoreKitOperationFailure) -> String {
         let message: String
         switch failure.stage {
+        case .purchaseEligibility:
+            switch failure.reason {
+            case "ALREADY_ACTIVE": message = accessConfirmed
+            case "PURCHASE_DISABLED": message = purchaseBlockMessage(.serverUnavailable)
+            case "PAYMENTS_RESTRICTED": message = purchaseBlockMessage(.deviceRestricted)
+            default: message = unavailable
+            }
+        case .productLoading:
+            message = text("App Store couldn't load the subscription for purchase.", "App Store не смог загрузить подписку для покупки.", "App Store no pudo cargar la suscripción para comprarla.", "App Store не зміг завантажити підписку для купівлі.")
+        case .purchasePreparation:
+            message = text("The purchase could not be prepared. Apple's payment confirmation has not opened.", "Не удалось подготовить покупку. Подтверждение оплаты Apple ещё не открывалось.", "No se pudo preparar la compra. La confirmación de pago de Apple no se ha abierto.", "Не вдалося підготувати купівлю. Підтвердження оплати Apple ще не відкривалося.")
+        case .applePurchase:
+            message = text("The purchase with App Store could not be completed.", "Не удалось завершить покупку в App Store.", "No se pudo completar la compra en App Store.", "Не вдалося завершити купівлю в App Store.")
         case .appleSync:
             message = text(
                 "Purchases could not be synchronized with App Store.",
@@ -524,7 +592,13 @@ struct LimitlessCopy {
                 "Не вдалося завершити синхронізацію покупок."
             )
         }
-        let guidance = text(
+        let isBeforePayment = [StoreKitOperationStage.purchaseEligibility, .productLoading, .purchasePreparation].contains(failure.stage)
+        let guidance = isBeforePayment ? text(
+            "No payment was started. Retry Subscribe when available.",
+            "Оплата не запускалась. Повтори оформление подписки, когда оно станет доступно.",
+            "No se inició ningún pago. Vuelve a suscribirte cuando esté disponible.",
+            "Оплата не запускалася. Повтори оформлення підписки, коли воно стане доступним."
+        ) : text(
             "Try Restore Purchases again later. Restore won't charge you again.",
             "Повтори восстановление покупок позже. Повторной оплаты не будет.",
             "Intenta restaurar las compras más tarde. Restaurar no vuelve a cobrar.",

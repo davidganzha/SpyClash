@@ -3,6 +3,10 @@ import OSLog
 import StoreKit
 
 enum StoreKitOperationStage: String, Sendable {
+    case purchaseEligibility = "ELIGIBILITY"
+    case productLoading = "CATALOG"
+    case purchasePreparation = "PREPARE"
+    case applePurchase = "PURCHASE"
     case appleSync = "APPLE"
     case localVerification = "VERIFY"
     case serverDelivery = "SERVER"
@@ -21,6 +25,10 @@ enum StoreKitTransactionSource: String, Sendable {
 }
 
 enum AppStoreDeliveryError: Error { case responseRejected }
+
+enum AppStorePurchasePreflightError: Error {
+    case accessUnverified, alreadyActive, purchaseDisabled, paymentsRestricted, productUnavailable
+}
 
 /// Only closed labels and numeric error codes can reach the UI or public logs.
 /// Never retain a raw error, account/transaction identifiers, JWS, URLs or userInfo.
@@ -86,6 +94,15 @@ struct StoreKitOperationFailure: Error, Equatable, Sendable {
             // Never include arbitrary server messages or machine-code strings.
             let bindingBusy = server.code == "apple_account_binding_busy" ? "/BINDING_BUSY" : ""
             return "HTTP_" + status + bindingBusy
+        }
+        if let preflight = error as? AppStorePurchasePreflightError {
+            switch preflight {
+            case .accessUnverified: return "ACCESS_UNVERIFIED"
+            case .alreadyActive: return "ALREADY_ACTIVE"
+            case .purchaseDisabled: return "PURCHASE_DISABLED"
+            case .paymentsRestricted: return "PAYMENTS_RESTRICTED"
+            case .productUnavailable: return "PRODUCT_UNAVAILABLE"
+            }
         }
         if error is DecodingError { return "RESPONSE_DECODE" }
         if error is AppStoreDeliveryError { return "RESPONSE_REJECTED" }

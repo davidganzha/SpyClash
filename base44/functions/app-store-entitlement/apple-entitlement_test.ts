@@ -1,8 +1,12 @@
 import {
   appleCommerceConfigurationError,
+  applePurchaseProductSelection,
   CASADA_PROTOCOL_ENABLED,
   casadaPurchaseRetirement,
   entitlementStatusFromApple,
+  isSupportedAppleSubscriptionProduct,
+  LEGACY_SUBSCRIPTION_PRODUCT_ID,
+  MONTHLY_SUBSCRIPTION_PRODUCT_ID,
   normalizeAppleEntitlement,
   shouldApplyProviderEvent,
   SPYCLASH_APPLE_APP_ID,
@@ -36,6 +40,89 @@ Deno.test("Apple commerce identity matches the David Ganzha app", () => {
     }) ===
       "APPLE_IAP_BUNDLE_ID does not match the current SpyClash iOS app.",
     "stale bundle identity was not rejected",
+  );
+});
+
+Deno.test("purchase selection preserves weekly for older clients and gates monthly separately", () => {
+  for (const monthlyEnabled of [false, true]) {
+    for (const requested of [undefined, LEGACY_SUBSCRIPTION_PRODUCT_ID]) {
+      const selection = applePurchaseProductSelection(
+        requested,
+        monthlyEnabled,
+      );
+      assert(
+        "productID" in selection &&
+          selection.productID === LEGACY_SUBSCRIPTION_PRODUCT_ID,
+        "old client was silently moved to a different billing period",
+      );
+    }
+  }
+  const closed = applePurchaseProductSelection(
+    MONTHLY_SUBSCRIPTION_PRODUCT_ID,
+    false,
+  );
+  assert(
+    "status" in closed && closed.status === 503,
+    "monthly rollout was bypassed",
+  );
+  const open = applePurchaseProductSelection(
+    MONTHLY_SUBSCRIPTION_PRODUCT_ID,
+    true,
+  );
+  assert(
+    "productID" in open && open.productID === MONTHLY_SUBSCRIPTION_PRODUCT_ID,
+    "explicit monthly selection did not return the monthly product",
+  );
+});
+
+Deno.test("purchase selection rejects invalid explicit selectors without a weekly fallback", () => {
+  for (
+    const requested of [
+      null,
+      "",
+      3,
+      {},
+      "monthly",
+      `${MONTHLY_SUBSCRIPTION_PRODUCT_ID} `,
+    ]
+  ) {
+    const selection = applePurchaseProductSelection(requested, true);
+    assert(
+      "status" in selection && selection.status === 422,
+      "invalid product was accepted",
+    );
+  }
+});
+
+Deno.test("verification recognizes weekly and monthly independently of new purchase rollout", () => {
+  assert(
+    isSupportedAppleSubscriptionProduct(LEGACY_SUBSCRIPTION_PRODUCT_ID),
+    "legacy restores blocked",
+  );
+  assert(
+    isSupportedAppleSubscriptionProduct(MONTHLY_SUBSCRIPTION_PRODUCT_ID),
+    "monthly restores blocked",
+  );
+  for (
+    const product of [
+      undefined,
+      null,
+      "",
+      "com.spyclash.ios.limitless.yearly",
+      "com.other.app.limitless.monthly",
+    ]
+  ) {
+    assert(
+      !isSupportedAppleSubscriptionProduct(product),
+      "unsupported transaction product accepted",
+    );
+  }
+  assert(
+    appleCommerceConfigurationError({
+      bundleID: SPYCLASH_IOS_BUNDLE_ID,
+      productID: MONTHLY_SUBSCRIPTION_PRODUCT_ID,
+    }) !== null,
+    "legacy APPLE_IAP_PRODUCT_ID configuration was silently repurposed",
   );
 });
 

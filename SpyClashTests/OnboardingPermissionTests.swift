@@ -99,21 +99,28 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         XCTAssertEqual(flow.phase, .complete)
     }
 
-    func testPermissionFlowAcceptsSimulatorUnsupportedStatus() {
-        var flow = OnboardingPermissionFlow()
+    func testUnsupportedNearbyStepIsOmittedWithoutSkippingOptionalPermissions() {
+        var flow = OnboardingPermissionFlow(includesNearby: false)
 
+        XCTAssertEqual(flow.permissions, [.notifications, .camera])
+        XCTAssertEqual(flow.currentPermission, .notifications)
         XCTAssertTrue(flow.markReady(for: .notifications))
         XCTAssertTrue(flow.resolveWithoutRequest(.denied, for: .notifications))
         XCTAssertTrue(flow.advance(after: .notifications))
+        XCTAssertEqual(flow.currentPermission, .camera)
 
         XCTAssertTrue(flow.resolveWithoutRequest(.granted, for: .camera))
         XCTAssertTrue(flow.advance(after: .camera))
-
-        XCTAssertTrue(
-            flow.resolveWithoutRequest(.unsupported, for: .nearby)
-        )
-        XCTAssertTrue(flow.advance(after: .nearby))
         XCTAssertTrue(flow.isComplete)
+        XCTAssertNil(flow.currentPermission)
+        XCTAssertFalse(flow.advance(after: .nearby))
+    }
+
+    func testLocalNetworkOnlyUpgradeCompletesWhenNearbyIsUnsupported() {
+        let flow = OnboardingPermissionFlow(startingAt: .nearby, includesNearby: false)
+
+        XCTAssertTrue(flow.isComplete)
+        XCTAssertNil(flow.currentPermission)
     }
 
     func testVersionTwoUpgradeStartsAtOnlyRequiredLocalNetworkStep() {
@@ -396,6 +403,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
             OnboardingPermissionCoordinator.canEvaluateLocalNetworkPrivacy
         )
         XCTAssertEqual(coordinator.status(for: .nearby), .unsupported)
+        XCTAssertFalse(OnboardingPermissionCoordinator.shouldPresentLocalNetworkOnboarding)
 
         let didStartRequest = await coordinator.request(.nearby)
 
@@ -406,6 +414,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
             OnboardingPermissionCoordinator.canEvaluateLocalNetworkPrivacy
         )
         XCTAssertEqual(coordinator.status(for: .nearby), .notDetermined)
+        XCTAssertTrue(OnboardingPermissionCoordinator.shouldPresentLocalNetworkOnboarding)
 #endif
     }
 
