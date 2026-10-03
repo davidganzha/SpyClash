@@ -444,6 +444,9 @@ struct AppShellView: View {
 #endif
         }
         .onChange(of: appState.activeRoom?.id) { _, roomID in
+            if roomID != nil, let communityNetworkState {
+                installCommunityAttention(communityNetworkState, announceNew: false)
+            }
             guard roomID == nil, appState.selectedTab == .game else { return }
             appState.selectedTab = .home
         }
@@ -1012,7 +1015,7 @@ struct AppShellView: View {
         userID: String
     ) -> CommunityState {
         var hiddenInviteIDs = pendingRoomInviteCleanupIDs(for: userID)
-        guard !hiddenInviteIDs.isEmpty else { return state }
+        let joinedRoomID = appState.user?.id == userID ? appState.activeRoom?.id : nil
         let reusedPendingIDs = Set(
             state.incomingRoomInvites
                 .filter {
@@ -1031,7 +1034,7 @@ struct AppShellView: View {
             outgoing: state.outgoing,
             blocked: state.blocked,
             incomingRoomInvites: state.incomingRoomInvites.filter {
-                !hiddenInviteIDs.contains($0.id)
+                !hiddenInviteIDs.contains($0.id) && $0.roomID != joinedRoomID
             }
         )
     }

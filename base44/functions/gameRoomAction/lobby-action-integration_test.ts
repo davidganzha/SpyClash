@@ -36,7 +36,7 @@ Deno.test("return-to-lobby remains an explicit pause escape but cannot bypass an
   assertEquals(elapsed.code, "game_timer_elapsed");
 });
 
-Deno.test("gameRoomAction fast-paths non-final lobby votes while resets and membership changes keep participant leases", async () => {
+Deno.test("host lobby return and membership changes keep participant leases", async () => {
   const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
   const vote = source.slice(
     source.indexOf("async function voteReturnToLobby"),
@@ -52,14 +52,20 @@ Deno.test("gameRoomAction fast-paths non-final lobby votes while resets and memb
     source,
     '["request_vote", "submit_spy_guess", "vote_return_to_lobby"]',
   );
-  assertStringIncludes(source, 'if (status !== "playing") return false;');
+  assertStringIncludes(vote, "requireHost(room, user)");
+  assertStringIncludes(vote, "requireHost(latest, user)");
+  assertStringIncludes(vote, "assertActionMatchGeneration(latest, body)");
+  assertStringIncludes(
+    vote,
+    'assertGameActionAllowedByDeadline(latest, "vote_return_to_lobby")',
+  );
   for (
     const forbidden of ["finishRoom(", "archiveRoomResult(", "GameHistory"]
   ) {
     assertEquals(
       vote.includes(forbidden),
       false,
-      `unanimous lobby return must not execute ${forbidden}`,
+      `host lobby return must not execute ${forbidden}`,
     );
   }
 

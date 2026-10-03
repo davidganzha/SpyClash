@@ -195,6 +195,13 @@ enum RadarRangefinderAccessState: Equatable {
 }
 
 enum RadarRangefinderAccessPolicy {
+    static func hasDeniedPermission(
+        localNetwork: OnboardingPermissionStatus,
+        rangefinder: RadarRangefinderAccessState
+    ) -> Bool {
+        localNetwork == .denied || rangefinder == .denied
+    }
+
     static func initialState(
         canVerifyOnCurrentDevice: Bool
     ) -> RadarRangefinderAccessState {
@@ -1032,7 +1039,7 @@ final class RadarNearbyService: NSObject {
 #endif
     }
 
-    let localNetworkPermissions = OnboardingPermissionCoordinator()
+    let localNetworkPermissions: OnboardingPermissionCoordinator
 
     private(set) var peers: [RadarNearbyPeer] = []
     private(set) var scanState: RadarScanState = .idle
@@ -1041,7 +1048,26 @@ final class RadarNearbyService: NSObject {
     private(set) var supportsPreciseDistance: Bool
     private(set) var supportsDirectionMeasurement: Bool
     private(set) var supportsCameraAssistance: Bool
-    private(set) var rangefinderAccessState: RadarRangefinderAccessState
+    private(set) var rangefinderAccessState: RadarRangefinderAccessState {
+        didSet {
+            if rangefinderAccessState == .denied, oldValue != .denied {
+                incomingInvitation = nil
+                stopTransport(clearPeers: true)
+            }
+        }
+    }
+
+    var hasDeniedPermission: Bool {
+        RadarRangefinderAccessPolicy.hasDeniedPermission(
+            localNetwork: localNetworkPermissions.localNetworkStatus,
+            rangefinder: rangefinderAccessState
+        )
+    }
+
+    var canDisplayDirectory: Bool {
+        localNetworkPermissions.localNetworkStatus.allowsRadarInvitationSettings
+            && !hasDeniedPermission
+    }
 
     private(set) var invitePolicy: RadarInvitePolicy {
         didSet {
@@ -1060,7 +1086,9 @@ final class RadarNearbyService: NSObject {
     private var identity: RadarLocalIdentity?
     private var localAvailability: RadarPlayerAvailability = .available
     private var isApplicationActive = false
-    private var allowsTransport = false
+    private var hasTransportConsent = false
+    private var allowsTransport: Bool { hasTransportConsent && canDisplayDirectory }
+    @ObservationIgnored private var localNetworkRefreshTask: Task<Void, Never>?
     private var wantsScanning = false
     private var wantsCameraAssistance = false
     private var cameraAuthorizationRequestID: UUID?
@@ -1144,7 +1172,8 @@ final class RadarNearbyService: NSObject {
         !terminalRangingFailurePeerIDs.isEmpty
     }
 
-    override init() {
+    init(localNetworkPermissions: OnboardingPermissionCoordinator = OnboardingPermissionCoordinator()) {
+        self.localNetworkPermissions = localNetworkPermissions
         invitePolicy = .ask
         supportsPreciseDistance = NISession.deviceCapabilities.supportsPreciseDistanceMeasurement
         supportsDirectionMeasurement = NISession.deviceCapabilities.supportsDirectionMeasurement
@@ -1153,6 +1182,15 @@ final class RadarNearbyService: NSObject {
             canVerifyOnCurrentDevice: Self.canVerifyRangefinderAccess
         )
         super.init()
+        localNetworkPermissions.onLocalNetworkStatusChange = { [weak self] _ in
+            guard let self else { return }
+            if self.allowsTransport {
+                self.refreshTransportAfterLocalNetworkGrant()
+            } else {
+                self.incomingInvitation = nil
+                self.stopTransport(clearPeers: true)
+            }
+        }
         debugLog(
             "capabilities distance=\(supportsPreciseDistance) "
                 + "direction=\(supportsDirectionMeasurement) "
@@ -1203,10 +1241,10 @@ final class RadarNearbyService: NSObject {
         let identityChanged = nextIdentity != identity
         let accountChanged = nextIdentity?.userID != identity?.userID
         let policyChanged = nextPolicy != invitePolicy
-        let transportAccessChanged = allowsTransport != self.allowsTransport
+        let transportAccessChanged = allowsTransport != hasTransportConsent
         guard identityChanged || policyChanged || transportAccessChanged else { return }
 
-        self.allowsTransport = allowsTransport
+        self.hasTransportConsent = allowsTransport
         if identityChanged || transportAccessChanged {
             resetTransportRecoveryBudget()
         }
@@ -1240,7 +1278,10 @@ final class RadarNearbyService: NSObject {
             rejectIncomingInvitationForBlockedPolicyIfNeeded()
         }
 
-        guard allowsTransport else {
+        if localNetworkPermissions.localNetworkStatus == .notDetermined {
+            refreshLocalNetworkAccess()
+        }
+        guard self.allowsTransport else {
             stopScanning()
             stopTransport(clearPeers: true)
             return
@@ -1292,6 +1333,7 @@ final class RadarNearbyService: NSObject {
         refreshIdleTimerProtection()
 
         if isActive {
+            refreshLocalNetworkAccess()
             if activityChanged {
                 emptyDiscoveryRefreshCount = 0
                 resetTransportRecoveryBudget()
@@ -1299,7 +1341,7 @@ final class RadarNearbyService: NSObject {
             supportsPreciseDistance = NISession.deviceCapabilities.supportsPreciseDistanceMeasurement
             supportsDirectionMeasurement = NISession.deviceCapabilities.supportsDirectionMeasurement
             supportsCameraAssistance = NISession.deviceCapabilities.supportsCameraAssistance
-            if !Self.canVerifyRangefinderAccess {
+            if !Self.canVerifyRangefinderAccess, rangefinderAccessState != .denied {
                 rangefinderAccessState = .unsupported
             }
 #if DEBUG
@@ -1329,6 +1371,17 @@ final class RadarNearbyService: NSObject {
             reconcileRangefinderReadiness()
         } else if stopTransportWhenInactive {
             stopTransport(clearPeers: true)
+        }
+    }
+
+    private func refreshLocalNetworkAccess() {
+        guard hasTransportConsent, isApplicationActive,
+              localNetworkRefreshTask == nil,
+              localNetworkPermissions.localNetworkStatus.canRefreshLocalNetworkOnActivation else { return }
+        localNetworkRefreshTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.localNetworkRefreshTask = nil }
+            await self.localNetworkPermissions.request(.nearby)
         }
     }
 
@@ -1417,11 +1470,16 @@ final class RadarNearbyService: NSObject {
     }
 
     func startScanning(requestCameraAccess: Bool = false) {
+        if hasTransportConsent, !canDisplayDirectory {
+            wantsScanning = true
+            wantsCameraAssistance = requestCameraAccess
+            refreshLocalNetworkAccess()
+        }
         guard allowsTransport else {
             scanState = .idle
             return
         }
-        if !Self.canVerifyRangefinderAccess {
+        if !Self.canVerifyRangefinderAccess, rangefinderAccessState != .denied {
             rangefinderAccessState = .unsupported
         }
 #if DEBUG
@@ -1569,6 +1627,7 @@ final class RadarNearbyService: NSObject {
         _ peer: RadarNearbyPeer,
         to room: GameRoom
     ) async -> RadarInviteDispatchResult {
+        guard allowsTransport else { return .unavailable }
         switch RadarInvitationInteractionPolicy.action(
             invitePolicy: peer.invitePolicy,
             availability: peer.availability,
@@ -4380,6 +4439,7 @@ final class RadarNearbyService: NSObject {
     }
 
     private func normalizeRangefinderStateAfterConnectionLoss() {
+        guard rangefinderAccessState != .denied else { return }
         guard Self.canVerifyRangefinderAccess else {
             rangefinderAccessState = .unsupported
             return
@@ -4391,6 +4451,7 @@ final class RadarNearbyService: NSObject {
     }
 
     private func reconcileRangefinderReadiness() {
+        guard rangefinderAccessState != .denied else { return }
         guard Self.canVerifyRangefinderAccess else {
             rangefinderAccessState = .unsupported
             return
@@ -4713,6 +4774,7 @@ final class RadarNearbyService: NSObject {
     private func canPresentIncomingInvitation(
         _ invitation: RadarIncomingInvitation
     ) -> Bool {
+        guard canDisplayDirectory else { return false }
         guard let sourcePeerID = invitation.sourcePeerID else { return true }
         let key = RadarReceivedRoomInviteKey(
             sourcePeerID: sourcePeerID,

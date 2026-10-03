@@ -295,7 +295,13 @@ final class OnboardingPermissionCoordinator {
 
     private(set) var notificationsStatus: OnboardingPermissionStatus = .notDetermined
     private(set) var cameraStatus: OnboardingPermissionStatus = .notDetermined
-    private(set) var localNetworkStatus: OnboardingPermissionStatus
+    private(set) var localNetworkStatus: OnboardingPermissionStatus {
+        didSet {
+            guard oldValue != localNetworkStatus else { return }
+            onLocalNetworkStatusChange?(localNetworkStatus)
+        }
+    }
+    @ObservationIgnored var onLocalNetworkStatusChange: ((OnboardingPermissionStatus) -> Void)?
 
     @ObservationIgnored
     private let pushNotifications: PushNotificationCoordinator

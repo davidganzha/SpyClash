@@ -1,3 +1,5 @@
+import { ROOM_INVITE_LIFETIME_MS } from "./room-invite-visibility.ts";
+
 type Entity = Record<string, any>;
 type Persist = <T>(writer: () => Promise<T>) => Promise<T>;
 
@@ -76,7 +78,15 @@ function inboxProjection(
 
 export function reusablePendingInviteEventID(
   invite: Entity | null | undefined,
+  now = new Date(),
 ): string {
+  const issuedAt = Date.parse(
+    clean(invite?.created_at || invite?.created_date),
+  );
+  if (
+    Number.isFinite(issuedAt) &&
+    issuedAt + ROOM_INVITE_LIFETIME_MS <= now.getTime()
+  ) return "";
   return clean(invite?.status) === "pending"
     ? clean(invite?.notification_event_id)
     : "";
@@ -205,6 +215,8 @@ export async function cancelCommunityPushEvent(input: {
   now?: Date;
   randomUUID?: () => string;
 }): Promise<number> {
+  // Legacy sources without an event id must never cancel unrelated rows.
+  if (!clean(input.sourceEventID)) return 0;
   const events = await input.store.filter({
     source_event_id: clean(input.sourceEventID),
     event_type: input.eventType,
@@ -212,28 +224,53 @@ export async function cancelCommunityPushEvent(input: {
   const now = (input.now || new Date()).toISOString();
   const randomUUID = input.randomUUID || (() => crypto.randomUUID());
   let cancelled = 0;
-  for (const event of events) {
-    if (!clean(event.id) || clean(event.state) === "cancelled") continue;
-    const result: Entity = await input.persist(() =>
-      input.store.updateMany({
-        id: event.id,
-        state: event.state,
-        lease_token: event.lease_token,
-        revision: event.revision,
-      }, {
-        $set: {
-          state: "cancelled",
-          inbox_visible: false,
-          lease_token: "",
-          lease_until: now,
-          revision: randomUUID(),
-          next_attempt_at: null,
-          last_error_code: clean(input.reason).slice(0, 80),
-          updated_at: now,
-        },
-      })
-    );
-    cancelled += Number(result?.updated) === 1 ? 1 : 0;
+  for (const original of events) {
+    if (!clean(original.id)) continue;
+    let event = original;
+    let resolved = false;
+    for (let attempt = 0; attempt < 3; attempt += 1) {
+      if (clean(event.state) === "cancelled" && event.inbox_visible !== true) {
+        resolved = true;
+        break;
+      }
+      const result: Entity = await input.persist(() =>
+        input.store.updateMany({
+          id: event.id,
+          state: event.state,
+          lease_token: event.lease_token,
+          revision: event.revision,
+        }, {
+          $set: {
+            state: "cancelled",
+            inbox_visible: false,
+            lease_token: "",
+            lease_until: now,
+            revision: randomUUID(),
+            next_attempt_at: null,
+            last_error_code: clean(input.reason).slice(0, 80),
+            updated_at: now,
+          },
+        })
+      );
+      if (Number(result?.updated) === 1) {
+        cancelled += 1;
+        resolved = true;
+        break;
+      }
+      const current: Entity[] = await input.store.filter({ id: event.id }) ||
+        [];
+      if (!current.length) {
+        resolved = true;
+        break;
+      }
+      event = current[0];
+    }
+    if (!resolved) {
+      // The caller must retain the source for an idempotent cleanup retry.
+      throw Object.assign(new Error("Notification cancellation is pending"), {
+        status: 503,
+      });
+    }
   }
   return cancelled;
 }

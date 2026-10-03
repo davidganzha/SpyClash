@@ -15,27 +15,28 @@ final class WordPackPersistenceIntegrationTests: XCTestCase {
         return client
     }
 
-    func testManualCardsSaveOnlySelectedWordsAndReopenFromList() async throws {
+    func testManualWordDeletionPersistsInCreatePayloadAndReopenedList() async throws {
         let store = WordPackFixtureStore()
         let client = makeClient(store: store)
         defer { WordPackFixtureURLProtocol.handler = nil }
         var draft = WordPackDraft(name: "  QA   Places ", wordsText: "Harbor, Museum; Airport\nHARBOR")
-        draft.toggleWord("Museum")
+        draft.removeWord("Museum")
+        XCTAssertFalse(draft.wordAnalysis.words.contains("Museum"))
         // This is the same draft operation invoked by Save for unsubmitted input.
         draft.addWords("Vault; Airport")
         XCTAssertTrue(draft.isValid)
 
         let saved = try await client.createWordPack(
             name: draft.normalizedName, category: draft.normalizedCategory,
-            words: draft.selectedWords, ownerEmail: "fixture@example.invalid"
+            words: draft.words, ownerEmail: "fixture@example.invalid"
         )
         let listed = try await client.wordPacks(ownerEmail: "fixture@example.invalid")
         let reopened = WordPackDraft(pack: try XCTUnwrap(listed.first))
         XCTAssertEqual(saved.name, "QA Places")
         XCTAssertEqual(reopened.normalizedName, "QA Places")
         XCTAssertEqual(reopened.normalizedCategory, "QA Places")
-        XCTAssertEqual(reopened.selectedWords, ["Harbor", "Airport", "Vault"])
-        XCTAssertEqual(reopened.wordAnalysis.words, reopened.selectedWords)
+        XCTAssertEqual(reopened.words, ["Harbor", "Airport", "Vault"])
+        XCTAssertEqual(reopened.wordAnalysis.words, reopened.words)
         XCTAssertFalse(reopened.wordAnalysis.words.contains("Museum"))
         let writes = store.requests.filter { $0.action == "create" }
         XCTAssertEqual(writes.count, 1)
@@ -45,7 +46,7 @@ final class WordPackPersistenceIntegrationTests: XCTestCase {
         XCTAssertEqual(store.requests.map(\.action), ["create", "list"])
     }
 
-    func testEditCardsCanRestoreAWordThenSaveAndReopenWithoutExcludedWords() async throws {
+    func testEditedWordDeletionPersistsInUpdatePayloadAndReopenedList() async throws {
         let original = WordPack(
             id: "fixture-existing", name: "Places", category: "Travel",
             words: ["Harbor", "Museum", "Airport", "Vault"],
@@ -57,15 +58,14 @@ final class WordPackPersistenceIntegrationTests: XCTestCase {
         let listed = try await client.wordPacks(ownerEmail: "fixture@example.invalid")
         let pack = try XCTUnwrap(listed.first)
         var draft = WordPackDraft(pack: pack)
-        draft.toggleWord("Harbor")
-        draft.toggleWord("Harbor")
-        draft.toggleWord("Museum")
+        draft.removeWord("Museum")
+        XCTAssertFalse(draft.wordAnalysis.words.contains("Museum"))
         draft.addWords("Embassy, VAULT")
         draft.name = "Edited Places"
 
         _ = try await client.updateWordPack(
             pack: pack, name: draft.normalizedName, category: draft.normalizedCategory,
-            words: draft.selectedWords
+            words: draft.words
         )
         let refreshed = try await client.wordPacks(ownerEmail: "fixture@example.invalid")
         let reopenedPack = try XCTUnwrap(refreshed.first)
@@ -73,14 +73,14 @@ final class WordPackPersistenceIntegrationTests: XCTestCase {
         XCTAssertEqual(refreshed.count, 1)
         XCTAssertEqual(reopenedPack.id, original.id)
         XCTAssertEqual(reopened.normalizedName, "Edited Places")
-        XCTAssertEqual(reopened.selectedWords, ["Harbor", "Airport", "Vault", "Embassy"])
-        XCTAssertEqual(reopened.wordAnalysis.words, reopened.selectedWords)
+        XCTAssertEqual(reopened.words, ["Harbor", "Airport", "Vault", "Embassy"])
+        XCTAssertEqual(reopened.wordAnalysis.words, reopened.words)
         XCTAssertEqual(store.requests.map(\.action), ["list", "update", "list"])
         XCTAssertEqual(store.requests[1].packID, original.id)
-        XCTAssertEqual(store.requests[1].words, reopened.selectedWords)
+        XCTAssertEqual(store.requests[1].words, reopened.words)
     }
 
-    func testGeneratedCardsPersistSelectionAndLargeSavedPackIsNotTruncated() async throws {
+    func testGeneratedWordDeletionPersistsAndLargeSavedPackIsNotTruncated() async throws {
         let store = WordPackFixtureStore()
         let client = makeClient(store: store)
         defer { WordPackFixtureURLProtocol.handler = nil }
@@ -89,20 +89,21 @@ final class WordPackPersistenceIntegrationTests: XCTestCase {
             GeneratedWordPack(category: "Places", words: (1...252).map { "Place \($0)" }),
             fallbackName: "QA Generated Places"
         )
-        draft.toggleWord("Place 2")
-        let expected = draft.selectedWords
+        draft.removeWord("Place 2")
+        XCTAssertEqual(draft.wordAnalysis.words.count, 251)
+        let expected = draft.words
         _ = try await client.createWordPack(
             name: draft.normalizedName, category: draft.normalizedCategory,
             words: expected, ownerEmail: "fixture@example.invalid"
         )
         let listed = try await client.wordPacks(ownerEmail: "fixture@example.invalid")
         let reopened = WordPackDraft(pack: try XCTUnwrap(listed.first))
-        XCTAssertEqual(reopened.selectedWords, expected)
-        XCTAssertEqual(reopened.selectedWords.count, 251)
-        XCTAssertEqual(reopened.selectedWords.last, "Place 252")
-        XCTAssertFalse(reopened.selectedWords.contains("Place 2"))
+        XCTAssertEqual(reopened.words, expected)
+        XCTAssertEqual(reopened.words.count, 251)
+        XCTAssertEqual(reopened.words.last, "Place 252")
+        XCTAssertFalse(reopened.words.contains("Place 2"))
         let restoredCount = LocalWordPool.restoredCount(Double(expected.count), hasCustomTheme: false)
-        XCTAssertEqual(LocalWordPool.playableWords(reopened.selectedWords, selectedCount: Int(restoredCount)), expected)
+        XCTAssertEqual(LocalWordPool.playableWords(reopened.words, selectedCount: Int(restoredCount)), expected)
     }
 }
 

@@ -401,7 +401,7 @@ struct LimitlessCopy {
             LimitlessFeature(
                 id: "unlimited",
                 title: text("Limitless", "Безлимит", "Sin limites", "Безліміт"),
-                detail: text("Unlimited AI themes and word generation for every new mission.", "Неограниченная AI-генерация тем и слов для каждой новой миссии.", "Temas y palabras generados con IA sin limite para cada nueva mision.", "Необмежена ШІ-генерація тем і слів для кожної нової місії."),
+                detail: text("Create and save unlimited word packs, with unlimited AI theme and word generation.", "Создавай и сохраняй неограниченное количество паков слов. AI-генерация тем и слов — без лимита.", "Crea y guarda paquetes de palabras sin límite, con generación ilimitada de temas y palabras con IA.", "Створюй і зберігай необмежену кількість паків слів. ШІ-генерація тем і слів — без ліміту."),
                 systemImage: "infinity"
             ),
             LimitlessFeature(

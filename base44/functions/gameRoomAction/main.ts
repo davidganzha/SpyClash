@@ -23,6 +23,7 @@ import {
   withRoomWriteLeases,
 } from "./room-write-lifecycle.ts";
 import { projectRoomForClient } from "./room-projection.ts";
+import { resolveRoomInvitesAfterJoin } from "./room-invite-resolution.ts";
 import { loadLeaderboard } from "./leaderboard.ts";
 import { reconcileCommunityProfileMirrors } from "./community-profile-mirror.ts";
 import { runCommunityProfileBackfillPage } from "./community-profile-backfill.ts";
@@ -1928,7 +1929,7 @@ async function joinRoom(base44, room, user, body) {
   if (!alreadyJoined && players(room).length >= 12) {
     throw Object.assign(new Error("Room is full"), { status: 409 });
   }
-  return await updateRoomWithRetry(
+  const joinedRoom = await updateRoomWithRetry(
     base44,
     room,
     (latest) => {
@@ -2059,6 +2060,15 @@ async function joinRoom(base44, room, user, body) {
         player.client_capabilities,
       ),
   );
+  await resolveRoomInvitesAfterJoin({
+    store: base44.asServiceRole.entities.RoomInvite,
+    room: joinedRoom,
+    userID: user.id,
+    userEmail: user.email,
+    assertActorLease: () =>
+      assertRoomHistoryPersistenceBoundary(base44, user.id),
+  });
+  return joinedRoom;
 }
 
 async function beginReadyCheck(base44, room, user) {
@@ -2102,18 +2112,13 @@ function returnToLobbyVoteMatches(room, actorEmailValue, requestedVote) {
     return requestedVote === true && !clean(room?.match_id) &&
       !clean(room?.game_started_at) && readyPlayers(room).length === 0;
   }
-  if (status !== "playing") return false;
-  const actorKey = clean(actorEmailValue).toLocaleLowerCase();
-  const hasVote = readyPlayers(room).some((email) =>
-    clean(email).toLocaleLowerCase() === actorKey
-  );
-  return hasVote === requestedVote;
+  return false;
 }
 
 function returnToLobbyResetRequiresLeases() {
   return Object.assign(
     new Error(
-      "The final return-to-lobby vote must retry with lifecycle leases.",
+      "Returning everyone to the lobby requires lifecycle leases.",
     ),
     {
       status: 409,
@@ -2125,17 +2130,20 @@ function returnToLobbyResetRequiresLeases() {
 
 async function voteReturnToLobby(base44, room, user, body, options = {}) {
   requirePlayer(room, user);
+  requireHost(room, user);
   assertActionMatchGeneration(room, body);
   const requestedVote = body?.return_to_lobby_vote;
-  // Ordinary vote toggles are safe single-room CAS writes. A unanimous vote
-  // also rewrites roster and match state, so only the participant-leased path
-  // may commit that reset. One fast CAS attempt prevents a contention retry
-  // from re-evaluating a formerly ordinary vote as an unleased final vote.
+  // Returning everyone clears the active match and roster state. Always use
+  // participant leases, and revalidate host and match on each CAS snapshot.
   const allowLobbyReturnReset = options.allowLobbyReturnReset !== false;
   return await updateRoomWithRetry(
     base44,
     room,
     (latest) => {
+      requirePlayer(latest, user);
+      requireHost(latest, user);
+      assertActionMatchGeneration(latest, body);
+      assertGameActionAllowedByDeadline(latest, "vote_return_to_lobby");
       const transition = activeGameLobbyReturnTransition(
         latest,
         user.email,
@@ -3766,8 +3774,8 @@ function canUseFastRoomAction(action, room, user, body) {
   ) return false;
   if (action === "vote_return_to_lobby") {
     if (pendingTerminalIntent(room)) return false;
-    // The pure transition classifier fails closed for the unanimous reset.
-    // A fresh HTTP retry re-runs this decision against the latest revision.
+    // Host return always resets the room and therefore requires leases.
+    // The transition classifier also rejects legacy guest vote requests.
     return activeGameLobbyReturnCanUseFastPath(
       room,
       user.email,

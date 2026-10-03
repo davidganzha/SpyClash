@@ -812,12 +812,12 @@ final class MembershipTests: XCTestCase {
         XCTAssertEqual(LimitlessPrimaryAction.resolve(isPreview: false, hasAccess: false, isBusy: false, isPending: false, accessIsUnknown: false, canPurchase: true, hasProduct: true, storeCanPurchase: true), .purchase)
     }
 
-    func testHistoricalCapabilitiesKeepStableOrderAndOriginalRussianCopy() {
+    func testCapabilitiesKeepStableOrderAndIncludeUnlimitedWordPacks() {
         let copy = LimitlessCopy(language: .ru)
         XCTAssertEqual(copy.features.map(\.id), ["unlimited", "profile_customization", "game_statistics"])
         XCTAssertEqual(copy.features.map(\.title), ["Безлимит", "Кастомизация профиля", "Статистика игр"])
         XCTAssertEqual(copy.historicalSubscribe, "ОФОРМИТЬ ПОДПИСКУ")
-        XCTAssertEqual(copy.features[0].detail, "Неограниченная AI-генерация тем и слов для каждой новой миссии.")
+        XCTAssertEqual(copy.features[0].detail, "Создавай и сохраняй неограниченное количество паков слов. AI-генерация тем и слов — без лимита.")
     }
 
     func testUnlockPresentationRequiresVerifiedTransitionAndFeedbackIsOnce() async throws {

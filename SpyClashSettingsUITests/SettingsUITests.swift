@@ -140,3 +140,112 @@ final class SettingsUITests: XCTestCase {
         XCTAssertEqual(XCTWaiter.wait(for: [expectation], timeout: 5), .completed)
     }
 }
+
+/// Uses only synthetic room and Community previews; no permission prompts,
+/// friend mutations, or reports are sent to the backend.
+@MainActor
+final class LobbyFeedbackUITests: XCTestCase {
+    private var app: XCUIApplication!
+
+    override func setUp() async throws {
+        continueAfterFailure = false
+        app = XCUIApplication(bundleIdentifier: "com.spyclash.ios")
+    }
+
+    override func tearDown() async throws {
+        app.terminate()
+    }
+
+    func testLocalNetworkDenialRemovesRadarFromLobbyPagesAndQRSheet() {
+        assertRadarHidden(for: "--spyclash-preview-local-network-denied")
+    }
+
+    func testNearbyInteractionDenialRemovesRadarFromLobbyPagesAndQRSheet() {
+        assertRadarHidden(for: "--spyclash-preview-rangefinder=denied")
+    }
+
+    func testLongPressLobbyPlayerOpensTheirProfileWithRelationshipAndReportActions() {
+        launchLobby()
+        let player = app.staticTexts["CIPHER"].firstMatch
+        reveal(player)
+        player.press(forDuration: 0.7)
+
+        let profileOpened = app.staticTexts["OPERATIVE NETWORK"].waitForExistence(timeout: 5)
+        if !profileOpened {
+            attachScreenshot("lobby-long-press-profile-open-failure")
+            let hierarchy = XCTAttachment(string: app.debugDescription)
+            hierarchy.name = "lobby-long-press-accessibility"
+            hierarchy.lifetime = .keepAlways
+            add(hierarchy)
+        }
+        XCTAssertTrue(profileOpened)
+        let report = app.buttons["REPORT"].firstMatch
+        reveal(report)
+        XCTAssertTrue(report.isEnabled)
+        // Cipher is already a friend in CommunityPreview, so Remove is the
+        // correct relationship action for this exact lobby player.
+        XCTAssertTrue(app.buttons["REMOVE"].firstMatch.isEnabled)
+        XCTAssertFalse(app.buttons["ADD OPERATIVE"].exists)
+        attachScreenshot("lobby-long-press-cipher-profile-actions")
+    }
+
+    private func assertRadarHidden(for deniedPermissionArgument: String) {
+        launchLobby(extraArguments: [deniedPermissionArgument, "--spyclash-preview-room-access=radar"])
+        let pages = app.descendants(matching: .any)
+            .matching(identifier: "onlineRoom.accessPages").firstMatch
+        XCTAssertTrue(pages.waitForExistence(timeout: 10))
+        assertValue(pages, "Page 1 of 3")
+        XCTAssertFalse(app.descendants(matching: .any)["onlineRoom.radarDirectory"].exists)
+        pages.swipeLeft()
+        assertValue(pages, "Page 2 of 3")
+        pages.swipeLeft()
+        assertValue(pages, "Page 3 of 3")
+        XCTAssertTrue(app.descendants(matching: .any)["onlineRoom.friendsDirectory"].exists)
+        XCTAssertFalse(app.descendants(matching: .any)["onlineRoom.radarDirectory"].exists)
+        attachScreenshot("lobby-denied-radar-three-pages")
+
+        launchLobby(extraArguments: [deniedPermissionArgument, "--spyclash-preview-sheet=roomQR"])
+        XCTAssertTrue(app.buttons["roomQR.close"].waitForExistence(timeout: 10))
+        XCTAssertTrue(app.buttons["roomQR.openFriends"].exists)
+        XCTAssertTrue(app.buttons["roomQR.share"].exists)
+        XCTAssertFalse(app.buttons["roomQR.openRadar"].exists)
+        attachScreenshot("qr-denied-radar-hidden")
+    }
+
+    private func launchLobby(extraArguments: [String] = []) {
+        app.terminate()
+        app.launchArguments = [
+            "--spyclash-ui-preview", "--spyclash-preview-tab=game",
+            "--spyclash-preview-room=waiting", "--spyclash-preview-lang=en"
+        ] + extraArguments
+        app.launch()
+    }
+
+    private func reveal(_ element: XCUIElement) {
+        for _ in 0..<10 {
+            // SwiftUI can report a row behind the fixed bottom room controls
+            // as hittable. Move it into the unobscured viewport before acting.
+            if element.isHittable,
+               element.frame.maxY < app.frame.maxY - 160 {
+                return
+            }
+            app.swipeUp()
+        }
+        XCTAssertTrue(element.isHittable && element.frame.maxY < app.frame.maxY - 160,
+                      "Cannot reach unobscured element \(element.identifier)")
+    }
+
+    private func assertValue(_ element: XCUIElement, _ value: String) {
+        let expected = XCTNSPredicateExpectation(
+            predicate: NSPredicate(format: "value == %@", value), object: element
+        )
+        XCTAssertEqual(XCTWaiter.wait(for: [expected], timeout: 5), .completed)
+    }
+
+    private func attachScreenshot(_ name: String) {
+        let attachment = XCTAttachment(screenshot: app.screenshot())
+        attachment.name = name
+        attachment.lifetime = .keepAlways
+        add(attachment)
+    }
+}

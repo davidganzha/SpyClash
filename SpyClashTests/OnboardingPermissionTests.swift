@@ -1017,18 +1017,57 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
     }
 
     @MainActor
-    func testRadarOutgoingInvitationRemainsAvailableWithoutPreciseDistance() async throws {
+    func testDeniedNearbyInteractionClearsDirectoryAndBlocksStaleOutgoingInvitation() async throws {
+        let user = try JSONDecoder().decode(
+            SpyUser.self,
+            from: Data(#"{"id":"ni-denied-user","email":"ni-denied@example.invalid"}"#.utf8)
+        )
         let radar = RadarNearbyService()
+        defer { radar.configure(user: nil, allowsTransport: false) }
+        radar.configure(user: user)
         radar.installPreviewRangingPeers()
         let peer = try XCTUnwrap(radar.peers.first)
         let room = GameRoom.previewRoom(status: "waiting")
 
         radar.installPreviewRangefinderAccessState(.denied)
+        XCTAssertTrue(radar.hasDeniedPermission)
+        XCTAssertFalse(radar.canDisplayDirectory)
+        XCTAssertTrue(radar.peers.isEmpty)
         let deniedResult = await radar.toggleInvitation(peer, to: room)
-        XCTAssertEqual(deniedResult, .sent)
-        XCTAssertEqual(radar.invitationState(for: peer.id), .waiting)
+        XCTAssertEqual(deniedResult, .unavailable)
+        XCTAssertNil(radar.invitationState(for: peer.id))
 
+        // Capability refresh and transport cleanup cannot reinterpret an
+        // explicit denial as unsupported hardware and expose the directory.
         radar.stopScanning()
+        radar.setApplicationActive(true)
+        radar.startScanning()
+        XCTAssertEqual(radar.rangefinderAccessState, .denied)
+        XCTAssertFalse(radar.canDisplayDirectory)
+        XCTAssertTrue(radar.peers.isEmpty)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, 0)
+        XCTAssertEqual(radar.browserStartCountForTesting, 0)
+    }
+
+    @MainActor
+    func testUnsupportedNearbyInteractionPreservesDirectoryAndInvitationFallback() async throws {
+        let user = try JSONDecoder().decode(
+            SpyUser.self,
+            from: Data(#"{"id":"ni-unsupported-user","email":"ni-unsupported@example.invalid"}"#.utf8)
+        )
+        let radar = RadarNearbyService()
+        defer { radar.configure(user: nil, allowsTransport: false) }
+        radar.configure(user: user)
+        radar.installPreviewRangingPeers()
+        radar.installPreviewRangefinderAccessState(.unsupported)
+        let peer = try XCTUnwrap(radar.peers.first)
+
+        XCTAssertFalse(radar.hasDeniedPermission)
+        XCTAssertTrue(radar.canDisplayDirectory)
+        XCTAssertFalse(radar.peers.isEmpty)
+        let result = await radar.toggleInvitation(peer, to: .previewRoom(status: "waiting"))
+        XCTAssertEqual(result, .sent)
+        XCTAssertEqual(radar.invitationState(for: peer.id), .waiting)
     }
 
     @MainActor

@@ -1,4 +1,5 @@
 import { assert, assertEquals, assertStringIncludes } from "jsr:@std/assert@1";
+import { projectRoomForClient } from "./room-projection.ts";
 
 Deno.test("room writes use a custom monotonic CAS instead of system timestamps", async () => {
   const source = await Deno.readTextFile(
@@ -79,9 +80,13 @@ Deno.test("association spin settlement is recoverable by every active player", a
 
 Deno.test("waiting rejoin refreshes capability while explicit active departure stays hidden", async () => {
   const source = await Deno.readTextFile(new URL("./main.ts", import.meta.url));
-  const projection = await Deno.readTextFile(
-    new URL("./room-projection.ts", import.meta.url),
-  );
+  const projection = projectRoomForClient({
+    id: "room-1",
+    status: "waiting",
+    host_email: "host@example.com",
+    players: [{ email: "host@example.com", user_id: "host-id" }],
+    departed_player_emails: ["departed@example.com"],
+  }, { email: "host@example.com" })!;
   const schema = JSON.parse(
     await Deno.readTextFile(
       new URL("../../entities/GameRoom.jsonc", import.meta.url),
@@ -138,7 +143,7 @@ Deno.test("waiting rejoin refreshes capability while explicit active departure s
     "admin",
   );
   assertEquals(
-    projection.includes("departed_player_emails"),
+    "departed_player_emails" in projection,
     false,
     "explicit departure tombstones are server-only",
   );

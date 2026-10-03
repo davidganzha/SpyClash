@@ -21,7 +21,7 @@ final class WordPackCardsUITests: XCTestCase {
         app.terminate()
     }
 
-    func testManualCreationSavesCrossedOutSelectionAndPendingInputThenReopens() {
+    func testManualCreationDeletesWordsAndSavesPendingInputThenReopens() {
         app.buttons["wordPacks.add"].tap()
         app.buttons["wordPacks.editor.method.manual"].tap()
         let name = app.textFields["wordPacks.editor.name"]
@@ -34,12 +34,12 @@ final class WordPackCardsUITests: XCTestCase {
         input.typeText("Harbor; Museum; Airport")
         app.buttons["wordPacks.editor.addWords"].tap()
 
-        let excluded = card("Museum")
-        reveal(excluded, upward: false)
-        XCTAssertTrue(excluded.isSelected)
-        excluded.tap()
-        XCTAssertFalse(excluded.isSelected)
-        XCTAssertEqual(excluded.value as? String, "Crossed out")
+        let removed = card("Museum")
+        reveal(removed, upward: false)
+        XCTAssertEqual(removed.label, "Remove Museum")
+        removed.tap()
+        XCTAssertFalse(removed.exists)
+        XCTAssertEqual(app.staticTexts["wordPacks.editor.wordCountLabel"].label, "2 UNIQUE WORDS")
 
         reveal(input)
         input.tap()
@@ -48,41 +48,37 @@ final class WordPackCardsUITests: XCTestCase {
         app.buttons["wordPacks.editor.save"].tap()
         reopenCreatedPack(named: "QA Manual")
         reveal(card("Harbor"))
-        XCTAssertTrue(card("Harbor").isSelected)
-        XCTAssertTrue(card("Airport").isSelected)
-        XCTAssertTrue(card("Vault").isSelected)
+        XCTAssertTrue(card("Harbor").exists)
+        XCTAssertTrue(card("Airport").exists)
+        XCTAssertTrue(card("Vault").exists)
         XCTAssertFalse(card("Museum").exists)
         XCTAssertFalse(app.textViews.firstMatch.exists)
         attachScreenshot("manual-cards-saved-and-reopened")
     }
 
-    func testEditingCanCrossOutAndRestoreCardsBeforeSaveAndReopen() {
+    func testEditingDeletesCardsImmediatelyAndKeepsThemRemovedAfterReopening() {
         let edit = app.buttons["wordPacks.edit.preview-pack-places"]
         reveal(edit)
         edit.tap()
         let embassy = card("Embassy")
         reveal(embassy)
-        XCTAssertTrue(embassy.isSelected)
-        embassy.tap()
-        XCTAssertFalse(embassy.isSelected)
-        embassy.tap()
-        XCTAssertTrue(embassy.isSelected)
+        XCTAssertTrue(embassy.exists)
         let harbor = card("Harbor")
         harbor.tap()
-        XCTAssertFalse(harbor.isSelected)
+        XCTAssertFalse(harbor.exists)
         app.buttons["wordPacks.editor.save"].tap()
         XCTAssertTrue(edit.waitForExistence(timeout: 5))
         reveal(edit, upward: false)
         edit.tap()
         reveal(card("Embassy"))
-        XCTAssertTrue(card("Embassy").isSelected)
-        XCTAssertTrue(card("Casino").isSelected)
+        XCTAssertTrue(card("Embassy").exists)
+        XCTAssertTrue(card("Casino").exists)
         XCTAssertFalse(card("Harbor").exists)
         XCTAssertFalse(app.textViews.firstMatch.exists)
         attachScreenshot("edited-cards-saved-and-reopened")
     }
 
-    func testGeneratedDraftUsesTheSameCardsAndSavedSelection() {
+    func testGeneratedDraftDeletesCardsBeforeSaving() {
         app.buttons["wordPacks.add"].tap()
         app.buttons["wordPacks.editor.method.ai"].tap()
         let theme = app.textFields["wordPacks.editor.theme"]
@@ -93,13 +89,13 @@ final class WordPackCardsUITests: XCTestCase {
         XCTAssertTrue(app.buttons["wordPacks.editor.save"].waitForExistence(timeout: 10))
         let cipher = card("Cipher")
         reveal(cipher)
-        XCTAssertTrue(cipher.isSelected)
+        XCTAssertTrue(cipher.exists)
         cipher.tap()
-        XCTAssertFalse(cipher.isSelected)
+        XCTAssertFalse(cipher.exists)
         app.buttons["wordPacks.editor.save"].tap()
         reopenCreatedPack(named: "QA Generated")
         reveal(card("Embassy"))
-        XCTAssertTrue(card("Embassy").isSelected)
+        XCTAssertTrue(card("Embassy").exists)
         XCTAssertFalse(card("Cipher").exists)
         XCTAssertFalse(app.textViews.firstMatch.exists)
         attachScreenshot("generated-cards-saved-and-reopened")

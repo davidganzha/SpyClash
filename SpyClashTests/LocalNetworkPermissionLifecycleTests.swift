@@ -199,6 +199,151 @@ final class LocalNetworkPermissionLifecycleTests: XCTestCase {
         XCTAssertEqual(coordinator.localNetworkStatus, .denied)
         XCTAssertTrue(coordinator.localNetworkStatus.requiresLocalNetworkSettings)
     }
+
+#if DEBUG
+    func testRadarHasNoDirectoryOrTransportWhileLocalAccessIsUnknownOrProbing() async throws {
+        let browsers = PermissionBrowserHarness()
+        let clock = PermissionTestClock()
+        defer { clock.wakeAll() }
+        let coordinator = makeCoordinator(browsers, clock)
+        let radar = RadarNearbyService(localNetworkPermissions: coordinator)
+        defer { radar.configure(user: nil, allowsTransport: false) }
+        let user = try radarUser()
+        radar.configure(user: user)
+        radar.startScanning()
+
+        XCTAssertEqual(coordinator.localNetworkStatus, .notDetermined)
+        XCTAssertFalse(radar.canDisplayDirectory)
+        XCTAssertFalse(radar.hasDeniedPermission, "Unknown access is not a confirmed denial")
+        XCTAssertTrue(radar.peers.isEmpty)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, 0)
+
+        let started = expectBrowser(browsers)
+        radar.setApplicationActive(true)
+        await fulfillment(of: [started], timeout: 1)
+        XCTAssertEqual(coordinator.localNetworkStatus, .requesting)
+        radar.startScanning()
+        XCTAssertFalse(radar.canDisplayDirectory)
+        XCTAssertEqual(radar.scanState, .idle)
+        XCTAssertTrue(radar.peers.isEmpty)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, 0)
+        XCTAssertEqual(radar.browserStartCountForTesting, 0)
+
+        browsers.browsers[0].emit(.failed(.posix(.ENETDOWN)))
+        await waitForStatus(.unavailable, coordinator: coordinator)
+        XCTAssertFalse(radar.canDisplayDirectory)
+        XCTAssertFalse(radar.hasDeniedPermission)
+    }
+
+    func testRevokedLocalAccessClearsVisiblePeersInvitationsAndBlocksTransport() async throws {
+        let browsers = PermissionBrowserHarness()
+        let clock = PermissionTestClock()
+        defer { clock.wakeAll() }
+        let coordinator = makeCoordinator(browsers, clock)
+        let grantedStarted = expectBrowser(browsers)
+        let grant = Task { await coordinator.request(.nearby) }
+        await fulfillment(of: [grantedStarted], timeout: 1)
+        browsers.browsers[0].emit(.ready)
+        _ = await grant.value
+
+        let radar = RadarNearbyService(localNetworkPermissions: coordinator)
+        defer { radar.configure(user: nil, allowsTransport: false) }
+        radar.configure(user: try radarUser())
+        radar.installPreviewRangingPeers()
+        let peer = try XCTUnwrap(radar.peers.first)
+        radar.presentForConfirmation(RadarIncomingInvitation(
+            roomCode: "ABC123", hostCallSign: "Host", hostAvatar: "🕵️"
+        ))
+        XCTAssertTrue(radar.canDisplayDirectory)
+        XCTAssertFalse(radar.peers.isEmpty)
+        XCTAssertNotNil(radar.incomingInvitation)
+
+        let started = expectBrowser(browsers)
+        let recheck = Task { await coordinator.request(.nearby) }
+        await fulfillment(of: [started], timeout: 1)
+        XCTAssertFalse(radar.canDisplayDirectory)
+        XCTAssertTrue(radar.peers.isEmpty, "A cached directory must disappear during revalidation")
+        XCTAssertNil(radar.incomingInvitation)
+        browsers.browsers[1].emit(.failed(policyDenied))
+        _ = await recheck.value
+
+        XCTAssertTrue(radar.hasDeniedPermission)
+        radar.startScanning()
+        radar.refreshTransportAfterLocalNetworkGrant()
+        XCTAssertFalse(radar.canDisplayDirectory)
+        XCTAssertTrue(radar.peers.isEmpty)
+        XCTAssertEqual(radar.scanState, .idle)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, 0)
+        let dispatch = await radar.toggleInvitation(peer, to: .previewRoom(status: "waiting"))
+        XCTAssertEqual(dispatch, .unavailable)
+
+        // A callback queued by the browser from the earlier grant cannot
+        // restore the directory or transport after that grant was revoked.
+        browsers.browsers[0].emit(.ready)
+        XCTAssertEqual(coordinator.localNetworkStatus, .denied)
+        XCTAssertFalse(radar.canDisplayDirectory)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, 0)
+    }
+
+    func testForegroundRecoveryRequiresFreshGrantBeforeResumingRequestedRadarScan() async throws {
+        let browsers = PermissionBrowserHarness()
+        let clock = PermissionTestClock()
+        defer { clock.wakeAll() }
+        let coordinator = makeCoordinator(browsers, clock)
+        let deniedStarted = expectBrowser(browsers)
+        let denied = Task { await coordinator.request(.nearby) }
+        await fulfillment(of: [deniedStarted], timeout: 1)
+        browsers.browsers[0].emit(.failed(policyDenied))
+        _ = await denied.value
+
+        let radar = RadarNearbyService(localNetworkPermissions: coordinator)
+        defer { radar.configure(user: nil, allowsTransport: false) }
+        radar.configure(user: try radarUser())
+        radar.startScanning()
+        XCTAssertTrue(radar.hasDeniedPermission)
+        XCTAssertFalse(radar.canDisplayDirectory)
+
+        let recheckStarted = expectBrowser(browsers)
+        radar.setApplicationActive(true)
+        await fulfillment(of: [recheckStarted], timeout: 1)
+        XCTAssertEqual(coordinator.localNetworkStatus, .requesting)
+        XCTAssertFalse(radar.canDisplayDirectory)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, 0)
+        browsers.browsers[1].emit(.ready)
+        await waitForStatus(.granted, coordinator: coordinator)
+
+        XCTAssertTrue(radar.canDisplayDirectory)
+        XCTAssertFalse(radar.hasDeniedPermission)
+        XCTAssertEqual(radar.scanState, .scanning)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, 1)
+        XCTAssertEqual(radar.browserStartCountForTesting, 1)
+    }
+
+    private func radarUser() throws -> SpyUser {
+        try JSONDecoder().decode(
+            SpyUser.self,
+            from: Data(#"{"id":"permission-radar-user","email":"permission-radar@example.invalid"}"#.utf8)
+        )
+    }
+
+    private func waitForStatus(
+        _ status: OnboardingPermissionStatus,
+        coordinator: OnboardingPermissionCoordinator
+    ) async {
+        let resolved = expectation(description: "Local permission resolves to \(status)")
+        let observer = Task { @MainActor in
+            while !Task.isCancelled {
+                if coordinator.localNetworkStatus == status {
+                    resolved.fulfill()
+                    return
+                }
+                await Task.yield()
+            }
+        }
+        await fulfillment(of: [resolved], timeout: 1)
+        observer.cancel()
+    }
+#endif
 }
 
 @MainActor

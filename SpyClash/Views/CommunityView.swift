@@ -147,6 +147,7 @@ struct CommunityView: View {
     let externalNetworkState: CommunityState?
     let onAttentionChange: (CommunityState) -> Void
     let onExit: () -> Void
+    var initialProfileUserID: String? = nil
 
     @State private var network: CommunityState?
     @State private var directory: [PublicSpyProfile] = []
@@ -194,7 +195,16 @@ struct CommunityView: View {
             if selectedTab == .me {
                 isSelfProfileTransitionPending = true
             }
-            await loadInitialContent()
+            if let initialProfileUserID {
+                await openProfile(initialProfileUserID, rememberingCurrent: false)
+                if !appState.shouldUsePreviewData {
+                    network = try? await appState.client.communityState()
+                }
+                isInitialLoading = false
+                didLoadInitialContent = true
+            } else {
+                await loadInitialContent()
+            }
             startProfileRealtime()
             await completePendingSelfProfileTransitionIfPossible()
         }
@@ -329,6 +339,18 @@ struct CommunityView: View {
             if let activeProfile {
                 profileScene(activeProfile)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
+            } else if let initialProfileUserID {
+                if isInitialLoading || isProfileLoading {
+                    SpySpinner(size: 28, accent: SpyTheme.red)
+                        .frame(maxWidth: .infinity, minHeight: 180)
+                } else {
+                    Button {
+                        Task { await openProfile(initialProfileUserID, rememberingCurrent: false) }
+                    } label: {
+                        Label(localized(en: "RETRY PROFILE", ru: "ЗАГРУЗИТЬ ПРОФИЛЬ ПОВТОРНО", es: "REINTENTAR PERFIL", uk: "ЗАВАНТАЖИТИ ПРОФІЛЬ ПОВТОРНО"), systemImage: "arrow.clockwise")
+                    }
+                    .buttonStyle(SpyButtonStyle(variant: .outline))
+                }
             } else {
                 directoryScene
                     .transition(.opacity.combined(with: .move(edge: .leading)))
@@ -1696,6 +1718,8 @@ struct CommunityView: View {
         commentDraft = ""
         if let previousID = profileHistory.popLast() {
             await openProfile(previousID, rememberingCurrent: false)
+        } else if initialProfileUserID != nil {
+            onExit()
         } else {
             activeProfile = nil
             selectedTab = .network
@@ -2099,6 +2123,7 @@ struct CommunityView: View {
 
         do {
             let result = try await appState.client.communityRoomInviteAction("decline_room_invite", inviteID: invite.id)
+            Task { @MainActor in await appState.notificationInbox.refreshSummary() }
             await showActionSuccess(
                 actionID,
                 message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACIÓN RECHAZADA", uk: "ЗАПРОШЕННЯ ВІДХИЛЕНО")
@@ -2193,6 +2218,8 @@ struct CommunityView: View {
                 )
                 guard appState.user?.id == userID else { return }
                 clearPendingRoomInviteCleanup(inviteID, userID: userID)
+                await appState.notificationInbox.refreshSummary()
+                guard appState.user?.id == userID else { return }
                 networkRefreshGeneration += 1
                 await refreshNetworkFromServer(generation: networkRefreshGeneration)
                 return
@@ -2200,6 +2227,8 @@ struct CommunityView: View {
                 where CommunityRoomInviteCleanupPolicy.shouldClearAfterFailure(error) {
                 guard appState.user?.id == userID else { return }
                 clearPendingRoomInviteCleanup(inviteID, userID: userID)
+                await appState.notificationInbox.refreshSummary()
+                guard appState.user?.id == userID else { return }
                 networkRefreshGeneration += 1
                 await refreshNetworkFromServer(generation: networkRefreshGeneration)
                 return

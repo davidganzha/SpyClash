@@ -144,9 +144,11 @@ struct RoomQRSheet: View {
         if appState.canOpenRoomFriends(roomID: room.id) {
             HStack(spacing: 12) {
                 roomFriendsButton
-                roomRadarButton
+                if !appState.radarNearby.hasDeniedPermission {
+                    roomRadarButton
+                }
             }
-        } else {
+        } else if !appState.radarNearby.hasDeniedPermission {
             roomRadarButton
         }
     }

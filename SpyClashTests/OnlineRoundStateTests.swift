@@ -1919,254 +1919,105 @@ final class OnlineRoundStateTests: XCTestCase {
         XCTAssertTrue(explicitlyEmpty.returnToLobbyEligiblePlayersList.isEmpty)
     }
 
-    func testActiveLobbyReturnQuorumUsesTheAuthoritativeNonDepartedRoster() throws {
+    func testActiveLobbyReturnIsVisibleAndActionableOnlyForTheCurrentHost() throws {
         var room = GameRoom.previewRoom(status: "playing")
-        room.returnToLobbyEligiblePlayerEmails = [
-            room.playersList[0].email,
-            room.playersList[1].email
-        ]
-        room.readyPlayers = [
-            room.playersList[0].email,
-            room.playersList[2].email
-        ]
-
-        let eligible = ActiveLobbyReturnPolicy.presentation(
-            room: room,
-            accountUserID: "eligible-user",
-            currentUserEmail: room.playersList[1].email,
-            phase: .idle
-        )
-        XCTAssertTrue(eligible.isAvailable)
-        XCTAssertEqual(eligible.playerCount, 2)
-        XCTAssertEqual(
-            eligible.voteCount,
-            1,
-            "Votes from departed players must not count toward the displayed quorum"
-        )
-
-        let departed = ActiveLobbyReturnPolicy.presentation(
-            room: room,
-            accountUserID: "departed-user",
-            currentUserEmail: room.playersList[2].email,
-            phase: .idle
-        )
-        XCTAssertEqual(departed, .unavailable)
-        XCTAssertNil(
-            ActiveLobbyReturnPolicy.request(
-                room: room,
-                accountUserID: "departed-user",
-                currentUserEmail: room.playersList[2].email,
-                phase: .idle,
-                requestID: UUID()
+        let host = try XCTUnwrap(room.hostEmail)
+        room.returnToLobbyEligiblePlayerEmails = room.playersList.map(\.email)
+        for player in room.playersList {
+            let presentation = ActiveLobbyReturnPolicy.presentation(
+                room: room, accountUserID: "viewer-id", currentUserEmail: player.email, phase: .idle
             )
-        )
-
-        var explicitDepartedProjection = room
-        explicitDepartedProjection.returnToLobbyEligiblePlayerEmails = []
-        XCTAssertEqual(
-            ActiveLobbyReturnPolicy.presentation(
-                room: explicitDepartedProjection,
-                accountUserID: "departed-user",
-                currentUserEmail: room.playersList[2].email,
-                phase: .idle
-            ),
-            .unavailable,
-            "An explicit empty server projection must not fall back to the retained player list"
-        )
+            XCTAssertEqual(presentation.isAvailable, player.email == host)
+            let request = ActiveLobbyReturnPolicy.request(
+                room: room, accountUserID: "viewer-id", currentUserEmail: player.email,
+                phase: .idle, requestID: UUID()
+            )
+            XCTAssertEqual(request != nil, player.email == host)
+        }
+        room.returnToLobbyEligiblePlayerEmails = []
+        XCTAssertEqual(ActiveLobbyReturnPolicy.presentation(
+            room: room, accountUserID: "host-id", currentUserEmail: host, phase: .idle
+        ), .unavailable, "A departed host must not retain return controls")
     }
 
-    func testActiveLobbyReturnVoteIsOptimisticScopedAndRetryable() throws {
+    func testHostLobbyReturnIsExplicitScopedAndRetryableDespiteLegacyVotes() throws {
         var room = GameRoom.previewRoom(status: "playing")
         room.roomRevision = 10
-        let actorEmail = room.playersList[1].email
-        room.spectators = [room.playersList[2].email]
-        room.readyPlayers = [room.playersList[0].email, "stale@example.com"]
+        let host = try XCTUnwrap(room.hostEmail)
+        room.readyPlayers = [host]
         var state = ActiveLobbyReturnVoteState()
-
-        let request = try XCTUnwrap(
-            state.begin(
-                room: room,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail,
-                requestID: UUID()
-            )
-        )
-        XCTAssertTrue(request.targetVote)
-        XCTAssertNil(
-            state.begin(
-                room: room,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail,
-                requestID: UUID()
-            ),
-            "Only one return vote request may be active for the participant"
-        )
-
-        let pending = state.presentation(
-            room: room,
-            accountUserID: "actor-id",
-            currentUserEmail: actorEmail
-        )
-        XCTAssertEqual(pending.voteCount, 2)
-        XCTAssertEqual(
-            pending.playerCount,
-            room.playersList.count,
-            "Return-to-lobby unanimity includes every current room participant, including spectators"
-        )
-        XCTAssertTrue(pending.isSelected)
-        XCTAssertTrue(pending.isPending)
-
-        XCTAssertTrue(
-            state.fail(
-                request,
-                currentRoom: room,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail
-            )
-        )
-        let failed = state.presentation(
-            room: room,
-            accountUserID: "actor-id",
-            currentUserEmail: actorEmail
-        )
-        XCTAssertFalse(failed.isSelected, "A failed optimistic vote must revert to server truth")
-        XCTAssertTrue(failed.hasFailed)
-
-        let retry = try XCTUnwrap(
-            state.begin(
-                room: room,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail,
-                requestID: UUID()
-            )
-        )
-        XCTAssertTrue(retry.targetVote, "Retry preserves the explicit idempotent target vote")
-        XCTAssertFalse(
-            state.finish(request),
-            "A late response from the failed request ID must not finish its replacement retry"
-        )
+        let request = try XCTUnwrap(state.begin(
+            room: room, accountUserID: "host-id", currentUserEmail: host, requestID: UUID()
+        ))
+        XCTAssertTrue(request.targetVote, "A legacy vote cannot turn the host command into cancellation")
+        XCTAssertTrue(state.presentation(room: room, accountUserID: "host-id", currentUserEmail: host).isPending)
+        XCTAssertNil(state.begin(room: room, accountUserID: "host-id", currentUserEmail: host, requestID: UUID()))
+        XCTAssertTrue(state.fail(request, currentRoom: room, accountUserID: "host-id", currentUserEmail: host))
+        XCTAssertTrue(state.presentation(room: room, accountUserID: "host-id", currentUserEmail: host).hasFailed)
+        let retry = try XCTUnwrap(state.begin(
+            room: room, accountUserID: "host-id", currentUserEmail: host, requestID: UUID()
+        ))
+        XCTAssertTrue(retry.targetVote)
+        XCTAssertFalse(state.finish(request), "A stale response cannot finish its replacement")
         XCTAssertTrue(state.isPending(retry))
     }
 
-    func testActiveLobbyReturnAcceptsConfirmedVoteAndUnanimousWaitingOnlyForSameMatch() throws {
+    func testHostLobbyReturnRequiresConfirmedResetAndRejectsReplacementMatchOrAccount() throws {
         var room = GameRoom.previewRoom(status: "playing")
         room.roomRevision = 20
-        let actorEmail = room.playersList[1].email
-        var state = ActiveLobbyReturnVoteState()
-        let request = try XCTUnwrap(
-            state.begin(
-                room: room,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail,
-                requestID: UUID()
-            )
-        )
-
-        var confirmed = room
-        confirmed.readyPlayers = [actorEmail]
-        confirmed.roomRevision = 21
-        XCTAssertTrue(
-            ActiveLobbyReturnPolicy.canAdopt(
-                candidate: confirmed,
-                over: room,
-                request: request,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail
-            )
-        )
-
-        var unanimousWaiting = confirmed
-        unanimousWaiting.status = "waiting"
-        unanimousWaiting.readyPlayers = []
-        unanimousWaiting.matchID = nil
-        unanimousWaiting.gameStartedAt = nil
-        unanimousWaiting.roomRevision = 22
-        XCTAssertTrue(
-            ActiveLobbyReturnPolicy.canAdopt(
-                candidate: unanimousWaiting,
-                over: room,
-                request: request,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail
-            ),
-            "The terminal unanimous response intentionally clears the match scope"
-        )
-
-        var dirtyWaiting = unanimousWaiting
-        dirtyWaiting.gameStartedAt = room.gameStartedAt
-        XCTAssertFalse(
-            ActiveLobbyReturnPolicy.canAdopt(
-                candidate: dirtyWaiting,
-                over: room,
-                request: request,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail
-            ),
-            "Lost-response recovery requires proof that the old match was actually cleared"
-        )
-
-        var replacementMatch = room
-        replacementMatch.matchID = "replacement-match"
-        XCTAssertFalse(
-            ActiveLobbyReturnPolicy.canAdopt(
-                candidate: unanimousWaiting,
-                over: replacementMatch,
-                request: request,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail
-            ),
-            "A response from the previous match must not return a replacement match to its lobby"
-        )
-
-        var wrongMatchResponse = confirmed
-        wrongMatchResponse.matchID = "replacement-match"
-        XCTAssertFalse(
-            ActiveLobbyReturnPolicy.canAdopt(
-                candidate: wrongMatchResponse,
-                over: room,
-                request: request,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail
-            )
-        )
+        let host = try XCTUnwrap(room.hostEmail)
+        let request = try XCTUnwrap(ActiveLobbyReturnPolicy.request(
+            room: room, accountUserID: "host-id", currentUserEmail: host, phase: .idle, requestID: UUID()
+        ))
+        var legacyVote = room
+        legacyVote.readyPlayers = [host]
+        legacyVote.roomRevision = 21
+        XCTAssertFalse(ActiveLobbyReturnPolicy.canAdopt(
+            candidate: legacyVote, over: room, request: request, accountUserID: "host-id", currentUserEmail: host
+        ), "A recorded legacy vote is not proof that the room returned")
+        var reset = room
+        reset.status = "waiting"
+        reset.matchID = nil
+        reset.gameStartedAt = nil
+        reset.readyPlayers = []
+        reset.roomRevision = 22
+        XCTAssertTrue(ActiveLobbyReturnPolicy.canAdopt(
+            candidate: reset, over: room, request: request, accountUserID: "host-id", currentUserEmail: host
+        ))
+        var dirtyReset = reset
+        dirtyReset.gameStartedAt = room.gameStartedAt
+        XCTAssertFalse(ActiveLobbyReturnPolicy.canAdopt(
+            candidate: dirtyReset, over: room, request: request, accountUserID: "host-id", currentUserEmail: host
+        ))
+        var replacement = room
+        replacement.matchID = "replacement-match"
+        XCTAssertFalse(ActiveLobbyReturnPolicy.canAdopt(
+            candidate: reset, over: replacement, request: request, accountUserID: "host-id", currentUserEmail: host
+        ))
+        XCTAssertFalse(ActiveLobbyReturnPolicy.canAdopt(
+            candidate: reset, over: room, request: request, accountUserID: "replacement-account", currentUserEmail: host
+        ))
+        reset.roomRevision = 19
+        XCTAssertFalse(ActiveLobbyReturnPolicy.canAdopt(
+            candidate: reset, over: room, request: request, accountUserID: "host-id", currentUserEmail: host
+        ), "A stale waiting snapshot cannot erase a newer room revision")
     }
 
-    func testActiveLobbyReturnVoteCanBeCancelledBeforeUnanimity() throws {
-        var room = GameRoom.previewRoom(status: "playing")
-        room.roomRevision = 30
-        let actorEmail = room.playersList[1].email
-        room.readyPlayers = [actorEmail]
-        var state = ActiveLobbyReturnVoteState()
-        let cancellation = try XCTUnwrap(
-            state.begin(
-                room: room,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail,
-                requestID: UUID()
-            )
-        )
-        XCTAssertFalse(cancellation.targetVote)
-
-        let pending = state.presentation(
-            room: room,
-            accountUserID: "actor-id",
-            currentUserEmail: actorEmail
-        )
-        XCTAssertFalse(pending.isSelected)
-        XCTAssertEqual(pending.voteCount, 0)
-
-        var confirmed = room
-        confirmed.readyPlayers = []
-        confirmed.roomRevision = 31
-        XCTAssertTrue(
-            ActiveLobbyReturnPolicy.canAdopt(
-                candidate: confirmed,
-                over: room,
-                request: cancellation,
-                accountUserID: "actor-id",
-                currentUserEmail: actorEmail
-            )
-        )
+    func testLobbyPlayerProfileTargetsUseRosterUserIDAndNeverEmailAsPublicIdentity() throws {
+        var room = GameRoom.previewRoom(status: "waiting")
+        var player = room.playersList[1]
+        player.userID = "public-profile-id"
+        room.players?[1] = player
+        XCTAssertEqual(LobbyPlayerProfileTarget(player: player, room: room)?.id, "public-profile-id")
+        room.status = "ready_voting"
+        XCTAssertNotNil(LobbyPlayerProfileTarget(player: player, room: room))
+        room.status = "playing"
+        XCTAssertNil(LobbyPlayerProfileTarget(player: player, room: room))
+        room.status = "waiting"
+        player.userID = "stale-profile-id"
+        XCTAssertNil(LobbyPlayerProfileTarget(player: player, room: room))
+        player.userID = nil
+        XCTAssertNil(LobbyPlayerProfileTarget(player: player, room: room), "Missing public ids must not fall back to email")
     }
 
     func testRoomKickRequiresHostValidatedEmailAndOneRequestPerTarget() throws {

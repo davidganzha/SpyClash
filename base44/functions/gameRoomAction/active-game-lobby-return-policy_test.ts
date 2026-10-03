@@ -137,7 +137,7 @@ Deno.test("only a current non-departed player may vote", () => {
   assertEquals(departed.code, "return_to_lobby_not_player");
 });
 
-Deno.test("return voting is limited to started playing rooms", () => {
+Deno.test("host return is limited to started playing rooms", () => {
   for (
     const status of [
       "waiting",
@@ -165,13 +165,13 @@ Deno.test("return voting is limited to started playing rooms", () => {
       activeRoom({ status: " PLAYING " }),
       "p1@example.com",
       true,
-    ).patch,
-    { ready_players: ["p1@example.com"] },
+    ).didReset,
+    true,
   );
 });
 
-Deno.test("vote intent must be an explicit boolean", () => {
-  for (const value of [1, "true", null, undefined]) {
+Deno.test("host return requires explicit confirmation", () => {
+  for (const value of [false, 1, "true", null, undefined]) {
     const error = errorDetails(
       assertThrows(() =>
         activeGameLobbyReturnTransition(activeRoom(), "p1@example.com", value)
@@ -182,100 +182,60 @@ Deno.test("vote intent must be an explicit boolean", () => {
   }
 });
 
-Deno.test("repeat and cancellation converge idempotently", () => {
-  const room = activeRoom();
-  const first = activeGameLobbyReturnTransition(room, "p1@example.com", true);
-  assertEquals(first.patch, { ready_players: ["p1@example.com"] });
-  const voted = { ...room, ...first.patch };
-  assertEquals(
-    activeGameLobbyReturnTransition(voted, " P1@EXAMPLE.COM ", true).patch,
-    {},
-  );
-
-  const cancellation = activeGameLobbyReturnTransition(
-    voted,
-    "p1@example.com",
-    false,
-  );
-  assertEquals(cancellation.patch, { ready_players: [] });
-  const cancelled = { ...voted, ...cancellation.patch };
-  assertEquals(
-    activeGameLobbyReturnTransition(cancelled, "p1@example.com", false).patch,
-    {},
-  );
-});
-
-Deno.test("votes are canonicalized, deduplicated, and restricted to the current roster", () => {
-  const transition = activeGameLobbyReturnTransition(
-    activeRoom({
-      ready_players: [
-        " P1@EXAMPLE.COM ",
-        "p1@example.com",
-        "departed@example.com",
-      ],
-    }),
-    "p1@example.com",
-    true,
-  );
-  assertEquals(transition.didReset, false);
-  assertEquals(transition.votes, ["p1@example.com"]);
-  assertEquals(transition.patch, { ready_players: ["p1@example.com"] });
-});
-
-Deno.test("cancelling a vote prevents a premature reset", () => {
-  const transition = activeGameLobbyReturnTransition(
-    activeRoom({ ready_players: ["p1@example.com", "p2@example.com"] }),
-    "p2@example.com",
-    false,
-  );
-  assertEquals(transition.didReset, false);
-  assertEquals(transition.requiredVotes, 3);
-  assertEquals(transition.patch, { ready_players: ["p1@example.com"] });
-});
-
-Deno.test("only a non-resetting return vote qualifies for the fast CAS path", () => {
-  assertEquals(
-    activeGameLobbyReturnCanUseFastPath(
-      activeRoom(),
+Deno.test("guests cannot return the room even with all legacy votes present", () => {
+  for (
+    const ready_players of [[], [
       "p1@example.com",
-      true,
-    ),
-    true,
+      "p2@example.com",
+      "p3@example.com",
+    ]]
+  ) {
+    const error = errorDetails(
+      assertThrows(() =>
+        activeGameLobbyReturnTransition(
+          activeRoom({ ready_players }),
+          "p2@example.com",
+          true,
+        )
+      ),
+    );
+    assertEquals(error.status, 403);
+    assertEquals(error.code, "return_to_lobby_not_host");
+  }
+});
+
+Deno.test("host return never qualifies for an unleased fast CAS path", () => {
+  assertEquals(
+    activeGameLobbyReturnCanUseFastPath(activeRoom(), "p1@example.com", true),
+    false,
   );
   assertEquals(
     activeGameLobbyReturnCanUseFastPath(
       activeRoom({ ready_players: ["p1@example.com"] }),
       "p1@example.com",
-      false,
-    ),
-    true,
-  );
-  assertEquals(
-    activeGameLobbyReturnCanUseFastPath(
-      activeRoom({ ready_players: ["p1@example.com", "p2@example.com"] }),
-      "p3@example.com",
       true,
     ),
     false,
   );
 });
 
-Deno.test("the last current-player vote atomically resets gameplay and preserves the authoritative lobby", () => {
+Deno.test("one host action atomically returns every player and preserves the authoritative lobby", () => {
   const room = activeRoom({
-    ready_players: ["p1@example.com", "p2@example.com"],
+    ready_players: [],
   });
   const transition = activeGameLobbyReturnTransition(
     room,
-    " P3@EXAMPLE.COM ",
+    " P1@EXAMPLE.COM ",
     true,
   );
   assertEquals(transition.didReset, true);
-  assertEquals(transition.requiredVotes, 3);
-  assertEquals(transition.votes, [
-    "p1@example.com",
-    "p2@example.com",
-    "p3@example.com",
-  ]);
+  assertEquals(transition.requiredVotes, 1);
+  assertEquals(transition.votes, ["p1@example.com"]);
+  assertEquals(transition.patch.players, room.players);
+  assertEquals(
+    transition.patch.participant_user_ids,
+    room.participant_user_ids,
+  );
 
   const reset = { ...room, ...transition.patch };
   assertEquals(reset.status, "waiting");
@@ -326,9 +286,9 @@ Deno.test("the last current-player vote atomically resets gameplay and preserves
   }
 });
 
-Deno.test("departed and duplicate roster entries do not count toward unanimity or return to waiting", () => {
+Deno.test("host return excludes departed and duplicate roster entries", () => {
   const room = activeRoom({
-    host_email: "p3@example.com",
+    host_email: "p1@example.com",
     players: [
       player(1),
       player(2),
@@ -341,11 +301,11 @@ Deno.test("departed and duplicate roster entries do not count toward unanimity o
   });
   const transition = activeGameLobbyReturnTransition(
     room,
-    "p2@example.com",
+    "p1@example.com",
     true,
   );
   assertEquals(transition.didReset, true);
-  assertEquals(transition.requiredVotes, 2);
+  assertEquals(transition.requiredVotes, 1);
   assertEquals(transition.patch.players, [player(1), player(2)]);
   assertEquals(transition.patch.participant_user_ids, ["user-1", "user-2"]);
   assertEquals(transition.patch.host_email, "p1@example.com");

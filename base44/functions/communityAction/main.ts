@@ -53,6 +53,7 @@ import {
   resolveFriendshipPair,
 } from "./friendship-pair-policy.ts";
 import { loadIncomingRoomInvites } from "./room-invite-pagination.ts";
+import { actionableRoomInvites } from "./room-invite-visibility.ts";
 import { withCurrentProfileWriteLease } from "./profile-write-lifecycle.ts";
 import { fanoutProfileUpdate } from "./profile-signal.ts";
 import {
@@ -435,6 +436,13 @@ async function incomingRoomInvites(
     base44.asServiceRole.entities.RoomInvite,
     current.id,
     relationshipsPromise,
+    (invitations) =>
+      actionableRoomInvites({
+        invitations,
+        roomStore: base44.asServiceRole.entities.GameRoom,
+        userID: current.id,
+        userEmail: current.email,
+      }),
   );
 
   const senderCache = new Map<string, Entity | null>();
@@ -1135,20 +1143,16 @@ Deno.serve(async (req) => {
         lifecycleStore,
         userIDs: [current.id, target.id],
         action: async ({ persist }) => {
-          const [freshCurrent, freshTarget] = await Promise.all([
+          const [freshCurrent, freshTarget, friendships] = await Promise.all([
             findUserByID(base44, current.id),
             findUserByID(base44, target.id),
+            relationshipsBetween(base44, current.id, target.id),
           ]);
           if (!freshCurrent || !freshTarget) {
             throw Object.assign(new Error("Operative not found"), {
               status: 404,
             });
           }
-          const friendships = await relationshipsBetween(
-            base44,
-            current.id,
-            target.id,
-          );
           if (
             !friendshipAllowsRoomInvite(
               friendships,
@@ -1161,19 +1165,15 @@ Deno.serve(async (req) => {
               { status: 403 },
             );
           }
-          const room = await validateRoomInvite(
-            base44,
-            freshCurrent,
-            body,
-            freshTarget,
-          );
-          const existing = newestFirst(
-            await base44.asServiceRole.entities.RoomInvite.filter({
+          const [room, existingInvites] = await Promise.all([
+            validateRoomInvite(base44, freshCurrent, body, freshTarget),
+            base44.asServiceRole.entities.RoomInvite.filter({
               sender_user_id: current.id,
               recipient_user_id: target.id,
-              room_id: room.id,
-            }) || [],
-          )[0];
+              room_id: clean(body.room_id),
+            }),
+          ]);
+          const existing = newestFirst(existingInvites || [])[0];
           const reusableEventID = reusablePendingInviteEventID(existing);
           if (reusableEventID) {
             await enqueueCommunityPushEvent({
@@ -1218,6 +1218,7 @@ Deno.serve(async (req) => {
             room_code: clean(room.code).toUpperCase(),
             status: "pending",
             notification_event_id: eventID,
+            created_at: now,
             updated_at: now,
           };
           await enqueueCommunityPushEvent({
@@ -1316,18 +1317,32 @@ Deno.serve(async (req) => {
             senderID,
           );
           if (action === "decline_room_invite") {
+            await cancelCommunityPushEvent({
+              store: base44.asServiceRole.entities.PushNotificationEvent,
+              persist,
+              eventType: "room_invite",
+              sourceEventID: clean(invite.notification_event_id),
+              reason: "room_invite_declined",
+            });
             await persist(() =>
               base44.asServiceRole.entities.RoomInvite.delete(invite.id)
             );
             return;
           }
           if (action === "consume_room_invite") {
-            if (invite.status !== "accepted") {
+            if (!["accepted", "expired"].includes(clean(invite.status))) {
               throw Object.assign(new Error("Room invite is not accepted"), {
                 status: 409,
                 code: "room_invite_not_accepted",
               });
             }
+            await cancelCommunityPushEvent({
+              store: base44.asServiceRole.entities.PushNotificationEvent,
+              persist,
+              eventType: "room_invite",
+              sourceEventID: clean(invite.notification_event_id),
+              reason: "room_invite_consumed",
+            });
             await persist(() =>
               base44.asServiceRole.entities.RoomInvite.delete(invite.id)
             );
@@ -1714,6 +1729,25 @@ Deno.serve(async (req) => {
         const redundantRows = pair.rows.filter((row) =>
           clean(row.id) !== clean(friendship.id)
         );
+        if (["accept", "decline"].includes(action)) {
+          for (
+            const sourceEventID of new Set(
+              pair.rows.map((row) => clean(row.request_event_id)).filter(
+                Boolean,
+              ),
+            )
+          ) {
+            await cancelCommunityPushEvent({
+              store: base44.asServiceRole.entities.PushNotificationEvent,
+              persist,
+              eventType: "friend_request",
+              sourceEventID,
+              reason: action === "accept"
+                ? "friend_request_accepted"
+                : "friend_request_declined",
+            });
+          }
+        }
         if (action === "accept") {
           // Keep the selected incoming request pending until every duplicate
           // is gone. A failed delete can then be retried with the same row id.

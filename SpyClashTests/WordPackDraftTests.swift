@@ -69,51 +69,54 @@ final class WordPackDraftTests: XCTestCase {
         XCTAssertTrue(draft.isValid)
     }
 
-    func testCrossingOutWordsPreservesCardsButExcludesThemFromSavedWords() {
-        var draft = WordPackDraft(name: "Cities", wordsText: "Paris\nMadrid\nRome")
+    func testRemovingWordDeletesAllNormalizedDuplicatesFromTheDraft() {
+        var draft = WordPackDraft(name: "Cities", wordsText: "Paris\nMadrid\nPARIS\nRome")
 
-        draft.toggleWord("  PARIS  ")
+        draft.removeWord("  PARIS  ")
 
-        XCTAssertEqual(draft.wordAnalysis.words, ["Paris", "Madrid", "Rome"])
-        XCTAssertEqual(draft.selectedWords, ["Madrid", "Rome"])
-        XCTAssertFalse(draft.isWordSelected("Paris"))
+        XCTAssertEqual(draft.wordAnalysis.words, ["Madrid", "Rome"])
+        XCTAssertEqual(draft.wordsText, "Madrid\nRome")
+        XCTAssertEqual(draft.words.count, 2)
         XCTAssertTrue(draft.isValid)
 
-        draft.toggleWord("Paris")
+        let afterRemoval = draft
+        draft.removeWord("Paris")
 
-        XCTAssertEqual(draft.selectedWords, ["Paris", "Madrid", "Rome"])
-        XCTAssertTrue(draft.isWordSelected("Paris"))
+        XCTAssertEqual(draft, afterRemoval, "Removing an absent word must not restore it")
     }
 
-    func testCrossedOutWordsDoNotSatisfyTheMinimumWordCount() {
+    func testRemovingWordsRevalidatesMinimumAndCanEmptyTheList() {
         var draft = WordPackDraft(name: "Cities", wordsText: "Paris\nMadrid")
 
-        draft.toggleWord("Madrid")
+        draft.removeWord("Madrid")
 
         XCTAssertFalse(draft.isValid)
-        XCTAssertEqual(draft.selectedWords, ["Paris"])
+        XCTAssertEqual(draft.words, ["Paris"])
         XCTAssertTrue(draft.hasContent)
 
-        draft.toggleWord("Paris")
+        draft.removeWord("Paris")
         XCTAssertFalse(draft.isValid)
-        XCTAssertTrue(draft.selectedWords.isEmpty)
-        XCTAssertEqual(draft.wordAnalysis.words.count, 2)
+        XCTAssertTrue(draft.words.isEmpty)
+        XCTAssertTrue(draft.wordsText.isEmpty)
+
+        draft.addWords("Berlin; Rome")
+        XCTAssertTrue(draft.isValid)
     }
 
-    func testAddingWordsDeduplicatesAndRestoresAnExcludedWord() {
+    func testAddingWordsCanReinsertADeletedWordWithoutRestoringOtherDeletedWords() {
         var draft = WordPackDraft(name: "Cities", wordsText: "Paris\nMadrid")
-        draft.toggleWord("Paris")
+        draft.removeWord("Paris")
+        draft.removeWord("Madrid")
 
         draft.addWords("  PARIS ; New   York\nRome,rome")
 
-        XCTAssertEqual(draft.selectedWords, ["Paris", "Madrid", "New York", "Rome"])
-        XCTAssertEqual(draft.wordAnalysis.words, draft.selectedWords)
-        XCTAssertTrue(draft.isWordSelected("Paris"))
+        XCTAssertEqual(draft.words, ["PARIS", "New York", "Rome"])
+        XCTAssertEqual(draft.wordAnalysis.duplicateCount, 0)
     }
 
-    func testGeneratedReplacementResetsExcludedWordsWithoutChangingSaveSnapshot() {
+    func testGeneratedReplacementDoesNotChangeTheSaveSnapshotAfterDeletion() {
         var draft = WordPackDraft(name: "Cities", wordsText: "Paris\nMadrid\nRome")
-        draft.toggleWord("Paris")
+        draft.removeWord("Paris")
         let saveSnapshot = draft
 
         draft.applyGenerated(
@@ -128,9 +131,8 @@ final class WordPackDraftTests: XCTestCase {
             fallbackName: "Cities"
         )
 
-        XCTAssertEqual(draft.selectedWords, ["Paris", "Berlin"])
-        XCTAssertTrue(draft.excludedWordKeys.isEmpty)
-        XCTAssertEqual(saveSnapshot.selectedWords, ["Madrid", "Rome"])
+        XCTAssertEqual(draft.words, ["Paris", "Berlin"])
+        XCTAssertEqual(saveSnapshot.words, ["Madrid", "Rome"])
     }
 
     func testRecommendedWordCountUsesThirtyForOrdinaryThemes() {

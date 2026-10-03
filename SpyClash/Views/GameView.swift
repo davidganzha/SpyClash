@@ -333,6 +333,10 @@ enum RoomAccessPagePolicy {
     static let friends = 3
     static let pageCount = 4
 
+    static func visiblePages(radarPermissionDenied: Bool) -> [Int] {
+        radarPermissionDenied ? [roomCode, roomQR, friends] : [roomCode, roomQR, radar, friends]
+    }
+
     static func shouldStopRadar(from previousPage: Int, to nextPage: Int) -> Bool {
         previousPage == radar && nextPage != radar
     }
@@ -727,6 +731,17 @@ struct OnlineRoomMatchScope: Equatable {
     }
 }
 
+struct LobbyPlayerProfileTarget: Identifiable, Equatable {
+    let id: String
+
+    init?(player: Player, room: GameRoom) {
+        guard ["waiting", "ready_voting"].contains(room.normalizedStatus),
+              let userID = player.userID?.nilIfBlank,
+              room.playersList.contains(where: { $0.userID?.nilIfBlank == userID && $0.email == player.email }) else { return nil }
+        id = userID
+    }
+}
+
 struct ActiveLobbyReturnPresentation: Equatable {
     let isAvailable: Bool
     let voteCount: Int
@@ -773,7 +788,8 @@ enum ActiveLobbyReturnPolicy {
                   email: currentUserEmail
               ),
               let actorEmailKey = normalizedEmail(currentUserEmail),
-              eligiblePlayerEmailKeys(in: room).contains(actorEmailKey) else {
+              eligiblePlayerEmailKeys(in: room).contains(actorEmailKey),
+              actorEmailKey == normalizedEmail(room.hostEmail) else {
             return .unavailable
         }
 
@@ -824,7 +840,8 @@ enum ActiveLobbyReturnPolicy {
                   email: currentUserEmail
               ),
               let actorEmail = cleanedEmail(currentUserEmail),
-              eligiblePlayerEmailKeys(in: room).contains(actorEmail.lowercased()) else {
+              eligiblePlayerEmailKeys(in: room).contains(actorEmail.lowercased()),
+              actorEmail.lowercased() == normalizedEmail(room.hostEmail) else {
             return nil
         }
 
@@ -834,14 +851,9 @@ enum ActiveLobbyReturnPolicy {
             return nil
         }
 
-        let targetVote: Bool
-        if case let .failed(failedScope, failedActorKey, failedTargetVote) = phase,
-           failedScope == scope,
-           failedActorKey == actorKey {
-            targetVote = failedTargetVote
-        } else {
-            targetVote = !room.hasReturnToLobbyVote(email: actorEmail)
-        }
+        // The legacy wire field now expresses an explicit host reset, never
+        // a toggle based on old votes from an installed client.
+        let targetVote = true
 
         return ActiveLobbyReturnRequest(
             id: requestID,
@@ -875,9 +887,8 @@ enum ActiveLobbyReturnPolicy {
                 cleaned(candidate.gameStartedAt).isEmpty
         }
 
-        guard request.scope.matches(candidate),
-              candidate.normalizedStatus == "playing" else { return false }
-        return candidate.hasReturnToLobbyVote(email: request.actorEmail) == request.targetVote
+        // A recorded vote is not proof that everyone returned to the lobby.
+        return false
     }
 
     static func actorKey(accountUserID: String?, email: String?) -> String? {
@@ -2092,6 +2103,8 @@ struct GameView: View {
     @State private var isVotingReplay = false
     @State private var isResettingRoom = false
     @State private var activeLobbyReturnVoteState = ActiveLobbyReturnVoteState()
+    @State private var lobbyProfileTarget: LobbyPlayerProfileTarget?
+    @State private var lobbyProfileTab = CommunityTab.network
     @State private var roomKickCoordinator = RoomKickCoordinatorState()
     @State private var roomKickConfirmation: RoomKickConfirmation?
     @State private var replayAutoStartCoordinator = ReplayAutoStartCoordinatorState()
@@ -2270,8 +2283,48 @@ struct GameView: View {
         return message
     }
 
-    var body: some View {
+    private func lobbyProfileSheet(_ target: LobbyPlayerProfileTarget) -> some View {
+        NavigationStack {
+            CommunityView(
+                selectedTab: $lobbyProfileTab,
+                dockRequest: .initial,
+                externalNetworkState: nil,
+                onAttentionChange: { _ in },
+                onExit: { lobbyProfileTarget = nil },
+                initialProfileUserID: target.id
+            )
+            .toolbar {
+                ToolbarItem(placement: .topBarTrailing) {
+                    Button {
+                        lobbyProfileTarget = nil
+                    } label: {
+                        Image(systemName: "xmark")
+                    }
+                    .accessibilityLabel(copy.returnToLobby)
+                }
+            }
+        }
+        .presentationDragIndicator(.visible)
+    }
+
+    private var rootWithLobbyProfileSheet: some View {
         rootWithRoomKickConfirmation
+        .sheet(item: $lobbyProfileTarget) { target in
+            lobbyProfileSheet(target)
+
+        }
+        .onChange(of: appState.user?.id) { _, _ in
+            lobbyProfileTarget = nil
+        }
+        .onChange(of: appState.activeRoom?.normalizedStatus) { _, newStatus in
+            if !["waiting", "ready_voting"].contains(newStatus ?? "") {
+                lobbyProfileTarget = nil
+            }
+        }
+    }
+
+    var body: some View {
+        rootWithLobbyProfileSheet
         .disabled(detectiveVoteCancellationPresentation != nil)
         .allowsHitTesting(detectiveVoteCancellationPresentation == nil)
         .accessibilityHidden(detectiveVoteCancellationPresentation != nil)
@@ -3064,8 +3117,10 @@ struct GameView: View {
                 onlineRoomQRPage(room)
                     .tag(RoomAccessPagePolicy.roomQR)
 
-                onlineRoomRadarPage(room)
-                    .tag(RoomAccessPagePolicy.radar)
+                if !roomRadar.hasDeniedPermission {
+                    onlineRoomRadarPage(room)
+                        .tag(RoomAccessPagePolicy.radar)
+                }
 
                 onlineRoomFriendsPage(room)
                     .tag(RoomAccessPagePolicy.friends)
@@ -3074,10 +3129,10 @@ struct GameView: View {
             .frame(height: SpyLobbyVisualLanguage.heroHeight)
             .accessibilityIdentifier("onlineRoom.accessPages")
             .accessibilityValue(localized(
-                en: "Page \(roomAccessPage + 1) of \(RoomAccessPagePolicy.pageCount)",
-                ru: "Страница \(roomAccessPage + 1) из \(RoomAccessPagePolicy.pageCount)",
-                es: "Pagina \(roomAccessPage + 1) de \(RoomAccessPagePolicy.pageCount)",
-                uk: "Сторінка \(roomAccessPage + 1) із \(RoomAccessPagePolicy.pageCount)"
+                en: "Page \(visibleRoomAccessPageNumber) of \(visibleRoomAccessPages.count)",
+                ru: "Страница \(visibleRoomAccessPageNumber) из \(visibleRoomAccessPages.count)",
+                es: "Pagina \(visibleRoomAccessPageNumber) de \(visibleRoomAccessPages.count)",
+                uk: "Сторінка \(visibleRoomAccessPageNumber) із \(visibleRoomAccessPages.count)"
             ))
 
             roomAccessPageIndicator
@@ -3086,6 +3141,12 @@ struct GameView: View {
         .frame(maxWidth: .infinity)
         .frame(height: SpyLobbyVisualLanguage.heroHeight)
         .animation(reduceMotion ? nil : .smooth(duration: 0.24), value: roomAccessPage)
+        .onChange(of: roomRadar.hasDeniedPermission) { _, denied in
+            if denied, roomAccessPage == RoomAccessPagePolicy.radar {
+                roomRadar.stopScanning()
+                roomAccessPage = RoomAccessPagePolicy.roomCode
+            }
+        }
         .onChange(of: roomAccessPage) { previousPage, nextPage in
             HapticManager.shared.fire(.tabSelection)
             updateRoomRadarScanning(from: previousPage, to: nextPage)
@@ -3362,7 +3423,18 @@ struct GameView: View {
                     .padding(.horizontal, 18)
                     .contentTransition(.opacity)
 
-                if case .unavailable = roomRadar.scanState {
+                if !roomRadar.canDisplayDirectory {
+                    RadarScanRecoveryPrompt(
+                        language: appState.language,
+                        retryAccessibilityIdentifier: "onlineRoom.retryRadar",
+                        settingsAccessibilityIdentifier: "onlineRoom.openRadarSettings",
+                        compact: true
+                    ) {
+                        appState.retryRadarScanning(requestCameraAccess: true)
+                    }
+                    .padding(.horizontal, 18)
+                    .padding(.bottom, 12)
+                } else if case .unavailable = roomRadar.scanState {
                     RadarScanRecoveryPrompt(
                         language: appState.language,
                         retryAccessibilityIdentifier: "onlineRoom.retryRadar",
@@ -3741,6 +3813,7 @@ struct GameView: View {
     }
 
     private var roomRadarStatusColor: Color {
+        if !roomRadar.canDisplayDirectory { return SpyTheme.red }
         if case .unavailable = roomRadar.scanState { return SpyTheme.red }
         if roomRadar.hasRecoverableRangingFailure { return SpyTheme.red }
         switch roomRadar.rangefinderAccessState {
@@ -3777,6 +3850,14 @@ struct GameView: View {
     }
 
     private var roomRadarStatusText: String {
+        if !roomRadar.canDisplayDirectory {
+            return localized(
+                en: "RADAR UNAVAILABLE · CHECK PERMISSIONS",
+                ru: "РАДАР НЕДОСТУПЕН · ПРОВЕРЬ РАЗРЕШЕНИЯ",
+                es: "RADAR NO DISPONIBLE · REVISA LOS PERMISOS",
+                uk: "РАДАР НЕДОСТУПНИЙ · ПЕРЕВІР ДОЗВОЛИ"
+            )
+        }
         if case .unavailable = roomRadar.scanState {
             return localized(
                 en: "LOCAL SEARCH UNAVAILABLE",
@@ -3818,10 +3899,10 @@ struct GameView: View {
             )
         case .denied:
             return localized(
-                en: "RADAR ACTIVE · PRECISE DISTANCE IS OFF",
-                ru: "РАДАР АКТИВЕН · ТОЧНАЯ ДИСТАНЦИЯ ВЫКЛЮЧЕНА",
-                es: "RADAR ACTIVO · DISTANCIA PRECISA DESACTIVADA",
-                uk: "РАДАР АКТИВНИЙ · ТОЧНУ ВІДСТАНЬ ВИМКНЕНО"
+                en: "RADAR UNAVAILABLE · NEARBY INTERACTION IS OFF",
+                ru: "РАДАР НЕДОСТУПЕН · ВЗАИМОДЕЙСТВИЕ РЯДОМ ВЫКЛЮЧЕНО",
+                es: "RADAR NO DISPONIBLE · INTERACCIÓN CERCANA DESACTIVADA",
+                uk: "РАДАР НЕДОСТУПНИЙ · ВЗАЄМОДІЮ ПОРУЧ ВИМКНЕНО"
             )
         case .unavailable:
             return localized(
@@ -3864,7 +3945,7 @@ struct GameView: View {
            ProcessInfo.processInfo.arguments.contains("--spyclash-preview-room-access=friends") {
             return RoomAccessPagePolicy.friends
         }
-        if appState.shouldUsePreviewData,
+        if appState.shouldUsePreviewData, !roomRadar.hasDeniedPermission,
            ProcessInfo.processInfo.arguments.contains("--spyclash-preview-room-access=radar") {
             return RoomAccessPagePolicy.radar
         }
@@ -4270,9 +4351,17 @@ struct GameView: View {
             .contentShape(CutCornerShape(cut: 7))
     }
 
+    private var visibleRoomAccessPages: [Int] {
+        RoomAccessPagePolicy.visiblePages(radarPermissionDenied: roomRadar.hasDeniedPermission)
+    }
+
+    private var visibleRoomAccessPageNumber: Int {
+        (visibleRoomAccessPages.firstIndex(of: roomAccessPage) ?? 0) + 1
+    }
+
     private var roomAccessPageIndicator: some View {
         HStack(spacing: 6) {
-            ForEach(0..<RoomAccessPagePolicy.pageCount, id: \.self) { page in
+            ForEach(visibleRoomAccessPages, id: \.self) { page in
                 Capsule()
                     .fill(page == roomAccessPage ? SpyTheme.red : Color.white.opacity(0.20))
                     .frame(width: page == roomAccessPage ? 24 : 10, height: 3)
@@ -4542,6 +4631,13 @@ struct GameView: View {
                     requestRoomKick(player, room: room)
                 }
             }
+        }
+        .contentShape(Rectangle())
+        .onLongPressGesture(minimumDuration: 0.45) {
+            openLobbyPlayerProfile(player, room: room)
+        }
+        .accessibilityAction(named: Text(lobbyProfileActionTitle)) {
+            openLobbyPlayerProfile(player, room: room)
         }
     }
 
@@ -6711,6 +6807,13 @@ struct GameView: View {
             CutCornerShape(cut: 7)
                 .stroke(isReady ? SpyTheme.red.opacity(0.55) : SpyTheme.strokeStrong, lineWidth: 1)
         }
+        .contentShape(Rectangle())
+        .onLongPressGesture(minimumDuration: 0.45) {
+            openLobbyPlayerProfile(player, room: room)
+        }
+        .accessibilityAction(named: Text(lobbyProfileActionTitle)) {
+            openLobbyPlayerProfile(player, room: room)
+        }
     }
 
     private func readyVotingControls(_ room: GameRoom) -> some View {
@@ -7977,6 +8080,13 @@ struct GameView: View {
         .overlay {
             RoundedRectangle(cornerRadius: 8, style: .continuous)
                 .stroke(Color.white.opacity(isCurrentUser ? 0.10 : 0.06), lineWidth: 1)
+        }
+        .contentShape(Rectangle())
+        .onLongPressGesture(minimumDuration: 0.45) {
+            openLobbyPlayerProfile(player, room: room)
+        }
+        .accessibilityAction(named: Text(lobbyProfileActionTitle)) {
+            openLobbyPlayerProfile(player, room: room)
         }
     }
 
@@ -10106,10 +10216,10 @@ struct GameView: View {
                 }
                 guard failActiveLobbyReturnVote(request) else { return }
                 status = localized(
-                    en: "RETURN VOTE WAS NOT CONFIRMED — TAP TO RETRY",
-                    ru: "ГОЛОС ЗА ВОЗВРАТ НЕ ПОДТВЕРЖДЁН — ПОВТОРИ",
-                    es: "EL VOTO DE REGRESO NO SE CONFIRMÓ — REINTENTA",
-                    uk: "ГОЛОС ЗА ПОВЕРНЕННЯ НЕ ПІДТВЕРДЖЕНО — ПОВТОРИ"
+                    en: "RETURN TO LOBBY WAS NOT CONFIRMED — TAP TO RETRY",
+                    ru: "ВОЗВРАТ В ЛОББИ НЕ ПОДТВЕРЖДЁН — ПОВТОРИ",
+                    es: "EL REGRESO AL LOBBY NO SE CONFIRMÓ — REINTENTA",
+                    uk: "ПОВЕРНЕННЯ ДО ЛОБІ НЕ ПІДТВЕРДЖЕНО — ПОВТОРИ"
                 )
                 HapticManager.shared.fire(.notification(.error))
                 return
@@ -10124,10 +10234,10 @@ struct GameView: View {
             }
             guard failActiveLobbyReturnVote(request) else { return }
             status = localized(
-                en: "RETURN VOTE FAILED — TAP TO RETRY",
-                ru: "НЕ УДАЛОСЬ ОТПРАВИТЬ ГОЛОС — ПОВТОРИ",
-                es: "FALLÓ EL VOTO DE REGRESO — REINTENTA",
-                uk: "НЕ ВДАЛОСЯ НАДІСЛАТИ ГОЛОС — ПОВТОРИ"
+                en: "RETURN TO LOBBY FAILED — TAP TO RETRY",
+                ru: "НЕ УДАЛОСЬ ВЕРНУТЬСЯ В ЛОББИ — ПОВТОРИ",
+                es: "FALLÓ EL REGRESO AL LOBBY — REINTENTA",
+                uk: "НЕ ВДАЛОСЯ ПОВЕРНУТИСЯ ДО ЛОБІ — ПОВТОРИ"
             )
             HapticManager.shared.fire(.notification(.error))
         }
@@ -10149,19 +10259,12 @@ struct GameView: View {
               ),
               activeLobbyReturnVoteState.finish(request) else { return false }
         appState.activeRoom = candidate
-        status = request.targetVote
-            ? localized(
-                en: "RETURN VOTE RECORDED",
-                ru: "ГОЛОС ЗА ВОЗВРАТ ПРИНЯТ",
-                es: "VOTO DE REGRESO REGISTRADO",
-                uk: "ГОЛОС ЗА ПОВЕРНЕННЯ ПРИЙНЯТО"
-            )
-            : localized(
-                en: "RETURN VOTE CANCELLED",
-                ru: "ГОЛОС ЗА ВОЗВРАТ ОТМЕНЁН",
-                es: "VOTO DE REGRESO CANCELADO",
-                uk: "ГОЛОС ЗА ПОВЕРНЕННЯ СКАСОВАНО"
-            )
+        status = localized(
+            en: "EVERYONE RETURNED TO THE LOBBY",
+            ru: "ВСЕ ИГРОКИ ВЕРНУЛИСЬ В ЛОББИ",
+            es: "TODOS HAN VUELTO AL LOBBY",
+            uk: "УСІ ГРАВЦІ ПОВЕРНУЛИСЯ ДО ЛОБІ"
+        )
         HapticManager.shared.fire(.notification(.success))
         return true
     }
@@ -10195,17 +10298,7 @@ struct GameView: View {
         request: ActiveLobbyReturnRequest
     ) -> GameRoom {
         var candidate = room
-        var votes = room.readyPlayers ?? []
-        votes.removeAll {
-            RoomKickPolicy.normalizedEmail($0) == request.actorEmail.lowercased()
-        }
         if request.targetVote {
-            votes.append(request.actorEmail)
-        }
-
-        let eligible = ActiveLobbyReturnPolicy.eligiblePlayerEmailKeys(in: room)
-        let voteKeys = Set(votes.compactMap(RoomKickPolicy.normalizedEmail))
-        if request.targetVote, !eligible.isEmpty, eligible.isSubset(of: voteKeys) {
             candidate.status = "waiting"
             candidate.readyPlayers = []
             candidate.matchID = nil
@@ -10223,11 +10316,21 @@ struct GameView: View {
             candidate.voteRequests = []
             candidate.detectiveVotes = []
             candidate.spyGuess = nil
-        } else {
-            candidate.readyPlayers = votes
         }
         candidate.roomRevision = (room.roomRevision ?? room.lobbyRevision ?? 0) + 1
         return candidate
+    }
+
+    private var lobbyProfileActionTitle: String {
+        localized(en: "Open operative card", ru: "Открыть карточку агента", es: "Abrir tarjeta del operativo", uk: "Відкрити картку агента")
+    }
+
+    private func openLobbyPlayerProfile(_ player: Player, room: GameRoom) {
+        guard appState.activeRoom?.id == room.id,
+              let target = LobbyPlayerProfileTarget(player: player, room: room) else { return }
+        lobbyProfileTab = .network
+        lobbyProfileTarget = target
+        HapticManager.shared.fire(.buttonPress)
     }
 
     private func requestRoomKick(_ player: Player, room: GameRoom) {

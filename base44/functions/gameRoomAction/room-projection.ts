@@ -241,6 +241,12 @@ export function projectRoomForClient(
     )
     ? returnToLobbyEligibleEmails
     : [];
+  const viewerMayOpenLobbyProfiles =
+    ["waiting", "ready_voting"].includes(roomStatus) &&
+    viewerIsRetainedRoomPlayer &&
+    !safeEmailList(room.departed_player_emails).some((email) =>
+      normalizedEmail(email) === normalizedEmail(viewer?.email)
+    );
   const viewerMayAddressLobbyPlayers =
     ["waiting", "ready_voting"].includes(roomStatus) &&
     normalizedEmail(viewer?.email) === normalizedEmail(room?.host_email);
@@ -263,7 +269,7 @@ export function projectRoomForClient(
       }
       : {}),
     players: safeObjectList(room.players).map((player) => ({
-      ...(viewerMayAddressLobbyPlayers && clean(player.user_id)
+      ...(viewerMayOpenLobbyProfiles && clean(player.user_id)
         ? { user_id: clean(player.user_id) }
         : {}),
       ...(viewerMayAddressLobbyPlayers && clean(player.membership_id)

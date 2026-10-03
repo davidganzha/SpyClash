@@ -4699,6 +4699,9 @@ final class AppState: NSObject {
             presentedSheet = nil
             pendingJoinCode = nil
             deepLinkStatus = language.home.roomReady(code)
+            // Source visibility also resolves invitations when entering by
+            // code, QR, or a push route. Refresh attention off the join path.
+            refreshNotificationInboxAfterPush()
             HapticManager.shared.fire(.milestone)
             return true
         } catch is CancellationError {
@@ -5637,6 +5640,17 @@ final class AppState: NSObject {
                 playerCount: previewPlayerCount ?? 3
             )
             : nil
+        if var previewRoom = activeRoom {
+            // Match the existing synthetic Community profile for lobby-card QA.
+            previewRoom.players = previewRoom.playersList.map { player in
+                var player = player
+                if player.email == "cipher@spyclash.local" {
+                    player.userID = "preview-cipher"
+                }
+                return player
+            }
+            activeRoom = previewRoom
+        }
         if var previewRoom = activeRoom,
            let previewDurationMinutes = previewArgumentValue(
                prefix: "--spyclash-preview-duration-minutes=",

@@ -65,37 +65,6 @@ export function activeGameLobbyEligiblePlayerEmails(room: Room): string[] {
     .filter(Boolean);
 }
 
-function canonicalVotes(
-  room: Room,
-  eligiblePlayers: readonly Record<string, unknown>[],
-): string[] {
-  const eligible = new Map(
-    eligiblePlayers.map((player) => [
-      normalizedEmail(player.email),
-      clean(player.email),
-    ]),
-  );
-  const seen = new Set<string>();
-  const result: string[] = [];
-  const values = Array.isArray(room?.ready_players) ? room.ready_players : [];
-  for (const value of values) {
-    const key = normalizedEmail(value);
-    const canonical = eligible.get(key);
-    if (!canonical || seen.has(key)) continue;
-    seen.add(key);
-    result.push(canonical);
-  }
-  return result;
-}
-
-function sameStrings(
-  left: readonly unknown[],
-  right: readonly string[],
-): boolean {
-  return left.length === right.length &&
-    left.every((value, index) => clean(value) === right[index]);
-}
-
 export function activeGameLobbyResetPatch(room: Room): Room {
   const players = canonicalNonDepartedPlayers(room);
   if (!players.length) {
@@ -173,7 +142,7 @@ export function activeGameLobbyReturnTransition(
   );
   if (!actor) {
     throw policyError(
-      "Only a current room player can vote to return to the lobby",
+      "Only a current room player can return to the lobby",
       403,
       "return_to_lobby_not_player",
     );
@@ -182,7 +151,7 @@ export function activeGameLobbyReturnTransition(
   const status = clean(room?.status || "waiting").toLocaleLowerCase();
   if (status !== "playing") {
     throw policyError(
-      "Return-to-lobby voting is not active",
+      "Return to lobby is not active",
       409,
       "return_to_lobby_vote_inactive",
     );
@@ -195,33 +164,28 @@ export function activeGameLobbyReturnTransition(
     );
   }
 
-  const votes = canonicalVotes(room, eligiblePlayers);
-  const actorEmail = clean(actor.email);
-  const actorAlreadyVoted = votes.some((email) =>
-    normalizedEmail(email) === actorKey
-  );
-  const nextVotes = requestedVoteValue
-    ? (actorAlreadyVoted ? votes : [...votes, actorEmail])
-    : votes.filter((email) => normalizedEmail(email) !== actorKey);
-  const voteKeys = new Set(nextVotes.map(normalizedEmail));
-  const unanimous = eligiblePlayers.every((player) =>
-    voteKeys.has(normalizedEmail(player.email))
-  );
-  if (unanimous) {
-    return {
-      patch: activeGameLobbyResetPatch(room),
-      didReset: true,
-      votes: nextVotes,
-      requiredVotes: eligiblePlayers.length,
-    };
+  if (actorKey !== normalizedEmail(room?.host_email)) {
+    throw policyError(
+      "Only the host can return everyone to the lobby",
+      403,
+      "return_to_lobby_not_host",
+    );
+  }
+  if (requestedVoteValue !== true) {
+    throw policyError(
+      "Return to lobby requires an explicit confirmation",
+      400,
+      "return_to_lobby_vote_invalid",
+    );
   }
 
-  const rawVotes = Array.isArray(room?.ready_players) ? room.ready_players : [];
+  // Keep the legacy action payload for installed clients, but a host action
+  // now resets the entire room in one participant-leased write.
   return {
-    patch: sameStrings(rawVotes, nextVotes) ? {} : { ready_players: nextVotes },
-    didReset: false,
-    votes: nextVotes,
-    requiredVotes: eligiblePlayers.length,
+    patch: activeGameLobbyResetPatch(room),
+    didReset: true,
+    votes: [clean(actor.email)],
+    requiredVotes: 1,
   };
 }
 

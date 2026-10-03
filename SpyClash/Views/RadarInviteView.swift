@@ -26,7 +26,15 @@ struct RadarInviteView: View {
             ScrollView(showsIndicators: false) {
                 VStack(spacing: 16) {
                     header
-                    if case .unavailable = radar.scanState {
+                    if !radar.localNetworkPermissions.localNetworkStatus.allowsRadarInvitationSettings {
+                        RadarScanRecoveryPrompt(
+                            language: appState.language,
+                            retryAccessibilityIdentifier: "radar.retry",
+                            settingsAccessibilityIdentifier: "radar.openSettings"
+                        ) {
+                            appState.retryRadarScanning(requestCameraAccess: true)
+                        }
+                    } else if case .unavailable = radar.scanState {
                         RadarScanRecoveryPrompt(
                             language: appState.language,
                             retryAccessibilityIdentifier: "radar.retry",
@@ -47,7 +55,9 @@ struct RadarInviteView: View {
                                 appState.retryRadarRangefinderAccess()
                             }
                         }
-                        identityGrid
+                        if radar.canDisplayDirectory {
+                            identityGrid
+                        }
                     }
                     privacyNote
 
@@ -72,6 +82,9 @@ struct RadarInviteView: View {
         }
         .onDisappear {
             radar.stopScanning()
+        }
+        .onChange(of: radar.hasDeniedPermission) { _, denied in
+            if denied { radar.stopScanning() }
         }
     }
 
@@ -1271,7 +1284,17 @@ struct RadarPolicySettingsView: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 10) {
-            if permissions.localNetworkStatus.allowsRadarInvitationSettings {
+            if permissions.localNetworkStatus.allowsRadarInvitationSettings,
+               appState.radarNearby.rangefinderAccessState == .denied {
+                RadarRangefinderAccessPrompt(
+                    language: appState.language,
+                    state: .denied,
+                    retryAccessibilityIdentifier: "settings.radarRangefinder.retry",
+                    settingsAccessibilityIdentifier: "settings.radarRangefinder.openSettings"
+                ) {
+                    appState.retryRadarRangefinderAccess()
+                }
+            } else if permissions.localNetworkStatus.allowsRadarInvitationSettings {
                 invitationPolicyControls
             } else {
                 localNetworkAccessControls
@@ -1279,12 +1302,7 @@ struct RadarPolicySettingsView: View {
         }
         .task(id: verificationID) {
             permissions.setApplicationActive(scenePhase == .active)
-            let previousStatus = permissions.localNetworkStatus
-            let requested = await permissions.request(.nearby)
-            guard requested, !Task.isCancelled,
-                  permissions.localNetworkStatus == .granted,
-                  previousStatus == .denied || previousStatus == .unavailable else { return }
-            appState.radarNearby.refreshTransportAfterLocalNetworkGrant()
+            await permissions.request(.nearby)
         }
         .onChange(of: scenePhase) { _, phase in
             permissions.setApplicationActive(phase == .active)

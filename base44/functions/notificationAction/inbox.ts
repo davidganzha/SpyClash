@@ -1,3 +1,4 @@
+import { actionableRoomInvites } from "./room-invite-visibility.ts";
 import {
   announcementCopy,
   clean,
@@ -94,16 +95,40 @@ function materializedPersonalProjection(
     !hasMaterializedPersonalProjection(event)
   ) return null;
   const locale = language(localeValue);
-  const title = clean(event[`inbox_title_${locale}`] || event.inbox_title_en)
-    .slice(0, 80);
-  const body = clean(event[`inbox_body_${locale}`] || event.inbox_body_en)
-    .slice(0, 800);
+  const roomFallback = {
+    en: {
+      title: "Game invitation",
+      body: "You have been invited to a SpyClash room.",
+    },
+    ru: {
+      title: "Приглашение в игру",
+      body: "Вас пригласили в комнату SpyClash.",
+    },
+    es: {
+      title: "Invitación al juego",
+      body: "Te han invitado a una sala de SpyClash.",
+    },
+    uk: {
+      title: "Запрошення до гри",
+      body: "Вас запросили до кімнати SpyClash.",
+    },
+  };
+  const mismatchedRoomCopy = type === "room_invite" &&
+    clean(event.inbox_kind) !== type;
+  const title = mismatchedRoomCopy
+    ? roomFallback[locale].title
+    : clean(event[`inbox_title_${locale}`] || event.inbox_title_en).slice(
+      0,
+      80,
+    );
+  const body = mismatchedRoomCopy
+    ? roomFallback[locale].body
+    : clean(event[`inbox_body_${locale}`] || event.inbox_body_en).slice(0, 800);
   if (!title || !body) return null;
-  const configuredDeepLink = clean(event.inbox_action_deep_link).slice(0, 500);
   return {
     id: `personal:${clean(event.id)}`,
     scope: "personal",
-    kind: clean(event.inbox_kind) || type,
+    kind: type,
     importance: clean(event.inbox_importance) === "quiet"
       ? "quiet"
       : "important",
@@ -115,9 +140,9 @@ function materializedPersonalProjection(
       created_date: event.created_date,
     }),
     read_at: null,
-    action_deep_link: configuredDeepLink.startsWith("spyclash://")
-      ? configuredDeepLink
-      : "spyclash://notifications",
+    action_deep_link: type === "room_invite"
+      ? "spyclash://community/invites"
+      : "spyclash://community/requests",
   };
 }
 
@@ -410,6 +435,92 @@ function lowerBoundBefore(value: string): string {
   return previousMillisecond(value);
 }
 
+async function actionablePersonalEvents(input: {
+  base44: any;
+  events: Entity[];
+  userID: string;
+  now: Date;
+}): Promise<Entity[]> {
+  const sources = [
+    ...new Set(
+      input.events.filter((event) => clean(event.event_type) === "room_invite")
+        .map((event) => clean(event.source_event_id)).filter(Boolean),
+    ),
+  ];
+  const invitations: Entity[] = [];
+  for (let offset = 0; offset < sources.length; offset += 50) {
+    const batch = sources.slice(offset, offset + 50);
+    const rows = await input.base44.asServiceRole.entities.RoomInvite.filter(
+      {
+        recipient_user_id: input.userID,
+        notification_event_id: { $in: batch },
+        status: { $in: ["pending", "accepted"] },
+      },
+      "id",
+      batch.length + 1,
+      0,
+    ) || [];
+    if (rows.length > batch.length) {
+      throw new NotificationContractError(
+        "Room invitation sources require repair.",
+        503,
+      );
+    }
+    invitations.push(...rows);
+  }
+  const actionable = await actionableRoomInvites({
+    invitations,
+    roomStore: input.base44.asServiceRole.entities.GameRoom,
+    userID: input.userID,
+    now: input.now,
+  });
+  const friendSources = [
+    ...new Set(
+      input.events.filter((event) =>
+        clean(event.event_type) === "friend_request"
+      )
+        .map((event) => clean(event.source_event_id)).filter(Boolean),
+    ),
+  ];
+  const pendingFriendSources = new Set<string>();
+  for (let offset = 0; offset < friendSources.length; offset += 50) {
+    const batch = friendSources.slice(offset, offset + 50);
+    const rows: Entity[] =
+      await input.base44.asServiceRole.entities.Friendship.filter(
+        {
+          addressee_id: input.userID,
+          request_event_id: { $in: batch },
+          status: "pending",
+        },
+        "id",
+        batch.length + 1,
+        0,
+      ) || [];
+    if (rows.length > batch.length) {
+      throw new NotificationContractError(
+        "Friend request sources require repair.",
+        503,
+      );
+    }
+    for (const row of rows) {
+      pendingFriendSources.add(clean(row.request_event_id));
+    }
+  }
+  return input.events.filter((event) => {
+    if (clean(event.event_type) === "friend_request") {
+      // Legacy historical projections without a source id have no live action
+      // to reconcile. All server-created requests carry this source identity.
+      return !clean(event.source_event_id) ||
+        pendingFriendSources.has(clean(event.source_event_id));
+    }
+    return clean(event.event_type) !== "room_invite" ||
+      actionable.some((invite) =>
+        clean(invite.notification_event_id) === clean(event.source_event_id) &&
+        clean(invite.room_id) === clean(event.room_id)
+      );
+  });
+}
+
 async function sourceItemsPage(input: {
   base44: any;
   userID: string;
@@ -451,46 +562,70 @@ async function sourceItemsPage(input: {
     };
   }
 
-  const page = await sourceRowsPage({
-    store: input.base44.asServiceRole.entities.PushNotificationEvent,
-    baseFilter: {
-      recipient_user_id: input.userID,
-      inbox_visible: true,
-      inbox_committed_at: { $gt: lowerBoundBefore(INBOX_EPOCH) },
-      inbox_projection_version: { $gt: 0 },
-      inbox_published_at: { $gt: lower },
-      inbox_kind: { $gt: "" },
-      inbox_title_en: { $gt: "" },
-      inbox_body_en: { $gt: "" },
-      event_type: { $in: [...PERSONAL_EVENT_TYPES] },
-      state: {
-        $in: [
-          "pending",
-          "processing",
-          "retry",
-          "delivered",
-          "partial",
-          "no_devices",
-          "failed",
-        ],
+  const items: InboxItem[] = [];
+  let cursor = input.cursor;
+  // Resolved invitations must not evict older actionable items from the 500
+  // item window. Advance by raw source keyset even when a whole page is hidden.
+  for (let scan = 0; scan < 100; scan += 1) {
+    const page = await sourceRowsPage({
+      store: input.base44.asServiceRole.entities.PushNotificationEvent,
+      baseFilter: {
+        recipient_user_id: input.userID,
+        inbox_visible: true,
+        inbox_committed_at: { $gt: lowerBoundBefore(INBOX_EPOCH) },
+        inbox_projection_version: { $gt: 0 },
+        inbox_published_at: { $gt: lower },
+        inbox_kind: { $gt: "" },
+        inbox_title_en: { $gt: "" },
+        inbox_body_en: { $gt: "" },
+        event_type: { $in: [...PERSONAL_EVENT_TYPES] },
+        state: {
+          $in: [
+            "pending",
+            "processing",
+            "retry",
+            "delivered",
+            "partial",
+            "no_devices",
+            "failed",
+          ],
+        },
       },
-    },
-    timeField: "inbox_published_at",
-    prefix: "personal:",
-    cursor: input.cursor,
-    upperInclusive: upper,
-    limit: input.limit,
-  });
-  return {
-    items: page.rows.map((event) =>
-      projectPersonalEvent({
-        event,
-        userID: input.userID,
-        locale: input.locale,
-      })
-    ).filter((item): item is InboxItem => Boolean(item)),
-    hasMore: page.hasMore,
-  };
+      timeField: "inbox_published_at",
+      prefix: "personal:",
+      cursor,
+      upperInclusive: upper,
+      limit: input.limit - items.length,
+    });
+    const visibleEvents = await actionablePersonalEvents({
+      base44: input.base44,
+      events: page.rows,
+      userID: input.userID,
+      now: input.now,
+    });
+    items.push(
+      ...visibleEvents.map((event) =>
+        projectPersonalEvent({
+          event,
+          userID: input.userID,
+          locale: input.locale,
+        })
+      ).filter((item): item is InboxItem => Boolean(item)),
+    );
+    if (!page.hasMore || items.length >= input.limit) {
+      return { items, hasMore: page.hasMore };
+    }
+    const last = page.rows.at(-1);
+    if (!last) return { items, hasMore: false };
+    cursor = [
+      sourceRowTime(last, "inbox_published_at"),
+      `personal:${clean(last.id)}`,
+    ];
+  }
+  throw new NotificationContractError(
+    "Room invitation sources require cleanup.",
+    503,
+  );
 }
 
 async function rawInboxPage(input: {

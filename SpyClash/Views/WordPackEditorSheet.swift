@@ -598,7 +598,7 @@ struct WordPackEditorSheet: View {
 
     private var wordsSection: some View {
         let analysis = draft.wordAnalysis
-        let selectedCount = draft.selectedWords.count
+        let wordCount = analysis.words.count
 
         return VStack(alignment: .leading, spacing: 10) {
             HStack(alignment: .firstTextBaseline, spacing: 8) {
@@ -609,22 +609,22 @@ struct WordPackEditorSheet: View {
 
                 Spacer()
 
-                Text("\(selectedCount) / \(analysis.words.count)")
+                Text("\(wordCount)")
                     .font(.system(size: 9, weight: .black, design: .monospaced))
-                    .foregroundStyle(selectedCount >= 2 ? SpyTheme.green : SpyTheme.red)
-                    .accessibilityLabel("\(selectedCount) \(flowCopy.uniqueWords)")
-                    .accessibilityIdentifier("wordPacks.editor.selectedWordCount")
+                    .foregroundStyle(wordCount >= 2 ? SpyTheme.green : SpyTheme.red)
+                    .accessibilityLabel("\(wordCount) \(flowCopy.uniqueWords)")
+                    .accessibilityIdentifier("wordPacks.editor.wordCountLabel")
             }
 
             if !analysis.words.isEmpty {
-                Text(wordSelectionHint)
+                Text(wordRemovalHint)
                     .font(.system(size: 11, weight: .semibold))
                     .foregroundStyle(SpyTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
 
                 LazyVGrid(columns: [GridItem(.adaptive(minimum: 120), spacing: 8)], spacing: 8) {
                     ForEach(analysis.words, id: \.self) { word in
-                        wordSelectionButton(word)
+                        wordRemovalButton(word)
                     }
                 }
                 .accessibilityIdentifier("wordPacks.editor.words")
@@ -637,7 +637,7 @@ struct WordPackEditorSheet: View {
                 .font(.system(size: 10, weight: .bold))
                 .foregroundStyle(SpyTheme.muted)
 
-            if validationAttempted && selectedCount < 2 {
+            if validationAttempted && wordCount < 2 {
                 validationMessage(flowCopy.twoWordsRequired)
             } else if analysis.words.isEmpty {
                 Text(copy.emptyWordsHint)
@@ -661,7 +661,7 @@ struct WordPackEditorSheet: View {
                 )
             }
 
-            if selectedCount > WordPackDraftNormalizer.gameplayWordLimit {
+            if wordCount > WordPackDraftNormalizer.gameplayWordLimit {
                 analysisMessage(
                     flowCopy.gameLimitHint,
                     systemName: "info.circle.fill",
@@ -671,35 +671,35 @@ struct WordPackEditorSheet: View {
         }
     }
 
-    private func wordSelectionButton(_ word: String) -> some View {
-        let isSelected = draft.isWordSelected(word)
-
-        return Button {
-            draft.toggleWord(word)
+    private func wordRemovalButton(_ word: String) -> some View {
+        Button {
+            draft.removeWord(word)
             message = nil
             HapticManager.shared.fire(.tabSelection)
         } label: {
-            Text(word)
-                .font(.system(size: 12, weight: .bold))
-                .strikethrough(!isSelected, color: SpyTheme.muted)
-                .foregroundStyle(isSelected ? SpyTheme.bodyText : SpyTheme.dim)
-                .multilineTextAlignment(.center)
-                .fixedSize(horizontal: false, vertical: true)
-                .padding(.horizontal, 10)
-                .padding(.vertical, 12)
-                .frame(maxWidth: .infinity, minHeight: 48)
-                .background(isSelected ? SpyTheme.control : SpyTheme.black, in: CutCornerShape(cut: 6))
-                .overlay(
-                    CutCornerShape(cut: 6)
-                        .stroke(isSelected ? SpyTheme.strokeStrong : SpyTheme.strokeDim, lineWidth: 1)
-                )
-                .contentShape(CutCornerShape(cut: 6))
+            HStack(spacing: 8) {
+                Text(word)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(SpyTheme.bodyText)
+                    .multilineTextAlignment(.leading)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+
+                Image(systemName: "xmark")
+                    .font(.system(size: 10, weight: .black))
+                    .foregroundStyle(SpyTheme.red)
+                    .accessibilityHidden(true)
+            }
+            .padding(.horizontal, 10)
+            .padding(.vertical, 12)
+            .frame(maxWidth: .infinity, minHeight: 48)
+            .background(SpyTheme.control, in: CutCornerShape(cut: 6))
+            .overlay(CutCornerShape(cut: 6).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+            .contentShape(CutCornerShape(cut: 6))
         }
         .buttonStyle(SpyWebPressStyle())
-        .accessibilityLabel(word)
-        .accessibilityValue(isSelected ? selectedWordLabel : excludedWordLabel)
-        .accessibilityHint(wordSelectionHint)
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .accessibilityLabel(removeWordLabel(word))
+        .accessibilityHint(wordRemovalHint)
         .accessibilityIdentifier("wordPacks.editor.word.\(word)")
     }
 
@@ -742,12 +742,12 @@ struct WordPackEditorSheet: View {
         message = nil
     }
 
-    private var wordSelectionHint: String {
+    private var wordRemovalHint: String {
         switch appState.language {
-        case .en: "Tap a word to cross it out or restore it. Only selected words will be saved."
-        case .ru: "Нажми на слово, чтобы вычеркнуть или вернуть его. Сохранятся только выбранные слова."
-        case .es: "Toca una palabra para tacharla o recuperarla. Solo se guardan las seleccionadas."
-        case .uk: "Натисни на слово, щоб викреслити або повернути його. Збережуться лише обрані слова."
+        case .en: "Tap × on a word to remove it from the pack. Save to apply your changes."
+        case .ru: "Нажми × у слова, чтобы удалить его из пака. Сохрани изменения."
+        case .es: "Toca × en una palabra para eliminarla del paquete. Guarda los cambios."
+        case .uk: "Натисни × біля слова, щоб видалити його з паку. Збережи зміни."
         }
     }
 
@@ -760,21 +760,12 @@ struct WordPackEditorSheet: View {
         }
     }
 
-    private var selectedWordLabel: String {
+    private func removeWordLabel(_ word: String) -> String {
         switch appState.language {
-        case .en: "Selected"
-        case .ru: "Выбрано"
-        case .es: "Seleccionada"
-        case .uk: "Обрано"
-        }
-    }
-
-    private var excludedWordLabel: String {
-        switch appState.language {
-        case .en: "Crossed out"
-        case .ru: "Вычеркнуто"
-        case .es: "Tachada"
-        case .uk: "Викреслено"
+        case .en: "Remove \(word)"
+        case .ru: "Удалить \(word)"
+        case .es: "Eliminar \(word)"
+        case .uk: "Видалити \(word)"
         }
     }
 
@@ -1204,7 +1195,7 @@ struct WordPackEditorSheet: View {
                     id: route.pack?.id ?? "preview-\(UUID().uuidString)",
                     name: draftToSave.normalizedName,
                     category: draftToSave.normalizedCategory.nilIfBlank ?? draftToSave.normalizedName,
-                    words: draftToSave.selectedWords,
+                    words: draftToSave.words,
                     ownerEmail: appState.user?.email,
                     isPublic: false
                 )
@@ -1218,13 +1209,13 @@ struct WordPackEditorSheet: View {
                         pack: pack,
                         name: draftToSave.normalizedName,
                         category: draftToSave.normalizedCategory,
-                        words: draftToSave.selectedWords
+                        words: draftToSave.words
                     )
                 } else {
                     savedPack = try await appState.client.createWordPack(
                         name: draftToSave.normalizedName,
                         category: draftToSave.normalizedCategory,
-                        words: draftToSave.selectedWords,
+                        words: draftToSave.words,
                         ownerEmail: email
                     )
                 }

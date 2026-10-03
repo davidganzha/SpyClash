@@ -178,8 +178,8 @@ Deno.test("global and failed-delivery personal items remain safely visible", asy
   assertEquals(ukrainianItems[0].title, "Збірка 29");
   assertEquals(ukrainianItems[1].body, "Red Raven хоче додати вас у друзі.");
 
-  // Materialized rows do not perform source N+1 reads. Source cancellation is
-  // performed atomically by communityAction when a request is blocked.
+  // Batch source validation also hides old materialized requests that were
+  // resolved before communityAction started cancelling their projections.
   entities.Friendship.records[0].status = "blocked";
   const afterBlock = await buildInbox({
     base44: app,
@@ -187,11 +187,8 @@ Deno.test("global and failed-delivery personal items remain safely visible", asy
     locale: "en",
     now: new Date("2026-07-28T00:00:00.000Z"),
   });
-  assertEquals(afterBlock.map((item) => item.id), [
-    "global:announcement-1",
-    "personal:event-1",
-  ]);
-  assertEquals(entities.Friendship.filterCalls.length, 0);
+  assertEquals(afterBlock.map((item) => item.id), ["global:announcement-1"]);
+  assertEquals(entities.Friendship.filterCalls.length, 3);
   assertEquals(entities.User.filterCalls.length, 0);
 });
 
@@ -864,4 +861,171 @@ Deno.test("draft create converges when the committed response is lost", async ()
   });
   assertEquals(draft.status, "draft");
   assertEquals(store.records.length, 1);
+});
+
+function roomInvitationEvent(index: number, overrides: Row = {}): Row {
+  return {
+    id: `invite-event-${String(index).padStart(4, "0")}`,
+    state: "delivered",
+    event_type: "room_invite",
+    source_event_id: `invite-source-${index}`,
+    recipient_user_id: "recipient",
+    room_id: "room",
+    inbox_kind: "room_invite",
+    inbox_importance: "important",
+    inbox_title_en: "Game invitation",
+    inbox_body_en: "Raven invited you to a room.",
+    inbox_action_deep_link: "spyclash://community/invites",
+    inbox_published_at: new Date(
+      Date.parse("2026-10-03T10:00:00.000Z") + index * 1_000,
+    ).toISOString(),
+    inbox_projection_version: 1,
+    inbox_visible: true,
+    inbox_committed_at: "2026-10-03T11:00:00.000Z",
+    ...overrides,
+  };
+}
+
+Deno.test("room Inbox entry and unread count vanish after any join, decline, or source deletion", async () => {
+  const event = roomInvitationEvent(1, {
+    inbox_kind: "friend_request",
+    inbox_title_en: "New friend request",
+    inbox_body_en: "Raven wants to connect.",
+    inbox_action_deep_link: "spyclash://community/requests",
+  });
+  const invite = {
+    id: "invite",
+    notification_event_id: event.source_event_id,
+    recipient_user_id: "recipient",
+    room_id: "room",
+    status: "pending",
+    created_at: "2026-10-03T10:00:00.000Z",
+  };
+  const entities = {
+    NotificationAnnouncement: new Store(),
+    NotificationReadReceipt: new Store(),
+    PushNotificationEvent: new Store([event]),
+    RoomInvite: new Store([invite]),
+    GameRoom: new Store([{
+      id: "room",
+      status: "waiting",
+      players: [{ user_id: "host" }],
+    }]),
+  };
+  const input = {
+    base44: base44(entities),
+    userID: "recipient",
+    locale: "en",
+    now: new Date("2026-10-03T12:00:00.000Z"),
+  };
+  const initial = await buildInbox(input);
+  assertEquals(initial.length, 1);
+  assertEquals(initial[0].kind, "room_invite");
+  assertEquals(initial[0].title, "Game invitation");
+  assertEquals(initial[0].body, "You have been invited to a SpyClash room.");
+  assertEquals(initial[0].action_deep_link, "spyclash://community/invites");
+  assertEquals((await inboxUnreadCounts(input)).personal, 1);
+  // No consume action occurs on a code/QR join; membership itself ends attention.
+  entities.GameRoom.records[0].players.push({ user_id: "recipient" });
+  assertEquals(await buildInbox(input), []);
+  assertEquals((await inboxUnreadCounts(input)).personal, 0);
+  entities.GameRoom.records[0].players = [];
+  for (const status of ["declined", "expired"]) {
+    entities.RoomInvite.records[0].status = status;
+    assertEquals(await buildInbox(input), []);
+  }
+  entities.RoomInvite.records = [];
+  assertEquals(await buildInbox(input), []);
+});
+
+Deno.test("closed and expired invitations cannot retain notification attention", async () => {
+  const event = roomInvitationEvent(1);
+  const entities = {
+    NotificationAnnouncement: new Store(),
+    NotificationReadReceipt: new Store(),
+    PushNotificationEvent: new Store([event]),
+    RoomInvite: new Store([{
+      id: "invite",
+      notification_event_id: event.source_event_id,
+      recipient_user_id: "recipient",
+      room_id: "room",
+      status: "pending",
+      created_at: "2026-10-02T11:00:00.000Z",
+    }]),
+    GameRoom: new Store([{ id: "room", status: "waiting", players: [] }]),
+  };
+  const input = {
+    base44: base44(entities),
+    userID: "recipient",
+    locale: "en",
+    now: new Date("2026-10-03T12:00:00.000Z"),
+  };
+  assertEquals(await buildInbox(input), []);
+  entities.RoomInvite.records[0].created_at = "2026-10-03T11:00:00.000Z";
+  entities.GameRoom.records[0].status = "playing";
+  assertEquals(await buildInbox(input), []);
+  entities.GameRoom.records = [];
+  assertEquals(await buildInbox(input), []);
+});
+
+Deno.test("a full page of resolved invitations does not hide older live invitations", async () => {
+  const events = Array.from(
+    { length: 510 },
+    (_, index) => roomInvitationEvent(index),
+  );
+  const live = events[0];
+  const entities = {
+    NotificationAnnouncement: new Store(),
+    NotificationReadReceipt: new Store(),
+    PushNotificationEvent: new Store(events),
+    RoomInvite: new Store([{
+      id: "live-invite",
+      notification_event_id: live.source_event_id,
+      recipient_user_id: "recipient",
+      room_id: "room",
+      status: "pending",
+      created_at: "2026-10-03T10:00:00.000Z",
+    }]),
+    GameRoom: new Store([{ id: "room", status: "waiting", players: [] }]),
+  };
+  const input = {
+    base44: base44(entities),
+    userID: "recipient",
+    locale: "en",
+    now: new Date("2026-10-03T12:00:00.000Z"),
+  };
+  assertEquals((await buildInbox(input)).map((item) => item.id), [
+    `personal:${live.id}`,
+  ]);
+  assertEquals((await inboxUnreadCounts(input)).personal, 1);
+  assertEquals(
+    entities.RoomInvite.filterCalls.every((call) => call.limit <= 51),
+    true,
+  );
+});
+
+Deno.test("old friend-request notification cannot masquerade as pending after acceptance", async () => {
+  const event = roomInvitationEvent(1, {
+    event_type: "friend_request",
+    inbox_kind: "friend_request",
+  });
+  const entities = {
+    NotificationAnnouncement: new Store(),
+    NotificationReadReceipt: new Store(),
+    PushNotificationEvent: new Store([event]),
+    Friendship: new Store([{
+      id: "friendship",
+      addressee_id: "recipient",
+      request_event_id: event.source_event_id,
+      status: "accepted",
+    }]),
+  };
+  const input = {
+    base44: base44(entities),
+    userID: "recipient",
+    locale: "en",
+    now: new Date("2026-10-03T12:00:00.000Z"),
+  };
+  assertEquals(await buildInbox(input), []);
+  assertEquals((await inboxUnreadCounts(input)).personal, 0);
 });

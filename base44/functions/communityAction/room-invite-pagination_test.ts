@@ -214,3 +214,32 @@ Deno.test("RoomInvite pagination fails closed at its page ceiling", async () => 
   assertEquals((error as Error & { status?: number }).status, 503);
   assertEquals(calls, ROOM_INVITE_MAX_PAGES);
 });
+
+Deno.test("room availability filtering precedes the 100-invitation display cap", async () => {
+  const rows = Array.from(
+    { length: 110 },
+    (_, index) =>
+      invite(
+        `invite-${String(index).padStart(3, "0")}`,
+        "pending",
+        "user-a",
+        new Date(Date.parse("2026-10-03T10:00:00.000Z") + index * 1_000)
+          .toISOString(),
+      ),
+  );
+  let candidates = 0;
+  const result = await loadIncomingRoomInvites(
+    {
+      filter: (_query, _sort, limit, skip) =>
+        Promise.resolve(rows.slice(skip, skip + limit)),
+    },
+    "user-b",
+    [{ requester_id: "user-a", addressee_id: "user-b", status: "accepted" }],
+    async (invitations) => {
+      candidates = invitations.length;
+      return invitations.filter((invitation) => invitation.id === "invite-000");
+    },
+  );
+  assertEquals(candidates, 110);
+  assertEquals(result.map((invitation) => invitation.id), ["invite-000"]);
+});

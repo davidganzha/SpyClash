@@ -109,3 +109,104 @@ Deno.test("a pending room invite reuses its event instead of spamming APNs", () 
     "",
   );
 });
+
+Deno.test("room invitation keeps its own category, route, and localized copy", async () => {
+  const store = new Store();
+  const persist = async <T>(writer: () => Promise<T>) => await writer();
+  const input = {
+    store,
+    persist,
+    eventType: "room_invite" as const,
+    sourceEventID: "invite-source",
+    actorUserID: "host",
+    actorDisplayName: "Raven",
+    recipientUserID: "friend",
+    roomID: "room",
+  };
+  await enqueueCommunityPushEvent(input);
+  await commitCommunityPushEvent(input);
+  assertEquals(store.records[0].inbox_kind, "room_invite");
+  assertEquals(
+    store.records[0].inbox_action_deep_link,
+    "spyclash://community/invites",
+  );
+  assertEquals(store.records[0].inbox_title_ru, "Приглашение в игру");
+  assertEquals(
+    store.records[0].inbox_body_ru,
+    "Raven приглашает вас в комнату SpyClash.",
+  );
+});
+
+Deno.test("resolved room invitation cancels delivered attention and repairs a CAS race", async () => {
+  const store = new Store();
+  store.records = [{
+    id: "event",
+    source_event_id: "source",
+    event_type: "room_invite",
+    state: "delivered",
+    inbox_visible: true,
+    lease_token: "",
+    revision: "before",
+  }];
+  const update = store.updateMany.bind(store);
+  let raced = false;
+  store.updateMany = async (filter, patch) => {
+    if (!raced) {
+      raced = true;
+      store.records[0].revision = "worker-finished";
+      return { updated: 0 };
+    }
+    return await update(filter, patch);
+  };
+  assertEquals(
+    await cancelCommunityPushEvent({
+      store,
+      persist: async <T>(writer: () => Promise<T>) => await writer(),
+      eventType: "room_invite",
+      sourceEventID: "source",
+      reason: "room_invite_consumed",
+    }),
+    1,
+  );
+  assertEquals(store.records[0].state, "cancelled");
+  assertEquals(store.records[0].inbox_visible, false);
+});
+
+Deno.test("blank legacy event identity never cancels another notification", async () => {
+  const store = new Store();
+  store.records = [{
+    id: "event",
+    source_event_id: "",
+    event_type: "room_invite",
+    state: "delivered",
+    inbox_visible: true,
+  }];
+  assertEquals(
+    await cancelCommunityPushEvent({
+      store,
+      persist: async <T>(writer: () => Promise<T>) => await writer(),
+      eventType: "room_invite",
+      sourceEventID: "",
+      reason: "room_invite_consumed",
+    }),
+    0,
+  );
+  assertEquals(store.records[0].inbox_visible, true);
+});
+
+Deno.test("expired pending invitation starts a fresh notification generation", () => {
+  const now = new Date("2026-10-03T12:00:00.000Z");
+  const invite = {
+    status: "pending",
+    notification_event_id: "old-event",
+    created_at: "2026-10-02T12:00:00.000Z",
+  };
+  assertEquals(reusablePendingInviteEventID(invite, now), "");
+  assertEquals(
+    reusablePendingInviteEventID({
+      ...invite,
+      created_at: "2026-10-03T11:00:00.000Z",
+    }, now),
+    "old-event",
+  );
+});

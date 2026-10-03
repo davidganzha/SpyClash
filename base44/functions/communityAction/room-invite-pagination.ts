@@ -123,6 +123,9 @@ export async function loadIncomingRoomInvites(
   store: RoomInviteStore,
   currentUserID: string,
   relationships: RoomInviteEntity[] | Promise<RoomInviteEntity[]>,
+  filterActionable: (
+    invitations: RoomInviteEntity[],
+  ) => Promise<RoomInviteEntity[]> = async (invitations) => invitations,
 ): Promise<RoomInviteEntity[]> {
   const [invitations, resolvedRelationships] = await Promise.all([
     filterAllRoomInvites(store, {
@@ -131,11 +134,15 @@ export async function loadIncomingRoomInvites(
     }),
     relationships,
   ]);
-  return newestFirst(invitations).filter((invite) =>
+  const acceptedFriendInvites = newestFirst(invitations).filter((invite) =>
     incomingRoomInviteHasAcceptedFriendship(
       invite,
       resolvedRelationships,
       currentUserID,
     )
-  ).slice(0, ROOM_INVITE_RESULT_LIMIT);
+  );
+  return (await filterActionable(acceptedFriendInvites)).slice(
+    0,
+    ROOM_INVITE_RESULT_LIMIT,
+  );
 }
