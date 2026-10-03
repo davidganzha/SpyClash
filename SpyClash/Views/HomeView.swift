@@ -1129,10 +1129,14 @@ private struct HowToPlaySheet: View {
                 closeRow
                 header
                 modePicker
-                tutorialCard
+                ScrollView {
+                    tutorialCard
+                        .padding(.vertical, 2)
+                }
+                .scrollBounceBehavior(.basedOnSize)
+                .id("tutorial-scroll-\(mode.id)-\(stepIndex)")
                 progressRow
                 navigationRow
-                Spacer(minLength: 0)
             }
             .padding(.horizontal, 20)
             .padding(.vertical, 22)
@@ -1245,9 +1249,9 @@ private struct HowToPlaySheet: View {
                         .fixedSize(horizontal: false, vertical: true)
 
                     Text(currentStep.text)
-                        .font(.system(size: 13, weight: .medium, design: .monospaced))
-                        .lineSpacing(7)
-                        .foregroundStyle(SpyTheme.muted)
+                        .font(.body)
+                        .lineSpacing(5)
+                        .foregroundStyle(SpyTheme.bodyText)
                         .fixedSize(horizontal: false, vertical: true)
                 }
             }

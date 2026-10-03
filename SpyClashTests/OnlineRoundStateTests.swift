@@ -70,22 +70,27 @@ final class SpyLoaderMotionPolicyTests: XCTestCase {
 }
 
 final class OnlineRoundStateTests: XCTestCase {
-    func testTutorialVoteCopyExplainsNMinusSAndAutomaticCancellationInEveryLanguageAndMode() throws {
+    func testTutorialExplainsVotingWithoutFormulasInEveryLanguageAndMode() throws {
         for language in AppLanguage.allCases {
-            let expectedFragments: (suspect: String, cancellation: String) = switch language {
-            case .en: ("same suspect", "server cancels automatically")
-            case .es: ("mismo sospechoso", "servidor cancela automáticamente")
-            case .ru: ("одного подозреваемого", "сервер автоматически отменит")
-            case .uk: ("одного підозрюваного", "сервер автоматично скасує")
+            let expectedFragments: (requirement: String, cancellation: String, sharedGuess: String) = switch language {
+            case .en: ("game shows how many votes", "without removing anyone", "share one guess")
+            case .es: ("juego muestra cuántos votos", "se cancela la votación", "comparten un intento")
+            case .ru: ("игра покажет, сколько голосов", "голосование отменяется", "одна общая попытка")
+            case .uk: ("гра покаже, скільки голосів", "голосування скасовується", "одну спільну спробу")
             }
 
             for mode in TutorialMode.allCases {
+                let steps = language.tutorialSteps(for: mode)
+                XCTAssertEqual(steps.count, 4)
+                let allInstructions = steps.map(\.text).joined(separator: " ")
+                XCTAssertFalse(allInstructions.contains("N−S"))
+                XCTAssertFalse(allInstructions.contains("N−1"))
                 let instruction = try XCTUnwrap(
-                    language.tutorialSteps(for: mode).first { $0.text.contains("N−S") },
-                    "Missing N−S tutorial instruction for \(language.rawValue)/\(mode.rawValue)"
+                    steps.first { $0.text.localizedCaseInsensitiveContains(expectedFragments.requirement) },
+                    "Missing voting guidance for \(language.rawValue)/\(mode.rawValue)"
                 )
-                XCTAssertTrue(instruction.text.localizedCaseInsensitiveContains(expectedFragments.suspect))
                 XCTAssertTrue(instruction.text.localizedCaseInsensitiveContains(expectedFragments.cancellation))
+                XCTAssertTrue(allInstructions.localizedCaseInsensitiveContains(expectedFragments.sharedGuess))
             }
         }
     }
@@ -2764,6 +2769,54 @@ final class LobbySyncRetryPolicyTests: XCTestCase {
             LobbySyncRetryPolicy.isRetryable(
                 URLError(.cancelled)
             )
+        )
+    }
+}
+
+final class RoomWordPoolSelectionTests: XCTestCase {
+    func testFullSelectionGrowsBeyondInitialGenerationLimit() {
+        XCTAssertEqual(
+            RoomWordPoolFilter.selectedCountAfterPoolChange(selected: 80, previousActiveCount: 80, activeCount: 130),
+            130
+        )
+        XCTAssertEqual(
+            RoomWordPoolFilter.selectedCountAfterPoolChange(selected: 130, previousActiveCount: 130, activeCount: 180),
+            180
+        )
+    }
+
+    func testExcludedWordsDoNotPreventFullActiveSelectionFromExpanding() {
+        let original = (1...80).map { "Word \($0)" }
+        let expanded = original + (81...130).map { "Word \($0)" }
+        let exclusions = Set([RoomWordPoolFilter.key("Word 1"), RoomWordPoolFilter.key("Word 80")])
+        let oldActiveCount = RoomWordPoolFilter.activeWords(original, excluding: exclusions).count
+        let active = RoomWordPoolFilter.activeWords(expanded, excluding: exclusions)
+
+        XCTAssertEqual(oldActiveCount, 78)
+        XCTAssertEqual(active.count, 128)
+        XCTAssertEqual(
+            RoomWordPoolFilter.selectedCountAfterPoolChange(selected: 78, previousActiveCount: oldActiveCount, activeCount: active.count),
+            128
+        )
+        XCTAssertFalse(active.contains("Word 1"))
+        XCTAssertFalse(active.contains("Word 80"))
+    }
+
+    func testExpansionPreservesAnIntentionallySmallerSelection() {
+        XCTAssertEqual(
+            RoomWordPoolFilter.selectedCountAfterPoolChange(selected: 40, previousActiveCount: 80, activeCount: 130),
+            40
+        )
+    }
+
+    func testExcludingAndRestoringLastWordKeepsCountInBounds() {
+        XCTAssertEqual(
+            RoomWordPoolFilter.selectedCountAfterPoolChange(selected: 1, previousActiveCount: 1, activeCount: 0),
+            0
+        )
+        XCTAssertEqual(
+            RoomWordPoolFilter.selectedCountAfterPoolChange(selected: 0, previousActiveCount: 0, activeCount: 1),
+            1
         )
     }
 }

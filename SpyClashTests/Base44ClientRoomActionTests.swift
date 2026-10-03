@@ -332,6 +332,131 @@ final class Base44ClientRoomActionTests: XCTestCase {
         )
     }
 
+    func testGameIntroInProgressUsesExactTypedConflict() {
+        XCTAssertTrue(Base44Error(
+            message: "The game intro is still in progress.",
+            statusCode: 409,
+            code: " GAME_INTRO_IN_PROGRESS "
+        ).isGameIntroInProgress)
+        XCTAssertFalse(Base44Error(
+            message: "The game intro is still in progress.", statusCode: 409
+        ).isGameIntroInProgress)
+        XCTAssertFalse(Base44Error(
+            message: "Invalid intro", statusCode: 409, code: "invalid_game_intro"
+        ).isGameIntroInProgress)
+        XCTAssertFalse(Base44Error(
+            message: "Unavailable", statusCode: 503, code: "game_intro_in_progress"
+        ).isGameIntroInProgress)
+    }
+
+    func testCompleteGameStartReturnsLegacyIntroGateWithoutImmediateRetry() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.leaseConflictResponse(
+                for: request, code: "game_intro_in_progress", retryable: false
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        do {
+            _ = try await makeClient().completeGameStart(room: .previewRoom(status: "roulette"))
+            XCTFail("Expected the server's intro deadline to remain authoritative.")
+        } catch let error as Base44Error {
+            XCTAssertTrue(error.isGameIntroInProgress)
+        }
+        XCTAssertEqual(
+            try recorder.requestBodies().compactMap { $0["action"] as? String },
+            ["complete_game_start"]
+        )
+    }
+
+    func testStartGameArmsBeforeCompletingAndPreservesRoleCardGate() async throws {
+        let recorder = RequestRecorder()
+        let room = GameRoom.previewRoom(status: "waiting")
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let action = try recorder.requestBodies().last?["action"] as? String
+            return try MockURLProtocol.gameStartResponse(
+                for: request, room: room, status: action == "arm_roulette" ? "roulette" : "playing"
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let result = try await makeClient().startGame(room: room, wordPacks: [])
+
+        XCTAssertEqual(result.normalizedStatus, "playing")
+        XCTAssertEqual(result.playersList.count, room.playersList.count)
+        XCTAssertTrue(result.cardsReadList.isEmpty)
+        XCTAssertFalse(result.allRoleCardsRead)
+        XCTAssertNil(result.gameStartedAt)
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(bodies.compactMap { $0["action"] as? String }, ["arm_roulette", "complete_game_start"])
+        let armedPlan = try XCTUnwrap(bodies[0]["plan"] as? [String: Any])
+        let completedPlan = try XCTUnwrap(bodies[1]["plan"] as? [String: Any])
+        XCTAssertTrue(NSDictionary(dictionary: armedPlan).isEqual(to: completedPlan))
+    }
+
+    func testStartGameWaitsForLegacyServerWithoutRearming() async throws {
+        let recorder = RequestRecorder()
+        let room = GameRoom.previewRoom(status: "waiting")
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            let bodies = try recorder.requestBodies()
+            if bodies.count == 2 {
+                return MockURLProtocol.leaseConflictResponse(
+                    for: request, code: "game_intro_in_progress", retryable: false
+                )
+            }
+            return try MockURLProtocol.gameStartResponse(
+                for: request, room: room, status: bodies.count == 1 ? "roulette" : "playing"
+            )
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let startedAt = ContinuousClock.now
+        let result = try await makeClient().startGame(room: room, wordPacks: [])
+
+        XCTAssertGreaterThanOrEqual(startedAt.duration(to: .now), .seconds(Base44Client.legacyGameIntroDuration))
+        XCTAssertEqual(result.normalizedStatus, "playing")
+        XCTAssertFalse(result.allRoleCardsRead)
+        XCTAssertNil(result.gameStartedAt)
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(
+            bodies.compactMap { $0["action"] as? String },
+            ["arm_roulette", "complete_game_start", "complete_game_start"]
+        )
+        XCTAssertTrue(NSDictionary(dictionary: bodies[1]).isEqual(to: bodies[2]))
+    }
+
+    func testStartGameCancellationAfterArmingDoesNotComplete() async throws {
+        let recorder = RequestRecorder()
+        let armed = expectation(description: "The server receives the armed plan")
+        let room = GameRoom.previewRoom(status: "waiting")
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            armed.fulfill()
+            return try MockURLProtocol.gameStartResponse(for: request, room: room, status: "roulette")
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let client = makeClient()
+        let task = Task { try await client.startGame(room: room, wordPacks: []) }
+        let waitResult = await XCTWaiter.fulfillment(of: [armed], timeout: 2)
+        XCTAssertEqual(waitResult, .completed)
+        task.cancel()
+        do {
+            _ = try await task.value
+            XCTFail("Expected cancellation before completion.")
+        } catch {
+            XCTAssertTrue(RequestCancellationPolicy.isCancellation(error))
+        }
+        XCTAssertEqual(
+            try recorder.requestBodies().compactMap { $0["action"] as? String },
+            ["arm_roulette"]
+        )
+    }
+
     func testCompleteGameStartRethrowsOriginalConflictWhenAuthoritativeRoomIsStillRoulette() async throws {
         let recorder = RequestRecorder()
         MockURLProtocol.requestHandler = { request in
@@ -661,6 +786,67 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertEqual(transportedWords, ["Bulgaria", "Romania"])
         XCTAssertTrue(transportedWords.contains(secretWord))
         XCTAssertEqual(planBody["category"] as? String, "COUNTRIES")
+    }
+
+    func testExpandedGeneratedPoolExclusionsReachLobbySaveAndStart() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            if request.url?.path.contains("wordPackAction") == true {
+                let response = HTTPURLResponse(
+                    url: request.url!, statusCode: 200, httpVersion: nil,
+                    headerFields: ["Content-Type": "application/json"]
+                )!
+                return (response, Data(#"{"id":"saved-pack","name":"Expanded"}"#.utf8))
+            }
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+
+        let original = (1...80).map { "Word \($0)" }
+        let expanded = original + (81...130).map { "Word \($0)" }
+        let disabledKeys = Set([RoomWordPoolFilter.key("Word 1")])
+        let active = RoomWordPoolFilter.activeWords(expanded, excluding: disabledKeys)
+        let count = RoomWordPoolFilter.selectedCountAfterPoolChange(
+            selected: 79,
+            previousActiveCount: RoomWordPoolFilter.activeWords(original, excluding: disabledKeys).count,
+            activeCount: active.count
+        )
+        let state = LobbyStatePayload(
+            gameMode: .questions, gameDurationSeconds: 900, spyCount: 1,
+            spiesKnowEachOther: false, lobbyWordSource: .ai,
+            lobbySourcePackID: nil, lobbySourceName: "Expanded", lobbyTheme: "Words",
+            lobbyCategory: "TEST", lobbyWordCount: count, lobbyWordCountMode: .custom,
+            lobbyWordPool: expanded.map {
+                LobbyWordPoolEntry(word: $0, enabled: !disabledKeys.contains(RoomWordPoolFilter.key($0)))
+            }
+        )
+        var room = GameRoom.previewRoom(status: "waiting")
+        let client = makeClient()
+        _ = try await client.updateLobbyState(room: room, mutationID: "expanded-pool", expectedRevision: 0, state: state)
+        _ = try await client.createWordPack(name: "Expanded", category: "TEST", words: active, ownerEmail: "operative@example.com")
+
+        room.lobbyRevision = 1
+        room.lobbyWordSource = "ai"
+        room.lobbyWordCount = count
+        room.lobbyWordPool = state.lobbyWordPool
+        let plan = try client.makeGameStartPlan(
+            room: room, wordPacks: [], selectedPackID: "generated",
+            gameMode: .questions, durationSeconds: 900
+        )
+        _ = try await client.armRoulette(room: room, plan: plan)
+
+        let bodies = try recorder.requestBodies()
+        let synced = try XCTUnwrap(bodies[0]["state"] as? [String: Any])
+        XCTAssertEqual(synced["lobby_word_count"] as? Int, 129)
+        let syncedPool = try XCTUnwrap(synced["lobby_word_pool"] as? [[String: Any]])
+        XCTAssertEqual(syncedPool.count, 130)
+        XCTAssertEqual(syncedPool.first?["enabled"] as? Bool, false)
+        XCTAssertEqual(bodies[1]["words"] as? [String], active)
+        let transportedPlan = try XCTUnwrap(bodies[2]["plan"] as? [String: Any])
+        let transportedPool = try XCTUnwrap(transportedPlan["word_pool"] as? [[String: Any]])
+        XCTAssertEqual(transportedPool.compactMap { $0["word"] as? String }, active)
+        XCTAssertTrue(active.contains(try XCTUnwrap(transportedPlan["secret_word"] as? String)))
     }
 
     func testGameRoomDecodesAuthoritativeLobbyProjection() throws {
@@ -1236,6 +1422,22 @@ private final class MockURLProtocol: URLProtocol, @unchecked Sendable {
         )!
         let payload = #"{"id":"room-1","code":"ABC123","status":"playing","players":[]}"#
         return (response, Data(payload.utf8))
+    }
+
+    static func gameStartResponse(
+        for request: URLRequest,
+        room: GameRoom,
+        status: String
+    ) throws -> (HTTPURLResponse, Data) {
+        var responseRoom = room
+        responseRoom.status = status
+        responseRoom.cardsRead = []
+        responseRoom.gameStartedAt = nil
+        let response = HTTPURLResponse(
+            url: request.url!, statusCode: 200, httpVersion: nil,
+            headerFields: ["Content-Type": "application/json"]
+        )!
+        return (response, try JSONEncoder().encode(responseRoom))
     }
 
     static func roomResponse(

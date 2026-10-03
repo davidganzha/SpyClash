@@ -27,6 +27,9 @@ struct PushNotificationTransportRetryPolicy: Equatable, Sendable {
 @MainActor
 @Observable
 final class Base44Client {
+    nonisolated static let gameIntroDuration: TimeInterval = 3
+    nonisolated static let gameIntroCompletionMargin: TimeInterval = 0.2
+    nonisolated static let legacyGameIntroDuration: TimeInterval = 8
     static let multiSpyCapability = "multi_spy_v1"
     static let appID = "69a0e57fa939f578082f8091"
     static let appBaseURL = URL(string: "https://spyclash.com")!
@@ -488,6 +491,7 @@ final class Base44Client {
     }
 
     func startGame(room: GameRoom, wordPacks: [WordPack]) async throws -> GameRoom {
+        try Task.checkCancellation()
         let plan = try makeGameStartPlan(
             room: room,
             wordPacks: wordPacks,
@@ -497,8 +501,18 @@ final class Base44Client {
             forcedAskerEmail: room.rouletteTargetEmail
         )
         let rouletteRoom = try await armRoulette(room: room, plan: plan)
-        try await Task.sleep(for: .seconds(2))
-        return try await completeGameStart(room: rouletteRoom, plan: plan)
+        try Task.checkCancellation()
+        try await Task.sleep(for: .seconds(Self.gameIntroDuration + Self.gameIntroCompletionMargin))
+        try Task.checkCancellation()
+        do {
+            return try await completeGameStart(room: rouletteRoom, plan: plan)
+        } catch let error as Base44Error where error.isGameIntroInProgress {
+            // Older deployments still require the eight-second intro. Wait
+            // out that window before retrying the same already-armed plan.
+            try await Task.sleep(for: .seconds(Self.legacyGameIntroDuration - Self.gameIntroDuration))
+            try Task.checkCancellation()
+            return try await completeGameStart(room: rouletteRoom, plan: plan)
+        }
     }
 
     func markRoleCardRead(room: GameRoom, user: SpyUser) async throws -> GameRoom {
@@ -2153,6 +2167,10 @@ struct Base44Error: LocalizedError {
             .trimmingCharacters(in: .whitespacesAndNewlines)
             .lowercased()
         return normalizedCode == "active_lease" || normalizedCode == "cas_contention"
+    }
+
+    var isGameIntroInProgress: Bool {
+        statusCode == 409 && normalizedCode == "game_intro_in_progress"
     }
 
     var isClientUpdateRequired: Bool {

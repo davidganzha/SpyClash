@@ -2360,6 +2360,8 @@ struct GameView: View {
                     roomSaveAsWordPackButton
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
+
+                roomPoolPreview
             }
             .background {
                 if focusedOnlineSetupField == .theme {
@@ -2808,6 +2810,7 @@ struct GameView: View {
                 roomWordsSlider
                 roomExpandThemePoolButton
                 roomSaveAsWordPackButton
+                roomPoolPreview
             }
         }
     }
@@ -4467,6 +4470,8 @@ struct GameView: View {
                     roomSaveAsWordPackButton
                         .transition(.opacity.combined(with: .move(edge: .top)))
                 }
+
+                roomPoolPreview
             }
             .animation(.smooth(duration: 0.26), value: roomHasCustomTheme)
             .animation(.smooth(duration: 0.26), value: roomHasGeneratedTheme)
@@ -4782,9 +4787,9 @@ struct GameView: View {
     }
 
     private var roomWordsSlider: some View {
-        let maxWords = roomThemeMaxWords
-        let selectedWords = min(Int(roomWordCount), activeRoomWords(roomGeneratedPack?.words ?? []).count)
-        let lowerBound = Double(min(5, maxWords))
+        let maxWords = activeRoomWords(roomGeneratedPack?.words ?? []).count
+        let selectedWords = min(Int(roomWordCount), maxWords)
+        let lowerBound = Double(min(2, maxWords))
         let upperBound = Double(maxWords)
 
         return VStack(alignment: .leading, spacing: 8) {
@@ -4824,7 +4829,9 @@ struct GameView: View {
                     if !isInteracting {
                         reconcileAuthoritativeLobbyStateAfterSliderInteraction()
                     }
-                }
+                },
+                accessibilityLabel: roomWordsLabel,
+                accessibilityIdentifier: "onlineRoom.activeWordCountSlider"
             )
             .disabled(lowerBound == upperBound)
         }
@@ -4990,7 +4997,7 @@ struct GameView: View {
                         .foregroundStyle(isEnabled ? SpyTheme.bodyText : SpyTheme.dim.opacity(0.38))
                         .spyFitted(scale: 0.50, alignment: .center)
                         .padding(.horizontal, 8)
-                        .frame(height: 30)
+                        .frame(minHeight: 44)
                         .frame(maxWidth: .infinity)
                         .background(isEnabled ? SpyTheme.control : SpyTheme.black)
                         .overlay(
@@ -5000,9 +5007,13 @@ struct GameView: View {
                         .contentShape(Rectangle())
                 }
                 .buttonStyle(SpyWebPressStyle())
-                .disabled(appState.activeRoom.map { !isHost($0) } ?? true)
+                .disabled(
+                    isGeneratingRoomTheme || isSavingRoomThemePack ||
+                        (appState.activeRoom.map { !isHost($0) || $0.normalizedStatus != "waiting" } ?? true)
+                )
                 .transition(.opacity.combined(with: .scale(scale: 0.97)))
                 .accessibilityLabel(word)
+                .accessibilityIdentifier("onlineRoom.poolWord.\(roomWordKey(word))")
                 .accessibilityValue(
                     isEnabled
                         ? localized(en: "In game", ru: "В игре", es: "En juego", uk: "У грі")
@@ -6279,10 +6290,18 @@ struct GameView: View {
 
     private func toggleRoomPoolWord(_ word: String) {
         let key = roomWordKey(word)
+        let previousActiveCount = activeRoomWords(roomGeneratedPack?.words ?? []).count
         if disabledRoomPoolWordKeys.contains(key) {
             disabledRoomPoolWordKeys.remove(key)
         } else {
             disabledRoomPoolWordKeys.insert(key)
+        }
+        if roomWordSource == .generated {
+            roomWordCount = Double(RoomWordPoolFilter.selectedCountAfterPoolChange(
+                selected: Int(roomWordCount),
+                previousActiveCount: previousActiveCount,
+                activeCount: activeRoomWords(roomGeneratedPack?.words ?? []).count
+            ))
         }
         HapticManager.shared.fire(.tabSelection)
         scheduleLobbyStateSync(debounce: .milliseconds(90))
@@ -6469,7 +6488,7 @@ struct GameView: View {
     }
 
     private var roomCountLabel: String {
-        localized(en: "// WORDS TO CREATE", ru: "// СОЗДАТЬ СЛОВ", es: "// PALABRAS A CREAR", uk: "// СЛІВ ДЛЯ СТВОРЕННЯ")
+        localized(en: "// WORDS TO GENERATE", ru: "// СГЕНЕРИРОВАТЬ СЛОВ", es: "// PALABRAS A GENERAR", uk: "// ЗГЕНЕРУВАТИ СЛІВ")
     }
 
     private var roomWordsLabel: String {
@@ -7046,12 +7065,13 @@ struct GameView: View {
         let currentPack = roomGeneratedPack
         let current = currentPack?.words.roomCleanWords ?? []
         let selectedWordCount = Int(roomWordCount)
-        let wasUsingEntirePool = selectedWordCount >= current.count
+        let previousActiveCount = activeRoomWords(current).count
         guard let operationRoom = appState.activeRoom,
               isHost(operationRoom),
               operationRoom.normalizedStatus == "waiting",
               !theme.isEmpty,
               current.count >= 2,
+              current.count < 200,
               roomThemeOperation == nil else { return }
         let operationRoomID = operationRoom.id
         let requestID = UUID()
@@ -7121,11 +7141,11 @@ struct GameView: View {
             disabledRoomPoolWordKeys = disabledRoomPoolWordKeys.filter { key in
                 merged.contains { roomWordKey($0) == key }
             }
-            roomWordCount = Double(
-                wasUsingEntirePool
-                    ? merged.count
-                    : min(merged.count, max(selectedWordCount, 2))
-            )
+            roomWordCount = Double(RoomWordPoolFilter.selectedCountAfterPoolChange(
+                selected: selectedWordCount,
+                previousActiveCount: previousActiveCount,
+                activeCount: activeRoomWords(merged).count
+            ))
             roomWordSource = .generated
             showsAllRoomPoolWords = false
             scheduleLobbyStateSync(debounce: .milliseconds(80))
@@ -7772,9 +7792,22 @@ struct GameView: View {
     }
 
     private func completeRouletteIfNeeded(_ room: GameRoom) async {
+        let operationUserID = appState.user?.id
+        func isCurrentIntro() -> Bool {
+            appState.user?.id == operationUserID &&
+                appState.activeRoom?.id == room.id &&
+                appState.activeRoom?.normalizedStatus == "roulette" &&
+                appState.activeRoom?.introStartedAt == room.introStartedAt
+        }
+
         if appState.shouldUsePreviewData {
-            try? await Task.sleep(for: .seconds(8))
-            guard appState.activeRoom?.normalizedStatus == "roulette" else { return }
+            do {
+                try await Task.sleep(for: .seconds(Base44Client.gameIntroDuration))
+                try Task.checkCancellation()
+            } catch {
+                return
+            }
+            guard isCurrentIntro() else { return }
             appState.activeRoom = GameRoom.previewRoom(status: "cards-last")
             status = copy.gameReady
             return
@@ -7793,26 +7826,64 @@ struct GameView: View {
             let elapsed = room.introStartedAt
                 .flatMap(parseDate)
                 .map { max(Date().timeIntervalSince($0), 0) } ?? 0
-            let delay = max(8.2 - elapsed, 0)
+            let delay = max(
+                Base44Client.gameIntroDuration + Base44Client.gameIntroCompletionMargin - elapsed,
+                0
+            )
             if delay > 0 {
                 try await Task.sleep(for: .seconds(delay))
             }
-            let currentRoom = (try? await appState.client.refreshRoom(id: room.id)) ?? room
-            guard currentRoom.normalizedStatus == "roulette" else { return }
 
-            appState.activeRoom = try await appState.client.completeGameStart(room: currentRoom)
-            pendingStartPlan = nil
-            status = copy.gameReady
-            revealRole = false
-            HapticManager.shared.fire(.milestone)
+            for attempt in 0..<3 {
+                try Task.checkCancellation()
+                guard isCurrentIntro() else { return }
+                let currentRoom = try await appState.client.refreshRoom(id: room.id)
+                try Task.checkCancellation()
+                guard isCurrentIntro() else { return }
+                guard let currentRoom else {
+                    appState.activeRoom = nil
+                    pendingStartPlan = nil
+                    return
+                }
+                guard currentRoom.normalizedStatus == "roulette",
+                      currentRoom.introStartedAt == room.introStartedAt else {
+                    // Another participant may have completed the same intro.
+                    appState.activeRoom = currentRoom
+                    pendingStartPlan = nil
+                    return
+                }
+
+                do {
+                    let startedRoom = try await appState.client.completeGameStart(room: currentRoom)
+                    try Task.checkCancellation()
+                    guard isCurrentIntro() else { return }
+                    appState.activeRoom = startedRoom
+                    pendingStartPlan = nil
+                    status = copy.gameReady
+                    revealRole = false
+                    HapticManager.shared.fire(.milestone)
+                    return
+                } catch let error as Base44Error where error.isGameIntroInProgress && attempt < 2 {
+                    // Older servers still enforce the eight-second window.
+                    // Wait for that contract instead of showing a start failure.
+                    let elapsed = room.introStartedAt
+                        .flatMap(parseDate)
+                        .map { max(Date().timeIntervalSince($0), 0) } ?? 0
+                    let remaining = max(
+                        Base44Client.legacyGameIntroDuration + Base44Client.gameIntroCompletionMargin - elapsed,
+                        0.5
+                    )
+                    try await Task.sleep(for: .seconds(remaining))
+                }
+            }
         } catch {
             if RequestCancellationPolicy.isCancellation(error) {
-                if appState.activeRoom?.id == room.id,
-                   appState.activeRoom?.normalizedStatus == "roulette" {
+                if isCurrentIntro() {
                     rouletteCompletionKey = nil
                 }
                 return
             }
+            guard isCurrentIntro() else { return }
             rouletteCompletionKey = nil
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
@@ -9170,6 +9241,11 @@ enum LobbyDraftPoolPolicy {
 }
 
 enum RoomWordPoolFilter {
+    static func selectedCountAfterPoolChange(selected: Int, previousActiveCount: Int, activeCount: Int) -> Int {
+        // A full selection follows expansion; an intentional smaller selection stays put.
+        selected >= previousActiveCount ? activeCount : min(max(selected, 0), activeCount)
+    }
+
     static func canonicalWord(_ rawValue: String) -> String {
         rawValue
             .precomposedStringWithCompatibilityMapping

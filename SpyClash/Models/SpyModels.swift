@@ -133,59 +133,59 @@ enum AppLanguage: String, CaseIterable, Codable, Hashable, Identifiable {
         switch (self, mode) {
         case (.ru, .questions):
             [
-                TutorialStep(icon: "🎭", title: "Роли", text: "В начале игры каждый тайно читает свою карточку роли. Детективы видят секретное слово и категорию. Шпион ничего не видит — только список слов, из которых нужно будет угадать."),
-                TutorialStep(icon: "❓", title: "Вопросы и ответы", text: "Игроки ходят по кругу: один задаёт вопрос, другой отвечает вслух. Когда спрашивающий услышал ответ — он нажимает «Ответ услышан» и ход переходит дальше. Вопросы должны намекать на слово, но не раскрывать его шпиону."),
-                TutorialStep(icon: "🗳️", title: "Голосование за шпиона", text: "Любой игрок может запросить голосование. Для исключения нужны N−S голосов за одного подозреваемого, где N — активные игроки, а S — активные шпионы. При одном шпионе это прежние N−1. Сервер автоматически отменит голосование, как только такой результат станет невозможен."),
-                TutorialStep(icon: "🎯", title: "Угадывание шпиона", text: "Команда шпионов делит одну общую попытку: любой шпион может нажать «Угадать досрочно» и выбрать слово. Верно — шпионы побеждают; ошибка сразу отдаёт победу детективам.")
+                TutorialStep(icon: "🎭", title: "Узнай свою роль", text: "Тайно прочитай карточку. Детективы видят секретное слово. Шпионы его не знают: слушают остальных и стараются себя не выдать."),
+                TutorialStep(icon: "❓", title: "Задавай вопросы", text: "Экран показывает, кто спрашивает и кто отвечает. Говорите вслух и намекайте на слово, не называя его. Ответ прозвучал — передавайте ход дальше."),
+                TutorialStep(icon: "🗳️", title: "Найди шпионов", text: "Запустите голосование и выберите подозреваемого. Игра покажет, сколько голосов нужно для исключения. Если никто не может набрать нужное число, голосование отменяется — продолжайте обсуждение."),
+                TutorialStep(icon: "🎯", title: "Кто побеждает", text: "Нашли всех шпионов — победили детективы. У шпионов одна общая попытка угадать слово: верно — победа, ошибка — проигрыш. Они также выигрывают, если время вышло или шпионов осталось не меньше, чем детективов.")
             ]
         case (.ru, .associations):
             [
-                TutorialStep(icon: "🎭", title: "Роли", text: "В начале каждый тайно читает свою карточку роли. Детективы видят секретное слово. Шпион ничего не видит — вместо слова у него «???»."),
-                TutorialStep(icon: "🎰", title: "Барабан", text: "Хост запускает барабан — он случайно выбирает игрока. Этот игрок должен назвать вслух ОДНО слово-ассоциацию к секретному слову, затем нажать «Ответил»."),
-                TutorialStep(icon: "🔄", title: "Без повторов", text: "Каждый игрок говорит по одному разу за раунд. Когда все высказались — начинается следующий раунд с новым случайным порядком."),
-                TutorialStep(icon: "🎯", title: "Найди шпиона", text: "Услышав ассоциации, голосуйте за подозреваемого. Для исключения нужны N−S голосов за одного подозреваемого, где N — активные игроки, а S — активные шпионы; при одном шпионе это N−1. Сервер автоматически отменит невозможное голосование. У команды шпионов одна общая попытка угадать слово!")
+                TutorialStep(icon: "🎭", title: "Узнай свою роль", text: "Тайно прочитай карточку. Детективы видят секретное слово. Шпионы его не знают: слушают остальных и стараются себя не выдать."),
+                TutorialStep(icon: "💬", title: "Давай ассоциации", text: "Выбранный игрок называет одно слово, связанное с секретным, и передаёт ход дальше. Не раскрывайте секрет. За раунд каждый говорит один раз, затем порядок меняется."),
+                TutorialStep(icon: "🗳️", title: "Найди шпионов", text: "Запустите голосование и выберите подозреваемого. Игра покажет, сколько голосов нужно для исключения. Если никто не может набрать нужное число, голосование отменяется — продолжайте обсуждение."),
+                TutorialStep(icon: "🎯", title: "Кто побеждает", text: "Нашли всех шпионов — победили детективы. У шпионов одна общая попытка угадать слово: верно — победа, ошибка — проигрыш. Они также выигрывают, если время вышло или шпионов осталось не меньше, чем детективов.")
             ]
         case (.uk, .questions):
             [
-                TutorialStep(icon: "🎭", title: "Ролі", text: "На початку гри кожен таємно читає свою картку ролі. Детективи бачать секретне слово й категорію. Шпигун не бачить слова — лише список варіантів, з яких згодом доведеться вгадувати."),
-                TutorialStep(icon: "❓", title: "Запитання й відповіді", text: "Гравці ходять по колу: один ставить запитання, інший відповідає вголос. Коли гравець почув відповідь, він натискає «Відповідь почуто», і хід переходить далі. Запитання мають натякати на слово, але не розкривати його шпигуну."),
-                TutorialStep(icon: "🗳️", title: "Голосування за шпигуна", text: "Будь-який гравець може ініціювати голосування. Для виключення потрібні N−S голосів за одного підозрюваного, де N — кількість активних гравців, а S — кількість активних шпигунів. З одним шпигуном це, як і раніше, N−1. Сервер автоматично скасує голосування, щойно такий результат стане неможливим."),
-                TutorialStep(icon: "🎯", title: "Спроба шпигунів", text: "Команда шпигунів має одну спільну спробу: будь-який шпигун може натиснути «Вгадати достроково» й вибрати слово. Правильна відповідь приносить перемогу всім шпигунам, а помилка одразу віддає перемогу детективам.")
+                TutorialStep(icon: "🎭", title: "Дізнайся свою роль", text: "Таємно прочитай картку. Детективи бачать секретне слово. Шпигуни його не знають: слухають інших і намагаються себе не видати."),
+                TutorialStep(icon: "❓", title: "Став запитання", text: "Екран показує, хто запитує та хто відповідає. Говоріть уголос і натякайте на слово, не називаючи його. Відповідь прозвучала — передавайте хід далі."),
+                TutorialStep(icon: "🗳️", title: "Знайди шпигунів", text: "Почніть голосування й виберіть підозрюваного. Гра покаже, скільки голосів потрібно для виключення. Якщо ніхто не може набрати потрібну кількість, голосування скасовується — продовжуйте обговорення."),
+                TutorialStep(icon: "🎯", title: "Хто перемагає", text: "Знайшли всіх шпигунів — перемогли детективи. Шпигуни мають одну спільну спробу вгадати слово: правильно — перемога, помилка — поразка. Вони також виграють, якщо час вийшов або шпигунів залишилося не менше, ніж детективів.")
             ]
         case (.uk, .associations):
             [
-                TutorialStep(icon: "🎭", title: "Ролі", text: "На початку кожен таємно читає свою картку ролі. Детективи бачать секретне слово. Шпигун не бачить нічого — замість слова в нього «???»."),
-                TutorialStep(icon: "🎰", title: "Барабан", text: "Хост запускає барабан, і той випадково обирає гравця. Цей гравець має вголос назвати ОДНЕ слово-асоціацію до секретного слова, а потім натиснути «Відповів»."),
-                TutorialStep(icon: "🔄", title: "Без повторів", text: "Кожен гравець говорить один раз за раунд. Коли всі висловилися, починається новий раунд із новою випадковою чергою."),
-                TutorialStep(icon: "🎯", title: "Знайди шпигуна", text: "Прослухавши асоціації, голосуйте за підозрюваного. Для виключення потрібні N−S голосів за одного підозрюваного, де N — кількість активних гравців, а S — кількість активних шпигунів; з одним шпигуном це N−1. Сервер автоматично скасує голосування, результат якого вже неможливий. Команда шпигунів має одну спільну спробу вгадати слово!")
+                TutorialStep(icon: "🎭", title: "Дізнайся свою роль", text: "Таємно прочитай картку. Детективи бачать секретне слово. Шпигуни його не знають: слухають інших і намагаються себе не видати."),
+                TutorialStep(icon: "💬", title: "Називай асоціації", text: "Обраний гравець називає одне слово, пов’язане із секретним, і передає хід далі. Не розкривайте секрет. За раунд кожен говорить один раз, потім порядок змінюється."),
+                TutorialStep(icon: "🗳️", title: "Знайди шпигунів", text: "Почніть голосування й виберіть підозрюваного. Гра покаже, скільки голосів потрібно для виключення. Якщо ніхто не може набрати потрібну кількість, голосування скасовується — продовжуйте обговорення."),
+                TutorialStep(icon: "🎯", title: "Хто перемагає", text: "Знайшли всіх шпигунів — перемогли детективи. Шпигуни мають одну спільну спробу вгадати слово: правильно — перемога, помилка — поразка. Вони також виграють, якщо час вийшов або шпигунів залишилося не менше, ніж детективів.")
             ]
         case (.es, .questions):
             [
-                TutorialStep(icon: "🎭", title: "Roles", text: "Al comenzar, cada persona lee su carta de rol en secreto. Los detectives ven la palabra secreta y la categoría. El espía solo ve la lista de palabras entre las que tendrá que adivinar."),
-                TutorialStep(icon: "❓", title: "Preguntas y respuestas", text: "Los jugadores avanzan en círculo: una persona pregunta y otra responde en voz alta. Al oír la respuesta, pulsa «Respuesta recibida» para continuar. Da pistas sin revelar la palabra al espía."),
-                TutorialStep(icon: "🗳️", title: "Votar al espía", text: "Cualquier jugador puede solicitar una votación. La expulsión requiere N−S votos contra el mismo sospechoso: N son los jugadores activos y S los espías activos. Con un espía sigue siendo N−1. El servidor cancela automáticamente cuando el resultado ya es imposible."),
-                TutorialStep(icon: "🎯", title: "Adivinar la palabra", text: "El equipo de espías comparte un solo intento: cualquier espía puede elegir una palabra. Si acierta, ganan los espías; si falla, los detectives ganan de inmediato.")
+                TutorialStep(icon: "🎭", title: "Descubre tu rol", text: "Lee tu carta en secreto. Los detectives conocen la palabra secreta. Los espías no: escuchan a los demás e intentan pasar desapercibidos."),
+                TutorialStep(icon: "❓", title: "Haz preguntas", text: "La pantalla indica quién pregunta y quién responde. Hablad en voz alta y dad pistas sin decir la palabra secreta. Tras la respuesta, pasad al siguiente turno."),
+                TutorialStep(icon: "🗳️", title: "Encuentra a los espías", text: "Iniciad una votación y elegid a un sospechoso. El juego muestra cuántos votos hacen falta para expulsarlo. Si nadie puede llegar a esa cantidad, se cancela la votación y seguís hablando."),
+                TutorialStep(icon: "🎯", title: "Quién gana", text: "Los detectives ganan al encontrar a todos los espías. Los espías comparten un intento: si adivinan la palabra, ganan; si fallan, pierden. También ganan si se acaba el tiempo o quedan tantos o más espías que detectives.")
             ]
         case (.es, .associations):
             [
-                TutorialStep(icon: "🎭", title: "Roles", text: "Al comenzar, cada persona lee su carta de rol en secreto. Los detectives ven la palabra secreta. El espía solo ve «???»."),
-                TutorialStep(icon: "🎰", title: "La ruleta", text: "El anfitrión activa la ruleta para elegir un jugador. Esa persona dice en voz alta UNA asociación con la palabra secreta y después pulsa «Respondido»."),
-                TutorialStep(icon: "🔄", title: "Sin repetir", text: "Cada jugador habla una vez por ronda. Cuando todos han participado, comienza otra ronda con un orden aleatorio nuevo."),
-                TutorialStep(icon: "🎯", title: "Encuentra al espía", text: "Escucha las asociaciones y vota por el sospechoso. La expulsión requiere N−S votos contra el mismo sospechoso, donde N son los jugadores activos y S los espías activos; con un espía sigue siendo N−1. El servidor cancela automáticamente cuando el resultado ya es imposible. El equipo de espías comparte un solo intento para adivinar la palabra.")
+                TutorialStep(icon: "🎭", title: "Descubre tu rol", text: "Lee tu carta en secreto. Los detectives conocen la palabra secreta. Los espías no: escuchan a los demás e intentan pasar desapercibidos."),
+                TutorialStep(icon: "💬", title: "Da una asociación", text: "La persona elegida dice una palabra relacionada con la secreta y pasa el turno. No reveléis el secreto. Cada persona habla una vez por ronda; después cambia el orden."),
+                TutorialStep(icon: "🗳️", title: "Encuentra a los espías", text: "Iniciad una votación y elegid a un sospechoso. El juego muestra cuántos votos hacen falta para expulsarlo. Si nadie puede llegar a esa cantidad, se cancela la votación y seguís hablando."),
+                TutorialStep(icon: "🎯", title: "Quién gana", text: "Los detectives ganan al encontrar a todos los espías. Los espías comparten un intento: si adivinan la palabra, ganan; si fallan, pierden. También ganan si se acaba el tiempo o quedan tantos o más espías que detectives.")
             ]
         case (.en, .questions):
             [
-                TutorialStep(icon: "🎭", title: "Roles", text: "At game start everyone secretly reads their role card. Detectives see the secret word and category. The Spy sees nothing — only the word list to guess from later."),
-                TutorialStep(icon: "❓", title: "Q&A", text: "Players go in a circle: one asks a question, another answers out loud. When the asker has heard the answer, they press 'Answer Received' to move on. Questions should hint at the word without revealing it to the spy."),
-                TutorialStep(icon: "🗳️", title: "Voting for the Spy", text: "Any player can request a vote. Exclusion requires N−S votes for the same suspect, where N is the active player count and S the active spy count. With one spy this remains N−1. The server cancels automatically as soon as that result becomes impossible."),
-                TutorialStep(icon: "🎯", title: "Spy's Guess", text: "The spy team shares one attempt: any spy can press 'Guess Word Early' and choose a word. A correct guess wins for all spies; a wrong guess gives detectives the win immediately.")
+                TutorialStep(icon: "🎭", title: "Learn your role", text: "Read your card in secret. Detectives know the secret word. Spies do not: listen to the others and try to blend in."),
+                TutorialStep(icon: "❓", title: "Ask questions", text: "The screen shows who asks and who answers. Speak out loud and give clues without saying the secret word. After the answer, move to the next turn."),
+                TutorialStep(icon: "🗳️", title: "Find the spies", text: "Start a vote and choose a suspect. The game shows how many votes are needed to remove them. If nobody can reach that number, the vote ends without removing anyone. Keep discussing."),
+                TutorialStep(icon: "🎯", title: "Who wins", text: "Detectives win by finding every spy. Spies share one guess: the right word wins; a wrong guess loses. Spies also win when time runs out or they equal or outnumber the detectives.")
             ]
         case (.en, .associations):
             [
-                TutorialStep(icon: "🎭", title: "Roles", text: "At game start everyone secretly reads their role card. Detectives see the secret word. The Spy sees nothing — only '???' instead of the word."),
-                TutorialStep(icon: "🎰", title: "The Drum", text: "The host spins the drum — it randomly picks a player. That player must say ONE word associated with the secret word out loud, then press 'Answered'."),
-                TutorialStep(icon: "🔄", title: "No Repeats", text: "Each player speaks once per round. When everyone has given an association — a new round begins automatically with a fresh random order."),
-                TutorialStep(icon: "🎯", title: "Find the Spy", text: "After hearing associations, vote for the suspect. Exclusion requires N−S votes for the same suspect, where N is the active player count and S the active spy count; with one spy this remains N−1. The server cancels automatically as soon as that result becomes impossible. The spy team shares one attempt to guess the word.")
+                TutorialStep(icon: "🎭", title: "Learn your role", text: "Read your card in secret. Detectives know the secret word. Spies do not: listen to the others and try to blend in."),
+                TutorialStep(icon: "💬", title: "Give a clue", text: "The chosen player says one word associated with the secret, then passes the turn. Keep the secret word hidden. Everyone speaks once per round, then the order changes."),
+                TutorialStep(icon: "🗳️", title: "Find the spies", text: "Start a vote and choose a suspect. The game shows how many votes are needed to remove them. If nobody can reach that number, the vote ends without removing anyone. Keep discussing."),
+                TutorialStep(icon: "🎯", title: "Who wins", text: "Detectives win by finding every spy. Spies share one guess: the right word wins; a wrong guess loses. Spies also win when time runs out or they equal or outnumber the detectives.")
             ]
         }
     }

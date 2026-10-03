@@ -236,14 +236,14 @@ Deno.test("duplicate role acknowledgement repairs all-read pre-timer state", () 
   );
 });
 
-Deno.test("server intro timestamp gates participant takeover at eight seconds", () => {
+Deno.test("server intro timestamp gates participant takeover at three seconds", () => {
   const room = startedRoom({
     status: "roulette",
     host_email: "a@example.com",
     intro_started_at: "2026-07-14T12:00:00.000Z",
     game_started_at: null,
   });
-  assertEquals(ONLINE_GAME_INTRO_SECONDS, 8);
+  assertEquals(ONLINE_GAME_INTRO_SECONDS, 3);
   const eagerHost = assertThrows(
     () =>
       assertIntroCompletionAccess(
@@ -264,7 +264,7 @@ Deno.test("server intro timestamp gates participant takeover at eight seconds", 
       assertIntroCompletionAccess(
         room,
         "c@example.com",
-        Date.parse("2026-07-14T12:00:07.999Z"),
+        Date.parse("2026-07-14T12:00:02.999Z"),
       ),
     Error,
     "still in progress",
@@ -277,7 +277,7 @@ Deno.test("server intro timestamp gates participant takeover at eight seconds", 
     assertIntroCompletionAccess(
       room,
       "c@example.com",
-      Date.parse("2026-07-14T12:00:08.000Z"),
+      Date.parse("2026-07-14T12:00:03.000Z"),
     ),
     undefined,
   );
@@ -285,7 +285,7 @@ Deno.test("server intro timestamp gates participant takeover at eight seconds", 
     assertIntroCompletionAccess(
       room,
       "a@example.com",
-      Date.parse("2026-07-14T12:00:08.000Z"),
+      Date.parse("2026-07-14T12:00:03.000Z"),
     ),
     undefined,
   );
@@ -316,6 +316,26 @@ Deno.test("server intro timestamp gates participant takeover at eight seconds", 
     (invalidTimestamp as Error & { code?: string }).code,
     "invalid_game_intro",
   );
+});
+
+Deno.test("short intro accepts an older client's eight-second completion without starting its timer", () => {
+  const room: Record<string, unknown> = startedRoom({
+    status: "roulette",
+    intro_started_at: "2026-07-14T12:00:00.000Z",
+    game_started_at: null,
+    cards_read: [],
+  });
+
+  assertEquals(
+    assertIntroCompletionAccess(
+      room,
+      "b@example.com",
+      Date.parse("2026-07-14T12:00:08.200Z"),
+    ),
+    undefined,
+  );
+  assertEquals(room.game_started_at, null);
+  assertEquals(room.cards_read, []);
 });
 
 Deno.test("intro start is server-owned and preserved by completion", () => {

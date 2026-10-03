@@ -19,6 +19,7 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
     let language: AppLanguage
     let startedAt: Date
     let duration: TimeInterval
+    let holdsFinalFrame: Bool
     let accessibilityIdentifier: String
 
     let fixedProgress: Double?
@@ -30,7 +31,8 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
         spyCount: Int,
         language: AppLanguage,
         startedAt: Date,
-        duration: TimeInterval = 8,
+        duration: TimeInterval = Base44Client.gameIntroDuration,
+        holdsFinalFrame: Bool = false,
         fixedProgress: Double? = nil,
         accessibilityIdentifier: String = "spyGame.intro"
     ) {
@@ -39,6 +41,7 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
         self.language = language
         self.startedAt = startedAt
         self.duration = duration
+        self.holdsFinalFrame = holdsFinalFrame
         self.fixedProgress = fixedProgress
         self.accessibilityIdentifier = accessibilityIdentifier
     }
@@ -66,10 +69,10 @@ struct SpyGameIntroScene<ParticipantID: Hashable>: View {
     private func introStage(size: CGSize, progress: Double) -> some View {
         let deckPoint = CGPoint(x: size.width / 2, y: size.height * 0.65)
         let warningProgress = reduceMotion ? 1 : SpyExperienceMotion.segment(progress, from: 0.72, to: 0.84)
-        let warningExit = reduceMotion ? 0 : SpyExperienceMotion.segment(progress, from: 0.90, to: 0.96)
+        let warningExit = reduceMotion || holdsFinalFrame ? 0 : SpyExperienceMotion.segment(progress, from: 0.90, to: 0.96)
         let warningOpacity = reduceMotion ? 1 : warningProgress * (1 - warningExit)
         let dimmedOpacity = reduceMotion ? 0.42 : 1 - warningProgress * 0.88
-        let outro = reduceMotion ? 0 : SpyExperienceMotion.segment(progress, from: 0.94, to: 1)
+        let outro = reduceMotion || holdsFinalFrame ? 0 : SpyExperienceMotion.segment(progress, from: 0.94, to: 1)
         let deckReveal = SpyExperienceMotion.spring(
             SpyExperienceMotion.segment(progress, from: 0.16, to: 0.34)
         )
