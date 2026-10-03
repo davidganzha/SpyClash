@@ -171,16 +171,9 @@ export function activeGameLobbyReturnTransition(
       "return_to_lobby_not_host",
     );
   }
-  if (requestedVoteValue !== true) {
-    throw policyError(
-      "Return to lobby requires an explicit confirmation",
-      400,
-      "return_to_lobby_vote_invalid",
-    );
-  }
-
-  // Keep the legacy action payload for installed clients, but a host action
-  // now resets the entire room in one participant-leased write.
+  // Installed clients toggle this legacy boolean, so a host with an existing
+  // vote sends false. Either explicit boolean invokes the host return command;
+  // authority and the current match are still required before the room write.
   return {
     patch: activeGameLobbyResetPatch(room),
     didReset: true,

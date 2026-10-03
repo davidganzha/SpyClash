@@ -170,8 +170,8 @@ Deno.test("host return is limited to started playing rooms", () => {
   );
 });
 
-Deno.test("host return requires explicit confirmation", () => {
-  for (const value of [false, 1, "true", null, undefined]) {
+Deno.test("host return requires an explicit legacy boolean", () => {
+  for (const value of [1, "true", "false", null, undefined]) {
     const error = errorDetails(
       assertThrows(() =>
         activeGameLobbyReturnTransition(activeRoom(), "p1@example.com", value)
@@ -190,17 +190,19 @@ Deno.test("guests cannot return the room even with all legacy votes present", ()
       "p3@example.com",
     ]]
   ) {
-    const error = errorDetails(
-      assertThrows(() =>
-        activeGameLobbyReturnTransition(
-          activeRoom({ ready_players }),
-          "p2@example.com",
-          true,
-        )
-      ),
-    );
-    assertEquals(error.status, 403);
-    assertEquals(error.code, "return_to_lobby_not_host");
+    for (const requestedVote of [true, false]) {
+      const error = errorDetails(
+        assertThrows(() =>
+          activeGameLobbyReturnTransition(
+            activeRoom({ ready_players }),
+            "p2@example.com",
+            requestedVote,
+          )
+        ),
+      );
+      assertEquals(error.status, 403);
+      assertEquals(error.code, "return_to_lobby_not_host");
+    }
   }
 });
 
@@ -215,6 +217,30 @@ Deno.test("host return never qualifies for an unleased fast CAS path", () => {
       "p1@example.com",
       true,
     ),
+    false,
+  );
+});
+
+Deno.test("an installed host with a recorded vote can return with legacy false", () => {
+  const room = activeRoom({ ready_players: ["p1@example.com"] });
+  const legacyReturn = activeGameLobbyReturnTransition(
+    room,
+    "p1@example.com",
+    false,
+  );
+  const currentReturn = activeGameLobbyReturnTransition(
+    room,
+    "p1@example.com",
+    true,
+  );
+  assertEquals(legacyReturn.didReset, true);
+  assertEquals(legacyReturn.patch, currentReturn.patch);
+  assertEquals(legacyReturn.patch.status, "waiting");
+  assertEquals(legacyReturn.patch.match_id, "");
+  assertEquals(legacyReturn.patch.ready_players, []);
+  assertEquals(legacyReturn.patch.players, room.players);
+  assertEquals(
+    activeGameLobbyReturnCanUseFastPath(room, "p1@example.com", false),
     false,
   );
 });

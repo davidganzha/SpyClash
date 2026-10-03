@@ -2106,10 +2106,10 @@ async function returnToWaiting(base44, room, user) {
   });
 }
 
-function returnToLobbyVoteMatches(room, actorEmailValue, requestedVote) {
+function returnToLobbyVoteMatches(room) {
   const status = normalizedStatus(room);
   if (status === "waiting") {
-    return requestedVote === true && !clean(room?.match_id) &&
+    return !clean(room?.match_id) &&
       !clean(room?.game_started_at) && readyPlayers(room).length === 0;
   }
   return false;
@@ -2154,7 +2154,7 @@ async function voteReturnToLobby(base44, room, user, body, options = {}) {
       }
       return transition.patch;
     },
-    (latest) => returnToLobbyVoteMatches(latest, user.email, requestedVote),
+    (latest) => returnToLobbyVoteMatches(latest),
     allowLobbyReturnReset ? 6 : 1,
   );
 }
