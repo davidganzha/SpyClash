@@ -37,6 +37,6 @@ Build 163 adds backend compatibility for the installed host payload; the Simulat
 
 ## Delivery boundary
 
-This checkpoint contains local source and test verification. No production deployment, App Store/TestFlight upload, or physical-device installation was performed.
+The three backend functions were deployed with explicit user approval on 3 October 2026. [Deployment receipt and exact runtime verification](2026-10-03-partner-feedback-deployment.md). All 81 target runtime files matched the candidate; the other 14 functions were unchanged. The separately deployed 3-second intro was preserved.
 
-Server changes require a separately approved deployment of **communityAction**, **notificationAction**, and **gameRoomAction**; no schema changes are required. The new client needs that backend for immediate shared-room return, guest profile IDs and durable invite cleanup. Two-phone acceptance remains necessary for real invitation timing, denied-permission recovery and Nearby Interaction ranging. The separate Web checkout was not included in this native iOS change.
+No App Store/TestFlight upload or physical-device installation was performed. The client changes still require native app delivery. Two-phone acceptance remains necessary for real invitation timing, denied-permission recovery and Nearby Interaction ranging. The separate Web checkout was not included in this native iOS change.

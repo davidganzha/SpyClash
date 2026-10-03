@@ -1,0 +1,63 @@
+{
+  "verified_at": "2026-10-03T13:20:17.104660+00:00",
+  "app_id": "69a0e57fa939f578082f8091",
+  "source_commit": "f48987bf977f90faf88f83ceee1f8068442339f3",
+  "function_count": 17,
+  "target_runtime_files": 81,
+  "all_runtime_files": 204,
+  "unchanged_functions": [
+    "advanceRound",
+    "app-store-entitlement",
+    "appleAuthBroker",
+    "appleAuthCallback",
+    "autoRegisterUser",
+    "checkSubscription",
+    "createCheckout",
+    "deleteAccount",
+    "generateWordPack",
+    "googleAuthCallback",
+    "mobileAuthCallback",
+    "pushNotificationAction",
+    "stripe-entitlement-webhook",
+    "wordPackAction"
+  ],
+  "runtime_changed_files": [
+    "base44/functions/communityAction/main.ts",
+    "base44/functions/communityAction/push-events.ts",
+    "base44/functions/communityAction/room-invite-pagination.ts",
+    "base44/functions/communityAction/room-invite-visibility.ts",
+    "base44/functions/gameRoomAction/active-game-lobby-return-policy.ts",
+    "base44/functions/gameRoomAction/main.ts",
+    "base44/functions/gameRoomAction/room-invite-resolution.ts",
+    "base44/functions/gameRoomAction/room-projection.ts",
+    "base44/functions/notificationAction/inbox.ts",
+    "base44/functions/notificationAction/room-invite-visibility.ts"
+  ],
+  "preserved_remote_changes": [
+    "base44/functions/gameRoomAction/room-result-policy.ts"
+  ],
+  "configurations_identical": true,
+  "push_retry_worker": [
+    {
+      "name": "drain_push_delivery_retries",
+      "description": "Cost-bounded retry worker. The automation creator must retain the admin role.",
+      "function_args": {
+        "action": "drain",
+        "limit": 64
+      },
+      "is_active": false,
+      "type": "scheduled",
+      "schedule_mode": "recurring",
+      "schedule_type": "simple",
+      "repeat_unit": "minutes",
+      "repeat_interval": 15,
+      "start_time": null,
+      "repeat_on_days": null,
+      "repeat_on_day_of_month": null,
+      "ends_type": "never",
+      "ends_on_date": null,
+      "ends_after_count": null
+    }
+  ],
+  "all_expected_hashes_matched": true
+}
