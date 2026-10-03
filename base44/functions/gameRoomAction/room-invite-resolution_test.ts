@@ -159,9 +159,8 @@ Deno.test("join integration resolves invitations only after confirmed CAS, inclu
   );
   assertEquals(join.includes("await resolveRoomInvitesAfterJoin({"), true);
   assertEquals(
-    join.includes(
-      "assertActorLease: () => assertRoomHistoryPersistenceBoundary(base44, user.id)",
-    ),
+    /assertActorLease:\s*\(\)\s*=>\s*assertRoomHistoryPersistenceBoundary\(base44, user\.id\)/
+      .test(join),
     true,
   );
   assertEquals(
