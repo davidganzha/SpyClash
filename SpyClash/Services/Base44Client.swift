@@ -1115,6 +1115,24 @@ final class Base44Client {
         return updatedUser
     }
 
+    func saveAcquisitionSource(_ source: OnboardingAcquisitionSource) async throws {
+        guard let token, !token.isEmpty else {
+            throw Base44Error(message: "Authentication required.", statusCode: 401)
+        }
+        let updatedUser: SpyUser = try await request(
+            "/apps/\(Self.appID)/entities/User/me",
+            method: "PUT",
+            body: ["acquisition_source": source.rawValue]
+        )
+        guard updatedUser.acquisitionSource == source.rawValue else {
+            throw Base44Error(
+                message: "Survey answer was not confirmed.",
+                statusCode: 502,
+                retryable: true
+            )
+        }
+    }
+
     func deleteAccount() async throws -> AccountDeletionResult {
         let result: AccountDeletionResult = try await invokeFunction(
             "deleteAccount",
@@ -2539,14 +2557,14 @@ private struct OnboardingCompletionPayload: Encodable {
     let onboardingCompleted: Bool
     let onboardingVersion: Int
     let onboardingCompletedAt: Date
-    let acquisitionSource: String
+    let acquisitionSource: String?
 
     init(submission: OnboardingSubmission) {
         language = submission.language.rawValue
         onboardingCompleted = true
         onboardingVersion = submission.version
         onboardingCompletedAt = submission.completedAt
-        acquisitionSource = submission.acquisitionSource.rawValue
+        acquisitionSource = submission.acquisitionSource?.rawValue
     }
 
     enum CodingKeys: String, CodingKey {

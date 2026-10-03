@@ -240,6 +240,8 @@ struct LocalGameView: View {
 
     @State private var phase = LocalPhase.setup
     @State private var session: LocalSession?
+    @State private var surveyGameID = UUID()
+    @State private var surveyAccountID: String?
     @State private var introStartedAt: Date?
     @State private var revealIndex = 0
     @State private var cardRevealed = false
@@ -470,6 +472,11 @@ struct LocalGameView: View {
 
     private func handleLocalPhaseChange(_ newPhase: LocalPhase) {
         updateLocalShellChromeSuppression()
+        if newPhase == .results, winner != nil, let surveyAccountID {
+            appState.recordCompletedGameForAcquisitionSurvey(
+                id: "local:\(surveyGameID.uuidString)", userID: surveyAccountID
+            )
+        }
         guard newPhase != .playing else { return }
         timerTask?.cancel()
         timerTask = nil
@@ -4200,6 +4207,8 @@ struct LocalGameView: View {
             mode: mode,
             spiesKnowEachOther: spiesKnowEachOther
         )
+        surveyGameID = UUID()
+        surveyAccountID = appState.user?.id
         eliminatedPlayerIndices = []
         resetQuestionFlow(playerIndices: Array(localPlayers.indices), mode: mode)
         resetAssociationFlow(playerIndices: Array(localPlayers.indices), mode: mode)

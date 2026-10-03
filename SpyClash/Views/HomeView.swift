@@ -115,6 +115,9 @@ struct HomeView: View {
         .onChange(of: statusText) { _, message in
             publishHomeToast(message)
         }
+        .modifier(AcquisitionSurveyPresentationModifier(
+            isHomeRoot: stage == .main && tutorialMode == nil && !isQRScannerPresented
+        ))
     }
 
     private func startHeroEntranceIfNeeded() {

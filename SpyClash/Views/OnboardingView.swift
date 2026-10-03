@@ -16,7 +16,6 @@ struct OnboardingView: View {
     @State private var permissionRequestTask: Task<Void, Never>?
     @State private var step = Step.language
     @State private var selectedLanguage: AppLanguage?
-    @State private var selectedSource: OnboardingAcquisitionSource?
     @State private var introSymbol = IntroSymbol.hand
     @State private var introMarkIsVisible = false
     @State private var revealedLanguageCount = 0
@@ -24,25 +23,16 @@ struct OnboardingView: View {
     @State private var isAwaitingLocalNetworkSettingsReturn = false
 
     private let languageOrder: [AppLanguage] = [.uk, .en, .es, .ru]
-    private let sourceOrder: [OnboardingAcquisitionSource] = [
-        .chatGPT,
-        .appStoreSearch,
-        .webSearch,
-        .socialMedia,
-        .friendsOrFamily,
-        .other
-    ]
 
     init(
         startsAtLocalNetworkPermission: Bool = false,
-        preservedSource: OnboardingAcquisitionSource? = nil
+        preservedSource _: OnboardingAcquisitionSource? = nil
     ) {
         if startsAtLocalNetworkPermission {
             _permissionFlow = State(
                 initialValue: OnboardingPermissionFlow(startingAt: .nearby)
             )
             _step = State(initialValue: .permissions)
-            _selectedSource = State(initialValue: preservedSource ?? .other)
         }
     }
 
@@ -74,8 +64,8 @@ struct OnboardingView: View {
                             switch step {
                             case .language:
                                 languageStep
-                            case .source:
-                                sourceStep
+                            case .game:
+                                gameStep
                             case .permissions:
                                 permissionsStep
                             }
@@ -96,6 +86,9 @@ struct OnboardingView: View {
         }
         .safeAreaInset(edge: .bottom, spacing: 0) {
             bottomAction
+                .background {
+                    SpyTheme.black.ignoresSafeArea(edges: .bottom)
+                }
         }
         .preferredColorScheme(.dark)
         .onAppear {
@@ -116,6 +109,12 @@ struct OnboardingView: View {
 
     private var copy: OnboardingCopy {
         OnboardingCopy(language: selectedLanguage ?? appState.language)
+    }
+
+    private var stepTitleFont: Font {
+        // ScaledMetric applies Dynamic Type once. A scalable custom font here
+        // would apply it again and split words at accessibility sizes.
+        .custom("Rajdhani-Bold", fixedSize: min(stepTitleSize, 48))
     }
 
     private var languageStep: some View {
@@ -160,7 +159,7 @@ struct OnboardingView: View {
                         OnboardingWavingHand(reduceMotion: reduceMotion)
                     case .question:
                         Text("?")
-                            .font(SpyTheme.brandFont(size: 68))
+                            .font(.custom("Rajdhani-Bold", fixedSize: 68))
                             .foregroundStyle(.white)
                             .shadow(color: SpyTheme.red.opacity(0.72), radius: 18)
                     }
@@ -172,7 +171,7 @@ struct OnboardingView: View {
         .opacity(introMarkIsVisible ? 1 : 0)
         .blur(radius: reduceMotion || introMarkIsVisible ? 0 : 16)
         .scaleEffect(reduceMotion || introMarkIsVisible ? 1 : 0.96)
-        .frame(height: 78)
+        .frame(minHeight: 78)
         .accessibilityHidden(true)
         .animation(pageAnimation, value: selectedLanguage)
     }
@@ -214,146 +213,76 @@ struct OnboardingView: View {
         .accessibilityAddTraits(isSelected ? .isSelected : [])
     }
 
-    private var sourceStep: some View {
-        VStack(spacing: 30) {
-            Text(copy.sourceTitle)
-                .font(SpyTheme.brandFont(size: stepTitleSize))
-                .tracking(1.1)
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.68)
+    private var gameStep: some View {
+        VStack(spacing: 26) {
+            OnboardingRolesIllustration()
+                .frame(maxWidth: 320)
+                .accessibilityHidden(true)
 
-            LazyVGrid(
-                columns: optionColumns,
-                spacing: 10
-            ) {
-                ForEach(sourceOrder, id: \.rawValue) { source in
-                    sourceButton(source)
-                }
+            VStack(spacing: 14) {
+                Text(copy.gameTitle)
+                    .font(stepTitleFont)
+                    .foregroundStyle(.white)
+
+                Text(copy.gameRoles)
+                    .font(.system(.title3, design: .rounded, weight: .semibold))
+                    .foregroundStyle(.white)
+
+                Text(copy.gameBody)
+                    .font(.system(.body, design: .rounded, weight: .medium))
+                    .foregroundStyle(SpyTheme.bodyText)
             }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
         }
-    }
-
-    private func sourceButton(_ source: OnboardingAcquisitionSource) -> some View {
-        let isSelected = selectedSource == source
-
-        return Button {
-            withAnimation(reduceMotion ? nil : SpyMotion.press) {
-                selectedSource = source
-            }
-            HapticManager.shared.fire(.tabSelection)
-        } label: {
-            Text(copy.sourceLabel(source))
-                .font(.system(.subheadline, design: .rounded, weight: .bold))
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? 3 : 2)
-                .frame(maxWidth: .infinity, minHeight: 58)
-                .padding(.horizontal, 10)
-                .background(
-                    isSelected ? SpyTheme.red : Color.white.opacity(0.055),
-                    in: RoundedRectangle(cornerRadius: 14, style: .continuous)
-                )
-                .shadow(color: isSelected ? SpyTheme.red.opacity(0.28) : .clear, radius: 16, y: 6)
-                .contentShape(RoundedRectangle(cornerRadius: 14, style: .continuous))
-        }
-        .buttonStyle(SpyWebPressStyle())
-        .accessibilityIdentifier("spyclash.onboarding.source.\(source.rawValue)")
-        .accessibilityAddTraits(isSelected ? .isSelected : [])
+        .frame(maxWidth: 360)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("spyclash.onboarding.game")
     }
 
     private var permissionsStep: some View {
-        Group {
-            if let permission = permissionFlow.currentPermission {
-                permissionPrompt(permission)
-                    .id(permission)
-                    .transition(pageTransition)
-            } else {
-                permissionCompletion
-                    .transition(pageTransition)
+        VStack(spacing: 26) {
+            OnboardingRadarIllustration(reduceMotion: reduceMotion)
+                .frame(width: 254, height: 254)
+                .accessibilityHidden(true)
+
+            VStack(spacing: 14) {
+                Text(copy.radarTitle)
+                    .font(stepTitleFont)
+                    .foregroundStyle(.white)
+
+                Text(copy.radarBody)
+                    .font(.system(.body, design: .rounded, weight: .medium))
+                    .foregroundStyle(SpyTheme.bodyText)
+
+                Text(copy.localNetworkExplanation)
+                    .font(.system(.footnote, design: .rounded))
+                    .foregroundStyle(SpyTheme.bodyText.opacity(0.8))
+            }
+            .multilineTextAlignment(.center)
+            .fixedSize(horizontal: false, vertical: true)
+
+            if let statusText = localNetworkStatusText {
+                HStack(alignment: .top, spacing: 8) {
+                    if isPermissionFlowBusy {
+                        ProgressView()
+                            .tint(SpyTheme.red)
+                    }
+                    Text(statusText)
+                        .font(.system(.footnote, design: .rounded, weight: .medium))
+                        .foregroundStyle(SpyTheme.bodyText)
+                        .fixedSize(horizontal: false, vertical: true)
+                }
+                .multilineTextAlignment(.center)
+                .transition(.opacity)
             }
         }
+        .frame(maxWidth: 360)
+        .accessibilityElement(children: .combine)
+        .accessibilityIdentifier("spyclash.onboarding.permission.screen.nearby")
         .task {
             await preparePermissionFlow()
         }
-    }
-
-    private func permissionPrompt(_ permission: OnboardingPermissionKind) -> some View {
-        VStack(spacing: 22) {
-            permissionHero(permission)
-
-            Text(copy.permissionTitle(permission))
-                .font(SpyTheme.brandFont(size: stepTitleSize))
-                .tracking(1.0)
-                .foregroundStyle(.white)
-                .multilineTextAlignment(.center)
-                .minimumScaleFactor(0.72)
-
-            Text(copy.permissionBody(permission))
-                .font(.system(.body, design: .rounded, weight: .medium))
-                .foregroundStyle(SpyTheme.muted)
-                .multilineTextAlignment(.center)
-                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 4)
-                .fixedSize(horizontal: false, vertical: true)
-
-            if let statusText = permissionStatusText(permission) {
-                Text(statusText)
-                    .font(.system(.caption, design: .monospaced, weight: .bold))
-                    .tracking(0.9)
-                    .foregroundStyle(permissionDisplayColor(permission))
-                    .transition(.opacity)
-            }
-        }
-        .frame(maxWidth: 350)
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("spyclash.onboarding.permission.screen.\(permissionID(permission))")
-    }
-
-    @ViewBuilder
-    private func permissionHero(_ permission: OnboardingPermissionKind) -> some View {
-        switch permissionDisplayStatus(permission) {
-        case .notDetermined:
-            Image(systemName: permissionIcon(permission))
-                .font(.system(size: 50, weight: .semibold))
-                .foregroundStyle(SpyTheme.red)
-                .shadow(color: SpyTheme.red.opacity(0.58), radius: 18)
-        case .requesting:
-            ProgressView()
-                .controlSize(.large)
-                .tint(SpyTheme.red)
-        case .granted:
-            Image(systemName: "checkmark.circle.fill")
-                .font(.system(size: 52, weight: .semibold))
-                .foregroundStyle(SpyTheme.green)
-        case .denied:
-            Image(systemName: "xmark.circle.fill")
-                .font(.system(size: 52, weight: .semibold))
-                .foregroundStyle(SpyTheme.red)
-        case .unavailable:
-            Image(systemName: "minus.circle.fill")
-                .font(.system(size: 52, weight: .semibold))
-                .foregroundStyle(SpyTheme.dim)
-        case .unsupported:
-            Image(systemName: "iphone")
-                .font(.system(size: 52, weight: .semibold))
-                .foregroundStyle(SpyTheme.dim)
-        }
-    }
-
-    private var permissionCompletion: some View {
-        VStack(spacing: 22) {
-            Image(systemName: "checkmark")
-                .font(.system(size: 54, weight: .black))
-                .foregroundStyle(SpyTheme.red)
-                .shadow(color: SpyTheme.red.opacity(0.58), radius: 18)
-
-            Text(copy.permissionsCompleteTitle)
-                .font(SpyTheme.brandFont(size: stepTitleSize))
-                .tracking(1.0)
-                .foregroundStyle(.white)
-        }
-        .accessibilityElement(children: .combine)
-        .accessibilityIdentifier("spyclash.onboarding.permission.complete")
     }
 
     @ViewBuilder
@@ -367,15 +296,17 @@ struct OnboardingView: View {
                         HStack(spacing: 10) {
                             Text(bottomActionTitle)
                                 .font(.system(.headline, design: .rounded, weight: .bold))
-                                .lineLimit(1)
+                                .lineLimit(dynamicTypeSize.isAccessibilitySize ? nil : 1)
+                                .multilineTextAlignment(.center)
                                 .minimumScaleFactor(0.72)
 
                             Image(systemName: bottomActionSystemImage)
                                 .font(.system(size: 17, weight: .black))
-                                .contentTransition(.symbolEffect(.replace))
+                                .contentTransition(.opacity)
                         }
                         .foregroundStyle(.white)
                         .padding(.horizontal, 20)
+                        .padding(.vertical, 14)
                     } else if isFinishing {
                         ProgressView()
                             .tint(.white)
@@ -383,7 +314,7 @@ struct OnboardingView: View {
                         Image(systemName: bottomActionSystemImage)
                             .font(.system(size: 21, weight: .black))
                             .foregroundStyle(.white)
-                            .contentTransition(.symbolEffect(.replace))
+                            .contentTransition(.opacity)
                     }
                 }
                 .frame(
@@ -399,9 +330,10 @@ struct OnboardingView: View {
             .disabled(isBottomActionDisabled)
             .accessibilityIdentifier(bottomActionIdentifier)
             .accessibilityLabel(bottomActionAccessibilityLabel)
+            .padding(.horizontal, 22)
             .padding(.bottom, 14)
             .frame(maxWidth: .infinity)
-            .transition(.scale(scale: 0.82).combined(with: .opacity))
+            .transition(reduceMotion ? .opacity : .scale(scale: 0.82).combined(with: .opacity))
         }
     }
 
@@ -409,8 +341,8 @@ struct OnboardingView: View {
         switch step {
         case .language:
             selectedLanguage != nil
-        case .source:
-            selectedSource != nil
+        case .game:
+            true
         case .permissions:
             switch permissionFlow.phase {
             case .ready:
@@ -441,20 +373,22 @@ struct OnboardingView: View {
     }
 
     private var bottomActionTitle: String? {
-        guard step == .permissions else { return nil }
+        guard step == .permissions else {
+            return step == .game ? copy.nextAction : nil
+        }
         guard let permission = permissionFlow.currentPermission else {
-            return copy.finishAction
+            return copy.startPlayingAction
         }
 
         switch permissions.status(for: permission) {
         case .notDetermined:
-            return copy.permissionAllowAction
+            return copy.radarEnableAction
         case .denied where permission == .nearby:
             return copy.permissionSettingsAction
         case .unavailable where permission == .nearby:
             return copy.permissionRetryAction
         case .granted, .denied, .unavailable, .unsupported:
-            return copy.permissionContinueAction
+            return copy.startPlayingAction
         case .requesting:
             return copy.permissionRequesting
         }
@@ -467,7 +401,7 @@ struct OnboardingView: View {
         guard let permission = permissionFlow.currentPermission else {
             return "spyclash.onboarding.finish"
         }
-        return "spyclash.onboarding.permission.\(permissionID(permission))"
+        return "spyclash.onboarding.permission.\(permission.rawValue)"
     }
 
     private var bottomActionAccessibilityLabel: String {
@@ -538,16 +472,6 @@ struct OnboardingView: View {
         )
     }
 
-    private var optionColumns: [GridItem] {
-        if dynamicTypeSize.isAccessibilitySize {
-            return [GridItem(.flexible(), spacing: 10)]
-        }
-        return [
-            GridItem(.flexible(), spacing: 10),
-            GridItem(.flexible(), spacing: 10)
-        ]
-    }
-
     private var pageAnimation: Animation {
         reduceMotion
             ? .easeOut(duration: 0.16)
@@ -568,11 +492,10 @@ struct OnboardingView: View {
             guard selectedLanguage != nil else { return }
             HapticManager.shared.fire(.navigation)
             withAnimation(pageAnimation) {
-                step = .source
+                step = .game
             }
 
-        case .source:
-            guard selectedSource != nil else { return }
+        case .game:
             HapticManager.shared.fire(.navigation)
             withAnimation(pageAnimation) {
                 step = .permissions
@@ -584,16 +507,23 @@ struct OnboardingView: View {
                 performCurrentPermissionAction()
                 return
             }
-            guard let selectedSource else { return }
-            isFinishing = true
-            HapticManager.shared.fire(.milestone)
-            Task {
-                await appState.finishOnboarding(
-                    source: selectedSource
-                )
-                isFinishing = false
+            permissionRequestTask?.cancel()
+            permissionRequestTask = Task { @MainActor in
+                await finishOnboarding()
             }
         }
+    }
+
+    @MainActor
+    private func finishOnboarding() async {
+        guard !Task.isCancelled, !isFinishing, permissionFlow.isComplete else { return }
+        // The account-gate transition removes this view before its reveal
+        // animation ends. From here the completion must outlive onDisappear.
+        permissionRequestTask = nil
+        isFinishing = true
+        defer { isFinishing = false }
+        HapticManager.shared.fire(.milestone)
+        await appState.finishOnboarding()
     }
 
     private func playLanguageIntro() async {
@@ -656,28 +586,6 @@ struct OnboardingView: View {
             } catch {
                 return
             }
-        }
-    }
-
-    private func permissionIcon(_ permission: OnboardingPermissionKind) -> String {
-        switch permission {
-        case .notifications:
-            "bell.badge.fill"
-        case .camera:
-            "qrcode.viewfinder"
-        case .nearby:
-            "dot.radiowaves.left.and.right"
-        }
-    }
-
-    private func permissionID(_ permission: OnboardingPermissionKind) -> String {
-        switch permission {
-        case .notifications:
-            "notifications"
-        case .camera:
-            "camera"
-        case .nearby:
-            "nearby"
         }
     }
 
@@ -841,7 +749,9 @@ struct OnboardingView: View {
             didAdvance = permissionFlow.advance(after: permission)
         }
         guard didAdvance else { return }
-        HapticManager.shared.fire(.navigation)
+        if permissionFlow.isComplete {
+            await finishOnboarding()
+        }
         permissionRequestTask = nil
     }
 
@@ -861,44 +771,151 @@ struct OnboardingView: View {
         }
     }
 
-    private func permissionStatusText(
-        _ permission: OnboardingPermissionKind
-    ) -> String? {
-        guard permissionFlow.currentPermission == permission else { return nil }
+    private var localNetworkStatusText: String? {
+        guard permissionFlow.currentPermission == .nearby else { return nil }
         if permissionFlow.phase == .loading {
-            return copy.permissionChecking
+            return nil
         }
-        switch permissionDisplayStatus(permission) {
+        switch permissionDisplayStatus(.nearby) {
         case .notDetermined:
             return nil
         case .requesting:
             return copy.permissionRequesting
         case .granted:
-            return copy.permissionGranted
+            return nil
         case .denied:
-            return permission == .nearby
-                ? copy.localNetworkDenied
-                : copy.permissionDenied
+            return copy.localNetworkDenied
         case .unavailable:
-            return permission == .nearby
-                ? copy.localNetworkUnavailable
-                : copy.permissionUnavailable
+            return copy.localNetworkUnavailable
         case .unsupported:
             return copy.localNetworkUnsupported
         }
     }
+}
 
-    private func permissionDisplayColor(
-        _ permission: OnboardingPermissionKind
-    ) -> Color {
-        switch permissionDisplayStatus(permission) {
-        case .granted:
-            SpyTheme.green
-        case .unavailable, .unsupported:
-            SpyTheme.dim
-        case .notDetermined, .requesting, .denied:
-            SpyTheme.red
+private struct OnboardingRolesIllustration: View {
+    var body: some View {
+        HStack(spacing: 18) {
+            roleCard(isSpy: false)
+                .rotationEffect(.degrees(-7))
+                .offset(y: 8)
+
+            roleCard(isSpy: true)
+                .rotationEffect(.degrees(7))
+                .offset(y: -8)
         }
+        .padding(.horizontal, 14)
+        .frame(height: 212)
+    }
+
+    private func roleCard(isSpy: Bool) -> some View {
+        VStack(spacing: 20) {
+            Image(systemName: isSpy ? "person.fill" : "person.2.fill")
+                .font(.system(size: 37, weight: .medium))
+                .foregroundStyle(isSpy ? SpyTheme.red : .white.opacity(0.9))
+
+            Group {
+                if isSpy {
+                    Text("?")
+                        .font(.system(size: 29, weight: .bold, design: .rounded))
+                        .foregroundStyle(SpyTheme.red)
+                } else {
+                    HStack(spacing: 5) {
+                        ForEach(0..<4) { _ in
+                            Circle()
+                                .fill(.white.opacity(0.9))
+                                .frame(width: 5, height: 5)
+                        }
+                    }
+                }
+            }
+            .frame(maxWidth: .infinity)
+            .frame(height: 40)
+            .background(
+                isSpy ? SpyTheme.red.opacity(0.10) : .white.opacity(0.055),
+                in: RoundedRectangle(cornerRadius: 12)
+            )
+        }
+        .padding(18)
+        .frame(maxWidth: .infinity)
+        .frame(height: 174)
+        .background(SpyTheme.card, in: RoundedRectangle(cornerRadius: 24))
+        .overlay {
+            RoundedRectangle(cornerRadius: 24)
+                .strokeBorder(
+                    isSpy ? SpyTheme.red.opacity(0.65) : .white.opacity(0.16),
+                    lineWidth: 1
+                )
+        }
+        .shadow(color: isSpy ? SpyTheme.red.opacity(0.15) : .black, radius: 22, y: 8)
+    }
+}
+
+private struct OnboardingRadarIllustration: View {
+    let reduceMotion: Bool
+
+    var body: some View {
+        TimelineView(.animation(minimumInterval: 1 / 30, paused: reduceMotion)) { context in
+            let elapsed = context.date.timeIntervalSinceReferenceDate
+            let angle = reduceMotion ? 30 : elapsed.truncatingRemainder(dividingBy: 14) / 14 * 360
+
+            ZStack {
+                Circle()
+                    .fill(SpyTheme.red.opacity(0.035))
+
+                Circle()
+                    .fill(
+                        AngularGradient(
+                            stops: [
+                                .init(color: .clear, location: 0),
+                                .init(color: .clear, location: 0.72),
+                                .init(color: SpyTheme.red.opacity(0.20), location: 1)
+                            ],
+                            center: .center
+                        )
+                    )
+                    .rotationEffect(.degrees(angle))
+
+                ForEach(1...3, id: \.self) { ring in
+                    Circle()
+                        .stroke(.white.opacity(0.10), lineWidth: 1)
+                        .padding(CGFloat(3 - ring) * 42)
+                }
+
+                Rectangle()
+                    .fill(.white.opacity(0.06))
+                    .frame(width: 1)
+                Rectangle()
+                    .fill(.white.opacity(0.06))
+                    .frame(height: 1)
+
+                Image(systemName: "dot.radiowaves.left.and.right")
+                    .font(.system(size: 22, weight: .semibold))
+                    .foregroundStyle(.white)
+                    .frame(width: 56, height: 56)
+                    .background(SpyTheme.red, in: Circle())
+                    .shadow(color: SpyTheme.red.opacity(0.28), radius: 22)
+
+                playerMark(size: 40)
+                    .offset(x: -69, y: -67)
+                playerMark(size: 34)
+                    .offset(x: 86, y: -28)
+                playerMark(size: 36)
+                    .offset(x: 22, y: 87)
+            }
+        }
+    }
+
+    private func playerMark(size: CGFloat) -> some View {
+        Image(systemName: "person.fill")
+            .font(.system(size: size * 0.43, weight: .medium))
+            .foregroundStyle(.white.opacity(0.9))
+            .frame(width: size, height: size)
+            .background(SpyTheme.card, in: Circle())
+            .overlay {
+                Circle()
+                    .strokeBorder(SpyTheme.red.opacity(0.65), lineWidth: 1)
+            }
     }
 }
 
@@ -923,7 +940,7 @@ private struct OnboardingWavingHand: View {
 private extension OnboardingView {
     enum Step: Int, CaseIterable, Hashable, Identifiable {
         case language
-        case source
+        case game
         case permissions
 
         var id: Int { rawValue }
@@ -962,12 +979,57 @@ private struct OnboardingCopy {
         )
     }
 
-    var sourceTitle: String {
+    var gameTitle: String {
         localized(
-            en: "HOW DID YOU FIND US?",
-            es: "¿CÓMO NOS ENCONTRASTE?",
-            ru: "КАК ВЫ УЗНАЛИ О НАС?",
-            uk: "ЯК ВИ ДІЗНАЛИСЯ ПРО НАС?"
+            en: "SpyClash is…",
+            es: "SpyClash es…",
+            ru: "SpyClash — это…",
+            uk: "SpyClash — це…"
+        )
+    }
+
+    var gameRoles: String {
+        localized(
+            en: "Detectives know the secret word. The spy doesn't.",
+            es: "Los detectives conocen la palabra secreta. El espía no.",
+            ru: "Детективы знают секретное слово. Шпион — нет.",
+            uk: "Детективи знають секретне слово. Шпигун — ні."
+        )
+    }
+
+    var gameBody: String {
+        localized(
+            en: "Listen closely and find the spy. If you're the spy, blend in.",
+            es: "Escucha a los demás y descubre al espía. Si eres tú, disimula.",
+            ru: "Слушайте друг друга и вычислите шпиона. Если шпион — вы, не выдавайте себя.",
+            uk: "Слухайте одне одного та знайдіть шпигуна. Якщо шпигун — ви, не видавайте себе."
+        )
+    }
+
+    var radarTitle: String {
+        localized(
+            en: "Your next game is nearby",
+            es: "Tu próxima partida está cerca",
+            ru: "Ваша следующая игра — рядом",
+            uk: "Ваша наступна гра — поруч"
+        )
+    }
+
+    var radarBody: String {
+        localized(
+            en: "Radar helps you find nearby SpyClash players. Invite them and play together.",
+            es: "El radar te ayuda a encontrar jugadores de SpyClash cerca. Invítalos y jugad juntos.",
+            ru: "Радар помогает найти игроков SpyClash поблизости. Приглашайте их и играйте вместе.",
+            uk: "Радар допомагає знайти гравців SpyClash поблизу. Запрошуйте їх і грайте разом."
+        )
+    }
+
+    var localNetworkExplanation: String {
+        localized(
+            en: "Allow Local Network access so Radar can discover players around you.",
+            es: "Permite el acceso a la red local para que el radar encuentre jugadores cerca.",
+            ru: "Разрешите доступ к локальной сети, чтобы радар мог находить игроков рядом.",
+            uk: "Дозвольте доступ до локальної мережі, щоб радар міг знаходити гравців поруч."
         )
     }
 
@@ -975,16 +1037,12 @@ private struct OnboardingCopy {
         localized(en: "Next", es: "Siguiente", ru: "Дальше", uk: "Далі")
     }
 
-    var finishAction: String {
-        localized(en: "Finish", es: "Finalizar", ru: "Завершить", uk: "Завершити")
+    var startPlayingAction: String {
+        localized(en: "Let's play", es: "A jugar", ru: "Играть", uk: "Грати")
     }
 
-    var permissionAllowAction: String {
-        localized(en: "Allow", es: "Permitir", ru: "Разрешить", uk: "Дозволити")
-    }
-
-    var permissionContinueAction: String {
-        localized(en: "Continue", es: "Continuar", ru: "Продолжить", uk: "Продовжити")
+    var radarEnableAction: String {
+        localized(en: "Enable Radar", es: "Activar radar", ru: "Включить радар", uk: "Увімкнути радар")
     }
 
     var permissionSettingsAction: String {
@@ -992,127 +1050,43 @@ private struct OnboardingCopy {
     }
 
     var permissionRetryAction: String {
-        localized(en: "Retry", es: "Reintentar", ru: "Повторить", uk: "Повторити")
+        localized(en: "Try again", es: "Reintentar", ru: "Попробовать снова", uk: "Спробувати ще раз")
     }
 
     var permissionRequesting: String {
-        localized(en: "WAITING FOR IOS", es: "ESPERANDO A IOS", ru: "ОЖИДАНИЕ IOS", uk: "ОЧІКУВАННЯ IOS")
-    }
-
-    var permissionChecking: String {
-        localized(en: "CHECKING", es: "COMPROBANDO", ru: "ПРОВЕРКА", uk: "ПЕРЕВІРКА")
-    }
-
-    var permissionGranted: String {
-        localized(en: "ENABLED", es: "ACTIVADO", ru: "ВКЛЮЧЕНО", uk: "УВІМКНЕНО")
-    }
-
-    var permissionDenied: String {
         localized(
-            en: "NOT ENABLED",
-            es: "NO ACTIVADO",
-            ru: "НЕ ВКЛЮЧЕНО",
-            uk: "НЕ УВІМКНЕНО"
-        )
-    }
-
-    var permissionUnavailable: String {
-        localized(
-            en: "NOT AVAILABLE",
-            es: "NO DISPONIBLE",
-            ru: "НЕДОСТУПНО",
-            uk: "НЕДОСТУПНО"
+            en: "Waiting for Local Network access…",
+            es: "Esperando acceso a la red local…",
+            ru: "Ожидаем доступ к локальной сети…",
+            uk: "Очікуємо доступ до локальної мережі…"
         )
     }
 
     var localNetworkDenied: String {
         localized(
-            en: "LOCAL NETWORK IS OFF · OPEN SETTINGS",
-            es: "RED LOCAL DESACTIVADA · ABRE AJUSTES",
-            ru: "ЛОКАЛЬНАЯ СЕТЬ ВЫКЛЮЧЕНА · ОТКРОЙТЕ НАСТРОЙКИ",
-            uk: "ЛОКАЛЬНУ МЕРЕЖУ ВИМКНЕНО · ВІДКРИЙТЕ НАЛАШТУВАННЯ"
+            en: "Turn on Local Network for SpyClash in Settings to continue.",
+            es: "Activa la red local para SpyClash en Ajustes para continuar.",
+            ru: "Чтобы продолжить, включите «Локальную сеть» для SpyClash в настройках.",
+            uk: "Щоб продовжити, увімкніть «Локальну мережу» для SpyClash у налаштуваннях."
         )
     }
 
     var localNetworkUnavailable: String {
         localized(
-            en: "CHECK FAILED · RETRY",
-            es: "FALLO EN LA COMPROBACIÓN · REINTENTA",
-            ru: "ПРОВЕРКА НЕ УДАЛАСЬ · ПОВТОРИТЕ",
-            uk: "ПЕРЕВІРКА НЕ ВДАЛАСЯ · ПОВТОРІТЬ"
+            en: "We couldn't check Local Network access. Please try again.",
+            es: "No pudimos comprobar el acceso a la red local. Inténtalo de nuevo.",
+            ru: "Не удалось проверить доступ к локальной сети. Попробуйте ещё раз.",
+            uk: "Не вдалося перевірити доступ до локальної мережі. Спробуйте ще раз."
         )
     }
 
     var localNetworkUnsupported: String {
         localized(
-            en: "SIMULATOR · CHECK ON A PHYSICAL IPHONE",
-            es: "SIMULADOR · COMPRUEBA EN UN IPHONE FÍSICO",
-            ru: "СИМУЛЯТОР · ПРОВЕРЬТЕ НА ФИЗИЧЕСКОМ IPHONE",
-            uk: "СИМУЛЯТОР · ПЕРЕВІРТЕ НА ФІЗИЧНОМУ IPHONE"
+            en: "Radar isn't available on this device. You can continue.",
+            es: "El radar no está disponible en este dispositivo. Puedes continuar.",
+            ru: "На этом устройстве радар недоступен. Можно продолжить.",
+            uk: "На цьому пристрої радар недоступний. Можна продовжити."
         )
-    }
-
-    var permissionsCompleteTitle: String {
-        localized(
-            en: "SETUP COMPLETE",
-            es: "CONFIGURACIÓN COMPLETA",
-            ru: "НАСТРОЙКА ЗАВЕРШЕНА",
-            uk: "НАЛАШТУВАННЯ ЗАВЕРШЕНО"
-        )
-    }
-
-    func sourceLabel(_ source: OnboardingAcquisitionSource) -> String {
-        switch source {
-        case .chatGPT:
-            "ChatGPT"
-        case .appStoreSearch:
-            localized(en: "App Store search", es: "Búsqueda en App Store", ru: "Поиск в App Store", uk: "Пошук в App Store")
-        case .webSearch:
-            localized(en: "Web search", es: "Búsqueda web", ru: "Поиск в интернете", uk: "Пошук в інтернеті")
-        case .socialMedia:
-            localized(en: "Social media", es: "Redes sociales", ru: "Социальные сети", uk: "Соціальні мережі")
-        case .friendsOrFamily:
-            localized(en: "Friends or family", es: "Amigos o familia", ru: "Друзья или семья", uk: "Друзі або родина")
-        case .other:
-            localized(en: "Other", es: "Otro", ru: "Другое", uk: "Інше")
-        }
-    }
-
-    func permissionTitle(_ permission: OnboardingPermissionKind) -> String {
-        switch permission {
-        case .notifications:
-            localized(en: "Notifications", es: "Notificaciones", ru: "Уведомления", uk: "Сповіщення")
-        case .camera:
-            localized(en: "Camera", es: "Cámara", ru: "Камера", uk: "Камера")
-        case .nearby:
-            localized(en: "Local Network", es: "Red local", ru: "Локальная сеть", uk: "Локальна мережа")
-        }
-    }
-
-    func permissionBody(_ permission: OnboardingPermissionKind) -> String {
-        switch permission {
-        case .notifications:
-            localized(
-                en: "Optional. Get room invites and important game events.",
-                es: "Opcional. Recibe invitaciones y eventos importantes de la partida.",
-                ru: "Необязательно. Получайте приглашения и важные события игры.",
-                uk: "Необов'язково. Отримуйте запрошення та важливі події гри."
-            )
-        case .camera:
-            localized(
-                en: "Optional. Scan a room QR code to join.",
-                es: "Opcional. Escanea el QR de una sala para entrar.",
-                ru: "Необязательно. Сканируйте QR-код для входа в комнату.",
-                uk: "Необов'язково. Скануйте QR-код для входу до кімнати."
-            )
-        case .nearby:
-            localized(
-                en: "Required for Radar: allow Local Network to find nearby iPhones. iOS will request precise Rangefinder access automatically after a peer connects.",
-                es: "Obligatorio para Radar: permite la red local para encontrar iPhone cercanos. iOS pedirá acceso al telémetro preciso automáticamente al conectar un dispositivo.",
-                ru: "Обязательно для Радара: разрешите локальную сеть для поиска iPhone рядом. Доступ к точному дальномеру iOS запросит автоматически после подключения.",
-                uk: "Обов'язково для Радара: дозвольте локальну мережу для пошуку iPhone поруч. Доступ до точного далекоміра iOS запросить автоматично після підключення."
-            )
-        }
     }
 
     private func localized(en: String, es: String, ru: String, uk: String) -> String {

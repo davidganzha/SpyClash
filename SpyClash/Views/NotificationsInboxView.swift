@@ -1,4 +1,5 @@
 import SwiftUI
+import UserNotifications
 
 @MainActor
 enum NotificationInboxRowInteraction {
@@ -49,7 +50,10 @@ struct NotificationsInboxView: View {
                 status: copy.status(unread: store.unread.total)
             ) {
                 VStack(alignment: .leading, spacing: 16) {
-                    header
+                    VStack(alignment: .leading, spacing: 0) {
+                        header
+                        NotificationAuthorizationControl(language: language)
+                    }
                     scopeSelector
                     scopeActions
                     inboxContent
@@ -528,6 +532,113 @@ struct NotificationsInboxView: View {
     }
 }
 
+private struct NotificationAuthorizationControl: View {
+    @Environment(\.scenePhase) private var scenePhase
+    @Environment(\.openURL) private var openURL
+
+    let language: AppLanguage
+
+    @State private var authorizationStatus: UNAuthorizationStatus?
+    @State private var isRequesting = false
+    @State private var requestFailed = false
+
+    private var copy: NotificationInboxCopy {
+        NotificationInboxCopy(language: language)
+    }
+
+    private var needsAuthorization: Bool {
+        authorizationStatus == .notDetermined || authorizationStatus == .denied
+    }
+
+    var body: some View {
+        VStack(alignment: .leading, spacing: 0) {
+            if needsAuthorization {
+                VStack(alignment: .leading, spacing: 8) {
+                    Button {
+                        HapticManager.shared.fire(.buttonPress)
+                        if authorizationStatus == .denied {
+                            guard let url = URL(string: UIApplication.openSettingsURLString) else { return }
+                            openURL(url)
+                        } else {
+                            requestFailed = false
+                            isRequesting = true
+                        }
+                    } label: {
+                        HStack(spacing: 12) {
+                            if isRequesting {
+                                SpySpinner(size: 18, accent: SpyTheme.green)
+                                    .accessibilityHidden(true)
+                            } else {
+                                Image(systemName: "bell.badge")
+                                    .font(.system(size: 18, weight: .bold))
+                                    .foregroundStyle(SpyTheme.green)
+                                    .accessibilityHidden(true)
+                            }
+
+                            VStack(alignment: .leading, spacing: 5) {
+                                Text(copy.enableNotifications)
+                                    .font(.system(size: 11, weight: .black, design: .monospaced))
+                                    .foregroundStyle(.white)
+                                Text(authorizationStatus == .denied
+                                    ? copy.notificationSettingsDetail
+                                    : copy.notificationPermissionDetail)
+                                    .font(SpyTheme.micro)
+                                    .foregroundStyle(SpyTheme.muted)
+                            }
+                            .multilineTextAlignment(.leading)
+                            .fixedSize(horizontal: false, vertical: true)
+
+                            Spacer(minLength: 0)
+
+                            Image(systemName: authorizationStatus == .denied ? "arrow.up.right" : "chevron.right")
+                                .font(.system(size: 11, weight: .bold))
+                                .foregroundStyle(SpyTheme.dim)
+                                .accessibilityHidden(true)
+                        }
+                        .padding(14)
+                        .frame(maxWidth: .infinity, minHeight: 54, alignment: .leading)
+                        .background(SpyTheme.panel, in: CutCornerShape(cut: 8))
+                        .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.strokeStrong, lineWidth: 1))
+                        .contentShape(CutCornerShape(cut: 8))
+                    }
+                    .buttonStyle(SpyWebPressStyle(pressedScale: 0.98))
+                    .disabled(isRequesting)
+                    .accessibilityIdentifier("notifications.enablePush")
+
+                    if requestFailed {
+                        Text(copy.notificationPermissionError)
+                            .font(SpyTheme.micro)
+                            .foregroundStyle(SpyTheme.red)
+                            .fixedSize(horizontal: false, vertical: true)
+                            .accessibilityIdentifier("notifications.enablePush.error")
+                    }
+                }
+                .padding(.top, 16)
+            }
+        }
+        .task(id: scenePhase) {
+            guard scenePhase == .active, !isRequesting else { return }
+            let status = await PushNotificationCoordinator.shared.notificationAuthorizationStatus()
+            guard !Task.isCancelled, !isRequesting else { return }
+            authorizationStatus = status
+        }
+        .task(id: isRequesting) {
+            guard isRequesting else { return }
+            defer { isRequesting = false }
+            do {
+                let status = try await PushNotificationCoordinator.shared.requestNotificationAuthorization()
+                guard !Task.isCancelled else { return }
+                authorizationStatus = status
+            } catch is CancellationError {
+                return
+            } catch {
+                guard !Task.isCancelled else { return }
+                requestFailed = true
+            }
+        }
+    }
+}
+
 private struct NotificationComposerRoute: Identifiable {
     let id = UUID()
 }
@@ -844,6 +955,10 @@ private struct NotificationInboxCopy {
     var open: String { text("OPEN", "ОТКРЫТЬ", "ABRIR", "ВІДКРИТИ") }
     var compose: String { text("Publish global notification", "Опубликовать общее уведомление", "Publicar notificación global", "Опублікувати загальне сповіщення") }
     var close: String { text("Close", "Закрыть", "Cerrar", "Закрити") }
+    var enableNotifications: String { text("ENABLE NOTIFICATIONS", "ВКЛЮЧИТЬ УВЕДОМЛЕНИЯ", "ACTIVAR NOTIFICACIONES", "УВІМКНУТИ СПОВІЩЕННЯ") }
+    var notificationPermissionDetail: String { text("Get game invitations and friend requests.", "Получайте приглашения в игру и запросы в друзья.", "Recibe invitaciones a partidas y solicitudes de amistad.", "Отримуйте запрошення до гри та запити в друзі.") }
+    var notificationSettingsDetail: String { text("Enable SpyClash notifications in iPhone Settings.", "Включите уведомления SpyClash в настройках iPhone.", "Activa las notificaciones de SpyClash en los ajustes del iPhone.", "Увімкніть сповіщення SpyClash у налаштуваннях iPhone.") }
+    var notificationPermissionError: String { text("Couldn't enable notifications. Try again.", "Не удалось включить уведомления. Попробуйте ещё раз.", "No se pudieron activar las notificaciones. Inténtalo de nuevo.", "Не вдалося увімкнути сповіщення. Спробуйте ще раз.") }
     var composerTitle: String { text("GLOBAL TRANSMISSION", "ОБЩАЯ ПЕРЕДАЧА", "TRANSMISIÓN GLOBAL", "ЗАГАЛЬНА ПЕРЕДАЧА") }
     var composerDetail: String { text("Admin-only message for every operative", "Сообщение администратора для всех игроков", "Mensaje de administración para todos", "Повідомлення адміністратора для всіх гравців") }
     var composerTitleField: String { text("TITLE", "ЗАГОЛОВОК", "TÍTULO", "ЗАГОЛОВОК") }

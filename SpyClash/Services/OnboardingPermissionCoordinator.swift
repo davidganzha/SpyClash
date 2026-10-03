@@ -43,14 +43,11 @@ struct OnboardingPermissionFlow: Equatable, Sendable {
         case complete
     }
 
-    // Notifications and Camera are optional. The nearby step verifies the Local
-    // Network access Radar needs for Bonjour discovery. Nearby Interaction is
-    // requested later, automatically, once Radar has a real peer token.
-    static let order: [OnboardingPermissionKind] = [
-        .notifications,
-        .camera,
-        .nearby
-    ]
+    // Onboarding only explains and verifies the Local Network access Radar
+    // needs for Bonjour discovery. Camera and notification requests belong to
+    // the feature that needs them. Nearby Interaction is requested later,
+    // automatically, once Radar has a real peer token.
+    static let order: [OnboardingPermissionKind] = [.nearby]
 
     private(set) var index = 0
     private(set) var phase: Phase = .loading

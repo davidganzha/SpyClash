@@ -312,6 +312,75 @@ final class OnboardingTests: XCTestCase {
         XCTAssertEqual(recorder.requestCount(), 1)
     }
 
+    func testSubmissionWithoutSourceRoundTripsAndKeepsLegacyAnswers() throws {
+        let submission = OnboardingSubmission(language: .ru)
+        let data = try JSONEncoder().encode(submission)
+        let object = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertNil(object["acquisition_source"])
+        XCTAssertEqual(try JSONDecoder().decode(OnboardingSubmission.self, from: data), submission)
+
+        let legacy = OnboardingSubmission(language: .en, acquisitionSource: .chatGPT, version: 1)
+        XCTAssertEqual(
+            try JSONDecoder().decode(OnboardingSubmission.self, from: JSONEncoder().encode(legacy)),
+            legacy
+        )
+    }
+
+    @MainActor
+    func testOnboardingWithoutSurveyOmitsSourceAndLaterAnswerOnlyWritesSource() async throws {
+        let recorder = OnboardingRequestRecorder()
+        OnboardingURLProtocol.requestHandler = { request in
+            try recorder.record(request)
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url), statusCode: 200, httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"id":"user-1","email":"operative@example.com","onboarding_completed":true,"onboarding_version":2,"acquisition_source":"friends_or_family"}"#.utf8))
+        }
+        defer { OnboardingURLProtocol.requestHandler = nil }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OnboardingURLProtocol.self]
+        let client = Base44Client(session: URLSession(configuration: configuration))
+        client.setToken("onboarding-token")
+
+        let user = try await client.completeOnboarding(OnboardingSubmission(language: .en))
+        XCTAssertEqual(user.acquisitionSource, "friends_or_family")
+        let completionBody = try XCTUnwrap(recorder.lastBody())
+        XCTAssertNil(completionBody["acquisition_source"], "An omitted answer must preserve any existing server answer.")
+        XCTAssertEqual(completionBody.count, 4)
+
+        try await client.saveAcquisitionSource(.friendsOrFamily)
+        let answerBody = try XCTUnwrap(recorder.lastBody())
+        XCTAssertEqual(answerBody["acquisition_source"] as? String, "friends_or_family")
+        XCTAssertEqual(answerBody.count, 1, "A deferred survey must not overwrite onboarding, profile or membership fields.")
+        XCTAssertEqual(recorder.lastRequest()?.httpMethod, "PUT")
+        XCTAssertEqual(recorder.lastRequest()?.value(forHTTPHeaderField: "Authorization"), "Bearer onboarding-token")
+        XCTAssertEqual(recorder.requestCount(), 2)
+    }
+
+    @MainActor
+    func testSurveyRejectsAnUnconfirmedAnswer() async throws {
+        OnboardingURLProtocol.requestHandler = { request in
+            let response = HTTPURLResponse(
+                url: try XCTUnwrap(request.url), statusCode: 200, httpVersion: nil,
+                headerFields: ["Content-Type": "application/json"]
+            )!
+            return (response, Data(#"{"id":"user-1","email":"operative@example.com"}"#.utf8))
+        }
+        defer { OnboardingURLProtocol.requestHandler = nil }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [OnboardingURLProtocol.self]
+        let client = Base44Client(session: URLSession(configuration: configuration))
+        client.setToken("onboarding-token")
+        do {
+            try await client.saveAcquisitionSource(.friendsOrFamily)
+            XCTFail("Do not discard a pending answer before the server confirms it.")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.statusCode, 502)
+            XCTAssertTrue(error.retryable)
+        }
+    }
+
     @MainActor
     func testCompleteOnboardingRejectsAnUnconfirmedUserResponse() async throws {
         OnboardingURLProtocol.requestHandler = { request in

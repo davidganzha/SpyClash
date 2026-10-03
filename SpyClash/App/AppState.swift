@@ -1405,6 +1405,7 @@ final class AppState: NSObject {
             let accountChanged = previousUserID != user?.id
             bindMembershipAccount()
             if accountChanged {
+                cancelAcquisitionSurveySync()
                 automaticRadarInvitationJoinTask?.cancel()
                 automaticRadarInvitationJoinTask = nil
                 radarInvitationJoinGate.clearQueuedAutomaticInvitation()
@@ -1438,6 +1439,7 @@ final class AppState: NSObject {
             notificationInbox.bindAccount(user?.id)
             synchronizeLiveActivitiesForAccountChange(previousUserID: previousUserID)
             queuePendingOnboardingSyncIfNeeded()
+            queuePendingAcquisitionSurveySync()
         }
     }
     var isRestoring = true
@@ -1527,6 +1529,7 @@ final class AppState: NSObject {
             handleRoomPresenceChange(from: oldValue, to: activeRoom)
             synchronizeMatchLiveActivity(previousRoom: oldValue, room: activeRoom)
             scheduleFinishedMatchProfileRefreshIfNeeded(for: activeRoom)
+            recordCompletedOnlineGameForAcquisitionSurvey(activeRoom)
         }
     }
     var isShellChromeSuppressed = false
@@ -1575,6 +1578,10 @@ final class AppState: NSObject {
     @ObservationIgnored private var standardAuthRunID: UUID?
     @ObservationIgnored private var onboardingSyncTask: Task<Void, Never>?
     @ObservationIgnored private var onboardingSyncUserID: String?
+    @ObservationIgnored let acquisitionSurveyStore = AcquisitionSurveyStore()
+    @ObservationIgnored var acquisitionSurveySyncTask: Task<Void, Never>?
+    @ObservationIgnored var acquisitionSurveySyncID: UUID?
+    var acquisitionSurveyRevision = 0
     @ObservationIgnored private var postAuthActiveRoomRestoreTask: Task<Void, Never>?
     @ObservationIgnored private var postAuthActiveRoomRestoreUserID: String?
     @ObservationIgnored private var authHomeRevealAnimationID: UUID?
@@ -3903,7 +3910,7 @@ final class AppState: NSObject {
     }
 
     func finishOnboarding(
-        source: OnboardingAcquisitionSource
+        source: OnboardingAcquisitionSource? = nil
     ) async {
         guard !isFinishingOnboarding,
               let authenticatedUser = user,
@@ -3917,7 +3924,9 @@ final class AppState: NSObject {
 
         let submission = OnboardingSubmission(
             language: language,
-            acquisitionSource: source
+            // Preserve a previously answered (possibly still pending v1)
+            // survey during the Radar upgrade. New accounts send no source.
+            acquisitionSource: source ?? preservedOnboardingAcquisitionSource
         )
         var updatedUser: SpyUser?
         var shouldRetrySync = false
@@ -4593,6 +4602,7 @@ final class AppState: NSObject {
         )
         if isActive {
             gameRoomRealtime.resume()
+            queuePendingAcquisitionSurveySync()
         }
     }
 
@@ -5594,6 +5604,15 @@ final class AppState: NSObject {
             || directPreviewValue.map {
                 ["onboarding", "on-board", "setup"].contains($0)
             } == true
+        let shouldPreviewAcquisitionSurvey = arguments.contains("--spyclash-preview-acquisition-survey")
+        if shouldPreviewAcquisitionSurvey {
+            acquisitionSurveyStore.clear(for: "debug-ui-preview-user")
+            for index in 1...AcquisitionSurveyStore.requiredCompletedGames {
+                acquisitionSurveyStore.recordCompletedGame(
+                    id: "preview:\(index)", for: "debug-ui-preview-user"
+                )
+            }
+        }
         if shouldPreviewOnboarding {
             OnboardingProgressStore.clear(for: "debug-ui-preview-user")
         }
@@ -5611,7 +5630,7 @@ final class AppState: NSObject {
             onboardingCompletedAt: shouldPreviewOnboarding
                 ? nil
                 : ISO8601DateFormatter().string(from: Date()),
-            acquisitionSource: shouldPreviewOnboarding ? nil : "other",
+            acquisitionSource: shouldPreviewOnboarding || shouldPreviewAcquisitionSurvey ? nil : "other",
             role: arguments.contains("--spyclash-preview-admin") ? "admin" : "user",
             isVerified: true,
             rating: 1240,

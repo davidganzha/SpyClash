@@ -17,13 +17,13 @@ struct OnboardingSubmission: Codable, Equatable, Sendable {
     static let currentVersion = 2
 
     let language: AppLanguage
-    let acquisitionSource: OnboardingAcquisitionSource
+    let acquisitionSource: OnboardingAcquisitionSource?
     let version: Int
     let completedAt: Date
 
     init(
         language: AppLanguage,
-        acquisitionSource: OnboardingAcquisitionSource,
+        acquisitionSource: OnboardingAcquisitionSource? = nil,
         version: Int = Self.currentVersion,
         completedAt: Date = Date()
     ) {

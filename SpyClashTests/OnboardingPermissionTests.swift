@@ -6,42 +6,17 @@ import XCTest
 @testable import SpyClash
 
 final class OnboardingPermissionStatusMappingTests: XCTestCase {
-    func testPermissionFlowRequiresEveryStepAndLocalNetworkGrant() {
+    func testPermissionFlowRequiresOnlyLocalNetworkGrant() {
         var flow = OnboardingPermissionFlow()
 
-        XCTAssertEqual(
-            OnboardingPermissionFlow.order,
-            [.notifications, .camera, .nearby]
-        )
-        XCTAssertEqual(flow.currentPermission, .notifications)
-        XCTAssertEqual(flow.phase, .loading)
-        XCTAssertFalse(flow.advance(after: .notifications))
-        XCTAssertFalse(flow.markReady(for: .camera))
-        XCTAssertTrue(flow.markReady(for: .notifications))
-        XCTAssertFalse(flow.advance(after: .notifications))
-
-        let deniedRequestID = UUID()
-        XCTAssertTrue(
-            flow.beginRequest(
-                for: .notifications,
-                requestID: deniedRequestID
-            )
-        )
-        XCTAssertTrue(
-            flow.resolveRequest(
-                for: .notifications,
-                requestID: deniedRequestID,
-                status: .denied
-            )
-        )
-        XCTAssertEqual(flow.phase, .resolved(.denied))
-        XCTAssertFalse(flow.advance(after: .camera))
-        XCTAssertTrue(flow.advance(after: .notifications))
-        XCTAssertEqual(flow.currentPermission, .camera)
-
-        XCTAssertTrue(flow.resolveWithoutRequest(.unavailable, for: .camera))
-        XCTAssertTrue(flow.advance(after: .camera))
+        XCTAssertEqual(OnboardingPermissionFlow.order, [.nearby])
         XCTAssertEqual(flow.currentPermission, .nearby)
+        XCTAssertEqual(flow.phase, .loading)
+        XCTAssertFalse(flow.advance(after: .nearby))
+        XCTAssertFalse(flow.markReady(for: .notifications))
+        XCTAssertFalse(flow.markReady(for: .camera))
+        XCTAssertTrue(flow.markReady(for: .nearby))
+        XCTAssertFalse(flow.advance(after: .nearby))
 
         XCTAssertFalse(flow.resolveWithoutRequest(.denied, for: .nearby))
         XCTAssertEqual(flow.phase, .ready)
@@ -102,12 +77,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
     func testPermissionFlowAcceptsSimulatorUnsupportedStatus() {
         var flow = OnboardingPermissionFlow()
 
-        XCTAssertTrue(flow.markReady(for: .notifications))
-        XCTAssertTrue(flow.resolveWithoutRequest(.denied, for: .notifications))
-        XCTAssertTrue(flow.advance(after: .notifications))
-
-        XCTAssertTrue(flow.resolveWithoutRequest(.granted, for: .camera))
-        XCTAssertTrue(flow.advance(after: .camera))
+        XCTAssertTrue(flow.markReady(for: .nearby))
 
         XCTAssertTrue(
             flow.resolveWithoutRequest(.unsupported, for: .nearby)
@@ -128,6 +98,19 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         XCTAssertTrue(flow.advance(after: .nearby))
         XCTAssertTrue(flow.isComplete)
         XCTAssertNil(flow.currentPermission)
+    }
+
+    func testRemovedOptionalStepsCannotResolveOrAdvanceRadar() {
+        var flow = OnboardingPermissionFlow()
+        XCTAssertTrue(flow.markReady(for: .nearby))
+
+        for permission in [OnboardingPermissionKind.notifications, .camera] {
+            XCTAssertFalse(flow.beginRequest(for: permission, requestID: UUID()))
+            XCTAssertFalse(flow.resolveWithoutRequest(.granted, for: permission))
+            XCTAssertFalse(flow.advance(after: permission))
+            XCTAssertEqual(flow.currentPermission, .nearby)
+            XCTAssertEqual(flow.phase, .ready)
+        }
     }
 
     func testOnlyRequiredLocalNetworkRejectsRecoverableFailures() {
@@ -178,43 +161,43 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
     func testPermissionFlowRejectsNonterminalResolution() {
         var flow = OnboardingPermissionFlow()
 
-        XCTAssertTrue(flow.markReady(for: .notifications))
+        XCTAssertTrue(flow.markReady(for: .nearby))
         XCTAssertFalse(
-            flow.resolveWithoutRequest(.notDetermined, for: .notifications)
+            flow.resolveWithoutRequest(.notDetermined, for: .nearby)
         )
         XCTAssertFalse(
-            flow.resolveWithoutRequest(.requesting, for: .notifications)
+            flow.resolveWithoutRequest(.requesting, for: .nearby)
         )
         XCTAssertEqual(flow.phase, .ready)
-        XCTAssertFalse(flow.advance(after: .notifications))
+        XCTAssertFalse(flow.advance(after: .nearby))
 
         let requestingResultID = UUID()
         XCTAssertTrue(
             flow.beginRequest(
-                for: .notifications,
+                for: .nearby,
                 requestID: requestingResultID
             )
         )
         XCTAssertFalse(
             flow.resolveRequest(
-                for: .notifications,
+                for: .nearby,
                 requestID: requestingResultID,
                 status: .requesting
             )
         )
         XCTAssertEqual(flow.phase, .ready)
-        XCTAssertFalse(flow.advance(after: .notifications))
+        XCTAssertFalse(flow.advance(after: .nearby))
 
         let undeterminedResultID = UUID()
         XCTAssertTrue(
             flow.beginRequest(
-                for: .notifications,
+                for: .nearby,
                 requestID: undeterminedResultID
             )
         )
         XCTAssertFalse(
             flow.resolveRequest(
-                for: .notifications,
+                for: .nearby,
                 requestID: undeterminedResultID,
                 status: .notDetermined
             )
@@ -227,16 +210,16 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         let currentRequestID = UUID()
         let staleRequestID = UUID()
 
-        XCTAssertTrue(flow.markReady(for: .notifications))
+        XCTAssertTrue(flow.markReady(for: .nearby))
         XCTAssertTrue(
             flow.beginRequest(
-                for: .notifications,
+                for: .nearby,
                 requestID: currentRequestID
             )
         )
         XCTAssertFalse(
             flow.resolveRequest(
-                for: .notifications,
+                for: .nearby,
                 requestID: staleRequestID,
                 status: .granted
             )
@@ -251,7 +234,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         )
         XCTAssertTrue(
             flow.resolveRequest(
-                for: .notifications,
+                for: .nearby,
                 requestID: currentRequestID,
                 status: .granted
             )
@@ -263,16 +246,16 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         var flow = OnboardingPermissionFlow()
         let requestID = UUID()
 
-        XCTAssertTrue(flow.markReady(for: .notifications))
+        XCTAssertTrue(flow.markReady(for: .nearby))
         XCTAssertTrue(
             flow.beginRequest(
-                for: .notifications,
+                for: .nearby,
                 requestID: requestID
             )
         )
         XCTAssertFalse(
             flow.cancelRequest(
-                for: .notifications,
+                for: .nearby,
                 requestID: UUID()
             )
         )
@@ -284,12 +267,37 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         )
         XCTAssertTrue(
             flow.cancelRequest(
-                for: .notifications,
+                for: .nearby,
                 requestID: requestID
             )
         )
         XCTAssertEqual(flow.phase, .ready)
-        XCTAssertFalse(flow.advance(after: .notifications))
+        XCTAssertFalse(flow.advance(after: .nearby))
+    }
+
+    func testCancelledRadarRequestCannotCompleteAReplacementRequest() {
+        var flow = OnboardingPermissionFlow()
+        let cancelledRequestID = UUID()
+        let replacementRequestID = UUID()
+
+        XCTAssertTrue(flow.markReady(for: .nearby))
+        XCTAssertTrue(flow.beginRequest(for: .nearby, requestID: cancelledRequestID))
+        XCTAssertTrue(flow.cancelRequest(for: .nearby, requestID: cancelledRequestID))
+        XCTAssertTrue(flow.beginRequest(for: .nearby, requestID: replacementRequestID))
+        XCTAssertFalse(flow.resolveRequest(
+            for: .nearby,
+            requestID: cancelledRequestID,
+            status: .granted
+        ))
+        XCTAssertEqual(flow.phase, .requesting(replacementRequestID))
+        XCTAssertFalse(flow.advance(after: .nearby))
+        XCTAssertTrue(flow.resolveRequest(
+            for: .nearby,
+            requestID: replacementRequestID,
+            status: .granted
+        ))
+        XCTAssertTrue(flow.advance(after: .nearby))
+        XCTAssertTrue(flow.isComplete)
     }
 
     func testNotificationAuthorizationStatusesMapToOnboardingStatuses() {
