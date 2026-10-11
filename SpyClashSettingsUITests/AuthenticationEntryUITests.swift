@@ -40,7 +40,7 @@ final class AuthenticationEntryUITests: XCTestCase {
             }
             let web = app.webViews.firstMatch
             XCTAssertTrue(web.waitForExistence(timeout: 30))
-            let accountField = web.textFields.matching(NSPredicate(format: "label CONTAINS[c] 'email' OR label CONTAINS[c] 'почт' OR label CONTAINS[c] 'пошт' OR label CONTAINS[c] 'correo'")).firstMatch
+            let accountField = web.textFields.matching(NSPredicate(format: "label CONTAINS[c] 'email' OR label CONTAINS[c] 'почт' OR label CONTAINS[c] 'пошт' OR label CONTAINS[c] 'электрон' OR label CONTAINS[c] 'correo'")).firstMatch
             XCTAssertTrue(accountField.waitForExistence(timeout: 30), "The Google account field must load before cancellation")
             let usableForm = XCTNSPredicateExpectation(predicate: NSPredicate(format: "hittable == true"), object: accountField)
             XCTAssertEqual(XCTWaiter.wait(for: [usableForm], timeout: 15), .completed)

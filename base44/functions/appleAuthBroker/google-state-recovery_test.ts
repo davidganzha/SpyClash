@@ -179,9 +179,7 @@ Deno.test("untrusted callback parameters and Referer cannot alter restart destin
     assertEquals(from.search, "?auth_provider=google");
     assertEquals(
       from.pathname,
-      target === "app"
-        ? "/api/apps/69a0e57fa939f578082f8091/functions/mobileAuthCallback"
-        : "/",
+      target === "app" ? "/MobileAuthCallback.html" : "/",
     );
   }
 });

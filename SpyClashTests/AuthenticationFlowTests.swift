@@ -10,9 +10,15 @@ final class AuthenticationFlowTests: XCTestCase {
         return Base44Client(session: URLSession(configuration: configuration))
     }
 
-    private func state(client: Base44Client, store: AuthenticationMemoryStore, callback: String = "spyclash://auth?access_token=candidate") -> AppState {
-        let coordinator = WebAuthenticationCoordinator(makeSession: { _, completion in
-            AuthenticationImmediateSession {
+    private func state(
+        client: Base44Client,
+        store: AuthenticationMemoryStore,
+        callback: String = "spyclash://auth?access_token=candidate",
+        onSessionURL: @escaping (URL) -> Void = { _ in }
+    ) -> AppState {
+        let coordinator = WebAuthenticationCoordinator(makeSession: { url, completion in
+            onSessionURL(url)
+            return AuthenticationImmediateSession {
                 completion(URL(string: callback), nil)
             }
         })
@@ -22,18 +28,45 @@ final class AuthenticationFlowTests: XCTestCase {
                         webAuthentication: coordinator)
     }
 
+    func testGoogleLoginURLUsesFixedPublicCallbackPage() throws {
+        let client = client()
+        for requestedCallback in [
+            "spyclash://auth",
+            "https://spyclash.com/api/apps/\(Base44Client.appID)/functions/mobileAuthCallback",
+            "https://example.test/redirect?access_token=unexpected"
+        ] {
+            let url = client.googleLoginURL(callbackURL: try XCTUnwrap(URL(string: requestedCallback)))
+            let components = try XCTUnwrap(URLComponents(url: url, resolvingAgainstBaseURL: false))
+            XCTAssertEqual(components.scheme, "https")
+            XCTAssertEqual(components.host, "spyclash.com")
+            XCTAssertEqual(components.path, "/api/apps/\(Base44Client.appID)/auth/sso/login")
+            XCTAssertNil(components.fragment)
+            XCTAssertEqual(components.queryItems, [
+                URLQueryItem(name: "app_id", value: Base44Client.appID),
+                URLQueryItem(name: "from_url", value: "https://spyclash.com/MobileAuthCallback.html?auth_provider=google")
+            ])
+        }
+    }
+
     func testProfileSyncFailurePreservesPreviousSession() async {
         for status in [409, 503] {
             let client = client()
             client.setToken("existing")
             let store = AuthenticationMemoryStore(token: "existing")
-            let state = state(client: client, store: store)
+            var sessionURLs: [URL] = []
+            let state = state(client: client, store: store, onSessionURL: { sessionURLs.append($0) })
             AuthenticationFlowURLProtocol.handler = { request in
                 XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUser")
                 XCTAssertNil(request.request.value(forHTTPHeaderField: "Authorization"))
                 request.respond(status: status, body: #"{"error":"Temporary failure"}"#)
             }
             await state.loginWithGoogle()
+            XCTAssertEqual(sessionURLs.count, 1)
+            let components = sessionURLs.first.flatMap { URLComponents(url: $0, resolvingAgainstBaseURL: false) }
+            XCTAssertEqual(
+                components?.queryItems?.first(where: { $0.name == "from_url" })?.value,
+                "https://spyclash.com/MobileAuthCallback.html?auth_provider=google"
+            )
             XCTAssertEqual(client.currentAccessToken, "existing")
             XCTAssertEqual(store.token, "existing")
             XCTAssertEqual(store.saves, 0)

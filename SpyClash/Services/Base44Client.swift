@@ -1476,8 +1476,10 @@ final class Base44Client {
     }
 
     func googleLoginURL(callbackURL _: URL) -> URL {
+        // Base44 SSO returns through the public page, which hands the result
+        // back to spyclash://auth. Function gateway URLs are not SSO callbacks.
         let mobileCallbackURL = Self.appBaseURL
-            .appending(path: "/api/apps/\(Self.appID)/functions/mobileAuthCallback")
+            .appending(path: "/MobileAuthCallback.html")
         var callbackComponents = URLComponents(
             url: mobileCallbackURL,
             resolvingAgainstBaseURL: false

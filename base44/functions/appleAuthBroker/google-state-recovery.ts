@@ -28,7 +28,7 @@ export function freshGoogleLoginURL(target: "app" | "website"): string {
   const origin = "https://spyclash.com";
   const appID = "69a0e57fa939f578082f8091";
   const from = new URL(
-    target === "app" ? `/api/apps/${appID}/functions/mobileAuthCallback` : "/",
+    target === "app" ? "/MobileAuthCallback.html" : "/",
     origin,
   );
   from.searchParams.set("auth_provider", "google");
