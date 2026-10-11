@@ -12,13 +12,16 @@ import { canonicalBase44Request } from "./base44-context.ts";
 import {
   appleCommerceConfigurationError,
   type AppleEntitlementRecord,
+  applePurchaseProductSelection,
   casadaPurchaseRetirement,
+  isSupportedAppleSubscriptionProduct,
   LEGACY_SUBSCRIPTION_PRODUCT_ID,
   normalizeAppleEntitlement,
   publicAppleEntitlement,
   shouldApplyProviderEvent,
   SPYCLASH_APPLE_APP_ID,
   SPYCLASH_IOS_BUNDLE_ID,
+  SUPPORTED_SUBSCRIPTION_PRODUCT_IDS,
 } from "./apple-entitlement.ts";
 import {
   type EntitlementRecord,
@@ -304,7 +307,7 @@ async function canonicalSubscriptionStatus(
     return await readCanonicalAppleSubscriptionStatus({
       transaction,
       expectedBundleID: BUNDLE_ID,
-      expectedProductID: PRODUCT_ID,
+      expectedProductIDs: SUPPORTED_SUBSCRIPTION_PRODUCT_IDS,
       expectedEnvironment: environment,
       expectedAppAppleID: SPYCLASH_APPLE_APP_ID,
       getStatuses: (transactionID) =>
@@ -839,9 +842,9 @@ function assertAllowedAppleTransaction(
       422,
     );
   }
-  if (transaction.productId !== PRODUCT_ID) {
+  if (!isSupportedAppleSubscriptionProduct(transaction.productId)) {
     throw new RequestError(
-      "Apple transaction product does not match the legacy subscription.",
+      "Apple transaction product does not match a supported subscription.",
       422,
     );
   }
@@ -856,11 +859,15 @@ function assertAllowedAppleTransaction(
   }
 }
 
-async function handlePrepare(base44: any) {
+async function handlePrepare(base44: any, body: Record<string, unknown>) {
   const user = await requireUser(base44);
   const retirement = casadaPurchaseRetirement();
   if (retirement) {
     throw new RequestError(retirement.message, retirement.status);
+  }
+  const selection = applePurchaseProductSelection(body.requested_product_id);
+  if ("status" in selection) {
+    throw new RequestError(selection.message, selection.status);
   }
   const adminGrants = await base44.asServiceRole.entities.MembershipGrant
     .filter(
@@ -893,7 +900,7 @@ async function handlePrepare(base44: any) {
     user.id,
   );
   return Response.json({
-    product_id: PRODUCT_ID,
+    product_id: selection.productID,
     app_account_token: token,
   });
 }
@@ -1000,6 +1007,7 @@ async function handleAuthenticatedSync(
     return Response.json({
       success: true,
       server_status_verified: true,
+      submitted_product_id: verified.transaction.productId,
       entitlement: publicAppleEntitlement(persisted),
     });
   } finally {
@@ -1022,7 +1030,7 @@ async function handleNotification(base44: any, signedPayload: string) {
 
   const signedTransaction = notification.data?.signedTransactionInfo;
   if (!signedTransaction) {
-    // Summary/app-data notifications do not change legacy subscription state.
+    // Summary/app-data notifications do not change subscription state.
     return Response.json({ success: true, ignored: true });
   }
   const transaction = await verifier.verifyAndDecodeTransaction(
@@ -1035,7 +1043,7 @@ async function handleNotification(base44: any, signedPayload: string) {
     );
   }
   if (
-    transaction.productId !== PRODUCT_ID ||
+    !isSupportedAppleSubscriptionProduct(transaction.productId) ||
     (transaction.type && transaction.type !== "Auto-Renewable Subscription")
   ) {
     // App Store Server Notifications are configured per app, not per product.
@@ -1158,7 +1166,7 @@ Deno.serve(async (req) => {
           }),
         );
       case "prepare":
-        return await handlePrepare(base44);
+        return await handlePrepare(base44, body);
       case "sync_transaction":
         return await handleAuthenticatedSync(base44, body);
       default:

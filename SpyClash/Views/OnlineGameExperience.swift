@@ -639,7 +639,7 @@ struct SpyCinematicButtonStyle: ButtonStyle {
 // MARK: - Synchronized start ritual
 
 struct OnlineGameIntroScene: View {
-    static let totalDuration: TimeInterval = 8
+    static let totalDuration = Base44Client.gameIntroDuration
 
     let room: GameRoom
     let language: AppLanguage
@@ -655,6 +655,7 @@ struct OnlineGameIntroScene: View {
             language: language,
             startedAt: OnlineExperienceClock.date(from: room.introStartedAt) ?? .distantFuture,
             duration: Self.totalDuration,
+            holdsFinalFrame: true,
             fixedProgress: debugFixedProgress,
             accessibilityIdentifier: "onlineExperience.intro"
         )

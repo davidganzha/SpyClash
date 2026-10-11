@@ -4,7 +4,7 @@ import {
   lobbySpyCount,
   maximumSpyCount,
 } from "./multi-spy-policy.ts";
-export const ONLINE_GAME_INTRO_SECONDS = 8;
+export const ONLINE_GAME_INTRO_SECONDS = 3;
 
 type Room = Record<string, any>;
 

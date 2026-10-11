@@ -165,6 +165,9 @@ enum ReplayVoteCommitRecoveryPolicy {
 @MainActor
 @Observable
 final class Base44Client {
+    nonisolated static let gameIntroDuration: TimeInterval = 3
+    nonisolated static let gameIntroCompletionMargin: TimeInterval = 0.2
+    nonisolated static let legacyGameIntroDuration: TimeInterval = 8
     static let multiSpyCapability = "multi_spy_v1"
     static let appID = "69a0e57fa939f578082f8091"
     static let appBaseURL = URL(string: "https://spyclash.com")!
@@ -741,6 +744,7 @@ final class Base44Client {
     }
 
     func startGame(room: GameRoom, wordPacks: [WordPack]) async throws -> GameRoom {
+        try Task.checkCancellation()
         let plan = try makeGameStartPlan(
             room: room,
             wordPacks: wordPacks,
@@ -750,8 +754,18 @@ final class Base44Client {
             forcedAskerEmail: room.rouletteTargetEmail
         )
         let rouletteRoom = try await armRoulette(room: room, plan: plan)
-        try await Task.sleep(for: .seconds(2))
-        return try await completeGameStart(room: rouletteRoom, plan: plan)
+        try Task.checkCancellation()
+        try await Task.sleep(for: .seconds(Self.gameIntroDuration + Self.gameIntroCompletionMargin))
+        try Task.checkCancellation()
+        do {
+            return try await completeGameStart(room: rouletteRoom, plan: plan)
+        } catch let error as Base44Error where error.isGameIntroInProgress {
+            // Older deployments still require the eight-second intro. Wait
+            // out that window before retrying the same already-armed plan.
+            try await Task.sleep(for: .seconds(Self.legacyGameIntroDuration - Self.gameIntroDuration))
+            try Task.checkCancellation()
+            return try await completeGameStart(room: rouletteRoom, plan: plan)
+        }
     }
 
     func markRoleCardRead(room: GameRoom, user: SpyUser) async throws -> GameRoom {
@@ -1113,6 +1127,24 @@ final class Base44Client {
             )
         }
         return updatedUser
+    }
+
+    func saveAcquisitionSource(_ source: OnboardingAcquisitionSource) async throws {
+        guard let token, !token.isEmpty else {
+            throw Base44Error(message: "Authentication required.", statusCode: 401)
+        }
+        let updatedUser: SpyUser = try await request(
+            "/apps/\(Self.appID)/entities/User/me",
+            method: "PUT",
+            body: ["acquisition_source": source.rawValue]
+        )
+        guard updatedUser.acquisitionSource == source.rawValue else {
+            throw Base44Error(
+                message: "Survey answer was not confirmed.",
+                statusCode: 502,
+                retryable: true
+            )
+        }
     }
 
     func deleteAccount() async throws -> AccountDeletionResult {
@@ -1649,8 +1681,11 @@ final class Base44Client {
         try await membershipAction("checkSubscription", body: [:])
     }
 
-    func prepareAppStorePurchase() async throws -> AppStorePurchaseContext {
-        try await membershipAction("app-store-entitlement", body: ["action": "prepare"])
+    func prepareAppStorePurchase(productID: String) async throws -> AppStorePurchaseContext {
+        try await membershipAction("app-store-entitlement", body: [
+            "action": "prepare",
+            "requested_product_id": productID,
+        ])
     }
 
     func syncAppStoreTransaction(signedTransaction: String) async throws -> AppStoreEntitlementSyncResponse {
@@ -2539,14 +2574,14 @@ private struct OnboardingCompletionPayload: Encodable {
     let onboardingCompleted: Bool
     let onboardingVersion: Int
     let onboardingCompletedAt: Date
-    let acquisitionSource: String
+    let acquisitionSource: String?
 
     init(submission: OnboardingSubmission) {
         language = submission.language.rawValue
         onboardingCompleted = true
         onboardingVersion = submission.version
         onboardingCompletedAt = submission.completedAt
-        acquisitionSource = submission.acquisitionSource.rawValue
+        acquisitionSource = submission.acquisitionSource?.rawValue
     }
 
     enum CodingKeys: String, CodingKey {
@@ -2704,6 +2739,10 @@ struct Base44Error: LocalizedError {
             "cas_contention",
             "return_to_lobby_requires_leases"
         ].contains(normalizedCode)
+    }
+
+    var isGameIntroInProgress: Bool {
+        statusCode == 409 && normalizedCode == "game_intro_in_progress"
     }
 
     var isClientUpdateRequired: Bool {

@@ -5,7 +5,23 @@ import StoreKit
 
 enum StoreKitWeeklyPeriod {
     static func matches(unit: Product.SubscriptionPeriod.Unit?, value: Int?) -> Bool {
-        (unit == .week && value == 1) || (unit == .day && value == 7)
+        StoreKitSubscriptionProduct.weekly.matchesPeriod(unit: .init(unit), value: value)
+    }
+}
+
+enum StoreKitSubscriptionProduct: String, CaseIterable, Sendable {
+    case weekly = "com.spyclash.ios.limitless.weekly"
+    case monthly = "com.spyclash.ios.limitless.monthly"
+
+    static func supports(_ productID: String) -> Bool {
+        Self(rawValue: productID) != nil
+    }
+
+    func matchesPeriod(unit: StoreKitCatalogPeriodUnit, value: Int?) -> Bool {
+        switch self {
+        case .weekly: (unit == .week && value == 1) || (unit == .day && value == 7)
+        case .monthly: unit == .month && value == 1
+        }
     }
 }
 
@@ -31,7 +47,8 @@ enum StoreKitProductLoadIssue: Equatable, Sendable {
 struct StoreKitCatalogItem<Value: Sendable>: Sendable {
     let id: String
     let isAutoRenewable: Bool
-    let isWeekly: Bool
+    let periodUnit: StoreKitCatalogPeriodUnit
+    let periodValue: Int?
     let value: Value
 }
 
@@ -140,7 +157,11 @@ final class StoreKitProductCatalog<Value: Sendable> {
             defer { isLoading = false; loadTask = nil }
             do {
                 let items = try await fetch()
-                let match = items.first { $0.id == productID && $0.isAutoRenewable && $0.isWeekly }
+                let requestedProduct = StoreKitSubscriptionProduct(rawValue: productID)
+                let match = items.first {
+                    $0.id == productID && $0.isAutoRenewable &&
+                    requestedProduct?.matchesPeriod(unit: $0.periodUnit, value: $0.periodValue) == true
+                }
                 diagnostic(.response(count: items.count, contractMatched: match != nil))
                 guard let match else {
                     issue = items.isEmpty ? .notFound : .unsupportedProduct

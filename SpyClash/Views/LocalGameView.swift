@@ -240,7 +240,8 @@ struct LocalGameView: View {
 
     @State private var phase = LocalPhase.setup
     @State private var session: LocalSession?
-    @State private var introStartedAt: Date?
+    @State private var surveyGameID = UUID()
+    @State private var surveyAccountID: String?
     @State private var revealIndex = 0
     @State private var cardRevealed = false
     @State private var secondsRemaining = 0
@@ -320,17 +321,6 @@ struct LocalGameView: View {
         default:
             return nil
         }
-    }
-
-    private var previewLocalIntroProgress: Double? {
-#if DEBUG
-        guard appState.shouldUsePreviewData,
-              let rawValue = previewArgumentValue(prefix: "--spyclash-preview-local-intro-progress="),
-              let value = Double(rawValue) else { return nil }
-        return min(max(value, 0), 1)
-#else
-        return nil
-#endif
     }
 
     var body: some View {
@@ -470,6 +460,11 @@ struct LocalGameView: View {
 
     private func handleLocalPhaseChange(_ newPhase: LocalPhase) {
         updateLocalShellChromeSuppression()
+        if newPhase == .results, winner != nil, let surveyAccountID {
+            appState.recordCompletedGameForAcquisitionSurvey(
+                id: "local:\(surveyGameID.uuidString)", userID: surveyAccountID
+            )
+        }
         guard newPhase != .playing else { return }
         timerTask?.cancel()
         timerTask = nil
@@ -547,9 +542,7 @@ struct LocalGameView: View {
 
     @ViewBuilder
     private var localPhaseContent: some View {
-        if phase == .intro {
-            localIntroScene
-        } else if phase == .cards {
+        if phase == .cards {
             cardsScene
         } else if phase.isGameProcess {
             localProcessScene
@@ -573,8 +566,16 @@ struct LocalGameView: View {
             : .timingCurve(0.22, 0.61, 0.36, 1, duration: 0.32)
     }
 
-    private func setLocalPhase(_ next: LocalPhase) {
+    private func setLocalPhase(_ next: LocalPhase, animated: Bool = true) {
         guard phase != next else { return }
+        if !animated {
+            var transaction = Transaction(animation: nil)
+            transaction.disablesAnimations = true
+            withTransaction(transaction) {
+                phase = next
+            }
+            return
+        }
         withAnimation(localPhaseAnimation) {
             phase = next
         }
@@ -590,8 +591,6 @@ struct LocalGameView: View {
                 switch phase {
                 case .setup:
                     setupView
-                case .intro:
-                    EmptyView()
                 case .cards:
                     cardsView
                 case .playing:
@@ -629,30 +628,6 @@ struct LocalGameView: View {
         }
         .frame(maxWidth: .infinity, maxHeight: .infinity)
         .transition(.opacity)
-    }
-
-    @ViewBuilder
-    private var localIntroScene: some View {
-        if let session, let introStartedAt {
-            SpyGameIntroScene(
-                participants: session.players.map {
-                    SpyGameIntroParticipant(id: $0.id, name: $0.name, avatar: $0.avatar)
-                },
-                spyCount: session.spyIndices.count,
-                language: appState.language,
-                startedAt: introStartedAt,
-                duration: 8,
-                fixedProgress: previewLocalIntroProgress,
-                accessibilityIdentifier: "localGame.intro"
-            )
-            .task(id: introStartedAt) {
-                guard previewLocalIntroProgress == nil else { return }
-                try? await Task.sleep(for: .seconds(reduceMotion ? 3 : 8))
-                guard !Task.isCancelled, phase == .intro else { return }
-                setLocalPhase(.cards)
-            }
-            .transition(.opacity)
-        }
     }
 
     private var localProcessScene: some View {
@@ -712,8 +687,6 @@ struct LocalGameView: View {
     @ViewBuilder
     private var localProcessContent: some View {
         switch phase {
-        case .intro:
-            EmptyView()
         case .playing:
             playingView
         case .spyGuess:
@@ -2229,7 +2202,7 @@ struct LocalGameView: View {
     }
 
     private var localCountLabel: String {
-        localized(en: "// WORDS TO CREATE", ru: "// СОЗДАТЬ СЛОВ", es: "// PALABRAS A CREAR", uk: "// СЛІВ ДЛЯ СТВОРЕННЯ")
+        localized(en: "// WORDS TO GENERATE", ru: "// СГЕНЕРИРОВАТЬ СЛОВ", es: "// PALABRAS A GENERAR", uk: "// ЗГЕНЕРУВАТИ СЛІВ")
     }
 
     private var localWordsLabel: String {
@@ -4016,7 +3989,6 @@ struct LocalGameView: View {
         let theme = customTheme.trimmingCharacters(in: .whitespacesAndNewlines)
         let current = generatedPack?.words.localCleanWords ?? []
         let selectedWordCount = Int(wordCount)
-        let wasUsingEntirePool = selectedWordCount >= current.count
         guard !theme.isEmpty,
               !isGenerating,
               localThemeMaxWords < localThemeGenerationLimit else { return }
@@ -4086,10 +4058,12 @@ struct LocalGameView: View {
                     for: theme,
                     availableCount: merged.count
                 )
-            } else if wasUsingEntirePool {
-                merged.count
             } else {
-                min(merged.count, max(selectedWordCount, 2))
+                RoomWordPoolFilter.selectedCountAfterPoolChange(
+                    selected: selectedWordCount,
+                    previousActiveCount: current.count,
+                    activeCount: merged.count
+                )
             }
             wordCount = Double(nextSelectedCount)
             status = localized(en: "AI WORD POOL EXPANDED", ru: "AI-ПУЛ СЛОВ РАСШИРЕН", es: "BANCO IA AMPLIADO", uk: "AI-ПУЛ СЛІВ РОЗШИРЕНО")
@@ -4200,6 +4174,8 @@ struct LocalGameView: View {
             mode: mode,
             spiesKnowEachOther: spiesKnowEachOther
         )
+        surveyGameID = UUID()
+        surveyAccountID = appState.user?.id
         eliminatedPlayerIndices = []
         resetQuestionFlow(playerIndices: Array(localPlayers.indices), mode: mode)
         resetAssociationFlow(playerIndices: Array(localPlayers.indices), mode: mode)
@@ -4212,10 +4188,8 @@ struct LocalGameView: View {
         accusedIndex = nil
         winner = nil
         spyGuess = nil
-        introStartedAt = nil
         status = ""
-        introStartedAt = Date()
-        setLocalPhase(.intro)
+        setLocalPhase(.cards, animated: false)
         HapticManager.shared.fire(.milestone)
     }
 
@@ -4863,7 +4837,6 @@ struct LocalGameView: View {
             phase = .setup
         }
         session = nil
-        introStartedAt = nil
         revealIndex = 0
         cardRevealed = false
         secondsRemaining = 0
@@ -5138,10 +5111,7 @@ struct LocalGameView: View {
         status = ""
 
         switch normalized {
-        case "intro", "roulette", "dealing":
-            phase = .intro
-            introStartedAt = Date()
-        case "cards", "role", "role-hidden", "card":
+        case "intro", "roulette", "dealing", "cards", "role", "role-hidden", "card":
             phase = .cards
         case "cards-revealed", "role-revealed", "card-revealed":
             phase = .cards
@@ -5955,7 +5925,6 @@ private enum LocalMode: String, CaseIterable, Identifiable {
 
 private enum LocalPhase: Hashable {
     case setup
-    case intro
     case cards
     case playing
     case spyGuess
@@ -5966,7 +5935,7 @@ private enum LocalPhase: Hashable {
         switch self {
         case .setup:
             false
-        case .intro, .cards, .playing, .spyGuess, .voting, .results:
+        case .cards, .playing, .spyGuess, .voting, .results:
             true
         }
     }
@@ -5974,7 +5943,6 @@ private enum LocalPhase: Hashable {
     func status(_ copy: LocalGameCopy) -> String {
         switch self {
         case .setup: copy.setupStatus
-        case .intro: copy.cardsStatus
         case .cards: copy.cardsStatus
         case .playing: copy.playingStatus
         case .spyGuess: copy.spyGuessStatus

@@ -21,3 +21,12 @@ export function limitlessApplePurchaseEnabled(): boolean {
   return limitlessEnabled() &&
     rolloutEnabled(setting("SPYCLASH_LIMITLESS_APPLE_PURCHASE_ENABLED"));
 }
+
+// Monthly checkout is a separate rollout. Existing subscriptions remain
+// verifiable and restorable regardless of this new-purchase setting.
+export function limitlessAppleMonthlyPurchaseEnabled(): boolean {
+  return limitlessApplePurchaseEnabled() &&
+    rolloutEnabled(
+      setting("SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED"),
+    );
+}

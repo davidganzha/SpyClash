@@ -1,4 +1,7 @@
-import { rolloutEnabled } from "./limitless-rollout.ts";
+import {
+  limitlessAppleMonthlyPurchaseEnabled,
+  rolloutEnabled,
+} from "./limitless-rollout.ts";
 import { applyCasadaAccess, summarizeMembership } from "./membership.ts";
 import {
   applyAdminGenerationGrant,
@@ -36,6 +39,38 @@ Deno.test("Apple preparation requires both an access rollout and purchase activa
   assert(casadaPurchaseRetirement(true, true)?.status === 409);
   assert(casadaPurchaseRetirement(false, false)?.status === 503);
   assert(casadaPurchaseRetirement(false, true) === null);
+});
+
+Deno.test("monthly checkout requires all three explicit rollout settings", () => {
+  const names = [
+    "SPYCLASH_LIMITLESS_ENABLED",
+    "SPYCLASH_LIMITLESS_APPLE_PURCHASE_ENABLED",
+    "SPYCLASH_LIMITLESS_APPLE_MONTHLY_PURCHASE_ENABLED",
+  ];
+  const original = names.map((name) => Deno.env.get(name));
+  try {
+    for (let mask = 0; mask < 8; mask += 1) {
+      names.forEach((name, index) => {
+        if ((mask & (1 << index)) !== 0) Deno.env.set(name, "true");
+        else Deno.env.delete(name);
+      });
+      assert(
+        limitlessAppleMonthlyPurchaseEnabled() === (mask === 7),
+        "a purchase gate was bypassed",
+      );
+    }
+    Deno.env.set(names[2], "TRUE");
+    assert(
+      !limitlessAppleMonthlyPurchaseEnabled(),
+      "malformed monthly setting enabled checkout",
+    );
+  } finally {
+    names.forEach((name, index) => {
+      const value = original[index];
+      if (value === undefined) Deno.env.delete(name);
+      else Deno.env.set(name, value);
+    });
+  }
 });
 
 Deno.test("independent function bundles share the exact same rollout policy", async () => {

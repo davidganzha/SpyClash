@@ -213,8 +213,8 @@ final class PushNotificationCoordinator {
         registrationTask?.cancel()
         registrationTask = Task { [weak self] in
             // Account transitions must never trigger the system permission
-            // prompt. Onboarding owns the explicit request; this path only
-            // refreshes and registers whatever status already exists.
+            // prompt. The notification screen owns the explicit request; this
+            // path only refreshes and registers whatever status already exists.
             await self?.refreshRegistration()
         }
     }
