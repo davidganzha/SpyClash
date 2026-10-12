@@ -4,7 +4,7 @@ import XCTest
 
 @MainActor
 final class Base44IsolationTests: XCTestCase {
-    func testProductionAuthPushAndUnsupportedGameRoutesNeverReachTransport() async throws {
+    func testProductionAuthPushAndGameRoutesNeverReachBase44Transport() async throws {
         XCTAssertTrue(SupabaseTestEnvironment.isEnabled)
         let observer = IsolationRequestObserver.shared
         observer.reset()
@@ -39,9 +39,9 @@ final class Base44IsolationTests: XCTestCase {
         ))
         do {
             _ = try await client.pauseGame(room: room)
-            XCTFail("An unsupported production game action must fail closed")
-        } catch let error as LabFailure {
-            XCTAssertEqual(error.code, "unsupported_in_supabase_test_pause_game")
+            XCTFail("An unsigned full-game action must fail before either transport")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.code, "not_signed_in")
         }
         XCTAssertEqual(observer.count, 0)
     }

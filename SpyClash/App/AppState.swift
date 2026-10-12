@@ -1727,6 +1727,29 @@ final class AppState: NSObject {
     }
 
     func leaveRoomImmediately(_ room: GameRoom) {
+#if SPYCLASH_SUPABASE_TEST
+        guard let actorID = user?.id, !client.supabaseAdapter.hasPendingRecovery,
+              beginRoomSync(.leavingRoom) else { return }
+        let mode = DismissedRoomExitMode.resolve(room: room, currentUserEmail: user?.email)
+        Task { @MainActor [weak self] in
+            guard let self else { return }
+            defer { self.endRoomSync(.leavingRoom) }
+            do {
+                if mode == .close {
+                    try await self.client.supabaseAdapter.closeRoom(roomID: room.id, membershipID: room.viewerMembershipID, expectedRevision: room.roomRevision)
+                } else {
+                    try await self.client.supabaseAdapter.leaveRoom(roomID: room.id, membershipID: room.viewerMembershipID, expectedRevision: room.roomRevision)
+                }
+                guard self.user?.id == actorID else { return }
+                self.synchronizeSupabaseTestRoom()
+                if self.activeRoom == nil { self.selectedTab = .home }
+            } catch {
+                guard self.user?.id == actorID else { return }
+                self.showToast(error.localizedDescription, kind: .error)
+            }
+        }
+        return
+#endif
         cancelDismissedRoomExitAttempt()
         // Local-first leave/close is terminal for the membership generation
         // visible on this device. Its exact server revision is not known yet,
@@ -1816,9 +1839,6 @@ final class AppState: NSObject {
         user: SpyUser
     ) async throws -> GameRoom {
         let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
-        guard !SupabaseTestEnvironment.isEnabled || UUID(uuidString: code) != nil else {
-            throw Base44Error(message: "Enter the full test room UUID.")
-        }
         let dismissedCode = UserDefaults.standard
             .string(forKey: Self.dismissedRoomCodeStorageKey)?
             .uppercased()
@@ -2780,6 +2800,10 @@ final class AppState: NSObject {
     }
 
     func monitorActiveRoom(_ roomID: String) async {
+#if SPYCLASH_SUPABASE_TEST
+        synchronizeSupabaseTestRoom()
+        return
+#endif
 #if DEBUG
         if shouldUsePreviewData {
             return
@@ -2886,6 +2910,7 @@ final class AppState: NSObject {
         let adapter = client.supabaseAdapter
         guard let user, user.id == adapter.user?.id else { return }
         let candidate = adapter.currentRoom
+        roomConnectionState = adapter.store.lastError.isEmpty ? .synced : .reconnecting
         if let current = activeRoom, let candidate, current.id == candidate.id,
            (current.roomRevision ?? 0) > (candidate.roomRevision ?? 0) { return }
         if activeRoom != candidate { activeRoom = candidate }
@@ -4642,7 +4667,7 @@ final class AppState: NSObject {
     }
 
     func openMainTab(_ tab: AppTab) {
-        guard !SupabaseTestEnvironment.isEnabled || tab == .home || tab == .game else { showToast(SupabaseTestEnvironment.unavailableMessage, kind: .warning); return }
+        guard !SupabaseTestEnvironment.isEnabled || tab == .home || tab == .game || tab == .packs else { showToast(SupabaseTestEnvironment.unavailableMessage, kind: .warning); return }
         pendingNotificationRoute = nil
         presentedSheet = nil
         notificationFocusItemID = nil
@@ -4823,8 +4848,8 @@ final class AppState: NSObject {
                   url.host?.lowercased() == "join",
                   let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
                   let rawCode = components.queryItems?.first(where: { $0.name == "code" })?.value,
-                  let roomID = UUID(uuidString: rawCode) else { return }
-            pendingJoinCode = roomID.uuidString
+                  let code = SpyLinkParser.roomCodeIfPresent(from: rawCode) else { return }
+            pendingJoinCode = code
             if user != nil { Task { await consumePendingJoinIfPossible() } }
             return
         }

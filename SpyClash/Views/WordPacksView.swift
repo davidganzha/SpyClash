@@ -35,6 +35,14 @@ struct WordPacksView: View {
             .disabled(editor != nil || showDeleteConfirmation)
             .accessibilityHidden(editor != nil || showDeleteConfirmation)
         }
+#if SPYCLASH_SUPABASE_TEST
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            SupabaseGameRecoveryBanner { _ in
+                appState.markWordPacksChanged()
+                await load()
+            }
+        }
+#endif
         .task {
             await load()
         }

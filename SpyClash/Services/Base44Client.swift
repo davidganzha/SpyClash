@@ -390,15 +390,19 @@ final class Base44Client {
     }
 
     func roomJoinURL(code: String) -> URL {
+#if SPYCLASH_SUPABASE_TEST
+        return nativeRoomJoinURL(code: code)
+#else
         var components = URLComponents(url: Self.appBaseURL, resolvingAgainstBaseURL: false)!
         components.path = "/"
         components.fragment = "/Home?join=\(code.uppercased())"
         return components.url!
+#endif
     }
 
     func nativeRoomJoinURL(code: String) -> URL {
         var components = URLComponents()
-        components.scheme = "spyclash"
+        components.scheme = SupabaseTestEnvironment.isEnabled ? "spyclash-supabasetest" : "spyclash"
         components.host = "join"
         components.queryItems = [
             URLQueryItem(name: "code", value: code.uppercased())
@@ -664,6 +668,9 @@ final class Base44Client {
         durationSeconds: Int,
         forcedAskerEmail: String? = nil
     ) throws -> GameStartPlan {
+#if SPYCLASH_SUPABASE_TEST
+        return GameStartPlan(rouletteTargetEmail: "", payload: nil)
+#else
         let players = room.players ?? []
         guard players.count >= 3 else {
             throw Base44Error(message: "Need at least 3 operatives.")
@@ -710,16 +717,21 @@ final class Base44Client {
                 winner: ""
             )
         )
+#endif
     }
 
     func armRoulette(room: GameRoom, plan: GameStartPlan) async throws -> GameRoom {
-        try await roomAction(
+#if SPYCLASH_SUPABASE_TEST
+        return try await roomAction("arm_roulette", roomID: room.id, expectedLobbyRevision: room.lobbyRevision)
+#else
+        return try await roomAction(
             "arm_roulette",
             roomID: room.id,
             plan: plan.payload,
             rouletteTargetEmail: plan.rouletteTargetEmail,
             expectedLobbyRevision: room.lobbyRevision
         )
+#endif
     }
 
     func completeGameStart(room: GameRoom, plan: GameStartPlan) async throws -> GameRoom {
@@ -769,9 +781,6 @@ final class Base44Client {
     }
 
     func startGame(room: GameRoom, wordPacks: [WordPack]) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
-        return try await supabaseAdapter.startGame(roomID: room.id)
-#else
         try Task.checkCancellation()
         let plan = try makeGameStartPlan(
             room: room,
@@ -794,43 +803,78 @@ final class Base44Client {
             try Task.checkCancellation()
             return try await completeGameStart(room: rouletteRoom, plan: plan)
         }
-#endif
     }
 
     func markRoleCardRead(room: GameRoom, user: SpyUser) async throws -> GameRoom {
+#if SPYCLASH_SUPABASE_TEST
+        return try await roomAction("mark_role_card_read", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
+#else
         try await roomAction("mark_role_card_read", roomID: room.id)
+#endif
     }
 
     func pauseGame(room: GameRoom) async throws -> GameRoom {
+#if SPYCLASH_SUPABASE_TEST
+        return try await roomAction("pause_game", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
+#else
         try await roomAction("pause_game", roomID: room.id)
+#endif
     }
 
     func resumeGame(room: GameRoom) async throws -> GameRoom {
+#if SPYCLASH_SUPABASE_TEST
+        return try await roomAction("resume_game", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
+#else
         try await roomAction("resume_game", roomID: room.id)
+#endif
     }
 
     func advanceQuestion(room: GameRoom) async throws -> GameRoom {
+#if SPYCLASH_SUPABASE_TEST
+        return try await roomAction("advance_question", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
+#else
         try await roomAction("advance_question", roomID: room.id)
+#endif
     }
 
     func advanceAssociation(room: GameRoom) async throws -> GameRoom {
+#if SPYCLASH_SUPABASE_TEST
+        return try await roomAction("advance_association", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
+#else
         try await roomAction("advance_association", roomID: room.id)
+#endif
     }
 
     func startAssociation(room: GameRoom) async throws -> GameRoom {
+#if SPYCLASH_SUPABASE_TEST
+        return try await roomAction("start_association", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
+#else
         try await roomAction("start_association", roomID: room.id)
+#endif
     }
 
     func stopAssociationSpin(room: GameRoom) async throws -> GameRoom {
+#if SPYCLASH_SUPABASE_TEST
+        return try await roomAction("stop_association_spin", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
+#else
         try await roomAction("stop_association_spin", roomID: room.id)
+#endif
     }
 
     func markAnswerHeard(room: GameRoom) async throws -> GameRoom {
+#if SPYCLASH_SUPABASE_TEST
+        return try await roomAction("mark_answer_heard", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
+#else
         try await roomAction("mark_answer_heard", roomID: room.id)
+#endif
     }
 
     func continueRound(room: GameRoom) async throws -> GameRoom {
+#if SPYCLASH_SUPABASE_TEST
+        return try await roomAction("continue_round", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
+#else
         try await roomAction("continue_round", roomID: room.id)
+#endif
     }
 
 
@@ -893,7 +937,7 @@ final class Base44Client {
         expectedMembershipID: String? = nil
     ) async throws {
 #if SPYCLASH_SUPABASE_TEST
-        try await supabaseAdapter.leaveRoom(roomID: roomID, membershipID: expectedMembershipID)
+        try await supabaseAdapter.leaveRoom(roomID: roomID, membershipID: expectedMembershipID, expectedRevision: expectedRevision)
         return
 #endif
         guard let token, !token.isEmpty else {
@@ -937,7 +981,7 @@ final class Base44Client {
         expectedMembershipID: String? = nil
     ) async throws {
 #if SPYCLASH_SUPABASE_TEST
-        try await supabaseAdapter.closeRoom(roomID: roomID)
+        try await supabaseAdapter.closeRoom(roomID: roomID, membershipID: expectedMembershipID, expectedRevision: expectedRevision)
         return
 #endif
         guard let token, !token.isEmpty else {
@@ -1015,6 +1059,9 @@ final class Base44Client {
         excluding excludedWords: [String] = [],
         preferFresh: Bool = false
     ) async throws -> GeneratedWordPack {
+#if SPYCLASH_SUPABASE_TEST
+        return try await supabaseAdapter.generateWordPack(theme: theme, count: count, requestID: requestID, excluding: excludedWords, preferFresh: preferFresh)
+#else
         let expectedToken = try requireAccessToken()
         let expectedTokenGeneration = tokenGeneration
         let payload = GenerateWordPackPayload(
@@ -1045,6 +1092,7 @@ final class Base44Client {
                 try await Task.sleep(for: .milliseconds(delay))
             }
         }
+#endif
     }
 
     func gameHistory(userID: String, email: String, limit: Int? = nil) async throws -> [GameHistory] {
@@ -1988,20 +2036,37 @@ final class Base44Client {
         allowsTypedConflictRetry: Bool = true
     ) async throws -> GameRoom {
 #if SPYCLASH_SUPABASE_TEST
-        switch action {
-        case "create_room": return try await supabaseAdapter.createRoom()
-        case "join_room": return try await supabaseAdapter.joinRoom(code: roomID ?? roomCode ?? "")
-        case "get_room":
-            guard let room = try await supabaseAdapter.refreshRoom(id: roomID ?? "") else { throw Base44Error(message: "Room not found.", statusCode: 404) }
-            return room
-        case "toggle_ready": return try await supabaseAdapter.toggleReady(roomID: roomID ?? "")
-        case "mark_role_card_read": return try supabaseAdapter.confirmOwnRole(roomID: roomID ?? "")
-        case "request_vote": return try await supabaseAdapter.openVoting(roomID: roomID ?? "")
-        case "cast_detective_vote": return try await supabaseAdapter.vote(roomID: roomID ?? "", targetEmail: targetEmail ?? "")
-        case "return_finished_room_to_lobby", "reset_room_for_replay":
-            return try await supabaseAdapter.returnToLobby(roomID: roomID ?? "")
-        default: throw LabFailure(code: "unsupported_in_supabase_test_" + action)
-        }
+        let payload = GameRoomActionPayload(
+            action: action,
+            accessToken: "",
+            clientCapabilities: [Self.multiSpyCapability],
+            roomID: roomID,
+            roomCode: roomCode,
+            player: player,
+            mode: mode?.rawValue,
+            gameMode: gameMode?.rawValue,
+            gameDurationSeconds: gameDurationSeconds,
+            plan: plan,
+            rouletteTargetEmail: rouletteTargetEmail,
+            targetUserID: targetUserID,
+            targetEmail: targetEmail,
+            expectedTargetMembershipID: expectedTargetMembershipID,
+            returnToLobbyVote: returnToLobbyVote,
+            guess: guess,
+            winner: winner,
+            expectedDetectiveVoteRoundID: expectedDetectiveVoteRoundID,
+            joinMembershipID: joinMembershipID,
+            mutationID: mutationID,
+            expectedRevision: expectedRevision,
+            expectedMembershipID: expectedMembershipID,
+            state: state,
+            expectedLobbyRevision: expectedLobbyRevision,
+            expectedMatchID: expectedMatchID,
+            expectedGameStartedAt: expectedGameStartedAt
+        )
+        var body = try SupabaseFullGameStore.json(payload).object ?? [:]
+        body.removeValue(forKey: "access_token")
+        return try await supabaseAdapter.roomAction(body)
 #else
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
@@ -2102,6 +2167,11 @@ final class Base44Client {
         category: String? = nil,
         words: [String]? = nil
     ) async throws -> T {
+#if SPYCLASH_SUPABASE_TEST
+        let response = try await supabaseAdapter.wordPackAction(action, packID: packID, name: name, category: category, words: words)
+        let value = action == "list" ? response["packs"] : (action == "delete" ? .object([:]) : response["pack"])
+        return try JSONDecoder().decode(T.self, from: value.data())
+#else
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
@@ -2140,6 +2210,7 @@ final class Base44Client {
                 try await Task.sleep(for: .milliseconds(delay))
             }
         }
+#endif
     }
 
     private static func pickMissionWord(
@@ -3032,7 +3103,7 @@ enum RequestCancellationPolicy {
 
 struct GameStartPlan: Hashable {
     let rouletteTargetEmail: String
-    fileprivate let payload: StartGamePayload
+    fileprivate let payload: StartGamePayload?
 }
 
 private struct CreateRoomPayload: Encodable {

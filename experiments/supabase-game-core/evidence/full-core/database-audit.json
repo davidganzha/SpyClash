@@ -1,0 +1,12 @@
+{
+  "capturedAt": "2026-10-12T22:12:00Z",
+  "projectRef": "bbkfsgnordtdiblgdzkg",
+  "readOnly": true,
+  "rooms": 11,
+  "checks": 10,
+  "failed": [],
+  "outbox": 13,
+  "passed": 10,
+  "history": 9,
+  "receipts": 146
+}

@@ -67,6 +67,9 @@ def main():
     require(not sources(production).intersection(ENGINE), "Lab transport sources entered the production target")
     require(ENGINE.issubset(sources(test_app)), "Test target is missing the real Supabase transport sources")
     require("SupabaseGameAdapter.swift" in sources(test_app), "Test target is missing the GameRoom integration adapter")
+    require({"SupabaseFullGameStore.swift", "SupabaseGameRecoveryBanner.swift"}.issubset(sources(test_app)),
+            "Test target is missing full-game durability or recovery UI")
+    require("SupabaseGameTestView.swift" not in sources(test_app), "Obsolete prototype gameplay UI is still included")
 
     for config in configurations(test_app):
         settings = config.get("buildSettings", {})

@@ -1459,12 +1459,6 @@ struct OnlineActiveGameScene: View {
         let timer = OnlineTimerSnapshot(room: room, now: date)
 
         return VStack(spacing: 6) {
-#if SPYCLASH_SUPABASE_TEST
-            Text("SUPABASE · TEST MATCH")
-                .font(SpyTheme.brandFont(size: 24))
-            Text("One spy · one round · no timer")
-                .font(.caption).foregroundStyle(SpyTheme.dim)
-#else
             Text(
                 timer.isExpired
                     ? copy.spyWinsAtDeadline(spyCount: room.lobbySpyCountValue)
@@ -1492,7 +1486,7 @@ struct OnlineActiveGameScene: View {
                 }
             }
             .frame(height: 2)
-#endif
+
         }
         .accessibilityElement(children: .contain)
         .accessibilityIdentifier("onlineExperience.timer")
@@ -1511,7 +1505,7 @@ struct OnlineActiveGameScene: View {
                 action: requestLeave
             )
 
-            if isHost && !SupabaseTestEnvironment.isEnabled {
+            if isHost {
                 headerControl(
                     systemImage: room.isGamePaused ? "play.fill" : "pause.fill",
                     accessibilityLabel: room.isGamePaused ? copy.resume : copy.pause,
@@ -1733,12 +1727,6 @@ struct OnlineActiveGameScene: View {
 
     @ViewBuilder
     private func roundStage(maxHeight: CGFloat) -> some View {
-#if SPYCLASH_SUPABASE_TEST
-        Text(language == .ru ? "Обсудите слово. Ведущий откроет голосование." : "Discuss the word. The host opens voting.")
-            .font(SpyTheme.brandFont(size: 20))
-            .multilineTextAlignment(.center)
-            .foregroundStyle(SpyTheme.dim)
-#else
         if room.onlineRoundPhase == .results {
             roundResultsStage(maxHeight: maxHeight)
         } else if room.gameModeValue == .associations {
@@ -1746,7 +1734,7 @@ struct OnlineActiveGameScene: View {
         } else {
             activePairStrip
         }
-#endif
+
     }
 
     private var associationStage: some View {
@@ -2074,7 +2062,7 @@ struct OnlineActiveGameScene: View {
                     HStack(spacing: 9) {
                         voteRequestStatusIcon
                         Text(
-                            SupabaseTestEnvironment.isEnabled ? (language == .ru ? "Открыть голосование" : "Open voting") : copy.startVoteProgress(
+                            copy.startVoteProgress(
                                 voteRequestFeedback.displayedCount,
                                 room.voteThreshold
                             )
@@ -2706,29 +2694,23 @@ struct SpyGameExperienceCopy {
     var guess: String { text("GUESS", "ADIVINAR", "УГАДАТЬ", "ВГАДАТИ") }
 
     func exclusionRequirement(required: Int, total: Int) -> String {
-#if SPYCLASH_SUPABASE_TEST
-        return text("THE SERVER WAITS FOR ALL \(total) VOTES", "EL SERVIDOR ESPERA LOS \(total) VOTOS", "СЕРВЕР ЖДЁТ ВСЕ \(total) ГОЛОСА", "СЕРВЕР ЧЕКАЄ НА ВСІ \(total) ГОЛОСИ")
-#else
         return text(
             "EXCLUSION REQUIRES \(required) OF \(total) VOTES FOR ONE SUSPECT",
             "LA EXCLUSIÓN REQUIERE \(required) DE \(total) VOTOS POR UN SOSPECHOSO",
             "ДЛЯ ИСКЛЮЧЕНИЯ НУЖНО \(required) ИЗ \(total) ГОЛОСОВ ЗА ОДНОГО ИГРОКА",
             "ДЛЯ ВИКЛЮЧЕННЯ ПОТРІБНО \(required) ІЗ \(total) ГОЛОСІВ ЗА ОДНОГО ГРАВЦЯ"
         )
-#endif
+
     }
 
     var impossibleVoteCancels: String {
-#if SPYCLASH_SUPABASE_TEST
-        return text("A TIE MEANS THE SPY WINS", "UN EMPATE DA LA VICTORIA AL ESPÍA", "ПРИ РАВЕНСТВЕ ГОЛОСОВ ПОБЕЖДАЕТ ШПИОН", "ЗА НІЧИЄЇ ПЕРЕМАГАЄ ШПИГУН")
-#else
         return text(
             "THE SERVER CANCELS THE VOTE WHEN THAT RESULT BECOMES IMPOSSIBLE",
             "EL SERVIDOR CANCELA LA VOTACIÓN CUANDO ESE RESULTADO YA ES IMPOSIBLE",
             "СЕРВЕР ОТМЕНИТ ГОЛОСОВАНИЕ, КОГДА ТАКОЙ РЕЗУЛЬТАТ СТАНЕТ НЕВОЗМОЖЕН",
             "СЕРВЕР СКАСУЄ ГОЛОСУВАННЯ, КОЛИ ТАКИЙ РЕЗУЛЬТАТ СТАНЕ НЕМОЖЛИВИМ"
         )
-#endif
+
     }
 
     var paused: String { text("PAUSED", "PAUSA", "ПАУЗА", "ПАУЗА") }

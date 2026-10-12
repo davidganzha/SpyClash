@@ -239,7 +239,7 @@ struct HomeView: View {
     private var joinCodeBinding: Binding<String> {
         Binding(
             get: { joinCode },
-            set: { joinCode = String($0.uppercased().prefix(SupabaseTestEnvironment.isEnabled ? 36 : 6)) }
+            set: { joinCode = String($0.uppercased().prefix(6)) }
         )
     }
 
@@ -598,7 +598,7 @@ struct HomeView: View {
                 .spyFitted(scale: 0.62)
                 .padding(.bottom, 24)
 
-            TextField(SupabaseTestEnvironment.isEnabled ? "Room UUID" : "ABC123", text: joinCodeBinding)
+            TextField("ABC123", text: joinCodeBinding)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .submitLabel(.go)
@@ -1125,7 +1125,11 @@ struct HomeView: View {
         defer { isLoading = false }
         do {
             let adapter = SupabaseGameAdapter.shared
-            try await adapter.leaveRoom(roomID: room.id, membershipID: room.viewerMembershipID)
+            if isHost(room) {
+                try await adapter.closeRoom(roomID: room.id, membershipID: room.viewerMembershipID, expectedRevision: room.roomRevision)
+            } else {
+                try await adapter.leaveRoom(roomID: room.id, membershipID: room.viewerMembershipID, expectedRevision: room.roomRevision)
+            }
             // Confirm current membership: a known historical receipt must not
             // hide a newer membership, and a failed read keeps the room visible.
             let current = try await adapter.refreshRoom(id: room.id)
@@ -1154,13 +1158,9 @@ struct HomeView: View {
     }
 
     private func closeRoomMenuTitle(_ room: GameRoom) -> String {
-#if SPYCLASH_SUPABASE_TEST
-        localized(en: "Leave room", ru: "Выйти из комнаты", es: "Salir de sala", uk: "Вийти з кімнати")
-#else
         isHost(room)
             ? localized(en: "Close room", ru: "Закрыть комнату", es: "Cerrar sala", uk: "Закрити кімнату")
             : localized(en: "Leave room", ru: "Выйти из комнаты", es: "Salir de sala", uk: "Вийти з кімнати")
-#endif
     }
 
     private func isHost(_ room: GameRoom) -> Bool {

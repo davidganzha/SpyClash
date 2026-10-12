@@ -3,18 +3,29 @@
   "private": true,
   "version": "0.1.0",
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "backend:start": "node scripts/local.mjs start",
     "backend:stop": "node scripts/local.mjs stop",
     "backend:status": "node scripts/local.mjs status",
     "backend:verify": "node scripts/local.mjs verify",
     "backend:apply": "node scripts/local.mjs apply",
-    "test": "node scripts/local.mjs test"
+    "test": "node scripts/local.mjs test",
+    "full-core:test": "node scripts/full-core-local.mjs",
+    "full-core:apply": "node scripts/full-core-local.mjs apply",
+    "full-core:check": "deno check --config supabase/functions/full-game-core/deno.json supabase/functions/full-game-core/index.ts",
+    "full-core:engine-test": "deno test --config supabase/functions/full-game-core/deno.json tests/full-core-engine",
+    "full-core:cloud-test": "node scripts/full-core-cloud-test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.3",
-    "pg": "8.23.1"
+    "pg": "8.23.1",
+    "postgres": "3.4.9"
   },
-  "devDependencies": { "supabase": "2.120.0" }
+  "devDependencies": {
+    "deno": "2.9.6",
+    "supabase": "2.120.0"
+  }
 }

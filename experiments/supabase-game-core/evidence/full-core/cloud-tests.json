@@ -1,0 +1,77 @@
+{
+  "projectRef": "bbkfsgnordtdiblgdzkg",
+  "endpoint": "https://bbkfsgnordtdiblgdzkg.supabase.co/functions/v1/full-game-core",
+  "startedAt": "2026-10-12T22:05:57.950Z",
+  "tests": [
+    {
+      "name": "concurrent_six_client_start_and_private_projections",
+      "status": "passed",
+      "durationMs": 16196,
+      "metrics": {
+        "clients": 6,
+        "visibleOwnRoleCount": 2,
+        "duplicateStartAttempts": 6,
+        "convergedRevision": 22
+      }
+    },
+    {
+      "name": "lost_https_acknowledgement_retry_after_peer_write_and_offline_transport",
+      "status": "passed",
+      "durationMs": 8942,
+      "metrics": {
+        "droppedResponses": 1,
+        "immutableRetry": true,
+        "offlineRetry": true,
+        "convergedRevision": 8
+      }
+    },
+    {
+      "name": "questions_eight_turns_results_spy_guess_history_and_replay",
+      "status": "passed",
+      "durationMs": 28808,
+      "metrics": {
+        "questions": 8,
+        "historyRowsVerified": 3,
+        "terminalRetry": true,
+        "replayAutoStarted": true
+      }
+    },
+    {
+      "name": "associations_round_and_detective_threshold",
+      "status": "passed",
+      "durationMs": 23977,
+      "metrics": {
+        "distinctSpeakers": 3,
+        "terminalBallots": 2,
+        "thresholdPreserved": true
+      }
+    },
+    {
+      "name": "saved_word_packs_owner_isolation_and_private_leaderboard_ids",
+      "status": "passed",
+      "durationMs": 2665,
+      "metrics": {
+        "ownerIsolation": true,
+        "updatedWordCount": 3,
+        "leaderboardEntries": 6
+      }
+    },
+    {
+      "name": "six_actual_wal_subscriptions_and_reconnected_socket",
+      "status": "passed",
+      "durationMs": 7982,
+      "metrics": {
+        "subscribedClients": 6,
+        "actualWalReceivedBy": 6,
+        "reconnectedWal": true,
+        "convergedRevision": 10
+      }
+    }
+  ],
+  "cleanupErrors": [],
+  "credentialsPersisted": false,
+  "durationMs": 95885,
+  "passed": 6,
+  "failed": 0,
+  "status": "passed"
+}

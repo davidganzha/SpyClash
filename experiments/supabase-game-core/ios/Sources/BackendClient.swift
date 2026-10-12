@@ -82,7 +82,8 @@ final class BackendClient {
         return json
     }
 
-    func watch(roomID: String) async throws {
+    func watch(roomID: String, table: String = "game_room_signals") async throws {
+        guard ["game_room_signals", "full_game_room_signals"].contains(table) else { throw LabFailure(code: "unsupported_signal_table") }
         disconnectRealtime()
         try await ensureSession()
         var components = URLComponents(string: config.backendURL)!
@@ -103,7 +104,7 @@ final class BackendClient {
                     "presence": .object(["enabled": .bool(false)]), "private": .bool(false),
                     "postgres_changes_options": .object(["wait": .bool(true), "timeout": .number(15000)]),
                     "postgres_changes": .array([.object([
-                        "event": .string("*"), "schema": .string("public"), "table": .string("game_room_signals"),
+                        "event": .string("*"), "schema": .string("public"), "table": .string(table),
                         "filter": .string("room_id=eq.\(roomID)")
                     ])])
                 ])
@@ -172,3 +173,42 @@ final class BackendClient {
         onRealtime?("disconnected", nil)
     }
 }
+
+#if SPYCLASH_SUPABASE_TEST
+extension BackendClient: SupabaseFullGameTransport {
+    func fullGame(_ body: JSONValue) async throws -> JSONValue {
+        try await ensureSession()
+        let base = (config.transportURL ?? config.backendURL).trimmingCharacters(in: CharacterSet(charactersIn: "/"))
+        guard let url = URL(string: base + "/functions/v1/full-game-core") else { throw SupabaseFullGameStore.invalidResponse }
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue(config.publishableKey, forHTTPHeaderField: "apikey")
+        request.setValue("Bearer \(accessToken)", forHTTPHeaderField: "Authorization")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.httpBody = try body.data()
+        let data: Data
+        let rawResponse: URLResponse
+        do { (data, rawResponse) = try await session.data(for: request) }
+        catch { throw SupabaseFullGameStore.failure(error) }
+        guard let response = rawResponse as? HTTPURLResponse else {
+            throw FullGameTransportFailure(error: SupabaseFullGameStore.invalidResponse, ambiguous: true)
+        }
+        let json = (try? JSONDecoder().decode(JSONValue.self, from: data)) ?? .null
+        guard (200..<300).contains(response.statusCode) else {
+            let detail = json["error"].object == nil ? json : json["error"]
+            let failure = Base44Error(
+                message: detail["message"].string ?? "The game request could not be completed.",
+                statusCode: response.statusCode,
+                code: detail["code"].string ?? "http_\(response.statusCode)",
+                retryable: detail["retryable"].bool || response.statusCode >= 500,
+                retryAfterSeconds: detail["retry_after_seconds"].isNull ? nil : detail["retry_after_seconds"].integer
+            )
+            throw FullGameTransportFailure(error: failure, ambiguous: response.statusCode >= 500)
+        }
+        guard !json.isNull else {
+            throw FullGameTransportFailure(error: SupabaseFullGameStore.invalidResponse, ambiguous: true)
+        }
+        return json
+    }
+}
+#endif

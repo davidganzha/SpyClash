@@ -134,6 +134,17 @@ struct WordPackEditorSheet: View {
                 .accessibilityAddTraits(.isModal)
             }
         }
+#if SPYCLASH_SUPABASE_TEST
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            SupabaseGameRecoveryBanner { response in
+                if let pack = try? JSONDecoder().decode(WordPack.self, from: response["pack"].data()) {
+                    onSaved(pack)
+                    appState.markWordPacksChanged()
+                    dismiss()
+                }
+            }
+        }
+#endif
         .alert(copy.wordsToGenerate, isPresented: $showWordCountEditor) {
             TextField("5–100", text: $wordCountInput)
                 .keyboardType(.numberPad)
@@ -324,7 +335,12 @@ struct WordPackEditorSheet: View {
     private var aiSetupContent: some View {
         VStack(alignment: .leading, spacing: 14) {
             introBlock(title: flowCopy.aiSetupTitle, body: flowCopy.aiSetupBody)
-            if appState.membership.snapshot?.isUniversal != true {
+            if SupabaseTestEnvironment.isEnabled {
+                Text(appState.language == .ru
+                     ? "AI-генератор остаётся на Base44 и требует входа в аккаунт Base44. Здесь можно создать набор вручную."
+                     : "AI generation remains on Base44 and requires a Base44 account. You can create a manual pack here.")
+                    .font(.footnote).foregroundStyle(SpyTheme.muted)
+            } else if appState.membership.snapshot?.isUniversal != true {
                 let copy = LimitlessCopy(language: appState.language)
                 if let remaining = appState.membership.snapshot?.aiRemaining {
                     Text("\(copy.remaining): \(remaining)")

@@ -3948,11 +3948,7 @@ struct GameRoom: Codable, Identifiable, Hashable {
     }
 
     var isVotingActive: Bool {
-#if SPYCLASH_SUPABASE_TEST
-        return normalizedStatus == "playing" && detectiveVoteRoundID != nil
-#else
         voteThreshold > 0 && activeVoteRequests.count >= voteThreshold
-#endif
     }
 
     var detectiveVotesList: [VoteRecord] {

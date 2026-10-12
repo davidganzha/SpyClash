@@ -1,0 +1,54 @@
+{
+  "date": "2026-10-12",
+  "projectRef": "bbkfsgnordtdiblgdzkg",
+  "edgeFunction": {
+    "name": "full-game-core",
+    "version": 2,
+    "verifyJWT": true,
+    "deploymentSHA256": "d1384f7fcc0492aa827b42189582ba28441499e2cd88c56092b92a63ee8df807"
+  },
+  "native": {
+    "version": "1.0.3",
+    "build": "170",
+    "bundleID": "com.spyclash.ios.supabasetest",
+    "artifactSHA256": {
+      "SpyClashSupabaseTest": "b63c2fb4a7afa16ede04daa61afa3f863097bf97900c134e00910615d8be99a9",
+      "SpyClashSupabaseTest.debug.dylib": "912f85f98dc278be06bce6763de1c6d53aac88dbfa21a996a327b46329dcdf4f"
+    },
+    "xctest": {
+      "passed": 14,
+      "failed": 0,
+      "resultBundle": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-12T22-10-44-535Z_pid60230_703c6431.xcresult"
+    },
+    "productionCompile": "passed_unsigned_no_launch",
+    "simulators": {
+      "A": {
+        "actor": "IOS2",
+        "launchPID": 27533
+      },
+      "B": {
+        "actor": "IOS3",
+        "launchPID": 29469
+      }
+    },
+    "mixedMatch": {
+      "roomID": "ae36ea7a-52e5-4320-b785-74ae1ad47747",
+      "terminalRevision": 16,
+      "participants": "two_simulators_plus_one_js_client",
+      "originalUI": true,
+      "pauseResume": "passed",
+      "automaticTerminalUI": "passed",
+      "relaunchRestore": "passed"
+    },
+    "manualPackEditorAndPersistence": "passed_on_simulator_B",
+    "physicalIPhone": "deferred_not_installed"
+  },
+  "tests": {
+    "reducer": 15,
+    "localHTTP": 14,
+    "cloudGroups": 6,
+    "databaseAudit": 10
+  },
+  "productionMutated": false,
+  "paidPlanChanged": false
+}

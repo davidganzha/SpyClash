@@ -266,9 +266,9 @@ struct AppShellView: View {
 
     var body: some View {
         @Bindable var appState = appState
-        let selected = SupabaseTestEnvironment.isEnabled && ![AppTab.home, .game].contains(appState.selectedTab) ? AppTab.home : appState.selectedTab
+        let selected = SupabaseTestEnvironment.isEnabled && ![AppTab.home, .game, .packs].contains(appState.selectedTab) ? AppTab.home : appState.selectedTab
         let contentTab = selected == .game && appState.activeRoom == nil ? AppTab.home : selected
-        let dockTabs = SupabaseTestEnvironment.isEnabled ? [AppTab.home] : AppTab.primaryCases
+        let dockTabs = SupabaseTestEnvironment.isEnabled ? [AppTab.home, .packs] : AppTab.primaryCases
         let isCommunityRoute = !SupabaseTestEnvironment.isEnabled && appState.shellRoute == .community
         let isNotificationsRoute = !SupabaseTestEnvironment.isEnabled && appState.shellRoute == .notifications
         let dockSelection = Binding<AppTab>(
@@ -361,10 +361,11 @@ struct AppShellView: View {
                     .animation(.easeOut(duration: 0.20), value: shouldShowDock)
                 }
                 .background(SpyTheme.black)
+                .safeAreaInset(edge: .top, spacing: 0) {
+                    if SupabaseTestEnvironment.isEnabled { supabaseTestHeader }
+                }
                 .overlay(alignment: .top) {
-                    if SupabaseTestEnvironment.isEnabled {
-                        supabaseTestHeader
-                    } else {
+                    if !SupabaseTestEnvironment.isEnabled {
                     WebPullDownCommandMenu(
                         isPresented: $isCommandMenuPresented,
                         communityAttentionCount: communityAttention.totalCount,
@@ -410,7 +411,7 @@ struct AppShellView: View {
                 if SupabaseTestEnvironment.isEnabled {
                     VStack(spacing: 16) {
                         Text("SUPABASE GAME TEST").font(.headline)
-                        Text("Profile, community, word packs, purchases, push and Radar are unavailable in this build.")
+                        Text("Online gameplay and saved/manual word packs use the separate Supabase test backend. AI generation remains on Base44 and requires a Base44 account. Profile, community, purchases, push and Radar are unavailable in this build.")
                             .font(.footnote).foregroundStyle(.secondary)
                             .multilineTextAlignment(.center)
                         LanguageSettingsView()
@@ -591,7 +592,8 @@ struct AppShellView: View {
         let adapter = appState.client.supabaseAdapter
         let snapshot = adapter.latestSnapshot
         return [adapter.store.userID, adapter.store.roomID ?? "", adapter.phase,
-                String(snapshot["revision"].integer), snapshot["own_membership_id"].string ?? "",
+                String(snapshot["room_revision"].integer), snapshot["viewer_membership_id"].string ?? "",
+                adapter.store.realtime, adapter.store.lastError,
                 String(adapter.ownRoleConfirmed)].joined(separator: "|")
 #else
         return "production"
@@ -617,7 +619,7 @@ struct AppShellView: View {
         contentTab: AppTab,
         reservesDock: Bool
     ) -> some View {
-        let tabs = SupabaseTestEnvironment.isEnabled ? [AppTab.home] : AppTab.primaryCases
+        let tabs = SupabaseTestEnvironment.isEnabled ? [AppTab.home, .packs] : AppTab.primaryCases
         let selectedIndex = tabs.firstIndex(of: contentTab) ?? 0
 
         return GeometryReader { proxy in
