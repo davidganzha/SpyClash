@@ -1,0 +1,34 @@
+{
+  "captured_at": "2026-10-12T23:06:23.387965+00:00",
+  "code": "PDTZQG",
+  "join": "supported native app deep link",
+  "mutations": "join only; no start or ready",
+  "clients": [
+    {
+      "name": "A",
+      "udid": "02FF7AC5-668B-4F9B-B8DA-C0534693805B",
+      "pid": 45344,
+      "build": 171,
+      "last_error": "",
+      "pending_ids": [],
+      "realtime": "subscribed",
+      "revision": 22,
+      "room_id": "3d6955a3-be0e-42ad-8ce5-a6fe883d00c2",
+      "status": "waiting",
+      "game_mode": "associations"
+    },
+    {
+      "name": "B",
+      "udid": "00A0FD32-E1D1-4C83-B60F-2A3001DCA98C",
+      "pid": 45027,
+      "build": 171,
+      "last_error": "",
+      "pending_ids": [],
+      "realtime": "subscribed",
+      "revision": 22,
+      "room_id": "3d6955a3-be0e-42ad-8ce5-a6fe883d00c2",
+      "status": "waiting",
+      "game_mode": "associations"
+    }
+  ]
+}

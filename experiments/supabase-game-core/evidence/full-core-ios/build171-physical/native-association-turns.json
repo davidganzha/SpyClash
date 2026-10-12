@@ -1,0 +1,57 @@
+{
+  "captured_at": "2026-10-12T23:13:45.909106+00:00",
+  "room_id": "3d6955a3-be0e-42ad-8ce5-a6fe883d00c2",
+  "code": "PDTZQG",
+  "match_id": "05d94a34-6128-4336-8a8a-2be2c2aab713",
+  "native_actions": [
+    {
+      "actor": "IOS3",
+      "control": "ASSOCIATION GIVEN",
+      "request_id": "fb6102b8-4563-4c73-b126-5b5d8856fc3d",
+      "receipt_revision": 52
+    },
+    {
+      "actor": "IOS2",
+      "control": "ASSOCIATION GIVEN",
+      "request_id": "a6678d34-8ce1-421d-8cd0-527340603425",
+      "receipt_revision": 54
+    }
+  ],
+  "observed_ui": {
+    "round": 1,
+    "associations_completed": 2,
+    "total_players": 3,
+    "current_speaker": "IOS1"
+  },
+  "peer_state": [
+    {
+      "name": "A",
+      "build": 171,
+      "revision": 55,
+      "status": "playing",
+      "last_error": "",
+      "pending_ids": [],
+      "last_receipt": {
+        "request_id": "a6678d34-8ce1-421d-8cd0-527340603425",
+        "revision": 54,
+        "room_id": "3d6955a3-be0e-42ad-8ce5-a6fe883d00c2"
+      },
+      "realtime": "subscribed"
+    },
+    {
+      "name": "B",
+      "build": 171,
+      "revision": 55,
+      "status": "playing",
+      "last_error": "",
+      "pending_ids": [],
+      "last_receipt": {
+        "request_id": "65005064-4fa9-4bfa-a2e2-498894c6ac4a",
+        "revision": 55,
+        "room_id": "3d6955a3-be0e-42ad-8ce5-a6fe883d00c2"
+      },
+      "realtime": "subscribed"
+    }
+  ],
+  "earlier_tap_note": "One earlier IOS3 tap overlapped IOS1 pause/restart in prior match. Observed r42 was server state, not evidence of that tap committing; not counted as successful action."
+}

@@ -1,0 +1,67 @@
+{
+  "captured_at": "2026-10-12T23:23:54.516713+00:00",
+  "room_id": "3d6955a3-be0e-42ad-8ce5-a6fe883d00c2",
+  "code": "PDTZQG",
+  "match_id": "05d94a34-6128-4336-8a8a-2be2c2aab713",
+  "offline_gate": "Root relayed user confirmation of Ganzha airplane mode and Wi-Fi off before peer actions; this agent did not control or inspect phone radios.",
+  "native_actions": [
+    {
+      "actor": "IOS3",
+      "control": "VOTE 1/2",
+      "request_id": "8a73afa8-2e2e-4d17-809b-2a076d15699e",
+      "receipt_revision": 59
+    },
+    {
+      "actor": "IOS2",
+      "control": "IOS1 voting candidate",
+      "request_id": "aaff8d26-319c-40eb-b16e-d6eda962815e",
+      "receipt_revision": 61
+    },
+    {
+      "actor": "IOS3",
+      "control": "IOS1 voting candidate",
+      "request_id": "26869584-5ef2-4657-b8f0-a87fa0ad74cb",
+      "receipt_revision": 62
+    }
+  ],
+  "notes": [
+    "Voting request count was already 1/2 before IOS3 native tap. IOS2 saw candidate ballot at r60 and did not issue redundant vote-opening request.",
+    "Both candidate ballots used observed native UI controls. No API game surrogate actions.",
+    "No actions after finish; no replay or return to lobby."
+  ],
+  "ui_result": "SPY WINS / FINISHED on both",
+  "peer_state": [
+    {
+      "name": "A",
+      "build": 171,
+      "revision": 62,
+      "status": "finished",
+      "last_error": "",
+      "pending_ids": [],
+      "last_receipt": {
+        "request_id": "aaff8d26-319c-40eb-b16e-d6eda962815e",
+        "revision": 61,
+        "room_id": "3d6955a3-be0e-42ad-8ce5-a6fe883d00c2"
+      },
+      "realtime": "subscribed",
+      "winner": "spy",
+      "round_number": 2
+    },
+    {
+      "name": "B",
+      "build": 171,
+      "revision": 62,
+      "status": "finished",
+      "last_error": "",
+      "pending_ids": [],
+      "last_receipt": {
+        "request_id": "26869584-5ef2-4657-b8f0-a87fa0ad74cb",
+        "revision": 62,
+        "room_id": "3d6955a3-be0e-42ad-8ce5-a6fe883d00c2"
+      },
+      "realtime": "subscribed",
+      "winner": "spy",
+      "round_number": 2
+    }
+  ]
+}

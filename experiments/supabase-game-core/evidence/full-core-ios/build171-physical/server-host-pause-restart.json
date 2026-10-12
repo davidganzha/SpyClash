@@ -1,0 +1,46 @@
+{
+  "checkpoint": "host-pause-resume-and-restart-receipts",
+  "observed_at": "2026-10-12T23:12:56.657Z",
+  "data": [
+    {
+      "revision": 41,
+      "actor_id": "35b9d34d-fd06-48ec-8863-d3cca6d86e2b",
+      "status": "playing",
+      "match_id": "92c7b500-3730-403b-8dd2-9edccee80cf1",
+      "game_paused_at": "",
+      "paused_total_seconds": "0"
+    },
+    {
+      "revision": 42,
+      "actor_id": "35b9d34d-fd06-48ec-8863-d3cca6d86e2b",
+      "status": "playing",
+      "match_id": "92c7b500-3730-403b-8dd2-9edccee80cf1",
+      "game_paused_at": "2026-10-12T23:11:11.456Z",
+      "paused_total_seconds": "0"
+    },
+    {
+      "revision": 43,
+      "actor_id": "35b9d34d-fd06-48ec-8863-d3cca6d86e2b",
+      "status": "playing",
+      "match_id": "92c7b500-3730-403b-8dd2-9edccee80cf1",
+      "game_paused_at": "",
+      "paused_total_seconds": "3"
+    },
+    {
+      "revision": 44,
+      "actor_id": "35b9d34d-fd06-48ec-8863-d3cca6d86e2b",
+      "status": "waiting",
+      "match_id": "",
+      "game_paused_at": "",
+      "paused_total_seconds": "0"
+    },
+    {
+      "revision": 45,
+      "actor_id": "35b9d34d-fd06-48ec-8863-d3cca6d86e2b",
+      "status": "roulette",
+      "match_id": "",
+      "game_paused_at": "",
+      "paused_total_seconds": "0"
+    }
+  ]
+}

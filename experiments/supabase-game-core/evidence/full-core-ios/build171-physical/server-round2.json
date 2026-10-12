@@ -1,0 +1,59 @@
+{
+  "checkpoint": "after-phone-association",
+  "observed_at": "2026-10-12T23:22:11.569Z",
+  "data": [
+    {
+      "id": "3d6955a3-be0e-42ad-8ce5-a6fe883d00c2",
+      "code": "PDTZQG",
+      "revision": 57,
+      "closed": false,
+      "updated_at": "2026-10-12 23:21:44.540421+00",
+      "status": "playing",
+      "mode": "associations",
+      "match_id": "05d94a34-6128-4336-8a8a-2be2c2aab713",
+      "round_number": "2",
+      "question_phase": "asking",
+      "game_started_at": "2026-10-12T23:11:32.546Z",
+      "game_paused_at": null,
+      "paused_total_seconds": "0",
+      "lobby_revision": "24",
+      "player_count": 3,
+      "ready_count": 0,
+      "cards_read_count": 3,
+      "vote_request_count": 0,
+      "ballot_count": 0,
+      "association_spoken_count": 0,
+      "association_spinning": "false",
+      "winner": null,
+      "roster": [
+        {
+          "host": true,
+          "name": "IOS1",
+          "ready": false,
+          "user_id": "35b9d34d-fd06-48ec-8863-d3cca6d86e2b",
+          "card_read": true,
+          "current_speaker": false
+        },
+        {
+          "host": false,
+          "name": "IOS3",
+          "ready": false,
+          "user_id": "fac7e0a6-b083-47cd-aa87-1725ec9ac589",
+          "card_read": true,
+          "current_speaker": true
+        },
+        {
+          "host": false,
+          "name": "IOS2",
+          "ready": false,
+          "user_id": "52338e0b-af85-48cf-bf8c-a428c3e5d0d0",
+          "card_read": true,
+          "current_speaker": false
+        }
+      ],
+      "signal_revision": 57,
+      "match_history_count": 0,
+      "match_finished_event_count": 0
+    }
+  ]
+}
