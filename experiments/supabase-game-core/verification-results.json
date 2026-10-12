@@ -1,0 +1,104 @@
+{
+  "date": "2026-10-12",
+  "timezone": "Europe/London",
+  "backend": "local Supabase spyclash-game-core-test",
+  "source_baseline": "60be7f03",
+  "project_version": 167,
+  "clients_in_concurrent_room": 6,
+  "tests": 15,
+  "passed": 15,
+  "failed": 0,
+  "cold_migration_replay": true,
+  "test_cases": [
+    {
+      "name": "local-only safety refuses remote API and database targets before connecting",
+      "seconds": 0.000709,
+      "passed": true
+    },
+    {
+      "name": "concurrent joins, readiness and competing starts preserve every player and one match",
+      "seconds": 0.530098,
+      "passed": true
+    },
+    {
+      "name": "capacity and expected revision are serialized under simultaneous commands",
+      "seconds": 0.44283,
+      "passed": true
+    },
+    {
+      "name": "parallel retries return the durable original receipt; mismatched reuse is rejected",
+      "seconds": 0.241483,
+      "passed": true
+    },
+    {
+      "name": "lost HTTP acknowledgement after commit retries exactly once after a different writer",
+      "seconds": 0.164524,
+      "passed": true
+    },
+    {
+      "name": "replaying an acknowledged leave after rejoin preserves the new membership and reveals no secrets",
+      "seconds": 0.15483,
+      "passed": true
+    },
+    {
+      "name": "a caller changing nested form data cannot rewrite a pending committed command",
+      "seconds": 0.160443,
+      "passed": true
+    },
+    {
+      "name": "actual refused network request remains pending and reconnect resnapshots before retry",
+      "seconds": 0.161581,
+      "passed": true
+    },
+    {
+      "name": "real Postgres Changes sockets converge and reconnect catches up from authoritative snapshots",
+      "seconds": 2.047084,
+      "passed": true
+    },
+    {
+      "name": "a missed last WAL signal is recovered by bounded HTTP reconciliation while socket is disconnected",
+      "seconds": 6.332574,
+      "passed": true
+    },
+    {
+      "name": "anonymous, outsider and peer privilege checks block snapshots, signals and secret tables",
+      "seconds": 1.20645,
+      "passed": true
+    },
+    {
+      "name": "concurrent ballots finish one match and stale match commands cannot mutate a replay",
+      "seconds": 0.265642,
+      "passed": true
+    },
+    {
+      "name": "leave and close race has one closed outcome with no lost membership update",
+      "seconds": 0.298063,
+      "passed": true
+    },
+    {
+      "name": "first-delivery stale membership, settings and lobby intents are fenced independently of request replay",
+      "seconds": 0.251667,
+      "passed": true
+    },
+    {
+      "name": "a locked room does not block the same user in another room; failed commands roll back",
+      "seconds": 0.093586,
+      "passed": true
+    }
+  ],
+  "audit": {
+    "status": "PASS",
+    "audit": "database_privileges_and_invariants",
+    "read_only": true,
+    "tables": 5,
+    "functions": 10,
+    "replicated_tables": 1,
+    "rooms_checked": 15,
+    "receipts_checked": 102,
+    "votes_checked": 0
+  },
+  "sha256": {
+    "supabase/schemas/game_core.sql": "ce6453c5b2d6351b010b8630f5bee3d1153b75eec2e0a596138d05288176682f",
+    "supabase/migrations/20261012115732_game_core.sql": "54cd9aa3c32b72aaeeb6049f1de9a3e69a5111c2e627cf0866bd643add88967b"
+  }
+}

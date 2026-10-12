@@ -1,0 +1,20 @@
+{
+  "name": "spyclash-supabase-game-core-test",
+  "private": true,
+  "version": "0.1.0",
+  "type": "module",
+  "engines": { "node": ">=22" },
+  "scripts": {
+    "backend:start": "node scripts/local.mjs start",
+    "backend:stop": "node scripts/local.mjs stop",
+    "backend:status": "node scripts/local.mjs status",
+    "backend:verify": "node scripts/local.mjs verify",
+    "backend:apply": "node scripts/local.mjs apply",
+    "test": "node scripts/local.mjs test"
+  },
+  "dependencies": {
+    "@supabase/supabase-js": "2.117.3",
+    "pg": "8.23.1"
+  },
+  "devDependencies": { "supabase": "2.120.0" }
+}
