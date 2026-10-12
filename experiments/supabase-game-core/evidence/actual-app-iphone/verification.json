@@ -1,0 +1,168 @@
+{
+  "verification": "actual_spyclash_supabase_iphone_mixed_clients",
+  "date": "2026-10-12",
+  "status": "PARTIAL_ACCEPTANCE_FINAL_DEVICE_INSTALL_DEFERRED",
+  "test_project_ref": "bbkfsgnordtdiblgdzkg",
+  "production_mutated": false,
+  "artifact": {
+    "bundle": "com.spyclash.ios.supabasetest",
+    "build": "169",
+    "version": "1.0.3",
+    "executable_sha256": "32910280c94c40ee3522e1257a9ec2282569bbfec519294a1e7cee6d3714abe6",
+    "debug_dylib_sha256": "6b8e0fe3e971f75a875d6ed44b60cfed7583eb94da47a358761dae6c7a010257",
+    "signing_identity_sha1": "0812D17AB01C4FE7D5BD4CED2F0B0D79A24DD756",
+    "signed_and_verified": true,
+    "manifest_source": ".local/integrated-final-artifact.json",
+    "final_installation": "DEFERRED_DEVICE_UNAVAILABLE",
+    "prior_updated_installation_verified_at": "2026-10-12T21:26:00Z"
+  },
+  "native_unit_tests": {
+    "status": "PASS",
+    "passed": 9,
+    "total": 9,
+    "result_bundle": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-12T21-31-18-388Z_pid52353_80097c8c.xcresult"
+  },
+  "builds": {
+    "final_unsigned_device": "PASS",
+    "normal_production_target_unsigned_compile": "PASS",
+    "production_app_launched": false
+  },
+  "clients": {
+    "physical_iphones": 1,
+    "simulators": 2,
+    "synthetic_accounts": [
+      "IOS1",
+      "IOS2",
+      "IOS3"
+    ]
+  },
+  "room_id": "9ecd5c04-d50b-4e43-a744-52d6174fa354",
+  "played_match_id": "7dd23f01-704a-47a9-8a20-9e6bfe9838d0",
+  "phone_vote": {
+    "revision": 9,
+    "request_id": "b9656b7b-680a-4b7e-abe5-afc34f201886"
+  },
+  "physical_radio_recovery": {
+    "status": "PASS_USER_CONFIRMED",
+    "fault": "User confirmed Airplane Mode and Wi-Fi off",
+    "phone_exported_revision_before_fault": 9,
+    "peer_finished_revision": 11,
+    "peer_winner": "civilians",
+    "peer_votes": 3,
+    "phone_recovered_revision": 11,
+    "manual_refresh_used": false,
+    "recovery_evidence": "User explicitly confirmed automatic catch-up; no post-recovery phone export yet"
+  },
+  "second_ready_outage": {
+    "status": "UNVERIFIED_DEFERRED",
+    "server_ready_revision": 14,
+    "peer_final_lobby_revision": 15,
+    "peer_all_ready": true,
+    "conclusion": "One phone READY committed; this does not prove offline retention or receipt replay"
+  },
+  "post_run_cloud_audit": {
+    "audit": "cloud_database_privileges_and_invariants",
+    "checks": 18,
+    "status": "PASS",
+    "tables": 5,
+    "functions": 10,
+    "read_only": true,
+    "failed_checks": [],
+    "rooms_checked": 7,
+    "votes_checked": 12,
+    "receipts_checked": 82,
+    "replicated_tables": 1,
+    "source": "Root agent executed scripts/audit-cloud.sql through verified test-project Dashboard SQL editor after room revision 15",
+    "query_path": "scripts/audit-cloud.sql",
+    "query_sha256": "5f37a9387ca9cb7260795dbf008801709cb44b4a01d020e561274f1ad6d257a1"
+  },
+  "snapshot_privacy": {
+    "status": "PASS",
+    "snapshots_inspected": 7,
+    "private_fields": [
+      "own_role",
+      "own_word"
+    ],
+    "other_player_roles_or_words_found": false,
+    "credentials_in_sanitized_evidence": false
+  },
+  "snapshot_evidence": [
+    {
+      "source": ".local/integrated-fault-start/state.json",
+      "sha256": "8574e233903d7a7a8d8eb86a982f802e1970ed99de557840e3ddaeb9a357e26b",
+      "revision": 9,
+      "phase": "voting",
+      "players": 3,
+      "votes": 1,
+      "pending_commands": 0,
+      "own_private_fields_only": true
+    },
+    {
+      "source": ".local/integrated-mixed-evidence/ios2-final-lobby.json",
+      "sha256": "0e1608b321b7bf880fef823ad763fa6b59154106b1ac86437d88f22db6166f41",
+      "revision": 15,
+      "phase": "lobby",
+      "players": 3,
+      "votes": 0,
+      "pending_commands": 0,
+      "own_private_fields_only": true
+    },
+    {
+      "source": ".local/integrated-mixed-evidence/ios2-finished-while-phone-offline.json",
+      "sha256": "cabf89c644f0615a67f53fb4176bac3098f3a4d3cc89eb1fc7772f54c672519e",
+      "revision": 11,
+      "phase": "finished",
+      "players": 3,
+      "votes": 3,
+      "pending_commands": 0,
+      "own_private_fields_only": true
+    },
+    {
+      "source": ".local/integrated-mixed-evidence/ios2-phone-offline.json",
+      "sha256": "cc0bd0a41148fd824edc69dbf5394a1eab4c9539a60051d04050c713042ba520",
+      "revision": 9,
+      "phase": "voting",
+      "players": 3,
+      "votes": 1,
+      "pending_commands": 0,
+      "own_private_fields_only": true
+    },
+    {
+      "source": ".local/integrated-mixed-evidence/ios3-final-lobby.json",
+      "sha256": "92a74adaf2e0a53c5833e78ddd60acd670994a4398a9925c1f2acd479b2bd488",
+      "revision": 15,
+      "phase": "lobby",
+      "players": 3,
+      "votes": 0,
+      "pending_commands": 0,
+      "own_private_fields_only": true
+    },
+    {
+      "source": ".local/integrated-mixed-evidence/ios3-finished-while-phone-offline.json",
+      "sha256": "960b1abaf5183dc5224334508ef1c2bc62c7681b79d36b89ad342b6c3cce1b72",
+      "revision": 11,
+      "phase": "finished",
+      "players": 3,
+      "votes": 3,
+      "pending_commands": 0,
+      "own_private_fields_only": true
+    },
+    {
+      "source": ".local/integrated-mixed-evidence/ios3-phone-offline.json",
+      "sha256": "321708a9850bb1171efce0ea9f328437b75cd5f12f907cf8b90a76194092aa7b",
+      "revision": 9,
+      "phase": "voting",
+      "players": 3,
+      "votes": 1,
+      "pending_commands": 0,
+      "own_private_fields_only": true
+    }
+  ],
+  "deferred": [
+    "Install and launch final signed artifact",
+    "Export phone evidence for second READY outage",
+    "Precise lost-acknowledgement replay on physical phone",
+    "Several physical iPhones"
+  ],
+  "scope": "Single-spy one-round game-core prototype; full production rules, load and regional outage acceptance excluded"
+}

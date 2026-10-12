@@ -266,10 +266,11 @@ struct AppShellView: View {
 
     var body: some View {
         @Bindable var appState = appState
-        let contentTab = appState.selectedTab == .game && appState.activeRoom == nil ? AppTab.home : appState.selectedTab
-        let dockTabs = AppTab.primaryCases
-        let isCommunityRoute = appState.shellRoute == .community
-        let isNotificationsRoute = appState.shellRoute == .notifications
+        let selected = SupabaseTestEnvironment.isEnabled && ![AppTab.home, .game].contains(appState.selectedTab) ? AppTab.home : appState.selectedTab
+        let contentTab = selected == .game && appState.activeRoom == nil ? AppTab.home : selected
+        let dockTabs = SupabaseTestEnvironment.isEnabled ? [AppTab.home] : AppTab.primaryCases
+        let isCommunityRoute = !SupabaseTestEnvironment.isEnabled && appState.shellRoute == .community
+        let isNotificationsRoute = !SupabaseTestEnvironment.isEnabled && appState.shellRoute == .notifications
         let dockSelection = Binding<AppTab>(
             get: { appState.selectedTab },
             set: { tab in
@@ -347,7 +348,7 @@ struct AppShellView: View {
                         primarySwipeProgress: primarySwipeProgress,
                         namespace: dockNamespace,
                         language: appState.language,
-                        showsLimitless: !appState.membership.hasAccess,
+                        showsLimitless: !SupabaseTestEnvironment.isEnabled && !appState.membership.hasAccess,
                         animatesLimitless: shouldShowDock && appState.presentedSheet == nil && !isCommandMenuPresented,
                         limitlessAction: { appState.presentedSheet = .limitless }
                     ) { tab in
@@ -361,6 +362,9 @@ struct AppShellView: View {
                 }
                 .background(SpyTheme.black)
                 .overlay(alignment: .top) {
+                    if SupabaseTestEnvironment.isEnabled {
+                        supabaseTestHeader
+                    } else {
                     WebPullDownCommandMenu(
                         isPresented: $isCommandMenuPresented,
                         communityAttentionCount: communityAttention.totalCount,
@@ -371,6 +375,7 @@ struct AppShellView: View {
                         .allowsHitTesting(shouldShowShellChrome)
                         .accessibilityHidden(!shouldShowShellChrome)
                         .animation(.easeOut(duration: 0.18), value: shouldShowShellChrome)
+                    }
                 }
             }
             .blur(radius: roomSyncBlurRadius)
@@ -402,19 +407,36 @@ struct AppShellView: View {
         .sheet(item: $appState.presentedSheet) { destination in
             switch destination {
             case .settings:
+                if SupabaseTestEnvironment.isEnabled {
+                    VStack(spacing: 16) {
+                        Text("SUPABASE GAME TEST").font(.headline)
+                        Text("Profile, community, word packs, purchases, push and Radar are unavailable in this build.")
+                            .font(.footnote).foregroundStyle(.secondary)
+                            .multilineTextAlignment(.center)
+                        LanguageSettingsView()
+                    }
+                    .padding()
+                    .spyInterfaceScale()
+                    .presentationDetents([.large])
+                } else {
                 InterfaceSettingsView(language: appState.language)
                     .spyGlobalToastLayer()
                     .spyInterfaceScale()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
+                }
             case .limitless:
+                if SupabaseTestEnvironment.isEnabled {
+                    ContentUnavailableView("Purchases disabled", systemImage: "lock", description: Text(SupabaseTestEnvironment.unavailableMessage))
+                } else {
                 PricingView()
                     .spyGlobalToastLayer()
                     .spyInterfaceScale()
                     .presentationDetents([.large])
                     .presentationDragIndicator(.hidden)
                     .presentationCornerRadius(0)
+                }
             case .qrScanner:
                 QRScannerSheet()
                     .spyGlobalToastLayer()
@@ -443,6 +465,9 @@ struct AppShellView: View {
             presentPreviewSheetAfterShellMountIfNeeded()
 #endif
         }
+        .onChange(of: supabaseTestRoomObservation, initial: true) { _, _ in
+            appState.synchronizeSupabaseTestRoom()
+        }
         .onChange(of: appState.activeRoom?.id) { _, roomID in
             if roomID != nil, let communityNetworkState {
                 installCommunityAttention(communityNetworkState, announceNew: false)
@@ -460,6 +485,7 @@ struct AppShellView: View {
             ShellTextInputActivity.resignActiveInput()
         }
         .task(id: communityAttentionMonitorID) {
+            guard !SupabaseTestEnvironment.isEnabled else { return }
             guard appState.user != nil else {
                 communityAttention = .empty
                 communityNetworkState = nil
@@ -481,6 +507,7 @@ struct AppShellView: View {
             await monitorCommunityAttention()
         }
         .task(id: notificationInboxMonitorID) {
+            guard !SupabaseTestEnvironment.isEnabled else { return }
             guard appState.user != nil else {
                 PushNotificationCoordinator.shared.synchronizeBadgeCount(0)
                 return
@@ -559,11 +586,38 @@ struct AppShellView: View {
         PushNotificationCoordinator.shared.synchronizeBadgeCount(count)
     }
 
+    private var supabaseTestRoomObservation: String {
+#if SPYCLASH_SUPABASE_TEST
+        let adapter = appState.client.supabaseAdapter
+        let snapshot = adapter.latestSnapshot
+        return [adapter.store.userID, adapter.store.roomID ?? "", adapter.phase,
+                String(snapshot["revision"].integer), snapshot["own_membership_id"].string ?? "",
+                String(adapter.ownRoleConfirmed)].joined(separator: "|")
+#else
+        return "production"
+#endif
+    }
+
+    private var supabaseTestHeader: some View {
+        HStack {
+            Text("SUPABASE TEST · GAME CORE")
+                .font(.system(size: 10, weight: .semibold, design: .monospaced))
+            Spacer()
+            Button { appState.presentedSheet = .settings } label: {
+                Image(systemName: "gearshape").padding(10)
+            }
+            .accessibilityLabel("Test build settings and limitations")
+        }
+        .padding(.horizontal, 16)
+        .foregroundStyle(.white)
+        .background(.black.opacity(0.9))
+    }
+
     private func primaryTabPager(
         contentTab: AppTab,
         reservesDock: Bool
     ) -> some View {
-        let tabs = AppTab.primaryCases
+        let tabs = SupabaseTestEnvironment.isEnabled ? [AppTab.home] : AppTab.primaryCases
         let selectedIndex = tabs.firstIndex(of: contentTab) ?? 0
 
         return GeometryReader { proxy in
@@ -623,6 +677,7 @@ struct AppShellView: View {
             coordinateSpace: .global
         )
         .onChanged { value in
+            guard !SupabaseTestEnvironment.isEnabled else { return }
             guard let viewportWidth, !isCommunityRoute else { return }
             updatePrimarySwipe(
                 translation: value.translation,
@@ -632,6 +687,7 @@ struct AppShellView: View {
             )
         }
         .onEnded { value in
+            guard !SupabaseTestEnvironment.isEnabled else { return }
             if let viewportWidth, !isCommunityRoute {
                 finishPrimarySwipe(
                     translation: value.translation,

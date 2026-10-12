@@ -6,6 +6,13 @@ extension AppState {
     }
 
     func bindMembershipAccount() {
+        if SupabaseTestEnvironment.isEnabled {
+            membershipRealtime.stop()
+            let disabled = MembershipScope(userID: nil, accessToken: nil)
+            membership.bind(disabled)
+            storeKit.bind(disabled)
+            return
+        }
         if membership.scope != membershipScope { membershipRealtime.stop() }
         let preview: MembershipSnapshot?
         if shouldUsePreviewData {
@@ -21,6 +28,7 @@ extension AppState {
     }
 
     func monitorMembership() async {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         bindMembershipAccount()
         guard !shouldUsePreviewData, membershipScope.isAuthenticated else { return }
         let expectedScope = membershipScope

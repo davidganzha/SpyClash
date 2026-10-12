@@ -198,6 +198,7 @@ final class PushNotificationCoordinator {
     }
 
     func accountDidChange(isSignedIn: Bool) {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         accountGeneration &+= 1
         clearPendingLiveActivityRequests()
         signedIn = isSignedIn
@@ -227,6 +228,7 @@ final class PushNotificationCoordinator {
 
     @discardableResult
     func requestNotificationAuthorization() async throws -> UNAuthorizationStatus {
+        guard !SupabaseTestEnvironment.isEnabled else { return .denied }
         let center = UNUserNotificationCenter.current()
         var settings = await center.notificationSettings()
         if settings.authorizationStatus == .notDetermined {
@@ -240,6 +242,7 @@ final class PushNotificationCoordinator {
     }
 
     func updatePreferredLocale(_ locale: String) {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         let language = AppLanguage.normalized(locale)
         guard language.rawValue != preferredLocale else { return }
         preferredLocale = language.rawValue
@@ -255,6 +258,7 @@ final class PushNotificationCoordinator {
     }
 
     func applicationDidBecomeActive() {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         isApplicationActive = true
         guard signedIn else { return }
         resumePendingLiveActivityRegistrations()
@@ -273,6 +277,7 @@ final class PushNotificationCoordinator {
     }
 
     func didReceiveAPNsToken(_ data: Data) {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         let token = data.map { String(format: "%02x", $0) }.joined()
         let defaults = UserDefaults.standard
         guard defaults.string(forKey: Self.apnsTokenKey) != token else {
@@ -296,6 +301,7 @@ final class PushNotificationCoordinator {
     }
 
     func prepareForLogout() {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         accountGeneration &+= 1
         clearPendingLiveActivityRequests()
         registrationTask?.cancel()
@@ -359,6 +365,7 @@ final class PushNotificationCoordinator {
         roomID: String? = nil,
         matchID: String? = nil
     ) async -> Bool {
+        guard !SupabaseTestEnvironment.isEnabled else { return false }
         guard signedIn, client != nil else { return false }
         let key = LiveActivityRegistrationKey(
             tokenKind: tokenKind,
@@ -413,6 +420,7 @@ final class PushNotificationCoordinator {
         activityID: String? = nil,
         matchID: String? = nil
     ) async -> Bool {
+        guard !SupabaseTestEnvironment.isEnabled else { return false }
         cancelPendingLiveActivityRegistration(
             tokenKind: tokenKind,
             activityID: activityID,
@@ -724,6 +732,7 @@ final class PushNotificationCoordinator {
     }
 
     private func refreshRegistration() async {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         let center = UNUserNotificationCenter.current()
         let settings = await center.notificationSettings()
         UIApplication.shared.registerForRemoteNotifications()
@@ -731,6 +740,7 @@ final class PushNotificationCoordinator {
     }
 
     private func registerStoredDevice() async {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         let settings = await UNUserNotificationCenter.current().notificationSettings()
         await registerDeviceIfPossible(settings: settings)
     }
@@ -738,6 +748,7 @@ final class PushNotificationCoordinator {
     private func registerDeviceIfPossible(
         settings: UNNotificationSettings
     ) async {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         guard signedIn,
               let client,
               client.hasSessionToken,
@@ -828,6 +839,7 @@ final class SpyClashAppDelegate: NSObject, UIApplicationDelegate, @preconcurrenc
         _ application: UIApplication,
         didFinishLaunchingWithOptions launchOptions: [UIApplication.LaunchOptionsKey: Any]? = nil
     ) -> Bool {
+        guard !SupabaseTestEnvironment.isEnabled else { return true }
         let center = UNUserNotificationCenter.current()
         center.delegate = self
         PushNotificationCoordinator.registerNotificationCategories(

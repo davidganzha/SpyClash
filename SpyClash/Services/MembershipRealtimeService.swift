@@ -10,6 +10,7 @@ final class MembershipRealtimeService {
     private var generation = UUID()
 
     func bind(_ next: MembershipScope) {
+        guard !SupabaseTestEnvironment.isEnabled else { stop(); return }
         guard scope != next else { return }
         stop()
         scope = next

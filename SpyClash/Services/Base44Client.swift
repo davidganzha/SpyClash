@@ -206,8 +206,25 @@ final class Base44Client {
         token = nil
     }
 
+#if SPYCLASH_SUPABASE_TEST
+    var supabaseAdapter: SupabaseGameAdapter { .shared }
+
+    func connectSupabaseTest(configurationURL: URL) async throws -> SpyUser {
+        try await supabaseAdapter.connect(configurationURL: configurationURL)
+    }
+
+    private static func rejectProductionNetworkInSupabaseTest() throws {
+        throw Base44Error(message: "Base44 networking is disabled in the Supabase test app.", statusCode: 403, code: "base44_disabled_in_supabase_test")
+    }
+#endif
+
     func currentUser() async throws -> SpyUser {
-        try await request("/apps/\(Self.appID)/entities/User/me", method: "GET")
+#if SPYCLASH_SUPABASE_TEST
+        guard let user = supabaseAdapter.user else { throw LabFailure(code: "not_signed_in") }
+        return user
+#else
+        return try await request("/apps/\(Self.appID)/entities/User/me", method: "GET")
+#endif
     }
 
     func login(email: String, password: String) async throws -> LoginResponse {
@@ -403,6 +420,9 @@ final class Base44Client {
         timeoutInterval: TimeInterval? = nil,
         allowsTypedConflictRetry: Bool = true
     ) async throws -> GameRoom? {
+#if SPYCLASH_SUPABASE_TEST
+        return try await supabaseAdapter.refreshRoom(id: id)
+#else
         do {
             return try await roomAction(
                 "get_room",
@@ -413,9 +433,13 @@ final class Base44Client {
         } catch let error as Base44Error where error.statusCode == 404 {
             return nil
         }
+#endif
     }
 
     func activeRoom(preferredRoomID: String? = nil) async throws -> GameRoom? {
+#if SPYCLASH_SUPABASE_TEST
+        return try await supabaseAdapter.activeRoom(preferredRoomID: preferredRoomID)
+#else
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
@@ -431,6 +455,7 @@ final class Base44Client {
             includeAuthorization: false
         )
         return room
+#endif
     }
 
     func createRoom(for user: SpyUser) async throws -> GameRoom {
@@ -744,6 +769,9 @@ final class Base44Client {
     }
 
     func startGame(room: GameRoom, wordPacks: [WordPack]) async throws -> GameRoom {
+#if SPYCLASH_SUPABASE_TEST
+        return try await supabaseAdapter.startGame(roomID: room.id)
+#else
         try Task.checkCancellation()
         let plan = try makeGameStartPlan(
             room: room,
@@ -766,6 +794,7 @@ final class Base44Client {
             try Task.checkCancellation()
             return try await completeGameStart(room: rouletteRoom, plan: plan)
         }
+#endif
     }
 
     func markRoleCardRead(room: GameRoom, user: SpyUser) async throws -> GameRoom {
@@ -863,6 +892,10 @@ final class Base44Client {
         expectedRevision: Int? = nil,
         expectedMembershipID: String? = nil
     ) async throws {
+#if SPYCLASH_SUPABASE_TEST
+        try await supabaseAdapter.leaveRoom(roomID: roomID, membershipID: expectedMembershipID)
+        return
+#endif
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
@@ -903,6 +936,10 @@ final class Base44Client {
         expectedRevision: Int? = nil,
         expectedMembershipID: String? = nil
     ) async throws {
+#if SPYCLASH_SUPABASE_TEST
+        try await supabaseAdapter.closeRoom(roomID: roomID)
+        return
+#endif
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
@@ -1500,6 +1537,9 @@ final class Base44Client {
     }
 
     private func appleNativeBootstrap(for credential: AppleSignInCredential) async throws -> AppleAuthBootstrapResponse {
+#if SPYCLASH_SUPABASE_TEST
+        try Self.rejectProductionNetworkInSupabaseTest()
+#endif
         var components = URLComponents(
             url: Self.appBaseURL.appending(path: "/functions/appleAuthBroker"),
             resolvingAgainstBaseURL: false
@@ -1567,6 +1607,9 @@ final class Base44Client {
     }
 
     private func resolveSilentAppleHandoff(from bootstrapURL: URL) async throws -> String {
+#if SPYCLASH_SUPABASE_TEST
+        try Self.rejectProductionNetworkInSupabaseTest()
+#endif
         let redirectDelegate = SilentAppleHandoffRedirectDelegate()
         let configuration = URLSessionConfiguration.ephemeral
         configuration.httpShouldSetCookies = true
@@ -1742,6 +1785,9 @@ final class Base44Client {
     private func pushNotificationAction<T: Decodable>(
         _ payload: PushNotificationActionPayload
     ) async throws -> T {
+#if SPYCLASH_SUPABASE_TEST
+        try Self.rejectProductionNetworkInSupabaseTest()
+#endif
         let path = "/apps/\(Self.appID)/functions/pushNotificationAction"
         let expectedToken = payload.accessToken
         let enforceCurrentAccount = payload.action != "unregister_device"
@@ -1941,6 +1987,22 @@ final class Base44Client {
         requestTimeoutInterval: TimeInterval? = nil,
         allowsTypedConflictRetry: Bool = true
     ) async throws -> GameRoom {
+#if SPYCLASH_SUPABASE_TEST
+        switch action {
+        case "create_room": return try await supabaseAdapter.createRoom()
+        case "join_room": return try await supabaseAdapter.joinRoom(code: roomID ?? roomCode ?? "")
+        case "get_room":
+            guard let room = try await supabaseAdapter.refreshRoom(id: roomID ?? "") else { throw Base44Error(message: "Room not found.", statusCode: 404) }
+            return room
+        case "toggle_ready": return try await supabaseAdapter.toggleReady(roomID: roomID ?? "")
+        case "mark_role_card_read": return try supabaseAdapter.confirmOwnRole(roomID: roomID ?? "")
+        case "request_vote": return try await supabaseAdapter.openVoting(roomID: roomID ?? "")
+        case "cast_detective_vote": return try await supabaseAdapter.vote(roomID: roomID ?? "", targetEmail: targetEmail ?? "")
+        case "return_finished_room_to_lobby", "reset_room_for_replay":
+            return try await supabaseAdapter.returnToLobby(roomID: roomID ?? "")
+        default: throw LabFailure(code: "unsupported_in_supabase_test_" + action)
+        }
+#else
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
@@ -2030,6 +2092,7 @@ final class Base44Client {
                 try await Task.sleep(for: .milliseconds(delay))
             }
         }
+#endif
     }
 
     private func wordPackAction<T: Decodable>(
@@ -2152,6 +2215,9 @@ final class Base44Client {
         authorizationToken: String? = nil,
         timeoutInterval: TimeInterval? = nil
     ) async throws -> T {
+#if SPYCLASH_SUPABASE_TEST
+        try Self.rejectProductionNetworkInSupabaseTest()
+#endif
         var components = URLComponents(url: Self.appBaseURL.appending(path: "/api\(path)"), resolvingAgainstBaseURL: false)!
         if !query.isEmpty {
             components.queryItems = query.map(URLQueryItem.init)

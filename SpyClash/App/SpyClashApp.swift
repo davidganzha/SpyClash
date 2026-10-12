@@ -17,6 +17,7 @@ struct SpyClashApp: App {
                     await appState.restoreSession()
                 }
                 .task(id: MembershipActivityScope(account: appState.membershipScope, active: scenePhase == .active)) {
+                    guard !SupabaseTestEnvironment.isEnabled else { return }
                     guard scenePhase == .active else {
                         appState.membershipRealtime.stop()
                         return
@@ -30,11 +31,15 @@ struct SpyClashApp: App {
                         stopTransportWhenInactive: phase == .background
                     )
                     if isActive {
-                        PushNotificationCoordinator.shared.applicationDidBecomeActive()
+                        if !SupabaseTestEnvironment.isEnabled {
+                            PushNotificationCoordinator.shared.applicationDidBecomeActive()
+                        }
                         appState.resumeAfterActivation()
                         appState.refreshActiveRoomOnActivation()
                     } else {
-                        PushNotificationCoordinator.shared.applicationDidEnterBackground()
+                        if !SupabaseTestEnvironment.isEnabled {
+                            PushNotificationCoordinator.shared.applicationDidEnterBackground()
+                        }
                     }
                 }
         }
@@ -122,12 +127,14 @@ private struct RootView: View {
     @ViewBuilder
     private var restoredContent: some View {
 #if DEBUG
-        if appState.shouldUsePreviewData,
+        if SupabaseTestEnvironment.isEnabled, appState.user == nil {
+            SupabaseTestSetupView()
+        } else if appState.shouldUsePreviewData,
            let directPreview = DebugPreviewDestination.current {
             directPreview.makeView()
         } else if appState.user == nil || appState.hasActiveAuthCinematic {
             WelcomeView()
-        } else if appState.requiresOnboarding {
+        } else if !SupabaseTestEnvironment.isEnabled && appState.requiresOnboarding {
             OnboardingView(
                 startsAtLocalNetworkPermission: appState
                     .requiresLocalNetworkOnboardingUpgrade,
@@ -137,9 +144,11 @@ private struct RootView: View {
             AppShellView()
         }
 #else
-        if appState.user == nil || appState.hasActiveAuthCinematic {
+        if SupabaseTestEnvironment.isEnabled, appState.user == nil {
+            SupabaseTestSetupView()
+        } else if appState.user == nil || appState.hasActiveAuthCinematic {
             WelcomeView()
-        } else if appState.requiresOnboarding {
+        } else if !SupabaseTestEnvironment.isEnabled && appState.requiresOnboarding {
             OnboardingView(
                 startsAtLocalNetworkPermission: appState
                     .requiresLocalNetworkOnboardingUpgrade,
@@ -187,6 +196,31 @@ private struct RootView: View {
         case .uk: "ГОТОВО"
         default: "DONE"
         }
+    }
+}
+
+private struct SupabaseTestSetupView: View {
+    @Environment(AppState.self) private var appState
+
+    var body: some View {
+        VStack(spacing: 24) {
+            Text("SPYCLASH · SUPABASE TEST")
+                .font(.headline)
+            Text(appState.supabaseTestConfigurationError ?? "A synthetic test account configuration is required.")
+                .font(.body)
+                .multilineTextAlignment(.center)
+            Text("This separate build connects only to the isolated game test backend. Production sign-in, profiles, purchases and push are disabled.")
+                .font(.footnote)
+                .foregroundStyle(.secondary)
+                .multilineTextAlignment(.center)
+            Button("Retry test configuration") {
+                Task { await appState.restoreSession() }
+            }
+            .buttonStyle(.borderedProminent)
+        }
+        .padding(28)
+        .frame(maxWidth: .infinity, maxHeight: .infinity)
+        .background(.black)
     }
 }
 

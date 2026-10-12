@@ -1404,6 +1404,7 @@ final class AppState: NSObject {
             let previousUserID = oldValue?.id
             let accountChanged = previousUserID != user?.id
             bindMembershipAccount()
+            if SupabaseTestEnvironment.isEnabled { return }
             if accountChanged {
                 cancelAcquisitionSurveySync()
                 automaticRadarInvitationJoinTask?.cancel()
@@ -1442,6 +1443,7 @@ final class AppState: NSObject {
             queuePendingAcquisitionSurveySync()
         }
     }
+    var supabaseTestConfigurationError: String?
     var isRestoring = true
     var isBusy = false
     private(set) var isApplicationActive = false
@@ -1525,11 +1527,11 @@ final class AppState: NSObject {
                 )
             }
             persistActiveRoomReference(activeRoom)
-            radarNearby.setActiveRoom(activeRoom)
+            if !SupabaseTestEnvironment.isEnabled { radarNearby.setActiveRoom(activeRoom) }
             handleRoomPresenceChange(from: oldValue, to: activeRoom)
             synchronizeMatchLiveActivity(previousRoom: oldValue, room: activeRoom)
             scheduleFinishedMatchProfileRefreshIfNeeded(for: activeRoom)
-            recordCompletedOnlineGameForAcquisitionSurvey(activeRoom)
+            if !SupabaseTestEnvironment.isEnabled { recordCompletedOnlineGameForAcquisitionSurvey(activeRoom) }
         }
     }
     var isShellChromeSuppressed = false
@@ -1684,6 +1686,7 @@ final class AppState: NSObject {
         radarNearby.onAutomaticInvitation = { [weak self] invitation in
             self?.handleAutomaticRadarInvitation(invitation)
         }
+        if !SupabaseTestEnvironment.isEnabled {
         PushNotificationCoordinator.shared.configure(
             client: client,
             routeHandler: { [weak self] route in
@@ -1693,6 +1696,7 @@ final class AppState: NSObject {
                 self?.refreshNotificationInboxAfterPush()
             }
         )
+        }
     }
 
     var shouldUsePreviewData: Bool {
@@ -1812,6 +1816,9 @@ final class AppState: NSObject {
         user: SpyUser
     ) async throws -> GameRoom {
         let code = rawCode.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
+        guard !SupabaseTestEnvironment.isEnabled || UUID(uuidString: code) != nil else {
+            throw Base44Error(message: "Enter the full test room UUID.")
+        }
         let dismissedCode = UserDefaults.standard
             .string(forKey: Self.dismissedRoomCodeStorageKey)?
             .uppercased()
@@ -2872,7 +2879,42 @@ final class AppState: NSObject {
         }
     }
 
+    /// The test adapter owns its room selection and authoritative snapshots.
+    /// Bridge those into the real shell without a second join or state mutation.
+    func synchronizeSupabaseTestRoom() {
+#if SPYCLASH_SUPABASE_TEST
+        let adapter = client.supabaseAdapter
+        guard let user, user.id == adapter.user?.id else { return }
+        let candidate = adapter.currentRoom
+        if let current = activeRoom, let candidate, current.id == candidate.id,
+           (current.roomRevision ?? 0) > (candidate.roomRevision ?? 0) { return }
+        if activeRoom != candidate { activeRoom = candidate }
+#endif
+    }
+
     func refreshActiveRoomOnActivation() {
+#if SPYCLASH_SUPABASE_TEST
+        guard user != nil, !isRestoring, roomSyncOperation == nil else { return }
+        let adapter = client.supabaseAdapter
+        guard let roomID = adapter.store.roomID else {
+            synchronizeSupabaseTestRoom()
+            return
+        }
+        let expectedUserID = user?.id
+        activeRoomActivationRefreshTask?.cancel()
+        activeRoomActivationRefreshTask = Task { @MainActor [weak self] in
+            guard let self else { return }
+            do {
+                _ = try await adapter.refreshRoom(id: roomID)
+                guard !Task.isCancelled, self.user?.id == expectedUserID else { return }
+                self.synchronizeSupabaseTestRoom()
+            } catch {
+                // A failed read is not proof of departure. Keep the last
+                // snapshot while the adapter's reconciliation retries.
+            }
+        }
+        return
+#else
 #if DEBUG
         guard !shouldUsePreviewData else { return }
 #endif
@@ -2967,6 +3009,7 @@ final class AppState: NSObject {
                 self.closeActiveRoomAfterRefresh(roomID: currentRoomID)
             }
         }
+#endif
     }
 
     private func markRoomSyncRecoveredIfNeeded() {
@@ -3054,6 +3097,7 @@ final class AppState: NSObject {
     }
 
     private func scheduleFinishedMatchProfileRefreshIfNeeded(for room: GameRoom?) {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
 #if DEBUG
         guard !shouldUsePreviewData else { return }
 #endif
@@ -3302,6 +3346,25 @@ final class AppState: NSObject {
     }
 
     func restoreSession() async {
+#if SPYCLASH_SUPABASE_TEST
+        guard !isBusy, user == nil else { isRestoring = false; return }
+        isRestoring = true
+        supabaseTestConfigurationError = nil
+        defer { isRestoring = false }
+        do {
+            user = try await client.connectSupabaseTest(configurationURL: SupabaseTestEnvironment.configurationURL)
+            synchronizeSupabaseTestRoom()
+            selectedTab = activeRoom == nil ? .home : .game
+            shellRoute = .main
+            isRestoring = false
+            await consumePendingRoutesIfPossible()
+        } catch {
+            // Never display an underlying fixture/JSON error that might include
+            // credentials. A missing fixture must not expose production auth.
+            supabaseTestConfigurationError = "Test configuration could not be loaded or signed in. Install a valid synthetic-account configuration in Documents/SupabaseTest/config.json and retry."
+        }
+        return
+#else
         guard sessionRestoreAttemptID == nil, !isBusy else { return }
         let attemptID = UUID()
         sessionRestoreAttemptID = attemptID
@@ -3368,9 +3431,11 @@ final class AppState: NSObject {
             synchronizeMatchLiveActivity(previousRoom: nil, room: activeRoom)
         }
         await consumePendingRoutesIfPossible()
+#endif
     }
 
     func login(email: String, password: String) async {
+        guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
         await performAuth { attemptID in
             let response = try await self.client.login(email: email, password: password)
             try self.requireCurrentAuthentication(attemptID)
@@ -3387,6 +3452,7 @@ final class AppState: NSObject {
     }
 
     func register(email: String, password: String) async {
+        guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
         await performAuth { attemptID in
             try await self.client.register(email: email, password: password)
             try self.requireCurrentAuthentication(attemptID)
@@ -3435,6 +3501,7 @@ final class AppState: NSObject {
     }
 
     func loginWithGoogle() async {
+        guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
         guard let callback = URL(string: "spyclash://auth") else { return }
         await loginWithWebProvider(
             url: client.googleLoginURL(callbackURL: callback)
@@ -3442,6 +3509,7 @@ final class AppState: NSObject {
     }
 
     func configureAppleSignInRequest(_ request: ASAuthorizationAppleIDRequest, requestID: UUID) {
+        guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
         guard let attemptID = beginAuthenticationAttempt() else { return }
 
         do {
@@ -3897,7 +3965,7 @@ final class AppState: NSObject {
         language = newLanguage
         newLanguage.persist()
 
-        guard syncRemote, user != nil else {
+        guard !SupabaseTestEnvironment.isEnabled, syncRemote, user != nil else {
             return
         }
 
@@ -4055,6 +4123,7 @@ final class AppState: NSObject {
     }
 
     private func queuePendingOnboardingSyncIfNeeded() {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         guard onboardingSyncTask == nil,
               let user,
               user.onboardingCompleted != false,
@@ -4099,6 +4168,7 @@ final class AppState: NSObject {
     }
 
     func setRadarInvitePolicy(_ policy: RadarInvitePolicy) {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         let selectablePolicy = policy.selectableValue
         radarNearby.setInvitePolicy(selectablePolicy)
         guard let userID = user?.id, client.hasSessionToken else {
@@ -4109,6 +4179,7 @@ final class AppState: NSObject {
     }
 
     func startRadarScanning(requestCameraAccess: Bool = false) {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         guard let user, !requiresOnboarding else { return }
         reconcileRadarInvitePolicy(for: user, accountChanged: false)
         radarNearby.startScanning(requestCameraAccess: requestCameraAccess)
@@ -4118,12 +4189,14 @@ final class AppState: NSObject {
     }
 
     func retryRadarScanning(requestCameraAccess: Bool = false) {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         guard let user, !requiresOnboarding else { return }
         reconcileRadarInvitePolicy(for: user, accountChanged: false)
         radarNearby.retryScanning(requestCameraAccess: requestCameraAccess)
     }
 
     func retryRadarRangefinderAccess() {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         guard user != nil, !requiresOnboarding else { return }
         radarNearby.retryRangefinderAccess()
     }
@@ -4151,6 +4224,7 @@ final class AppState: NSObject {
         for user: SpyUser?,
         accountChanged: Bool
     ) {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         if accountChanged {
             radarInvitePolicySyncTask?.cancel()
             radarInvitePolicySyncTask = nil
@@ -4255,6 +4329,7 @@ final class AppState: NSObject {
     }
 
     func resumeAfterActivation() {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         queuePendingOnboardingSyncIfNeeded()
         deferredActiveGameRetryGeneration = nil
         guard !isRestoring,
@@ -4284,6 +4359,7 @@ final class AppState: NSObject {
     }
 
     private func reconcileGameRoomRealtimeSubscription() {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         gameRoomRealtimeGeneration = UUID()
         gameRoomRealtimeRefreshTask?.cancel()
         gameRoomRealtimeRefreshTask = nil
@@ -4539,6 +4615,7 @@ final class AppState: NSObject {
     }
 
     func openCommunity() {
+        guard !SupabaseTestEnvironment.isEnabled else { showToast(SupabaseTestEnvironment.unavailableMessage, kind: .warning); return }
         pendingNotificationRoute = nil
         presentedSheet = nil
         notificationFocusItemID = nil
@@ -4553,6 +4630,7 @@ final class AppState: NSObject {
         scope: NotificationInboxScope = .global,
         itemID: String? = nil
     ) {
+        guard !SupabaseTestEnvironment.isEnabled else { showToast(SupabaseTestEnvironment.unavailableMessage, kind: .warning); return }
         pendingNotificationRoute = nil
         presentedSheet = nil
         notificationInbox.selectScope(scope)
@@ -4564,6 +4642,7 @@ final class AppState: NSObject {
     }
 
     func openMainTab(_ tab: AppTab) {
+        guard !SupabaseTestEnvironment.isEnabled || tab == .home || tab == .game else { showToast(SupabaseTestEnvironment.unavailableMessage, kind: .warning); return }
         pendingNotificationRoute = nil
         presentedSheet = nil
         notificationFocusItemID = nil
@@ -4579,6 +4658,7 @@ final class AppState: NSObject {
     }
 
     private func refreshNotificationInboxAfterPush() {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         guard user != nil else { return }
         Task { @MainActor [weak self] in
             guard let self else { return }
@@ -4596,6 +4676,7 @@ final class AppState: NSObject {
         stopTransportWhenInactive: Bool = true
     ) {
         isApplicationActive = isActive
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         radarNearby.setApplicationActive(
             isActive,
             stopTransportWhenInactive: stopTransportWhenInactive
@@ -4737,6 +4818,16 @@ final class AppState: NSObject {
     }
 
     func handleIncomingURL(_ url: URL) {
+        if SupabaseTestEnvironment.isEnabled {
+            guard url.scheme?.lowercased() == "spyclash-supabasetest",
+                  url.host?.lowercased() == "join",
+                  let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
+                  let rawCode = components.queryItems?.first(where: { $0.name == "code" })?.value,
+                  let roomID = UUID(uuidString: rawCode) else { return }
+            pendingJoinCode = roomID.uuidString
+            if user != nil { Task { await consumePendingJoinIfPossible() } }
+            return
+        }
         if let route = SpyClashCustomRoute.parse(url) {
             switch route {
             case .notifications(let scope, let itemID):
@@ -5266,6 +5357,7 @@ final class AppState: NSObject {
     }
 
     private func synchronizeLiveActivitiesForAccountChange(previousUserID: String?) {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
 #if DEBUG
         guard !isUIPreviewMode else { return }
 #endif
@@ -5312,6 +5404,7 @@ final class AppState: NSObject {
         previousRoom: GameRoom?,
         room: GameRoom?
     ) {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
 #if DEBUG
         guard !isUIPreviewMode else { return }
 #endif

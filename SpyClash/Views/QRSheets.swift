@@ -776,6 +776,10 @@ enum SpyLinkParser {
     // happens to contain a field named "code". Manual paste parsing is unchanged.
     static func scannedRoomCode(from payload: String) -> String? {
         let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
+
+#if SPYCLASH_SUPABASE_TEST
+        if let uuid = UUID(uuidString: trimmed) { return uuid.uuidString.lowercased() }
+#endif
         if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased() {
             if scheme == "spyclash" {
                 if ["join", "room"].contains(url.host?.lowercased() ?? ""),
@@ -858,11 +862,15 @@ enum SpyLinkParser {
     }
 
     private static func normalizedCode(_ raw: String) -> String? {
+#if SPYCLASH_SUPABASE_TEST
+        return UUID(uuidString: raw.trimmingCharacters(in: .whitespacesAndNewlines))?.uuidString.lowercased()
+#else
         let code = raw.trimmingCharacters(in: .whitespacesAndNewlines).uppercased()
         guard code.range(of: #"^[A-Z0-9]{4,12}$"#, options: .regularExpression) != nil else {
             return nil
         }
         return code
+#endif
     }
 }
 

@@ -119,7 +119,68 @@ struct HomeView: View {
         .modifier(AcquisitionSurveyPresentationModifier(
             isHomeRoot: stage == .main && tutorialMode == nil && !isQRScannerPresented
         ))
+#if SPYCLASH_SUPABASE_TEST
+        .safeAreaInset(edge: .bottom, spacing: 0) {
+            if hasSupabaseRecovery { supabaseRecoveryBanner }
+        }
+#endif
     }
+
+    private var hasSupabaseRecovery: Bool {
+#if SPYCLASH_SUPABASE_TEST
+        SupabaseGameAdapter.shared.hasPendingRecovery
+#else
+        false
+#endif
+    }
+
+#if SPYCLASH_SUPABASE_TEST
+    private var supabaseRecoveryBanner: some View {
+        VStack(spacing: 10) {
+            Text(localized(
+                en: "Your action is saved. Reconnect and retry before creating or joining another room.",
+                ru: "Действие сохранено. Восстанови связь и повтори его, прежде чем создавать или открывать другую комнату.",
+                es: "La acción está guardada. Reconecta y reintenta antes de crear o entrar en otra sala.",
+                uk: "Дію збережено. Віднови зв’язок і повтори її, перш ніж створювати чи відкривати іншу кімнату."
+            ))
+            .font(.caption)
+            .multilineTextAlignment(.center)
+            .foregroundStyle(SpyTheme.amber)
+            .accessibilityIdentifier("supabase.homePending")
+            Button(localized(en: "Retry saved action", ru: "Повторить действие", es: "Reintentar acción", uk: "Повторити дію")) {
+                Task { await retrySupabaseRecovery() }
+            }
+            .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
+            .disabled(isLoading)
+            .accessibilityIdentifier("supabase.homeRetry")
+        }
+        .padding(16)
+        .frame(maxWidth: .infinity)
+        .background(SpyTheme.black)
+    }
+
+    private func retrySupabaseRecovery() async {
+        guard !isLoading, let userID = appState.user?.id else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let room = try await SupabaseGameAdapter.shared.retryPending()
+            try Task.checkCancellation()
+            guard appState.user?.id == userID else { return }
+            if let room { try appState.confirmExplicitRoomActivation(room) }
+            appState.activeRoom = room
+            if room != nil { appState.selectedTab = .game }
+            statusText = localized(en: "Saved action recovered", ru: "Действие восстановлено", es: "Acción recuperada", uk: "Дію відновлено")
+            statusKind = .success
+        } catch is CancellationError {
+            return
+        } catch {
+            guard appState.user?.id == userID else { return }
+            statusText = roomErrorMessage(error)
+            statusKind = .error
+        }
+    }
+#endif
 
     private func startHeroEntranceIfNeeded() {
         guard entranceMotionEnabled, entrancePresentationActive, !revealHero else { return }
@@ -178,7 +239,7 @@ struct HomeView: View {
     private var joinCodeBinding: Binding<String> {
         Binding(
             get: { joinCode },
-            set: { joinCode = String($0.uppercased().prefix(6)) }
+            set: { joinCode = String($0.uppercased().prefix(SupabaseTestEnvironment.isEnabled ? 36 : 6)) }
         )
     }
 
@@ -216,6 +277,7 @@ struct HomeView: View {
                 if showsLandingActions {
                     VStack(spacing: compact ? 10 : 12) {
                         mainActions
+                            .disabled(hasSupabaseRecovery)
                             .frame(maxWidth: stage == .main ? 350 : 382)
                             .id(stage)
                             .animation(SpyMotion.page, value: stage)
@@ -224,7 +286,7 @@ struct HomeView: View {
 
                 Spacer(minLength: 20)
 
-                if showsLandingActions && stage == .main {
+                if showsLandingActions && stage == .main && !SupabaseTestEnvironment.isEnabled {
                     reviewFooter
                         .padding(.bottom, 16)
                 }
@@ -455,6 +517,7 @@ struct HomeView: View {
                 }
             }
 
+            if !SupabaseTestEnvironment.isEnabled {
             webChoiceCard(
                 title: localized(en: "LOCAL", ru: "ЛОКАЛЬНО", es: "LOCAL", uk: "ЛОКАЛЬНО"),
                 subtitle: localized(en: "One device · pass & play", ru: "Один телефон, передаёте по кругу", es: "Un telefono · pasar y jugar", uk: "Один пристрій · передавайте по колу"),
@@ -464,6 +527,7 @@ struct HomeView: View {
             ) {
                 HapticManager.shared.fire(.tabSelection)
                 appState.openLocalSetup()
+            }
             }
 
             webGhostButton(title: localized(en: "Cancel", ru: "Отмена", es: "Cancelar", uk: "Скасувати"), systemImage: "chevron.left") {
@@ -534,7 +598,7 @@ struct HomeView: View {
                 .spyFitted(scale: 0.62)
                 .padding(.bottom, 24)
 
-            TextField("ABC123", text: joinCodeBinding)
+            TextField(SupabaseTestEnvironment.isEnabled ? "Room UUID" : "ABC123", text: joinCodeBinding)
                 .textInputAutocapitalization(.characters)
                 .autocorrectionDisabled()
                 .submitLabel(.go)
@@ -956,6 +1020,7 @@ struct HomeView: View {
             .contentShape(CutCornerShape(cut: 10))
         }
         .buttonStyle(SpyWebPressStyle())
+        .disabled(isLoading || hasSupabaseRecovery)
     }
 
     private func publishHomeToast(_ message: String) {
@@ -974,6 +1039,7 @@ struct HomeView: View {
     }
 
     private func createRoom() async {
+        guard !hasSupabaseRecovery else { return }
         guard let user = appState.user else { return }
         let operation = RoomSyncOperation.creatingRoom
         guard appState.beginRoomSync(operation) else { return }
@@ -1006,6 +1072,7 @@ struct HomeView: View {
     }
 
     private func joinRoom() async {
+        guard !hasSupabaseRecovery else { return }
         guard let user = appState.user else { return }
         let operation = RoomSyncOperation.joiningRoom
         guard appState.beginRoomSync(operation) else { return }
@@ -1052,6 +1119,30 @@ struct HomeView: View {
     }
 
     private func closeActiveRoom(_ room: GameRoom) async {
+#if SPYCLASH_SUPABASE_TEST
+        guard !isLoading, !hasSupabaseRecovery, let userID = appState.user?.id else { return }
+        isLoading = true
+        defer { isLoading = false }
+        do {
+            let adapter = SupabaseGameAdapter.shared
+            try await adapter.leaveRoom(roomID: room.id, membershipID: room.viewerMembershipID)
+            // Confirm current membership: a known historical receipt must not
+            // hide a newer membership, and a failed read keeps the room visible.
+            let current = try await adapter.refreshRoom(id: room.id)
+            guard appState.user?.id == userID else { return }
+            appState.activeRoom = current
+            if current == nil { stage = .main }
+            statusText = localized(en: "LEFT ROOM", ru: "ВЫШЕЛ ИЗ КОМНАТЫ", es: "SALA ABANDONADA", uk: "ВИ ВИЙШЛИ З КІМНАТИ")
+            statusKind = .success
+            HapticManager.shared.fire(.notification(.success))
+        } catch is CancellationError {
+            return
+        } catch {
+            guard appState.user?.id == userID else { return }
+            statusText = roomErrorMessage(error)
+            statusKind = .error
+        }
+#else
         withAnimation(.spring(response: 0.38, dampingFraction: 0.86)) {
             appState.leaveRoomImmediately(room)
             stage = .main
@@ -1059,12 +1150,17 @@ struct HomeView: View {
         statusText = isHost(room) ? localized(en: "ROOM CLOSED", ru: "КОМНАТА ЗАКРЫТА", es: "SALA CERRADA", uk: "КІМНАТУ ЗАКРИТО") : localized(en: "LEFT ROOM", ru: "ВЫШЕЛ ИЗ КОМНАТЫ", es: "SALA ABANDONADA", uk: "ВИ ВИЙШЛИ З КІМНАТИ")
         statusKind = .success
         HapticManager.shared.fire(.notification(.success))
+#endif
     }
 
     private func closeRoomMenuTitle(_ room: GameRoom) -> String {
+#if SPYCLASH_SUPABASE_TEST
+        localized(en: "Leave room", ru: "Выйти из комнаты", es: "Salir de sala", uk: "Вийти з кімнати")
+#else
         isHost(room)
             ? localized(en: "Close room", ru: "Закрыть комнату", es: "Cerrar sala", uk: "Закрити кімнату")
             : localized(en: "Leave room", ru: "Выйти из комнаты", es: "Salir de sala", uk: "Вийти з кімнати")
+#endif
     }
 
     private func isHost(_ room: GameRoom) -> Bool {

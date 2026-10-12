@@ -46,6 +46,8 @@ final class LabStore {
     var phase: String { snapshot["phase"].string ?? "idle" }
     var isHost: Bool { snapshot["host_id"].string == userID && !userID.isEmpty }
     var pendingIDs: [String] { pending.keys.sorted() }
+    var roomContextGeneration: Int { roomEpoch }
+    var watchedRoomID: String? { watchingRoom }
     var ownReady: Bool { players.first(where: { $0["user_id"].string == userID })?["ready"].bool ?? false }
 
     func bootstrap() async {
@@ -170,9 +172,12 @@ final class LabStore {
             do { _ = try await refresh(room: intent.roomID) }
             catch {
                 let failure = safeFailure(error)
-                if failure.code == "not_member", roomID == intent.roomID {
-                    roomEpoch += 1
-                    stopWatch(); roomID = nil; snapshot = .null; roleRevealed = false
+                if failure.code == "not_member" {
+                    if roomID == intent.roomID {
+                        roomEpoch += 1
+                        stopWatch(); roomID = nil; snapshot = .null; roleRevealed = false
+                    }
+                    lastError = ""
                 } else { lastError = failure.code }
             }
         } else {
@@ -198,21 +203,49 @@ final class LabStore {
     }
 
     @discardableResult
-    func refresh(room: String) async throws -> JSONValue {
+    func refresh(room: String, activate: Bool = false) async throws -> JSONValue {
         guard let backend, UUID(uuidString: room) != nil else { throw LabFailure(code: "invalid_room") }
         let epoch = roomEpoch
-        let result = try await backend.rpc("game_snapshot", body: .object(["p_room_id": .string(room)]))
+        let membership = snapshot["own_membership_id"].string
+        let result: JSONValue
+        do { result = try await backend.rpc("game_snapshot", body: .object(["p_room_id": .string(room)])) }
+        catch {
+            let failure = safeFailure(error)
+            if ["not_member", "room_not_found"].contains(failure.code) {
+                guard epoch == roomEpoch,
+                      roomID != room || snapshot["own_membership_id"].string == membership else {
+                    throw LabFailure(code: "stale_room_context", ambiguous: true)
+                }
+                clearCurrentRoomAfterMembershipLoss(roomID: room, expectedGeneration: epoch, expectedMembershipID: membership)
+            }
+            throw error
+        }
         // A read begun before leave/switch cannot re-open the old room in UI.
-        guard epoch == roomEpoch else { return snapshots[room] ?? result }
+        guard epoch == roomEpoch else { throw LabFailure(code: "stale_room_context", ambiguous: true) }
         if let prior = snapshots[room], result["revision"].integer < prior["revision"].integer { return prior }
         snapshots[room] = result
-        if roomID == nil || roomID == room {
+        if roomID == nil || roomID == room || (activate && result["phase"].string != "closed") {
+            if roomID != room { roomEpoch += 1 }
             if snapshot["match_id"] != result["match_id"] { roleRevealed = false }
             roomID = room; snapshot = result; roomEntry = room
         }
         lastError = ""
         persistState()
         return result
+    }
+
+    /// Definitive authorization loss invalidates the old read generation. A
+    /// delayed failure from before a rejoin cannot evict its newer membership.
+    func clearCurrentRoomAfterMembershipLoss(roomID room: String, expectedGeneration: Int, expectedMembershipID: String?) {
+        guard roomID == room, roomEpoch == expectedGeneration,
+              snapshot["own_membership_id"].string == expectedMembershipID else { return }
+        roomEpoch += 1
+        stopWatch()
+        snapshots.removeValue(forKey: room)
+        roomID = nil
+        snapshot = .null
+        roleRevealed = false
+        persistState()
     }
 
     func watch(room: String) async throws {
@@ -262,7 +295,8 @@ final class LabStore {
 
     var state: JSONValue {
         .object([
-            "client_id": .string(clientID), "native": .bool(true), "build": .number(168),
+            "client_id": .string(clientID), "native": .bool(true),
+            "build": .number(Double(Bundle.main.infoDictionary?["CFBundleVersion"] as? String ?? "0") ?? 0),
             "user_id": userID.isEmpty ? .null : .string(userID), "name": .string(name),
             "room_id": roomID.map(JSONValue.string) ?? .null, "revision": snapshot["revision"],
             "phase": .string(phase), "snapshot": snapshot, "realtime": .string(realtime),
@@ -272,7 +306,24 @@ final class LabStore {
         ])
     }
 
-    private func record(_ error: Error) { lastError = safeFailure(error).code; status = "Test request needs attention"; persistState() }
+    private func record(_ error: Error) {
+        let failure = safeFailure(error)
+        lastError = failure.code
+        status = "Test request needs attention"
+        // Preserve the command failure across later successful reconciliation.
+        // No credentials, payloads, private roles or words enter this journal.
+        let url = evidenceDirectory.appendingPathComponent("failure-events.json")
+        var events = ((try? Data(contentsOf: url)).flatMap { try? JSONDecoder().decode(JSONValue.self, from: $0) }?.array ?? [])
+            .filter { $0["actor_id"].string == userID }
+        events.append(.object([
+            "at": .string(ISO8601DateFormatter().string(from: Date())),
+            "actor_id": .string(userID), "code": .string(failure.code),
+            "ambiguous": .bool(failure.ambiguous), "revision": snapshot["revision"],
+            "pending_ids": .array(pendingIDs.map(JSONValue.string))
+        ]))
+        try? JSONValue.array(Array(events.suffix(50))).data().write(to: url, options: .atomic)
+        persistState()
+    }
 
     private var evidenceDirectory: URL {
         let folder = FileManager.default.urls(for: .documentDirectory, in: .userDomainMask)[0].appendingPathComponent("Evidence", isDirectory: true)

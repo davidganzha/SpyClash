@@ -205,6 +205,7 @@ final class StoreKitManager {
                 )
             }
         }
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         // Listen from application launch, including pending purchases completed later.
         updatesTask = Task { [weak self] in
             for await verification in Transaction.updates {
@@ -247,17 +248,19 @@ final class StoreKitManager {
         syncGeneration = nil
     }
 
-    var canMakePayments: Bool { AppStore.canMakePayments }
+    var canMakePayments: Bool { !SupabaseTestEnvironment.isEnabled && AppStore.canMakePayments }
 
     var canPurchase: Bool {
         scope.isAuthenticated && product != nil && canMakePayments && state.canStartPurchase
     }
 
     func loadProduct() async {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         await productCatalog.load()
     }
 
     func purchase(membership: MembershipStore) async {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         guard state.canStartPurchase else { return }
         let expected = generation
         let operation = beginOperation(.preparing)
@@ -311,6 +314,7 @@ final class StoreKitManager {
     }
 
     func restore() async {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         guard !state.isBusy, scope.isAuthenticated else { return }
         let expected = generation
         let operation = beginOperation(.restoring)
@@ -349,6 +353,7 @@ final class StoreKitManager {
     }
 
     func synchronizeAfterActivation() async {
+        guard !SupabaseTestEnvironment.isEnabled else { return }
         guard scope.isAuthenticated, !state.isBusy, syncGeneration == nil else { return }
         let expected = generation
         let operation = operationRevision

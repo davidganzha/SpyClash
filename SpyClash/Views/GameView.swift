@@ -2324,6 +2324,14 @@ struct GameView: View {
     }
 
     var body: some View {
+#if SPYCLASH_SUPABASE_TEST
+        SupabaseGameTestView()
+#else
+        productionBody
+#endif
+    }
+
+    private var productionBody: some View {
         rootWithLobbyProfileSheet
         .disabled(detectiveVoteCancellationPresentation != nil)
         .allowsHitTesting(detectiveVoteCancellationPresentation == nil)
