@@ -39,6 +39,8 @@
 	<true/>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan a test room QR code.</string>
+	<key>NSNearbyInteractionUsageDescription</key>
+	<string>Measure the distance to nearby SpyClash players so the radar can show precise proximity.</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Rajdhani-Bold.ttf</string>
