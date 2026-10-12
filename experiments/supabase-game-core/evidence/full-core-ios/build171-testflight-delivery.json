@@ -1,0 +1,29 @@
+{
+  "verified_at": "2026-10-12T22:57:13.652Z",
+  "app_name": "SpyClash TEST",
+  "app_id": "6822094628",
+  "bundle_id": "com.spyclash.ios.supabasetest",
+  "marketing_version": "1.0.3",
+  "build_number": "171",
+  "build_id": "3743a6f4-8566-4c59-9dfa-7bc56375de96",
+  "ipa_sha256": "2cca077a7d99343c63f2eb1df1b14bd412cf4e151acd5083dc380b01b077e11e",
+  "processing_state": "VALID",
+  "build_audience_type": "INTERNAL_ONLY",
+  "internal_build_state": "IN_BETA_TESTING",
+  "external_build_state": "NOT_APPLICABLE",
+  "processing_errors": [],
+  "processing_warnings": [],
+  "assigned_groups": [
+    {
+      "id": "b8c0d934-1061-4795-83b0-3068a7537dee",
+      "name": "Supabase Internal QA",
+      "is_internal": true,
+      "has_access_to_all_builds": false,
+      "public_link_enabled": false,
+      "testers": [{"name": "David Ganzha", "state": "INVITED"}]
+    }
+  ],
+  "physical_installation_of_build171_verified": false,
+  "physical_full_game_acceptance_verified": false,
+  "production_mutated": false
+}
