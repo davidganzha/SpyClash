@@ -1,0 +1,346 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		13FBADF23270FED9210BA6AD /* SpyClashGameCoreLabApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77F388A86DF725D588A1B2BF /* SpyClashGameCoreLabApp.swift */; };
+		240E09DD6FA7566F6F10633A /* BackendClient.swift in Sources */ = {isa = PBXBuildFile; fileRef = C442C6A5C1130BCBFC60DBD9 /* BackendClient.swift */; };
+		26ACBA1484ADD4CBD7816013 /* JSONValue.swift in Sources */ = {isa = PBXBuildFile; fileRef = CA36C9A8A96978A34D847EB7 /* JSONValue.swift */; };
+		31E59A079253E69D36877E21 /* LabStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 4B9F31F8DC00C7C3D612F8FC /* LabStore.swift */; };
+		77DC2A1562DC10C40969D447 /* LabConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7A2BD1EF9006B9E69CD107D9 /* LabConfiguration.swift */; };
+		A35EB64A4A677B6B4439BBDB /* LabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D72F033798B9C596A66A60F5 /* LabView.swift */; };
+		B8F12A89167CF3E594F7C05F /* BackendAllowlist.json in Resources */ = {isa = PBXBuildFile; fileRef = D60B8C5B8CF926C0FEC94B2D /* BackendAllowlist.json */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		4B9F31F8DC00C7C3D612F8FC /* LabStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabStore.swift; sourceTree = "<group>"; };
+		77F388A86DF725D588A1B2BF /* SpyClashGameCoreLabApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashGameCoreLabApp.swift; sourceTree = "<group>"; };
+		7A2BD1EF9006B9E69CD107D9 /* LabConfiguration.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabConfiguration.swift; sourceTree = "<group>"; };
+		AF5570214A76D48668BA232B /* SpyClashGameCoreLab.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SpyClashGameCoreLab.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		C442C6A5C1130BCBFC60DBD9 /* BackendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendClient.swift; sourceTree = "<group>"; };
+		CA36C9A8A96978A34D847EB7 /* JSONValue.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = JSONValue.swift; sourceTree = "<group>"; };
+		D60B8C5B8CF926C0FEC94B2D /* BackendAllowlist.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = BackendAllowlist.json; sourceTree = "<group>"; };
+		D72F033798B9C596A66A60F5 /* LabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabView.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0B06A70AD436A02F470BF6AA /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				AF5570214A76D48668BA232B /* SpyClashGameCoreLab.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		1F8B9EF265E88F3B3874A264 /* Sources */ = {
+			isa = PBXGroup;
+			children = (
+				C442C6A5C1130BCBFC60DBD9 /* BackendClient.swift */,
+				CA36C9A8A96978A34D847EB7 /* JSONValue.swift */,
+				7A2BD1EF9006B9E69CD107D9 /* LabConfiguration.swift */,
+				4B9F31F8DC00C7C3D612F8FC /* LabStore.swift */,
+				D72F033798B9C596A66A60F5 /* LabView.swift */,
+				77F388A86DF725D588A1B2BF /* SpyClashGameCoreLabApp.swift */,
+			);
+			path = Sources;
+			sourceTree = "<group>";
+		};
+		75963D293FBB55AE5EA7A4A9 /* Configuration */ = {
+			isa = PBXGroup;
+			children = (
+				D60B8C5B8CF926C0FEC94B2D /* BackendAllowlist.json */,
+			);
+			path = Configuration;
+			sourceTree = "<group>";
+		};
+		DC7DD0AEF6E019A806B2B58C = {
+			isa = PBXGroup;
+			children = (
+				75963D293FBB55AE5EA7A4A9 /* Configuration */,
+				1F8B9EF265E88F3B3874A264 /* Sources */,
+				0B06A70AD436A02F470BF6AA /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		21D0E3538BFFC2CB4E58508C /* SpyClashGameCoreLab */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 24F89CFB4C268FDDE29FA92A /* Build configuration list for PBXNativeTarget "SpyClashGameCoreLab" */;
+			buildPhases = (
+				DEA688B185A1090805A3EE80 /* Sources */,
+				E3E79BD3AE7FD01DA80BA2DB /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = SpyClashGameCoreLab;
+			packageProductDependencies = (
+			);
+			productName = SpyClashGameCoreLab;
+			productReference = AF5570214A76D48668BA232B /* SpyClashGameCoreLab.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		E58331C6AB8D64C2AB1F78F1 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					21D0E3538BFFC2CB4E58508C = {
+						ProvisioningStyle = Automatic;
+					};
+				};
+			};
+			buildConfigurationList = FAB7ABF5FD474D2AB50A6059 /* Build configuration list for PBXProject "SpyClashGameCoreLab" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = DC7DD0AEF6E019A806B2B58C;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 0B06A70AD436A02F470BF6AA /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				21D0E3538BFFC2CB4E58508C /* SpyClashGameCoreLab */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		E3E79BD3AE7FD01DA80BA2DB /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B8F12A89167CF3E594F7C05F /* BackendAllowlist.json in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		DEA688B185A1090805A3EE80 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				240E09DD6FA7566F6F10633A /* BackendClient.swift in Sources */,
+				26ACBA1484ADD4CBD7816013 /* JSONValue.swift in Sources */,
+				77DC2A1562DC10C40969D447 /* LabConfiguration.swift in Sources */,
+				31E59A079253E69D36877E21 /* LabStore.swift in Sources */,
+				A35EB64A4A677B6B4439BBDB /* LabView.swift in Sources */,
+				13FBADF23270FED9210BA6AD /* SpyClashGameCoreLabApp.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0EF9FCEC3F962AD1CDE16C97 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Configuration/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Game Core Lab";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Connect to the isolated game test controller on this Mac.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.gamecore.lab;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		7C6F6881EB1D098D66489EBC /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = Configuration/Info.plist;
+				INFOPLIST_KEY_CFBundleDisplayName = "Game Core Lab";
+				INFOPLIST_KEY_LSApplicationCategoryType = "public.app-category.developer-tools";
+				INFOPLIST_KEY_NSAppTransportSecurity_NSAllowsLocalNetworking = YES;
+				INFOPLIST_KEY_NSLocalNetworkUsageDescription = "Connect to the isolated game test controller on this Mac.";
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.gamecore.lab;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		9D307020A7962794DD456560 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 168;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Release;
+		};
+		D8B53AB5D0F243565F4142A7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				CODE_SIGN_STYLE = Automatic;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 168;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 0.1;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 5.0;
+			};
+			name = Debug;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		24F89CFB4C268FDDE29FA92A /* Build configuration list for PBXNativeTarget "SpyClashGameCoreLab" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0EF9FCEC3F962AD1CDE16C97 /* Debug */,
+				7C6F6881EB1D098D66489EBC /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		FAB7ABF5FD474D2AB50A6059 /* Build configuration list for PBXProject "SpyClashGameCoreLab" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				D8B53AB5D0F243565F4142A7 /* Debug */,
+				9D307020A7962794DD456560 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = E58331C6AB8D64C2AB1F78F1 /* Project object */;
+}

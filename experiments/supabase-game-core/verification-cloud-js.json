@@ -1,0 +1,45 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "scope": "Six JavaScript clients against the isolated cloud Supabase project",
+  "project_name": "spyclash-game-core",
+  "project_ref": "bbkfsgnordtdiblgdzkg",
+  "backend_url": "https://bbkfsgnordtdiblgdzkg.supabase.co",
+  "plan": "Free",
+  "compute": "Nano",
+  "region": "Ireland",
+  "evidence_source": ".local/cloud-test-results.xml",
+  "tests": 4,
+  "passed": 4,
+  "failed": 0,
+  "cancelled": 0,
+  "skipped": 0,
+  "duration_seconds": 19.014706,
+  "test_cases": [
+    {
+      "name": "cloud: six independent Auth sessions serialize joins, readiness, starts and ballots",
+      "seconds": 2.607902,
+      "status": "PASS"
+    },
+    {
+      "name": "cloud: lost HTTPS acknowledgement after COMMIT replays original receipt after a different writer",
+      "seconds": 0.870162,
+      "status": "PASS"
+    },
+    {
+      "name": "cloud: refused HTTP connection retains pending command and reconnect preserves its ID",
+      "seconds": 0.771618,
+      "status": "PASS"
+    },
+    {
+      "name": "cloud: real WAL events reach six clients and a physically reconnected socket",
+      "seconds": 3.013288,
+      "status": "PASS"
+    }
+  ],
+  "native_cloud_runtime_status": "NOT_ASSESSED: this report verifies the JavaScript suite only",
+  "limits": [
+    "No physical iPhone or production workload exercised.",
+    "No claim of full game parity or regional outage resilience."
+  ]
+}

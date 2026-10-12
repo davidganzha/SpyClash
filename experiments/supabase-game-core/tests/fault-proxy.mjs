@@ -1,28 +1,41 @@
 import http from 'node:http';
-import { requireLoopback } from '../client/game-client.mjs';
+import https from 'node:https';
+import { requireAllowedTestTarget } from '../client/game-client.mjs';
 
 /** Test transport: real HTTP forwarding; never fabricates an RPC result. */
-export async function faultProxy(upstream) {
-  const target = requireLoopback(upstream, 'proxy upstream');
-  if (target.protocol !== 'http:') throw new Error('The local fault proxy requires HTTP');
+export async function faultProxy(upstream, { config } = {}) {
+  const target = requireAllowedTestTarget(upstream, config);
+  if (!['http:', 'https:'].includes(target.protocol)) throw new Error('Fault proxy requires HTTP(S)');
   let dropRequestID = null;
   let port = 0;
   const stats = { forwardedCommands: 0, droppedResponses: 0, committedStatus: null };
   const server = http.createServer(async (req, res) => {
+    // Never permit absolute-form requests to turn this into an open proxy.
+    if (!req.url.startsWith('/') || req.url.startsWith('//')) { res.writeHead(400); res.end(); return; }
+    const destination = new URL(req.url, target);
+    if (destination.origin !== target.origin || destination.username || destination.password) { res.writeHead(400); res.end(); return; }
     const chunks = [];
-    for await (const chunk of req) chunks.push(chunk);
+    let bytes = 0;
+    for await (const chunk of req) {
+      bytes += chunk.length;
+      if (bytes > 64 * 1024) { res.writeHead(413); res.end(); return; }
+      chunks.push(chunk);
+    }
     const body = Buffer.concat(chunks);
     const isCommand = req.url.split('?')[0] === '/rest/v1/rpc/game_command';
     if (isCommand) stats.forwardedCommands += 1;
     let shouldDrop = false;
     if (isCommand && dropRequestID) {
-      const parsed = JSON.parse(body.toString('utf8'));
+      let parsed;
+      try { parsed = JSON.parse(body.toString('utf8')); }
+      catch { res.writeHead(400); res.end(); return; }
       shouldDrop = parsed.p_request_id === dropRequestID;
       if (shouldDrop) dropRequestID = null;
     }
     const headers = { ...req.headers, host: target.host };
     delete headers.connection;
-    const outgoing = http.request(new URL(req.url, target), { method: req.method, headers }, (incoming) => {
+    const transport = target.protocol === 'https:' ? https : http;
+    const outgoing = transport.request(destination, { method: req.method, headers, timeout: 20_000 }, (incoming) => {
       const response = [];
       incoming.on('data', (chunk) => response.push(chunk));
       incoming.on('end', () => {
@@ -40,6 +53,7 @@ export async function faultProxy(upstream) {
       });
     });
     outgoing.on('error', () => res.destroy());
+    outgoing.on('timeout', () => { outgoing.destroy(); res.destroy(); });
     outgoing.end(body);
   });
   const start = async () => {

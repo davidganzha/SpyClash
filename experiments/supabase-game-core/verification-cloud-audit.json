@@ -1,0 +1,24 @@
+{
+  "schema_version": 1,
+  "project_ref": "bbkfsgnordtdiblgdzkg",
+  "backend_url": "https://bbkfsgnordtdiblgdzkg.supabase.co",
+  "observed_date": "2026-10-12",
+  "source": "Supabase Dashboard SQL Editor live audit_result cell",
+  "query_path": "scripts/audit-cloud.sql",
+  "query_sha256": "5f37a9387ca9cb7260795dbf008801709cb44b4a01d020e561274f1ad6d257a1",
+  "execution": "Exact query body wrapped in BEGIN READ ONLY / COMMIT; pasted body equality verified before execution",
+  "screenshot": "evidence/cloud-ios/cloud-audit-pass.jpg",
+  "result": {
+    "audit": "cloud_database_privileges_and_invariants",
+    "checks": 18,
+    "status": "PASS",
+    "tables": 5,
+    "functions": 10,
+    "read_only": true,
+    "failed_checks": [],
+    "rooms_checked": 6,
+    "votes_checked": 12,
+    "receipts_checked": 67,
+    "replicated_tables": 1
+  }
+}

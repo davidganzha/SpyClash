@@ -1,8 +1,8 @@
 # SpyClash — isolated Supabase game core
 
-An executable local backend experiment for concurrent room commands and recovery after network failures. It runs real Supabase Auth, PostgREST, PostgreSQL and Realtime. It uses synthetic accounts and a separate Docker/Colima profile; it never connects to Base44.
+An executable backend experiment for concurrent room commands and recovery after network failures, with a standalone native iOS test app. It runs real Supabase Auth, PostgREST, PostgreSQL and Realtime locally or in the separately allowlisted cloud test project. It uses synthetic accounts and never connects to Base44.
 
-This is a **single-spy, single-round backend prototype**, not the production game or an iOS migration. Apple/Google login, account migration, purchases, AI generation, notifications, full game rules/timers, multi-spy matches and native UI integration are outside this experiment.
+This is a **single-spy, single-round prototype**. The separate SwiftUI lab app exercises this core; the production SpyClash app has not been migrated. Apple/Google login, account migration, purchases, AI generation, notifications, full game rules/timers and multi-spy matches remain outside this experiment.
 
 ## Run
 
@@ -27,7 +27,7 @@ npm run backend:status
 
 `backend:start` applies committed migrations automatically on a fresh database. `backend:apply` is a developer-only helper for applying the declarative source to this local test database while iterating; do not use it as a replacement for versioned migrations.
 
-The runner discovers local credentials in memory through `supabase status`. Tests refuse non-loopback endpoints, and the runner refuses cloud-linked checkouts and unexpected local ports. Credentials, download logs and the raw JUnit report stay in ignored `.local/`. The package has no cloud deployment command.
+The local runner discovers credentials in memory through `supabase status`. Local tests refuse non-loopback endpoints, and the runner refuses cloud-linked checkouts and unexpected local ports. Credentials, download logs and raw reports stay in ignored `.local/`. Cloud tests use a separate explicit entry point and an exact project allowlist. The package has no cloud deployment command.
 
 The runner creates a dedicated Docker bridge with `host_binding_ipv4=127.0.0.1`, so the local fixture services are not published to the LAN. It also checks this option before starting the stack.
 
@@ -46,6 +46,27 @@ To stop while preserving local test data:
 npm run backend:stop
 colima stop spyclash-supabase
 ```
+
+## Separate cloud test project and native iOS
+
+The deployed test project is `spyclash-game-core` (`bbkfsgnordtdiblgdzkg`), Free/Nano in Ireland. Its exact ref and HTTPS origin are recorded in `client/staging-project.json` and the native compiled allowlist. This project contains synthetic test data only. The existing committed migration was applied as a transaction in the Dashboard SQL Editor; CLI migration history was not written. Do not push the local `config.toml` to cloud: its development-only Auth settings are not cloud settings.
+
+Cloud runners require an owner-only (`0600`) ignored JSON configuration file mapping these environment names to strings:
+
+- `SUPABASE_TEST_MODE`: `cloud-staging`
+- `SUPABASE_TEST_PROJECT_REF`: `bbkfsgnordtdiblgdzkg`
+- `SUPABASE_URL`: `https://bbkfsgnordtdiblgdzkg.supabase.co`
+- `SUPABASE_ANON_KEY`: this project's publishable key
+
+Provision the nine synthetic confirmed accounts with `scripts/provision-cloud-actors.mjs` only when needed; it additionally needs the test project's server key through `SUPABASE_SECRET_KEY`. Remove that server key after provisioning. The resulting `.local/cloud-actors.json` is owner-only and ignored. Test processes and native apps receive public client configuration plus synthetic credentials; they never receive the server key.
+
+```sh
+SUPABASE_TEST_CONFIG_FILE="$PWD/.local/cloud-env.json" node scripts/cloud-test.mjs
+SUPABASE_TEST_CONFIG_FILE="$PWD/.local/cloud-env.json" node scripts/native-test.mjs \
+  --cloud --simulators=SIMULATOR_A_UUID,SIMULATOR_B_UUID,SIMULATOR_C_UUID
+```
+
+The native runner requires the standalone lab app to be built and installed on three booted Simulators first. See [ios/README.md](ios/README.md) for build and manual launch instructions. It operates real native Auth/HTTP/WebSocket clients, takes state checkpoints, closes a real socket, refuses a connection, and drops a successful response after the database has committed. Run `scripts/audit-cloud.sql` with an administrative read-only session against this exact test project to verify database privileges and persisted invariants after testing.
 
 ## Command protocol
 
@@ -78,6 +99,6 @@ The pinned Realtime SDK supports `postgres_changes_options: { wait: true, timeou
 
 `npm test` creates separate real Auth sessions and runs concurrent REST requests plus real Realtime subscriptions. The fault proxy can forward a command, receive its successful upstream response, then close the client socket before delivering that response. It can also stop listening entirely to create a real connection failure.
 
-See [VERIFICATION.md](VERIFICATION.md) for the latest executed results and their limits. Automated clients establish backend behavior; they do not establish physical-device UX, internet latency, cloud availability or production load capacity.
+See [CLOUD-IOS-VERIFICATION.md](CLOUD-IOS-VERIFICATION.md) for the cloud and native build 168 results, and [VERIFICATION.md](VERIFICATION.md) for the original local baseline. These runs establish the tested concurrency and recovery behavior, not physical-device acceptance, full production game parity, regional availability or production load capacity.
 
 Relevant platform contracts: [local Supabase](https://supabase.com/docs/guides/local-development/cli/getting-started), [database functions](https://supabase.com/docs/guides/database/functions), [RLS](https://supabase.com/docs/guides/database/postgres/row-level-security), [Realtime database changes](https://supabase.com/docs/guides/realtime/subscribing-to-database-changes).

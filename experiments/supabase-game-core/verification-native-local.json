@@ -1,0 +1,100 @@
+{
+  "schema_version": 1,
+  "status": "PASS",
+  "scope": "Three independent native iOS Simulator apps against local Supabase",
+  "backend_url": "http://127.0.0.1:56321",
+  "build": 168,
+  "room_id": "3800dcfa-2a28-4397-bbbd-dad1a02d5aa4",
+  "started_checkpoint_at": "2026-10-12T14:42:47.243Z",
+  "completed_checkpoint_at": "2026-10-12T14:42:48.571Z",
+  "evidence_sources": [
+    ".local/native-local/results.json",
+    ".local/native-local/01-all-playing.json",
+    ".local/native-local/02-b-offline.json",
+    ".local/native-local/03-b-recovered.json",
+    ".local/native-local/04-finished.json"
+  ],
+  "actors": {
+    "count": 3,
+    "labels": [
+      "ios1",
+      "ios2",
+      "ios3"
+    ],
+    "distinct_real_auth_sessions": true,
+    "native_urlsession_rpc": true,
+    "native_websocket_wal": true
+  },
+  "command_results": {
+    "total": 16,
+    "successful": 14,
+    "expected_transport_failures": 2,
+    "unexpected_command_failures": 0
+  },
+  "checkpoints": [
+    {"name":"all-playing","at":"2026-10-12T14:42:47.243Z","revisions":{"ios1":9,"ios2":9,"ios3":9},"ios2_phase":"playing","ios2_pending":0},
+    {"name":"b-offline","at":"2026-10-12T14:42:47.626Z","revisions":{"ios1":10,"ios2":9,"ios3":11},"ios2_phase":"playing","ios2_pending":1},
+    {"name":"b-recovered","at":"2026-10-12T14:42:47.837Z","revisions":{"ios1":11,"ios2":11,"ios3":11},"ios2_phase":"voting","ios2_pending":1},
+    {"name":"finished","at":"2026-10-12T14:42:48.571Z","revisions":{"ios1":13,"ios2":13,"ios3":13},"ios2_phase":"finished","ios2_pending":0}
+  ],
+  "network_faults": [
+    {
+      "actor": "ios2",
+      "fault": "Stopped loopback HTTP proxy and closed the actual native WebSocket",
+      "observed_error": "transport_-1004",
+      "ambiguous": true,
+      "pending_commands": 1,
+      "upstream_command_not_forwarded": true,
+      "stale_revision": 9,
+      "server_revision": 11
+    },
+    {
+      "actor": "ios2",
+      "fault": "Upstream committed successfully, then proxy dropped the HTTP response",
+      "observed_error": "transport_-1005",
+      "ambiguous": true,
+      "upstream_http_status": 200,
+      "dropped_responses": 1
+    }
+  ],
+  "reconnect": {
+    "authoritative_snapshot_revision": 11,
+    "realtime": "subscribed",
+    "original_intent_still_pending": true
+  },
+  "historical_leave_replay": {
+    "original_receipt_revision": 4,
+    "rejoined_snapshot_revision": 5,
+    "reused_original_request_id": true,
+    "new_membership_preserved": true,
+    "native_screen_remained_in_room": true
+  },
+  "lost_acknowledgement_replay": {
+    "recovered_receipt_revision": 12,
+    "another_native_writer_revision": 13,
+    "same_request_id_across_offline_and_lost_response_retries": true,
+    "current_snapshot_did_not_regress": true
+  },
+  "final": {
+    "all_three_visible_snapshots_revision": 13,
+    "phase": "finished",
+    "winner": "civilians",
+    "players": 3,
+    "votes": 3,
+    "pending_commands_total": 0,
+    "all_three_recorded_real_wal_revision": 13
+  },
+  "privacy_checks": {
+    "one_spy": true,
+    "other_players_role_and_word_absent": true,
+    "spy_word_null": true,
+    "summary_contains_no_credentials_or_words": true
+  },
+  "cloud_runtime_status": "NOT_ASSESSED: this report covers only the local native run",
+  "limits": [
+    "Simulator evidence only; no physical iPhone acceptance.",
+    "Single spy and one round; full production rule parity is deferred.",
+    "Controlled client transport faults; no regional outage or production load claim.",
+    "Raw local evidence contains synthetic actor identifiers and each own authorized snapshot; it remains ignored."
+  ]
+}

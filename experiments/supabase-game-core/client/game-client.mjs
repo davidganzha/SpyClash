@@ -1,5 +1,53 @@
 import { randomUUID } from 'node:crypto';
 import { createClient } from '@supabase/supabase-js';
+import stagingProject from './staging-project.json' with { type: 'json' };
+
+const allowedCloudConfigs = new WeakSet();
+
+/** Explicit capability for one disposable, user-authorized cloud test project. */
+export function cloudTestConfig(env = process.env) {
+  if (env.SUPABASE_TEST_MODE !== 'cloud-staging') throw new Error('Cloud tests require explicit SUPABASE_TEST_MODE=cloud-staging');
+  const projectRef = env.SUPABASE_TEST_PROJECT_REF;
+  if (!/^[a-z0-9]{20}$/.test(projectRef ?? '')) throw new Error('An exact 20-character SUPABASE_TEST_PROJECT_REF is required');
+  if (projectRef !== stagingProject.projectRef) throw new Error('Project ref is not the committed synthetic staging project');
+  const expectedURL = `https://${projectRef}.supabase.co`;
+  if (env.SUPABASE_URL !== expectedURL) throw new Error('SUPABASE_URL must exactly match the explicitly allowed test project');
+  if (!env.SUPABASE_ANON_KEY) throw new Error('A public Supabase key is required');
+  let publicKey = /^sb_publishable_[A-Za-z0-9_-]+$/.test(env.SUPABASE_ANON_KEY);
+  try {
+    const claims = JSON.parse(Buffer.from(env.SUPABASE_ANON_KEY.split('.')[1] ?? '', 'base64url').toString());
+    publicKey ||= env.SUPABASE_ANON_KEY.split('.').length === 3 && claims.role === 'anon';
+  } catch { /* A modern publishable key is not a JWT. */ }
+  if (!publicKey) throw new Error('Only publishable or anon public keys are allowed; secret and privileged keys are forbidden');
+  const config = Object.freeze({ url: expectedURL, anonKey: env.SUPABASE_ANON_KEY, projectRef, mode: 'cloud-staging' });
+  allowedCloudConfigs.add(config);
+  return config;
+}
+
+export function requireAllowedTestTarget(value, config) {
+  const url = new URL(value);
+  if (allowedCloudConfigs.has(config)) {
+    if (url.origin !== config.url || url.username || url.password) throw new Error('Request target is outside the exact cloud test allowlist');
+    return url;
+  }
+  return requireLoopback(value, 'test target');
+}
+
+export function syntheticTestActors(env = process.env, minimum = 6) {
+  let actors;
+  try { actors = JSON.parse(env.SUPABASE_TEST_ACTORS ?? 'null'); }
+  catch { throw new Error('SUPABASE_TEST_ACTORS must contain valid JSON'); }
+  if (!Array.isArray(actors) || actors.length < minimum) throw new Error(`At least ${minimum} pre-provisioned synthetic actors are required`);
+  const emails = new Set();
+  return actors.map((actor, index) => {
+    if (!actor || typeof actor.email !== 'string' || !/^[^@\s]+@[^@\s]+\.(test|invalid)$/.test(actor.email) ||
+        typeof actor.password !== 'string' || actor.password.length < 12 || emails.has(actor.email)) {
+      throw new Error(`Invalid or duplicate synthetic actor at index ${index}`);
+    }
+    emails.add(actor.email);
+    return Object.freeze({ email: actor.email, password: actor.password, name: actor.name ?? `Staging ${index + 1}` });
+  });
+}
 
 export function requireLoopback(value, label = 'URL') {
   const url = new URL(value);
@@ -34,27 +82,31 @@ export class GameClient {
   #snapshots = new Map();
   #intents = new Map();
   #watches = new Set();
+  #cloud = false;
   constructor(config = localConfig(), { transportURL } = {}) {
-    requireLoopback(config.url, 'Supabase URL');
+    requireAllowedTestTarget(config.url, config);
+    this.#cloud = allowedCloudConfigs.has(config);
     if (transportURL) requireLoopback(transportURL, 'transport URL');
     this.#sdk = createClient(config.url, config.anonKey, {
       auth: { persistSession: false, autoRefreshToken: false, detectSessionInUrl: false },
       global: {
         fetch: (input, init) => {
           const url = new URL(typeof input === 'string' ? input : input.url ?? input);
-          requireLoopback(url, 'request URL');
+          requireAllowedTestTarget(url, config);
+          if (url.origin !== new URL(config.url).origin) throw new Error('Request origin differs from configured test backend');
           if (transportURL) {
             const proxy = new URL(transportURL);
             url.protocol = proxy.protocol;
             url.host = proxy.host;
           }
-          return fetch(url, { ...init, signal: init?.signal ?? AbortSignal.timeout(12_000) });
+          return fetch(url, { ...init, redirect: 'error', signal: init?.signal ?? AbortSignal.timeout(12_000) });
         },
       },
     });
   }
 
   async signUp(name = 'Player') {
+    if (this.#cloud) throw new Error('Cloud game tests never sign up users; provision synthetic actors separately');
     const { data, error } = await this.#sdk.auth.signUp({
       email: `game-core-${randomUUID()}@example.test`,
       password: `${randomUUID()}!Aa7`,
@@ -63,6 +115,18 @@ export class GameClient {
     if (!data.session || !data.user) throw new Error('Local Auth must return a confirmed session');
     this.userID = data.user.id;
     this.name = name;
+    await this.#sdk.realtime.setAuth(data.session.access_token);
+    return this;
+  }
+
+  async signIn(actor) {
+    if (!actor || typeof actor.email !== 'string' || typeof actor.password !== 'string') throw new Error('A pre-provisioned actor is required');
+    if (this.#cloud) syntheticTestActors({ SUPABASE_TEST_ACTORS: JSON.stringify([actor]) }, 1);
+    const { data, error } = await this.#sdk.auth.signInWithPassword({ email: actor.email, password: actor.password });
+    if (error) throw new CommandError(error);
+    if (!data.session || !data.user) throw new Error('Auth did not return a signed-in session');
+    this.userID = data.user.id;
+    this.name = actor.name ?? 'Staging player';
     await this.#sdk.realtime.setAuth(data.session.access_token);
     return this;
   }
