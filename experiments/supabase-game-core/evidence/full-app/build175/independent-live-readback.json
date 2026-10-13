@@ -1,0 +1,132 @@
+{
+  "status": "PASS",
+  "checkedAt": "2026-10-13T21:48:34.550783+00:00",
+  "approvalCommit": "b27e3d6d",
+  "appID": "69a0e57fa939f578082f8091",
+  "operation": "Unauthenticated read-only HTTP GET after parent confirmed deploy success",
+  "requests": [
+    {
+      "url": "https://spyclash.com/MobileAuthCallback.html",
+      "finalURL": "https://spyclash.com/MobileAuthCallback.html",
+      "status": 200,
+      "approvedPath": "index.html",
+      "bytes": 12325,
+      "sha256": "17d8e140beb1a72fdf93b3e75530aa4429d3070fde6ce2529a1f5b88c150c5e6",
+      "expectedSHA256": "61c8c70e90acf85158102a45804b2c2ebfa9c8fa7993576342cf5f14153fda8d",
+      "matchesApproved": false,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8"
+      },
+      "validationMode": "Served callback wrapper references approved entry; compare normalized wrapper to previously recorded live174 route",
+      "wrapper": {
+        "newEntryReferences": [
+          "/assets/index-GEnUi1AX.js"
+        ],
+        "expectedEntryReferenced": true,
+        "old174EntryReferenced": false,
+        "onlyEntryReferenceDiffersFromRecorded174Route": false,
+        "normalizedSHA256": "8fa3ac245336a53d4cbab0f6c63039512b04bca4afbe1964ec9b41ddbb111464",
+        "recorded174RouteSHA256": "54e7ccaa36a9ee4926565b206ad2b1c87039a391b82fcadc20ba27b3bd58faf8",
+        "rawHTMLMatchesUploadedIndex": false,
+        "reason": "Base44 serves callback route with its existing generated HTML wrapper; raw /index.html is exact approved file.",
+        "recorded174WrapperReproducedWithOnlyEntryAndAliasPropertyOrdering": true,
+        "propertyOrderChanges": [
+          [
+            [
+              "/wordpacks",
+              "/word-packs"
+            ],
+            [
+              "/qrscan",
+              "/qr-scan"
+            ]
+          ]
+        ],
+        "allRuntimeScriptSemanticsUnchangedExceptApprovedEntry": true
+      }
+    },
+    {
+      "url": "https://spyclash.com/index.html",
+      "finalURL": "https://spyclash.com/index.html",
+      "status": 200,
+      "approvedPath": "index.html",
+      "bytes": 2554,
+      "sha256": "61c8c70e90acf85158102a45804b2c2ebfa9c8fa7993576342cf5f14153fda8d",
+      "expectedSHA256": "61c8c70e90acf85158102a45804b2c2ebfa9c8fa7993576342cf5f14153fda8d",
+      "matchesApproved": true,
+      "headers": {
+        "Content-Type": "text/html; charset=utf-8",
+        "Cache-Control": "no-cache"
+      }
+    },
+    {
+      "url": "https://spyclash.com/assets/bootstrap-8g2kJx7T.css",
+      "finalURL": "https://spyclash.com/assets/bootstrap-8g2kJx7T.css",
+      "status": 200,
+      "approvedPath": "assets/bootstrap-8g2kJx7T.css",
+      "bytes": 65267,
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "expectedSHA256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "matchesApproved": true,
+      "headers": {
+        "Content-Type": "text/css; charset=utf-8",
+        "Cache-Control": "public, max-age=604800",
+        "Last-Modified": "Tue, 13 Oct 2026 21:48:31 GMT",
+        "Age": "2"
+      }
+    },
+    {
+      "url": "https://spyclash.com/assets/bootstrap-aW5J3GBq.js",
+      "finalURL": "https://spyclash.com/assets/bootstrap-aW5J3GBq.js",
+      "status": 200,
+      "approvedPath": "assets/bootstrap-aW5J3GBq.js",
+      "bytes": 1579238,
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "expectedSHA256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "matchesApproved": true,
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Cache-Control": "public, max-age=604800",
+        "Last-Modified": "Tue, 13 Oct 2026 21:48:31 GMT",
+        "Age": "2"
+      }
+    },
+    {
+      "url": "https://spyclash.com/assets/index-GEnUi1AX.js",
+      "finalURL": "https://spyclash.com/assets/index-GEnUi1AX.js",
+      "status": 200,
+      "approvedPath": "assets/index-GEnUi1AX.js",
+      "bytes": 6437,
+      "sha256": "06bfa39438b4280296aa391df494fca5c409b34219a5589cd06c068b346a9afd",
+      "expectedSHA256": "06bfa39438b4280296aa391df494fca5c409b34219a5589cd06c068b346a9afd",
+      "matchesApproved": true,
+      "headers": {
+        "Content-Type": "application/javascript; charset=utf-8",
+        "Cache-Control": "public, max-age=604800",
+        "Last-Modified": "Tue, 13 Oct 2026 21:48:31 GMT",
+        "Age": "2"
+      }
+    },
+    {
+      "url": "https://spyclash.com/manifest.json",
+      "finalURL": "https://spyclash.com/manifest.json",
+      "status": 200,
+      "approvedPath": "manifest.json",
+      "bytes": 520,
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "expectedSHA256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "matchesApproved": true,
+      "headers": {
+        "Content-Type": "application/json"
+      }
+    }
+  ],
+  "scope": "Published bytes only; Google authentication and native iPhone callback acceptance require separate validation.",
+  "validationSummary": {
+    "approvedStaticFilesExact": 5,
+    "callbackWrapperReferencesApprovedEntry": true,
+    "callbackWrapperDifference": "Approved entry filename plus harmless ordering of alias entries in generated SEO title dictionary",
+    "callbackWrapperSemanticsMatch174": true,
+    "rawUploadedIndexComparisonDoesNotApplyToGeneratedRoute": true
+  }
+}

@@ -1,0 +1,14 @@
+{
+  "timestamp": "2026-10-13T21:47:41.509044+00:00",
+  "appId": "69a0e57fa939f578082f8091",
+  "sourceCommit": "b27e3d6def47a03a97ad9e1265bd72d48e5218c1",
+  "explicitUserApprovalInCurrentChat": true,
+  "cleanWorktree": true,
+  "stagedFilesMatchApprovedManifest": true,
+  "staticFiles": 5,
+  "configurationFiles": 2,
+  "symlinks": 0,
+  "backendFiles": 0,
+  "priorLiveEntry": "/assets/index-goV7mmfZ.js",
+  "operation": "base44 site deploy only"
+}

@@ -1,6 +1,6 @@
 # Google callback fragment compatibility — source 175
 
-Status: prepared locally; not published. Main TestFlight build 173 remains installed. No native source, backend function, provider configuration, Supabase project or TestFlight assignment changed.
+Status: published with explicit user approval on 2026-10-13 at approximately 21:48 UTC; live asset and browser checks passed. Real Google acceptance on Ganzha remains pending. Main TestFlight build 173 remains installed. No native source, backend function, provider configuration, Supabase project or TestFlight assignment changed.
 
 ## Confirmed failure and remaining uncertainty
 
@@ -36,13 +36,27 @@ Independent checks completed:
 - Differential/mutation review: **484,970 inputs**, zero unexpected output changes or exceptions; exactly 3,087 newly accepted cases, all valid query payloads with one of the three allowed suffixes. Six deliberately weakened validation variants were detected.
 - Actual bundled entry VM audit: **412 runs passed**; only the intended files changed and no callback SDK/network calls were introduced.
 - macOS 26.5.2 **WKWebView: 16/16 passed** using real DOM, history and location against a synthetic canonical origin, with networking blocked. All three markers succeeded; malformed/credential fragments and invalid query cases failed. Four outgoing synthetic native navigations were cancelled by the probe. This is WebKit-engine evidence, not an iPhone ASWebAuthenticationSession or a completed Google login. Reproducer remains in ignored `.local/google175/macos-probe` at the worktree root.
-- A fresh read-only live check confirmed diagnostic 174 is still served and all four public asset hashes match its receipt. Candidate 175 has not been published.
+- A fresh read-only live check confirmed diagnostic 174 is still served and all four public asset hashes match its receipt. At that preparation stage, candidate 175 had not been published.
 - Project plist syntax and synchronized source version 175 passed verification.
 
 Receipts: `evidence/full-app/build175`. Synthetic checks are not real Google-account acceptance.
 
-## Publication and acceptance gate
+## Preparation-time publication and acceptance gate
 
 AGENTS.md requires fresh approval for the exact production action. The earlier approval covered diagnostic 174 only. The proposed next action is **site-only publication** of this prepared candidate to Base44 app `69a0e57fa939f578082f8091` / `spyclash.com`; no general deploy or broker/configuration mutation is part of it.
 
 After approval, verify the live entry hash, unchanged site asset hashes and synthetic callback behavior. Then the user closes the old web sheet in SpyClash 173, starts a fresh Google login and confirms whether the native home screen and existing profile/history appear. Successful web navigation alone is insufficient: the real native session and account mapping must succeed. If a new `SCG175-02` remains, its fragment lies outside this allowlist; retain the failure boundary and obtain only a safe shape classification, never a raw credential-bearing URL.
+
+## Approved publication completed
+
+The user explicitly approved site-only publication of commit `b27e3d6def47a03a97ad9e1265bd72d48e5218c1` in this chat. The fresh preflight verified the clean commit, exact five staged static files, two canonical configuration files, no symlinks/backend files and the still-live 174 baseline.
+
+Executed from ignored `google175/site-deploy`: `npx --no-install base44 --app-id 69a0e57fa939f578082f8091 site deploy --yes`. CLI 0.0.56 exited 0 with `Site deployed successfully` and returned `https://spy-game-zone.base44.app`.
+
+Custom domain `https://spyclash.com/MobileAuthCallback.html` now references `assets/index-GEnUi1AX.js`. All four referenced public assets matched the approved hashes; ordinary site assets remain unchanged. Base44 adds a generated HTML wrapper to this route, so route HTML itself is not described as byte-identical to local index.html.
+
+Live Chrome checks confirmed the empty-fragment synthetic token reaches the fixed native link, the `#_=_` safe-error response reaches its canonical error link, a credential-shaped fragment still produces `SCG175-02`, and reload of the cleaned address produces `SCG175-04` without replay. Navigation waits timed out on the unhandled native scheme in two cases; the subsequent DOM and link checks proved page behavior, without claiming a Mac or iPhone native session. Only synthetic inputs were used.
+
+Receipts: `deployment-preflight.json`, `deployment-postflight.json`, and `live-browser-checks.json` in `evidence/full-app/build175`. The earlier candidate manifest and validation summary retain their historical prepared/unpublished state. The user was asked to start a fresh Google attempt on Ganzha with installed build 173; no app update is needed.
+
+Independent readback also verified raw `/index.html` and all four assets byte-for-byte against the approved artifact. The generated callback wrapper differs from the recorded 174 wrapper only by the new entry filename and ordering of two SEO title-map pairs; reconstructing the old ordering and entry reproduces the recorded 174 wrapper hash. See `independent-live-readback.json`.

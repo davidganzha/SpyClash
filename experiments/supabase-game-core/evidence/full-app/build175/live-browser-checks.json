@@ -1,0 +1,39 @@
+{
+  "timestamp": "2026-10-13T21:50:09.098972+00:00",
+  "browser": "Chrome on Mac",
+  "page": "https://spyclash.com/MobileAuthCallback.html",
+  "syntheticOnly": true,
+  "realGoogleSignInVerified": false,
+  "checks": [
+    {
+      "case": "fragment credentials rejected",
+      "inputShape": "query provider; fragment error=synthetic-check",
+      "observed": "SCG175-02 · navigate · m1",
+      "addressCleared": true,
+      "nativeLinkAbsent": true
+    },
+    {
+      "case": "valid synthetic query with empty fragment",
+      "observedHeading": "Вернитесь в SpyClash",
+      "observedNativeURL": "spyclash://auth?access_token=spyclash-synthetic-not-a-credential",
+      "addressCleared": true,
+      "navigationWaitTimedOutOnExternalScheme": true,
+      "verifiedDOMAfterTimeout": true
+    },
+    {
+      "case": "safe error with #_=_",
+      "observedHeading": "Вернитесь в SpyClash",
+      "observedNativeURL": "spyclash://auth?error=access_denied",
+      "addressCleared": true,
+      "navigationWaitTimedOutOnExternalScheme": true,
+      "verifiedDOMAfterTimeout": true
+    },
+    {
+      "case": "reload cleaned address",
+      "observed": "SCG175-04 · reload · m1",
+      "nativeLinkAbsent": true
+    }
+  ],
+  "screenshotLocalIgnored": "experiments/supabase-game-core/.local/google175/live-callback-synthetic.jpg",
+  "limitation": "Web-page behavior only; no real credentials, native account acceptance or Supabase exchange asserted."
+}

@@ -1,0 +1,44 @@
+{
+  "checkedAt": "2026-10-13T21:48:31.603849+00:00",
+  "appId": "69a0e57fa939f578082f8091",
+  "approvedSourceCommit": "b27e3d6def47a03a97ad9e1265bd72d48e5218c1",
+  "operation": "base44 site deploy only",
+  "cliExitCode": 0,
+  "cliResult": "Site deployed successfully",
+  "cliVersion": "0.0.56",
+  "cliReturnedURL": "https://spy-game-zone.base44.app",
+  "liveCallbackURL": "https://spyclash.com/MobileAuthCallback.html",
+  "liveEntry": "/assets/index-GEnUi1AX.js",
+  "published": true,
+  "assets": [
+    {
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "status": 200,
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "matchesApprovedArtifact": true,
+      "bytes": 65267
+    },
+    {
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "status": 200,
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "matchesApprovedArtifact": true,
+      "bytes": 1579238
+    },
+    {
+      "path": "assets/index-GEnUi1AX.js",
+      "status": 200,
+      "sha256": "06bfa39438b4280296aa391df494fca5c409b34219a5589cd06c068b346a9afd",
+      "matchesApprovedArtifact": true,
+      "bytes": 6437
+    },
+    {
+      "path": "manifest.json",
+      "status": 200,
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "matchesApprovedArtifact": true,
+      "bytes": 520
+    }
+  ],
+  "htmlNote": "Base44 wraps the hosted index; verified referenced entry rather than full HTML byte equality."
+}
