@@ -2,6 +2,8 @@
 
 This checkpoint prepares the original iOS application for the hybrid backend. It does not upload, publish, migrate production, change Apple provider settings, or authorize those actions.
 
+Subsequent explicitly authorized internal-only delivery of the unchanged build 173 is recorded in [main TestFlight verification](../experiments/supabase-game-core/BUILD173-MAIN-TESTFLIGHT-VERIFICATION.md). That delivery does not authorize the production/App Store steps below.
+
 ## Build identities
 
 | Scheme | Bundle | Backend | Distribution status |

@@ -1,0 +1,97 @@
+{
+  "checkedAt": "2026-10-13T12:01:12.390Z",
+  "sourceCommit": "83f41f68",
+  "scope": "Explicitly authorized MAIN SpyClash 1.0.3(173), TestFlight Internal Only, David Ganzha only. No App Store submission or production backend deployment.",
+  "ipaSHA256": "f1bd6b59985fa7b009e2af8a959bfe2f3711d7336b60a0d15fd1d3b01954e5b3",
+  "appleValidation": "PASS",
+  "appleUpload": "PASS",
+  "deliveryUUID": "2f3c219a-5eaa-4caa-84dc-bc4750819290",
+  "distribution": {
+    "appId": "6793534085",
+    "appName": "SpyClash",
+    "bundleId": "com.spyclash.ios",
+    "group": {
+      "id": "f41d2529-7451-4605-857b-d257d34df23b",
+      "name": "Supabase Main Internal QA",
+      "isInternalGroup": true,
+      "hasAccessToAllBuilds": false,
+      "publicLinkEnabled": false,
+      "publicLink": null
+    },
+    "testers": [
+      {
+        "id": "569dc033-570c-42f7-bbc3-611f6c9cb527",
+        "firstName": "David",
+        "lastName": "Ganzha",
+        "inviteType": "EMAIL",
+        "state": "INSTALLED"
+      }
+    ],
+    "build": {
+      "id": "2f3c219a-5eaa-4caa-84dc-bc4750819290",
+      "version": "173",
+      "marketingVersion": "1.0.3",
+      "processingState": "VALID",
+      "expired": false,
+      "audience": {
+        "buildAudienceType": "INTERNAL_ONLY"
+      },
+      "internalBuildState": "IN_BETA_TESTING",
+      "externalBuildState": "NOT_APPLICABLE"
+    },
+    "individualTesters": [],
+    "assignments": [
+      {
+        "groupId": "47a13858-b43b-44a1-bf3e-285722cec320",
+        "buildIds": [
+          "28681991-dabd-4f33-aae8-b34667628f3d",
+          "1bb13cea-e355-4f7f-a1de-44ad748256f7",
+          "7368d1a1-fea2-4c15-89f2-6a486cc22c39",
+          "87d79b55-9435-4112-8c86-813ac2a8d65f",
+          "7190cd79-5da2-40b6-9cce-c55adc999863",
+          "11a6a9af-589b-4098-a2de-23d433c54fc6",
+          "11e4daee-80ce-4f25-ac40-87f49baa20c3",
+          "97af48d7-12fb-4eb7-8449-7852fce69acd"
+        ],
+        "hasBuild": false
+      },
+      {
+        "groupId": "f41d2529-7451-4605-857b-d257d34df23b",
+        "buildIds": [
+          "2f3c219a-5eaa-4caa-84dc-bc4750819290"
+        ],
+        "hasBuild": true
+      },
+      {
+        "groupId": "5f8c8360-e479-43e1-aae6-8b003e6ad941",
+        "buildIds": [],
+        "hasBuild": false
+      }
+    ],
+    "assignedToTargetGroup": true
+  },
+  "readBackVerified": true,
+  "appStoreVersions": [
+    {
+      "id": "a89dbd39-bcd3-4242-8b6c-529ef2034e1a",
+      "version": "1.0.2",
+      "state": "READY_FOR_SALE"
+    },
+    {
+      "id": "ecff6046-bfaf-4efb-8b4b-743b7e0d30c1",
+      "version": "1.0.1",
+      "state": "READY_FOR_SALE"
+    },
+    {
+      "id": "c45f6c18-2b18-40d2-9eb0-3447b1d56b60",
+      "version": "1.0",
+      "state": "READY_FOR_SALE"
+    }
+  ],
+  "appStoreVersionsUnchanged": true,
+  "deviceAcceptance": {
+    "install": "pending user confirmation on Ganzha",
+    "google": "pending real completion and account continuity",
+    "apple": "pending real completion; no email-based account merge"
+  }
+}

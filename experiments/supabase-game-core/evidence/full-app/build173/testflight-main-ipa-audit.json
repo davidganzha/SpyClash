@@ -1,0 +1,107 @@
+{
+  "recorded_at": "2026-10-13T11:53:45.835039+00:00",
+  "ipa_name": "SpyClash.ipa",
+  "ipa_sha256": "f1bd6b59985fa7b009e2af8a959bfe2f3711d7336b60a0d15fd1d3b01954e5b3",
+  "ipa_bytes": 12371377,
+  "scope": "Read-only audit of exported IPA. Extracted into separate ignored audit directory; original IPA unchanged. No upload or device action.",
+  "main": {
+    "bundle_id": "com.spyclash.ios",
+    "version": "1.0.3",
+    "build": "173",
+    "backend_mode": "supabase-main-candidate",
+    "internal_only": true,
+    "team": "3Z64QKNL54",
+    "application_identifier": "3Z64QKNL54.com.spyclash.ios",
+    "apple_signin": [
+      "Default"
+    ],
+    "aps_environment": "production",
+    "get_task_allow": false,
+    "signature_strict_pass": true,
+    "profile_team": [
+      "3Z64QKNL54"
+    ],
+    "profile_application_identifier": "3Z64QKNL54.com.spyclash.ios",
+    "profile_apple_signin": [
+      "Default"
+    ],
+    "profile_expires": "2027-07-26T05:32:51",
+    "profile_no_devices": true,
+    "profile_distribution": true,
+    "application_identifier_matches_bundle": true,
+    "url_schemes": [
+      "spyclash"
+    ],
+    "privacy_manifest_present": true,
+    "local_network_usage_present": true,
+    "nearby_usage_present": true
+  },
+  "widgets": [
+    {
+      "bundle_id": "com.spyclash.ios.widgets",
+      "version": "1.0.3",
+      "build": "173",
+      "backend_mode": null,
+      "internal_only": null,
+      "team": "3Z64QKNL54",
+      "application_identifier": "3Z64QKNL54.com.spyclash.ios.widgets",
+      "apple_signin": null,
+      "aps_environment": null,
+      "get_task_allow": false,
+      "signature_strict_pass": true,
+      "profile_team": [
+        "3Z64QKNL54"
+      ],
+      "profile_application_identifier": "3Z64QKNL54.com.spyclash.ios.widgets",
+      "profile_apple_signin": null,
+      "profile_expires": "2027-07-26T05:32:51",
+      "profile_no_devices": true,
+      "profile_distribution": true,
+      "application_identifier_matches_bundle": true,
+      "url_schemes": [],
+      "privacy_manifest_present": false,
+      "local_network_usage_present": false,
+      "nearby_usage_present": false
+    }
+  ],
+  "backend": {
+    "origin": "https://bbkfsgnordtdiblgdzkg.supabase.co",
+    "publishable_key_prefix_only": "sb_publishable_",
+    "capabilities": {
+      "appleSignInEnabled": true,
+      "googleSignInEnabled": true,
+      "permitsLegacyBilling": false,
+      "permitsLegacyPush": false,
+      "mainAccountDeletionEnabled": false,
+      "emailOTPLength": 6
+    }
+  },
+  "resource_scan": {
+    "scanned_text_or_plist_files": 8,
+    "secret_pattern_hits": 0,
+    "fixture_file_hits": 0,
+    "limits": "Static scan covers selected packaged metadata/text resources; does not prove real provider sign-in."
+  },
+  "checks": {
+    "main_identity": true,
+    "widget_identity": true,
+    "signed_team_and_bundles": true,
+    "apple_entitlement": true,
+    "internal_testing_only": true,
+    "candidate_backend": true,
+    "provider_capabilities": true,
+    "disabled_gates": true,
+    "public_key_only": true,
+    "callback_scheme": true,
+    "privacy_and_nearby": true,
+    "no_scanned_secret_or_fixture_files": true,
+    "input_ipa_unchanged": true,
+    "profiles_not_expired": true
+  },
+  "passed": true,
+  "acceptance_limits": [
+    "Physical install/launch and real Google/Apple-to-native session completion remain untested by this artifact audit.",
+    "No payment, push or full-account-deletion capability enabled.",
+    "Test backend remains isolated and is not a production release target."
+  ]
+}

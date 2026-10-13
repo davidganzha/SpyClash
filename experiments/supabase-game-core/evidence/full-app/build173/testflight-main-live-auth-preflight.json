@@ -1,0 +1,96 @@
+{
+  "recorded_at": "2026-10-13T11:52:54.982326+00:00",
+  "scope": "Read-only main 1.0.3 (173) internal TestFlight authentication preflight. No cloud, provider configuration, account or production mutations.",
+  "commit": "83f41f68",
+  "project": {
+    "ref": "bbkfsgnordtdiblgdzkg",
+    "status": "ACTIVE_HEALTHY",
+    "role": "isolated test backend; not production"
+  },
+  "functions": {
+    "legacy-session": {
+      "status": "ACTIVE",
+      "version": 1,
+      "verify_jwt": false,
+      "bundle_sha256": "d17efa6d62f9ee7599c46146c3c0be731e1a99ac161eb07f777bd23eaafb7eca"
+    },
+    "app-services": {
+      "status": "ACTIVE",
+      "version": 4,
+      "verify_jwt": true,
+      "bundle_sha256": "a592403d1f64728df8c368ff87bd130edc58dc95bd7b693ecc54af97647d4de9"
+    },
+    "full-game-core": {
+      "status": "ACTIVE",
+      "version": 5,
+      "verify_jwt": true,
+      "bundle_sha256": "362185c29804db0c57643501553e83c84eb9b78dc7823e2231c3c5d9a63a0a30"
+    }
+  },
+  "live_source_comparison": {
+    "method": "Read deployed legacy-session files via Supabase get_edge_function and compare their full contents against committed local source. All four exact matches confirmed. Hashes below are of the identical UTF-8 file contents.",
+    "files": [
+      {
+        "name": "legacy-session/index.ts",
+        "exact_match": true,
+        "sha256": "ddd2e7cd4fc3b24f4d0e5b4d926fe4634606e5b096ee875eb29fb2544fe834d2"
+      },
+      {
+        "name": "legacy-session/service.ts",
+        "exact_match": true,
+        "sha256": "2cc280b826fed9ba1f08bb1573b9bc0852a723749b7f22856b76a03daa3e223a"
+      },
+      {
+        "name": "app-services/legacy-provider.ts",
+        "exact_match": true,
+        "sha256": "41ea1277efb74f98e15c8adac83ff91c82bc427a802aba2e829e314c1447ca03"
+      },
+      {
+        "name": "app-services/legacy-import.ts",
+        "exact_match": true,
+        "sha256": "0995cbfe994fdf69ecccced4c0f05b6d5949cdadda1340eda7c475df12b04112"
+      }
+    ]
+  },
+  "http_checks": {
+    "legacy_session_get": {
+      "status": 405,
+      "code": "method_not_allowed",
+      "origin": "https://bbkfsgnordtdiblgdzkg.supabase.co",
+      "submitted_credentials": false
+    },
+    "google_callback_get": {
+      "url": "https://spyclash.com/MobileAuthCallback.html?auth_provider=google",
+      "status": 200,
+      "entry_script": "/assets/index-DX97ZPnq.js",
+      "html_sha256": "56724619bd9a94f646de49efdaf2ae75ec845f37d046f570ab067bcff01459c1",
+      "submitted_credentials": false
+    }
+  },
+  "account_continuity_read_only": {
+    "profile_state": "active",
+    "link_state": "active",
+    "immutable_identity_mapping_matches": true,
+    "history_rows": 8,
+    "owned_packs": 0,
+    "pending_imports": 0
+  },
+  "candidate_capabilities": {
+    "bundle_id": "com.spyclash.ios",
+    "version": "1.0.3",
+    "build": "173",
+    "appleSignInEnabled": true,
+    "googleSignInEnabled": true,
+    "permitsLegacyBilling": false,
+    "permitsLegacyPush": false,
+    "mainAccountDeletionEnabled": false
+  },
+  "acceptance_limits": [
+    "No real Google or Apple authentication was submitted in this audit. Callback HTTP 200 and healthy backend do not prove provider-to-native completion.",
+    "Google acceptance must preserve the verified immutable legacy identity and its existing Supabase mapping, profile and history, including after relaunch.",
+    "Apple may represent a different existing identity. Do not merge accounts or infer ownership from email; verify actual provider-to-Base44 identity before claiming same-account continuity.",
+    "Final signed IPA must independently retain original bundle/team, Apple Default entitlement, immutable test project and TFInternalTestingOnly=true.",
+    "Production release guard intentionally rejects supabase-main-candidate; do not weaken the production gate. Billing, push and full deletion remain disabled.",
+    "Live Base44 Apple broker secrets/provider console settings are not independently verified by this read-only preflight; full device completion is required."
+  ]
+}
