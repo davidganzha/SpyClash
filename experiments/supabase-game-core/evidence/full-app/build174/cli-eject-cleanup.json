@@ -1,0 +1,33 @@
+{
+  "recorded_at_utc": "2026-10-13T21:09:09.643070+00:00",
+  "original_app_id": "69a0e57fa939f578082f8091",
+  "copy_app_id": "6ace9bf33f0bc793691a4ef4",
+  "copy_name": "SpyClash Copy",
+  "copy_slug": "spy-clash-copy-691a4ef4",
+  "operation": "Base44 Dashboard > More actions > Delete app > typed exact copy slug > Delete",
+  "result": "Recently deleted",
+  "ui_verification": {
+    "url": "https://app.base44.com/apps/trash",
+    "name": "SpyClash Copy",
+    "button": "Restore",
+    "deletion_text": "Deleted by David Ganzha \u00b7 Today at 10:08 PM",
+    "recovery_text": "29 days left to restore"
+  },
+  "permanent_deletion": false,
+  "original_mutation_performed_by_audit": false,
+  "other_apps_deleted": false,
+  "original_functions": 17,
+  "original_function_files_matched_prior_readonly_snapshot": 201,
+  "original_function_file_differences": 0,
+  "original_function_deployment_ids": [
+    "3bfdcc04fadf4400ba97621ed243f262"
+  ],
+  "original_ui_after_cleanup": {
+    "status": "Published",
+    "last_edited": "2 days ago",
+    "app_users": 61
+  },
+  "copy_functions_before_cleanup": 5,
+  "scope_caveat": "Function source and CLI app-context routing verified; this is not a row-by-row audit of all production data. CLI deployAll pushes entity schemas before functions, so the abandoned copy may have received schemas.",
+  "supported_cleanup_reference": "https://docs.base44.com/documentation/using-your-workspaces/managing-your-workspace-apps"
+}

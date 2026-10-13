@@ -1,0 +1,41 @@
+{
+  "originalAppID": "69a0e57fa939f578082f8091",
+  "sourceBase": "3a764946a3c4a041adcaf83419490bdc7a574b05",
+  "currentVersion": 174,
+  "marketingVersion": "1.0.3",
+  "deployed": false,
+  "appJavascriptByteIdentical": true,
+  "appCSSByteIdentical": true,
+  "manifestByteIdentical": true,
+  "indexHTMLOnlyEntryFilenameChanged": true,
+  "callbackEntry": "index-goV7mmfZ.js",
+  "sourceSHA256": "39840290c1389a34e3a55ce387f72ed96a6e291383aa5b10720fd0defddc4f16",
+  "zipSHA256": "f0cf7f8a0c45d01fa09b89621cc0e6e0276aa28dc778135796b000dc654f6ecf",
+  "files": [
+    {
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "bytes": 65267
+    },
+    {
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "bytes": 1579238
+    },
+    {
+      "path": "assets/index-goV7mmfZ.js",
+      "sha256": "5dbd613f7e141c18fddab76c69076a81bb5282ef1f28be2bba7f0b3d3ba19d0e",
+      "bytes": 6382
+    },
+    {
+      "path": "index.html",
+      "sha256": "9ad221a2c51a317a759a4f8dfadd59f0a28ebc1e956dd7cc86ddb311d087e1cd",
+      "bytes": 2554
+    },
+    {
+      "path": "manifest.json",
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "bytes": 520
+    }
+  ]
+}

@@ -1,4 +1,10 @@
-# Native Google OAuth return page (build 166)
+# Native Google OAuth return page
+
+The current source checkpoint is 174. It adds failure-only support codes and navigation/mount diagnostics, with the existing sign-in acceptance rules unchanged. It has **not** been published. The exact physical iPhone failure remains unconfirmed; see the [Google 173 investigation and diagnostic candidate](../experiments/supabase-game-core/GOOGLE-174-INVESTIGATION.md) for live evidence, prepared artifact scope and acceptance steps.
+
+`npm test`: 62 callback tests pass, including safe diagnostic output, history cleanup, same-document remount and fresh-document reload. Build 174 here is a source version bump, not a TestFlight delivery. Installed main build 173 can use the updated web callback after a separately approved website publication.
+
+The remaining sections describe the original build 166 overlay. Their broker deployment sequence is historical; no broker/configuration update belongs to the current diagnostic change.
 
 Base44 currently rejects function URLs in `from_url` with HTTP 400. The native Google entry and its broker recovery link now return through `https://spyclash.com/MobileAuthCallback.html?auth_provider=google`.
 

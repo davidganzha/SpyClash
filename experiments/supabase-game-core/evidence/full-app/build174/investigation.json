@@ -1,0 +1,85 @@
+{
+  "date": "2026-10-13",
+  "sourceBase": "3a764946a3c4a041adcaf83419490bdc7a574b05",
+  "phoneBuild": "1.0.3 (173)",
+  "phoneReport": "User reports failure immediately after selecting Google account and confirming login; whether the page was subsequently refreshed remains unconfirmed.",
+  "screenshotBoundary": "Generic failure copy can only remain when initial web callback parsing is rejected or history cleanup throws. Native/Supabase exchange has not produced this HTML.",
+  "canonicalBase44AppID": "69a0e57fa939f578082f8091",
+  "authConfiguration": {
+    "customSSO": true,
+    "standardGoogleSocialLogin": false,
+    "changed": false
+  },
+  "phoneAttemptLogsUTC": [
+    {
+      "time": "20:55:20",
+      "function": "appleAuthBroker",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "time": "20:55:23",
+      "function": "appleAuthBroker",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "time": "20:55:31",
+      "function": "googleAuthCallback",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "time": "20:55:31",
+      "function": "appleAuthBroker",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "time": "20:55:32",
+      "function": "appleAuthBroker",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "time": "20:55:32",
+      "function": "appleAuthBroker",
+      "method": "GET",
+      "status": 200
+    }
+  ],
+  "logLimits": "Invocation statuses fit successful broker token/userinfo exchange; no structured response bodies or original phone callback URL were collected. No autoRegisterUser invocation observed in the audited window.",
+  "desktopGoogleReturn": {
+    "timeUTC": "21:02:50",
+    "browser": "Chrome",
+    "realAccount": true,
+    "queryKeys": [
+      "auth_provider",
+      "access_token"
+    ],
+    "providerEqualsGoogle": true,
+    "fragmentPresent": false,
+    "pageTitle": "Return to SpyClash",
+    "nativeLink": {
+      "scheme": "spyclash",
+      "host": "auth",
+      "tokenPresent": true
+    },
+    "nativeAppSessionAccepted": false,
+    "credentialsRecorded": false
+  },
+  "ipaAudit": {
+    "sha256": "f1bd6b59985fa7b009e2af8a959bfe2f3711d7336b60a0d15fd1d3b01954e5b3",
+    "bundle": "com.spyclash.ios",
+    "version": "1.0.3",
+    "build": "173",
+    "scheme": "spyclash",
+    "backendMode": "supabase-main-candidate",
+    "googleEnabled": true,
+    "sourceMatchesArchiveCommit": "83f41f68"
+  },
+  "rootCauseConfirmed": false,
+  "physicalGoogleAcceptance": false,
+  "reproducedSeparateFailure": "A reload or second mount after query cleanup reproduces the screenshot copy, but is not proven to have happened on Ganzha.",
+  "pending": "Deploy reviewed callback diagnostic only after exact current-chat approval, then real iPhone reproduction and subsequent matching native/Base44/Supabase acceptance."
+}

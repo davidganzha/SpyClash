@@ -9,8 +9,12 @@ const moduleSource = readFileSync(new URL("../src/lib/mobileAuthCallback.js", im
 const script = moduleSource.replace(/^export (?=function )/gm, "");
 const base = "https://spyclash.com/MobileAuthCallback.html";
 const callback = (query) => `${base}?auth_provider=google&${query}`;
-function run(source, { navigationThrows = false, historyThrows = false, language = "en-GB" } = {}) {
+function run(source, {
+  navigationThrows = false, historyThrows = false, language = "en-GB",
+  navigationType = "navigate", performanceThrows = false, performanceMissing = false
+} = {}) {
   let address = new URL(source);
+  let currentHref = source;
   const events = [];
   const attempts = [];
   const forbiddenCalls = [];
@@ -48,7 +52,7 @@ function run(source, { navigationThrows = false, historyThrows = false, language
   body.append(root);
   events.length = 0;
   const location = {
-    get href() { return source; },
+    get href() { return currentHref; },
     get origin() { return address.origin; },
     get pathname() { return address.pathname; },
     replace(url) {
@@ -62,6 +66,7 @@ function run(source, { navigationThrows = false, historyThrows = false, language
       events.push({ type: "clear", url });
       if (historyThrows) throw new Error("History unavailable");
       address = new URL(url, address);
+      currentHref = address.href;
       assert.equal(address.search, "", "History must not retain query credentials");
       assert.equal(address.hash, "", "History must not retain a fragment");
       assert.equal(state, null, "History state must not retain credentials");
@@ -79,6 +84,15 @@ function run(source, { navigationThrows = false, historyThrows = false, language
   };
   Object.defineProperty(document, "cookie", { get: forbidden("cookie"), set: forbidden("cookie") });
   const window = { location, history, navigator: { language }, document };
+  if (!performanceMissing) {
+    window.performance = {
+      getEntriesByType(type) {
+        assert.equal(type, "navigation");
+        if (performanceThrows) throw new Error("private-navigation-diagnostic");
+        return [{ type: navigationType }];
+      }
+    };
+  }
   const context = { window, document, URL, URLSearchParams };
   for (const target of [context, window]) {
     for (const name of ["fetch", "XMLHttpRequest", "WebSocket", "EventSource", "Image", "Worker", "importScripts"]) {
@@ -90,10 +104,15 @@ function run(source, { navigationThrows = false, historyThrows = false, language
     target.console = new Proxy({}, { get: forbidden("console") });
   }
   window.navigator.sendBeacon = forbidden("sendBeacon");
-  vm.runInNewContext(script + "\nmountMobileAuthCallback(document, window);", context, { timeout: 1000, contextCodeGeneration: { strings: false, wasm: false } });
-  assert.deepEqual(forbiddenCalls, [], "Forbidden capability use fails even if the implementation catches it");
+  vm.createContext(context, { codeGeneration: { strings: false, wasm: false } });
+  vm.runInContext(script, context, { timeout: 1000 });
+  const remount = () => {
+    vm.runInContext("mountMobileAuthCallback(document, window);", context, { timeout: 1000 });
+    assert.deepEqual(forbiddenCalls, [], "Forbidden capability use fails even if the implementation catches it");
+  };
+  remount();
   assert.equal(events[0]?.type, "clear", "Address must be cleaned before UI work or navigation");
-  return { address, events, attempts, elements, document };
+  return { get address() { return address; }, events, attempts, elements, document, remount };
 }
 
 function assertRejected(source) {
@@ -103,6 +122,7 @@ function assertRejected(source) {
   assert.deepEqual(result.attempts, []);
   assert.equal(result.elements["open-app"].hidden, true);
   assert.equal(result.elements["open-app"].href, undefined);
+  assert.match(result.elements.diagnostic.textContent, /^Support code: SCG174-\d{2} · navigate · m1$/);
   return result;
 }
 
@@ -138,6 +158,8 @@ test("fresh token returns through only the fixed native destination after cleari
   assert.equal(result.address.href, base);
   assert.equal(result.elements["open-app"].href, result.attempts[0].url);
   assert.equal(result.elements["open-app"].hidden, false);
+  assert.equal(result.elements.diagnostic.hidden, true);
+  assert.equal(result.elements.diagnostic.textContent, "");
   assert.ok(result.events.findIndex((event) => event.type === "navigate") > 0);
   assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes(token)));
 });
@@ -171,17 +193,85 @@ test("no navigation occurs when query clearing fails", () => {
   assert.deepEqual(result.attempts, []);
   assert.equal(result.events[0].type, "clear");
   assert.equal(result.elements["open-app"].hidden, true);
+  assert.equal(result.elements.diagnostic.textContent, "Support code: SCG174-11 · navigate · m1");
 });
 
 test("a refresh cannot replay a token from storage or the cleaned address", () => {
   const first = run(callback("access_token=token"));
-  assertRejected(first.address.href);
+  const reloaded = run(first.address.href, { navigationType: "reload" });
+  assert.deepEqual(reloaded.attempts, []);
+  assert.equal(reloaded.elements["open-app"].hidden, true);
+  assert.equal(reloaded.elements.diagnostic.textContent, "Support code: SCG174-04 · reload · m1");
+});
+
+test("a second mount reads the cleaned location and cannot recover the prior DOM token", () => {
+  const result = run(callback("access_token=private-first-mount"));
+  result.remount();
+  assert.equal(result.address.href, base);
+  assert.equal(result.attempts.length, 1);
+  assert.equal(result.elements.title.textContent, "Sign-in could not be completed");
+  assert.equal(result.elements["open-app"].hidden, true);
+  assert.equal(result.elements["open-app"].href, undefined);
+  assert.equal(result.elements.diagnostic.textContent, "Support code: SCG174-04 · navigate · m2+");
+  result.remount();
+  assert.equal(result.elements.diagnostic.textContent, "Support code: SCG174-04 · navigate · m2+");
+  assert.equal(result.attempts.length, 1);
+  assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes("private-first-mount")));
 });
 
 test("Russian copy is available without exposing credentials", () => {
   const result = run(callback("access_token=token"), { language: "ru-RU" });
   assert.equal(result.document.documentElement.lang, "ru");
   assert.equal(result.elements["open-app"].textContent, "Открыть SpyClash");
+  const failure = run(base, { language: "ru-RU", navigationType: "back_forward" });
+  assert.equal(failure.elements.diagnostic.textContent, "Код для поддержки: SCG174-04 · back_forward · m1");
+});
+
+for (const [reason, source, code] of [
+  ["invalid_url", "https://foreign.example/MobileAuthCallback.html?access_token=private", "01"],
+  ["fragment", callback("access_token=private#private-fragment"), "02"],
+  ["duplicate_parameter", callback("access_token=private&unrelated=one&unrelated=two"), "03"],
+  ["empty_query", base, "04"],
+  ["empty_query", base + "?", "04"],
+  ["missing_provider", base + "?access_token=private", "05"],
+  ["wrong_provider", base + "?auth_provider=private-provider&access_token=private", "06"],
+  ["missing_payload", base + "?auth_provider=google&private-key=private-value", "07"],
+  ["mixed_payload", callback("access_token=private&error_description=private-error"), "08"],
+  ["invalid_token", callback("access_token=%20private%20"), "09"],
+  ["invalid_error", callback("error=%20private-error%20"), "10"],
+]) {
+  test(`diagnostic ${code} identifies only fixed ${reason} without reflecting input`, () => {
+    const parsed = vm.runInNewContext(script + "\nparseMobileAuthCallbackResult(source);", { source, URL });
+    assert.equal(parsed.reason, reason);
+    assert.equal(parsed.nativeURL, null);
+    const result = assertRejected(source);
+    assert.equal(result.elements.diagnostic.textContent, `Support code: SCG174-${code} · navigate · m1`);
+    assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes("private")));
+    assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes(source)));
+  });
+}
+
+test("navigation diagnostic accepts only the fixed navigation kinds", () => {
+  for (const navigationType of ["navigate", "reload", "back_forward", "private-type", null, 42, { type: "reload" }]) {
+    const result = run(base, { navigationType });
+    const expected = ["navigate", "reload", "back_forward"].includes(navigationType) ? navigationType : "unknown";
+    assert.equal(result.elements.diagnostic.textContent, `Support code: SCG174-04 · ${expected} · m1`);
+  }
+  for (const options of [{ performanceMissing: true }, { performanceThrows: true }]) {
+    const result = run(base, options);
+    assert.equal(result.elements.diagnostic.textContent, "Support code: SCG174-04 · unknown · m1");
+    assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes("private-navigation-diagnostic")));
+  }
+});
+
+test("history failure has a fixed priority and never reflects token or parser details", () => {
+  const result = run(callback("access_token=private-token&error=private-error"), {
+    historyThrows: true, navigationType: "reload", language: "ru-RU"
+  });
+  assert.equal(result.elements.diagnostic.textContent, "Код для поддержки: SCG174-11 · reload · m1");
+  assert.deepEqual(result.attempts, []);
+  assert.equal(result.elements["open-app"].href, undefined);
+  assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes("private")));
 });
 
 for (const [name, source] of [

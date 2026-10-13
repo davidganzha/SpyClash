@@ -1,0 +1,32 @@
+{
+  "recordedAt": "2026-10-13T21:07:50.034596+00:00",
+  "sourceHead": "3a764946a3c4a041adcaf83419490bdc7a574b05",
+  "scenario": "Real ASWebAuthenticationSession on existing booted iOS Simulator, direct current public callback page, fixed synthetic diagnostic value. No Google credentials, account login, or Supabase exchange.",
+  "runtime": "iOS 26.5",
+  "simulator": "SpyClash Supabase Lab C",
+  "bundleID": "org.spyclash.authhandoffprobe174",
+  "codeSigningAllowed": false,
+  "ephemeral": true,
+  "callbackScheme": "spyclash",
+  "result": {
+    "callbackPresent": true,
+    "elapsedSeconds": 2.0670989751815796,
+    "ephemeral": true,
+    "errorPresent": false,
+    "hostMatches": true,
+    "osVersion": "26.5",
+    "outcome": "synthetic_callback_received",
+    "schemeMatches": true,
+    "syntheticOnly": true,
+    "syntheticTokenMatches": true,
+    "timestamp": "2026-10-13T21:07:08Z"
+  },
+  "sourceSHA256": "9fa6dd463e3f790823991f9fa0172ac8a93bdf67a8a210a56a2fde20f466868c",
+  "limits": [
+    "Direct callback-page start bypasses Google and Base44 broker transaction.",
+    "No physical iPhone acceptance; iOS Simulator 26.5 only.",
+    "No history internals observed: successful completion proves actual end-to-end WebKit page navigation to native callback, not exact page lifecycle events.",
+    "Does not reproduce failure from the earlier real provider attempt."
+  ],
+  "conclusion": "Current public callback page can clean history and return its synthetic token through an actual ephemeral ASWebAuthenticationSession; unconditional scheme mismatch or unconditional WebKit handoff failure not reproduced."
+}

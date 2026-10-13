@@ -1,0 +1,16 @@
+{
+  "mountCounterCapped": true,
+  "freshModuleCounterReset": true,
+  "timestamp": "2026-10-13T21:14:33.632Z",
+  "head": "3a764946a3c4a041adcaf83419490bdc7a574b05",
+  "oldSHA256": "32bc11c2eb1622da32cbafbfd83277af97a6198298973958409e2182dc7ec122",
+  "newSHA256": "39840290c1389a34e3a55ce387f72ed96a6e291383aa5b10720fd0defddc4f16",
+  "inputs": 56086,
+  "accepted": 8250,
+  "rejected": 47836,
+  "exceptions": 0,
+  "differences": 0,
+  "mountAuditCases": 72,
+  "findings": [],
+  "scope": "Local old/new parser differential and isolated mount security invariants; no live publish or credentials."
+}

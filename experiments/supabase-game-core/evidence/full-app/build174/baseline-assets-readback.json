@@ -1,0 +1,33 @@
+{
+  "at": "2026-10-13T21:09:40.436Z",
+  "report": [
+    {
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "status": 200,
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "liveSHA256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "match": true
+    },
+    {
+      "path": "assets/index-DX97ZPnq.js",
+      "status": 200,
+      "sha256": "0a408593283f0a97aa202c5d56c4f31186943cae70d285fde01c4d90ff26fbc9",
+      "liveSHA256": "0a408593283f0a97aa202c5d56c4f31186943cae70d285fde01c4d90ff26fbc9",
+      "match": true
+    },
+    {
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "status": 200,
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "liveSHA256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "match": true
+    },
+    {
+      "path": "manifest.json",
+      "status": 200,
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "liveSHA256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "match": true
+    }
+  ]
+}
