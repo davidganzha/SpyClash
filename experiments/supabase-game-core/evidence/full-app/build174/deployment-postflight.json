@@ -1,0 +1,37 @@
+{
+  "at": "2026-10-13T21:34:35.265Z",
+  "target": "69a0e57fa939f578082f8091",
+  "commit": "a64ed75c119b4b7885e182b426ff992c92fa71d7",
+  "deployment": "site only",
+  "cliVersion": "0.0.56",
+  "canonicalURL": "https://spyclash.com",
+  "canonicalHTTP": 200,
+  "entry": "/assets/index-goV7mmfZ.js",
+  "assets": [
+    {
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "http": 200,
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "match": true
+    },
+    {
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "http": 200,
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "match": true
+    },
+    {
+      "path": "assets/index-goV7mmfZ.js",
+      "http": 200,
+      "sha256": "5dbd613f7e141c18fddab76c69076a81bb5282ef1f28be2bba7f0b3d3ba19d0e",
+      "match": true
+    },
+    {
+      "path": "manifest.json",
+      "http": 200,
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "match": true
+    }
+  ],
+  "realPhoneReproduction": "pending"
+}

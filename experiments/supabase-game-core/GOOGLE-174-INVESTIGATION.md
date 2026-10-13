@@ -4,7 +4,7 @@ Status on 2026-10-13: the failure is localized to the hosted web callback before
 
 ## Evidence and boundaries
 
-- The user selected their Google account and confirmed sign-in, then saw the generic failure on `spyclash.com`. That exact copy originates in `web-auth/src/lib/mobileAuthCallback.js`. A valid token or OAuth error changes the page to “Return to SpyClash”; a downstream native/Supabase error cannot create this HTML.
+- The user selected their Google account and confirmed sign-in, then immediately saw the generic failure without pressing Refresh or Back on `spyclash.com`. That exact copy originates in `web-auth/src/lib/mobileAuthCallback.js`. A valid token or OAuth error changes the page to “Return to SpyClash”; a downstream native/Supabase error cannot create this HTML.
 - The 20:55 UTC function invocations show Google callback/broker redirects followed by broker token POST 200 and userinfo GET 200. This fits a successful upstream OIDC exchange. Invocation status alone does not reveal the final redirect URL or prove native acceptance.
 - A real Google sign-in through the same entry URL in Chrome completed at 21:02:50 UTC. The original return had exactly `auth_provider` and `access_token`, the provider matched Google and no fragment was present. The page produced a token-bearing `spyclash://auth` link. Only these boolean/key observations were retained. No token value, cookie or password was recorded. This was not an iPhone/native session acceptance.
 - The actual shipped IPA 173 was independently checked: SHA-256 matches the delivery receipt, main bundle `com.spyclash.ios`, URL scheme `spyclash`, Google enabled and immutable main candidate configuration. The native session listens for that same scheme.
@@ -53,9 +53,11 @@ The production candidate is built on the retained **published** source, whose co
 
 ## Publication and next acceptance
 
-No canonical website/function deployment, auth configuration change, Supabase change, TestFlight upload or App Store action is part of this checkpoint. Publishing requires fresh exact approval under `AGENTS.md`.
+The user explicitly approved publication of this exact callback diagnostic in the current chat. At approximately 21:34 UTC on 2026-10-13, CLI 0.0.56 `site deploy` published the prepared static artifact to the canonical app. No function, auth configuration, Supabase, TestFlight or App Store action was performed. The installed native build remains 173.
 
-After approval: re-check the live entry hash, publish **only the reviewed site artifact** to Base44 app `69a0e57fa939f578082f8091` / `spyclash.com`, verify the live entry and support code with synthetic input, then repeat Google sign-in on Ganzha using the installed build 173. Collect the support code only if it fails. Do not request a full callback URL or HAR. Complete acceptance only when native token processing and the mapped Supabase account are both confirmed.
+The canonical entry is now `index-goV7mmfZ.js`, with the expected SHA-256. All four served static assets matched the approved manifest; ordinary website assets remained byte-identical. Live browser checks showed `07 · navigate · m1` for missing payload, `04 · reload · m1` after cleanup/reload, and the expected safe native cancellation link for an OAuth error. Next: repeat Google sign-in on Ganzha using the installed build 173. [Deployment receipt](evidence/full-app/build174/deployment-postflight.json), [independent live check](evidence/full-app/build174/site-live-independent-readback.json), [browser checks](evidence/full-app/build174/live-browser-diagnostic-checks.json).
+
+Collect the support code only if it fails. Do not request a full callback URL or HAR. Complete acceptance only when native token processing and the mapped Supabase account are both confirmed.
 
 Do not run a general Base44 deployment: backend functions, entities, auth settings, secrets and connectors are outside this change. A subsequent actual auth fix must be based on the observed failure branch and reviewed independently.
 

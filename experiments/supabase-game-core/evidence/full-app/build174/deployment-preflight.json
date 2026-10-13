@@ -1,0 +1,10 @@
+{
+  "at": "2026-10-13T21:33:57.424Z",
+  "commit": "a64ed75c119b4b7885e182b426ff992c92fa71d7",
+  "target": "69a0e57fa939f578082f8091",
+  "operation": "site deploy only",
+  "localFilesVerified": 5,
+  "liveEntryBefore": "/assets/index-DX97ZPnq.js",
+  "liveEntrySHA256": "0a408593283f0a97aa202c5d56c4f31186943cae70d285fde01c4d90ff26fbc9",
+  "approved": true
+}

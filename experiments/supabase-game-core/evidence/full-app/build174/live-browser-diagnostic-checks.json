@@ -1,0 +1,25 @@
+{
+  "date": "2026-10-13",
+  "origin": "https://spyclash.com",
+  "browser": "Chrome",
+  "scenarios": [
+    {
+      "input": "auth_provider=google; no credential",
+      "result": "SCG174-07 · navigate · m1",
+      "urlQueryCleared": true
+    },
+    {
+      "input": "reload after cleanup",
+      "result": "SCG174-04 · reload · m1"
+    },
+    {
+      "input": "auth_provider=google&error=access_denied",
+      "result": "Return to SpyClash",
+      "fixedLink": "spyclash://auth?error=access_denied",
+      "diagnosticVisible": false
+    }
+  ],
+  "navigationToolNote": "goto timed out during custom-scheme transition; subsequent DOM read verified the expected return link. No success claimed from the timeout.",
+  "realGoogleCredentialsUsed": false,
+  "phoneAcceptance": "pending"
+}

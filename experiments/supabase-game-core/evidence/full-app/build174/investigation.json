@@ -2,7 +2,7 @@
   "date": "2026-10-13",
   "sourceBase": "3a764946a3c4a041adcaf83419490bdc7a574b05",
   "phoneBuild": "1.0.3 (173)",
-  "phoneReport": "User reports failure immediately after selecting Google account and confirming login; whether the page was subsequently refreshed remains unconfirmed.",
+  "phoneReport": "User confirms the failure appeared immediately after selecting Google account and confirming sign-in, without refresh or Back.",
   "screenshotBoundary": "Generic failure copy can only remain when initial web callback parsing is rejected or history cleanup throws. Native/Supabase exchange has not produced this HTML.",
   "canonicalBase44AppID": "69a0e57fa939f578082f8091",
   "authConfiguration": {
@@ -81,5 +81,5 @@
   "rootCauseConfirmed": false,
   "physicalGoogleAcceptance": false,
   "reproducedSeparateFailure": "A reload or second mount after query cleanup reproduces the screenshot copy, but is not proven to have happened on Ganzha.",
-  "pending": "Deploy reviewed callback diagnostic only after exact current-chat approval, then real iPhone reproduction and subsequent matching native/Base44/Supabase acceptance."
+  "pending": "Approved diagnostic published and verified. Waiting for user to repeat Google sign-in on Ganzha and report support code or native success."
 }

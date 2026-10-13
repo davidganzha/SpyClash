@@ -1,8 +1,8 @@
 # Native Google OAuth return page
 
-The current source checkpoint is 174. It adds failure-only support codes and navigation/mount diagnostics, with the existing sign-in acceptance rules unchanged. It has **not** been published. The exact physical iPhone failure remains unconfirmed; see the [Google 173 investigation and diagnostic candidate](../experiments/supabase-game-core/GOOGLE-174-INVESTIGATION.md) for live evidence, prepared artifact scope and acceptance steps.
+The current source checkpoint is 174. It adds failure-only support codes and navigation/mount diagnostics, with the existing sign-in acceptance rules unchanged. It was published with explicit user approval on 2026-10-13 at approximately 21:34 UTC; canonical live asset hashes and the diagnostic UI were verified. The exact physical iPhone failure remains unconfirmed; see the [Google 173 investigation and diagnostic candidate](../experiments/supabase-game-core/GOOGLE-174-INVESTIGATION.md) for live evidence, prepared artifact scope and acceptance steps.
 
-`npm test`: 62 callback tests pass, including safe diagnostic output, history cleanup, same-document remount and fresh-document reload. Build 174 here is a source version bump, not a TestFlight delivery. Installed main build 173 can use the updated web callback after a separately approved website publication.
+`npm test`: 62 callback tests pass, including safe diagnostic output, history cleanup, same-document remount and fresh-document reload. Build 174 here is a source version bump, not a TestFlight delivery. Installed main build 173 can use the updated web callback through the now-published web callback.
 
 The remaining sections describe the original build 166 overlay. Their broker deployment sequence is historical; no broker/configuration update belongs to the current diagnostic change.
 

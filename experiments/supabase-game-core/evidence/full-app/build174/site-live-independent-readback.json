@@ -1,0 +1,73 @@
+{
+  "timestamp": "2026-10-13T21:35:02.943924+00:00",
+  "sourceCommit": "a64ed75c119b4b7885e182b426ff992c92fa71d7",
+  "scope": "Independent unauthenticated GET readback after parent site deploy; exact public assets only; no credentials or mutations.",
+  "passed": true,
+  "files": [
+    {
+      "path": "/",
+      "http": 200,
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 12180,
+      "sha256": "9cf31df666f83c3d198dc82ee8ea7c86a6ee6610a916a00effe88cd6f90ccf9c",
+      "serverDate": "Tue, 13 Oct 2026 21:35:02 GMT",
+      "cacheControl": null,
+      "expectedEntryReferenced": true,
+      "oldEntryReferenced": false,
+      "candidateHTMLExact": false
+    },
+    {
+      "path": "/MobileAuthCallback.html",
+      "http": 200,
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 12325,
+      "sha256": "54e7ccaa36a9ee4926565b206ad2b1c87039a391b82fcadc20ba27b3bd58faf8",
+      "serverDate": "Tue, 13 Oct 2026 21:35:02 GMT",
+      "cacheControl": null,
+      "expectedEntryReferenced": true,
+      "oldEntryReferenced": false,
+      "candidateHTMLExact": false
+    },
+    {
+      "path": "/assets/index-goV7mmfZ.js",
+      "http": 200,
+      "contentType": "application/javascript; charset=utf-8",
+      "bytes": 6382,
+      "sha256": "5dbd613f7e141c18fddab76c69076a81bb5282ef1f28be2bba7f0b3d3ba19d0e",
+      "serverDate": "Tue, 13 Oct 2026 21:35:02 GMT",
+      "cacheControl": "public, max-age=604800",
+      "matchesManifest": true
+    },
+    {
+      "path": "/assets/bootstrap-aW5J3GBq.js",
+      "http": 200,
+      "contentType": "application/javascript; charset=utf-8",
+      "bytes": 1579238,
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "serverDate": "Tue, 13 Oct 2026 21:35:02 GMT",
+      "cacheControl": "public, max-age=604800",
+      "matchesManifest": true
+    },
+    {
+      "path": "/assets/bootstrap-8g2kJx7T.css",
+      "http": 200,
+      "contentType": "text/css; charset=utf-8",
+      "bytes": 65267,
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "serverDate": "Tue, 13 Oct 2026 21:35:02 GMT",
+      "cacheControl": "public, max-age=604800",
+      "matchesManifest": true
+    },
+    {
+      "path": "/manifest.json",
+      "http": 200,
+      "contentType": "application/json",
+      "bytes": 520,
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "serverDate": "Tue, 13 Oct 2026 21:35:02 GMT",
+      "cacheControl": null,
+      "matchesManifest": true
+    }
+  ],
+  "acceptanceLimit": "Static deployment verification only, not Google sign-in or physical iPhone acceptance."
+}

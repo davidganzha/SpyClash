@@ -1,0 +1,67 @@
+{
+  "timestamp": "2026-10-13T21:34:33.138377+00:00",
+  "scope": "Read-only static deployment package audit; no CLI deploy or production mutation",
+  "manifestSHA256": "712880eff04f5893cdbad5d66162057a96fc39135009012c4763532aaeb42688",
+  "checks": {
+    "exact_static_file_set": true,
+    "all_files_match_manifest": true,
+    "no_symlinks": true,
+    "only_site_config": true,
+    "canonical_app": true,
+    "only_static_and_two_link_config_files": true,
+    "no_backend_resources": true,
+    "zip_hash_matches": true,
+    "zip_exact_file_set": true,
+    "zip_matches_dist": true,
+    "bootstrap_css_and_manifest_preserved": true,
+    "only_expected_callback_entry_referenced": true,
+    "reviewed_source_matches_committed": true
+  },
+  "files": [
+    {
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "bytes": 65267,
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "matchesManifest": true
+    },
+    {
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "bytes": 1579238,
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "matchesManifest": true
+    },
+    {
+      "path": "assets/index-goV7mmfZ.js",
+      "bytes": 6382,
+      "sha256": "5dbd613f7e141c18fddab76c69076a81bb5282ef1f28be2bba7f0b3d3ba19d0e",
+      "matchesManifest": true
+    },
+    {
+      "path": "index.html",
+      "bytes": 2554,
+      "sha256": "9ad221a2c51a317a759a4f8dfadd59f0a28ebc1e956dd7cc86ddb311d087e1cd",
+      "matchesManifest": true
+    },
+    {
+      "path": "manifest.json",
+      "bytes": 520,
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "matchesManifest": true
+    }
+  ],
+  "preservedAssets": [
+    {
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "matchesPriorLive": true
+    },
+    {
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "matchesPriorLive": true
+    },
+    {
+      "path": "manifest.json",
+      "matchesPriorLive": true
+    }
+  ],
+  "passed": true
+}
