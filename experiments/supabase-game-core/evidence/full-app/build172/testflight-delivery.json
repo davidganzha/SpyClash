@@ -1,0 +1,44 @@
+{
+  "source_commit": "e8ca0d9f",
+  "app_name": "SpyClash TEST",
+  "app_id": "6822094628",
+  "bundle_id": "com.spyclash.ios.supabasetest",
+  "marketing_version": "1.0.3",
+  "build_number": "172",
+  "scheme": "SpyClash-Supabase-Staging",
+  "team": "3Z64QKNL54",
+  "ipa_sha256": "b6fb9910612aa889d218af473935911f1c6e33da09a3651f6d16c7bdcbd67326",
+  "validation": "PASS",
+  "upload": "SUCCEEDED",
+  "delivery_uuid": "2b5e3eb6-f75d-4408-ba89-705f7b4da257",
+  "processing_state": "VALID",
+  "build_audience_requested": "INTERNAL_ONLY",
+  "group_assignment_verified": true,
+  "production_mutated": false,
+  "physical_installation_verified": false,
+  "real_account_login_verified": false,
+  "data_import_verified": false,
+  "verified_at": "2026-10-13T00:56:17.272Z",
+  "build_id": "2b5e3eb6-f75d-4408-ba89-705f7b4da257",
+  "build_audience_type": "INTERNAL_ONLY",
+  "internal_build_state": "IN_BETA_TESTING",
+  "external_build_state": "NOT_APPLICABLE",
+  "assigned_groups": [
+    {
+      "id": "b8c0d934-1061-4795-83b0-3068a7537dee",
+      "name": "Supabase Internal QA",
+      "is_internal": true,
+      "has_access_to_all_builds": false,
+      "public_link_enabled": false,
+      "testers": [
+        {
+          "name": "David Ganzha"
+        }
+      ]
+    }
+  ],
+  "individual_testers": [],
+  "processing_errors": [],
+  "processing_warnings": [],
+  "packaging_note": "Signed with distribution profile entitlements; disabled TEST Apple/APNs capabilities omitted. Main and embedded TEST widget are both distribution signed. No production Apple identifiers or profiles were modified."
+}

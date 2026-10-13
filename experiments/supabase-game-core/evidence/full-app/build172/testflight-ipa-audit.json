@@ -1,0 +1,69 @@
+{
+  "ipa_sha256": "b6fb9910612aa889d218af473935911f1c6e33da09a3651f6d16c7bdcbd67326",
+  "ipa_bytes": 12113336,
+  "bundles": [
+    {
+      "bundle": "com.spyclash.ios.supabasetest",
+      "build": "172",
+      "version": "1.0.3",
+      "strict_signature": "PASS",
+      "team": "3Z64QKNL54",
+      "profile_uuid": "9de6d2cc-6131-4d2f-99b9-05097dea4580",
+      "entitlements": {
+        "application-identifier": "3Z64QKNL54.com.spyclash.ios.supabasetest",
+        "beta-reports-active": true,
+        "com.apple.developer.team-identifier": "3Z64QKNL54",
+        "get-task-allow": false,
+        "keychain-access-groups": [
+          "3Z64QKNL54.com.spyclash.ios.supabasetest"
+        ]
+      },
+      "internal_marker": true
+    },
+    {
+      "bundle": "com.spyclash.ios.supabasetest.widgets",
+      "build": "172",
+      "version": "1.0.3",
+      "strict_signature": "PASS",
+      "team": "3Z64QKNL54",
+      "profile_uuid": "f90fdcf5-7d9f-45c1-a1a5-7e6980d8424c",
+      "entitlements": {
+        "application-identifier": "3Z64QKNL54.com.spyclash.ios.supabasetest.widgets",
+        "beta-reports-active": true,
+        "com.apple.developer.team-identifier": "3Z64QKNL54",
+        "get-task-allow": false,
+        "keychain-access-groups": [
+          "3Z64QKNL54.com.spyclash.ios.supabasetest.widgets"
+        ]
+      },
+      "internal_marker": null
+    }
+  ],
+  "usage_strings": {
+    "NSCameraUsageDescription": "Scan a test room QR code.",
+    "NSNearbyInteractionUsageDescription": "Measure the distance to nearby SpyClash players so the radar can show precise proximity.",
+    "NSLocalNetworkUsageDescription": "Find nearby SpyClash players and deliver room invitations."
+  },
+  "privacy_manifests": [
+    "PrivacyInfo.xcprivacy",
+    "Starscream_Starscream.bundle/PrivacyInfo.xcprivacy"
+  ],
+  "configuration": {
+    "backendURL": "https://bbkfsgnordtdiblgdzkg.supabase.co",
+    "appleSignInEnabled": false,
+    "googleSignInEnabled": false,
+    "emailOTPLength": 6
+  },
+  "resource_secret_scan": {
+    "resource_files": 5,
+    "hits": []
+  },
+  "fixture_config_absent": true,
+  "embedded_extensions": [
+    "SpyClashSupabaseStagingWidgets.appex"
+  ],
+  "all_files_secret_scan": {
+    "files": 16,
+    "hits": []
+  }
+}

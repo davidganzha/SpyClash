@@ -1,6 +1,6 @@
 # Full application migration — build 172 staging
 
-This extends the accepted build 171 game core to the ordinary SpyClash application. It is an isolated staging implementation, not a production cutover or a new TestFlight delivery. The existing production target still uses Base44.
+This extends the accepted build 171 game core to the ordinary SpyClash application. It is an isolated staging implementation, not a production cutover. The existing production target still uses Base44. The later authorized Internal Only delivery of build 172 is recorded separately in [BUILD172-TESTFLIGHT-VERIFICATION.md](BUILD172-TESTFLIGHT-VERIFICATION.md).
 
 ## Product and provider boundary
 
