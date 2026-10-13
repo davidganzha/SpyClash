@@ -1,0 +1,20 @@
+{
+  "verified_at": "2026-10-13T01:09:23.583171+00:00",
+  "build": "1.0.3 (172)",
+  "project_ref": "bbkfsgnordtdiblgdzkg",
+  "user_report": "Updated and signed in with existing SpyClash password on Ganzha; user replied done.",
+  "verification": "Read-only canonical Base44 entity queries compared with Supabase import provenance and stored rows.",
+  "source_owned_packs": 0,
+  "target_imported_packs": 0,
+  "source_history_rows": 8,
+  "target_history_rows": 8,
+  "checks": {
+    "owned_packs_equal": true,
+    "history_source_ids_equal": true,
+    "history_rows_present": true,
+    "spy_id_equal": true,
+    "profile_fields_equal": true
+  },
+  "social_import": "Deferred; friends and comments not applied.",
+  "google_native_acceptance": "Not tested in build 172; password sign-in used same existing account."
+}

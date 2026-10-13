@@ -23,4 +23,6 @@ The user normally uses Google and confirmed that the same SpyClash account alrea
 
 Before first real login, the [test-cloud baseline](evidence/full-app/build172/account-import-baseline.json) contains zero linked account reservations, owner imports, imported profiles, packs and history rows. The first verified login should copy the existing profile/SPY ID, owned packs and game history before issuing its Supabase session. Friends and comments are a separate reviewed migration and are not promised by first login.
 
-Physical installation, real-account login and data comparison are pending user acceptance. TestFlight availability is not evidence that those steps have passed. The existing tester-level `INSTALLED` status is not build-specific installation proof.
+The user confirmed the requested update and password sign-in on Ganzha. Server read-back confirms the previous Base44 identity has a ready Supabase session and a complete first-link import. Read-only canonical source comparison verifies the same SPY ID, name, avatar and language; all 8 source history IDs have corresponding stored results. The source owns zero word packs, matching the zero imported packs. No password reset or source data mutation was performed. See [account acceptance](evidence/full-app/build172/account-import-acceptance.json).
+
+This verifies the existing password path for the same account normally used with Google; native Google and Apple sign-in were not exercised in 172. Friends and comments remain deferred.
