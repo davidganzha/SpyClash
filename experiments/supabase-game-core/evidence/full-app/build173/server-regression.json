@@ -1,0 +1,82 @@
+{
+  "build": "173",
+  "scope": "Local services/PostgreSQL/Auth; provider network responses are mocked where required. No production acceptance implied.",
+  "suites": [
+    {
+      "suite": "application_backend",
+      "passed": 75,
+      "failed": 0,
+      "log": "app-tests-173.log",
+      "sha256": "85008f391a6b650fc573b91b22c12148804f9245d510e097a2c6cea54a7e2cb4",
+      "summary_tail": [
+        "  ...",
+        "1..75",
+        "# tests 75",
+        "# suites 0",
+        "# pass 75",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 0",
+        "# todo 0",
+        "# duration_ms 10504.882458"
+      ]
+    },
+    {
+      "suite": "game_core",
+      "passed": 14,
+      "failed": 0,
+      "log": "build173-full-core-tests.log",
+      "sha256": "4d056821faf46cd998706f451ab9a1e35a4c8343d43aaaa7067923026a375170",
+      "summary_tail": [
+        "  ...",
+        "1..14",
+        "# tests 14",
+        "# suites 0",
+        "# pass 14",
+        "# fail 0",
+        "# cancelled 0",
+        "# skipped 0",
+        "# todo 0",
+        "# duration_ms 45847.766041"
+      ]
+    },
+    {
+      "suite": "base44_deletion",
+      "passed": 34,
+      "failed": 0,
+      "log": "deletion-receipt-tests-173.log",
+      "sha256": "931532d61b1230f45e04c1989ad5b25f30f5f18debb050f2a236a51678cf6907",
+      "summary_tail": [
+        "running 1 test from ../../base44/functions/deleteAccount/relationship-cleanup_test.ts",
+        "relationship cleanup erases content but tombstones both moderation identities ... ok (1ms)",
+        "running 4 tests from ../../base44/functions/deleteAccount/user-deletion_test.ts",
+        "successful User delete needs no confirmation read ... ok (296\u00b5s)",
+        "lost User delete response is reconciled as committed ... ok (314\u00b5s)",
+        "confirmed surviving User record requests deletion retry ... ok (157\u00b5s)",
+        "unreadable User state remains privacy-safe and ambiguous ... ok (63\u00b5s)",
+        "",
+        "ok | 34 passed | 0 failed (208ms)",
+        ""
+      ]
+    },
+    {
+      "suite": "release_gate_fixtures",
+      "passed": 44,
+      "failed": 0,
+      "log": "build173-release-gate-tests.log",
+      "sha256": "a61bb39ab13cc87ebb68bb7a803552c9b1de61d3452106ad641f30d0c4255648",
+      "summary_tail": [
+        "PASS: gate rejects retired commerce marker 11",
+        "PASS: gate rejects retired commerce marker 12",
+        "PASS: gate rejects retired commerce marker 13",
+        "PASS: gate rejects retired commerce marker 14",
+        "PASS: gate rejects retired commerce marker 15",
+        "PASS: gate rejects retired commerce marker 16",
+        "PASS: gate rejects retired commerce marker 17",
+        "PASS: gate allows non-commerce subscription and plan identifiers",
+        "PASS: gate fails closed when commerce-copy inspection errors",
+        "44 passed, 0 failed"
+      ]
+    }
+  ]
+}

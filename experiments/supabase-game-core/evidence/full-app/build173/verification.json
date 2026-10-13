@@ -1,0 +1,108 @@
+{
+  "build": "1.0.3 (173)",
+  "checkedAt": "2026-10-13 01:35:24 UTC",
+  "scope": "Local main-app Supabase candidate and release preparation. No upload, production deployment, account mutation or paid service change.",
+  "originalReleaseBuild": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 121680,
+      "target": "simulator"
+    },
+    "artifacts": {
+      "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/build_sim_2026-10-13T01-31-10-413Z_pid52353_0d6d8dae.log"
+    },
+    "diagnostics": {
+      "warnings": [],
+      "errors": []
+    }
+  },
+  "mainCandidateBuild": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 28449,
+      "target": "simulator"
+    },
+    "artifacts": {
+      "appPath": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/experiments/supabase-game-core/.local/Main173DerivedData/Build/Products/SupabaseDebug-iphonesimulator/SpyClash.app",
+      "bundleId": "com.spyclash.ios",
+      "processId": 25381,
+      "simulatorId": "FE7D0047-8DF2-4930-97FE-2F3F1548911E",
+      "buildLogPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/build_run_sim_2026-10-13T01-33-27-310Z_pid52353_bc2f230b.log",
+      "runtimeLogPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/com.spyclash.ios_2026-10-13T01-33-54-923Z_helperpid25378_ownerpid52353_4cc10891.log",
+      "osLogPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/com.spyclash.ios_oslog_2026-10-13T01-33-55-750Z_helperpid25430_ownerpid52353_3b902e82.log"
+    },
+    "diagnostics": {
+      "warnings": 27,
+      "warningReason": "Compile-time hybrid branches leave legacy code after return unreachable.",
+      "errors": []
+    }
+  },
+  "mainCandidateReleaseBuild": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 113847,
+      "target": "simulator"
+    },
+    "artifacts": {
+      "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/build_sim_2026-10-13T01-35-58-741Z_pid52353_77393ada.log"
+    },
+    "diagnostics": {
+      "warnings": 27,
+      "errors": []
+    },
+    "configuration": "SupabaseRelease",
+    "architecture": "arm64 Simulator",
+    "signing": "disabled"
+  },
+  "localRegression": {
+    "originalNative": {
+      "passed": 105,
+      "failed": 0
+    },
+    "stagingNative": {
+      "passed": 41,
+      "failed": 0
+    },
+    "applicationBackend": {
+      "passed": 75,
+      "failed": 0
+    },
+    "gameCore": {
+      "passed": 14,
+      "failed": 0
+    },
+    "base44Deletion": {
+      "passed": 34,
+      "failed": 0
+    },
+    "releaseGateFixtures": {
+      "passed": 44,
+      "failed": 0
+    }
+  },
+  "releaseBundleChecks": {
+    "originalReleaseSimulator": "PASS; Base44 mode; candidate config/allowlist excluded; main/widget build 173.",
+    "mainCandidateSimulator": "EXPECTED REJECTION; isolated Supabase test backend cannot pass distribution gate.",
+    "signedDeviceArchive": "Not prepared or uploaded."
+  },
+  "ui": {
+    "mainCandidateLaunch": "Confirmed live process and welcome/auth screens on Simulator; stopped after inspection.",
+    "googleProviderPage": "Real Google sign-in form for SpyClash opened earlier in this turn; no account credentials submitted.",
+    "appleGoogleCompletion": "Not accepted; requires main-bundle device verification.",
+    "screenshot": "main-auth-screen.jpg"
+  },
+  "evidenceFiles": [
+    "native-regression.json",
+    "server-regression.json",
+    "bundle-identities.json",
+    "delete-account-baseline.json",
+    "main-google-provider-form.jpg"
+  ],
+  "pendingReleaseWork": [
+    "Approve exact production backend target and preserve imported real data while identifying test fixtures.",
+    "Deploy and verify named backend bridges, recovery receipt secret and authenticated maintenance schedule only after fresh approval.",
+    "Complete real Apple/Google login, purchase restore, push/Live Activities and disposable-account deletion including lost acknowledgement.",
+    "Reconcile legacy relationships/comments and define transition for old clients and web rooms.",
+    "Prepare and verify a signed archive; obtain separate exact approval before TestFlight upload or App Store submission."
+  ]
+}

@@ -170,6 +170,10 @@ if [ "$haptic_conflict_count" -ne 0 ]; then
 fi
 
 bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
+backend_mode=$(/usr/libexec/PlistBuddy -c 'Print :SpyClashBackendMode' "$app/Info.plist" 2>/dev/null || true)
+if [ "$backend_mode" = 'supabase-main-candidate' ]; then
+  fail "This main-app candidate uses the isolated Supabase test project. Production backend configuration and release approval are required before distribution."
+fi
 marketing_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")
 build_number=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")
 bundle_executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")

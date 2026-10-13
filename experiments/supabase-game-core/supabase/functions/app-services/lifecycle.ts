@@ -1,9 +1,11 @@
 import type { AppContext } from './contracts.ts';
 import { AppServiceError, requireUUID } from './contracts.ts';
 import { cleanupBillingPush } from './membership.ts';
+import { assertMainDeletionEvidence } from './main-account-deletion.ts';
 
 /** Called only while holding the actor's exclusive account gate. */
-export async function deleteAccount(ctx: AppContext, _body: any) {
+export async function deleteAccount(ctx: AppContext, body: any) {
+  const mainDeletion = await assertMainDeletionEvidence(ctx, body);
   const { tx, actor, now } = ctx;
   await tx`insert into app_private.profiles(user_id,state,contact_email,data) values(${actor.id},'deleting','','{}') on conflict(user_id) do update set state='deleting',updated_at=${now}`;
   // Lock shared rooms in a stable order, then end them atomically. No peer can
@@ -46,7 +48,9 @@ export async function deleteAccount(ctx: AppContext, _body: any) {
   // The worker removes the Auth identity and refresh sessions through Auth's
   // supported admin API, retried durably if its network response is lost.
   await tx`insert into app_private.lifecycle_jobs(user_id) values(${actor.id}) on conflict(user_id) do nothing`;
-  return { success: true, deleted: true, auth_cleanup_pending: true };
+  if (mainDeletion) await tx`update app_private.main_account_deletions set phase='complete',updated_at=${now} where user_id=${actor.id}`;
+  return { success: true, deleted: true, auth_cleanup_pending: true,
+    ...(mainDeletion ? {original_account_deleted:true,manual_apple_revocation_required:mainDeletion.manual_apple_revocation_required} : {}) };
 }
 
 /** Idempotent, bounded maintenance pass; only an authenticated internal worker calls it. */

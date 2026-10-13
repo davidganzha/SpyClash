@@ -117,8 +117,8 @@ struct ProfileView: View {
         .overlay {
             if showDeleteConfirmation {
                 SpyConfirmDialog(
-                    title: SupabaseAppRuntime.isEnabled ? stagingDeleteTitle : copy.deleteDialogTitle,
-                    message: SupabaseAppRuntime.isEnabled ? stagingDeleteMessage : copy.deleteDialogMessage,
+                    title: SupabaseAppRuntime.isEnabled && !SupabaseAppRuntime.isMainHybrid ? stagingDeleteTitle : copy.deleteDialogTitle,
+                    message: SupabaseAppRuntime.isEnabled && !SupabaseAppRuntime.isMainHybrid ? stagingDeleteMessage : copy.deleteDialogMessage,
                     confirmTitle: isDeleting ? copy.deletingAccount : copy.deleteDialogAction,
                     cancelTitle: copy.cancel,
                     isBusy: isDeleting
@@ -662,7 +662,7 @@ struct ProfileView: View {
                     .foregroundStyle(SpyTheme.red)
                     .spyKicker(lines: 2)
 
-                Text(copy.dangerBody)
+                Text(SupabaseAppRuntime.isMainHybrid && !SupabaseAppRuntime.deletesOriginalAccount ? mainDeletionUnavailable : copy.dangerBody)
                     .font(.system(size: 11, weight: .medium, design: .default))
                     .foregroundStyle(SpyTheme.muted)
                     .fixedSize(horizontal: false, vertical: true)
@@ -681,7 +681,7 @@ struct ProfileView: View {
                     )
                 }
                 .buttonStyle(SpyButtonStyle(variant: .outline))
-                .disabled(isDeleting)
+                .disabled(isDeleting || (SupabaseAppRuntime.isMainHybrid && !SupabaseAppRuntime.deletesOriginalAccount))
                 .accessibilityIdentifier("profile.deleteAccount")
                 .accessibilityHint(copy.deleteDialogMessage)
             }
@@ -1224,6 +1224,15 @@ struct ProfileView: View {
         }
     }
 
+
+    private var mainDeletionUnavailable: String {
+        switch appState.language {
+        case .en: "Full account deletion is not enabled in this candidate yet. Your existing account and data stay unchanged."
+        case .ru: "Полное удаление аккаунта в этой сборке пока не включено. Основной аккаунт и его данные сохраняются."
+        case .es: "La eliminación completa de la cuenta aún no está activada en esta versión. Tu cuenta y sus datos se conservan."
+        case .uk: "Повне видалення акаунта в цій збірці ще не ввімкнено. Основний акаунт та його дані зберігаються."
+        }
+    }
 
     private var stagingDeleteTitle: String {
         switch appState.language {

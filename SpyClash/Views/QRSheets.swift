@@ -215,6 +215,13 @@ struct RoomQRTargetToggle: View {
     var accessibilityIdentifier = "onlineRoom.qrTargetToggle"
 
     var body: some View {
+        if !SupabaseAppRuntime.permitsWebRoomLinks {
+            segment("iOS", selected: true)
+                .frame(width: width, height: controlHeight)
+                .accessibilityIdentifier(accessibilityIdentifier)
+                .accessibilityLabel(accessibilityLabel)
+                .accessibilityValue("iOS")
+        } else {
         Button {
             HapticManager.shared.fire(.tabSelection)
             withAnimation(.easeOut(duration: 0.18)) {
@@ -249,6 +256,7 @@ struct RoomQRTargetToggle: View {
         .accessibilityLabel(accessibilityLabel)
         .accessibilityValue(target == .web ? "WEB" : "iOS")
         .accessibilityHint(accessibilityHint)
+        }
     }
 
     private func segment(_ title: String, selected: Bool) -> some View {
@@ -778,7 +786,7 @@ enum SpyLinkParser {
         let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased() {
-            if scheme == ((SupabaseTestEnvironment.isEnabled || SupabaseAppRuntime.isEnabled) ? "spyclash-supabasetest" : "spyclash") {
+            if scheme == SupabaseAppRuntime.roomLinkScheme {
                 if ["join", "room"].contains(url.host?.lowercased() ?? ""),
                    let path = url.pathComponents.first(where: { $0 != "/" && !$0.isEmpty }),
                    normalizedCode(path) == nil { return nil }

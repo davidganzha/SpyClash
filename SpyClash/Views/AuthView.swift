@@ -9,6 +9,7 @@ struct AuthView: View {
     @State private var password = ""
     @State private var confirmPassword = ""
     @State private var otp = ""
+    @State private var resendAvailableAt = Date.distantPast
     @State private var authTransitionDirection: CGFloat = 1
     @State private var displayedAppleAuthStage: AppleAuthStage?
     @State private var displayedStandardAuthStage: StandardAuthCinematicStage?
@@ -92,6 +93,12 @@ struct AuthView: View {
         .onChange(of: appState.isBusy) { _, busy in
             if !busy { appleButtonID = UUID() }
         }
+        .onChange(of: appState.authPhase) { _, phase in
+            password = ""
+            confirmPassword = ""
+            otp = ""
+            if case .otp = phase { resendAvailableAt = Date().addingTimeInterval(30) }
+        }
         .interactiveDismissDisabled(appState.hasActiveAuthCinematic || appState.isBusy)
     }
 
@@ -151,7 +158,7 @@ struct AuthView: View {
                     }
                     appState.authError = nil
                     appState.authNotice = nil
-                    move(to: .password(email: email))
+                    move(to: .password(email: email.trimmingCharacters(in: .whitespacesAndNewlines)))
                 } label: {
                     Label(copy.continueAction, systemImage: "arrow.right")
                 }
@@ -196,7 +203,7 @@ struct AuthView: View {
                     }
                     appState.authError = nil
                     appState.authNotice = nil
-                    move(to: .registerPassword(email: email))
+                    move(to: .registerPassword(email: email.trimmingCharacters(in: .whitespacesAndNewlines)))
                 } label: {
                     Label(copy.joinNetworkAction, systemImage: "arrow.right")
                 }
@@ -249,6 +256,22 @@ struct AuthView: View {
                 .disabled(appState.isBusy || (SupabaseAppRuntime.isEnabled
                     ? !SupabaseAppRuntime.acceptsEmailOTP(otp, length: SupabaseAppRuntime.emailOTPLength)
                     : otp.count < 6))
+                TimelineView(.periodic(from: .now, by: 1)) { context in
+                    let seconds = max(0, Int(ceil(resendAvailableAt.timeIntervalSince(context.date))))
+                    Button {
+                        Task {
+                            await appState.resendVerificationCode(email: lockedEmail)
+                            if appState.authError == nil { resendAvailableAt = Date().addingTimeInterval(30) }
+                        }
+                    } label: {
+                        Text(seconds == 0 ? resendCodeLabel : "\(resendCodeLabel) (\(seconds))")
+                            .font(SpyTheme.micro)
+                            .foregroundStyle(SpyTheme.muted)
+                    }
+                    .buttonStyle(SpyWebPressStyle())
+                    .disabled(appState.isBusy || seconds > 0)
+                    .accessibilityIdentifier("auth.resendCode")
+                }
 
             case .forgotPassword(let lockedEmail):
                 Text(copy.requestResetBody)
@@ -392,8 +415,8 @@ struct AuthView: View {
         }
         .buttonStyle(SpyButtonStyle(variant: .ghost))
         .accessibilityIdentifier("auth.google")
-        .disabled(appState.isBusy)
-        .opacity(appState.isBusy ? 0.62 : 1)
+        .disabled(appState.isBusy || !SupabaseAppRuntime.permitsGoogleSignIn)
+        .opacity(appState.isBusy || !SupabaseAppRuntime.permitsGoogleSignIn ? 0.62 : 1)
     }
 
     private var appleButton: some View {
@@ -437,6 +460,15 @@ struct AuthView: View {
         case .ru: "Вход с Apple пока не подключён к тестовой сборке. Используйте почту."
         case .es: "Apple aún no está configurado en esta app de prueba. Usa el correo."
         case .uk: "Вхід з Apple ще не підключено до тестової збірки. Використайте пошту."
+        }
+    }
+
+    private var resendCodeLabel: String {
+        switch appState.language {
+        case .en: "Send a new code"
+        case .ru: "Отправить код ещё раз"
+        case .es: "Enviar un código nuevo"
+        case .uk: "Надіслати код ще раз"
         }
     }
 

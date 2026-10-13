@@ -77,10 +77,19 @@ enum LimitlessPurchaseState: Equatable {
 @MainActor
 protocol AppStoreTransactionClient: AnyObject {
     var currentAccessToken: String? { get }
+    var membershipSessionGeneration: UUID? { get }
     func syncAppStoreTransaction(signedTransaction: String) async throws -> AppStoreEntitlementSyncResponse
 }
 
-extension Base44Client: AppStoreTransactionClient {}
+extension Base44Client: AppStoreTransactionClient {
+    var membershipSessionGeneration: UUID? {
+#if SPYCLASH_SUPABASE
+        sessionGeneration
+#else
+        nil
+#endif
+    }
+}
 
 /// Acknowledges only canonically verified deliveries, scoped to the account that
 /// submitted them. The native manager verifies StoreKit's signature first.
@@ -134,8 +143,9 @@ final class AppStoreTransactionDeliveryStore {
 
     private func requireScope(_ expected: Int) throws {
         try Task.checkCancellation()
-        guard expected == generation, scope.isAuthenticated,
-              scope.accessToken == client.currentAccessToken else { throw CancellationError() }
+        guard expected == generation,
+              scope.matchesSession(accessToken: client.currentAccessToken,
+                                   generation: client.membershipSessionGeneration) else { throw CancellationError() }
     }
 }
 
@@ -450,8 +460,9 @@ final class StoreKitManager {
 
     private func requireScope(_ expected: Int) throws {
         try Task.checkCancellation()
-        guard expected == generation, scope.isAuthenticated,
-              scope.accessToken == client.currentAccessToken else { throw CancellationError() }
+        guard expected == generation,
+              scope.matchesSession(accessToken: client.currentAccessToken,
+                                   generation: client.membershipSessionGeneration) else { throw CancellationError() }
     }
 
     private func beginOperation(_ next: LimitlessPurchaseState) -> UInt64 {

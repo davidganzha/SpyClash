@@ -46,6 +46,45 @@ final class SupabaseSessionTests: XCTestCase {
         XCTAssertNil(session.accessToken)
     }
 
+    func testNearbyDiscoveryRequiresSameSupabaseProject() {
+        XCTAssertEqual(SupabaseAppRuntime.radarServiceType, "spy-bbkfsg")
+        XCTAssertTrue(SupabaseAppRuntime.acceptsRadarBackend("supabase:bbkfsgnordtdiblgdzkg"))
+        for namespace in [nil, "base44", "supabase:otherproject", "supabase:bbkfsgnordtdiblgdzkg "] {
+            XCTAssertFalse(SupabaseAppRuntime.acceptsRadarBackend(namespace))
+        }
+    }
+
+    func testRecoveryLinksRemainInsideTestAppScheme() {
+        XCTAssertEqual(ResetPasswordLinkParser.tokenIfPresent(from: "spyclash-supabasetest://reset-password?token=recovery"), "recovery")
+        XCTAssertEqual(ResetPasswordLinkParser.tokenIfPresent(from: "spyclash-supabasetest://reset-password#reset_token=recovery"), "recovery")
+        XCTAssertNil(ResetPasswordLinkParser.tokenIfPresent(from: "spyclash://reset-password?token=production"))
+        XCTAssertNil(ResetPasswordLinkParser.tokenIfPresent(from: "https://spyclash.com/reset-password?token=production"))
+        let state = AppState(client: Base44Client(), readStoredToken: { nil }, saveStoredToken: { _ in }, clearStoredToken: {})
+        state.handleIncomingURL(URL(string: "https://spyclash.com/reset-password?token=production")!)
+        if case .resetPassword = state.authPhase { XCTFail("TEST claimed the original app's recovery link") }
+        state.handleIncomingURL(URL(string: "spyclash-supabasetest://reset-password?token=recovery")!)
+        if case .resetPassword(let token) = state.authPhase { XCTAssertEqual(token, "recovery") }
+        else { XCTFail("TEST rejected its own recovery link") }
+    }
+
+    func testRecoveryParserRejectsForeignOriginsRoutesAndAmbiguousCredentials() {
+        for link in [
+            "https://example.test/reset-password?token=a", "https://spyclash.com.example.test/reset-password?token=a",
+            "https://user@spyclash.com/reset-password?token=a", "https://spyclash.com:443/reset-password?token=a",
+            "http://spyclash.com/reset-password?token=a", "https://spyclash.com/reset-password/extra?token=a",
+            "https://spyclash.com/%72eset-password?token=a", "https://spyclash.com/reset-password#token=a",
+            "spyclash://reset?token=a", "spyclash://join/reset-password?token=a",
+            "spyclash://reset-password?token=a#token=b", "spyclash://reset-password?token=a&token=b",
+            "spyclash://reset-password?token=a&reset_token=b", "spyclash://reset-password?token=a&access_token=b",
+            "spyclash://reset-password?token=a&error=invalid", "spyclash://reset-password?token=",
+            "spyclash://reset-password?token=%20a", "spyclash://reset-password?token=a%0Ab",
+            "spyclash://reset-password?token=" + String(repeating: "a", count: 20_001)
+        ] {
+            XCTAssertNil(ResetPasswordLinkParser.tokenIfPresent(from: link, customScheme: "spyclash", allowsCanonicalWebLink: true), link)
+        }
+        XCTAssertEqual(ResetPasswordLinkParser.tokenIfPresent(from: "https://spyclash.com/reset-password?token=a%2Bb", customScheme: "spyclash", allowsCanonicalWebLink: true), "a+b")
+    }
+
     func testEmailOTPConfigurationAndValidationUseSixBase44Digits() throws {
         let data = Data("{\"backendURL\":\"https://bbkfsgnordtdiblgdzkg.supabase.co\",\"publishableKey\":\"sb_publishable_test\",\"appleSignInEnabled\":false,\"googleSignInEnabled\":false,\"emailOTPLength\":6}".utf8)
         var configuration = try JSONDecoder().decode(SupabaseAppConfiguration.self, from: data).validated()
@@ -77,12 +116,22 @@ private final class StagingURLProtocol: URLProtocol, @unchecked Sendable {
         var calls = 0
         var response = Data()
         var responses: [String: Data] = [:]
+        var sequences: [String: [(Int, Data)]] = [:]
         var requests: [URLRequest] = []
         var bodies: [Data] = []
         var statusCode = 200
-        func reset(response: Data, statusCode: Int = 200) { lock.lock(); defer { lock.unlock() }; calls = 0; self.response = response; responses = [:]; requests = []; bodies = []; self.statusCode = statusCode }
-        func reset(responses: [String: Data]) { lock.lock(); defer { lock.unlock() }; calls = 0; response = Data(); self.responses = responses; requests = []; bodies = []; statusCode = 200 }
-        func next(request: URLRequest, body: Data) -> Data { lock.lock(); defer { lock.unlock() }; calls += 1; requests.append(request); bodies.append(body); return responses[request.url?.path ?? ""] ?? response }
+        func reset(response: Data, statusCode: Int = 200) { lock.lock(); defer { lock.unlock() }; calls = 0; self.response = response; responses = [:]; sequences = [:]; requests = []; bodies = []; self.statusCode = statusCode }
+        func reset(responses: [String: Data]) { lock.lock(); defer { lock.unlock() }; calls = 0; response = Data(); self.responses = responses; sequences = [:]; requests = []; bodies = []; statusCode = 200 }
+        func reset(sequences: [String: [(Int, Data)]]) { lock.lock(); defer { lock.unlock() }; calls = 0; response = Data(); responses = [:]; self.sequences = sequences; requests = []; bodies = []; statusCode = 200 }
+        func next(request: URLRequest, body: Data) -> (Int, Data) {
+            lock.lock(); defer { lock.unlock() }
+            calls += 1; requests.append(request); bodies.append(body)
+            let path = request.url?.path ?? ""
+            if var queue = sequences[path], !queue.isEmpty {
+                let response = queue.removeFirst(); sequences[path] = queue; return response
+            }
+            return (statusCode, responses[path] ?? response)
+        }
         var recordedRequests: [URLRequest] { lock.lock(); defer { lock.unlock() }; return requests }
         var recordedBodies: [Data] { lock.lock(); defer { lock.unlock() }; return bodies }
         var count: Int { lock.lock(); defer { lock.unlock() }; return calls }
@@ -102,15 +151,161 @@ private final class StagingURLProtocol: URLProtocol, @unchecked Sendable {
                 body.append(contentsOf: buffer.prefix(count))
             }
         }
-        let data = Self.state.next(request: request, body: body)
+        let (status, data) = Self.state.next(request: request, body: body)
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { [self] in
-            let response = HTTPURLResponse(url: request.url!, statusCode: Self.state.statusCode, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
             client?.urlProtocolDidFinishLoading(self)
         }
     }
     override func stopLoading() {}
+}
+
+extension SupabaseSessionTests {
+    private func mockHTTP() -> URLSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StagingURLProtocol.self]
+        return URLSession(configuration: configuration)
+    }
+
+    private func storedAuth(directory: URL? = nil) -> SupabaseAppSession {
+        SupabaseAppSession(configuration: .init(backendURL: "https://bbkfsgnordtdiblgdzkg.supabase.co", publishableKey: "sb_publishable_test"), session: mockHTTP(), storedSession: .init(accessToken: "current-supabase", refreshToken: "refresh", userID: actor, expiresAt: Date().addingTimeInterval(3600)), saveSession: { _ in }, clearSession: {}, mutationJournal: .init(directory: directory), storedLegacy: .init(actorID: actor, legacyUserID: "legacy-person", accessToken: "private-legacy-credential"), saveLegacy: { _ in }, clearLegacy: {})
+    }
+
+    private var renewedSessionResponse: Data {
+        Data("{\"access_token\":\"renewed-supabase\",\"refresh_token\":\"refresh\",\"expires_in\":3600,\"legacy_user_id\":\"legacy-person\",\"user\":{\"id\":\"\(actor)\"}}".utf8)
+    }
+
+    func testSessionExpiryRespectsServerAbsoluteDeadlineAndMaximumLifetime() throws {
+        let deadline = Int(Date().timeIntervalSince1970) + 120
+        var value: [String: JSONValue] = ["access_token": .string("access"), "refresh_token": .string("refresh"), "expires_in": .number(3600), "expires_at": .number(Double(deadline)), "user": .object(["id": .string(actor)])]
+        XCTAssertEqual(try SupabaseAppSession.decodeSession(.object(value)).expiresAt.timeIntervalSince1970, Double(deadline))
+        value["expires_at"] = .number(1)
+        XCTAssertThrowsError(try SupabaseAppSession.decodeSession(.object(value)))
+        value.removeValue(forKey: "expires_at")
+        value["expires_in"] = .number(3601)
+        XCTAssertThrowsError(try SupabaseAppSession.decodeSession(.object(value)))
+    }
+
+    func testExpiredAppCredentialRevalidatesSourceAndReplaysExactImmutableCommandOnce() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        StagingURLProtocol.state.reset(sequences: [
+            "/functions/v1/app-services": [(401, Data(#"{"code":"legacy_session_revalidation_required"}"#.utf8)), (200, Data(#"{"updated":true}"#.utf8))],
+            "/functions/v1/legacy-session": [(200, renewedSessionResponse)]
+        ])
+        let auth = storedAuth(directory: directory)
+        let result: JSONValue = try await auth.service("profile", action: "update", fields: ["display_name": .string("Operative")], write: true)
+        XCTAssertTrue(result["updated"].bool)
+        let requests = StagingURLProtocol.state.recordedRequests
+        XCTAssertEqual(requests.map { $0.url!.path }, ["/functions/v1/app-services", "/functions/v1/legacy-session", "/functions/v1/app-services"])
+        XCTAssertEqual(requests.map { $0.value(forHTTPHeaderField: "Authorization") }, ["Bearer current-supabase", "Bearer private-legacy-credential", "Bearer renewed-supabase"])
+        let bodies = StagingURLProtocol.state.recordedBodies
+        XCTAssertEqual(try JSONDecoder().decode(JSONValue.self, from: bodies[0]), try JSONDecoder().decode(JSONValue.self, from: bodies[2]))
+        XCTAssertEqual(try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: directory.appendingPathComponent(actor + ".json"))), .array([]))
+    }
+
+    func testExplicitSessionRevocationDoesNotSilentlySignInOrDiscardPendingMutation() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        StagingURLProtocol.state.reset(response: Data(#"{"code":"session_revoked"}"#.utf8), statusCode: 401)
+        do {
+            let _: JSONValue = try await storedAuth(directory: directory).service("profile", action: "update", fields: ["display_name": .string("Operative")], write: true)
+            XCTFail("Revoked session was accepted")
+        } catch let error as Base44Error { XCTAssertEqual(error.code, "session_revoked") }
+        XCTAssertEqual(StagingURLProtocol.state.count, 1)
+        let pending = try JSONDecoder().decode(JSONValue.self, from: Data(contentsOf: directory.appendingPathComponent(actor + ".json")))
+        XCTAssertEqual(pending.array.count, 1)
+    }
+
+    func testRevalidationIsBoundedToOneRetry() async throws {
+        StagingURLProtocol.state.reset(sequences: [
+            "/functions/v1/app-services": Array(repeating: (401, Data(#"{"code":"legacy_session_revalidation_required"}"#.utf8)), count: 2),
+            "/functions/v1/legacy-session": [(200, renewedSessionResponse)]
+        ])
+        do { let _: JSONValue = try await storedAuth().service("profile", action: "current"); XCTFail("Repeated rejection was accepted") }
+        catch let error as Base44Error { XCTAssertEqual(error.code, "legacy_session_revalidation_required") }
+        XCTAssertEqual(StagingURLProtocol.state.count, 3)
+    }
+
+    func testGameCredentialCannotRevalidateIntoAnotherAccount() async throws {
+        StagingURLProtocol.state.reset(sequences: [
+            "/functions/v1/full-game-core": [(401, Data(#"{"code":"jwt_expired"}"#.utf8))],
+            "/functions/v1/legacy-session": [(200, Data(#"{"access_token":"wrong-account","refresh_token":"refresh","expires_in":3600,"legacy_user_id":"legacy-person","user":{"id":"22222222-2222-4222-8222-222222222222"}}"#.utf8))]
+        ])
+        let auth = storedAuth()
+        do { _ = try await auth.fullGame(.object(["action": .string("get_active_room")])); XCTFail("Account changed during refresh") }
+        catch { XCTAssertEqual(StagingURLProtocol.state.count, 2) }
+        XCTAssertEqual(auth.userID, actor)
+        XCTAssertEqual(auth.accessToken, "current-supabase")
+    }
+
+    func testLegacyRecoveryAndResendUseOwnerEmailWithoutSessionHeaders() async throws {
+        StagingURLProtocol.state.reset(response: Data("{}".utf8))
+        let auth = SupabaseLegacyAuth(session: mockHTTP())
+        try await auth.resend(email: "  person@example.com\n")
+        try await auth.requestRecovery(email: "person@example.com")
+        try await auth.resetPassword(token: "base44-recovery-token", password: " exact password ")
+        let requests = StagingURLProtocol.state.recordedRequests
+        XCTAssertEqual(requests.map { $0.url!.lastPathComponent }, ["resend-otp", "reset-password-request", "reset-password"])
+        XCTAssertTrue(requests.allSatisfy { $0.url?.host == "spyclash.com" && $0.value(forHTTPHeaderField: "Authorization") == nil })
+        let bodies = try StagingURLProtocol.state.recordedBodies.map { try JSONDecoder().decode(JSONValue.self, from: $0) }
+        XCTAssertEqual(bodies[0]["email"].string, "person@example.com")
+        XCTAssertEqual(bodies[2]["new_password"].string, " exact password ")
+        XCTAssertEqual(bodies[2]["reset_token"].string, "base44-recovery-token")
+    }
+
+    func testInvalidRecoveryTokensAndProviderKeysNeverReachBase44() async throws {
+        StagingURLProtocol.state.reset(response: Data("{}".utf8))
+        let auth = SupabaseLegacyAuth(session: mockHTTP())
+        for token in ["", "line\nbreak", " leading", "sb_publishable_client", "sb_secret_server"] {
+            do { try await auth.resetPassword(token: token, password: "new-password"); XCTFail("Invalid recovery token was sent") }
+            catch let error as Base44Error { XCTAssertEqual(error.code, "invalid_recovery_token") }
+            do { try await auth.registerProvider(legacyToken: token, appleBindingTicket: nil); XCTFail("Invalid provider token was sent") }
+            catch let error as Base44Error { XCTAssertEqual(error.code, "wrong_credential_provider") }
+        }
+        XCTAssertEqual(StagingURLProtocol.state.count, 0)
+    }
+
+    func testLegacyErrorsPreserveProviderCodeAndRetryability() async throws {
+        StagingURLProtocol.state.reset(response: Data(#"{"error":{"code":"rate_limited","error_description":"Wait before requesting another code."}}"#.utf8), statusCode: 429)
+        do { try await SupabaseLegacyAuth(session: mockHTTP()).resend(email: "person@example.com"); XCTFail("Rate limit was accepted") }
+        catch let error as Base44Error {
+            XCTAssertEqual(error.code, "rate_limited")
+            XCTAssertEqual(error.message, "Wait before requesting another code.")
+            XCTAssertTrue(error.retryable)
+        }
+    }
+
+    func testAccountDeletionUsesLongTimeoutAndKeepsProviderCredentialOutOfJournal() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        StagingURLProtocol.state.reset(response: Data(#"{"code":"account_deletion_pending"}"#.utf8), statusCode: 503)
+        do { let _: JSONValue = try await storedAuth(directory: directory).service("profile", action: "delete", fields: ["deletion_scope": .string("account")], write: true, includeLegacyCredential: true); XCTFail("Pending delete was accepted") }
+        catch let error as Base44Error { XCTAssertEqual(error.code, "account_deletion_pending") }
+        XCTAssertEqual(StagingURLProtocol.state.recordedRequests.first?.timeoutInterval, 90)
+        let body = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(StagingURLProtocol.state.recordedBodies.first))
+        XCTAssertEqual(body["base44_access_token"].string, "private-legacy-credential")
+        let saved = try String(contentsOf: directory.appendingPathComponent(actor + ".json"), encoding: .utf8)
+        XCTAssertFalse(saved.contains("private-legacy-credential"))
+        XCTAssertFalse(saved.contains("base44_access_token"))
+        XCTAssertTrue(saved.contains("request_id"))
+    }
+
+    func testMembershipCredentialOnlyReachesExplicitBridgeActions() async throws {
+        StagingURLProtocol.state.reset(response: Data("{}".utf8))
+        let auth = storedAuth()
+        for action in ["check", "prepare", "sync_transaction"] {
+            let _: JSONValue = try await auth.service("membership", action: action, includeLegacyCredential: true)
+        }
+        XCTAssertEqual(StagingURLProtocol.state.count, 3)
+        for data in StagingURLProtocol.state.recordedBodies {
+            XCTAssertEqual(try JSONDecoder().decode(JSONValue.self, from: data)["base44_access_token"].string, "private-legacy-credential")
+        }
+        do { let _: JSONValue = try await auth.service("membership", action: "arbitrary", includeLegacyCredential: true); XCTFail("Unapproved action received credential") }
+        catch { XCTAssertEqual(StagingURLProtocol.state.count, 3) }
+    }
 }
 
 extension SupabaseSessionTests {
@@ -122,6 +317,7 @@ extension SupabaseSessionTests {
         let http = URLSession(configuration: configuration)
         let expired = SupabaseStoredSession(accessToken: "expired", refreshToken: "one-use-refresh", userID: userID, expiresAt: .distantPast)
         let auth = SupabaseAppSession(configuration: .init(backendURL: "https://bbkfsgnordtdiblgdzkg.supabase.co", publishableKey: "sb_publishable_test"), session: http, storedSession: expired, saveSession: { _ in }, clearSession: {}, storedLegacy: .init(actorID: userID, legacyUserID: "legacy-person", accessToken: "legacy-bearer"), saveLegacy: { _ in }, clearLegacy: {})
+        let loginGeneration = auth.generation
         let tokens = try await withThrowingTaskGroup(of: String.self) { group in
             for _ in 0..<8 { group.addTask { try await auth.ensureAccessToken() } }
             var values: [String] = []
@@ -133,6 +329,7 @@ extension SupabaseSessionTests {
         XCTAssertEqual(StagingURLProtocol.state.recordedRequests.first?.url?.path, "/functions/v1/legacy-session")
         XCTAssertEqual(StagingURLProtocol.state.recordedRequests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer legacy-bearer")
         XCTAssertEqual(auth.session?.refreshToken, "rotated-refresh")
+        XCTAssertEqual(auth.generation, loginGeneration, "Transport rotation must preserve the account's login scope")
     }
 }
 

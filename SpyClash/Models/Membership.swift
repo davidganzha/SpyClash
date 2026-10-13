@@ -73,7 +73,32 @@ struct MembershipSnapshot: Decodable, Equatable {
 struct MembershipScope: Equatable {
     let userID: String?
     let accessToken: String?
+    let sessionGeneration: UUID?
+
+    init(userID: String?, accessToken: String?, sessionGeneration: UUID? = nil) {
+        self.userID = userID
+        self.accessToken = accessToken
+        self.sessionGeneration = sessionGeneration
+    }
+
     var isAuthenticated: Bool { userID?.isEmpty == false && accessToken?.isEmpty == false }
+
+    static func == (lhs: Self, rhs: Self) -> Bool {
+        guard lhs.userID == rhs.userID, lhs.isAuthenticated == rhs.isAuthenticated else { return false }
+        if lhs.sessionGeneration != nil || rhs.sessionGeneration != nil {
+            return lhs.sessionGeneration == rhs.sessionGeneration
+        }
+        return lhs.accessToken == rhs.accessToken
+    }
+
+    func matchesSession(accessToken: String?, generation: UUID?) -> Bool {
+        guard isAuthenticated, accessToken?.isEmpty == false else { return false }
+        // Supabase refresh rotates the bearer without replacing the signed-in
+        // account. Logout, replacement login and account switching rotate this
+        // generation, so late StoreKit responses still cannot cross sessions.
+        if let sessionGeneration { return sessionGeneration == generation }
+        return self.accessToken == accessToken
+    }
 }
 
 struct MembershipActivityScope: Equatable {

@@ -1,6 +1,6 @@
 # Full application migration — build 172 staging
 
-This extends the accepted build 171 game core to the ordinary SpyClash application. It is an isolated staging implementation, not a production cutover. The existing production target still uses Base44. The later authorized Internal Only delivery of build 172 is recorded separately in [BUILD172-TESTFLIGHT-VERIFICATION.md](BUILD172-TESTFLIGHT-VERIFICATION.md).
+This extends the accepted build 171 game core to the ordinary SpyClash application. It is an isolated staging implementation, not a production cutover. The existing production Release configuration still uses Base44. Build 173 adds the original-bundle hybrid candidate; see [main App Store preparation](../../release/APP-STORE-173-PREPARATION.md). The later authorized Internal Only delivery of build 172 is recorded separately in [BUILD172-TESTFLIGHT-VERIFICATION.md](BUILD172-TESTFLIGHT-VERIFICATION.md).
 
 ## Product and provider boundary
 
@@ -59,6 +59,6 @@ npm run full-core:test
 
 The local runner only uses the existing isolated loopback Supabase stack. The cloud check uses existing synthetic accounts on allowlisted project `bbkfsgnordtdiblgdzkg`; it does not provision paid resources or invoke production AI generation.
 
-Final checks passed: 60 application backend tests, 14 game-core tests, 24 distinct native tests across the recorded runs, and 8 isolated cloud verification groups. Both the staging build and the original production configuration compile. The cloud checks include the bridge's rejection paths; a successful live Base44 login/import/generation roundtrip is still unverified.
+Final checks passed: 60 application backend tests, 14 game-core tests, 24 distinct native tests across the recorded runs, and 8 isolated cloud verification groups. Both the staging build and the original production configuration compile. The cloud checks include the bridge's rejection paths; the existing-account password login and profile/history import were subsequently verified in [build 172 acceptance](BUILD172-TESTFLIGHT-VERIFICATION.md). Live AI generation and native Apple/Google completion are separate checks.
 
 Before a production cutover, finish the original-bundle provider checks, complete and reconcile the approved legacy social/content snapshot, enable delivery workers as appropriate, and prepare a concrete rollout/rollback operation. Production deployment and an App Store/TestFlight action each require fresh approval for their exact target. This change does not provide that approval.

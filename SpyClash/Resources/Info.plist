@@ -47,6 +47,8 @@
 	<array>
 		<string>_spyclash-radar._tcp</string>
 		<string>_spyclash-radar._udp</string>
+		<string>_spy-bbkfsg._tcp</string>
+		<string>_spy-bbkfsg._udp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan room QR codes and stabilize nearby Radar positions. / Escanear QR y estabilizar posiciones del Radar. / Сканировать QR-коды и стабилизировать позиции на Радаре. / Сканувати QR-коди й стабілізувати позиції гравців на Радарі.</string>
@@ -58,6 +60,8 @@
 	<true/>
 	<key>NSSupportsLiveActivitiesFrequentUpdates</key>
 	<true/>
+	<key>SpyClashBackendMode</key>
+	<string>$(SPYCLASH_BACKEND_MODE)</string>
 	<key>UIAppFonts</key>
 	<array>
 		<string>Rajdhani-Bold.ttf</string>

@@ -1,0 +1,91 @@
+{
+  "date": "2026-10-13",
+  "app_id": "69a0e57fa939f578082f8091",
+  "function": "deleteAccount",
+  "operation": "read_only_cli_pull",
+  "entry_name_normalization": "entry.ts -> main.ts",
+  "files": [
+    {
+      "file": "account-deletion-protection.ts",
+      "remote_sha256": "421da9f49b914e5cb4450a6aa28d841055c2398f1da7e0c0014537780a85b074",
+      "head_sha256": "421da9f49b914e5cb4450a6aa28d841055c2398f1da7e0c0014537780a85b074",
+      "matches": true
+    },
+    {
+      "file": "account-deletion-response.ts",
+      "remote_sha256": "3682b98ee8d6542408ea2f865aa2c4d4cac40b8b9cd55786e98ed44c3dd4d82f",
+      "head_sha256": "3682b98ee8d6542408ea2f865aa2c4d4cac40b8b9cd55786e98ed44c3dd4d82f",
+      "matches": true
+    },
+    {
+      "file": "account-deletion.ts",
+      "remote_sha256": "a24f3ee05a8177732d697475f9c71b60a20287b2b22ce210446e54fd967b30f9",
+      "head_sha256": "a24f3ee05a8177732d697475f9c71b60a20287b2b22ce210446e54fd967b30f9",
+      "matches": true
+    },
+    {
+      "file": "apple-account-binding.ts",
+      "remote_sha256": "537e390b2f887a2d170234df9c8eb0bad1ea9788b6186a7d0d171d74af4f27fa",
+      "head_sha256": "537e390b2f887a2d170234df9c8eb0bad1ea9788b6186a7d0d171d74af4f27fa",
+      "matches": true
+    },
+    {
+      "file": "apple-account-deletion-lease.ts",
+      "remote_sha256": "5a00df78d5ba83084cba92f1b4407a2978b6220ca11acb1471d8b5ee934246e9",
+      "head_sha256": "5a00df78d5ba83084cba92f1b4407a2978b6220ca11acb1471d8b5ee934246e9",
+      "matches": true
+    },
+    {
+      "file": "apple-sign-in-credential.ts",
+      "remote_sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+      "head_sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+      "matches": true
+    },
+    {
+      "file": "base44-context.ts",
+      "remote_sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f",
+      "head_sha256": "16dfd39666facf2415fe509783fe820128b5ac101bfdb0b8a5a25f4c2bed814f",
+      "matches": true
+    },
+    {
+      "file": "billing-identity-lifecycle.ts",
+      "remote_sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "head_sha256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+      "matches": false
+    },
+    {
+      "file": "deletion-state-machine.ts",
+      "remote_sha256": "c1a389a62ef9aec1184b7d5e6ae980257d33870ccd918fc26217b9a1ccb4b446",
+      "head_sha256": "c1a389a62ef9aec1184b7d5e6ae980257d33870ccd918fc26217b9a1ccb4b446",
+      "matches": true
+    },
+    {
+      "file": "main.ts",
+      "remote_sha256": "db06e45624aef90d869fcff90c97cd09807d742ae28c203d58ccf0db0f314197",
+      "head_sha256": "db06e45624aef90d869fcff90c97cd09807d742ae28c203d58ccf0db0f314197",
+      "matches": true
+    },
+    {
+      "file": "relationship-cleanup.ts",
+      "remote_sha256": "13fa2fcbea347d9d9153300ebd6d930c94809f4c6bc8987d81c78056669b7749",
+      "head_sha256": "13fa2fcbea347d9d9153300ebd6d930c94809f4c6bc8987d81c78056669b7749",
+      "matches": true
+    },
+    {
+      "file": "user-deletion.ts",
+      "remote_sha256": "0e481b3bf20b93cb8e3b8fc301f6e309b7e8a27def7bdfe3599ccf9c37c3716e",
+      "head_sha256": "0e481b3bf20b93cb8e3b8fc301f6e309b7e8a27def7bdfe3599ccf9c37c3716e",
+      "matches": true
+    }
+  ],
+  "all_match": false,
+  "prepared_bundle": "experiments/supabase-game-core/base44-prepared/deleteAccount",
+  "prepared_changed_files": [
+    "entry.ts",
+    "deletion-receipt.ts"
+  ],
+  "preserved_remote_drift": [
+    "billing-identity-lifecycle.ts"
+  ],
+  "prepared_unchanged_hashes_match_remote": true
+}

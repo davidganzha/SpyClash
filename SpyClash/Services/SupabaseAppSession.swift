@@ -11,7 +11,7 @@ struct SupabaseStoredSession: Codable, Equatable, Sendable {
 }
 
 enum SupabaseSessionKeychain {
-    private static var service: String { (Bundle.main.bundleIdentifier ?? "com.spyclash.ios.supabasetest") + ".supabase.bbkfsgnordtdiblgdzkg" }
+    private static var service: String { (Bundle.main.bundleIdentifier ?? "com.spyclash.ios.supabasetest") + ".supabase." + SupabaseAppConfiguration.configuredProjectReference }
     private static var identity: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword, kSecAttrService as String: service, kSecAttrAccount as String: "session-v1"]
     }
@@ -114,7 +114,7 @@ final class SupabaseAppSession {
 
     /// The exchange verifies the Base44 identity on the server. Local profile fields are never trusted.
     func exchangeLegacySession(_ legacyToken: String) async throws -> LoginResponse {
-        guard !legacyToken.isEmpty, !SupabaseLegacyAuth.isSupabaseBearer(legacyToken), legacyToken != session?.accessToken,
+        guard SupabaseLegacyAuth.isValidCredential(legacyToken), !SupabaseLegacyAuth.isSupabaseBearer(legacyToken), legacyToken != session?.accessToken,
               candidates[legacyToken] == nil else { throw Self.invalidSession }
         let epoch = generation
         let response = try await legacyExchange(legacyToken, epoch: epoch)
@@ -195,18 +195,23 @@ final class SupabaseAppSession {
         guard epoch == generation else { throw CancellationError() }
         let actorID = userID
         let legacyToken = includeLegacyCredential ? try legacyAccessToken() : nil
-        guard !includeLegacyCredential || (service == "legacy" && ["link", "generate"].contains(action)) else { throw Self.invalidSession }
+        let permitsLegacyCredential = (service == "legacy" && ["link", "generate"].contains(action)) ||
+            (service == "membership" && ["check", "prepare", "sync_transaction"].contains(action)) ||
+            (service == "profile" && action == "delete" && fields["deletion_scope"]?.string == "account")
+        guard !includeLegacyCredential || permitsLegacyCredential else { throw Self.invalidSession }
         if write { body = try mutationJournal.prepare(actorID: actorID, body: body) }
         do {
             var wireBody = body
             if let legacyToken { wireBody["base44_access_token"] = .string(legacyToken) }
-            let value = try await request(path: "/functions/v1/app-services", method: "POST", body: .object(wireBody), token: credential)
+            let value = try await authenticatedRequest(path: "/functions/v1/app-services", body: .object(wireBody), token: credential, epoch: epoch, permitsRevalidation: token == nil)
             guard epoch == generation else { throw CancellationError() }
             let result = try JSONDecoder.base44.decode(T.self, from: value.data())
             if write, let requestID = body["request_id"]?.string { try mutationJournal.acknowledge(actorID: actorID, requestID: requestID) }
             return result
         } catch let error as Base44Error {
-            if write, let status = error.statusCode, (400..<500).contains(status), let requestID = body["request_id"]?.string {
+            // An expired/revoked credential is rejected before the command runs.
+            // Preserve its immutable intent so sign-in can safely resume it.
+            if write, let status = error.statusCode, (400..<500).contains(status), status != 401, let requestID = body["request_id"]?.string {
                 try mutationJournal.acknowledge(actorID: actorID, requestID: requestID)
             }
             throw error
@@ -216,7 +221,7 @@ final class SupabaseAppSession {
         let epoch = generation
         let token = try await ensureAccessToken()
         do {
-            let result = try await request(path: "/functions/v1/full-game-core", method: "POST", body: body, token: token)
+            let result = try await authenticatedRequest(path: "/functions/v1/full-game-core", body: body, token: token, epoch: epoch)
             guard epoch == generation else { throw CancellationError() }
             return result
         } catch let error as Base44Error {
@@ -227,16 +232,42 @@ final class SupabaseAppSession {
         guard let access = value["access_token"].string, !access.isEmpty,
               let refresh = value["refresh_token"].string, !refresh.isEmpty,
               let user = value["user"]["id"].string, UUID(uuidString: user) != nil,
-              value["expires_in"].integer > 0 else { throw invalidSession }
-        return SupabaseStoredSession(accessToken: access, refreshToken: refresh, userID: user.lowercased(), expiresAt: Date().addingTimeInterval(TimeInterval(value["expires_in"].integer)))
+              (1...3600).contains(value["expires_in"].integer) else { throw invalidSession }
+        let relativeExpiry = Date().addingTimeInterval(TimeInterval(value["expires_in"].integer))
+        let expiresAt: Date
+        if value["expires_at"].integer > 0 {
+            expiresAt = min(relativeExpiry, Date(timeIntervalSince1970: TimeInterval(value["expires_at"].integer)))
+            guard expiresAt.timeIntervalSinceNow > 0 else { throw invalidSession }
+        } else { expiresAt = relativeExpiry }
+        return SupabaseStoredSession(accessToken: access, refreshToken: refresh, userID: user.lowercased(), expiresAt: expiresAt)
+    }
+
+    /// Renew an expired transport credential once, retaining the exact command
+    /// body and request UUID. Explicit revocation is not an expiry signal.
+    private func authenticatedRequest(path: String, body: JSONValue, token: String, epoch: UUID, permitsRevalidation: Bool = true) async throws -> JSONValue {
+        do { return try await request(path: path, method: "POST", body: body, token: token) }
+        catch let error as Base44Error where permitsRevalidation && Self.requiresSessionRevalidation(error) {
+            guard epoch == generation, !Task.isCancelled else { throw CancellationError() }
+            let refreshed = try await ensureAccessToken(forceLegacyValidation: true)
+            guard epoch == generation, !Task.isCancelled else { throw CancellationError() }
+            return try await request(path: path, method: "POST", body: body, token: refreshed)
+        }
+    }
+
+    private static func requiresSessionRevalidation(_ error: Base44Error) -> Bool {
+        guard error.statusCode == 401 else { return false }
+        return ["legacy_session_revalidation_required", "jwt_expired"].contains(error.code ?? "") ||
+            (error.code == "http_401" && ["JWT expired", "Invalid JWT"].contains(error.message))
     }
     private func request(path: String, method: String, body: JSONValue, token: String? = nil) async throws -> JSONValue {
         let configuration = try configuration()
         guard path.hasPrefix("/auth/v1/") || ["/functions/v1/app-services", "/functions/v1/full-game-core", "/functions/v1/legacy-session"].contains(path),
-              let url = URL(string: configuration.backendURL + path), url.host == "bbkfsgnordtdiblgdzkg.supabase.co" else { throw Self.invalidSession }
+              let origin = URL(string: configuration.backendURL),
+              let url = URL(string: configuration.backendURL + path), url.scheme == origin.scheme, url.host == origin.host, url.port == origin.port else { throw Self.invalidSession }
         var request = URLRequest(url: url)
         request.httpMethod = method
         if path == "/functions/v1/legacy-session" { request.timeoutInterval = 90 }
+        else if path == "/functions/v1/app-services", body["service"].string == "profile", body["action"].string == "delete", body["deletion_scope"].string == "account" { request.timeoutInterval = 90 }
         else if path == "/functions/v1/app-services", body["service"].string == "legacy", body["action"].string == "generate" { request.timeoutInterval = 75 }
         else { request.timeoutInterval = 20 }
         request.setValue(configuration.publishableKey, forHTTPHeaderField: "apikey")

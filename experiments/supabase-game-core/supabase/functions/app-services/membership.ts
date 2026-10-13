@@ -2,6 +2,7 @@ import { AppServiceError, requireUUID, type AppContext, type AppActor } from './
 import { digest } from './integration-crypto.ts';
 import { normalizeAppleEntitlement, publicAppleEntitlement, shouldApplyProviderEvent } from './billing-rules/apple-entitlement.ts';
 import { readCanonicalAppleSubscriptionStatus } from './billing-rules/apple-subscription-status.ts';
+import {usesLegacyBilling,legacyBillingConfigured,prepareLegacyBilling,dispatchLegacyBilling} from './legacy-billing.ts';
 
 export const WEEKLY_PRODUCT = 'com.spyclash.ios.limitless.weekly';
 const TEST_BUNDLE = 'com.spyclash.ios.supabasetest';
@@ -10,6 +11,8 @@ type Config = Record<string,string|undefined>;
 type Preparation = {actor:AppActor,body:Record<string,any>,config:Config};
 
 export function membershipCapabilities(config: Config) {
+  if (usesLegacyBilling(config)) return {product_id:WEEKLY_PRODUCT,provider:'base44',apple_verification_configured:legacyBillingConfigured(config),
+    apple_purchase_enabled:legacyBillingConfigured(config)&&config.APP_LEGACY_PURCHASES_ENABLED==='true'};
   const verification = config.APP_IAP_ENABLED === 'true' && config.APP_IAP_BUNDLE_ID === TEST_BUNDLE
     && config.APP_IAP_ENVIRONMENT === 'Sandbox' && Boolean(config.APP_IAP_KEY_ID && config.APP_IAP_ISSUER_ID
       && config.APP_IAP_PRIVATE_KEY_P8 && config.APP_IAP_ROOT_CERTIFICATES_JSON);
@@ -20,7 +23,11 @@ export function membershipCapabilities(config: Config) {
 
 /** External verification finishes before the transaction. The opaque evidence is
  * not serializable authorization and is never accepted from the HTTP body. */
-export async function prepareMembershipExternal(input: Preparation, dependencies?: { verify: typeof verifyApple }) {
+export async function prepareMembershipExternal(input: Preparation, dependencies?: { verify?: typeof verifyApple,db?:any,fetch?:typeof fetch }) {
+  if (usesLegacyBilling(input.config)) {
+    if (!dependencies?.db) throw new AppServiceError('legacy_billing_unconfigured','The existing billing bridge requires durable storage.',503);
+    return await prepareLegacyBilling(input,{db:dependencies.db,fetch:dependencies.fetch});
+  }
   if (input.body.action !== 'sync_transaction') return undefined;
   if (!membershipCapabilities(input.config).apple_verification_configured) throw new AppServiceError('apple_verification_unconfigured','App Store verification is not configured for this isolated app.',503);
   const signed = input.body.signed_transaction;
@@ -52,6 +59,7 @@ async function verifyApple(signed: string, config: Config) {
 }
 
 export async function dispatchMembership(ctx: AppContext, body: Record<string,any>) {
+  if (usesLegacyBilling(ctx.config)) return await dispatchLegacyBilling(ctx,body);
   const action = ({check_subscription:'check',prepare_purchase:'prepare'} as Record<string,string>)[body.action] || body.action;
   if (action === 'check') return await checkMembership(ctx);
   if (action === 'prepare') {

@@ -1,0 +1,918 @@
+{
+  "build": "173",
+  "scope": "Local Simulator regression tests; real provider completion is not established.",
+  "original": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 36811,
+      "counts": {
+        "passed": 105,
+        "failed": 0,
+        "skipped": 0
+      },
+      "target": "simulator"
+    },
+    "artifacts": {
+      "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/test_sim_2026-10-13T01-25-49-968Z_pid7914_f9da8ddf.log",
+      "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-13T01-25-49-968Z_pid7914_e725b794.xcresult",
+      "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/test-products/test_sim_2026-10-13T01-25-49-968Z_pid7914_8bf4973d.xctestproducts"
+    },
+    "testCases": [
+      {
+        "suite": "AppleAuthenticationOwnershipTests",
+        "test": "testCurrentAppleCancellationClearsOwnershipAndAllowsNextRequest",
+        "status": "passed",
+        "durationMs": 11
+      },
+      {
+        "suite": "AppleAuthenticationOwnershipTests",
+        "test": "testLateCancelledAppleRequestCannotConsumeReplacementAuthorization",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testCancelledRecoveryCannotOverwriteNextAuthenticationPhase",
+        "status": "passed",
+        "durationMs": 60
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testCanonicalRecoveryLinkOpensNativePasswordFormWithoutReplacingCredentials",
+        "status": "passed",
+        "durationMs": 7
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testErrorAndMalformedCallbacksNeverProvision",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testGoogleLoginURLUsesFixedPublicCallbackPage",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testLogoutDuringEmailLoginCannotInstallLateCredentials",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testLogoutDuringProviderSyncCannotRestoreAccount",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testOldAppleRevealCannotChangeReplacementAuthentication",
+        "status": "passed",
+        "durationMs": 82
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testOldProviderFailureCannotClearReplacementCredentials",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testOTPDoesNotMakeUnauthorizedLegacyProfileRequest",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testProfileFallbackUsesCandidateBearerWithoutReplacingSession",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testProfileSyncFailurePreservesPreviousSession",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testRecoveryAndResendCompleteWithoutCreatingSession",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testRecoveryLinkSupersedesPendingEmailAndProviderLoginWithoutErasingSession",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "AuthenticationFlowTests",
+        "test": "testUntrustedRecoveryLinksCannotReplaceNativeAuthPhase",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testAccountRotationAndRevocationClearUnlockPresentation",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testAccountRotationRejectsLateTransactionBeforeFinish",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testAccountSwitchDiscardsLateResultAndClearsAccessImmediately",
+        "status": "passed",
+        "durationMs": 7
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testApplePurchaseRequiresExplicitServerFlagAndVerifiedFreeState",
+        "status": "passed",
+        "durationMs": 11
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testAuthoritativeRefreshSupersedesOlderFreeReadAfterPurchase",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testCancelledAppleRestoreDoesNotRepeatReconciliationOrDiscardVerifiedAccess",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testCapabilitiesKeepStableOrderAndIncludeUnlimitedWordPacks",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testConcurrentRestoreDoesNotDuplicateHistoryRead",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testConcurrentSubscribeIntentsShareOnePreflightAndCannotBuyAfterAccountSwitch",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testContradictoryOrUnknownResponsesAreNotResolved",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testCrossgradeDeliveryRequiresVerifiedSubmittedProductAndKnownCanonicalProduct",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testCurrentActivationCanRecoverAfterRestoreFailure",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testDecodeCurrentContractIncludingExplicitApplePurchaseFlag",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testExistingPremiumStyleIsPreservedButNewStyleNeedsAccess",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testExpiredActiveResponseCannotOfferAnotherPurchase",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testExpiryInvalidatesObservedAccessWithoutWaitingForNetworkPoll",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testFailedAppleSyncCannotUseCachedMembershipAsRestoreProof",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testFailedCanonicalDeliveryRemainsUnfinishedAndCanRetry",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testGenerationUsageCannotCreateAnUnverifiedMembershipSnapshot",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testGenerationUsageClampsNegativeCountersAndAcceptsAbsentCounters",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testGenerationUsageUpdatesSnapshotWithoutOverlappingAccessOrChangingEntitlement",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testHybridBearerRefreshKeepsPendingDeliveryAndFinishesOnce",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testHybridMembershipRefreshSurvivesBearerRotationRebind",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testHybridSessionReplacementRejectsPendingDeliveryBeforeUIRebind",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testInitialPaidStateAndUniversalAccessDoNotCelebratePurchase",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testLateActivationFailureCannotReplaceSuccessfulRestore",
+        "status": "passed",
+        "durationMs": 12
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testLateActivationSuccessPreservesRestoreFailureButAppliesCanonicalRevocation",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testLegacyAndMonthlyDeliveriesRemainSupportedIncludingCanonicalCrossgrades",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testMembershipSessionScopeStillRejectsLogoutAndLegacyBearerReplacement",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testOldAccountExpiryCannotInvalidateNewAccountState",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testOverlappingAuthoritativeRefreshesJoinNewestReadWithoutFalseFailure",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testPendingApprovalClearsOnlyAfterVerifiedActiveUpdateAndRefresh",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testPermanentAdminAndExplicitUniversalAccessRemainValid",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testPreparedMonthlyContextRequiresItsOwnSupportedProduct",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testPurchaseBlockExplanationDistinguishesServerDeviceAndStaleAccess",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testPurchasePreparationFailureExplainsNoPaymentAndPreservesSafeDiagnostic",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testRealtimeMustMatchBothEntityRoomAndAccount",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testRestoreAccountSwitchDuringHistoryReadDiscardsOldResult",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testRestoreAvailablePurchaseDoesNotRequireAppleSignIn",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testRestoredBenefitsMatchHistoricalFreeAndLimitlessLimits",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testRestoreDiagnosticDistinguishesUnknownAndUnsupportedStoreKitErrors",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testRestoreDoesNotBypassTransactionVerificationOrDeliveryErrors",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testRestoreMissingPurchasesForcesSyncBeforeRechecking",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testRestoreReconcilesChangedSignedPayloadAndRemovesRevokedAccess",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testRestoreReportsNoPurchasesOnlyAfterSuccessfulAppleSync",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testRestoreVerifiedTransactionStillRequiresFreshActiveMembership",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testRevocationSignalSupersedesOlderActiveRead",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testSameAccountTokenRotationAlsoInvalidatesCachedAccess",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testSelectedWeeklyCheckoutRequiresMatchingSupportedPreparationProduct",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testSelectedWeeklyOfferCopyUsesWeeklyPeriodInEveryLanguage",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testSimultaneousTransactionDeliveriesAreCoalescedAndFinishedOnce",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testSubscribeIntentNeverTreatsPreviewOrPendingAsPurchase",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testSubscribeIntentRechecksUnknownAccessButRefreshNeverOffersAnotherPurchase",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testSubscribePreflightStopsBeforeAppleForUnknownActiveOrDisabledMembership",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testSubscribeRetryRefreshesMembershipAndDoesNotReuseAnUnknownFailure",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testTransactionIsFinishedOnlyAfterExplicitCanonicalVerification",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testUnknownStateAndOutageNeverOfferPurchase",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testUnlockPresentationRequiresVerifiedTransitionAndFeedbackIsOnce",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testUnverifiedServerResponseNeverFinishesTransaction",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testVerifiedAppleAccessExpiresAndRevocationWins",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testVerifiedPendingApprovalCanOutliveForegroundOperationWithoutReplacingOtherResults",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "MembershipTests",
+        "test": "testVerifiedRevocationIsFinishedWithoutGrantingAccess",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "OnboardingPermissionStatusMappingTests",
+        "test": "testRadarAdvertisementCapsUTF8WithoutBreakingEmojiOrProtocolFields",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testCancelledRestorePreservesCredentialAndAllowsLaterForegroundRecovery",
+        "status": "passed",
+        "durationMs": 15
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testClearingAnAlreadyEmptyTokenStillInvalidatesPendingAuthenticationGeneration",
+        "status": "passed",
+        "durationMs": 0
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testCurrentUnauthorizedCredentialIsClearedAndNotRetriedOnForeground",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testDelayedSuccessfulRestoreCannotUndoLogout",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testDelayedUnauthorizedResponseCannotClearNewerOrSwitchBackCredentials",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testExplicitAuthIntentInvalidatesInFlightRestoreWithoutDeletingStoredToken",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testForegroundRecoversUserAfterTransientColdStartFailureWithoutNewLogin",
+        "status": "passed",
+        "durationMs": 14
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testLogoutDisablesKeychainBootstrapEvenIfDeletingStoredTokenFails",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testManualAuthenticationPreventsRestoreAndForegroundRequests",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testRecoveryLinkSupersedesPendingRestoreWithoutErasingSavedCredential",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testRestoreIsSingleFlightAndForegroundDoesNotOverlapIt",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "SessionRestoreTests",
+        "test": "testTemporarilyUnavailableStoredTokenCanBeLoadedOnLaterForeground",
+        "status": "passed",
+        "durationMs": 13
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testAlreadyCancelledTaskDoesNotStartOrReplaceBrowser",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testCallbackTokenParserAcceptsCanonicalRouteAndPreservesToken",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testCallbackTokenParserRejectsWrongRoutesAmbiguityAndInvalidTokens",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testCompletionAfterSuspendedDeadlineIsRejectedBeforeWatchdogRuns",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testExplicitCancelResumesEvenWhenSessionNeverCallsItsCompletion",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testOnlyFrameworkCancellationDomainIsTreatedAsUserCancellation",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testProviderErrorsBecomeTypedFailuresWithoutReflectingDescription",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testStartFailureAndLateCallbackResumeOnlyOnce",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testSuccessCompletesOnceAndIgnoresDuplicateCallback",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testSupersededSessionAndOldTimerCannotCompleteReplacement",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testSynchronousCallbackDuringCancelCannotWinOverCancellation",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testTaskCancellationCancelsBrowserAndResumesContinuation",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testTaskCancellationWinsEvenIfCallbackRunsBeforeCancellationHandler",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "WebAuthenticationCoordinatorTests",
+        "test": "testTimeoutCancelsBrowserWithoutWaitingForFrameworkCallback",
+        "status": "passed",
+        "durationMs": 1
+      }
+    ]
+  },
+  "staging": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 33498,
+      "counts": {
+        "passed": 41,
+        "failed": 0,
+        "skipped": 0
+      },
+      "target": "simulator"
+    },
+    "artifacts": {
+      "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/test_sim_2026-10-13T01-26-46-143Z_pid7914_d71af2f4.log",
+      "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-13T01-26-46-143Z_pid7914_2a399a48.xcresult",
+      "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/test-products/test_sim_2026-10-13T01-26-46-143Z_pid7914_90137f6a.xctestproducts"
+    },
+    "testCases": [
+      {
+        "suite": "LegacySessionUpgradeTests",
+        "test": "testLogoutDuringCommitPreventsRestoreFromPublishingAUser",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "suite": "LegacySessionUpgradeTests",
+        "test": "testLogoutDuringExchangeCannotInstallOldAccount",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "suite": "LegacySessionUpgradeTests",
+        "test": "testUnavailableImportLeavesOriginalCredentialUntouched",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "LegacySessionUpgradeTests",
+        "test": "testUpgradeCommitsOnlyAfterVerifiedExchange",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseMutationJournalTests",
+        "test": "testLegacyCredentialNeverEntersDiskJournal",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseMutationJournalTests",
+        "test": "testPendingActionCannotBeReboundAndOtherAccountNeverInheritsIt",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "suite": "SupabaseMutationJournalTests",
+        "test": "testReopenedGeneratorUsesSavedRequestInsteadOfNewViewUUID",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "SupabaseMutationJournalTests",
+        "test": "testRestartRetryKeepsOriginalRequestIDAndAcknowledgementAllowsNewIntent",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testAccountDeletionUsesLongTimeoutAndKeepsProviderCredentialOutOfJournal",
+        "status": "passed",
+        "durationMs": 58
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testBase44SignupUsesExistingEndpointWithoutSupabaseAuthorization",
+        "status": "passed",
+        "durationMs": 56
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testCanceledWatchCleanupCannotClearNextRoomWatch",
+        "status": "passed",
+        "durationMs": 17
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testConcurrentRefreshRevalidatesLegacyWithOneExchange",
+        "status": "passed",
+        "durationMs": 61
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testEmailOTPConfigurationAndValidationUseSixBase44Digits",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testEmailOTPRejectsEightDigitsBeforeBase44Networking",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testExpiredAppCredentialRevalidatesSourceAndReplaysExactImmutableCommandOnce",
+        "status": "passed",
+        "durationMs": 183
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testExplicitSessionRevocationDoesNotSilentlySignInOrDiscardPendingMutation",
+        "status": "passed",
+        "durationMs": 68
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testFreshSessionNeedsNoRefreshAndCannotCommitUnknownToken",
+        "status": "passed",
+        "durationMs": 10
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testGameCredentialCannotRevalidateIntoAnotherAccount",
+        "status": "passed",
+        "durationMs": 113
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testGameSessionConnectsWithoutRoomAndCreatesFirstRoom",
+        "status": "passed",
+        "durationMs": 5
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testGeneratorRetryJournalNeverContainsLegacyBearer",
+        "status": "passed",
+        "durationMs": 56
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testInvalidRecoveryTokensAndProviderKeysNeverReachBase44",
+        "status": "passed",
+        "durationMs": 8
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testLegacyCredentialSwapsWithItsSupabaseAccountAndLogoutClearsBoth",
+        "status": "passed",
+        "durationMs": 107
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testLegacyErrorsPreserveProviderCodeAndRetryability",
+        "status": "passed",
+        "durationMs": 55
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testLegacyExchangeRemainsUncommittedUntilAuthOwnerAccepts",
+        "status": "passed",
+        "durationMs": 108
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testLegacyRecoveryAndResendUseOwnerEmailWithoutSessionHeaders",
+        "status": "passed",
+        "durationMs": 160
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testMembershipCredentialOnlyReachesExplicitBridgeActions",
+        "status": "passed",
+        "durationMs": 158
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testMismatchedStoredLegacyCredentialCannotBeUsedOrRefreshed",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testNearbyDiscoveryRequiresSameSupabaseProject",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testOAuthDisabledWithoutProviderConfiguration",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testOldAccountReplyCannotAdoptRoomAfterReconnect",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testOldAccountRestoreFailureAndSignalCannotChangeNewAccount",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testPrivateContactEmailDoesNotReplaceGameIdentity",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testRecoveryLinksRemainInsideTestAppScheme",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testRecoveryParserRejectsForeignOriginsRoutesAndAmbiguousCredentials",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testRevalidationIsBoundedToOneRetry",
+        "status": "passed",
+        "durationMs": 163
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testServerInboxLinksStayInsideStagingApp",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testSessionExpiryRespectsServerAbsoluteDeadlineAndMaximumLifetime",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testSessionRequiresRefreshTokenAndValidActor",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testStagingConfigurationRejectsProductionAndSecretKeys",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testStaleLegacyExchangeCannotCommitAfterLogout",
+        "status": "passed",
+        "durationMs": 55
+      },
+      {
+        "suite": "SupabaseSessionTests",
+        "test": "testSupabaseJWTNeverReachesBase44ProviderRegistration",
+        "status": "passed",
+        "durationMs": 2
+      }
+    ]
+  }
+}

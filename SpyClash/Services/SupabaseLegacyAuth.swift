@@ -11,7 +11,7 @@ struct SupabaseLegacyCredential: Codable, Equatable {
 enum SupabaseLegacyKeychain {
     private static var identity: [String: Any] {
         [kSecClass as String: kSecClassGenericPassword,
-         kSecAttrService as String: (Bundle.main.bundleIdentifier ?? "com.spyclash.ios.supabasetest") + ".supabase.bbkfsgnordtdiblgdzkg",
+         kSecAttrService as String: (Bundle.main.bundleIdentifier ?? "com.spyclash.ios.supabasetest") + ".supabase." + SupabaseAppConfiguration.configuredProjectReference,
          kSecAttrAccount as String: "legacy-base44-v1"]
     }
     static func read() -> SupabaseLegacyCredential? {
@@ -48,33 +48,37 @@ final class SupabaseLegacyAuth {
         }
     }
     func login(email: String, password: String) async throws -> LoginResponse {
-        try await request("auth/login", fields: ["email": email, "password": password])
+        try await request("auth/login", fields: ["email": try Self.normalizedEmail(email), "password": password])
     }
     func register(email: String, password: String) async throws {
-        let _: EmptyResponse = try await request("auth/register", fields: ["email": email, "password": password])
+        let _: EmptyResponse = try await request("auth/register", fields: ["email": try Self.normalizedEmail(email), "password": password])
     }
     func verify(email: String, code: String) async throws -> VerifyResponse {
         guard SupabaseAppRuntime.acceptsEmailOTP(code, length: 6) else {
             throw Base44Error(message: "Enter the 6-digit verification code.", code: "invalid_email_otp")
         }
-        return try await request("auth/verify-otp", fields: ["email": email, "otp_code": code])
+        return try await request("auth/verify-otp", fields: ["email": try Self.normalizedEmail(email), "otp_code": code])
     }
     func resend(email: String) async throws {
-        let _: EmptyResponse = try await request("auth/resend-otp", fields: ["email": email])
+        let _: EmptyResponse = try await request("auth/resend-otp", fields: ["email": try Self.normalizedEmail(email)])
     }
     func requestRecovery(email: String) async throws {
-        let _: EmptyResponse = try await request("auth/reset-password-request", fields: ["email": email])
+        let _: EmptyResponse = try await request("auth/reset-password-request", fields: ["email": try Self.normalizedEmail(email)])
     }
     func resetPassword(token: String, password: String) async throws {
+        guard Self.isValidCredential(token), !Self.isSupabaseBearer(token) else {
+            throw Base44Error(message: "Open a fresh password recovery link and try again.", code: "invalid_recovery_token")
+        }
         let _: EmptyResponse = try await request("auth/reset-password", fields: ["reset_token": token, "new_password": password])
     }
     func registerProvider(legacyToken: String, appleBindingTicket: String?) async throws {
-        guard !Self.isSupabaseBearer(legacyToken) else { throw Base44Error(message: "Invalid identity provider response.", code: "wrong_credential_provider") }
+        guard Self.isValidCredential(legacyToken), !Self.isSupabaseBearer(legacyToken) else { throw Base44Error(message: "Invalid identity provider response.", code: "wrong_credential_provider") }
         var fields = ["access_token": legacyToken]
         if let appleBindingTicket, !appleBindingTicket.isEmpty { fields["apple_binding_ticket"] = appleBindingTicket }
         let _: JSONValue = try await request("functions/autoRegisterUser", fields: fields)
     }
     static func isSupabaseBearer(_ token: String) -> Bool {
+        if token.hasPrefix("sb_publishable_") || token.hasPrefix("sb_secret_") { return true }
         let parts = token.split(separator: ".")
         guard parts.count == 3 else { return false }
         var payload = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
@@ -82,6 +86,21 @@ final class SupabaseLegacyAuth {
         guard let data = Data(base64Encoded: payload), let json = try? JSONDecoder().decode(JSONValue.self, from: data),
               let issuer = json["iss"].string, let url = URL(string: issuer) else { return false }
         return url.host?.hasSuffix(".supabase.co") == true && url.path.hasPrefix("/auth/v1")
+    }
+
+    private static func normalizedEmail(_ value: String) throws -> String {
+        let email = value.trimmingCharacters(in: .whitespacesAndNewlines)
+        guard !email.isEmpty, email.utf8.count <= 320, email.contains("@"),
+              !email.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else {
+            throw Base44Error(message: "Enter a valid email address.", code: "invalid_email")
+        }
+        return email
+    }
+
+    static func isValidCredential(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 20_000 &&
+            value == value.trimmingCharacters(in: .whitespacesAndNewlines) &&
+            !value.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
     }
     private func request<T: Decodable>(_ route: String, fields: [String: String]) async throws -> T {
         guard ["auth/login", "auth/register", "auth/verify-otp", "auth/resend-otp", "auth/reset-password-request", "auth/reset-password", "functions/autoRegisterUser"].contains(route) else {
@@ -101,9 +120,11 @@ final class SupabaseLegacyAuth {
         guard let response = response as? HTTPURLResponse else { throw Base44Error(message: "Invalid sign-in response.") }
         guard (200..<300).contains(response.statusCode) else {
             let json = (try? JSONDecoder().decode(JSONValue.self, from: data)) ?? .null
-            throw Base44Error(message: json["message"].string ?? json["error"].string ?? "Sign-in could not be completed.", statusCode: response.statusCode, code: json["code"].string)
+            let details = json["error"].object == nil ? json : json["error"]
+            throw Base44Error(message: details["message"].string ?? details["error_description"].string ?? details["error"].string ?? "Sign-in could not be completed.", statusCode: response.statusCode, code: details["code"].string ?? details["error_code"].string, retryable: response.statusCode >= 500 || response.statusCode == 429 || details["retryable"].bool)
         }
-        return try JSONDecoder.base44.decode(T.self, from: data.isEmpty ? Data("{}".utf8) : data)
+        do { return try JSONDecoder.base44.decode(T.self, from: data.isEmpty ? Data("{}".utf8) : data) }
+        catch { throw Base44Error(message: "The sign-in service returned an unreadable response. Please try again.", statusCode: 502, code: "legacy_auth_invalid_response", retryable: true) }
     }
 }
 

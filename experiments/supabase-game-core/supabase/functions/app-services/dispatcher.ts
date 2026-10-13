@@ -22,7 +22,7 @@ async function appCommandHash(body:any) {
   // Legacy bearer rotation does not change the logical command. Its immutable
   // linked provider identity is verified separately; credentials are not data.
   const logical = { ...body };
-  if (body.service === 'legacy') delete logical.base44_access_token;
+  delete logical.base44_access_token;
   return await commandHash(logical);
 }
 export function validateCommand(body: any) {

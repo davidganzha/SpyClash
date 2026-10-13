@@ -126,6 +126,10 @@ expect_fail_with "signed mode rejects an unsigned Simulator bundle" \
   "$gate" --signed "$simulator_app"
 
 signed_app=$(make_fixture "$test_root/signed" iphoneos true)
+candidate_app=$(make_fixture "$test_root/candidate" iphoneos true)
+plist_add "$candidate_app/Info.plist" 'Add :SpyClashBackendMode string supabase-main-candidate'
+expect_fail_with "signed main candidate cannot distribute the test backend" \
+  'isolated Supabase test project' "$gate" --signed "$candidate_app"
 debug_dylib_app=$(make_fixture "$test_root/debug-dylib" iphonesimulator false)
 : >"$debug_dylib_app/SpyClash"
 printf '%s\n' 'com.spyclash.ios.limitless.weekly' >"$debug_dylib_app/SpyClash.debug.dylib"

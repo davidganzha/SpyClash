@@ -1,0 +1,52 @@
+{
+  "originalRelease": {
+    "bundle": "com.spyclash.ios",
+    "version": "1.0.3",
+    "build": "173",
+    "backendMode": "base44",
+    "platform": "iphonesimulator",
+    "urlSchemes": [
+      "spyclash"
+    ],
+    "widgetBundle": "com.spyclash.ios.widgets",
+    "widgetBuild": "173",
+    "candidateConfigPresent": false,
+    "allowlistPresent": false,
+    "executableSHA256": "8e985a888aa7bdd7ec71d744c150a2da7820fa009cca5a0f9b30f1163e6aaf2a"
+  },
+  "mainCandidate": {
+    "bundle": "com.spyclash.ios",
+    "version": "1.0.3",
+    "build": "173",
+    "backendMode": "supabase-main-candidate",
+    "platform": "iphonesimulator",
+    "urlSchemes": [
+      "spyclash"
+    ],
+    "widgetBundle": "com.spyclash.ios.widgets",
+    "widgetBuild": "173",
+    "candidateConfigPresent": true,
+    "allowlistPresent": true,
+    "executableSHA256": "d00782ebeedf2cddb1203c190b2fdb5c7f815fcf52ba8e6d29e3c368e2eb34b7",
+    "configuration": {
+      "backendURL": "https://bbkfsgnordtdiblgdzkg.supabase.co",
+      "appleSignInEnabled": true,
+      "googleSignInEnabled": true,
+      "emailOTPLength": 6,
+      "permitsLegacyBilling": false,
+      "permitsLegacyPush": false,
+      "mainAccountDeletionEnabled": false
+    }
+  },
+  "mainCandidateRelease": {
+    "bundle": "com.spyclash.ios",
+    "build": "173",
+    "version": "1.0.3",
+    "backendMode": "supabase-main-candidate",
+    "platform": "iphonesimulator",
+    "widgetBuild": "173",
+    "executableSHA256": "439049de5a89ca1c48d88b7067b4655b78bf4a832da1d13fd7f0c0c6db55084e",
+    "distributionGate": "expected rejection",
+    "gateMessage": "This main-app candidate uses the isolated Supabase test project. Production backend configuration and release approval are required before distribution."
+  }
+}

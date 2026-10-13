@@ -48,6 +48,104 @@ final class AuthenticationFlowTests: XCTestCase {
         }
     }
 
+    func testCanonicalRecoveryLinkOpensNativePasswordFormWithoutReplacingCredentials() {
+        let client = client()
+        client.setToken("existing")
+        let store = AuthenticationMemoryStore(token: "existing")
+        let state = state(client: client, store: store)
+        for link in ["https://spyclash.com/reset-password?token=recovery", "spyclash://reset-password#?token=recovery"] {
+            state.handleIncomingURL(URL(string: link)!)
+            if case .resetPassword(let token) = state.authPhase { XCTAssertEqual(token, "recovery") }
+            else { XCTFail("Canonical recovery did not open the password form") }
+        }
+        XCTAssertEqual(client.currentAccessToken, "existing")
+        XCTAssertEqual(store.saves, 0)
+        XCTAssertEqual(store.clears, 0)
+    }
+
+    func testUntrustedRecoveryLinksCannotReplaceNativeAuthPhase() {
+        let state = state(client: client(), store: AuthenticationMemoryStore(token: nil))
+        state.authPhase = .password(email: "owner@example.test")
+        for link in ["https://foreign.test/reset-password?token=a", "spyclash-supabasetest://reset-password?token=a", "spyclash://reset-password?token=a&token=b"] {
+            state.handleIncomingURL(URL(string: link)!)
+            if case .password(let email) = state.authPhase { XCTAssertEqual(email, "owner@example.test") }
+            else { XCTFail("Untrusted recovery link changed authentication") }
+        }
+    }
+
+    func testRecoveryAndResendCompleteWithoutCreatingSession() async {
+        let client = client()
+        let store = AuthenticationMemoryStore(token: nil)
+        let state = state(client: client, store: store)
+        AuthenticationFlowURLProtocol.handler = { request in
+            XCTAssertTrue(["reset-password-request", "reset-password", "resend-otp"].contains(request.request.url?.lastPathComponent ?? ""))
+            request.respond(status: 200, body: "{}")
+        }
+        defer { AuthenticationFlowURLProtocol.handler = nil }
+        await state.requestPasswordReset(email: "owner@example.test")
+        if case .resetEmailSent(let email) = state.authPhase { XCTAssertEqual(email, "owner@example.test") }
+        else { XCTFail("Recovery request did not reach its confirmation") }
+        state.authPhase = .resetPassword(token: "recovery")
+        await state.resetPassword(token: "recovery", newPassword: "new-password")
+        if case .email = state.authPhase {} else { XCTFail("Password change did not return to login") }
+        state.authPhase = .otp(email: "owner@example.test")
+        await state.resendVerificationCode(email: "owner@example.test")
+        if case .otp(let email) = state.authPhase { XCTAssertEqual(email, "owner@example.test") }
+        else { XCTFail("Resending OTP changed the verification phase") }
+        XCTAssertNotNil(state.authNotice)
+        XCTAssertNil(state.authError)
+        XCTAssertNil(state.user)
+        XCTAssertNil(client.currentAccessToken)
+        XCTAssertEqual(store.saves, 0)
+    }
+
+    func testCancelledRecoveryCannotOverwriteNextAuthenticationPhase() async {
+        let state = state(client: client(), store: AuthenticationMemoryStore(token: nil))
+        let held = AuthenticationHeldRequest()
+        AuthenticationFlowURLProtocol.handler = { request in held.receive(request) }
+        defer { AuthenticationFlowURLProtocol.handler = nil }
+        let recovery = Task { await state.requestPasswordReset(email: "old@example.test") }
+        let request = await held.next()
+        state.logout()
+        state.authPhase = .password(email: "next@example.test")
+        request.respond(status: 200, body: "{}")
+        await recovery.value
+        if case .password(let email) = state.authPhase { XCTAssertEqual(email, "next@example.test") }
+        else { XCTFail("Late recovery replaced the next sign-in") }
+        XCTAssertNil(state.authNotice)
+    }
+
+    func testRecoveryLinkSupersedesPendingEmailAndProviderLoginWithoutErasingSession() async {
+        for provider in [false, true] {
+            let client = client()
+            client.setToken("existing")
+            let store = AuthenticationMemoryStore(token: "existing")
+            let state = state(client: client, store: store)
+            let held = AuthenticationHeldRequest()
+            AuthenticationFlowURLProtocol.handler = { request in held.receive(request) }
+            let login = Task {
+                if provider { await state.loginWithGoogle() }
+                else { await state.login(email: "candidate@example.test", password: "password") }
+            }
+            let request = await held.next()
+            state.handleIncomingURL(URL(string: "https://spyclash.com/reset-password?token=recovery")!)
+            XCTAssertFalse(state.isBusy)
+            let response = provider
+                ? #"{"user":{"id":"candidate-user","email":"candidate@example.test"}}"#
+                : #"{"access_token":"candidate","user":{"id":"candidate-user","email":"candidate@example.test"}}"#
+            request.respond(status: 200, body: response)
+            await login.value
+            XCTAssertEqual(state.authPhase, .resetPassword(token: "recovery"))
+            XCTAssertEqual(client.currentAccessToken, "existing")
+            XCTAssertEqual(store.token, "existing")
+            XCTAssertEqual(store.saves, 0)
+            XCTAssertEqual(store.clears, 0)
+            XCTAssertNil(state.user)
+            XCTAssertNil(state.authError)
+            AuthenticationFlowURLProtocol.handler = nil
+        }
+    }
+
     func testProfileSyncFailurePreservesPreviousSession() async {
         for status in [409, 503] {
             let client = client()

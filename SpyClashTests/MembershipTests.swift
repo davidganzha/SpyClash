@@ -822,6 +822,97 @@ final class MembershipTests: XCTestCase {
         XCTAssertFalse(finished)
     }
 
+    func testHybridBearerRefreshKeepsPendingDeliveryAndFinishesOnce() async throws {
+        let client = AppStoreDeliveryTestClient()
+        let loginGeneration = UUID()
+        client.membershipSessionGeneration = loginGeneration
+        var pending: CheckedContinuation<AppStoreEntitlementSyncResponse, Error>?
+        client.handler = { _ in try await withCheckedThrowingContinuation { pending = $0 } }
+        let delivery = AppStoreTransactionDeliveryStore(client: client)
+        let initial = MembershipScope(userID: "same-user", accessToken: "token", sessionGeneration: loginGeneration)
+        delivery.bind(initial)
+        var finishes = 0
+        let first = Task {
+            try await delivery.deliver(signedTransaction: "refresh-fixture", productID: StoreKitManager.limitlessProductID,
+                                       finish: { finishes += 1 })
+        }
+        for _ in 0..<100 where pending == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(pending)
+
+        client.currentAccessToken = "refreshed-token"
+        let refreshed = MembershipScope(userID: "same-user", accessToken: client.currentAccessToken,
+                                        sessionGeneration: loginGeneration)
+        XCTAssertEqual(initial, refreshed, "Bearer refresh must preserve the membership polling task's account scope.")
+        delivery.bind(refreshed)
+        let duplicate = Task {
+            try await delivery.deliver(signedTransaction: "refresh-fixture", productID: StoreKitManager.limitlessProductID,
+                                       finish: { finishes += 1 })
+        }
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(client.requests.count, 1)
+        continuation.resume(returning: client.verifiedResponse)
+        _ = try await first.value
+        _ = try await duplicate.value
+        XCTAssertEqual(finishes, 1)
+        XCTAssertEqual(client.requests.count, 1)
+    }
+
+    func testHybridSessionReplacementRejectsPendingDeliveryBeforeUIRebind() async throws {
+        let client = AppStoreDeliveryTestClient()
+        let loginGeneration = UUID()
+        client.membershipSessionGeneration = loginGeneration
+        var pending: CheckedContinuation<AppStoreEntitlementSyncResponse, Error>?
+        client.handler = { _ in try await withCheckedThrowingContinuation { pending = $0 } }
+        let delivery = AppStoreTransactionDeliveryStore(client: client)
+        let initial = MembershipScope(userID: "first", accessToken: "token", sessionGeneration: loginGeneration)
+        delivery.bind(initial)
+        var finishes = 0
+        let old = Task {
+            try await delivery.deliver(signedTransaction: "replaced-session-fixture", productID: StoreKitManager.limitlessProductID,
+                                       finish: { finishes += 1 })
+        }
+        for _ in 0..<100 where pending == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(pending)
+        client.currentAccessToken = "another-session-token"
+        client.membershipSessionGeneration = UUID()
+        let replacement = MembershipScope(userID: "second", accessToken: client.currentAccessToken,
+                                          sessionGeneration: client.membershipSessionGeneration)
+        XCTAssertNotEqual(initial, replacement)
+        // The credential store can switch before SwiftUI propagates bind().
+        continuation.resume(returning: client.verifiedResponse)
+        do { _ = try await old.value; XCTFail("A replaced login must not finish the previous session's transaction.") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertEqual(finishes, 0)
+    }
+
+    func testMembershipSessionScopeStillRejectsLogoutAndLegacyBearerReplacement() {
+        let generation = UUID()
+        let hybrid = MembershipScope(userID: "user", accessToken: "before", sessionGeneration: generation)
+        XCTAssertFalse(hybrid.matchesSession(accessToken: nil, generation: generation))
+        XCTAssertFalse(hybrid.matchesSession(accessToken: "after", generation: UUID()))
+        XCTAssertNotEqual(hybrid, MembershipScope(userID: "other", accessToken: "after", sessionGeneration: generation))
+        let legacy = MembershipScope(userID: "user", accessToken: "before")
+        XCTAssertFalse(legacy.matchesSession(accessToken: "after", generation: nil))
+        XCTAssertNotEqual(legacy, MembershipScope(userID: "user", accessToken: "after"))
+    }
+
+    func testHybridMembershipRefreshSurvivesBearerRotationRebind() async throws {
+        let client = MembershipTestClient()
+        client.suspend = true
+        let store = MembershipStore(client: client, now: { self.now })
+        let generation = UUID()
+        store.bind(MembershipScope(userID: "user", accessToken: "before", sessionGeneration: generation))
+        let refresh = Task { await store.refresh() }
+        for _ in 0..<100 where client.continuation == nil { await Task.yield() }
+        let continuation = try XCTUnwrap(client.continuation)
+        store.bind(MembershipScope(userID: "user", accessToken: "after", sessionGeneration: generation))
+        continuation.resume(returning: snapshot())
+        let completed = await refresh.value
+        XCTAssertTrue(completed)
+        XCTAssertTrue(store.hasAccess)
+        XCTAssertEqual(client.requestCount, 1)
+    }
+
     func testVerifiedRevocationIsFinishedWithoutGrantingAccess() async throws {
         let client = AppStoreDeliveryTestClient()
         client.handler = { _ in
@@ -1086,6 +1177,7 @@ private final class MembershipTestClient: MembershipClientProtocol {
 @MainActor
 private final class AppStoreDeliveryTestClient: AppStoreTransactionClient {
     var currentAccessToken: String? = "token"
+    var membershipSessionGeneration: UUID?
     var requests: [String] = []
     var handler: ((String) async throws -> AppStoreEntitlementSyncResponse)?
     var verifiedResponse: AppStoreEntitlementSyncResponse {

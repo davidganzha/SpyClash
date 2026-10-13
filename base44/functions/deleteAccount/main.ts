@@ -30,6 +30,7 @@ import {
   revokeAppleSignInCredentials,
 } from "./apple-sign-in-credential.ts";
 import { canonicalBase44Request } from "./base44-context.ts";
+import { prepareDeletionReceipt, markDeletionReceiptReady, completeDeletionReceipt, deletionReceiptStatus, DeletionReceiptError } from "./deletion-receipt.ts";
 
 type Entity = Record<string, any>;
 type BillingRedactionSnapshot = {
@@ -514,7 +515,20 @@ Deno.serve(async (req) => {
         headers: { Allow: "POST" },
       });
     }
+    const rawBody = await req.text();
+    if (rawBody.length > 4096) return Response.json({error:"request_too_large"},{status:413});
+    let body: Record<string, any>;
+    try { body = rawBody ? JSON.parse(rawBody) : {}; }
+    catch { return Response.json({error:"invalid_json"},{status:400}); }
+    if (!body || typeof body !== "object" || Array.isArray(body)) return Response.json({error:"invalid_json"},{status:400});
     const base44 = createClientFromRequest(canonicalBase44Request(req));
+    const receiptStore = base44.asServiceRole.entities.AccountDeletionReceipt;
+    if (body.action === "deletion_capabilities") return Response.json({protocol:"spyclash-deletion-receipt-v1"},{headers:{"Cache-Control":"no-store"}});
+    if (body.action === "deletion_status") {
+      const status = await deletionReceiptStatus(receiptStore,base44.asServiceRole.entities.User,body);
+      return Response.json(status,{headers:{"Cache-Control":"no-store"}});
+    }
+    if (body.action !== undefined) return Response.json({error:"invalid_action"},{status:400});
     const user = await base44.auth.me();
 
     if (!user) {
@@ -534,6 +548,8 @@ Deno.serve(async (req) => {
       console.warn("deleteAccount blocked protected account principal");
       return protectedDeletion;
     }
+
+    const deletionReceipt = await prepareDeletionReceipt(receiptStore,user.id,body);
 
     // The admin-only lifecycle row is keyed by a one-way subject hash. Acquire
     // its deleting marker before any content cleanup so every mediated writer
@@ -826,6 +842,7 @@ Deno.serve(async (req) => {
         billingLifecycleStore,
         billingDeletionMarker,
       );
+      await markDeletionReceiptReady(receiptStore,deletionReceipt,manualAppleRevocationRequired);
     } catch (e) {
       console.error("account deletion transaction failed", errorMessage(e));
       const disposition = deletionFailureDisposition(
@@ -890,6 +907,8 @@ Deno.serve(async (req) => {
       );
     }
 
+    await completeDeletionReceipt(receiptStore,deletionReceipt,manualAppleRevocationRequired);
+
     // Raw identity is already gone from every canonical row. Release is best
     // effort after User.delete. A failure remains privacy-safe, but the
     // deleting identity marker intentionally blocks a recreated Apple login
@@ -927,8 +946,10 @@ Deno.serve(async (req) => {
     return Response.json({
       success: true,
       manual_apple_revocation_required: manualAppleRevocationRequired,
+      ...(deletionReceipt ? {deletion_receipt:{request_id:deletionReceipt.request_id,subject_hash:deletionReceipt.subject_hash,complete:true}} : {}),
     });
   } catch (error) {
+    if (error instanceof DeletionReceiptError) return Response.json({error:error.code,code:error.code,retryable:error.status>=500},{status:error.status,headers:{"Cache-Control":"no-store"}});
     console.error(
       "deleteAccount fatal",
       errorMessage(error),

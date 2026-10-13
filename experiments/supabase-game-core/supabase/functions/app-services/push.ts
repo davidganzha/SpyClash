@@ -1,10 +1,15 @@
 import { AppServiceError, requireUUID, type AppContext } from './contracts.ts';
 import { digest, encryptToken } from './integration-crypto.ts';
+import { legacyPushConfigured, MAIN_PUSH_BUNDLE } from './legacy-push.ts';
 
 export const TEST_PUSH_BUNDLE = 'com.spyclash.ios.supabasetest';
 const text = (value:unknown,max=200) => typeof value==='string'?value.trim().slice(0,max):'';
+export function allowedPushBundle(config:Record<string,string|undefined>) {
+  return config.APNS_TOPIC===TEST_PUSH_BUNDLE && (!config.APP_PUSH_DELIVERY_PROVIDER || config.APP_PUSH_DELIVERY_PROVIDER==='apns')
+    ? TEST_PUSH_BUNDLE : legacyPushConfigured(config) ? MAIN_PUSH_BUNDLE : null;
+}
 export function pushCapabilities(config: Record<string,string|undefined>) {
-  return {registration_enabled:config.APP_PUSH_ENABLED==='true' && config.APNS_TOPIC===TEST_PUSH_BUNDLE
+  return {registration_enabled:config.APP_PUSH_ENABLED==='true' && !!allowedPushBundle(config)
     && /^[a-f0-9]{64}$/i.test(config.PUSH_TOKEN_ENCRYPTION_KEY||''),delivery_enabled:config.APP_PUSH_DELIVERY_ENABLED==='true'};
 }
 export function registrationBinding(row: {user_id:string,bundle_id:string,environment:string,kind:string,binding:string}) {
@@ -28,7 +33,8 @@ export async function dispatchPush(ctx:AppContext,body:Record<string,any>) {
   }
   if(!['register_device','register_live_activity_token'].includes(action)) throw new AppServiceError('invalid_action','Unknown push action.');
   if(!pushCapabilities(ctx.config).registration_enabled) throw new AppServiceError('push_unconfigured','Push registration is not configured for this isolated app.',503);
-  if(body.bundle_id!==TEST_PUSH_BUNDLE) throw new AppServiceError('push_topic_forbidden','This push registration belongs to a different app.',403);
+  const bundleID=allowedPushBundle(ctx.config)!;
+  if(body.bundle_id!==bundleID) throw new AppServiceError('push_topic_forbidden','This push registration belongs to a different app.',403);
   const environment=body.environment;
   if(!['sandbox','production'].includes(environment)) throw new AppServiceError('invalid_environment','Invalid APNs environment.');
   const token=text(live?body.live_activity_token:body.apns_token,256).replace(/[<>\s-]/g,'').toLowerCase();
@@ -42,15 +48,15 @@ export async function dispatchPush(ctx:AppContext,body:Record<string,any>) {
   }
   await ctx.tx`select pg_advisory_xact_lock(hashtextextended(${installation+':'+kind+':'+binding},0))`;
   const hash=await digest(token);
-  const existing=await ctx.tx`select id,user_id,installation_id,binding from app_private.push_registrations where (installation_id=${installation} and kind=${kind} and binding=${binding}) or (bundle_id=${TEST_PUSH_BUNDLE} and environment=${environment} and kind=${kind} and token_hash=${hash}) for update`;
+  const existing=await ctx.tx`select id,user_id,installation_id,binding from app_private.push_registrations where (installation_id=${installation} and kind=${kind} and binding=${binding}) or (bundle_id=${bundleID} and environment=${environment} and kind=${kind} and token_hash=${hash}) for update`;
   if(existing.some((r:any)=>r.user_id!==ctx.actor.id)) throw new AppServiceError('push_owner_mismatch','This registration belongs to another signed-in account.',409);
   if(existing.length>1||existing.some((r:any)=>r.installation_id!==installation||r.binding!==binding))throw new AppServiceError('push_binding_mismatch','Unregister the previous token binding before replacing it.',409);
   const id=existing[0]?.id||crypto.randomUUID();
-  const descriptor={user_id:ctx.actor.id,bundle_id:TEST_PUSH_BUNDLE,environment,kind,binding};
+  const descriptor={user_id:ctx.actor.id,bundle_id:bundleID,environment,kind,binding};
   const ciphertext=await encryptToken(token,ctx.config.PUSH_TOKEN_ENCRYPTION_KEY,registrationBinding(descriptor));
   const preferences=Object.fromEntries(['friend_requests','room_invites','game_updates','announcements'].map(k=>[k,body.preferences?.[k]!==false]));
   await ctx.tx`insert into app_private.push_registrations(id,user_id,installation_id,kind,binding,room_id,match_id,bundle_id,environment,token_hash,token_ciphertext,locale,alert_authorized,preferences,updated_at)
-    values(${id},${ctx.actor.id},${installation},${kind},${binding},${roomID},${matchID},${TEST_PUSH_BUNDLE},${environment},${hash},${ctx.tx.json(ciphertext)},${text(body.locale,12)||'en'},${body.alert_authorized===true},${ctx.tx.json(preferences)},${ctx.now})
+    values(${id},${ctx.actor.id},${installation},${kind},${binding},${roomID},${matchID},${bundleID},${environment},${hash},${ctx.tx.json(ciphertext)},${text(body.locale,12)||'en'},${body.alert_authorized===true},${ctx.tx.json(preferences)},${ctx.now})
     on conflict(id) do update set token_hash=excluded.token_hash,token_ciphertext=excluded.token_ciphertext,locale=excluded.locale,alert_authorized=excluded.alert_authorized,preferences=excluded.preferences,active=true,updated_at=excluded.updated_at`;
   return {ok:true,registration_id:id,updated_at:ctx.now.toISOString()};
 }

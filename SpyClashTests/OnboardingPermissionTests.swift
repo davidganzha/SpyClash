@@ -499,6 +499,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
     func testRadarAdvertisementCapsUTF8WithoutBreakingEmojiOrProtocolFields() {
         let input = [
             "v": "4", "spyid": "123-456", "theme": "blacksite",
+            "backend": "supabase:bbkfsgnordtdiblgdzkg",
             "accent": "clearance_amber", "badge": "operative",
             "name": String(repeating: "Я", count: 80),
             "avatar": String(repeating: "👩‍👩‍👧‍👧", count: 12),

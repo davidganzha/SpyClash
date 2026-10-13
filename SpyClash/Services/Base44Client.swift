@@ -211,7 +211,11 @@ final class Base44Client {
 #if SPYCLASH_SUPABASE
     private func appService<T: Decodable, Body: Encodable>(_ service: String, action: String, fields: Body, write: Bool = false) async throws -> T {
         let value = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder.base44.encode(fields))
-        return try await SupabaseAppSession.shared.service(service, action: action, fields: value.object ?? [:], write: write)
+        let configuration = try SupabaseAppSession.shared.configuration()
+        let includeLegacyCredential = service == "membership"
+            && ["check", "prepare", "sync_transaction"].contains(action)
+            && configuration.permitsLegacyBilling
+        return try await SupabaseAppSession.shared.service(service, action: action, fields: value.object ?? [:], write: write, includeLegacyCredential: includeLegacyCredential)
     }
 #endif
 
@@ -492,7 +496,7 @@ final class Base44Client {
 
     func nativeRoomJoinURL(code: String) -> URL {
         var components = URLComponents()
-        components.scheme = (SupabaseTestEnvironment.isEnabled || SupabaseAppRuntime.isEnabled) ? "spyclash-supabasetest" : "spyclash"
+        components.scheme = SupabaseAppRuntime.roomLinkScheme
         components.host = "join"
         components.queryItems = [
             URLQueryItem(name: "code", value: code.uppercased())
@@ -1369,7 +1373,14 @@ final class Base44Client {
 
     func deleteAccount() async throws -> AccountDeletionResult {
 #if SPYCLASH_SUPABASE
-        let stagingResult: AccountDeletionResult = try await appService("profile", action: "delete", fields: EmptyPayload(), write: true)
+        if SupabaseAppRuntime.isMainHybrid && !SupabaseAppRuntime.deletesOriginalAccount {
+            throw Base44Error(message: "Full account deletion is not enabled for this candidate yet.", code: "account_deletion_unconfigured")
+        }
+        let stagingResult: AccountDeletionResult = try await SupabaseAppSession.shared.service(
+            "profile", action: "delete",
+            fields: SupabaseAppRuntime.deletesOriginalAccount ? ["deletion_scope": .string("account")] : [:],
+            write: true, includeLegacyCredential: SupabaseAppRuntime.deletesOriginalAccount
+        )
         guard stagingResult.success else { throw Base44Error(message: "Account deletion was not confirmed.") }
         return stagingResult
 #endif

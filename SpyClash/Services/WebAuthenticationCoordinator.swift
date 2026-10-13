@@ -185,3 +185,40 @@ enum WebAuthenticationCallback {
         return token
     }
 }
+
+/// The published Base44 recovery page is /reset-password?token=... .
+/// Custom links stay within this build's scheme; TEST must never claim the
+/// original app's recovery link or accept a token from an unrelated website.
+enum ResetPasswordLinkParser {
+    static func tokenIfPresent(
+        from payload: String,
+        customScheme: String = SupabaseAppRuntime.callbackScheme,
+        allowsCanonicalWebLink: Bool = !SupabaseAppRuntime.isEnabled || SupabaseAppRuntime.isMainHybrid
+    ) -> String? {
+        guard let components = URLComponents(string: payload),
+              components.user == nil, components.password == nil, components.port == nil else { return nil }
+        let isCustom = components.scheme?.lowercased() == customScheme &&
+            components.percentEncodedHost?.lowercased() == "reset-password" &&
+            ["", "/"].contains(components.percentEncodedPath)
+        let isWeb = allowsCanonicalWebLink && components.scheme?.lowercased() == "https" &&
+            components.percentEncodedHost?.lowercased() == "spyclash.com" &&
+            components.percentEncodedPath == "/reset-password" && components.fragment == nil
+        guard isCustom || isWeb else { return nil }
+
+        let items: [URLQueryItem]
+        if let fragment = components.percentEncodedFragment {
+            guard isCustom, components.percentEncodedQuery == nil, !fragment.isEmpty else { return nil }
+            var fragmentComponents = URLComponents()
+            fragmentComponents.percentEncodedQuery = fragment.hasPrefix("?") ? String(fragment.dropFirst()) : fragment
+            items = fragmentComponents.queryItems ?? []
+        } else { items = components.queryItems ?? [] }
+        let names = items.map(\.name)
+        let tokenFields = items.filter { ["token", "reset_token", "resetToken"].contains($0.name) }
+        guard Set(names).count == names.count, tokenFields.count == 1,
+              !items.contains(where: { ["access_token", "error", "error_description"].contains($0.name) }),
+              let token = tokenFields[0].value, !token.isEmpty, token.utf8.count <= 20_000,
+              token == token.trimmingCharacters(in: .whitespacesAndNewlines),
+              !token.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return nil }
+        return token
+    }
+}

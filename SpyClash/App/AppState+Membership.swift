@@ -2,7 +2,8 @@ import Foundation
 
 extension AppState {
     var membershipScope: MembershipScope {
-        MembershipScope(userID: user?.id, accessToken: client.currentAccessToken)
+        MembershipScope(userID: user?.id, accessToken: client.currentAccessToken,
+                        sessionGeneration: client.membershipSessionGeneration)
     }
 
     func bindMembershipAccount() {

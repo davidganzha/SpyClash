@@ -4,10 +4,11 @@ import { executeApp, validateCommand, replayAppReceipt } from './dispatcher.ts';
 import { prepareMembershipExternal } from './membership.ts';
 import { prepareLegacyExternal } from './legacy.ts';
 import { processAccountDeletionJobs } from './lifecycle.ts';
+import { prepareMainAccountDeletion } from './main-account-deletion.ts';
 
-export function createAppHandler({ db, authenticate, config = {} }: {
+export function createAppHandler({ db, authenticate, config = {}, fetch: fetcher = fetch }: {
   db: any; authenticate: (token: string) => Promise<any>;
-  config?: Record<string, string | undefined>;
+  config?: Record<string, string | undefined>; fetch?: typeof fetch;
 }) {
   return async (request: Request): Promise<Response> => {
     if (request.method !== 'POST') return Response.json({ code: 'method_not_allowed', message: 'POST required', retryable: false }, { status: 405 });
@@ -34,13 +35,14 @@ export function createAppHandler({ db, authenticate, config = {} }: {
         if (replay) return Response.json(replay.body, { status: replay.status, headers: { 'Cache-Control': 'no-store' } });
       }
       let evidence;
-      if (body.service === 'membership') evidence = await prepareMembershipExternal({ actor, body, config });
-      if (body.service === 'legacy') evidence = await prepareLegacyExternal({ actor, body, config }, { db });
+      if (body.service === 'membership') evidence = await prepareMembershipExternal({ actor, body, config }, { db, fetch: fetcher });
+      if (body.service === 'legacy') evidence = await prepareLegacyExternal({ actor, body, config }, { db, fetch: fetcher });
+      if (body.service === 'profile' && body.action === 'delete') evidence = await prepareMainAccountDeletion({ actor, body, config }, { db, fetch: fetcher });
       const result = await executeApp(db, actor, body, config, evidence);
       if (body.service === 'profile' && body.action === 'delete' && result.status === 200) {
         // The tombstone already committed. Auth cleanup is safe to retry after
         // a lost response; the durable job remains if Auth is unavailable.
-        try { await processAccountDeletionJobs(db, config, fetch, actor.id); } catch { /* worker retries */ }
+        try { await processAccountDeletionJobs(db, config, fetcher, actor.id); } catch { /* worker retries */ }
       }
       return Response.json(result.body, { status: result.status, headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {

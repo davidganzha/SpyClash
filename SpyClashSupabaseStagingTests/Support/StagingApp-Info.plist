@@ -39,6 +39,8 @@
 	<array>
 		<string>_spyclash-radar._tcp</string>
 		<string>_spyclash-radar._udp</string>
+		<string>_spy-bbkfsg._tcp</string>
+		<string>_spy-bbkfsg._udp</string>
 	</array>
 	<key>NSCameraUsageDescription</key>
 	<string>Scan a test room QR code.</string>

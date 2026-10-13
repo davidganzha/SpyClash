@@ -108,6 +108,25 @@ final class SessionRestoreTests: XCTestCase {
         XCTAssertFalse(state.isRestoring)
     }
 
+    func testRecoveryLinkSupersedesPendingRestoreWithoutErasingSavedCredential() async {
+        let store = RestoreTokenStore("saved-token")
+        let started = expectation(description: "Lookup started")
+        let server = RestoreHTTPServer(plans: [.held], observed: { _ in started.fulfill() })
+        let state = makeState(store: store, server: server)
+        defer { RestoreURLProtocol.handler = nil }
+        let restore = Task { await state.restoreSession() }
+        await fulfillment(of: [started], timeout: 1)
+        state.handleIncomingURL(URL(string: "spyclash://reset-password?token=recovery")!)
+        server.respondToRequest(at: 0, status: 200, body: RestoreHTTPServer.userJSON)
+        await restore.value
+        XCTAssertEqual(state.authPhase, .resetPassword(token: "recovery"))
+        XCTAssertNil(state.user)
+        XCTAssertEqual(state.client.currentAccessToken, "saved-token")
+        XCTAssertEqual(store.value, "saved-token")
+        XCTAssertEqual(store.clearCount, 0)
+        XCTAssertFalse(state.isRestoring)
+    }
+
     func testLogoutDisablesKeychainBootstrapEvenIfDeletingStoredTokenFails() async throws {
         let store = RestoreTokenStore("saved-token")
         store.retainsValueOnClear = true

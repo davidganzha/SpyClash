@@ -1,6 +1,7 @@
 import { AppServiceError } from './contracts.ts';
 import { decryptToken, digest } from './integration-crypto.ts';
-import { TEST_PUSH_BUNDLE, registrationBinding } from './push.ts';
+import { TEST_PUSH_BUNDLE, allowedPushBundle, registrationBinding } from './push.ts';
+import { sendLegacyPush } from './legacy-push.ts';
 import { liveActivityPayload, liveActivityTerminationPayload } from './live-activity-policy.ts';
 type Config=Record<string,string|undefined>;
 type DeliveryResult={delivered:boolean,retryable:boolean,invalidateToken?:boolean,reason:string};
@@ -9,7 +10,7 @@ type DeliveryResult={delivered:boolean,retryable:boolean,invalidateToken?:boolea
  * APNs runs outside them. APNs is at-least-once after a lost ACK; stable collapse
  * IDs limit duplicate presentation without pretending exactly-once network I/O. */
 export async function drainPushOutbox(db:any,config:Config,options:{limit?:number,send?:(input:any)=>Promise<DeliveryResult>}={}) {
-  if(config.APP_PUSH_DELIVERY_ENABLED!=='true'||config.APNS_TOPIC!==TEST_PUSH_BUNDLE)throw new AppServiceError('push_delivery_unconfigured','Isolated APNs delivery is not configured.',503);
+  if(config.APP_PUSH_DELIVERY_ENABLED!=='true'||!allowedPushBundle(config))throw new AppServiceError('push_delivery_unconfigured','Isolated APNs delivery is not configured.',503);
   const limit=Math.max(1,Math.min(25,options.limit||10));
   const jobs=await db.begin(async(tx:any)=>{
     const rows=await tx`select id from app_private.push_outbox where
@@ -35,7 +36,7 @@ export async function drainPushOutbox(db:any,config:Config,options:{limit?:numbe
       left join app_private.profiles p on p.user_id=r.user_id where r.id=${job.registration_id}`;
     let cancellation:string|null=null;
     if(!row||!row.active||row.account_state!=='active'||row.user_id!==job.user_id)cancellation='account_or_registration_inactive';
-    else if(row.bundle_id!==TEST_PUSH_BUNDLE)cancellation='topic_forbidden';
+    else if(row.bundle_id!==allowedPushBundle(config))cancellation='topic_forbidden';
     else if(new Date(job.expires_at).getTime()<=Date.now())cancellation='expired';
     else if(job.kind==='alert'){
       if(job.payload.announcement_id){
@@ -75,7 +76,7 @@ export async function drainPushOutbox(db:any,config:Config,options:{limit?:numbe
       const [sendLease]=await db`update app_private.push_outbox set lease_until=clock_timestamp()+interval '90 seconds'
         where id=${job.id} and lease_id=${job.lease_id} and state='sending' and lease_until>clock_timestamp() returning id`;
       if(!sendLease){summary.skipped++;continue;}
-      result=await (options.send||((input:any)=>sendAPNs(input,config)))({token,environment:row.environment,bundleID:row.bundle_id,
+      result=await (options.send||((input:any)=>config.APP_PUSH_DELIVERY_PROVIDER==='base44'?sendLegacyPush(input,config):sendAPNs(input,config)))({token,environment:row.environment,bundleID:row.bundle_id,
         kind:job.kind,payload:job.payload,collapseID:await digest(job.event_key+':'+row.id),expiresAt:new Date(job.expires_at),eventID:job.id});
     }catch{result={delivered:false,retryable:true,reason:'transport_or_configuration_unavailable'};}
     const retry=result.retryable&&job.attempts<8;
@@ -102,7 +103,7 @@ export async function drainPushOutbox(db:any,config:Config,options:{limit?:numbe
 /** Converts committed terminal/start events and current room revisions into
  * personalized APNs work atomically. delivered_at here means bridge consumption,
  * while app_private.push_outbox retains independent delivery/retry status. */
-export async function reconcileCommittedEvents(db:any,_config:Config,options:{limit?:number}={}) {
+export async function reconcileCommittedEvents(db:any,config:Config,options:{limit?:number}={}) {
   const limit=Math.max(1,Math.min(100,options.limit||25));
   return db.begin(async(tx:any)=>{
     const now=new Date();let consumed=0,queued=0,reconciled=0;
@@ -112,7 +113,7 @@ export async function reconcileCommittedEvents(db:any,_config:Config,options:{li
       if(terminal){
         const rows=await tx`select * from app_private.push_registrations where room_id=${entry.room_id} and kind='activity' and active
           and (${event.type==='room_closed'} or match_id=${String(event.match_id||'')})`;
-        for(const registration of rows)queued+=await queueLive(tx,registration,'core:'+entry.id,entry.room_id,registration.match_id,
+        for(const registration of rows)queued+=await queueLive(tx,config,registration,'core:'+entry.id,entry.room_id,registration.match_id,
           liveActivityTerminationPayload({now,locale:registration.locale}),now);
       }else if(event.type==='game_started'){
         const [stored]=await tx`select state,closed from full_game_private.rooms where id=${entry.room_id} for share`;
@@ -122,7 +123,7 @@ export async function reconcileCommittedEvents(db:any,_config:Config,options:{li
             const rows=await tx`select * from app_private.push_registrations where user_id=any(${recipients}::uuid[]) and kind='push_to_start' and active`;
             for(const registration of rows){
               const built=await liveActivityPayload({room:stored.state,registration:{...registration,token_kind:'push_to_start'},now});
-              if(built)queued+=await queueLive(tx,registration,'core:'+entry.id,entry.room_id,event.match_id,built.payload,now);
+              if(built)queued+=await queueLive(tx,config,registration,'core:'+entry.id,entry.room_id,event.match_id,built.payload,now);
             }
           }
         }
@@ -142,15 +143,15 @@ export async function reconcileCommittedEvents(db:any,_config:Config,options:{li
       const eventID='reconcile:'+registration.room_id+':'+registration.match_id+':'+(shouldEnd?'end':String(registration.room_revision));
       const built=shouldEnd?{payload:liveActivityTerminationPayload({now,locale:registration.locale,revision:Number(registration.room_revision||0)})}
         :await liveActivityPayload({room,registration:{...registration,token_kind:'activity'},now});
-      if(built)queued+=await queueLive(tx,registration,eventID,registration.room_id,registration.match_id,built.payload,now);
+      if(built)queued+=await queueLive(tx,config,registration,eventID,registration.room_id,registration.match_id,built.payload,now);
       // Fair bounded rotation; successful registration separately updates token state.
       await tx`update app_private.push_registrations set updated_at=${now} where id=${registration.id}`;reconciled++;
     }
     return {consumed,queued,reconciled};
   });
 }
-async function queueLive(tx:any,registration:any,eventID:string,roomID:string,matchID:string,payload:any,now:Date){
-  if(registration.bundle_id!==TEST_PUSH_BUNDLE)return 0;
+async function queueLive(tx:any,config:Config,registration:any,eventID:string,roomID:string,matchID:string,payload:any,now:Date){
+  if(registration.bundle_id!==allowedPushBundle(config))return 0;
   const [active]=await tx`select state from app_private.profiles where user_id=${registration.user_id}`;
   if(active?.state!=='active')return 0;
   // A terminal outbox event and periodic reconciliation may observe the same

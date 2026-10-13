@@ -1544,7 +1544,7 @@ final class AppState: NSObject {
     private(set) var lobbySettingsSyncRoomID: String?
     private(set) var lobbySettingsRollbackEpoch = 0
     var presentedSheet: AppSheet?
-    var roomQRTarget: RoomQRTarget = .web
+    var roomQRTarget: RoomQRTarget = SupabaseAppRuntime.permitsWebRoomLinks ? .web : .ios
     var language: AppLanguage = .stored {
         didSet {
             PushNotificationCoordinator.shared.updatePreferredLocale(language.rawValue)
@@ -3405,17 +3405,37 @@ final class AppState: NSObject {
         if activateUIPreviewModeIfRequested() { return }
 #endif
 
-        if !client.hasSessionToken, permitsStoredSessionBootstrap,
-           let token = sessionTokenRead()?.nilIfBlank {
-            client.setToken(token)
-            permitsStoredSessionBootstrap = false
-        }
-        guard client.hasSessionToken else { return }
         var generation = client.sessionGeneration
         var shouldSynchronizeLiveActivity = true
+        var upgradedUser: SpyUser?
 
         do {
-            let restoredUser = try await client.currentUser()
+            if !client.hasSessionToken, permitsStoredSessionBootstrap,
+               let token = sessionTokenRead()?.nilIfBlank {
+#if SPYCLASH_SUPABASE
+                try await SupabaseLegacySessionUpgrade.restore(
+                    token: token,
+                    ownsAttempt: { self.ownsSessionRestore(attemptID, generation: generation) },
+                    exchange: { try await SupabaseAppSession.shared.exchangeLegacySession($0) },
+                    commit: { response in
+                        try await self.client.commitAuthenticatedToken(response.accessToken, user: response.user)
+                        generation = self.client.sessionGeneration
+                        upgradedUser = response.user
+                    }
+                )
+                // Both credentials are already durable in their project-scoped
+                // stores. Never put the Supabase JWT in the Base44 token slot.
+                sessionTokenClear()
+#else
+                client.setToken(token)
+                generation = client.sessionGeneration
+#endif
+                permitsStoredSessionBootstrap = false
+            }
+            guard client.hasSessionToken else { return }
+            let restoredUser: SpyUser
+            if let upgradedUser { restoredUser = upgradedUser }
+            else { restoredUser = try await client.currentUser() }
             guard ownsSessionRestore(attemptID, generation: generation) else { return }
             user = restoredUser
             reconcileLanguagePreference(with: restoredUser.language)
@@ -3511,6 +3531,21 @@ final class AppState: NSObject {
                 self.authPhase = .password(email: email)
                 HapticManager.shared.fire(.notification(.success))
             }
+        }
+    }
+
+    func resendVerificationCode(email: String) async {
+        guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
+        await performAuth { attemptID in
+            try await self.client.resendOTP(email: email)
+            try self.requireCurrentAuthentication(attemptID)
+            self.authNotice = switch self.language {
+            case .en: "A new verification code has been sent."
+            case .ru: "Новый код подтверждения отправлен."
+            case .es: "Se ha enviado un código de verificación nuevo."
+            case .uk: "Новий код підтвердження надіслано."
+            }
+            HapticManager.shared.fire(.notification(.success))
         }
     }
 
@@ -4870,6 +4905,11 @@ final class AppState: NSObject {
     }
 
     func handleIncomingURL(_ url: URL) {
+        if !SupabaseTestEnvironment.isEnabled,
+           let token = ResetPasswordLinkParser.tokenIfPresent(from: url.absoluteString) {
+            presentPasswordRecovery(token: token)
+            return
+        }
 #if SPYCLASH_SUPABASE
         guard url.scheme?.lowercased() == SupabaseAppRuntime.callbackScheme else { return }
 #endif
@@ -4913,21 +4953,10 @@ final class AppState: NSObject {
                     Task { await consumePendingJoinIfPossible() }
                 }
             case .resetPassword(let token):
-                authPhase = .resetPassword(token: token)
-                authError = nil
-                authNotice = language.auth.chooseNewPassphraseNotice
-                presentedSheet = nil
+                presentPasswordRecovery(token: token)
             case .authenticationCallback, .unsupported:
                 break
             }
-            return
-        }
-
-        if let token = ResetPasswordLinkParser.tokenIfPresent(from: url.absoluteString) {
-            authPhase = .resetPassword(token: token)
-            authError = nil
-            authNotice = language.auth.chooseNewPassphraseNotice
-            presentedSheet = nil
             return
         }
 
@@ -5247,6 +5276,34 @@ final class AppState: NSObject {
     private func requestAuthenticationPresentation() {
         authPhase = .email
         authPresentationRequestID &+= 1
+    }
+
+    private func presentPasswordRecovery(token: String) {
+        // A recovery link is a new authentication intent. Late browser,
+        // email and foreground responses must not replace its form or notice.
+        invalidateSessionRestore()
+        authenticationAttemptID = nil
+        authenticationSessionGeneration = nil
+        webAuthentication.cancel()
+        webAuthenticationOverride?.cancel()
+        appleSignInCoordinator.cancelPendingRequest()
+        appleAuthorizationRequestID = nil
+        isAppleAuthorizationPending = false
+        isBusy = false
+        standardAuthTimelineTask?.cancel()
+        standardAuthTimelineTask = nil
+        standardAuthRunID = nil
+        authHomeRevealRestartTask?.cancel()
+        authHomeRevealRestartTask = nil
+        authHomeRevealRestartID = nil
+        authHomeRevealAnimationID = nil
+        appleAuthStage = nil
+        standardAuthCinematicStage = nil
+        authHomeRevealPhase = .idle
+        authPhase = .resetPassword(token: token)
+        authError = nil
+        authNotice = language.auth.chooseNewPassphraseNotice
+        presentedSheet = nil
     }
 
     private func consumePendingMatchRouteIfPossible() async {
@@ -6239,45 +6296,6 @@ private extension URL {
     }
 }
 
-private enum ResetPasswordLinkParser {
-    static func tokenIfPresent(from payload: String) -> String? {
-        if let url = URL(string: payload),
-           let token = token(from: url) {
-            return token
-        }
-        return nil
-    }
-
-    private static func token(from url: URL) -> String? {
-        if let components = URLComponents(url: url, resolvingAgainstBaseURL: false),
-           let token = components.queryItems?.first(where: { ["token", "reset_token", "resetToken"].contains($0.name) })?.value?.nilIfBlank,
-           isResetURL(url) {
-            return token
-        }
-
-        guard let fragment = url.fragment else {
-            return nil
-        }
-
-        let query = fragment.hasPrefix("?") ? String(fragment.dropFirst()) : fragment
-        guard let token = URLComponents(string: "https://spyclash.local?\(query)")?
-            .queryItems?
-            .first(where: { ["token", "reset_token", "resetToken"].contains($0.name) })?
-            .value?
-            .nilIfBlank,
-            isResetURL(url) || fragment.lowercased().contains("reset") else {
-            return nil
-        }
-
-        return token
-    }
-
-    private static func isResetURL(_ url: URL) -> Bool {
-        let host = url.host?.lowercased() ?? ""
-        let path = url.path.lowercased()
-        return host.contains("reset") || path.contains("reset-password") || path.contains("reset")
-    }
-}
 enum SpyClashRelease {
     static var headerVersionLabel: String {
         let info = Bundle.main.infoDictionary ?? [:]

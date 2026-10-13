@@ -273,7 +273,7 @@ enum RadarAutomaticRangefinderPolicy {
 
 enum RadarDiscoveryAdvertisement {
     /// Keep the TXT snapshot within Apple's ~400-byte discovery budget. The
-    /// remaining fixed protocol fields occupy at most 227 bytes. Trim only
+    /// fixed protocol fields include the backend namespace. Trim only
     /// presentation fields here; account/profile data and invitation payloads
     /// retain their original values.
     static func compactProfileFields(_ values: [String: String]) -> [String: String] {
@@ -1018,7 +1018,7 @@ enum RadarCameraAssistanceGate {
 @MainActor
 @Observable
 final class RadarNearbyService: NSObject {
-    private static let serviceType = "spyclash-radar"
+    private static let serviceType = SupabaseAppRuntime.radarServiceType
     // MCSession supports eight participants including the local device. Keep
     // one of the seven remote slots free for an explicit room invitation or
     // ranging request; additional Radar cards use versioned Bonjour snapshots.
@@ -2066,6 +2066,7 @@ final class RadarNearbyService: NSObject {
             peer: peerID,
             discoveryInfo: RadarDiscoveryAdvertisement.compactProfileFields([
                 "v": Self.protocolVersion,
+                "backend": SupabaseAppRuntime.radarBackendNamespace,
                 "spyid": identity.spyID,
                 "theme": identity.spyCardTheme.rawValue,
                 "accent": identity.spyCardAccent.rawValue,
@@ -2297,6 +2298,7 @@ final class RadarNearbyService: NSObject {
 
     private func recordFoundPeer(_ peerID: MCPeerID, discoveryInfo: [String: String]?) {
         guard allowsTransport else { return }
+        guard SupabaseAppRuntime.acceptsRadarBackend(discoveryInfo?["backend"]) else { return }
         guard let peerProtocolVersion = discoveryInfo?["v"],
               RadarPeerProtocolPolicy.acceptedVersions.contains(
                 peerProtocolVersion
