@@ -2,6 +2,7 @@
 import { reduceGame, projectGame } from './engine.ts';
 import { readLeaderboard } from './leaderboard-service.ts';
 import { validateSharedWordPackContent } from './word-pack-content-safety.ts';
+import { accountGate } from '../app-services/account-gate.ts';
 
 export class GameServiceError extends Error {
   constructor(code, message, status = 400, retryable = false) {
@@ -57,13 +58,17 @@ export async function executeGame(db, actor, body) {
   validUUID(actor.id, 'actor');
   if (actor.email !== actor.id.toLowerCase() + '@example.test') throw new GameServiceError('invalid_actor', 'Invalid test actor.', 401);
   const action = String(body?.action || '');
-  if (reads.has(action)) return await readGame(db, actor, body);
+  if (reads.has(action)) return await db.begin(async tx => {
+    actor = await gameAccountGate(tx, actor);
+    return await readGame(tx, actor, body);
+  });
   if (action === 'generate_word_pack') throw new GameServiceError('generation_retained_in_base44', 'AI word generation remains on Base44. This endpoint only owns gameplay and saved packs.', 424, false);
   const requestID = validUUID(body.request_id, 'request_id');
   const hash = await commandHash(body);
   return await db.begin(async tx => {
     await tx`set local statement_timeout = '8s'`;
     await tx`set local lock_timeout = '6s'`;
+    actor = await gameAccountGate(tx, actor);
     await tx`select pg_advisory_xact_lock(hashtextextended(${actor.id + ':' + requestID}, 0))`;
     const [prior] = await tx`select request_hash, status, response from full_game_private.receipts where actor_id=${actor.id} and request_id=${requestID}`;
     if (prior) {
@@ -137,6 +142,19 @@ export async function executeGame(db, actor, body) {
   });
 }
 
+async function gameAccountGate(tx, actor) {
+  // Standalone game-lab databases predate the full-app schema. Once installed,
+  // this gate is mandatory and serializes account deletion with every command.
+  const [{ installed }] = await tx`select to_regclass('app_private.profiles') is not null as installed`;
+  if (!installed) return actor;
+  const profile = await accountGate(tx, actor.id);
+  return profile ? { ...actor,
+    full_name: String(profile.data?.full_name || actor.full_name).slice(0,80),
+    display_name: String(profile.data?.display_name || profile.data?.full_name || actor.full_name).slice(0,80),
+    avatar: String(profile.data?.avatar || '🕵️'),
+  } : actor;
+}
+
 async function findRoom(tx, body, lock = false) {
   if (body.room_id) {
     validUUID(body.room_id, 'room_id');
@@ -168,8 +186,24 @@ async function readGame(db, actor, body) {
     return { status: 200, body: { pack: packData(row) } };
   }
   if (body.action === 'get_history') {
-    const rows = await db`select result,created_at from full_game_private.history where player_id=${actor.id} order by created_at desc limit 200`;
-    return { status: 200, body: { history: rows.map(r => ({ ...r.result, id: r.result.result_key, created_date: r.created_at })) } };
+    const limit = Math.max(1, Math.min(200, Number.isInteger(body.limit) ? body.limit : 200));
+    let cursor = null;
+    if (body.cursor) {
+      try {
+        cursor = JSON.parse(atob(String(body.cursor)));
+        validUUID(cursor.id, 'cursor');
+        if (typeof cursor.at !== 'string' || !/^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}:\d{2}\.\d{6}Z$/.test(cursor.at) || !Number.isFinite(Date.parse(cursor.at))) throw new Error('Invalid date');
+      } catch { throw new GameServiceError('invalid_cursor', 'Invalid history cursor.'); }
+    }
+    const rows = await db`select match_id,result,created_at,to_char(created_at at time zone 'UTC','YYYY-MM-DD"T"HH24:MI:SS.US"Z"') as cursor_at
+      from full_game_private.history where player_id=${actor.id}
+      ${cursor ? db`and (created_at,match_id)<(${cursor.at}::text::timestamptz,${cursor.id}::uuid)` : db``}
+      order by created_at desc,match_id desc limit ${limit + 1}`;
+    const page = rows.slice(0, limit), last = page.at(-1);
+    return { status: 200, body: {
+      history: page.map(r => ({ ...r.result, id: r.result.result_key, created_date: r.created_at })),
+      next_cursor: rows.length > limit && last ? btoa(JSON.stringify({at:last.cursor_at,id:last.match_id})) : null,
+    } };
   }
   if (body.action === 'get_leaderboard') {
     return { status: 200, body: await readLeaderboard(db, actor) };

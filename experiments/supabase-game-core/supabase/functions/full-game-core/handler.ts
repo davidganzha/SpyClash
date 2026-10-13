@@ -1,4 +1,6 @@
 import { executeGame, GameServiceError } from './service.ts';
+import { sessionGate, verifiedSessionID } from '../app-services/account-gate.ts';
+import { AppServiceError } from '../app-services/contracts.ts';
 
 export function createHandler({ db, authenticate }: { db: any; authenticate: (token: string) => Promise<any> }) {
   return async (request: Request): Promise<Response> => {
@@ -9,6 +11,7 @@ export function createHandler({ db, authenticate }: { db: any; authenticate: (to
       // Always verify with Auth; decoding an unsigned JWT is never authority.
       const user = await authenticate(bearer.slice(7));
       if (!user?.id) throw new GameServiceError('unauthorized', 'Sign in to play.', 401);
+      await sessionGate(db, user.id, verifiedSessionID(bearer.slice(7)));
       const raw = await request.text();
       if (raw.length > 131072) throw new GameServiceError('request_too_large', 'Request too large.', 413);
       let body;
@@ -18,7 +21,7 @@ export function createHandler({ db, authenticate }: { db: any; authenticate: (to
       const result = await executeGame(db, actor, body);
       return Response.json(result.body, { status: result.status, headers: { 'Cache-Control': 'no-store' } });
     } catch (error: any) {
-      if (error instanceof GameServiceError || (error.status >= 400 && error.status < 500)) {
+      if (error instanceof GameServiceError || error instanceof AppServiceError || (error.status >= 400 && error.status < 500)) {
         return Response.json({ code: error.code || 'action_rejected', message: error.message, retryable: error.retryable === true }, { status: error.status || 400 });
       }
       // Do not expose SQL text, raw records, credentials or room secrets.

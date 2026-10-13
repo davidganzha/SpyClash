@@ -1,0 +1,113 @@
+#if SPYCLASH_SUPABASE
+import Foundation
+import Security
+
+struct SupabaseLegacyCredential: Codable, Equatable {
+    let actorID: String
+    let legacyUserID: String
+    let accessToken: String
+}
+
+enum SupabaseLegacyKeychain {
+    private static var identity: [String: Any] {
+        [kSecClass as String: kSecClassGenericPassword,
+         kSecAttrService as String: (Bundle.main.bundleIdentifier ?? "com.spyclash.ios.supabasetest") + ".supabase.bbkfsgnordtdiblgdzkg",
+         kSecAttrAccount as String: "legacy-base44-v1"]
+    }
+    static func read() -> SupabaseLegacyCredential? {
+        var query = identity
+        query[kSecReturnData as String] = true; query[kSecMatchLimit as String] = kSecMatchLimitOne
+        var result: CFTypeRef?
+        guard SecItemCopyMatching(query as CFDictionary, &result) == errSecSuccess, let data = result as? Data else { return nil }
+        return try? JSONDecoder().decode(SupabaseLegacyCredential.self, from: data)
+    }
+    static func save(_ credential: SupabaseLegacyCredential) throws {
+        let attributes: [String: Any] = [kSecValueData as String: try JSONEncoder().encode(credential), kSecAttrAccessible as String: kSecAttrAccessibleAfterFirstUnlockThisDeviceOnly]
+        let status = SecItemUpdate(identity as CFDictionary, attributes as CFDictionary)
+        if status == errSecSuccess { return }
+        guard status == errSecItemNotFound else { throw failure }
+        var query = identity; attributes.forEach { query[$0.key] = $0.value }
+        guard SecItemAdd(query as CFDictionary, nil) == errSecSuccess else { throw failure }
+    }
+    static func clear() { SecItemDelete(identity as CFDictionary) }
+    private static var failure: Base44Error { Base44Error(message: "The Base44 sign-in could not be saved securely.", code: "legacy_session_storage_failed") }
+}
+
+/// Only the existing identity endpoints may use Base44 in the staging app.
+/// No shared game/API token is read by this transport and redirects are rejected.
+@MainActor
+final class SupabaseLegacyAuth {
+    static let shared = SupabaseLegacyAuth()
+    private let http: URLSession
+    init(session: URLSession? = nil) {
+        if let session { http = session }
+        else {
+            let configuration = URLSessionConfiguration.ephemeral
+            configuration.timeoutIntervalForRequest = 25; configuration.timeoutIntervalForResource = 35
+            http = URLSession(configuration: configuration, delegate: LegacyAuthNoRedirectDelegate(), delegateQueue: nil)
+        }
+    }
+    func login(email: String, password: String) async throws -> LoginResponse {
+        try await request("auth/login", fields: ["email": email, "password": password])
+    }
+    func register(email: String, password: String) async throws {
+        let _: EmptyResponse = try await request("auth/register", fields: ["email": email, "password": password])
+    }
+    func verify(email: String, code: String) async throws -> VerifyResponse {
+        guard SupabaseAppRuntime.acceptsEmailOTP(code, length: 6) else {
+            throw Base44Error(message: "Enter the 6-digit verification code.", code: "invalid_email_otp")
+        }
+        return try await request("auth/verify-otp", fields: ["email": email, "otp_code": code])
+    }
+    func resend(email: String) async throws {
+        let _: EmptyResponse = try await request("auth/resend-otp", fields: ["email": email])
+    }
+    func requestRecovery(email: String) async throws {
+        let _: EmptyResponse = try await request("auth/reset-password-request", fields: ["email": email])
+    }
+    func resetPassword(token: String, password: String) async throws {
+        let _: EmptyResponse = try await request("auth/reset-password", fields: ["reset_token": token, "new_password": password])
+    }
+    func registerProvider(legacyToken: String, appleBindingTicket: String?) async throws {
+        guard !Self.isSupabaseBearer(legacyToken) else { throw Base44Error(message: "Invalid identity provider response.", code: "wrong_credential_provider") }
+        var fields = ["access_token": legacyToken]
+        if let appleBindingTicket, !appleBindingTicket.isEmpty { fields["apple_binding_ticket"] = appleBindingTicket }
+        let _: JSONValue = try await request("functions/autoRegisterUser", fields: fields)
+    }
+    static func isSupabaseBearer(_ token: String) -> Bool {
+        let parts = token.split(separator: ".")
+        guard parts.count == 3 else { return false }
+        var payload = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: payload), let json = try? JSONDecoder().decode(JSONValue.self, from: data),
+              let issuer = json["iss"].string, let url = URL(string: issuer) else { return false }
+        return url.host?.hasSuffix(".supabase.co") == true && url.path.hasPrefix("/auth/v1")
+    }
+    private func request<T: Decodable>(_ route: String, fields: [String: String]) async throws -> T {
+        guard ["auth/login", "auth/register", "auth/verify-otp", "auth/resend-otp", "auth/reset-password-request", "auth/reset-password", "functions/autoRegisterUser"].contains(route) else {
+            throw Base44Error(message: "This Base44 endpoint is unavailable in staging.", code: "legacy_route_disallowed")
+        }
+        let url = Base44Client.appBaseURL.appending(path: "/api/apps/\(Base44Client.appID)/\(route)")
+        var request = URLRequest(url: url)
+        request.httpMethod = "POST"
+        request.setValue("application/json", forHTTPHeaderField: "Accept")
+        request.setValue("application/json", forHTTPHeaderField: "Content-Type")
+        request.setValue(Base44Client.appBaseURL.absoluteString, forHTTPHeaderField: "Origin")
+        request.setValue(Base44Client.appID, forHTTPHeaderField: "X-App-Id")
+        request.httpBody = try JSONEncoder.base44.encode(fields)
+        let data: Data; let response: URLResponse
+        do { (data, response) = try await http.data(for: request) }
+        catch { if Task.isCancelled { throw CancellationError() }; throw Base44Error(message: "Connection interrupted. Please try again.", statusCode: 503, code: "legacy_auth_transport_interrupted", retryable: true) }
+        guard let response = response as? HTTPURLResponse else { throw Base44Error(message: "Invalid sign-in response.") }
+        guard (200..<300).contains(response.statusCode) else {
+            let json = (try? JSONDecoder().decode(JSONValue.self, from: data)) ?? .null
+            throw Base44Error(message: json["message"].string ?? json["error"].string ?? "Sign-in could not be completed.", statusCode: response.statusCode, code: json["code"].string)
+        }
+        return try JSONDecoder.base44.decode(T.self, from: data.isEmpty ? Data("{}".utf8) : data)
+    }
+}
+
+private final class LegacyAuthNoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
+    func urlSession(_ session: URLSession, task: URLSessionTask, willPerformHTTPRedirection response: HTTPURLResponse, newRequest request: URLRequest, completionHandler: @escaping @Sendable (URLRequest?) -> Void) { completionHandler(nil) }
+}
+#endif

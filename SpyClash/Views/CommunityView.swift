@@ -34,9 +34,20 @@ private final class CommunityProfileRealtimeService {
     private var socket: SocketIOClient?
     private var room: String?
     private var generation = UUID()
+    private var stagingRefresh: Task<Void, Never>?
 
     func start(appID: String, token: String, userID: String) {
         stop()
+#if SPYCLASH_SUPABASE
+        let accountGeneration = SupabaseAppSession.shared.generation
+        stagingRefresh = Task { [weak self] in
+            while !Task.isCancelled, SupabaseAppSession.shared.generation == accountGeneration {
+                self?.onCatchUp?()
+                do { try await Task.sleep(for: .seconds(10)) } catch { return }
+            }
+        }
+        return
+#endif
         let room = "entities:\(appID):CommunityProfileSignal"
         let generation = UUID()
         let manager = SocketManager(
@@ -72,6 +83,7 @@ private final class CommunityProfileRealtimeService {
     }
 
     func stop() {
+        stagingRefresh?.cancel(); stagingRefresh = nil
         generation = UUID()
         if let room, socket?.status == .connected { socket?.emit("leave", room) }
         socket?.removeAllHandlers()
@@ -1553,9 +1565,25 @@ struct CommunityView: View {
         }
         profileRealtime.onCatchUp = {
             Task {
+                let expectedAccount = appState.user?.id
+                let expectedProfile = activeProfile?.profile.id
                 do {
-                    directory = try await loadEntireDirectory()
+                    let profiles = try await loadEntireDirectory()
+                    guard !Task.isCancelled, appState.user?.id == expectedAccount else { return }
+                    directory = profiles
+                    if SupabaseAppRuntime.isEnabled {
+                        if let expectedProfile {
+                            let detail = try await appState.client.communityProfile(userID: expectedProfile)
+                            guard !Task.isCancelled, appState.user?.id == expectedAccount else { return }
+                            profileCache[expectedProfile] = detail
+                            if activeProfile?.profile.id == expectedProfile { activeProfile = detail }
+                        }
+                        let state = try await appState.client.communityState()
+                        guard !Task.isCancelled, appState.user?.id == expectedAccount else { return }
+                        network = state
+                    }
                 } catch {
+                    guard appState.user?.id == expectedAccount else { return }
                     showError(error)
                 }
             }

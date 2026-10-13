@@ -134,7 +134,7 @@ struct WordPackEditorSheet: View {
                 .accessibilityAddTraits(.isModal)
             }
         }
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         .safeAreaInset(edge: .bottom, spacing: 0) {
             SupabaseGameRecoveryBanner { response in
                 if let pack = try? JSONDecoder().decode(WordPack.self, from: response["pack"].data()) {

@@ -1,4 +1,4 @@
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
 import Foundation
 import Observation
 
@@ -9,6 +9,24 @@ final class SupabaseGameAdapter {
     static let shared = SupabaseGameAdapter()
     let store: SupabaseFullGameStore
     private(set) var user: SpyUser?
+#if SPYCLASH_SUPABASE
+    private var connectedGeneration: UUID?
+    func connectSession(profile: SpyUser) async throws {
+        let session = SupabaseAppSession.shared
+        guard session.userID == profile.id else { throw SupabaseFullGameStore.notSignedIn }
+        if connectedGeneration != session.generation {
+            try await store.connect(transport: SupabaseAppGameTransport(auth: session), name: profile.callSign)
+            connectedGeneration = session.generation
+        }
+        user = profile
+    }
+#endif
+    func disconnect() {
+        store.disconnect(); user = nil
+#if SPYCLASH_SUPABASE
+        connectedGeneration = nil
+#endif
+    }
 
     init(store: SupabaseFullGameStore = SupabaseFullGameStore()) { self.store = store }
     var latestSnapshot: JSONValue { store.snapshot }
@@ -82,9 +100,25 @@ final class SupabaseGameAdapter {
     }
 
     func generateWordPack(theme: String, count: Int, requestID: UUID, excluding: [String], preferFresh: Bool) async throws -> GeneratedWordPack {
+#if SPYCLASH_SUPABASE
+        let capability: JSONValue = try await SupabaseAppSession.shared.service("legacy", action: "status")
+        guard capability["configured"].bool else {
+            throw Base44Error(message: "The Base44 generator is not configured for this staging app yet. Use a saved or manual word pack.", statusCode: 503, code: "legacy_bridge_unconfigured")
+        }
+        if !capability["linked"].bool {
+            let _: JSONValue = try await SupabaseAppSession.shared.service("legacy", action: "link", write: true, includeLegacyCredential: true)
+        }
+        return try await SupabaseAppSession.shared.service("legacy", action: "generate", fields: Self.generationFields(theme: theme, count: count, requestID: requestID, excluding: excluding, preferFresh: preferFresh), write: true, includeLegacyCredential: true)
+#else
         // The generator remains on Base44. Synthetic Supabase test identities
         // have no Base44 session, and must never trigger a production request.
         throw Base44Error(message: "Генератор остаётся на Base44 и требует входа в аккаунт Base44. В тестовой сборке используйте сохранённый или ручной набор слов.", statusCode: 403, code: "base44_generation_requires_auth")
+#endif
+    }
+
+    static func generationFields(theme: String, count: Int, requestID: UUID, excluding: [String], preferFresh: Bool) -> [String: JSONValue] {
+        ["theme": .string(theme), "count": .number(Double(count)), "request_id": .string(requestID.uuidString.lowercased()),
+         "exclude_words": .array(excluding.map(JSONValue.string)), "prefer_fresh": .bool(preferFresh)]
     }
 
     private static var roomMissing: Base44Error { Base44Error(message: "Room not found.", statusCode: 404, code: "room_not_found") }

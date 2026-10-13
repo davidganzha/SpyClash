@@ -552,7 +552,13 @@ private struct NotificationAuthorizationControl: View {
 
     var body: some View {
         VStack(alignment: .leading, spacing: 0) {
-            if needsAuthorization {
+            if SupabaseAppRuntime.isEnabled && !SupabaseAppRuntime.permitsPush {
+                Text(copy.stagingPushUnavailable)
+                    .font(SpyTheme.micro)
+                    .foregroundStyle(SpyTheme.muted)
+                    .padding(14)
+                    .accessibilityIdentifier("notifications.stagingPushUnavailable")
+            } else if needsAuthorization {
                 VStack(alignment: .leading, spacing: 8) {
                     Button {
                         HapticManager.shared.fire(.buttonPress)
@@ -958,6 +964,7 @@ private struct NotificationInboxCopy {
     var enableNotifications: String { text("ENABLE NOTIFICATIONS", "ВКЛЮЧИТЬ УВЕДОМЛЕНИЯ", "ACTIVAR NOTIFICACIONES", "УВІМКНУТИ СПОВІЩЕННЯ") }
     var notificationPermissionDetail: String { text("Get game invitations and friend requests.", "Получайте приглашения в игру и запросы в друзья.", "Recibe invitaciones a partidas y solicitudes de amistad.", "Отримуйте запрошення до гри та запити в друзі.") }
     var notificationSettingsDetail: String { text("Enable SpyClash notifications in iPhone Settings.", "Включите уведомления SpyClash в настройках iPhone.", "Activa las notificaciones de SpyClash en los ajustes del iPhone.", "Увімкніть сповіщення SpyClash у налаштуваннях iPhone.") }
+    var stagingPushUnavailable: String { text("Push delivery is not configured for this test app yet. Your inbox remains available here.", "Push-уведомления пока не подключены к тестовой сборке. Сообщения доступны здесь, во входящих.", "Las notificaciones push aún no están configuradas para esta app de prueba. La bandeja de entrada sigue disponible aquí.", "Push-сповіщення ще не підключено до тестової збірки. Повідомлення доступні тут, у вхідних.") }
     var notificationPermissionError: String { text("Couldn't enable notifications. Try again.", "Не удалось включить уведомления. Попробуйте ещё раз.", "No se pudieron activar las notificaciones. Inténtalo de nuevo.", "Не вдалося увімкнути сповіщення. Спробуйте ще раз.") }
     var composerTitle: String { text("GLOBAL TRANSMISSION", "ОБЩАЯ ПЕРЕДАЧА", "TRANSMISIÓN GLOBAL", "ЗАГАЛЬНА ПЕРЕДАЧА") }
     var composerDetail: String { text("Admin-only message for every operative", "Сообщение администратора для всех игроков", "Mensaje de administración para todos", "Повідомлення адміністратора для всіх гравців") }

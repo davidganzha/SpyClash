@@ -778,7 +778,7 @@ enum SpyLinkParser {
         let trimmed = payload.trimmingCharacters(in: .whitespacesAndNewlines)
 
         if let url = URL(string: trimmed), let scheme = url.scheme?.lowercased() {
-            if scheme == (SupabaseTestEnvironment.isEnabled ? "spyclash-supabasetest" : "spyclash") {
+            if scheme == ((SupabaseTestEnvironment.isEnabled || SupabaseAppRuntime.isEnabled) ? "spyclash-supabasetest" : "spyclash") {
                 if ["join", "room"].contains(url.host?.lowercased() ?? ""),
                    let path = url.pathComponents.first(where: { $0 != "/" && !$0.isEmpty }),
                    normalizedCode(path) == nil { return nil }

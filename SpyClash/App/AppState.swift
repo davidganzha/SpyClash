@@ -1332,7 +1332,7 @@ enum SpyClashCustomRoute: Equatable {
     case unsupported
 
     static func parse(_ url: URL) -> Self? {
-        guard url.scheme?.lowercased() == "spyclash" else { return nil }
+        guard url.scheme?.lowercased() == SupabaseAppRuntime.callbackScheme else { return nil }
 
         let host = url.host?.lowercased() ?? ""
         let query = URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems ?? []
@@ -1686,7 +1686,7 @@ final class AppState: NSObject {
         radarNearby.onAutomaticInvitation = { [weak self] invitation in
             self?.handleAutomaticRadarInvitation(invitation)
         }
-        if !SupabaseTestEnvironment.isEnabled {
+        if SupabaseAppRuntime.permitsPush {
         PushNotificationCoordinator.shared.configure(
             client: client,
             routeHandler: { [weak self] route in
@@ -1727,7 +1727,7 @@ final class AppState: NSObject {
     }
 
     func leaveRoomImmediately(_ room: GameRoom) {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         guard let actorID = user?.id, !client.supabaseAdapter.hasPendingRecovery,
               beginRoomSync(.leavingRoom) else { return }
         let mode = DismissedRoomExitMode.resolve(room: room, currentUserEmail: user?.email)
@@ -2800,7 +2800,7 @@ final class AppState: NSObject {
     }
 
     func monitorActiveRoom(_ roomID: String) async {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         synchronizeSupabaseTestRoom()
         return
 #endif
@@ -2906,7 +2906,7 @@ final class AppState: NSObject {
     /// The test adapter owns its room selection and authoritative snapshots.
     /// Bridge those into the real shell without a second join or state mutation.
     func synchronizeSupabaseTestRoom() {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         let adapter = client.supabaseAdapter
         guard let user, user.id == adapter.user?.id else { return }
         let candidate = adapter.currentRoom
@@ -2918,7 +2918,7 @@ final class AppState: NSObject {
     }
 
     func refreshActiveRoomOnActivation() {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         guard user != nil, !isRestoring, roomSyncOperation == nil else { return }
         let adapter = client.supabaseAdapter
         guard let roomID = adapter.store.roomID else {
@@ -3467,7 +3467,8 @@ final class AppState: NSObject {
             guard !response.accessToken.isEmpty else {
                 throw WebAuthenticationError.invalidCallback
             }
-            self.client.setToken(response.accessToken)
+            try await self.client.commitAuthenticatedToken(response.accessToken, user: response.user)
+            try self.requireCurrentAuthentication(attemptID, checkSession: false)
             self.sessionTokenSave(response.accessToken)
             await self.beginStandardAuthCinematic(
                 with: response.user,
@@ -3479,8 +3480,15 @@ final class AppState: NSObject {
     func register(email: String, password: String) async {
         guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
         await performAuth { attemptID in
-            try await self.client.register(email: email, password: password)
+            let immediateSession = try await self.client.registerReturningSession(email: email, password: password)
             try self.requireCurrentAuthentication(attemptID)
+            if let response = immediateSession {
+                try await self.client.commitAuthenticatedToken(response.accessToken, user: response.user)
+                try self.requireCurrentAuthentication(attemptID, checkSession: false)
+                self.sessionTokenSave(response.accessToken)
+                await self.beginStandardAuthCinematic(with: response.user, startDelay: .milliseconds(650))
+                return
+            }
             self.authPhase = .otp(email: email)
             HapticManager.shared.fire(.notification(.success))
         }
@@ -3492,7 +3500,8 @@ final class AppState: NSObject {
             try self.requireCurrentAuthentication(attemptID)
             if let token = response.accessToken, let verifiedUser = response.user {
                 guard !token.isEmpty else { throw WebAuthenticationError.invalidCallback }
-                self.client.setToken(token)
+                try await self.client.commitAuthenticatedToken(token, user: verifiedUser)
+                try self.requireCurrentAuthentication(attemptID, checkSession: false)
                 self.sessionTokenSave(token)
                 await self.beginStandardAuthCinematic(
                     with: verifiedUser,
@@ -3526,6 +3535,12 @@ final class AppState: NSObject {
     }
 
     func loginWithGoogle() async {
+#if SPYCLASH_SUPABASE
+        guard (try? SupabaseAppSession.shared.configuration().googleSignInEnabled) == true else {
+            authError = "Google sign-in is not configured for this test app yet. Use email."
+            return
+        }
+#endif
         guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
         guard let callback = URL(string: "spyclash://auth") else { return }
         await loginWithWebProvider(
@@ -3535,6 +3550,10 @@ final class AppState: NSObject {
 
     func configureAppleSignInRequest(_ request: ASAuthorizationAppleIDRequest, requestID: UUID) {
         guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
+        guard SupabaseAppRuntime.permitsAppleSignIn else {
+            authError = "Apple sign-in is not configured for this test app yet. Use email sign-in."
+            return
+        }
         guard let attemptID = beginAuthenticationAttempt() else { return }
 
         do {
@@ -3666,13 +3685,21 @@ final class AppState: NSObject {
         try requireCurrentAuthentication(attemptID)
         // Verify the candidate without replacing the existing session. A
         // temporary profile-sync failure must not erase saved credentials.
+#if SPYCLASH_SUPABASE
+        let bridged = try await client.legacyProviderSession(token, appleBindingTicket: appleBindingTicket)
+        let authenticatedUser = bridged.user
+        let authenticatedToken = bridged.accessToken
+#else
         let authenticatedUser = try await client.autoRegisterUser(
             appleBindingTicket: appleBindingTicket,
             accessToken: token
         )
+        let authenticatedToken = token
+#endif
         try requireCurrentAuthentication(attemptID)
-        client.setToken(token)
-        sessionTokenSave(token)
+        try await client.commitAuthenticatedToken(authenticatedToken, user: authenticatedUser)
+        try requireCurrentAuthentication(attemptID, checkSession: false)
+        sessionTokenSave(authenticatedToken)
         reconcileLanguagePreference(with: authenticatedUser.language)
         if cinematic == .standard {
             await beginStandardAuthCinematic(
@@ -4384,7 +4411,7 @@ final class AppState: NSObject {
     }
 
     private func reconcileGameRoomRealtimeSubscription() {
-        guard !SupabaseTestEnvironment.isEnabled else { return }
+        guard !SupabaseTestEnvironment.isEnabled && !SupabaseAppRuntime.isEnabled else { gameRoomRealtime.stop(); return }
         gameRoomRealtimeGeneration = UUID()
         gameRoomRealtimeRefreshTask?.cancel()
         gameRoomRealtimeRefreshTask = nil
@@ -4843,6 +4870,9 @@ final class AppState: NSObject {
     }
 
     func handleIncomingURL(_ url: URL) {
+#if SPYCLASH_SUPABASE
+        guard url.scheme?.lowercased() == SupabaseAppRuntime.callbackScheme else { return }
+#endif
         if SupabaseTestEnvironment.isEnabled {
             guard url.scheme?.lowercased() == "spyclash-supabasetest",
                   url.host?.lowercased() == "join",

@@ -2325,7 +2325,7 @@ struct GameView: View {
 
     var body: some View {
         productionBody
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
             .safeAreaInset(edge: .bottom, spacing: 0) { SupabaseGameRecoveryBanner() }
 #endif
     }

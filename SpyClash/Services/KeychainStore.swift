@@ -7,7 +7,7 @@ enum KeychainStore {
     private static let account = "base44_access_token"
 
     static func saveToken(_ token: String) {
-        guard !SupabaseTestEnvironment.isEnabled else { return }
+        guard !SupabaseTestEnvironment.isEnabled && !SupabaseAppRuntime.isEnabled else { return }
         guard storeToken(token, service: service) else { return }
         deleteToken(service: legacyService)
     }
@@ -34,7 +34,7 @@ enum KeychainStore {
     }
 
     static func readToken() -> String? {
-        guard !SupabaseTestEnvironment.isEnabled else { return nil }
+        guard !SupabaseTestEnvironment.isEnabled && !SupabaseAppRuntime.isEnabled else { return nil }
         if let token = readToken(service: service) {
             return token
         }
@@ -66,7 +66,7 @@ enum KeychainStore {
     }
 
     static func clearToken() {
-        guard !SupabaseTestEnvironment.isEnabled else { return }
+        guard !SupabaseTestEnvironment.isEnabled && !SupabaseAppRuntime.isEnabled else { return }
         deleteToken(service: service)
         deleteToken(service: legacyService)
     }

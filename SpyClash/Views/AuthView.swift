@@ -221,20 +221,24 @@ struct AuthView: View {
                 .disabled(appState.isBusy || password.isEmpty)
 
             case .otp(let lockedEmail):
-                Text(copy.sixDigitKeyLabel)
+                Text(copy.sixDigitKeyLabel.replacingOccurrences(of: "6", with: String(SupabaseAppRuntime.emailOTPLength)))
                     .font(SpyTheme.micro)
                     .tracking(0.12)
                     .foregroundStyle(SpyTheme.dim)
                     .spyKicker(lines: 2)
-                TextField("000000", text: $otp)
+                TextField(String(repeating: "0", count: SupabaseAppRuntime.emailOTPLength), text: $otp)
                     .keyboardType(.numberPad)
                     .textContentType(.oneTimeCode)
                     .multilineTextAlignment(.center)
-                    .font(.system(size: 28, weight: .bold, design: .monospaced))
-                    .tracking(8)
+                    .font(.system(size: SupabaseAppRuntime.emailOTPLength > 6 ? 24 : 28, weight: .bold, design: .monospaced))
+                    .tracking(SupabaseAppRuntime.emailOTPLength > 6 ? 4 : 8)
                     .foregroundStyle(.white)
                     .padding(14)
                     .spyCutCard(cut: 9, fill: SpyTheme.panelDeep, stroke: SpyTheme.stroke)
+                    .onChange(of: otp) { _, value in
+                        guard SupabaseAppRuntime.isEnabled else { return }
+                        otp = String(value.filter { $0.isASCII && $0.isNumber }.prefix(SupabaseAppRuntime.emailOTPLength))
+                    }
                 Button {
                     HapticManager.shared.fire(.buttonPress)
                     Task { await appState.verify(email: lockedEmail, code: otp) }
@@ -242,7 +246,9 @@ struct AuthView: View {
                     busyLabel(copy.verifyingBusy, idle: copy.verifyEnterAction)
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
-                .disabled(appState.isBusy || otp.count < 6)
+                .disabled(appState.isBusy || (SupabaseAppRuntime.isEnabled
+                    ? !SupabaseAppRuntime.acceptsEmailOTP(otp, length: SupabaseAppRuntime.emailOTPLength)
+                    : otp.count < 6))
 
             case .forgotPassword(let lockedEmail):
                 Text(copy.requestResetBody)
@@ -395,23 +401,43 @@ struct AuthView: View {
         // mutable @State inside onCompletion would relabel a late old result
         // with the ID of the replacement request.
         let requestID = appleButtonID
-        return SignInWithAppleButton(.continue) { request in
-            HapticManager.shared.fire(.buttonPress)
-            appState.authError = nil
-            appState.authNotice = nil
-            appState.configureAppleSignInRequest(request, requestID: requestID)
-        } onCompletion: { result in
-            Task { @MainActor in
-                await appState.completeAppleSignIn(result, requestID: requestID)
+        return VStack(spacing: 8) {
+            SignInWithAppleButton(.continue) { request in
+                HapticManager.shared.fire(.buttonPress)
+                appState.authError = nil
+                appState.authNotice = nil
+                appState.configureAppleSignInRequest(request, requestID: requestID)
+            } onCompletion: { result in
+                Task { @MainActor in
+                    await appState.completeAppleSignIn(result, requestID: requestID)
+                }
+            }
+            .signInWithAppleButtonStyle(.white)
+            .frame(height: 50)
+            .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
+            .disabled(appState.isBusy || !SupabaseAppRuntime.permitsAppleSignIn)
+            .opacity(appState.isBusy || !SupabaseAppRuntime.permitsAppleSignIn ? 0.62 : 1)
+            .accessibilityLabel(copy.continueWithApple)
+            .id(requestID)
+            if SupabaseAppRuntime.isEnabled, !SupabaseAppRuntime.permitsAppleSignIn {
+                Text(stagingAppleUnavailable)
+                    .font(SpyTheme.micro)
+                    .foregroundStyle(SpyTheme.muted)
+                    .multilineTextAlignment(.center)
+                    .lineLimit(nil)
+                    .fixedSize(horizontal: false, vertical: true)
+                    .accessibilityIdentifier("auth.appleUnavailable")
             }
         }
-        .signInWithAppleButtonStyle(.white)
-        .frame(height: 50)
-        .clipShape(RoundedRectangle(cornerRadius: 8, style: .continuous))
-        .disabled(appState.isBusy)
-        .opacity(appState.isBusy ? 0.62 : 1)
-        .accessibilityLabel(copy.continueWithApple)
-        .id(requestID)
+    }
+
+    private var stagingAppleUnavailable: String {
+        switch appState.language {
+        case .en: "Apple sign-in is not configured for this test app yet. Use email."
+        case .ru: "Вход с Apple пока не подключён к тестовой сборке. Используйте почту."
+        case .es: "Apple aún no está configurado en esta app de prueba. Usa el correo."
+        case .uk: "Вхід з Apple ще не підключено до тестової збірки. Використайте пошту."
+        }
     }
 
     private var divider: some View {

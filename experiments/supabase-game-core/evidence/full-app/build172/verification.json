@@ -1,0 +1,413 @@
+{
+  "build": "1.0.3 (172)",
+  "scope": "isolated full-application staging preparation; no production cutover",
+  "recorded_at": "2026-10-13",
+  "project_ref": "bbkfsgnordtdiblgdzkg",
+  "supabase_plan": "free",
+  "bundle_id": "com.spyclash.ios.supabasetest",
+  "scheme": "SpyClash-Supabase-Staging",
+  "backend": {
+    "application": {
+      "passed": 60,
+      "failed": 0,
+      "local_base44_source": "mocked",
+      "auth_database_and_realtime": "real isolated local Supabase"
+    },
+    "full_game_core": {
+      "passed": 14,
+      "failed": 0
+    },
+    "local_security_advisors": {
+      "warnings": 0,
+      "errors": 0
+    },
+    "cloud_private_schema": {
+      "tables": 24,
+      "all_rls": true,
+      "anon_select": false,
+      "authenticated_select": false,
+      "authenticated_insert": false
+    }
+  },
+  "native": {
+    "baseline": {
+      "status": "SUCCEEDED",
+      "durationMs": 67590,
+      "counts": {
+        "passed": 23,
+        "failed": 0,
+        "skipped": 0
+      },
+      "target": "simulator",
+      "artifacts": {
+        "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/test_sim_2026-10-13T00-18-36-338Z_pid52353_76db3828.log",
+        "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-13T00-18-36-338Z_pid52353_1c5d2abe.xcresult",
+        "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/test-products/test_sim_2026-10-13T00-18-36-339Z_pid52353_59513d28.xctestproducts"
+      },
+      "test_cases": [
+        {
+          "suite": "SupabaseMutationJournalTests",
+          "test": "testLegacyCredentialNeverEntersDiskJournal",
+          "status": "passed",
+          "durationMs": 7
+        },
+        {
+          "suite": "SupabaseMutationJournalTests",
+          "test": "testPendingActionCannotBeReboundAndOtherAccountNeverInheritsIt",
+          "status": "passed",
+          "durationMs": 7
+        },
+        {
+          "suite": "SupabaseMutationJournalTests",
+          "test": "testRestartRetryKeepsOriginalRequestIDAndAcknowledgementAllowsNewIntent",
+          "status": "passed",
+          "durationMs": 5
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testBase44SignupUsesExistingEndpointWithoutSupabaseAuthorization",
+          "status": "passed",
+          "durationMs": 106
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testCanceledWatchCleanupCannotClearNextRoomWatch",
+          "status": "passed",
+          "durationMs": 32
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testConcurrentRefreshRevalidatesLegacyWithOneExchange",
+          "status": "passed",
+          "durationMs": 57
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testEmailOTPConfigurationAndValidationUseSixBase44Digits",
+          "status": "passed",
+          "durationMs": 1
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testEmailOTPRejectsEightDigitsBeforeBase44Networking",
+          "status": "passed",
+          "durationMs": 2
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testFreshSessionNeedsNoRefreshAndCannotCommitUnknownToken",
+          "status": "passed",
+          "durationMs": 3
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testGameSessionConnectsWithoutRoomAndCreatesFirstRoom",
+          "status": "passed",
+          "durationMs": 10
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testGeneratorRetryJournalNeverContainsLegacyBearer",
+          "status": "passed",
+          "durationMs": 62
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testLegacyCredentialSwapsWithItsSupabaseAccountAndLogoutClearsBoth",
+          "status": "passed",
+          "durationMs": 115
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testLegacyExchangeRemainsUncommittedUntilAuthOwnerAccepts",
+          "status": "passed",
+          "durationMs": 137
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testMismatchedStoredLegacyCredentialCannotBeUsedOrRefreshed",
+          "status": "passed",
+          "durationMs": 5
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testOAuthDisabledWithoutProviderConfiguration",
+          "status": "passed",
+          "durationMs": 9
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testOldAccountReplyCannotAdoptRoomAfterReconnect",
+          "status": "passed",
+          "durationMs": 8
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testOldAccountRestoreFailureAndSignalCannotChangeNewAccount",
+          "status": "passed",
+          "durationMs": 4
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testPrivateContactEmailDoesNotReplaceGameIdentity",
+          "status": "passed",
+          "durationMs": 1
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testServerInboxLinksStayInsideStagingApp",
+          "status": "passed",
+          "durationMs": 1
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testSessionRequiresRefreshTokenAndValidActor",
+          "status": "passed",
+          "durationMs": 1
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testStagingConfigurationRejectsProductionAndSecretKeys",
+          "status": "passed",
+          "durationMs": 1
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testStaleLegacyExchangeCannotCommitAfterLogout",
+          "status": "passed",
+          "durationMs": 68
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testSupabaseJWTNeverReachesBase44ProviderRegistration",
+          "status": "passed",
+          "durationMs": 2
+        }
+      ],
+      "warnings": [
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed"
+      ]
+    },
+    "contract_regressions": {
+      "status": "SUCCEEDED",
+      "durationMs": 38557,
+      "counts": {
+        "passed": 2,
+        "failed": 0,
+        "skipped": 0
+      },
+      "target": "simulator",
+      "artifacts": {
+        "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/test_sim_2026-10-13T00-22-51-372Z_pid52353_210b0156.log",
+        "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-13T00-22-51-372Z_pid52353_b85d1542.xcresult",
+        "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/test-products/test_sim_2026-10-13T00-22-51-372Z_pid52353_cda31371.xctestproducts"
+      },
+      "test_cases": [
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testGeneratorRetryJournalNeverContainsLegacyBearer",
+          "status": "passed",
+          "durationMs": 108
+        },
+        {
+          "suite": "SupabaseSessionTests",
+          "test": "testLegacyExchangeRemainsUncommittedUntilAuthOwnerAccepts",
+          "status": "passed",
+          "durationMs": 140
+        }
+      ],
+      "warnings": [
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed",
+        "code after 'return' will never be executed"
+      ]
+    },
+    "journal_regressions": {
+      "status": "SUCCEEDED",
+      "durationMs": 13366,
+      "counts": {
+        "passed": 4,
+        "failed": 0,
+        "skipped": 0
+      },
+      "target": "simulator",
+      "artifacts": {
+        "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/test_sim_2026-10-13T00-25-29-371Z_pid52353_adc1f592.log",
+        "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-13T00-25-29-371Z_pid52353_cecf49e5.xcresult",
+        "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/test-products/test_sim_2026-10-13T00-25-29-371Z_pid52353_73473b5a.xctestproducts"
+      },
+      "test_cases": [
+        {
+          "suite": "SupabaseMutationJournalTests",
+          "test": "testLegacyCredentialNeverEntersDiskJournal",
+          "status": "passed",
+          "durationMs": 3
+        },
+        {
+          "suite": "SupabaseMutationJournalTests",
+          "test": "testPendingActionCannotBeReboundAndOtherAccountNeverInheritsIt",
+          "status": "passed",
+          "durationMs": 5
+        },
+        {
+          "suite": "SupabaseMutationJournalTests",
+          "test": "testReopenedGeneratorUsesSavedRequestInsteadOfNewViewUUID",
+          "status": "passed",
+          "durationMs": 2
+        },
+        {
+          "suite": "SupabaseMutationJournalTests",
+          "test": "testRestartRetryKeepsOriginalRequestIDAndAcknowledgementAllowsNewIntent",
+          "status": "passed",
+          "durationMs": 2
+        }
+      ],
+      "warnings": []
+    },
+    "unique_scenarios": 24,
+    "production_configuration_compile": {
+      "status": "SUCCEEDED",
+      "durationMs": 61467,
+      "target": "simulator",
+      "artifacts": {
+        "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/build_sim_2026-10-13T00-20-36-097Z_pid52353_6c147348.log"
+      },
+      "test_cases": [],
+      "warnings": []
+    },
+    "simulator_ui": {
+      "build": "172",
+      "bundle_id": "com.spyclash.ios.supabasetest",
+      "screens": [
+        "Welcome",
+        "email entry"
+      ],
+      "live_process_verified": true,
+      "login_submitted": false,
+      "physical_device": false
+    }
+  },
+  "deployments": {
+    "app_services": {
+      "id": "a271cf0c-f0c7-4589-8448-406e286082fa",
+      "slug": "app-services",
+      "name": "app-services",
+      "status": "ACTIVE",
+      "version": 4,
+      "created_at": 1791849203589,
+      "updated_at": 1791851641344,
+      "verify_jwt": true,
+      "import_map": true,
+      "entrypoint_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_a271cf0c-f0c7-4589-8448-406e286082fa_4/source/app-services/index.ts",
+      "import_map_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_a271cf0c-f0c7-4589-8448-406e286082fa_4/source/app-services/deno.json",
+      "ezbr_sha256": "a592403d1f64728df8c368ff87bd130edc58dc95bd7b693ecc54af97647d4de9"
+    },
+    "full_game_core": {
+      "id": "f9124f9f-fe82-42fe-adfd-ae9585972768",
+      "slug": "full-game-core",
+      "name": "full-game-core",
+      "status": "ACTIVE",
+      "version": 5,
+      "created_at": 1791842470608,
+      "updated_at": 1791851650090,
+      "verify_jwt": true,
+      "import_map": true,
+      "entrypoint_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_f9124f9f-fe82-42fe-adfd-ae9585972768_5/source/full-game-core/index.ts",
+      "import_map_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_f9124f9f-fe82-42fe-adfd-ae9585972768_5/source/full-game-core/deno.json",
+      "ezbr_sha256": "362185c29804db0c57643501553e83c84eb9b78dc7823e2231c3c5d9a63a0a30"
+    },
+    "legacy_session": {
+      "id": "3225b5db-5c24-474d-82c7-182cf5d8eefa",
+      "slug": "legacy-session",
+      "name": "legacy-session",
+      "status": "ACTIVE",
+      "version": 1,
+      "created_at": 1791851195032,
+      "updated_at": 1791851195032,
+      "verify_jwt": false,
+      "import_map": true,
+      "entrypoint_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_3225b5db-5c24-474d-82c7-182cf5d8eefa_1/source/legacy-session/index.ts",
+      "import_map_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_3225b5db-5c24-474d-82c7-182cf5d8eefa_1/source/legacy-session/deno.json",
+      "ezbr_sha256": "d17efa6d62f9ee7599c46146c3c0be731e1a99ac161eb07f777bd23eaafb7eca"
+    }
+  },
+  "migrations": [
+    "20261012235223_full_application_staging",
+    "20261013002556_hybrid_legacy_identity"
+  ],
+  "production": {
+    "base44_deploy": false,
+    "production_configuration_changed": false,
+    "apple_portal_changed": false,
+    "testflight_172_uploaded": false,
+    "physical_device_touched": false,
+    "paid_service_added": false
+  },
+  "capabilities": {
+    "email_auth": "existing Base44 6-digit flow + independently verified Supabase session",
+    "generator": "existing Base44; enabled bridge, no real AI call performed during this verification",
+    "import": "verified own profile, SPY ID, packs and history; tested against mocked source with real local Auth/SQL",
+    "social_import": "read-only private export captured 5 friendships and 3 comments; no target mappings supplied to dry run, 8 deferred and 0 applied; transactional operator helper covered by 5 real local PostgreSQL tests",
+    "google_apple_auth": "gated for isolated bundle/callback compatibility",
+    "purchases_push": "disabled for isolated test bundle; not delivery-verified"
+  },
+  "accepted_previous_device_evidence": "../../full-core-ios/build171-physical/",
+  "limitations": [
+    "No positive real-Base44 login or generator roundtrip exercised in cloud during this run.",
+    "No build 172 device signing, TestFlight upload, installation or physical acceptance.",
+    "No background scheduler configured for maintenance endpoint; immediate Auth cleanup is attempted after staging deletion.",
+    "External Base44 account deletion is bounded by a server-enforced 65-minute linked-session lifetime; native revalidates on restore and token expiration. Instant provider lifecycle sync is not configured.",
+    "Cloud Auth leaked-password protection is disabled; existing warning, not changed. Hybrid email/password auth stays on Base44."
+  ],
+  "social_import_dry_run": "social-import-dry-run.json"
+}

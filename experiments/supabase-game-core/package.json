@@ -17,7 +17,11 @@
     "full-core:apply": "node scripts/full-core-local.mjs apply",
     "full-core:check": "deno check --config supabase/functions/full-game-core/deno.json supabase/functions/full-game-core/index.ts",
     "full-core:engine-test": "deno test --config supabase/functions/full-game-core/deno.json tests/full-core-engine",
-    "full-core:cloud-test": "node scripts/full-core-cloud-test.mjs"
+    "full-core:cloud-test": "node scripts/full-core-cloud-test.mjs",
+    "app:test": "node scripts/app-services-local.mjs",
+    "app:apply": "node scripts/app-services-local.mjs apply",
+    "app:check": "deno check --config supabase/functions/app-services/deno.json supabase/functions/app-services/index.ts supabase/functions/legacy-session/index.ts supabase/functions/app-services/legacy-social.ts scripts/legacy-social-export.ts",
+    "app:cloud-test": "node scripts/app-services-cloud-test.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.3",

@@ -3032,6 +3032,8 @@ enum SpyID {
 struct SpyUser: Codable, Identifiable, Equatable {
     let id: String
     let email: String
+    var contactEmail: String? = nil
+    var accountEmail: String { contactEmail?.nilIfBlank ?? email }
     let fullName: String?
     let displayName: String?
     let avatar: String?
@@ -3064,6 +3066,7 @@ struct SpyUser: Codable, Identifiable, Equatable {
     enum CodingKeys: String, CodingKey {
         case id
         case email
+        case contactEmail = "contact_email"
         case fullName = "full_name"
         case displayName = "display_name"
         case avatar

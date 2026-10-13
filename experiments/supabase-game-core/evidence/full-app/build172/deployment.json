@@ -1,0 +1,44 @@
+{
+  "hybridAppDeployment": {
+    "id": "a271cf0c-f0c7-4589-8448-406e286082fa",
+    "slug": "app-services",
+    "name": "app-services",
+    "status": "ACTIVE",
+    "version": 4,
+    "created_at": 1791849203589,
+    "updated_at": 1791851641344,
+    "verify_jwt": true,
+    "import_map": true,
+    "entrypoint_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_a271cf0c-f0c7-4589-8448-406e286082fa_4/source/app-services/index.ts",
+    "import_map_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_a271cf0c-f0c7-4589-8448-406e286082fa_4/source/app-services/deno.json",
+    "ezbr_sha256": "a592403d1f64728df8c368ff87bd130edc58dc95bd7b693ecc54af97647d4de9"
+  },
+  "hybridCoreDeployment": {
+    "id": "f9124f9f-fe82-42fe-adfd-ae9585972768",
+    "slug": "full-game-core",
+    "name": "full-game-core",
+    "status": "ACTIVE",
+    "version": 5,
+    "created_at": 1791842470608,
+    "updated_at": 1791851650090,
+    "verify_jwt": true,
+    "import_map": true,
+    "entrypoint_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_f9124f9f-fe82-42fe-adfd-ae9585972768_5/source/full-game-core/index.ts",
+    "import_map_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_f9124f9f-fe82-42fe-adfd-ae9585972768_5/source/full-game-core/deno.json",
+    "ezbr_sha256": "362185c29804db0c57643501553e83c84eb9b78dc7823e2231c3c5d9a63a0a30"
+  },
+  "hybridBridgeDeployment": {
+    "id": "3225b5db-5c24-474d-82c7-182cf5d8eefa",
+    "slug": "legacy-session",
+    "name": "legacy-session",
+    "status": "ACTIVE",
+    "version": 1,
+    "created_at": 1791851195032,
+    "updated_at": 1791851195032,
+    "verify_jwt": false,
+    "import_map": true,
+    "entrypoint_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_3225b5db-5c24-474d-82c7-182cf5d8eefa_1/source/legacy-session/index.ts",
+    "import_map_path": "file:///tmp/user_fn_bbkfsgnordtdiblgdzkg_3225b5db-5c24-474d-82c7-182cf5d8eefa_1/source/legacy-session/deno.json",
+    "ezbr_sha256": "d17efa6d62f9ee7599c46146c3c0be731e1a99ac161eb07f777bd23eaafb7eca"
+  }
+}

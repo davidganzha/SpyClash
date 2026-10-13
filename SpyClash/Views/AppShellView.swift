@@ -310,7 +310,7 @@ struct AppShellView: View {
                                           let url = URL(string: rawLink) else {
                                         return
                                     }
-                                    appState.handleIncomingURL(url)
+                                    appState.handleIncomingURL(SupabaseAppRuntime.localURL(forServerLink: url))
                                 },
                                 focusItemID: appState.notificationFocusItemID,
                                 focusRequestID: appState.notificationFocusRequestID
@@ -588,7 +588,7 @@ struct AppShellView: View {
     }
 
     private var supabaseTestRoomObservation: String {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         let adapter = appState.client.supabaseAdapter
         let snapshot = adapter.latestSnapshot
         return [adapter.store.userID, adapter.store.roomID ?? "", adapter.phase,

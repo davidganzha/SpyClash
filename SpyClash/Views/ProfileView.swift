@@ -117,8 +117,8 @@ struct ProfileView: View {
         .overlay {
             if showDeleteConfirmation {
                 SpyConfirmDialog(
-                    title: copy.deleteDialogTitle,
-                    message: copy.deleteDialogMessage,
+                    title: SupabaseAppRuntime.isEnabled ? stagingDeleteTitle : copy.deleteDialogTitle,
+                    message: SupabaseAppRuntime.isEnabled ? stagingDeleteMessage : copy.deleteDialogMessage,
                     confirmTitle: isDeleting ? copy.deletingAccount : copy.deleteDialogAction,
                     cancelTitle: copy.cancel,
                     isBusy: isDeleting
@@ -1224,6 +1224,23 @@ struct ProfileView: View {
         }
     }
 
+
+    private var stagingDeleteTitle: String {
+        switch appState.language {
+        case .en: "DELETE TEST PROFILE?"
+        case .ru: "УДАЛИТЬ ТЕСТОВЫЙ ПРОФИЛЬ?"
+        case .es: "¿ELIMINAR EL PERFIL DE PRUEBA?"
+        case .uk: "ВИДАЛИТИ ТЕСТОВИЙ ПРОФІЛЬ?"
+        }
+    }
+    private var stagingDeleteMessage: String {
+        switch appState.language {
+        case .en: "This deletes your profile and game data in this test app. Your original SpyClash / Base44 account remains unchanged."
+        case .ru: "Будут удалены профиль и игровые данные этой тестовой сборки. Основной аккаунт SpyClash / Base44 останется без изменений."
+        case .es: "Se eliminarán tu perfil y los datos de esta app de prueba. Tu cuenta original de SpyClash / Base44 no cambiará."
+        case .uk: "Буде видалено профіль та ігрові дані тестової збірки. Основний акаунт SpyClash / Base44 залишиться без змін."
+        }
+    }
 
     private func deleteAccount() async {
         isDeleting = true

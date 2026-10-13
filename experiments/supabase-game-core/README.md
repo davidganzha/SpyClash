@@ -1,6 +1,8 @@
 # SpyClash — isolated Supabase game core
 
-This directory contains the full original game-core migration under test and the earlier reduced prototype. The full core uses the existing SpyClash gameplay screens and original room-action protocol through a separate native test target. It has no production cutover switch.
+This directory contains the full application staging migration, the accepted original game-core migration and the earlier reduced prototype. The full core uses the existing SpyClash gameplay screens and original room-action protocol through a separate native target. It has no production cutover switch.
+
+Build 172's ordinary application, hybrid Base44 login/generator and Supabase application services are described in [FULL-APP-MIGRATION.md](FULL-APP-MIGRATION.md). That target is `SpyClash-Supabase-Staging`; the fixture-based build 171 target described below remains separate.
 
 Read [FULL-CORE-VERIFICATION.md](FULL-CORE-VERIFICATION.md) for the current test evidence and remaining device/production acceptance, and [FULL-CORE-PARITY.md](FULL-CORE-PARITY.md) for the original mechanics and action contract. Passing the earlier prototype suite does not verify the full core.
 
@@ -25,6 +27,7 @@ npm run full-core:test
 | Studio | `http://127.0.0.1:56323` |
 | Mail capture | `http://127.0.0.1:56324` |
 | Temporary full-core HTTP host | `http://127.0.0.1:56325` |
+| Temporary application-services HTTP host | `http://127.0.0.1:56326` |
 
 Local email confirmation/rate settings are test fixtures, not cloud configuration. Credentials, actor fixtures and raw reports stay in ignored `.local/`. Stop with `npm run backend:stop` and, if applicable, `colima stop spyclash-supabase`.
 
@@ -46,7 +49,7 @@ The actual-app target is `SpyClashSupabaseTest`, shared scheme `SpyClash-Supabas
 
 Runtime configuration comes from `Documents/SupabaseTest/config.json`, or `LAB_CONFIG_PATH` on Simulator, using `backendURL`, `publishableKey`, synthetic `email`/`password`, and `name`. Do not commit credentials or pass server keys to an app. The compiled cloud allowlist contains only test project `spyclash-game-core` (`bbkfsgnordtdiblgdzkg`) at `https://bbkfsgnordtdiblgdzkg.supabase.co`; approved loopback origins remain for local fixtures. Physical installation and multiplayer acceptance are separate checkpoints from compilation or unit tests.
 
-AI word generation **remains on Base44**. The synthetic test app lacks a Base44 session and displays an explicit generation-auth error; use saved/manual packs in this build. Production auth/accounts, purchases, social/profile services, push and Live Activities are outside this game-core migration. Outbox persistence currently proves queued delivery work only, not external notification delivery.
+AI word generation **remains on Base44**. The build 171 synthetic test app lacks a Base44 session and displays an explicit generation-auth error; use saved/manual packs in that target. The newer full-application staging target adds verified legacy account linking and original email auth. Outbox persistence proves queued delivery work only, not external notification delivery; purchases and remote delivery for the separate TEST bundle remain capability-gated.
 
 ## Earlier reduced prototype
 

@@ -179,14 +179,41 @@ final class Base44Client {
     private let roomMutations = RoomMutationQueue()
 
     var hasSessionToken: Bool {
-        token?.isEmpty == false
+        currentAccessToken?.isEmpty == false
     }
 
     var currentAccessToken: String? {
+#if SPYCLASH_SUPABASE
+        SupabaseAppSession.shared.accessToken
+#else
         token?.isEmpty == false ? token : nil
+#endif
     }
 
-    var sessionGeneration: UUID { tokenGeneration }
+    var sessionGeneration: UUID {
+#if SPYCLASH_SUPABASE
+        SupabaseAppSession.shared.generation
+#else
+        tokenGeneration
+#endif
+    }
+
+    func commitAuthenticatedToken(_ token: String, user: SpyUser) async throws {
+#if SPYCLASH_SUPABASE
+        try SupabaseAppSession.shared.commit(accessToken: token)
+        let generation = SupabaseAppSession.shared.generation
+        try await supabaseAdapter.connectSession(profile: user)
+        guard SupabaseAppSession.shared.generation == generation, SupabaseAppSession.shared.userID == user.id else { throw CancellationError() }
+#else
+        setToken(token)
+#endif
+    }
+#if SPYCLASH_SUPABASE
+    private func appService<T: Decodable, Body: Encodable>(_ service: String, action: String, fields: Body, write: Bool = false) async throws -> T {
+        let value = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder.base44.encode(fields))
+        return try await SupabaseAppSession.shared.service(service, action: action, fields: value.object ?? [:], write: write)
+    }
+#endif
 
     init(
         session: URLSession = .shared,
@@ -202,11 +229,15 @@ final class Base44Client {
     }
 
     func clearToken() {
+#if SPYCLASH_SUPABASE
+        SupabaseAppSession.shared.clear()
+        return
+#endif
         tokenGeneration = UUID()
         token = nil
     }
 
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
     var supabaseAdapter: SupabaseGameAdapter { .shared }
 
     func connectSupabaseTest(configurationURL: URL) async throws -> SpyUser {
@@ -219,7 +250,13 @@ final class Base44Client {
 #endif
 
     func currentUser() async throws -> SpyUser {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE
+        _ = try await SupabaseAppSession.shared.ensureAccessToken(forceLegacyValidation: true)
+        let profile = try await SupabaseAppSession.shared.profile()
+        try await supabaseAdapter.connectSession(profile: profile)
+        return profile
+#endif
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         guard let user = supabaseAdapter.user else { throw LabFailure(code: "not_signed_in") }
         return user
 #else
@@ -228,6 +265,12 @@ final class Base44Client {
     }
 
     func login(email: String, password: String) async throws -> LoginResponse {
+#if SPYCLASH_SUPABASE
+        let authGeneration = SupabaseAppSession.shared.generation
+        let legacy = try await SupabaseLegacyAuth.shared.login(email: email, password: password)
+        guard authGeneration == SupabaseAppSession.shared.generation, !Task.isCancelled else { throw CancellationError() }
+        return try await SupabaseAppSession.shared.exchangeLegacySession(legacy.accessToken)
+#endif
         let response: LoginResponse = try await request(
             "/apps/\(Self.appID)/auth/login",
             method: "POST",
@@ -239,6 +282,10 @@ final class Base44Client {
     }
 
     func register(email: String, password: String) async throws {
+#if SPYCLASH_SUPABASE
+        try await SupabaseLegacyAuth.shared.register(email: email, password: password)
+        return
+#endif
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/auth/register",
             method: "POST",
@@ -246,8 +293,26 @@ final class Base44Client {
         )
     }
 
+    func registerReturningSession(email: String, password: String) async throws -> LoginResponse? {
+#if SPYCLASH_SUPABASE
+        try await SupabaseLegacyAuth.shared.register(email: email, password: password)
+        return nil
+#else
+        try await register(email: email, password: password)
+        return nil
+#endif
+    }
+
     func verify(email: String, code: String) async throws -> VerifyResponse {
-        try await request(
+#if SPYCLASH_SUPABASE
+        let authGeneration = SupabaseAppSession.shared.generation
+        let legacy = try await SupabaseLegacyAuth.shared.verify(email: email, code: code)
+        guard authGeneration == SupabaseAppSession.shared.generation, !Task.isCancelled else { throw CancellationError() }
+        guard let token = legacy.accessToken, !token.isEmpty else { return legacy }
+        let bridged = try await SupabaseAppSession.shared.exchangeLegacySession(token)
+        return VerifyResponse(accessToken: bridged.accessToken, user: bridged.user)
+#endif
+        return try await request(
             "/apps/\(Self.appID)/auth/verify-otp",
             method: "POST",
             body: ["email": email, "otp_code": code]
@@ -255,6 +320,10 @@ final class Base44Client {
     }
 
     func resendOTP(email: String) async throws {
+#if SPYCLASH_SUPABASE
+        try await SupabaseLegacyAuth.shared.resend(email: email)
+        return
+#endif
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/auth/resend-otp",
             method: "POST",
@@ -263,6 +332,10 @@ final class Base44Client {
     }
 
     func requestPasswordReset(email: String) async throws {
+#if SPYCLASH_SUPABASE
+        try await SupabaseLegacyAuth.shared.requestRecovery(email: email)
+        return
+#endif
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/auth/reset-password-request",
             method: "POST",
@@ -271,6 +344,10 @@ final class Base44Client {
     }
 
     func resetPassword(token: String, newPassword: String) async throws {
+#if SPYCLASH_SUPABASE
+        try await SupabaseLegacyAuth.shared.resetPassword(token: token, password: newPassword)
+        return
+#endif
         let _: EmptyResponse = try await request(
             "/apps/\(Self.appID)/auth/reset-password",
             method: "POST",
@@ -278,7 +355,20 @@ final class Base44Client {
         )
     }
 
+#if SPYCLASH_SUPABASE
+    func legacyProviderSession(_ token: String, appleBindingTicket: String?) async throws -> LoginResponse {
+        guard token != SupabaseAppSession.shared.accessToken else { throw WebAuthenticationError.invalidCallback }
+        let authGeneration = SupabaseAppSession.shared.generation
+        try await SupabaseLegacyAuth.shared.registerProvider(legacyToken: token, appleBindingTicket: appleBindingTicket)
+        guard authGeneration == SupabaseAppSession.shared.generation, !Task.isCancelled else { throw CancellationError() }
+        return try await SupabaseAppSession.shared.exchangeLegacySession(token)
+    }
+#endif
+
     func autoRegisterUser(appleBindingTicket: String? = nil, accessToken: String? = nil) async throws -> SpyUser {
+#if SPYCLASH_SUPABASE
+        return try await SupabaseAppSession.shared.profile(accessToken: accessToken)
+#endif
         let token = try requireAccessToken(accessToken)
 
         // A valid SSO identity is not yet an app user at this point. Base44's
@@ -390,7 +480,7 @@ final class Base44Client {
     }
 
     func roomJoinURL(code: String) -> URL {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return nativeRoomJoinURL(code: code)
 #else
         var components = URLComponents(url: Self.appBaseURL, resolvingAgainstBaseURL: false)!
@@ -402,7 +492,7 @@ final class Base44Client {
 
     func nativeRoomJoinURL(code: String) -> URL {
         var components = URLComponents()
-        components.scheme = SupabaseTestEnvironment.isEnabled ? "spyclash-supabasetest" : "spyclash"
+        components.scheme = (SupabaseTestEnvironment.isEnabled || SupabaseAppRuntime.isEnabled) ? "spyclash-supabasetest" : "spyclash"
         components.host = "join"
         components.queryItems = [
             URLQueryItem(name: "code", value: code.uppercased())
@@ -424,7 +514,7 @@ final class Base44Client {
         timeoutInterval: TimeInterval? = nil,
         allowsTypedConflictRetry: Bool = true
     ) async throws -> GameRoom? {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await supabaseAdapter.refreshRoom(id: id)
 #else
         do {
@@ -441,7 +531,7 @@ final class Base44Client {
     }
 
     func activeRoom(preferredRoomID: String? = nil) async throws -> GameRoom? {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await supabaseAdapter.activeRoom(preferredRoomID: preferredRoomID)
 #else
         guard let token, !token.isEmpty else {
@@ -668,7 +758,7 @@ final class Base44Client {
         durationSeconds: Int,
         forcedAskerEmail: String? = nil
     ) throws -> GameStartPlan {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return GameStartPlan(rouletteTargetEmail: "", payload: nil)
 #else
         let players = room.players ?? []
@@ -721,7 +811,7 @@ final class Base44Client {
     }
 
     func armRoulette(room: GameRoom, plan: GameStartPlan) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await roomAction("arm_roulette", roomID: room.id, expectedLobbyRevision: room.lobbyRevision)
 #else
         return try await roomAction(
@@ -806,7 +896,7 @@ final class Base44Client {
     }
 
     func markRoleCardRead(room: GameRoom, user: SpyUser) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await roomAction("mark_role_card_read", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
 #else
         try await roomAction("mark_role_card_read", roomID: room.id)
@@ -814,7 +904,7 @@ final class Base44Client {
     }
 
     func pauseGame(room: GameRoom) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await roomAction("pause_game", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
 #else
         try await roomAction("pause_game", roomID: room.id)
@@ -822,7 +912,7 @@ final class Base44Client {
     }
 
     func resumeGame(room: GameRoom) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await roomAction("resume_game", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
 #else
         try await roomAction("resume_game", roomID: room.id)
@@ -830,7 +920,7 @@ final class Base44Client {
     }
 
     func advanceQuestion(room: GameRoom) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await roomAction("advance_question", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
 #else
         try await roomAction("advance_question", roomID: room.id)
@@ -838,7 +928,7 @@ final class Base44Client {
     }
 
     func advanceAssociation(room: GameRoom) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await roomAction("advance_association", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
 #else
         try await roomAction("advance_association", roomID: room.id)
@@ -846,7 +936,7 @@ final class Base44Client {
     }
 
     func startAssociation(room: GameRoom) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await roomAction("start_association", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
 #else
         try await roomAction("start_association", roomID: room.id)
@@ -854,7 +944,7 @@ final class Base44Client {
     }
 
     func stopAssociationSpin(room: GameRoom) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await roomAction("stop_association_spin", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
 #else
         try await roomAction("stop_association_spin", roomID: room.id)
@@ -862,7 +952,7 @@ final class Base44Client {
     }
 
     func markAnswerHeard(room: GameRoom) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await roomAction("mark_answer_heard", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
 #else
         try await roomAction("mark_answer_heard", roomID: room.id)
@@ -870,7 +960,7 @@ final class Base44Client {
     }
 
     func continueRound(room: GameRoom) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await roomAction("continue_round", roomID: room.id, expectedRevision: room.roomRevision, expectedMembershipID: room.viewerMembershipID, expectedMatchID: room.matchID)
 #else
         try await roomAction("continue_round", roomID: room.id)
@@ -936,7 +1026,7 @@ final class Base44Client {
         expectedRevision: Int? = nil,
         expectedMembershipID: String? = nil
     ) async throws {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         try await supabaseAdapter.leaveRoom(roomID: roomID, membershipID: expectedMembershipID, expectedRevision: expectedRevision)
         return
 #endif
@@ -980,7 +1070,7 @@ final class Base44Client {
         expectedRevision: Int? = nil,
         expectedMembershipID: String? = nil
     ) async throws {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         try await supabaseAdapter.closeRoom(roomID: roomID, membershipID: expectedMembershipID, expectedRevision: expectedRevision)
         return
 #endif
@@ -1059,7 +1149,7 @@ final class Base44Client {
         excluding excludedWords: [String] = [],
         preferFresh: Bool = false
     ) async throws -> GeneratedWordPack {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         return try await supabaseAdapter.generateWordPack(theme: theme, count: count, requestID: requestID, excluding: excludedWords, preferFresh: preferFresh)
 #else
         let expectedToken = try requireAccessToken()
@@ -1096,6 +1186,34 @@ final class Base44Client {
     }
 
     func gameHistory(userID: String, email: String, limit: Int? = nil) async throws -> [GameHistory] {
+#if SPYCLASH_SUPABASE
+        if let limit, limit <= 0 { return [] }
+        let stagingGeneration = SupabaseAppSession.shared.generation
+        var stagingHistory: [GameHistory] = []
+        var stagingIDs = Set<String>()
+        var stagingCursors = Set<String>()
+        var stagingCursor: String?
+        var stagingComplete = false
+        for _ in 0..<200 {
+            try Task.checkCancellation()
+            guard SupabaseAppSession.shared.generation == stagingGeneration,
+                  SupabaseAppSession.shared.userID == userID else { throw CancellationError() }
+            var fields: [String: JSONValue] = ["action": .string("get_history"), "limit": .number(200)]
+            if let stagingCursor { fields["cursor"] = .string(stagingCursor) }
+            let stagingPage = try await supabaseAdapter.store.read(fields)
+            let entries = try JSONDecoder.base44.decode([GameHistory].self, from: stagingPage["history"].data())
+            stagingHistory.append(contentsOf: entries.filter { stagingIDs.insert($0.id).inserted && $0.isOnlineHistoryMatch })
+            if let limit, stagingHistory.count >= limit { stagingComplete = true; break }
+            guard let next = stagingPage["next_cursor"].string, !next.isEmpty else { stagingComplete = true; break }
+            guard stagingCursors.insert(next).inserted else { throw SupabaseFullGameStore.invalidResponse }
+            stagingCursor = next
+        }
+        guard stagingComplete else { throw Base44Error(message: "The full history could not be loaded. Please retry.", statusCode: 503, code: "history_pagination_limit", retryable: true) }
+        guard SupabaseAppSession.shared.generation == stagingGeneration else { throw CancellationError() }
+        stagingHistory = GameHistoryAnalytics.deduplicatedVisibleHistory(stagingHistory, currentUserID: userID)
+        stagingHistory.sort { ($0.createdDate ?? "") > ($1.createdDate ?? "") }
+        return limit.map { Array(stagingHistory.prefix(max(0, $0))) } ?? stagingHistory
+#endif
         let pageSize = 100
         let requestedLimit = limit.map { max(0, $0) }
         if requestedLimit == 0 { return [] }
@@ -1145,6 +1263,10 @@ final class Base44Client {
     }
 
     func leaderboard() async throws -> [LeaderboardEntry] {
+#if SPYCLASH_SUPABASE
+        let stagingResponse = try await supabaseAdapter.store.read(["action": .string("get_leaderboard")])
+        return try JSONDecoder.base44.decode(LeaderboardResponse.self, from: stagingResponse.data()).entries
+#endif
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
@@ -1174,6 +1296,9 @@ final class Base44Client {
             "spy_card_accent": spyCardAccent.rawValue,
             "spy_card_badge": spyCardBadge.rawValue
         ]
+#if SPYCLASH_SUPABASE
+        return try await appService("profile", action: "update", fields: fields, write: true)
+#endif
         do {
             return try await communityAction("update_profile", fields: fields)
         } catch let error as Base44Error where error.statusCode == 400 || error.statusCode == 404 {
@@ -1186,7 +1311,10 @@ final class Base44Client {
     }
 
     func updateLanguage(_ language: AppLanguage) async throws -> SpyUser {
-        try await request(
+#if SPYCLASH_SUPABASE
+        return try await appService("profile", action: "update", fields: ["language": language.rawValue], write: true)
+#endif
+        return try await request(
             "/apps/\(Self.appID)/entities/User/me",
             method: "PUT",
             body: ["language": language.rawValue]
@@ -1194,6 +1322,9 @@ final class Base44Client {
     }
 
     func completeOnboarding(_ submission: OnboardingSubmission) async throws -> SpyUser {
+#if SPYCLASH_SUPABASE
+        return try await appService("profile", action: "onboarding", fields: OnboardingCompletionPayload(submission: submission), write: true)
+#endif
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
@@ -1215,6 +1346,10 @@ final class Base44Client {
     }
 
     func saveAcquisitionSource(_ source: OnboardingAcquisitionSource) async throws {
+#if SPYCLASH_SUPABASE
+        let _: SpyUser = try await appService("profile", action: "acquisition", fields: ["acquisition_source": source.rawValue], write: true)
+        return
+#endif
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
@@ -1233,6 +1368,11 @@ final class Base44Client {
     }
 
     func deleteAccount() async throws -> AccountDeletionResult {
+#if SPYCLASH_SUPABASE
+        let stagingResult: AccountDeletionResult = try await appService("profile", action: "delete", fields: EmptyPayload(), write: true)
+        guard stagingResult.success else { throw Base44Error(message: "Account deletion was not confirmed.") }
+        return stagingResult
+#endif
         let result: AccountDeletionResult = try await invokeFunction(
             "deleteAccount",
             body: EmptyPayload()
@@ -1460,6 +1600,9 @@ final class Base44Client {
         retriesTransientReadFailures: Bool = false,
         retriesIdempotentMutationFailures: Bool = false
     ) async throws -> T {
+#if SPYCLASH_SUPABASE
+        return try await appService("notifications", action: payload.action, fields: payload, write: !["summary", "list"].contains(payload.action))
+#endif
         let expectedToken = payload.accessToken
         guard token == expectedToken else {
             throw CancellationError()
@@ -1513,6 +1656,9 @@ final class Base44Client {
         retriesTransientReadFailures: Bool = false,
         retriesIdempotentMutationFailures: Bool = false
     ) async throws -> T {
+#if SPYCLASH_SUPABASE
+        return try await appService("community", action: action, fields: fields, write: !["state", "directory", "profile", "search"].contains(action))
+#endif
         guard let token, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
@@ -1642,6 +1788,11 @@ final class Base44Client {
         for credential: AppleSignInCredential,
         onPhaseChange: (AppleNativeAuthPhase) -> Void = { _ in }
     ) async throws -> AppleNativeSession {
+#if SPYCLASH_SUPABASE
+        guard SupabaseAppRuntime.permitsAppleSignIn else {
+            throw Base44Error(message: "Apple sign-in is not configured for this test app yet. Use email.", code: "provider_not_configured")
+        }
+#endif
         onPhaseChange(.verifyingIdentity)
         let bootstrap = try await appleNativeBootstrap(for: credential)
         guard let bootstrapURL = URL(string: bootstrap.bootstrapURL) else {
@@ -1771,17 +1922,26 @@ final class Base44Client {
     }
 
     func checkSubscription() async throws -> MembershipSnapshot {
-        try await membershipAction("checkSubscription", body: [:])
+#if SPYCLASH_SUPABASE
+        return try await appService("membership", action: "check", fields: EmptyPayload())
+#endif
+        return try await membershipAction("checkSubscription", body: [:])
     }
 
     func prepareAppStorePurchase(productID: String) async throws -> AppStorePurchaseContext {
-        try await membershipAction("app-store-entitlement", body: [
+#if SPYCLASH_SUPABASE
+        return try await appService("membership", action: "prepare", fields: ["requested_product_id": productID], write: true)
+#endif
+        return try await membershipAction("app-store-entitlement", body: [
             "action": "prepare",
             "requested_product_id": productID,
         ])
     }
 
     func syncAppStoreTransaction(signedTransaction: String) async throws -> AppStoreEntitlementSyncResponse {
+#if SPYCLASH_SUPABASE
+        return try await appService("membership", action: "sync_transaction", fields: ["signed_transaction": signedTransaction], write: true)
+#endif
         let expectedToken = try requireAccessToken()
         let expectedGeneration = tokenGeneration
         // Preserve the exact signed payload and original credentials across the
@@ -1833,7 +1993,10 @@ final class Base44Client {
     private func pushNotificationAction<T: Decodable>(
         _ payload: PushNotificationActionPayload
     ) async throws -> T {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE
+        return try await appService("push", action: payload.action, fields: payload, write: true)
+#endif
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         try Self.rejectProductionNetworkInSupabaseTest()
 #endif
         let path = "/apps/\(Self.appID)/functions/pushNotificationAction"
@@ -2001,7 +2164,7 @@ final class Base44Client {
         if let override, !override.isEmpty {
             return override
         }
-        guard let token, !token.isEmpty else {
+        guard let token = currentAccessToken, !token.isEmpty else {
             throw Base44Error(message: "Authentication required.", statusCode: 401)
         }
         return token
@@ -2035,7 +2198,7 @@ final class Base44Client {
         requestTimeoutInterval: TimeInterval? = nil,
         allowsTypedConflictRetry: Bool = true
     ) async throws -> GameRoom {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         let payload = GameRoomActionPayload(
             action: action,
             accessToken: "",
@@ -2167,7 +2330,7 @@ final class Base44Client {
         category: String? = nil,
         words: [String]? = nil
     ) async throws -> T {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         let response = try await supabaseAdapter.wordPackAction(action, packID: packID, name: name, category: category, words: words)
         let value = action == "list" ? response["packs"] : (action == "delete" ? .object([:]) : response["pack"])
         return try JSONDecoder().decode(T.self, from: value.data())
@@ -2286,7 +2449,7 @@ final class Base44Client {
         authorizationToken: String? = nil,
         timeoutInterval: TimeInterval? = nil
     ) async throws -> T {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         try Self.rejectProductionNetworkInSupabaseTest()
 #endif
         var components = URLComponents(url: Self.appBaseURL.appending(path: "/api\(path)"), resolvingAgainstBaseURL: false)!
@@ -3577,7 +3740,8 @@ private extension Array where Element == String {
     }
 }
 
-private extension JSONDecoder {
+// The existing app DTO wire format is shared by both backend adapters.
+extension JSONDecoder {
     static var base44: JSONDecoder {
         let decoder = JSONDecoder()
         decoder.dateDecodingStrategy = .iso8601
@@ -3585,7 +3749,7 @@ private extension JSONDecoder {
     }
 }
 
-private extension JSONEncoder {
+extension JSONEncoder {
     static var base44: JSONEncoder {
         let encoder = JSONEncoder()
         encoder.dateEncodingStrategy = .iso8601

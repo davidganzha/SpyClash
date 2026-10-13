@@ -1,0 +1,17 @@
+{
+  "project_ref": "bbkfsgnordtdiblgdzkg",
+  "checked_at": "2026-10-13T00:34:20.254Z",
+  "passed": true,
+  "checks": [
+    "verified_self_profiles",
+    "concurrent_exact_receipt_replay",
+    "community_inbox_and_private_contact",
+    "membership_and_honest_legacy_capabilities",
+    "shared_game_identity_history",
+    "private_schema_and_recipient_rls",
+    "anonymous_gateway_denied",
+    "hybrid_bridge_denies_missing_and_supabase_credentials"
+  ],
+  "synthetic_clients": 2,
+  "production_mutations": false
+}

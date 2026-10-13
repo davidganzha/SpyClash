@@ -1,0 +1,20 @@
+{
+  "scenarios": [
+    "real Auth gateway, private tables and RLS signals reject anonymous and outsider access",
+    "concurrent joins/readiness and repeated immutable intents retain every member",
+    "lost acknowledgement after commit replays original response after another writer and real offline transport",
+    "unrelated room proceeds while another room row is held by a real transaction",
+    "SQL failure rolls back state, signal and receipt; business rejection is a stable failure receipt",
+    "full questions trace keeps private turn state, server card clock, pause and exactly-once result/replay",
+    "full associations turn order and N-S voting eject the spy rather than use plurality",
+    "multi-spy projection, stale membership and stale match intents preserve current authority",
+    "lobby mode/duration revisions, target membership kick and host lobby exit keep original rules",
+    "server deadline owns winner and concurrent finalization records one result before host return/close",
+    "nine-player three-spy team visibility and wrong guess preserve unranked terminal history",
+    "departure before final card acknowledgement abandons armed game instead of starting a partial timer",
+    "live host departure transfers authority, revokes reads/signals and preserves the original exit receipt",
+    "actual WAL signals arrive and real socket reconnect recovers a missed revision"
+  ],
+  "passed": 14,
+  "failed": 0
+}

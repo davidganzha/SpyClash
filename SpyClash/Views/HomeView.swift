@@ -119,7 +119,7 @@ struct HomeView: View {
         .modifier(AcquisitionSurveyPresentationModifier(
             isHomeRoot: stage == .main && tutorialMode == nil && !isQRScannerPresented
         ))
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         .safeAreaInset(edge: .bottom, spacing: 0) {
             if hasSupabaseRecovery { supabaseRecoveryBanner }
         }
@@ -127,14 +127,14 @@ struct HomeView: View {
     }
 
     private var hasSupabaseRecovery: Bool {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         SupabaseGameAdapter.shared.hasPendingRecovery
 #else
         false
 #endif
     }
 
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
     private var supabaseRecoveryBanner: some View {
         VStack(spacing: 10) {
             Text(localized(
@@ -1119,7 +1119,7 @@ struct HomeView: View {
     }
 
     private func closeActiveRoom(_ room: GameRoom) async {
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         guard !isLoading, !hasSupabaseRecovery, let userID = appState.user?.id else { return }
         isLoading = true
         defer { isLoading = false }

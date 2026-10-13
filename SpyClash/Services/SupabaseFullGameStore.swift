@@ -1,4 +1,4 @@
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
 import Foundation
 import Observation
 
@@ -49,6 +49,7 @@ final class SupabaseFullGameStore {
     @ObservationIgnored private let evidenceDirectory: URL
     @ObservationIgnored private let automaticallyWatches: Bool
     @ObservationIgnored private var roomEpoch = 0
+    @ObservationIgnored private var transportEpoch = 0
     @ObservationIgnored private var reconciliationTask: Task<Void, Never>?
     @ObservationIgnored private var watchTask: Task<Void, Never>?
     @ObservationIgnored private var watchedRoomID: String?
@@ -72,12 +73,29 @@ final class SupabaseFullGameStore {
     func connect(_ configuration: LabConfiguration) async throws {
         let backend = try BackendClient(config: configuration)
         try await backend.signIn()
+        try await connect(transport: backend, name: configuration.name)
+    }
+
+    func disconnect() {
+        transportEpoch += 1
+        roomEpoch += 1
+        reconciliationTask?.cancel(); reconciliationTask = nil
+        stopWatch()
+        transport = nil; userID = ""; name = "Player"
+        room = nil; roomID = nil; snapshot = .null; pending = nil
+        lastError = ""; lastReceipt = .null; signalRevisions = []
+        commandInFlight = false; refreshInFlight = false
+    }
+
+    func connect(transport backend: any SupabaseFullGameTransport, name: String) async throws {
+        disconnect()
         transport = backend
         userID = backend.userID
-        name = configuration.name
+        self.name = name
         restoreJournal()
+        let connectionEpoch = transportEpoch
         backend.onRealtime = { [weak self] event, value in
-            guard let self else { return }
+            guard let self, self.transportEpoch == connectionEpoch else { return }
             self.realtime = event == "signal" ? self.realtime : event
             if event == "signal", let value, value["room_id"].string == self.roomID {
                 self.signalRevisions.append(value["revision"].integer)
@@ -87,7 +105,11 @@ final class SupabaseFullGameStore {
             self.persistEvidence()
         }
         do { _ = try await refreshActiveRoom(preferredRoomID: roomID) }
-        catch { lastError = Self.failure(error).error.code ?? "room_restore_failed" }
+        catch {
+            guard connectionEpoch == transportEpoch, userID == backend.userID else { throw CancellationError() }
+            lastError = Self.failure(error).error.code ?? "room_restore_failed"
+        }
+        guard connectionEpoch == transportEpoch, userID == backend.userID else { throw CancellationError() }
         reconciliationTask?.cancel()
         reconciliationTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -184,8 +206,10 @@ final class SupabaseFullGameStore {
     func retryPendingResponse() async throws -> JSONValue {
         guard let transport, let intent = pending, intent.actorID == userID else { throw Self.notSignedIn }
         guard !commandInFlight else { throw Self.recoveryRequired }
+        let commandEpoch = transportEpoch
+        let commandActor = userID
         commandInFlight = true
-        defer { commandInFlight = false }
+        defer { if commandEpoch == transportEpoch, commandActor == userID { commandInFlight = false } }
         let response: JSONValue
         if let acknowledgement = intent.acknowledgement {
             // A known commit is resolved by an authoritative read, never by
@@ -194,12 +218,15 @@ final class SupabaseFullGameStore {
         } else {
             do { response = try await transport.fullGame(intent.body) }
             catch {
+                guard commandEpoch == transportEpoch, commandActor == userID else { throw CancellationError() }
                 let failure = Self.failure(error)
                 if !failure.ambiguous { pending = nil; try? persistJournal() }
                 lastError = failure.error.code ?? "request_failed"
                 persistEvidence()
                 throw failure.error
             }
+            guard commandEpoch == transportEpoch, commandActor == userID,
+                  pending?.requestID == intent.requestID else { throw CancellationError() }
             // A valid receipt identifies a known commit. An invalid envelope
             // remains an unknown outcome and is retried with the original ID.
             guard response["receipt"]["request_id"].string == intent.requestID else { throw Self.invalidResponse }
@@ -221,6 +248,8 @@ final class SupabaseFullGameStore {
                 try Self.validatePackResponse(response, action: action)
             } else { throw Self.invalidResponse }
         }
+        guard commandEpoch == transportEpoch, commandActor == userID,
+              pending?.requestID == intent.requestID else { throw CancellationError() }
         pending = nil
         lastError = ""
         try persistJournal()
@@ -278,17 +307,22 @@ final class SupabaseFullGameStore {
         guard automaticallyWatches, let transport, let target = roomID, watchTask == nil,
               watchedRoomID != target || realtime != "subscribed" else { return }
         let generation = roomEpoch
+        let connection = transportEpoch
         watchedRoomID = target
         watchTask = Task { [weak self] in
             guard let self else { return }
-            defer { self.watchTask = nil }
+            defer {
+                if self.transportEpoch == connection, self.roomEpoch == generation { self.watchTask = nil }
+            }
             do {
+                try Task.checkCancellation()
                 try await transport.watch(roomID: target, table: "full_game_room_signals")
-                guard self.roomEpoch == generation, self.roomID == target else { return }
+                try Task.checkCancellation()
+                guard self.transportEpoch == connection, self.roomEpoch == generation, self.roomID == target else { return }
                 self.realtime = "subscribed"
                 await self.reconcile()
             } catch {
-                guard self.roomEpoch == generation else { return }
+                guard self.transportEpoch == connection, self.roomEpoch == generation else { return }
                 self.realtime = "disconnected"
             }
         }
@@ -302,10 +336,16 @@ final class SupabaseFullGameStore {
 
     private func reconcile() async {
         guard !refreshInFlight, let roomID else { return }
+        let epoch = roomEpoch
+        let connection = transportEpoch
         refreshInFlight = true
-        defer { refreshInFlight = false }
+        defer { if connection == transportEpoch { refreshInFlight = false } }
         do { _ = try await refreshRoom(id: roomID); scheduleWatch() }
-        catch { lastError = Self.failure(error).error.code ?? "refresh_failed" }
+        catch {
+            guard epoch == roomEpoch else { return }
+            lastError = Self.failure(error).error.code ?? "refresh_failed"
+        }
+        guard epoch == roomEpoch else { return }
         persistEvidence()
     }
 
@@ -317,10 +357,17 @@ final class SupabaseFullGameStore {
         roomID = saved.roomID
     }
 
-    private var journalURL: URL { evidenceDirectory.appendingPathComponent("journal.json") }
+    private var accountDirectory: URL {
+#if SPYCLASH_SUPABASE
+        evidenceDirectory.appendingPathComponent(userID.isEmpty ? "signed-out" : userID, isDirectory: true)
+#else
+        evidenceDirectory
+#endif
+    }
+    private var journalURL: URL { accountDirectory.appendingPathComponent("journal.json") }
     private func persistJournal() throws {
         do {
-            try FileManager.default.createDirectory(at: evidenceDirectory, withIntermediateDirectories: true)
+            try FileManager.default.createDirectory(at: accountDirectory, withIntermediateDirectories: true)
             let state = SavedState(actorID: userID, roomID: roomID, snapshot: snapshot, pending: pending)
             try JSONEncoder().encode(state).write(to: journalURL, options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
         } catch {
@@ -337,7 +384,7 @@ final class SupabaseFullGameStore {
             "pending_ids": .array(pendingIDs.map(JSONValue.string)), "last_receipt": lastReceipt,
             "realtime": .string(realtime), "last_error": .string(lastError)
         ])
-        try? value.data().write(to: evidenceDirectory.appendingPathComponent("state.json"), options: .atomic)
+        try? value.data().write(to: accountDirectory.appendingPathComponent("state.json"), options: [.atomic, .completeFileProtectionUntilFirstUserAuthentication])
     }
 
     static func decodeRoom(_ value: JSONValue) throws -> GameRoom {

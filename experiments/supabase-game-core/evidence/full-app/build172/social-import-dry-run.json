@@ -1,0 +1,16 @@
+{
+  "dry_run": true,
+  "source_digest": "c6808605fffe0fefe10db6a8f57b734cb047fe3078f8858333cd11cdc6a0187a",
+  "total": 8,
+  "ready_count": 0,
+  "deferred_count": 8,
+  "mapping_source": "none_supplied_no_target_accounts_created",
+  "applied": 0,
+  "entities": {
+    "Friendship": 5,
+    "ProfileComment": 3
+  },
+  "raw_export_committed": false,
+  "raw_export_file_mode": "0600",
+  "source_operations": "read-only direct entity export; no Base44 function calls or writes"
+}

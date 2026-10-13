@@ -180,3 +180,8 @@ s3_secret_key = "env(S3_SECRET_KEY)"
 
 [experimental.pgdelta]
 enabled = true
+
+# Its bearer is a Base44 session. The handler independently verifies User/me
+# before linking an identity or issuing any Supabase session.
+[functions.legacy-session]
+verify_jwt = false

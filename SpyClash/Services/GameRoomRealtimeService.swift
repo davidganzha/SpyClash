@@ -157,7 +157,7 @@ final class GameRoomRealtimeService {
     private var generation = UUID()
 
     func start(appID: String, token: String, userID: String, roomID: String) {
-        guard !SupabaseTestEnvironment.isEnabled else { stop(); return }
+        guard !SupabaseTestEnvironment.isEnabled && !SupabaseAppRuntime.isEnabled else { stop(); return }
         if self.userID == userID,
            gameRoomID == roomID,
            accessToken == token,

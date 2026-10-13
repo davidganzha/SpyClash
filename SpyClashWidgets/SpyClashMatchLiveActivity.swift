@@ -77,7 +77,12 @@ struct SpyClashMatchLiveActivity: Widget {
 
     private func matchURL(for roomID: String) -> URL? {
         let encoded = roomID.addingPercentEncoding(withAllowedCharacters: .urlPathAllowed)
-        return encoded.flatMap { URL(string: "spyclash://match/\($0)") }
+#if SPYCLASH_SUPABASE
+        let scheme = "spyclash-supabasetest"
+#else
+        let scheme = "spyclash"
+#endif
+        return encoded.flatMap { URL(string: "\(scheme)://match/\($0)") }
     }
 
 }

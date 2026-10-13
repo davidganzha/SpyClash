@@ -1,4 +1,4 @@
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
 import SwiftUI
 
 /// Recovery augments the original game surface without replacing its controls.

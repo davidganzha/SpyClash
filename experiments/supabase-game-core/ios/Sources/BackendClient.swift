@@ -174,7 +174,7 @@ final class BackendClient {
     }
 }
 
-#if SPYCLASH_SUPABASE_TEST
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
 extension BackendClient: SupabaseFullGameTransport {
     func fullGame(_ body: JSONValue) async throws -> JSONValue {
         try await ensureSession()
