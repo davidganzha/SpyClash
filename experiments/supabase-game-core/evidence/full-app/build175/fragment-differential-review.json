@@ -1,0 +1,50 @@
+{
+  "timestamp": "2026-10-13T21:44:17.532Z",
+  "baselineCommit": "994588ee053d6269b7346c6878b47e1dea34d7de",
+  "baselineSHA256": "39840290c1389a34e3a55ce387f72ed96a6e291383aa5b10720fd0defddc4f16",
+  "candidateSHA256": "a59964b250227975fe8093ed912a9eec094813d7df5017aa763e2fad14c09f3c",
+  "allowedRawFragments": [
+    "#",
+    "#_",
+    "#_=_"
+  ],
+  "inputs": 484970,
+  "accepted": 4118,
+  "rejected": 480852,
+  "exceptions": 0,
+  "differences": 0,
+  "intendedNewlyAccepted": 3087,
+  "acceptedPerAllowedFragment": {
+    "#": 1029,
+    "#_": 1029,
+    "#_=_": 1029
+  },
+  "mutationResults": [
+    {
+      "name": "provider-value",
+      "detected": true
+    },
+    {
+      "name": "duplicate-query",
+      "detected": true
+    },
+    {
+      "name": "token-error-XOR",
+      "detected": true
+    },
+    {
+      "name": "token-size",
+      "detected": true
+    },
+    {
+      "name": "error-size",
+      "detected": true
+    },
+    {
+      "name": "raw-origin-and-path",
+      "detected": true
+    }
+  ],
+  "passed": true,
+  "scope": "Local independent differential and mutation review only; exact raw fragment allowlist; no credentials or live deployment."
+}

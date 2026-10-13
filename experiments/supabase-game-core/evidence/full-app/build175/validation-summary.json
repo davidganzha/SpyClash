@@ -1,0 +1,17 @@
+{
+  "sourceVersion": 175,
+  "marketingVersion": "1.0.3",
+  "unitVMTests": {
+    "passed": 66,
+    "failed": 0
+  },
+  "viteBuild": "passed",
+  "projectPlistSyntax": "passed",
+  "sourceVersionSynchronized": true,
+  "physicalUserDiagnostic": "SCG174-02",
+  "exactPhysicalFragmentKnown": false,
+  "published": false,
+  "nativeSourceChanged": false,
+  "backendChanged": false,
+  "testFlightUploaded": false
+}

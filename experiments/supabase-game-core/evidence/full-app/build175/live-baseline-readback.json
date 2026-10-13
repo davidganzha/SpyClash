@@ -1,0 +1,36 @@
+{
+  "checkedAt": "2026-10-13T21:45:22.806240+00:00",
+  "liveEntry": "assets/index-goV7mmfZ.js",
+  "diagnostic174StillLive": true,
+  "publicationPerformed": false,
+  "assets": [
+    {
+      "path": "assets/index-goV7mmfZ.js",
+      "status": 200,
+      "bytes": 6382,
+      "sha256": "5dbd613f7e141c18fddab76c69076a81bb5282ef1f28be2bba7f0b3d3ba19d0e",
+      "matchesPublished174": true
+    },
+    {
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "status": 200,
+      "bytes": 1579238,
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "matchesPublished174": true
+    },
+    {
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "status": 200,
+      "bytes": 65267,
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "matchesPublished174": true
+    },
+    {
+      "path": "manifest.json",
+      "status": 200,
+      "bytes": 520,
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "matchesPublished174": true
+    }
+  ]
+}

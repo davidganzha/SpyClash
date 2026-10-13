@@ -1,0 +1,42 @@
+{
+  "originalAppID": "69a0e57fa939f578082f8091",
+  "sourceBase": "994588ee053d6269b7346c6878b47e1dea34d7de",
+  "currentVersion": 175,
+  "marketingVersion": "1.0.3",
+  "deployed": false,
+  "preparedAt": "2026-10-13T21:43:49.441625+00:00",
+  "appJavascriptByteIdentical": true,
+  "appCSSByteIdentical": true,
+  "manifestByteIdentical": true,
+  "indexHTMLOnlyEntryFilenameChanged": true,
+  "callbackEntry": "assets/index-GEnUi1AX.js",
+  "sourceSHA256": "a59964b250227975fe8093ed912a9eec094813d7df5017aa763e2fad14c09f3c",
+  "zipSHA256": "9c12b470925f2e7e4fdf2df3af49d8c84645841a1aaf2f63c56395d3abca3b1e",
+  "files": [
+    {
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "bytes": 65267
+    },
+    {
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "bytes": 1579238
+    },
+    {
+      "path": "assets/index-GEnUi1AX.js",
+      "sha256": "06bfa39438b4280296aa391df494fca5c409b34219a5589cd06c068b346a9afd",
+      "bytes": 6437
+    },
+    {
+      "path": "index.html",
+      "sha256": "61c8c70e90acf85158102a45804b2c2ebfa9c8fa7993576342cf5f14153fda8d",
+      "bytes": 2554
+    },
+    {
+      "path": "manifest.json",
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "bytes": 520
+    }
+  ]
+}

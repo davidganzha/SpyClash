@@ -66,3 +66,7 @@ Do not run a general Base44 deployment: backend functions, entities, auth settin
 During investigation, `base44 eject --yes` was mistakenly treated as download-only based on its short help. Its implementation also created `SpyClash Copy` (`6ace9bf33f0bc793691a4ef4`) and began deploying schemas/functions into that new app. The process was stopped; five function deployments had completed, including an in-flight one. The copy was then moved through the supported UI to **Recently deleted**, with Restore available. It was not permanently deleted.
 
 The original app ID was used only for download before CLI context switched to the new copy. Independent read-back found all 201 runtime files across the original 17 functions identical to the previous read-only snapshot; published static asset hashes also matched. This is not a row-by-row audit of all production data. [Cleanup evidence](evidence/full-app/build174/cli-eject-cleanup.json). Future source retrieval must use an explicitly verified read-only path; never use `eject --yes` for an audit.
+
+## Physical retry after the diagnostic publication
+
+The user reported `Код для поддержки: SCG174-02` on Ganzha. This identifies the literal-fragment rejection branch, which runs before the remaining URL/query validation. It does not reveal the fragment value, query validity, or navigation/mount suffix. See [the prepared source-175 compatibility patch](GOOGLE-175-FRAGMENT-FIX.md). The original publication receipt above remains historical evidence for diagnostic 174.

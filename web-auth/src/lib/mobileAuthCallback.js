@@ -37,7 +37,13 @@ function parseMobileAuthCallbackResult(source) {
   } catch (_) {
     return rejected("invalid_url");
   }
-  if (source.includes("#")) return rejected("fragment");
+  // Redirects can preserve an empty fragment or an inert OAuth marker. Read
+  // the raw suffix: URL.hash cannot distinguish no fragment from an empty #.
+  // Credentials still come only from the query; never decode or merge a hash.
+  const fragmentIndex = source.indexOf("#");
+  if (fragmentIndex !== -1 && !["#", "#_", "#_=_"].includes(source.slice(fragmentIndex))) {
+    return rejected("fragment");
+  }
   if (
     url.origin !== "https://spyclash.com" ||
     !isMobileAuthCallbackRoute(url) ||
@@ -143,7 +149,7 @@ export function mountMobileAuthCallback(document, window) {
   diagnostic.hidden = result.nativeURL !== null;
   if (result.reason) {
     // Only fixed codes and an allowlisted navigation kind reach the UI.
-    const code = "SCG174-" + FAILURE_CODES[result.reason] + " · " + navigationKind(window) +
+    const code = "SCG175-" + FAILURE_CODES[result.reason] + " · " + navigationKind(window) +
       " · " + (mountCount === 1 ? "m1" : "m2+");
     diagnostic.textContent = (russian ? "Код для поддержки: " : "Support code: ") + code;
   }

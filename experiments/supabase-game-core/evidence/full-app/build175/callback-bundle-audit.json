@@ -1,0 +1,42 @@
+{
+  "status": "PASS",
+  "timestamp": "2026-10-13T21:45:36.385Z",
+  "scope": "Read-only local artifact audit; no deploy, external API, browser or CLI eject operation",
+  "baseline": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/experiments/supabase-game-core/.local/google174/site-deploy/dist",
+  "candidate": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/experiments/supabase-game-core/.local/google175/site-candidate/dist",
+  "onlyChanged": [
+    "index.html",
+    "assets/index-goV7mmfZ.js -> assets/index-GEnUi1AX.js"
+  ],
+  "unchanged": [
+    {
+      "file": "assets/bootstrap-aW5J3GBq.js",
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164"
+    },
+    {
+      "file": "assets/bootstrap-8g2kJx7T.css",
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5"
+    },
+    {
+      "file": "manifest.json",
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11"
+    }
+  ],
+  "candidateEntry": {
+    "file": "assets/index-GEnUi1AX.js",
+    "sha256": "06bfa39438b4280296aa391df494fca5c409b34219a5589cd06c068b346a9afd",
+    "size": 6437
+  },
+  "candidateHTMLSHA256": "61c8c70e90acf85158102a45804b2c2ebfa9c8fa7993576342cf5f14153fda8d",
+  "markers": [
+    "#",
+    "#_",
+    "#_=_"
+  ],
+  "diagnosticPrefix": "SCG175",
+  "callbackSDKImport": false,
+  "callbackExternalCalls": false,
+  "vmRuns": 412,
+  "querySemantics": "Existing baseline rejections and outputs preserved outside the explicitly allowed raw fragments",
+  "browserBoundary": "Synthetic DOM execution proves exact bundled entry branch; actual provider and physical iPhone remain separate acceptance evidence"
+}

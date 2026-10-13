@@ -122,7 +122,7 @@ function assertRejected(source) {
   assert.deepEqual(result.attempts, []);
   assert.equal(result.elements["open-app"].hidden, true);
   assert.equal(result.elements["open-app"].href, undefined);
-  assert.match(result.elements.diagnostic.textContent, /^Support code: SCG174-\d{2} · navigate · m1$/);
+  assert.match(result.elements.diagnostic.textContent, /^Support code: SCG175-\d{2} · navigate · m1$/);
   return result;
 }
 
@@ -172,6 +172,53 @@ test("token encoding cannot introduce query fields or markup", () => {
   assert.deepEqual([...target.searchParams], [["access_token", token]]);
 });
 
+for (const fragment of ["#", "#_", "#_=_"]) {
+  test(`inert redirect marker ${fragment} preserves only the validated query payload`, () => {
+    const token = "synthetic+token/#&error=access_denied";
+    for (const [query, expected] of [
+      [`access_token=${encodeURIComponent(token)}`, `access_token=${encodeURIComponent(token)}`],
+      ["error=access_denied&error_description=private-detail", "error=access_denied"],
+      ["error=private-error", "error=authentication_failed"],
+    ]) {
+      const result = run(callback(query) + fragment);
+      assert.deepEqual(result.attempts, [{ type: "replace", url: `spyclash://auth?${expected}` }]);
+      assert.equal(result.address.href, base);
+      assert.equal(new URL(result.attempts[0].url).hash, "");
+      assert.equal(result.elements["open-app"].href, result.attempts[0].url);
+      assert.equal(result.elements.diagnostic.hidden, true);
+      assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes("private")));
+      result.remount();
+      assert.equal(result.attempts.length, 1, "A repeated mount must not reuse a query or fragment");
+      assert.equal(result.elements["open-app"].hidden, true);
+      assertRejected(base + fragment);
+      assertRejected(base + "?auth_provider=google" + fragment);
+    }
+    const failedCleanup = run(callback("access_token=synthetic") + fragment, { historyThrows: true });
+    assert.deepEqual(failedCleanup.attempts, []);
+    assert.equal(failedCleanup.elements["open-app"].href, undefined);
+  });
+}
+
+test("fragments cannot supply, contradict, or conceal credentials", () => {
+  for (const fragment of [
+    "#access_token=private", "#error=access_denied", "#auth_provider=google",
+    "#code=private", "#state=private", "#id_token=private", "#token_type=Bearer",
+    "#_=_&access_token=private", "#_&error=access_denied", "#?access_token=private",
+    "#%61ccess_token=private", "#fragment", "##", "#_#", "#_=__",
+    "#%5F", "#%5F=%5F", "#%23", "#_\n", "#_\r", "#_\t", "#_ ", "#_\u200B",
+  ]) {
+    for (const query of ["auth_provider=google", "auth_provider=google&access_token=synthetic", "auth_provider=google&error=access_denied"]) {
+      assertRejected(`${base}?${query}${fragment}`);
+    }
+  }
+});
+
+test("a percent-encoded hash remains query data and cannot opt into the marker allowlist", () => {
+  const result = run(callback("access_token=synthetic%23_%3D_"));
+  assert.equal(result.attempts[0].url, "spyclash://auth?access_token=synthetic%23_%3D_");
+  assertRejected(callback("access_token=synthetic#%5F=%5F"));
+});
+
 test("20,000 ASCII characters remain valid; the next character is rejected", () => {
   assert.equal(run(callback(`access_token=${"a".repeat(20000)}`)).attempts.length, 1);
   assertRejected(callback(`access_token=${"a".repeat(20001)}`));
@@ -193,7 +240,7 @@ test("no navigation occurs when query clearing fails", () => {
   assert.deepEqual(result.attempts, []);
   assert.equal(result.events[0].type, "clear");
   assert.equal(result.elements["open-app"].hidden, true);
-  assert.equal(result.elements.diagnostic.textContent, "Support code: SCG174-11 · navigate · m1");
+  assert.equal(result.elements.diagnostic.textContent, "Support code: SCG175-11 · navigate · m1");
 });
 
 test("a refresh cannot replay a token from storage or the cleaned address", () => {
@@ -201,7 +248,7 @@ test("a refresh cannot replay a token from storage or the cleaned address", () =
   const reloaded = run(first.address.href, { navigationType: "reload" });
   assert.deepEqual(reloaded.attempts, []);
   assert.equal(reloaded.elements["open-app"].hidden, true);
-  assert.equal(reloaded.elements.diagnostic.textContent, "Support code: SCG174-04 · reload · m1");
+  assert.equal(reloaded.elements.diagnostic.textContent, "Support code: SCG175-04 · reload · m1");
 });
 
 test("a second mount reads the cleaned location and cannot recover the prior DOM token", () => {
@@ -212,9 +259,9 @@ test("a second mount reads the cleaned location and cannot recover the prior DOM
   assert.equal(result.elements.title.textContent, "Sign-in could not be completed");
   assert.equal(result.elements["open-app"].hidden, true);
   assert.equal(result.elements["open-app"].href, undefined);
-  assert.equal(result.elements.diagnostic.textContent, "Support code: SCG174-04 · navigate · m2+");
+  assert.equal(result.elements.diagnostic.textContent, "Support code: SCG175-04 · navigate · m2+");
   result.remount();
-  assert.equal(result.elements.diagnostic.textContent, "Support code: SCG174-04 · navigate · m2+");
+  assert.equal(result.elements.diagnostic.textContent, "Support code: SCG175-04 · navigate · m2+");
   assert.equal(result.attempts.length, 1);
   assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes("private-first-mount")));
 });
@@ -224,7 +271,7 @@ test("Russian copy is available without exposing credentials", () => {
   assert.equal(result.document.documentElement.lang, "ru");
   assert.equal(result.elements["open-app"].textContent, "Открыть SpyClash");
   const failure = run(base, { language: "ru-RU", navigationType: "back_forward" });
-  assert.equal(failure.elements.diagnostic.textContent, "Код для поддержки: SCG174-04 · back_forward · m1");
+  assert.equal(failure.elements.diagnostic.textContent, "Код для поддержки: SCG175-04 · back_forward · m1");
 });
 
 for (const [reason, source, code] of [
@@ -245,7 +292,7 @@ for (const [reason, source, code] of [
     assert.equal(parsed.reason, reason);
     assert.equal(parsed.nativeURL, null);
     const result = assertRejected(source);
-    assert.equal(result.elements.diagnostic.textContent, `Support code: SCG174-${code} · navigate · m1`);
+    assert.equal(result.elements.diagnostic.textContent, `Support code: SCG175-${code} · navigate · m1`);
     assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes("private")));
     assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes(source)));
   });
@@ -255,11 +302,11 @@ test("navigation diagnostic accepts only the fixed navigation kinds", () => {
   for (const navigationType of ["navigate", "reload", "back_forward", "private-type", null, 42, { type: "reload" }]) {
     const result = run(base, { navigationType });
     const expected = ["navigate", "reload", "back_forward"].includes(navigationType) ? navigationType : "unknown";
-    assert.equal(result.elements.diagnostic.textContent, `Support code: SCG174-04 · ${expected} · m1`);
+    assert.equal(result.elements.diagnostic.textContent, `Support code: SCG175-04 · ${expected} · m1`);
   }
   for (const options of [{ performanceMissing: true }, { performanceThrows: true }]) {
     const result = run(base, options);
-    assert.equal(result.elements.diagnostic.textContent, "Support code: SCG174-04 · unknown · m1");
+    assert.equal(result.elements.diagnostic.textContent, "Support code: SCG175-04 · unknown · m1");
     assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes("private-navigation-diagnostic")));
   }
 });
@@ -268,7 +315,7 @@ test("history failure has a fixed priority and never reflects token or parser de
   const result = run(callback("access_token=private-token&error=private-error"), {
     historyThrows: true, navigationType: "reload", language: "ru-RU"
   });
-  assert.equal(result.elements.diagnostic.textContent, "Код для поддержки: SCG174-11 · reload · m1");
+  assert.equal(result.elements.diagnostic.textContent, "Код для поддержки: SCG175-11 · reload · m1");
   assert.deepEqual(result.attempts, []);
   assert.equal(result.elements["open-app"].href, undefined);
   assert.ok(Object.values(result.elements).every((element) => !element.textContent.includes("private")));
@@ -286,7 +333,6 @@ for (const [name, source] of [
   ["encoded path", "https://spyclash.com/%4DobileAuthCallback.html?auth_provider=google&access_token=token"],
   ["trailing slash", "https://spyclash.com/MobileAuthCallback.html/?auth_provider=google&access_token=token"],
   ["fragment", callback("access_token=token#fragment")],
-  ["empty fragment", callback("access_token=token#")],
   ["missing payload", `${base}?auth_provider=google`],
   ["missing provider", `${base}?access_token=token`],
   ["wrong provider", `${base}?auth_provider=apple&access_token=token`],
@@ -308,7 +354,7 @@ for (const [name, source] of [
   ["oversized error", callback(`error=${"e".repeat(129)}`)],
 ]) {
   test(`rejects ${name}, cleans the address, and reveals no fallback credential`, () => {
-    assertRejected(source);
+    for (const suffix of ["", "#", "#_", "#_=_"]) assertRejected(source + suffix);
   });
 }
 

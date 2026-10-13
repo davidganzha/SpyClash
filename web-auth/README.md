@@ -1,8 +1,12 @@
 # Native Google OAuth return page
 
-The current source checkpoint is 174. It adds failure-only support codes and navigation/mount diagnostics, with the existing sign-in acceptance rules unchanged. It was published with explicit user approval on 2026-10-13 at approximately 21:34 UTC; canonical live asset hashes and the diagnostic UI were verified. The exact physical iPhone failure remains unconfirmed; see the [Google 173 investigation and diagnostic candidate](../experiments/supabase-game-core/GOOGLE-174-INVESTIGATION.md) for live evidence, prepared artifact scope and acceptance steps.
+The current source checkpoint is 175 (prepared locally, **not published**). The physical Ganzha retry on main build 173 reported `SCG174-02`: the published page rejected a literal URL fragment before validating the query. The exact fragment and whether all later checks would pass remain unknown.
 
-`npm test`: 62 callback tests pass, including safe diagnostic output, history cleanup, same-document remount and fresh-document reload. Build 174 here is a source version bump, not a TestFlight delivery. Installed main build 173 can use the updated web callback through the now-published web callback.
+The candidate accepts only the exact inert suffixes `#`, `#_`, and `#_=_`, still reading a credential exclusively from the validated query. Unknown and credential-bearing fragments remain rejected. It preserves origin/path, provider, duplicate-key, payload, length, control-character and URL-cleanup checks. New support codes use `SCG175` so the loaded page version is distinguishable.
+
+`npm test`: 66 callback tests pass, including the marker compatibility and rejection matrix. The ordinary website JavaScript, CSS and manifest are byte-identical to the published baseline. Source build 175 is a version checkpoint, not a TestFlight delivery; the installed main build 173 can use this web fix **after a separately approved publication**. See [fragment compatibility investigation](../experiments/supabase-game-core/GOOGLE-175-FRAGMENT-FIX.md) for evidence and limitations.
+
+The previously approved diagnostic callback 174 remains live (published 2026-10-13 at approximately 21:34 UTC); see [diagnostic publication evidence](../experiments/supabase-game-core/GOOGLE-174-INVESTIGATION.md).
 
 The remaining sections describe the original build 166 overlay. Their broker deployment sequence is historical; no broker/configuration update belongs to the current diagnostic change.
 
