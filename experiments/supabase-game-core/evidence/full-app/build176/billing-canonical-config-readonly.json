@@ -1,0 +1,32 @@
+{
+  "checkedAt": "2026-10-14T10:37:22.022270+00:00",
+  "appID": "69a0e57fa939f578082f8091",
+  "readOnly": true,
+  "surface": "Existing CLI GET /api/apps/{appID}/secrets metadata; only allowlisted boolean comparisons and key presence retained",
+  "flags": {
+    "SPYCLASH_LIMITLESS_ENABLED": {
+      "present": true,
+      "state": "present_value_not_readable_as_boolean"
+    },
+    "SPYCLASH_LIMITLESS_APPLE_PURCHASE_ENABLED": {
+      "present": true,
+      "state": "present_value_not_readable_as_boolean"
+    }
+  },
+  "appleConfigurationKeyPresence": {
+    "APPLE_IAP_PRIVATE_KEY_P8_B64": true,
+    "APPLE_IAP_ISSUER_ID": true,
+    "APPLE_IAP_KEY_ID": true,
+    "APPLE_IAP_BUNDLE_ID": true,
+    "APPLE_IAP_PRODUCT_ID": true,
+    "APPLE_IAP_APPLE_ID": true
+  },
+  "secretValuesPrintedOrSaved": false,
+  "providerFunctionInvoked": false,
+  "membershipReconcileCalled": false,
+  "prepareCalled": false,
+  "providerMutations": false,
+  "conclusion": "Both rollout keys and all six Apple IAP configuration keys exist. The read-only metadata response does not expose either rollout flag as a literal boolean value, so enabled versus disabled remains unverified, not known-disabled.",
+  "safeSurfaceLimitation": "CLI lists names only. The existing App Store handler has prepare, sync_transaction and Apple test-notification diagnostic actions, but no read-only rollout/capability action. checkSubscription may reconcile entitlements and is outside this read-only scope.",
+  "stoppedWithoutProviderCalls": true
+}

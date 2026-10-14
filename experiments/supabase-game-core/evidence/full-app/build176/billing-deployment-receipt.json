@@ -1,0 +1,54 @@
+{
+  "checkedAt": "2026-10-14T10:32:07.031952+00:00",
+  "projectID": "bbkfsgnordtdiblgdzkg",
+  "approvedCommit": "b1bfceb1339c79a85621cc2fd950898daf70bf81",
+  "functionID": "a271cf0c-f0c7-4589-8448-406e286082fa",
+  "function": "app-services",
+  "initialDeployedVersion": 5,
+  "versionAfterConfigUpdates": 7,
+  "status": "ACTIVE",
+  "verify_jwt": true,
+  "bundleSHA256": "7fcfa6ed615ff40755d3178d809a1f65b9b4efab74e145894ca1eafda8c383df",
+  "files": 55,
+  "allApprovedFileHashesMatch": true,
+  "authProbes": [
+    {
+      "name": "missing_auth",
+      "httpStatus": 401,
+      "code": "UNAUTHORIZED_NO_AUTH_HEADER",
+      "message": "Missing authorization header"
+    },
+    {
+      "name": "invalid_auth",
+      "httpStatus": 401,
+      "code": "UNAUTHORIZED_INVALID_JWT_FORMAT",
+      "message": "Invalid JWT"
+    },
+    {
+      "name": "existing_synthetic_test_account_profile",
+      "httpStatus": 200,
+      "verifiedUserIDMatches": true
+    },
+    {
+      "name": "configured_bridge_requires_separate_base44_credential",
+      "httpStatus": 401,
+      "code": "legacy_session_required",
+      "providerInvocation": false
+    }
+  ],
+  "onlyFunctionCodeChanged": "app-services",
+  "schemaChanges": false,
+  "realPrepareCalled": false,
+  "realBillingProviderCalls": false,
+  "projectHealth": "ACTIVE_HEALTHY",
+  "postflightConfigurationDigestProof": true,
+  "knownUnverifiedAcceptance": [
+    "Real linked Base44 membership response and upstream provider rollout flags",
+    "User-controlled Sandbox purchase and restore in native build176"
+  ],
+  "deploymentRetry": {
+    "firstAttempt": "rejected before activation: inherited absolute import-map path did not exist",
+    "correction": "explicit relative app-services/deno.json; no file content change",
+    "successfulAttempts": 1
+  }
+}

@@ -1,0 +1,124 @@
+{
+  "checkedAt": "2026-10-14T10:33:48.137908+00:00",
+  "ipa": "/tmp/spyclash176-signing-wye6pjg1/export/SpyClash.ipa",
+  "ipaSHA256": "f495cbeea4547780646569d96113554b77ca69744eb997ea2b670b47b31448a3",
+  "sourceCommit": "b1bfceb1339c79a85621cc2fd950898daf70bf81",
+  "status": "PASS",
+  "checks": {
+    "exactMainIdentity": true,
+    "exactWidgetIdentity": true,
+    "team3Z64QKNL54": true,
+    "appleSignInDefault": true,
+    "productionAPNsEntitlement": true,
+    "getTaskAllowFalse": true,
+    "appStoreProfiles": true,
+    "internalOnlyMarkerTrue": true,
+    "strictSignaturesPass": true,
+    "onlyExpectedExtension": true,
+    "immutableTestProject": true,
+    "committedConfigByteIdentical": true,
+    "billingAppleGoogleEnabled": true,
+    "pushDeletionDisabled": true,
+    "publishableKeyFormatOnly": true,
+    "noStoreKitFixturesOrPrivateKeyFiles": true,
+    "noPrivateKeyOrSecretKeyMarkers": true,
+    "noEmbeddedServiceRoleJWT": true,
+    "sourceSnapshotOnlyExpectedSigningChanges": true
+  },
+  "main": {
+    "bundleId": "com.spyclash.ios",
+    "marketingVersion": "1.0.3",
+    "build": "176",
+    "internalOnlyMarker": true,
+    "entitlements": {
+      "application-identifier": "3Z64QKNL54.com.spyclash.ios",
+      "com.apple.developer.team-identifier": "3Z64QKNL54",
+      "com.apple.developer.applesignin": [
+        "Default"
+      ],
+      "aps-environment": "production",
+      "get-task-allow": false
+    },
+    "profile": {
+      "name": "SpyClash App Store 2026-07-26",
+      "uuid": "21afbb06-c196-4413-af5f-50ce0cd01696",
+      "teamIdentifiers": [
+        "3Z64QKNL54"
+      ],
+      "expirationDate": "2027-07-26T05:32:51+00:00",
+      "notExpired": true,
+      "hasProvisionedDevices": false,
+      "provisionsAllDevices": false,
+      "applicationIdentifier": "3Z64QKNL54.com.spyclash.ios",
+      "getTaskAllow": false,
+      "appleSignIn": [
+        "Default"
+      ],
+      "apsEnvironment": "production"
+    },
+    "strictSignatureVerified": true
+  },
+  "widget": {
+    "bundleId": "com.spyclash.ios.widgets",
+    "marketingVersion": "1.0.3",
+    "build": "176",
+    "internalOnlyMarker": null,
+    "entitlements": {
+      "application-identifier": "3Z64QKNL54.com.spyclash.ios.widgets",
+      "com.apple.developer.team-identifier": "3Z64QKNL54",
+      "com.apple.developer.applesignin": null,
+      "aps-environment": null,
+      "get-task-allow": false
+    },
+    "profile": {
+      "name": "SpyClash Widgets App Store 2026-07-26",
+      "uuid": "8176c97f-51d3-4969-8130-3e3707f84043",
+      "teamIdentifiers": [
+        "3Z64QKNL54"
+      ],
+      "expirationDate": "2027-07-26T05:32:51+00:00",
+      "notExpired": true,
+      "hasProvisionedDevices": false,
+      "provisionsAllDevices": false,
+      "applicationIdentifier": "3Z64QKNL54.com.spyclash.ios.widgets",
+      "getTaskAllow": false,
+      "appleSignIn": null,
+      "apsEnvironment": null
+    },
+    "strictSignatureVerified": true
+  },
+  "configuration": {
+    "resource": "Payload/SpyClash.app/SupabaseMainCandidateConfiguration.json",
+    "sha256": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d",
+    "projectReference": "bbkfsgnordtdiblgdzkg",
+    "appleSignInEnabled": true,
+    "googleSignInEnabled": true,
+    "permitsLegacyBilling": true,
+    "permitsLegacyPush": false,
+    "mainAccountDeletionEnabled": false,
+    "emailOTPLength": 6,
+    "publishableKey": "REDACTED"
+  },
+  "scan": {
+    "forbiddenResourcePaths": [],
+    "secretMarkerFilePaths": [],
+    "serviceRoleJWTFilePaths": []
+  },
+  "scopeLimits": [
+    "Archive signature/package audit only; no Apple processing, tester installation or physical Apple/StoreKit acceptance proved.",
+    "Billing server bridge must be deployed and independently read back before claiming this candidate ready.",
+    "Original IPA was only read; verification used an extracted audit copy."
+  ],
+  "sourceSnapshot": {
+    "path": "/tmp/spyclash176-signing-wye6pjg1/source",
+    "comparedTrackedFileCount": 1156,
+    "missingFiles": [],
+    "byteIdenticalFileCount": 1154,
+    "changedFiles": [
+      "SpyClash.xcodeproj/project.pbxproj",
+      "project.yml"
+    ],
+    "changesReviewed": "Only SupabaseRelease main/widget CODE_SIGN_STYLE Manual, CODE_SIGN_IDENTITY Apple Distribution, and existing App Store provisioning profile specifiers. No runtime configuration or application source changes.",
+    "workingSourceMatchesCommittedHEAD": true
+  }
+}

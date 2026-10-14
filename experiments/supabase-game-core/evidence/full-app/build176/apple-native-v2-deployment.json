@@ -1,0 +1,186 @@
+{
+  "schema_version": 1,
+  "authorization": "User explicitly approved this exact single-function production deployment in the current chat immediately before execution",
+  "scope": {
+    "app_id": "69a0e57fa939f578082f8091",
+    "function": "appleAuthBroker",
+    "approved_commit": "b1bfceb1339c79a85621cc2fd950898daf70bf81",
+    "website_deployed": false,
+    "provider_configuration_changed": false,
+    "secrets_changed": false,
+    "other_functions_deployed": false
+  },
+  "preflight": {
+    "checked_at_utc": "2026-10-14T10:28:32.342737+00:00",
+    "all_13_baseline_files_match_approved_manifest": true,
+    "all_14_candidate_files_match_approved_manifest": true,
+    "meaningful_drift": false
+  },
+  "deployment": {
+    "approved_commit": "b1bfceb1339c79a85621cc2fd950898daf70bf81",
+    "canonical_app_id": "69a0e57fa939f578082f8091",
+    "function": "appleAuthBroker",
+    "operation": "functions deploy appleAuthBroker",
+    "started_at_utc": "2026-10-14T10:32:07.017017+00:00",
+    "completed_at_utc": "2026-10-14T10:32:32.423851+00:00",
+    "exit_code": 0,
+    "deployed_count": 1,
+    "function_status": "deployed",
+    "packaging": "Flat entry.ts with all13 runtime files byte-identical to approved candidate; only paths/function entry metadata normalized",
+    "previous_rejected_attempts": 2,
+    "previous_rejection": "Nested pulled entry path absent from CLI upload file paths; remote baseline reverified unchanged before corrected submission"
+  },
+  "readback": {
+    "verified_at_utc": "2026-10-14T10:33:52.386033+00:00",
+    "all_hashes_match_original_approved_manifest": true,
+    "runtime_file_count": 13,
+    "runtime_and_config_count": 14,
+    "function_entry": "base44/functions/appleAuthBroker/entry.ts",
+    "cli_readback_note": "Base44 normalizes uploaded flat paths back to its canonical base44/functions/appleAuthBroker prefix; readback exactly matches the original approved manifest including function.jsonc",
+    "files": [
+      {
+        "path": "base44/functions/appleAuthBroker/apple-code-exchange.ts",
+        "sha256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/apple-credential-error-policy.ts",
+        "sha256": "7d35a9c2a03b934605e8ec87ce96862b3a1dc3a4b756d0f83cc77bd4b6ba3ab5"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/apple-sign-in-credential.ts",
+        "sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/apple-token-compensation.ts",
+        "sha256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/billing-identity-lifecycle.ts",
+        "sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/confirmation.ts",
+        "sha256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/entry.ts",
+        "sha256": "a7119b1b9a380740d0f1a3a80456dcbcbef0add844fc7c3f3e613a72f28f4fc6"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/google-state-recovery.ts",
+        "sha256": "5abd228604f60784a1ea86d3bab008f4b35326500748ca8433e1f69debfdac50"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/handoff.ts",
+        "sha256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/native-handoff.ts",
+        "sha256": "5b593a95ef655a5375b6aa901f165ef9f790b09d2d23a63e284dd15282bff361"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/provider.ts",
+        "sha256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/service-role-request.ts",
+        "sha256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df"
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/transaction.ts",
+        "sha256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8"
+      },
+      {
+        "path": "function.jsonc",
+        "sha256": "66d94a818f2de3ad3e05a2170dab78bdb5a2c965b127d7dfd438cc0c5147ee55"
+      }
+    ]
+  },
+  "google_preservation": {
+    "google_state_recovery_runtime_sha256": "5abd228604f60784a1ea86d3bab008f4b35326500748ca8433e1f69debfdac50",
+    "provider_runtime_sha256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+    "both_runtime_modules_equal_fresh_predeployment_baseline": true,
+    "hosted_callback_local_source_sha256": "a59964b250227975fe8093ed912a9eec094813d7df5017aa763e2fad14c09f3c",
+    "hosted_callback_local_source_equals_approved_commit": true,
+    "hosted_website_operation_performed": false,
+    "limitation": "No new physical Google sign-in was performed during this deployment."
+  },
+  "health": {
+    "server_side_read_only_probe": {
+      "observed_at_utc": "2026-10-14T10:36:48.058534+00:00",
+      "channel": "Authenticated Base44 CLI exec; script performs unauthenticated HTTP fetches only",
+      "uses_real_credentials": false,
+      "creates_provider_session": false,
+      "all_passed": true,
+      "checks": [
+        {
+          "probe": "public_jwks",
+          "status": 200,
+          "expected_status": 200,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "probe": "invalid_version_before_provider_exchange",
+          "status": 400,
+          "expected_status": 400,
+          "expected_code": "invalid_native_handoff_version",
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "probe": "bootstrap_missing_ticket_rejected",
+          "status": 400,
+          "expected_status": 400,
+          "expected_code": "invalid_ticket",
+          "contract_matches": true,
+          "passed": true
+        }
+      ]
+    },
+    "local_shell_probe": {
+      "checked_at_utc": "2026-10-14T10:33:18.359531+00:00",
+      "uses_real_credentials": false,
+      "creates_provider_session": false,
+      "all_passed": false,
+      "checks": [
+        {
+          "probe": "public_jwks",
+          "method": "GET",
+          "action": "jwks",
+          "status": 403,
+          "expected_status": 200,
+          "passed": false,
+          "cache_control": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+          "public_key_count": 0
+        },
+        {
+          "probe": "invalid_version_before_provider_exchange",
+          "method": "POST",
+          "action": "native-exchange",
+          "status": 403,
+          "expected_status": 400,
+          "passed": false,
+          "cache_control": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+          "error_code_matches": false
+        },
+        {
+          "probe": "bootstrap_missing_ticket_rejected",
+          "method": "GET",
+          "action": "native-bootstrap",
+          "status": 403,
+          "expected_status": 400,
+          "passed": false,
+          "cache_control": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+          "error_code_matches": false
+        }
+      ]
+    },
+    "local_shell_limitation": "Public requests from the local shell received Cloudflare 403 responses instead of broker JSON; the separate server-side unauthenticated probes passed."
+  },
+  "acceptance_limitations": [
+    "No real Apple authorization code, identity token, or user session was used.",
+    "Real Apple sign-in on build176 and physical device acceptance remain pending.",
+    "No account, billing, membership, provider configuration or hosted website mutation was performed by this single-function deployment task."
+  ]
+}

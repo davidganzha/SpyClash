@@ -1,0 +1,33 @@
+{
+  "projectID": "bbkfsgnordtdiblgdzkg",
+  "environment": "isolated existing SpyClash test project",
+  "dashboardURL": "https://supabase.com/dashboard/project/bbkfsgnordtdiblgdzkg/functions/secrets",
+  "previousCustomSecretCount": 0,
+  "previousValues": {
+    "APP_BILLING_PROVIDER": "absent",
+    "APP_LEGACY_BILLING_ENABLED": "absent",
+    "APP_LEGACY_PURCHASES_ENABLED": "absent",
+    "SPYCLASH_LIMITLESS_ENABLED": "absent"
+  },
+  "appliedNonSecretFlags": {
+    "APP_BILLING_PROVIDER": "base44",
+    "APP_LEGACY_BILLING_ENABLED": "true",
+    "APP_LEGACY_PURCHASES_ENABLED": "true",
+    "SPYCLASH_LIMITLESS_ENABLED": "true"
+  },
+  "dashboardSHA256Digests": {
+    "APP_BILLING_PROVIDER": "e0400ee81cd07bb21b5b39dcd9e1a45a2754f1b3140ed9b7a33d5b2f98605e95",
+    "APP_LEGACY_BILLING_ENABLED": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+    "APP_LEGACY_PURCHASES_ENABLED": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b",
+    "SPYCLASH_LIMITLESS_ENABLED": "b5bea41b6c623f7c09f1bf24dcae58ebab3c0cdd90ad966bc43a45b44867e12b"
+  },
+  "allDigestsMatchExpectedValues": true,
+  "otherSecretsChanged": false,
+  "productionBase44ConfigurationChanged": false,
+  "newProviderCredentialsAdded": false,
+  "uiSaveTimesUTC": [
+    "2026-10-14T10:30:03Z",
+    "2026-10-14T10:30:47Z"
+  ],
+  "screenshot": "billing-config-proof.jpg"
+}

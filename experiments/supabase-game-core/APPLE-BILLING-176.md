@@ -1,6 +1,6 @@
 # Apple native sign-in and weekly billing — source 176
 
-Prepared on 2026-10-14. Marketing version remains 1.0.3. This is a local candidate, not a deployment, TestFlight upload, or physical-device acceptance.
+Prepared on 2026-10-14. Marketing version remains 1.0.3. The sections below record the preparation baseline and checks. The subsequently authorized server deployment and TestFlight delivery are recorded in [BUILD176-DELIVERY.md](BUILD176-DELIVERY.md); preparation evidence alone does not prove physical-device acceptance.
 
 ## Current evidence and scope
 

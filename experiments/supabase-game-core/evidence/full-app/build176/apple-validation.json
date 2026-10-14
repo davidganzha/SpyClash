@@ -1,0 +1,14 @@
+{
+  "checkedAt": "2026-10-14T10:36:21.510033+00:00",
+  "sourceCommit": "b1bfceb1339c79a85621cc2fd950898daf70bf81",
+  "ipaSHA256": "f495cbeea4547780646569d96113554b77ca69744eb997ea2b670b47b31448a3",
+  "status": "PASS",
+  "exitCode": 0,
+  "appleValidation": {
+    "details": {},
+    "os-version": "Version 26.5.2 (Build 25F84)",
+    "success-message": "No errors validating archive at '/tmp/spyclash176-signing-wye6pjg1/export/SpyClash.ipa'.",
+    "tool-path": "/Applications/Xcode.app/Contents/SharedFrameworks/ContentDelivery.framework/Resources",
+    "tool-version": "26.40.1 (174001)"
+  }
+}
