@@ -1,0 +1,18 @@
+{
+  "reportedDate": "2026-10-14",
+  "reportTimezone": "Europe/London",
+  "evidenceType": "direct user report in current chat",
+  "device": "Ganzha",
+  "app": "SpyClash",
+  "installedVersion": "1.0.3 (173)",
+  "callbackSourceVersion": 175,
+  "callbackSourceCommit": "b27e3d6def47a03a97ad9e1265bd72d48e5218c1",
+  "requestedAction": "Close old error sheet and start a fresh Google sign-in",
+  "userResponse": "Вошёл, мой профиль на месте",
+  "nativeSignInAcceptedByUser": true,
+  "existingProfileRecognizedByUser": true,
+  "independentNativeTelemetryCaptured": false,
+  "historyRechecked": false,
+  "exactFragmentCaptured": false,
+  "scope": "Acceptance of the reported Google callback failure on this device/account; no claim about Apple, purchase, full migration or App Store readiness."
+}

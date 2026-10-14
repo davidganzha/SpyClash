@@ -1,6 +1,6 @@
 # Google callback fragment compatibility — source 175
 
-Status: published with explicit user approval on 2026-10-13 at approximately 21:48 UTC; live asset and browser checks passed. Real Google acceptance on Ganzha remains pending. Main TestFlight build 173 remains installed. No native source, backend function, provider configuration, Supabase project or TestFlight assignment changed.
+Status: published with explicit user approval on 2026-10-13 at approximately 21:48 UTC; live asset and browser checks passed. On 2026-10-14 (Europe/London), the user confirmed successful Google sign-in and their existing profile on Ganzha. Main TestFlight build 173 remains installed. No native source, backend function, provider configuration, Supabase project or TestFlight assignment changed.
 
 ## Confirmed failure and remaining uncertainty
 
@@ -60,3 +60,9 @@ Live Chrome checks confirmed the empty-fragment synthetic token reaches the fixe
 Receipts: `deployment-preflight.json`, `deployment-postflight.json`, and `live-browser-checks.json` in `evidence/full-app/build175`. The earlier candidate manifest and validation summary retain their historical prepared/unpublished state. The user was asked to start a fresh Google attempt on Ganzha with installed build 173; no app update is needed.
 
 Independent readback also verified raw `/index.html` and all four assets byte-for-byte against the approved artifact. The generated callback wrapper differs from the recorded 174 wrapper only by the new entry filename and ordering of two SEO title-map pairs; reconstructing the old ordering and entry reproduces the recorded 174 wrapper hash. See `independent-live-readback.json`.
+
+## Physical Google acceptance — confirmed by user
+
+On 2026-10-14 (Europe/London), in response to the fresh-Google-login instruction for Ganzha / SpyClash 1.0.3 (173), the user replied: **«Вошёл, мой профиль на месте»**. This is direct user acceptance of the previously failing Google-to-native sign-in with the existing profile after callback 175, beyond the earlier synthetic browser checks. See `physical-google-acceptance.json`.
+
+No raw callback fragment, credentials or independent native session trace was captured. History was not separately rechecked in this reply. The exact inert marker and its upstream source remain unobserved. This closes the reported Google callback failure for this device/account; Apple sign-in and subscription purchase/restore are separate checks. No deployment or build was performed to record this acceptance.

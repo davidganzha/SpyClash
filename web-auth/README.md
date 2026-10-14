@@ -1,6 +1,6 @@
 # Native Google OAuth return page
 
-The current source checkpoint is 175, **published with explicit user approval on 2026-10-13 at approximately 21:48 UTC**. The physical Ganzha retry on main build 173 reported `SCG174-02`: the published page rejected a literal URL fragment before validating the query. The exact fragment and whether all later checks would pass remain unknown.
+The current source checkpoint is 175, **published with explicit user approval on 2026-10-13 at approximately 21:48 UTC**. The physical Ganzha retry on main build 173 reported `SCG174-02`: the published page rejected a literal URL fragment before validating the query. After publication, on 2026-10-14 (Europe/London), the user confirmed a fresh Google login succeeded on Ganzha in build 173 with their existing profile. The exact fragment remains unobserved.
 
 The candidate accepts only the exact inert suffixes `#`, `#_`, and `#_=_`, still reading a credential exclusively from the validated query. Unknown and credential-bearing fragments remain rejected. It preserves origin/path, provider, duplicate-key, payload, length, control-character and URL-cleanup checks. New support codes use `SCG175` so the loaded page version is distinguishable.
 
