@@ -1,0 +1,112 @@
+{
+  "projectID": "bbkfsgnordtdiblgdzkg",
+  "baselineFunction": "app-services",
+  "baselineVersion": 4,
+  "preparedOnly": true,
+  "cloudMutations": false,
+  "realProviderCalls": false,
+  "localDatabaseSlotReleased": true,
+  "trackedFiles": [
+    "supabase/functions/app-services/legacy-billing.ts",
+    "tests/app-services/legacy-billing-push.test.mjs"
+  ],
+  "candidateFiles": [
+    "app-services/legacy-billing.ts",
+    "app-services/membership.ts",
+    "app-services/handler.ts",
+    "app-services/dispatcher.ts"
+  ],
+  "unchangedLiveFiles": 51,
+  "migrationRequired": false,
+  "tests": [
+    {
+      "name": "billing domain",
+      "passed": 8,
+      "failed": 0,
+      "database": "local PostgreSQL 56322",
+      "provider": "mocked Base44"
+    },
+    {
+      "name": "prepared live-v4 handler HTTP",
+      "passed": 5,
+      "failed": 0,
+      "auth": "real local Supabase Auth",
+      "provider": "mocked Base44"
+    },
+    {
+      "name": "prepared Deno strict check",
+      "passed": true
+    },
+    {
+      "name": "git diff --check",
+      "passed": true
+    },
+    {
+      "name": "prepared manifest bytes",
+      "passed": true
+    }
+  ],
+  "productPolicy": {
+    "checkout": "com.spyclash.ios.limitless.weekly",
+    "verifiedRestoreAllowlist": [
+      "com.spyclash.ios.limitless.weekly",
+      "com.spyclash.ios.limitless.monthly"
+    ],
+    "monthlyCheckoutEnabled": false,
+    "currentCanonicalBase44VerifierWeeklyOnly": true,
+    "monthlyASCProductPresent": false
+  },
+  "replayPolicy": "A same-actor immutable successful receipt is returned without another provider call. The Base44 bearer is excluded from the logical hash. No entitlement mirror timestamp is refreshed by replay. Fresh operations verify the immutable linked Base44 ID. Session and tombstone gates run before receipt replay.",
+  "deploymentBoundary": "Root must obtain exact cloud deployment/config approval. No main app upload until server readiness. Native gate is versioned and cannot remotely enable installed 173.",
+  "remainingAcceptance": [
+    "Approved app-services billing-only deploy and non-secret opt-in configuration",
+    "Authenticated membership validation; canonical check may reconcile provider mirrors",
+    "Explicit fresh approval before real prepare: it can create a production Base44 AppStoreAccount reservation",
+    "User-controlled Sandbox weekly purchase/restore in new native candidate"
+  ],
+  "nativeJournalFollowUp": "Closed locally: the full Staging suite passed 49/49 including eight new recovery tests. See hybrid-native-regression.json and native-billing-journal.md.",
+  "runtimeBaseline": {
+    "baselineVersion": 4,
+    "baselineFunctionID": "a271cf0c-f0c7-4589-8448-406e286082fa",
+    "baselineBundleSHA256": "a592403d1f64728df8c368ff87bd130edc58dc95bd7b693ecc54af97647d4de9",
+    "patchSHA256": "dc594982130495037fa673a7af5777d642f42c6a97f08583bc3dafab9db340b8"
+  },
+  "serverFlags": {
+    "APP_BILLING_PROVIDER": {
+      "requiredValue": "base44",
+      "currentPresence": "unknown",
+      "currentValue": "not_read"
+    },
+    "APP_LEGACY_BILLING_ENABLED": {
+      "requiredValue": "true",
+      "currentPresence": "unknown",
+      "currentValue": "not_read"
+    },
+    "APP_LEGACY_PURCHASES_ENABLED": {
+      "requiredValueForCheckout": "true",
+      "currentPresence": "unknown",
+      "currentValue": "not_read"
+    },
+    "SPYCLASH_LIMITLESS_ENABLED": {
+      "role": "Supabase premium feature enforcement",
+      "currentPresence": "unknown",
+      "currentValue": "not_read"
+    }
+  },
+  "testCases": [
+    "existing weekly billing owns the purchase token; durable retry never allocates a new token",
+    "verified linked membership is mirrored with bounded TTL and revocation; wrong owner makes no billing call",
+    "unverified Apple result cannot grant, and replayed old snapshot never extends entitlement freshness",
+    "restore accepts verified existing weekly and monthly products without changing the weekly checkout",
+    "restore never accepts an unknown canonical or submitted product even with a verification flag",
+    "verified revoked monthly restore is acknowledged without granting membership",
+    "Supabase credentials and mismatched legacy owners cannot reach existing billing",
+    "billing mutation reservation binds the original action and signed transaction",
+    "prepared HTTP bridge binds membership to the authenticated Supabase actor, never client ownership fields",
+    "prepared HTTP receipt replay tolerates bearer rotation without calling provider or extending mirror TTL",
+    "prepared HTTP bridge rejects foreign Base44 credentials and Supabase JWT as a provider credential",
+    "receipt key is per authenticated actor and a second actor cannot replay or claim the first membership",
+    "account tombstone and revoked real Auth session deny even an existing successful receipt"
+  ],
+  "patchReconstructionVerified": true
+}

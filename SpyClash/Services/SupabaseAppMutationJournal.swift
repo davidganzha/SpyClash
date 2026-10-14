@@ -44,6 +44,22 @@ final class SupabaseAppMutationJournal {
         try save(entries, actorID: actorID)
     }
 
+    /// Only StoreKit delivery recovery may inspect another saved intent. Other
+    /// app actions retain their existing one-intent/explicit-retry behavior.
+    func pendingAppStoreTransaction(actorID: String) throws -> [String: JSONValue]? {
+        let matches = try load(actorID).filter { $0.source["service"].string == "membership" && $0.source["action"].string == "sync_transaction" }
+        guard matches.count <= 1 else { throw Self.storageFailure }
+        guard let entry = matches.first else { return nil }
+        guard entry.actorID == actorID, let body = entry.body.object,
+              body["service"]?.string == "membership", body["action"]?.string == "sync_transaction",
+              let requestID = body["request_id"]?.string, UUID(uuidString: requestID) != nil,
+              let signed = body["signed_transaction"]?.string, !signed.isEmpty,
+              !Self.containsCredential(entry.body) else { throw Self.storageFailure }
+        var source = body; source.removeValue(forKey: "request_id")
+        guard entry.source == .object(source) else { throw Self.storageFailure }
+        return body
+    }
+
     private func load(_ actorID: String) throws -> [Entry] {
         let file = try fileURL(actorID)
         guard FileManager.default.fileExists(atPath: file.path) else { return [] }

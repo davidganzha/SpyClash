@@ -4,7 +4,7 @@
   "appleSignInEnabled": true,
   "googleSignInEnabled": true,
   "emailOTPLength": 6,
-  "permitsLegacyBilling": false,
+  "permitsLegacyBilling": true,
   "permitsLegacyPush": false,
   "mainAccountDeletionEnabled": false
 }

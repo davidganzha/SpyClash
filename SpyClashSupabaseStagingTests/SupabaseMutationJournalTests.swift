@@ -52,4 +52,25 @@ final class SupabaseMutationJournalTests: XCTestCase {
         XCTAssertThrowsError(try journal.prepare(actorID: actor, body: ["service": .string("legacy"), "action": .string("link"), "base44_access_token": .string("secret-fixture")]))
         XCTAssertFalse(FileManager.default.fileExists(atPath: directory.path))
     }
+
+    func testAppStorePendingReaderKeepsExactIntentAndRejectsCorruptOrCredentialBearingStorage() throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let journal = SupabaseAppMutationJournal(directory: directory)
+        let command = try journal.prepare(actorID: actor, body: ["service": .string("membership"), "action": .string("sync_transaction"), "signed_transaction": .string("synthetic-JWS-A")])
+        XCTAssertEqual(try journal.pendingAppStoreTransaction(actorID: actor), command)
+        XCTAssertNil(try journal.pendingAppStoreTransaction(actorID: other))
+        let file = directory.appendingPathComponent(actor + ".json")
+        let pristine = try Data(contentsOf: file)
+        for key in ["base44_access_token", "access_token", "refresh_token"] {
+            var entries = try XCTUnwrap(JSONSerialization.jsonObject(with: pristine) as? [[String: Any]])
+            var body = try XCTUnwrap(entries[0]["body"] as? [String: Any])
+            body[key] = "must-not-replay"
+            entries[0]["body"] = body
+            try JSONSerialization.data(withJSONObject: entries).write(to: file)
+            XCTAssertThrowsError(try journal.pendingAppStoreTransaction(actorID: actor))
+        }
+        try pristine.write(to: file)
+        XCTAssertEqual(try journal.pendingAppStoreTransaction(actorID: actor), command)
+    }
 }

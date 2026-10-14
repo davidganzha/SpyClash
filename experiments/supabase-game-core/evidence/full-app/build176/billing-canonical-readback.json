@@ -1,0 +1,11 @@
+{
+  "checkedAt": "2026-10-14T09:33:01.342Z",
+  "appID": "69a0e57fa939f578082f8091",
+  "name": "app-store-entitlement",
+  "deploymentID": "3bfdcc04fadf4400ba97621ed243f262",
+  "policySHA256": "cbc76d8a7500defa7170c00668f796b83831c1d0fa2af61d0ac01ab52f2e9664",
+  "hasWeekly": true,
+  "hasMonthly": false,
+  "hasSupportedProductAllowlist": false,
+  "entryRequiresExactProduct": true
+}

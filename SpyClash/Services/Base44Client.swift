@@ -1785,12 +1785,12 @@ final class Base44Client {
             throw Base44Error(message: "The server returned an unreadable response.")
         }
         guard let bootstrapURL = URL(string: bootstrap.bootstrapURL),
-              bootstrapURL.scheme?.lowercased() == "https",
-              bootstrapURL.host?.lowercased() == Self.appBaseURL.host?.lowercased(),
               !bootstrap.bindingTicket.isEmpty,
-              bootstrap.bindingTicket.count <= 512 else {
+              bootstrap.bindingTicket.utf8.count <= 512,
+              !bootstrap.bindingTicket.unicodeScalars.contains(where: CharacterSet.whitespacesAndNewlines.union(.controlCharacters).contains) else {
             throw Base44Error(message: "Apple authentication returned an invalid handoff URL.")
         }
+        try AppleNativeHandoffPolicy.validateBootstrap(bootstrapURL)
 
         return bootstrap
     }
@@ -1820,76 +1820,9 @@ final class Base44Client {
 #if SPYCLASH_SUPABASE_TEST
         try Self.rejectProductionNetworkInSupabaseTest()
 #endif
-        let redirectDelegate = SilentAppleHandoffRedirectDelegate()
-        let configuration = URLSessionConfiguration.ephemeral
-        configuration.httpShouldSetCookies = true
-        configuration.httpCookieAcceptPolicy = .always
-        configuration.requestCachePolicy = .reloadIgnoringLocalAndRemoteCacheData
-        configuration.urlCache = nil
-        configuration.timeoutIntervalForRequest = 30
-        configuration.timeoutIntervalForResource = 45
-
-        let handoffSession = URLSession(
-            configuration: configuration,
-            delegate: redirectDelegate,
-            delegateQueue: nil
-        )
-        defer { handoffSession.finishTasksAndInvalidate() }
-
-        var request = URLRequest(url: bootstrapURL)
-        request.httpMethod = "GET"
-        request.setValue("application/json,text/html", forHTTPHeaderField: "Accept")
-        request.setValue("no-store", forHTTPHeaderField: "Cache-Control")
-
-        let data: Data
-        let response: URLResponse
-        do {
-            (data, response) = try await handoffSession.data(for: request)
-        } catch {
-            throw Self.displayableTransportError(error)
-        }
-        if let redirectError = redirectDelegate.capturedError() {
-            throw redirectError
-        }
-
-        let callbackURL = redirectDelegate.capturedCallbackURL()
-            ?? Self.callbackURL(from: response)
-
-        guard let callbackURL,
-              callbackURL.scheme?.lowercased() == "spyclash",
-              callbackURL.host?.lowercased() == "auth" else {
-            let http = response as? HTTPURLResponse
-            let apiError = try? JSONDecoder.base44.decode(APIErrorEnvelope.self, from: data)
-            throw Base44Error(
-                message: apiError?.resolvedMessage ?? "Apple authentication handoff did not return to SpyClash.",
-                statusCode: http?.statusCode
-            )
-        }
-
-        let queryItems = URLComponents(
-            url: callbackURL,
-            resolvingAgainstBaseURL: false
-        )?.queryItems ?? []
-        if let providerError = queryItems.first(where: { $0.name == "error" })?.value,
-           !providerError.isEmpty {
-            throw Base44Error(message: "Apple authentication failed: \(providerError).")
-        }
-
-        guard let accessToken = queryItems.first(where: { $0.name == "access_token" })?.value,
-              !accessToken.isEmpty,
-              accessToken.count <= 20_000 else {
-            throw Base44Error(message: "Apple authentication did not return a valid access token.")
-        }
-
-        return accessToken
-    }
-
-    private static func callbackURL(from response: URLResponse) -> URL? {
-        guard let http = response as? HTTPURLResponse,
-              let location = http.value(forHTTPHeaderField: "Location") else {
-            return nil
-        }
-        return URL(string: location)
+        do { return try await AppleNativeHandoffTransport.accessToken(from: bootstrapURL) }
+        catch let error as AppleNativeHandoffError { throw error }
+        catch { throw Self.displayableTransportError(error) }
     }
 
     private func listEntity<T: Decodable>(_ entity: String) async throws -> [T] {
@@ -2538,94 +2471,6 @@ final class Base44Client {
             return CancellationError()
         }
         return Base44Error(message: "Network request failed.", retryable: true)
-    }
-}
-
-private final class SilentAppleHandoffRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {
-    private static let allowedHTTPSHosts: Set<String> = [
-        "spyclash.com",
-        "app.base44.com"
-    ]
-    private static let maximumRedirects = 12
-
-    private let lock = NSLock()
-    private var callbackURL: URL?
-    private var redirectError: Base44Error?
-    private var redirectCount = 0
-
-    func urlSession(
-        _ session: URLSession,
-        task: URLSessionTask,
-        willPerformHTTPRedirection response: HTTPURLResponse,
-        newRequest request: URLRequest,
-        completionHandler: @escaping (URLRequest?) -> Void
-    ) {
-        guard let url = request.url else {
-            record(error: Base44Error(message: "Apple authentication returned an invalid redirect."))
-            completionHandler(nil)
-            return
-        }
-
-        let scheme = url.scheme?.lowercased()
-        let host = url.host?.lowercased()
-
-        if scheme == "spyclash" {
-            guard host == "auth" else {
-                record(error: Base44Error(message: "Apple authentication returned an invalid app callback."))
-                completionHandler(nil)
-                return
-            }
-            record(callbackURL: url)
-            completionHandler(nil)
-            return
-        }
-
-        guard scheme == "https",
-              let host,
-              Self.allowedHTTPSHosts.contains(host) else {
-            record(error: Base44Error(message: "Apple authentication attempted an untrusted redirect."))
-            completionHandler(nil)
-            return
-        }
-
-        lock.lock()
-        redirectCount += 1
-        let exceedsLimit = redirectCount > Self.maximumRedirects
-        lock.unlock()
-
-        guard !exceedsLimit else {
-            record(error: Base44Error(message: "Apple authentication exceeded the redirect limit."))
-            completionHandler(nil)
-            return
-        }
-
-        completionHandler(request)
-    }
-
-    func capturedCallbackURL() -> URL? {
-        lock.lock()
-        defer { lock.unlock() }
-        return callbackURL
-    }
-
-    func capturedError() -> Base44Error? {
-        lock.lock()
-        defer { lock.unlock() }
-        return redirectError
-    }
-
-    private func record(callbackURL: URL) {
-        lock.lock()
-        defer { lock.unlock() }
-        self.callbackURL = callbackURL
-    }
-
-    private func record(error: Base44Error) {
-        lock.lock()
-        defer { lock.unlock() }
-        if redirectError == nil {
-            redirectError = error
-        }
     }
 }
 

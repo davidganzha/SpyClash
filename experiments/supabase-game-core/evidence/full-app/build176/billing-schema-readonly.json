@@ -1,0 +1,171 @@
+{
+  "projectID": "bbkfsgnordtdiblgdzkg",
+  "readOnly": true,
+  "columns": [
+    {
+      "table_name": "entitlements",
+      "column_name": "source_key",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "entitlements",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "entitlements",
+      "column_name": "active",
+      "data_type": "boolean",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "entitlements",
+      "column_name": "expires_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES"
+    },
+    {
+      "table_name": "entitlements",
+      "column_name": "data",
+      "data_type": "jsonb",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "entitlements",
+      "column_name": "provider",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "entitlements",
+      "column_name": "product_id",
+      "data_type": "text",
+      "is_nullable": "YES"
+    },
+    {
+      "table_name": "entitlements",
+      "column_name": "provider_event_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "YES"
+    },
+    {
+      "table_name": "entitlements",
+      "column_name": "updated_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "legacy_links",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "legacy_links",
+      "column_name": "legacy_user_id",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "legacy_links",
+      "column_name": "verified_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "legacy_links",
+      "column_name": "source_origin",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "legacy_links",
+      "column_name": "state",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "legacy_operations",
+      "column_name": "user_id",
+      "data_type": "uuid",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "legacy_operations",
+      "column_name": "request_id",
+      "data_type": "uuid",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "legacy_operations",
+      "column_name": "request_hash",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "legacy_operations",
+      "column_name": "legacy_user_id",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "legacy_operations",
+      "column_name": "state",
+      "data_type": "text",
+      "is_nullable": "NO"
+    },
+    {
+      "table_name": "legacy_operations",
+      "column_name": "response",
+      "data_type": "jsonb",
+      "is_nullable": "YES"
+    },
+    {
+      "table_name": "legacy_operations",
+      "column_name": "created_at",
+      "data_type": "timestamp with time zone",
+      "is_nullable": "NO"
+    }
+  ],
+  "indexes": [
+    {
+      "tablename": "apple_accounts",
+      "indexname": "apple_accounts_app_account_token_key",
+      "indexdef": "CREATE UNIQUE INDEX apple_accounts_app_account_token_key ON app_private.apple_accounts USING btree (app_account_token)"
+    },
+    {
+      "tablename": "apple_accounts",
+      "indexname": "apple_accounts_pkey",
+      "indexdef": "CREATE UNIQUE INDEX apple_accounts_pkey ON app_private.apple_accounts USING btree (user_id)"
+    },
+    {
+      "tablename": "entitlements",
+      "indexname": "app_entitlements_owner",
+      "indexdef": "CREATE INDEX app_entitlements_owner ON app_private.entitlements USING btree (user_id)"
+    },
+    {
+      "tablename": "entitlements",
+      "indexname": "entitlements_pkey",
+      "indexdef": "CREATE UNIQUE INDEX entitlements_pkey ON app_private.entitlements USING btree (source_key)"
+    },
+    {
+      "tablename": "legacy_links",
+      "indexname": "legacy_links_legacy_user_id_key",
+      "indexdef": "CREATE UNIQUE INDEX legacy_links_legacy_user_id_key ON app_private.legacy_links USING btree (legacy_user_id)"
+    },
+    {
+      "tablename": "legacy_links",
+      "indexname": "legacy_links_pkey",
+      "indexdef": "CREATE UNIQUE INDEX legacy_links_pkey ON app_private.legacy_links USING btree (user_id)"
+    },
+    {
+      "tablename": "legacy_operations",
+      "indexname": "legacy_operations_pkey",
+      "indexdef": "CREATE UNIQUE INDEX legacy_operations_pkey ON app_private.legacy_operations USING btree (user_id, request_id)"
+    }
+  ],
+  "missingColumns": [],
+  "migrationRequired": false
+}

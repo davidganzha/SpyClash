@@ -81,6 +81,7 @@
 		397C0B1DBC891128B57E1133 /* WordPackDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D58811816F930A78503187 /* WordPackDraftTests.swift */; };
 		39840D09E8474E87D45E1555 /* OnlineRoundStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673C14A27AC3CD3669188134 /* OnlineRoundStateTests.swift */; };
 		3D0B519B6BFBCE5D8DFF3D45 /* SupabaseFullGameStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A0054A2A4BACE2F0F8AE94 /* SupabaseFullGameStore.swift */; };
+		3D4D456D6AB022537D3AB660 /* AppleNativeHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2A404BBC1379D24E5CA621 /* AppleNativeHandoff.swift */; };
 		3D4E95B2D2AE210606FF2E93 /* InterfaceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */; };
 		3EECB62484004A0F5B730CA2 /* InterfaceSettingsControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B278BBFE3E1ED1E156E14A3E /* InterfaceSettingsControls.swift */; };
 		3F4B56475962E66AED22ABB3 /* AppleSignInCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */; };
@@ -194,6 +195,7 @@
 		99F8A66CC70A93991C8C48A0 /* NotificationInboxModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EA85E77102835211355B7C6 /* NotificationInboxModels.swift */; };
 		9A64065E7BC1067044F5DAE8 /* InterfaceScalePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F44D41577074C530879C82C /* InterfaceScalePolicy.swift */; };
 		9ABBE038DA5E1441DB59D001 /* LabConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03A02561E0935B7FDA0396C6 /* LabConfiguration.swift */; };
+		9B27C57E6F87A369A59970AF /* AppleNativeHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2A404BBC1379D24E5CA621 /* AppleNativeHandoff.swift */; };
 		9B6BB3B53D73A54386029BB2 /* SupabaseAppMutationJournal.swift in Sources */ = {isa = PBXBuildFile; fileRef = 87D2B6F5CC21F56497EBF912 /* SupabaseAppMutationJournal.swift */; };
 		9D5E06E7A0149F7051E8AA1F /* GameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8B5C87FEFE82151F2F7D6F6A /* GameView.swift */; };
 		9DE33462ADF6349119239D1B /* WordPackEditorSheet.swift in Sources */ = {isa = PBXBuildFile; fileRef = 667D3929047FBC751174E868 /* WordPackEditorSheet.swift */; };
@@ -212,6 +214,7 @@
 		AE3099E716AE9B7331C436C6 /* SpyClashApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30EA0DF923F453AB3E7F360 /* SpyClashApp.swift */; };
 		AE6529E8A6BF0552A9854986 /* LocalGameView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8E6E87D47ABCB9E71C8245F9 /* LocalGameView.swift */; };
 		AE88B97EE44690BA23EF2923 /* SpyModels.swift in Sources */ = {isa = PBXBuildFile; fileRef = 86974FE98CF9350796FC28D3 /* SpyModels.swift */; };
+		B15AA8E36F5D4CA311443AD5 /* AppleNativeHandoff.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0B2A404BBC1379D24E5CA621 /* AppleNativeHandoff.swift */; };
 		B1C4BB65C23D491D1D46BBCF /* SpyBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9065A7D0489C60903CBB7D5B /* SpyBackground.swift */; };
 		B28A0BBC07A115E31A4C2F34 /* InterfaceSettingsControls.swift in Sources */ = {isa = PBXBuildFile; fileRef = B278BBFE3E1ED1E156E14A3E /* InterfaceSettingsControls.swift */; };
 		B35F1FD1E62796C51B94E381 /* OnboardingPermissionCoordinator.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5E73CCDCA0692312901E5444 /* OnboardingPermissionCoordinator.swift */; };
@@ -271,6 +274,7 @@
 		DBA086EDE83B9A374F74DA28 /* CommunityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F58B6A8B6D7F70B21AE0D8 /* CommunityView.swift */; };
 		DBB10CBF94A130601A555B71 /* LocalWordPool.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE85736438E55EBC81677CE4 /* LocalWordPool.swift */; };
 		DC3848DDAA44064D13A1F7B2 /* WordPackDraft.swift in Sources */ = {isa = PBXBuildFile; fileRef = B81713411A03923224780579 /* WordPackDraft.swift */; };
+		DD40C1C823006A047E998E56 /* AppleNativeHandoffTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 600712411563E727E4CD6ACB /* AppleNativeHandoffTests.swift */; };
 		DDA19A583872FBA8CB3ACB84 /* AcquisitionSurveyStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0DA0319F312DAE72483CFD6B /* AcquisitionSurveyStore.swift */; };
 		DE7A295A22B65A451AC9F827 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */; };
 		DF8EA13A1061FB8F1D73341A /* InterfacePreferences.swift in Sources */ = {isa = PBXBuildFile; fileRef = A845F2AA618E50DAC8D05962 /* InterfacePreferences.swift */; };
@@ -391,6 +395,7 @@
 		0615AC062761EBDE879255B3 /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
 		086A09C277F7D2F0BACA368C /* WebAuthenticationCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebAuthenticationCoordinator.swift; sourceTree = "<group>"; };
 		08CF05650D30ADCD231D6904 /* SpyLaserScanLayer.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyLaserScanLayer.swift; sourceTree = "<group>"; };
+		0B2A404BBC1379D24E5CA621 /* AppleNativeHandoff.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleNativeHandoff.swift; sourceTree = "<group>"; };
 		0DA0319F312DAE72483CFD6B /* AcquisitionSurveyStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcquisitionSurveyStore.swift; sourceTree = "<group>"; };
 		0E6103AB3131936FE120B988 /* OnboardingPermissionTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPermissionTests.swift; sourceTree = "<group>"; };
 		0F52BB625EC301B1A25663D1 /* AuthenticationEntryUITests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationEntryUITests.swift; sourceTree = "<group>"; };
@@ -432,6 +437,7 @@
 		5CF183979BDB403CB777230B /* WordGenerationRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordGenerationRetryTests.swift; sourceTree = "<group>"; };
 		5DC4D91498AF686C52E0DE27 /* AuthenticationFlowTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuthenticationFlowTests.swift; sourceTree = "<group>"; };
 		5E73CCDCA0692312901E5444 /* OnboardingPermissionCoordinator.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingPermissionCoordinator.swift; sourceTree = "<group>"; };
+		600712411563E727E4CD6ACB /* AppleNativeHandoffTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleNativeHandoffTests.swift; sourceTree = "<group>"; };
 		629B0667C115C691DE8E43F0 /* SupabaseMainCandidateConfiguration.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = SupabaseMainCandidateConfiguration.json; sourceTree = "<group>"; };
 		667D3929047FBC751174E868 /* WordPackEditorSheet.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPackEditorSheet.swift; sourceTree = "<group>"; };
 		673C14A27AC3CD3669188134 /* OnlineRoundStateTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineRoundStateTests.swift; sourceTree = "<group>"; };
@@ -746,6 +752,7 @@
 				FD9E0E8940B7305B84993F49 /* AcquisitionSurveyIntegrationTests.swift */,
 				E7C3B1B2BCFE537391DFD165 /* AcquisitionSurveyTests.swift */,
 				2F4E919DA47D72F73CF78184 /* AppleAuthenticationOwnershipTests.swift */,
+				600712411563E727E4CD6ACB /* AppleNativeHandoffTests.swift */,
 				8380CFC8D36E6526C374E3F3 /* AppStoreTransactionRetryTests.swift */,
 				5DC4D91498AF686C52E0DE27 /* AuthenticationFlowTests.swift */,
 				AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */,
@@ -830,6 +837,7 @@
 		F7C6AF09A4B5E8C78B2583D2 /* Services */ = {
 			isa = PBXGroup;
 			children = (
+				0B2A404BBC1379D24E5CA621 /* AppleNativeHandoff.swift */,
 				461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */,
 				8EE75E34545D7FD03BFBF561 /* Base44Client.swift */,
 				E68BF1820775925C6C61E563 /* GameRoomRealtimeService.swift */,
@@ -1167,6 +1175,7 @@
 				37C42D25F1B6C9755A733B03 /* AppState+Membership.swift in Sources */,
 				1B9D552196DE38FAAE5ABF8E /* AppState.swift in Sources */,
 				B448495713BFE7660B0AA84E /* AppTab.swift in Sources */,
+				9B27C57E6F87A369A59970AF /* AppleNativeHandoff.swift in Sources */,
 				7249CB010AC2ED2C5F2D5A01 /* AppleSignInCoordinator.swift in Sources */,
 				B4B54053E7B85CE36B93B64A /* AuthView.swift in Sources */,
 				7670AF799F4B8E0BCCED0210 /* BackendClient.swift in Sources */,
@@ -1265,6 +1274,7 @@
 				CE4C883EBFBCB2661D9A6167 /* AppState+Membership.swift in Sources */,
 				94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */,
 				309F817C661DCC3A931B4F28 /* AppTab.swift in Sources */,
+				B15AA8E36F5D4CA311443AD5 /* AppleNativeHandoff.swift in Sources */,
 				ED44596E572F517943ABADD6 /* AppleSignInCoordinator.swift in Sources */,
 				7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */,
 				791D8556E8FDAED88C9C07A4 /* BackendClient.swift in Sources */,
@@ -1382,6 +1392,7 @@
 				C9CBAA1C1F9A922900DD9F36 /* AppState+Membership.swift in Sources */,
 				AD94D2C31B62CBB58C370BFA /* AppState.swift in Sources */,
 				D892349CA7B68B2CE0874C8E /* AppTab.swift in Sources */,
+				3D4D456D6AB022537D3AB660 /* AppleNativeHandoff.swift in Sources */,
 				3F4B56475962E66AED22ABB3 /* AppleSignInCoordinator.swift in Sources */,
 				EB88894AA6BE250797DF4850 /* AuthView.swift in Sources */,
 				79D584A664E829F9BAAEDF95 /* BackendClient.swift in Sources */,
@@ -1467,6 +1478,7 @@
 				56ACA1F8C1407ECA16EBFA58 /* AcquisitionSurveyTests.swift in Sources */,
 				82F3A622D857CFA9EEE1D578 /* AppStoreTransactionRetryTests.swift in Sources */,
 				7BD86047097EED150447E003 /* AppleAuthenticationOwnershipTests.swift in Sources */,
+				DD40C1C823006A047E998E56 /* AppleNativeHandoffTests.swift in Sources */,
 				79D2F29EBBE51CA06170D437 /* AuthenticationFlowTests.swift in Sources */,
 				82D3EF58665CCD0D09A29F69 /* Base44ClientRoomActionTests.swift in Sources */,
 				FDE0BB1B7BB7D6144906D963 /* DismissedRoomExitCleanupTests.swift in Sources */,
@@ -1916,7 +1928,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 175;
+				CURRENT_PROJECT_VERSION = 176;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2121,7 +2133,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 175;
+				CURRENT_PROJECT_VERSION = 176;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2253,7 +2265,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 175;
+				CURRENT_PROJECT_VERSION = 176;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2357,7 +2369,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 175;
+				CURRENT_PROJECT_VERSION = 176;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

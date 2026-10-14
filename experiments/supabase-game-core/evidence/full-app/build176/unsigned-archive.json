@@ -1,0 +1,31 @@
+{
+  "date": "2026-10-14",
+  "version": "1.0.3 (176)",
+  "scheme": "SpyClash-Supabase-Main-Candidate",
+  "configuration": "SupabaseRelease",
+  "platform": "generic/platform=iOS",
+  "archivePath": "/tmp/SpyClash-176-unsigned.xcarchive",
+  "archiveLog": "/tmp/spyclash-176-unsigned-archive.log",
+  "signingAllowed": false,
+  "checks": {
+    "archive_succeeded": true,
+    "main_bundle": true,
+    "version": true,
+    "candidate_backend": true,
+    "candidate_config_exact": true,
+    "apple_google_enabled": true,
+    "legacy_billing_enabled": true,
+    "push_and_deletion_disabled": true,
+    "widget_version_matches": true,
+    "privacy_exact": true,
+    "no_local_storekit_config": true,
+    "native_routes_and_weekly_product_embedded": true
+  },
+  "binarySHA256": "c2d48d533db5fd8b96c31068c5bc4bab2b161341bf1a7d7b9552d13afed8c236",
+  "optInContractValidation": "The native encoder test validates apple-native-v2. A raw string scan did not locate this short value in the optimized binary; it is not used as a release gate.",
+  "boundaries": [
+    "Unsigned local archive only",
+    "No signed entitlement/provisioning validation",
+    "No IPA export, upload, processing, tester assignment, or physical installation"
+  ]
+}

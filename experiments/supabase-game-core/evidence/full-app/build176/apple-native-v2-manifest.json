@@ -1,0 +1,107 @@
+{
+  "schema_version": 1,
+  "prepared_at_utc": "2026-10-14T09:41:22.438621+00:00",
+  "operation": "Local preparation only; no production deploy or device acceptance",
+  "canonical_app_id": "69a0e57fa939f578082f8091",
+  "canonical_function": "appleAuthBroker",
+  "source_head": "72e09c0c9603fa111dc56ff4f97485676b8250fe",
+  "baseline_source": "Fresh authenticated read-only Base44 CLI functions pull appleAuthBroker on 2026-10-14; all deployed helpers preserved byte-for-byte",
+  "patch_application_root": "Base44 function root containing function.jsonc; git apply --unidiff-zero -p1",
+  "candidate_function_entry": "base44/functions/appleAuthBroker/entry.ts",
+  "patch_sha256": "51cac8f2f607a356a9c9110d62c566765924fac23e0f8f0e19311b1c0bef3897",
+  "files": [
+    {
+      "path": "base44/functions/appleAuthBroker/apple-code-exchange.ts",
+      "baseline_sha256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8",
+      "candidate_sha256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/apple-credential-error-policy.ts",
+      "baseline_sha256": "7d35a9c2a03b934605e8ec87ce96862b3a1dc3a4b756d0f83cc77bd4b6ba3ab5",
+      "candidate_sha256": "7d35a9c2a03b934605e8ec87ce96862b3a1dc3a4b756d0f83cc77bd4b6ba3ab5",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/apple-sign-in-credential.ts",
+      "baseline_sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+      "candidate_sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/apple-token-compensation.ts",
+      "baseline_sha256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b",
+      "candidate_sha256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/billing-identity-lifecycle.ts",
+      "baseline_sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "candidate_sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/confirmation.ts",
+      "baseline_sha256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb",
+      "candidate_sha256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/entry.ts",
+      "baseline_sha256": "67db2417fcdac5e926432b8682242f4bde4e08596817e97c4c0ba762f4244631",
+      "candidate_sha256": "a7119b1b9a380740d0f1a3a80456dcbcbef0add844fc7c3f3e613a72f28f4fc6",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/google-state-recovery.ts",
+      "baseline_sha256": "5abd228604f60784a1ea86d3bab008f4b35326500748ca8433e1f69debfdac50",
+      "candidate_sha256": "5abd228604f60784a1ea86d3bab008f4b35326500748ca8433e1f69debfdac50",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/handoff.ts",
+      "baseline_sha256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7",
+      "candidate_sha256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/native-handoff.ts",
+      "baseline_sha256": null,
+      "candidate_sha256": "5b593a95ef655a5375b6aa901f165ef9f790b09d2d23a63e284dd15282bff361",
+      "changed": true
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/provider.ts",
+      "baseline_sha256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+      "candidate_sha256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/service-role-request.ts",
+      "baseline_sha256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df",
+      "candidate_sha256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df",
+      "changed": false
+    },
+    {
+      "path": "base44/functions/appleAuthBroker/transaction.ts",
+      "baseline_sha256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8",
+      "candidate_sha256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8",
+      "changed": false
+    },
+    {
+      "path": "function.jsonc",
+      "baseline_sha256": "66d94a818f2de3ad3e05a2170dab78bdb5a2c965b127d7dfd438cc0c5147ee55",
+      "candidate_sha256": "66d94a818f2de3ad3e05a2170dab78bdb5a2c965b127d7dfd438cc0c5147ee55",
+      "changed": false
+    }
+  ],
+  "compatibility": {
+    "absent_handoff_version": "Original API function callback remains unchanged",
+    "explicit_handoff_version": "apple-native-v2",
+    "signed_ticket_claim": "handoff_version",
+    "fixed_https_return": "https://spyclash.com/MobileAppleAuthCallback.html?auth_provider=apple",
+    "google_callback_source_sha256": "a59964b250227975fe8093ed912a9eec094813d7df5017aa763e2fad14c09f3c",
+    "google_callback_changed": false,
+    "rollback": "Restore the fresh baseline function. New native clients still accept the legacy spyclash://auth callback; old clients never opt into v2. Existing legacy callback reliability remains unproven."
+  }
+}

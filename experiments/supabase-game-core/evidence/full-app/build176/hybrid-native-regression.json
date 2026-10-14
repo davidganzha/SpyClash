@@ -1,0 +1,24 @@
+{
+  "date": "2026-10-14",
+  "sourceVersion": 176,
+  "scheme": "SpyClash-Supabase-Staging",
+  "configuration": "Debug",
+  "simulator": "SpyClash Supabase Lab C",
+  "deviceID": "FE7D0047-8DF2-4930-97FE-2F3F1548911E",
+  "summary": {
+    "status": "SUCCEEDED",
+    "durationMs": 37713,
+    "counts": {
+      "passed": 49,
+      "failed": 0,
+      "skipped": 0
+    },
+    "target": "simulator"
+  },
+  "artifacts": {
+    "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/test_sim_2026-10-14T09-47-41-971Z_pid32697_d0940d9a.log",
+    "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-14T09-47-41-971Z_pid32697_97d9f0ec.xcresult",
+    "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/test-products/test_sim_2026-10-14T09-47-41-971Z_pid32697_0085b301.xctestproducts"
+  },
+  "scope": "Full isolated hybrid session and durable journal suite, including eight new StoreKit changed-payload/lost-ACK recovery cases. URLProtocol/StoreKit test doubles; no real purchase or provider authorization."
+}

@@ -153,6 +153,10 @@ private final class StagingURLProtocol: URLProtocol, @unchecked Sendable {
         }
         let (status, data) = Self.state.next(request: request, body: body)
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { [self] in
+            if status == -1 {
+                client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+                return
+            }
             let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
@@ -594,5 +598,175 @@ extension SupabaseSessionTests {
         for _ in 0..<20 { await Task.yield() }
         XCTAssertEqual(watches, [firstRoom, nextRoom])
         XCTAssertEqual(store.roomID, nextRoom)
+    }
+}
+
+
+@MainActor
+private final class SessionAppStoreDeliveryClient: AppStoreTransactionClient {
+    let auth: SupabaseAppSession
+    init(_ auth: SupabaseAppSession) { self.auth = auth }
+    var currentAccessToken: String? { auth.accessToken }
+    var membershipSessionGeneration: UUID? { auth.generation }
+    func syncAppStoreTransaction(signedTransaction: String) async throws -> AppStoreEntitlementSyncResponse {
+        try await auth.service("membership", action: "sync_transaction", fields: ["signed_transaction": .string(signedTransaction)], write: true, includeLegacyCredential: true)
+    }
+}
+
+extension SupabaseSessionTests {
+    private var deliveryProduct: String { "com.spyclash.ios.limitless.weekly" }
+    private func deliveryReceipt(status: String) -> Data {
+        Data("{\"success\":true,\"server_status_verified\":true,\"entitlement\":{\"product_id\":\"\(deliveryProduct)\",\"status\":\"\(status)\",\"expires_at\":\"2099-01-01T00:00:00Z\"}}".utf8)
+    }
+    private func deliveryStore(_ auth: SupabaseAppSession) -> AppStoreTransactionDeliveryStore {
+        let store = AppStoreTransactionDeliveryStore(client: SessionAppStoreDeliveryClient(auth))
+        store.bind(.init(userID: auth.userID, accessToken: auth.accessToken, sessionGeneration: auth.generation))
+        return store
+    }
+    private func seedLostAppStoreACK(_ directory: URL) async throws -> JSONValue {
+        StagingURLProtocol.state.reset(response: Data(), statusCode: -1)
+        let auth = storedAuth(directory: directory)
+        var finished = false
+        do {
+            _ = try await deliveryStore(auth).deliver(signedTransaction: "synthetic-JWS-A", productID: deliveryProduct) { finished = true }
+            XCTFail("Lost ACK was accepted")
+        } catch { XCTAssertFalse(finished) }
+        let body = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(StagingURLProtocol.state.recordedBodies.first))
+        let persisted = try String(contentsOf: directory.appendingPathComponent(actor + ".json"), encoding: .utf8)
+        XCTAssertTrue(persisted.contains("synthetic-JWS-A"))
+        XCTAssertFalse(persisted.contains("private-legacy-credential"))
+        XCTAssertFalse(persisted.contains("current-supabase"))
+        XCTAssertFalse(persisted.contains("base44_access_token"))
+        return body
+    }
+
+    func testAppStoreLostACKReopenDrainsExactAThenVerifiesChangedBWithoutFinishingFromA() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = try await seedLostAppStoreACK(directory)
+        StagingURLProtocol.state.reset(sequences: ["/functions/v1/app-services": [(200, deliveryReceipt(status: "active")), (200, deliveryReceipt(status: "revoked"))]])
+        let reopened = storedAuth(directory: directory)
+        var finishedB = 0
+        let result = try await deliveryStore(reopened).deliver(signedTransaction: "synthetic-JWS-B", productID: deliveryProduct) { finishedB += 1 }
+        XCTAssertEqual(finishedB, 1)
+        XCTAssertEqual(result.entitlement.status, "revoked", "Caller B must receive B's canonical state, never old active A")
+        let bodies = try StagingURLProtocol.state.recordedBodies.map { try JSONDecoder().decode(JSONValue.self, from: $0) }
+        XCTAssertEqual(bodies.count, 2)
+        XCTAssertEqual(bodies[0], first)
+        XCTAssertEqual(bodies[1]["signed_transaction"].string, "synthetic-JWS-B")
+        XCTAssertNotEqual(bodies[0]["request_id"], bodies[1]["request_id"])
+        XCTAssertTrue(StagingURLProtocol.state.recordedRequests.allSatisfy { $0.value(forHTTPHeaderField: "Authorization") == "Bearer current-supabase" })
+        XCTAssertTrue(bodies.allSatisfy { $0["base44_access_token"].string == "private-legacy-credential" })
+        XCTAssertNil(try SupabaseAppMutationJournal(directory: directory).pendingAppStoreTransaction(actorID: actor))
+    }
+
+    func testAppStoreRecoveryReceiptACannotFinishBWhoseOwnACKIsLost() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        _ = try await seedLostAppStoreACK(directory)
+        StagingURLProtocol.state.reset(sequences: ["/functions/v1/app-services": [(200, deliveryReceipt(status: "active")), (-1, Data())]])
+        let auth = storedAuth(directory: directory)
+        let store = deliveryStore(auth)
+        var finishedB = 0
+        do {
+            _ = try await store.deliver(signedTransaction: "synthetic-JWS-B", productID: deliveryProduct) { finishedB += 1 }
+            XCTFail("A receipt finished unacknowledged B")
+        } catch { XCTAssertEqual(finishedB, 0) }
+        let pending = try XCTUnwrap(SupabaseAppMutationJournal(directory: directory).pendingAppStoreTransaction(actorID: actor))
+        XCTAssertEqual(pending["signed_transaction"]?.string, "synthetic-JWS-B")
+        StagingURLProtocol.state.reset(response: deliveryReceipt(status: "active"))
+        _ = try await store.deliver(signedTransaction: "synthetic-JWS-B", productID: deliveryProduct) { finishedB += 1 }
+        XCTAssertEqual(finishedB, 1)
+        XCTAssertEqual(StagingURLProtocol.state.count, 1)
+        let retry = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(StagingURLProtocol.state.recordedBodies.first))
+        XCTAssertEqual(retry["request_id"], pending["request_id"])
+    }
+
+    func testAppStoreExactPayloadRetryRetainsOriginalIDWithoutExtraRecoveryDelivery() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = try await seedLostAppStoreACK(directory)
+        StagingURLProtocol.state.reset(response: deliveryReceipt(status: "active"))
+        _ = try await deliveryStore(storedAuth(directory: directory)).deliver(signedTransaction: "synthetic-JWS-A", productID: deliveryProduct) { }
+        XCTAssertEqual(StagingURLProtocol.state.count, 1)
+        XCTAssertEqual(try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(StagingURLProtocol.state.recordedBodies.first)), first)
+    }
+
+    func testAppStoreRecoveryNeverReplaysSavedJWSForAnotherAccount() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        let first = try await seedLostAppStoreACK(directory)
+        let other = "22222222-2222-4222-8222-222222222222"
+        StagingURLProtocol.state.reset(response: deliveryReceipt(status: "active"))
+        let auth = SupabaseAppSession(configuration: .init(backendURL: "https://bbkfsgnordtdiblgdzkg.supabase.co", publishableKey: "sb_publishable_test"), session: mockHTTP(), storedSession: .init(accessToken: "other-supabase", refreshToken: "other-refresh", userID: other, expiresAt: Date().addingTimeInterval(3600)), saveSession: { _ in }, clearSession: {}, mutationJournal: .init(directory: directory), storedLegacy: .init(actorID: other, legacyUserID: "other-legacy", accessToken: "other-private-legacy"), saveLegacy: { _ in }, clearLegacy: {})
+        _ = try await deliveryStore(auth).deliver(signedTransaction: "synthetic-JWS-B", productID: deliveryProduct) { }
+        XCTAssertEqual(StagingURLProtocol.state.count, 1)
+        let sent = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(StagingURLProtocol.state.recordedBodies.first))
+        XCTAssertEqual(sent["signed_transaction"].string, "synthetic-JWS-B")
+        XCTAssertEqual(sent["base44_access_token"].string, "other-private-legacy")
+        XCTAssertEqual(StagingURLProtocol.state.recordedRequests.first?.value(forHTTPHeaderField: "Authorization"), "Bearer other-supabase")
+        let old = try XCTUnwrap(SupabaseAppMutationJournal(directory: directory).pendingAppStoreTransaction(actorID: actor))
+        XCTAssertEqual(old["request_id"], first["request_id"])
+    }
+
+    func testAppStoreLogoutDuringRecoveryRetainsAAndNeverSendsOrFinishesB() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        _ = try await seedLostAppStoreACK(directory)
+        StagingURLProtocol.state.reset(response: deliveryReceipt(status: "active"))
+        let auth = storedAuth(directory: directory)
+        let store = deliveryStore(auth)
+        var finished = false
+        let task = Task { try await store.deliver(signedTransaction: "synthetic-JWS-B", productID: deliveryProduct) { finished = true } }
+        for _ in 0..<100 where StagingURLProtocol.state.count == 0 { await Task.yield() }
+        XCTAssertEqual(StagingURLProtocol.state.count, 1)
+        auth.clear(revokeRemote: false)
+        do { _ = try await task.value; XCTFail("A departed account's delivery completed") }
+        catch { XCTAssertTrue(RequestCancellationPolicy.isCancellation(error)) }
+        XCTAssertFalse(finished)
+        XCTAssertEqual(StagingURLProtocol.state.count, 1)
+        XCTAssertEqual(try SupabaseAppMutationJournal(directory: directory).pendingAppStoreTransaction(actorID: actor)?["signed_transaction"]?.string, "synthetic-JWS-A")
+    }
+
+    func testAppStoreRecoveryKeepsRetryableFailureAndCanAdvanceAfterDefinitiveRejection() async throws {
+        for (status, retryable) in [(401, false), (408, false), (425, false), (429, false), (409, true), (503, true), (400, false)] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            let journal = SupabaseAppMutationJournal(directory: directory)
+            let saved = try journal.prepare(actorID: actor, body: ["service": .string("membership"), "action": .string("sync_transaction"), "signed_transaction": .string("synthetic-JWS-A")])
+            let error = Data("{\"code\":\"source_rejected\",\"retryable\":\(retryable)}".utf8)
+            StagingURLProtocol.state.reset(sequences: ["/functions/v1/app-services": [(status, error), (200, deliveryReceipt(status: "active"))]])
+            do {
+                _ = try await deliveryStore(storedAuth(directory: directory)).deliver(signedTransaction: "synthetic-JWS-B", productID: deliveryProduct) { }
+                XCTAssertEqual(status, 400)
+                XCTAssertEqual(StagingURLProtocol.state.count, 2)
+                XCTAssertNil(try journal.pendingAppStoreTransaction(actorID: actor))
+            } catch {
+                XCTAssertNotEqual(status, 400)
+                XCTAssertEqual(StagingURLProtocol.state.count, 1)
+                XCTAssertEqual(try journal.pendingAppStoreTransaction(actorID: actor)?["request_id"], saved["request_id"])
+            }
+        }
+    }
+
+    func testAppStoreCancelledQueuedDeliveryDoesNotCancelCurrentVerification() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        StagingURLProtocol.state.reset(response: deliveryReceipt(status: "active"))
+        let auth = storedAuth(directory: directory)
+        let store = deliveryStore(auth)
+        var finishedA = false
+        let first = Task { try await store.deliver(signedTransaction: "synthetic-JWS-A", productID: deliveryProduct) { finishedA = true } }
+        for _ in 0..<100 where StagingURLProtocol.state.count == 0 { await Task.yield() }
+        let queued = Task { () -> AppStoreEntitlementSyncResponse in
+            try await auth.service("membership", action: "sync_transaction", fields: ["signed_transaction": .string("synthetic-JWS-B")], write: true, includeLegacyCredential: true)
+        }
+        await Task.yield()
+        queued.cancel()
+        _ = try await first.value
+        do { _ = try await queued.value; XCTFail("Cancelled waiter completed") }
+        catch { XCTAssertTrue(RequestCancellationPolicy.isCancellation(error)) }
+        XCTAssertTrue(finishedA)
+        XCTAssertEqual(StagingURLProtocol.state.count, 1)
     }
 }

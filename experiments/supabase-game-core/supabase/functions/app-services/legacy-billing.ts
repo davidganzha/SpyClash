@@ -5,6 +5,9 @@ import {assertIsolatedSupabase, canonicalBase44Configuration, verifyLegacyCreden
 type Config = Record<string,string|undefined>;
 const evidenceSet = new WeakSet<object>();
 const WEEKLY = 'com.spyclash.ios.limitless.weekly';
+// Checkout stays weekly. Restore may reconcile either existing product, but
+// Base44 must verify its signature, canonical status and immutable owner first.
+const RESTORABLE_PRODUCTS = new Set([WEEKLY, 'com.spyclash.ios.limitless.monthly']);
 const actions = new Set(['check','prepare','sync_transaction']);
 export function usesLegacyBilling(config:Config) { return config.APP_BILLING_PROVIDER === 'base44'; }
 export function legacyBillingConfigured(config:Config) {
@@ -82,7 +85,11 @@ export async function prepareLegacyBilling(input:{actor:AppActor,body:Record<str
       if (result?.product_id !== WEEKLY) throw new AppServiceError('legacy_billing_response_invalid','The existing product does not match the weekly subscription.',502);
       requireUUID(result.app_account_token,'app_account_token');
     } else {
-      if (result?.success !== true || result?.server_status_verified !== true || result?.entitlement?.product_id !== WEEKLY) throw new AppServiceError('legacy_billing_response_invalid','Apple has not verified the weekly transaction.',502,true);
+      if (result?.success !== true || result?.server_status_verified !== true
+        || !RESTORABLE_PRODUCTS.has(result?.entitlement?.product_id)
+        || (result?.submitted_product_id != null && !RESTORABLE_PRODUCTS.has(result.submitted_product_id))) {
+        throw new AppServiceError('legacy_billing_response_invalid','Apple has not verified a supported subscription transaction.',502,true);
+      }
       snapshot = membershipResponse(await invoke('checkSubscription',{}));
     }
   }
@@ -104,11 +111,16 @@ export async function dispatchLegacyBilling(ctx:AppContext,body:Record<string,an
     const active = snapshot.active === true && expiry > ctx.now;
     const checkedAt = new Date(evidence.snapshotCheckedAt);
     const data = {status:active?'active':'inactive',providers:snapshot.providers,protocol:snapshot.protocol,source_expires_at:snapshot.expires_at,verified_at:checkedAt.toISOString()};
+    // A membership read aggregates Apple, Stripe and grants; it must not relabel
+    // a previously verified monthly transaction as the current weekly offer.
+    const productID = command.action === 'sync_transaction' ? evidence.result.entitlement.product_id : '';
     const [owner] = await ctx.tx`select user_id from app_private.entitlements where source_key=${'base44:'+evidence.legacyID}`;
     if (owner && owner.user_id !== ctx.actor.id) throw new AppServiceError('legacy_owner_mismatch','This membership belongs to a different account.',409);
     await ctx.tx`insert into app_private.entitlements(source_key,user_id,active,expires_at,data,provider,product_id,provider_event_at,updated_at)
-      values(${'base44:'+evidence.legacyID},${ctx.actor.id},${active},${expiry},${ctx.tx.json(data)},'base44',${WEEKLY},${checkedAt},${ctx.now})
-      on conflict(source_key) do update set active=excluded.active,expires_at=excluded.expires_at,data=excluded.data,provider_event_at=excluded.provider_event_at,updated_at=excluded.updated_at
+      values(${'base44:'+evidence.legacyID},${ctx.actor.id},${active},${expiry},${ctx.tx.json(data)},'base44',${productID},${checkedAt},${ctx.now})
+      on conflict(source_key) do update set active=excluded.active,expires_at=excluded.expires_at,data=excluded.data,
+        product_id=case when excluded.product_id<>'' then excluded.product_id else entitlements.product_id end,
+        provider_event_at=excluded.provider_event_at,updated_at=excluded.updated_at
       where entitlements.user_id=excluded.user_id and (entitlements.provider_event_at is null or entitlements.provider_event_at<=excluded.provider_event_at)`;
   }
   if (evidence.requestID) {

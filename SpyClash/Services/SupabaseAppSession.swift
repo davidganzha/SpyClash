@@ -54,6 +54,9 @@ final class SupabaseAppSession {
     private(set) var generation = UUID()
     private var candidates: [String: SupabaseStoredSession] = [:]
     private var refreshTask: Task<SupabaseStoredSession, Error>?
+    // The existing cancellable FIFO primitive gives StoreKit its own queue;
+    // this instance never serializes game or unrelated app-service commands.
+    private let appStoreDeliveryQueue = RoomMutationQueue()
     var accessToken: String? { session?.accessToken }
     var userID: String { session?.userID ?? "" }
 
@@ -190,6 +193,11 @@ final class SupabaseAppSession {
         body.removeValue(forKey: "access_token")
         body["service"] = .string(service); body["action"] = .string(action)
         let epoch = generation
+        let isAppStoreDelivery = write && service == "membership" && action == "sync_transaction"
+        let deliveryLease = isAppStoreDelivery ? try await appStoreDeliveryQueue.acquire(timeout: 120) : nil
+        defer { if let deliveryLease { appStoreDeliveryQueue.release(deliveryLease) } }
+        try Task.checkCancellation()
+        guard epoch == generation else { throw CancellationError() }
         let credential: String
         if let token { credential = token } else { credential = try await ensureAccessToken() }
         guard epoch == generation else { throw CancellationError() }
@@ -199,6 +207,14 @@ final class SupabaseAppSession {
             (service == "membership" && ["check", "prepare", "sync_transaction"].contains(action)) ||
             (service == "profile" && action == "delete" && fields["deletion_scope"]?.string == "account")
         guard !includeLegacyCredential || permitsLegacyCredential else { throw Self.invalidSession }
+        if isAppStoreDelivery, let previous = try mutationJournal.pendingAppStoreTransaction(actorID: actorID) {
+            var previousSource = previous; previousSource.removeValue(forKey: "request_id")
+            var currentSource = body; currentSource.removeValue(forKey: "request_id")
+            if previousSource != currentSource {
+                try await recoverAppStoreTransaction(previous, actorID: actorID, credential: credential,
+                                                     legacyToken: legacyToken, epoch: epoch, permitsRevalidation: token == nil)
+            }
+        }
         if write { body = try mutationJournal.prepare(actorID: actorID, body: body) }
         do {
             var wireBody = body
@@ -209,13 +225,52 @@ final class SupabaseAppSession {
             if write, let requestID = body["request_id"]?.string { try mutationJournal.acknowledge(actorID: actorID, requestID: requestID) }
             return result
         } catch let error as Base44Error {
+            if isAppStoreDelivery {
+                try Task.checkCancellation()
+                guard epoch == generation, userID == actorID else { throw CancellationError() }
+            }
             // An expired/revoked credential is rejected before the command runs.
             // Preserve its immutable intent so sign-in can safely resume it.
-            if write, let status = error.statusCode, (400..<500).contains(status), status != 401, let requestID = body["request_id"]?.string {
+            if write, let status = error.statusCode, (400..<500).contains(status), status != 401,
+               !isAppStoreDelivery || Self.isDefinitiveAppStoreFailure(error),
+               let requestID = body["request_id"]?.string {
                 try mutationJournal.acknowledge(actorID: actorID, requestID: requestID)
             }
             throw error
         }
+    }
+
+    private func recoverAppStoreTransaction(_ saved: [String: JSONValue], actorID: String, credential: String,
+                                            legacyToken: String?, epoch: UUID, permitsRevalidation: Bool) async throws {
+        try Task.checkCancellation()
+        guard epoch == generation, userID == actorID, let requestID = saved["request_id"]?.string else { throw CancellationError() }
+        var wire = saved
+        if let legacyToken { wire["base44_access_token"] = .string(legacyToken) }
+        do {
+            let value = try await authenticatedRequest(path: "/functions/v1/app-services", body: .object(wire), token: credential,
+                                                       epoch: epoch, permitsRevalidation: permitsRevalidation)
+            try Task.checkCancellation()
+            guard epoch == generation, userID == actorID else { throw CancellationError() }
+            let receipt = try JSONDecoder.base44.decode(AppStoreEntitlementSyncResponse.self, from: value.data())
+            guard receipt.success, receipt.serverStatusVerified,
+                  StoreKitSubscriptionProduct.supports(receipt.entitlement.productID) else { throw AppStoreDeliveryError.responseRejected }
+            try mutationJournal.acknowledge(actorID: actorID, requestID: requestID)
+            // The old receipt is intentionally discarded. The caller must
+            // submit and verify its own JWS before StoreKit may finish it.
+        } catch let error as Base44Error {
+            try Task.checkCancellation()
+            guard epoch == generation, userID == actorID else { throw CancellationError() }
+            if Self.isDefinitiveAppStoreFailure(error) {
+                try mutationJournal.acknowledge(actorID: actorID, requestID: requestID)
+                return
+            }
+            throw error
+        }
+    }
+
+    private static func isDefinitiveAppStoreFailure(_ error: Base44Error) -> Bool {
+        guard let status = error.statusCode else { return false }
+        return (400..<500).contains(status) && ![401, 408, 425, 429].contains(status) && !error.retryable
     }
     func fullGame(_ body: JSONValue) async throws -> JSONValue {
         let epoch = generation

@@ -26,6 +26,7 @@ import { publicAppleCredentialBrokerError } from "./apple-credential-error-polic
 import { appleCodeExchangeTokenOutcome } from "./apple-code-exchange.ts";
 import { compensateUntrackedAppleRefreshToken } from "./apple-token-compensation.ts";
 import { upstreamProviderFromBase44State } from "./provider.ts";
+import { nativeHandoffCallback, nativeHandoffVersion } from "./native-handoff.ts";
 import {
   type GoogleTransactionChannel,
   googleTransactionChannelFromClaim,
@@ -60,8 +61,6 @@ const BASE44_REDIRECT_URI =
   `https://app.base44.com/api/apps/${APP_ID}/auth/sso/callback`;
 const BASE44_SSO_LOGIN_URL =
   `https://spyclash.com/api/apps/${APP_ID}/auth/sso/login`;
-const MOBILE_AUTH_CALLBACK_URL =
-  `https://spyclash.com/api/apps/${APP_ID}/functions/mobileAuthCallback`;
 const USERINFO_AUDIENCE = `${ISSUER}?action=userinfo`;
 const APPLE_STATE_AUDIENCE = "spyclash:apple-callback";
 const GOOGLE_STATE_AUDIENCE = "spyclash:google-callback";
@@ -1412,6 +1411,12 @@ async function handleJwks(req: Request) {
 
 async function handleNativeExchange(req: Request, params: URLSearchParams) {
   assertMethod(req, "POST");
+  let handoffVersion: ReturnType<typeof nativeHandoffVersion>;
+  try {
+    handoffVersion = nativeHandoffVersion(params.has("handoff_version") ? params.get("handoff_version") : undefined);
+  } catch {
+    throw new BrokerError("invalid_native_handoff_version", 400);
+  }
   const clientId = requiredEnv("APPLE_NATIVE_CLIENT_ID");
   if (!await secureEqual(clientId, EXPECTED_APPLE_NATIVE_CLIENT_ID)) {
     throw new BrokerError(
@@ -1506,6 +1511,7 @@ async function handleNativeExchange(req: Request, params: URLSearchParams) {
           is_private_email: profile.isPrivateEmail,
           auth_time: profile.authTime,
           apple_client_id: clientId,
+          handoff_version: handoffVersion,
         },
         NATIVE_TICKET_AUDIENCE,
         NATIVE_TICKET_TTL_SECONDS,
@@ -1526,11 +1532,17 @@ async function handleNativeExchange(req: Request, params: URLSearchParams) {
 async function handleNativeBootstrap(req: Request, params: URLSearchParams) {
   assertMethod(req, "GET");
   const ticket = bounded(params.get("ticket"), "ticket", 20_000);
-  await verifyBrokerJwt(ticket, NATIVE_TICKET_AUDIENCE, "native_ticket");
+  const payload = await verifyBrokerJwt(ticket, NATIVE_TICKET_AUDIENCE, "native_ticket");
+  let callback: string;
+  try {
+    callback = nativeHandoffCallback(payload.handoff_version);
+  } catch {
+    throw new BrokerError("invalid_native_ticket", 400);
+  }
 
   const ssoURL = new URL(BASE44_SSO_LOGIN_URL);
   ssoURL.searchParams.set("app_id", APP_ID);
-  ssoURL.searchParams.set("from_url", MOBILE_AUTH_CALLBACK_URL);
+  ssoURL.searchParams.set("from_url", callback);
   return redirect(ssoURL.toString(), nativeCookie(ticket));
 }
 

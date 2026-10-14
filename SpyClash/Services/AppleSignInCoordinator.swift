@@ -4,6 +4,7 @@ import Foundation
 import Security
 
 struct AppleSignInCredential: Encodable {
+    let handoffVersion = AppleNativeHandoffPolicy.version
     let identityToken: String
     let authorizationCode: String
     let rawNonce: String
@@ -14,6 +15,7 @@ struct AppleSignInCredential: Encodable {
     let familyName: String?
 
     enum CodingKeys: String, CodingKey {
+        case handoffVersion = "handoff_version"
         case identityToken = "identity_token"
         case authorizationCode = "authorization_code"
         case rawNonce = "raw_nonce"

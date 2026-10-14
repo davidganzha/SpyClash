@@ -1,0 +1,24 @@
+{
+  "checkedAt": "2026-10-14T09:35:10.102Z",
+  "readOnly": true,
+  "app": {
+    "id": "6793534085",
+    "bundleID": "com.spyclash.ios"
+  },
+  "groups": [
+    {
+      "id": "22256419",
+      "referenceName": "SpyClash Limitless",
+      "subscriptions": [
+        {
+          "id": "6793548263",
+          "productID": "com.spyclash.ios.limitless.weekly",
+          "name": "SpyClash LIMITLESS Weekly",
+          "state": "APPROVED",
+          "period": "ONE_WEEK",
+          "familySharable": false
+        }
+      ]
+    }
+  ]
+}

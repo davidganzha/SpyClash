@@ -46,6 +46,56 @@ test('unverified Apple result cannot grant, and replayed old snapshot never exte
   await db`delete from app_private.entitlements where user_id=${a.id}`;
   await call(a,body,fetcher);const [mirror]=await db`select active from app_private.entitlements where user_id=${a.id}`;assert.equal(mirror.active,false);
 });
+test('restore accepts verified existing weekly and monthly products without changing the weekly checkout',async()=>{
+  const monthly='com.spyclash.ios.limitless.monthly';
+  for(const [submitted,canonical] of [[WEEKLY_PRODUCT,WEEKLY_PRODUCT],[monthly,monthly],[WEEKLY_PRODUCT,monthly],[monthly,WEEKLY_PRODUCT]]) {
+    const a=await actor(),body={action:'sync_transaction',signed_transaction:'provider-verified-existing-transaction',request_id:crypto.randomUUID(),base44_access_token:credential};
+    const reply={success:true,server_status_verified:true,submitted_product_id:submitted,entitlement:{product_id:canonical,status:'active'}};
+    const fetcher=provider(a,url=>Response.json(url.endsWith('checkSubscription')?snapshot(true):reply));
+    assert.deepEqual(await call(a,body,fetcher),reply);
+    let [mirror]=await db`select active,product_id from app_private.entitlements where user_id=${a.id}`;
+    assert.equal(mirror.active,true);assert.equal(mirror.product_id,canonical);
+    await call(a,{action:'check',base44_access_token:credential},fetcher);
+    [mirror]=await db`select product_id from app_private.entitlements where user_id=${a.id}`;
+    assert.equal(mirror.product_id,canonical,'An aggregate membership read cannot relabel a restored product');
+    await assert.rejects(call(a,{action:'prepare',requested_product_id:monthly,request_id:crypto.randomUUID(),base44_access_token:credential},fetcher),e=>e.code==='unsupported_product');
+  }
+});
+test('restore never accepts an unknown canonical or submitted product even with a verification flag',async()=>{
+  for(const [submitted,canonical] of [[WEEKLY_PRODUCT,'unrelated.product'],['unrelated.product',WEEKLY_PRODUCT]]) {
+    const a=await actor(),body={action:'sync_transaction',signed_transaction:'provider-verified-but-wrong-product',request_id:crypto.randomUUID(),base44_access_token:credential};
+    const fetcher=provider(a,()=>Response.json({success:true,server_status_verified:true,submitted_product_id:submitted,entitlement:{product_id:canonical,status:'active'}}));
+    await assert.rejects(call(a,body,fetcher),e=>e.code==='legacy_billing_response_invalid');
+    const rows=await db`select 1 from app_private.entitlements where user_id=${a.id}`;assert.equal(rows.length,0);
+  }
+});
+test('verified revoked monthly restore is acknowledged without granting membership',async()=>{
+  const a=await actor(),monthly='com.spyclash.ios.limitless.monthly';
+  const body={action:'sync_transaction',signed_transaction:'provider-verified-monthly-revocation',request_id:crypto.randomUUID(),base44_access_token:credential};
+  const reply={success:true,server_status_verified:true,submitted_product_id:monthly,entitlement:{product_id:monthly,status:'revoked'}};
+  const fetcher=provider(a,url=>Response.json(url.endsWith('checkSubscription')?snapshot(false):reply));
+  assert.deepEqual(await call(a,body,fetcher),reply);
+  const [mirror]=await db`select active,product_id from app_private.entitlements where user_id=${a.id}`;assert.equal(mirror.active,false);assert.equal(mirror.product_id,monthly);
+});
+test('Supabase credentials and mismatched legacy owners cannot reach existing billing',async()=>{
+  const a=await actor(),foreign=await actor();let calls=0;
+  const noProvider=async()=>{calls++;throw new Error('Must not reach provider');};
+  const supabaseJWT='header.'+Buffer.from(JSON.stringify({iss:'https://bbkfsgnordtdiblgdzkg.supabase.co/auth/v1'})).toString('base64url')+'.signature';
+  for(const bearer of [undefined,'sb_publishable_not_a_base44_credential',supabaseJWT]) {
+    await assert.rejects(call(a,{action:'check',base44_access_token:bearer},noProvider),e=>['legacy_session_required','wrong_credential_provider'].includes(e.code));
+  }
+  assert.equal(calls,0);
+  const mismatch=provider(foreign,()=>{calls++;throw new Error('Wrong owner reached billing');});
+  await assert.rejects(call(a,{action:'sync_transaction',signed_transaction:'some-provider-signed-transaction',request_id:crypto.randomUUID(),base44_access_token:credential},mismatch),e=>e.code==='legacy_owner_mismatch');
+  assert.equal(calls,0);
+});
+test('billing mutation reservation binds the original action and signed transaction',async()=>{
+  const a=await actor(),body={action:'sync_transaction',signed_transaction:'provider-signed-first-transaction',request_id:crypto.randomUUID(),base44_access_token:credential};let calls=0;
+  const fetcher=provider(a,url=>{calls++;return Response.json(url.endsWith('checkSubscription')?snapshot(true):{success:true,server_status_verified:true,entitlement:{product_id:WEEKLY_PRODUCT,status:'active'}});});
+  await call(a,body,fetcher);assert.equal(calls,2);
+  await assert.rejects(call(a,{...body,signed_transaction:'provider-signed-other-transaction'},fetcher),e=>e.code==='request_id_reused');
+  assert.equal(calls,2);
+});
 test('main-topic push reaches only authenticated prepared Base44 relay and retains outbox fencing',async()=>{
   const a=await actor();const registration={action:'register_device',installation_id:crypto.randomUUID(),apns_token:'aa'.repeat(32),environment:'production',bundle_id:MAIN_PUSH_BUNDLE,alert_authorized:true};
   assert.equal(allowedPushBundle({...push,APP_LEGACY_PUSH_RELAY_ENABLED:'false'}),null);
