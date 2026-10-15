@@ -1,0 +1,77 @@
+{
+  "checkedAt": "2026-10-15T18:28:39.952Z",
+  "operation": "independent GET only readback",
+  "app": {
+    "id": "6793534085",
+    "bundleId": "com.spyclash.ios"
+  },
+  "build": {
+    "id": "1a5ae807-b59f-406a-bc55-1bf55a58d3dd",
+    "version": "176",
+    "marketingVersion": "1.0.3",
+    "processingState": "VALID",
+    "buildAudienceType": "INTERNAL_ONLY",
+    "expired": false,
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "NOT_APPLICABLE"
+  },
+  "targetGroup": {
+    "id": "47a13858-b43b-44a1-bf3e-285722cec320",
+    "name": "LIMITLESS Internal QA",
+    "isInternalGroup": true,
+    "hasAccessToAllBuilds": false,
+    "publicLinkPresent": false
+  },
+  "members": [
+    {
+      "id": "569dc033-570c-42f7-bbc3-611f6c9cb527",
+      "firstName": "David",
+      "lastName": "Ganzha",
+      "inviteType": "EMAIL",
+      "state": "INSTALLED"
+    },
+    {
+      "id": "7818c591-2a6e-40de-924f-f060d753c1e0",
+      "firstName": "Dima",
+      "lastName": "Ianushevych",
+      "inviteType": "EMAIL",
+      "state": "INSTALLED"
+    }
+  ],
+  "groupBuildIds": [
+    "1a5ae807-b59f-406a-bc55-1bf55a58d3dd",
+    "28681991-dabd-4f33-aae8-b34667628f3d",
+    "1bb13cea-e355-4f7f-a1de-44ad748256f7",
+    "7368d1a1-fea2-4c15-89f2-6a486cc22c39",
+    "87d79b55-9435-4112-8c86-813ac2a8d65f",
+    "7190cd79-5da2-40b6-9cce-c55adc999863",
+    "11a6a9af-589b-4098-a2de-23d433c54fc6",
+    "11e4daee-80ce-4f25-ac40-87f49baa20c3",
+    "97af48d7-12fb-4eb7-8449-7852fce69acd"
+  ],
+  "individualTesterCount": 0,
+  "assignments": [
+    {
+      "id": "47a13858-b43b-44a1-bf3e-285722cec320",
+      "name": "LIMITLESS Internal QA",
+      "isInternalGroup": true,
+      "hasAccessToAllBuilds": false,
+      "hasBuild": true
+    },
+    {
+      "id": "f41d2529-7451-4605-857b-d257d34df23b",
+      "name": "Supabase Main Internal QA",
+      "isInternalGroup": true,
+      "hasAccessToAllBuilds": false,
+      "hasBuild": true
+    },
+    {
+      "id": "5f8c8360-e479-43e1-aae6-8b003e6ad941",
+      "name": "LIMITLESS Partner QA",
+      "isInternalGroup": false,
+      "hasAccessToAllBuilds": null,
+      "hasBuild": false
+    }
+  ],
+  "passed": true
+}

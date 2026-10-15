@@ -2,6 +2,12 @@
 
 Source commit: `b1bfceb1339c79a85621cc2fd950898daf70bf81`. The user explicitly authorized the canonical Base44 Apple fix, the subscription bridge in the existing isolated Supabase project, and main SpyClash 1.0.3 (176) in TestFlight Internal Only for David Ganzha. App Store submission was excluded.
 
+## Authorized audience extension — 2026-10-15
+
+The user subsequently requested access for friend Dima Ianushevych. At 18:27:37 UTC, build 176 was added to existing internal group `LIMITLESS Internal QA` (`47a13858-b43b-44a1-bf3e-285722cec320`), whose freshly verified members are exactly David Ganzha and Dima Ianushevych (`7818c591-2a6e-40de-924f-f060d753c1e0`). HTTP 204 and readback confirm the effective audience is now these two testers. The build remains VALID / INTERNAL_ONLY / IN_BETA_TESTING. No automatic build access, external access, individual assignment, group membership change, new upload, backend change or App Store submission was made. Existing assignments, including the David-only main QA group, were preserved.
+
+Evidence: `evidence/full-app/build176/dima-access-assignment.json` and `dima-access-independent-readback.json`. Dima's actual installation remains unconfirmed. The original 2026-10-14 delivery record below retains its historical David-only audience.
+
 ## Server deployment
 
 - Canonical Base44 app `69a0e57fa939f578082f8091`: only `appleAuthBroker` deployed at 2026-10-14 10:32:32 UTC. A fresh readback matched all 14 approved runtime/configuration hashes. Three safe server-side HTTP probes passed. Local shell probes were blocked by Cloudflare (403), so they are not counted as successful broker checks. No website or provider-configuration change was made.
