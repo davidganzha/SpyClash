@@ -1,0 +1,33 @@
+{
+  "checkedAt": "2026-10-16T13:23:05.290647+00:00",
+  "version": "1.0.3 (177)",
+  "scheme": "SpyClash",
+  "configuration": "SupabaseRelease",
+  "platform": "generic/platform=iOS",
+  "archivePath": "/tmp/SpyClash-177-unsigned.xcarchive",
+  "archiveLog": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/apple177-investigation/unsigned-archive.log",
+  "signingAllowed": false,
+  "checks": {
+    "archive_succeeded": true,
+    "main_bundle": true,
+    "version": true,
+    "candidate_backend": true,
+    "candidate_config_exact": true,
+    "widget_version_matches": true,
+    "privacy_exact": true,
+    "native_callback_embedded": true,
+    "google_callback_embedded": true,
+    "unsigned": true
+  },
+  "binarySHA256": "841e78b4cfa5b0c07ab73c2ac7f6bc991055a5d3b677efa9a6faa0b04096da00",
+  "boundaries": [
+    "Unsigned local archive only",
+    "No IPA export, upload, TestFlight processing or tester assignment",
+    "No physical-device Apple acceptance"
+  ],
+  "diagnosticValidation": {
+    "sourceSHA256": "abaf1d694d3aa54230406a9ea06fb1577257bbec18eb20a0efa06d84a7992dc8",
+    "focusedTestsPassed": 42,
+    "rawStringScan": "The short SCA177 prefix was not found as a contiguous byte string in the optimized/stripped binary. This is not a release gate; XCTest verifies exact emitted codes, and this unchanged source was compiled in the successful SupabaseRelease archive."
+  }
+}

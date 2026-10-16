@@ -91,7 +91,7 @@ final class AppleNativeHandoffTests: XCTestCase {
 
     func testRealURLSessionRejectsCredentialFragmentAndPreservesLegacyReturn() async throws {
         for (destination, expected) in [
-            (base + "?auth_provider=apple&access_token=synthetic#access_token=bad", Result<String, AppleNativeHandoffError>.failure(.invalidCallback)),
+            (base + "?auth_provider=apple&access_token=synthetic#access_token=bad", Result<String, AppleNativeHandoffError>.failure(.validation(.callbackFragment))),
             ("spyclash://auth?access_token=synthetic-legacy", .success("synthetic-legacy")),
             (base + "?auth_provider=apple&error=access_denied", .failure(.cancelled)),
         ] {
@@ -108,10 +108,105 @@ final class AppleNativeHandoffTests: XCTestCase {
             case .success(let token): XCTAssertEqual(try XCTUnwrap(delegate.capturedResult()).get(), token)
             case .failure(let error):
                 guard case .failure(let actual)? = delegate.capturedResult() else { XCTFail("Expected rejected callback"); continue }
-                XCTAssertEqual(actual, error)
+                XCTAssertEqual(actual.supportCode, error.supportCode)
             }
             XCTAssertEqual(server.requestCount, 1)
         }
+    }
+
+    func testRealURLSessionClassifiesTerminalHTMLAndJSONWithoutAcceptingBodyCredentials() async throws {
+        for (status, contentType, expectedContent) in [(200, "text/html", "H"), (400, "application/json", "J"), (503, "application/octet-stream", "O")] {
+            let secret = "private-body-token-MUST-NOT-APPEAR"
+            let body = contentType == "application/json"
+                ? "{\"error\":\"invalid_url\",\"access_token\":\"\(secret)\"}"
+                : "<script>location.replace('\(base)?auth_provider=apple&access_token=\(secret)')</script>"
+            let server = try AppleHandoffLoopbackServer(location: nil, status: status, contentType: contentType, body: body)
+            let url = try await server.start()
+            defer { server.stop() }
+            let delegate = AppleNativeHandoffRedirectDelegate()
+            let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+            defer { session.invalidateAndCancel() }
+            let (_, response) = try await session.data(from: url)
+            XCTAssertNil(delegate.capturedResult())
+            XCTAssertThrowsError(try delegate.completedAccessToken(response: response)) { error in
+                guard let error = error as? AppleNativeHandoffError else { XCTFail("Expected classified handoff failure"); return }
+                XCTAssertEqual(error.supportCode, .missingCallback)
+                XCTAssertTrue(error.localizedDescription.hasPrefix("[SCA177-H05-r0-s\(status)-c\(expectedContent)-uUN-q0-pN-fN]"))
+                for forbidden in [secret, "script", "127.0.0.1", "bootstrap", contentType] {
+                    XCTAssertFalse(error.localizedDescription.contains(forbidden))
+                }
+            }
+            XCTAssertEqual(server.requestCount, 1)
+        }
+    }
+
+    func testTerminalEnvelopeClassificationHasOnlyFixedBoundedValues() throws {
+        let secret = "private-param-value-MUST-NOT-APPEAR"
+        let url = try XCTUnwrap(URL(string: "https://app.base44.com/api/apps/69a0e57fa939f578082f8091/auth/sso/callback?code=\(secret)&state=\(secret)"))
+        let response = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 400, httpVersion: nil, headerFields: ["Content-Type": "application/json; private=\(secret)"]))
+        let diagnostic = AppleNativeHandoffDiagnostic(response: response, destination: url, redirectCount: 500)
+        XCTAssertEqual(diagnostic.supportSuffix, "-r13-s400-cJ-uSC-q10-pN-fN")
+        XCTAssertFalse(String(describing: diagnostic).contains(secret))
+        let nonHTTP = URLResponse(url: url, mimeType: secret, expectedContentLength: 0, textEncodingName: nil)
+        XCTAssertEqual(AppleNativeHandoffDiagnostic(response: nonHTTP, destination: nil, redirectCount: -100).supportSuffix, "-r0-s0-cO-uUN-q0-pN-fN")
+        XCTAssertEqual(AppleNativeHandoffDiagnostic(response: nil, destination: nil, redirectCount: 0).supportSuffix, "-r0-s0-cN-uUN-q0-pN-fN")
+        let invalidStatus = try XCTUnwrap(HTTPURLResponse(url: url, statusCode: 799, httpVersion: nil, headerFields: nil))
+        XCTAssertEqual(AppleNativeHandoffDiagnostic(response: invalidStatus, destination: url, redirectCount: 0).status, 0)
+        XCTAssertThrowsError(try AppleNativeHandoffRedirectDelegate().completedAccessToken(response: nil)) {
+            XCTAssertTrue($0.localizedDescription.hasPrefix("[SCA177-H05-r0-s0-cN-uUN-q0-pN-fN]"))
+        }
+    }
+
+    func testRealURLSessionRejectionReportsStructureWithoutCredentialValues() async throws {
+        let secret = "private-redirect-value-MUST-NOT-APPEAR"
+        let destination = base + "?auth_provider=apple&access_token=\(secret)&access%5Ftoken=\(secret)&extra="
+        let server = try AppleHandoffLoopbackServer(location: destination)
+        let url = try await server.start()
+        defer { server.stop() }
+        let delegate = AppleNativeHandoffRedirectDelegate()
+        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        let (_, response) = try await session.data(from: url)
+        XCTAssertThrowsError(try delegate.completedAccessToken(response: response)) {
+            XCTAssertEqual(($0 as? AppleNativeHandoffError)?.supportCode, .callbackDuplicateQuery)
+            XCTAssertTrue($0.localizedDescription.hasPrefix("[SCA177-H26-r1-s302-cN-uAC-q73-pA-fN]"))
+            for forbidden in [secret, "spyclash.com", "access_token", "extra", destination] { XCTAssertFalse($0.localizedDescription.contains(forbidden)) }
+        }
+        XCTAssertEqual(server.requestCount, 1)
+    }
+
+    func testDiagnosticCodesDistinguishRejectedCallbackGuardsWithoutChangingAcceptance() throws {
+        let cases: [(String, AppleNativeHandoffFailureCode)] = [
+            (base + "?auth_provider=apple&access_token=secret#secret", .callbackFragment),
+            ("https://foreign.example/MobileAppleAuthCallback.html?auth_provider=apple&access_token=secret", .callbackOrigin),
+            (base + "?auth_provider=apple&access_token=", .callbackQuery),
+            (base + "?auth_provider=google&access_token=secret", .callbackProvider),
+            (base + "?auth_provider=apple&access_token=secret&error=access_denied", .callbackPayload),
+            (base + "?auth_provider=apple&access_token=secret&%61ccess_token=other", .callbackDuplicateQuery),
+        ]
+        for (raw, code) in cases {
+            XCTAssertThrowsError(try AppleNativeHandoffPolicy.accessToken(from: XCTUnwrap(URL(string: raw)))) {
+                XCTAssertEqual(($0 as? AppleNativeHandoffError)?.supportCode, code)
+                XCTAssertFalse($0.localizedDescription.contains("secret"))
+            }
+        }
+    }
+
+    func testCancelledCompletionCannotReturnCapturedTokenOrDiagnosticInsteadOfCancellation() async throws {
+        let server = try AppleHandoffLoopbackServer(location: base + "?auth_provider=apple&access_token=synthetic")
+        let url = try await server.start()
+        defer { server.stop() }
+        let delegate = AppleNativeHandoffRedirectDelegate()
+        let session = URLSession(configuration: .ephemeral, delegate: delegate, delegateQueue: nil)
+        defer { session.invalidateAndCancel() }
+        let (_, response) = try await session.data(from: url)
+        XCTAssertEqual(try XCTUnwrap(delegate.capturedResult()).get(), "synthetic")
+        let task = Task { () throws -> String in
+            withUnsafeCurrentTask { $0?.cancel() }
+            return try delegate.completedAccessToken(response: response)
+        }
+        do { _ = try await task.value; XCTFail("Cancelled completion returned a token") }
+        catch { XCTAssertTrue(error is CancellationError) }
     }
 }
 
@@ -120,13 +215,19 @@ final class AppleNativeHandoffTests: XCTestCase {
 private final class AppleHandoffLoopbackServer: @unchecked Sendable {
     private let listener: NWListener
     private let queue = DispatchQueue(label: "SpyClash.AppleHandoffTests.loopback")
-    private let location: String
+    private let location: String?
+    private let status: Int
+    private let contentType: String?
+    private let body: String
     private var count = 0
     private var startupCompleted = false
     var requestCount: Int { queue.sync { count } }
 
-    init(location: String) throws {
+    init(location: String?, status: Int = 302, contentType: String? = nil, body: String = "") throws {
         self.location = location
+        self.status = status
+        self.contentType = contentType
+        self.body = body
         let parameters = NWParameters.tcp
         parameters.requiredLocalEndpoint = .hostPort(host: "127.0.0.1", port: .any)
         listener = try NWListener(using: parameters)
@@ -160,7 +261,9 @@ private final class AppleHandoffLoopbackServer: @unchecked Sendable {
             if let data { bytes.append(data) }
             if bytes.range(of: Data("\r\n\r\n".utf8)) != nil {
                 self.count += 1
-                let response = "HTTP/1.1 302 Found\r\nLocation: \(self.location)\r\nContent-Length: 0\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n"
+                let locationHeader = self.location.map { "Location: \($0)\r\n" } ?? ""
+                let contentTypeHeader = self.contentType.map { "Content-Type: \($0)\r\n" } ?? ""
+                let response = "HTTP/1.1 \(self.status) Test\r\n\(locationHeader)\(contentTypeHeader)Content-Length: \(self.body.utf8.count)\r\nCache-Control: no-store\r\nConnection: close\r\n\r\n\(self.body)"
                 connection.send(content: Data(response.utf8), completion: .contentProcessed { _ in connection.cancel() })
             } else if error != nil || complete || bytes.count > 8192 {
                 connection.cancel()

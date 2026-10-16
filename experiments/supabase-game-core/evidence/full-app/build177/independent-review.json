@@ -1,0 +1,15 @@
+{
+  "reviewedAt": "2026-10-16T13:21:58.158091+00:00",
+  "reviewer": "apple176_server_diagnosis",
+  "result": "PASS",
+  "files": {
+    "SpyClash/Services/AppleNativeHandoff.swift": "abaf1d694d3aa54230406a9ea06fb1577257bbec18eb20a0efa06d84a7992dc8",
+    "SpyClashTests/AppleNativeHandoffTests.swift": "f7f24571c6c381005be02495092506af6478013950ab1454efc2ee978be7a637",
+    "web-auth/src/lib/mobileAuthCallback.js": "a59964b250227975fe8093ed912a9eec094813d7df5017aa763e2fad14c09f3c"
+  },
+  "policyEquivalence": "All acceptance guards byte-identical after normalizing only throw labels.",
+  "normalizedPolicySHA256": "75133a0f7e19a492d0fa46b0cd794536a28cd5b52fe3f301f4e5875310054589",
+  "privacy": "Only fixed enum classifications, bounded HTTP status and redirect count, and bit flags are retained. No URL, query names/values, body, cookies, headers, or arbitrary error text.",
+  "cancellation": "Task cancellation checked before returning captured credentials.",
+  "notProven": "The exact real-device failure branch and successful Apple login remain unverified."
+}

@@ -1,0 +1,239 @@
+{
+  "checkedAt": "2026-10-16T13:16:19.045528+00:00",
+  "reportedBuild": 176,
+  "userEvidence": {
+    "screenshot": "IMG_3393.PNG",
+    "phoneTime": "11:27 Europe/London, 2026-10-16",
+    "message": "Apple sign-in returned an invalid response. Please try again."
+  },
+  "canonicalBase44App": "69a0e57fa939f578082f8091",
+  "brokerReadback": {
+    "all14Match176": true,
+    "files": [
+      {
+        "path": "base44/functions/appleAuthBroker/apple-code-exchange.ts",
+        "sha256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/apple-credential-error-policy.ts",
+        "sha256": "7d35a9c2a03b934605e8ec87ce96862b3a1dc3a4b756d0f83cc77bd4b6ba3ab5",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/apple-sign-in-credential.ts",
+        "sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/apple-token-compensation.ts",
+        "sha256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/billing-identity-lifecycle.ts",
+        "sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/confirmation.ts",
+        "sha256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/entry.ts",
+        "sha256": "a7119b1b9a380740d0f1a3a80456dcbcbef0add844fc7c3f3e613a72f28f4fc6",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/google-state-recovery.ts",
+        "sha256": "5abd228604f60784a1ea86d3bab008f4b35326500748ca8433e1f69debfdac50",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/handoff.ts",
+        "sha256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/native-handoff.ts",
+        "sha256": "5b593a95ef655a5375b6aa901f165ef9f790b09d2d23a63e284dd15282bff361",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/provider.ts",
+        "sha256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/service-role-request.ts",
+        "sha256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df",
+        "matches176": true
+      },
+      {
+        "path": "base44/functions/appleAuthBroker/transaction.ts",
+        "sha256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8",
+        "matches176": true
+      },
+      {
+        "path": "function.jsonc",
+        "sha256": "66d94a818f2de3ad3e05a2170dab78bdb5a2c965b127d7dfd438cc0c5147ee55",
+        "matches176": true
+      }
+    ]
+  },
+  "brokerHTTPEntriesInScreenshotWindow": [
+    {
+      "timestampUTC": "2026-10-16T10:27:50Z",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "timestampUTC": "2026-10-16T10:27:50Z",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "timestampUTC": "2026-10-16T10:27:48Z",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "timestampUTC": "2026-10-16T10:27:37Z",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "timestampUTC": "2026-10-16T10:27:34Z",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "timestampUTC": "2026-10-16T10:27:27Z",
+      "method": "GET",
+      "status": 200
+    },
+    {
+      "timestampUTC": "2026-10-16T10:27:27Z",
+      "method": "POST",
+      "status": 200
+    },
+    {
+      "timestampUTC": "2026-10-16T10:27:26Z",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "timestampUTC": "2026-10-16T10:27:24Z",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "timestampUTC": "2026-10-16T10:27:23Z",
+      "method": "POST",
+      "status": 200
+    }
+  ],
+  "logLimitations": "Entries have method/status but no action/attempt correlation; the successful token/userinfo-like sequence is an inference, not a complete phone trace.",
+  "ssoShapeProbe": {
+    "marker": "APPLE177_SSO_SHAPE",
+    "realCredentials": false,
+    "createsUserSession": false,
+    "results": [
+      {
+        "name": "apple176",
+        "initialStatus": 307,
+        "status": 302,
+        "contentType": null,
+        "location": {
+          "origin": "https://spyclash.com",
+          "path": "/functions/appleAuthBroker",
+          "queryKeys": [
+            "action",
+            "response_type",
+            "client_id",
+            "redirect_uri",
+            "scope",
+            "state",
+            "code_challenge",
+            "code_challenge_method",
+            "access_type",
+            "nonce"
+          ],
+          "fragmentPresent": false,
+          "hasToken": false
+        },
+        "state": {
+          "keys": [
+            "from_url",
+            "app_id"
+          ],
+          "fromURLMatches": true,
+          "appIDMatches": true
+        },
+        "negativeCallback": {
+          "status": 400,
+          "contentType": "application/json",
+          "location": null,
+          "bodyLength": 172,
+          "containsJSLocation": false,
+          "containsMetaRefresh": false,
+          "containsAccessDenied": true,
+          "containsInvalidURL": false,
+          "containsBase44": false
+        }
+      },
+      {
+        "name": "known_mobile_path_apple",
+        "initialStatus": 307,
+        "status": 302,
+        "contentType": null,
+        "location": {
+          "origin": "https://spyclash.com",
+          "path": "/functions/appleAuthBroker",
+          "queryKeys": [
+            "action",
+            "response_type",
+            "client_id",
+            "redirect_uri",
+            "scope",
+            "state",
+            "code_challenge",
+            "code_challenge_method",
+            "access_type",
+            "nonce"
+          ],
+          "fragmentPresent": false,
+          "hasToken": false
+        },
+        "state": {
+          "keys": [
+            "from_url",
+            "app_id"
+          ],
+          "fromURLMatches": true,
+          "appIDMatches": true
+        },
+        "negativeCallback": {
+          "status": 400,
+          "contentType": "application/json",
+          "location": null,
+          "bodyLength": 172,
+          "containsJSLocation": false,
+          "containsMetaRefresh": false,
+          "containsAccessDenied": true,
+          "containsInvalidURL": false,
+          "containsBase44": false
+        }
+      }
+    ]
+  },
+  "sourceLocalization": {
+    "errorFamily": "AppleNativeHandoffError",
+    "beforeSupabaseSessionBridge": true,
+    "exactFailureBranch": "not observable in176"
+  },
+  "productionMutations": false,
+  "physicalDeviceAvailable": false,
+  "acceptance": "Actual successful Apple sign-in remains unverified."
+}

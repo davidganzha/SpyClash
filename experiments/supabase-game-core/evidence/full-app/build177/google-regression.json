@@ -1,0 +1,8 @@
+{
+  "sourceVersion": 177,
+  "command": "npm test (web-auth)",
+  "testsPassed": 66,
+  "testsFailed": 0,
+  "callbackSHA256": "a59964b250227975fe8093ed912a9eec094813d7df5017aa763e2fad14c09f3c",
+  "callbackUnchangedFrom176": true
+}

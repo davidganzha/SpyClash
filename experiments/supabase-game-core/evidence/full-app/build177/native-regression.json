@@ -1,0 +1,50 @@
+{
+  "checkedAt": "2026-10-16T13:21:41.027107+00:00",
+  "configuration": "Debug",
+  "scheme": "SpyClash",
+  "version": "1.0.3 (177)",
+  "xcresultPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-16T13-19-42-148Z_pid40741_c619e7ea.xcresult",
+  "selectedSuites": [
+    "AppleNativeHandoffTests",
+    "AppleAuthenticationOwnershipTests",
+    "AuthenticationFlowTests",
+    "WebAuthenticationCoordinatorTests"
+  ],
+  "summary": {
+    "devicesAndConfigurations": [
+      {
+        "device": {
+          "architecture": "arm64",
+          "deviceId": "FE7D0047-8DF2-4930-97FE-2F3F1548911E",
+          "deviceName": "SpyClash Supabase Lab C",
+          "modelName": "iPhone 17",
+          "osBuildNumber": "23F77",
+          "osVersion": "26.5",
+          "platform": "iOS Simulator"
+        },
+        "expectedFailures": 0,
+        "failedTests": 0,
+        "passedTests": 42,
+        "skippedTests": 0,
+        "testPlanConfiguration": {
+          "configurationId": "1",
+          "configurationName": "Test Scheme Action"
+        }
+      }
+    ],
+    "environmentDescription": "SpyClash \u00b7 Built with macOS 26.5.2",
+    "expectedFailures": 0,
+    "failedTests": 0,
+    "finishTime": 1792156825.021,
+    "passedTests": 42,
+    "result": "Passed",
+    "skippedTests": 0,
+    "startTime": 1792156812.604,
+    "statistics": [],
+    "testFailures": [],
+    "title": "Test - SpyClash",
+    "topInsights": [],
+    "totalTestCount": 42
+  },
+  "validationScope": "Local auth/redirect/ownership/cancellation regression only; no live Apple sign-in or device acceptance."
+}
