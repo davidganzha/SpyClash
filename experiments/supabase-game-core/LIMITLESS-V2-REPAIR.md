@@ -1,6 +1,6 @@
 # LIMITLESS verified membership route repair
 
-Prepared 2026-10-17. Local candidate only; no new production deployment or TestFlight action has been performed for this repair.
+Prepared and deployed 2026-10-17 after the user explicitly approved both listed operations. No TestFlight action was performed. The server routing correction is live; real-account acceptance remains pending.
 
 ## Problem and change
 
@@ -38,3 +38,11 @@ Use `--no-lock` for repeated Deno checks so validation cannot add a deployment f
 `supabase-rollback/source` retains the exact live 55-file version-7 snapshot. Redeploying it restores prior behavior, including the unresolved original-route failure; it is not described as a known-working membership fix. An unreferenced V2 function can remain without changing current clients.
 
 No real-account membership refresh, purchase, restore, or Apple sign-in success is claimed. Apple Sign In is a separate investigation: native credential exchange reaches server persistence, but the terminal handoff failure remains unlocalized. TestFlight and signing are outside the current work phase.
+
+## Authorized execution
+
+The user approved: “Да, примени эти две правки”. Named Base44 deployment completed at approximately 18:53 UTC. Fresh inventory contained 18 functions; all prior seventeen function sources/registrations/automations were unchanged and the eight new runtime files matched. All six public GET/POST checks across three routes returned the expected 405/401.
+
+Only after that gate passed, app-services was updated to version 8. Fresh live-v7 preflight matched the frozen baseline. Readback verified all 55 exact source bodies, with only the bridge differing; JWT verification and import map remained enabled. Supabase readback normalizes away the submitted common `source/` path prefix, which is recorded explicitly. Bundle SHA-256: `89d348c3d9ec10bfc9660512de0629e70287001b2842e39e0c90de5b65720751`.
+
+Post-deployment Apple broker probes passed 12/12. These negative/protocol checks do not establish successful phone login. The user then repeated Apple sign-in in installed176; investigation continues on that fresh attempt. See [execution evidence](evidence/full-app/build179/deployment.json).

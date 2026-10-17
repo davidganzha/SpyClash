@@ -1,0 +1,137 @@
+{
+  "userAuthorized": "\u0414\u0430, \u043f\u0440\u0438\u043c\u0435\u043d\u0438 \u044d\u0442\u0438 \u0434\u0432\u0435 \u043f\u0440\u0430\u0432\u043a\u0438",
+  "testFlight": "postponed by user; no signing/upload performed",
+  "base44": {
+    "appId": "69a0e57fa939f578082f8091",
+    "newFunction": "checkSubscriptionV2",
+    "beforeCount": 17,
+    "afterCount": 18,
+    "existing17Unchanged": true,
+    "runtimeFilesMatch": true,
+    "capturedAt": "2026-10-17T18:53:08.960Z",
+    "probes": [
+      {
+        "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/checkSubscriptionV2",
+        "method": "GET",
+        "status": 405,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "error"
+          ]
+        }
+      },
+      {
+        "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/checkSubscriptionV2",
+        "method": "POST",
+        "status": 401,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "active",
+            "tier",
+            "protocol",
+            "status",
+            "providers",
+            "benefits",
+            "expires_at",
+            "ai_generations_today",
+            "ai_remaining",
+            "checked_at",
+            "error"
+          ]
+        }
+      },
+      {
+        "url": "https://spyclash.com/functions/checkSubscriptionV2",
+        "method": "GET",
+        "status": 405,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "error"
+          ]
+        }
+      },
+      {
+        "url": "https://spyclash.com/functions/checkSubscriptionV2",
+        "method": "POST",
+        "status": 401,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "active",
+            "tier",
+            "protocol",
+            "status",
+            "providers",
+            "benefits",
+            "expires_at",
+            "ai_generations_today",
+            "ai_remaining",
+            "checked_at",
+            "error"
+          ]
+        }
+      },
+      {
+        "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/checkSubscriptionV2",
+        "method": "GET",
+        "status": 405,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "error"
+          ]
+        }
+      },
+      {
+        "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/checkSubscriptionV2",
+        "method": "POST",
+        "status": 401,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "active",
+            "tier",
+            "protocol",
+            "status",
+            "providers",
+            "benefits",
+            "expires_at",
+            "ai_generations_today",
+            "ai_remaining",
+            "checked_at",
+            "error"
+          ]
+        }
+      }
+    ]
+  },
+  "supabase": {
+    "checkedAt": "2026-10-17T18:54:30.896Z",
+    "id": "a271cf0c-f0c7-4589-8448-406e286082fa",
+    "name": "app-services",
+    "version": 8,
+    "sha": "89d348c3d9ec10bfc9660512de0629e70287001b2842e39e0c90de5b65720751",
+    "fileCount": 55,
+    "verifyJWT": true,
+    "importMap": true,
+    "strictPathEquality": false,
+    "pathNormalization": "Supabase readback omits the submitted common source/ prefix from each relative file path",
+    "exact55FileContentAndNormalizedPathMatch": true,
+    "changedFiles": [
+      "app-services/legacy-billing.ts"
+    ],
+    "baselineVersion": 7
+  },
+  "realAccountMembershipRefreshVerified": false,
+  "purchaseOrRestorePerformed": false,
+  "appleSignInFixed": false
+}
