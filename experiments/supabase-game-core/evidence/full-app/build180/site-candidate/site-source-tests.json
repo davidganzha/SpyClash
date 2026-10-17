@@ -1,0 +1,46 @@
+{
+  "checkedAt": "2026-10-17T19:01:44.880286+00:00",
+  "status": "LOCAL_CANDIDATE_NOT_PUBLISHED",
+  "tests": {
+    "total": 104,
+    "passed": 104,
+    "failed": 0,
+    "appleAndSharedEntrypoint": 38,
+    "unchangedGoogle": 66
+  },
+  "files": [
+    {
+      "path": "web-auth/src/lib/mobileAppleAuthCallback.js",
+      "sha256": "43181117fe303ca2f6f3c49c069cac6fda99f3935b49b883c079421ad03eadd3"
+    },
+    {
+      "path": "web-auth/src/main.jsx",
+      "sha256": "8f2b6186b319d5df91342a36248581ec97cd6e9e85769e06ff8c6b63904ef554"
+    },
+    {
+      "path": "web-auth/index.html",
+      "sha256": "c270a9bc645e29042d100588bbfb49f488e5a25ae2e3185b23f005babbe0733b"
+    },
+    {
+      "path": "web-auth/tests/mobile-apple-auth-callback.test.mjs",
+      "sha256": "2827036b591880f606901bb9b22cddd4ef6eac956ec466a2a27a8a12b2b6143e"
+    }
+  ],
+  "unchanged": [
+    {
+      "path": "web-auth/src/lib/mobileAuthCallback.js",
+      "sha256": "a59964b250227975fe8093ed912a9eec094813d7df5017aa763e2fad14c09f3c"
+    },
+    {
+      "path": "web-auth/tests/mobile-auth-callback.test.mjs",
+      "sha256": "d957c30745d5249856f9bfbf01296cc60dd114c56c4ae68de4ce89f7ec53c310"
+    },
+    {
+      "path": "web-auth/src/bootstrap.jsx",
+      "sha256": "e74b2988b408945f488a50e3ac866122b4d8a0b5b6f59966ddc70d4bd735153e"
+    }
+  ],
+  "productionMutations": false,
+  "liveFinalNativeResponseObserved": false,
+  "realDeviceAppleSuccessVerified": false
+}

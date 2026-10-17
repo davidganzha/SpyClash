@@ -33,3 +33,33 @@ The native `ASWebAuthenticationSession` change requires this route to be present
 in the reviewed hosted frontend before device testing. Publishing the frontend
 and delivering a native build are separate production actions and are not
 performed by this candidate.
+
+## Frozen site artifact
+
+Target: canonical Base44 app `69a0e57fa939f578082f8091`,
+`https://spyclash.com`, site-only publication. This operation remains unperformed.
+The reviewed local package is `.local/apple180-browser/site-deploy` relative to
+the repository root; rollback is `.local/apple180-browser/site-rollback`.
+Both contain exactly five static files and two retained site configuration files.
+
+The frozen manifest is `.local/apple180-browser/site-candidate-manifest.json`,
+SHA256 `fe54c9b1f5abc3474e424dc678f70a886e887581c068748ecf16b9305d79c277`.
+Commit-ready receipts, exact before/after hashes and reproduction instructions
+are in `experiments/supabase-game-core/evidence/full-app/build180/site-candidate`.
+The new entry `assets/index-B5iDK17o.js` has SHA256
+`da3600f07c5ccdd00036182dc65d86681b6beb9bad5446012ea3f04b66a7ee5a`.
+
+Unauthenticated GETs at 2026-10-17 19:05 UTC verified all five live175 files
+against the retained published payload. Building the three-file Apple overlay
+on that source with its exact public app ID and domain preserves the ordinary
+application JS, CSS and manifest byte-for-byte. Only the entry and three HTML
+route exclusions plus a final newline change. Recheck live hashes before any
+approved future publication.
+
+The actual frozen entry and actual built HTML inline guards also passed
+**13/13 macOS WKWebView checks** (11 Apple, two existing Google callbacks).
+Native navigation was intercepted and cancelled, credential-bearing URL data
+was cleared, and no SDK/storage/network/bootstrap activity was observed. All
+network was blocked and only synthetic credentials were used. This proves the
+built callback behavior in WebKit; actual Apple authentication and phone
+acceptance remain separate checks.
