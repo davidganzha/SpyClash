@@ -1,8 +1,9 @@
 # Apple sign-in repair, build 180
 
-Status: local implementation, build, and validation passed. No Apple production
-deployment, signed build, TestFlight upload, or successful physical sign-in is
-claimed by this checkpoint. The separate LIMITLESS route repair is live; see
+Status: local implementation, build, and validation passed. The two approved
+Apple server/site dependencies were deployed and verified on 17 October 2026.
+The native build is not signed or uploaded to TestFlight, and physical sign-in
+is not yet verified. The separate LIMITLESS route repair is live; see
 [LIMITLESS-V2-REPAIR.md](LIMITLESS-V2-REPAIR.md).
 
 ## Observed failure
@@ -57,7 +58,9 @@ Apple documents browser authentication and the app-owned completion callback in
 This supports the selected transport; it is not evidence that this particular
 phone attempt now succeeds.
 
-## Production scope awaiting approval
+## Executed production scope
+
+The user explicitly approved both operations: “Да, примени обе правки Apple”.
 
 1. Canonical Base44 SpyClash app `69a0e57fa939f578082f8091`: add only
    `autoRegisterUserV2` by named deployment, verify live method/auth responses,
@@ -106,6 +109,28 @@ package. Afterward, recheck the unchanged existing function sources and public
 V2 GET405/unauthenticated POST401; verify all five published static hashes and
 the Apple/Google callback routes. Leave V2 unreferenced if native delivery is
 deferred. The site rollback package restores the exact prior published assets.
+
+## Deployment result
+
+Both approved operations completed. Fresh preflight confirmed all five
+published-175 assets and 18 existing functions before the changes. Named V2
+deployment added exactly one function; the final inventory has 19 functions,
+with all previous source, entry, and automation hashes unchanged. The four new
+runtime files match the approved package. After site publication, all six V2
+method/auth probes and all 12 existing broker protocol probes passed.
+
+All five published static files match the frozen build-180 site artifact.
+Both Apple and Google callback routes return 200, reference the new entry,
+and retain the route guards and no-referrer policy. The ordinary application
+JavaScript, CSS, and manifest remain byte-identical. An independent read-only
+check confirmed these results. See
+[the deployment receipt](evidence/full-app/build180/apple-deployment.json) and
+[live site verification](evidence/full-app/build180/site-live-after.json).
+
+No real Apple credentials or authenticated sessions were used for these
+post-deployment probes. The next acceptance layer remains delivery of native
+build 180 and a real iPhone sign-in; current build 176 has the previous native
+transport.
 
 ## Acceptance still required
 

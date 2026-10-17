@@ -1,0 +1,259 @@
+{
+  "checkedAt": "2026-10-17T19:20:20.972260+00:00",
+  "authorization": "Да, примени обе правки Apple",
+  "candidateCommit": "310c5a84",
+  "reviewDocumentationCommit": "b261616d",
+  "base44": {
+    "appID": "69a0e57fa939f578082f8091",
+    "operation": "Named deployment of autoRegisterUserV2 only",
+    "beforeCount": 18,
+    "afterCount": 19,
+    "existing18SourceEntryAndAutomationHashesUnchanged": true,
+    "newRuntimeFourFilesMatchApprovedPackage": true,
+    "entry": "base44/functions/autoRegisterUserV2/entry.ts",
+    "sourceManifestSHA256": "1d9b539f4b76af3a2a1b5f190709a40bf9904d572e85db87ce7aa4cd54680ef5",
+    "postSiteRuntimeProbes": [
+      {
+        "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/autoRegisterUserV2",
+        "method": "GET",
+        "status": 405,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "error"
+          ]
+        }
+      },
+      {
+        "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/autoRegisterUserV2",
+        "method": "POST",
+        "status": 401,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "error"
+          ]
+        }
+      },
+      {
+        "url": "https://spyclash.com/functions/autoRegisterUserV2",
+        "method": "GET",
+        "status": 405,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "error"
+          ]
+        }
+      },
+      {
+        "url": "https://spyclash.com/functions/autoRegisterUserV2",
+        "method": "POST",
+        "status": 401,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "error"
+          ]
+        }
+      },
+      {
+        "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/autoRegisterUserV2",
+        "method": "GET",
+        "status": 405,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "error"
+          ]
+        }
+      },
+      {
+        "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/autoRegisterUserV2",
+        "method": "POST",
+        "status": 401,
+        "content_type": "application/json",
+        "shape": {
+          "type": "object",
+          "keys": [
+            "error"
+          ]
+        }
+      }
+    ],
+    "existingBrokerProtocolProbes": {
+      "marker": "APPLE178_RUNTIME_FINGERPRINT",
+      "checkedAt": "2026-10-17T19:19:00.460Z",
+      "real_credentials": false,
+      "creates_tickets_or_provider_sessions": false,
+      "results": [
+        {
+          "endpoint": "public",
+          "probe": "unsupported_version",
+          "status": 400,
+          "json": true,
+          "code": "invalid_native_handoff_version",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "endpoint": "public",
+          "probe": "valid_version_without_credentials",
+          "status": 400,
+          "json": true,
+          "code": "invalid_authorization_code",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "endpoint": "public",
+          "probe": "bootstrap_without_ticket",
+          "status": 400,
+          "json": true,
+          "code": "invalid_ticket",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "endpoint": "public",
+          "probe": "public_jwks",
+          "status": 200,
+          "json": true,
+          "code": "absent",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "endpoint": "canonical_custom_domain",
+          "probe": "unsupported_version",
+          "status": 400,
+          "json": true,
+          "code": "invalid_native_handoff_version",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "endpoint": "canonical_custom_domain",
+          "probe": "valid_version_without_credentials",
+          "status": 400,
+          "json": true,
+          "code": "invalid_authorization_code",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "endpoint": "canonical_custom_domain",
+          "probe": "bootstrap_without_ticket",
+          "status": 400,
+          "json": true,
+          "code": "invalid_ticket",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "endpoint": "canonical_custom_domain",
+          "probe": "public_jwks",
+          "status": 200,
+          "json": true,
+          "code": "absent",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "endpoint": "canonical_base44_domain",
+          "probe": "unsupported_version",
+          "status": 400,
+          "json": true,
+          "code": "invalid_native_handoff_version",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "endpoint": "canonical_base44_domain",
+          "probe": "valid_version_without_credentials",
+          "status": 400,
+          "json": true,
+          "code": "invalid_authorization_code",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "endpoint": "canonical_base44_domain",
+          "probe": "bootstrap_without_ticket",
+          "status": 400,
+          "json": true,
+          "code": "invalid_ticket",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        },
+        {
+          "endpoint": "canonical_base44_domain",
+          "probe": "public_jwks",
+          "status": 200,
+          "json": true,
+          "code": "absent",
+          "has_redirect": false,
+          "contract_matches": true,
+          "passed": true
+        }
+      ]
+    }
+  },
+  "site": {
+    "operation": "Site-only publication of frozen five static files",
+    "origin": "https://spyclash.com",
+    "manifestSHA256": "fe54c9b1f5abc3474e424dc678f70a886e887581c068748ecf16b9305d79c277",
+    "allFiveLiveStaticHashesMatch": true,
+    "ordinaryWebsiteAssetsUnchanged": true,
+    "callbackRoutes": [
+      {
+        "path": "MobileAppleAuthCallback.html",
+        "status": 200,
+        "sameURL": true,
+        "contentType": "text/html; charset=utf-8",
+        "entryReferences": [
+          "/assets/index-B5iDK17o.js"
+        ],
+        "expectedEntry": "/assets/index-B5iDK17o.js",
+        "referencesFrozen180Entry": true,
+        "noReferrerMetaPresent": true,
+        "bothCallbackGuardsPresent": true
+      },
+      {
+        "path": "MobileAuthCallback.html",
+        "status": 200,
+        "sameURL": true,
+        "contentType": "text/html; charset=utf-8",
+        "entryReferences": [
+          "/assets/index-B5iDK17o.js"
+        ],
+        "expectedEntry": "/assets/index-B5iDK17o.js",
+        "referencesFrozen180Entry": true,
+        "noReferrerMetaPresent": true,
+        "bothCallbackGuardsPresent": true
+      }
+    ]
+  },
+  "nativeVersion": "180",
+  "signed": false,
+  "testFlightUploaded": false,
+  "physicalAppleSignInVerified": false,
+  "realAppleCredentialBindingVerified": false,
+  "remaining": "Approved delivery of the prepared native build, then actual Apple sign-in on the iPhone. Existing build176 does not contain the browser handoff change."
+}

@@ -1,0 +1,92 @@
+{
+  "checkedAt": "2026-10-17T19:18:54.638774+00:00",
+  "operation": "Independent unauthenticated public GET only; no cookies, sessions, credential-bearing URLs or auth attempts",
+  "target": "https://spyclash.com",
+  "manifestSHA256": "fe54c9b1f5abc3474e424dc678f70a886e887581c068748ecf16b9305d79c277",
+  "passed": true,
+  "allFiveFrozenStaticHashesMatch": true,
+  "ordinaryBootstrapCSSAndManifestRemain175": true,
+  "files": [
+    {
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "status": 200,
+      "bytes": 65267,
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "expectedSHA256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "matchesFrozen180": true,
+      "sameURL": true,
+      "contentType": "text/css; charset=utf-8"
+    },
+    {
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "status": 200,
+      "bytes": 1579238,
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "expectedSHA256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "matchesFrozen180": true,
+      "sameURL": true,
+      "contentType": "application/javascript; charset=utf-8"
+    },
+    {
+      "path": "assets/index-B5iDK17o.js",
+      "status": 200,
+      "bytes": 10403,
+      "sha256": "da3600f07c5ccdd00036182dc65d86681b6beb9bad5446012ea3f04b66a7ee5a",
+      "expectedSHA256": "da3600f07c5ccdd00036182dc65d86681b6beb9bad5446012ea3f04b66a7ee5a",
+      "matchesFrozen180": true,
+      "sameURL": true,
+      "contentType": "application/javascript; charset=utf-8"
+    },
+    {
+      "path": "index.html",
+      "status": 200,
+      "bytes": 2747,
+      "sha256": "0d0bb1159cd26d6627b16f5539b44d876e824de79e895f4dcb6587914e054537",
+      "expectedSHA256": "0d0bb1159cd26d6627b16f5539b44d876e824de79e895f4dcb6587914e054537",
+      "matchesFrozen180": true,
+      "sameURL": true,
+      "contentType": "text/html; charset=utf-8"
+    },
+    {
+      "path": "manifest.json",
+      "status": 200,
+      "bytes": 520,
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "expectedSHA256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "matchesFrozen180": true,
+      "sameURL": true,
+      "contentType": "application/json"
+    }
+  ],
+  "callbackRoutes": [
+    {
+      "path": "MobileAppleAuthCallback.html",
+      "status": 200,
+      "sameURL": true,
+      "contentType": "text/html; charset=utf-8",
+      "entryReferences": [
+        "/assets/index-B5iDK17o.js"
+      ],
+      "expectedEntry": "/assets/index-B5iDK17o.js",
+      "referencesFrozen180Entry": true,
+      "noReferrerMetaPresent": true,
+      "bothCallbackGuardsPresent": true
+    },
+    {
+      "path": "MobileAuthCallback.html",
+      "status": 200,
+      "sameURL": true,
+      "contentType": "text/html; charset=utf-8",
+      "entryReferences": [
+        "/assets/index-B5iDK17o.js"
+      ],
+      "expectedEntry": "/assets/index-B5iDK17o.js",
+      "referencesFrozen180Entry": true,
+      "noReferrerMetaPresent": true,
+      "bothCallbackGuardsPresent": true
+    }
+  ],
+  "noProductionMutation": true,
+  "realAppleLoginVerified": false,
+  "physicalDeviceAcceptanceVerified": false
+}

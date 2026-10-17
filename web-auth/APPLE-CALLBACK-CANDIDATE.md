@@ -1,8 +1,10 @@
 # Apple browser return candidate
 
-This is a local candidate, not a published website change or a confirmed repair
-of the reported phone failure. The final response that the existing native
-handoff received has not been observed.
+The frozen website artifact was published on 17 October 2026 after explicit
+approval, and its live hashes and both callback routes were verified. See
+`experiments/supabase-game-core/APPLE-SIGN-IN-180.md`. The native change is not
+yet delivered to the phone, so the reported sign-in failure is not confirmed
+resolved on the device. The old transport's final response remains unobserved.
 
 The new helper owns only `https://spyclash.com/MobileAppleAuthCallback.html`.
 `main.jsx` selects it before the normal application loads, and `index.html`
@@ -29,15 +31,14 @@ entrypoint checks and all 66 unchanged Google checks. These tests execute the
 helper source in a constrained browser fixture; they do not establish real
 Apple browser authentication or device acceptance.
 
-The native `ASWebAuthenticationSession` change requires this route to be present
-in the reviewed hosted frontend before device testing. Publishing the frontend
-and delivering a native build are separate production actions and are not
-performed by this candidate.
+The native `ASWebAuthenticationSession` change requires this route before
+device testing. The frontend is now published; delivering the native build
+remains a separate action.
 
 ## Frozen site artifact
 
 Target: canonical Base44 app `69a0e57fa939f578082f8091`,
-`https://spyclash.com`, site-only publication. This operation remains unperformed.
+`https://spyclash.com`, site-only publication. This operation is now complete.
 The reviewed local package is `.local/apple180-browser/site-deploy` relative to
 the repository root; rollback is `.local/apple180-browser/site-rollback`.
 Both contain exactly five static files and two retained site configuration files.
