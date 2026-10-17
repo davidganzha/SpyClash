@@ -35,6 +35,7 @@ final class WebAuthenticationCoordinator {
         var timeoutTask: Task<Void, Never>?
     }
 
+    private let mapSessionError: @MainActor (any Error) -> any Error
     private let makeSession: SessionFactory
     private let now: @MainActor () -> Date
     private let sleep: Sleep
@@ -42,10 +43,17 @@ final class WebAuthenticationCoordinator {
 
     init(
         makeSession: @escaping SessionFactory,
+        mapSessionError: (@MainActor (any Error) -> any Error)? = nil,
         now: @escaping @MainActor () -> Date = { Date() },
         sleep: @escaping Sleep = { try await Task.sleep(for: $0) }
     ) {
         self.makeSession = makeSession
+        self.mapSessionError = mapSessionError ?? { error in
+            let error = error as NSError
+            let cancelled = error.domain == ASWebAuthenticationSessionError.errorDomain &&
+                error.code == ASWebAuthenticationSessionError.canceledLogin.rawValue
+            return cancelled ? WebAuthenticationError.cancelled : WebAuthenticationError.failed
+        }
         self.now = now
         self.sleep = sleep
     }
@@ -122,10 +130,7 @@ final class WebAuthenticationCoordinator {
             return
         }
         if let error {
-            let error = error as NSError
-            let cancelled = error.domain == ASWebAuthenticationSessionError.errorDomain &&
-                error.code == ASWebAuthenticationSessionError.canceledLogin.rawValue
-            finish(id: id, result: .failure(cancelled ? WebAuthenticationError.cancelled : .failed))
+            finish(id: id, result: .failure(mapSessionError(error)))
         } else if let callback {
             finish(id: id, result: .success(callback))
         } else {

@@ -232,6 +232,17 @@ enum AppleNativeHandoffPolicy {
         return try accessToken(from: url)
     }
 
+    /// Internal completion accepts only explicitly Apple-marked callbacks.
+    /// HTTPS is intercepted before loading the callback page; custom-scheme
+    /// completion is supported for a script-driven return from trusted SSO.
+    static func sessionAccessToken(from url: URL) throws -> String {
+        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              parts.queryItems?.first(where: { $0.name == "auth_provider" })?.value == "apple" else {
+            throw AppleNativeHandoffError.validation(.callbackProvider)
+        }
+        return try accessToken(from: url)
+    }
+
     private static func isCanonicalHTTPS(_ parts: URLComponents) -> Bool {
         parts.scheme == "https" && parts.user == nil && parts.password == nil && parts.port == nil
     }

@@ -633,31 +633,23 @@ struct AppleAuthCinematicOverlay: View {
             guard stage == .accessGranted else { return }
 
             if reduceMotion {
-                electricityActive = true
-                withAnimation(.easeOut(duration: 0.28)) {
-                    completionScale = 1.06
-                }
-                withAnimation(.easeOut(duration: 0.48).delay(0.30)) {
+                withAnimation(.easeOut(duration: 0.16).delay(0.06)) {
                     markOpacity = 0
-                }
-                try? await Task.sleep(for: .milliseconds(300))
-                withAnimation(.easeOut(duration: 0.20)) {
-                    electricityActive = false
                 }
                 return
             }
 
             electricityActive = true
-            withAnimation(.smooth(duration: 0.42, extraBounce: 0.02)) {
-                completionScale = 1.20
+            withAnimation(.smooth(duration: 0.22, extraBounce: 0.02)) {
+                completionScale = 1.12
             }
-            withAnimation(.easeOut(duration: 0.34).delay(0.50)) {
+            withAnimation(.easeOut(duration: 0.12).delay(0.13)) {
                 markOpacity = 0
             }
 
-            try? await Task.sleep(for: .milliseconds(280))
+            try? await Task.sleep(for: .milliseconds(120))
             guard !Task.isCancelled else { return }
-            withAnimation(.easeOut(duration: 0.18)) {
+            withAnimation(.easeOut(duration: 0.10)) {
                 electricityActive = false
             }
         }
@@ -887,8 +879,17 @@ private struct SpyClashAssemblingMark: View {
                 .blendMode(.screen)
                 .blur(radius: completionFlash ? 8 : 1)
         }
-        .task {
+        .task(id: stage == .accessGranted) {
             appeared = true
+
+            // Verification owns completion. Cancel the remaining placements
+            // and finish this Apple-only mark without delaying the session.
+            if stage == .accessGranted {
+                withAnimation(.easeOut(duration: reduceMotion ? 0.08 : 0.12)) {
+                    revealedFragments = fragments.count
+                }
+                return
+            }
 
             try? await Task.sleep(for: .milliseconds(220))
             for count in 1...fragments.count {
@@ -908,8 +909,8 @@ private struct SpyClashAssemblingMark: View {
         }
         .onChange(of: stage) { _, newStage in
             guard newStage == .accessGranted, !reduceMotion else { return }
-            withAnimation(.easeOut(duration: 0.16)) { completionFlash = true }
-            withAnimation(.easeIn(duration: 0.42).delay(0.16)) { completionFlash = false }
+            withAnimation(.easeOut(duration: 0.10)) { completionFlash = true }
+            withAnimation(.easeIn(duration: 0.12).delay(0.10)) { completionFlash = false }
         }
         .accessibilityHidden(true)
     }

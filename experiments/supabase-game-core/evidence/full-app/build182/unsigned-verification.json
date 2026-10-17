@@ -1,0 +1,46 @@
+{
+  "checkedAtUTC": "2026-10-17T20:09:12.429503+00:00",
+  "sourceBaseCommit": "d198f288a58fd81ea0b3df902ec9b6be1de0fd40",
+  "sourceManifestSHA256": "f6e81a55d7de168bf5a845471b9ade407e470d9fb83584e8ba4760e4d24b1bd6",
+  "sourceFileCount": 1275,
+  "archivePath": "/private/tmp/spyclash182-unsigned-2pxowcux/SpyClash182-unsigned.xcarchive",
+  "scheme": "SpyClash-Supabase-Main-Candidate",
+  "configuration": "SupabaseRelease",
+  "marketingVersion": "1.0.3",
+  "build": "182",
+  "status": "PASS",
+  "checks": {
+    "archiveSucceeded": true,
+    "noBuildErrors": true,
+    "noOptionalDelegateMismatchWarnings": true,
+    "snapshotUnchangedAfterBuild": true,
+    "workingSourceUnchangedAfterBuild": true,
+    "mainIdentity": true,
+    "widgetIdentity": true,
+    "mainBackendMode": true,
+    "configurationByteIdentical": true,
+    "isolatedSupabaseProject": true,
+    "appleGoogleBillingEnabled": true,
+    "pushAndDeletionDisabled": true,
+    "appleSignInDeclared": true,
+    "expectedExtensionOnly": true,
+    "noPrivateSecretsOrStoreKitFixtures": true,
+    "noCodesignStep": true
+  },
+  "configurationSHA256": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d",
+  "mainExecutableSHA256": "4ff009802880407abd6c63caf1e73f26c305cc505329919730f4c13821245715",
+  "widgetExecutableSHA256": "17015f95edb91617b9069c16bcb0cc56f84defe6afa9ebd114ccde99adc099fc",
+  "snapshotChangedPaths": [],
+  "workingSourceChangedPaths": [],
+  "scan": {
+    "forbiddenPaths": [],
+    "secretPaths": []
+  },
+  "boundaries": {
+    "signed": false,
+    "exported": false,
+    "uploaded": false,
+    "productionMutation": false,
+    "physicalAppleAcceptanceProved": false
+  }
+}

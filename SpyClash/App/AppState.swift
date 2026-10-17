@@ -1393,6 +1393,7 @@ final class AppState: NSObject {
     @ObservationIgnored let sessionTokenSave: @MainActor (String) -> Void
     @ObservationIgnored let sessionTokenClear: @MainActor () -> Void
     @ObservationIgnored var webAuthenticationOverride: WebAuthenticationCoordinator?
+    @ObservationIgnored var appleSessionCompletionOverride: WebAuthenticationCoordinator?
     let membership: MembershipStore
     let storeKit: StoreKitManager
     let membershipRealtime: MembershipRealtimeService
@@ -1578,6 +1579,13 @@ final class AppState: NSObject {
         session.prefersEphemeralWebBrowserSession = true
         return session
     })
+    @ObservationIgnored private lazy var appleSessionCompletion = WebAuthenticationCoordinator(makeSession: { url, completion in
+        AppleSessionCompletionSession(url: url, completion: completion)
+    }, mapSessionError: { error in
+        if let error = error as? AppleNativeHandoffError { return error }
+        if error is CancellationError { return CancellationError() }
+        return WebAuthenticationError.failed
+    })
     private let appleSignInCoordinator = AppleSignInCoordinator()
     @ObservationIgnored private var standardAuthTimelineTask: Task<Void, Never>?
     @ObservationIgnored private var standardAuthRunID: UUID?
@@ -1654,7 +1662,8 @@ final class AppState: NSObject {
         readStoredToken: @escaping @MainActor () -> String? = { KeychainStore.readToken() },
         saveStoredToken: @escaping @MainActor (String) -> Void = { KeychainStore.saveToken($0) },
         clearStoredToken: @escaping @MainActor () -> Void = { KeychainStore.clearToken() },
-        webAuthentication: WebAuthenticationCoordinator? = nil
+        webAuthentication: WebAuthenticationCoordinator? = nil,
+        appleSessionCompletion: WebAuthenticationCoordinator? = nil
     ) {
         let radarNearby = RadarNearbyService()
         self.client = client
@@ -1662,6 +1671,7 @@ final class AppState: NSObject {
         self.sessionTokenSave = saveStoredToken
         self.sessionTokenClear = clearStoredToken
         self.webAuthenticationOverride = webAuthentication
+        self.appleSessionCompletionOverride = appleSessionCompletion
         self.membership = MembershipStore(client: client)
         self.storeKit = StoreKitManager(client: client)
         self.membershipRealtime = MembershipRealtimeService()
@@ -3613,7 +3623,6 @@ final class AppState: NSObject {
         guard let attemptID = authenticationAttemptID,
               isAppleAuthorizationPending,
               appleAuthorizationRequestID == requestID else { return }
-        let animationStartedAt = ContinuousClock.now
         authHomeRevealPhase = .idle
 
         defer {
@@ -3645,7 +3654,7 @@ final class AppState: NSObject {
                 }
             }, handoff: { [weak self] bootstrapURL in
                 guard let self else { throw CancellationError() }
-                return try await self.completeAppleBrowserHandoff(from: bootstrapURL, attemptID: attemptID)
+                return try await self.completeAppleSessionHandoff(from: bootstrapURL, attemptID: attemptID)
             })
             try requireCurrentAuthentication(attemptID)
             appleAuthStage = .synchronizingProfile
@@ -3656,21 +3665,12 @@ final class AppState: NSObject {
                 appleBindingTicket: nativeSession.bindingTicket
             )
 
-            let assemblyElapsed = animationStartedAt.duration(to: .now)
-            let assemblyDuration = Duration.milliseconds(3_100)
-            if assemblyElapsed < assemblyDuration {
-                try await Task.sleep(for: assemblyDuration - assemblyElapsed)
-            }
+            // The animation runs while identity/profile verification is in flight.
+            // Once ready, finish the mark promptly instead of enforcing a four-second minimum.
             try requireCurrentAuthentication(attemptID, checkSession: false)
-
             appleAuthStage = .accessGranted
-            // The auth timeline already owns its completion surge.
             HapticManager.shared.fire(.notification(.success))
-
-            let totalElapsed = animationStartedAt.duration(to: .now)
-            let remainingToFourSeconds = Duration.seconds(4) - totalElapsed
-            let completionHold = max(remainingToFourSeconds, .milliseconds(850))
-            try await Task.sleep(for: completionHold)
+            try await Task.sleep(for: .milliseconds(250))
             try requireCurrentAuthentication(attemptID, checkSession: false)
 
             try await revealHomeAfterAppleAuth(attemptID: attemptID)
@@ -3690,15 +3690,15 @@ final class AppState: NSObject {
         appleHandoffFailure = nil
     }
 
-    /// Base44's SSO completion is a browser flow. Keep the native Apple
-    /// credential exchange, but let the owned browser finish redirects and
-    /// the dedicated Apple callback page before accepting a session token.
-    func completeAppleBrowserHandoff(from bootstrapURL: URL, attemptID: UUID) async throws -> String {
+    /// Complete the already-verified Apple exchange inside an isolated, unpresented
+    /// WebKit session. The native animation remains on screen throughout; no browser
+    /// authentication sheet or visible fallback participates in the Apple flow.
+    func completeAppleSessionHandoff(from bootstrapURL: URL, attemptID: UUID) async throws -> String {
         try requireCurrentAuthentication(attemptID)
         try AppleNativeHandoffPolicy.validateBootstrap(bootstrapURL)
         let callback: URL
         do {
-            callback = try await (webAuthenticationOverride ?? webAuthentication).authenticate(
+            callback = try await (appleSessionCompletionOverride ?? appleSessionCompletion).authenticate(
                 url: bootstrapURL,
                 timeout: 90
             )
@@ -3711,10 +3711,14 @@ final class AppState: NSObject {
             case .temporarilyUnavailable, .failed, .couldNotStart:
                 throw AppleNativeHandoffError.temporarilyUnavailable
             }
+        } catch {
+            try requireCurrentAuthentication(attemptID)
+            if (error as? AppleNativeHandoffError)?.supportCode == .cancelled { throw CancellationError() }
+            throw error
         }
         try requireCurrentAuthentication(attemptID)
         do {
-            return try AppleNativeHandoffPolicy.browserAccessToken(from: callback)
+            return try AppleNativeHandoffPolicy.sessionAccessToken(from: callback)
         } catch let error as AppleNativeHandoffError {
             if error.supportCode == .cancelled { throw CancellationError() }
             throw error.withDiagnostic(
@@ -3965,6 +3969,8 @@ final class AppState: NSObject {
         authenticationSessionGeneration = nil
         webAuthentication.cancel()
         webAuthenticationOverride?.cancel()
+        appleSessionCompletion.cancel()
+        appleSessionCompletionOverride?.cancel()
         appleSignInCoordinator.cancelPendingRequest()
         isAppleAuthorizationPending = false
         isBusy = false
@@ -5330,6 +5336,8 @@ final class AppState: NSObject {
         authenticationSessionGeneration = nil
         webAuthentication.cancel()
         webAuthenticationOverride?.cancel()
+        appleSessionCompletion.cancel()
+        appleSessionCompletionOverride?.cancel()
         appleSignInCoordinator.cancelPendingRequest()
         appleAuthorizationRequestID = nil
         isAppleAuthorizationPending = false

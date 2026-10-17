@@ -80,6 +80,7 @@
 		331C70730EAB0752CDF9B95F /* BackendAllowlist.json in Resources */ = {isa = PBXBuildFile; fileRef = D17A9E833FFBBFB0BA98DEF2 /* BackendAllowlist.json */; };
 		3572816B581C65AB4361BB31 /* SupabaseGameAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC25664F127715AEB988EA8 /* SupabaseGameAdapter.swift */; };
 		37C42D25F1B6C9755A733B03 /* AppState+Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C35AB10E88428C6F3D53699 /* AppState+Membership.swift */; };
+		3822B1521A7DDF0AF7EA06C2 /* AppleSessionCompletionSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4836BDF480BCA80CB3EDC0 /* AppleSessionCompletionSession.swift */; };
 		397C0B1DBC891128B57E1133 /* WordPackDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D58811816F930A78503187 /* WordPackDraftTests.swift */; };
 		39840D09E8474E87D45E1555 /* OnlineRoundStateTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 673C14A27AC3CD3669188134 /* OnlineRoundStateTests.swift */; };
 		3D0B519B6BFBCE5D8DFF3D45 /* SupabaseFullGameStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = D1A0054A2A4BACE2F0F8AE94 /* SupabaseFullGameStore.swift */; };
@@ -212,6 +213,7 @@
 		A5DA8F502F8688FB51D89346 /* SpyClashApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = D30EA0DF923F453AB3E7F360 /* SpyClashApp.swift */; };
 		A744EDBB751A4EB73DFC2C44 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE1AF213121DB5A761660563 /* WelcomeView.swift */; };
 		A79E33F12838705CF1E207E5 /* SpyBackground.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9065A7D0489C60903CBB7D5B /* SpyBackground.swift */; };
+		A814169A66463E38BC383971 /* AppleSessionCompletionWebKitTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = EC2AB93A701A847C9E2977B2 /* AppleSessionCompletionWebKitTests.swift */; };
 		A816E004D99CB364368124EB /* Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 026F4AEBE8A76B12EE72FAC6 /* Membership.swift */; };
 		AB0EBEC9C530C017E365C396 /* LimitlessClearancePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */; };
 		AB95CD955F889F9CBDF70281 /* StoreKitOperationFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27425526602C8E8958509FC4 /* StoreKitOperationFailure.swift */; };
@@ -251,12 +253,14 @@
 		C46B748A055BD9CE297ACBBB /* StoreKitOperationFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27425526602C8E8958509FC4 /* StoreKitOperationFailure.swift */; };
 		C4B47B45B269B92AF09B2EB3 /* AppState+AcquisitionSurvey.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8866651A8510FD0A890116EB /* AppState+AcquisitionSurvey.swift */; };
 		C59197AFE6D361EBD8D48B44 /* NotificationInboxTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */; };
+		C7805D5D8A84524BA794C364 /* AppleSessionCompletionSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4836BDF480BCA80CB3EDC0 /* AppleSessionCompletionSession.swift */; };
 		C812B5F60A454D00CA2A7835 /* SpyClashMatchLiveActivityController.swift in Sources */ = {isa = PBXBuildFile; fileRef = 154D6A5D3C20539A72285920 /* SpyClashMatchLiveActivityController.swift */; };
 		C8CFAC00837A449DCC011D54 /* MembershipStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 450DC5444292040544994868 /* MembershipStore.swift */; };
 		C9C2BEED75E13E2D3AC15DE2 /* SupabaseAppRuntime.swift in Sources */ = {isa = PBXBuildFile; fileRef = C805DED7EE9787139BCA120C /* SupabaseAppRuntime.swift */; };
 		C9CBAA1C1F9A922900DD9F36 /* AppState+Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C35AB10E88428C6F3D53699 /* AppState+Membership.swift */; };
 		CA10BCEC3DFCA7337647F229 /* AcquisitionSurveyView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 886A606E4B1E5B19CB0F5083 /* AcquisitionSurveyView.swift */; };
 		CB051514121E944F837A638F /* LimitlessClearancePanel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8736848DF8FD11DE43D2EF37 /* LimitlessClearancePanel.swift */; };
+		CB14250D292F24B7142D4EB9 /* AppleSessionCompletionSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4836BDF480BCA80CB3EDC0 /* AppleSessionCompletionSession.swift */; };
 		CB22564E02BD266693DE55B4 /* StoreKitManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */; };
 		CB337601885E53758F23FC80 /* CommunityView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2F58B6A8B6D7F70B21AE0D8 /* CommunityView.swift */; };
 		CCE4E9126E9C480B57F52B76 /* SpyClashMatchActivityAttributes.swift in Sources */ = {isa = PBXBuildFile; fileRef = 34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */; };
@@ -439,6 +443,7 @@
 		4819AE6F17AFC1A3DC6FB58B /* MembershipRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MembershipRealtimeService.swift; sourceTree = "<group>"; };
 		523B3250485D6A8133C376BD /* SupabaseSocialRealtimeTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseSocialRealtimeTests.swift; sourceTree = "<group>"; };
 		57701A39195710C4AEBFB6CA /* Rajdhani-Bold.ttf */ = {isa = PBXFileReference; lastKnownFileType = file; path = "Rajdhani-Bold.ttf"; sourceTree = "<group>"; };
+		5B4836BDF480BCA80CB3EDC0 /* AppleSessionCompletionSession.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSessionCompletionSession.swift; sourceTree = "<group>"; };
 		5BBA628FB7C9372162E4C619 /* HapticManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = HapticManager.swift; sourceTree = "<group>"; };
 		5BFB1EE4DC2A4CED19EAE2D2 /* SpyClashSupabaseStagingTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SpyClashSupabaseStagingTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		5CF183979BDB403CB777230B /* WordGenerationRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordGenerationRetryTests.swift; sourceTree = "<group>"; };
@@ -533,6 +538,7 @@
 		E7C3B1B2BCFE537391DFD165 /* AcquisitionSurveyTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AcquisitionSurveyTests.swift; sourceTree = "<group>"; };
 		EA17B78E221F34E47BEC5A8D /* StoreKitProductCatalogTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitProductCatalogTests.swift; sourceTree = "<group>"; };
 		EB074CEB86E78BFB857C6C47 /* SpyClashWidgets.appex */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = "wrapper.app-extension"; path = SpyClashWidgets.appex; sourceTree = BUILT_PRODUCTS_DIR; };
+		EC2AB93A701A847C9E2977B2 /* AppleSessionCompletionWebKitTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleSessionCompletionWebKitTests.swift; sourceTree = "<group>"; };
 		F02C42B98A9366662DA343CD /* NotificationInboxTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInboxTests.swift; sourceTree = "<group>"; };
 		F34CB7D3E96AC6FB27315519 /* SupabaseGameRecoveryBanner.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseGameRecoveryBanner.swift; sourceTree = "<group>"; };
 		F4B70AB1F4B7C7D339E01E1F /* PricingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PricingView.swift; sourceTree = "<group>"; };
@@ -762,6 +768,7 @@
 				E7C3B1B2BCFE537391DFD165 /* AcquisitionSurveyTests.swift */,
 				2F4E919DA47D72F73CF78184 /* AppleAuthenticationOwnershipTests.swift */,
 				600712411563E727E4CD6ACB /* AppleNativeHandoffTests.swift */,
+				EC2AB93A701A847C9E2977B2 /* AppleSessionCompletionWebKitTests.swift */,
 				8380CFC8D36E6526C374E3F3 /* AppStoreTransactionRetryTests.swift */,
 				5DC4D91498AF686C52E0DE27 /* AuthenticationFlowTests.swift */,
 				AA2E4DCE1B4AA95262020FFE /* Base44ClientRoomActionTests.swift */,
@@ -849,6 +856,7 @@
 			isa = PBXGroup;
 			children = (
 				0B2A404BBC1379D24E5CA621 /* AppleNativeHandoff.swift */,
+				5B4836BDF480BCA80CB3EDC0 /* AppleSessionCompletionSession.swift */,
 				461DB21D00E39181FC2E1E1E /* AppleSignInCoordinator.swift */,
 				8EE75E34545D7FD03BFBF561 /* Base44Client.swift */,
 				E68BF1820775925C6C61E563 /* GameRoomRealtimeService.swift */,
@@ -1188,6 +1196,7 @@
 				1B9D552196DE38FAAE5ABF8E /* AppState.swift in Sources */,
 				B448495713BFE7660B0AA84E /* AppTab.swift in Sources */,
 				9B27C57E6F87A369A59970AF /* AppleNativeHandoff.swift in Sources */,
+				CB14250D292F24B7142D4EB9 /* AppleSessionCompletionSession.swift in Sources */,
 				7249CB010AC2ED2C5F2D5A01 /* AppleSignInCoordinator.swift in Sources */,
 				B4B54053E7B85CE36B93B64A /* AuthView.swift in Sources */,
 				7670AF799F4B8E0BCCED0210 /* BackendClient.swift in Sources */,
@@ -1290,6 +1299,7 @@
 				94A889B7CFE0ACF273873A1A /* AppState.swift in Sources */,
 				309F817C661DCC3A931B4F28 /* AppTab.swift in Sources */,
 				B15AA8E36F5D4CA311443AD5 /* AppleNativeHandoff.swift in Sources */,
+				3822B1521A7DDF0AF7EA06C2 /* AppleSessionCompletionSession.swift in Sources */,
 				ED44596E572F517943ABADD6 /* AppleSignInCoordinator.swift in Sources */,
 				7E0E07142DA44B953A6398F5 /* AuthView.swift in Sources */,
 				791D8556E8FDAED88C9C07A4 /* BackendClient.swift in Sources */,
@@ -1409,6 +1419,7 @@
 				AD94D2C31B62CBB58C370BFA /* AppState.swift in Sources */,
 				D892349CA7B68B2CE0874C8E /* AppTab.swift in Sources */,
 				3D4D456D6AB022537D3AB660 /* AppleNativeHandoff.swift in Sources */,
+				C7805D5D8A84524BA794C364 /* AppleSessionCompletionSession.swift in Sources */,
 				3F4B56475962E66AED22ABB3 /* AppleSignInCoordinator.swift in Sources */,
 				EB88894AA6BE250797DF4850 /* AuthView.swift in Sources */,
 				79D584A664E829F9BAAEDF95 /* BackendClient.swift in Sources */,
@@ -1496,6 +1507,7 @@
 				82F3A622D857CFA9EEE1D578 /* AppStoreTransactionRetryTests.swift in Sources */,
 				7BD86047097EED150447E003 /* AppleAuthenticationOwnershipTests.swift in Sources */,
 				DD40C1C823006A047E998E56 /* AppleNativeHandoffTests.swift in Sources */,
+				A814169A66463E38BC383971 /* AppleSessionCompletionWebKitTests.swift in Sources */,
 				79D2F29EBBE51CA06170D437 /* AuthenticationFlowTests.swift in Sources */,
 				82D3EF58665CCD0D09A29F69 /* Base44ClientRoomActionTests.swift in Sources */,
 				70F319F5A6A6D666A1E2F8A5 /* CommunityResponsivenessTests.swift in Sources */,
@@ -1949,7 +1961,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 181;
+				CURRENT_PROJECT_VERSION = 182;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2154,7 +2166,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 181;
+				CURRENT_PROJECT_VERSION = 182;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2287,7 +2299,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 181;
+				CURRENT_PROJECT_VERSION = 182;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2391,7 +2403,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 181;
+				CURRENT_PROJECT_VERSION = 182;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

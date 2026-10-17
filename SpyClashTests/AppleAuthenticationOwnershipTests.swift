@@ -67,7 +67,7 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         state.cancelAppleSignInRequest()
     }
 
-    func testNativeExchangeUsesOwnedBrowserOnceAndPreservesBindingTicket() async throws {
+    func testNativeExchangeUsesOwnedSessionCompletionOnceAndPreservesBindingTicket() async throws {
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AppleBootstrapURLProtocol.self]
         let client = Base44Client(session: URLSession(configuration: configuration))
@@ -83,9 +83,9 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
             request.respond(body: #"{"bootstrap_url":"https://spyclash.com/functions/appleAuthBroker?action=native-bootstrap&ticket=synthetic-ticket","binding_ticket":"synthetic-binding","expires_in":90}"#)
         }
         defer { AppleBootstrapURLProtocol.handler = nil }
-        var browserStarts = 0
+        var completionStarts = 0
         let coordinator = WebAuthenticationCoordinator(makeSession: { url, completion in
-            browserStarts += 1
+            completionStarts += 1
             XCTAssertEqual(url, self.bootstrapURL)
             let session = AppleHandoffTestSession(completion: completion)
             session.onStart = {
@@ -93,10 +93,15 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
             }
             return session
         })
+        let visibleBrowser = WebAuthenticationCoordinator(makeSession: { _, completion in
+            XCTFail("Apple must never open the visible browser used by Google")
+            return AppleHandoffTestSession(completion: completion)
+        })
         let state = AppState(client: client, readStoredToken: { nil },
                              saveStoredToken: { _ in XCTFail("A handoff must not commit a session before profile verification") },
                              clearStoredToken: { XCTFail("A handoff must preserve the existing session") },
-                             webAuthentication: coordinator)
+                             webAuthentication: visibleBrowser,
+                             appleSessionCompletion: coordinator)
         let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
         let credential = AppleSignInCredential(identityToken: "synthetic-identity", authorizationCode: "synthetic-code",
                                                rawNonce: "synthetic-nonce", state: "synthetic-state", appleUserID: "synthetic-user",
@@ -108,10 +113,10 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
             case .establishingSession: phases.append("session")
             }
         }, handoff: { url in
-            try await state.completeAppleBrowserHandoff(from: url, attemptID: attempt)
+            try await state.completeAppleSessionHandoff(from: url, attemptID: attempt)
         })
         await fulfillment(of: [exchange], timeout: 1)
-        XCTAssertEqual(browserStarts, 1)
+        XCTAssertEqual(completionStarts, 1)
         XCTAssertEqual(phases, ["verify", "session"])
         XCTAssertEqual(result.accessToken, "synthetic-session")
         XCTAssertEqual(result.bindingTicket, "synthetic-binding")
@@ -119,22 +124,22 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         XCTAssertNil(state.user)
     }
 
-    func testAppleBrowserRejectsUntrustedBootstrapBeforeOpeningSession() async throws {
+    func testAppleSessionCompletionRejectsUntrustedBootstrapBeforeOpeningSession() async throws {
         let coordinator = WebAuthenticationCoordinator(makeSession: { _, completion in
-            XCTFail("Untrusted bootstrap must not reach a browser")
+            XCTFail("Untrusted bootstrap must not reach the internal session")
             return AppleHandoffTestSession(completion: completion)
         })
-        let state = AppState(client: Base44Client(), readStoredToken: { nil }, webAuthentication: coordinator)
+        let state = AppState(client: Base44Client(), readStoredToken: { nil }, appleSessionCompletion: coordinator)
         let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
         do {
-            _ = try await state.completeAppleBrowserHandoff(from: URL(string: "https://foreign.example/?ticket=synthetic")!, attemptID: attempt)
+            _ = try await state.completeAppleSessionHandoff(from: URL(string: "https://foreign.example/?ticket=synthetic")!, attemptID: attempt)
             XCTFail("Untrusted bootstrap was accepted")
         } catch {
             XCTAssertEqual(error as? AppleNativeHandoffError, .validation(.bootstrapOrigin))
         }
     }
 
-    func testLogoutCancelsAppleBrowserAndRejectsItsLateCompletion() async throws {
+    func testLogoutCancelsAppleSessionCompletionAndRejectsItsLateCompletion() async throws {
         var session: AppleHandoffTestSession?
         let coordinator = WebAuthenticationCoordinator(makeSession: { _, completion in
             let created = AppleHandoffTestSession(completion: completion)
@@ -144,10 +149,10 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         let client = Base44Client()
         var savedTokens: [String] = []
         let state = AppState(client: client, readStoredToken: { nil }, saveStoredToken: { savedTokens.append($0) },
-                             clearStoredToken: {}, webAuthentication: coordinator)
+                             clearStoredToken: {}, appleSessionCompletion: coordinator)
         let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
-        let task = Task { try await state.completeAppleBrowserHandoff(from: bootstrapURL, attemptID: attempt) }
-        let opened = try await waitForBrowser { session }
+        let task = Task { try await state.completeAppleSessionHandoff(from: bootstrapURL, attemptID: attempt) }
+        let opened = try await waitForSessionCompletion { session }
         state.logout()
         client.setToken("replacement-session")
         opened.completion(URL(string: "spyclash://auth?auth_provider=apple&access_token=late-session"), nil)
@@ -160,7 +165,7 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         XCTAssertNil(state.appleHandoffFailure)
     }
 
-    func testAppleBrowserRejectsSuccessAndFailureAfterAccountGenerationChanges() async throws {
+    func testAppleSessionCompletionRejectsSuccessAndFailureAfterAccountGenerationChanges() async throws {
         for failed in [false, true] {
             var session: AppleHandoffTestSession?
             let coordinator = WebAuthenticationCoordinator(makeSession: { _, completion in
@@ -169,12 +174,12 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
                 return created
             })
             let client = Base44Client()
-            let state = AppState(client: client, readStoredToken: { nil }, webAuthentication: coordinator)
+            let state = AppState(client: client, readStoredToken: { nil }, appleSessionCompletion: coordinator)
             let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
-            let task = Task { try await state.completeAppleBrowserHandoff(from: bootstrapURL, attemptID: attempt) }
-            let opened = try await waitForBrowser { session }
+            let task = Task { try await state.completeAppleSessionHandoff(from: bootstrapURL, attemptID: attempt) }
+            let opened = try await waitForSessionCompletion { session }
             client.setToken("replacement-session")
-            if failed { opened.completion(nil, NSError(domain: "synthetic-browser-error", code: 1)) }
+            if failed { opened.completion(nil, NSError(domain: "synthetic-session-error", code: 1)) }
             else { opened.completion(URL(string: "spyclash://auth?auth_provider=apple&access_token=late-session"), nil) }
             do { _ = try await task.value; XCTFail("A stale account generation produced a credential or visible failure") }
             catch { XCTAssertTrue(error is CancellationError) }
@@ -184,20 +189,20 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         }
     }
 
-    func testAppleBrowserCancellationIsSilentAndWrongProviderHasSafeDiagnostic() async throws {
-        for outcome in ["browser-cancelled", "provider-cancelled", "wrong-provider"] {
+    func testAppleSessionCompletionCancellationIsSilentAndWrongProviderHasSafeDiagnostic() async throws {
+        for outcome in ["session-cancelled", "provider-cancelled", "wrong-provider"] {
             let coordinator = WebAuthenticationCoordinator(makeSession: { _, completion in
                 let session = AppleHandoffTestSession(completion: completion)
                 session.onStart = {
-                    if outcome == "browser-cancelled" { completion(nil, ASWebAuthenticationSessionError(.canceledLogin)) }
+                    if outcome == "session-cancelled" { completion(nil, ASWebAuthenticationSessionError(.canceledLogin)) }
                     else if outcome == "provider-cancelled" { completion(URL(string: "spyclash://auth?auth_provider=apple&error=access_denied"), nil) }
                     else { completion(URL(string: "spyclash://auth?auth_provider=google&access_token=must-not-appear"), nil) }
                 }
                 return session
             })
-            let state = AppState(client: Base44Client(), readStoredToken: { nil }, webAuthentication: coordinator)
+            let state = AppState(client: Base44Client(), readStoredToken: { nil }, appleSessionCompletion: coordinator)
             let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
-            do { _ = try await state.completeAppleBrowserHandoff(from: bootstrapURL, attemptID: attempt); XCTFail("Invalid completion was accepted") }
+            do { _ = try await state.completeAppleSessionHandoff(from: bootstrapURL, attemptID: attempt); XCTFail("Invalid completion was accepted") }
             catch {
                 if outcome != "wrong-provider" { XCTAssertTrue(error is CancellationError) }
                 else {
@@ -208,7 +213,7 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
         }
     }
 
-    func testAppleBrowserCannotCompleteAfterNativeTicketDeadline() async throws {
+    func testAppleSessionCompletionCannotCompleteAfterNativeTicketDeadline() async throws {
         var now = Date(timeIntervalSince1970: 1_000)
         var session: AppleHandoffTestSession?
         let coordinator = WebAuthenticationCoordinator(makeSession: { _, completion in
@@ -216,23 +221,23 @@ final class AppleAuthenticationOwnershipTests: XCTestCase {
             session = created
             return created
         }, now: { now })
-        let state = AppState(client: Base44Client(), readStoredToken: { nil }, webAuthentication: coordinator)
+        let state = AppState(client: Base44Client(), readStoredToken: { nil }, appleSessionCompletion: coordinator)
         let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
-        let task = Task { try await state.completeAppleBrowserHandoff(from: bootstrapURL, attemptID: attempt) }
-        let opened = try await waitForBrowser { session }
+        let task = Task { try await state.completeAppleSessionHandoff(from: bootstrapURL, attemptID: attempt) }
+        let opened = try await waitForSessionCompletion { session }
         now = now.addingTimeInterval(91)
         opened.completion(URL(string: "spyclash://auth?auth_provider=apple&access_token=expired-session"), nil)
-        do { _ = try await task.value; XCTFail("Browser accepted a callback beyond the native ticket deadline") }
+        do { _ = try await task.value; XCTFail("SessionCompletion accepted a callback beyond the native ticket deadline") }
         catch { XCTAssertEqual(error as? AppleNativeHandoffError, .expired) }
         XCTAssertEqual(opened.cancelCount, 1)
     }
 
-    private func waitForBrowser(_ value: () -> AppleHandoffTestSession?) async throws -> AppleHandoffTestSession {
+    private func waitForSessionCompletion(_ value: () -> AppleHandoffTestSession?) async throws -> AppleHandoffTestSession {
         for _ in 0..<100 {
             if let session = value() { return session }
             try await Task.sleep(for: .milliseconds(5))
         }
-        return try XCTUnwrap(value(), "Owned browser was not started within the bounded wait")
+        return try XCTUnwrap(value(), "Owned internal session was not started within the bounded wait")
     }
 
     func testAppleHandoffFailureSurvivesToastDismissalAndClearsBeforeRetry() async throws {
