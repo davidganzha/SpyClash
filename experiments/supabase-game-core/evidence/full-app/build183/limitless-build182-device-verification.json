@@ -1,0 +1,44 @@
+{
+  "recorded_at": "2026-10-17T21:40:00Z",
+  "scope": "Physical installed TestFlight build182; no candidate183 or new backend deployed",
+  "installed": {
+    "bundle_id": "com.spyclash.ios",
+    "marketing_version": "1.0.3",
+    "build": "182"
+  },
+  "observations": {
+    "profile": "Existing signed-in account retained",
+    "pricing": "CURRENT LIMITLESS; 03/03 capabilities active; StoreKit weekly price loaded",
+    "explicit_restore": "An active App Store purchase was found and verified. LIMITLESS access is confirmed.",
+    "refresh_access": "LIMITLESS access is active on your SpyClash account.",
+    "cold_relaunch": "LIMITLESS is active persisted after terminate-existing and new launch"
+  },
+  "live_server_restore": {
+    "created_at": "2026-10-17 21:34:15.238177+00",
+    "state": "complete",
+    "success": "true",
+    "server_status_verified": "true",
+    "product_id": "com.spyclash.ios.limitless.weekly",
+    "apple_status": "active",
+    "apple_environment": "sandbox",
+    "apple_expires_at": "2026-10-18T19:44:41.000Z",
+    "membership_active": "true",
+    "membership_status": "active"
+  },
+  "not_proved": [
+    "New first purchase on the physical phone: existing subscription already active",
+    "Build183 device acceptance",
+    "Production transaction charge"
+  ],
+  "local_screenshots": [
+    "build182-restore-confirmed.png",
+    "build182-refresh-confirmed.png",
+    "build182-cold-relaunch-active.png"
+  ],
+  "production_code_or_configuration_mutations": false,
+  "local_screenshot_sha256": {
+    "build182-restore-confirmed.png": "171bcb0c1582b640a8f9db1a0d19887d2fbd5a5bc2533789795beddaac920656",
+    "build182-refresh-confirmed.png": "23365904808f8192b0637e0878403d86d9c0ede36a73d03d21d08742c8708663",
+    "build182-cold-relaunch-active.png": "33a0ede84edc88d26084858fddeaa032f1a8bb83cf81ef078198362b1248e008"
+  }
+}

@@ -48,6 +48,7 @@ final class SupabaseAppSession {
     private let mutationJournal: SupabaseAppMutationJournal
     private let persistLegacy: (SupabaseLegacyCredential) throws -> Void
     private let removeLegacy: () -> Void
+    private let appStoreRetrySleep: @MainActor (Duration) async throws -> Void
     private(set) var legacyCredential: SupabaseLegacyCredential?
     private var legacyCandidates: [String: SupabaseLegacyCredential] = [:]
     private(set) var session: SupabaseStoredSession?
@@ -60,10 +61,11 @@ final class SupabaseAppSession {
     var accessToken: String? { session?.accessToken }
     var userID: String { session?.userID ?? "" }
 
-    init(configuration: SupabaseAppConfiguration? = nil, session: URLSession? = nil, storedSession: SupabaseStoredSession? = SupabaseSessionKeychain.read(), saveSession: @escaping (SupabaseStoredSession) throws -> Void = SupabaseSessionKeychain.save, clearSession: @escaping () -> Void = SupabaseSessionKeychain.clear, mutationJournal: SupabaseAppMutationJournal = SupabaseAppMutationJournal(), storedLegacy: SupabaseLegacyCredential? = SupabaseLegacyKeychain.read(), saveLegacy: @escaping (SupabaseLegacyCredential) throws -> Void = SupabaseLegacyKeychain.save, clearLegacy: @escaping () -> Void = SupabaseLegacyKeychain.clear) {
+    init(configuration: SupabaseAppConfiguration? = nil, session: URLSession? = nil, storedSession: SupabaseStoredSession? = SupabaseSessionKeychain.read(), saveSession: @escaping (SupabaseStoredSession) throws -> Void = SupabaseSessionKeychain.save, clearSession: @escaping () -> Void = SupabaseSessionKeychain.clear, mutationJournal: SupabaseAppMutationJournal = SupabaseAppMutationJournal(), storedLegacy: SupabaseLegacyCredential? = SupabaseLegacyKeychain.read(), saveLegacy: @escaping (SupabaseLegacyCredential) throws -> Void = SupabaseLegacyKeychain.save, clearLegacy: @escaping () -> Void = SupabaseLegacyKeychain.clear, appStoreRetrySleep: @escaping @MainActor (Duration) async throws -> Void = { try await Task.sleep(for: $0) }) {
         persistSession = saveSession; removeSession = clearSession
         self.mutationJournal = mutationJournal
         persistLegacy = saveLegacy; removeLegacy = clearLegacy
+        self.appStoreRetrySleep = appStoreRetrySleep
         legacyCredential = storedLegacy?.actorID == storedSession?.userID ? storedLegacy : nil
         configurationResult = Result { try configuration?.validated() ?? SupabaseAppConfiguration.bundled() }
         if let session { http = session }
@@ -219,7 +221,12 @@ final class SupabaseAppSession {
         do {
             var wireBody = body
             if let legacyToken { wireBody["base44_access_token"] = .string(legacyToken) }
-            let value = try await authenticatedRequest(path: "/functions/v1/app-services", body: .object(wireBody), token: credential, epoch: epoch, permitsRevalidation: token == nil)
+            let value: JSONValue
+            if isAppStoreDelivery {
+                value = try await appStoreDeliveryRequest(body: .object(wireBody), actorID: actorID, token: credential, epoch: epoch, permitsRevalidation: token == nil)
+            } else {
+                value = try await authenticatedRequest(path: "/functions/v1/app-services", body: .object(wireBody), token: credential, epoch: epoch, permitsRevalidation: token == nil)
+            }
             guard epoch == generation else { throw CancellationError() }
             let result = try JSONDecoder.base44.decode(T.self, from: value.data())
             if write, let requestID = body["request_id"]?.string { try mutationJournal.acknowledge(actorID: actorID, requestID: requestID) }
@@ -247,8 +254,8 @@ final class SupabaseAppSession {
         var wire = saved
         if let legacyToken { wire["base44_access_token"] = .string(legacyToken) }
         do {
-            let value = try await authenticatedRequest(path: "/functions/v1/app-services", body: .object(wire), token: credential,
-                                                       epoch: epoch, permitsRevalidation: permitsRevalidation)
+            let value = try await appStoreDeliveryRequest(body: .object(wire), actorID: actorID, token: credential,
+                                                         epoch: epoch, permitsRevalidation: permitsRevalidation)
             try Task.checkCancellation()
             guard epoch == generation, userID == actorID else { throw CancellationError() }
             let receipt = try JSONDecoder.base44.decode(AppStoreEntitlementSyncResponse.self, from: value.data())
@@ -265,6 +272,19 @@ final class SupabaseAppSession {
                 return
             }
             throw error
+        }
+    }
+
+    /// Keep the delivery lease and immutable command across short binding-lease
+    /// conflicts. A retry cannot replace the account, JWS or journal request ID.
+    private func appStoreDeliveryRequest(body: JSONValue, actorID: String, token: String, epoch: UUID,
+                                         permitsRevalidation: Bool) async throws -> JSONValue {
+        try await AppStoreTransactionRetryPolicy.perform(requireScope: {
+            try Task.checkCancellation()
+            guard self.generation == epoch, self.userID == actorID else { throw CancellationError() }
+        }, sleep: appStoreRetrySleep) {
+            try await self.authenticatedRequest(path: "/functions/v1/app-services", body: body, token: token,
+                                                epoch: epoch, permitsRevalidation: permitsRevalidation)
         }
     }
 
@@ -340,7 +360,11 @@ final class SupabaseAppSession {
         let json = (try? JSONDecoder().decode(JSONValue.self, from: data)) ?? .object([:])
         guard (200..<300).contains(response.statusCode) else {
             let details = json["error"].object == nil ? json : json["error"]
-            throw Base44Error(message: details["message"].string ?? details["msg"].string ?? details["error_description"].string ?? "The request could not be completed.", statusCode: response.statusCode, code: details["code"].string ?? details["error_code"].string ?? details["error"].string ?? "http_\(response.statusCode)", retryable: response.statusCode >= 500 || details["retryable"].bool)
+            let code = details["code"].string ?? details["error_code"].string ?? details["error"].string ?? "http_\(response.statusCode)"
+            // The binding retry contract requires the server's explicit flag;
+            // a generic 503 must not invent retry permission for this code.
+            let retryable = code == "apple_account_binding_busy" ? details["retryable"].bool : response.statusCode >= 500 || details["retryable"].bool
+            throw Base44Error(message: details["message"].string ?? details["msg"].string ?? details["error_description"].string ?? "The request could not be completed.", statusCode: response.statusCode, code: code, retryable: retryable)
         }
         return json
     }

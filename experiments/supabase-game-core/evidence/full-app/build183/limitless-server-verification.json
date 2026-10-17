@@ -1,0 +1,185 @@
+{
+  "recorded_at": "2026-10-17T21:30:30.979312+00:00",
+  "state": "LOCAL_CANDIDATE_VERIFIED_NOT_DEPLOYED",
+  "actual_issue": "The exact live v9 bridge discards the actual Apple handler apple_account_binding_busy signal, preventing the native bounded retry.",
+  "not_claimed": "The original build176 ACCESS_UNVERIFIED failure is not reproduced in the current build182 server audit. These local tests do not prove a purchase sheet, real Apple credentials/signature verification, TestFlight device behavior, or a real payment.",
+  "source": {
+    "app_services_live_version": 9,
+    "live_snapshot_sha256": "8cba0ca232db3a8e1946d62e800429c56ad3b416744068d04fefc1411592f16f",
+    "base44_snapshot": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/limitless183/fresh-base44-20261017T2127Z",
+    "base44_source_manifest_sha256": "4638beede00a74f164047c94ff15824d26f441d8ecc20a67b0eb0a763caafedb"
+  },
+  "scope": {
+    "candidate_directory": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/limitless183/server-audit/candidate",
+    "rollback_directory": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/limitless183/server-audit/live",
+    "candidate_manifest_sha256": "c477cfd7f779a2770cefc1a64139e9156a11e722e1697511ba506ec2bbd6804b",
+    "files": 55,
+    "changed": [
+      "app-services/legacy-billing.ts"
+    ],
+    "unchanged": 54,
+    "base44_changes": 0,
+    "schema_changes": 0,
+    "configuration_changes": 0,
+    "production_writes": 0
+  },
+  "tests": [
+    {
+      "name": "Original bridge/push baseline",
+      "passed": 11,
+      "failed": 0,
+      "layer": "local PostgreSQL, provider responses stubbed"
+    },
+    {
+      "name": "Actual checkSubscriptionV2 contract baseline and after patch",
+      "passed_steps": 25,
+      "failed_steps": 0,
+      "layer": "actual handler, SDK entities stubbed, no network"
+    },
+    {
+      "name": "Fresh Apple handler plus exact live v9 bridge before patch",
+      "passed_steps": 10,
+      "failed_steps": 1,
+      "failure": "expected apple_account_binding_busy but received legacy_billing_rejected",
+      "artifact": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/limitless183/server-audit/pipeline-before.txt"
+    },
+    {
+      "name": "Fresh Apple handler plus exact55 candidate bridge after patch",
+      "passed_steps": 11,
+      "failed_steps": 0,
+      "layer": "actual Apple and membership handlers; Apple verifier/API and SDK entity stores replaced by synthetic fixtures; no outbound network"
+    },
+    {
+      "name": "Exact55 candidate billing database suite",
+      "passed": 10,
+      "failed": 0,
+      "layer": "actual candidate membership/bridge with local PostgreSQL; provider responses stubbed"
+    },
+    {
+      "name": "Expanded tracked bridge/push suite",
+      "passed": 13,
+      "failed": 0,
+      "layer": "original11 plus same-intent busy recovery and strict marker allowlist"
+    },
+    {
+      "name": "Exact55 candidate Deno entrypoint typecheck",
+      "passed": true
+    },
+    {
+      "name": "git diff --check",
+      "passed": true
+    }
+  ],
+  "contract": {
+    "forwarded_code": "apple_account_binding_busy",
+    "required_status": 503,
+    "required_retryable": true,
+    "only_function": "app-store-entitlement",
+    "only_action": "sync_transaction",
+    "message": "Apple account binding is being updated. Retry shortly.",
+    "raw_provider_error_forwarded_for_typed_busy": false
+  },
+  "coverage": [
+    "weekly Sandbox and Production canonical status",
+    "typed busy followed by success using original signed transaction",
+    "401 before verification",
+    "foreign immutable owner rejected",
+    "invalid signature rejected",
+    "canonical account token mismatch rejected and lease released",
+    "revoked subscription acknowledged without grant",
+    "provider outage fails closed and same transaction may recover",
+    "strict false/missing/string retryable and wrong code/status/action not promoted"
+  ],
+  "deferred_monthly_limitation": "Current Base44 handler only accepts weekly. Native/bridge-compatible monthly response mocks do not establish real monthly restore. No monthly change requested or made; current offered product remains weekly.",
+  "reproduction_commands": [
+    "cd experiments/supabase-game-core && node --experimental-transform-types --test --test-concurrency=1 tests/app-services/legacy-billing-push.test.mjs",
+    "experiments/supabase-game-core/node_modules/.bin/deno test --no-check --config .local/limitless183/server-audit/tests/deno.json .local/limitless183/server-audit/tests/pipeline_candidate_test.ts",
+    "experiments/supabase-game-core/node_modules/.bin/deno check --config .local/limitless183/server-audit/candidate/app-services/deno.json .local/limitless183/server-audit/candidate/app-services/index.ts"
+  ],
+  "deploy_preflight": {
+    "checked_at": "2026-10-17T21:36:42.738015+00:00",
+    "project_id": "bbkfsgnordtdiblgdzkg",
+    "function": "app-services",
+    "live_version": 9,
+    "live_drift": false,
+    "source_hashes_verified": 55,
+    "verify_jwt": true,
+    "import_map": true,
+    "fresh_readback_sha256": "8cba0ca232db3a8e1946d62e800429c56ad3b416744068d04fefc1411592f16f",
+    "deploy_manifest_sha256": "507449a6f5302a83de3019ff554cb22d00993ba41f7c8526713717849989cf23",
+    "candidate_payload_sha256": "a904a67282eca87d4cc2b68624aee5609b903f5f8d4d30e1cd01075c3f70ab39",
+    "rollback_payload_sha256": "6fbe6372560482e2da6aa408d2ca41a46b314e6b343f6b518beb74bb5b63e091",
+    "candidate_directory": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/limitless183/deploy/candidate",
+    "rollback_directory": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/limitless183/deploy/rollback",
+    "readback_verifier": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/limitless183/deploy/verify-readback.py",
+    "readback_verifier_sha256": "a95bc811d501805b9cea992be172dc6d4e8d19edcf3abe493e9b635c837fcc74",
+    "negative_auth_verifier": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/limitless183/deploy/negative-auth-checks.py",
+    "negative_auth_verifier_sha256": "6e648122ccdd4faeabb86217b00b59e38d5b0adde8f53fd2c45d962b0c49e1d4",
+    "negative_auth": {
+      "checked_at": "2026-10-17T21:37:30.966256+00:00",
+      "project_id": "bbkfsgnordtdiblgdzkg",
+      "function": "app-services",
+      "credentials": "none; invalid synthetic string only",
+      "operation": "membership check only",
+      "checks": [
+        {
+          "case": "missing_authorization",
+          "status": 401,
+          "body_sha256": "2fa2c84fed16d2ecfffc375515c8095ca6be18d8dabe1f54fd12142d23834634",
+          "classification": "Missing authorization header",
+          "passed": true
+        },
+        {
+          "case": "invalid_synthetic_bearer",
+          "status": 401,
+          "body_sha256": "f0179cb588994d69ccbe4cad42f6950e1be6686ad5675888b892fefa14c3f3fe",
+          "classification": "Invalid JWT",
+          "passed": true
+        }
+      ],
+      "passed": true
+    },
+    "deployment_executed": false
+  },
+  "physical_restore_evidence": {
+    "source": "Parent agent report in current chat; this reviewer did not operate the phone",
+    "observed_at": "2026-10-17T21:34:15Z",
+    "build": "182",
+    "result": "Restore completed; UI and database show active weekly Sandbox subscription expiring October18",
+    "distinction": "Observed on existing deployed v9 before this retry candidate. No evidence that original ACCESS_UNVERIFIED persists."
+  },
+  "trace_artifacts": [
+    {
+      "path": ".local/limitless183/server-audit/tests/apple-stub.ts",
+      "sha256": "50b3745902cf51612c4eb84b895a6d77c9b15bc62c5bfa25d150372e2084dc6c"
+    },
+    {
+      "path": ".local/limitless183/server-audit/tests/billing-only.test.mjs",
+      "sha256": "89398f4f793bf1127aaede46e5f732b63bf7e7cb9297e673ab48e40b4ab3ffcf"
+    },
+    {
+      "path": ".local/limitless183/server-audit/tests/deno.json",
+      "sha256": "aa14e01ebd08c345f4e20f1bae7a315cf661cfdcad50527cf7003874ac17bca1"
+    },
+    {
+      "path": ".local/limitless183/server-audit/tests/fixture.ts",
+      "sha256": "537590681b3c43c385a2532858fc8e1a610e10e99a26c98ffe6ecc1268506bfb"
+    },
+    {
+      "path": ".local/limitless183/server-audit/tests/node-fetch-stub.ts",
+      "sha256": "997447af9798a0cc3c26dc3c07a94782fc8eb3a368743bc43d84b8df3be93e26"
+    },
+    {
+      "path": ".local/limitless183/server-audit/tests/pipeline_candidate_test.ts",
+      "sha256": "9b986df18e8a5bc906b0ae38773e0ce23f21d75c7d1580665eed4d3ef4a53325"
+    },
+    {
+      "path": ".local/limitless183/server-audit/tests/pipeline_test.ts",
+      "sha256": "9320b6b5ccb9add78d006831194dbc407f9b9acffc8f21d4417c52c1a33a2ce7"
+    },
+    {
+      "path": ".local/limitless183/server-audit/tests/stripe-stub.ts",
+      "sha256": "8ba4a626648c2c43d4e9e45a3b0cffe689ded3e6fb73437ae7abaa4b79f32e7b"
+    }
+  ]
+}

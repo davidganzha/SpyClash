@@ -77,6 +77,13 @@ export async function prepareLegacyBilling(input:{actor:AppActor,body:Record<str
       body:JSON.stringify({...body,access_token:verified.credential}),signal:AbortSignal.timeout(25_000)}); }
     catch { throw new AppServiceError('legacy_billing_unavailable','The existing billing service is temporarily unavailable. Retry the saved request.',503,true); }
     const value = await boundedLegacyJSON(response);
+    // Preserve only the provider's explicit, temporary account-lease signal.
+    // Native retries the same saved JWS; arbitrary backend codes/messages must
+    // not become retry authorization or diagnostic identifiers.
+    if (!response.ok && name === 'app-store-entitlement' && command.action === 'sync_transaction'
+      && response.status === 503 && value?.code === 'apple_account_binding_busy' && value?.retryable === true) {
+      throw new AppServiceError('apple_account_binding_busy','Apple account binding is being updated. Retry shortly.',503,true);
+    }
     if (!response.ok) throw new AppServiceError('legacy_billing_rejected',typeof value?.error === 'string' ? value.error.slice(0,300) : 'The existing billing service could not confirm this action.',response.status,response.status >= 500 || response.status === 429);
     return value;
   };

@@ -79,6 +79,7 @@
 		32EF53E57801236CA3D98A71 /* StoreKitOperationFailure.swift in Sources */ = {isa = PBXBuildFile; fileRef = 27425526602C8E8958509FC4 /* StoreKitOperationFailure.swift */; };
 		331C70730EAB0752CDF9B95F /* BackendAllowlist.json in Resources */ = {isa = PBXBuildFile; fileRef = D17A9E833FFBBFB0BA98DEF2 /* BackendAllowlist.json */; };
 		3572816B581C65AB4361BB31 /* SupabaseGameAdapter.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8CC25664F127715AEB988EA8 /* SupabaseGameAdapter.swift */; };
+		373294D8674BA67AEC1E8B5D /* StoreKitSandboxIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 32506C28F05EE47E2211DB75 /* StoreKitSandboxIntegrationTests.swift */; };
 		37C42D25F1B6C9755A733B03 /* AppState+Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C35AB10E88428C6F3D53699 /* AppState+Membership.swift */; };
 		3822B1521A7DDF0AF7EA06C2 /* AppleSessionCompletionSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5B4836BDF480BCA80CB3EDC0 /* AppleSessionCompletionSession.swift */; };
 		397C0B1DBC891128B57E1133 /* WordPackDraftTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = C8D58811816F930A78503187 /* WordPackDraftTests.swift */; };
@@ -267,6 +268,7 @@
 		CD072F723D38A576C6DB12EF /* InterfaceScalePolicy.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2F44D41577074C530879C82C /* InterfaceScalePolicy.swift */; };
 		CDA15BB02FAE4BDB45F4F8F1 /* SupabaseAppSession.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2EBD2681F0E66455DFA96C2 /* SupabaseAppSession.swift */; };
 		CE4C883EBFBCB2661D9A6167 /* AppState+Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2C35AB10E88428C6F3D53699 /* AppState+Membership.swift */; };
+		CE63963CB32A0F5BA8ABA5EC /* SupabaseAppStoreRetryTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3AF0D5E1F1101B0893BC27F /* SupabaseAppStoreRetryTests.swift */; };
 		CEB5D0CCBAB0AE0C37D8C2A2 /* InterfaceSettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 97913D6348B4319F467C8E65 /* InterfaceSettingsView.swift */; };
 		D06A399059CDA7411774FB98 /* WordPackPersistenceIntegrationTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B50EAE76ED873FFED393BDB8 /* WordPackPersistenceIntegrationTests.swift */; };
 		D149A139CEF873F928134053 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = AB5C3278E8027E74B4A7DB82 /* Assets.xcassets */; };
@@ -428,6 +430,7 @@
 		2EA85E77102835211355B7C6 /* NotificationInboxModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = NotificationInboxModels.swift; sourceTree = "<group>"; };
 		2F44D41577074C530879C82C /* InterfaceScalePolicy.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = InterfaceScalePolicy.swift; sourceTree = "<group>"; };
 		2F4E919DA47D72F73CF78184 /* AppleAuthenticationOwnershipTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppleAuthenticationOwnershipTests.swift; sourceTree = "<group>"; };
+		32506C28F05EE47E2211DB75 /* StoreKitSandboxIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitSandboxIntegrationTests.swift; sourceTree = "<group>"; };
 		32B420A4FD121192E4509F81 /* SpyClashSupabaseStaging.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SpyClashSupabaseStaging.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		332E7B619CC8B10C1A63D9EF /* BackendClient.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = BackendClient.swift; sourceTree = "<group>"; };
 		34243C161AC8643C57BD83B5 /* SpyClashMatchActivityAttributes.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyClashMatchActivityAttributes.swift; sourceTree = "<group>"; };
@@ -532,6 +535,7 @@
 		DB38FB6B74A483175220231A /* SocketIO-MIT.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SocketIO-MIT.txt"; sourceTree = "<group>"; };
 		DBF611A1F11FF70BB08253DA /* CommunityResponsivenessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityResponsivenessTests.swift; sourceTree = "<group>"; };
 		DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
+		E3AF0D5E1F1101B0893BC27F /* SupabaseAppStoreRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseAppStoreRetryTests.swift; sourceTree = "<group>"; };
 		E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyTheme.swift; sourceTree = "<group>"; };
 		E5974161C5FAC304DACA7C96 /* OnboardingView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingView.swift; sourceTree = "<group>"; };
 		E68BF1820775925C6C61E563 /* GameRoomRealtimeService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = GameRoomRealtimeService.swift; sourceTree = "<group>"; };
@@ -786,6 +790,7 @@
 				8C9BF7C89321D9588B7D95E1 /* QRScannerTests.swift */,
 				6C5B707CA0A5ADFB4E85FD4B /* SessionRestoreTests.swift */,
 				EA17B78E221F34E47BEC5A8D /* StoreKitProductCatalogTests.swift */,
+				32506C28F05EE47E2211DB75 /* StoreKitSandboxIntegrationTests.swift */,
 				8ADE534BA93394DA3C6521FA /* WebAuthenticationCoordinatorTests.swift */,
 				5CF183979BDB403CB777230B /* WordGenerationRetryTests.swift */,
 				C8D58811816F930A78503187 /* WordPackDraftTests.swift */,
@@ -807,6 +812,7 @@
 			isa = PBXGroup;
 			children = (
 				C9A2DBB40FABD6C9062F4EEB /* LegacySessionUpgradeTests.swift */,
+				E3AF0D5E1F1101B0893BC27F /* SupabaseAppStoreRetryTests.swift */,
 				9AFFF43EECD45A2588F995CE /* SupabaseMutationJournalTests.swift */,
 				D30F9ACD6849CEF356F71814 /* SupabaseSessionTests.swift */,
 				523B3250485D6A8133C376BD /* SupabaseSocialRealtimeTests.swift */,
@@ -1281,6 +1287,7 @@
 			files = (
 				0A88E80B81E0D9041E78ED1A /* CommunityResponsivenessTests.swift in Sources */,
 				9493CF3845943B1F03EC50A3 /* LegacySessionUpgradeTests.swift in Sources */,
+				CE63963CB32A0F5BA8ABA5EC /* SupabaseAppStoreRetryTests.swift in Sources */,
 				8F5527BE8F4788FE7E8E06CF /* SupabaseMutationJournalTests.swift in Sources */,
 				F48E759F49C6CADA47DD79F0 /* SupabaseSessionTests.swift in Sources */,
 				C13E0EBECB6241A198663B29 /* SupabaseSocialRealtimeTests.swift in Sources */,
@@ -1524,6 +1531,7 @@
 				0AD0D0575DA19A67B46A8E69 /* QRScannerTests.swift in Sources */,
 				464C102A316C7FF1D32C01CF /* SessionRestoreTests.swift in Sources */,
 				006CA900E7957F08B0E578D7 /* StoreKitProductCatalogTests.swift in Sources */,
+				373294D8674BA67AEC1E8B5D /* StoreKitSandboxIntegrationTests.swift in Sources */,
 				443DD0D2621445DE78FD2135 /* WebAuthenticationCoordinatorTests.swift in Sources */,
 				4C3014D482C6B40EA91792A3 /* WordGenerationRetryTests.swift in Sources */,
 				397C0B1DBC891128B57E1133 /* WordPackDraftTests.swift in Sources */,
@@ -1961,7 +1969,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 182;
+				CURRENT_PROJECT_VERSION = 183;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2166,7 +2174,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 182;
+				CURRENT_PROJECT_VERSION = 183;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2299,7 +2307,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 182;
+				CURRENT_PROJECT_VERSION = 183;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2403,7 +2411,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 182;
+				CURRENT_PROJECT_VERSION = 183;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;

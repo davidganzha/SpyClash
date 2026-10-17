@@ -1,0 +1,77 @@
+{
+  "scope": "local native billing validation only",
+  "source_sha256": {
+    "SpyClash/Services/Base44Client.swift": "f64a92ffaeaae4997dfe6fd038e336a63d8ad0463e6eacba359f39f88b99fa6f",
+    "SpyClash/Services/SupabaseAppSession.swift": "a98d36627a050c917f86d913d1c7e0ec5a96944a33226ce01b1fde72819f956c",
+    "SpyClashSupabaseStagingTests/SupabaseAppStoreRetryTests.swift": "dcdbcec7eaad316360b650687b99d0ec0737aac6af4e1a42024e4fdaf7cdf730",
+    "SpyClashTests/StoreKitSandboxIntegrationTests.swift": "64087e9afb2f79288ee6a08608f2e8023791f011a0211ae528df20119060e038"
+  },
+  "staging": {
+    "passed": 56,
+    "failed": 0,
+    "skipped": 0,
+    "new_retry_tests": 8,
+    "log": "test_sim_2026-10-17T21-34-37-266Z_pid34965_395fe65d.log",
+    "result": "test_sim_2026-10-17T21-34-37-266Z_pid34965_8c04c0e2.xcresult"
+  },
+  "legacy_unit_suites": {
+    "passed": 90,
+    "failed": 0,
+    "skipped": 5,
+    "skipped_suite": "StoreKitSandboxIntegrationTests (explicit opt-in required)",
+    "log": "test_sim_2026-10-17T21-39-42-672Z_pid34965_913bfc41.log",
+    "result": "test_sim_2026-10-17T21-39-42-672Z_pid34965_dde0784a.xcresult"
+  },
+  "local_storekit_integration": {
+    "verified": false,
+    "opt_in_environment": "SPYCLASH_RUN_LOCAL_STOREKIT_TESTS=1",
+    "fail_closed_gate": "Before constructing the tested StoreKitManager, invoke SKTestSession.buyProduct for a unique local-only canary; require exact product and Transaction.environment == .xcode, finish and clear. No Product.purchase or AppStore.sync allowed before this succeeds. Require no saved Base44 account in test host; query existence only.",
+    "initial_26_5_attempt": "Stopped after local configuration Code3 errors; not a passing integration result.",
+    "gated_26_4_attempt": {
+      "passed": 0,
+      "failed": 1,
+      "skipped": 0,
+      "failure": "notEntitled at local-only canary, before manager construction, Product.purchase or AppStore.sync",
+      "log": "test_sim_2026-10-17T21-38-13-547Z_pid34965_4c444d6a.log",
+      "result": "test_sim_2026-10-17T21-38-13-547Z_pid34965_823052d7.xcresult"
+    },
+    "runtime_availability": {
+      "installed": [
+        "iOS26.4 (23E244)",
+        "iOS26.5 (23F77)"
+      ],
+      "xcode": "26.6 (17F113)",
+      "official_download_iOS26_6_arm64": "exit70: not available for download",
+      "official_download_iOS26_6_universal": "exit70: not available for download",
+      "download_or_install_performed": false
+    },
+    "apple_primary_sources": [
+      "https://developer.apple.com/forums/thread/826971",
+      "https://developer.apple.com/documentation/ios-ipados-release-notes/ios-ipados-26_6-release-notes",
+      "https://developer.apple.com/documentation/storekittest/sktestsession/buyproduct(identifier:options:)"
+    ],
+    "reproduce_opt_in": {
+      "prerequisites": "Isolated Simulator with working StoreKitTest (iOS26.6 fix or later), no saved app account, and SpyClash Debug configuration. The installed26.4/26.5 runtimes fail the local canary.",
+      "command": "TEST_RUNNER_SPYCLASH_RUN_LOCAL_STOREKIT_TESTS=1 xcodebuild -project SpyClash.xcodeproj -scheme SpyClash -configuration Debug -destination 'platform=iOS Simulator,id=<ISOLATED_SIMULATOR_UUID>' -only-testing:SpyClashTests/StoreKitSandboxIntegrationTests -parallel-testing-enabled NO test",
+      "mcp_equivalent": {
+        "tool": "test_sim",
+        "session_defaults": {
+          "scheme": "SpyClash",
+          "configuration": "Debug",
+          "simulatorId": "<ISOLATED_SIMULATOR_UUID>"
+        },
+        "testRunnerEnv": {
+          "SPYCLASH_RUN_LOCAL_STOREKIT_TESTS": "1"
+        },
+        "extraArgs": [
+          "-only-testing:SpyClashTests/StoreKitSandboxIntegrationTests",
+          "-parallel-testing-enabled",
+          "NO"
+        ]
+      }
+    },
+    "final_test_guard_change": "After runtime checks, converted wrong-backend XCTest assertion into a throwing guard before SKTestSession creation; this blocks continuing under a hybrid transport. Production source unchanged."
+  },
+  "real_purchase_verified_by_this_agent": false,
+  "production_mutations_by_this_agent": false
+}

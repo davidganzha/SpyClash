@@ -96,6 +96,39 @@ test('billing mutation reservation binds the original action and signed transact
   await assert.rejects(call(a,{...body,signed_transaction:'provider-signed-other-transaction'},fetcher),e=>e.code==='request_id_reused');
   assert.equal(calls,2);
 });
+test('typed Apple lease contention survives the bridge and the same saved weekly transaction can recover',async()=>{
+  const a=await actor(),body={action:'sync_transaction',signed_transaction:'provider-verified-existing-weekly-transaction',request_id:crypto.randomUUID(),base44_access_token:credential};let syncCalls=0,checks=0;
+  const fetcher=provider(a,(url,payload)=>{
+    if(url.endsWith('/checkSubscriptionV2')){checks++;return Response.json(snapshot(true));}
+    syncCalls++;assert.equal(payload.signed_transaction,body.signed_transaction);
+    return syncCalls===1
+      ? Response.json({error:'Untrusted backend detail must not escape',code:'apple_account_binding_busy',retryable:true},{status:503})
+      : Response.json({success:true,server_status_verified:true,entitlement:{product_id:WEEKLY_PRODUCT,status:'active'}});
+  });
+  await assert.rejects(call(a,body,fetcher),e=>e.code==='apple_account_binding_busy'&&e.status===503&&e.retryable===true&&e.message==='Apple account binding is being updated. Retry shortly.');
+  assert.equal(checks,0);assert.equal((await db`select 1 from app_private.entitlements where user_id=${a.id}`).length,0);
+  const [pending]=await db`select state from app_private.legacy_operations where user_id=${a.id} and request_id=${body.request_id}`;
+  assert.equal(pending.state,'reserved');
+  assert.equal((await call(a,body,fetcher)).server_status_verified,true);assert.equal(syncCalls,2);assert.equal(checks,1);
+  await call(a,body,fetcher);assert.equal(syncCalls,2);assert.equal(checks,1);
+  const [completed]=await db`select state from app_private.legacy_operations where user_id=${a.id} and request_id=${body.request_id}`;assert.equal(completed.state,'complete');
+});
+test('only the exact Apple sync 503 retryable marker receives bounded-retry authorization',async()=>{
+  for(const [action,status,errorBody] of [
+    ['sync_transaction',503,{code:'apple_account_binding_busy',retryable:false}],
+    ['sync_transaction',503,{code:'apple_account_binding_busy'}],
+    ['sync_transaction',503,{code:'apple_account_binding_busy',retryable:'true'}],
+    ['sync_transaction',503,{code:'backend-private-detail',retryable:true}],
+    ['sync_transaction',409,{code:'apple_account_binding_busy',retryable:true}],
+    ['sync_transaction',401,{code:'apple_account_binding_busy',retryable:true}],
+    ['check',503,{code:'apple_account_binding_busy',retryable:true}],
+    ['prepare',503,{code:'apple_account_binding_busy',retryable:true}],
+  ]){
+    const a=await actor(),body={action,signed_transaction:'provider-verified-existing-weekly-transaction',request_id:crypto.randomUUID(),base44_access_token:credential};
+    await assert.rejects(call(a,body,provider(a,()=>Response.json(errorBody,{status}))),e=>e.code==='legacy_billing_rejected'&&e.status===status);
+    assert.equal((await db`select 1 from app_private.entitlements where user_id=${a.id}`).length,0);
+  }
+});
 test('main-topic push reaches only authenticated prepared Base44 relay and retains outbox fencing',async()=>{
   const a=await actor();const registration={action:'register_device',installation_id:crypto.randomUUID(),apns_token:'aa'.repeat(32),environment:'production',bundle_id:MAIN_PUSH_BUNDLE,alert_authorized:true};
   assert.equal(allowedPushBundle({...push,APP_LEGACY_PUSH_RELAY_ENABLED:'false'}),null);

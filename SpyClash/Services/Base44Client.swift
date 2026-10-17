@@ -114,6 +114,29 @@ enum AppStoreTransactionRetryPolicy {
               retryDelaysMilliseconds.indices.contains(completedRetries) else { return nil }
         return retryDelaysMilliseconds[completedRetries]
     }
+
+    @MainActor
+    static func perform<Value>(
+        requireScope: () throws -> Void,
+        sleep: (Duration) async throws -> Void,
+        operation: () async throws -> Value
+    ) async throws -> Value {
+        var completedRetries = 0
+        while true {
+            try requireScope()
+            do {
+                let result = try await operation()
+                try requireScope()
+                return result
+            } catch {
+                try requireScope()
+                guard let delay = delayMilliseconds(for: error, completedRetries: completedRetries) else { throw error }
+                completedRetries += 1
+                try await sleep(.milliseconds(delay))
+                try requireScope()
+            }
+        }
+    }
 }
 
 enum FinishedRoomLobbyReturnRecoveryPolicy {
@@ -1903,28 +1926,14 @@ final class Base44Client {
             guard tokenGeneration == expectedGeneration,
                   currentAccessToken == expectedToken else { throw CancellationError() }
         }
-        var completedRetries = 0
-        while true {
-            try requireScope()
-            do {
-                let result: AppStoreEntitlementSyncResponse = try await request(
-                    "/apps/\(Self.appID)/functions/app-store-entitlement",
-                    method: "POST",
-                    body: Optional<EmptyPayload>.none,
-                    encodedBody: body,
-                    authorizationToken: expectedToken
-                )
-                try requireScope()
-                return result
-            } catch {
-                try requireScope()
-                guard let delay = AppStoreTransactionRetryPolicy.delayMilliseconds(
-                    for: error, completedRetries: completedRetries
-                ) else { throw error }
-                completedRetries += 1
-                try await appStoreRetrySleep(.milliseconds(delay))
-                try requireScope()
-            }
+        return try await AppStoreTransactionRetryPolicy.perform(requireScope: requireScope, sleep: appStoreRetrySleep) {
+            try await request(
+                "/apps/\(Self.appID)/functions/app-store-entitlement",
+                method: "POST",
+                body: Optional<EmptyPayload>.none,
+                encodedBody: body,
+                authorizationToken: expectedToken
+            )
         }
     }
 

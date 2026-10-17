@@ -1,0 +1,35 @@
+{
+  "recorded_at": "2026-10-17T21:38:50.320473+00:00",
+  "status": "PASS",
+  "checks": {
+    "archive_succeeded": true,
+    "main_build_183": true,
+    "widget_build_183": true,
+    "bundle_ids_unchanged": true,
+    "hybrid_release_mode": true,
+    "configuration_byte_identical": true,
+    "backend_unchanged": true,
+    "auth_billing_enabled": true,
+    "test_storekit_not_bundled": true,
+    "no_test_fixture_files": true,
+    "not_distribution_signed": true,
+    "production_sources_unchanged_during_archive": true
+  },
+  "configuration": "SupabaseRelease",
+  "scheme": "SpyClash-Supabase-Main-Candidate",
+  "source_sha256": {
+    "SpyClash/Services/Base44Client.swift": "f64a92ffaeaae4997dfe6fd038e336a63d8ad0463e6eacba359f39f88b99fa6f",
+    "SpyClash/Services/SupabaseAppSession.swift": "a98d36627a050c917f86d913d1c7e0ec5a96944a33226ce01b1fde72819f956c",
+    "project.yml": "59be433c337813b48e47bcad85ed39f4014e1823e388294eb630ed447f502ea5",
+    "SpyClash.xcodeproj/project.pbxproj": "5c6c4a3e5375748a4fca9c7760aeebc2b8254e947ac0265e54657e5ae36139ba"
+  },
+  "app_binary_sha256": "1b7f08eefdc0803d4ff17ce4678d99a29f21cad977b1ebc2647a3f58b1144c29",
+  "configuration_sha256": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d",
+  "scope": {
+    "unsigned_archive": true,
+    "signing": false,
+    "upload": false,
+    "production_deploy": false,
+    "device_183_acceptance": false
+  }
+}
