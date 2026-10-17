@@ -90,6 +90,53 @@ test('concurrent first profile requests allocate one persistent unique non-reser
   assert.equal((await db`select * from app_private.profiles where user_id=${id}`).length,1);
 });
 
+test('directory pages preserve ordering and block privacy with exact SPY-ID lookup',async()=>{
+  const viewer=await actor('Directory viewer'),peers=await Promise.all(Array.from({length:5},(_,i)=>actor('Directory peer '+i)));
+  const createdAt=new Date('2099-01-01T00:00:00Z');
+  await db`update app_private.profiles set created_at=${createdAt} where user_id=any(${peers.map(p=>p.id)}::uuid[])`;
+  await call(viewer,'community',{action:'block',target_user_id:peers[0].id});
+  await call(peers[1],'community',{action:'block',target_user_id:viewer.id});
+  await db`update app_private.profiles set state='deleted' where user_id=${peers[2].id}`;
+  const expected=peers.slice(3).map(p=>p.id).sort();
+  const first=await call(viewer,'community',{action:'directory',query:'  ',limit:1});
+  const second=await call(viewer,'community',{action:'directory',limit:1,offset:first.next_offset});
+  assert.deepEqual([first.profiles[0].id,second.profiles[0].id],expected);
+  assert.equal(first.next_offset,1);assert.equal(second.next_offset,2);
+  const [exactProfile]=await db`select spy_id from app_private.profiles where user_id=${peers[3].id}`;
+  const exact=await call(viewer,'community',{action:'directory',query:exactProfile.spy_id.replace('-',' '),offset:999,limit:1});
+  assert.deepEqual(exact.profiles.map(p=>p.id),[peers[3].id]);assert.equal(exact.next_offset,null);
+  for(const peer of peers.slice(0,3)) {
+    const [profile]=await db`select spy_id from app_private.profiles where user_id=${peer.id}`;
+    assert.deepEqual((await call(viewer,'community',{action:'directory',query:profile.spy_id})).profiles,[]);
+  }
+  const last=await call(viewer,'community',{action:'directory',offset:1000000,limit:1});
+  assert.deepEqual(last,{profiles:[],next_offset:null});
+  const text=await call(viewer,'community',{action:'directory',query:'DIRECTORY   PEER'});
+  assert.deepEqual(text.profiles.map(p=>p.id),expected);
+});
+
+test('profile signals target only self, accepted friends and recent unblocked active viewers',async()=>{
+  const target=await actor('Signal subject'),outgoing=await actor('Signal outgoing friend'),incoming=await actor('Signal incoming friend');
+  const recent=await actor('Signal recent viewer'),expired=await actor('Signal expired viewer'),blocked=await actor('Signal blocked viewer'),inactive=await actor('Signal inactive viewer'),unrelated=await actor('Signal unrelated');
+  await pair(target,outgoing);await pair(incoming,target);
+  await call(target,'community',{action:'block',target_user_id:blocked.id});
+  const at=now();
+  for(const user of [target,outgoing,recent,expired,blocked,inactive]) {
+    const seen=new Date(at.getTime()-(user===expired?600000:599999));
+    await db`insert into app_private.profile_watchers(viewer_id,profile_id,last_seen_at) values(${user.id},${target.id},${seen}) on conflict(viewer_id,profile_id) do update set last_seen_at=excluded.last_seen_at`;
+  }
+  await db`update app_private.profiles set state='deleted' where user_id=${inactive.id}`;
+  await db`delete from public.app_profile_signals where profile_user_id=${target.id}`;
+  await call(target,'profile',{action:'update',display_name:'Updated signal subject'},{at});
+  const expected=[target.id,outgoing.id,incoming.id,recent.id].sort();
+  const rows=await db`select recipient_user_id,revision from public.app_profile_signals where profile_user_id=${target.id} order by recipient_user_id`;
+  assert.deepEqual(rows.map(r=>r.recipient_user_id),expected);assert.ok(rows.every(r=>Number(r.revision)===1));
+  assert.ok(!rows.some(r=>r.recipient_user_id===unrelated.id));
+  await call(target,'profile',{action:'update',display_name:'Updated twice'},{at});
+  const second=await db`select recipient_user_id,revision from public.app_profile_signals where profile_user_id=${target.id} order by recipient_user_id`;
+  assert.deepEqual(second.map(r=>r.recipient_user_id),expected);assert.ok(second.every(r=>Number(r.revision)===2));
+});
+
 test('premium profile changes require verified grants while saved expired customization survives',async()=>{
   const a=await actor('Premium');const config={SPYCLASH_LIMITLESS_ENABLED:'true'};
   await expectFailure(call(a,'profile',{action:'update',spy_card_theme:'blacksite'},{config}),403,'limitless_required');
@@ -151,6 +198,7 @@ test('room invites check friendship, membership and waiting state; accept/consum
   await pair(a,b);
   await call(a,'community',{action:'invite_to_room',target_user_id:b.id,room_id:lobby.id,room_code:lobby.code});
   const state=await call(b,'community',{action:'state'}),invite=state.incoming_room_invites[0];assert.equal(invite.room_code,lobby.code);
+  assert.deepEqual(invite.sender,state.friends.find(f=>f.profile.id===a.id).profile);
   await expectFailure(call(b,'community',{action:'consume_room_invite',invite_id:invite.id}),409,'room_invite_not_accepted');
   await expectFailure(call(c,'community',{action:'accept_room_invite',invite_id:invite.id}),404);
   assert.equal((await call(b,'community',{action:'accept_room_invite',invite_id:invite.id})).room_code,lobby.code);

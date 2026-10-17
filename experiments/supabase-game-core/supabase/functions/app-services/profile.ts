@@ -48,9 +48,14 @@ export async function signalUsers(ctx: AppContext,userIDs:string[]):Promise<void
 }
 export async function signalProfile(ctx:AppContext,userID:string):Promise<void> {
   await ctx.tx`insert into public.app_profile_signals(recipient_user_id,profile_user_id,revision,updated_at)
-    select p.user_id,${userID}::uuid,1,${ctx.now} from app_private.profiles p where p.state='active' and
-    (p.user_id=${userID} or exists(select 1 from app_private.friendships f where f.status='accepted' and f.pair_low=least(p.user_id,${userID}::uuid) and f.pair_high=greatest(p.user_id,${userID}::uuid)) or exists(select 1 from app_private.profile_watchers w where w.viewer_id=p.user_id and w.profile_id=${userID} and w.last_seen_at>${new Date(ctx.now.getTime()-600000)}))
+    select p.user_id,${userID}::uuid,1,${ctx.now} from (
+      select ${userID}::uuid as recipient_id
+      union select f.addressee_id from app_private.friendships f where f.requester_id=${userID} and f.status='accepted'
+      union select f.requester_id from app_private.friendships f where f.addressee_id=${userID} and f.status='accepted'
+      union select w.viewer_id from app_private.profile_watchers w where w.profile_id=${userID} and w.last_seen_at>${new Date(ctx.now.getTime()-600000)}
+    ) recipients join app_private.profiles p on p.user_id=recipients.recipient_id where p.state='active'
     and not exists(select 1 from app_private.friendships b where b.status='blocked' and b.pair_low=least(p.user_id,${userID}::uuid) and b.pair_high=greatest(p.user_id,${userID}::uuid))
+    order by p.user_id
     on conflict(recipient_user_id,profile_user_id) do update set revision=app_profile_signals.revision+1,updated_at=excluded.updated_at`;
 }
 export async function projectedProfiles(ctx:AppContext,profiles:any[]):Promise<any[]> {

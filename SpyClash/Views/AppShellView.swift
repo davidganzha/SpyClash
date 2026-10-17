@@ -494,7 +494,7 @@ struct AppShellView: View {
                 return
             }
             guard scenePhase == .active else { return }
-            guard ShellSupplementaryRefreshPolicy.shouldRun(
+            guard SupabaseAppRuntime.isEnabled || ShellSupplementaryRefreshPolicy.shouldRun(
                 activeRoomStatus: appState.activeRoom?.normalizedStatus
             ) else { return }
 
@@ -871,6 +871,41 @@ struct AppShellView: View {
 #endif
 
     private func monitorCommunityAttention() async {
+#if SPYCLASH_SUPABASE
+        guard let userID = appState.user?.id else { return }
+        let accountGeneration = SupabaseAppSession.shared.generation
+        if communityNetworkState?.me.id != userID {
+            communityAttention = .empty
+            communityNetworkState = nil
+        }
+        let realtime = SupabaseSocialRealtimeService()
+        // A burst of signals needs one trailing read, even when it arrives
+        // during an in-flight request. Never debounce by cancelling that read.
+        let (updates, continuation) = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        realtime.onChange = { _ in continuation.yield(()) }
+        realtime.onCatchUp = { continuation.yield(()) }
+        realtime.start(userID: userID)
+        continuation.yield(())
+        let fallback = Task {
+            while !Task.isCancelled {
+                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+                continuation.yield(())
+            }
+        }
+        defer {
+            realtime.stop()
+            fallback.cancel()
+            continuation.finish()
+        }
+        for await _ in updates {
+            guard !Task.isCancelled, appState.user?.id == userID,
+                  SupabaseAppSession.shared.generation == accountGeneration else { return }
+            async let community: Void = refreshCommunityAttention()
+            async let inbox: Void = appState.notificationInbox.refreshSummary()
+            _ = await (community, inbox)
+        }
+        return
+#else
         do {
             try await Task.sleep(
                 for: .seconds(
@@ -898,6 +933,7 @@ struct AppShellView: View {
                 return
             }
         }
+#endif
     }
 
     private func refreshCommunityAttention() async {
@@ -910,6 +946,9 @@ struct AppShellView: View {
 
         let requestID = UUID()
         communityAttentionRequestID = requestID
+#if SPYCLASH_SUPABASE
+        let accountGeneration = SupabaseAppSession.shared.generation
+#endif
 
         do {
             let state = try await appState.client.communityState()
@@ -918,6 +957,9 @@ struct AppShellView: View {
                   communityAttentionRequestID == requestID else {
                 return
             }
+#if SPYCLASH_SUPABASE
+            guard SupabaseAppSession.shared.generation == accountGeneration else { return }
+#endif
             installCommunityAttention(state, for: userID, announceNew: true)
             await retryPendingRoomInviteCleanups(for: userID)
         } catch is CancellationError {

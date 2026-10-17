@@ -38,27 +38,29 @@ async function targetProfile(ctx:AppContext,body:any):Promise<any> {
   if(!row) throw new AppServiceError('profile_not_found','Operative not found.',404);
   return row;
 }
-async function visibleInvites(ctx:AppContext):Promise<any[]> {
-  const rows=await ctx.tx`select i.* from app_private.room_invites i
+async function visibleInviteRows(ctx:AppContext):Promise<any[]> {
+  return await ctx.tx`select i.* from app_private.room_invites i
     join app_private.friendships f on f.pair_low=least(i.sender_user_id,i.recipient_user_id) and f.pair_high=greatest(i.sender_user_id,i.recipient_user_id) and f.status='accepted'
     join full_game_private.rooms r on r.id=i.room_id and not r.closed and r.state->>'status'='waiting'
     join full_game_private.members m on m.room_id=r.id and m.user_id=i.sender_user_id
     where i.recipient_user_id=${ctx.actor.id} and i.status in ('pending','accepted')
     and not exists(select 1 from full_game_private.members already where already.room_id=r.id and already.user_id=i.recipient_user_id)
     order by i.created_at desc,i.id`;
-  const profiles=await profileMap(ctx,rows.map((r:any)=>r.sender_user_id));
-  return rows.filter((r:any)=>profiles.has(r.sender_user_id)).map((r:any)=>({id:r.id,status:r.status,room_id:r.room_id,room_code:r.room_code,created_at:iso(r.created_at),sender:profiles.get(r.sender_user_id)}));
 }
-export async function communityState(ctx:AppContext):Promise<any> {
-  const me=await ensureProfile(ctx),rows=await relationships(ctx,ctx.actor.id);
-  const profiles=await profileMap(ctx,[ctx.actor.id,...rows.map(r=>opposite(r,ctx.actor.id))]);
+export async function communityState(ctx:AppContext,ensuredProfile?:any):Promise<any> {
+  const me=ensuredProfile??await ensureProfile(ctx),rows=await relationships(ctx,ctx.actor.id);
+  const invites=await visibleInviteRows(ctx);
+  // Invite senders are usually already friends. Project their profile/history
+  // once with the relationship list instead of repeating the same work.
+  const profiles=await profileMap(ctx,[ctx.actor.id,...rows.map(r=>opposite(r,ctx.actor.id)),...invites.map((r:any)=>r.sender_user_id)]);
   const groups:any={friends:[],incoming:[],outgoing:[],blocked:[]};
   for(const r of rows) {
     const profile=profiles.get(opposite(r,ctx.actor.id)); if(!profile) continue;
     const group=r.status==='accepted'?'friends':r.status==='pending'?(r.requester_id===ctx.actor.id?'outgoing':'incoming'):r.status==='blocked'&&r.blocked_by_id===ctx.actor.id?'blocked':null;
     if(group) groups[group].push({...summary(r,ctx.actor.id),profile});
   }
-  return {me:profiles.get(me.user_id),...groups,incoming_room_invites:await visibleInvites(ctx)};
+  const incomingRoomInvites=invites.filter((r:any)=>profiles.has(r.sender_user_id)).map((r:any)=>({id:r.id,status:r.status,room_id:r.room_id,room_code:r.room_code,created_at:iso(r.created_at),sender:profiles.get(r.sender_user_id)}));
+  return {me:profiles.get(me.user_id),...groups,incoming_room_invites:incomingRoomInvites};
 }
 async function detail(ctx:AppContext,target:any):Promise<any> {
   const ownID=ctx.actor.id;
@@ -75,11 +77,23 @@ async function detail(ctx:AppContext,target:any):Promise<any> {
   return {profile:profiles.get(target.user_id),is_self:target.user_id===ownID,relationship:summary(rel,ownID),friends:friendIDs.map(id=>profiles.get(id)).filter(Boolean),comments:visible.filter((c:any)=>profiles.has(c.author_user_id)).map((c:any)=>({id:c.id,body:safeCommunityTextForDisplay(c.body,''),created_at:iso(c.created_at),author:profiles.get(c.author_user_id),can_delete:c.author_user_id===ownID||c.target_user_id===ownID}))};
 }
 async function directory(ctx:AppContext,body:any):Promise<any> {
+  const exact=normalizeSpyID(body.query),query=clean(body.query),offset=Math.min(1000000,Math.max(0,parseInt(String(body.offset))||0)),limit=Math.min(60,Math.max(1,parseInt(String(body.limit))||24));
+  if(exact||!query) {
+    // These paths need no display-name normalization. Keep the same ordering
+    // and offset contract while sending only a bounded page over the DB link.
+    const visible=ctx.tx`p.state='active' and not exists(select 1 from app_private.friendships f where f.status='blocked' and f.pair_low=least(p.user_id,${ctx.actor.id}::uuid) and f.pair_high=greatest(p.user_id,${ctx.actor.id}::uuid))`;
+    const candidates=exact
+      ?await ctx.tx`select p.* from app_private.profiles p where ${visible} and p.spy_id=${exact}`
+      :await ctx.tx`select p.* from app_private.profiles p where ${visible} order by p.created_at desc,p.user_id limit ${limit+1} offset ${offset}`;
+    const page=exact?candidates:candidates.slice(0,limit);
+    return {profiles:await projectedProfiles(ctx,page),next_offset:!exact&&candidates.length>limit?offset+limit:null};
+  }
+  // Free-text matching includes safety-normalized names and locale-sensitive
+  // casing; retain that contract rather than approximating it with SQL ILIKE.
   const rows=await relationships(ctx,ctx.actor.id),blocked=new Set(rows.filter(r=>r.status==='blocked').map(r=>opposite(r,ctx.actor.id)));
   const candidates=await ctx.tx`select * from app_private.profiles where state='active' order by created_at desc,user_id`;
-  const exact=normalizeSpyID(body.query),query=clean(body.query),offset=Math.min(1000000,Math.max(0,parseInt(String(body.offset))||0)),limit=Math.min(60,Math.max(1,parseInt(String(body.limit))||24));
-  const filtered=candidates.filter((p:any)=>!blocked.has(p.user_id)&&(exact?p.spy_id===exact:!query||profileMatchesCommunityQuery({...p.data,spy_id:p.spy_id},query)));
-  return {profiles:await projectedProfiles(ctx,exact?filtered:filtered.slice(offset,offset+limit)),next_offset:!exact&&offset+limit<filtered.length?offset+limit:null};
+  const filtered=candidates.filter((p:any)=>!blocked.has(p.user_id)&&profileMatchesCommunityQuery({...p.data,spy_id:p.spy_id},query));
+  return {profiles:await projectedProfiles(ctx,filtered.slice(offset,offset+limit)),next_offset:offset+limit<filtered.length?offset+limit:null};
 }
 async function validateInviteRoom(ctx:AppContext,roomID:unknown,roomCode:unknown,sender:string,recipient:string):Promise<any> {
   const [room]=await ctx.tx`select * from full_game_private.rooms where id=${requireUUID(roomID,'room_id')} for share`;
@@ -100,7 +114,7 @@ export async function dispatchCommunity(ctx:AppContext,body:any):Promise<any> {
 async function dispatchCommunityAction(ctx:AppContext,body:any):Promise<any> {
   const action=clean(body.action),id=ctx.actor.id;
   const me=await ensureProfile(ctx);
-  if(action==='state') return await communityState(ctx);
+  if(action==='state') return await communityState(ctx,me);
   if(action==='directory') return await directory(ctx,body);
   if(action==='update_profile'||action==='set_radar_invite_policy') return await dispatchProfile(ctx,body);
   if(action==='search'||action==='profile') {
@@ -122,7 +136,7 @@ async function dispatchCommunityAction(ctx:AppContext,body:any):Promise<any> {
       await ctx.tx`delete from app_private.room_invites where (sender_user_id=${id} and recipient_user_id=${targetID}) or (sender_user_id=${targetID} and recipient_user_id=${id})`;
       await hidePersonalNotifications(ctx,{pair:[id,targetID]});
       await signalUsers(ctx,[id,targetID]); await signalProfile(ctx,id); await signalProfile(ctx,targetID);
-      return await communityState(ctx);
+      return await communityState(ctx,me);
     }
     requireUnblocked(rel);
     if(action==='send_request') {
@@ -135,7 +149,7 @@ async function dispatchCommunityAction(ctx:AppContext,body:any):Promise<any> {
         else [saved]=await ctx.tx`insert into app_private.friendships(requester_id,addressee_id,status,request_event_id,created_at,updated_at) values(${id},${targetID},'pending',${eventID},${ctx.now},${ctx.now}) returning *`;
         await enqueuePersonalNotification(ctx,{id:eventID,event_type:'friend_request',source_id:saved.id,actor_id:id,recipient_id:targetID,actor_name:me.data.display_name||me.data.full_name});
       }
-      await signalUsers(ctx,[id,targetID]); return await communityState(ctx);
+      await signalUsers(ctx,[id,targetID]); return await communityState(ctx,me);
     }
     if(action==='add_comment') {
       const sanitized=sanitizeProfileComment(body.comment); if(!sanitized) throw new AppServiceError('invalid_comment','Comment must contain 1-280 characters.',422);
@@ -192,14 +206,14 @@ async function dispatchCommunityAction(ctx:AppContext,body:any):Promise<any> {
     const inviteID=requireUUID(body.invite_id,'invite_id');
     let [invite]=await ctx.tx`select * from app_private.room_invites where id=${inviteID}`;
     if(!invite) {
-      if(action!=='accept_room_invite') return {state:await communityState(ctx),room_code:null};
+      if(action!=='accept_room_invite') return {state:await communityState(ctx,me),room_code:null};
       throw new AppServiceError('invite_not_found','Invite not found.',404);
     }
     if(invite.recipient_user_id!==id) throw new AppServiceError('invite_not_found','Invite not found.',404);
     await lockPair(ctx,id,invite.sender_user_id);
     [invite]=await ctx.tx`select * from app_private.room_invites where id=${inviteID}`;
     if(!invite) {
-      if(action==='consume_room_invite') return {state:await communityState(ctx),room_code:null};
+      if(action==='consume_room_invite') return {state:await communityState(ctx,me),room_code:null};
       throw new AppServiceError('invite_not_found','Invite not found.',404);
     }
     let roomCode=null;
@@ -218,7 +232,7 @@ async function dispatchCommunityAction(ctx:AppContext,body:any):Promise<any> {
       await ctx.tx`delete from app_private.room_invites where id=${invite.id}`;
     }
     if(action!=='accept_room_invite') await hidePersonalNotifications(ctx,{ids:[invite.notification_event_id]});
-    await signalUsers(ctx,[id,invite.sender_user_id]); return {state:await communityState(ctx),room_code:roomCode};
+    await signalUsers(ctx,[id,invite.sender_user_id]); return {state:await communityState(ctx,me),room_code:roomCode};
   }
   if(['accept','decline','cancel_request','remove_friend','unblock'].includes(action)) {
     const friendshipID=requireUUID(body.friendship_id,'friendship_id');
@@ -245,7 +259,7 @@ async function dispatchCommunityAction(ctx:AppContext,body:any):Promise<any> {
       if(action==='remove_friend') await hidePersonalNotifications(ctx,{pair:[id,counterpart]});
     }
     await signalUsers(ctx,[id,counterpart]); await signalProfile(ctx,id); await signalProfile(ctx,counterpart);
-    return await communityState(ctx);
+    return await communityState(ctx,me);
   }
   throw new AppServiceError('unsupported_community_action','Unsupported community action.');
 }

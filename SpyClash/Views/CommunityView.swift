@@ -29,23 +29,28 @@ private enum CommunityProfileSignalParser {
 private final class CommunityProfileRealtimeService {
     var onSignal: ((CommunityProfileSignal) -> Void)?
     var onCatchUp: (() -> Void)?
+    var onNetworkChange: (() -> Void)?
 
     private var manager: SocketManager?
     private var socket: SocketIOClient?
     private var room: String?
     private var generation = UUID()
-    private var stagingRefresh: Task<Void, Never>?
+#if SPYCLASH_SUPABASE
+    private let socialRealtime = SupabaseSocialRealtimeService()
+#endif
 
     func start(appID: String, token: String, userID: String) {
         stop()
 #if SPYCLASH_SUPABASE
-        let accountGeneration = SupabaseAppSession.shared.generation
-        stagingRefresh = Task { [weak self] in
-            while !Task.isCancelled, SupabaseAppSession.shared.generation == accountGeneration {
-                self?.onCatchUp?()
-                do { try await Task.sleep(for: .seconds(10)) } catch { return }
+        socialRealtime.onChange = { [weak self] signal in
+            if signal.table == "app_profile_signals", let profileID = signal.profileUserID {
+                self?.onSignal?(CommunityProfileSignal(profileUserID: profileID, revision: signal.revision))
+            } else {
+                self?.onNetworkChange?()
             }
         }
+        socialRealtime.onCatchUp = { [weak self] in self?.onCatchUp?() }
+        socialRealtime.start(userID: userID)
         return
 #endif
         let room = "entities:\(appID):CommunityProfileSignal"
@@ -83,7 +88,9 @@ private final class CommunityProfileRealtimeService {
     }
 
     func stop() {
-        stagingRefresh?.cancel(); stagingRefresh = nil
+#if SPYCLASH_SUPABASE
+        socialRealtime.stop()
+#endif
         generation = UUID()
         if let room, socket?.status == .connected { socket?.emit("leave", room) }
         socket?.removeAllHandlers()
@@ -129,6 +136,10 @@ struct CommunityProfileRequestState: Equatable {
     func accepts(_ requestID: UUID) -> Bool {
         activeRequestID == requestID
     }
+
+    func accepts(_ requestID: UUID, signalGeneration: Int, currentSignalGeneration: Int) -> Bool {
+        accepts(requestID) && signalGeneration == currentSignalGeneration
+    }
 }
 
 enum CommunityProfileRelationshipResolver {
@@ -151,8 +162,81 @@ enum CommunityProfileRelationshipResolver {
     }
 }
 
+/// An optimistic change only owns one relationship. Rollback restores that
+/// relationship without discarding unrelated updates received in the meantime.
+struct CommunityOptimisticRelationshipChange: Equatable {
+    let actorID: String
+    let action: String
+    let relationship: CommunityRelationship
+    private let previousFriends: [CommunityRelationship]
+    private let previousIncoming: [CommunityRelationship]
+    private let previousOutgoing: [CommunityRelationship]
+
+    init?(state: CommunityState, action: String, friendshipID: String) {
+        let candidates: [CommunityRelationship]
+        switch action {
+        case "accept", "decline": candidates = state.incoming
+        case "remove_friend": candidates = state.friends
+        case "cancel_request": candidates = state.outgoing
+        default: return nil
+        }
+        guard let relationship = candidates.first(where: { $0.id == friendshipID }) else { return nil }
+        actorID = state.me.id
+        self.action = action
+        self.relationship = relationship
+        previousFriends = state.friends.filter { $0.profile.id == relationship.profile.id }
+        previousIncoming = state.incoming.filter { $0.profile.id == relationship.profile.id }
+        previousOutgoing = state.outgoing.filter { $0.profile.id == relationship.profile.id }
+    }
+
+    func applying(to state: CommunityState) -> CommunityState {
+        guard state.me.id == actorID else { return state }
+        if let blockedState = preservingBlock(in: state) { return blockedState }
+        let targetID = relationship.profile.id
+        var friends = state.friends
+        if action == "accept" || action == "remove_friend" {
+            friends.removeAll { $0.profile.id == targetID }
+        }
+        if action == "accept" {
+            friends.append(CommunityRelationship(id: relationship.id, status: "accepted",
+                                                 direction: relationship.direction, profile: relationship.profile))
+        }
+        let incoming = state.incoming.filter {
+            action == "accept" ? $0.profile.id != targetID : !(action == "decline" && $0.id == relationship.id)
+        }
+        let outgoing = state.outgoing.filter {
+            action == "accept" ? $0.profile.id != targetID : !(action == "cancel_request" && $0.id == relationship.id)
+        }
+        return CommunityState(me: state.me, friends: friends,
+                              incoming: incoming, outgoing: outgoing,
+                              blocked: state.blocked, incomingRoomInvites: state.incomingRoomInvites)
+    }
+
+    func rollingBack(in state: CommunityState) -> CommunityState {
+        guard state.me.id == actorID else { return state }
+        if let blockedState = preservingBlock(in: state) { return blockedState }
+        let targetID = relationship.profile.id
+        return CommunityState(me: state.me,
+                              friends: state.friends.filter { $0.profile.id != targetID } + previousFriends,
+                              incoming: state.incoming.filter { $0.profile.id != targetID } + previousIncoming,
+                              outgoing: state.outgoing.filter { $0.profile.id != targetID } + previousOutgoing,
+                              blocked: state.blocked, incomingRoomInvites: state.incomingRoomInvites)
+    }
+
+    private func preservingBlock(in state: CommunityState) -> CommunityState? {
+        let targetID = relationship.profile.id
+        guard state.blocked.contains(where: { $0.profile.id == targetID }) else { return nil }
+        return CommunityState(me: state.me,
+                              friends: state.friends.filter { $0.profile.id != targetID },
+                              incoming: state.incoming.filter { $0.profile.id != targetID },
+                              outgoing: state.outgoing.filter { $0.profile.id != targetID },
+                              blocked: state.blocked, incomingRoomInvites: state.incomingRoomInvites)
+    }
+}
+
 struct CommunityView: View {
     @Environment(AppState.self) private var appState
+    @Environment(\.scenePhase) private var scenePhase
 
     @Binding var selectedTab: CommunityTab
     let dockRequest: CommunityDockRequest
@@ -182,6 +266,15 @@ struct CommunityView: View {
     @State private var resolvedRelationshipIDs: Set<String> = []
     @State private var resolvedRoomInviteIDs: Set<String> = []
     @State private var networkRefreshGeneration = 0
+    @State private var mutationGeneration = UUID()
+    @State private var optimisticRelationship: CommunityOptimisticRelationshipChange?
+    @State private var optimisticDeclinedInviteID: String?
+    @State private var realtimeRefreshTask: Task<Void, Never>?
+    @State private var realtimeRefreshID = UUID()
+    @State private var directoryRequestID: UUID?
+    @State private var realtimeRefreshRequested = false
+    @State private var realtimeDirectoryRefreshRequested = false
+    @State private var profileRefreshPending = false
     @State private var message = ""
     @State private var messageKind: AppToastKind = .success
     @State private var reportTarget: CommunityReportTarget?
@@ -189,6 +282,7 @@ struct CommunityView: View {
     @State private var unblockTarget: CommunityRelationship?
     @State private var profileRealtime = CommunityProfileRealtimeService()
     @State private var latestProfileRevisions: [String: Int] = [:]
+    @State private var profileSignalGenerations: [String: Int] = [:]
 
     var body: some View {
         PageChrome(
@@ -201,6 +295,7 @@ struct CommunityView: View {
         }
         .background(SpyTheme.black)
         .task {
+            let generation = mutationGeneration
             // The shell keeps the last Community dock selection. Re-entering
             // on Me therefore needs the same deferred transition as a cold
             // swipe before network.me has arrived.
@@ -210,24 +305,36 @@ struct CommunityView: View {
             if let initialProfileUserID {
                 await openProfile(initialProfileUserID, rememberingCurrent: false)
                 if !appState.shouldUsePreviewData {
-                    network = try? await appState.client.communityState()
+                    await loadInitialNetwork()
                 }
+                guard !Task.isCancelled, mutationGeneration == generation else { return }
                 isInitialLoading = false
                 didLoadInitialContent = true
             } else {
                 await loadInitialContent()
             }
+            guard !Task.isCancelled, mutationGeneration == generation else { return }
             startProfileRealtime()
             await completePendingSelfProfileTransitionIfPossible()
         }
-        .onDisappear {
-            profileRealtime.stop()
+        .onDisappear { stopProfileRealtime() }
+        .onChange(of: scenePhase) { _, phase in
+            if phase == .active { startProfileRealtime() }
+            else { stopProfileRealtime() }
+        }
+        .task(id: profileRefreshTaskKey) {
+            guard let scope = profileRefreshTaskKey else { return }
+            while !Task.isCancelled, profileRefreshTaskKey == scope {
+                do { try await Task.sleep(for: .seconds(60)) } catch { return }
+                guard !Task.isCancelled, profileRefreshTaskKey == scope else { return }
+                await refreshVisibleProfile()
+            }
         }
         .onChange(of: dockRequest.id) { _, _ in
             handleDockAction(dockRequest.tab)
         }
         .onChange(of: externalNetworkState) { _, state in
-            guard let state else { return }
+            guard let state, appState.shouldUsePreviewData || state.me.id == appState.user?.id else { return }
             if activeAction == nil {
                 retireResolvedMarkersConfirmed(by: state)
             }
@@ -239,6 +346,7 @@ struct CommunityView: View {
                 return
             }
             network = sanitizedState
+            reconcileActiveProfileRelationship()
         }
         .onChange(of: network) { _, state in
             if let state {
@@ -248,10 +356,42 @@ struct CommunityView: View {
         }
         .onChange(of: activeAction) { _, action in
             guard action == nil else { return }
+            if deferredExternalNetworkState != nil { reconcileNetworkAfterAction() }
+            if profileRefreshPending { Task { await refreshVisibleProfile() } }
             Task { await completePendingSelfProfileTransitionIfPossible() }
         }
-        .onChange(of: appState.user) { _, _ in
-            Task { await refreshProfilesAfterAccountChange() }
+        .onChange(of: appState.user?.id) { _, _ in
+            mutationGeneration = UUID()
+            networkRefreshGeneration += 1
+            activeAction = nil
+            actionFeedback = nil
+            optimisticRelationship = nil
+            optimisticDeclinedInviteID = nil
+            profileRefreshPending = false
+            deferredExternalNetworkState = nil
+            resolvedRelationshipIDs.removeAll()
+            resolvedRoomInviteIDs.removeAll()
+            profileCache.removeAll()
+            latestProfileRevisions.removeAll()
+            profileSignalGenerations.removeAll()
+            profileRequestState.invalidate()
+            isProfileLoading = false
+            activeProfile = nil
+            network = nil
+            directory = []
+            directoryRequestID = nil
+            isDirectoryLoading = false
+            profileRealtime.stop()
+            realtimeRefreshTask?.cancel()
+            realtimeRefreshTask = nil
+            realtimeRefreshRequested = false
+            realtimeDirectoryRefreshRequested = false
+            let generation = mutationGeneration
+            Task {
+                await refreshProfilesAfterAccountChange()
+                guard !Task.isCancelled, mutationGeneration == generation else { return }
+                startProfileRealtime()
+            }
         }
         .onChange(of: message) { _, newMessage in
             publishCommunityToast(newMessage)
@@ -348,6 +488,16 @@ struct CommunityView: View {
     @ViewBuilder
     private var sceneContent: some View {
         VStack(alignment: .leading, spacing: 16) {
+            if let feedback = actionFeedback, feedback.phase == .waiting {
+                HStack(spacing: 9) {
+                    SpySpinner(size: 14, accent: SpyTheme.amber)
+                    Text(feedback.waitingTitle)
+                        .font(SpyTheme.micro)
+                        .foregroundStyle(SpyTheme.amber)
+                }
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("community.pendingAction")
+            }
             if let activeProfile {
                 profileScene(activeProfile)
                     .transition(.opacity.combined(with: .move(edge: .trailing)))
@@ -687,16 +837,15 @@ struct CommunityView: View {
                 }
 
                 if let room = inviteRoom(for: detail) {
-                    Button {
-                        Task { await inviteToRoom(detail.profile, room: room) }
-                    } label: {
-                        commandLabel(
-                            localized(en: "INVITE TO ROOM \(room.code)", ru: "ПРИГЛАСИТЬ В КОМНАТУ \(room.code)", es: "INVITAR A SALA \(room.code)", uk: "ЗАПРОСИТИ ДО КІМНАТИ \(room.code)"),
-                            icon: "paperplane.fill"
-                        )
+                    communityActionButton(
+                        localized(en: "INVITE TO ROOM \(room.code)", ru: "ПРИГЛАСИТЬ В КОМНАТУ \(room.code)", es: "INVITAR A SALA \(room.code)", uk: "ЗАПРОСИТИ ДО КІМНАТИ \(room.code)"),
+                        icon: "paperplane.fill", color: SpyTheme.red, filled: true,
+                        feedbackID: "invite-\(detail.profile.id)",
+                        waitingTitle: localized(en: "SENDING INVITE...", ru: "ОТПРАВЛЯЕМ ПРИГЛАШЕНИЕ...", es: "ENVIANDO INVITACIÓN...", uk: "НАДСИЛАЄМО ЗАПРОШЕННЯ..."),
+                        successTitle: localized(en: "INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA", uk: "ЗАПРОШЕННЯ НАДІСЛАНО")
+                    ) {
+                        await inviteToRoom(detail.profile, room: room)
                     }
-                    .buttonStyle(SpyPrimaryCommandStyle())
-                    .disabled(activeAction != nil)
                 }
             }
         }
@@ -711,7 +860,10 @@ struct CommunityView: View {
                 localized(en: "ADD OPERATIVE", ru: "ДОБАВИТЬ В ДРУЗЬЯ", es: "AGREGAR OPERATIVO", uk: "ДОДАТИ ОПЕРАТИВНИКА"),
                 icon: "person.badge.plus",
                 color: SpyTheme.red,
-                filled: true
+                filled: true,
+                feedbackID: "friend-\(detail.profile.id)",
+                waitingTitle: localized(en: "SENDING REQUEST...", ru: "ОТПРАВЛЯЕМ ЗАПРОС...", es: "ENVIANDO SOLICITUD...", uk: "НАДСИЛАЄМО ЗАПИТ..."),
+                successTitle: localized(en: "REQUEST SENT", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA", uk: "ЗАПИТ НАДІСЛАНО")
             ) {
                 await sendFriendRequest(to: detail.profile.id)
             }
@@ -726,7 +878,10 @@ struct CommunityView: View {
                 communityActionButton(
                     localized(en: "REMOVE", ru: "УДАЛИТЬ", es: "ELIMINAR", uk: "ВИДАЛИТИ"),
                     icon: "person.badge.minus",
-                    color: SpyTheme.muted
+                    color: SpyTheme.muted,
+                    feedbackID: relationship.map { relationshipFeedbackID("remove_friend", $0.id) },
+                    waitingTitle: localized(en: "REMOVING...", ru: "УДАЛЯЕМ...", es: "ELIMINANDO...", uk: "ВИДАЛЯЄМО..."),
+                    successTitle: localized(en: "REMOVED", ru: "УДАЛЕНО", es: "ELIMINADO", uk: "ВИДАЛЕНО")
                 ) {
                     guard let relationship else { return }
                     await relationshipAction("remove_friend", relationship.id)
@@ -768,7 +923,10 @@ struct CommunityView: View {
                 communityActionButton(
                     localized(en: "CANCEL", ru: "ОТМЕНИТЬ", es: "CANCELAR", uk: "СКАСУВАТИ"),
                     icon: "xmark",
-                    color: SpyTheme.muted
+                    color: SpyTheme.muted,
+                    feedbackID: relationshipFeedbackID("cancel_request", relationship.id),
+                    waitingTitle: localized(en: "CANCELLING...", ru: "ОТМЕНЯЕМ...", es: "CANCELANDO...", uk: "СКАСОВУЄМО..."),
+                    successTitle: localized(en: "CANCELLED", ru: "ОТМЕНЕНО", es: "CANCELADO", uk: "СКАСОВАНО")
                 ) {
                     await relationshipAction("cancel_request", relationship.id)
                 }
@@ -1307,6 +1465,8 @@ struct CommunityView: View {
         guard activeAction == nil else { return false }
 
         networkRefreshGeneration += 1
+        profileRequestState.invalidate()
+        isProfileLoading = false
         activeAction = id
         withAnimation(.snappy(duration: 0.18)) {
             actionFeedback = CommunityActionFeedback(
@@ -1341,7 +1501,8 @@ struct CommunityView: View {
         appState.showToast(successMessage, kind: .success)
         HapticManager.shared.fire(.notification(.success))
         UIAccessibility.post(notification: .announcement, argument: feedback.successTitle)
-        try? await Task.sleep(for: .milliseconds(520))
+        // The toast owns the success display; it must not hold the next action
+        // or the visible list behind an artificial delay.
     }
 
     @MainActor
@@ -1357,6 +1518,7 @@ struct CommunityView: View {
     private func failActionFeedback(_ id: String, error: Error) {
         if isCancellation(error) {
             finishActionFeedback(id)
+            reconcileNetworkAfterAction()
             return
         }
 
@@ -1489,10 +1651,13 @@ struct CommunityView: View {
 
     private func loadInitialContent() async {
         guard !didLoadInitialContent else { return }
+        let generation = mutationGeneration
         isInitialLoading = true
         defer {
-            isInitialLoading = false
-            didLoadInitialContent = true
+            if mutationGeneration == generation {
+                isInitialLoading = false
+                didLoadInitialContent = true
+            }
         }
 
         if appState.shouldUsePreviewData {
@@ -1513,117 +1678,195 @@ struct CommunityView: View {
 
         // Render already-known actionable items immediately while the public
         // directory performs its independent network refresh.
-        if let externalNetworkState {
+        if let externalNetworkState, externalNetworkState.me.id == appState.user?.id {
             network = externalNetworkState
         }
 
-        do {
-            // Keep these reads sequential. Older deployed Community builds used
-            // a shared writer lease even for reads, so parallel startup calls
-            // could make one request fail with a transient 503 and discard both
-            // successful and failed results together.
-            directory = try await loadEntireDirectory()
-            nextDirectoryOffset = nil
-            directoryLoadFailed = false
-        } catch {
-            directoryLoadFailed = true
-            showError(error)
-        }
-
-        if let externalNetworkState {
-            network = externalNetworkState
-            return
-        }
-
-        do {
-            let loadedState = try await appState.client.communityState()
-            network = externalNetworkState ?? loadedState
-        } catch {
-            showError(error)
+        if SupabaseAppRuntime.isEnabled {
+            // Friends and invitations render as soon as their response arrives.
+            // The paginated public directory is an independent request.
+            async let directoryLoad: Void = loadDirectory(reset: true)
+            async let networkLoad: Void = loadInitialNetwork()
+            _ = await (directoryLoad, networkLoad)
+        } else {
+            await loadDirectory(reset: true)
+            await loadInitialNetwork()
         }
     }
 
-    private func loadEntireDirectory() async throws -> [PublicSpyProfile] {
-        var profiles: [PublicSpyProfile] = []
-        var offset = 0
-        repeat {
-            let page = try await appState.client.communityDirectory(offset: offset, limit: 60)
-            let known = Set(profiles.map(\.id))
-            profiles.append(contentsOf: page.profiles.filter { !known.contains($0.id) })
-            guard let nextOffset = page.nextOffset else { break }
-            offset = nextOffset
-        } while !Task.isCancelled
-        return profiles
+    private func loadInitialNetwork() async {
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
+        let refreshGeneration = networkRefreshGeneration
+        do {
+            let loadedState = try await appState.client.communityState()
+            guard !Task.isCancelled, appState.user?.id == actorID,
+                  mutationGeneration == generation, networkRefreshGeneration == refreshGeneration else { return }
+            if activeAction == nil {
+                network = sanitizedNetworkState(loadedState)
+            } else {
+                deferredExternalNetworkState = loadedState
+            }
+        } catch {
+            guard !Task.isCancelled, appState.user?.id == actorID else { return }
+            if network == nil { showError(error) }
+        }
     }
 
     @MainActor
     private func startProfileRealtime() {
-        guard let token = appState.client.currentAccessToken,
+        guard scenePhase == .active, let token = appState.client.currentAccessToken,
               let userID = appState.user?.id else { return }
         profileRealtime.onSignal = { signal in
             Task { await applyProfileSignal(signal) }
         }
-        profileRealtime.onCatchUp = {
-            Task {
-                let expectedAccount = appState.user?.id
-                let expectedProfile = activeProfile?.profile.id
-                do {
-                    let profiles = try await loadEntireDirectory()
-                    guard !Task.isCancelled, appState.user?.id == expectedAccount else { return }
-                    directory = profiles
-                    if SupabaseAppRuntime.isEnabled {
-                        if let expectedProfile {
-                            let detail = try await appState.client.communityProfile(userID: expectedProfile)
-                            guard !Task.isCancelled, appState.user?.id == expectedAccount else { return }
-                            profileCache[expectedProfile] = detail
-                            if activeProfile?.profile.id == expectedProfile { activeProfile = detail }
-                        }
-                        let state = try await appState.client.communityState()
-                        guard !Task.isCancelled, appState.user?.id == expectedAccount else { return }
-                        network = state
-                    }
-                } catch {
-                    guard appState.user?.id == expectedAccount else { return }
-                    showError(error)
+        profileRealtime.onNetworkChange = { scheduleRealtimeRefresh(reloadDirectory: false) }
+        profileRealtime.onCatchUp = { scheduleRealtimeRefresh(reloadDirectory: true) }
+        profileRealtime.start(appID: Base44Client.appID, token: token, userID: userID)
+    }
+
+    @MainActor
+    private func stopProfileRealtime() {
+        profileRealtime.stop()
+        realtimeRefreshID = UUID()
+        realtimeRefreshTask?.cancel()
+        realtimeRefreshTask = nil
+        realtimeRefreshRequested = false
+        realtimeDirectoryRefreshRequested = false
+    }
+
+    @MainActor
+    private func scheduleRealtimeRefresh(reloadDirectory: Bool) {
+        realtimeRefreshRequested = true
+        realtimeDirectoryRefreshRequested = realtimeDirectoryRefreshRequested || reloadDirectory
+        guard realtimeRefreshTask == nil else { return }
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
+        let requestID = UUID()
+        realtimeRefreshID = requestID
+        realtimeRefreshTask = Task { @MainActor in
+            defer {
+                if mutationGeneration == generation, realtimeRefreshID == requestID { realtimeRefreshTask = nil }
+            }
+            while realtimeRefreshRequested, !Task.isCancelled,
+                  appState.user?.id == actorID, mutationGeneration == generation {
+                realtimeRefreshRequested = false
+                let refreshDirectory = realtimeDirectoryRefreshRequested
+                realtimeDirectoryRefreshRequested = false
+                networkRefreshGeneration += 1
+                // Only the first page is needed after reconnect. Ordinary
+                // relationship events do not redownload the public directory.
+                if refreshDirectory, SupabaseAppRuntime.isEnabled {
+                    async let directoryLoad: Void = loadDirectory(reset: true)
+                    async let profileLoad: Void = refreshVisibleProfile()
+                    await refreshNetworkFromServer(generation: networkRefreshGeneration)
+                    _ = await (directoryLoad, profileLoad)
+                } else if refreshDirectory {
+                    await refreshNetworkFromServer(generation: networkRefreshGeneration)
+                    guard !Task.isCancelled, appState.user?.id == actorID,
+                          mutationGeneration == generation else { return }
+                    await loadDirectory(reset: true)
+                    guard !Task.isCancelled, appState.user?.id == actorID,
+                          mutationGeneration == generation else { return }
+                    await refreshVisibleProfile()
+                } else {
+                    await refreshNetworkFromServer(generation: networkRefreshGeneration)
                 }
             }
         }
-        profileRealtime.start(appID: Base44Client.appID, token: token, userID: userID)
+    }
+
+    private var profileRefreshTaskKey: String? {
+        guard SupabaseAppRuntime.isEnabled, !appState.shouldUsePreviewData,
+              scenePhase == .active, let actorID = appState.user?.id,
+              let profileID = activeProfile?.profile.id else { return nil }
+        return "\(actorID):\(profileID)"
+    }
+
+    /// Reconnect catches missed non-durable events. The visible-profile fallback
+    /// also renews the server's watcher lease without reloading the directory.
+    @MainActor
+    private func refreshVisibleProfile() async {
+        guard scenePhase == .active, !appState.shouldUsePreviewData,
+              let profileID = activeProfile?.profile.id else { return }
+        guard activeAction == nil else { profileRefreshPending = true; return }
+        profileRefreshPending = false
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
+        let requestID = profileRequestState.begin()
+        let signalGeneration = profileSignalGenerations[profileID] ?? 0
+        do {
+            let detail = try await appState.client.communityProfile(userID: profileID)
+            guard !Task.isCancelled, appState.user?.id == actorID, mutationGeneration == generation,
+                  activeProfile?.profile.id == profileID, profileRequestState.accepts(requestID) else { return }
+            guard profileRequestState.accepts(requestID, signalGeneration: signalGeneration,
+                                              currentSignalGeneration: profileSignalGenerations[profileID] ?? 0) else {
+                isProfileLoading = false
+                return
+            }
+            profileCache[profileID] = detail
+            activeProfile = detail
+            isProfileLoading = false
+            reconcileActiveProfileRelationship()
+            if let index = directory.firstIndex(where: { $0.id == profileID }) { directory[index] = detail.profile }
+        } catch {
+            guard !Task.isCancelled, appState.user?.id == actorID, mutationGeneration == generation,
+                  activeProfile?.profile.id == profileID, profileRequestState.accepts(requestID) else { return }
+            isProfileLoading = false
+            // Keep the current content visible; reconnect or the next visible
+            // profile fallback retries without turning a transient error into removal.
+        }
     }
 
     @MainActor
     private func applyProfileSignal(_ signal: CommunityProfileSignal) async {
         guard signal.revision > (latestProfileRevisions[signal.profileUserID] ?? -1) else { return }
         latestProfileRevisions[signal.profileUserID] = signal.revision
+        profileSignalGenerations[signal.profileUserID, default: 0] &+= 1
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
         do {
             let detail = try await appState.client.communityProfile(userID: signal.profileUserID)
+            guard !Task.isCancelled, appState.user?.id == actorID, mutationGeneration == generation,
+                  latestProfileRevisions[signal.profileUserID] == signal.revision else { return }
             profileCache[signal.profileUserID] = detail
             if let index = directory.firstIndex(where: { $0.id == signal.profileUserID }) {
                 directory[index] = detail.profile
-            } else {
+            } else if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
                 directory.append(detail.profile)
             }
             if activeProfile?.profile.id == signal.profileUserID {
                 activeProfile = detail
+                isProfileLoading = false
+                reconcileActiveProfileRelationship()
             }
             if network?.me.id == signal.profileUserID {
-                network = try await appState.client.communityState()
+                scheduleRealtimeRefresh(reloadDirectory: false)
             }
         } catch {
-            directory.removeAll { $0.id == signal.profileUserID }
-            profileCache[signal.profileUserID] = nil
+            guard appState.user?.id == actorID, mutationGeneration == generation,
+                  latestProfileRevisions[signal.profileUserID] == signal.revision else { return }
+            // A temporary read failure is not proof that the player disappeared.
+            latestProfileRevisions[signal.profileUserID] = nil
+            if let error = error as? Base44Error, error.statusCode == 404 {
+                directory.removeAll { $0.id == signal.profileUserID }
+                profileCache[signal.profileUserID] = nil
+            }
         }
     }
 
     @MainActor
     private func refreshProfilesAfterAccountChange() async {
-        guard didLoadInitialContent, !appState.shouldUsePreviewData else { return }
+        guard !appState.shouldUsePreviewData, appState.user != nil else { return }
 
         profileRequestState.invalidate()
         profileCache.removeAll()
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
 
         do {
             let refreshedState = try await appState.client.communityState()
+            guard !Task.isCancelled, appState.user?.id == actorID, mutationGeneration == generation else { return }
             network = sanitizedNetworkState(refreshedState)
             if selectedTab == .me {
                 activeProfile = nil
@@ -1631,16 +1874,25 @@ struct CommunityView: View {
                 await completePendingSelfProfileTransitionIfPossible()
             }
         } catch {
+            guard !Task.isCancelled, appState.user?.id == actorID, mutationGeneration == generation else { return }
             showError(error)
         }
 
+        guard !Task.isCancelled, appState.user?.id == actorID, mutationGeneration == generation else { return }
         await loadDirectory(reset: true)
+        guard !Task.isCancelled, mutationGeneration == generation else { return }
+        isInitialLoading = false
+        didLoadInitialContent = true
     }
 
     private func loadDirectory(reset: Bool, offset: Int = 0) async {
-        guard !isDirectoryLoading else { return }
+        guard reset || !isDirectoryLoading else { return }
+        let requestID = UUID()
+        let expectedQuery = query
+        let actorID = appState.user?.id
+        directoryRequestID = requestID
         isDirectoryLoading = true
-        defer { isDirectoryLoading = false }
+        defer { if directoryRequestID == requestID { isDirectoryLoading = false } }
 
         if appState.shouldUsePreviewData {
             let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
@@ -1657,7 +1909,9 @@ struct CommunityView: View {
         }
 
         do {
-            let page = try await appState.client.communityDirectory(query: query, offset: offset)
+            let page = try await appState.client.communityDirectory(query: expectedQuery, offset: offset)
+            guard !Task.isCancelled, appState.user?.id == actorID,
+                  directoryRequestID == requestID, query == expectedQuery else { return }
             if reset {
                 directory = page.profiles
                 directoryLoadFailed = false
@@ -1669,6 +1923,7 @@ struct CommunityView: View {
         } catch is CancellationError {
             return
         } catch {
+            guard appState.user?.id == actorID, directoryRequestID == requestID else { return }
             if reset { directoryLoadFailed = true }
             showError(error)
         }
@@ -1679,13 +1934,7 @@ struct CommunityView: View {
         message = ""
         directoryLoadFailed = false
         await loadDirectory(reset: true)
-        if network == nil {
-            do {
-                network = try await appState.client.communityState()
-            } catch {
-                showError(error)
-            }
-        }
+        if network == nil { await loadInitialNetwork() }
     }
 
     @MainActor
@@ -1700,6 +1949,9 @@ struct CommunityView: View {
         }
 
         let requestID = profileRequestState.begin()
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
+        let signalGeneration = profileSignalGenerations[userID] ?? 0
         commentDraft = ""
 
         if let cached = profileCache[userID] {
@@ -1720,12 +1972,19 @@ struct CommunityView: View {
 
         do {
             let detail = try await appState.client.communityProfile(userID: userID)
-            guard profileRequestState.accepts(requestID), !Task.isCancelled else { return }
+            guard profileRequestState.accepts(requestID), !Task.isCancelled,
+                  appState.user?.id == actorID, mutationGeneration == generation else { return }
+            guard profileRequestState.accepts(requestID, signalGeneration: signalGeneration,
+                                              currentSignalGeneration: profileSignalGenerations[userID] ?? 0) else {
+                isProfileLoading = false
+                return
+            }
             profileCache[userID] = detail
             activeProfile = detail
             isProfileLoading = false
         } catch {
-            guard profileRequestState.accepts(requestID) else { return }
+            guard profileRequestState.accepts(requestID), appState.user?.id == actorID,
+                  mutationGeneration == generation else { return }
             isProfileLoading = false
             showError(error)
             if activeProfile == nil, profileHistory.isEmpty { selectedTab = .network }
@@ -1743,6 +2002,8 @@ struct CommunityView: View {
     }
 
     private func returnFromProfile() async {
+        profileRequestState.invalidate()
+        isProfileLoading = false
         commentDraft = ""
         if let previousID = profileHistory.popLast() {
             await openProfile(previousID, rememberingCurrent: false)
@@ -1754,154 +2015,106 @@ struct CommunityView: View {
         }
     }
 
-    private func refreshActiveProfile() async {
-        guard let userID = activeProfile?.profile.id else { return }
-        if appState.shouldUsePreviewData {
-            activeProfile = CommunityPreview.profile(userID: userID, viewerID: network?.me.id)
-            return
+    private func reconcileActiveProfileRelationship() {
+        guard let detail = activeProfile, let network else { return }
+        let record = (network.blocked + network.friends + network.incoming + network.outgoing)
+            .first { $0.profile.id == detail.profile.id }
+        let relationship = record.map {
+            CommunityRelationshipSummary(id: $0.id, status: $0.status, direction: $0.direction)
         }
-        activeProfile = try? await appState.client.communityProfile(userID: userID)
+        let updated = CommunityProfileDetail(
+            profile: detail.profile, isSelf: detail.isSelf, relationship: relationship,
+            friends: detail.isSelf ? network.friends.map(\.profile) : detail.friends,
+            comments: detail.comments
+        )
+        activeProfile = updated
+        profileCache[detail.profile.id] = updated
     }
 
     private func sendFriendRequest(to userID: String) async {
-        guard activeAction == nil else { return }
-        activeAction = "friend-\(userID)"
-        defer { activeAction = nil }
-
-        if appState.shouldUsePreviewData {
-            message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA", uk: "ЗАПИТ НАДІСЛАНО")
-            messageKind = .success
-            HapticManager.shared.fire(.notification(.success))
-            return
-        }
-
+        let actionID = "friend-\(userID)"
+        guard activeAction == actionID else { return }
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
         do {
-            network = try await appState.client.sendFriendRequest(userID: userID)
-            await refreshActiveProfile()
-            message = localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA", uk: "ЗАПИТ НАДІСЛАНО")
-            messageKind = .success
-            HapticManager.shared.fire(.notification(.success))
+            if !appState.shouldUsePreviewData {
+                let state = try await appState.client.sendFriendRequest(userID: userID)
+                guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+                network = sanitizedNetworkState(state)
+                reconcileActiveProfileRelationship()
+            }
+            await showActionSuccess(actionID, message: localized(en: "REQUEST TRANSMITTED", ru: "ЗАПРОС ОТПРАВЛЕН", es: "SOLICITUD ENVIADA", uk: "ЗАПИТ НАДІСЛАНО"))
+            finishActionFeedback(actionID)
+            reconcileNetworkAfterAction()
         } catch {
-            showError(error)
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+            failActionFeedback(actionID, error: error)
         }
     }
 
     private func relationshipAction(_ action: String, _ friendshipID: String) async {
-        guard activeAction == nil else { return }
-        activeAction = friendshipID
-        defer { activeAction = nil }
-
-        if appState.shouldUsePreviewData {
-            HapticManager.shared.fire(.notification(.success))
-            return
-        }
-
-        do {
-            network = try await appState.client.communityRelationshipAction(action, friendshipID: friendshipID)
-            await refreshActiveProfile()
-            HapticManager.shared.fire(.notification(.success))
-        } catch {
-            showError(error)
-        }
+        await relationshipDecision(action, friendshipID)
     }
 
     private func relationshipDecision(_ action: String, _ friendshipID: String) async {
         let actionID = relationshipFeedbackID(action, friendshipID)
         guard activeAction == actionID else { return }
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
+        let change = network.flatMap {
+            CommunityOptimisticRelationshipChange(state: $0, action: action, friendshipID: friendshipID)
+        }
+        optimisticRelationship = change
+        if let change, let network {
+            withAnimation(.smooth(duration: 0.18)) { self.network = change.applying(to: network) }
+            reconcileActiveProfileRelationship()
+        }
 
         do {
             let updatedNetwork: CommunityState?
             if appState.shouldUsePreviewData {
-                try await Task.sleep(for: .milliseconds(760))
-                updatedNetwork = previewNetworkAfterRelationshipAction(action, friendshipID: friendshipID)
+                await Task.yield()
+                updatedNetwork = network
             } else {
-                updatedNetwork = try await appState.client.communityRelationshipAction(
-                    action,
-                    friendshipID: friendshipID
-                )
+                updatedNetwork = try await appState.client.communityRelationshipAction(action, friendshipID: friendshipID)
             }
-
-            let successMessage = action == "accept"
-                ? localized(en: "OPERATIVE ADDED", ru: "ОПЕРАТИВНИК ДОБАВЛЕН", es: "OPERATIVO AGREGADO", uk: "ОПЕРАТИВНИКА ДОДАНО")
-                : localized(en: "REQUEST DECLINED", ru: "ЗАПРОС ОТКЛОНЁН", es: "SOLICITUD RECHAZADA", uk: "ЗАПИТ ВІДХИЛЕНО")
-            await showActionSuccess(actionID, message: successMessage)
-
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+            optimisticRelationship = nil
             resolvedRelationshipIDs.insert(friendshipID)
-            if let updatedNetwork {
-                withAnimation(.smooth(duration: 0.24)) {
-                    network = sanitizedNetworkState(updatedNetwork)
-                }
+            if let updatedNetwork { network = sanitizedNetworkState(updatedNetwork) }
+            reconcileActiveProfileRelationship()
+            let successMessage: String
+            switch action {
+            case "accept":
+                successMessage = localized(en: "OPERATIVE ADDED", ru: "ОПЕРАТИВНИК ДОБАВЛЕН", es: "OPERATIVO AGREGADO", uk: "ОПЕРАТИВНИКА ДОДАНО")
+            case "remove_friend":
+                successMessage = localized(en: "OPERATIVE REMOVED", ru: "ДРУГ УДАЛЁН", es: "OPERATIVO ELIMINADO", uk: "ОПЕРАТИВНИКА ВИДАЛЕНО")
+            case "cancel_request":
+                successMessage = localized(en: "REQUEST CANCELLED", ru: "ЗАПРОС ОТМЕНЁН", es: "SOLICITUD CANCELADA", uk: "ЗАПИТ СКАСОВАНО")
+            default:
+                successMessage = localized(en: "REQUEST DECLINED", ru: "ЗАПРОС ОТКЛОНЁН", es: "SOLICITUD RECHAZADA", uk: "ЗАПИТ ВІДХИЛЕНО")
             }
-            updateActiveProfileAfterRelationshipAction(action, friendshipID: friendshipID)
+            await showActionSuccess(actionID, message: successMessage)
             finishActionFeedback(actionID)
             reconcileNetworkAfterAction()
         } catch {
-            if !appState.shouldUsePreviewData {
-                await refreshActiveProfile()
-            }
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+            optimisticRelationship = nil
+            if let change, let network { self.network = change.rollingBack(in: network) }
+            reconcileActiveProfileRelationship()
             failActionFeedback(actionID, error: error)
         }
-    }
-
-    private func previewNetworkAfterRelationshipAction(
-        _ action: String,
-        friendshipID: String
-    ) -> CommunityState? {
-        guard let current = network else { return nil }
-        guard let relationship = current.incoming.first(where: { $0.id == friendshipID }) else {
-            return current
-        }
-
-        var friends = current.friends
-        if action == "accept" {
-            friends.removeAll { $0.id == friendshipID }
-            friends.append(
-                CommunityRelationship(
-                    id: relationship.id,
-                    status: "accepted",
-                    direction: relationship.direction,
-                    profile: relationship.profile
-                )
-            )
-        }
-
-        return CommunityState(
-            me: current.me,
-            friends: friends,
-            incoming: current.incoming.filter { $0.id != friendshipID },
-            outgoing: current.outgoing,
-            blocked: current.blocked,
-            incomingRoomInvites: current.incomingRoomInvites
-        )
-    }
-
-    private func updateActiveProfileAfterRelationshipAction(
-        _ action: String,
-        friendshipID: String
-    ) {
-        guard let detail = activeProfile, detail.relationship?.id == friendshipID else { return }
-        let updatedRelationship: CommunityRelationshipSummary? = action == "accept"
-            ? CommunityRelationshipSummary(
-                id: friendshipID,
-                status: "accepted",
-                direction: detail.relationship?.direction ?? "incoming"
-            )
-            : nil
-        let updatedDetail = CommunityProfileDetail(
-            profile: detail.profile,
-            isSelf: detail.isSelf,
-            relationship: updatedRelationship,
-            friends: detail.friends,
-            comments: detail.comments
-        )
-        activeProfile = updatedDetail
-        profileCache[detail.profile.id] = updatedDetail
     }
 
     private func submitReport(_ target: CommunityReportTarget, reason: CommunityReportReason) async {
         guard activeAction == nil else { return }
         activeAction = "report-\(target.id)"
-        defer { activeAction = nil }
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
+        networkRefreshGeneration += 1
+        defer {
+            if appState.user?.id == actorID, mutationGeneration == generation { activeAction = nil }
+        }
 
         if appState.shouldUsePreviewData {
             message = localized(en: "REPORT RECEIVED", ru: "ЖАЛОБА ПРИНЯТА", es: "REPORTE RECIBIDO", uk: "СКАРГУ ПРИЙНЯТО")
@@ -1924,7 +2137,8 @@ struct CommunityView: View {
                     reason: reason
                 )
             }
-            guard acknowledgement.ok else { return }
+            guard appState.user?.id == actorID, mutationGeneration == generation,
+                  acknowledgement.ok else { return }
             message = localized(
                 en: "REPORT RECEIVED — MODERATION WILL REVIEW IT",
                 ru: "ЖАЛОБА ПРИНЯТА — МОДЕРАЦИЯ ПРОВЕРИТ ЕЕ",
@@ -1934,6 +2148,7 @@ struct CommunityView: View {
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
             showError(error)
         }
     }
@@ -1941,7 +2156,12 @@ struct CommunityView: View {
     private func blockOperative(_ profile: PublicSpyProfile) async {
         guard activeAction == nil else { return }
         activeAction = "block-\(profile.id)"
-        defer { activeAction = nil }
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
+        networkRefreshGeneration += 1
+        defer {
+            if appState.user?.id == actorID, mutationGeneration == generation { activeAction = nil }
+        }
 
         if appState.shouldUsePreviewData {
             activeProfile = nil
@@ -1953,7 +2173,9 @@ struct CommunityView: View {
         }
 
         do {
-            network = try await appState.client.blockCommunityUser(userID: profile.id)
+            let state = try await appState.client.blockCommunityUser(userID: profile.id)
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+            network = state
             activeProfile = nil
             profileHistory.removeAll()
             selectedTab = .network
@@ -1968,6 +2190,7 @@ struct CommunityView: View {
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
             showError(error)
         }
     }
@@ -1975,7 +2198,12 @@ struct CommunityView: View {
     private func unblockOperative(_ relationship: CommunityRelationship) async {
         guard activeAction == nil else { return }
         activeAction = "unblock-\(relationship.id)"
-        defer { activeAction = nil }
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
+        networkRefreshGeneration += 1
+        defer {
+            if appState.user?.id == actorID, mutationGeneration == generation { activeAction = nil }
+        }
 
         if appState.shouldUsePreviewData {
             message = localized(en: "OPERATIVE UNBLOCKED", ru: "ОПЕРАТИВНИК РАЗБЛОКИРОВАН", es: "OPERATIVO DESBLOQUEADO", uk: "ОПЕРАТИВНИКА РОЗБЛОКОВАНО")
@@ -1984,11 +2212,14 @@ struct CommunityView: View {
         }
 
         do {
-            network = try await appState.client.unblockCommunityUser(friendshipID: relationship.id)
+            let state = try await appState.client.unblockCommunityUser(friendshipID: relationship.id)
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+            network = state
             message = localized(en: "OPERATIVE UNBLOCKED", ru: "ОПЕРАТИВНИК РАЗБЛОКИРОВАН", es: "OPERATIVO DESBLOQUEADO", uk: "ОПЕРАТИВНИКА РОЗБЛОКОВАНО")
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
             showError(error)
         }
     }
@@ -1997,7 +2228,12 @@ struct CommunityView: View {
         let body = commentDraft.trimmingCharacters(in: .whitespacesAndNewlines)
         guard activeAction == nil, !body.isEmpty else { return }
         activeAction = "comment"
-        defer { activeAction = nil }
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
+        networkRefreshGeneration += 1
+        defer {
+            if appState.user?.id == actorID, mutationGeneration == generation { activeAction = nil }
+        }
 
         if appState.shouldUsePreviewData {
             commentDraft = ""
@@ -2007,12 +2243,15 @@ struct CommunityView: View {
         }
 
         do {
-            activeProfile = try await appState.client.addCommunityComment(userID: userID, comment: body)
+            let detail = try await appState.client.addCommunityComment(userID: userID, comment: body)
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+            activeProfile = detail
             commentDraft = ""
             message = localized(en: "FIELD NOTE POSTED", ru: "ЗАПИСЬ ОПУБЛИКОВАНА", es: "NOTA PUBLICADA", uk: "ДОПИС ОПУБЛІКОВАНО")
             messageKind = .success
             HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
             showError(error)
         }
     }
@@ -2020,44 +2259,51 @@ struct CommunityView: View {
     private func deleteComment(_ commentID: String) async {
         guard activeAction == nil else { return }
         activeAction = commentID
-        defer { activeAction = nil }
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
+        networkRefreshGeneration += 1
+        defer {
+            if appState.user?.id == actorID, mutationGeneration == generation { activeAction = nil }
+        }
 
         if appState.shouldUsePreviewData { return }
 
         do {
-            activeProfile = try await appState.client.deleteCommunityComment(commentID: commentID)
+            let detail = try await appState.client.deleteCommunityComment(commentID: commentID)
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+            activeProfile = detail
             HapticManager.shared.fire(.notification(.success))
         } catch {
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
             showError(error)
         }
     }
 
     private func inviteToRoom(_ profile: PublicSpyProfile, room: GameRoom) async {
-        guard activeAction == nil else { return }
-        activeAction = "invite-\(profile.id)"
-        defer { activeAction = nil }
-
-        if appState.shouldUsePreviewData {
-            message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA", uk: "ЗАПРОШЕННЯ ДО КІМНАТИ НАДІСЛАНО")
-            messageKind = .success
-            HapticManager.shared.fire(.notification(.success))
-            return
-        }
-
+        let actionID = "invite-\(profile.id)"
+        guard activeAction == actionID else { return }
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
         do {
-            let acknowledgement = try await appState.client.inviteCommunityOperative(userID: profile.id, room: room)
-            guard acknowledgement.ok else { return }
-            message = localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA", uk: "ЗАПРОШЕННЯ ДО КІМНАТИ НАДІСЛАНО")
-            messageKind = .success
-            HapticManager.shared.fire(.notification(.success))
+            if !appState.shouldUsePreviewData {
+                let acknowledgement = try await appState.client.inviteCommunityOperative(userID: profile.id, room: room)
+                guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+                guard acknowledgement.ok else { throw Base44Error(message: localized(en: "Could not send the invite", ru: "Не удалось отправить приглашение", es: "No se pudo enviar la invitación", uk: "Не вдалося надіслати запрошення")) }
+            }
+            await showActionSuccess(actionID, message: localized(en: "ROOM INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA", uk: "ЗАПРОШЕННЯ ДО КІМНАТИ НАДІСЛАНО"))
+            finishActionFeedback(actionID)
+            reconcileNetworkAfterAction()
         } catch {
-            showError(error)
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+            failActionFeedback(actionID, error: error)
         }
     }
 
     private func acceptRoomInvite(_ invite: CommunityRoomInvite) async {
         let actionID = roomInviteFeedbackID("accept", invite.id)
         guard activeAction == actionID else { return }
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
 
         if appState.shouldUsePreviewData {
             do {
@@ -2089,6 +2335,7 @@ struct CommunityView: View {
                     "accept_room_invite",
                     inviteID: invite.id
                 )
+                guard appState.user?.id == actorID, mutationGeneration == generation else { return }
                 acceptedState = result.state
                 roomCode = result.roomCode ?? invite.roomCode
             }
@@ -2097,7 +2344,10 @@ struct CommunityView: View {
                 localized(en: "JOINING...", ru: "ВХОДИМ...", es: "ENTRANDO...", uk: "ПРИЄДНУЄМОСЯ..."),
                 id: actionID
             )
-            guard await appState.joinRoom(code: roomCode) else {
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+            let joined = await appState.joinRoom(code: roomCode)
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+            guard joined else {
                 network = acceptedState
                 throw Base44Error(message: localized(
                     en: "Could not join the room",
@@ -2125,6 +2375,7 @@ struct CommunityView: View {
             finishActionFeedback(actionID)
             reconcileNetworkAfterAction()
         } catch {
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
             failActionFeedback(actionID, error: error)
         }
     }
@@ -2132,37 +2383,31 @@ struct CommunityView: View {
     private func declineRoomInvite(_ invite: CommunityRoomInvite) async {
         let actionID = roomInviteFeedbackID("decline", invite.id)
         guard activeAction == actionID else { return }
-
-        if appState.shouldUsePreviewData {
-            do {
-                try await Task.sleep(for: .milliseconds(760))
-                await showActionSuccess(
-                    actionID,
-                    message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACIÓN RECHAZADA", uk: "ЗАПРОШЕННЯ ВІДХИЛЕНО")
-                )
-                resolvedRoomInviteIDs.insert(invite.id)
-                network = networkRemovingRoomInvite(invite.id, from: network)
-                finishActionFeedback(actionID)
-            } catch {
-                failActionFeedback(actionID, error: error)
-            }
-            return
-        }
+        let actorID = appState.user?.id
+        let generation = mutationGeneration
+        optimisticDeclinedInviteID = invite.id
+        network = networkRemovingRoomInvite(invite.id, from: network)
 
         do {
-            let result = try await appState.client.communityRoomInviteAction("decline_room_invite", inviteID: invite.id)
-            Task { @MainActor in await appState.notificationInbox.refreshSummary() }
-            await showActionSuccess(
-                actionID,
-                message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACIÓN RECHAZADA", uk: "ЗАПРОШЕННЯ ВІДХИЛЕНО")
-            )
-            resolvedRoomInviteIDs.insert(invite.id)
-            withAnimation(.smooth(duration: 0.24)) {
+            if !appState.shouldUsePreviewData {
+                let result = try await appState.client.communityRoomInviteAction("decline_room_invite", inviteID: invite.id)
+                guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+                resolvedRoomInviteIDs.insert(invite.id)
                 network = sanitizedNetworkState(result.state)
+                Task { @MainActor in await appState.notificationInbox.refreshSummary() }
             }
+            optimisticDeclinedInviteID = nil
+            await showActionSuccess(actionID, message: localized(en: "INVITE DECLINED", ru: "ПРИГЛАШЕНИЕ ОТКЛОНЕНО", es: "INVITACIÓN RECHAZADA", uk: "ЗАПРОШЕННЯ ВІДХИЛЕНО"))
             finishActionFeedback(actionID)
             reconcileNetworkAfterAction()
         } catch {
+            guard appState.user?.id == actorID, mutationGeneration == generation else { return }
+            optimisticDeclinedInviteID = nil
+            if let current = network, !current.incomingRoomInvites.contains(where: { $0.id == invite.id }) {
+                network = CommunityState(me: current.me, friends: current.friends, incoming: current.incoming,
+                                         outgoing: current.outgoing, blocked: current.blocked,
+                                         incomingRoomInvites: current.incomingRoomInvites + [invite])
+            }
             failActionFeedback(actionID, error: error)
         }
     }
@@ -2183,40 +2428,46 @@ struct CommunityView: View {
     }
 
     private func sanitizedNetworkState(_ state: CommunityState) -> CommunityState {
-        CommunityState(
+        let state = optimisticRelationship?.applying(to: state) ?? state
+        return CommunityState(
             me: state.me,
             friends: state.friends,
             incoming: state.incoming.filter { !resolvedRelationshipIDs.contains($0.id) },
             outgoing: state.outgoing,
             blocked: state.blocked,
-            incomingRoomInvites: state.incomingRoomInvites.filter { !resolvedRoomInviteIDs.contains($0.id) }
+            incomingRoomInvites: state.incomingRoomInvites.filter {
+                !resolvedRoomInviteIDs.contains($0.id) && $0.id != optimisticDeclinedInviteID
+            }
         )
     }
 
     private func reconcileNetworkAfterAction() {
-        if let deferredExternalNetworkState, let network {
-            self.network = mergeNetworkState(
-                sanitizedNetworkState(deferredExternalNetworkState),
-                into: network
-            )
-        }
+        // A deferred snapshot may precede this mutation's commit. Merging it
+        // here could resurrect a removed friendship or a declined invitation.
         deferredExternalNetworkState = nil
         guard !appState.shouldUsePreviewData else { return }
         networkRefreshGeneration += 1
         let generation = networkRefreshGeneration
+        let actorID = appState.user?.id
+        let accountGeneration = mutationGeneration
         Task { @MainActor in
+            guard appState.user?.id == actorID, mutationGeneration == accountGeneration else { return }
             await refreshNetworkFromServer(generation: generation)
         }
     }
 
     @MainActor
     private func refreshNetworkFromServer(generation: Int) async {
+        let actorID = appState.user?.id
+        let accountGeneration = mutationGeneration
         do {
             let rawState = try await appState.client.communityState()
-            guard generation == networkRefreshGeneration else { return }
+            guard !Task.isCancelled, generation == networkRefreshGeneration,
+                  appState.user?.id == actorID, mutationGeneration == accountGeneration else { return }
             if activeAction == nil {
                 retireResolvedMarkersConfirmed(by: rawState)
                 network = sanitizedNetworkState(rawState)
+                reconcileActiveProfileRelationship()
             } else {
                 deferredExternalNetworkState = sanitizedNetworkState(rawState)
             }
@@ -2276,35 +2527,6 @@ struct CommunityView: View {
         )
         resolvedRelationshipIDs.formIntersection(stillIncomingRelationshipIDs)
         resolvedRoomInviteIDs.formIntersection(stillAcceptedRoomInviteIDs)
-    }
-
-    private func mergeNetworkState(
-        _ supplemental: CommunityState,
-        into primary: CommunityState
-    ) -> CommunityState {
-        let primaryRelationshipIDs = Set(
-            (primary.friends + primary.incoming + primary.outgoing + primary.blocked).map(\.id)
-        )
-        let primaryRoomInviteIDs = Set(primary.incomingRoomInvites.map(\.id))
-
-        return CommunityState(
-            me: primary.me,
-            friends: primary.friends + supplemental.friends.filter {
-                !primaryRelationshipIDs.contains($0.id)
-            },
-            incoming: primary.incoming + supplemental.incoming.filter {
-                !primaryRelationshipIDs.contains($0.id)
-            },
-            outgoing: primary.outgoing + supplemental.outgoing.filter {
-                !primaryRelationshipIDs.contains($0.id)
-            },
-            blocked: primary.blocked + supplemental.blocked.filter {
-                !primaryRelationshipIDs.contains($0.id)
-            },
-            incomingRoomInvites: primary.incomingRoomInvites + supplemental.incomingRoomInvites.filter {
-                !primaryRoomInviteIDs.contains($0.id)
-            }
-        )
     }
 
     private func persistPendingRoomInviteCleanup(_ inviteID: String, userID: String) {

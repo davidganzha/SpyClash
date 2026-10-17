@@ -10,7 +10,7 @@ configs:
   SupabaseRelease: release
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 180
+    CURRENT_PROJECT_VERSION: 181
     MARKETING_VERSION: 1.0.3
     SWIFT_VERSION: 6.0
 packages:
@@ -270,11 +270,13 @@ targets:
       - path: SpyClashSupabaseStagingTests
         excludes:
           - Support
+      - path: SpyClashTests/CommunityResponsivenessTests.swift
     dependencies:
       - target: SpyClashSupabaseStaging
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.spyclash.ios.supabasetest.stagingtests
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SPYCLASH_SUPABASE_STAGING_TESTS"
         GENERATE_INFOPLIST_FILE: true
         TARGETED_DEVICE_FAMILY: 1
   SpyClashSupabaseTests:
