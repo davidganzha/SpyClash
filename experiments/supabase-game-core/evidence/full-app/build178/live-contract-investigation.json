@@ -1,0 +1,62 @@
+{
+  "checkedAt": "2026-10-17T18:01:17.594005+00:00",
+  "method": "Base44 CLI exec script performs unauthenticated HTTP fetch only; no provider account or session created",
+  "appID": "69a0e57fa939f578082f8091",
+  "routes": [
+    {
+      "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/checkSubscription",
+      "status": 200,
+      "contentType": "application/json",
+      "jsonKeys": [
+        "active"
+      ]
+    },
+    {
+      "url": "https://spyclash.com/functions/checkSubscription",
+      "status": 200,
+      "contentType": "application/json",
+      "jsonKeys": [
+        "active"
+      ]
+    },
+    {
+      "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/checkSubscription",
+      "status": 200,
+      "contentType": "application/json",
+      "jsonKeys": [
+        "active"
+      ]
+    }
+  ],
+  "expectedFromPulledSource": {
+    "unauthenticatedStatus": 401,
+    "authenticatedRequiredFields": [
+      "active",
+      "tier",
+      "protocol",
+      "status",
+      "providers",
+      "benefits",
+      "expires_at",
+      "apple_purchase_enabled"
+    ]
+  },
+  "phoneCorrelation": {
+    "reportedBuild": "176",
+    "screenshotLocalTime": "2026-10-17 18:49 Europe/London",
+    "supabaseFunction": "app-services",
+    "version": 7,
+    "observed502UTC": [
+      "2026-10-17T17:49:24.102000Z",
+      "2026-10-17T17:49:27.487000Z",
+      "2026-10-17T17:49:31.047000Z",
+      "2026-10-17T17:49:56.549000Z"
+    ]
+  },
+  "limitations": [
+    "Probe did not supply the affected account credential. Authenticated membership reconciliation and purchase preparation can mutate canonical records and were not run.",
+    "Live endpoint contract differs from pulled source. Source hash readback alone cannot prove runtime repair.",
+    "HTTP502 timestamps correlate with screenshot but logs contain no membership action or request identity tying them definitively to this account."
+  ],
+  "remoteMutations": []
+}

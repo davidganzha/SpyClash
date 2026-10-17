@@ -14,6 +14,7 @@ final class MembershipStore {
     private(set) var snapshot: MembershipSnapshot?
     private(set) var isLoading = false
     private(set) var errorMessage: String?
+    private(set) var refreshFailure: MembershipRefreshFailure?
     private(set) var scope = MembershipScope(userID: nil, accessToken: nil)
     private(set) var isPreview = false
     private(set) var revision = 0
@@ -71,6 +72,7 @@ final class MembershipStore {
         isPreview = preview != nil
         isLoading = false
         errorMessage = nil
+        refreshFailure = nil
         revision &+= 1
         evaluationDate = now()
         scheduleExpiry()
@@ -91,6 +93,7 @@ final class MembershipStore {
         if let refreshTask { task = refreshTask }
         else {
             isLoading = true
+            refreshFailure = nil
             refreshID = UUID()
             task = Task { try await client.checkSubscription() }
             refreshTask = task
@@ -109,6 +112,7 @@ final class MembershipStore {
             if shouldCelebrate { unlockPresentationID = UUID() }
             if !next.grantsAccess(at: now()) { unlockPresentationID = nil }
             errorMessage = nil
+            refreshFailure = nil
             isLoading = false
             refreshTask = nil
             revision &+= 1
@@ -123,7 +127,12 @@ final class MembershipStore {
             refreshTask = nil
             // Keep only the last verified snapshot; its expiry is still enforced.
             // An outage never changes unknown access to FREE or enables checkout.
-            if !(error is CancellationError) { errorMessage = error.localizedDescription }
+            if !(error is CancellationError) {
+                errorMessage = error.localizedDescription
+                refreshFailure = MembershipRefreshFailure.capture(error)
+            } else {
+                refreshFailure = nil
+            }
             revision &+= 1
             return false
         }

@@ -1403,6 +1403,7 @@ final class AppState: NSObject {
         didSet {
             let previousUserID = oldValue?.id
             let accountChanged = previousUserID != user?.id
+            if accountChanged { appleHandoffFailure = nil }
             bindMembershipAccount()
             if SupabaseTestEnvironment.isEnabled { return }
             if accountChanged {
@@ -1449,9 +1450,11 @@ final class AppState: NSObject {
     private(set) var isApplicationActive = false
     private(set) var isAppleAuthorizationPending = false
     private var appleAuthorizationRequestID: UUID?
+    private(set) var appleHandoffFailure: AppleNativeHandoffError?
     var authPhase: AuthPhase = .email
     var authError: String? {
         didSet {
+            appleHandoffFailure = nil
             guard authError != oldValue, let authError else { return }
             showToast(authError, kind: .error)
         }
@@ -3674,9 +3677,14 @@ final class AppState: NSObject {
             authHomeRevealPhase = .idle
             if !(error is CancellationError) {
                 authError = error.localizedDescription
+                appleHandoffFailure = error as? AppleNativeHandoffError
                 HapticManager.shared.fire(.notification(.error))
             }
         }
+    }
+
+    func dismissAppleHandoffFailure() {
+        appleHandoffFailure = nil
     }
 
     func cancelAppleSignInRequest() {

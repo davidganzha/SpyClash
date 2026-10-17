@@ -1,0 +1,36 @@
+{
+  "checkedAt": "2026-10-17T18:01:17.594514+00:00",
+  "version": "1.0.3 (178)",
+  "configuration": "Debug",
+  "scheme": "SpyClash",
+  "selectedSuites": [
+    "AppleNativeHandoffTests",
+    "AppleAuthenticationOwnershipTests",
+    "AuthenticationFlowTests",
+    "WebAuthenticationCoordinatorTests",
+    "MembershipTests"
+  ],
+  "passed": 111,
+  "failed": 0,
+  "skipped": 0,
+  "xcresultPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-17T17-58-04-948Z_pid55568_1a0c296e.xcresult",
+  "googleWebTests": {
+    "passed": 66,
+    "failed": 0,
+    "callbackSourceUnchanged": true
+  },
+  "independentReviews": [
+    "Apple alert reviewed by membership agent: no blocking findings",
+    "Membership failure diagnostics reviewed by Apple agent: no actionable introduced issue"
+  ],
+  "limitations": [
+    "Local fixture tests do not prove live Apple authentication, real StoreKit purchase, or physical-device UI acceptance."
+  ],
+  "renderedAlertTest": {
+    "passed": 1,
+    "failed": 0,
+    "xcresultPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-17T18-03-33-583Z_pid55568_558f487b.xcresult",
+    "screenshot": "apple-support-alert.png",
+    "visualReview": "Full synthetic support identifier and Copy support code / OK buttons visible; alert survives toast expiry. This is a local synthetic error, not a real Apple login failure."
+  }
+}

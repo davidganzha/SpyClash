@@ -64,6 +64,7 @@ struct StoreKitOperationFailure: Error, Equatable, Sendable {
 
     private static func errorCode(_ error: any Error, depth: Int) -> String {
         guard depth < 3 else { return "NESTED" }
+        if let membership = error as? MembershipRefreshFailure { return membership.supportReason }
         if let verification = error as? VerificationResult<Transaction>.VerificationError {
             switch verification {
             case .revokedCertificate: return "CERT_REVOKED"

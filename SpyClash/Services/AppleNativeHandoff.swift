@@ -25,6 +25,15 @@ enum AppleNativeHandoffError: Error, Equatable, LocalizedError, Sendable {
         .diagnosed(supportCode, diagnostic)
     }
 
+    /// The only value copied by the failure UI: fixed categories and bounded
+    /// numbers, never a URL, credential or arbitrary server message.
+    var diagnosticIdentifier: String {
+        let suffix: String
+        if case .diagnosed(_, let diagnostic) = self { suffix = diagnostic.supportSuffix }
+        else { suffix = "" }
+        return "SCA177-\(supportCode.rawValue)\(suffix)"
+    }
+
     var errorDescription: String? {
         let message: String = switch supportCode {
         case .cancelled: "Apple sign-in was cancelled."
@@ -33,10 +42,7 @@ enum AppleNativeHandoffError: Error, Equatable, LocalizedError, Sendable {
         case .providerRejected: "Apple sign-in could not be completed. Please try again."
         default: "Apple sign-in returned an invalid response. Please try again."
         }
-        let suffix: String
-        if case .diagnosed(_, let diagnostic) = self { suffix = diagnostic.supportSuffix }
-        else { suffix = "" }
-        return "[SCA177-\(supportCode.rawValue)\(suffix)]\n\(message)"
+        return "[\(diagnosticIdentifier)]\n\(message)"
     }
 }
 

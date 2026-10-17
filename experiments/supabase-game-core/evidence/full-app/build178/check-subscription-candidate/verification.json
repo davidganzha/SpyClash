@@ -1,0 +1,17 @@
+{
+  "checked_on": "2026-10-17",
+  "runtime_source_files": 8,
+  "runtime_source_bytes": 78239,
+  "source_integrity": "all eight SHA256 hashes and lengths match fresh pull",
+  "package_scope": "checkSubscription only",
+  "actual_handler_test_steps_passed": 16,
+  "actual_handler_test_steps_failed": 0,
+  "runtime_typecheck": "passed with real npm SDK/Stripe types",
+  "credential_literal_scan": "no private-key, JWT, or Stripe-secret literals found",
+  "network_permissions_granted_to_tests": false,
+  "environment_permissions_granted_to_tests": false,
+  "rebuild_round_trip": "all runtime/config bytes identical",
+  "production_deployed": false,
+  "authenticated_live_billing_probed": false,
+  "physical_limitless_retest_passed": false
+}

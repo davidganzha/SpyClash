@@ -1,0 +1,945 @@
+const ENTITY_PAGE_SIZE = 100;
+const LIFECYCLE_ATTEMPTS = 6;
+const LEASE_CLEANUP_ATTEMPTS = 3;
+const CLOCK_SKEW_MILLISECONDS = 5_000;
+const DUPLICATE_CLEANUP_LEASE_UNTIL = "9999-12-31T23:59:59.999Z";
+
+// Must exceed the maximum runtime of one backend invocation. Every caller also
+// reasserts the exact token immediately at its persistence boundary.
+export const BILLING_IDENTITY_LEASE_MILLISECONDS = 10 * 60 * 1_000;
+
+type LifecycleRecord = {
+  id?: string;
+  subject_key?: string;
+  state?: string;
+  lease_until?: string;
+  lease_token?: string;
+  revision?: string;
+  created_date?: string;
+  updated_date?: string;
+};
+
+export type BillingIdentityLease = {
+  recordID: string;
+  subjectKey: string;
+  state: "active" | "deleting";
+  leaseToken: string;
+  leaseUntil: string;
+  revision: string;
+};
+
+export type BillingIdentityLifecycleErrorCode =
+  | "incomplete_state"
+  | "user_missing"
+  | "deletion_in_progress"
+  | "active_lease"
+  | "duplicate_records"
+  | "cas_contention"
+  | "ambiguous";
+
+export class BillingIdentityLifecycleError extends Error {
+  public readonly retryable: boolean;
+
+  constructor(
+    public readonly code: BillingIdentityLifecycleErrorCode,
+    message: string,
+  ) {
+    super(message);
+    this.name = "BillingIdentityLifecycleError";
+    this.retryable = code === "active_lease" || code === "cas_contention";
+  }
+}
+
+function clean(value: unknown): string {
+  return String(value ?? "").trim();
+}
+
+function hex(bytes: ArrayBuffer): string {
+  return Array.from(new Uint8Array(bytes))
+    .map((byte) => byte.toString(16).padStart(2, "0"))
+    .join("");
+}
+
+export async function billingIdentitySubjectKey(
+  userIDValue: unknown,
+): Promise<string> {
+  const userID = clean(userIDValue);
+  if (!userID) {
+    throw new BillingIdentityLifecycleError(
+      "incomplete_state",
+      "A stable user id is required for lifecycle coordination.",
+    );
+  }
+  const digest = await crypto.subtle.digest(
+    "SHA-256",
+    new TextEncoder().encode(`spyclash-billing-lifecycle:${userID}`),
+  );
+  return `billing:${hex(digest).slice(0, 40)}`;
+}
+
+function lifecycleState(value: unknown): "active" | "deleting" {
+  return clean(value) === "deleting" ? "deleting" : "active";
+}
+
+function exactRevisionFilter(record: LifecycleRecord) {
+  const id = clean(record.id);
+  const subjectKey = clean(record.subject_key);
+  if (!id || !subjectKey) {
+    throw new BillingIdentityLifecycleError(
+      "incomplete_state",
+      "The billing lifecycle row has no stable identity.",
+    );
+  }
+  const revision = clean(record.revision);
+  if (revision) return { id, subject_key: subjectKey, revision };
+  const updatedDate = clean(record.updated_date);
+  if (updatedDate) {
+    return {
+      id,
+      subject_key: subjectKey,
+      updated_date: updatedDate,
+      // A legacy row has no usable revision yet. The first writer installs
+      // one, which must invalidate even a delayed CAS sharing its timestamp.
+      revision: record.revision === undefined
+        ? { $exists: false }
+        : record.revision,
+    };
+  }
+  throw new BillingIdentityLifecycleError(
+    "incomplete_state",
+    "The billing lifecycle row has no CAS revision.",
+  );
+}
+
+async function allMatchingRecords<T>(
+  store: any,
+  filter: Record<string, unknown>,
+): Promise<T[]> {
+  const records: T[] = [];
+  for (let skip = 0;; skip += ENTITY_PAGE_SIZE) {
+    const page: T[] = await store.filter(
+      filter,
+      "created_date",
+      ENTITY_PAGE_SIZE,
+      skip,
+    ) || [];
+    records.push(...page);
+    if (page.length < ENTITY_PAGE_SIZE) return records;
+  }
+}
+
+async function lifecycleRows(
+  store: any,
+  subjectKey: string,
+): Promise<LifecycleRecord[]> {
+  return await allMatchingRecords<LifecycleRecord>(store, {
+    subject_key: subjectKey,
+  });
+}
+
+function canonicalRecord(records: readonly LifecycleRecord[]): LifecycleRecord {
+  return [...records].sort((left, right) =>
+    clean(left.created_date).localeCompare(clean(right.created_date)) ||
+    clean(left.id).localeCompare(clean(right.id))
+  )[0];
+}
+
+export function isBillingIdentityLeaseActive(
+  leaseUntilValue: unknown,
+  now = new Date(),
+): boolean {
+  const leaseUntil = Date.parse(clean(leaseUntilValue));
+  return Number.isFinite(leaseUntil) &&
+    leaseUntil > now.getTime() + CLOCK_SKEW_MILLISECONDS;
+}
+
+function isInactiveInitializationRecord(
+  record: LifecycleRecord,
+  now: Date,
+): boolean {
+  const revision = clean(record.revision);
+  const leaseUntil = Date.parse(clean(record.lease_until));
+  return clean(record.state) === "active" &&
+    Number.isFinite(leaseUntil) &&
+    !isBillingIdentityLeaseActive(record.lease_until, now) &&
+    Boolean(revision) &&
+    clean(record.lease_token) === `initialized:${revision}`;
+}
+
+function isActiveWriterRecord(record: LifecycleRecord, now: Date): boolean {
+  return lifecycleState(record.state) === "active" &&
+    isBillingIdentityLeaseActive(record.lease_until, now) &&
+    clean(record.lease_token).startsWith("active:");
+}
+
+function isDuplicateCleanupRecord(record: LifecycleRecord): boolean {
+  const revision = clean(record.revision);
+  return clean(record.state) === "deleting" && Boolean(revision) &&
+    clean(record.lease_token) === `duplicate-cleanup:${revision}` &&
+    clean(record.lease_until) === DUPLICATE_CLEANUP_LEASE_UNTIL;
+}
+
+function sameDuplicateCleanupRecord(
+  left: LifecycleRecord,
+  right: LifecycleRecord,
+): boolean {
+  return clean(left.id) === clean(right.id) &&
+    clean(left.subject_key) === clean(right.subject_key) &&
+    clean(left.state) === clean(right.state) &&
+    clean(left.lease_token) === clean(right.lease_token) &&
+    clean(left.lease_until) === clean(right.lease_until) &&
+    clean(left.revision) === clean(right.revision) &&
+    isDuplicateCleanupRecord(left) && isDuplicateCleanupRecord(right);
+}
+
+async function exactLifecycleRecord(
+  store: any,
+  id: string,
+  subjectKey: string,
+): Promise<LifecycleRecord | undefined> {
+  const records = await allMatchingRecords<LifecycleRecord>(store, {
+    id,
+    subject_key: subjectKey,
+  });
+  if (records.length > 1) {
+    throw new BillingIdentityLifecycleError(
+      "ambiguous",
+      "Billing lifecycle cleanup identity is ambiguous.",
+    );
+  }
+  return records[0];
+}
+
+async function quarantineDuplicateInitializationRecord(
+  store: any,
+  record: LifecycleRecord,
+  subjectKey: string,
+  now: Date,
+  randomUUID: () => string,
+): Promise<LifecycleRecord | undefined> {
+  const id = clean(record.id);
+  const revision = clean(record.revision);
+  const leaseToken = clean(record.lease_token);
+  const leaseUntil = clean(record.lease_until);
+  if (
+    !id || clean(record.subject_key) !== subjectKey ||
+    !isInactiveInitializationRecord(record, now) ||
+    leaseToken !== `initialized:${revision}`
+  ) {
+    throw new BillingIdentityLifecycleError(
+      "duplicate_records",
+      "A duplicate lifecycle row changed before cleanup quarantine.",
+    );
+  }
+  const cleanupRevision = randomUUID();
+  const quarantined: LifecycleRecord = {
+    ...record,
+    state: "deleting",
+    lease_token: `duplicate-cleanup:${cleanupRevision}`,
+    lease_until: DUPLICATE_CLEANUP_LEASE_UNTIL,
+    revision: cleanupRevision,
+  };
+  let result: any;
+  try {
+    result = await store.updateMany(
+      {
+        id,
+        subject_key: subjectKey,
+        state: "active",
+        lease_token: leaseToken,
+        lease_until: leaseUntil,
+        revision,
+      },
+      {
+        $set: {
+          state: quarantined.state,
+          lease_token: quarantined.lease_token,
+          lease_until: quarantined.lease_until,
+          revision: quarantined.revision,
+        },
+      },
+    );
+  } catch {
+    try {
+      const current = await exactLifecycleRecord(store, id, subjectKey);
+      if (!current) return undefined;
+      if (isDuplicateCleanupRecord(current)) return current;
+    } catch {
+      // Unknown quarantine is fail-closed and remains non-destructive.
+    }
+    throw new BillingIdentityLifecycleError(
+      "ambiguous",
+      "Duplicate lifecycle quarantine could not be reconciled.",
+    );
+  }
+  if (Number(result?.updated) === 1) return quarantined;
+  try {
+    const current = await exactLifecycleRecord(store, id, subjectKey);
+    if (!current) return undefined;
+    if (isDuplicateCleanupRecord(current)) return current;
+  } catch (error) {
+    if (error instanceof BillingIdentityLifecycleError) throw error;
+    throw new BillingIdentityLifecycleError(
+      "ambiguous",
+      "Duplicate lifecycle quarantine could not be reconciled.",
+    );
+  }
+  throw new BillingIdentityLifecycleError(
+    "duplicate_records",
+    "A duplicate lifecycle row changed before cleanup quarantine.",
+  );
+}
+
+async function deleteDuplicateCleanupRecord(
+  store: any,
+  record: LifecycleRecord,
+  subjectKey: string,
+): Promise<void> {
+  const id = clean(record.id);
+  if (
+    !id || clean(record.subject_key) !== subjectKey ||
+    !isDuplicateCleanupRecord(record)
+  ) {
+    throw new BillingIdentityLifecycleError(
+      "duplicate_records",
+      "A duplicate lifecycle row was not safely quarantined.",
+    );
+  }
+  let expected = record;
+  for (let attempt = 0; attempt < LIFECYCLE_ATTEMPTS; attempt += 1) {
+    try {
+      await store.delete(id);
+    } catch {
+      // A delete response may be lost after the quarantine was removed.
+    }
+    try {
+      const current = await exactLifecycleRecord(store, id, subjectKey);
+      if (!current) return;
+      if (!sameDuplicateCleanupRecord(current, expected)) {
+        throw new BillingIdentityLifecycleError(
+          "duplicate_records",
+          "A quarantined lifecycle row changed before cleanup.",
+        );
+      }
+      expected = current;
+    } catch (error) {
+      if (error instanceof BillingIdentityLifecycleError) throw error;
+      if (attempt === LIFECYCLE_ATTEMPTS - 1) break;
+    }
+  }
+  throw new BillingIdentityLifecycleError(
+    "ambiguous",
+    "Duplicate billing lifecycle cleanup could not be reconciled.",
+  );
+}
+
+async function convergeDuplicateInitializationRecords(
+  store: any,
+  records: readonly LifecycleRecord[],
+  subjectKey: string,
+  now: Date,
+  randomUUID: () => string = () => crypto.randomUUID(),
+): Promise<void> {
+  const cleanupRecords = records.filter(isDuplicateCleanupRecord);
+  const ordinaryRecords = records.filter((record) =>
+    !isDuplicateCleanupRecord(record)
+  );
+  // A previous response-lost cleanup is safe to resume before evaluating real
+  // deletion markers. Old deployed copies see the far-future deleting lease
+  // and cannot promote it while this bounded delete is retried.
+  for (const record of cleanupRecords) {
+    await deleteDuplicateCleanupRecord(store, record, subjectKey);
+  }
+  if (
+    ordinaryRecords.some((record) =>
+      !["active", "deleting"].includes(clean(record.state)) ||
+      (clean(record.lease_token) ===
+          `initialized:${clean(record.revision)}` &&
+        !isInactiveInitializationRecord(record, now))
+    )
+  ) {
+    throw new BillingIdentityLifecycleError(
+      "duplicate_records",
+      "Conflicting billing lifecycle rows require service-role repair.",
+    );
+  }
+  if (
+    ordinaryRecords.some((record) =>
+      lifecycleState(record.state) === "deleting"
+    )
+  ) {
+    throw new BillingIdentityLifecycleError(
+      "duplicate_records",
+      "Conflicting billing lifecycle rows require service-role repair.",
+    );
+  }
+
+  const activeRecords = ordinaryRecords.filter((record) =>
+    isBillingIdentityLeaseActive(record.lease_until, now)
+  );
+  if (
+    activeRecords.length > 1 ||
+    (activeRecords.length === 1 &&
+      !isActiveWriterRecord(activeRecords[0], now))
+  ) {
+    throw new BillingIdentityLifecycleError(
+      "duplicate_records",
+      "Conflicting billing lifecycle rows require service-role repair.",
+    );
+  }
+
+  const establishedRecords = ordinaryRecords.filter((record) =>
+    !isInactiveInitializationRecord(record, now)
+  );
+  if (establishedRecords.length > 1) {
+    throw new BillingIdentityLifecycleError(
+      "duplicate_records",
+      "Conflicting billing lifecycle rows require service-role repair.",
+    );
+  }
+
+  const canonical = ordinaryRecords.length
+    ? activeRecords[0] || establishedRecords[0] ||
+      canonicalRecord(ordinaryRecords)
+    : undefined;
+  if (canonical) {
+    for (const record of ordinaryRecords) {
+      if (clean(record.id) === clean(canonical.id)) continue;
+      if (!isInactiveInitializationRecord(record, now)) {
+        throw new BillingIdentityLifecycleError(
+          "duplicate_records",
+          "Conflicting billing lifecycle rows require service-role repair.",
+        );
+      }
+    }
+  }
+  for (const record of ordinaryRecords) {
+    if (canonical && clean(record.id) === clean(canonical.id)) continue;
+    const quarantined = await quarantineDuplicateInitializationRecord(
+      store,
+      record,
+      subjectKey,
+      now,
+      randomUUID,
+    );
+    if (quarantined) {
+      await deleteDuplicateCleanupRecord(store, quarantined, subjectKey);
+    }
+  }
+}
+
+async function ensureSingletonLifecycleRecord(
+  store: any,
+  subjectKey: string,
+  nowFactory: () => Date,
+  randomUUID: () => string,
+): Promise<LifecycleRecord> {
+  for (let attempt = 0; attempt < LIFECYCLE_ATTEMPTS; attempt += 1) {
+    const now = nowFactory();
+    const records = await lifecycleRows(store, subjectKey);
+    if (!records.length) {
+      const revision = randomUUID();
+      try {
+        await store.create({
+          subject_key: subjectKey,
+          state: "active",
+          lease_token: `initialized:${revision}`,
+          lease_until: now.toISOString(),
+          revision,
+        });
+      } catch {
+        try {
+          const created = await allMatchingRecords<LifecycleRecord>(store, {
+            subject_key: subjectKey,
+            revision,
+          });
+          if (created.length === 1) continue;
+        } catch {
+          // Creation may have applied. A later caller will converge it.
+        }
+        throw new BillingIdentityLifecycleError(
+          "ambiguous",
+          "Billing lifecycle initialization could not be reconciled.",
+        );
+      }
+      continue;
+    }
+    if (records.length === 1) {
+      if (isDuplicateCleanupRecord(records[0])) {
+        await deleteDuplicateCleanupRecord(store, records[0], subjectKey);
+        continue;
+      }
+      return records[0];
+    }
+
+    // A concurrent initializer can leave an inactive initialization row after
+    // another caller has already acquired the one real writer lease. Preserve
+    // that exact writer and remove only provable initialization artifacts.
+    // Multiple live leases or any deleting row remain fail-closed.
+    await convergeDuplicateInitializationRecords(
+      store,
+      records,
+      subjectKey,
+      now,
+      randomUUID,
+    );
+  }
+  throw new BillingIdentityLifecycleError(
+    "cas_contention",
+    "Billing lifecycle initialization did not stabilize.",
+  );
+}
+
+function candidateLease(
+  record: LifecycleRecord,
+  subjectKey: string,
+  state: "active" | "deleting",
+  now: Date,
+  randomUUID: () => string,
+): BillingIdentityLease {
+  const recordID = clean(record.id);
+  if (!recordID) {
+    throw new BillingIdentityLifecycleError(
+      "incomplete_state",
+      "The billing lifecycle row has no entity id.",
+    );
+  }
+  return {
+    recordID,
+    subjectKey,
+    state,
+    leaseToken: `${state}:${randomUUID()}`,
+    leaseUntil: new Date(
+      now.getTime() + BILLING_IDENTITY_LEASE_MILLISECONDS,
+    ).toISOString(),
+    revision: randomUUID(),
+  };
+}
+
+function leaseMatches(record: LifecycleRecord, lease: BillingIdentityLease) {
+  return clean(record.id) === lease.recordID &&
+    clean(record.subject_key) === lease.subjectKey &&
+    lifecycleState(record.state) === lease.state &&
+    clean(record.lease_token) === lease.leaseToken &&
+    clean(record.lease_until) === lease.leaseUntil &&
+    clean(record.revision) === lease.revision;
+}
+
+function recordNoLongerCarriesLease(
+  record: LifecycleRecord,
+  lease: BillingIdentityLease,
+): boolean {
+  return clean(record.id) === lease.recordID &&
+    clean(record.subject_key) === lease.subjectKey &&
+    (
+      lifecycleState(record.state) !== lease.state ||
+      clean(record.lease_token) !== lease.leaseToken ||
+      clean(record.lease_until) !== lease.leaseUntil
+    );
+}
+
+async function hasExactLease(
+  store: any,
+  lease: BillingIdentityLease,
+  now: Date,
+  randomUUID: () => string = () => crypto.randomUUID(),
+): Promise<boolean> {
+  for (let attempt = 0; attempt < LIFECYCLE_ATTEMPTS; attempt += 1) {
+    const records = await lifecycleRows(store, lease.subjectKey);
+    if (records.length <= 1) {
+      return Boolean(records[0] && leaseMatches(records[0], lease));
+    }
+    await convergeDuplicateInitializationRecords(
+      store,
+      records,
+      lease.subjectKey,
+      now,
+      randomUUID,
+    );
+  }
+  throw new BillingIdentityLifecycleError(
+    "cas_contention",
+    "Billing lifecycle lease reconciliation did not stabilize.",
+  );
+}
+
+function exactLeaseFilter(lease: BillingIdentityLease) {
+  return {
+    id: lease.recordID,
+    subject_key: lease.subjectKey,
+    state: lease.state,
+    lease_token: lease.leaseToken,
+    lease_until: lease.leaseUntil,
+    revision: lease.revision,
+  };
+}
+
+/** Only acquisition may use this: no caller has received permission to write. */
+async function abandonUnconfirmedLease(
+  store: any,
+  previous: LifecycleRecord,
+  candidate: BillingIdentityLease,
+  now: Date,
+  randomUUID: () => string,
+): Promise<void> {
+  const revision = randomUUID();
+  const previousFilter = exactRevisionFilter(previous);
+  const update = {
+    $set: {
+      // A retry of an existing deletion must keep its tombstone. Restoring
+      // active unconditionally would reopen writers after partial deletion.
+      state: lifecycleState(previous.state),
+      lease_token: `abandoned:${revision}`,
+      lease_until: now.toISOString(),
+      revision,
+    },
+  };
+  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+    for (const filter of [exactLeaseFilter(candidate), previousFilter]) {
+      try {
+        const result = await store.updateMany(filter, update);
+        if (result?.updated === 1) return;
+      } catch {
+        // Both updates are exact, idempotent fences. The original acquisition
+        // may still commit after a lost response: invalidating its previous
+        // revision also prevents that late commit, without an unsafe unlock.
+      }
+    }
+    try {
+      const record = await exactLifecycleRecord(
+        store,
+        candidate.recordID,
+        candidate.subjectKey,
+      );
+      if (!record) return; // updateMany cannot recreate a deleted row.
+      const stillPrevious = record.revision === previous.revision &&
+        (clean(previous.revision) || record.updated_date === previous.updated_date);
+      if (!leaseMatches(record, candidate) && !stillPrevious) return;
+    } catch {
+      // If storage stays unavailable, retain the protection and report that
+      // cleanup is unconfirmed. Never clear a row by subject/user alone.
+    }
+  }
+  throw new BillingIdentityLifecycleError(
+    "ambiguous",
+    "Unconfirmed billing lifecycle acquisition could not be cleared safely.",
+  );
+}
+
+async function acquireLease(
+  store: any,
+  userIDValue: unknown,
+  targetState: "active" | "deleting",
+  nowFactory: () => Date,
+  randomUUID: () => string,
+  allowDeletingTakeover = true,
+): Promise<BillingIdentityLease> {
+  const subjectKey = await billingIdentitySubjectKey(userIDValue);
+  for (let attempt = 0; attempt < LIFECYCLE_ATTEMPTS; attempt += 1) {
+    const now = nowFactory();
+    const current = await ensureSingletonLifecycleRecord(
+      store,
+      subjectKey,
+      nowFactory,
+      randomUUID,
+    );
+    const state = lifecycleState(current.state);
+    if (
+      state === "deleting" &&
+      (targetState === "active" || !allowDeletingTakeover)
+    ) {
+      throw new BillingIdentityLifecycleError(
+        "deletion_in_progress",
+        "Account deletion is in progress or already completed.",
+      );
+    }
+    if (isBillingIdentityLeaseActive(current.lease_until, now)) {
+      throw new BillingIdentityLifecycleError(
+        "active_lease",
+        state === "deleting"
+          ? "Another account deletion is in progress."
+          : "Account identity is being updated.",
+      );
+    }
+
+    const candidate = candidateLease(
+      current,
+      subjectKey,
+      targetState,
+      now,
+      randomUUID,
+    );
+    let result: any;
+    try {
+      result = await store.updateMany(
+        exactRevisionFilter(current),
+        {
+          $set: {
+            state: candidate.state,
+            lease_token: candidate.leaseToken,
+            lease_until: candidate.leaseUntil,
+            revision: candidate.revision,
+          },
+        },
+      );
+    } catch {
+      let failure: unknown;
+      try {
+        if (await hasExactLease(store, candidate, now, randomUUID)) {
+          return candidate;
+        }
+      } catch (error) {
+        failure = error;
+      }
+      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+      if (
+        failure instanceof BillingIdentityLifecycleError &&
+        failure.code === "duplicate_records"
+      ) throw failure;
+      throw new BillingIdentityLifecycleError(
+        "ambiguous",
+        "Billing lifecycle lease result could not be reconciled.",
+      );
+    }
+    if (result?.updated !== 0) {
+      // A delayed concurrent initializer may have created a duplicate after
+      // our CAS. Re-read before trusting the lease, including when a malformed
+      // acknowledgement gives no definitive zero/one update count.
+      try {
+        if (await hasExactLease(store, candidate, now, randomUUID)) {
+          return candidate;
+        }
+      } catch (error) {
+        await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+        throw error;
+      }
+      await abandonUnconfirmedLease(store, current, candidate, now, randomUUID);
+      throw new BillingIdentityLifecycleError(
+        "duplicate_records",
+        "Billing lifecycle became ambiguous during lease acquisition.",
+      );
+    }
+  }
+  throw new BillingIdentityLifecycleError(
+    "cas_contention",
+    "Billing lifecycle changed concurrently.",
+  );
+}
+
+export async function acquireBillingWriterLease(
+  store: any,
+  userID: unknown,
+  nowFactory: () => Date = () => new Date(),
+  randomUUID: () => string = () => crypto.randomUUID(),
+): Promise<BillingIdentityLease> {
+  return await acquireLease(store, userID, "active", nowFactory, randomUUID);
+}
+
+export async function acquireBillingDeletionMarker(
+  store: any,
+  userID: unknown,
+  nowFactory: () => Date = () => new Date(),
+  randomUUID: () => string = () => crypto.randomUUID(),
+): Promise<BillingIdentityLease> {
+  return await acquireLease(store, userID, "deleting", nowFactory, randomUUID);
+}
+
+export async function acquireBillingIssuanceMarker(
+  store: any,
+  userID: unknown,
+  nowFactory: () => Date = () => new Date(),
+  randomUUID: () => string = () => crypto.randomUUID(),
+): Promise<BillingIdentityLease> {
+  // Issuance may create an external bearer token. It transitions only from
+  // active state and never takes over an expired deletion/quarantine row.
+  return await acquireLease(
+    store,
+    userID,
+    "deleting",
+    nowFactory,
+    randomUUID,
+    false,
+  );
+}
+
+async function assertExactActiveLease(
+  store: any,
+  lease: BillingIdentityLease,
+  now: Date,
+): Promise<void> {
+  if (!isBillingIdentityLeaseActive(lease.leaseUntil, now)) {
+    throw new BillingIdentityLifecycleError(
+      "active_lease",
+      "The billing lifecycle lease expired before persistence.",
+    );
+  }
+  if (!(await hasExactLease(store, lease, now))) {
+    throw new BillingIdentityLifecycleError(
+      "cas_contention",
+      "The billing lifecycle lease changed concurrently.",
+    );
+  }
+}
+
+export async function assertBillingWriterLease(
+  store: any,
+  lease: BillingIdentityLease,
+  now = new Date(),
+): Promise<void> {
+  if (lease.state !== "active") {
+    throw new BillingIdentityLifecycleError(
+      "incomplete_state",
+      "Writer lease required.",
+    );
+  }
+  await assertExactActiveLease(store, lease, now);
+}
+
+export async function assertBillingDeletionMarker(
+  store: any,
+  lease: BillingIdentityLease,
+  now = new Date(),
+): Promise<void> {
+  if (lease.state !== "deleting") {
+    throw new BillingIdentityLifecycleError(
+      "incomplete_state",
+      "Deletion marker required.",
+    );
+  }
+  await assertExactActiveLease(store, lease, now);
+}
+
+async function releaseLease(
+  store: any,
+  lease: BillingIdentityLease,
+  now: Date,
+  randomUUID: () => string,
+): Promise<void> {
+  const revision = randomUUID();
+  const releasedAt = now.toISOString();
+  const update = {
+    $set: {
+      state: "active",
+      lease_token: `released:${revision}`,
+      lease_until: releasedAt,
+      revision,
+    },
+  };
+  let ambiguous = false;
+  for (let attempt = 0; attempt < LEASE_CLEANUP_ATTEMPTS; attempt += 1) {
+    try {
+      const result = await store.updateMany(exactLeaseFilter(lease), update);
+      if (result?.updated === 1) return;
+    } catch {
+      ambiguous = true;
+    }
+    try {
+      const record = await exactLifecycleRecord(
+        store,
+        lease.recordID,
+        lease.subjectKey,
+      );
+      // Lost responses and a temporarily unreadable confirmation are retried
+      // here for every caller, including those without an outer retry loop.
+      // A deleted row or replacement owner needs no further cleanup by us.
+      if (!record || recordNoLongerCarriesLease(record, lease)) return;
+    } catch {
+      ambiguous = true;
+    }
+  }
+  throw new BillingIdentityLifecycleError(
+    ambiguous ? "ambiguous" : "cas_contention",
+    ambiguous
+      ? "Billing lifecycle lease release could not be reconciled."
+      : "Billing lifecycle lease changed before release.",
+  );
+}
+
+export async function releaseBillingWriterLease(
+  store: any,
+  lease: BillingIdentityLease,
+  now = new Date(),
+  randomUUID: () => string = () => crypto.randomUUID(),
+): Promise<void> {
+  if (lease.state !== "active") {
+    throw new BillingIdentityLifecycleError(
+      "incomplete_state",
+      "Writer lease required.",
+    );
+  }
+  await releaseLease(store, lease, now, randomUUID);
+}
+
+export async function releaseBillingDeletionMarker(
+  store: any,
+  lease: BillingIdentityLease,
+  now = new Date(),
+  randomUUID: () => string = () => crypto.randomUUID(),
+): Promise<void> {
+  if (lease.state !== "deleting") {
+    throw new BillingIdentityLifecycleError(
+      "incomplete_state",
+      "Deletion marker required.",
+    );
+  }
+  await releaseLease(store, lease, now, randomUUID);
+}
+
+export async function renewBillingDeletionMarker(
+  store: any,
+  lease: BillingIdentityLease,
+  now = new Date(),
+  randomUUID: () => string = () => crypto.randomUUID(),
+): Promise<void> {
+  if (lease.state !== "deleting") {
+    throw new BillingIdentityLifecycleError(
+      "incomplete_state",
+      "Deletion marker required.",
+    );
+  }
+  const renewedUntil = new Date(Math.max(
+    now.getTime() + BILLING_IDENTITY_LEASE_MILLISECONDS,
+    (Date.parse(lease.leaseUntil) || 0) + 1_000,
+  )).toISOString();
+  const revision = randomUUID();
+  const renewed = { ...lease, leaseUntil: renewedUntil, revision };
+  let result: any;
+  try {
+    result = await store.updateMany(
+      {
+        id: lease.recordID,
+        subject_key: lease.subjectKey,
+        state: "deleting",
+        lease_token: lease.leaseToken,
+        lease_until: lease.leaseUntil,
+        revision: lease.revision,
+      },
+      { $set: { lease_until: renewedUntil, revision } },
+    );
+  } catch {
+    try {
+      if (await hasExactLease(store, renewed, now)) {
+        lease.leaseUntil = renewedUntil;
+        lease.revision = revision;
+        return;
+      }
+    } catch {
+      // State remains deleting even if the exact renewal is unknown.
+    }
+    throw new BillingIdentityLifecycleError(
+      "ambiguous",
+      "Deletion marker renewal could not be reconciled.",
+    );
+  }
+  if (
+    Number(result?.updated) !== 1 ||
+    !(await hasExactLease(store, renewed, now))
+  ) {
+    throw new BillingIdentityLifecycleError(
+      "cas_contention",
+      "Deletion marker changed before renewal.",
+    );
+  }
+  lease.leaseUntil = renewedUntil;
+  lease.revision = revision;
+}

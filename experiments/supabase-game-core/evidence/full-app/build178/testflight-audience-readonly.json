@@ -1,0 +1,34 @@
+{
+  "checkedAt": "2026-10-17T18:00:55.414Z",
+  "app": {
+    "id": "6793534085",
+    "name": "SpyClash",
+    "bundleId": "com.spyclash.ios"
+  },
+  "group": {
+    "id": "47a13858-b43b-44a1-bf3e-285722cec320",
+    "name": "LIMITLESS Internal QA",
+    "internal": true,
+    "automatic": false,
+    "public": null
+  },
+  "testers": [
+    {
+      "name": "David Ganzha",
+      "state": "INSTALLED"
+    },
+    {
+      "name": "Dima Ianushevych",
+      "state": "INSTALLED"
+    }
+  ],
+  "build176": [
+    {
+      "id": "1a5ae807-b59f-406a-bc55-1bf55a58d3dd",
+      "version": "176",
+      "processing": "VALID",
+      "audience": "INTERNAL_ONLY"
+    }
+  ],
+  "remoteMutations": []
+}

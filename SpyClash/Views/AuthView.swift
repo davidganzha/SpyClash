@@ -1,5 +1,6 @@
 import AuthenticationServices
 import SwiftUI
+import UIKit
 
 struct AuthView: View {
     @Environment(AppState.self) private var appState
@@ -100,6 +101,40 @@ struct AuthView: View {
             if case .otp = phase { resendAvailableAt = Date().addingTimeInterval(30) }
         }
         .interactiveDismissDisabled(appState.hasActiveAuthCinematic || appState.isBusy)
+        .alert(
+            appleHandoffAlertTitle,
+            isPresented: Binding(
+                get: { appState.appleHandoffFailure != nil },
+                set: { if !$0 { appState.dismissAppleHandoffFailure() } }
+            ),
+            presenting: appState.appleHandoffFailure
+        ) { failure in
+            Button(appleHandoffCopyCodeLabel) {
+                UIPasteboard.general.string = failure.diagnosticIdentifier
+                appState.dismissAppleHandoffFailure()
+            }
+            Button("OK", role: .cancel) { appState.dismissAppleHandoffFailure() }
+        } message: { failure in
+            Text(failure.localizedDescription)
+        }
+    }
+
+    private var appleHandoffAlertTitle: String {
+        switch appState.language {
+        case .en: "Apple sign-in"
+        case .es: "Inicio de sesión con Apple"
+        case .ru: "Вход с Apple"
+        case .uk: "Вхід з Apple"
+        }
+    }
+
+    private var appleHandoffCopyCodeLabel: String {
+        switch appState.language {
+        case .en: "Copy support code"
+        case .es: "Copiar código de soporte"
+        case .ru: "Скопировать код для поддержки"
+        case .uk: "Скопіювати код для підтримки"
+        }
     }
 
     private var header: some View {

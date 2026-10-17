@@ -1,0 +1,23 @@
+{
+  "checkedAt": "2026-10-17T18:02:32.227887+00:00",
+  "version": "1.0.3 (178)",
+  "archivePath": "/tmp/SpyClash-178-unsigned.xcarchive",
+  "configuration": "SupabaseRelease",
+  "checks": {
+    "archive_succeeded": true,
+    "bundle": true,
+    "version": true,
+    "widget_version": true,
+    "candidate_config_exact": true,
+    "privacy_exact": true,
+    "unsigned": true,
+    "no_embedded_profile": true
+  },
+  "binarySHA256": "ead25281e8d65f48daeea426ed59e1aed5e6bff2cac13a5c44868ee2626aa8a0",
+  "simulatorReleaseBundleGate": "passed for Debug simulator 1.0.3 (178)",
+  "boundaries": [
+    "Unsigned archive; not an installable IPA",
+    "No Apple upload, TestFlight assignment, production deployment or config mutation",
+    "General public production release gate remains closed for isolated hybrid backend"
+  ]
+}

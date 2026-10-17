@@ -994,7 +994,7 @@ final class MembershipTests: XCTestCase {
 
     func testSubscribePreflightStopsBeforeAppleForUnknownActiveOrDisabledMembership() async {
         let cases: [(Result<MembershipSnapshot, Error>, String)] = [
-            (.failure(URLError(.notConnectedToInternet)), "ACCESS_UNVERIFIED"),
+            (.failure(URLError(.notConnectedToInternet)), "ACCESS_UNVERIFIED/NETWORK_OFFLINE"),
             (.success(snapshot()), "ALREADY_ACTIVE"),
             (.success(snapshot(active: false, tier: .free, status: "inactive", providers: [], expiry: nil, purchase: false)), "PURCHASE_DISABLED")
         ]
@@ -1027,15 +1027,118 @@ final class MembershipTests: XCTestCase {
         let manager = StoreKitManager(client: makeStoreKitClient())
         manager.bind(scope)
         await manager.purchase(membership: membership)
-        XCTAssertEqual(manager.operationFailure?.reason, "ACCESS_UNVERIFIED")
+        XCTAssertEqual(manager.operationFailure?.reason, "ACCESS_UNVERIFIED/UNRESOLVED_ACCESS")
 
         client.result = .success(snapshot())
         await manager.purchase(membership: membership)
 
         XCTAssertEqual(client.requestCount, 2)
         XCTAssertTrue(membership.hasAccess)
+        XCTAssertNil(membership.refreshFailure)
         XCTAssertEqual(manager.operationFailure?.reason, "ALREADY_ACTIVE")
         XCTAssertNil(manager.product, "Recovery to active membership must never enter checkout.")
+    }
+
+    func testSubscribePreflightPreservesClosedMembershipFailureDiagnostics() async {
+        let cases: [(Error, String)] = [
+            (Base44Error(message: "private-token", statusCode: 401, code: "legacy_session_missing"), "HTTP_401/SESSION_MISSING"),
+            (Base44Error(message: "private-token", statusCode: 502, code: "legacy_billing_response_invalid"), "HTTP_502/BILLING_RESPONSE_INVALID"),
+            (Base44Error(message: "private-token", statusCode: 502, code: "legacy_response_invalid"), "HTTP_502/PROVIDER_RESPONSE_INVALID"),
+            (Base44Error(message: "private-token", statusCode: 503, code: "legacy_billing_unavailable"), "HTTP_503/BILLING_UNAVAILABLE"),
+            (DecodingError.dataCorrupted(.init(codingPath: [], debugDescription: "private-token")), "RESPONSE_DECODE"),
+            (URLError(.timedOut), "NETWORK_TIMEOUT")
+        ]
+        for (error, reason) in cases {
+            let client = MembershipTestClient()
+            client.result = .failure(error)
+            let membership = MembershipStore(client: client)
+            let scope = MembershipScope(userID: "user", accessToken: "token")
+            membership.bind(scope)
+            let manager = StoreKitManager(client: makeStoreKitClient())
+            manager.bind(scope)
+
+            await manager.purchase(membership: membership)
+
+            let expected = "IAP-BUY-ELIGIBILITY-NONE: ACCESS_UNVERIFIED/\(reason)"
+            XCTAssertEqual(manager.operationFailure?.supportCode, expected)
+            XCTAssertFalse(membership.canPurchase)
+            XCTAssertNil(membership.snapshot)
+            XCTAssertNil(manager.product, "No failed membership read may reach Apple's product or purchase flow.")
+            XCTAssertEqual(manager.state, .failed)
+            if let failure = manager.operationFailure {
+                for language: AppLanguage in [.en, .ru, .es, .uk] {
+                    let message = LimitlessCopy(language: language).operationFailed(failure)
+                    XCTAssertTrue(message.contains(expected))
+                    XCTAssertFalse(message.contains("private-token"))
+                }
+                XCTAssertTrue(LimitlessCopy(language: .en).operationFailed(failure).contains("No payment was started"))
+            }
+        }
+    }
+
+    func testMembershipFailureCannotCopyUnrecognizedProviderDataIntoSupportCode() {
+        let errors: [Error] = [
+            Base44Error(message: "private-token", statusCode: 502, code: "private-account-url"),
+            Base44Error(message: "private-token", statusCode: 987654321, code: "private-account-url"),
+            NSError(domain: "private-account-url", code: 987654321, userInfo: [NSLocalizedDescriptionKey: "private-token"])
+        ]
+        let expected = ["ACCESS_UNVERIFIED/HTTP_502/SERVER", "ACCESS_UNVERIFIED/SERVER", "ACCESS_UNVERIFIED/UNKNOWN"]
+        for (error, reason) in zip(errors, expected) {
+            let diagnostic = MembershipRefreshFailure.capture(error)
+            XCTAssertEqual(diagnostic.supportReason, reason)
+            XCTAssertFalse(diagnostic.supportReason.contains("private"))
+            XCTAssertFalse(diagnostic.supportReason.contains("987654321"))
+        }
+    }
+
+    func testMembershipFailureClearsOnRetryCancellationAndAccountChange() async throws {
+        let client = MembershipTestClient()
+        client.result = .failure(Base44Error(message: "unavailable", statusCode: 502, code: "legacy_billing_response_invalid"))
+        let store = MembershipStore(client: client)
+        store.bind(MembershipScope(userID: "first", accessToken: "first-token"))
+        _ = await store.refresh()
+        XCTAssertEqual(store.refreshFailure?.reason, .billingResponseInvalid)
+
+        client.suspend = true
+        let retry = Task { await store.refresh() }
+        for _ in 0..<100 where client.continuation == nil { await Task.yield() }
+        let cancelled = try XCTUnwrap(client.continuation)
+        XCTAssertNil(store.refreshFailure, "An in-flight retry must not report a previous failed request.")
+        cancelled.resume(throwing: CancellationError())
+        let cancelledResult = await retry.value
+        XCTAssertFalse(cancelledResult)
+        XCTAssertNil(store.refreshFailure)
+
+        client.suspend = false
+        _ = await store.refresh()
+        XCTAssertEqual(store.refreshFailure?.reason, .billingResponseInvalid)
+        store.bind(MembershipScope(userID: "second", accessToken: "second-token"))
+        XCTAssertNil(store.refreshFailure)
+        client.result = .success(.freePreview)
+        _ = await store.refresh()
+        XCTAssertNil(store.refreshFailure)
+        XCTAssertNil(store.errorMessage)
+    }
+
+    func testLateMembershipFailureCannotOverwriteNewAccountDiagnostics() async throws {
+        let client = MembershipTestClient()
+        client.suspend = true
+        let store = MembershipStore(client: client)
+        store.bind(MembershipScope(userID: "first", accessToken: "first-token"))
+        let priorRefresh = Task { await store.refresh() }
+        for _ in 0..<100 where client.continuation == nil { await Task.yield() }
+        let prior = try XCTUnwrap(client.continuation)
+
+        store.bind(MembershipScope(userID: "second", accessToken: "second-token"))
+        client.suspend = false
+        client.result = .failure(Base44Error(message: "unavailable", statusCode: 503, code: "legacy_billing_unavailable"))
+        _ = await store.refresh()
+        XCTAssertEqual(store.refreshFailure?.reason, .billingUnavailable)
+        prior.resume(throwing: Base44Error(message: "invalid response", statusCode: 502, code: "legacy_billing_response_invalid"))
+        _ = await priorRefresh.value
+        XCTAssertEqual(store.refreshFailure?.reason, .billingUnavailable)
+        XCTAssertEqual(store.refreshFailure?.httpStatus, 503)
+        XCTAssertFalse(store.canPurchase)
     }
 
     func testConcurrentSubscribeIntentsShareOnePreflightAndCannotBuyAfterAccountSwitch() async throws {

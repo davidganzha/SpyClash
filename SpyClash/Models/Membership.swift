@@ -1,5 +1,88 @@
 import Foundation
 
+/// A membership read may fail before StoreKit starts. Retain only bounded,
+/// closed diagnostics, never provider messages, credentials or response bodies.
+struct MembershipRefreshFailure: Error, Equatable, Sendable {
+    enum Reason: String, Sendable {
+        case sessionMissing = "SESSION_MISSING"
+        case sessionInvalid = "SESSION_INVALID"
+        case wrongProvider = "WRONG_PROVIDER"
+        case accountMismatch = "ACCOUNT_MISMATCH"
+        case billingUnconfigured = "BILLING_UNCONFIGURED"
+        case billingUnavailable = "BILLING_UNAVAILABLE"
+        case billingRejected = "BILLING_REJECTED"
+        case billingResponseInvalid = "BILLING_RESPONSE_INVALID"
+        case providerResponseInvalid = "PROVIDER_RESPONSE_INVALID"
+        case identityUnavailable = "IDENTITY_UNAVAILABLE"
+        case identityInvalid = "IDENTITY_INVALID"
+        case serviceUnavailable = "SERVICE_UNAVAILABLE"
+        case transportInterrupted = "TRANSPORT_INTERRUPTED"
+        case server = "SERVER"
+        case responseDecode = "RESPONSE_DECODE"
+        case unresolvedAccess = "UNRESOLVED_ACCESS"
+        case accountChanged = "ACCOUNT_CHANGED"
+        case verificationFailed = "VERIFICATION_FAILED"
+        case network = "NETWORK"
+        case networkOffline = "NETWORK_OFFLINE"
+        case networkTimeout = "NETWORK_TIMEOUT"
+        case unknown = "UNKNOWN"
+    }
+
+    let reason: Reason
+    let httpStatus: Int?
+
+    var supportReason: String {
+        let status = httpStatus.map { "/HTTP_\($0)" } ?? ""
+        return "ACCESS_UNVERIFIED\(status)/\(reason.rawValue)"
+    }
+
+    static func capture(_ error: any Error) -> Self {
+        if let failure = error as? Self { return failure }
+        if let server = error as? Base44Error {
+            let reason: Reason
+            switch server.code {
+            case "legacy_session_missing", "legacy_session_required", "supabase_session_missing": reason = .sessionMissing
+            case "legacy_session_invalid", "legacy_session_revalidation_required", "jwt_expired": reason = .sessionInvalid
+            case "wrong_credential_provider": reason = .wrongProvider
+            case "legacy_owner_mismatch": reason = .accountMismatch
+            case "legacy_billing_unconfigured": reason = .billingUnconfigured
+            case "legacy_billing_unavailable": reason = .billingUnavailable
+            case "legacy_billing_rejected": reason = .billingRejected
+            case "legacy_billing_response_invalid": reason = .billingResponseInvalid
+            case "legacy_response_invalid": reason = .providerResponseInvalid
+            case "legacy_verification_unavailable": reason = .identityUnavailable
+            case "legacy_identity_invalid": reason = .identityInvalid
+            case "app_service_unavailable": reason = .serviceUnavailable
+            case "supabase_transport_interrupted": reason = .transportInterrupted
+            default: reason = .server
+            }
+            let status = server.statusCode.flatMap { (100...599).contains($0) ? $0 : nil }
+            return Self(reason: reason, httpStatus: status)
+        }
+        if error is DecodingError { return Self(reason: .responseDecode, httpStatus: nil) }
+        if let membership = error as? MembershipError {
+            let reason: Reason
+            switch membership {
+            case .unavailable: reason = .unresolvedAccess
+            case .accountChanged: reason = .accountChanged
+            case .verificationFailed: reason = .verificationFailed
+            }
+            return Self(reason: reason, httpStatus: nil)
+        }
+        let system = error as NSError
+        if system.domain == NSURLErrorDomain {
+            let reason: Reason
+            switch system.code {
+            case URLError.notConnectedToInternet.rawValue: reason = .networkOffline
+            case URLError.timedOut.rawValue: reason = .networkTimeout
+            default: reason = .network
+            }
+            return Self(reason: reason, httpStatus: nil)
+        }
+        return Self(reason: .unknown, httpStatus: nil)
+    }
+}
+
 enum MembershipTier: String, Codable { case free, limitless }
 
 struct MembershipBenefits: Codable, Equatable, Sendable {

@@ -279,7 +279,10 @@ final class StoreKitManager {
         do {
             let verified = await membership.refresh()
             try requireScope(expected)
-            guard verified else { throw AppStorePurchasePreflightError.accessUnverified }
+            guard verified else {
+                if let failure = membership.refreshFailure { throw failure }
+                throw AppStorePurchasePreflightError.accessUnverified
+            }
             guard !membership.hasAccess else { throw AppStorePurchasePreflightError.alreadyActive }
             guard membership.canPurchase else { throw AppStorePurchasePreflightError.purchaseDisabled }
             guard canMakePayments else { throw AppStorePurchasePreflightError.paymentsRestricted }
