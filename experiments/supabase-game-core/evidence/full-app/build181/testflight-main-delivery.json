@@ -1,0 +1,56 @@
+{
+  "checkedAt": "2026-10-17T19:49:50.272Z",
+  "sourceCommit": "eb1b11cd34ff5d3549b41fda9795129d9cec9f9a",
+  "scope": "Approved Main SpyClash 1.0.3 (181), scoped friends/invitations app-services deployment, TestFlight Internal Only for David Ganzha and Dima Ianushevych.",
+  "ipaSHA256": "1c9669febc927773483508038290c4776b9ba8964357e5970f84e5b015112dd3",
+  "appleValidation": "PASS",
+  "appleUpload": "PASS",
+  "deliveryUUID": "19cf0e7c-b3ea-4649-b8ef-875a46a5ce1f",
+  "assignmentHTTPStatus": 204,
+  "build": {
+    "id": "19cf0e7c-b3ea-4649-b8ef-875a46a5ce1f",
+    "version": "181",
+    "marketingVersion": "1.0.3",
+    "processingState": "VALID",
+    "audience": "INTERNAL_ONLY",
+    "expired": false,
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "NOT_APPLICABLE"
+  },
+  "effectiveTesterIDs": [
+    "569dc033-570c-42f7-bbc3-611f6c9cb527",
+    "7818c591-2a6e-40de-924f-f060d753c1e0"
+  ],
+  "all15ASCChecksPassed": true,
+  "server": {
+    "checkedAt": "2026-10-17T19:41:45.236Z",
+    "project": "bbkfsgnordtdiblgdzkg",
+    "function": "app-services",
+    "id": "a271cf0c-f0c7-4589-8448-406e286082fa",
+    "status": "ACTIVE",
+    "previousVersion": 8,
+    "version": 9,
+    "bundleSHA256": "7c9a72400eeca69248afa7e6c91c56a684bd202388337222ed72719b47a9d89b",
+    "sourceCommit": "eb1b11cd34ff5d3549b41fda9795129d9cec9f9a",
+    "manifestSHA256": "58ddd2127feef4fa5eb23a2b768c23f22de4161815f1a502c98f2eda70afcee2",
+    "exactReadbackFiles": 55,
+    "changedFiles": [
+      "app-services/community.ts",
+      "app-services/profile.ts"
+    ],
+    "allOther53FilesByteIdentical": true,
+    "limitlessRoutePreserved": true,
+    "verifyJWT": true,
+    "importMap": true,
+    "schemaSecretsConfigurationChanged": false
+  },
+  "nativeReceipt": "native-release-receipt.json",
+  "finalASCReceipt": "asc-final181.json",
+  "deviceAcceptance": {
+    "appleSignIn": "Pending real iPhone completion, repeat and cancellation on181",
+    "limitless": "Pending user-controlled eligibility, sandbox purchase and restore on181",
+    "social": "Pending reciprocal friend/invite events, reconnect and perceived timing on two physical iPhones"
+  },
+  "noAppStoreSubmissionOrExternalBeta": true,
+  "appStoreVersionsAndPriorBuildAssignmentsUnchanged": true
+}

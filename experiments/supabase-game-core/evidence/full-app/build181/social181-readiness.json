@@ -1,0 +1,37 @@
+{
+  "checkedAt": "2026-10-17T19:40:43.085253+00:00",
+  "state": "READY_LOCAL_NOT_DEPLOYED",
+  "manifestSHA256": "58ddd2127feef4fa5eb23a2b768c23f22de4161815f1a502c98f2eda70afcee2",
+  "project_ref": "bbkfsgnordtdiblgdzkg",
+  "function": "app-services",
+  "live_baseline_version": 8,
+  "live_baseline_bundle_sha256": "89d348c3d9ec10bfc9660512de0629e70287001b2842e39e0c90de5b65720751",
+  "candidateFiles": 55,
+  "rollbackFiles": 55,
+  "changedFiles": [
+    "app-services/community.ts",
+    "app-services/profile.ts"
+  ],
+  "allOther53FilesByteIdentical": true,
+  "reviewedCommit": "eb1b11cd34ff5d3549b41fda9795129d9cec9f9a",
+  "liveChangedFilesMatchCommitParent": true,
+  "candidateChangedFilesMatchCommitExactly": true,
+  "limitlessV2Preserved": true,
+  "verifyJWT": true,
+  "importMap": true,
+  "typecheck": "pass, complete frozen index.ts with existing deno.json and --no-lock",
+  "tests": {
+    "passed": 16,
+    "failed": 0,
+    "actualFrozenSource": true,
+    "realLocalAuthPostgresRealtime": true,
+    "localFriendSignalMilliseconds": 472.2,
+    "localInviteSignalMilliseconds": 481.5,
+    "latencyLimitation": "Single local observations, not hosted or physical-device performance."
+  },
+  "catalogReview": "social181-catalog-readiness.json",
+  "independentReview": "social181-independent-review.json",
+  "schemaSecretsOrConfigurationChanged": false,
+  "productionMutationPerformed": false,
+  "exclusions": "The83-test repository suite includes unrelated unreleased modules absent from the live55-file bundle. These were not copied into or deployed with the frozen candidate. Frozen validation ran the15 service integration cases and one authenticated three-client realtime scenario relevant to this change."
+}

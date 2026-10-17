@@ -1,0 +1,130 @@
+{
+  "schemaVersion": 1,
+  "preservedAtUTC": "2026-10-17T19:42:57.491248+00:00",
+  "sourceCommit": "eb1b11cd34ff5d3549b41fda9795129d9cec9f9a",
+  "marketingVersion": "1.0.3",
+  "build": "181",
+  "bundleIdentifiers": [
+    "com.spyclash.ios",
+    "com.spyclash.ios.widgets"
+  ],
+  "scheme": "SpyClash-Supabase-Main-Candidate",
+  "configuration": "SupabaseRelease",
+  "archiveSucceeded": true,
+  "exportSucceeded": true,
+  "signingMethod": "Existing local Apple Distribution identity through standard Xcode archive and export",
+  "sourceProof": {
+    "trackedFileCount": 1259,
+    "byteIdenticalFiles": 1257,
+    "signingOnlyExceptions": {
+      "SpyClash.xcodeproj/project.pbxproj": {
+        "committedSHA256": "bacd9d949adedd6392f5e44acd7f70a6698cced8d92016eeec2841880916cd39",
+        "signingSHA256": "7c18856ac9ccc1c95a88e77d2e128d45f895aeb9888d60ebc0dfabcab37794db"
+      },
+      "project.yml": {
+        "committedSHA256": "c5af34822842829b77c8bfdb5bfb94515e9a73bef4655fb1081be49b20980742",
+        "signingSHA256": "9b4ceaf563dbea5ebbfd7d49316f5f95e73df6546560de05280a0119a8089560"
+      }
+    },
+    "snapshotStillMatchesManifest": true,
+    "workingTreeCleanAtHandoff": true
+  },
+  "ipa": {
+    "fileName": "SpyClash.ipa",
+    "bytes": 12699843,
+    "sha256": "1c9669febc927773483508038290c4776b9ba8964357e5970f84e5b015112dd3"
+  },
+  "export": {
+    "destination": "export",
+    "method": "app-store-connect",
+    "signingStyle": "manual",
+    "testFlightInternalTestingOnly": true,
+    "manageAppVersionAndBuildNumber": false
+  },
+  "audit": {
+    "status": "PASS",
+    "passedChecks": 19,
+    "totalChecks": 19,
+    "checks": {
+      "exactMainIdentity": true,
+      "exactWidgetIdentity": true,
+      "team3Z64QKNL54": true,
+      "appleSignInDefault": true,
+      "productionAPNsEntitlement": true,
+      "getTaskAllowFalse": true,
+      "appStoreProfiles": true,
+      "internalOnlyMarkerTrue": true,
+      "strictSignaturesPass": true,
+      "onlyExpectedExtension": true,
+      "immutableTestProject": true,
+      "committedConfigByteIdentical": true,
+      "mainBackendMode": true,
+      "billingAppleGoogleEnabled": true,
+      "pushDeletionDisabled": true,
+      "publishableKeyFormatOnly": true,
+      "noStoreKitFixturesOrPrivateKeyFiles": true,
+      "noPrivateKeyOrSecretKeyMarkers": true,
+      "noEmbeddedServiceRoleJWT": true
+    }
+  },
+  "runtime": {
+    "backendMode": "supabase-main-candidate",
+    "configurationSHA256": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d",
+    "configurationByteIdenticalToCommit": true,
+    "flags": {
+      "appleSignInEnabled": true,
+      "googleSignInEnabled": true,
+      "permitsLegacyBilling": true,
+      "permitsLegacyPush": false,
+      "mainAccountDeletionEnabled": false
+    }
+  },
+  "preservedArtifacts": {
+    "SpyClash.ipa": {
+      "sha256": "1c9669febc927773483508038290c4776b9ba8964357e5970f84e5b015112dd3",
+      "bytes": 12699843,
+      "matchesOriginal": true
+    },
+    "archive-audit181.json": {
+      "sha256": "1d1ddaf95631bc213cfa0bab1b691ee2ed47fc85b93e0f2549a287a383dd4c1c",
+      "bytes": 887,
+      "matchesOriginal": true
+    },
+    "source-proof.json": {
+      "sha256": "81a5968673ef4cfde5db61776f2282a80d2f2c48fdb0a4e6cb5bcd508dcaaa4b",
+      "bytes": 172531,
+      "matchesOriginal": true
+    },
+    "handoff181.json": {
+      "sha256": "e1a2bddc69d246ac79bc9bdb194f8efdde819a5d813256efee525b70a2e07384",
+      "bytes": 1399,
+      "matchesOriginal": true
+    },
+    "ExportOptions.plist": {
+      "sha256": "8cb96b7a23cba3a609d5214e13fb74c2938bec96094cb68af409bbdaf1c54d74",
+      "bytes": 882,
+      "matchesOriginal": true
+    },
+    "ExportOptions-effective.plist": {
+      "sha256": "0d63f139958cebb9f0138b4bd1a4344af990c941497b002ee0a7ad67d841b9a7",
+      "bytes": 932,
+      "matchesOriginal": true
+    },
+    "ipa-independent-audit181.json": {
+      "sha256": "e48c16f410a5facbc3f4479c87e19b1ece3c38ccd37822a6436c31a14fec57be",
+      "bytes": 3844,
+      "matchesOriginal": true
+    }
+  },
+  "scope": {
+    "repositorySourceChanges": false,
+    "privateKeysExported": false,
+    "uploadPerformedByThisTask": false,
+    "productionMutationPerformedByThisTask": false,
+    "physicalDeviceAcceptanceProved": false,
+    "note": "Apple validation, upload, processing and tester assignment are recorded separately by the delivery owner.",
+    "persistentKeychainOrRepositorySigningSettingsChanges": false,
+    "transientArchiveCopySigningSettingsChanges": true,
+    "signingSettingsScope": "Only disposable archive source project.yml and project.pbxproj changed to existing manual distribution identity/profiles; repository and system signing settings unchanged."
+  }
+}

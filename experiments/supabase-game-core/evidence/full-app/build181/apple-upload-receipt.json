@@ -1,0 +1,19 @@
+{
+  "checkedAt": "2026-10-17T19:45:08.550187+00:00",
+  "sourceCommit": "eb1b11cd34ff5d3549b41fda9795129d9cec9f9a",
+  "appID": "6793534085",
+  "bundleID": "com.spyclash.ios",
+  "marketingVersion": "1.0.3",
+  "build": "181",
+  "ipaSHA256": "1c9669febc927773483508038290c4776b9ba8964357e5970f84e5b015112dd3",
+  "ipaBytes": 12699843,
+  "appleValidation": "PASS",
+  "appleUpload": "PASS",
+  "validationExitCode": 0,
+  "uploadExitCode": 0,
+  "deliveryUUID": "19cf0e7c-b3ea-4649-b8ef-875a46a5ce1f",
+  "validationLogSHA256": "9f5063ee915da8a6062a962b266a6bec08b84e2ee8a44617ff8d9d3ae67966ba",
+  "uploadLogSHA256": "47ca19be653255998783d82db4898212ac26a09fee62c2197a5e5339369abbe7",
+  "exportAudience": "INTERNAL_ONLY",
+  "processingAndAssignment": "recorded separately"
+}

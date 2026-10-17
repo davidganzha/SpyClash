@@ -1,6 +1,6 @@
 # Social responsiveness — build 181
 
-Prepared on 17 October 2026 in `davidganzha/supabase-game-core`, based on `b261616d`. Marketing version remains 1.0.3. No hosted backend, production configuration, signing, TestFlight, or App Store operation was performed.
+Prepared on 17 October 2026 in `davidganzha/supabase-game-core`, based on `b261616d`. Marketing version remains 1.0.3. The preparation checks below performed no hosted deployment or distribution. After separate explicit approval, the scoped server changes and Internal Only delivery were completed; see [RELEASE-181.md](RELEASE-181.md).
 
 ## Behavior
 
@@ -28,7 +28,7 @@ Native result bundles are under `~/Library/Developer/XcodeBuildMCP/workspaces/Sp
 
 ## Remaining acceptance boundaries
 
-- No production deployment or signed/uploaded build was performed. Backend optimizations require a separately authorized `app-services` deployment; client changes require distributing build 181.
+- Approved delivery completed on 17 October: live `app-services` version 9 contains only the two 181 server-file changes; Main 1.0.3 (181) is `VALID` and `IN_BETA_TESTING`, Internal Only, for David and Dima. [Release evidence](RELEASE-181.md) separates this execution from the preparation checks above.
 - Two physical iPhones on real networks, end-to-end UI timing, and user visual acceptance remain unverified. Automated iOS tests do not prove those layers.
 - Existing game-room close/start changes do not publish social invalidations; obsolete invitations are filtered by authoritative reads and may disappear on the fallback refresh. Acceptance always checks the room's actual state.
 - Free-text name search and full competitive-history aggregation are unchanged. No blanket zero-latency claim is made.

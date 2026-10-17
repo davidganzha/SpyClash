@@ -1,0 +1,41 @@
+{
+  "checkedAt": "2026-10-17T19:40:09.813990+00:00",
+  "status": "NO_BLOCKING_FINDING",
+  "project": "bbkfsgnordtdiblgdzkg",
+  "function": "app-services",
+  "candidateManifest": "social181-manifest.json",
+  "candidateManifestSHA256": "58ddd2127feef4fa5eb23a2b768c23f22de4161815f1a502c98f2eda70afcee2",
+  "catalogReceipt": "social181-catalog-readiness.json",
+  "catalogReceiptSHA256": "4685c8fbf2183a3000d1a25ef51c2fcbc03c958dd19cce5f5611d6fa7c88c6b8",
+  "scope": {
+    "candidateFiles": 55,
+    "rollbackFiles": 55,
+    "exactChangedFiles": [
+      "app-services/community.ts",
+      "app-services/profile.ts"
+    ],
+    "changeCommit": "eb1b11cd34ff5d3549b41fda9795129d9cec9f9a",
+    "candidateMatchesCommit": true,
+    "allOther53FilesPreserved": true,
+    "verifyJWT": true,
+    "importMap": true
+  },
+  "review": [
+    "communityState reuses the existing actor profile and projects relationships plus visible invite senders once; invite validity joins and response fields remain unchanged",
+    "Exact SPY ID and empty directory queries retain active/blocked visibility and pagination semantics; free-text normalization behavior is unchanged",
+    "signalProfile UNION deduplicates self, accepted friends and recent watchers before active-recipient and blocked-pair checks; recipient ordering is deterministic",
+    "Native subscriptions target the two published public tables with current recipient UUID and authenticated JWT; incoming changes validate schema, event, recipient, revision and binding ID",
+    "Native protocol v1.0.0 JSON, readiness gating, heartbeat/token refresh and reconnect catch-up align with current documented protocol and live schema metadata"
+  ],
+  "catalogOnly": true,
+  "productionMutations": false,
+  "userRowsRead": false,
+  "credentialsRead": false,
+  "limits": [
+    "Review and catalog prerequisites are not a production authenticated two-client event-delivery test",
+    "Frozen actual-handler integration tests are being run independently by billing_route_review",
+    "Device acceptance and TestFlight delivery are owned by root"
+  ],
+  "originalCatalogReceiptSHA256": "d580f604d97072f0acba88e48268796a7692910c288a0d0a66e6dca77d6815a0",
+  "catalogReceiptNormalization": "Committed catalog JSON removes one trailing blank line only; content is identical to the preserved local original."
+}

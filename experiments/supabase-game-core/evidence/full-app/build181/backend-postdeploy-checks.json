@@ -1,0 +1,134 @@
+{
+  "checkedAt": "2026-10-17T19:43:20.829085+00:00",
+  "project": "bbkfsgnordtdiblgdzkg",
+  "function": "app-services",
+  "version": 9,
+  "bundleSHA256": "7c9a72400eeca69248afa7e6c91c56a684bd202388337222ed72719b47a9d89b",
+  "status": "BOUNDED_POSTDEPLOY_CHECKS_PASSED",
+  "http": {
+    "checkedAt": "2026-10-17T19:42:28.808695+00:00",
+    "project": "bbkfsgnordtdiblgdzkg",
+    "function": "app-services",
+    "expectedVersion": 9,
+    "calls": [
+      {
+        "name": "unauthenticated_get",
+        "method": "GET",
+        "status": 401,
+        "elapsedMs": 1169.7,
+        "bodyKeys": [
+          "code",
+          "message"
+        ],
+        "code": "UNAUTHORIZED_NO_AUTH_HEADER",
+        "message": "Missing authorization header",
+        "headers": {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "sb-request-id": "01a14b63-1285-7aff-8e66-9c5d57a4f803"
+        }
+      },
+      {
+        "name": "browser_preflight",
+        "method": "OPTIONS",
+        "status": 405,
+        "elapsedMs": 1018.2,
+        "bodyKeys": [
+          "code",
+          "message",
+          "retryable"
+        ],
+        "code": "method_not_allowed",
+        "message": "POST required",
+        "headers": {
+          "Content-Type": "application/json",
+          "sb-request-id": "01a14b63-16c8-7dcd-af50-f13d985323e1",
+          "x-deno-execution-id": "5f018c40-658d-425e-a2f0-3e39c9b89ae2"
+        }
+      },
+      {
+        "name": "unauthenticated_post",
+        "method": "POST",
+        "status": 401,
+        "elapsedMs": 172.9,
+        "bodyKeys": [
+          "code",
+          "message"
+        ],
+        "code": "UNAUTHORIZED_NO_AUTH_HEADER",
+        "message": "Missing authorization header",
+        "headers": {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "sb-request-id": "01a14b63-1ac0-7cd9-b417-a576dc2da37a"
+        }
+      },
+      {
+        "name": "invalid_token_post",
+        "method": "POST",
+        "status": 401,
+        "elapsedMs": 147.6,
+        "bodyKeys": [
+          "code",
+          "message"
+        ],
+        "code": "UNAUTHORIZED_INVALID_JWT_FORMAT",
+        "message": "Invalid JWT",
+        "headers": {
+          "Content-Type": "application/json",
+          "Access-Control-Allow-Origin": "*",
+          "sb-request-id": "01a14b63-1b67-7948-95b0-d1adb9f78b2f"
+        }
+      }
+    ],
+    "authenticatedUserCredentialUsed": false,
+    "userDataRequested": false,
+    "mutatingCommandSent": false,
+    "bodyPayload": "empty JSON object only",
+    "productionMutationPerformed": false
+  },
+  "logs": {
+    "queriedWindow": {
+      "start": "2026-10-17T19:41:40Z",
+      "end": "2026-10-17T19:42:50Z"
+    },
+    "filter": {
+      "source": "function_logs",
+      "function_id": "a271cf0c-f0c7-4589-8448-406e286082fa"
+    },
+    "rows": [
+      {
+        "event_type": "Boot",
+        "function_version": "9",
+        "records": 1,
+        "severity": "log",
+        "source": "function_logs"
+      },
+      {
+        "event_type": "Shutdown",
+        "function_version": "8",
+        "records": 12,
+        "severity": "log",
+        "source": "function_logs"
+      }
+    ],
+    "rawLogMessagesRetrieved": false,
+    "userDataRetrieved": false,
+    "interpretation": "Observed a version9 Boot and version8 Shutdown events, all severity log. No error/fatal event appeared in this bounded sample. Log ingestion may lag; this is not an authenticated application check."
+  },
+  "preflightInterpretation": "OPTIONS405 is the existing POST-only handler contract, unchanged by the social delta. No browser CORS support is claimed; native iOS calls are POST.",
+  "checks": {
+    "unauthenticatedRequestsRejected": true,
+    "invalidCredentialRejected": true,
+    "runtimeBootObservedVersion9": true,
+    "observedFunctionErrors": 0
+  },
+  "limits": [
+    "No authenticated user request or social write was performed.",
+    "No user data, production secrets, account creation, signup or token exchange was used.",
+    "No-error conclusion applies only to the bounded observed log sample and can be affected by ingestion delay.",
+    "Production two-device social delivery and visual acceptance remain unverified."
+  ],
+  "productionMutationPerformed": false,
+  "sourceOrConfigurationChanged": false
+}

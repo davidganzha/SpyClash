@@ -1,0 +1,630 @@
+{
+  "project": "bbkfsgnordtdiblgdzkg",
+  "operation": "Catalog-only SELECT; no user rows, authentication, credentials or production writes",
+  "status": "PASSED_PREREQUISITES",
+  "catalog": {
+    "tables": [
+      {
+        "rls": true,
+        "kind": "r",
+        "table": "app_profile_signals",
+        "schema": "public",
+        "force_rls": false,
+        "replica_identity": "d"
+      },
+      {
+        "rls": true,
+        "kind": "r",
+        "table": "app_user_signals",
+        "schema": "public",
+        "force_rls": false,
+        "replica_identity": "d"
+      },
+      {
+        "rls": true,
+        "kind": "r",
+        "table": "profiles",
+        "schema": "app_private",
+        "force_rls": false,
+        "replica_identity": "d"
+      },
+      {
+        "rls": true,
+        "kind": "r",
+        "table": "friendships",
+        "schema": "app_private",
+        "force_rls": false,
+        "replica_identity": "d"
+      },
+      {
+        "rls": true,
+        "kind": "r",
+        "table": "profile_watchers",
+        "schema": "app_private",
+        "force_rls": false,
+        "replica_identity": "d"
+      }
+    ],
+    "columns": [
+      {
+        "type": "uuid",
+        "table": "friendships",
+        "column": "id",
+        "schema": "app_private",
+        "default": "gen_random_uuid()",
+        "nullable": "NO"
+      },
+      {
+        "type": "uuid",
+        "table": "friendships",
+        "column": "requester_id",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "NO"
+      },
+      {
+        "type": "uuid",
+        "table": "friendships",
+        "column": "addressee_id",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "NO"
+      },
+      {
+        "type": "uuid",
+        "table": "friendships",
+        "column": "pair_low",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "type": "uuid",
+        "table": "friendships",
+        "column": "pair_high",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "type": "text",
+        "table": "friendships",
+        "column": "status",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "NO"
+      },
+      {
+        "type": "uuid",
+        "table": "friendships",
+        "column": "blocked_by_id",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "type": "uuid",
+        "table": "friendships",
+        "column": "request_event_id",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "friendships",
+        "column": "created_at",
+        "schema": "app_private",
+        "default": "now()",
+        "nullable": "NO"
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "friendships",
+        "column": "updated_at",
+        "schema": "app_private",
+        "default": "now()",
+        "nullable": "NO"
+      },
+      {
+        "type": "uuid",
+        "table": "profile_watchers",
+        "column": "viewer_id",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "NO"
+      },
+      {
+        "type": "uuid",
+        "table": "profile_watchers",
+        "column": "profile_id",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "NO"
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "profile_watchers",
+        "column": "last_seen_at",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "NO"
+      },
+      {
+        "type": "uuid",
+        "table": "profiles",
+        "column": "user_id",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "NO"
+      },
+      {
+        "type": "text",
+        "table": "profiles",
+        "column": "state",
+        "schema": "app_private",
+        "default": "'active'::text",
+        "nullable": "NO"
+      },
+      {
+        "type": "text",
+        "table": "profiles",
+        "column": "contact_email",
+        "schema": "app_private",
+        "default": "''::text",
+        "nullable": "NO"
+      },
+      {
+        "type": "text",
+        "table": "profiles",
+        "column": "spy_id",
+        "schema": "app_private",
+        "default": null,
+        "nullable": "YES"
+      },
+      {
+        "type": "jsonb",
+        "table": "profiles",
+        "column": "data",
+        "schema": "app_private",
+        "default": "'{}'::jsonb",
+        "nullable": "NO"
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "profiles",
+        "column": "created_at",
+        "schema": "app_private",
+        "default": "now()",
+        "nullable": "NO"
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "profiles",
+        "column": "updated_at",
+        "schema": "app_private",
+        "default": "now()",
+        "nullable": "NO"
+      },
+      {
+        "type": "uuid",
+        "table": "app_profile_signals",
+        "column": "recipient_user_id",
+        "schema": "public",
+        "default": null,
+        "nullable": "NO"
+      },
+      {
+        "type": "uuid",
+        "table": "app_profile_signals",
+        "column": "profile_user_id",
+        "schema": "public",
+        "default": null,
+        "nullable": "NO"
+      },
+      {
+        "type": "bigint",
+        "table": "app_profile_signals",
+        "column": "revision",
+        "schema": "public",
+        "default": "1",
+        "nullable": "NO"
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "app_profile_signals",
+        "column": "updated_at",
+        "schema": "public",
+        "default": "now()",
+        "nullable": "NO"
+      },
+      {
+        "type": "uuid",
+        "table": "app_user_signals",
+        "column": "recipient_user_id",
+        "schema": "public",
+        "default": null,
+        "nullable": "NO"
+      },
+      {
+        "type": "bigint",
+        "table": "app_user_signals",
+        "column": "revision",
+        "schema": "public",
+        "default": "1",
+        "nullable": "NO"
+      },
+      {
+        "type": "timestamp with time zone",
+        "table": "app_user_signals",
+        "column": "updated_at",
+        "schema": "public",
+        "default": "now()",
+        "nullable": "NO"
+      }
+    ],
+    "indexes": [
+      {
+        "name": "app_profile_signals_pkey",
+        "ready": true,
+        "table": "app_profile_signals",
+        "valid": true,
+        "schema": "public",
+        "unique": true,
+        "primary": true,
+        "definition": "CREATE UNIQUE INDEX app_profile_signals_pkey ON public.app_profile_signals USING btree (recipient_user_id, profile_user_id)"
+      },
+      {
+        "name": "app_user_signals_pkey",
+        "ready": true,
+        "table": "app_user_signals",
+        "valid": true,
+        "schema": "public",
+        "unique": true,
+        "primary": true,
+        "definition": "CREATE UNIQUE INDEX app_user_signals_pkey ON public.app_user_signals USING btree (recipient_user_id)"
+      },
+      {
+        "name": "profiles_pkey",
+        "ready": true,
+        "table": "profiles",
+        "valid": true,
+        "schema": "app_private",
+        "unique": true,
+        "primary": true,
+        "definition": "CREATE UNIQUE INDEX profiles_pkey ON app_private.profiles USING btree (user_id)"
+      },
+      {
+        "name": "profiles_spy_id_key",
+        "ready": true,
+        "table": "profiles",
+        "valid": true,
+        "schema": "app_private",
+        "unique": true,
+        "primary": false,
+        "definition": "CREATE UNIQUE INDEX profiles_spy_id_key ON app_private.profiles USING btree (spy_id)"
+      },
+      {
+        "name": "app_profiles_spy_id_unique",
+        "ready": true,
+        "table": "profiles",
+        "valid": true,
+        "schema": "app_private",
+        "unique": true,
+        "primary": false,
+        "definition": "CREATE UNIQUE INDEX app_profiles_spy_id_unique ON app_private.profiles USING btree (spy_id) WHERE (spy_id IS NOT NULL)"
+      },
+      {
+        "name": "friendships_pkey",
+        "ready": true,
+        "table": "friendships",
+        "valid": true,
+        "schema": "app_private",
+        "unique": true,
+        "primary": true,
+        "definition": "CREATE UNIQUE INDEX friendships_pkey ON app_private.friendships USING btree (id)"
+      },
+      {
+        "name": "friendships_pair_low_pair_high_key",
+        "ready": true,
+        "table": "friendships",
+        "valid": true,
+        "schema": "app_private",
+        "unique": true,
+        "primary": false,
+        "definition": "CREATE UNIQUE INDEX friendships_pair_low_pair_high_key ON app_private.friendships USING btree (pair_low, pair_high)"
+      },
+      {
+        "name": "app_friendships_addressee",
+        "ready": true,
+        "table": "friendships",
+        "valid": true,
+        "schema": "app_private",
+        "unique": false,
+        "primary": false,
+        "definition": "CREATE INDEX app_friendships_addressee ON app_private.friendships USING btree (addressee_id, status)"
+      },
+      {
+        "name": "app_friendships_requester",
+        "ready": true,
+        "table": "friendships",
+        "valid": true,
+        "schema": "app_private",
+        "unique": false,
+        "primary": false,
+        "definition": "CREATE INDEX app_friendships_requester ON app_private.friendships USING btree (requester_id, status)"
+      },
+      {
+        "name": "profile_watchers_pkey",
+        "ready": true,
+        "table": "profile_watchers",
+        "valid": true,
+        "schema": "app_private",
+        "unique": true,
+        "primary": true,
+        "definition": "CREATE UNIQUE INDEX profile_watchers_pkey ON app_private.profile_watchers USING btree (viewer_id, profile_id)"
+      },
+      {
+        "name": "app_profile_watchers_target",
+        "ready": true,
+        "table": "profile_watchers",
+        "valid": true,
+        "schema": "app_private",
+        "unique": false,
+        "primary": false,
+        "definition": "CREATE INDEX app_profile_watchers_target ON app_private.profile_watchers USING btree (profile_id, last_seen_at)"
+      }
+    ],
+    "policies": [
+      {
+        "check": null,
+        "roles": [
+          "authenticated"
+        ],
+        "table": "app_profile_signals",
+        "using": "(recipient_user_id = ( SELECT auth.uid() AS uid))",
+        "policy": "app_profile_signal_recipient",
+        "schema": "public",
+        "command": "SELECT",
+        "permissive": "PERMISSIVE"
+      },
+      {
+        "check": null,
+        "roles": [
+          "authenticated"
+        ],
+        "table": "app_user_signals",
+        "using": "(recipient_user_id = ( SELECT auth.uid() AS uid))",
+        "policy": "app_user_signal_recipient",
+        "schema": "public",
+        "command": "SELECT",
+        "permissive": "PERMISSIVE"
+      }
+    ],
+    "wal_level": "logical",
+    "checked_at": "2026-10-17T19:38:46.919326+00:00",
+    "privileges": [
+      {
+        "role": "anon",
+        "table": "public.app_user_signals",
+        "delete": false,
+        "insert": false,
+        "select": false,
+        "update": false,
+        "schema_usage": true
+      },
+      {
+        "role": "authenticated",
+        "table": "public.app_user_signals",
+        "delete": false,
+        "insert": false,
+        "select": true,
+        "update": false,
+        "schema_usage": true
+      },
+      {
+        "role": "anon",
+        "table": "public.app_profile_signals",
+        "delete": false,
+        "insert": false,
+        "select": false,
+        "update": false,
+        "schema_usage": true
+      },
+      {
+        "role": "authenticated",
+        "table": "public.app_profile_signals",
+        "delete": false,
+        "insert": false,
+        "select": true,
+        "update": false,
+        "schema_usage": true
+      }
+    ],
+    "constraints": [
+      {
+        "name": "app_profile_signals_pkey",
+        "type": "p",
+        "table": "app_profile_signals",
+        "schema": "public",
+        "validated": true,
+        "definition": "PRIMARY KEY (recipient_user_id, profile_user_id)"
+      },
+      {
+        "name": "app_user_signals_pkey",
+        "type": "p",
+        "table": "app_user_signals",
+        "schema": "public",
+        "validated": true,
+        "definition": "PRIMARY KEY (recipient_user_id)"
+      },
+      {
+        "name": "profiles_pkey",
+        "type": "p",
+        "table": "profiles",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "PRIMARY KEY (user_id)"
+      },
+      {
+        "name": "profiles_spy_id_check",
+        "type": "c",
+        "table": "profiles",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "CHECK ((spy_id ~ '^[0-9]{3}-[0-9]{3}$'::text))"
+      },
+      {
+        "name": "profiles_spy_id_key",
+        "type": "u",
+        "table": "profiles",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "UNIQUE (spy_id)"
+      },
+      {
+        "name": "profiles_state_check",
+        "type": "c",
+        "table": "profiles",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "CHECK ((state = ANY (ARRAY['active'::text, 'deleting'::text, 'deleted'::text])))"
+      },
+      {
+        "name": "friendships_addressee_id_fkey",
+        "type": "f",
+        "table": "friendships",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "FOREIGN KEY (addressee_id) REFERENCES app_private.profiles(user_id)"
+      },
+      {
+        "name": "friendships_check",
+        "type": "c",
+        "table": "friendships",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "CHECK ((requester_id <> addressee_id))"
+      },
+      {
+        "name": "friendships_check1",
+        "type": "c",
+        "table": "friendships",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "CHECK ((((status = 'blocked'::text) AND ((blocked_by_id = requester_id) OR (blocked_by_id = addressee_id))) OR ((status <> 'blocked'::text) AND (blocked_by_id IS NULL))))"
+      },
+      {
+        "name": "friendships_pair_low_pair_high_key",
+        "type": "u",
+        "table": "friendships",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "UNIQUE (pair_low, pair_high)"
+      },
+      {
+        "name": "friendships_pkey",
+        "type": "p",
+        "table": "friendships",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "PRIMARY KEY (id)"
+      },
+      {
+        "name": "friendships_requester_id_fkey",
+        "type": "f",
+        "table": "friendships",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "FOREIGN KEY (requester_id) REFERENCES app_private.profiles(user_id)"
+      },
+      {
+        "name": "friendships_status_check",
+        "type": "c",
+        "table": "friendships",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "CHECK ((status = ANY (ARRAY['pending'::text, 'accepted'::text, 'declined'::text, 'blocked'::text])))"
+      },
+      {
+        "name": "profile_watchers_pkey",
+        "type": "p",
+        "table": "profile_watchers",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "PRIMARY KEY (viewer_id, profile_id)"
+      },
+      {
+        "name": "profile_watchers_profile_id_fkey",
+        "type": "f",
+        "table": "profile_watchers",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "FOREIGN KEY (profile_id) REFERENCES app_private.profiles(user_id)"
+      },
+      {
+        "name": "profile_watchers_viewer_id_fkey",
+        "type": "f",
+        "table": "profile_watchers",
+        "schema": "app_private",
+        "validated": true,
+        "definition": "FOREIGN KEY (viewer_id) REFERENCES app_private.profiles(user_id)"
+      }
+    ],
+    "publication": [
+      {
+        "table": "app_profile_signals",
+        "delete": true,
+        "insert": true,
+        "update": true,
+        "columns": [
+          "recipient_user_id",
+          "profile_user_id",
+          "revision",
+          "updated_at"
+        ],
+        "rowfilter": null,
+        "all_tables": false,
+        "publication": "supabase_realtime"
+      },
+      {
+        "table": "app_user_signals",
+        "delete": true,
+        "insert": true,
+        "update": true,
+        "columns": [
+          "recipient_user_id",
+          "revision",
+          "updated_at"
+        ],
+        "rowfilter": null,
+        "all_tables": false,
+        "publication": "supabase_realtime"
+      }
+    ]
+  },
+  "nativeContract": {
+    "tables": [
+      "app_user_signals",
+      "app_profile_signals"
+    ],
+    "schema": "public",
+    "filter": "recipient_user_id=eq.<current authenticated UUID>",
+    "events": [
+      "INSERT",
+      "UPDATE"
+    ],
+    "payload": "UUID recipient/profile IDs and positive integer revision",
+    "protocol": "Phoenix JSON v1.0.0, explicit authenticated access_token, unique server subscription IDs, system postgres_changes readiness, heartbeat/token refresh, reconnect catch-up",
+    "serverPrerequisitesMatch": true
+  },
+  "docs": [
+    "https://supabase.com/docs/guides/realtime/postgres-changes",
+    "https://supabase.com/docs/guides/realtime/protocol"
+  ],
+  "limits": [
+    "Does not prove a fresh production authenticated subscription",
+    "No production user rows read or signal writes performed",
+    "Phone two-client acceptance remains separate"
+  ]
+}

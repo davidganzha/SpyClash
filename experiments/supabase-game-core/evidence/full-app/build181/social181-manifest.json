@@ -1,0 +1,410 @@
+{
+  "state": "LOCAL_ONLY_NOT_DEPLOYED",
+  "project_ref": "bbkfsgnordtdiblgdzkg",
+  "function": "app-services",
+  "baseline_version": 8,
+  "baseline_bundle_sha256": "89d348c3d9ec10bfc9660512de0629e70287001b2842e39e0c90de5b65720751",
+  "live_snapshot_sha256": "20056d447415dc502d9c7e20567abcfe4f9f181f3f27c5f3cd8db9d4bf3b7cec",
+  "change_commit": "eb1b11cd34ff5d3549b41fda9795129d9cec9f9a",
+  "verify_jwt": true,
+  "import_map": true,
+  "entrypoint_path": "source/app-services/index.ts",
+  "import_map_path": "source/app-services/deno.json",
+  "file_count": 55,
+  "changed_files": [
+    "app-services/community.ts",
+    "app-services/profile.ts"
+  ],
+  "candidate_root": "social181-candidate",
+  "rollback_root": "social181-rollback",
+  "files": [
+    {
+      "name": "app-services/account-gate.ts",
+      "beforeSHA256": "c8f3c162b768965caee4279761ce5ee16d6181d20264af2c32e64acf883b6b20",
+      "afterSHA256": "c8f3c162b768965caee4279761ce5ee16d6181d20264af2c32e64acf883b6b20",
+      "beforeBytes": 2816,
+      "afterBytes": 2816
+    },
+    {
+      "name": "app-services/billing-rules/apple-entitlement.ts",
+      "beforeSHA256": "cbc76d8a7500defa7170c00668f796b83831c1d0fa2af61d0ac01ab52f2e9664",
+      "afterSHA256": "cbc76d8a7500defa7170c00668f796b83831c1d0fa2af61d0ac01ab52f2e9664",
+      "beforeBytes": 8220,
+      "afterBytes": 8220
+    },
+    {
+      "name": "app-services/billing-rules/apple-subscription-status.ts",
+      "beforeSHA256": "3dcd0223033f0524e14c75c4745ced9f19910aede55a3ef4639cf1e46ace5366",
+      "afterSHA256": "3dcd0223033f0524e14c75c4745ced9f19910aede55a3ef4639cf1e46ace5366",
+      "beforeBytes": 3867,
+      "afterBytes": 3867
+    },
+    {
+      "name": "app-services/billing-rules/limitless-rollout.ts",
+      "beforeSHA256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+      "afterSHA256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+      "beforeBytes": 745,
+      "afterBytes": 745
+    },
+    {
+      "name": "app-services/community.ts",
+      "beforeSHA256": "38826866ac19246240bdb13fc6c790b9ba4fb68727ee20996675e42fa35e3669",
+      "afterSHA256": "33d6f9d87f9e07f279f4ed026625a39cd1ad7fb2026a201019981c0c4e8fd425",
+      "beforeBytes": 21279,
+      "afterBytes": 22489
+    },
+    {
+      "name": "app-services/contracts.ts",
+      "beforeSHA256": "b794347818f730710a6b0b9622bf6583781d9f24c332e905372b98191476d0a3",
+      "afterSHA256": "b794347818f730710a6b0b9622bf6583781d9f24c332e905372b98191476d0a3",
+      "beforeBytes": 1101,
+      "afterBytes": 1101
+    },
+    {
+      "name": "app-services/deno.json",
+      "beforeSHA256": "fa0a2b84dda16ce3da477576c9c16de04368302cd170425853b731027fb48a83",
+      "afterSHA256": "fa0a2b84dda16ce3da477576c9c16de04368302cd170425853b731027fb48a83",
+      "beforeBytes": 111,
+      "afterBytes": 111
+    },
+    {
+      "name": "app-services/dispatcher.ts",
+      "beforeSHA256": "69c3b10e277f70cbe9bc93f38134b9ee1e0859f3b5d171fef0b72bbda2df15ec",
+      "afterSHA256": "69c3b10e277f70cbe9bc93f38134b9ee1e0859f3b5d171fef0b72bbda2df15ec",
+      "beforeBytes": 5821,
+      "afterBytes": 5821
+    },
+    {
+      "name": "app-services/handler.ts",
+      "beforeSHA256": "e8dd36ac9322b0faa85966d57135805a331f853cbfc62d08508aae46704dec22",
+      "afterSHA256": "e8dd36ac9322b0faa85966d57135805a331f853cbfc62d08508aae46704dec22",
+      "beforeBytes": 3632,
+      "afterBytes": 3632
+    },
+    {
+      "name": "app-services/inbox.ts",
+      "beforeSHA256": "2cbcd36c06653cfeb31050106b479eac3057846c61c973dd32847339378caa8c",
+      "afterSHA256": "2cbcd36c06653cfeb31050106b479eac3057846c61c973dd32847339378caa8c",
+      "beforeBytes": 13691,
+      "afterBytes": 13691
+    },
+    {
+      "name": "app-services/index.ts",
+      "beforeSHA256": "781bf298b67b2cfb54c92de09a7df682ae929c7d15b4f62caeb71178e8e61734",
+      "afterSHA256": "781bf298b67b2cfb54c92de09a7df682ae929c7d15b4f62caeb71178e8e61734",
+      "beforeBytes": 1953,
+      "afterBytes": 1953
+    },
+    {
+      "name": "app-services/integration-crypto.ts",
+      "beforeSHA256": "27b6ea3966e7844d4114d76525902da5a9b0a4253185a52858042225c14cb970",
+      "afterSHA256": "27b6ea3966e7844d4114d76525902da5a9b0a4253185a52858042225c14cb970",
+      "beforeBytes": 2036,
+      "afterBytes": 2036
+    },
+    {
+      "name": "app-services/legacy-billing.ts",
+      "beforeSHA256": "0c351552ab764488e3471aae982be87a6e11f02915f01b4724bde447b65fd000",
+      "afterSHA256": "0c351552ab764488e3471aae982be87a6e11f02915f01b4724bde447b65fd000",
+      "beforeBytes": 11485,
+      "afterBytes": 11485
+    },
+    {
+      "name": "app-services/legacy-provider.ts",
+      "beforeSHA256": "41ea1277efb74f98e15c8adac83ff91c82bc427a802aba2e829e314c1447ca03",
+      "afterSHA256": "41ea1277efb74f98e15c8adac83ff91c82bc427a802aba2e829e314c1447ca03",
+      "beforeBytes": 5253,
+      "afterBytes": 5253
+    },
+    {
+      "name": "app-services/legacy.ts",
+      "beforeSHA256": "e14d3f3da3fee76abc859d87c996f0d64789d8c991471ddc9783b97024c40152",
+      "afterSHA256": "e14d3f3da3fee76abc859d87c996f0d64789d8c991471ddc9783b97024c40152",
+      "beforeBytes": 11380,
+      "afterBytes": 11380
+    },
+    {
+      "name": "app-services/lifecycle.ts",
+      "beforeSHA256": "bceed73e11d7a109bb7e0839478c8132570b56fe69c579d17f38b67abaf35e8d",
+      "afterSHA256": "bceed73e11d7a109bb7e0839478c8132570b56fe69c579d17f38b67abaf35e8d",
+      "beforeBytes": 7060,
+      "afterBytes": 7060
+    },
+    {
+      "name": "app-services/live-activity-policy.ts",
+      "beforeSHA256": "842d779d6ed126b6876fb7545bd78017938c08bbfc24736c72236780bd62fea0",
+      "afterSHA256": "842d779d6ed126b6876fb7545bd78017938c08bbfc24736c72236780bd62fea0",
+      "beforeBytes": 10641,
+      "afterBytes": 10641
+    },
+    {
+      "name": "app-services/maintenance-handler.ts",
+      "beforeSHA256": "bfa67ce3bcf7b25e07cc466e018c666d5a0fdbc26bd5b19df2440d6012a84eb8",
+      "afterSHA256": "bfa67ce3bcf7b25e07cc466e018c666d5a0fdbc26bd5b19df2440d6012a84eb8",
+      "beforeBytes": 1339,
+      "afterBytes": 1339
+    },
+    {
+      "name": "app-services/membership.ts",
+      "beforeSHA256": "0efdf735697c1989007caeff9c34942a39d247c60acbf1afe34cc2dcea341890",
+      "afterSHA256": "0efdf735697c1989007caeff9c34942a39d247c60acbf1afe34cc2dcea341890",
+      "beforeBytes": 11234,
+      "afterBytes": 11234
+    },
+    {
+      "name": "app-services/policies/community-safety.ts",
+      "beforeSHA256": "872304be35e721f8e1e1c2a3f120a3d7bd83b66b995b1db3569a4ecd7741df27",
+      "afterSHA256": "872304be35e721f8e1e1c2a3f120a3d7bd83b66b995b1db3569a4ecd7741df27",
+      "beforeBytes": 9213,
+      "afterBytes": 9213
+    },
+    {
+      "name": "app-services/policies/community.ts",
+      "beforeSHA256": "8ba071e5b8e8c61d2518206ba0e39c79079b4431fbe26df1c0f3e5da78a7a15e",
+      "afterSHA256": "8ba071e5b8e8c61d2518206ba0e39c79079b4431fbe26df1c0f3e5da78a7a15e",
+      "beforeBytes": 7571,
+      "afterBytes": 7571
+    },
+    {
+      "name": "app-services/policies/mutation-idempotency.ts",
+      "beforeSHA256": "5fd5250426199cdf18787ab76d1602e21192100ff54d2749fceeebba95806198",
+      "afterSHA256": "5fd5250426199cdf18787ab76d1602e21192100ff54d2749fceeebba95806198",
+      "beforeBytes": 1905,
+      "afterBytes": 1905
+    },
+    {
+      "name": "app-services/policies/notification-contracts.ts",
+      "beforeSHA256": "bf62c687d76300641150df0e141e313a57cc858cbe43826cf036a5eafb7709ac",
+      "afterSHA256": "bf62c687d76300641150df0e141e313a57cc858cbe43826cf036a5eafb7709ac",
+      "beforeBytes": 7167,
+      "afterBytes": 7167
+    },
+    {
+      "name": "app-services/policies/profile-membership.ts",
+      "beforeSHA256": "329a34560e5bb9683218bfed980b372f1ed64303c1985b3380c1da775ed40105",
+      "afterSHA256": "329a34560e5bb9683218bfed980b372f1ed64303c1985b3380c1da775ed40105",
+      "beforeBytes": 684,
+      "afterBytes": 684
+    },
+    {
+      "name": "app-services/profile.ts",
+      "beforeSHA256": "b1b2966683c7cb66e3cfba1bf294486f2b2e1b5ec269f14f9776550aa8872993",
+      "afterSHA256": "cf0af586434fdffb48550f56cfcbe875cd77c32eccd2bf0e6cdc7dde684fafe9",
+      "beforeBytes": 10223,
+      "afterBytes": 10370
+    },
+    {
+      "name": "app-services/push.ts",
+      "beforeSHA256": "3aa68c2923ccf5bf1f92e21f3b0c7db38feaaa19bcccb5ebc6d0880f76c66d49",
+      "afterSHA256": "3aa68c2923ccf5bf1f92e21f3b0c7db38feaaa19bcccb5ebc6d0880f76c66d49",
+      "beforeBytes": 8656,
+      "afterBytes": 8656
+    },
+    {
+      "name": "app-services/worker.ts",
+      "beforeSHA256": "39c4fe2a8de896f186fde180a891c98ac95e5b1f60913626bae0f822aa6e77d1",
+      "afterSHA256": "39c4fe2a8de896f186fde180a891c98ac95e5b1f60913626bae0f822aa6e77d1",
+      "beforeBytes": 15184,
+      "afterBytes": 15184
+    },
+    {
+      "name": "full-game-core/engine.ts",
+      "beforeSHA256": "ad286a3595049ea2b7fe443808bd6b03a3bf337fe2c1678bda858902710f3c38",
+      "afterSHA256": "ad286a3595049ea2b7fe443808bd6b03a3bf337fe2c1678bda858902710f3c38",
+      "beforeBytes": 40067,
+      "afterBytes": 40067
+    },
+    {
+      "name": "full-game-core/leaderboard-service.ts",
+      "beforeSHA256": "569a4f55257f5066a104f0f152fb2678da873b94f4951191e5e4563c34438818",
+      "afterSHA256": "569a4f55257f5066a104f0f152fb2678da873b94f4951191e5e4563c34438818",
+      "beforeBytes": 1398,
+      "afterBytes": 1398
+    },
+    {
+      "name": "full-game-core/rules/active-game-lobby-return-policy.ts",
+      "beforeSHA256": "be935e238fc543e3f94328296d5114fcee3aadce370cd1097b26f2ac0bb05416",
+      "afterSHA256": "be935e238fc543e3f94328296d5114fcee3aadce370cd1097b26f2ac0bb05416",
+      "beforeBytes": 5361,
+      "afterBytes": 5361
+    },
+    {
+      "name": "full-game-core/rules/association-turn-order.ts",
+      "beforeSHA256": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa",
+      "afterSHA256": "5dc3497378f59ed654d85ef8e0f0669e7497a4094fd67f76465a7e352ed81ffa",
+      "beforeBytes": 8519,
+      "afterBytes": 8519
+    },
+    {
+      "name": "full-game-core/rules/competitive-stats.ts",
+      "beforeSHA256": "058bfd9029172554a0f648c8b23b78e788b7b1f6b9e89502974ff9bdc64d0a45",
+      "afterSHA256": "058bfd9029172554a0f648c8b23b78e788b7b1f6b9e89502974ff9bdc64d0a45",
+      "beforeBytes": 4536,
+      "afterBytes": 4536
+    },
+    {
+      "name": "full-game-core/rules/content-safety.ts",
+      "beforeSHA256": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b",
+      "afterSHA256": "9d2698787d133a6eb4a7807c9765ceafdcf726671839621248189cfcb634e84b",
+      "beforeBytes": 6167,
+      "afterBytes": 6167
+    },
+    {
+      "name": "full-game-core/rules/detective-vote-policy.ts",
+      "beforeSHA256": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4",
+      "afterSHA256": "74e51a572605127319b48c018fd6fb8169f96237077c56a2d9f76f2ec9cad5c4",
+      "beforeBytes": 19829,
+      "afterBytes": 19829
+    },
+    {
+      "name": "full-game-core/rules/finished-room-departure-policy.ts",
+      "beforeSHA256": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14",
+      "afterSHA256": "d27b46836bb44f1d8086af6bcb03481f16ac801b993117c9539c427fbb18ab14",
+      "beforeBytes": 1163,
+      "afterBytes": 1163
+    },
+    {
+      "name": "full-game-core/rules/game-history-idempotency.ts",
+      "beforeSHA256": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0",
+      "afterSHA256": "8e27cd9df57aa9cdf7ee2c0164bf9a92e40fa70c93227946a5d3b748f44502d0",
+      "beforeBytes": 3617,
+      "afterBytes": 3617
+    },
+    {
+      "name": "full-game-core/rules/game-round.ts",
+      "beforeSHA256": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af",
+      "afterSHA256": "85c38cfba7b78ec6dbb5060d8478c5c4ebd454d835f1999f700030bdfc3684af",
+      "beforeBytes": 180,
+      "afterBytes": 180
+    },
+    {
+      "name": "full-game-core/rules/game-timer-policy.ts",
+      "beforeSHA256": "33837768c2a60210a3ef2b5cc68ca1c76f821cfc5fdbd0e845f0ac5f595a78ee",
+      "afterSHA256": "33837768c2a60210a3ef2b5cc68ca1c76f821cfc5fdbd0e845f0ac5f595a78ee",
+      "beforeBytes": 8604,
+      "afterBytes": 8604
+    },
+    {
+      "name": "full-game-core/rules/leaderboard.ts",
+      "beforeSHA256": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94",
+      "afterSHA256": "1127d3b778fb47c6e8bc0ea3b176ec84e2e99638f2db35d3ce2ea8e575b34b94",
+      "beforeBytes": 4084,
+      "afterBytes": 4084
+    },
+    {
+      "name": "full-game-core/rules/lobby-kick-policy.ts",
+      "beforeSHA256": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6",
+      "afterSHA256": "37eb0383c205282027e5420bb2aef6a73955dd8fa67d27e568e4fb83f2eb74a6",
+      "beforeBytes": 8119,
+      "afterBytes": 8119
+    },
+    {
+      "name": "full-game-core/rules/lobby-state-policy.ts",
+      "beforeSHA256": "de7c5c0ca28b277753c5b1816b0dc1088b34b4961418a805e493005931c4f4d6",
+      "afterSHA256": "de7c5c0ca28b277753c5b1816b0dc1088b34b4961418a805e493005931c4f4d6",
+      "beforeBytes": 14588,
+      "afterBytes": 14588
+    },
+    {
+      "name": "full-game-core/rules/multi-spy-policy.ts",
+      "beforeSHA256": "cd9dc4d83d130674fa04287000cf8190a41359b725c19f3f5060086bad5e730a",
+      "afterSHA256": "cd9dc4d83d130674fa04287000cf8190a41359b725c19f3f5060086bad5e730a",
+      "beforeBytes": 19664,
+      "afterBytes": 19664
+    },
+    {
+      "name": "full-game-core/rules/question-turn-order.ts",
+      "beforeSHA256": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef",
+      "afterSHA256": "8da578fb29e840b1aa9c5b967fac64475f4eb8bb0ac83922e4ce2c279af361ef",
+      "beforeBytes": 9415,
+      "afterBytes": 9415
+    },
+    {
+      "name": "full-game-core/rules/replay-auto-start-policy.ts",
+      "beforeSHA256": "1c4cbbe426152c8120ea86353d0e1f5667d0ebbc491e9d7313868a92c1e2d0a7",
+      "afterSHA256": "1c4cbbe426152c8120ea86353d0e1f5667d0ebbc491e9d7313868a92c1e2d0a7",
+      "beforeBytes": 8520,
+      "afterBytes": 8520
+    },
+    {
+      "name": "full-game-core/rules/replay-policy.ts",
+      "beforeSHA256": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380",
+      "afterSHA256": "87f19132b355bc97b54ee802f83a92976364d09716184a14d7717a5950841380",
+      "beforeBytes": 6188,
+      "afterBytes": 6188
+    },
+    {
+      "name": "full-game-core/rules/room-interaction-safety.ts",
+      "beforeSHA256": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c",
+      "afterSHA256": "b6183d05fb00fdd2cfd473f50afb92ed58a0f98d2f2f21c7611f5fb72264b06c",
+      "beforeBytes": 6980,
+      "afterBytes": 6980
+    },
+    {
+      "name": "full-game-core/rules/room-membership-generation.ts",
+      "beforeSHA256": "97f10bf14a8dff24547a372e7bd26f423b17660eb524f7e3bf75965478fbc10b",
+      "afterSHA256": "97f10bf14a8dff24547a372e7bd26f423b17660eb524f7e3bf75965478fbc10b",
+      "beforeBytes": 4069,
+      "afterBytes": 4069
+    },
+    {
+      "name": "full-game-core/rules/room-projection.ts",
+      "beforeSHA256": "6492fe9ac5f8aae257578025cafb65726e9c00b96f999200add3f979ff4559ab",
+      "afterSHA256": "6492fe9ac5f8aae257578025cafb65726e9c00b96f999200add3f979ff4559ab",
+      "beforeBytes": 13418,
+      "afterBytes": 13418
+    },
+    {
+      "name": "full-game-core/rules/room-result-policy.ts",
+      "beforeSHA256": "c2fcfb859df4e1596d5a42c17a00434119e835f37f56cc340bcde922b89da874",
+      "afterSHA256": "c2fcfb859df4e1596d5a42c17a00434119e835f37f56cc340bcde922b89da874",
+      "beforeBytes": 13623,
+      "afterBytes": 13623
+    },
+    {
+      "name": "full-game-core/rules/round-action-access.ts",
+      "beforeSHA256": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda",
+      "afterSHA256": "8175ec5ddf9bb115549b36c81b6e6c2b345cc703aae6df95df9957b46d8e5dda",
+      "beforeBytes": 889,
+      "afterBytes": 889
+    },
+    {
+      "name": "full-game-core/rules/start-word-pool-policy.ts",
+      "beforeSHA256": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b",
+      "afterSHA256": "b4f7df0d7eb40050a65413d6c33db3c5f81965ccf0e64584b24f60160c97b01b",
+      "beforeBytes": 645,
+      "afterBytes": 645
+    },
+    {
+      "name": "full-game-core/rules/terminal-finalization-scope.ts",
+      "beforeSHA256": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12",
+      "afterSHA256": "ecddb8175e7bb0d2d09019a4074aa59e5ae2ed3fc2873c0b4791459a3370dc12",
+      "beforeBytes": 1100,
+      "afterBytes": 1100
+    },
+    {
+      "name": "full-game-core/rules/terminal-outbox-commit.ts",
+      "beforeSHA256": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e",
+      "afterSHA256": "6b87e575425faee886dff8e93534f68ac821a59760d7c30da829efcdc84bba1e",
+      "beforeBytes": 3469,
+      "afterBytes": 3469
+    },
+    {
+      "name": "full-game-core/service.ts",
+      "beforeSHA256": "1080f445e6578bfe12bb25ac9cb14efa5c72572c1179abf9c284660faa428c8f",
+      "afterSHA256": "1080f445e6578bfe12bb25ac9cb14efa5c72572c1179abf9c284660faa428c8f",
+      "beforeBytes": 15093,
+      "afterBytes": 15093
+    },
+    {
+      "name": "full-game-core/word-pack-content-safety.ts",
+      "beforeSHA256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937",
+      "afterSHA256": "ffb2554d847ef452d50750c7a0e57951826bbfe40a1dd11a22e88be058319937",
+      "beforeBytes": 9179,
+      "afterBytes": 9179
+    }
+  ],
+  "scope": "Only community.ts and profile.ts from commit eb1b11cd; all other live v8 files preserved byte-for-byte.",
+  "secrets_config_schema_changes": false,
+  "limitless_route_preserved": true
+}

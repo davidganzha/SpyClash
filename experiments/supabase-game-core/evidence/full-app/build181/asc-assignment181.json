@@ -1,0 +1,16 @@
+{
+  "checkedAt": "2026-10-17T19:49:44.697Z",
+  "appID": "6793534085",
+  "buildID": "19cf0e7c-b3ea-4649-b8ef-875a46a5ce1f",
+  "build": "181",
+  "marketingVersion": "1.0.3",
+  "audience": "INTERNAL_ONLY",
+  "groupID": "47a13858-b43b-44a1-bf3e-285722cec320",
+  "testerIDs": [
+    "569dc033-570c-42f7-bbc3-611f6c9cb527",
+    "7818c591-2a6e-40de-924f-f060d753c1e0"
+  ],
+  "responseStatus": 204,
+  "assigned": true,
+  "soleMutation": "POST betaGroups/GROUP/relationships/builds; one validated build"
+}

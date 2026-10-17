@@ -1,0 +1,272 @@
+{
+  "checkedAt": "2026-10-17T19:43:38.832406+00:00",
+  "status": "STATIC_PRESERVED_SERVICE_GATE_UNVERIFIED_TRANSPORT_BLOCKED",
+  "passed": false,
+  "scope": "After approved Supabase social181 app-services v9 deployment",
+  "operation": "Unauthenticated public HTTP only; no authorization/cookie headers, credentials, test users, account mutation, purchase, or backend management operations",
+  "baselineReceipt": "experiments/supabase-game-core/evidence/full-app/build180/site-live-after.json",
+  "baselineReceiptSHA256": "9fddd3f27ba4972913f2891a3db274b9b2d1fba2450d612dec612ef043de85f2",
+  "siteManifestSHA256": "fe54c9b1f5abc3474e424dc678f70a886e887581c068748ecf16b9305d79c277",
+  "staticFiles": [
+    {
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "status": 200,
+      "sameURL": true,
+      "bytes": 65267,
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "expectedSHA256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "matchesPublished180": true
+    },
+    {
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "status": 200,
+      "sameURL": true,
+      "bytes": 1579238,
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "expectedSHA256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "matchesPublished180": true
+    },
+    {
+      "path": "assets/index-B5iDK17o.js",
+      "status": 200,
+      "sameURL": true,
+      "bytes": 10403,
+      "sha256": "da3600f07c5ccdd00036182dc65d86681b6beb9bad5446012ea3f04b66a7ee5a",
+      "expectedSHA256": "da3600f07c5ccdd00036182dc65d86681b6beb9bad5446012ea3f04b66a7ee5a",
+      "matchesPublished180": true
+    },
+    {
+      "path": "index.html",
+      "status": 200,
+      "sameURL": true,
+      "bytes": 2747,
+      "sha256": "0d0bb1159cd26d6627b16f5539b44d876e824de79e895f4dcb6587914e054537",
+      "expectedSHA256": "0d0bb1159cd26d6627b16f5539b44d876e824de79e895f4dcb6587914e054537",
+      "matchesPublished180": true
+    },
+    {
+      "path": "manifest.json",
+      "status": 200,
+      "sameURL": true,
+      "bytes": 520,
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "expectedSHA256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "matchesPublished180": true
+    }
+  ],
+  "callbackRoutes": [
+    {
+      "path": "MobileAppleAuthCallback.html",
+      "status": 200,
+      "sameURL": true,
+      "entryReferences": [
+        "/assets/index-B5iDK17o.js"
+      ],
+      "expectedEntry": "/assets/index-B5iDK17o.js",
+      "referencesPublished180Entry": true,
+      "noReferrerMetaPresent": true,
+      "bothCallbackGuardsPresent": true
+    },
+    {
+      "path": "MobileAuthCallback.html",
+      "status": 200,
+      "sameURL": true,
+      "entryReferences": [
+        "/assets/index-B5iDK17o.js"
+      ],
+      "expectedEntry": "/assets/index-B5iDK17o.js",
+      "referencesPublished180Entry": true,
+      "noReferrerMetaPresent": true,
+      "bothCallbackGuardsPresent": true
+    }
+  ],
+  "base44SafeProbes": [
+    {
+      "function": "autoRegisterUserV2",
+      "url": "https://spyclash.com/functions/autoRegisterUserV2",
+      "method": "GET",
+      "status": 403,
+      "expectedStatus": 405,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "None"
+    },
+    {
+      "function": "autoRegisterUserV2",
+      "url": "https://spyclash.com/functions/autoRegisterUserV2",
+      "method": "POST",
+      "status": 403,
+      "expectedStatus": 401,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "Empty JSON object only"
+    },
+    {
+      "function": "autoRegisterUserV2",
+      "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/autoRegisterUserV2",
+      "method": "GET",
+      "status": 403,
+      "expectedStatus": 405,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "None"
+    },
+    {
+      "function": "autoRegisterUserV2",
+      "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/autoRegisterUserV2",
+      "method": "POST",
+      "status": 403,
+      "expectedStatus": 401,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "Empty JSON object only"
+    },
+    {
+      "function": "autoRegisterUserV2",
+      "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/autoRegisterUserV2",
+      "method": "GET",
+      "status": 403,
+      "expectedStatus": 405,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "None"
+    },
+    {
+      "function": "autoRegisterUserV2",
+      "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/autoRegisterUserV2",
+      "method": "POST",
+      "status": 403,
+      "expectedStatus": 401,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "Empty JSON object only"
+    },
+    {
+      "function": "checkSubscriptionV2",
+      "url": "https://spyclash.com/functions/checkSubscriptionV2",
+      "method": "GET",
+      "status": 403,
+      "expectedStatus": 405,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "None"
+    },
+    {
+      "function": "checkSubscriptionV2",
+      "url": "https://spyclash.com/functions/checkSubscriptionV2",
+      "method": "POST",
+      "status": 403,
+      "expectedStatus": 401,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "Empty JSON object only"
+    },
+    {
+      "function": "checkSubscriptionV2",
+      "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/checkSubscriptionV2",
+      "method": "GET",
+      "status": 403,
+      "expectedStatus": 405,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "None"
+    },
+    {
+      "function": "checkSubscriptionV2",
+      "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/checkSubscriptionV2",
+      "method": "POST",
+      "status": 403,
+      "expectedStatus": 401,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "Empty JSON object only"
+    },
+    {
+      "function": "checkSubscriptionV2",
+      "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/checkSubscriptionV2",
+      "method": "GET",
+      "status": 403,
+      "expectedStatus": 405,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "None"
+    },
+    {
+      "function": "checkSubscriptionV2",
+      "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/checkSubscriptionV2",
+      "method": "POST",
+      "status": 403,
+      "expectedStatus": 401,
+      "sameURL": true,
+      "jsonObject": false,
+      "responseKeys": [],
+      "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+      "passed": false,
+      "body": "Empty JSON object only"
+    }
+  ],
+  "limits": [
+    "Static hashes prove the published180 site payload remains exact",
+    "No real Apple sign-in, entitlement verification, StoreKit purchase or physical-device acceptance was attempted",
+    "Direct local function probes returned Cloudflare403 metadata before the expected application authentication contract; further approved transport comparison is needed to distinguish serving failure from path-specific blocking.",
+    "No remote execution, sandbox change, autosync, auth attempt or broader Base44 operation performed to bypass the transport block."
+  ],
+  "productionMutations": false,
+  "transportDiagnostic": {
+    "checkedAt": "2026-10-17T19:44:31.735124+00:00",
+    "url": "https://spyclash.com/functions/checkSubscriptionV2",
+    "method": "GET",
+    "status": 403,
+    "contentType": "application/json; charset=utf-8",
+    "server": "cloudflare",
+    "cacheControl": "private, max-age=0, no-store, no-cache, must-revalidate, post-check=0, pre-check=0",
+    "bodyBytes": 737,
+    "bodySHA256": "c92c0a893cf1726cce9a19da65144fcdb0bf8f40f998abdc151a652785c0f172",
+    "safeError": {
+      "cloudflare_error": true,
+      "error_code": 1010,
+      "error_name": "browser_signature_banned",
+      "error_category": "access_denied",
+      "owner_action_required": true,
+      "retryable": false,
+      "title": "Error 1010: Access denied"
+    },
+    "classification": "Cloudflare1010 browser_signature_banned; current local transport does not reach expected application contract",
+    "comparison": "Published180 receipt records405GET/401unauthPOST from prior sandbox fetch transport; current local urllib signature receives403. These differing transports do not establish an application regression."
+  },
+  "staticPreservationPassed": true,
+  "base44ServiceGateVerified": false
+}
