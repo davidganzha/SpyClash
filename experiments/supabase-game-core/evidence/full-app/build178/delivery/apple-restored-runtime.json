@@ -1,0 +1,128 @@
+{
+  "marker": "APPLE178_RUNTIME_FINGERPRINT",
+  "checkedAt": "2026-10-17T18:24:03.611Z",
+  "real_credentials": false,
+  "creates_tickets_or_provider_sessions": false,
+  "results": [
+    {
+      "endpoint": "public",
+      "probe": "unsupported_version",
+      "status": 400,
+      "json": true,
+      "code": "invalid_native_handoff_version",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    },
+    {
+      "endpoint": "public",
+      "probe": "valid_version_without_credentials",
+      "status": 400,
+      "json": true,
+      "code": "invalid_authorization_code",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    },
+    {
+      "endpoint": "public",
+      "probe": "bootstrap_without_ticket",
+      "status": 400,
+      "json": true,
+      "code": "invalid_ticket",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    },
+    {
+      "endpoint": "public",
+      "probe": "public_jwks",
+      "status": 200,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    },
+    {
+      "endpoint": "canonical_custom_domain",
+      "probe": "unsupported_version",
+      "status": 400,
+      "json": true,
+      "code": "invalid_native_handoff_version",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    },
+    {
+      "endpoint": "canonical_custom_domain",
+      "probe": "valid_version_without_credentials",
+      "status": 400,
+      "json": true,
+      "code": "invalid_authorization_code",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    },
+    {
+      "endpoint": "canonical_custom_domain",
+      "probe": "bootstrap_without_ticket",
+      "status": 400,
+      "json": true,
+      "code": "invalid_ticket",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    },
+    {
+      "endpoint": "canonical_custom_domain",
+      "probe": "public_jwks",
+      "status": 200,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    },
+    {
+      "endpoint": "canonical_base44_domain",
+      "probe": "unsupported_version",
+      "status": 400,
+      "json": true,
+      "code": "invalid_native_handoff_version",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    },
+    {
+      "endpoint": "canonical_base44_domain",
+      "probe": "valid_version_without_credentials",
+      "status": 400,
+      "json": true,
+      "code": "invalid_authorization_code",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    },
+    {
+      "endpoint": "canonical_base44_domain",
+      "probe": "bootstrap_without_ticket",
+      "status": 400,
+      "json": true,
+      "code": "invalid_ticket",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    },
+    {
+      "endpoint": "canonical_base44_domain",
+      "probe": "public_jwks",
+      "status": 200,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "contract_matches": true,
+      "passed": true
+    }
+  ]
+}

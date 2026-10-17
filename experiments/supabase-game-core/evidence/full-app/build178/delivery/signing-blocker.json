@@ -1,0 +1,212 @@
+{
+  "schemaVersion": 1,
+  "generatedAtUTC": "2026-10-17T18:18:18.812436+00:00",
+  "status": "BLOCKED_PRIVATE_KEY_AUTHENTICATION",
+  "scope": "Read-only local signing diagnosis; no production actions or system/keychain changes by this diagnostic task.",
+  "artifact": {
+    "sourceCommit": "905c110ca64caef5af1ba72360eb71a4d0380ca6",
+    "marketingVersion": "1.0.3",
+    "build": "178",
+    "signingRoot": "/var/folders/4j/wkjrm6cn0z9f5v932wqlmfz40000gn/T/spyclash178-signing-j73eck4v",
+    "failedTarget": "SpyClashWidgets.appex"
+  },
+  "observations": {
+    "codesign": {
+      "archiveFailure": [
+        {
+          "file": "/var/folders/4j/wkjrm6cn0z9f5v932wqlmfz40000gn/T/spyclash178-signing-j73eck4v/archive.log",
+          "line": 740,
+          "event": "SpyClashWidgets.appex: errSecInternalComponent"
+        },
+        {
+          "file": "/var/folders/4j/wkjrm6cn0z9f5v932wqlmfz40000gn/T/spyclash178-signing-j73eck4v/archive.log",
+          "line": 741,
+          "event": "Command CodeSign failed with a nonzero exit code"
+        }
+      ],
+      "independentMinimalExecutableFailure": {
+        "source": "Parent agent observed a copy of /usr/bin/true signed with explicit login keychain",
+        "result": "errSecInternalComponent"
+      }
+    },
+    "keychain": {
+      "path": "/Users/davidganzha/Library/Keychains/login.keychain-db",
+      "ownerUID": 501,
+      "permissions": "0o644",
+      "defaultIsLogin": true,
+      "requestedIdentityListedValid": true,
+      "identityLabel": "Apple Distribution: David Ganzha (3Z64QKNL54)",
+      "showKeychainInfoExitCode": 51,
+      "showKeychainInfoError": "errSecAuthFailed: The user name or passphrase you entered is not correct.",
+      "aclReadEarlier": "SecKeychainItemCopyAccess returned authentication failure; ACL partition contents could not be established.",
+      "uiStateReportedByParent": {
+        "loginCloseActionDisabled": true,
+        "privateKeyPresent": true,
+        "allowAllApplicationsSelected": true,
+        "askPasswordUnchecked": true,
+        "permissionPromptVisible": false
+      }
+    },
+    "executionContext": {
+      "effectiveUID": 501,
+      "launchctlManager": "Aqua",
+      "previousReadOnlyGUIObservation": "gui/501 active login security session; no sudo used"
+    },
+    "relevantLogEvents": [
+      {
+        "time": "2026-10-17 17:39:55.991256+0100",
+        "process": "loginwindow",
+        "event": "-[LWKeybagSupport nullKeybagUnlockForScreenLock] |   MKBUnlockDevice returned: -3, so will return NO"
+      },
+      {
+        "time": "2026-10-17 17:39:57.779806+0100",
+        "process": "loginwindow",
+        "event": "SecKeychainLogin failed: -2147413984, password was supplied"
+      },
+      {
+        "time": "2026-10-17 17:39:57.779811+0100",
+        "process": "loginwindow",
+        "event": "-[LWKeychainSupport unlockLoginKeychainFromScreenLock:pwd:] | ERROR | Unable to unlock the keychain from screen unlock, SecKeychainLogin returned -25293"
+      },
+      {
+        "time": "2026-10-17 17:39:57.792205+0100",
+        "process": "loginwindow",
+        "event": "-[LWKeybagSupport unlockKeybagForScreenLock:] | ERROR | KeyBagUnlock with data returned err:-3"
+      },
+      {
+        "time": "2026-10-17 17:39:57.792231+0100",
+        "process": "loginwindow",
+        "event": "-[LWKeybagSupport messagetraceKeybagUnlockResult:success:] | Calling AnalyticsSendEvent with domain: com.apple.login.keybagunlockresult.screenlock, and result: {\n    UnlockSuccess = NO;\n}"
+      },
+      {
+        "time": "2026-10-17 19:07:46.252979+0100",
+        "process": "securityd",
+        "event": "<address>(<address>) is unlocked; decoding for makeUnlocked()"
+      },
+      {
+        "time": "2026-10-17 19:07:46.253030+0100",
+        "process": "securityd",
+        "event": "MacOS error: -25337"
+      },
+      {
+        "time": "2026-10-17 19:07:46.253046+0100",
+        "process": "securityd",
+        "event": "CSSM Exception: 70 unknown error 70=46"
+      },
+      {
+        "time": "2026-10-17 19:07:46.253085+0100",
+        "process": "securityd",
+        "event": "MacOS error: -25337"
+      },
+      {
+        "time": "2026-10-17 19:07:46.253092+0100",
+        "process": "securityd",
+        "event": "CSSM Exception: 32 unknown error 32=20"
+      },
+      {
+        "time": "2026-10-17 19:07:46.255090+0100",
+        "process": "securityd",
+        "event": "<address>(<address>) is unlocked; decoding for makeUnlocked()"
+      },
+      {
+        "time": "2026-10-17 19:07:46.255169+0100",
+        "process": "securityd",
+        "event": "MacOS error: -25337"
+      },
+      {
+        "time": "2026-10-17 19:07:46.255194+0100",
+        "process": "securityd",
+        "event": "CSSM Exception: 70 unknown error 70=46"
+      },
+      {
+        "time": "2026-10-17 19:07:46.255268+0100",
+        "process": "securityd",
+        "event": "MacOS error: -25337"
+      },
+      {
+        "time": "2026-10-17 19:07:46.255284+0100",
+        "process": "securityd",
+        "event": "CSSM Exception: 32 unknown error 32=20"
+      }
+    ],
+    "logTimezone": "Europe/London, UTC+01:00 on 2026-10-17",
+    "noPartitionMismatchObserved": "Bounded earlier securityd inspection found no partition mismatch; absence does not establish an ACL is correct."
+  },
+  "errorInterpretation": [
+    {
+      "code": -25293,
+      "symbol": "errSecAuthFailed",
+      "source": "Installed Security.framework SecBase.h"
+    },
+    {
+      "code": 32,
+      "hex": "0x0020",
+      "symbol": "CSSM_ERRCODE_OPERATION_AUTH_DENIED",
+      "source": "Installed Security.framework cssmerr.h"
+    },
+    {
+      "code": 70,
+      "hex": "0x0046",
+      "symbol": "CSSM_ERRCODE_INVALID_DATA",
+      "source": "Installed Security.framework cssmerr.h"
+    },
+    {
+      "code": -25337,
+      "symbol": null,
+      "interpretation": "Unknown internal Security error in local tool; not independently treated as proof of keychain corruption."
+    },
+    {
+      "code": -2147413984,
+      "symbol": null,
+      "interpretation": "Recorded SecKeychainLogin failure; no guessed symbolic mapping."
+    },
+    {
+      "code": -3,
+      "symbol": null,
+      "interpretation": "Recorded keybag-unlock failure; no guessed symbolic mapping."
+    }
+  ],
+  "assessment": {
+    "supported": "Private-key signing is blocked by local login-keychain authentication/decode failures. The same session had failed login-keychain/keybag unlock before the archive attempt. A certificate listed valid does not prove its private key is usable.",
+    "notEstablished": [
+      "Permanent keychain corruption",
+      "Wrong password entered by the user",
+      "Partition ACL mismatch",
+      "Need to replace certificates or provisioning profiles",
+      "Credential-free recovery method",
+      "A currently visible authorization dialog"
+    ]
+  },
+  "recoveryGuidance": {
+    "keychainUI": "Apple documents that Lock keychain / Command-L does not work for login or iCloud keychains. Disabled Close login is not a reliable authentication-state test. No read-only UI operation found that guarantees the needed unlock prompt.",
+    "firstUserControlledOption": "Save work and restart/log out and back into macOS normally, then recheck the existing identity with a minimal local signature before rebuilding. This is a recovery attempt, not a proven fix. No action was performed by the diagnostic task.",
+    "explicitUnlockOption": "Apple DTS documents interactive security unlock-keychain from the user\u2019s own Terminal; if chosen, enter any credential only into the local hidden prompt, never into chat or command arguments. Do not use -p, -u, guessed passwords, reset keychain, ACL edits, or key export.",
+    "ifUserDoesNotWantLocalAuthentication": "Keep signing blocked with prepared build artifacts. No supported password-free bypass was established."
+  },
+  "sources": [
+    {
+      "url": "https://support.apple.com/en-lb/guide/keychain-access/kyca699a9058/11.0/mac/26",
+      "claim": "Lock keychain shortcut does not work for login or iCloud keychains."
+    },
+    {
+      "url": "https://developer.apple.com/forums/thread/712005",
+      "claim": "Apple DTS code-signing diagnosis recommends interactive Terminal tests and unlock-keychain; errSecInternalComponent has multiple causes."
+    },
+    {
+      "path": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/Security.framework/Headers/cssmerr.h",
+      "claim": "CSSM error base-code definitions"
+    },
+    {
+      "path": "/Applications/Xcode.app/Contents/Developer/Platforms/MacOSX.platform/Developer/SDKs/MacOSX.sdk/System/Library/Frameworks/Security.framework/Headers/SecBase.h",
+      "claim": "errSecAuthFailed definition"
+    }
+  ],
+  "privacy": {
+    "rawUnrelatedLogsSaved": false,
+    "passwordsSaved": false,
+    "privateKeysExported": false,
+    "tokensSaved": false,
+    "systemMutations": []
+  },
+  "userClarification": "The user unlocks the Mac with Touch ID and has not confirmed knowing the login password. Do not restart or log out until they can authenticate after startup."
+}

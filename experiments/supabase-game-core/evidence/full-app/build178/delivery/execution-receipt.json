@@ -1,0 +1,63 @@
+{
+  "updatedAt": "2026-10-17T18:28:25.172702+00:00",
+  "sourceCommit": "905c110ca64caef5af1ba72360eb71a4d0380ca6",
+  "build": "1.0.3 (178)",
+  "appId": "69a0e57fa939f578082f8091",
+  "authorization": {
+    "initial": "Update only checkSubscription, then sign and upload build 178 as Internal Only for David and Dima.",
+    "scopeExpansion": "User separately explicitly approved restoring the other 16 functions after the sandbox synchronization side effect."
+  },
+  "operations": {
+    "namedCheckSubscriptionDeploy": "Accepted; public runtime contract unchanged.",
+    "sandboxScopedWrites": 8,
+    "sandboxCheckpoint": "6ad3bba946db5d9dc56e71b6",
+    "unexpectedEffect": "Function inventory fell from 17 to 5; all 12 Apple probes returned 404 at 18:19:52 UTC.",
+    "restoration": {
+      "functions": [
+        "deleteAccount",
+        "advanceRound",
+        "autoRegisterUser",
+        "createCheckout",
+        "appleAuthCallback",
+        "appleAuthBroker",
+        "googleAuthCallback",
+        "mobileAuthCallback",
+        "app-store-entitlement",
+        "communityAction",
+        "gameRoomAction",
+        "pushNotificationAction",
+        "stripe-entitlement-webhook",
+        "wordPackAction",
+        "generateWordPack",
+        "notificationAction"
+      ],
+      "cliResult": "15 deployed, 1 unchanged",
+      "all16HandlersHelpersAndAutomationsMatch": true,
+      "currentFunctionInventory": 17,
+      "appleRuntimeChecks": "12/12 passed at 18:24:03 UTC"
+    },
+    "binaryMarkerDeploy": {
+      "function": "checkSubscription",
+      "result": "1 deployed in 4.7s",
+      "manifestSHA256": "a1e3d4d846033f6e236c5b6b3cf60f95f70652c8428bcb44be1d72d9fc9acf00",
+      "deploymentId": "019f6954a4b54622aadd3de5bdcc9d25",
+      "entrySHA256": "774fc79afa99bbc1cd4e9b591bfb6d912dc86fe41df78661c3c6827d2c2d7325",
+      "runtimeAccepted": false,
+      "other16Preserved": true,
+      "finalAppleChecks": "12/12 passed at 18:33:36 UTC"
+    }
+  },
+  "remaining": {
+    "billing": "Public runtime still returns an active-only 200 response; source/runtime mismatch remains unresolved.",
+    "appleDevice": "Actual build-176 native handoff branch is unknown; a build-178 real-device diagnostic retry is needed.",
+    "signing": "errSecInternalComponent; login keychain operational unlock/authentication failure.",
+    "testFlight": "No signed build-178 IPA, upload, or assignment."
+  },
+  "scopePreserved": {
+    "noSitePublication": true,
+    "noSecretOrRolloutFlagChanges": true,
+    "noAppStoreSubmission": true,
+    "noCredentialedBillingProbeOrPurchase": true
+  },
+  "sandboxRestriction": "Do not write to the remote sandbox while its function inventory is stale: automatic synchronization prunes management functions. Preserve the recovered inventory and use scoped, named operations after preflight."
+}

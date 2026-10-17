@@ -1,0 +1,122 @@
+{
+  "checkedAt": "2026-10-17T18:19:52.497Z",
+  "probeScript": ".local/apple178-runtime/probe-runtime.ts",
+  "createsProviderSessionsOrTickets": false,
+  "sourceChanges": false,
+  "results": [
+    {
+      "endpoint": "public",
+      "probe": "unsupported_version",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    },
+    {
+      "endpoint": "public",
+      "probe": "valid_version_without_credentials",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    },
+    {
+      "endpoint": "public",
+      "probe": "bootstrap_without_ticket",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    },
+    {
+      "endpoint": "public",
+      "probe": "public_jwks",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    },
+    {
+      "endpoint": "canonical_custom_domain",
+      "probe": "unsupported_version",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    },
+    {
+      "endpoint": "canonical_custom_domain",
+      "probe": "valid_version_without_credentials",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    },
+    {
+      "endpoint": "canonical_custom_domain",
+      "probe": "bootstrap_without_ticket",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    },
+    {
+      "endpoint": "canonical_custom_domain",
+      "probe": "public_jwks",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    },
+    {
+      "endpoint": "canonical_base44_domain",
+      "probe": "unsupported_version",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    },
+    {
+      "endpoint": "canonical_base44_domain",
+      "probe": "valid_version_without_credentials",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    },
+    {
+      "endpoint": "canonical_base44_domain",
+      "probe": "bootstrap_without_ticket",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    },
+    {
+      "endpoint": "canonical_base44_domain",
+      "probe": "public_jwks",
+      "status": 404,
+      "json": true,
+      "code": "absent",
+      "has_redirect": false,
+      "passed": false
+    }
+  ],
+  "previousCheck": {
+    "checkedAt": "2026-10-17T18:06:38.098Z",
+    "passed": 12,
+    "total": 12
+  },
+  "conclusion": "Public Apple broker routes became unavailable after sandbox sync; original Apple sign-in defect is separate."
+}

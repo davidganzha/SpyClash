@@ -1,0 +1,20 @@
+{
+  "state": "PASSED_LOCAL_ONLY",
+  "actualHandlerContractTests": {
+    "passed": 1,
+    "substeps": 17,
+    "failed": 0,
+    "noNetworkOrEnvironmentPermissions": true,
+    "testOutput": "contract-test-output.txt"
+  },
+  "realSDKTypecheck": {
+    "passed": true,
+    "output": "typecheck-output.txt"
+  },
+  "sourceFiles": 8,
+  "changedFiles": [
+    "entry.ts"
+  ],
+  "delta": "405 response header only",
+  "manifestSHA256": "a1e3d4d846033f6e236c5b6b3cf60f95f70652c8428bcb44be1d72d9fc9acf00"
+}

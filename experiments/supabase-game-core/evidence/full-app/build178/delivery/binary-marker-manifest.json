@@ -1,0 +1,96 @@
+{
+  "state": "LOCAL_CANDIDATE_NOT_DEPLOYED",
+  "appId": "69a0e57fa939f578082f8091",
+  "function": "checkSubscription",
+  "baseDirectory": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/apple-limitless178/deploy-reviewed",
+  "change": "Add fixed X-SpyClash-Contract-Version: 178 response header only to existing method-rejection 405 branch. No POST/auth/membership/purchase changes.",
+  "rationale": "Observable response data survives compiler minification, unlike the prior comment-only marker. This is a bounded delivery diagnostic, not a proven platform fix.",
+  "files": [
+    {
+      "path": "base44-context.ts",
+      "bytes": 776,
+      "sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "priorSHA256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "changed": false
+    },
+    {
+      "path": "billing-identity-lifecycle.ts",
+      "bytes": 28337,
+      "sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "priorSHA256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "changed": false
+    },
+    {
+      "path": "entry.ts",
+      "bytes": 16672,
+      "sha256": "774fc79afa99bbc1cd4e9b591bfb6d912dc86fe41df78661c3c6827d2c2d7325",
+      "priorSHA256": "b337b3d47911a356cc19b15a05896df4aa78a77362713560fa1f1efc8c693407",
+      "changed": true
+    },
+    {
+      "path": "limitless-rollout.ts",
+      "bytes": 745,
+      "sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+      "priorSHA256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+      "changed": false
+    },
+    {
+      "path": "membership.ts",
+      "bytes": 9565,
+      "sha256": "7027cfbd69ccd7aad3189d603913829132119fed60189219a41e527d05def92b",
+      "priorSHA256": "7027cfbd69ccd7aad3189d603913829132119fed60189219a41e527d05def92b",
+      "changed": false
+    },
+    {
+      "path": "quota.ts",
+      "bytes": 474,
+      "sha256": "456afef718eba6c4fd3e78cf8fc927d1713b99f1676b7d483f7f4fdb57911391",
+      "priorSHA256": "456afef718eba6c4fd3e78cf8fc927d1713b99f1676b7d483f7f4fdb57911391",
+      "changed": false
+    },
+    {
+      "path": "stripe-binding.ts",
+      "bytes": 2383,
+      "sha256": "5b2d9be7fbea3ea2f960e59ef72ddf9c5850bfc5c1a63f6c0747f9fcad07638c",
+      "priorSHA256": "5b2d9be7fbea3ea2f960e59ef72ddf9c5850bfc5c1a63f6c0747f9fcad07638c",
+      "changed": false
+    },
+    {
+      "path": "stripe-entitlement-persistence.ts",
+      "bytes": 19449,
+      "sha256": "e5c30109b69a29bec7c2da558c74542b9daf6859dbe4fd1e407e878b1a2342f0",
+      "priorSHA256": "e5c30109b69a29bec7c2da558c74542b9daf6859dbe4fd1e407e878b1a2342f0",
+      "changed": false
+    }
+  ],
+  "officialCompilerEvidence": {
+    "url": "https://github.com/base44/cli/blob/main/packages/functions-compiler/src/deno-bundle.ts",
+    "lines": [
+      77,
+      82
+    ],
+    "exactOptions": [
+      "minify: true,",
+      "sourcemap: false,"
+    ],
+    "localSourceSHA256": "472fc9237d4f81119500c2cb037491d9455f6f70d02485f70fed52c8c61eb0ef",
+    "versionIdentityURL": "https://github.com/base44/cli/blob/main/packages/functions-compiler/README.md#reproducibility-is-a-contract-not-a-nicety",
+    "versionIdentityClaim": "Compiled artifacts determine version identity; source comment changes do not guarantee new compiled bytes.",
+    "limitation": "Current public compiler source is supporting evidence, not proof of the exact production compiler revision."
+  },
+  "deployArgv": [
+    "npx",
+    "base44",
+    "functions",
+    "deploy",
+    "checkSubscription",
+    "--app-id",
+    "69a0e57fa939f578082f8091"
+  ],
+  "postDeployRequired": [
+    "Public unauthenticated GET must return405 and X-SpyClash-Contract-Version:178",
+    "Unauthenticated POST must return401 modern contract",
+    "Re-read inventory17 and retained other16 source hashes",
+    "No conclusion from source hashes alone; authenticated phone acceptance separate"
+  ]
+}

@@ -1,0 +1,99 @@
+{
+  "capturedAt": "2026-10-17T18:32:00Z",
+  "scope": "Read-only investigation; no remote mutations by this agent",
+  "appId": "69a0e57fa939f578082f8091",
+  "restorationVerification": "post-restoration-api-verification.json",
+  "checks": {
+    "versionHeaderProbes": [
+      {
+        "host": "https://spyclash.com",
+        "version": "preview",
+        "status": 200,
+        "keys": [
+          "active"
+        ],
+        "active": false,
+        "at": "2026-10-17T18:27:29.666Z"
+      },
+      {
+        "host": "https://spyclash.com",
+        "version": "prod",
+        "status": 200,
+        "keys": [
+          "active"
+        ],
+        "active": false,
+        "at": "2026-10-17T18:27:29.974Z"
+      },
+      {
+        "host": "https://base44.app",
+        "version": "preview",
+        "status": 200,
+        "keys": [
+          "active"
+        ],
+        "active": false,
+        "at": "2026-10-17T18:27:30.324Z"
+      },
+      {
+        "host": "https://base44.app",
+        "version": "prod",
+        "status": 200,
+        "keys": [
+          "active"
+        ],
+        "active": false,
+        "at": "2026-10-17T18:27:30.611Z"
+      }
+    ],
+    "otherFunctionGETs": [
+      {
+        "name": "deleteAccount",
+        "status": 500,
+        "error": "Authentication required to view users",
+        "expectedFromRestoredSource": 405,
+        "at": "2026-10-17T18:28:51.043Z"
+      },
+      {
+        "name": "advanceRound",
+        "status": 500,
+        "error": "Authentication required to view users",
+        "expectedFromRestoredSource": "500 if SDK auth.me throws",
+        "at": "2026-10-17T18:28:51.432Z"
+      },
+      {
+        "name": "autoRegisterUser",
+        "status": 401,
+        "error": "Authentication required",
+        "expectedFromRestoredSource": 405,
+        "at": "2026-10-17T18:28:52.090Z"
+      },
+      {
+        "name": "createCheckout",
+        "status": 500,
+        "error": "Unexpected end of JSON input",
+        "expectedFromRestoredSource": 405,
+        "at": "2026-10-17T18:28:52.379Z"
+      }
+    ],
+    "unfilteredLogs": "runtime-logs-unfiltered-redacted.json: empty array, last30m bothenvs no function filter",
+    "legacyDuplicateScan": "Remote root has no functions folder. Read-only find excluding node_modules/.git returned only ./base44/functions/checkSubscription.",
+    "sandboxState": "Only five function folders, checkSubscription modern 16604-byte entry, old small four others. Named API restoration does not sync sandbox source."
+  },
+  "conclusions": [
+    "Control-plane inventory and restored source were recovered, but that does not prove all those sources execute.",
+    "Stale public behavior affects at least checkSubscription, deleteAccount, autoRegisterUser, createCheckout.",
+    "Explicit preview/prod version headers do not change checkSubscription public behavior.",
+    "No duplicate legacy filesystem checkSubscription path found.",
+    "Current supported CLI named deploy submits only entry/files/automations; --force prunes omitted functions, never use as runtime refresh.",
+    "Official public compiler supports multifile and Deno.serve; no checkSubscription hardcoding found. It minifies code and versions by compiled artifacts, so comment-only marker is not reliable binary invalidation.",
+    "No proven narrow serving-state remediation found. Do not broaden to publish, delete/recreate functions, or weaken billing validation based on this evidence."
+  ],
+  "primarySources": [
+    "https://github.com/base44/cli/blob/main/packages/cli/src/core/resources/function/api.ts",
+    "https://github.com/base44/cli/blob/main/packages/cli/src/cli/commands/functions/deploy.ts",
+    "https://github.com/base44/cli/blob/main/packages/functions-compiler/README.md",
+    "https://github.com/base44/cli/blob/main/packages/functions-compiler/src/assembly.ts",
+    "https://github.com/base44/cli/blob/main/packages/functions-compiler/src/deno-bundle.ts"
+  ]
+}

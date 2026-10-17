@@ -2,6 +2,8 @@
 
 Prepared on 2026-10-17 for the user's confirmed TestFlight **1.0.3 (176)** report. This change is a local preparation checkpoint. No production deployment, signing, Apple upload, tester assignment, purchase, or authenticated billing reconciliation was performed.
 
+Subsequent authorized execution, the recovered Base44 synchronization incident, and current delivery blockers are recorded separately in [the build-178 delivery report](APPLE-LIMITLESS-178-DELIVERY.md). The preparation statements below describe the earlier checkpoint.
+
 ## LIMITLESS: runtime contract mismatch
 
 The screenshot's `IAP-BUY-ELIGIBILITY-NONE: ACCESS_UNVERIFIED` is emitted when membership refresh fails, before product loading, purchase preparation, or Apple's purchase sheet. Supabase `app-services` v7 returned four HTTP 502 responses at 17:49:24–17:49:56 UTC, matching the screenshot's 18:49 Europe/London time. The live v7 code hash matches the approved build-176 bridge.

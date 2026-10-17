@@ -1,0 +1,63 @@
+{
+  "review": "Apple native handoff read-only follow-up after build178 source freeze",
+  "sourceCommit": "905c110ca64caef5af1ba72360eb71a4d0380ca6",
+  "runtimeFingerprint": {
+    "checkedAt": "2026-10-17T18:06:38.098Z",
+    "routes": [
+      "spyclash.com/functions/appleAuthBroker",
+      "spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/appleAuthBroker",
+      "base44.app/api/apps/69a0e57fa939f578082f8091/functions/appleAuthBroker"
+    ],
+    "probesPerRoute": [
+      {
+        "name": "unsupported_version",
+        "status": 400,
+        "error": "invalid_native_handoff_version"
+      },
+      {
+        "name": "valid_version_without_credentials",
+        "status": 400,
+        "error": "invalid_authorization_code"
+      },
+      {
+        "name": "bootstrap_without_ticket",
+        "status": 400,
+        "error": "invalid_ticket"
+      },
+      {
+        "name": "public_jwks",
+        "status": 200,
+        "nonemptyKeySet": true
+      }
+    ],
+    "passed": 12,
+    "total": 12
+  },
+  "sandboxRead": {
+    "appleAuthBrokerEntry": "NOT_FOUND",
+    "nativeHandoffModule": "NOT_FOUND",
+    "mobileAuthCallbackEntry": "NOT_FOUND",
+    "functionsPresent": [
+      "deleteAccount",
+      "createCheckout",
+      "checkSubscription",
+      "autoRegisterUser",
+      "advanceRound"
+    ],
+    "conclusion": "No Apple sandbox implementation is present to explain the billing-style old-runtime override."
+  },
+  "delivered176Artifact": {
+    "sha256": "f495cbeea4547780646569d96113554b77ca69744eb997ea2b670b47b31448a3",
+    "matchesUploadReceipt": true,
+    "bundleBuild": "176",
+    "containsAppleCallbackPath": true,
+    "containsNativeHandoffError": true
+  },
+  "changes": {
+    "trackedSource": false,
+    "production": false,
+    "providerSessionsOrTickets": false,
+    "users": false
+  },
+  "conclusion": "No evidence-backed causal authentication change established. Need full SCA177 code and local attempt time from installed178, then act on the identified response branch. Existing native bootstrap encoding and callback policy were inspected; broadening acceptance is not justified by current evidence."
+}

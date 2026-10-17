@@ -1,0 +1,89 @@
+{
+  "credentialFree": true,
+  "expectedGET": 405,
+  "expectedPOST": 401,
+  "expectedGETHeader": {
+    "X-SpyClash-Contract-Version": "178"
+  },
+  "accepted": false,
+  "results": [
+    {
+      "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/checkSubscription?contract_probe=build178_1792261992876",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json",
+      "contract_version": null,
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    },
+    {
+      "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/checkSubscription?contract_probe=build178_1792261993548",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json",
+      "contract_version": null,
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    },
+    {
+      "url": "https://spyclash.com/functions/checkSubscription?contract_probe=build178_1792261993871",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json",
+      "contract_version": null,
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    },
+    {
+      "url": "https://spyclash.com/functions/checkSubscription?contract_probe=build178_1792261994296",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json",
+      "contract_version": null,
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    },
+    {
+      "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/checkSubscription?contract_probe=build178_1792261994600",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json",
+      "contract_version": null,
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    },
+    {
+      "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/checkSubscription?contract_probe=build178_1792261995019",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json",
+      "contract_version": null,
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    }
+  ]
+}

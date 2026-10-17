@@ -1,0 +1,81 @@
+{
+  "checkedAt": "2026-10-17T18:27:09Z",
+  "credentialFree": true,
+  "expectedGET": 405,
+  "expectedPOST": 401,
+  "accepted": false,
+  "results": [
+    {
+      "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/checkSubscription?contract_probe=build178_1792261629039",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json",
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    },
+    {
+      "url": "https://spyclash.com/api/apps/69a0e57fa939f578082f8091/functions/checkSubscription?contract_probe=build178_1792261629508",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json",
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    },
+    {
+      "url": "https://spyclash.com/functions/checkSubscription?contract_probe=build178_1792261629953",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json",
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    },
+    {
+      "url": "https://spyclash.com/functions/checkSubscription?contract_probe=build178_1792261630579",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json",
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    },
+    {
+      "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/checkSubscription?contract_probe=build178_1792261630943",
+      "method": "GET",
+      "status": 200,
+      "content_type": "application/json",
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    },
+    {
+      "url": "https://base44.app/api/apps/69a0e57fa939f578082f8091/functions/checkSubscription?contract_probe=build178_1792261631239",
+      "method": "POST",
+      "status": 200,
+      "content_type": "application/json",
+      "shape": {
+        "type": "object",
+        "keys": [
+          "active"
+        ]
+      }
+    }
+  ]
+}
