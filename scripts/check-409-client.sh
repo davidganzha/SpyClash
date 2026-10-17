@@ -26,5 +26,6 @@ xcodebuild test -project SpyClash.xcodeproj -scheme SpyClash \
   -derivedDataPath "${SPYCLASH_TEST_DERIVED_DATA:-$results/DerivedData}" \
   -resultBundlePath "$results/Tests.xcresult" \
   -only-testing:SpyClashTests/Base44ClientRoomActionTests \
+  -only-testing:SpyClashTests/StoreKitFixtureTransportTests \
   CODE_SIGNING_ALLOWED=NO
 printf 'Client test evidence: %s/Tests.xcresult\n' "$results"

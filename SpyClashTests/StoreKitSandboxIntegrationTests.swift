@@ -162,6 +162,54 @@ final class StoreKitSandboxIntegrationTests: XCTestCase {
     }
 }
 
+/// Exercises the fixture transport even when StoreKit integration is opted out.
+/// Only this URLSession uses the protocol; no real StoreKit or backend is used.
+@MainActor
+final class StoreKitFixtureTransportTests: XCTestCase {
+    func testFixtureCallbackAndBackendStateStayOnMainActor() async throws {
+        let backend = StoreKitFixtureBackend()
+        let registrationID = UUID().uuidString
+        StoreKitFixtureURLProtocol.handlers[registrationID] = { request in
+            MainActor.preconditionIsolated()
+            return backend.respond(to: request)
+        }
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [StoreKitFixtureURLProtocol.self]
+        configuration.httpAdditionalHeaders = ["X-StoreKit-Fixture": registrationID]
+        let session = URLSession(configuration: configuration)
+        defer {
+            session.invalidateAndCancel()
+            StoreKitFixtureURLProtocol.handlers.removeValue(forKey: registrationID)
+        }
+        var request = URLRequest(url: URL(string: "https://storekit-fixture.invalid/checkSubscription")!)
+        request.httpMethod = "POST"
+        request.httpBody = Data(#"{"access_token":"storekit-fixture-session"}"#.utf8)
+
+        let (data, response) = try await session.data(for: request)
+        XCTAssertEqual((response as? HTTPURLResponse)?.statusCode, 200)
+        let body = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(body["tier"] as? String, "free")
+        XCTAssertEqual(body["apple_purchase_enabled"] as? Bool, true)
+
+        backend.rejectMembership = true
+        let (_, rejected) = try await session.data(for: request)
+        XCTAssertEqual((rejected as? HTTPURLResponse)?.statusCode, 502)
+        XCTAssertEqual(backend.prepareCount, 0)
+        XCTAssertEqual(backend.deliveryCount, 0)
+
+        StoreKitFixtureURLProtocol.handlers.removeValue(forKey: registrationID)
+        let replacementID = UUID().uuidString
+        StoreKitFixtureURLProtocol.handlers[replacementID] = { _ in
+            XCTFail("An old session reached the replacement fixture")
+            return .json(status: 200, body: [:])
+        }
+        defer { StoreKitFixtureURLProtocol.handlers.removeValue(forKey: replacementID) }
+        let (_, closed) = try await session.data(for: request)
+        XCTAssertEqual((closed as? HTTPURLResponse)?.statusCode, 503,
+                       "A closed fixture registration must not reach another backend")
+    }
+}
+
 @MainActor
 private final class StoreKitIntegrationHarness {
     let store: SKTestSession
@@ -172,6 +220,7 @@ private final class StoreKitIntegrationHarness {
     let scope = MembershipScope(userID: "storekit-fixture-user", accessToken: "storekit-fixture-session")
     private let network: URLSession
     private let fixtureURL: URL
+    private let registrationID = UUID().uuidString
 
     init() async throws {
         // This test target deliberately uses the shared manager's original
@@ -224,6 +273,7 @@ private final class StoreKitIntegrationHarness {
         }
         let config = URLSessionConfiguration.ephemeral
         config.protocolClasses = [StoreKitFixtureURLProtocol.self]
+        config.httpAdditionalHeaders = ["X-StoreKit-Fixture": registrationID]
         network = URLSession(configuration: config)
         client = Base44Client(session: network, appStoreRetrySleep: { _ in })
         client.setToken(scope.accessToken!)
@@ -232,8 +282,8 @@ private final class StoreKitIntegrationHarness {
         manager = StoreKitManager(client: client)
         manager.bind(scope)
         let backend = self.backend
-        StoreKitFixtureURLProtocol.handler = { request in
-            Task { @MainActor in backend.respond(to: request) }
+        StoreKitFixtureURLProtocol.handlers[registrationID] = { request in
+            return backend.respond(to: request)
         }
         let membership = self.membership
         manager.onEntitlementChanged = {
@@ -245,7 +295,7 @@ private final class StoreKitIntegrationHarness {
     func close() {
         manager.bind(MembershipScope(userID: nil, accessToken: nil))
         network.invalidateAndCancel()
-        StoreKitFixtureURLProtocol.handler = nil
+        StoreKitFixtureURLProtocol.handlers.removeValue(forKey: registrationID)
         store.clearTransactions()
         store.resetToDefaultState()
         try? FileManager.default.removeItem(at: fixtureURL)
@@ -283,26 +333,25 @@ private final class StoreKitFixtureBackend {
     private var active = false
     private var expiry: Date?
 
-    func respond(to request: StoreKitFixtureURLProtocol) {
+    func respond(to request: StoreKitFixtureRequest) -> StoreKitFixtureResponse {
         do {
-            let body = try request.jsonBody()
-            guard request.request.httpMethod == "POST", body["access_token"] as? String == "storekit-fixture-session" else {
+            let body = try XCTUnwrap(JSONSerialization.jsonObject(with: request.body) as? [String: Any])
+            guard request.method == "POST", body["access_token"] as? String == "storekit-fixture-session" else {
                 XCTFail("Fixture received an unexpected request or credential")
-                request.respond(status: 401, body: ["error":"fixture_session_invalid"])
-                return
+                return .json(status: 401, body: ["error":"fixture_session_invalid"])
             }
-            switch request.request.url?.lastPathComponent {
+            switch request.pathComponent {
             case "checkSubscription":
-                if rejectMembership { request.respond(status: 502, body: ["error":"fixture_unavailable","code":"legacy_billing_response_invalid"]); return }
-                request.respond(status: 200, body: membershipBody())
+                if rejectMembership { return .json(status: 502, body: ["error":"fixture_unavailable","code":"legacy_billing_response_invalid"]) }
+                return .json(status: 200, body: membershipBody())
             case "app-store-entitlement":
                 if body["action"] as? String == "prepare" {
                     prepareCount += 1
                     XCTAssertEqual(body["requested_product_id"] as? String, StoreKitManager.limitlessProductID)
-                    request.respond(status: 200, body: ["product_id":StoreKitManager.limitlessProductID,"app_account_token":accountToken.uuidString])
+                    return .json(status: 200, body: ["product_id":StoreKitManager.limitlessProductID,"app_account_token":accountToken.uuidString])
                 } else if body["action"] as? String == "sync_transaction" {
                     deliveryCount += 1
-                    if rejectDelivery { request.respond(status: 503, body: ["error":"fixture_verification_unavailable","retryable":true]); return }
+                    if rejectDelivery { return .json(status: 503, body: ["error":"fixture_verification_unavailable","retryable":true]) }
                     let signed = try XCTUnwrap(body["signed_transaction"] as? String)
                     let fields = signed.split(separator: ".")
                     XCTAssertEqual(fields.count, 3, "Actual StoreKit JWS is delivered intact")
@@ -317,14 +366,14 @@ private final class StoreKitFixtureBackend {
                     deliveredAccountTokens.insert(token.lowercased())
                     expiry = Date(timeIntervalSince1970: try XCTUnwrap(payload["expiresDate"] as? Double) / 1000)
                     active = payload["revocationDate"] == nil && expiry! > Date()
-                    request.respond(status: 200, body: ["success":true,"server_status_verified":true,
+                    return .json(status: 200, body: ["success":true,"server_status_verified":true,
                         "entitlement":["product_id":productID,"status":active ? "active" : "expired","expires_at":ISO8601DateFormatter().string(from: expiry!)]])
                 } else { throw URLError(.unsupportedURL) }
             default: throw URLError(.unsupportedURL)
             }
         } catch {
             XCTFail("Local StoreKit fixture rejected request: \(type(of: error))")
-            request.respond(status: 500, body: ["error":"fixture_contract_mismatch"])
+            return .json(status: 500, body: ["error":"fixture_contract_mismatch"])
         }
     }
 
@@ -338,20 +387,52 @@ private final class StoreKitFixtureBackend {
     }
 }
 
+private struct StoreKitFixtureRequest: Sendable {
+    let registrationID: String
+    let method: String?
+    let pathComponent: String
+    let body: Data
+}
+
+private struct StoreKitFixtureResponse: Sendable {
+    let status: Int
+    let body: Data
+
+    static func json(status: Int, body: [String: Any]) -> Self {
+        Self(status: status, body: try! JSONSerialization.data(withJSONObject: body))
+    }
+}
+
 private final class StoreKitFixtureURLProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var handler: (@Sendable (StoreKitFixtureURLProtocol) -> Void)?
+    @MainActor static var handlers: [String: @MainActor @Sendable (StoreKitFixtureRequest) -> StoreKitFixtureResponse] = [:]
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        guard let handler = Self.handler else {
-            client?.urlProtocol(self, didFailWithError: URLError(.notConnectedToInternet))
-            return
+        do {
+            let snapshot = StoreKitFixtureRequest(registrationID: request.value(forHTTPHeaderField: "X-StoreKit-Fixture") ?? "",
+                method: request.httpMethod,
+                pathComponent: request.url?.lastPathComponent ?? "", body: try bodyData())
+            // Only immutable values cross the actor boundary. Foundation's
+            // URLProtocol and client callbacks remain on the transport side.
+            Task { @Sendable [self] in
+                let response = await Self.response(to: snapshot)
+                respond(response)
+            }
+        } catch {
+            client?.urlProtocol(self, didFailWithError: error)
         }
-        handler(self)
     }
     override func stopLoading() {}
 
-    func jsonBody() throws -> [String: Any] {
+    @MainActor
+    private static func response(to request: StoreKitFixtureRequest) -> StoreKitFixtureResponse {
+        guard let handler = handlers[request.registrationID] else {
+            return .json(status: 503, body: ["error": "fixture_unavailable"])
+        }
+        return handler(request)
+    }
+
+    private func bodyData() throws -> Data {
         var data = request.httpBody ?? Data()
         if data.isEmpty, let stream = request.httpBodyStream {
             stream.open()
@@ -364,14 +445,14 @@ private final class StoreKitFixtureURLProtocol: URLProtocol, @unchecked Sendable
                 data.append(contentsOf: buffer.prefix(count))
             }
         }
-        return try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        return data
     }
 
-    func respond(status: Int, body: [String: Any]) {
-        let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
+    private func respond(_ reply: StoreKitFixtureResponse) {
+        let response = HTTPURLResponse(url: request.url!, statusCode: reply.status, httpVersion: nil,
                                        headerFields: ["Content-Type":"application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-        client?.urlProtocol(self, didLoad: try! JSONSerialization.data(withJSONObject: body))
+        client?.urlProtocol(self, didLoad: reply.body)
         client?.urlProtocolDidFinishLoading(self)
     }
 }
