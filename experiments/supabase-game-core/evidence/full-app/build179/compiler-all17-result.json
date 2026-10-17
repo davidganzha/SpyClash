@@ -1,0 +1,79 @@
+{
+  "ok": true,
+  "main_module": "_bundled.mjs",
+  "functions": [
+    {
+      "name": "deleteAccount",
+      "ok": true
+    },
+    {
+      "name": "advanceRound",
+      "ok": true
+    },
+    {
+      "name": "autoRegisterUser",
+      "ok": true
+    },
+    {
+      "name": "createCheckout",
+      "ok": true
+    },
+    {
+      "name": "appleAuthCallback",
+      "ok": true
+    },
+    {
+      "name": "appleAuthBroker",
+      "ok": true
+    },
+    {
+      "name": "googleAuthCallback",
+      "ok": true
+    },
+    {
+      "name": "mobileAuthCallback",
+      "ok": true
+    },
+    {
+      "name": "app-store-entitlement",
+      "ok": true
+    },
+    {
+      "name": "communityAction",
+      "ok": true
+    },
+    {
+      "name": "gameRoomAction",
+      "ok": true
+    },
+    {
+      "name": "pushNotificationAction",
+      "ok": true
+    },
+    {
+      "name": "stripe-entitlement-webhook",
+      "ok": true
+    },
+    {
+      "name": "wordPackAction",
+      "ok": true
+    },
+    {
+      "name": "generateWordPack",
+      "ok": true
+    },
+    {
+      "name": "notificationAction",
+      "ok": true
+    },
+    {
+      "name": "checkSubscription",
+      "ok": true
+    }
+  ],
+  "moduleBytes": 1595048,
+  "moduleSHA256": "761ad5876b993d1f160332abd445fd0a3c00d77b660cf388ed1177ba7eaf616b",
+  "containsObservable178Marker": true,
+  "packageVersion": "@base44/functions-compiler@0.1.8",
+  "actualProductionCompilerRevisionKnown": false
+}

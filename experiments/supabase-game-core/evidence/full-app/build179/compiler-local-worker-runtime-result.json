@@ -1,0 +1,55 @@
+{
+  "runtime": "miniflare@4.20260722.0",
+  "compiledFunctions": 17,
+  "externalRequests": 0,
+  "results": [
+    {
+      "name": "deleteAccount",
+      "method": "GET",
+      "status": 405,
+      "marker": null,
+      "body": {
+        "error": "Method not allowed"
+      },
+      "pass": true
+    },
+    {
+      "name": "autoRegisterUser",
+      "method": "GET",
+      "status": 405,
+      "marker": null,
+      "body": {
+        "error": "Method not allowed"
+      },
+      "pass": true
+    },
+    {
+      "name": "createCheckout",
+      "method": "GET",
+      "status": 405,
+      "marker": null,
+      "body": {
+        "error": "Method not allowed"
+      },
+      "pass": true
+    },
+    {
+      "name": "checkSubscription",
+      "method": "GET",
+      "status": 405,
+      "marker": "178",
+      "body": {
+        "error": "Method not allowed"
+      },
+      "pass": true
+    },
+    {
+      "name": "checkSubscription",
+      "method": "POST",
+      "status": 401,
+      "pass": true
+    }
+  ],
+  "pass": true,
+  "actualProductionCompilerRevisionKnown": false
+}

@@ -40,7 +40,7 @@ test('verified linked membership is mirrored with bounded TTL and revocation; wr
 test('unverified Apple result cannot grant, and replayed old snapshot never extends entitlement freshness',async()=>{
   const a=await actor(),body={action:'sync_transaction',signed_transaction:'fake-jws-handled-only-by-provider',request_id:crypto.randomUUID(),base44_access_token:credential};
   await assert.rejects(call(a,body,provider(a,()=>Response.json({success:true,server_status_verified:false,entitlement:{product_id:WEEKLY_PRODUCT}}))),e=>e.code==='legacy_billing_response_invalid');
-  const fetcher=provider(a,url=>Response.json(url.endsWith('checkSubscription')?snapshot(true):{success:true,server_status_verified:true,entitlement:{product_id:WEEKLY_PRODUCT,status:'active'}}));
+  const fetcher=provider(a,url=>Response.json(url.endsWith('checkSubscriptionV2')?snapshot(true):{success:true,server_status_verified:true,entitlement:{product_id:WEEKLY_PRODUCT,status:'active'}}));
   await call(a,body,fetcher);
   await db`update app_private.legacy_operations set response=jsonb_set(response,'{snapshotCheckedAt}',${db.json(Date.now()-600_000)}) where user_id=${a.id}`;
   await db`delete from app_private.entitlements where user_id=${a.id}`;
@@ -51,7 +51,7 @@ test('restore accepts verified existing weekly and monthly products without chan
   for(const [submitted,canonical] of [[WEEKLY_PRODUCT,WEEKLY_PRODUCT],[monthly,monthly],[WEEKLY_PRODUCT,monthly],[monthly,WEEKLY_PRODUCT]]) {
     const a=await actor(),body={action:'sync_transaction',signed_transaction:'provider-verified-existing-transaction',request_id:crypto.randomUUID(),base44_access_token:credential};
     const reply={success:true,server_status_verified:true,submitted_product_id:submitted,entitlement:{product_id:canonical,status:'active'}};
-    const fetcher=provider(a,url=>Response.json(url.endsWith('checkSubscription')?snapshot(true):reply));
+    const fetcher=provider(a,url=>Response.json(url.endsWith('checkSubscriptionV2')?snapshot(true):reply));
     assert.deepEqual(await call(a,body,fetcher),reply);
     let [mirror]=await db`select active,product_id from app_private.entitlements where user_id=${a.id}`;
     assert.equal(mirror.active,true);assert.equal(mirror.product_id,canonical);
@@ -73,7 +73,7 @@ test('verified revoked monthly restore is acknowledged without granting membersh
   const a=await actor(),monthly='com.spyclash.ios.limitless.monthly';
   const body={action:'sync_transaction',signed_transaction:'provider-verified-monthly-revocation',request_id:crypto.randomUUID(),base44_access_token:credential};
   const reply={success:true,server_status_verified:true,submitted_product_id:monthly,entitlement:{product_id:monthly,status:'revoked'}};
-  const fetcher=provider(a,url=>Response.json(url.endsWith('checkSubscription')?snapshot(false):reply));
+  const fetcher=provider(a,url=>Response.json(url.endsWith('checkSubscriptionV2')?snapshot(false):reply));
   assert.deepEqual(await call(a,body,fetcher),reply);
   const [mirror]=await db`select active,product_id from app_private.entitlements where user_id=${a.id}`;assert.equal(mirror.active,false);assert.equal(mirror.product_id,monthly);
 });
@@ -91,7 +91,7 @@ test('Supabase credentials and mismatched legacy owners cannot reach existing bi
 });
 test('billing mutation reservation binds the original action and signed transaction',async()=>{
   const a=await actor(),body={action:'sync_transaction',signed_transaction:'provider-signed-first-transaction',request_id:crypto.randomUUID(),base44_access_token:credential};let calls=0;
-  const fetcher=provider(a,url=>{calls++;return Response.json(url.endsWith('checkSubscription')?snapshot(true):{success:true,server_status_verified:true,entitlement:{product_id:WEEKLY_PRODUCT,status:'active'}});});
+  const fetcher=provider(a,url=>{calls++;return Response.json(url.endsWith('checkSubscriptionV2')?snapshot(true):{success:true,server_status_verified:true,entitlement:{product_id:WEEKLY_PRODUCT,status:'active'}});});
   await call(a,body,fetcher);assert.equal(calls,2);
   await assert.rejects(call(a,{...body,signed_transaction:'provider-signed-other-transaction'},fetcher),e=>e.code==='request_id_reused');
   assert.equal(calls,2);

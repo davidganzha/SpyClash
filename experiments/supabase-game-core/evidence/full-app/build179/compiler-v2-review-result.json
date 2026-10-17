@@ -1,0 +1,36 @@
+{
+  "sourceFilesByteIdentical": true,
+  "singleFunctionScope": true,
+  "compiler": "@base44/functions-compiler@0.1.8",
+  "moduleBytes": 369168,
+  "moduleSHA256": "402b65dc20d3c636c74c9f4adc907621fb106c63dcab019f19bfcc307392f8c6",
+  "functions": [
+    {
+      "name": "checkSubscriptionV2",
+      "ok": true
+    }
+  ],
+  "externalRequests": 0,
+  "tests": [
+    {
+      "function": "checkSubscriptionV2",
+      "method": "GET",
+      "status": 405,
+      "pass": true
+    },
+    {
+      "function": "checkSubscriptionV2",
+      "method": "POST",
+      "status": 401,
+      "pass": true
+    },
+    {
+      "function": "checkSubscription",
+      "test": "Not present in V2-only package",
+      "status": 404,
+      "pass": true
+    }
+  ],
+  "pass": true,
+  "limitation": "Local compiled Worker proof only. Fresh-name production routing remains an inference until live405/401 probes pass; deploy bridge only afterward."
+}

@@ -1,0 +1,55 @@
+{
+  "app_id": "69a0e57fa939f578082f8091",
+  "function": "checkSubscriptionV2",
+  "source": "Byte-identical reviewed build-178 modern membership handler; only function registration name changes.",
+  "pulled_source_path": ".local/apple-limitless178/canonical/base44/functions/checkSubscription/base44/functions/checkSubscription",
+  "files": [
+    {
+      "file": "base44-context.ts",
+      "sha256": "d1656c3fed22811f7af61ae6228401a6ade7bdf47470ed43d5d2e6b7ce8838de",
+      "bytes": 776
+    },
+    {
+      "file": "billing-identity-lifecycle.ts",
+      "sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+      "bytes": 28337
+    },
+    {
+      "file": "entry.ts",
+      "sha256": "e155f9151994c5adc12fc7795cadac7674daf4d738b17578d96537a6bdf66835",
+      "bytes": 16510
+    },
+    {
+      "file": "limitless-rollout.ts",
+      "sha256": "4b554789725e48c10c56d2ecd9294d2f1f95949c7d556d5a1ff95fc606a20b02",
+      "bytes": 745
+    },
+    {
+      "file": "membership.ts",
+      "sha256": "7027cfbd69ccd7aad3189d603913829132119fed60189219a41e527d05def92b",
+      "bytes": 9565
+    },
+    {
+      "file": "quota.ts",
+      "sha256": "456afef718eba6c4fd3e78cf8fc927d1713b99f1676b7d483f7f4fdb57911391",
+      "bytes": 474
+    },
+    {
+      "file": "stripe-binding.ts",
+      "sha256": "5b2d9be7fbea3ea2f960e59ef72ddf9c5850bfc5c1a63f6c0747f9fcad07638c",
+      "bytes": 2383
+    },
+    {
+      "file": "stripe-entitlement-persistence.ts",
+      "sha256": "e5c30109b69a29bec7c2da558c74542b9daf6859dbe4fd1e407e878b1a2342f0",
+      "bytes": 19449
+    }
+  ],
+  "source_manifest_sha256": "4d8dcf977fc1762c857d5f6881056c4f36753592ff5b08126ea2c26c22804972",
+  "bridge_sha256": "0c351552ab764488e3471aae982be87a6e11f02915f01b4724bde447b65fd000",
+  "supabase_fenced_from_live": true,
+  "deployment_status": "local_only_not_deployed",
+  "scope": "Exactly one new Base44 function; no original function, entity, site, secret, or auth configuration changes.",
+  "collision_check": "No checkSubscriptionV2 in retained 17-function management snapshot dated 2026-10-17T18:33:36.824Z; recheck current inventory before any deployment.",
+  "rollback": "Do not switch app-services unless V2 passes live contract probes. Restore the saved app-services bridge artifact to route to checkSubscription if needed; retain V2 unreferenced. This restores the prior behavior, including the unresolved old-route failure."
+}

@@ -1,0 +1,15 @@
+{
+  "ok": true,
+  "main_module": "_bundled.mjs",
+  "functions": [
+    {
+      "name": "checkSubscription",
+      "ok": true
+    }
+  ],
+  "moduleBytes": 369210,
+  "moduleSHA256": "587da30c25aa718fec959ab4ea8e6c05b0774c8b31bce8493a74b77e201a168a",
+  "containsObservable178Marker": true,
+  "packageVersion": "@base44/functions-compiler@0.1.8",
+  "actualProductionCompilerRevisionKnown": false
+}

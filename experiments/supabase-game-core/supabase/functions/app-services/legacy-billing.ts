@@ -5,6 +5,10 @@ import {assertIsolatedSupabase, canonicalBase44Configuration, verifyLegacyCreden
 type Config = Record<string,string|undefined>;
 const evidenceSet = new WeakSet<object>();
 const WEEKLY = 'com.spyclash.ios.limitless.weekly';
+// Fixed canonical route: the original name currently serves an obsolete
+// Stripe-only contract. Never accept an endpoint from client input or fall back
+// to that response when the verified membership route is unavailable.
+const MEMBERSHIP_FUNCTION = 'checkSubscriptionV2';
 // Checkout stays weekly. Restore may reconcile either existing product, but
 // Base44 must verify its signature, canonical status and immutable owner first.
 const RESTORABLE_PRODUCTS = new Set([WEEKLY, 'com.spyclash.ios.limitless.monthly']);
@@ -78,7 +82,7 @@ export async function prepareLegacyBilling(input:{actor:AppActor,body:Record<str
   };
   let result:any, snapshot:any;
   if (previous) ({result,snapshot}=previous);
-  else if (command.action === 'check') result = snapshot = membershipResponse(await invoke('checkSubscription',{}));
+  else if (command.action === 'check') result = snapshot = membershipResponse(await invoke(MEMBERSHIP_FUNCTION,{}));
   else {
     result = await invoke('app-store-entitlement',command);
     if (command.action === 'prepare') {
@@ -90,7 +94,7 @@ export async function prepareLegacyBilling(input:{actor:AppActor,body:Record<str
         || (result?.submitted_product_id != null && !RESTORABLE_PRODUCTS.has(result.submitted_product_id))) {
         throw new AppServiceError('legacy_billing_response_invalid','Apple has not verified a supported subscription transaction.',502,true);
       }
-      snapshot = membershipResponse(await invoke('checkSubscription',{}));
+      snapshot = membershipResponse(await invoke(MEMBERSHIP_FUNCTION,{}));
     }
   }
   const snapshotCheckedAt = previous ? Number(previous.snapshotCheckedAt) || 0 : Date.now();

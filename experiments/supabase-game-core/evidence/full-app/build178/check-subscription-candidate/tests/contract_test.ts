@@ -28,7 +28,9 @@ function fakeDB() {
     if (sql.includes("from app_private.legacy_links")) return [{
       state: "active", legacy_user_id: "fixture-base44-user", source_origin: origin,
     }];
-    if (sql.includes("pg_advisory_xact_lock_shared")) return [];
+    if (sql.includes("pg_advisory_xact_lock")) return [];
+    if (sql.includes("from app_private.legacy_operations")) return [];
+    if (sql.includes("insert into app_private.legacy_operations")) return [];
     throw new Error("Unexpected database write/query: " + sql);
   };
   return { begin: (callback: (tx: any) => unknown) => callback(tx) };
@@ -48,7 +50,7 @@ async function bridgeResult(value: unknown) {
       if (path.endsWith("/entities/User/me")) {
         return Promise.resolve(Response.json({ id: "fixture-base44-user" }));
       }
-      equal(path, `/api/apps/${appID}/functions/checkSubscription`);
+      equal(path, `/api/apps/${appID}/functions/checkSubscriptionV2`);
       equal(init?.method, "POST");
       checks++;
       return Promise.resolve(Response.json(value));
@@ -58,7 +60,7 @@ async function bridgeResult(value: unknown) {
   return evidence;
 }
 
-Deno.test("fresh pulled handler and unchanged billing bridge enforce the membership contract", async (t) => {
+Deno.test("reviewed handler and versioned billing bridge enforce the membership contract", async (t) => {
   const originalServe = Deno.serve;
   const originalGet = Deno.env.get;
   const originalFetch = globalThis.fetch;
@@ -94,6 +96,58 @@ Deno.test("fresh pulled handler and unchanged billing bridge enforce the members
       }
       equal(typeof value.benefits.premium_avatars, "boolean");
       assert(Number.isFinite(Date.parse(value.checked_at)), "Missing verification time");
+    };
+    const bridgeFromHandler = async (
+      action: "check" | "prepare" | "sync_transaction",
+      options: { obsoleteResponse?: boolean; unavailable?: boolean; invalidIdentity?: boolean; foreignOwner?: boolean } = {},
+    ) => {
+      const calls: string[] = [];
+      const body = {
+        action, base44_access_token: credential,
+        request_id: "00000000-0000-4000-8000-000000000179",
+        signed_transaction: "fixture-signed-transaction-with-no-provider-signature",
+        // Client endpoint selection is never trusted.
+        membership_function: "checkSubscription", endpoint: "https://example.invalid",
+      };
+      const operation = prepareLegacyBilling({
+        actor: { id: actorID, email: "fixture@example.test", contactEmail: "fixture@example.test", full_name: "Fixture", metadata: {} },
+        body, config,
+      }, {
+        db: fakeDB(),
+        fetch: (async (input: string | URL | Request, init?: RequestInit) => {
+          const url = new URL(String(input));
+          equal(url.origin, origin);
+          equal(new Headers(init?.headers).get("Authorization"), "Bearer " + credential);
+          equal(init?.redirect, "error");
+          if (url.pathname.endsWith("/entities/User/me")) {
+            if (options.invalidIdentity) return Response.json({ error: "Unauthorized" }, { status: 401 });
+            return Response.json({ id: options.foreignOwner ? "foreign-user" : "fixture-base44-user" });
+          }
+          calls.push(url.pathname);
+          equal(init?.method, "POST");
+          const payload = JSON.parse(String(init?.body));
+          equal(payload.access_token, credential);
+          if (url.pathname === `/api/apps/${appID}/functions/app-store-entitlement`) {
+            equal(payload.action, action);
+            if (action === "prepare") return Response.json({
+              product_id: "com.spyclash.ios.limitless.weekly",
+              app_account_token: "00000000-0000-4000-8000-000000000180",
+            });
+            return Response.json({ success: true, server_status_verified: true,
+              entitlement: { product_id: "com.spyclash.ios.limitless.weekly" } });
+          }
+          equal(url.pathname, `/api/apps/${appID}/functions/checkSubscriptionV2`);
+          if (options.unavailable) return Response.json({ error: "Unavailable" }, { status: 503 });
+          if (options.obsoleteResponse) return Response.json({ active: false });
+          // Base44 inserts its trusted runtime headers after receiving the
+          // bridge's verified user credential. Drive the actual candidate.
+          return handler!(new Request(url, {
+            method: "POST", headers: { "Content-Type": "application/json", ...trusted },
+            body: JSON.stringify(payload),
+          }));
+        }) as typeof fetch,
+      });
+      return { operation, calls };
     };
 
     await t.step("unauthenticated calls cannot return active-only success", async () => {
@@ -196,6 +250,58 @@ Deno.test("fresh pulled handler and unchanged billing bridge enforce the members
       equal(response.value.ai_remaining, null);
       equal(response.value.provider_sync.quota, "degraded");
     });
+    await t.step("native check reaches the real modern handler through only the fixed V2 route", async () => {
+      resetFixture();
+      const { operation, calls } = await bridgeFromHandler("check");
+      const evidence = await operation;
+      equal(evidence.result.active, false);
+      equal(evidence.result.tier, "free");
+      equal(evidence.result.apple_purchase_enabled, true);
+      fullShape(evidence.result);
+      equal(calls, [`/api/apps/${appID}/functions/checkSubscriptionV2`]);
+    });
+    await t.step("verified transaction uses unchanged Apple endpoint then refreshes the real V2 handler", async () => {
+      resetFixture({ entitlements: [activeApple] });
+      const { operation, calls } = await bridgeFromHandler("sync_transaction");
+      const evidence = await operation;
+      equal(evidence.result.server_status_verified, true);
+      equal(evidence.snapshot.active, true);
+      equal(evidence.snapshot.providers, ["apple"]);
+      equal(evidence.snapshot.apple_purchase_enabled, false);
+      fullShape(evidence.snapshot);
+      equal(calls, [`/api/apps/${appID}/functions/app-store-entitlement`, `/api/apps/${appID}/functions/checkSubscriptionV2`]);
+    });
+    await t.step("purchase preparation retains the existing Apple endpoint", async () => {
+      resetFixture();
+      const { operation, calls } = await bridgeFromHandler("prepare");
+      const evidence = await operation;
+      equal(evidence.result.product_id, "com.spyclash.ios.limitless.weekly");
+      equal(calls, [`/api/apps/${appID}/functions/app-store-entitlement`]);
+    });
+    for (const action of ["check", "sync_transaction"] as const) {
+      for (const options of [{ obsoleteResponse: true }, { unavailable: true }]) {
+        await t.step(`${action} fails closed without old-route fallback when V2 fails: ${JSON.stringify(options)}`, async () => {
+          resetFixture();
+          const { operation, calls } = await bridgeFromHandler(action, options);
+          try { await operation; throw new Error("Failed V2 route unexpectedly accepted"); }
+          catch (error) {
+            equal((error as any).status, options.obsoleteResponse ? 502 : 503);
+          }
+          equal(calls.filter(path => path.endsWith("/checkSubscriptionV2")).length, 1);
+          assert(!calls.some(path => path.endsWith("/checkSubscription")), "No legacy fallback is allowed");
+        });
+      }
+    }
+    for (const options of [{ invalidIdentity: true }, { foreignOwner: true }]) {
+      await t.step(`V2 route still requires current linked identity: ${JSON.stringify(options)}`, async () => {
+        resetFixture();
+        const { operation, calls } = await bridgeFromHandler("check", options);
+        try { await operation; throw new Error("Unlinked identity unexpectedly accepted"); }
+        catch (error) { equal((error as any).status, options.invalidIdentity ? 401 : 409); }
+        equal(calls, []);
+        equal(fixture.calls, []);
+      });
+    }
     for (const active of [false, true]) {
       await t.step(`real bridge rejects old active-only shape (${active})`, async () => {
         try { await bridgeResult({ active }); throw new Error("Old shape unexpectedly accepted"); }

@@ -1,0 +1,45 @@
+{
+  "checkedAt": "2026-10-17T18:50:01.513295+00:00",
+  "status": "LOCAL_ONLY_NOT_DEPLOYED",
+  "source": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/apple-limitless178/membership-v2-frozen",
+  "base44Function": "checkSubscriptionV2",
+  "base44Runtime": "8 TS files byte-identical to reviewed modern handler",
+  "supabaseSource": "55-file fresh live v7 snapshot; only app-services/legacy-billing.ts changed",
+  "supabaseManifestSHA256": "676140e760e0a617350e2f9d6159b787acc603fbaf7ad41fb803c074758ea31a",
+  "base44ManifestSHA256": "bd08a6ab9afdf06368b74890f82210d5725b2d6c74809041e9b0ac70c73ebf5b",
+  "allSourceAndRollbackHashesVerified": true,
+  "preservedVerifyJWT": true,
+  "preservedImportMap": true,
+  "tests": {
+    "actualGeneratedBase44HandlerAndExactFrozenSupabaseBridge": {
+      "passedSteps": 25,
+      "failed": 0,
+      "networkPermission": false,
+      "environmentPermission": false
+    },
+    "realSDKBase44Typecheck": "pass",
+    "frozenSupabaseEntrypointTypecheck": "pass (--no-lock)",
+    "localPostgreSQLLegacyBillingPushSuite": {
+      "passed": 11,
+      "failed": 0,
+      "scope": "Repository fixture suite with reviewed bridge; full frozen bundle checked independently above"
+    },
+    "compiledCFWMiniflareSmoke": "Independent reviewer reported GET405, POST401, oldname404, zero outbound requests"
+  },
+  "independentReview": "No blocking findings for routing/runtime; root verified frozen55file package hashes and exact single-file delta.",
+  "constraints": {
+    "productionMutation": false,
+    "authenticatedAccountProbe": false,
+    "purchase": false,
+    "nativeChangesRequired": false
+  },
+  "nextSteps": [
+    "Fresh Base44 inventory collision check before new function deployment",
+    "Fresh user approval for checkSubscriptionV2 plus app-services routing change",
+    "Named deployment of checkSubscriptionV2 only",
+    "Verify serving GET405/POST401 before updating bridge",
+    "Deploy only immutable supabase-candidate with verify_jwt true, existing config/secrets untouched",
+    "User membership refresh in installed Supabase176; purchase/restore remain separate checks"
+  ],
+  "rollback": "Use exact supabase-rollback 55-file snapshot; it restores prior old-route behavior, not a proven working membership service."
+}
