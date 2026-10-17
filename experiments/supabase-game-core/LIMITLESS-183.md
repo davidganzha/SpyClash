@@ -1,6 +1,6 @@
 # LIMITLESS verification in 182 and retry repair in 183
 
-17 October 2026. Build 182 remains the installed and distributed TestFlight build. The 1.0.3 (183) source candidate was superseded by 184 to repair a compile error in the newly added StoreKit test fixture. Neither candidate has been signed, uploaded or deployed by these changes. The production billing implementation described below is unchanged in 184.
+Historical preparation record, 17 October 2026. The 1.0.3 (183) candidate was superseded by 184 to repair a compile error in the newly added StoreKit test fixture. The billing implementation described below is unchanged in 184. After separate explicit approval, the server repair and internal TestFlight 184 were delivered; see [LIMITLESS-184-DELIVERY.md](LIMITLESS-184-DELIVERY.md) for the verified outcome. The preparation scope and validation below describe the state before that approval and delivery.
 
 ## Physical TestFlight result
 

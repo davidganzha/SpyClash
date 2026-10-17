@@ -1,0 +1,101 @@
+{
+  "recorded_at": "2026-10-17T22:11:30.871Z",
+  "status": "DISTRIBUTED_INTERNAL_ONLY",
+  "source_commit": "c56719c87471e2cb90385adef57e373b8131be59",
+  "app_id": "6793534085",
+  "bundle_id": "com.spyclash.ios",
+  "build": {
+    "id": "15e97a22-58e7-4e85-953a-c8c520d5b37d",
+    "version": "184",
+    "marketingVersion": "1.0.3",
+    "processingState": "VALID",
+    "audience": "INTERNAL_ONLY",
+    "expired": false,
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "NOT_APPLICABLE"
+  },
+  "ipa": {
+    "sha256": "93e90e6d999bbc5f3c6986b10ee0bc7b598804fa2e4638ca6a54bbf009d0a3f9",
+    "bytes": 12768934,
+    "validation": "PASS",
+    "upload": "PASS"
+  },
+  "audience": {
+    "group": "LIMITLESS Internal QA",
+    "testers": [
+      "David",
+      "Dima"
+    ],
+    "effective_tester_count": 2,
+    "portal_checks": {
+      "exactMainApp": true,
+      "targetPrivateInternalGroup": true,
+      "targetOnlyDavidAndDima": true,
+      "noAutomaticAllBuildAccess": true,
+      "exactApprovedSource": true,
+      "exactBuildIdentity": true,
+      "exactMarketingVersion": true,
+      "validAndUnexpired": true,
+      "explicitlyInternalOnly": true,
+      "internalTestingReady": true,
+      "externalTestingNotApplicable": true,
+      "assignedOnlyApprovedGroup": true,
+      "noIndividualTesterAssignments": true,
+      "groupControlsAndMembersUnchanged": true,
+      "existingBuildAssignmentsUnchanged": true,
+      "appStoreVersionsAndAttachedBuildsUnchanged": true
+    }
+  },
+  "native": {
+    "source_manifest_sha256": "baaa6b449dc9a0d0a23f44401ba91fedaf01a438c153d7890af043c7199edd8b",
+    "source_checks_passed": 11,
+    "archive_checks_passed": 17,
+    "ipa_checks_passed": 19,
+    "apple_completion_matches_182": true,
+    "weekly_product": "com.spyclash.ios.limitless.weekly",
+    "internal_only_export": true
+  },
+  "backend": {
+    "project": "bbkfsgnordtdiblgdzkg",
+    "function": "app-services",
+    "previous_version": 9,
+    "version": 10,
+    "deployed_at": "2026-10-17T22:04:30Z",
+    "verified_files": 55,
+    "changed_files": [
+      "app-services/legacy-billing.ts"
+    ],
+    "jwt_verification": true,
+    "import_map": true,
+    "bundle_sha256": "f08c9441ab93e825a8a574b5efb2f7a0325bc4647e44f108ed12a0b7b7046706",
+    "candidate_payload_sha256": "a904a67282eca87d4cc2b68624aee5609b903f5f8d4d30e1cd01075c3f70ab39",
+    "rollback_payload_sha256": "6fbe6372560482e2da6aa408d2ca41a46b314e6b343f6b518beb74bb5b63e091",
+    "negative_authorization_statuses": [
+      401,
+      401
+    ]
+  },
+  "ci": {
+    "url": "https://github.com/davidganzha/SpyClash/actions/runs/39072946080",
+    "head_sha": "c56719c87471e2cb90385adef57e373b8131be59",
+    "client_passed": 88,
+    "client_failed": 0,
+    "backend": "success"
+  },
+  "limits": [
+    "Physical Restore, refresh and cold-relaunch success belongs to build182 before this deployment.",
+    "A new first purchase and physical Restore or Apple sign-in in build184 have not been performed.",
+    "No real postdeploy billing contention event was induced; focused regressions and exact deployed bytes prove the scoped repair.",
+    "Five opt-in StoreKit integration tests remain unproven due to the documented simulator limitation."
+  ],
+  "evidence_sha256": {
+    "asc-final184.json": "17ec0aa34c1be52c8698e426c01a25d3067c8212482533b09e81c172c8af2a6a",
+    "apple-upload-receipt.json": "52157c7c83f86144342b2deedd6bc4b4eac5684cba7084d5054c1f5df039c6f8",
+    "ipa-independent-audit184.json": "c590caded9417b030fb720287fa10f75a3ddf0c037d4e48e441f5ba907daf564",
+    "native/native-release-receipt184.json": "cd9531f6084e522304ed1945c55370d311b829f3f82cc6e7cd270952210c52a3",
+    "backend/deployment-result.json": "c4bfd291e0c932fb60a8618e1c950cbfb10f7bf7ddc2aa98ceda9fd43fab2b5e",
+    "backend/live-after.json": "19b42f5290f10288953b3d72fc232d4ed2eeb1cce7b9ba22f13c1a5f7ef35bdc",
+    "backend/postdeploy-negative-auth.json": "6f270dbf87c61eb0359542707419dc785815b7b220d55155cce8aa2e7bb907bb",
+    "backend/postdeploy-readonly-review.json": "61156b7ca0f46325f4169c85cf6258148b0340afb657ecf9004f3733fc2d0ba2"
+  }
+}
