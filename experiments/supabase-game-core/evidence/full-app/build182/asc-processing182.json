@@ -1,0 +1,30 @@
+[
+  {
+    "checkedAt": "2026-10-17T20:47:32.985Z",
+    "id": null,
+    "version": null,
+    "state": "NOT_VISIBLE",
+    "audience": null
+  },
+  {
+    "checkedAt": "2026-10-17T20:48:26.795Z",
+    "id": null,
+    "version": null,
+    "state": "NOT_VISIBLE",
+    "audience": null
+  },
+  {
+    "checkedAt": "2026-10-17T20:49:21.418Z",
+    "id": null,
+    "version": null,
+    "state": "NOT_VISIBLE",
+    "audience": null
+  },
+  {
+    "checkedAt": "2026-10-17T20:50:22.050Z",
+    "id": "1fd9df6e-d74c-4668-84fd-823faa59f40e",
+    "version": "182",
+    "state": "VALID",
+    "audience": "INTERNAL_ONLY"
+  }
+]

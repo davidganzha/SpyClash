@@ -1,0 +1,60 @@
+{
+  "checkedAtUTC": "2026-10-17T20:43:34.429753+00:00",
+  "sourceCommit": "46785c8e83dceaf4ba0bbb4520a97bd7309752cf",
+  "archivePath": "/private/tmp/spyclash182-release-ep0i1xwd/SpyClash182.xcarchive",
+  "sourceManifestSHA256": "dfe9df62d7df42e9158b9165518d8142baedb1c06a2f96f67c21167d3948e907",
+  "status": "PASS",
+  "checks": {
+    "archiveSucceeded": true,
+    "noBuildErrors": true,
+    "noDelegateMismatchWarnings": true,
+    "snapshotUnchanged": true,
+    "workingSourceUnchanged": true,
+    "main182": true,
+    "widget182": true,
+    "strictSignaturesValid": true,
+    "expectedTeam": true,
+    "notDebuggable": true,
+    "appleSignInDefault": true,
+    "productionAPNs": true,
+    "supabaseMainCandidate": true,
+    "configurationByteIdentical": true,
+    "isolatedProject": true,
+    "appleGoogleBillingEnabled": true,
+    "pushDeletionDisabled": true
+  },
+  "main": {
+    "bundleIdentifier": "com.spyclash.ios",
+    "marketingVersion": "1.0.3",
+    "build": "182",
+    "strictSignatureVerified": true,
+    "team": "3Z64QKNL54",
+    "appleSignIn": [
+      "Default"
+    ],
+    "apsEnvironment": "production",
+    "getTaskAllow": false,
+    "backendMode": "supabase-main-candidate"
+  },
+  "widget": {
+    "bundleIdentifier": "com.spyclash.ios.widgets",
+    "marketingVersion": "1.0.3",
+    "build": "182",
+    "strictSignatureVerified": true,
+    "team": "3Z64QKNL54",
+    "appleSignIn": null,
+    "apsEnvironment": null,
+    "getTaskAllow": false,
+    "backendMode": null
+  },
+  "configurationSHA256": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d",
+  "snapshotChangedPaths": [],
+  "workingSourceChangedPaths": [],
+  "scope": {
+    "standardLocalSigning": true,
+    "keychainChanges": false,
+    "portalChanges": false,
+    "upload": false,
+    "physicalAcceptanceProved": false
+  }
+}

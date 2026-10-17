@@ -1,0 +1,137 @@
+{
+  "checkedAt": "2026-10-17T20:44:45.348947+00:00",
+  "ipa": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/release182/native/SpyClash.ipa",
+  "ipaSHA256": "a533fa0163752812fe82e352a1501aa63253782b3d575481a61e81bba6495a33",
+  "sourceCommit": "46785c8e83dceaf4ba0bbb4520a97bd7309752cf",
+  "status": "PASS",
+  "checks": {
+    "exactMainIdentity": true,
+    "exactWidgetIdentity": true,
+    "team3Z64QKNL54": true,
+    "appleSignInDefault": true,
+    "productionAPNsEntitlement": true,
+    "getTaskAllowFalse": true,
+    "appStoreProfiles": true,
+    "internalOnlyMarkerTrue": true,
+    "strictSignaturesPass": true,
+    "onlyExpectedExtension": true,
+    "immutableBackendProject": true,
+    "mainBackendModeCorrect": true,
+    "committedConfigByteIdentical": true,
+    "billingAppleGoogleEnabled": true,
+    "pushDeletionDisabled": true,
+    "publishableKeyFormatOnly": true,
+    "noStoreKitFixturesOrPrivateKeyFiles": true,
+    "noPrivateKeyOrSecretKeyMarkers": true,
+    "noEmbeddedServiceRoleJWT": true
+  },
+  "main": {
+    "bundleId": "com.spyclash.ios",
+    "marketingVersion": "1.0.3",
+    "build": "182",
+    "internalOnlyMarker": true,
+    "backendMode": "supabase-main-candidate",
+    "callbackSchemes": [
+      "spyclash"
+    ],
+    "entitlements": {
+      "application-identifier": "3Z64QKNL54.com.spyclash.ios",
+      "com.apple.developer.team-identifier": "3Z64QKNL54",
+      "com.apple.developer.applesignin": [
+        "Default"
+      ],
+      "aps-environment": "production",
+      "get-task-allow": false
+    },
+    "profile": {
+      "name": "SpyClash App Store 2026-07-26",
+      "uuid": "21afbb06-c196-4413-af5f-50ce0cd01696",
+      "teamIdentifiers": [
+        "3Z64QKNL54"
+      ],
+      "expirationDate": "2027-07-26T05:32:51+00:00",
+      "notExpired": true,
+      "hasProvisionedDevices": false,
+      "provisionsAllDevices": false,
+      "applicationIdentifier": "3Z64QKNL54.com.spyclash.ios",
+      "getTaskAllow": false,
+      "appleSignIn": [
+        "Default"
+      ],
+      "apsEnvironment": "production"
+    },
+    "strictSignatureVerified": true
+  },
+  "widget": {
+    "bundleId": "com.spyclash.ios.widgets",
+    "marketingVersion": "1.0.3",
+    "build": "182",
+    "internalOnlyMarker": null,
+    "backendMode": null,
+    "callbackSchemes": [],
+    "entitlements": {
+      "application-identifier": "3Z64QKNL54.com.spyclash.ios.widgets",
+      "com.apple.developer.team-identifier": "3Z64QKNL54",
+      "com.apple.developer.applesignin": null,
+      "aps-environment": null,
+      "get-task-allow": false
+    },
+    "profile": {
+      "name": "SpyClash Widgets App Store 2026-07-26",
+      "uuid": "8176c97f-51d3-4969-8130-3e3707f84043",
+      "teamIdentifiers": [
+        "3Z64QKNL54"
+      ],
+      "expirationDate": "2027-07-26T05:32:51+00:00",
+      "notExpired": true,
+      "hasProvisionedDevices": false,
+      "provisionsAllDevices": false,
+      "applicationIdentifier": "3Z64QKNL54.com.spyclash.ios.widgets",
+      "getTaskAllow": false,
+      "appleSignIn": null,
+      "apsEnvironment": null
+    },
+    "strictSignatureVerified": true
+  },
+  "sourceProvenance": {
+    "validated": true,
+    "sourceProofSHA256": "dfe9df62d7df42e9158b9165518d8142baedb1c06a2f96f67c21167d3948e907",
+    "actualFrozenAuthSourcesMatchCommit": {
+      "SpyClash/App/AppState.swift": "ccc64b7b4bb057b4ff04618a616a545c34f93fb535d42a992c1b97e79e6ffab7",
+      "SpyClash/Services/AppleSessionCompletionSession.swift": "97fc3b61ce771d7adaa77b5eaf3bc22d6d2c67348bb8da480df79d1197edda92",
+      "SpyClash/Services/AppleNativeHandoff.swift": "c79ab5f30b43f485f511b0e19ab8e0d0c7401ad1ee8191729b10b5c84e5ca17a",
+      "SpyClash/Services/WebAuthenticationCoordinator.swift": "a493cdaeeac7cac7438c768818ed2946ab53767c7fa024eac7e37a3c2d129915",
+      "SpyClash/Services/Base44Client.swift": "cc7ae8de8619c384622bf0d6308d6646f2db751c913357827a028307d736c2dd",
+      "SpyClash/Services/SupabaseLegacyAuth.swift": "2ebe46c55e72edfca0191bf0bb848f4ea6794f5ca1f120c78163c878dcc63c75",
+      "SpyClash/Views/AuthView.swift": "d02c9f11585ad3c9e6e8a5e7b9ca87c4ab5ae3e1f4699cd95190ed5e9dafba2e",
+      "release/SupabaseMainCandidateConfiguration.json": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d"
+    },
+    "signingOnlyExceptionPaths": [
+      "SpyClash.xcodeproj/project.pbxproj",
+      "project.yml"
+    ]
+  },
+  "configuration": {
+    "resource": "Payload/SpyClash.app/SupabaseMainCandidateConfiguration.json",
+    "sha256": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d",
+    "projectReference": "bbkfsgnordtdiblgdzkg",
+    "appleSignInEnabled": true,
+    "googleSignInEnabled": true,
+    "permitsLegacyBilling": true,
+    "permitsLegacyPush": false,
+    "mainAccountDeletionEnabled": false,
+    "emailOTPLength": 6,
+    "publishableKey": "REDACTED"
+  },
+  "scan": {
+    "forbiddenResourcePaths": [],
+    "secretMarkerFilePaths": [],
+    "serviceRoleJWTFilePaths": []
+  },
+  "scopeLimits": [
+    "Archive signature/package audit only; no Apple processing, tester installation or physical Apple/StoreKit acceptance proved.",
+    "Authentication source provenance checks the actual frozen archive source and source-proof hashes; it is not binary decompilation or a live same-account test.",
+    "No backend deployment is part of this build182 package audit.",
+    "Original IPA was only read; verification used an extracted audit copy."
+  ]
+}

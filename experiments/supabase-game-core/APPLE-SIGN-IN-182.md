@@ -27,6 +27,6 @@ Receipts: `evidence/full-app/build182/`. The unsigned archive, full source hash 
 
 ## Delivery boundary
 
-No server, website, production configuration, App Store Connect or TestFlight mutation was performed for 182. The live 179/180 Apple and LIMITLESS fixes and 181 social deployment are retained. Build 182 has not been signed or uploaded. Physical Face ID, real prior-account continuity and perceived speed must be accepted on the updated iPhone build; Simulator fixtures do not establish these results.
+After the user separately approved delivery, 1.0.3 (182) was signed, uploaded and verified as available in TestFlight Internal Only for the existing private David/Dima group. See `RELEASE-182.md` and the final App Store Connect receipt. No server, website or production configuration changes were made during this release; the live 179/180 Apple and LIMITLESS fixes and 181 social deployment are retained.
 
-The next release action, if approved, is to sign and upload only 1.0.3 (182) as TestFlight Internal Only for the existing private David/Dima group. No external testing or App Store submission is part of that action.
+Physical Face ID, real prior-account continuity and perceived speed must be accepted on the updated iPhone build; Simulator fixtures and TestFlight availability do not establish these results. No external testing or App Store submission was performed.

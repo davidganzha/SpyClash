@@ -1,0 +1,79 @@
+{
+  "generatedAtUTC": "2026-10-17T20:44:11.799764+00:00",
+  "sourceCommit": "46785c8e83dceaf4ba0bbb4520a97bd7309752cf",
+  "sourceWorkingTreeCommit": "46785c8e83dceaf4ba0bbb4520a97bd7309752cf",
+  "sourceWorkingTreeStillClean": true,
+  "archiveSucceeded": true,
+  "exportSucceeded": true,
+  "archive": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/release182/native/SpyClash182.xcarchive",
+  "ipa": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/release182/native/SpyClash.ipa",
+  "ipaBytes": 12711835,
+  "ipaSHA256": "a533fa0163752812fe82e352a1501aa63253782b3d575481a61e81bba6495a33",
+  "archiveAuditPassed": true,
+  "archiveAuditChecks": 17,
+  "independentIPAAudit": "Owned by separate reviewer; see separate receipt",
+  "effectiveExport": {
+    "destination": "export",
+    "method": "app-store-connect",
+    "signingStyle": "manual",
+    "testFlightInternalTestingOnly": true,
+    "manageAppVersionAndBuildNumber": false,
+    "teamID": "3Z64QKNL54"
+  },
+  "preservedFileHashes": {
+    "SpyClash.ipa": {
+      "sha256": "a533fa0163752812fe82e352a1501aa63253782b3d575481a61e81bba6495a33",
+      "bytes": 12711835
+    },
+    "ExportOptions.plist": {
+      "sha256": "8cb96b7a23cba3a609d5214e13fb74c2938bec96094cb68af409bbdaf1c54d74",
+      "bytes": 882
+    },
+    "ExportOptions-effective.plist": {
+      "sha256": "0d63f139958cebb9f0138b4bd1a4344af990c941497b002ee0a7ad67d841b9a7",
+      "bytes": 932
+    },
+    "source-proof.json": {
+      "sha256": "dfe9df62d7df42e9158b9165518d8142baedb1c06a2f96f67c21167d3948e907",
+      "bytes": 175487
+    },
+    "archive-audit182.json": {
+      "sha256": "4989d35dcab1a61239a1a788e63a253a511e677c841e00587b8697b322f4a1a8",
+      "bytes": 1815
+    },
+    "archive-command.json": {
+      "sha256": "82f513510c5338f221924f5f04d824ab057fb28d4f771888ecb8ac3eee7a4f17",
+      "bytes": 349
+    },
+    "export-command.json": {
+      "sha256": "a3eef45535e0a92970db5adf6aa647818a095fb49920314365dac07d9c1b56c7",
+      "bytes": 163
+    },
+    "archive.log": {
+      "sha256": "68333e414843f09ad8f16ea4308b3ce500a22b066d14dae9534f99551547235a",
+      "bytes": 331689
+    },
+    "export.log": {
+      "sha256": "56439a3314723453e03beefb968e03c5708d017801e56436224a811cb769f6ed",
+      "bytes": 390
+    },
+    "archive-exit.json": {
+      "sha256": "982b9e9bfb10ffe83cad665807abcfd3fa97b37822db5ab7831157a499548a9e",
+      "bytes": 16
+    },
+    "export-exit.json": {
+      "sha256": "982b9e9bfb10ffe83cad665807abcfd3fa97b37822db5ab7831157a499548a9e",
+      "bytes": 16
+    },
+    "audit-archive182.py": {
+      "sha256": "eaeffa3f572476629e7b45c6fe55c80c6c2ef74a159e64edd24214692699af06",
+      "bytes": 4440
+    }
+  },
+  "preservedArchiveFileCount": 33,
+  "preservedCopiesByteIdentical": true,
+  "keychainOrSigningSettingsMutated": false,
+  "portalMutations": false,
+  "uploadedByThisTask": false,
+  "physicalAppleAcceptanceProved": false
+}
