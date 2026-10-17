@@ -1,0 +1,41 @@
+{
+  "capturedAt": "2026-10-17T19:07:12.482464+00:00",
+  "files": [
+    {
+      "path": "SpyClash/App/AppState.swift",
+      "sha256": "2941b01be4d2984ebeb21c485fefe3c2c08c3d1082d0c22abb1b7aa3c541dd7c"
+    },
+    {
+      "path": "SpyClash/Services/Base44Client.swift",
+      "sha256": "cc7ae8de8619c384622bf0d6308d6646f2db751c913357827a028307d736c2dd"
+    },
+    {
+      "path": "SpyClash/Services/AppleNativeHandoff.swift",
+      "sha256": "6ec4192577ee9828f11edbe43627cef7d346be1a7cf0661512fb378fa33fb01a"
+    },
+    {
+      "path": "SpyClash/Services/SupabaseLegacyAuth.swift",
+      "sha256": "2ebe46c55e72edfca0191bf0bb848f4ea6794f5ca1f120c78163c878dcc63c75"
+    },
+    {
+      "path": "SpyClashTests/AppleAuthenticationOwnershipTests.swift",
+      "sha256": "7a99099c8581ad17f57b4e9723b5d19e3423863e289d30332e0a94048939762e"
+    },
+    {
+      "path": "SpyClashTests/AppleNativeHandoffTests.swift",
+      "sha256": "c27ec873ff7f054bbe4b066556f43c8a1eef9ad231fdaf20c33dda5620b77351"
+    },
+    {
+      "path": "SpyClashTests/AuthenticationFlowTests.swift",
+      "sha256": "220c14b4041bb149456fb589489e4f72c77ee9b99497c68d82035291ca599d72"
+    },
+    {
+      "path": "project.yml",
+      "sha256": "5b8ec7d28a3cd08aba60909fdf6a3565a5206d407cb53608ab1354faa3ab79db"
+    },
+    {
+      "path": "SpyClash.xcodeproj/project.pbxproj",
+      "sha256": "c888b73337580fb1e0e457d9d042c19f5eb5dcfa833e19e1221ceacd9200adac"
+    }
+  ]
+}

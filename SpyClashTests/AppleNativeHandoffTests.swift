@@ -23,6 +23,25 @@ final class AppleNativeHandoffTests: XCTestCase {
         }
     }
 
+    func testBrowserCompletionRequiresAppleMarkedAppCallback() throws {
+        let valid = try XCTUnwrap(URL(string: "spyclash://auth?auth_provider=apple&access_token=synthetic%2Btoken"))
+        XCTAssertEqual(try AppleNativeHandoffPolicy.browserAccessToken(from: valid), "synthetic+token")
+        for value in [
+            "spyclash://auth?access_token=synthetic",
+            "spyclash://auth?auth_provider=google&access_token=synthetic",
+            "spyclash://auth?auth_provider=apple&auth_provider=apple&access_token=synthetic",
+            "spyclash://auth?auth_provider=apple&access_token=synthetic&error=access_denied",
+            "spyclash://auth?auth_provider=apple&access_token=synthetic#access_token=other",
+            "spyclash://auth?error=access_denied",
+            base + "?auth_provider=apple&access_token=synthetic",
+        ] {
+            XCTAssertThrowsError(try AppleNativeHandoffPolicy.browserAccessToken(from: XCTUnwrap(URL(string: value))), value)
+        }
+        XCTAssertThrowsError(try AppleNativeHandoffPolicy.browserAccessToken(from: XCTUnwrap(URL(string: "spyclash://auth?auth_provider=apple&error=access_denied")))) {
+            XCTAssertEqual($0 as? AppleNativeHandoffError, .cancelled)
+        }
+    }
+
     func testAppleCallbackRejectsAmbiguousPayloadAndEncodedAliases() throws {
         let invalid = [
             "?access_token=synthetic", "?auth_provider=google&access_token=synthetic",

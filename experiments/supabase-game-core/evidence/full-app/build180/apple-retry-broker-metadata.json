@@ -1,0 +1,53 @@
+{
+  "marker": "APPLE_LIVE_FIXED_METADATA_ONLY",
+  "checkedAt": "2026-10-17T18:55:38.617319Z",
+  "since": "2026-10-17T18:54:40Z",
+  "cliExit": 0,
+  "rows": [
+    {
+      "time": "2026-10-17T18:55:07.248000+00:00",
+      "source": "appleAuthBroker",
+      "level": "info",
+      "method": "POST",
+      "status": 200,
+      "action": null,
+      "error_code": null,
+      "request_failed": false,
+      "upstream_callback_failed": false
+    },
+    {
+      "time": "2026-10-17T18:55:08.817000+00:00",
+      "source": "appleAuthBroker",
+      "level": "info",
+      "method": "GET",
+      "status": 302,
+      "action": null,
+      "error_code": null,
+      "request_failed": false,
+      "upstream_callback_failed": false
+    },
+    {
+      "time": "2026-10-17T18:55:09.841000+00:00",
+      "source": "appleAuthBroker",
+      "level": "info",
+      "method": "POST",
+      "status": 200,
+      "action": null,
+      "error_code": null,
+      "request_failed": false,
+      "upstream_callback_failed": false
+    },
+    {
+      "time": "2026-10-17T18:55:10.084000+00:00",
+      "source": "appleAuthBroker",
+      "level": "info",
+      "method": "GET",
+      "status": 200,
+      "action": null,
+      "error_code": null,
+      "request_failed": false,
+      "upstream_callback_failed": false
+    }
+  ],
+  "rowCount": 4
+}

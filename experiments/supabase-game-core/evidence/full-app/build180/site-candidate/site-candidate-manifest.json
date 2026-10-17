@@ -1,0 +1,201 @@
+{
+  "afterFiles": [
+    {
+      "bytes": 65267,
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5"
+    },
+    {
+      "bytes": 1579238,
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164"
+    },
+    {
+      "bytes": 10403,
+      "path": "assets/index-B5iDK17o.js",
+      "sha256": "da3600f07c5ccdd00036182dc65d86681b6beb9bad5446012ea3f04b66a7ee5a"
+    },
+    {
+      "bytes": 2747,
+      "path": "index.html",
+      "sha256": "0d0bb1159cd26d6627b16f5539b44d876e824de79e895f4dcb6587914e054537"
+    },
+    {
+      "bytes": 520,
+      "path": "manifest.json",
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11"
+    }
+  ],
+  "beforeFiles": [
+    {
+      "bytes": 65267,
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5"
+    },
+    {
+      "bytes": 1579238,
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164"
+    },
+    {
+      "bytes": 6437,
+      "path": "assets/index-GEnUi1AX.js",
+      "sha256": "06bfa39438b4280296aa391df494fca5c409b34219a5589cd06c068b346a9afd"
+    },
+    {
+      "bytes": 2554,
+      "path": "index.html",
+      "sha256": "61c8c70e90acf85158102a45804b2c2ebfa9c8fa7993576342cf5f14153fda8d"
+    },
+    {
+      "bytes": 520,
+      "path": "manifest.json",
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11"
+    }
+  ],
+  "canonicalPublishedSource": {
+    "commit": "b27e3d6def47a03a97ad9e1265bd72d48e5218c1",
+    "deployDirectory": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/experiments/supabase-game-core/.local/google175/site-deploy",
+    "sourceDirectory": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/experiments/supabase-game-core/.local/google175/site-candidate"
+  },
+  "createdAt": "2026-10-17T19:09:51.430600+00:00",
+  "entryAfter": "assets/index-B5iDK17o.js",
+  "entryBefore": "assets/index-GEnUi1AX.js",
+  "htmlChange": "Only three exact Apple-route exclusions, changed entry bundle filename and final newline",
+  "noProductionMutation": true,
+  "packages": {
+    "site-deploy": {
+      "directory": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/apple180-browser/site-deploy",
+      "files": [
+        {
+          "bytes": 39,
+          "path": "base44/.app.jsonc",
+          "sha256": "a085aa77cef6d953d5c3668d41d2eb8615780968682dd94c7cf016da0624872e"
+        },
+        {
+          "bytes": 111,
+          "path": "base44/config.jsonc",
+          "sha256": "f0157ef628ab6998f0c84a8d2030e131e973520477eb33e4f71fe4e2928f352e"
+        },
+        {
+          "bytes": 65267,
+          "path": "dist/assets/bootstrap-8g2kJx7T.css",
+          "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5"
+        },
+        {
+          "bytes": 1579238,
+          "path": "dist/assets/bootstrap-aW5J3GBq.js",
+          "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164"
+        },
+        {
+          "bytes": 10403,
+          "path": "dist/assets/index-B5iDK17o.js",
+          "sha256": "da3600f07c5ccdd00036182dc65d86681b6beb9bad5446012ea3f04b66a7ee5a"
+        },
+        {
+          "bytes": 2747,
+          "path": "dist/index.html",
+          "sha256": "0d0bb1159cd26d6627b16f5539b44d876e824de79e895f4dcb6587914e054537"
+        },
+        {
+          "bytes": 520,
+          "path": "dist/manifest.json",
+          "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11"
+        }
+      ],
+      "reviewZip": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/apple180-browser/site-deploy.zip",
+      "reviewZipSHA256": "b195ca04b6643bd73745015592269713953c769383e9a21d6d398f1f5a863084"
+    },
+    "site-rollback": {
+      "directory": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/apple180-browser/site-rollback",
+      "files": [
+        {
+          "bytes": 39,
+          "path": "base44/.app.jsonc",
+          "sha256": "a085aa77cef6d953d5c3668d41d2eb8615780968682dd94c7cf016da0624872e"
+        },
+        {
+          "bytes": 111,
+          "path": "base44/config.jsonc",
+          "sha256": "f0157ef628ab6998f0c84a8d2030e131e973520477eb33e4f71fe4e2928f352e"
+        },
+        {
+          "bytes": 65267,
+          "path": "dist/assets/bootstrap-8g2kJx7T.css",
+          "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5"
+        },
+        {
+          "bytes": 1579238,
+          "path": "dist/assets/bootstrap-aW5J3GBq.js",
+          "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164"
+        },
+        {
+          "bytes": 6437,
+          "path": "dist/assets/index-GEnUi1AX.js",
+          "sha256": "06bfa39438b4280296aa391df494fca5c409b34219a5589cd06c068b346a9afd"
+        },
+        {
+          "bytes": 2554,
+          "path": "dist/index.html",
+          "sha256": "61c8c70e90acf85158102a45804b2c2ebfa9c8fa7993576342cf5f14153fda8d"
+        },
+        {
+          "bytes": 520,
+          "path": "dist/manifest.json",
+          "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11"
+        }
+      ],
+      "reviewZip": "/Users/davidganzha/.codex/worktrees/supabase-game-core/SpyClash/.local/apple180-browser/site-rollback.zip",
+      "reviewZipSHA256": "9320b1c2ec478e9d2c1ca2eddfa38a2bca2d2b47938d356233b1f8cbafbab733"
+    }
+  },
+  "preservedSourceFiles": [
+    {
+      "matchesPublished175": true,
+      "path": "web-auth/src/lib/mobileAuthCallback.js",
+      "sha256": "a59964b250227975fe8093ed912a9eec094813d7df5017aa763e2fad14c09f3c"
+    },
+    {
+      "matchesPublished175": true,
+      "path": "web-auth/src/bootstrap.jsx",
+      "sha256": "e74b2988b408945f488a50e3ac866122b4d8a0b5b6f59966ddc70d4bd735153e"
+    },
+    {
+      "matchesPublished175": true,
+      "path": "web-auth/package.json",
+      "sha256": "b9964c8e5a8b8b24bc5baed36b57b3c0c950586c74a251959419898d4c3f7e27"
+    },
+    {
+      "matchesPublished175": true,
+      "path": "web-auth/package-lock.json",
+      "sha256": "26279996e64f5c8c49199d84ab5a18271a2b35fda62aca36968d59649d934488"
+    }
+  ],
+  "sourceDiffExactlyOverlay": true,
+  "sourceOverlay": [
+    {
+      "path": "web-auth/index.html",
+      "sha256": "c270a9bc645e29042d100588bbfb49f488e5a25ae2e3185b23f005babbe0733b"
+    },
+    {
+      "path": "web-auth/src/main.jsx",
+      "sha256": "8f2b6186b319d5df91342a36248581ec97cd6e9e85769e06ff8c6b63904ef554"
+    },
+    {
+      "path": "web-auth/src/lib/mobileAppleAuthCallback.js",
+      "sha256": "43181117fe303ca2f6f3c49c069cac6fda99f3935b49b883c079421ad03eadd3"
+    }
+  ],
+  "status": "LOCAL_CANDIDATE_NOT_DEPLOYED",
+  "target": {
+    "appID": "69a0e57fa939f578082f8091",
+    "callbackPath": "/MobileAppleAuthCallback.html",
+    "operation": "Base44 site deploy only; no function/auth/secret/config production mutation",
+    "origin": "https://spyclash.com"
+  },
+  "unchangedStaticFiles": [
+    "assets/bootstrap-8g2kJx7T.css",
+    "assets/bootstrap-aW5J3GBq.js",
+    "manifest.json"
+  ]
+}

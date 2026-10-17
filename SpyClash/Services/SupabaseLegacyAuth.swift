@@ -75,7 +75,15 @@ final class SupabaseLegacyAuth {
         guard Self.isValidCredential(legacyToken), !Self.isSupabaseBearer(legacyToken) else { throw Base44Error(message: "Invalid identity provider response.", code: "wrong_credential_provider") }
         var fields = ["access_token": legacyToken]
         if let appleBindingTicket, !appleBindingTicket.isEmpty { fields["apple_binding_ticket"] = appleBindingTicket }
-        let _: JSONValue = try await request("functions/autoRegisterUser", fields: fields)
+        let function = Base44Client.providerRegistrationFunction(appleBindingTicket: appleBindingTicket)
+        let response: JSONValue = try await request("functions/" + function, fields: fields)
+        if appleBindingTicket?.isEmpty == false {
+            guard response["success"].bool == true,
+                  response["user"]["id"].string?.isEmpty == false,
+                  response["user"]["email"].string?.isEmpty == false else {
+                throw Base44Error(message: "Apple account binding could not be verified. Please try again.", code: "apple_binding_response_invalid")
+            }
+        }
     }
     static func isSupabaseBearer(_ token: String) -> Bool {
         if token.hasPrefix("sb_publishable_") || token.hasPrefix("sb_secret_") { return true }
@@ -103,7 +111,7 @@ final class SupabaseLegacyAuth {
             !value.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
     }
     private func request<T: Decodable>(_ route: String, fields: [String: String]) async throws -> T {
-        guard ["auth/login", "auth/register", "auth/verify-otp", "auth/resend-otp", "auth/reset-password-request", "auth/reset-password", "functions/autoRegisterUser"].contains(route) else {
+        guard ["auth/login", "auth/register", "auth/verify-otp", "auth/resend-otp", "auth/reset-password-request", "auth/reset-password", "functions/autoRegisterUser", "functions/autoRegisterUserV2"].contains(route) else {
             throw Base44Error(message: "This Base44 endpoint is unavailable in staging.", code: "legacy_route_disallowed")
         }
         let url = Base44Client.appBaseURL.appending(path: "/api/apps/\(Base44Client.appID)/\(route)")

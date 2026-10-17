@@ -272,6 +272,58 @@ extension SupabaseSessionTests {
         XCTAssertEqual(StagingURLProtocol.state.count, 0)
     }
 
+    func testAppleProviderRegistrationUsesV2AndPreservesBindingTicketInBody() async throws {
+        StagingURLProtocol.state.reset(response: Data(#"{"success":true,"user":{"id":"synthetic-user","email":"person@example.test"}}"#.utf8))
+        let auth = SupabaseLegacyAuth(session: mockHTTP())
+        try await auth.registerProvider(legacyToken: "synthetic-provider-token", appleBindingTicket: "synthetic-binding-ticket")
+        XCTAssertEqual(StagingURLProtocol.state.count, 1)
+        let request = try XCTUnwrap(StagingURLProtocol.state.recordedRequests.first)
+        XCTAssertEqual(request.url?.host, "spyclash.com")
+        XCTAssertEqual(request.url?.path, "/api/apps/\(Base44Client.appID)/functions/autoRegisterUserV2")
+        XCTAssertEqual(request.httpMethod, "POST")
+        XCTAssertNil(request.value(forHTTPHeaderField: "Authorization"))
+        let body = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(StagingURLProtocol.state.recordedBodies.first))
+        XCTAssertEqual(body["access_token"].string, "synthetic-provider-token")
+        XCTAssertEqual(body["apple_binding_ticket"].string, "synthetic-binding-ticket")
+    }
+
+    func testAppleProviderRegistrationRejectsUnverifiedSuccessWithoutFallback() async throws {
+        let invalid = [
+            #"{}"#,
+            #"{"success":true}"#,
+            #"{"success":false,"user":{"id":"synthetic-user","email":"person@example.test"}}"#,
+            #"{"user":{"id":"synthetic-user","email":"person@example.test"}}"#,
+            #"{"success":true,"user":{"id":"","email":"person@example.test"}}"#,
+            #"{"success":true,"user":{"id":"synthetic-user","email":""}}"#,
+        ]
+        let auth = SupabaseLegacyAuth(session: mockHTTP())
+        for response in invalid {
+            StagingURLProtocol.state.reset(response: Data(response.utf8))
+            do {
+                try await auth.registerProvider(legacyToken: "synthetic-provider-token", appleBindingTicket: "synthetic-binding-ticket")
+                XCTFail("Apple binding requires explicit success and a verified user")
+            } catch let error as Base44Error {
+                XCTAssertEqual(error.code, "apple_binding_response_invalid")
+            }
+            XCTAssertEqual(StagingURLProtocol.state.count, 1)
+            XCTAssertEqual(StagingURLProtocol.state.recordedRequests.first?.url?.lastPathComponent, "autoRegisterUserV2")
+        }
+    }
+
+    func testGoogleProviderRegistrationKeepsLegacyRouteWithoutAppleBinding() async throws {
+        let auth = SupabaseLegacyAuth(session: mockHTTP())
+        for bindingTicket in [nil, ""] as [String?] {
+            StagingURLProtocol.state.reset(response: Data("{}".utf8))
+            try await auth.registerProvider(legacyToken: "synthetic-google-token", appleBindingTicket: bindingTicket)
+            XCTAssertEqual(StagingURLProtocol.state.count, 1)
+            XCTAssertEqual(StagingURLProtocol.state.recordedRequests.first?.url?.lastPathComponent, "autoRegisterUser")
+            XCTAssertNil(StagingURLProtocol.state.recordedRequests.first?.value(forHTTPHeaderField: "Authorization"))
+            let body = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(StagingURLProtocol.state.recordedBodies.first))
+            XCTAssertEqual(body["access_token"].string, "synthetic-google-token")
+            XCTAssertNil(body.object?["apple_binding_ticket"])
+        }
+    }
+
     func testLegacyErrorsPreserveProviderCodeAndRetryability() async throws {
         StagingURLProtocol.state.reset(response: Data(#"{"error":{"code":"rate_limited","error_description":"Wait before requesting another code."}}"#.utf8), statusCode: 429)
         do { try await SupabaseLegacyAuth(session: mockHTTP()).resend(email: "person@example.com"); XCTFail("Rate limit was accepted") }

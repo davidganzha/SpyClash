@@ -218,6 +218,20 @@ enum AppleNativeHandoffPolicy {
         return token
     }
 
+    /// The browser bridge is Apple-specific even though Google uses the same
+    /// app scheme. Unlike the older direct transport, it never accepts an
+    /// unmarked legacy callback or a webpage URL as its completion.
+    static func browserAccessToken(from url: URL) throws -> String {
+        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              parts.scheme == "spyclash" else {
+            throw AppleNativeHandoffError.validation(.callbackOrigin)
+        }
+        guard parts.queryItems?.first(where: { $0.name == "auth_provider" })?.value == "apple" else {
+            throw AppleNativeHandoffError.validation(.callbackProvider)
+        }
+        return try accessToken(from: url)
+    }
+
     private static func isCanonicalHTTPS(_ parts: URLComponents) -> Bool {
         parts.scheme == "https" && parts.user == nil && parts.password == nil && parts.port == nil
     }

@@ -3635,7 +3635,7 @@ final class AppState: NSObject {
             }
 
             appleAuthStage = .verifyingIdentity
-            let nativeSession = try await client.appleNativeAccessToken(for: credential) { [weak self] phase in
+            let nativeSession = try await client.appleNativeAccessToken(for: credential, onPhaseChange: { [weak self] phase in
                 guard self?.authenticationAttemptID == attemptID else { return }
                 switch phase {
                 case .verifyingIdentity:
@@ -3643,7 +3643,10 @@ final class AppState: NSObject {
                 case .establishingSession:
                     self?.appleAuthStage = .establishingSession
                 }
-            }
+            }, handoff: { [weak self] bootstrapURL in
+                guard let self else { throw CancellationError() }
+                return try await self.completeAppleBrowserHandoff(from: bootstrapURL, attemptID: attemptID)
+            })
             try requireCurrentAuthentication(attemptID)
             appleAuthStage = .synchronizingProfile
             try await acceptProviderToken(
@@ -3685,6 +3688,39 @@ final class AppState: NSObject {
 
     func dismissAppleHandoffFailure() {
         appleHandoffFailure = nil
+    }
+
+    /// Base44's SSO completion is a browser flow. Keep the native Apple
+    /// credential exchange, but let the owned browser finish redirects and
+    /// the dedicated Apple callback page before accepting a session token.
+    func completeAppleBrowserHandoff(from bootstrapURL: URL, attemptID: UUID) async throws -> String {
+        try requireCurrentAuthentication(attemptID)
+        try AppleNativeHandoffPolicy.validateBootstrap(bootstrapURL)
+        let callback: URL
+        do {
+            callback = try await (webAuthenticationOverride ?? webAuthentication).authenticate(
+                url: bootstrapURL,
+                timeout: 90
+            )
+        } catch let error as WebAuthenticationError {
+            try requireCurrentAuthentication(attemptID)
+            switch error {
+            case .cancelled: throw CancellationError()
+            case .expired: throw AppleNativeHandoffError.expired
+            case .invalidCallback: throw AppleNativeHandoffError.invalidCallback
+            case .temporarilyUnavailable, .failed, .couldNotStart:
+                throw AppleNativeHandoffError.temporarilyUnavailable
+            }
+        }
+        try requireCurrentAuthentication(attemptID)
+        do {
+            return try AppleNativeHandoffPolicy.browserAccessToken(from: callback)
+        } catch let error as AppleNativeHandoffError {
+            if error.supportCode == .cancelled { throw CancellationError() }
+            throw error.withDiagnostic(
+                AppleNativeHandoffDiagnostic(response: nil, destination: callback, redirectCount: 0)
+            )
+        }
     }
 
     func cancelAppleSignInRequest() {

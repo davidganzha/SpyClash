@@ -1,0 +1,77 @@
+{
+  "checkedAt": "2026-10-17T19:08:02.636343+00:00",
+  "state": "LOCAL_ONLY_NOT_DEPLOYED",
+  "reviewedSourceManifestSHA256": "b713ca8d507dbebdd39818b4eab384c0fa1acd5ddd2e011fb339d321ba6a11fe",
+  "generatedSourceManifestSHA256": "1d9b539f4b76af3a2a1b5f190709a40bf9904d572e85db87ce7aa4cd54680ef5",
+  "singleFunction": "autoRegisterUserV2",
+  "runtimeFiles": 4,
+  "exactFrozenRuntimeMatch": true,
+  "twoGenerationsByteIdentical": true,
+  "existingOutputRefusedAndUnchanged": true,
+  "tests": {
+    "actualGeneratedHandlerAndRealBindingHelpers": {
+      "passedSteps": 17,
+      "failed": 0,
+      "networkPermission": false,
+      "environmentPermission": false
+    },
+    "realSDKTypecheck": "pass",
+    "compiledRuntimePriorExactBytes": {
+      "compiler": "@base44/functions-compiler@0.1.8",
+      "GET": 405,
+      "unauthenticatedPOST": 401,
+      "oldFunctionName": 404,
+      "externalRequests": 0,
+      "compiledModuleSHA256": "3acdf4533edd84c17d7a6d9d73b009bc3dfdf92aed5b6abf228a4667301f7c9b"
+    }
+  },
+  "fixtureReview": "Legacy source contains handler code only, no runtime credentials, user records or readback wrapper; fixture credentials are synthetic.",
+  "productionMutated": false,
+  "nativeOrSiteModifiedByPackaging": false,
+  "generatedFiles": [
+    {
+      "path": "base44/config.jsonc",
+      "sha256": "fe272f7fc08ffd1f785ba8110eb8bbfe491c74f78a985dc994390af2cd4e419e"
+    },
+    {
+      "path": "base44/functions/autoRegisterUserV2/apple-sign-in-credential.ts",
+      "sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078"
+    },
+    {
+      "path": "base44/functions/autoRegisterUserV2/base44-context.ts",
+      "sha256": "7f7b4e20791132f0ef9acf068df0e0d2335f01554a6ca17ee1c3d36aa8c74220"
+    },
+    {
+      "path": "base44/functions/autoRegisterUserV2/billing-identity-lifecycle.ts",
+      "sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851"
+    },
+    {
+      "path": "base44/functions/autoRegisterUserV2/entry.ts",
+      "sha256": "ebd3244fb1796ab3b5d8b86eac9e6e374dbcf98bd4b5be51f2029e70b9b8c895"
+    },
+    {
+      "path": "base44/functions/autoRegisterUserV2/function.jsonc",
+      "sha256": "c01f1687a9131576f73e6949d4355ce382ab2537fa2ea5bd226620af8940ab43"
+    },
+    {
+      "path": "source-manifest.json",
+      "sha256": "1d9b539f4b76af3a2a1b5f190709a40bf9904d572e85db87ce7aa4cd54680ef5"
+    },
+    {
+      "path": "tests/contract_test.ts",
+      "sha256": "b9415fcd5fc9baec126bc5e018e686fdabb9758c2e92f04a28e6c891adea3d56"
+    },
+    {
+      "path": "tests/deno.json",
+      "sha256": "151c43d4510db282c3dde3c21c9c941cffafbe525b3ed23470541fac0f217f95"
+    },
+    {
+      "path": "tests/legacy-runtime-fixture.js",
+      "sha256": "21cb6f01050bc66f91c8cc9faeecd9ad5c3d6bebcc341fc4afe30ca190636e7e"
+    },
+    {
+      "path": "tests/sdk-stub.ts",
+      "sha256": "93a1eeb86650ae53999baea5500f7d8bc0cfbcf7d0bdadef417a5d05a3dfda94"
+    }
+  ]
+}

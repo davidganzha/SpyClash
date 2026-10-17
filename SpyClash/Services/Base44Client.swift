@@ -369,6 +369,10 @@ final class Base44Client {
     }
 #endif
 
+    static func providerRegistrationFunction(appleBindingTicket: String?) -> String {
+        appleBindingTicket?.isEmpty == false ? "autoRegisterUserV2" : "autoRegisterUser"
+    }
+
     func autoRegisterUser(appleBindingTicket: String? = nil, accessToken: String? = nil) async throws -> SpyUser {
 #if SPYCLASH_SUPABASE
         return try await SupabaseAppSession.shared.profile(accessToken: accessToken)
@@ -384,11 +388,18 @@ final class Base44Client {
             payload["apple_binding_ticket"] = appleBindingTicket
         }
         let response: AutoRegisterUserResponse = try await request(
-            "/apps/\(Self.appID)/functions/autoRegisterUser",
+            "/apps/\(Self.appID)/functions/\(Self.providerRegistrationFunction(appleBindingTicket: appleBindingTicket))",
             method: "POST",
             body: payload,
             includeAuthorization: false
         )
+        if appleBindingTicket?.isEmpty == false {
+            guard response.success == true, let user = response.user,
+                  !user.id.isEmpty, !user.email.isEmpty else {
+                throw Base44Error(message: "Apple account binding could not be verified. Please try again.", code: "apple_binding_response_invalid")
+            }
+            return user
+        }
         if let user = response.user {
             return user
         }
@@ -1797,7 +1808,8 @@ final class Base44Client {
 
     func appleNativeAccessToken(
         for credential: AppleSignInCredential,
-        onPhaseChange: (AppleNativeAuthPhase) -> Void = { _ in }
+        onPhaseChange: (AppleNativeAuthPhase) -> Void = { _ in },
+        handoff: @MainActor (URL) async throws -> String
     ) async throws -> AppleNativeSession {
 #if SPYCLASH_SUPABASE
         guard SupabaseAppRuntime.permitsAppleSignIn else {
@@ -1811,18 +1823,9 @@ final class Base44Client {
         }
         onPhaseChange(.establishingSession)
         return AppleNativeSession(
-            accessToken: try await resolveSilentAppleHandoff(from: bootstrapURL),
+            accessToken: try await handoff(bootstrapURL),
             bindingTicket: bootstrap.bindingTicket
         )
-    }
-
-    private func resolveSilentAppleHandoff(from bootstrapURL: URL) async throws -> String {
-#if SPYCLASH_SUPABASE_TEST
-        try Self.rejectProductionNetworkInSupabaseTest()
-#endif
-        do { return try await AppleNativeHandoffTransport.accessToken(from: bootstrapURL) }
-        catch let error as AppleNativeHandoffError { throw error }
-        catch { throw Self.displayableTransportError(error) }
     }
 
     private func listEntity<T: Decodable>(_ entity: String) async throws -> [T] {
@@ -2724,6 +2727,7 @@ struct AccountDeletionResult: Decodable {
 }
 
 private struct AutoRegisterUserResponse: Decodable {
+    let success: Bool?
     let user: SpyUser?
 }
 

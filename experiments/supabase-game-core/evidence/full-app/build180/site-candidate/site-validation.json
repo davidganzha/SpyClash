@@ -1,0 +1,28 @@
+{
+  "status": "LOCAL_VALIDATION_PASSED_NOT_DEPLOYED",
+  "unitTests": {
+    "passed": 104,
+    "appleAndSharedEntrypoint": 38,
+    "unchangedGoogle": 66,
+    "command": "npm test (web-auth)",
+    "fixtureOnly": true
+  },
+  "renderedBrowser": {
+    "passed": 13,
+    "engine": "macOS WKWebView",
+    "actualFrozenEntrySHA256": "da3600f07c5ccdd00036182dc65d86681b6beb9bad5446012ea3f04b66a7ee5a",
+    "actualBuiltInlineGuardsExecuted": true,
+    "nativeNavigationInterceptedAndCancelled": true,
+    "noStorageNetworkSDKBootstrapObserved": true,
+    "allNetworkBlockedByContentRule": true,
+    "syntheticCredentialsOnly": true
+  },
+  "siteManifestSHA256": "fe54c9b1f5abc3474e424dc678f70a886e887581c068748ecf16b9305d79c277",
+  "limits": [
+    "Not a deployed frontend",
+    "No actual Apple sign-in or authenticated request",
+    "No physical-device or ASWebAuthenticationSession acceptance",
+    "Existing native failure terminal response remains unobserved"
+  ],
+  "noProductionMutation": true
+}

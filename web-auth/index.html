@@ -18,7 +18,7 @@
       // module before Vite loads the application bundle, and remove any
       // identifier created by an older SpyClash website build.
       (function disableBase44Analytics() {
-        if (window.location.pathname === "/MobileAuthCallback.html") return;
+        if (window.location.pathname === "/MobileAuthCallback.html" || window.location.pathname === "/MobileAppleAuthCallback.html") return;
         try {
           localStorage.removeItem('base44_analytics_session_id');
         } catch (_) {
@@ -40,12 +40,12 @@
     <div id="root" style="background:#000;min-height:100vh;"></div>
     <script>
       // Force-unregister ALL service workers and clear ALL caches
-      if (window.location.pathname !== '/MobileAuthCallback.html' && 'serviceWorker' in navigator) {
+      if (window.location.pathname !== '/MobileAuthCallback.html' && window.location.pathname !== '/MobileAppleAuthCallback.html' && 'serviceWorker' in navigator) {
         navigator.serviceWorker.getRegistrations().then(function(regs) {
           regs.forEach(function(reg) { reg.unregister(); });
         });
       }
-      if (window.location.pathname !== '/MobileAuthCallback.html' && 'caches' in window) {
+      if (window.location.pathname !== '/MobileAuthCallback.html' && window.location.pathname !== '/MobileAppleAuthCallback.html' && 'caches' in window) {
         caches.keys().then(function(names) {
           names.forEach(function(name) { caches.delete(name); });
         });

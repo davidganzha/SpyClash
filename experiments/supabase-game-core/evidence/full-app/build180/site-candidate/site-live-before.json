@@ -1,0 +1,58 @@
+{
+  "checkedAt": "2026-10-17T19:05:37.664779+00:00",
+  "operation": "Unauthenticated GET only; no sessions/cookies supplied",
+  "target": "https://spyclash.com",
+  "allFivePublished175FilesMatch": true,
+  "files": [
+    {
+      "path": "assets/bootstrap-8g2kJx7T.css",
+      "status": 200,
+      "finalURL": "https://spyclash.com/assets/bootstrap-8g2kJx7T.css",
+      "contentType": "text/css; charset=utf-8",
+      "bytes": 65267,
+      "sha256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "expectedSHA256": "ae95d92db7f23fa35c5d50caf69f37a65fcb9273c3600589061f86bfe4cccec5",
+      "matchesPublished175": true
+    },
+    {
+      "path": "assets/bootstrap-aW5J3GBq.js",
+      "status": 200,
+      "finalURL": "https://spyclash.com/assets/bootstrap-aW5J3GBq.js",
+      "contentType": "application/javascript; charset=utf-8",
+      "bytes": 1579238,
+      "sha256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "expectedSHA256": "38c3ccc544d2e36da51c4b93f9b6364cc61a1e56dc5c955a23256daad9977164",
+      "matchesPublished175": true
+    },
+    {
+      "path": "assets/index-GEnUi1AX.js",
+      "status": 200,
+      "finalURL": "https://spyclash.com/assets/index-GEnUi1AX.js",
+      "contentType": "application/javascript; charset=utf-8",
+      "bytes": 6437,
+      "sha256": "06bfa39438b4280296aa391df494fca5c409b34219a5589cd06c068b346a9afd",
+      "expectedSHA256": "06bfa39438b4280296aa391df494fca5c409b34219a5589cd06c068b346a9afd",
+      "matchesPublished175": true
+    },
+    {
+      "path": "index.html",
+      "status": 200,
+      "finalURL": "https://spyclash.com/index.html",
+      "contentType": "text/html; charset=utf-8",
+      "bytes": 2554,
+      "sha256": "61c8c70e90acf85158102a45804b2c2ebfa9c8fa7993576342cf5f14153fda8d",
+      "expectedSHA256": "61c8c70e90acf85158102a45804b2c2ebfa9c8fa7993576342cf5f14153fda8d",
+      "matchesPublished175": true
+    },
+    {
+      "path": "manifest.json",
+      "status": 200,
+      "finalURL": "https://spyclash.com/manifest.json",
+      "contentType": "application/json",
+      "bytes": 520,
+      "sha256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "expectedSHA256": "48bfe1607c3f60d70e75a2878abe4dee90ba49921bf9bb3914bc264b25b9de11",
+      "matchesPublished175": true
+    }
+  ]
+}

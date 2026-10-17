@@ -309,6 +309,47 @@ final class AuthenticationFlowTests: XCTestCase {
         XCTAssertEqual(user.id, "candidate-user")
         XCTAssertEqual(client.currentAccessToken, "existing")
     }
+
+    func testAppleRegistrationUsesBindingAwareRouteWithoutReplacingSession() async throws {
+        let client = client()
+        client.setToken("existing")
+        XCTAssertEqual(Base44Client.providerRegistrationFunction(appleBindingTicket: nil), "autoRegisterUser")
+        XCTAssertEqual(Base44Client.providerRegistrationFunction(appleBindingTicket: ""), "autoRegisterUser")
+        AuthenticationFlowURLProtocol.handler = { request in
+            XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUserV2")
+            XCTAssertNil(request.request.value(forHTTPHeaderField: "Authorization"))
+            request.respond(status: 200, body: #"{"success":true,"user":{"id":"candidate-user","email":"candidate@example.test"}}"#)
+        }
+        defer { AuthenticationFlowURLProtocol.handler = nil }
+        let user = try await client.autoRegisterUser(appleBindingTicket: "binding-fixture", accessToken: "candidate")
+        XCTAssertEqual(user.id, "candidate-user")
+        XCTAssertEqual(client.currentAccessToken, "existing")
+    }
+
+    func testAppleRegistrationCannotFallBackToUnboundProfile() async throws {
+        let client = client()
+        client.setToken("existing")
+        defer { AuthenticationFlowURLProtocol.handler = nil }
+        for body in [
+            #"{"success":true}"#,
+            #"{"success":false,"user":{"id":"candidate-user","email":"candidate@example.test"}}"#,
+            #"{"user":{"id":"candidate-user","email":"candidate@example.test"}}"#,
+            #"{"success":true,"user":{"id":"","email":"candidate@example.test"}}"#,
+            #"{"success":true,"user":{"id":"candidate-user","email":""}}"#
+        ] {
+            AuthenticationFlowURLProtocol.handler = { request in
+                XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUserV2", "No old handler or User/me fallback may bypass Apple binding")
+                request.respond(status: 200, body: body)
+            }
+            do {
+                _ = try await client.autoRegisterUser(appleBindingTicket: "binding-fixture", accessToken: "candidate")
+                XCTFail("A response without explicit binding success and a verified user cannot complete Apple binding")
+            } catch let error as Base44Error {
+                XCTAssertEqual(error.code, "apple_binding_response_invalid")
+            }
+            XCTAssertEqual(client.currentAccessToken, "existing")
+        }
+    }
 }
 
 @MainActor

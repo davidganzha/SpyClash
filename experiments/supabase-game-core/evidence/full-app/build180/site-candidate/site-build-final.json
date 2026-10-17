@@ -1,0 +1,15 @@
+{
+  "build": "npm run build",
+  "dependencyInstall": "npm ci --ignore-scripts --no-audit --no-fund --offline",
+  "initialBuildInvestigation": "First build without two public VITE defaults changed only their embedded defaults to undefined; restored exact published public values and rebuilt. Frozen output byte-matches ordinary175 assets; no manual bundle patch.",
+  "manifestSHA256": "fe54c9b1f5abc3474e424dc678f70a886e887581c068748ecf16b9305d79c277",
+  "ordinaryBundleCSSAndManifestByteIdentical": true,
+  "productionDeployed": false,
+  "publicBuildEnvironment": {
+    "VITE_BASE44_APP_BASE_URL": "https://spyclash.com",
+    "VITE_BASE44_APP_ID": "69a0e57fa939f578082f8091"
+  },
+  "sourceBase": "Retained published175 source with only three-file Apple overlay",
+  "status": "PASSED",
+  "viteVersion": "6.4.4"
+}

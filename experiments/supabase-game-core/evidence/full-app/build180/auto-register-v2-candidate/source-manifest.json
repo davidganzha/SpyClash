@@ -1,0 +1,50 @@
+{
+  "function": "autoRegisterUserV2",
+  "entry": "entry.ts",
+  "state": "local_only_not_deployed",
+  "scope": "Exactly one new Base44 function; no original function, entity, site, secret, auth configuration or app binding included.",
+  "files": [
+    {
+      "file": "entry.ts",
+      "source": "base44/functions/autoRegisterUser/main.ts",
+      "bytes": 7172,
+      "sha256": "ebd3244fb1796ab3b5d8b86eac9e6e374dbcf98bd4b5be51f2029e70b9b8c895"
+    },
+    {
+      "file": "apple-sign-in-credential.ts",
+      "source": "base44/functions/autoRegisterUser/apple-sign-in-credential.ts",
+      "bytes": 43333,
+      "sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078"
+    },
+    {
+      "file": "billing-identity-lifecycle.ts",
+      "source": "experiments/supabase-game-core/evidence/full-app/build178/check-subscription-candidate/base44/functions/checkSubscription/billing-identity-lifecycle.ts",
+      "bytes": 28337,
+      "sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851"
+    },
+    {
+      "file": "base44-context.ts",
+      "source": "base44/functions/autoRegisterUser/base44-context.ts",
+      "bytes": 603,
+      "sha256": "7f7b4e20791132f0ef9acf068df0e0d2335f01554a6ca17ee1c3d36aa8c74220"
+    }
+  ],
+  "sourceProvenance": "Three tracked autoRegisterUser files plus the already-tracked exact reviewed lifecycle snapshot. All four match the frozen modern registration candidate.",
+  "lifecycleSourceChoice": {
+    "reason": "The current autoRegisterUser directory has a separate pre-existing constructor signature extension; use the reviewed lifecycle snapshot to preserve exact runtime bytes.",
+    "excludedTrackedSHA256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25"
+  },
+  "frozenCandidateManifestSHA256": "c806a7e6019780f6a07a5a83366e0774e3c1eba722d0da06da12fcc0a477017c",
+  "legacyRegressionFixture": {
+    "source": "Saved publicly served autoRegisterUser implementation from read-only sandbox readback; source only, no runtime values or user records.",
+    "sha256": "21cb6f01050bc66f91c8cc9faeecd9ad5c3d6bebcc341fc4afe30ca190636e7e"
+  },
+  "requiredServingGates": [
+    "Fresh collision/inventory check",
+    "Explicit approval for exact production function deployment",
+    "Named function deploy only",
+    "Public GET405 and unauthenticated POST401 before native Apple route activation",
+    "Existing functions unchanged"
+  ],
+  "rollback": "Restore native route selection and leave V2 unreferenced. This restores prior behavior, including its missing Apple binding contract."
+}

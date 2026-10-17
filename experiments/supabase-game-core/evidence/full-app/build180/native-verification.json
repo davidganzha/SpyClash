@@ -1,0 +1,37 @@
+{
+  "checkedAt": "2026-10-17T19:10:32.615865+00:00",
+  "sourceMatchesFinalSnapshot": true,
+  "changedFiles": [],
+  "productionMutations": false,
+  "signing": false,
+  "physicalAppleSignInVerified": false,
+  "validation": [
+    {
+      "name": "four focused native auth suites",
+      "passed": 55,
+      "failed": 0,
+      "result": "focused-tests-r2.xcresult"
+    },
+    {
+      "name": "final affected native auth suites after success guard and stale error fix",
+      "passed": 28,
+      "failed": 0,
+      "result": "final-affected-tests.xcresult"
+    },
+    {
+      "name": "direct conditional Supabase provider registration fixtures",
+      "passed": 3,
+      "failed": 0,
+      "result": "supabase-registration-tests.xcresult"
+    },
+    {
+      "name": "final unsigned SupabaseRelease build",
+      "passed": true,
+      "result": "final-supabase-release-build.xcresult"
+    }
+  ],
+  "additionalTestSource": {
+    "path": "SpyClashSupabaseStagingTests/SupabaseSessionTests.swift",
+    "sha256": "c91c9d066cbf8af5e4adfaa73795875fecfb1663a437310bf2be7dda20ed98cc"
+  }
+}
