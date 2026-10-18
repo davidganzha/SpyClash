@@ -1,0 +1,54 @@
+{
+  "fixture": "apple-native-https-fixture",
+  "mode": "script",
+  "final_host": "app.base44.com",
+  "request_count": 5,
+  "counts": {
+    "bootstrap": 1,
+    "spyclash_sso_login": 1,
+    "base44_sso_login": 1,
+    "broker_authorize": 1,
+    "base44_sso_callback": 1
+  },
+  "events": {
+    "accepted_connect": 5
+  },
+  "final_route_fetches": 0,
+  "requests": [
+    {
+      "sequence": 1,
+      "host": "spyclash",
+      "category": "bootstrap",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "sequence": 2,
+      "host": "spyclash",
+      "category": "spyclash_sso_login",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "sequence": 3,
+      "host": "base44",
+      "category": "base44_sso_login",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "sequence": 4,
+      "host": "spyclash",
+      "category": "broker_authorize",
+      "method": "GET",
+      "status": 302
+    },
+    {
+      "sequence": 5,
+      "host": "base44",
+      "category": "base44_sso_callback",
+      "method": "GET",
+      "status": 200
+    }
+  ]
+}

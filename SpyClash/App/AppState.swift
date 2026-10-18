@@ -3658,12 +3658,7 @@ final class AppState: NSObject {
             })
             try requireCurrentAuthentication(attemptID)
             appleAuthStage = .synchronizingProfile
-            try await acceptProviderToken(
-                nativeSession.accessToken,
-                cinematic: .apple,
-                attemptID: attemptID,
-                appleBindingTicket: nativeSession.bindingTicket
-            )
+            try await acceptAppleNativeSession(nativeSession, attemptID: attemptID)
 
             // The animation runs while identity/profile verification is in flight.
             // Once ready, finish the mark promptly instead of enforcing a four-second minimum.
@@ -3747,7 +3742,7 @@ final class AppState: NSObject {
             let callback = try await (webAuthenticationOverride ?? webAuthentication).authenticate(url: url)
             try requireCurrentAuthentication(attemptID)
             let token = try WebAuthenticationCallback.accessToken(from: callback)
-            try await acceptProviderToken(token, cinematic: .standard, attemptID: attemptID)
+            try await acceptProviderToken(token, attemptID: attemptID)
         } catch {
             guard authenticationAttemptID == attemptID,
                   authenticationSessionGeneration == client.sessionGeneration else { return }
@@ -3761,25 +3756,41 @@ final class AppState: NSObject {
 
     private func acceptProviderToken(
         _ token: String,
-        cinematic: ProviderAuthCinematic,
-        attemptID: UUID,
-        appleBindingTicket: String? = nil
+        attemptID: UUID
     ) async throws {
         try requireCurrentAuthentication(attemptID)
         // Verify the candidate without replacing the existing session. A
         // temporary profile-sync failure must not erase saved credentials.
 #if SPYCLASH_SUPABASE
-        let bridged = try await client.legacyProviderSession(token, appleBindingTicket: appleBindingTicket)
-        let authenticatedUser = bridged.user
-        let authenticatedToken = bridged.accessToken
+        let verifiedSession = try await client.legacyProviderSession(token, appleBindingTicket: nil)
 #else
-        let authenticatedUser = try await client.autoRegisterUser(
-            appleBindingTicket: appleBindingTicket,
-            accessToken: token
+        let verifiedSession = LoginResponse(
+            accessToken: token,
+            user: try await client.autoRegisterUser(accessToken: token)
         )
-        let authenticatedToken = token
 #endif
+        try await commitProviderSession(verifiedSession, cinematic: .standard, attemptID: attemptID)
+    }
+
+    /// Only this typed path may accept a native Apple candidate. The original
+    /// credential's binding ticket is mandatory; no generic provider fallback
+    /// can turn an unverified WebKit return into an authenticated session.
+    func acceptAppleNativeSession(_ nativeSession: AppleNativeSession, attemptID: UUID) async throws {
         try requireCurrentAuthentication(attemptID)
+        let verifiedSession = try await client.appleNativeProviderSession(nativeSession) {
+            try self.requireCurrentAuthentication(attemptID)
+        }
+        try await commitProviderSession(verifiedSession, cinematic: .apple, attemptID: attemptID)
+    }
+
+    private func commitProviderSession(
+        _ verifiedSession: LoginResponse,
+        cinematic: ProviderAuthCinematic,
+        attemptID: UUID
+    ) async throws {
+        try requireCurrentAuthentication(attemptID)
+        let authenticatedToken = verifiedSession.accessToken
+        let authenticatedUser = verifiedSession.user
         try await client.commitAuthenticatedToken(authenticatedToken, user: authenticatedUser)
         try requireCurrentAuthentication(attemptID, checkSession: false)
         sessionTokenSave(authenticatedToken)

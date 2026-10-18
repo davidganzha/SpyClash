@@ -18,6 +18,7 @@ final class AppleSessionCompletionSession: NSObject, WebAuthenticationSession {
     private var terminal = false
     private var navigationCount = 0
     private var documentGeneration = 0
+    private var ssoProgress = SSOProgress.initial
     private var lastDiagnostic = AppleNativeHandoffDiagnostic(response: nil, destination: nil, redirectCount: 0)
 
     init(
@@ -136,6 +137,40 @@ final class AppleSessionCompletionSession: NSObject, WebAuthenticationSession {
         }
         return true
     }
+
+    private static func containsSessionCandidate(_ url: URL) -> Bool {
+        URLComponents(url: url, resolvingAgainstBaseURL: false)?.queryItems?
+            .contains(where: { $0.name == "access_token" }) == true
+    }
+
+    /// Records only fixed stages, never the provider code, state or URL. A
+    /// candidate may come only immediately after this attempt's SSO callback.
+    /// It is still untrusted: native Apple binding must pass before any save.
+    private enum SSOProgress {
+        case initial, login, authorize, callback
+
+        mutating func observePermittedDocument(_ url: URL) {
+            let parts = URLComponents(url: url, resolvingAgainstBaseURL: false)
+            let route = "/api/apps/69a0e57fa939f578082f8091/auth/sso/"
+            let items = parts?.queryItems ?? []
+            switch parts?.percentEncodedPath {
+            case route + "login" where self == .initial || self == .login:
+                self = .login
+            case "/functions/appleAuthBroker" where self == .login || self == .authorize:
+                self = items.first(where: { $0.name == "action" })?.value == "authorize" ? .authorize : .initial
+            case route + "callback" where self == .authorize || self == .callback:
+                let hasCodeAndState = ["code", "state"].allSatisfy { name in
+                    guard let value = items.first(where: { $0.name == name })?.value else { return false }
+                    return !value.isEmpty && value.utf8.count <= 20_000 &&
+                        value == value.trimmingCharacters(in: .whitespacesAndNewlines) &&
+                        !value.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
+                }
+                self = hasCodeAndState ? .callback : .initial
+            default:
+                self = .initial
+            }
+        }
+    }
 }
 
 extension AppleSessionCompletionSession: WKNavigationDelegate {
@@ -154,7 +189,7 @@ extension AppleSessionCompletionSession: WKNavigationDelegate {
             return
         }
         if let url = navigationAction.request.url,
-           AppleNativeHandoffPolicy.isCallbackDestination(url),
+           (AppleNativeHandoffPolicy.isCallbackDestination(url) || Self.containsSessionCandidate(url)),
            !navigationAction.sourceFrame.isMainFrame {
             // A child cannot install credentials through _top or a new window,
             // or replace diagnostics belonging to the main document.
@@ -184,6 +219,25 @@ extension AppleSessionCompletionSession: WKNavigationDelegate {
             _ = completeIfCallback(url)
             return
         }
+        if Self.containsSessionCandidate(url) {
+            // Base44 may return its session through an intermediate landing
+            // URL rather than directly to from_url. Never render that URL or
+            // interpret its path/metadata as proof of authentication.
+            decisionHandler(.cancel)
+            guard navigationAction.request.httpMethod == "GET" else {
+                reject(.validation(.navigationMethod)); return
+            }
+            guard ssoProgress == .callback else {
+                reject(.validation(.navigationDocument)); return
+            }
+            do {
+                let callback = try AppleNativeHandoffPolicy.unverifiedSessionCandidateCallback(from: url)
+                finish(url: callback, error: nil)
+            } catch {
+                reject(error as? AppleNativeHandoffError ?? .invalidCallback)
+            }
+            return
+        }
         navigationCount += 1
         recordDiagnostic(destination: url)
         guard navigationCount <= 16 else {
@@ -200,6 +254,11 @@ extension AppleSessionCompletionSession: WKNavigationDelegate {
             decisionHandler(.cancel)
             reject(.validation(.navigationMethod))
             return
+        }
+        if navigationAction.sourceFrame.isMainFrame {
+            ssoProgress.observePermittedDocument(url)
+        } else {
+            ssoProgress = .initial
         }
         decisionHandler(.allow)
     }

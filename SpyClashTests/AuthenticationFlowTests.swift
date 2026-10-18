@@ -315,39 +315,194 @@ final class AuthenticationFlowTests: XCTestCase {
         client.setToken("existing")
         XCTAssertEqual(Base44Client.providerRegistrationFunction(appleBindingTicket: nil), "autoRegisterUser")
         XCTAssertEqual(Base44Client.providerRegistrationFunction(appleBindingTicket: ""), "autoRegisterUser")
+        let registration = expectation(description: "One binding verification")
+        registration.assertForOverFulfill = true
         AuthenticationFlowURLProtocol.handler = { request in
             XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUserV2")
             XCTAssertNil(request.request.value(forHTTPHeaderField: "Authorization"))
+            XCTAssertEqual(try? request.jsonBody(), [
+                "access_token": "candidate",
+                "apple_binding_ticket": "original-native-binding-fixture"
+            ])
+            registration.fulfill()
             request.respond(status: 200, body: #"{"success":true,"user":{"id":"candidate-user","email":"candidate@example.test"}}"#)
         }
         defer { AuthenticationFlowURLProtocol.handler = nil }
-        let user = try await client.autoRegisterUser(appleBindingTicket: "binding-fixture", accessToken: "candidate")
-        XCTAssertEqual(user.id, "candidate-user")
+        let session = try await client.appleNativeProviderSession(AppleNativeSession(
+            accessToken: "candidate", bindingTicket: "original-native-binding-fixture"
+        ), requireCurrentAttempt: {})
+        await fulfillment(of: [registration], timeout: 1)
+        XCTAssertEqual(session.user.id, "candidate-user")
+        XCTAssertEqual(session.accessToken, "candidate")
         XCTAssertEqual(client.currentAccessToken, "existing")
     }
 
     func testAppleRegistrationCannotFallBackToUnboundProfile() async throws {
         let client = client()
         client.setToken("existing")
+        let store = AuthenticationMemoryStore(token: "existing")
+        let state = state(client: client, store: store)
+        let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
         defer { AuthenticationFlowURLProtocol.handler = nil }
         for body in [
+            #"{}"#,
             #"{"success":true}"#,
             #"{"success":false,"user":{"id":"candidate-user","email":"candidate@example.test"}}"#,
             #"{"user":{"id":"candidate-user","email":"candidate@example.test"}}"#,
             #"{"success":true,"user":{"id":"","email":"candidate@example.test"}}"#,
             #"{"success":true,"user":{"id":"candidate-user","email":""}}"#
         ] {
+            let registration = expectation(description: "Malformed binding response is terminal")
+            registration.assertForOverFulfill = true
             AuthenticationFlowURLProtocol.handler = { request in
                 XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUserV2", "No old handler or User/me fallback may bypass Apple binding")
+                registration.fulfill()
                 request.respond(status: 200, body: body)
             }
             do {
-                _ = try await client.autoRegisterUser(appleBindingTicket: "binding-fixture", accessToken: "candidate")
+                try await state.acceptAppleNativeSession(
+                    AppleNativeSession(accessToken: "candidate", bindingTicket: "binding-fixture"),
+                    attemptID: attempt
+                )
                 XCTFail("A response without explicit binding success and a verified user cannot complete Apple binding")
             } catch let error as Base44Error {
                 XCTAssertEqual(error.code, "apple_binding_response_invalid")
             }
+            await fulfillment(of: [registration], timeout: 1)
             XCTAssertEqual(client.currentAccessToken, "existing")
+            XCTAssertEqual(store.token, "existing")
+            XCTAssertEqual(store.saves, 0)
+            XCTAssertEqual(store.clears, 0)
+            XCTAssertNil(state.user)
+        }
+    }
+
+    func testNativeAppleRequiresValidBindingBeforeAnyRegistrationOrCommit() async throws {
+        let client = client()
+        client.setToken("existing")
+        let store = AuthenticationMemoryStore(token: "existing")
+        let state = state(client: client, store: store)
+        let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
+        AuthenticationFlowURLProtocol.handler = { request in
+            XCTFail("A missing or malformed native binding must never reach any provider endpoint")
+            request.respond(status: 500, body: "{}")
+        }
+        defer { AuthenticationFlowURLProtocol.handler = nil }
+        for binding in ["", " ", "binding fixture", "binding\nfixture", String(repeating: "b", count: 513)] {
+            do {
+                try await state.acceptAppleNativeSession(
+                    AppleNativeSession(accessToken: "candidate", bindingTicket: binding), attemptID: attempt
+                )
+                XCTFail("Invalid binding must fail before registration")
+            } catch let error as Base44Error {
+                XCTAssertEqual(error.code, "apple_binding_ticket_invalid")
+            }
+        }
+        XCTAssertEqual(client.currentAccessToken, "existing")
+        XCTAssertEqual(store.token, "existing")
+        XCTAssertEqual(store.saves, 0)
+        XCTAssertEqual(store.clears, 0)
+        XCTAssertNil(state.user)
+    }
+
+    func testNativeAppleCannotSubstituteSavedTokenForInvalidCandidate() async throws {
+        let client = client()
+        client.setToken("existing")
+        let store = AuthenticationMemoryStore(token: "existing")
+        let state = state(client: client, store: store)
+        let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
+        AuthenticationFlowURLProtocol.handler = { request in
+            XCTFail("Invalid native candidate must not fall back to the existing token")
+            request.respond(status: 500, body: "{}")
+        }
+        defer { AuthenticationFlowURLProtocol.handler = nil }
+        for token in ["", " ", "candidate injected", "candidate\n", String(repeating: "t", count: 20_001)] {
+            do {
+                try await state.acceptAppleNativeSession(
+                    AppleNativeSession(accessToken: token, bindingTicket: "original-binding"), attemptID: attempt
+                )
+                XCTFail("Invalid candidate was accepted")
+            } catch let error as Base44Error {
+                XCTAssertEqual(error.code, "apple_session_candidate_invalid")
+            }
+        }
+        XCTAssertEqual(client.currentAccessToken, "existing")
+        XCTAssertEqual(store.token, "existing")
+        XCTAssertEqual(store.saves, 0)
+        XCTAssertEqual(store.clears, 0)
+        XCTAssertNil(state.user)
+    }
+
+    func testNativeAppleBindingRejectionPreservesSessionWithoutFallback() async throws {
+        defer { AuthenticationFlowURLProtocol.handler = nil }
+        for status in [401, 409] {
+            let client = client()
+            client.setToken("existing")
+            let store = AuthenticationMemoryStore(token: "existing")
+            let state = state(client: client, store: store)
+            let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
+            let registration = expectation(description: "Binding rejection is terminal")
+            registration.assertForOverFulfill = true
+            AuthenticationFlowURLProtocol.handler = { request in
+                XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUserV2")
+                XCTAssertEqual(try? request.jsonBody(), [
+                    "access_token": "untrusted-candidate",
+                    "apple_binding_ticket": "original-binding"
+                ])
+                registration.fulfill()
+                request.respond(status: status, body: #"{"error":"Apple account binding rejected"}"#)
+            }
+            do {
+                try await state.acceptAppleNativeSession(
+                    AppleNativeSession(accessToken: "untrusted-candidate", bindingTicket: "original-binding"),
+                    attemptID: attempt
+                )
+                XCTFail("An unauthorized or mismatched binding must not commit")
+            } catch let error as Base44Error {
+                XCTAssertEqual(error.statusCode, status)
+            }
+            await fulfillment(of: [registration], timeout: 1)
+            XCTAssertEqual(client.currentAccessToken, "existing")
+            XCTAssertEqual(store.token, "existing")
+            XCTAssertEqual(store.saves, 0)
+            XCTAssertEqual(store.clears, 0)
+            XCTAssertNil(state.user)
+        }
+    }
+
+    func testNativeAppleBindingSuccessCannotCommitAfterAttemptOrSessionChanges() async throws {
+        defer { AuthenticationFlowURLProtocol.handler = nil }
+        for replaceSession in [false, true] {
+            let client = client()
+            client.setToken("existing")
+            let store = AuthenticationMemoryStore(token: "existing")
+            let state = state(client: client, store: store)
+            let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
+            let held = AuthenticationHeldRequest()
+            AuthenticationFlowURLProtocol.handler = { request in held.receive(request) }
+            let acceptance = Task {
+                try await state.acceptAppleNativeSession(
+                    AppleNativeSession(accessToken: "late-candidate", bindingTicket: "original-binding"),
+                    attemptID: attempt
+                )
+            }
+            let request = await held.next()
+            XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUserV2")
+            if replaceSession {
+                client.setToken("replacement")
+            } else {
+                state.handleIncomingURL(URL(string: "https://spyclash.com/reset-password?token=recovery")!)
+                _ = try XCTUnwrap(state.beginAuthenticationAttempt())
+            }
+            request.respond(status: 200, body: #"{"success":true,"user":{"id":"candidate-user","email":"candidate@example.test"}}"#)
+            do { try await acceptance.value; XCTFail("Late binding verification must not commit") }
+            catch { XCTAssertTrue(error is CancellationError) }
+            XCTAssertEqual(client.currentAccessToken, replaceSession ? "replacement" : "existing")
+            XCTAssertEqual(store.token, "existing")
+            XCTAssertEqual(store.saves, 0)
+            XCTAssertEqual(store.clears, 0)
+            XCTAssertNil(state.user)
+            XCTAssertTrue(state.isBusy)
         }
     }
 }
@@ -411,6 +566,21 @@ private final class AuthenticationFlowURLProtocol: URLProtocol, @unchecked Senda
         handler(self)
     }
     override func stopLoading() {}
+    func jsonBody() throws -> [String: String] {
+        var data = request.httpBody ?? Data()
+        if data.isEmpty, let stream = request.httpBodyStream {
+            stream.open()
+            defer { stream.close() }
+            var buffer = [UInt8](repeating: 0, count: 1_024)
+            while stream.hasBytesAvailable {
+                let count = stream.read(&buffer, maxLength: buffer.count)
+                guard count >= 0 else { throw URLError(.cannotDecodeRawData) }
+                if count == 0 { break }
+                data.append(buffer, count: count)
+            }
+        }
+        return try JSONDecoder().decode([String: String].self, from: data)
+    }
     func respond(status: Int, body: String) {
         let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil, headerFields: ["Content-Type": "application/json"])!
         client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)

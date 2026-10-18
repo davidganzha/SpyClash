@@ -1,0 +1,66 @@
+{
+  "recordedAtUTC": "2026-10-18T00:52:45.768627+00:00",
+  "baseCommit": "db21352d9d34c5cf859815a855fb128b4e4b6b71",
+  "build": "186",
+  "marketingVersion": "1.0.3",
+  "focusedNativeTests": {
+    "passed": 82,
+    "failed": 0,
+    "skipped": 0,
+    "resultBundle": ".local/apple186-no-browser/auth186.xcresult"
+  },
+  "before185Regression": {
+    "passed": 0,
+    "failed": 1,
+    "observedDiagnostic": "SCA177-H34-r6-s0-cN-uOT-q12-pN-fN",
+    "resultBundle": ".local/apple186-no-browser/before185.xcresult"
+  },
+  "realHTTPS": {
+    "passedExecutions": 2,
+    "uniqueTests": 1,
+    "modes": [
+      "redirect",
+      "script"
+    ],
+    "resultBundles": [
+      ".local/apple186-no-browser/https-redirect-run.xcresult",
+      ".local/apple186-no-browser/https-script-run.xcresult"
+    ],
+    "initialEnvironmentMissingRunSkipped": 1,
+    "finalLandingRequests": [
+      0,
+      0
+    ]
+  },
+  "backend": {
+    "credentialTestsPassed": 29,
+    "v2ContractTestsPassed": 1,
+    "v2ContractStepsPassed": 17,
+    "networkAllowed": false,
+    "environmentAllowed": false
+  },
+  "sourceSHA256": {
+    "SpyClash.xcodeproj/project.pbxproj": "c67f5dba29cce28f21d75e825e3cf9640d96e892101f97ecf0cc6e26c8ab908a",
+    "SpyClash/App/AppState.swift": "11667ceadbcf7925cb208d5b18dbd4df0f4260e8ee22fcdca0d26459dfffec84",
+    "SpyClash/Services/AppleNativeHandoff.swift": "d3f57387fa52535fae333c1f743572b6c26018a6c7d40f7a4591b1ea7349e699",
+    "SpyClash/Services/AppleSessionCompletionSession.swift": "dcdab63d190015b2bd171d6fdf7463597e902c770ad6d33d4389211806c1b65a",
+    "SpyClash/Services/Base44Client.swift": "b28dc3b806b05d4ae4afa2222291360bd0409ddc0ee38771ae4c4de445dc1606",
+    "SpyClashTests/AppleNativeHandoffTests.swift": "db335542f1eba9d2f5d5033e04a75f230c5481e39caa34548e76f40b0708c65a",
+    "SpyClashTests/AppleSessionCompletionWebKitTests.swift": "26ca1572453b627b694403d46a00e4665ebd07187d9cd4bbeef079237d20af14",
+    "SpyClashTests/AuthenticationFlowTests.swift": "2bea1a285f9bca6cf49c2f47550f5befd4ea016522e191711d1d6c1013197a60",
+    "project.yml": "3a68f3e36f0f52ae2cdbeafa674ee699d0ca052673823c69f243e09f48ebb7b5"
+  },
+  "boundaries": {
+    "distributionSigned": false,
+    "uploaded": false,
+    "productionMutation": false,
+    "physicalAppleAcceptanceProved": false,
+    "exactProductionIntermediatePathKnown": false
+  },
+  "supabaseVariantTests": {
+    "passed": 3,
+    "failed": 0,
+    "skipped": 0,
+    "resultBundle": ".local/apple186-no-browser/supabase-binding.xcresult"
+  }
+}

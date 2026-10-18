@@ -80,6 +80,131 @@ final class AppleNativeHandoffTests: XCTestCase {
         }
     }
 
+    func testUnverifiedSessionCandidateDiscardsRouteAndAllMetadata() throws {
+        let token = "synthetic-candidate+/=&?#"
+        for (index, origin) in ["https://spyclash.com", "https://app.base44.com"].enumerated() {
+            var source = try XCTUnwrap(URLComponents(string: origin + "/unrecognized/transport-\(index)"))
+            source.queryItems = [
+                URLQueryItem(name: "access_token", value: token),
+                URLQueryItem(name: "is_new_user", value: "false"),
+                URLQueryItem(name: "from_url", value: "https://foreign.example/ignored?access_token=untrusted-metadata"),
+                URLQueryItem(name: "redirect_uri", value: "spyclash://unrelated"),
+                URLQueryItem(name: "auth_method", value: "untrusted-metadata"),
+            ]
+            if index == 1 { source.queryItems?.append(URLQueryItem(name: "auth_provider", value: "apple")) }
+            let original = try XCTUnwrap(source.url)
+            let candidate = try AppleNativeHandoffPolicy.unverifiedSessionCandidateCallback(from: original)
+            let result = try XCTUnwrap(URLComponents(url: candidate, resolvingAgainstBaseURL: false))
+            XCTAssertEqual(result.scheme, "https")
+            XCTAssertEqual(result.host, "spyclash.com")
+            XCTAssertEqual(result.path, "/MobileAppleAuthCallback.html")
+            XCTAssertNil(result.fragment)
+            XCTAssertEqual(result.queryItems?.count, 2)
+            XCTAssertEqual(Set(result.queryItems?.map(\.name) ?? []), ["auth_provider", "access_token"])
+            XCTAssertEqual(try AppleNativeHandoffPolicy.sessionAccessToken(from: candidate), token)
+            XCTAssertFalse(candidate.absoluteString.contains("untrusted-metadata"))
+            XCTAssertFalse(candidate.absoluteString.contains("foreign.example"))
+            // Extraction never makes this credential-bearing source loadable.
+            XCTAssertFalse(AppleNativeHandoffPolicy.permitsRedirect(original))
+        }
+    }
+
+    func testUnverifiedSessionCandidateRejectsOriginAndFragmentConfusion() throws {
+        let query = "?access_token=synthetic-candidate"
+        let invalid = [
+            "http://spyclash.com/transport" + query,
+            "https://spyclash.com:443/transport" + query,
+            "https://user@spyclash.com/transport" + query,
+            "https://user:password@app.base44.com/transport" + query,
+            "https://spyclash.com.foreign.example/transport" + query,
+            "https://foreign.example/transport" + query,
+            "https://%73pyclash.com/transport" + query,
+            "https://spyclash.com./transport" + query,
+            "spyclash://auth" + query,
+            "https://spyclash.com/transport" + query + "#",
+            "https://spyclash.com/transport" + query + "#_=_",
+            "https://spyclash.com/transport" + query + "#access_token=other",
+        ]
+        for (index, raw) in invalid.enumerated() {
+            XCTAssertThrowsError(try AppleNativeHandoffPolicy.unverifiedSessionCandidateCallback(from: XCTUnwrap(URL(string: raw))), "Origin/fragment case \(index)")
+        }
+    }
+
+    func testUnverifiedSessionCandidateRejectsAmbiguousAndMalformedQuery() throws {
+        let prefix = "https://spyclash.com/unrecognized-transport"
+        let invalid = [
+            "", "?is_new_user=false", "?access_token", "?access_token=",
+            "?access_token=synthetic&access_token=other",
+            "?access_token=synthetic&access%5Ftoken=other",
+            "?access_token=synthetic&extra=one&%65xtra=two",
+            "?access_token=synthetic&auth_provider=apple&%61uth_provider=apple",
+            "?access_token=synthetic&auth_provider=google",
+            "?access_token=synthetic&%61uth_provider=google",
+            "?access_token=synthetic&auth_provider=Apple",
+            "?access_token=synthetic&auth_provider=",
+            "?access_token=synthetic&error=access_denied",
+            "?access_token=synthetic&%65rror=access_denied",
+            "?access_token=synthetic&error_description=ignored",
+            "?access_token=synthetic&extra", "?access_token=synthetic&extra=",
+            "?access_token=synthetic&=value",
+            "?access_token=synthetic&ex%20tra=value",
+            "?access_token=synthetic&extra=inside%20space",
+            "?access_token=synthetic&extra=inside%C2%A0space",
+            "?access_token=synthetic&extra=inside%E2%80%A8space",
+            "?access_token=synthetic&extra=%00",
+            "?access_token=synthetic&ex%7Ftra=value",
+            "?access_token=synthetic%09candidate",
+            "?access_token=%20synthetic", "?access_token=synthetic%0A",
+        ]
+        for (index, query) in invalid.enumerated() {
+            XCTAssertThrowsError(try AppleNativeHandoffPolicy.unverifiedSessionCandidateCallback(from: XCTUnwrap(URL(string: prefix + query))), "Query case \(index)")
+        }
+    }
+
+    func testUnverifiedSessionCandidateEnforcesQueryAndURLBounds() throws {
+        let prefix = "https://app.base44.com/transport"
+        var source = try XCTUnwrap(URLComponents(string: prefix))
+        source.queryItems = [URLQueryItem(name: "access_token", value: String(repeating: "x", count: 20_000))]
+        source.queryItems?.append(URLQueryItem(name: String(repeating: "n", count: 128), value: String(repeating: "v", count: 20_000)))
+        XCTAssertNoThrow(try AppleNativeHandoffPolicy.unverifiedSessionCandidateCallback(from: XCTUnwrap(source.url)))
+        for item in [
+            URLQueryItem(name: "access_token", value: String(repeating: "x", count: 20_001)),
+            URLQueryItem(name: String(repeating: "n", count: 129), value: "value"),
+            URLQueryItem(name: "metadata", value: String(repeating: "v", count: 20_001)),
+        ] {
+            source.queryItems = item.name == "access_token" ? [item] : [URLQueryItem(name: "access_token", value: "synthetic"), item]
+            XCTAssertThrowsError(try AppleNativeHandoffPolicy.unverifiedSessionCandidateCallback(from: XCTUnwrap(source.url)))
+        }
+
+        source.queryItems = [URLQueryItem(name: "access_token", value: "synthetic")]
+        source.queryItems?.append(contentsOf: (0..<31).map { URLQueryItem(name: "metadata\($0)", value: "value") })
+        XCTAssertNoThrow(try AppleNativeHandoffPolicy.unverifiedSessionCandidateCallback(from: XCTUnwrap(source.url)))
+        source.queryItems?.append(URLQueryItem(name: "metadata31", value: "value"))
+        XCTAssertThrowsError(try AppleNativeHandoffPolicy.unverifiedSessionCandidateCallback(from: XCTUnwrap(source.url)))
+
+        let origin = "https://spyclash.com/"
+        let query = "?access_token=synthetic"
+        let maximum = origin + String(repeating: "p", count: 64_000 - origin.utf8.count - query.utf8.count) + query
+        XCTAssertEqual(maximum.utf8.count, 64_000)
+        XCTAssertNoThrow(try AppleNativeHandoffPolicy.unverifiedSessionCandidateCallback(from: XCTUnwrap(URL(string: maximum))))
+        XCTAssertThrowsError(try AppleNativeHandoffPolicy.unverifiedSessionCandidateCallback(from: XCTUnwrap(URL(string: maximum + "x"))))
+    }
+
+    func testUnverifiedSessionCandidateCannotRepairCanonicalCallback() throws {
+        for query in [
+            "?access_token=synthetic",
+            "?auth_provider=google&access_token=synthetic",
+            "?auth_provider=apple&access_token=synthetic&error=access_denied",
+            "?auth_provider=apple&access_token=synthetic",
+        ] {
+            let url = try XCTUnwrap(URL(string: base + query))
+            XCTAssertTrue(AppleNativeHandoffPolicy.isCallbackDestination(url))
+            XCTAssertThrowsError(try AppleNativeHandoffPolicy.unverifiedSessionCandidateCallback(from: url))
+        }
+        let valid = try XCTUnwrap(URL(string: base + "?auth_provider=apple&access_token=synthetic#_=_"))
+        XCTAssertEqual(try AppleNativeHandoffPolicy.sessionAccessToken(from: valid), "synthetic")
+    }
+
     func testBootstrapAndIntermediateRedirectPolicyStayCanonical() throws {
         let bootstrap = "https://spyclash.com/functions/appleAuthBroker?action=native-bootstrap&ticket=synthetic"
         XCTAssertNoThrow(try AppleNativeHandoffPolicy.validateBootstrap(XCTUnwrap(URL(string: bootstrap))))

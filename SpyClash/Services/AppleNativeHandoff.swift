@@ -247,8 +247,75 @@ enum AppleNativeHandoffPolicy {
         return try accessToken(from: url)
     }
 
+    /// Extracts an UNVERIFIED transport candidate from an owned Apple SSO
+    /// navigation. Neither this URL nor its metadata proves the user's identity.
+    /// The caller must cancel the navigation without loading it and require
+    /// verification with the original native Apple credential binding ticket
+    /// before committing any session. Canonical callbacks use their existing
+    /// strict path first and must never fall back to this normalization.
+    static func unverifiedSessionCandidateCallback(from url: URL) throws -> URL {
+        guard url.absoluteString.utf8.count <= 64_000 else {
+            throw AppleNativeHandoffError.validation(.callbackQuery)
+        }
+        guard let parts = URLComponents(url: url, resolvingAgainstBaseURL: false),
+              isCanonicalHTTPS(parts), let host = parts.percentEncodedHost,
+              allowedHosts.contains(host), !isCallbackDestination(url) else {
+            throw AppleNativeHandoffError.validation(.callbackOrigin)
+        }
+        // Even the otherwise inert callback fragments are not part of this
+        // transport contract. A candidate is only carried in a query string.
+        guard parts.fragment == nil else {
+            throw AppleNativeHandoffError.validation(.callbackFragment)
+        }
+        let items = parts.queryItems ?? []
+        guard !items.isEmpty, items.count <= 32 else {
+            throw AppleNativeHandoffError.validation(.callbackQuery)
+        }
+        guard Set(items.map(\.name)).count == items.count else {
+            throw AppleNativeHandoffError.validation(.callbackDuplicateQuery)
+        }
+        guard items.allSatisfy({ item in
+            validCandidateValue(item.name, maximum: 128) &&
+                (item.value.map { validCandidateValue($0, maximum: 20_000) } ?? false)
+        }) else {
+            throw AppleNativeHandoffError.validation(.callbackQuery)
+        }
+        guard !items.contains(where: { ["error", "error_description"].contains($0.name) }) else {
+            throw AppleNativeHandoffError.validation(.callbackPayload)
+        }
+        if let provider = items.first(where: { $0.name == "auth_provider" })?.value,
+           provider != "apple" {
+            throw AppleNativeHandoffError.validation(.callbackProvider)
+        }
+        guard let token = items.first(where: { $0.name == "access_token" })?.value else {
+            throw AppleNativeHandoffError.validation(.callbackMissingToken)
+        }
+
+        // Rebuild instead of forwarding the original path or any metadata.
+        // A from_url/redirect field cannot cause another navigation, and adding
+        // this fixed provider marker does not turn the candidate into proof.
+        var callback = URLComponents()
+        callback.scheme = "https"
+        callback.host = "spyclash.com"
+        callback.path = callbackPath
+        callback.queryItems = [
+            URLQueryItem(name: "auth_provider", value: "apple"),
+            URLQueryItem(name: "access_token", value: token),
+        ]
+        guard let result = callback.url else {
+            throw AppleNativeHandoffError.validation(.callbackQuery)
+        }
+        _ = try sessionAccessToken(from: result)
+        return result
+    }
+
     private static func isCanonicalHTTPS(_ parts: URLComponents) -> Bool {
         parts.scheme == "https" && parts.user == nil && parts.password == nil && parts.port == nil
+    }
+
+    private static func validCandidateValue(_ value: String, maximum: Int) -> Bool {
+        validValue(value, maximum: maximum) &&
+            !value.unicodeScalars.contains(where: CharacterSet.whitespacesAndNewlines.contains)
     }
 
     private static func validValue(_ value: String, maximum: Int) -> Bool {

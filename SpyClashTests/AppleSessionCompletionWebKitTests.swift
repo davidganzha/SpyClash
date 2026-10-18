@@ -58,6 +58,151 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         await assertCleanedUp(view)
     }
 
+    func testSSOCandidateIsInterceptedOnlyAfterOwnedMainSequenceWithoutRendering() async throws {
+        for host in ["spyclash.com", "app.base44.com"] {
+            let terminal = expectation(description: "Owned SSO returns an unverified candidate")
+            let target = "https://\(host)/synthetic-intermediate?access_token=synthetic-sso-candidate&from_url=https%3A%2F%2Fforeign.invalid"
+            let fixture = ssoFixture(finalScript: "window.location.replace(\(jsString(target)));")
+            let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
+            XCTAssertTrue(session.start())
+            let view = try XCTUnwrap(fixture.webView)
+            await fulfillment(of: [terminal], timeout: 15)
+            XCTAssertNil(fixture.error)
+            let callback = try XCTUnwrap(fixture.callback)
+            XCTAssertEqual(try AppleNativeHandoffPolicy.sessionAccessToken(from: callback), "synthetic-sso-candidate")
+            XCTAssertFalse(callback.absoluteString.contains("from_url"))
+            XCTAssertFalse(callback.absoluteString.contains("foreign.invalid"))
+            XCTAssertNotEqual(view.url?.path, "/synthetic-intermediate")
+            XCTAssertEqual(fixture.completionCount, 1)
+            await assertCleanedUp(view)
+        }
+    }
+
+    /// Runs only with the local TLS fixture and a disposable Simulator trust
+    /// store. Unlike injected HTML, this exercises real HTTPS server redirects
+    /// and the production authentication-challenge delegate without overrides.
+    func testRealHTTPSRedirectsInterceptCandidateBeforeNetworkRequest() async throws {
+        let environment = ProcessInfo.processInfo.environment
+        guard let proxyValue = environment["SPYCLASH_TEST_TLS_PROXY_PORT"],
+              let reportValue = environment["SPYCLASH_TEST_TLS_REPORT_PORT"] else {
+            throw XCTSkip("Requires scripts/tests/fixtures/apple_sso_https_fixture.py in a disposable Simulator")
+        }
+        let proxyPort = try XCTUnwrap(UInt16(proxyValue))
+        let reportPort = try XCTUnwrap(UInt16(reportValue))
+        XCTAssertGreaterThan(proxyPort, 0)
+        XCTAssertGreaterThan(reportPort, 0)
+        let reportURL = URL(string: "http://127.0.0.1:\(reportPort)/report")!
+        let (initialData, _) = try await URLSession.shared.data(from: reportURL)
+        let initial = try XCTUnwrap(JSONSerialization.jsonObject(with: initialData) as? [String: Any])
+        XCTAssertEqual(initial["fixture"] as? String, "apple-native-https-fixture")
+        XCTAssertEqual(initial["request_count"] as? Int, 0, "Start a fresh fixture for each run")
+
+        let terminal = expectation(description: "Real TLS SSO chain yields a candidate")
+        var callback: URL?
+        var failure: (any Error)?
+        var view: WKWebView?
+        var completions = 0
+        let session = AppleSessionCompletionSession(url: bootstrapURL, completion: { url, error in
+            callback = url
+            failure = error
+            completions += 1
+            terminal.fulfill()
+        }, makeWebView: { configuration in
+            var proxy = ProxyConfiguration(httpCONNECTProxy: .hostPort(host: .ipv4(.loopback), port: NWEndpoint.Port(rawValue: proxyPort)!))
+            proxy.allowFailover = false
+            configuration.websiteDataStore.proxyConfigurations = [proxy]
+            let result = WKWebView(frame: .zero, configuration: configuration)
+            view = result
+            return result
+        })
+        XCTAssertTrue(session.start())
+        await fulfillment(of: [terminal], timeout: 30)
+        XCTAssertNil(failure)
+        XCTAssertEqual(try AppleNativeHandoffPolicy.sessionAccessToken(from: XCTUnwrap(callback)), "synthetic-https-candidate-186")
+        XCTAssertEqual(completions, 1)
+        await assertCleanedUp(try XCTUnwrap(view))
+
+        let (data, _) = try await URLSession.shared.data(from: reportURL)
+        let report = try XCTUnwrap(JSONSerialization.jsonObject(with: data) as? [String: Any])
+        XCTAssertEqual(report["request_count"] as? Int, 5)
+        XCTAssertEqual(report["final_route_fetches"] as? Int, 0)
+        let requests = try XCTUnwrap(report["requests"] as? [[String: Any]])
+        XCTAssertEqual(requests.compactMap { $0["category"] as? String }, [
+            "bootstrap", "spyclash_sso_login", "base44_sso_login", "broker_authorize", "base44_sso_callback"
+        ])
+        XCTAssertTrue(requests.allSatisfy { $0["method"] as? String == "GET" })
+        let events = try XCTUnwrap(report["events"] as? [String: Int])
+        XCTAssertNil(events["tls_error"])
+        XCTAssertNil(events["rejected_connect"])
+    }
+
+    func testCandidateCannotSkipReorderOrResumeAfterLeavingSSOSequence() async throws {
+        let route = "https://app.base44.com/api/apps/69a0e57fa939f578082f8091/auth/sso/"
+        let authorize = "https://spyclash.com/functions/appleAuthBroker?action=authorize&state=synthetic"
+        let callback = route + "callback?code=synthetic&state=synthetic"
+        let target = "https://spyclash.com/synthetic-intermediate?access_token=synthetic-not-owned&is_new_user=false"
+        let finalScript = "window.location.replace(\(jsString(target)));"
+        for stages in [[], [callback], [authorize, route + "login", callback], [route + "login", authorize, callback, authorize]] {
+            let terminal = expectation(description: "Candidate with missing or lost SSO ownership is rejected")
+            let fixture = ssoFixture(finalScript: finalScript, stages: stages)
+            let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
+            XCTAssertTrue(session.start())
+            await fulfillment(of: [terminal], timeout: 15)
+            XCTAssertNil(fixture.callback)
+            XCTAssertEqual((fixture.error as? AppleNativeHandoffError)?.supportCode, .navigationDocument)
+            XCTAssertEqual(fixture.completionCount, 1)
+            await assertCleanedUp(try XCTUnwrap(fixture.webView))
+        }
+    }
+
+    func testSSOCandidateStillRejectsForeignProviderAndPostNavigation() async throws {
+        let cases: [(String, AppleNativeHandoffFailureCode)] = [
+            ("window.location.replace('https://foreign.invalid/landing?access_token=synthetic');", .callbackOrigin),
+            ("window.location.replace('https://spyclash.com/landing?access_token=synthetic&auth_provider=google');", .callbackProvider),
+            ("const f=document.createElement('form'); f.method='POST'; f.action='https://spyclash.com/landing?access_token=synthetic'; document.body.appendChild(f); f.submit(); f.remove();", .navigationMethod),
+        ]
+        for (script, code) in cases {
+            let terminal = expectation(description: "Malformed candidate is not accepted")
+            let fixture = ssoFixture(finalScript: script)
+            let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
+            XCTAssertTrue(session.start())
+            await fulfillment(of: [terminal], timeout: 15)
+            XCTAssertNil(fixture.callback)
+            XCTAssertEqual((fixture.error as? AppleNativeHandoffError)?.supportCode, code)
+            XCTAssertEqual(fixture.completionCount, 1)
+            await assertCleanedUp(try XCTUnwrap(fixture.webView))
+        }
+    }
+
+    func testSSOCandidateInChildFrameCannotCompleteMainAttempt() async throws {
+        let terminal = expectation(description: "Only the later main candidate completes")
+        let fixture = ssoFixture(finalScript: """
+            const frame=document.createElement('iframe');
+            frame.src='https://spyclash.com/landing?access_token=synthetic-child';
+            document.body.appendChild(frame);
+            setTimeout(() => {
+                window.webkit.messageHandlers.fixtureReady.postMessage('before-main');
+                window.location.replace('https://spyclash.com/landing?access_token=synthetic-main');
+            }, 200);
+            """)
+        let previous = fixture.onMessage
+        var reachedMain = false
+        fixture.onMessage = { [weak fixture] message in
+            if message == "before-main" {
+                reachedMain = true
+                XCTAssertEqual(fixture?.completionCount, 0)
+            } else { previous?(message) }
+        }
+        let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
+        XCTAssertTrue(session.start())
+        await fulfillment(of: [terminal], timeout: 15)
+        XCTAssertTrue(reachedMain)
+        XCTAssertNil(fixture.error)
+        XCTAssertEqual(try AppleNativeHandoffPolicy.sessionAccessToken(from: XCTUnwrap(fixture.callback)), "synthetic-main")
+        XCTAssertEqual(fixture.completionCount, 1)
+        await assertCleanedUp(try XCTUnwrap(fixture.webView))
+    }
+
     func testJavaScriptCannotCompleteWithMalformedOrWrongProviderCallbacks() async throws {
         let rejected = [
             "spyclash://auth?access_token=synthetic-unmarked",
@@ -357,6 +502,30 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
 
     private func jsString(_ value: String) -> String {
         String(data: try! JSONSerialization.data(withJSONObject: value, options: [.fragmentsAllowed]), encoding: .utf8)!
+    }
+
+    /// Inject successive documents at the actual permitted route shapes. Every
+    /// load still traverses WebKit's real main-frame policy; the loopback-only
+    /// proxy guarantees no fixture can contact a provider or production host.
+    private func ssoFixture(finalScript: String, stages: [String]? = nil) -> AppleWebKitFixture {
+        let appRoute = "/api/apps/69a0e57fa939f578082f8091/auth/sso/"
+        let stages = stages ?? [
+            "https://spyclash.com" + appRoute + "login?app_id=69a0e57fa939f578082f8091",
+            "https://app.base44.com" + appRoute + "login?app_id=69a0e57fa939f578082f8091",
+            "https://spyclash.com/functions/appleAuthBroker?action=authorize&state=synthetic",
+            "https://app.base44.com" + appRoute + "callback?code=synthetic&state=%7B%22app_id%22%3A%20%22synthetic%22%7D",
+        ]
+        let advance = "window.webkit.messageHandlers.fixtureReady.postMessage('advance-sso');"
+        let fixture = AppleWebKitFixture(script: stages.isEmpty ? finalScript : advance)
+        var stage = 0
+        fixture.onMessage = { [weak fixture] message in
+            guard message == "advance-sso", stage < stages.count, let view = fixture?.webView else { return }
+            let url = URL(string: stages[stage])!
+            stage += 1
+            let script = stage == stages.count ? finalScript : advance
+            view.loadHTMLString("<!doctype html><html><body><script>\(script)</script></body></html>", baseURL: url)
+        }
+        return fixture
     }
 }
 

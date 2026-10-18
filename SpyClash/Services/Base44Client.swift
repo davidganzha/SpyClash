@@ -383,17 +383,62 @@ final class Base44Client {
     }
 
 #if SPYCLASH_SUPABASE
-    func legacyProviderSession(_ token: String, appleBindingTicket: String?) async throws -> LoginResponse {
+    func legacyProviderSession(
+        _ token: String,
+        appleBindingTicket: String?,
+        beforeExchange: @MainActor () throws -> Void = {}
+    ) async throws -> LoginResponse {
         guard token != SupabaseAppSession.shared.accessToken else { throw WebAuthenticationError.invalidCallback }
         let authGeneration = SupabaseAppSession.shared.generation
         try await SupabaseLegacyAuth.shared.registerProvider(legacyToken: token, appleBindingTicket: appleBindingTicket)
         guard authGeneration == SupabaseAppSession.shared.generation, !Task.isCancelled else { throw CancellationError() }
+        try beforeExchange()
         return try await SupabaseAppSession.shared.exchangeLegacySession(token)
     }
 #endif
 
     static func providerRegistrationFunction(appleBindingTicket: String?) -> String {
         appleBindingTicket?.isEmpty == false ? "autoRegisterUserV2" : "autoRegisterUser"
+    }
+
+    /// A hidden WebKit return is only a token candidate. It must be bound to
+    /// the original native Apple credential before exchange or session commit.
+    /// Unlike the generic provider API, this entry point cannot omit binding.
+    func appleNativeProviderSession(
+        _ nativeSession: AppleNativeSession,
+        requireCurrentAttempt: @MainActor () throws -> Void
+    ) async throws -> LoginResponse {
+        guard Self.isValidAppleBindingTicket(nativeSession.bindingTicket) else {
+            throw Base44Error(message: "Apple account binding could not be verified. Please try again.", code: "apple_binding_ticket_invalid")
+        }
+        guard !nativeSession.accessToken.isEmpty, nativeSession.accessToken.utf8.count <= 20_000,
+              !nativeSession.accessToken.unicodeScalars.contains(where: CharacterSet.whitespacesAndNewlines.union(.controlCharacters).contains) else {
+            throw Base44Error(message: "Invalid Apple authentication response.", code: "apple_session_candidate_invalid")
+        }
+        try Task.checkCancellation()
+        try requireCurrentAttempt()
+#if SPYCLASH_SUPABASE
+        // legacyProviderSession requires explicit V2 binding success before
+        // exchanging the candidate, and checks the session generation first.
+        return try await legacyProviderSession(
+            nativeSession.accessToken,
+            appleBindingTicket: nativeSession.bindingTicket,
+            beforeExchange: requireCurrentAttempt
+        )
+#else
+        let user = try await autoRegisterUser(
+            appleBindingTicket: nativeSession.bindingTicket,
+            accessToken: nativeSession.accessToken
+        )
+        try Task.checkCancellation()
+        try requireCurrentAttempt()
+        return LoginResponse(accessToken: nativeSession.accessToken, user: user)
+#endif
+    }
+
+    private static func isValidAppleBindingTicket(_ value: String) -> Bool {
+        !value.isEmpty && value.utf8.count <= 512 &&
+            !value.unicodeScalars.contains(where: CharacterSet.whitespacesAndNewlines.union(.controlCharacters).contains)
     }
 
     func autoRegisterUser(appleBindingTicket: String? = nil, accessToken: String? = nil) async throws -> SpyUser {
@@ -1819,9 +1864,7 @@ final class Base44Client {
             throw Base44Error(message: "The server returned an unreadable response.")
         }
         guard let bootstrapURL = URL(string: bootstrap.bootstrapURL),
-              !bootstrap.bindingTicket.isEmpty,
-              bootstrap.bindingTicket.utf8.count <= 512,
-              !bootstrap.bindingTicket.unicodeScalars.contains(where: CharacterSet.whitespacesAndNewlines.union(.controlCharacters).contains) else {
+              Self.isValidAppleBindingTicket(bootstrap.bindingTicket) else {
             throw Base44Error(message: "Apple authentication returned an invalid handoff URL.")
         }
         try AppleNativeHandoffPolicy.validateBootstrap(bootstrapURL)

@@ -1,0 +1,20 @@
+{
+  "command": [
+    "/Users/davidganzha/.npm/_npx/73f361e97824e728/node_modules/@deno/darwin-arm64/deno",
+    "test",
+    "--no-lock",
+    "--cached-only",
+    "--deny-net",
+    "--deny-env",
+    "--no-prompt",
+    "--config",
+    ".local/apple186-no-browser/backend-v2-package/tests/deno.json",
+    ".local/apple186-no-browser/backend-v2-package/tests/contract_test.ts"
+  ],
+  "startedUTC": "2026-10-18T00:46:26.328042+00:00",
+  "endedUTC": "2026-10-18T00:46:26.768576+00:00",
+  "exitCode": 0,
+  "logSHA256": "74f2b71003dbe928a8019de69e532637ee4ccadd378d9c2a11fb1f50dd178a39",
+  "networkPermission": false,
+  "environmentPermission": false
+}

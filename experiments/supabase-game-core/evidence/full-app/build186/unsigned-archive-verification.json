@@ -1,0 +1,93 @@
+{
+  "recordedAtUTC": "2026-10-18T00:51:13.128538+00:00",
+  "baseCommit": "db21352d9d34c5cf859815a855fb128b4e4b6b71",
+  "build": "186",
+  "marketingVersion": "1.0.3",
+  "scheme": "SpyClash-Supabase-Main-Candidate",
+  "configuration": "SupabaseRelease",
+  "checks": {
+    "archiveSucceeded": true,
+    "sameSchemeAndConfigurationAs185": true,
+    "mainIdentity": true,
+    "widgetIdentity": true,
+    "deviceArm64Only": true,
+    "candidateBackendMode": true,
+    "runtimeConfigurationUnchangedFrom185": true,
+    "runtimeConfigurationMatchesCurrentSource": true,
+    "selectedProductionMTimesPrecedeArchiveLogCreation": true,
+    "noCompilerErrors": true,
+    "noOptionalDelegateMismatchWarnings": true,
+    "onlyKnownWarningCategories": true,
+    "noCodeSignBuildStep": true,
+    "unsignedArtifacts": true,
+    "noStoreKitTestConfiguration": true,
+    "noTestBundles": true,
+    "noMockOrFixtureResources": true,
+    "noDebugOrTestCompileFlags": true,
+    "onlyExpectedExtension": true
+  },
+  "status": "PASS",
+  "mainExecutableSHA256": "ed6c461d27a511bf6fa22b06a29fa90b7ab0732aceb8e7b5fc406aa83c8e0050",
+  "widgetExecutableSHA256": "1f6bd32917c5696812f47e0e08461e98689ca481707c833ae8f958079306da32",
+  "runtimeConfigurationSHA256": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d",
+  "selectedSourceSHA256": {
+    "SpyClash/Services/AppleNativeHandoff.swift": "d3f57387fa52535fae333c1f743572b6c26018a6c7d40f7a4591b1ea7349e699",
+    "SpyClash/Services/AppleSessionCompletionSession.swift": "dcdab63d190015b2bd171d6fdf7463597e902c770ad6d33d4389211806c1b65a",
+    "project.yml": "3a68f3e36f0f52ae2cdbeafa674ee699d0ca052673823c69f243e09f48ebb7b5",
+    "SpyClash.xcodeproj/project.pbxproj": "c67f5dba29cce28f21d75e825e3cf9640d96e892101f97ecf0cc6e26c8ab908a",
+    "SpyClash/App/AppState.swift": "11667ceadbcf7925cb208d5b18dbd4df0f4260e8ee22fcdca0d26459dfffec84",
+    "SpyClash/Services/WebAuthenticationCoordinator.swift": "a493cdaeeac7cac7438c768818ed2946ab53767c7fa024eac7e37a3c2d129915",
+    "SpyClash/Services/Base44Client.swift": "b28dc3b806b05d4ae4afa2222291360bd0409ddc0ee38771ae4c4de445dc1606",
+    "SpyClash/Services/SupabaseLegacyAuth.swift": "2ebe46c55e72edfca0191bf0bb848f4ea6794f5ca1f120c78163c878dcc63c75",
+    "SpyClash/Services/SupabaseAppSession.swift": "a98d36627a050c917f86d913d1c7e0ec5a96944a33226ce01b1fde72819f956c",
+    "release/SupabaseMainCandidateConfiguration.json": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d",
+    "web-auth/src/lib/mobileAppleAuthCallback.js": "43181117fe303ca2f6f3c49c069cac6fda99f3935b49b883c079421ad03eadd3",
+    "web-auth/src/lib/mobileAuthCallback.js": "a59964b250227975fe8093ed912a9eec094813d7df5017aa763e2fad14c09f3c"
+  },
+  "sourceEvidence": {
+    "captured": "after archive completion",
+    "preArchiveHashManifestAvailable": false,
+    "cryptographicBeforeAfterSourceFreezeProved": false,
+    "archiveLogCreatedAtUTC": "2026-10-18T00:47:44.034748+00:00",
+    "selectedProductionSourceModifiedAtUTC": {
+      "SpyClash/Services/AppleNativeHandoff.swift": "2026-10-18T00:42:43.536282+00:00",
+      "SpyClash/Services/AppleSessionCompletionSession.swift": "2026-10-18T00:46:49.759882+00:00",
+      "project.yml": "2026-10-18T00:46:49.760391+00:00",
+      "SpyClash.xcodeproj/project.pbxproj": "2026-10-18T00:46:49.761614+00:00",
+      "SpyClash/App/AppState.swift": "2026-10-18T00:45:18.441308+00:00",
+      "SpyClash/Services/WebAuthenticationCoordinator.swift": "2026-10-17T20:01:59.339101+00:00",
+      "SpyClash/Services/Base44Client.swift": "2026-10-18T00:45:18.439538+00:00",
+      "SpyClash/Services/SupabaseLegacyAuth.swift": "2026-10-17T19:01:43.155888+00:00",
+      "SpyClash/Services/SupabaseAppSession.swift": "2026-10-17T21:27:19.604441+00:00",
+      "release/SupabaseMainCandidateConfiguration.json": "2026-10-14T09:35:46.413429+00:00",
+      "web-auth/src/lib/mobileAppleAuthCallback.js": "2026-10-17T18:59:13.996239+00:00",
+      "web-auth/src/lib/mobileAuthCallback.js": "2026-10-13T21:42:17.663422+00:00"
+    },
+    "scope": "Selected production files only. Test fixture changes after archive are excluded. Modification times precede archive log creation, which is supporting metadata rather than cryptographic source-freeze proof."
+  },
+  "archiveCreatedAtUTC": "2026-10-18T00:49:22+00:00",
+  "architecture": {
+    "main": "arm64",
+    "widget": "arm64"
+  },
+  "signatures": {
+    "main": {
+      "signed": false,
+      "exitCode": 1
+    },
+    "widget": {
+      "signed": false,
+      "exitCode": 1
+    }
+  },
+  "warningCounts": {
+    "code after 'return' will never be executed": 27,
+    "Metadata extraction skipped. No AppIntents.framework dependency found.": 1
+  },
+  "boundaries": {
+    "distributionSigned": false,
+    "uploaded": false,
+    "productionMutation": false,
+    "physicalAppleAcceptanceProved": false
+  }
+}

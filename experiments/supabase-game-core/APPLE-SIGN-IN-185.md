@@ -39,3 +39,5 @@ Sanitized receipts are under `evidence/full-app/build185/`. Local result bundles
 The code checkpoint was a local repair and diagnostic candidate. After separate explicit approval in this chat, build 185 was signed, uploaded and verified as available in TestFlight Internal Only to David and Dima. See [RELEASE-185.md](RELEASE-185.md) for the exact artifact and final audience verification.
 
 This delivery does not establish successful real Apple sign-in, prior-account continuity or perceived speed on a physical iPhone. No backend or website deployment, App Review submission or public App Store release was performed.
+
+The subsequent physical-iPhone test at approximately 01:32 London time failed with `SCA177-H34-r6-s0-cN-uOT-q12-pN-fN`. Build 185 did not restore Apple sign-in. The next local candidate and its changed acceptance boundary are documented in [APPLE-SIGN-IN-186.md](APPLE-SIGN-IN-186.md).
