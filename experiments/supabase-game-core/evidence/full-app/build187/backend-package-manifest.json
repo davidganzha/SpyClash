@@ -1,0 +1,187 @@
+{
+  "appBindingIncluded": false,
+  "backendBaselineSHA256": "b014716a2b52eb00615896a725f4499f03a9583b243378ea63bb4fcc877451e5",
+  "baselineCommit": "4fce416b3acde02877d338100d8b8ba93ac61ea4",
+  "build": 187,
+  "functions": [
+    {
+      "files": [
+        {
+          "baselineSHA256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8",
+          "bytes": 1201,
+          "changedFromLive": false,
+          "file": "apple-code-exchange.ts",
+          "sha256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8",
+          "source": "base44/functions/appleAuthBroker/apple-code-exchange.ts"
+        },
+        {
+          "baselineSHA256": "7d35a9c2a03b934605e8ec87ce96862b3a1dc3a4b756d0f83cc77bd4b6ba3ab5",
+          "bytes": 913,
+          "changedFromLive": true,
+          "file": "apple-credential-error-policy.ts",
+          "sha256": "7e87ac4e500d9f3474d8f7a9f0f6925ddf234fe6f32b11320ba37ffdabac69cb",
+          "source": "base44/functions/appleAuthBroker/apple-credential-error-policy.ts"
+        },
+        {
+          "baselineSHA256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+          "bytes": 44632,
+          "changedFromLive": true,
+          "file": "apple-sign-in-credential.ts",
+          "sha256": "47878797b24e4294acb503f80b2cd4a4a7b4ecf9da94fadfde89ca5f829194c7",
+          "source": "base44/functions/appleAuthBroker/apple-sign-in-credential.ts"
+        },
+        {
+          "baselineSHA256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b",
+          "bytes": 1369,
+          "changedFromLive": false,
+          "file": "apple-token-compensation.ts",
+          "sha256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b",
+          "source": "base44/functions/appleAuthBroker/apple-token-compensation.ts"
+        },
+        {
+          "baselineSHA256": null,
+          "bytes": 4743,
+          "changedFromLive": true,
+          "file": "auth-store-recovery.ts",
+          "sha256": "5b4fc02314734b78807d4a8ab490731683eb10218ecb235ff262a08023b5147f",
+          "source": "base44/functions/appleAuthBroker/auth-store-recovery.ts"
+        },
+        {
+          "baselineSHA256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+          "bytes": 28337,
+          "changedFromLive": false,
+          "file": "billing-identity-lifecycle.ts",
+          "sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+          "source": "experiments/supabase-game-core/evidence/full-app/build178/check-subscription-candidate/base44/functions/checkSubscription/billing-identity-lifecycle.ts"
+        },
+        {
+          "baselineSHA256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb",
+          "bytes": 233,
+          "changedFromLive": false,
+          "file": "confirmation.ts",
+          "sha256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb",
+          "source": "base44/functions/appleAuthBroker/confirmation.ts"
+        },
+        {
+          "baselineSHA256": "a7119b1b9a380740d0f1a3a80456dcbcbef0add844fc7c3f3e613a72f28f4fc6",
+          "bytes": 59018,
+          "changedFromLive": true,
+          "file": "entry.ts",
+          "sha256": "9e4ea57911533bdb3c63426d4a958a93c508f15923835f17091c98fc403f84b5",
+          "source": "base44/functions/appleAuthBroker/main.ts"
+        },
+        {
+          "baselineSHA256": "5abd228604f60784a1ea86d3bab008f4b35326500748ca8433e1f69debfdac50",
+          "bytes": 6186,
+          "changedFromLive": false,
+          "file": "google-state-recovery.ts",
+          "sha256": "5abd228604f60784a1ea86d3bab008f4b35326500748ca8433e1f69debfdac50",
+          "source": "base44/functions/appleAuthBroker/google-state-recovery.ts"
+        },
+        {
+          "baselineSHA256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7",
+          "bytes": 1636,
+          "changedFromLive": false,
+          "file": "handoff.ts",
+          "sha256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7",
+          "source": "base44/functions/appleAuthBroker/handoff.ts"
+        },
+        {
+          "baselineSHA256": "5b593a95ef655a5375b6aa901f165ef9f790b09d2d23a63e284dd15282bff361",
+          "bytes": 889,
+          "changedFromLive": false,
+          "file": "native-handoff.ts",
+          "sha256": "5b593a95ef655a5375b6aa901f165ef9f790b09d2d23a63e284dd15282bff361",
+          "source": "base44/functions/appleAuthBroker/native-handoff.ts"
+        },
+        {
+          "baselineSHA256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+          "bytes": 1741,
+          "changedFromLive": false,
+          "file": "provider.ts",
+          "sha256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+          "source": "base44/functions/appleAuthBroker/provider.ts"
+        },
+        {
+          "baselineSHA256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df",
+          "bytes": 1016,
+          "changedFromLive": false,
+          "file": "service-role-request.ts",
+          "sha256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df",
+          "source": "base44/functions/appleAuthBroker/service-role-request.ts"
+        },
+        {
+          "baselineSHA256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8",
+          "bytes": 4557,
+          "changedFromLive": false,
+          "file": "transaction.ts",
+          "sha256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8",
+          "source": "base44/functions/appleAuthBroker/transaction.ts"
+        }
+      ],
+      "liveConfigSHA256": "66d94a818f2de3ad3e05a2170dab78bdb5a2c965b127d7dfd438cc0c5147ee55",
+      "name": "appleAuthBroker",
+      "normalizedConfig": {
+        "entry": "entry.ts",
+        "name": "appleAuthBroker"
+      }
+    },
+    {
+      "files": [
+        {
+          "baselineSHA256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+          "bytes": 44632,
+          "changedFromLive": true,
+          "file": "apple-sign-in-credential.ts",
+          "sha256": "47878797b24e4294acb503f80b2cd4a4a7b4ecf9da94fadfde89ca5f829194c7",
+          "source": "base44/functions/autoRegisterUser/apple-sign-in-credential.ts"
+        },
+        {
+          "baselineSHA256": null,
+          "bytes": 4743,
+          "changedFromLive": true,
+          "file": "auth-store-recovery.ts",
+          "sha256": "5b4fc02314734b78807d4a8ab490731683eb10218ecb235ff262a08023b5147f",
+          "source": "base44/functions/autoRegisterUser/auth-store-recovery.ts"
+        },
+        {
+          "baselineSHA256": "7f7b4e20791132f0ef9acf068df0e0d2335f01554a6ca17ee1c3d36aa8c74220",
+          "bytes": 603,
+          "changedFromLive": false,
+          "file": "base44-context.ts",
+          "sha256": "7f7b4e20791132f0ef9acf068df0e0d2335f01554a6ca17ee1c3d36aa8c74220",
+          "source": "base44/functions/autoRegisterUser/base44-context.ts"
+        },
+        {
+          "baselineSHA256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+          "bytes": 28337,
+          "changedFromLive": false,
+          "file": "billing-identity-lifecycle.ts",
+          "sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+          "source": "experiments/supabase-game-core/evidence/full-app/build178/check-subscription-candidate/base44/functions/checkSubscription/billing-identity-lifecycle.ts"
+        },
+        {
+          "baselineSHA256": "ebd3244fb1796ab3b5d8b86eac9e6e374dbcf98bd4b5be51f2029e70b9b8c895",
+          "bytes": 8292,
+          "changedFromLive": true,
+          "file": "entry.ts",
+          "sha256": "52d290d4d08685ae50f5c9dde5c5a5ce4e12d3fa80308e2b5190816b93afad78",
+          "source": "base44/functions/autoRegisterUser/main.ts"
+        }
+      ],
+      "liveConfigSHA256": "0363a28ab83bde2bc3b573b71e1dc6d71f7b44ad0d8f09837ad19565fbbbb8b2",
+      "name": "autoRegisterUserV2",
+      "normalizedConfig": {
+        "entry": "entry.ts",
+        "name": "autoRegisterUserV2"
+      }
+    }
+  ],
+  "liveBaselineVerified": true,
+  "localOnly": true,
+  "packagerSHA256": "89f0a8ccce7ecc49fa822a4375c06ae6c2799c55b6789bfe3de0a0b0969ebf26",
+  "schemaVersion": 1,
+  "sourceCommit": "4fce416b3acde02877d338100d8b8ba93ac61ea4",
+  "sourceContent": "Explicitly mapped Git-tracked working-tree bytes",
+  "testsIncluded": false
+}

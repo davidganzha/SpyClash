@@ -54,6 +54,7 @@ final class SupabaseAppSession {
     private(set) var session: SupabaseStoredSession?
     private(set) var generation = UUID()
     private var candidates: [String: SupabaseStoredSession] = [:]
+    private var candidateExchangeID: UUID?
     private var refreshTask: Task<SupabaseStoredSession, Error>?
     // The existing cancellable FIFO primitive gives StoreKit its own queue;
     // this instance never serializes game or unrelated app-service commands.
@@ -102,14 +103,14 @@ final class SupabaseAppSession {
         }
         legacyCredential = legacy
         refreshTask?.cancel(); refreshTask = nil
-        session = candidate; candidates.removeAll(); legacyCandidates.removeAll()
+        session = candidate; candidates.removeAll(); legacyCandidates.removeAll(); candidateExchangeID = nil
         generation = UUID()
     }
 
     func clear(revokeRemote: Bool = true) {
         let old = session
         generation = UUID(); refreshTask?.cancel(); refreshTask = nil
-        session = nil; candidates.removeAll(); legacyCandidates.removeAll(); legacyCredential = nil
+        session = nil; candidates.removeAll(); legacyCandidates.removeAll(); candidateExchangeID = nil; legacyCredential = nil
         removeSession(); removeLegacy()
         SupabaseGameAdapter.shared.disconnect()
         if let old, revokeRemote {
@@ -118,32 +119,69 @@ final class SupabaseAppSession {
     }
 
     /// The exchange verifies the Base44 identity on the server. Local profile fields are never trusted.
-    func exchangeLegacySession(_ legacyToken: String) async throws -> LoginResponse {
+    func exchangeLegacySession(
+        _ legacyToken: String,
+        requireCurrentAttempt: @MainActor () throws -> Void = {}
+    ) async throws -> LoginResponse {
+        try Task.checkCancellation()
+        try requireCurrentAttempt()
         guard SupabaseLegacyAuth.isValidCredential(legacyToken), !SupabaseLegacyAuth.isSupabaseBearer(legacyToken), legacyToken != session?.accessToken,
               candidates[legacyToken] == nil else { throw Self.invalidSession }
         let epoch = generation
-        let response = try await legacyExchange(legacyToken, epoch: epoch)
-        guard epoch == generation, !Task.isCancelled else { throw CancellationError() }
-        let candidate = try Self.decodeSession(response)
-        guard let legacyID = response["legacy_user_id"].string, !legacyID.isEmpty, legacyID.count <= 512,
-              candidate.accessToken != legacyToken else { throw Self.invalidSession }
-        candidates = [candidate.accessToken: candidate]
-        legacyCandidates = [candidate.accessToken: SupabaseLegacyCredential(actorID: candidate.userID, legacyUserID: legacyID, accessToken: legacyToken)]
-        let user = try await profile(accessToken: candidate.accessToken)
-        guard epoch == generation, candidates[candidate.accessToken] != nil else { throw CancellationError() }
-        return LoginResponse(accessToken: candidate.accessToken, user: user)
+        // A new sign-in can supersede an old exchange without replacing the
+        // saved account. Its candidate ownership is separate from that account's
+        // generation, so a delayed old response cannot evict the new candidate.
+        let exchangeID = UUID()
+        candidateExchangeID = exchangeID
+        candidates.removeAll(); legacyCandidates.removeAll()
+        func requireOwnership() throws {
+            try Task.checkCancellation()
+            guard epoch == self.generation, self.candidateExchangeID == exchangeID else { throw CancellationError() }
+            try requireCurrentAttempt()
+        }
+        do {
+            let response = try await legacyExchange(legacyToken, epoch: epoch, requireCurrentAttempt: requireOwnership)
+            try requireOwnership()
+            let candidate = try Self.decodeSession(response)
+            let legacyID = try Self.decodeLegacyUserID(response)
+            guard candidate.accessToken != legacyToken else { throw Self.invalidSession }
+            candidates = [candidate.accessToken: candidate]
+            legacyCandidates = [candidate.accessToken: SupabaseLegacyCredential(actorID: candidate.userID, legacyUserID: legacyID, accessToken: legacyToken)]
+            let user = try await profile(accessToken: candidate.accessToken)
+            try requireOwnership()
+            return LoginResponse(accessToken: candidate.accessToken, user: user)
+        } catch {
+            defer {
+                if candidateExchangeID == exchangeID {
+                    candidateExchangeID = nil
+                    candidates.removeAll(); legacyCandidates.removeAll()
+                }
+            }
+            try requireOwnership()
+            throw error
+        }
     }
 
-    private func legacyExchange(_ legacyToken: String, epoch: UUID) async throws -> JSONValue {
+    private func legacyExchange(
+        _ legacyToken: String, epoch: UUID,
+        requireCurrentAttempt: @MainActor () throws -> Void = {}
+    ) async throws -> JSONValue {
         var retries = 0
         var importRetries = 0
         while true {
             guard epoch == generation, !Task.isCancelled else { throw CancellationError() }
-            do { return try await request(path: "/functions/v1/legacy-session", method: "POST", body: .object(["action": .string("exchange")]), token: legacyToken) }
+            try requireCurrentAttempt()
+            do {
+                let response = try await request(path: "/functions/v1/legacy-session", method: "POST", body: .object(["action": .string("exchange")]), token: legacyToken)
+                try requireCurrentAttempt()
+                return response
+            }
             catch let error as Base44Error where ["legacy_session_busy", "LEGACY_SESSION_BUSY"].contains(error.code ?? "") && retries < 2 {
+                try requireCurrentAttempt()
                 retries += 1
                 try await Task.sleep(for: .seconds(1))
             } catch let error as Base44Error where ["legacy_import_pending", "LEGACY_IMPORT_PENDING"].contains(error.code ?? "") {
+                try requireCurrentAttempt()
                 guard importRetries < 8 else {
                     throw Base44Error(message: "Your existing SpyClash data is still being transferred. Sign in again to continue safely.", statusCode: 503, code: "legacy_import_pending", retryable: true)
                 }
@@ -181,7 +219,8 @@ final class SupabaseAppSession {
             let json = try await self.legacyExchange(legacyToken, epoch: epoch)
             let next = try Self.decodeSession(json)
             guard self.generation == epoch, !Task.isCancelled else { throw CancellationError() }
-            guard self.session?.userID == next.userID, json["legacy_user_id"].string == legacyID else { throw Self.invalidSession }
+            let nextLegacyID = try Self.decodeLegacyUserID(json)
+            guard self.session?.userID == next.userID, nextLegacyID == legacyID else { throw Self.invalidSession }
             try self.persistSession(next)
             self.session = next
             return next
@@ -307,14 +346,19 @@ final class SupabaseAppSession {
         guard let access = value["access_token"].string, !access.isEmpty,
               let refresh = value["refresh_token"].string, !refresh.isEmpty,
               let user = value["user"]["id"].string, UUID(uuidString: user) != nil,
-              (1...3600).contains(value["expires_in"].integer) else { throw invalidSession }
+              (1...3600).contains(value["expires_in"].integer) else { throw invalidSessionResponse }
         let relativeExpiry = Date().addingTimeInterval(TimeInterval(value["expires_in"].integer))
         let expiresAt: Date
         if value["expires_at"].integer > 0 {
             expiresAt = min(relativeExpiry, Date(timeIntervalSince1970: TimeInterval(value["expires_at"].integer)))
-            guard expiresAt.timeIntervalSinceNow > 0 else { throw invalidSession }
+            guard expiresAt.timeIntervalSinceNow > 0 else { throw invalidSessionResponse }
         } else { expiresAt = relativeExpiry }
         return SupabaseStoredSession(accessToken: access, refreshToken: refresh, userID: user.lowercased(), expiresAt: expiresAt)
+    }
+
+    private static func decodeLegacyUserID(_ value: JSONValue) throws -> String {
+        guard let id = value["legacy_user_id"].string, !id.isEmpty, id.count <= 512 else { throw invalidSessionResponse }
+        return id
     }
 
     /// Renew an expired transport credential once, retaining the exact command
@@ -369,6 +413,10 @@ final class SupabaseAppSession {
         return json
     }
     private static var invalidSession: Base44Error { Base44Error(message: "Please sign in again.", statusCode: 401, code: "supabase_session_missing") }
+    private static var invalidSessionResponse: Base44Error {
+        Base44Error(message: "The sign-in service returned an invalid response. Please try again.", statusCode: 502,
+                    code: "supabase_session_response_invalid", retryable: true)
+    }
 }
 
 private final class SupabaseNoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {

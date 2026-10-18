@@ -27,5 +27,19 @@ xcodebuild test -project SpyClash.xcodeproj -scheme SpyClash \
   -resultBundlePath "$results/Tests.xcresult" \
   -only-testing:SpyClashTests/Base44ClientRoomActionTests \
   -only-testing:SpyClashTests/StoreKitFixtureTransportTests \
+  -only-testing:SpyClashTests/AppleNativeHandoffTests \
+  -only-testing:SpyClashTests/AppleSessionCompletionWebKitTests \
+  -only-testing:SpyClashTests/AppleAuthenticationOwnershipTests \
+  -only-testing:SpyClashTests/AuthenticationFlowTests \
+  -only-testing:SpyClashTests/WebAuthenticationCoordinatorTests \
+  CODE_SIGNING_ALLOWED=NO
+xcodebuild test -project SpyClash.xcodeproj -scheme SpyClash-Supabase-Staging \
+  -destination "$destination" \
+  -derivedDataPath "${SPYCLASH_TEST_DERIVED_DATA:-$results/DerivedData}" \
+  -resultBundlePath "$results/AuthSessionTests.xcresult" \
+  -parallel-testing-enabled NO \
+  -only-testing:SpyClashSupabaseStagingTests/SupabaseSessionTests \
+  -only-testing:SpyClashSupabaseStagingTests/LegacySessionUpgradeTests \
   CODE_SIGNING_ALLOWED=NO
 printf 'Client test evidence: %s/Tests.xcresult\n' "$results"
+printf 'Session test evidence: %s/AuthSessionTests.xcresult\n' "$results"

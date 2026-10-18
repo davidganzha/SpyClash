@@ -2,6 +2,7 @@ import { createClient } from "npm:@base44/sdk@0.8.31";
 import {
   type AppleCredentialIdentityWriter,
   AppleSignInCredentialError,
+  appleCredentialFailureDiagnostics,
   bindPendingAppleSignInCredentials,
   withPendingAppleCredentialBindingIdentityWriter,
 } from "./apple-sign-in-credential.ts";
@@ -9,6 +10,7 @@ import {
   canonicalIdentityClientConfig,
   hasTrustedBase44Context,
 } from "./base44-context.ts";
+import { AuthStoreDependencyError, createAuthStoreRecovery } from "./auth-store-recovery.ts";
 
 type AuthUser = {
   id?: string;
@@ -97,6 +99,7 @@ const verifyProvisioning = async (base44: AuthClient) => {
 };
 
 Deno.serve(async (req) => {
+  let stage = "request";
   try {
     if (req.method !== "POST") {
       return json({ error: "Method not allowed" }, { status: 405 });
@@ -121,6 +124,7 @@ Deno.serve(async (req) => {
       return json({ error: "Authentication required" }, { status: 401 });
     }
     const userClient = createClient(canonicalIdentityClientConfig(accessToken));
+    stage = "verify_identity";
     const identity = await getVerifiedIdentity(userClient);
 
     // The service token is injected by Base44 and never accepted from the
@@ -132,10 +136,13 @@ Deno.serve(async (req) => {
       ),
     ) as ReturnType<typeof createClient> & UserInvitationClient;
 
-    const appleCredentialStore =
-      (serviceClient as any).entities.AppleSignInCredential;
-    const billingLifecycleStore =
-      (serviceClient as any).entities.BillingIdentityLifecycle;
+    const recovery = createAuthStoreRecovery();
+    const appleCredentialStore = recovery.wrap(
+      (serviceClient as any).entities.AppleSignInCredential, "apple_credential",
+    );
+    const billingLifecycleStore = recovery.wrap(
+      (serviceClient as any).entities.BillingIdentityLifecycle, "identity_lifecycle",
+    );
     const bindAppleCredential = async (
       user: AuthUser,
       identityWriter?: AppleCredentialIdentityWriter,
@@ -153,6 +160,7 @@ Deno.serve(async (req) => {
     };
 
     if (identity.alreadyRegistered) {
+      stage = "bind_existing";
       await bindAppleCredential(identity.user!);
       return json({
         success: true,
@@ -168,6 +176,7 @@ Deno.serve(async (req) => {
       // client uses the injected service token; the caller's email is never
       // trusted.
       let inviteError = null;
+      stage = "invite_user";
       try {
         await serviceClient.users.inviteUser(identity.email, "user");
       } catch (error) {
@@ -176,11 +185,13 @@ Deno.serve(async (req) => {
       }
 
       let provisionedUser: AuthUser;
+      stage = "verify_provisioning";
       try {
         provisionedUser = await verifyProvisioning(userClient);
       } catch (verificationError) {
         throw inviteError || verificationError;
       }
+      stage = "bind_new";
       await bindAppleCredential(provisionedUser, identityWriter);
       return provisionedUser;
     };
@@ -188,6 +199,7 @@ Deno.serve(async (req) => {
     // Validate the short-lived Apple ticket and hold its identity writer before
     // creating a Base44 User. A stale pre-deletion access token therefore
     // cannot create a phantom account and fail binding afterward.
+    stage = "validate_pending_binding";
     const provisionedUser = appleBindingTicket
       ? await withPendingAppleCredentialBindingIdentityWriter({
         store: appleCredentialStore,
@@ -203,17 +215,29 @@ Deno.serve(async (req) => {
       user: verifiedResponseUser(provisionedUser),
     });
   } catch (error) {
-    console.error("autoRegisterUser error:", error);
-
     const sdkError = error as SDKError;
+    const dependencyError = error instanceof AuthStoreDependencyError ? error : undefined;
     const credentialStatus = error instanceof AppleSignInCredentialError
       ? error.status
       : undefined;
-    const status = credentialStatus ||
+    const status = dependencyError?.status || credentialStatus ||
       (sdkError.status === 401 || sdkError.status === 403
         ? sdkError.status
         : 500);
-    const message = error instanceof AppleSignInCredentialError
+    console.error("autoRegisterUser failed", {
+      stage,
+      status,
+      ...appleCredentialFailureDiagnostics(error),
+      ...(dependencyError ? {
+        dependency: dependencyError.scope,
+        operation: dependencyError.operation,
+        upstream_status: dependencyError.upstreamStatus,
+        reason: dependencyError.reason,
+      } : {}),
+    });
+    const message = dependencyError
+      ? "Authentication service is temporarily unavailable"
+      : error instanceof AppleSignInCredentialError
       ? status >= 500
         ? "Apple credential binding is temporarily unavailable"
         : "Apple credential binding was rejected"
@@ -223,6 +247,9 @@ Deno.serve(async (req) => {
       ? "Access denied"
       : "User provisioning failed";
 
-    return json({ error: message }, { status });
+    return json({ error: message, ...(dependencyError ? {
+      code: "auth_dependency_unavailable",
+      retryable: dependencyError.retryable,
+    } : {}) }, { status });
   }
 });

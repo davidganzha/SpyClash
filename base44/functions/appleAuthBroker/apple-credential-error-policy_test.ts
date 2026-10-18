@@ -1,4 +1,4 @@
-import { AppleSignInCredentialError } from "./apple-sign-in-credential.ts";
+import { AppleSignInCredentialError, appleCredentialFailureDiagnostics } from "./apple-sign-in-credential.ts";
 import { publicAppleCredentialBrokerError } from "./apple-credential-error-policy.ts";
 
 function assertEquals<T>(actual: T, expected: T, message: string) {
@@ -49,6 +49,23 @@ Deno.test("unrelated failures are not misclassified as Apple credentials", () =>
     undefined,
     "unrelated error was mapped",
   );
+});
+
+Deno.test("private lifecycle diagnosis preserves cause without changing public response", () => {
+  const error = new AppleSignInCredentialError(
+    "apple_credential_lifecycle_unavailable", 503,
+    "Synthetic private identity and token must never appear in diagnostics", "active_lease",
+  );
+  assertEquals(JSON.stringify(appleCredentialFailureDiagnostics(error)),
+    JSON.stringify({ credential_code: "apple_credential_lifecycle_unavailable", lifecycle_code: "active_lease" }),
+    "safe lifecycle cause was lost");
+  assertEquals(JSON.stringify(publicAppleCredentialBrokerError(error)),
+    JSON.stringify({ code: "temporarily_unavailable", status: 503 }), "public surface changed");
+  const untrusted = new AppleSignInCredentialError("private-token", 503, "private-message");
+  assertEquals(JSON.stringify(appleCredentialFailureDiagnostics(untrusted)), "{}", "unknown code leaked");
+  assertEquals(JSON.stringify(appleCredentialFailureDiagnostics({
+    code: "apple_credential_invalid", lifecycleCode: "active_lease", config: { token: "private-token" },
+  })), "{}", "untyped SDK object entered private diagnostics");
 });
 
 Deno.test("broker response path applies the Apple credential policy", async () => {

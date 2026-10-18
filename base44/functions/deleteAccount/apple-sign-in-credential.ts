@@ -70,10 +70,35 @@ export class AppleSignInCredentialError extends Error {
     public readonly code: string,
     public readonly status: number,
     message: string,
+    public readonly lifecycleCode?: BillingIdentityLifecycleError["code"],
   ) {
     super(message);
     this.name = "AppleSignInCredentialError";
   }
+}
+
+/** Internal diagnostics contain only our fixed codes, never SDK errors or identity data. */
+export function appleCredentialFailureDiagnostics(error: unknown) {
+  if (!(error instanceof AppleSignInCredentialError)) return {};
+  const credentialCodes = new Set([
+    "apple_credential_ambiguous", "apple_credential_binding_invalid",
+    "apple_credential_cleanup_ambiguous", "apple_credential_cleanup_failed",
+    "apple_credential_contention", "apple_credential_deletion_in_progress",
+    "apple_credential_encryption_unavailable", "apple_credential_identity_mismatch",
+    "apple_credential_invalid", "apple_credential_lifecycle_unavailable",
+    "apple_credential_owner_conflict", "apple_credential_pseudonym_unavailable",
+    "apple_credential_unavailable", "apple_credential_untracked",
+  ]);
+  const lifecycleCodes = new Set([
+    "incomplete_state", "user_missing", "deletion_in_progress", "active_lease",
+    "duplicate_records", "cas_contention", "ambiguous",
+  ]);
+  return {
+    ...(credentialCodes.has(error.code) ? { credential_code: error.code } : {}),
+    ...(error.lifecycleCode && lifecycleCodes.has(error.lifecycleCode)
+      ? { lifecycle_code: error.lifecycleCode }
+      : {}),
+  };
 }
 
 function clean(value: unknown): string {
@@ -487,6 +512,7 @@ function lifecycleError(error: unknown): never {
       error.code === "deletion_in_progress"
         ? "Apple credential deletion is in progress."
         : "Apple credential lifecycle is temporarily unavailable.",
+      error.code,
     );
   }
   throw error;

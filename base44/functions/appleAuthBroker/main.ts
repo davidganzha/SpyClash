@@ -17,12 +17,14 @@ import {
 import {
   type AppleCredentialIdentityWriter,
   type AppleCredentialIssuanceBoundary,
+  appleCredentialFailureDiagnostics,
   assertTrackedAppleSignInCredential,
   persistPendingAppleSignInCredential,
   withAppleCredentialIdentityWriter,
   withAppleCredentialIssuanceBoundary,
 } from "./apple-sign-in-credential.ts";
 import { publicAppleCredentialBrokerError } from "./apple-credential-error-policy.ts";
+import { AuthStoreDependencyError, createAuthStoreRecovery } from "./auth-store-recovery.ts";
 import { appleCodeExchangeTokenOutcome } from "./apple-code-exchange.ts";
 import { compensateUntrackedAppleRefreshToken } from "./apple-token-compensation.ts";
 import { upstreamProviderFromBase44State } from "./provider.ts";
@@ -601,9 +603,10 @@ type AppleCredentialStores = {
 
 function appleCredentialStores(req: Request): AppleCredentialStores {
   const base44 = createClientFromRequest(requestForBase44ServiceRole(req));
+  const recovery = createAuthStoreRecovery();
   return {
-    credentialStore: base44.asServiceRole.entities.AppleSignInCredential,
-    lifecycleStore: base44.asServiceRole.entities.BillingIdentityLifecycle,
+    credentialStore: recovery.wrap(base44.asServiceRole.entities.AppleSignInCredential, "apple_credential"),
+    lifecycleStore: recovery.wrap(base44.asServiceRole.entities.BillingIdentityLifecycle, "identity_lifecycle"),
   };
 }
 
@@ -1773,10 +1776,23 @@ function normalizedInternalErrorCode(error: unknown) {
   return /^[a-z][a-z0-9_]{0,63}$/.test(candidate) ? candidate : "server_error";
 }
 
+function authFailureDiagnostics(error: unknown) {
+  if (error instanceof AuthStoreDependencyError) {
+    return {
+      dependency: error.scope,
+      operation: error.operation,
+      upstream_status: error.upstreamStatus,
+      reason: error.reason,
+    };
+  }
+  return appleCredentialFailureDiagnostics(error);
+}
+
 function logCallbackFailure(provider: "apple" | "google", error: unknown) {
   console.error("appleAuthBroker upstream callback failed", {
     provider,
     error_code: normalizedInternalErrorCode(error),
+    ...authFailureDiagnostics(error),
   });
 }
 
@@ -1882,6 +1898,7 @@ Deno.serve(async (req) => {
     console.error("appleAuthBroker request failed", {
       action: normalizedAction(action),
       error_code: normalizedInternalErrorCode(error),
+      ...authFailureDiagnostics(error),
     });
     const callbackCookies: ResponseCookies = action === "apple-callback"
       ? clearUpstreamTransactionCookie()

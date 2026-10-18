@@ -1,0 +1,18 @@
+{
+  "recordedUTC": "2026-10-18T23:07:49.636510+00:00",
+  "checks": {
+    "unexpectedLiveSourceRejectedBeforeOutput": true,
+    "existingOutputPreserved": true
+  },
+  "baselineContract": {
+    "expectedNewStepsFailed": 6,
+    "otherStepsPassed": 19,
+    "logSHA256": "d95e1e9b7c91c54e2f7bea75c4ea6b418a6a23845e28a28642daa266d6d042f7"
+  },
+  "existingRegression": {
+    "passed": 773,
+    "failed": 0,
+    "logSHA256": "c902d057af50dd6e202fe0311d1be5181cf67ac17041842119478dd8f1f70ca3"
+  },
+  "productionMutation": false
+}

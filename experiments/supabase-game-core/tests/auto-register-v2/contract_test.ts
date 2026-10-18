@@ -1,4 +1,6 @@
-import { fixture, resetFixture } from "./sdk-stub.ts";
+import {
+  fixture, resetFixture, resetStoreObservations, sdkError, SUPPORT_ACCESS_DENIED,
+} from "./sdk-stub.ts";
 import {
   appleCredentialIdentityKey,
   persistPendingAppleSignInCredential,
@@ -34,13 +36,16 @@ Deno.test("actual versioned registration preserves Apple identity and deletion b
   const originalGet = Deno.env.get;
   const originalFetch = globalThis.fetch;
   const originalError = console.error;
+  const originalWarn = console.warn;
+  const diagnostics: unknown[][] = [];
   let captured: Handler | undefined;
   let externalRequests = 0;
   try {
     Deno.serve = ((handler: Handler) => { captured = handler; return {}; }) as typeof Deno.serve;
     Deno.env.get = (name) => secrets[name];
     globalThis.fetch = (() => { externalRequests++; throw new Error("External network forbidden"); }) as typeof fetch;
-    console.error = () => {};
+    console.error = (...values: unknown[]) => { diagnostics.push(values); };
+    console.warn = (...values: unknown[]) => { diagnostics.push(values); };
     await import("../../../../base44/functions/autoRegisterUser/main.ts");
     const handler = captured;
     assert(handler, "Actual modern handler was not captured");
@@ -51,6 +56,29 @@ Deno.test("actual versioned registration preserves Apple identity and deletion b
       }));
       equal(response.headers.get("Cache-Control"), "no-store");
       return { status: response.status, value: await response.json() };
+    };
+    const prepareRecoveryScenario = async () => {
+      resetFixture();
+      await seedCredential();
+      resetStoreObservations();
+      diagnostics.length = 0;
+    };
+    const assertSingleIdentityBound = (response: { status: number; value: any }) => {
+      equal(response.status, 200);
+      equal(response.value.user.id, fixture.user.id);
+      equal(fixture.credentials.records.length, 1);
+      equal(fixture.credentials.records[0].state, "bound");
+      equal(fixture.credentials.records[0].user_id, fixture.user.id);
+      equal(fixture.invites.length, 0);
+      equal(fixture.userAuthCalls, 1);
+      equal(fixture.clients.map((client) => client.token), ["fixture-user-token", "fixture-service-token"]);
+    };
+    const assertNoSecretDiagnostics = () => {
+      const encoded = JSON.stringify(diagnostics);
+      for (const forbidden of [
+        SUPPORT_ACCESS_DENIED, "fixture-user-token", "fixture-service-token",
+        "fixture-binding-ticket", fixture.user.email, "PRIVATE_DIAGNOSTIC_SENTINEL",
+      ]) assert(!encoded.includes(forbidden), "Diagnostic leaked private error or request data");
     };
 
     await t.step("GET returns405 without SDK access", async () => {
@@ -121,6 +149,121 @@ Deno.test("actual versioned registration preserves Apple identity and deletion b
       resetFixture(); await seedCredential(); const response = await invoke({ access_token: body.access_token });
       equal(response.status, 200); equal(response.value.user.id, fixture.user.id); equal(fixture.credentials.records[0].state, "pending");
     });
+    await t.step("transient credential support403 retries the read with the same verified identity", async () => {
+      await prepareRecoveryScenario();
+      fixture.credentials.filterFaults.push(sdkError(403, SUPPORT_ACCESS_DENIED));
+      assertSingleIdentityBound(await invoke());
+      equal(fixture.credentials.filterCalls, 2);
+      equal(fixture.credentials.updateManyCalls, 1);
+      assertNoSecretDiagnostics();
+    });
+    await t.step("transient lifecycle support403 recovers without inviting or switching the candidate", async () => {
+      await prepareRecoveryScenario();
+      fixture.lifecycle.filterFaults.push(sdkError(403, SUPPORT_ACCESS_DENIED));
+      assertSingleIdentityBound(await invoke());
+      equal(fixture.serviceCalls.slice(0, 2), [
+        { store: "BillingIdentityLifecycle", operation: "filter" },
+        { store: "BillingIdentityLifecycle", operation: "filter" },
+      ]);
+      equal(fixture.credentials.updateManyCalls, 1);
+      assertNoSecretDiagnostics();
+    });
+    await t.step("persistent credential support403 returns dependency503 and leaves the credential unbound", async () => {
+      await prepareRecoveryScenario();
+      const fault = Object.assign(sdkError(403, SUPPORT_ACCESS_DENIED), {
+        config: { url: "https://invalid.test/?access_token=PRIVATE_DIAGNOSTIC_SENTINEL", headers: { Authorization: "PRIVATE_DIAGNOSTIC_SENTINEL" } },
+        stack: "PRIVATE_DIAGNOSTIC_SENTINEL",
+      });
+      fixture.credentials.persistentFilterFault = fault;
+      const response = await invoke();
+      equal(response.status, 503);
+      equal(response.value.code, "auth_dependency_unavailable");
+      equal(response.value.retryable, true);
+      assert(response.value.error !== "Access denied");
+      assert(fixture.credentials.filterCalls > 1 && fixture.credentials.filterCalls <= 3, "Read recovery must be bounded");
+      equal(fixture.credentials.updateManyCalls, 0);
+      equal(fixture.credentials.records[0].state, "pending");
+      assert(!fixture.credentials.records[0].user_id);
+      equal(fixture.invites.length, 0);
+      equal(fixture.userAuthCalls, 1);
+      assert(diagnostics.length > 0, "Exhausted dependency must have safe diagnostics");
+      assertNoSecretDiagnostics();
+    });
+    await t.step("persistent lifecycle support403 fails before binding or invitation", async () => {
+      await prepareRecoveryScenario();
+      fixture.lifecycle.persistentFilterFault = sdkError(403, SUPPORT_ACCESS_DENIED);
+      const response = await invoke();
+      equal(response.status, 503);
+      equal(response.value.code, "auth_dependency_unavailable");
+      equal(response.value.retryable, true);
+      assert(fixture.lifecycle.filterCalls > 1 && fixture.lifecycle.filterCalls <= 3, "Read recovery must be bounded");
+      equal(fixture.credentials.filterCalls, 0);
+      equal(fixture.credentials.updateManyCalls, 0);
+      equal(fixture.credentials.records[0].state, "pending");
+      equal(fixture.invites.length, 0);
+      assertNoSecretDiagnostics();
+    });
+    await t.step("ordinary service401 and403 fail as dependencies without retrying denied reads", async () => {
+      for (const status of [401, 403]) {
+        await prepareRecoveryScenario();
+        fixture.credentials.persistentFilterFault = sdkError(status, "Ordinary service authorization denial");
+        const response = await invoke();
+        equal(response.status, 503);
+        equal(response.value.code, "auth_dependency_unavailable");
+        equal(response.value.retryable, false);
+        equal(fixture.credentials.filterCalls, 1);
+        equal(fixture.credentials.updateManyCalls, 0);
+        equal(fixture.credentials.records[0].state, "pending");
+        equal(fixture.invites.length, 0);
+        assertNoSecretDiagnostics();
+      }
+    });
+    await t.step("ordinary user401 and403 remain caller denials without retries or service access", async () => {
+      for (const status of [401, 403]) {
+        await prepareRecoveryScenario();
+        fixture.userAuthError = sdkError(status, "Ordinary user authorization denial");
+        const response = await invoke();
+        equal(response.status, status);
+        assert(!("code" in response.value));
+        equal(fixture.userAuthCalls, 1);
+        equal(fixture.clients.length, 1);
+        equal(fixture.serviceCalls.length, 0);
+        equal(fixture.invites.length, 0);
+        equal(fixture.credentials.records[0].state, "pending");
+        assertNoSecretDiagnostics();
+      }
+    });
+    await t.step("post-CAS confirmation read503 recovers without repeating the applied credential write", async () => {
+      await prepareRecoveryScenario();
+      fixture.credentials.afterUpdateMany = (_query, update) => {
+        if (update.$set.state !== "bound") return;
+        fixture.credentials.afterUpdateMany = undefined;
+        fixture.credentials.filterFaults.push(sdkError(503, "Synthetic temporary read outage"));
+        throw new Error("Synthetic lost acknowledgement after the CAS applied");
+      };
+      assertSingleIdentityBound(await invoke());
+      equal(fixture.credentials.updateManyCalls, 1);
+      equal(fixture.credentials.filterCalls, 3);
+      assertNoSecretDiagnostics();
+    });
+    await t.step("persistent post-CAS confirmation failure never reports a successful binding", async () => {
+      await prepareRecoveryScenario();
+      fixture.credentials.afterUpdateMany = (_query, update) => {
+        if (update.$set.state !== "bound") return;
+        fixture.credentials.afterUpdateMany = undefined;
+        fixture.credentials.persistentFilterFault = sdkError(503, "Synthetic persistent read outage");
+        throw new Error("Synthetic lost acknowledgement after the CAS applied");
+      };
+      const response = await invoke();
+      equal(response.status, 503);
+      assert(response.value.success !== true && !("user" in response.value));
+      equal(fixture.credentials.updateManyCalls, 1);
+      equal(fixture.credentials.records.length, 1);
+      equal(fixture.credentials.records[0].user_id, fixture.user.id);
+      equal(fixture.userAuthCalls, 1);
+      equal(fixture.invites.length, 0);
+      assertNoSecretDiagnostics();
+    });
     await t.step("served legacy source demonstrates the missing binding boundary", async () => {
       await import("./legacy-runtime-fixture.js");
       const legacyHandler = captured;
@@ -135,6 +278,6 @@ Deno.test("actual versioned registration preserves Apple identity and deletion b
     });
     equal(externalRequests, 0);
   } finally {
-    Deno.serve = originalServe; Deno.env.get = originalGet; globalThis.fetch = originalFetch; console.error = originalError;
+    Deno.serve = originalServe; Deno.env.get = originalGet; globalThis.fetch = originalFetch; console.error = originalError; console.warn = originalWarn;
   }
 });

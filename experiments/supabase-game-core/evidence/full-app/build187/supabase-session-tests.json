@@ -1,0 +1,33 @@
+{
+  "created_utc": "2026-10-18T23:07:51.371413+00:00",
+  "build": "187",
+  "scheme": "SpyClash-Supabase-Staging",
+  "configuration": "Debug",
+  "baseline": {
+    "result": "FAIL",
+    "tests": 1,
+    "failures": 5,
+    "case": "testLateExchangeCannotReplaceNewerCandidateBeforeItsProfileReturns"
+  },
+  "final": {
+    "result": "PASS",
+    "tests": 52,
+    "failures": 0,
+    "suites": {
+      "SupabaseSessionTests": 48,
+      "LegacySessionUpgradeTests": 4
+    }
+  },
+  "source_sha256": {
+    "SpyClash/Services/SupabaseAppSession.swift": "b80a2d3db0b6de573423c7fb18ac5910d38fa0d36ca2110daf0072bc81100fd3",
+    "SpyClash/Services/Base44Client.swift": "db805dff8c3eef6bed81b0eeebabeb2486d1ec779169ab2b850e6611387b93db",
+    "SpyClash/App/AppState.swift": "3c610053f291ff746560cdc836c920c4b7d9d25aa6ba41fc25bdacaba609eb5d",
+    "SpyClashSupabaseStagingTests/SupabaseSessionTests.swift": "43296ccdfcbd8b6a72b11c1eed39fe73dc1e9e464b17aaee2aa6154f439c641d"
+  },
+  "limits": [
+    "Synthetic URLProtocol responses exercise actual session transport and persistence boundaries.",
+    "Email and OTP held source-response tests run in main Debug suite owned by root.",
+    "No production auth actions, signing, upload, or physical-iPhone acceptance performed by this agent."
+  ],
+  "privateReceiptSHA256": "919e6910f4e7943e2f82f53b90498c6656a8e462f412927552bcd5bf71398ad1"
+}

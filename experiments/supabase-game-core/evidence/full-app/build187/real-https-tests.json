@@ -1,0 +1,54 @@
+{
+  "build": "187",
+  "status": "PASS",
+  "modes": [
+    {
+      "mode": "redirect",
+      "finalHost": "spyclash.com",
+      "startedUTC": "2026-10-18T23:13:27.338180+00:00",
+      "endedUTC": "2026-10-18T23:13:40.944642+00:00",
+      "exitCode": 0,
+      "requests": 5,
+      "finalRouteFetches": 0,
+      "localOnly": true,
+      "runLogSHA256": "8a70e1a8e35e671f1429768330f2c902d66047cec1c9bbf74bc4e267c8bd5bd8",
+      "reportSHA256": "5a339c24796124dcd6eaa868664753f97c20f203a7b4bed48838b01667322c3c"
+    },
+    {
+      "mode": "script",
+      "finalHost": "app.base44.com",
+      "startedUTC": "2026-10-18T23:13:41.492541+00:00",
+      "endedUTC": "2026-10-18T23:13:49.432618+00:00",
+      "exitCode": 0,
+      "requests": 5,
+      "finalRouteFetches": 0,
+      "localOnly": true,
+      "runLogSHA256": "3c1512ab789a1c34d6a997e95d2d1b9e70cad709efb48c309137a4b50b4fa068",
+      "reportSHA256": "6fd70fcd3c8b2b20bf9b3083e5b3e9db5a06145135421427c67020fb4103898e"
+    }
+  ],
+  "products": {
+    "build": "187",
+    "bundleID": "com.spyclash.ios",
+    "cloneMethod": "cp -cR",
+    "descriptorSHA256": "b2e85c0cafec4e46c81227eaf6c883b301a2f534f1216b0aff8c480a54f428ea",
+    "descriptorUnmodified": true,
+    "descriptorPaths": "__TESTROOT__ and __TESTHOST__ relative product paths verified; no original DD absolute paths",
+    "binarySHA256": {
+      "Debug-iphonesimulator/SpyClash.app/SpyClash": "ca26e24a1a9588498659dd85cec0552a6c94b6c1753e23affedb8e98fa1d6d80",
+      "Debug-iphonesimulator/SpyClash.app/SpyClash.debug.dylib": "8b5da968f96ac73409315006f50f1df939b5a2c18805d65b39e07cead74b2887",
+      "Debug-iphonesimulator/SpyClash.app/PlugIns/SpyClashTests.xctest/SpyClashTests": "e11fe9c72d7335e56eeba7753878ca3c45b4ba08089047b9d4fee97fa3cc8154"
+    },
+    "sourceStableDuringClone": true
+  },
+  "cleanup": {
+    "simulatorDeleted": true,
+    "cloneBinariesUnchanged": true,
+    "existingSimulatorTrustUntouched": true,
+    "macOSTrustUntouched": true,
+    "physicalDevicesUntouched": true
+  },
+  "fixtureCleanup": true,
+  "privateReceiptSHA256": "a995f06b426eb9e5a10d1e09aced60f161901aa531c65a1d1bb2765f340c8b38",
+  "boundary": "Synthetic local TLS fixtures using final build187 production code; no provider accounts or physical-device acceptance."
+}

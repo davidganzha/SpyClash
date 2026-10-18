@@ -3429,7 +3429,11 @@ final class AppState: NSObject {
                 try await SupabaseLegacySessionUpgrade.restore(
                     token: token,
                     ownsAttempt: { self.ownsSessionRestore(attemptID, generation: generation) },
-                    exchange: { try await SupabaseAppSession.shared.exchangeLegacySession($0) },
+                    exchange: { token in
+                        try await SupabaseAppSession.shared.exchangeLegacySession(token) {
+                            guard self.ownsSessionRestore(attemptID, generation: generation) else { throw CancellationError() }
+                        }
+                    },
                     commit: { response in
                         try await self.client.commitAuthenticatedToken(response.accessToken, user: response.user)
                         generation = self.client.sessionGeneration
@@ -3495,7 +3499,9 @@ final class AppState: NSObject {
     func login(email: String, password: String) async {
         guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
         await performAuth { attemptID in
-            let response = try await self.client.login(email: email, password: password)
+            let response = try await self.client.login(email: email, password: password) {
+                try self.requireCurrentAuthentication(attemptID)
+            }
             try self.requireCurrentAuthentication(attemptID)
             guard !response.accessToken.isEmpty else {
                 throw WebAuthenticationError.invalidCallback
@@ -3529,7 +3535,9 @@ final class AppState: NSObject {
 
     func verify(email: String, code: String) async {
         await performAuth { attemptID in
-            let response = try await self.client.verify(email: email, code: code)
+            let response = try await self.client.verify(email: email, code: code) {
+                try self.requireCurrentAuthentication(attemptID)
+            }
             try self.requireCurrentAuthentication(attemptID)
             if let token = response.accessToken, let verifiedUser = response.user {
                 guard !token.isEmpty else { throw WebAuthenticationError.invalidCallback }
@@ -3762,7 +3770,9 @@ final class AppState: NSObject {
         // Verify the candidate without replacing the existing session. A
         // temporary profile-sync failure must not erase saved credentials.
 #if SPYCLASH_SUPABASE
-        let verifiedSession = try await client.legacyProviderSession(token, appleBindingTicket: nil)
+        let verifiedSession = try await client.legacyProviderSession(token, appleBindingTicket: nil) {
+            try self.requireCurrentAuthentication(attemptID)
+        }
 #else
         let verifiedSession = LoginResponse(
             accessToken: token,

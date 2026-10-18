@@ -1,4 +1,5 @@
 import { AppleSignInCredentialError } from "./apple-sign-in-credential.ts";
+import { AuthStoreDependencyError } from "./auth-store-recovery.ts";
 
 export type PublicAppleCredentialBrokerError = {
   code: "invalid_grant" | "temporarily_unavailable";
@@ -13,6 +14,9 @@ export type PublicAppleCredentialBrokerError = {
 export function publicAppleCredentialBrokerError(
   error: unknown,
 ): PublicAppleCredentialBrokerError | undefined {
+  if (error instanceof AuthStoreDependencyError) {
+    return { code: "temporarily_unavailable", status: 503 };
+  }
   if (!(error instanceof AppleSignInCredentialError)) return undefined;
 
   return error.status >= 500

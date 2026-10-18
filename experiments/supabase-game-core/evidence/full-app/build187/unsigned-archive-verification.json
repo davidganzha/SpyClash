@@ -1,0 +1,49 @@
+{
+  "recordedUTC": "2026-10-18T23:10:25.269019+00:00",
+  "build": "187",
+  "marketingVersion": "1.0.3",
+  "scheme": "SpyClash-Supabase-Main-Candidate",
+  "configuration": "SupabaseRelease",
+  "checks": {
+    "archiveSucceeded": true,
+    "mainIdentity": true,
+    "widgetIdentity": true,
+    "deviceArm64Only": true,
+    "runtimeConfigurationUnchangedFrom186": true,
+    "runtimeConfigurationMatchesSource": true,
+    "candidateBackendMode": true,
+    "onlyExpectedExtension": true,
+    "noTestBundles": true,
+    "noStoreKitFixtures": true,
+    "noPrivateKeyOrProvisioningProfile": true,
+    "noCodeSignStep": true,
+    "unsignedArtifacts": true,
+    "noCompilerErrors": true,
+    "productionConditionalFlag": true,
+    "noDebugOrFixtureFlags": true,
+    "productionSourcesUnchangedDuringArchive": true,
+    "browserlessAppleAndGooglePolicyUnchangedFrom186": true
+  },
+  "status": "PASS",
+  "architecture": [
+    "arm64",
+    "arm64"
+  ],
+  "mainExecutableSHA256": "70650f3e613995c368353e34ee154f31b6e80c10b83b8b74901846c01d08b12f",
+  "widgetExecutableSHA256": "c11ecd39b79def2e258c9a3e22490a234ff5be9e6c21e4187149e8dbed28eaf4",
+  "runtimeConfigurationSHA256": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d",
+  "sourceFreeze": {
+    "trackedFiles": 1317,
+    "changedDuringArchive": [
+      "SpyClashTests/AuthenticationFlowTests.swift"
+    ],
+    "allowedChange": "Swift Sendable annotation in a test file, not included in the archive",
+    "beforeManifestSHA256": "d74dbbd06ee10fd08108cbb1012e2c4657b0522bd02645243b8cc2460a49fd62"
+  },
+  "boundaries": {
+    "signed": false,
+    "uploaded": false,
+    "productionMutation": false,
+    "physicalDeviceAcceptance": false
+  }
+}

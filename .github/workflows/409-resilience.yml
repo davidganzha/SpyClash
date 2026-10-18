@@ -6,6 +6,8 @@ on:
       - 'base44/**'
       - 'SpyClash/**'
       - 'SpyClashTests/**'
+      - 'SpyClashSupabaseStagingTests/**'
+      - 'experiments/supabase-game-core/tests/auto-register-v2/**'
       - 'scripts/**'
       - 'project.yml'
       - 'SpyClash.xcodeproj/**'
@@ -15,6 +17,8 @@ on:
       - 'base44/**'
       - 'SpyClash/**'
       - 'SpyClashTests/**'
+      - 'SpyClashSupabaseStagingTests/**'
+      - 'experiments/supabase-game-core/tests/auto-register-v2/**'
       - 'scripts/**'
       - 'project.yml'
       - 'SpyClash.xcodeproj/**'
@@ -40,6 +44,7 @@ jobs:
         with:
           deno-version: v2.9.5
       - run: sh scripts/check-409-resilience.sh
+      - run: sh scripts/check-auth-reliability.sh
   client-conflicts:
     runs-on: macos-26
     timeout-minutes: 25

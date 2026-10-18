@@ -1,0 +1,44 @@
+{
+  "verifiedAtUTC": "2026-10-18T23:06:09.279946+00:00",
+  "candidate": "../apple187-auth-package",
+  "candidateManifestSHA256": "28367f50e72064193593bb41b117b59b1f0ad41095bcd5bf596a091be6c6f1d0",
+  "runtimeFilesVerifiedUnchanged": 19,
+  "compiler": {
+    "version": "@base44/functions-compiler@0.1.8",
+    "individualFunctionsPassed": 2,
+    "combinedAppPassed": true,
+    "warnings": 0,
+    "networkAttempts": 0
+  },
+  "tests": {
+    "v2": {
+      "tests": 1,
+      "steps": 25,
+      "failed": 0
+    },
+    "broker": {
+      "tests": 82,
+      "steps": 8,
+      "failed": 0
+    }
+  },
+  "crossRead": {
+    "onlyServiceFilterRetried": true,
+    "sameFactorySharesCredentialAndLifecycleBudget": true,
+    "userAuthMeAndInvitesNotWrapped": true,
+    "originalAppleBindingAndOwnerChecksPreserved": true,
+    "CASAndReleaseAlgorithmsUnchanged": true,
+    "liveLifecycleByteIdentical": true,
+    "publicErrorsAndDiagnosticsContainOnlyAllowlistedFields": true
+  },
+  "scope": "Local frozen-package compiler and synthetic actual-handler tests; no app binding, production access, or deployed-device acceptance.",
+  "evidence": {
+    "candidate-source-before.json": "ae0a74372e72f925c6a313b017df5556c3798daa2b33eb95f9ee1a87f8a10a52",
+    "compiler-verification.json": "aaaafa282d476405578c6e4fc3712edf155b88f9bfbb973a4822884457622ef5",
+    "v2-tests.json": "63e81ea68fd45b175688c8cb9d8f3e618826ba04cc95b466281876bc20326172",
+    "v2-tests.log": "6b3ea26ca8cb4443b549aeb314b801bd4765842ed42bb202d0e6834a1466a61f",
+    "broker-tests.json": "e20f7c8a00934f5ede53e7d0a8605e344a5a4e2e282bc8440cdc606026d037e3",
+    "broker-tests.log": "ce2494d0b8246c058ae5c21743e8a52531f98f4f722cdcb54ae433138d4d50e6",
+    "harness-manifest.json": "7748b2aaca14d5c7407bd360f6239c76a542b51d8c68efee9728e9c1ab2c5725"
+  }
+}

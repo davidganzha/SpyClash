@@ -390,6 +390,174 @@ extension SupabaseSessionTests {
 }
 
 extension SupabaseSessionTests {
+    func testLateExchangeCannotReplaceNewerCandidateBeforeItsProfileReturns() async throws {
+        let fixture = SessionExchangeFixture()
+        defer { fixture.close() }
+        let auth = fixture.auth()
+        let generation = auth.generation
+        let firstStarted = expectation(description: "First exchange started")
+        let nextProfileStarted = expectation(description: "New candidate awaiting profile")
+        var firstRequest: SessionExchangeFixture.Request?
+        var nextProfile: SessionExchangeFixture.Request?
+        fixture.handle = { request in
+            switch (request.path, request.authorization) {
+            case ("/functions/v1/legacy-session", "Bearer first-legacy"):
+                firstRequest = request
+                firstStarted.fulfill()
+            case ("/functions/v1/legacy-session", "Bearer next-legacy"):
+                request.respond(200, fixture.exchange(token: "next-candidate"))
+            case ("/functions/v1/app-services", "Bearer next-candidate"):
+                nextProfile = request
+                nextProfileStarted.fulfill()
+            case ("/functions/v1/app-services", "Bearer first-candidate"):
+                request.respond(200, fixture.profile)
+            default:
+                XCTFail("Unexpected synthetic authentication request")
+                request.respond(500, "{}")
+            }
+        }
+        let first = Task { try await auth.exchangeLegacySession("first-legacy") }
+        await fulfillment(of: [firstStarted], timeout: 3)
+        let next = Task { try await auth.exchangeLegacySession("next-legacy") }
+        await fulfillment(of: [nextProfileStarted], timeout: 3)
+        try XCTUnwrap(firstRequest).respond(200, fixture.exchange(token: "first-candidate"))
+        do { _ = try await first.value; XCTFail("The superseded exchange returned a candidate") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertEqual(auth.generation, generation, "Candidate isolation must not invalidate the saved session")
+        try XCTUnwrap(nextProfile).respond(200, fixture.profile)
+        do {
+            let verified = try await next.value
+            try auth.commit(accessToken: verified.accessToken)
+        } catch { XCTFail("A late older response invalidated the current candidate: \(type(of: error))") }
+        XCTAssertEqual(auth.accessToken, "next-candidate")
+        XCTAssertEqual(try auth.legacyAccessToken(), "next-legacy")
+        XCTAssertThrowsError(try auth.commit(accessToken: "first-candidate"))
+    }
+
+    func testSupersededProfileFailureCannotClearNewerReadyCandidate() async throws {
+        let fixture = SessionExchangeFixture()
+        defer { fixture.close() }
+        let auth = fixture.auth(stored: true)
+        let profileStarted = expectation(description: "Old candidate awaiting profile")
+        var oldProfile: SessionExchangeFixture.Request?
+        fixture.handle = { request in
+            switch (request.path, request.authorization) {
+            case ("/functions/v1/legacy-session", "Bearer first-legacy"):
+                request.respond(200, fixture.exchange(token: "first-candidate"))
+            case ("/functions/v1/app-services", "Bearer first-candidate"):
+                oldProfile = request
+                profileStarted.fulfill()
+            case ("/functions/v1/legacy-session", "Bearer next-legacy"):
+                request.respond(200, fixture.exchange(token: "next-candidate"))
+            case ("/functions/v1/app-services", "Bearer next-candidate"):
+                request.respond(200, fixture.profile)
+            default:
+                XCTFail("Unexpected synthetic authentication request")
+                request.respond(500, "{}")
+            }
+        }
+        let first = Task { try await auth.exchangeLegacySession("first-legacy") }
+        await fulfillment(of: [profileStarted], timeout: 3)
+        let next = try await auth.exchangeLegacySession("next-legacy")
+        try XCTUnwrap(oldProfile).respond(503, #"{"code":"temporary_profile_failure"}"#)
+        do { _ = try await first.value; XCTFail("A superseded profile failure escaped ownership checking") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertEqual(auth.accessToken, "saved-candidate")
+        try auth.commit(accessToken: next.accessToken)
+        XCTAssertEqual(auth.accessToken, "next-candidate")
+        XCTAssertEqual(try auth.legacyAccessToken(), "next-legacy")
+    }
+
+    func testInvalidAttemptCannotStartExchangeOrEvictReadyCandidate() async throws {
+        let fixture = SessionExchangeFixture()
+        defer { fixture.close() }
+        let auth = fixture.auth(stored: true)
+        var requests = 0
+        fixture.handle = { request in
+            requests += 1
+            request.respond(200, request.path == "/functions/v1/legacy-session"
+                            ? fixture.exchange(token: "next-candidate") : fixture.profile)
+        }
+        let next = try await auth.exchangeLegacySession("next-legacy")
+        do {
+            _ = try await auth.exchangeLegacySession("obsolete-google-candidate", requireCurrentAttempt: { throw CancellationError() })
+            XCTFail("An obsolete provider attempt started exchange")
+        } catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertEqual(requests, 2)
+        XCTAssertEqual(auth.accessToken, "saved-candidate")
+        try auth.commit(accessToken: next.accessToken)
+        XCTAssertEqual(auth.accessToken, "next-candidate")
+    }
+
+    func testAttemptInvalidationDuringProfileDiscardsCandidateAndPreservesSavedSession() async throws {
+        let fixture = SessionExchangeFixture()
+        defer { fixture.close() }
+        let auth = fixture.auth(stored: true)
+        let generation = auth.generation
+        let profileStarted = expectation(description: "Candidate profile started")
+        var heldProfile: SessionExchangeFixture.Request?
+        var ownsAttempt = true
+        fixture.handle = { request in
+            if request.path == "/functions/v1/legacy-session" {
+                request.respond(200, fixture.exchange(token: "discarded-candidate"))
+            } else {
+                heldProfile = request
+                profileStarted.fulfill()
+            }
+        }
+        let exchange = Task {
+            try await auth.exchangeLegacySession("uncommitted-legacy") {
+                guard ownsAttempt else { throw CancellationError() }
+            }
+        }
+        await fulfillment(of: [profileStarted], timeout: 3)
+        ownsAttempt = false
+        try XCTUnwrap(heldProfile).respond(200, fixture.profile)
+        do { _ = try await exchange.value; XCTFail("An invalidated attempt returned a candidate") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertThrowsError(try auth.commit(accessToken: "discarded-candidate"))
+        XCTAssertEqual(auth.generation, generation)
+        XCTAssertEqual(auth.accessToken, "saved-candidate")
+        XCTAssertEqual(try auth.legacyAccessToken(), "saved-legacy")
+        XCTAssertEqual(fixture.sessionWrites.count, 0)
+        XCTAssertEqual(fixture.legacyWrites.count, 0)
+        XCTAssertEqual(fixture.clearCount, 0)
+    }
+
+    func testMalformedSuccessfulRenewalPreservesSavedCredentialsAndCanRecover() async throws {
+        let fixture = SessionExchangeFixture()
+        defer { fixture.close() }
+        let auth = fixture.auth(stored: true)
+        let generation = auth.generation
+        let missingLegacyID = fixture.exchange(token: "renewed-candidate")
+            .replacingOccurrences(of: #","legacy_user_id":"synthetic-person""#, with: "")
+        var replies = ["{}", missingLegacyID, fixture.exchange(token: "renewed-candidate")]
+        fixture.handle = { request in
+            XCTAssertEqual(request.path, "/functions/v1/legacy-session")
+            XCTAssertEqual(request.authorization, "Bearer saved-legacy")
+            guard !replies.isEmpty else { XCTFail("Unexpected automatic retry"); request.respond(500, "{}"); return }
+            request.respond(200, replies.removeFirst())
+        }
+        for _ in 0..<2 {
+            do { _ = try await auth.ensureAccessToken(forceLegacyValidation: true); XCTFail("Malformed response accepted") }
+            catch let error as Base44Error {
+                XCTAssertEqual(error.statusCode, 502, "A malformed response must not trigger restore's 401 credential deletion")
+                XCTAssertEqual(error.code, "supabase_session_response_invalid")
+                XCTAssertTrue(error.retryable)
+            }
+            XCTAssertEqual(auth.generation, generation)
+            XCTAssertEqual(auth.accessToken, "saved-candidate")
+            XCTAssertEqual(try auth.legacyAccessToken(), "saved-legacy")
+            XCTAssertTrue(fixture.sessionWrites.isEmpty)
+            XCTAssertEqual(fixture.clearCount, 0)
+        }
+        let renewed = try await auth.ensureAccessToken(forceLegacyValidation: true)
+        XCTAssertEqual(renewed, "renewed-candidate")
+        XCTAssertEqual(fixture.sessionWrites.count, 1)
+        XCTAssertEqual(try auth.legacyAccessToken(), "saved-legacy")
+        XCTAssertEqual(fixture.clearCount, 0)
+    }
+
     func testLegacyExchangeRemainsUncommittedUntilAuthOwnerAccepts() async throws {
         let userID = "22222222-2222-4222-8222-222222222222"
         StagingURLProtocol.state.reset(responses: [
@@ -516,6 +684,79 @@ extension SupabaseSessionTests {
         XCTAssertEqual(wireBody["base44_access_token"].string, "private-legacy-credential")
     }
 
+}
+
+/// A separate registration per test prevents late URLProtocol callbacks from
+/// reaching the next test. All values and responses are synthetic and held
+/// explicitly, so ordering never depends on arbitrary network delays.
+@MainActor
+private final class SessionExchangeFixture {
+    struct Request: Sendable {
+        let path: String
+        let authorization: String
+        let respond: @Sendable (Int, String) -> Void
+    }
+    let id = UUID().uuidString
+    let actor = "22222222-2222-4222-8222-222222222222"
+    var handle: ((Request) -> Void)?
+    var sessionWrites: [SupabaseStoredSession] = []
+    var legacyWrites: [SupabaseLegacyCredential] = []
+    var clearCount = 0
+    private var http: URLSession?
+    init() {
+        SessionExchangeURLProtocol.handlers[id] = { [weak self] request in
+            guard let self, let handle = self.handle else { request.respond(500, "{}"); return }
+            handle(request)
+        }
+    }
+    func close() {
+        SessionExchangeURLProtocol.handlers.removeValue(forKey: id)
+        handle = nil
+        http?.invalidateAndCancel()
+        http = nil
+    }
+    var profile: String { "{\"id\":\"\(actor)\",\"email\":\"\(actor)@example.test\"}" }
+    func exchange(token: String) -> String {
+        "{\"access_token\":\"\(token)\",\"refresh_token\":\"synthetic-refresh\",\"expires_in\":3600,\"legacy_user_id\":\"synthetic-person\",\"user\":{\"id\":\"\(actor)\"}}"
+    }
+    func auth(stored: Bool = false) -> SupabaseAppSession {
+        let configuration = URLSessionConfiguration.ephemeral
+        configuration.protocolClasses = [SessionExchangeURLProtocol.self]
+        configuration.httpAdditionalHeaders = ["X-Session-Exchange-Fixture": id]
+        let http = URLSession(configuration: configuration)
+        self.http = http
+        return SupabaseAppSession(
+            configuration: .init(backendURL: "https://bbkfsgnordtdiblgdzkg.supabase.co", publishableKey: "sb_publishable_test"),
+            session: http,
+            storedSession: stored ? .init(accessToken: "saved-candidate", refreshToken: "synthetic-saved-refresh", userID: actor, expiresAt: .distantFuture) : nil,
+            saveSession: { [weak self] in self?.sessionWrites.append($0) }, clearSession: { [weak self] in self?.clearCount += 1 },
+            storedLegacy: stored ? .init(actorID: actor, legacyUserID: "synthetic-person", accessToken: "saved-legacy") : nil,
+            saveLegacy: { [weak self] in self?.legacyWrites.append($0) }, clearLegacy: { [weak self] in self?.clearCount += 1 }
+        )
+    }
+}
+
+private final class SessionExchangeURLProtocol: URLProtocol, @unchecked Sendable {
+    @MainActor static var handlers: [String: (SessionExchangeFixture.Request) -> Void] = [:]
+    override class func canInit(with request: URLRequest) -> Bool { true }
+    override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
+    override func startLoading() {
+        let registration = request.value(forHTTPHeaderField: "X-Session-Exchange-Fixture") ?? ""
+        let snapshot = SessionExchangeFixture.Request(
+            path: request.url?.path ?? "", authorization: request.value(forHTTPHeaderField: "Authorization") ?? ""
+        ) { [self] status, body in
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: nil,
+                                           headerFields: ["Content-Type": "application/json"])!
+            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+            client?.urlProtocol(self, didLoad: Data(body.utf8))
+            client?.urlProtocolDidFinishLoading(self)
+        }
+        Task { @MainActor in
+            guard let handler = Self.handlers[registration] else { snapshot.respond(500, "{}"); return }
+            handler(snapshot)
+        }
+    }
+    override func stopLoading() {}
 }
 
 extension SupabaseSessionTests {

@@ -291,21 +291,33 @@ final class Base44Client {
 #endif
     }
 
-    func login(email: String, password: String) async throws -> LoginResponse {
+    func login(
+        email: String, password: String,
+        requireCurrentAttempt: @MainActor () throws -> Void = {}
+    ) async throws -> LoginResponse {
+        try Task.checkCancellation()
+        try requireCurrentAttempt()
+        let response: LoginResponse
 #if SPYCLASH_SUPABASE
         let authGeneration = SupabaseAppSession.shared.generation
-        let legacy = try await SupabaseLegacyAuth.shared.login(email: email, password: password)
+        response = try await SupabaseLegacyAuth.shared.login(email: email, password: password)
         guard authGeneration == SupabaseAppSession.shared.generation, !Task.isCancelled else { throw CancellationError() }
-        return try await SupabaseAppSession.shared.exchangeLegacySession(legacy.accessToken)
-#endif
-        let response: LoginResponse = try await request(
+#else
+        response = try await request(
             "/apps/\(Self.appID)/auth/login",
             method: "POST",
             body: ["email": email, "password": password]
         )
+#endif
+        try Task.checkCancellation()
+        try requireCurrentAttempt()
+#if SPYCLASH_SUPABASE
+        return try await SupabaseAppSession.shared.exchangeLegacySession(response.accessToken, requireCurrentAttempt: requireCurrentAttempt)
+#else
         // The owning authentication attempt commits credentials only after
         // checking it was not cancelled or replaced while this request ran.
         return response
+#endif
     }
 
     func register(email: String, password: String) async throws {
@@ -330,20 +342,33 @@ final class Base44Client {
 #endif
     }
 
-    func verify(email: String, code: String) async throws -> VerifyResponse {
+    func verify(
+        email: String, code: String,
+        requireCurrentAttempt: @MainActor () throws -> Void = {}
+    ) async throws -> VerifyResponse {
+        try Task.checkCancellation()
+        try requireCurrentAttempt()
+        let response: VerifyResponse
 #if SPYCLASH_SUPABASE
         let authGeneration = SupabaseAppSession.shared.generation
-        let legacy = try await SupabaseLegacyAuth.shared.verify(email: email, code: code)
+        response = try await SupabaseLegacyAuth.shared.verify(email: email, code: code)
         guard authGeneration == SupabaseAppSession.shared.generation, !Task.isCancelled else { throw CancellationError() }
-        guard let token = legacy.accessToken, !token.isEmpty else { return legacy }
-        let bridged = try await SupabaseAppSession.shared.exchangeLegacySession(token)
-        return VerifyResponse(accessToken: bridged.accessToken, user: bridged.user)
-#endif
-        return try await request(
+#else
+        response = try await request(
             "/apps/\(Self.appID)/auth/verify-otp",
             method: "POST",
             body: ["email": email, "otp_code": code]
         )
+#endif
+        try Task.checkCancellation()
+        try requireCurrentAttempt()
+#if SPYCLASH_SUPABASE
+        guard let token = response.accessToken, !token.isEmpty else { return response }
+        let bridged = try await SupabaseAppSession.shared.exchangeLegacySession(token, requireCurrentAttempt: requireCurrentAttempt)
+        return VerifyResponse(accessToken: bridged.accessToken, user: bridged.user)
+#else
+        return response
+#endif
     }
 
     func resendOTP(email: String) async throws {
@@ -388,12 +413,14 @@ final class Base44Client {
         appleBindingTicket: String?,
         beforeExchange: @MainActor () throws -> Void = {}
     ) async throws -> LoginResponse {
+        try Task.checkCancellation()
+        try beforeExchange()
         guard token != SupabaseAppSession.shared.accessToken else { throw WebAuthenticationError.invalidCallback }
         let authGeneration = SupabaseAppSession.shared.generation
         try await SupabaseLegacyAuth.shared.registerProvider(legacyToken: token, appleBindingTicket: appleBindingTicket)
         guard authGeneration == SupabaseAppSession.shared.generation, !Task.isCancelled else { throw CancellationError() }
         try beforeExchange()
-        return try await SupabaseAppSession.shared.exchangeLegacySession(token)
+        return try await SupabaseAppSession.shared.exchangeLegacySession(token, requireCurrentAttempt: beforeExchange)
     }
 #endif
 

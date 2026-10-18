@@ -4,10 +4,61 @@ import XCTest
 
 @MainActor
 final class AuthenticationFlowTests: XCTestCase {
+    private var clientRegistration: String?
+    private var requestHandler: (@Sendable (AuthenticationFlowURLProtocol) -> Void)? {
+        get { clientRegistration.flatMap { AuthenticationFlowURLProtocol.handlers[$0] } }
+        set {
+            guard let clientRegistration else {
+                if newValue != nil { XCTFail("Create an owned HTTP client before installing its handler") }
+                return
+            }
+            AuthenticationFlowURLProtocol.handlers[clientRegistration] = newValue
+        }
+    }
+
     private func client() -> Base44Client {
+        // Logout cleanup may outlive the test or a loop iteration. Retire its
+        // exact registration before creating another client; no later request
+        // can acquire the next client's authentication handler. The session
+        // stays valid so background cleanup can receive a normal cancellation.
+        if let clientRegistration { AuthenticationFlowURLProtocol.handlers.removeValue(forKey: clientRegistration) }
+        let registration = UUID().uuidString
         let configuration = URLSessionConfiguration.ephemeral
         configuration.protocolClasses = [AuthenticationFlowURLProtocol.self]
-        return Base44Client(session: URLSession(configuration: configuration))
+        configuration.httpAdditionalHeaders = [AuthenticationFlowURLProtocol.registrationHeader: registration]
+        let session = URLSession(configuration: configuration)
+        clientRegistration = registration
+        addTeardownBlock {
+            AuthenticationFlowURLProtocol.handlers.removeValue(forKey: registration)
+        }
+        return Base44Client(session: session)
+    }
+
+    func testRetiredClientCannotReachReplacementHandler() async throws {
+        let retired = client()
+        requestHandler = { request in
+            XCTFail("A retired client's handler must not execute")
+            request.respond(status: 500, body: "{}")
+        }
+        let replacement = client()
+        let registration = expectation(description: "Only replacement V2 registration reaches its handler")
+        registration.assertForOverFulfill = true
+        requestHandler = { request in
+            XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUserV2")
+            XCTAssertEqual(try? request.jsonBody(), ["access_token": "replacement-candidate", "apple_binding_ticket": "replacement-binding"])
+            registration.fulfill()
+            request.respond(status: 200, body: #"{"success":true,"user":{"id":"replacement-user","email":"replacement@example.test"}}"#)
+        }
+        defer { requestHandler = nil }
+        do {
+            try await retired.resendOTP(email: "retired@example.test")
+            XCTFail("A retired client's request must be cancelled by its transport")
+        } catch {
+            XCTAssertTrue(error is CancellationError)
+        }
+        let user = try await replacement.autoRegisterUser(appleBindingTicket: "replacement-binding", accessToken: "replacement-candidate")
+        XCTAssertEqual(user.id, "replacement-user")
+        await fulfillment(of: [registration], timeout: 1)
     }
 
     private func state(
@@ -77,11 +128,11 @@ final class AuthenticationFlowTests: XCTestCase {
         let client = client()
         let store = AuthenticationMemoryStore(token: nil)
         let state = state(client: client, store: store)
-        AuthenticationFlowURLProtocol.handler = { request in
+        requestHandler = { request in
             XCTAssertTrue(["reset-password-request", "reset-password", "resend-otp"].contains(request.request.url?.lastPathComponent ?? ""))
             request.respond(status: 200, body: "{}")
         }
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        defer { requestHandler = nil }
         await state.requestPasswordReset(email: "owner@example.test")
         if case .resetEmailSent(let email) = state.authPhase { XCTAssertEqual(email, "owner@example.test") }
         else { XCTFail("Recovery request did not reach its confirmation") }
@@ -102,8 +153,8 @@ final class AuthenticationFlowTests: XCTestCase {
     func testCancelledRecoveryCannotOverwriteNextAuthenticationPhase() async {
         let state = state(client: client(), store: AuthenticationMemoryStore(token: nil))
         let held = AuthenticationHeldRequest()
-        AuthenticationFlowURLProtocol.handler = { request in held.receive(request) }
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        requestHandler = { request in held.receive(request) }
+        defer { requestHandler = nil }
         let recovery = Task { await state.requestPasswordReset(email: "old@example.test") }
         let request = await held.next()
         state.logout()
@@ -122,7 +173,7 @@ final class AuthenticationFlowTests: XCTestCase {
             let store = AuthenticationMemoryStore(token: "existing")
             let state = state(client: client, store: store)
             let held = AuthenticationHeldRequest()
-            AuthenticationFlowURLProtocol.handler = { request in held.receive(request) }
+            requestHandler = { request in held.receive(request) }
             let login = Task {
                 if provider { await state.loginWithGoogle() }
                 else { await state.login(email: "candidate@example.test", password: "password") }
@@ -142,7 +193,7 @@ final class AuthenticationFlowTests: XCTestCase {
             XCTAssertEqual(store.clears, 0)
             XCTAssertNil(state.user)
             XCTAssertNil(state.authError)
-            AuthenticationFlowURLProtocol.handler = nil
+            requestHandler = nil
         }
     }
 
@@ -153,7 +204,7 @@ final class AuthenticationFlowTests: XCTestCase {
             let store = AuthenticationMemoryStore(token: "existing")
             var sessionURLs: [URL] = []
             let state = state(client: client, store: store, onSessionURL: { sessionURLs.append($0) })
-            AuthenticationFlowURLProtocol.handler = { request in
+            requestHandler = { request in
                 XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUser")
                 XCTAssertNil(request.request.value(forHTTPHeaderField: "Authorization"))
                 request.respond(status: status, body: #"{"error":"Temporary failure"}"#)
@@ -173,7 +224,7 @@ final class AuthenticationFlowTests: XCTestCase {
             XCTAssertFalse(state.isBusy)
             XCTAssertNotNil(state.authError)
         }
-        AuthenticationFlowURLProtocol.handler = nil
+        requestHandler = nil
     }
 
     func testErrorAndMalformedCallbacksNeverProvision() async {
@@ -182,7 +233,7 @@ final class AuthenticationFlowTests: XCTestCase {
             client.setToken("existing")
             let store = AuthenticationMemoryStore(token: "existing")
             let state = state(client: client, store: store, callback: callback)
-            AuthenticationFlowURLProtocol.handler = { request in
+            requestHandler = { request in
                 XCTFail("Invalid callback must not call the backend")
                 request.respond(status: 500, body: "{}")
             }
@@ -192,7 +243,7 @@ final class AuthenticationFlowTests: XCTestCase {
             XCTAssertFalse(state.isBusy)
             XCTAssertNotNil(state.authError)
         }
-        AuthenticationFlowURLProtocol.handler = nil
+        requestHandler = nil
     }
 
     func testLogoutDuringProviderSyncCannotRestoreAccount() async throws {
@@ -201,8 +252,8 @@ final class AuthenticationFlowTests: XCTestCase {
         let store = AuthenticationMemoryStore(token: "existing")
         let state = state(client: client, store: store)
         let held = AuthenticationHeldRequest()
-        AuthenticationFlowURLProtocol.handler = { request in held.receive(request) }
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        requestHandler = { request in held.receive(request) }
+        defer { requestHandler = nil }
         let login = Task { await state.loginWithGoogle() }
         let request = await held.next()
         state.logout()
@@ -221,8 +272,8 @@ final class AuthenticationFlowTests: XCTestCase {
         let store = AuthenticationMemoryStore(token: nil)
         let state = state(client: client, store: store)
         let held = AuthenticationHeldRequest()
-        AuthenticationFlowURLProtocol.handler = { request in held.receive(request) }
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        requestHandler = { request in held.receive(request) }
+        defer { requestHandler = nil }
         let login = Task { await state.login(email: "candidate@example.test", password: "test-only") }
         let request = await held.next()
         state.logout()
@@ -235,14 +286,65 @@ final class AuthenticationFlowTests: XCTestCase {
         XCTAssertFalse(state.isBusy)
     }
 
+    func testEmailAndOTPRejectObsoleteAttemptBeforeStartingNetwork() async {
+        let client = client()
+        client.setToken("existing")
+        requestHandler = { request in
+            XCTFail("An obsolete attempt must not contact the identity service")
+            request.respond(status: 500, body: "{}")
+        }
+        defer { requestHandler = nil }
+        for otp in [false, true] {
+            do {
+                if otp {
+                    _ = try await client.verify(email: "candidate@example.test", code: "123456", requireCurrentAttempt: { throw CancellationError() })
+                } else {
+                    _ = try await client.login(email: "candidate@example.test", password: "test-only", requireCurrentAttempt: { throw CancellationError() })
+                }
+                XCTFail("An obsolete attempt returned credentials")
+            } catch { XCTAssertTrue(error is CancellationError) }
+            XCTAssertEqual(client.currentAccessToken, "existing")
+        }
+    }
+
+    func testEmailAndOTPRejectLateCredentialBeforeItCanStartSessionExchange() async throws {
+        for otp in [false, true] {
+            let client = client()
+            client.setToken("existing")
+            let generation = client.sessionGeneration
+            let held = AuthenticationHeldRequest()
+            requestHandler = { request in held.receive(request) }
+            defer { requestHandler = nil }
+            var ownsAttempt = true
+            let authentication = Task {
+                let requireCurrentAttempt: @MainActor @Sendable () throws -> Void = {
+                    guard ownsAttempt else { throw CancellationError() }
+                }
+                if otp {
+                    _ = try await client.verify(email: "candidate@example.test", code: "123456", requireCurrentAttempt: requireCurrentAttempt)
+                } else {
+                    _ = try await client.login(email: "candidate@example.test", password: "test-only", requireCurrentAttempt: requireCurrentAttempt)
+                }
+            }
+            let request = await held.next()
+            XCTAssertEqual(request.request.url?.lastPathComponent, otp ? "verify-otp" : "login")
+            ownsAttempt = false
+            request.respond(status: 200, body: #"{"access_token":"late","user":{"id":"candidate-user","email":"candidate@example.test"}}"#)
+            do { try await authentication.value; XCTFail("A superseded source credential escaped to the next auth stage") }
+            catch { XCTAssertTrue(error is CancellationError) }
+            XCTAssertEqual(client.sessionGeneration, generation)
+            XCTAssertEqual(client.currentAccessToken, "existing")
+        }
+    }
+
     func testOldProviderFailureCannotClearReplacementCredentials() async {
         let client = client()
         client.setToken("existing")
         let store = AuthenticationMemoryStore(token: "existing")
         let state = state(client: client, store: store)
         let held = AuthenticationHeldRequest()
-        AuthenticationFlowURLProtocol.handler = { request in held.receive(request) }
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        requestHandler = { request in held.receive(request) }
+        defer { requestHandler = nil }
         let login = Task { await state.loginWithGoogle() }
         let request = await held.next()
         client.setToken("replacement")
@@ -259,11 +361,11 @@ final class AuthenticationFlowTests: XCTestCase {
         let client = client()
         let store = AuthenticationMemoryStore(token: nil)
         let state = state(client: client, store: store)
-        AuthenticationFlowURLProtocol.handler = { request in
+        requestHandler = { request in
             XCTAssertEqual(request.request.url?.lastPathComponent, "verify-otp")
             request.respond(status: 200, body: "{}")
         }
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        defer { requestHandler = nil }
         await state.verify(email: "candidate@example.test", code: "123456")
         if case .password(let email) = state.authPhase {
             XCTAssertEqual(email, "candidate@example.test")
@@ -294,7 +396,7 @@ final class AuthenticationFlowTests: XCTestCase {
     func testProfileFallbackUsesCandidateBearerWithoutReplacingSession() async throws {
         let client = client()
         client.setToken("existing")
-        AuthenticationFlowURLProtocol.handler = { request in
+        requestHandler = { request in
             if request.request.url?.lastPathComponent == "autoRegisterUser" {
                 XCTAssertNil(request.request.value(forHTTPHeaderField: "Authorization"))
                 request.respond(status: 200, body: "{}")
@@ -304,7 +406,7 @@ final class AuthenticationFlowTests: XCTestCase {
                 request.respond(status: 200, body: #"{"id":"candidate-user","email":"candidate@example.test"}"#)
             }
         }
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        defer { requestHandler = nil }
         let user = try await client.autoRegisterUser(accessToken: "candidate")
         XCTAssertEqual(user.id, "candidate-user")
         XCTAssertEqual(client.currentAccessToken, "existing")
@@ -317,7 +419,7 @@ final class AuthenticationFlowTests: XCTestCase {
         XCTAssertEqual(Base44Client.providerRegistrationFunction(appleBindingTicket: ""), "autoRegisterUser")
         let registration = expectation(description: "One binding verification")
         registration.assertForOverFulfill = true
-        AuthenticationFlowURLProtocol.handler = { request in
+        requestHandler = { request in
             XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUserV2")
             XCTAssertNil(request.request.value(forHTTPHeaderField: "Authorization"))
             XCTAssertEqual(try? request.jsonBody(), [
@@ -327,7 +429,7 @@ final class AuthenticationFlowTests: XCTestCase {
             registration.fulfill()
             request.respond(status: 200, body: #"{"success":true,"user":{"id":"candidate-user","email":"candidate@example.test"}}"#)
         }
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        defer { requestHandler = nil }
         let session = try await client.appleNativeProviderSession(AppleNativeSession(
             accessToken: "candidate", bindingTicket: "original-native-binding-fixture"
         ), requireCurrentAttempt: {})
@@ -343,7 +445,7 @@ final class AuthenticationFlowTests: XCTestCase {
         let store = AuthenticationMemoryStore(token: "existing")
         let state = state(client: client, store: store)
         let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        defer { requestHandler = nil }
         for body in [
             #"{}"#,
             #"{"success":true}"#,
@@ -354,7 +456,7 @@ final class AuthenticationFlowTests: XCTestCase {
         ] {
             let registration = expectation(description: "Malformed binding response is terminal")
             registration.assertForOverFulfill = true
-            AuthenticationFlowURLProtocol.handler = { request in
+            requestHandler = { request in
                 XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUserV2", "No old handler or User/me fallback may bypass Apple binding")
                 registration.fulfill()
                 request.respond(status: 200, body: body)
@@ -383,11 +485,11 @@ final class AuthenticationFlowTests: XCTestCase {
         let store = AuthenticationMemoryStore(token: "existing")
         let state = state(client: client, store: store)
         let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
-        AuthenticationFlowURLProtocol.handler = { request in
+        requestHandler = { request in
             XCTFail("A missing or malformed native binding must never reach any provider endpoint")
             request.respond(status: 500, body: "{}")
         }
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        defer { requestHandler = nil }
         for binding in ["", " ", "binding fixture", "binding\nfixture", String(repeating: "b", count: 513)] {
             do {
                 try await state.acceptAppleNativeSession(
@@ -411,11 +513,11 @@ final class AuthenticationFlowTests: XCTestCase {
         let store = AuthenticationMemoryStore(token: "existing")
         let state = state(client: client, store: store)
         let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
-        AuthenticationFlowURLProtocol.handler = { request in
+        requestHandler = { request in
             XCTFail("Invalid native candidate must not fall back to the existing token")
             request.respond(status: 500, body: "{}")
         }
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        defer { requestHandler = nil }
         for token in ["", " ", "candidate injected", "candidate\n", String(repeating: "t", count: 20_001)] {
             do {
                 try await state.acceptAppleNativeSession(
@@ -434,7 +536,7 @@ final class AuthenticationFlowTests: XCTestCase {
     }
 
     func testNativeAppleBindingRejectionPreservesSessionWithoutFallback() async throws {
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        defer { requestHandler = nil }
         for status in [401, 409] {
             let client = client()
             client.setToken("existing")
@@ -443,7 +545,7 @@ final class AuthenticationFlowTests: XCTestCase {
             let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
             let registration = expectation(description: "Binding rejection is terminal")
             registration.assertForOverFulfill = true
-            AuthenticationFlowURLProtocol.handler = { request in
+            requestHandler = { request in
                 XCTAssertEqual(request.request.url?.lastPathComponent, "autoRegisterUserV2")
                 XCTAssertEqual(try? request.jsonBody(), [
                     "access_token": "untrusted-candidate",
@@ -471,7 +573,7 @@ final class AuthenticationFlowTests: XCTestCase {
     }
 
     func testNativeAppleBindingSuccessCannotCommitAfterAttemptOrSessionChanges() async throws {
-        defer { AuthenticationFlowURLProtocol.handler = nil }
+        defer { requestHandler = nil }
         for replaceSession in [false, true] {
             let client = client()
             client.setToken("existing")
@@ -479,7 +581,7 @@ final class AuthenticationFlowTests: XCTestCase {
             let state = state(client: client, store: store)
             let attempt = try XCTUnwrap(state.beginAuthenticationAttempt())
             let held = AuthenticationHeldRequest()
-            AuthenticationFlowURLProtocol.handler = { request in held.receive(request) }
+            requestHandler = { request in held.receive(request) }
             let acceptance = Task {
                 try await state.acceptAppleNativeSession(
                     AppleNativeSession(accessToken: "late-candidate", bindingTicket: "original-binding"),
@@ -554,13 +656,36 @@ private final class AuthenticationHeldRequest: @unchecked Sendable {
     }
 }
 
+private final class AuthenticationRequestHandlers: @unchecked Sendable {
+    private let lock = NSLock()
+    private var values: [String: @Sendable (AuthenticationFlowURLProtocol) -> Void] = [:]
+
+    subscript(registration: String) -> (@Sendable (AuthenticationFlowURLProtocol) -> Void)? {
+        get {
+            lock.lock(); defer { lock.unlock() }
+            return values[registration]
+        }
+        set {
+            lock.lock(); defer { lock.unlock() }
+            values[registration] = newValue
+        }
+    }
+
+    func removeValue(forKey registration: String) {
+        lock.lock(); defer { lock.unlock() }
+        values.removeValue(forKey: registration)
+    }
+}
+
 private final class AuthenticationFlowURLProtocol: URLProtocol, @unchecked Sendable {
-    nonisolated(unsafe) static var handler: (@Sendable (AuthenticationFlowURLProtocol) -> Void)?
+    static let registrationHeader = "X-Authentication-Test-Client"
+    static let handlers = AuthenticationRequestHandlers()
     override class func canInit(with request: URLRequest) -> Bool { true }
     override class func canonicalRequest(for request: URLRequest) -> URLRequest { request }
     override func startLoading() {
-        guard let handler = Self.handler else {
-            client?.urlProtocol(self, didFailWithError: URLError(.unsupportedURL))
+        let registration = request.value(forHTTPHeaderField: Self.registrationHeader) ?? ""
+        guard let handler = Self.handlers[registration] else {
+            client?.urlProtocol(self, didFailWithError: URLError(.cancelled))
             return
         }
         handler(self)

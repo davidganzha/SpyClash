@@ -1,0 +1,139 @@
+{
+  "build": 187,
+  "functions": {
+    "appleAuthBroker": {
+      "capturedConfigSHA256": "66d94a818f2de3ad3e05a2170dab78bdb5a2c965b127d7dfd438cc0c5147ee55",
+      "normalizedConfig": {
+        "entry": "entry.ts",
+        "name": "appleAuthBroker"
+      },
+      "runtime": {
+        "apple-code-exchange.ts": {
+          "bytes": 1201,
+          "originalSHA256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8",
+          "originalSource": "base44/functions/appleAuthBroker/apple-code-exchange.ts",
+          "sha256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8"
+        },
+        "apple-credential-error-policy.ts": {
+          "bytes": 728,
+          "originalSHA256": "7d35a9c2a03b934605e8ec87ce96862b3a1dc3a4b756d0f83cc77bd4b6ba3ab5",
+          "originalSource": "base44/functions/appleAuthBroker/apple-credential-error-policy.ts",
+          "sha256": "7d35a9c2a03b934605e8ec87ce96862b3a1dc3a4b756d0f83cc77bd4b6ba3ab5"
+        },
+        "apple-sign-in-credential.ts": {
+          "bytes": 43333,
+          "originalSHA256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+          "originalSource": "base44/functions/appleAuthBroker/apple-sign-in-credential.ts",
+          "sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078"
+        },
+        "apple-token-compensation.ts": {
+          "bytes": 1369,
+          "originalSHA256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b",
+          "originalSource": "base44/functions/appleAuthBroker/apple-token-compensation.ts",
+          "sha256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b"
+        },
+        "billing-identity-lifecycle.ts": {
+          "bytes": 28337,
+          "originalSHA256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+          "originalSource": "base44/functions/appleAuthBroker/billing-identity-lifecycle.ts",
+          "sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851"
+        },
+        "confirmation.ts": {
+          "bytes": 233,
+          "originalSHA256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb",
+          "originalSource": "base44/functions/appleAuthBroker/confirmation.ts",
+          "sha256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb"
+        },
+        "entry.ts": {
+          "bytes": 58374,
+          "originalSHA256": "a7119b1b9a380740d0f1a3a80456dcbcbef0add844fc7c3f3e613a72f28f4fc6",
+          "originalSource": "base44/functions/appleAuthBroker/main.ts",
+          "sha256": "a7119b1b9a380740d0f1a3a80456dcbcbef0add844fc7c3f3e613a72f28f4fc6"
+        },
+        "google-state-recovery.ts": {
+          "bytes": 6186,
+          "originalSHA256": "5abd228604f60784a1ea86d3bab008f4b35326500748ca8433e1f69debfdac50",
+          "originalSource": "base44/functions/appleAuthBroker/google-state-recovery.ts",
+          "sha256": "5abd228604f60784a1ea86d3bab008f4b35326500748ca8433e1f69debfdac50"
+        },
+        "handoff.ts": {
+          "bytes": 1636,
+          "originalSHA256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7",
+          "originalSource": "base44/functions/appleAuthBroker/handoff.ts",
+          "sha256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7"
+        },
+        "native-handoff.ts": {
+          "bytes": 889,
+          "originalSHA256": "5b593a95ef655a5375b6aa901f165ef9f790b09d2d23a63e284dd15282bff361",
+          "originalSource": "base44/functions/appleAuthBroker/native-handoff.ts",
+          "sha256": "5b593a95ef655a5375b6aa901f165ef9f790b09d2d23a63e284dd15282bff361"
+        },
+        "provider.ts": {
+          "bytes": 1741,
+          "originalSHA256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+          "originalSource": "base44/functions/appleAuthBroker/provider.ts",
+          "sha256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d"
+        },
+        "service-role-request.ts": {
+          "bytes": 1016,
+          "originalSHA256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df",
+          "originalSource": "base44/functions/appleAuthBroker/service-role-request.ts",
+          "sha256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df"
+        },
+        "transaction.ts": {
+          "bytes": 4557,
+          "originalSHA256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8",
+          "originalSource": "base44/functions/appleAuthBroker/transaction.ts",
+          "sha256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8"
+        }
+      }
+    },
+    "autoRegisterUserV2": {
+      "capturedConfigSHA256": "0363a28ab83bde2bc3b573b71e1dc6d71f7b44ad0d8f09837ad19565fbbbb8b2",
+      "normalizedConfig": {
+        "entry": "entry.ts",
+        "name": "autoRegisterUserV2"
+      },
+      "runtime": {
+        "apple-sign-in-credential.ts": {
+          "bytes": 43333,
+          "originalSHA256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078",
+          "originalSource": "base44/functions/autoRegisterUser/apple-sign-in-credential.ts",
+          "sha256": "640dd87211079cf65ca2a805e6f80bc07dd053789962b7672a80cb786f68b078"
+        },
+        "base44-context.ts": {
+          "bytes": 603,
+          "originalSHA256": "7f7b4e20791132f0ef9acf068df0e0d2335f01554a6ca17ee1c3d36aa8c74220",
+          "originalSource": "base44/functions/autoRegisterUser/base44-context.ts",
+          "sha256": "7f7b4e20791132f0ef9acf068df0e0d2335f01554a6ca17ee1c3d36aa8c74220"
+        },
+        "billing-identity-lifecycle.ts": {
+          "bytes": 28337,
+          "originalSHA256": "4bd7d7b3c742ad6c638fa26e9a6fab7706ab21ea3ca0e09b1a43f0fdc530ca25",
+          "originalSource": "base44/functions/autoRegisterUser/billing-identity-lifecycle.ts",
+          "sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851"
+        },
+        "entry.ts": {
+          "bytes": 7172,
+          "originalSHA256": "ebd3244fb1796ab3b5d8b86eac9e6e374dbcf98bd4b5be51f2029e70b9b8c895",
+          "originalSource": "base44/functions/autoRegisterUser/main.ts",
+          "sha256": "ebd3244fb1796ab3b5d8b86eac9e6e374dbcf98bd4b5be51f2029e70b9b8c895"
+        }
+      }
+    }
+  },
+  "lifecycleException": {
+    "reason": "Deployed constructor computes retryable from its code; the ordinary tracked helper additionally accepts an optional constructor override. Package the byte-identical frozen deployed helper, excluding that unrelated constructor change.",
+    "sha256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+    "source": "experiments/supabase-game-core/evidence/full-app/build178/check-subscription-candidate/base44/functions/checkSubscription/billing-identity-lifecycle.ts"
+  },
+  "originalRuntimeComparison": {
+    "exactMatchFiles": 15,
+    "knownLifecycleDifferences": 2,
+    "unexpectedDifferences": 0
+  },
+  "recordedAtUTC": "2026-10-18T23:04:11.947508+00:00",
+  "schemaVersion": 1,
+  "source": "Read-only Base44 CLI pull of deployed appleAuthBroker and autoRegisterUserV2; no credentials included.",
+  "sourceCommit": "4fce416b3acde02877d338100d8b8ba93ac61ea4"
+}

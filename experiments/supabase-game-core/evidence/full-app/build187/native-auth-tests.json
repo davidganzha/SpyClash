@@ -1,0 +1,39 @@
+{
+  "recordedUTC": "2026-10-18T23:17:47.616415+00:00",
+  "build": "187",
+  "scheme": "SpyClash",
+  "configuration": "Debug",
+  "result": "Passed",
+  "passedTests": 85,
+  "failedTests": 0,
+  "skippedTests": 1,
+  "skipReason": "Real HTTPS test requires local fixture variables and passed separately in both modes; see real-https-tests.json.",
+  "suites": {
+    "AppleAuthenticationOwnershipTests": 12,
+    "AppleNativeHandoffTests": 18,
+    "AppleSessionCompletionWebKitTests": {
+      "passed": 18,
+      "skipped": 1
+    },
+    "AuthenticationFlowTests": 23,
+    "WebAuthenticationCoordinatorTests": 14
+  },
+  "sourceSHA256": {
+    "SpyClash/App/AppState.swift": "3c610053f291ff746560cdc836c920c4b7d9d25aa6ba41fc25bdacaba609eb5d",
+    "SpyClash/Services/Base44Client.swift": "db805dff8c3eef6bed81b0eeebabeb2486d1ec779169ab2b850e6611387b93db",
+    "SpyClash/Services/SupabaseAppSession.swift": "b80a2d3db0b6de573423c7fb18ac5910d38fa0d36ca2110daf0072bc81100fd3",
+    "SpyClash/Services/AppleNativeHandoff.swift": "d3f57387fa52535fae333c1f743572b6c26018a6c7d40f7a4591b1ea7349e699",
+    "SpyClash/Services/AppleSessionCompletionSession.swift": "dcdab63d190015b2bd171d6fdf7463597e902c770ad6d33d4389211806c1b65a",
+    "SpyClash/Services/WebAuthenticationCoordinator.swift": "a493cdaeeac7cac7438c768818ed2946ab53767c7fa024eac7e37a3c2d129915",
+    "SpyClashTests/AppleNativeHandoffTests.swift": "db335542f1eba9d2f5d5033e04a75f230c5481e39caa34548e76f40b0708c65a",
+    "SpyClashTests/AppleSessionCompletionWebKitTests.swift": "26ca1572453b627b694403d46a00e4665ebd07187d9cd4bbeef079237d20af14",
+    "SpyClashTests/AppleAuthenticationOwnershipTests.swift": "5e283da285d30e55d09475a1ac8e7bb6fb5a9c55eb1d395586d178e46889d653",
+    "SpyClashTests/AuthenticationFlowTests.swift": "6a697068a78bc3817b51a18127f692d06f2b23879536f683c783a36ec746b3fa",
+    "SpyClashTests/WebAuthenticationCoordinatorTests.swift": "76335df78f2a5b69d7201049229f51f806075e9873c2294cc48f990e127799ec"
+  },
+  "logSHA256": "0cacc329680269601f3dfb9304dfda9522d26a962c564042af86ac559a3de757",
+  "resultBundle": ".local/apple187-auth-regression/auth187-final5.xcresult",
+  "fixtureIsolation": "Per-client UUID handler registry under NSLock; retired registrations return cancellation and cannot reach a replacement handler. URLSessions remain valid for late cleanup.",
+  "productionMutation": false,
+  "physicalDeviceAcceptance": false
+}
