@@ -36,4 +36,6 @@ Sanitized receipts are under `evidence/full-app/build185/`. Local result bundles
 
 ## Delivery boundary
 
-This is a local repair and diagnostic candidate. It does not establish successful real Apple sign-in, prior-account continuity or perceived speed on a physical iPhone. No production deployment, distribution signing, upload, TestFlight assignment or App Store action is authorized or performed as part of this checkpoint.
+The code checkpoint was a local repair and diagnostic candidate. After separate explicit approval in this chat, build 185 was signed, uploaded and verified as available in TestFlight Internal Only to David and Dima. See [RELEASE-185.md](RELEASE-185.md) for the exact artifact and final audience verification.
+
+This delivery does not establish successful real Apple sign-in, prior-account continuity or perceived speed on a physical iPhone. No backend or website deployment, App Review submission or public App Store release was performed.
