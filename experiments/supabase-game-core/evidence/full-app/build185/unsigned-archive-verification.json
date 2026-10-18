@@ -1,0 +1,47 @@
+{
+  "recordedAtUTC": "2026-10-18T00:14:26.596662+00:00",
+  "baseCommit": "776621ff120378628c640b410ebd0f380c702652",
+  "build": "185",
+  "marketingVersion": "1.0.3",
+  "scheme": "SpyClash-Supabase-Main-Candidate",
+  "configuration": "SupabaseRelease",
+  "checks": {
+    "archiveSucceeded": true,
+    "mainIdentity": true,
+    "widgetIdentity": true,
+    "candidateBackendMode": true,
+    "runtimeConfigurationUnchanged": true,
+    "selectedProductionFilesUnchangedDuringArchive": true,
+    "noCompilerErrors": true,
+    "noOptionalDelegateMismatchWarnings": true,
+    "noCodeSignBuildStep": true,
+    "unsignedArtifact": true,
+    "noStoreKitTestConfiguration": true,
+    "noTestBundles": true,
+    "onlyExpectedExtension": true
+  },
+  "status": "PASS",
+  "mainExecutableSHA256": "6873eac3f071b9c9f06ab4d5d3f7ec9e61456866810b3a24fb3df930f6bbb385",
+  "widgetExecutableSHA256": "1f6bd32917c5696812f47e0e08461e98689ca481707c833ae8f958079306da32",
+  "runtimeConfigurationSHA256": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d",
+  "selectedSourceSHA256": {
+    "SpyClash/Services/AppleNativeHandoff.swift": "188837d09411082095d17fb3836d364303fac00d7b72be2d0f3620f5418e03f8",
+    "SpyClash/Services/AppleSessionCompletionSession.swift": "4bc95fb236b9e754f4f82b6bfac46593e72b27e563b991c8c5bc39119cd6e718",
+    "project.yml": "33d646041ad009008b4d0543336a5f76d485f10ad22838c63cc6f3d23be5b444",
+    "SpyClash.xcodeproj/project.pbxproj": "86db5e1851cadd34d227e18a694d50a52ec43ecf72d8c7fa9fe41efddadb40a4",
+    "SpyClash/App/AppState.swift": "ccc64b7b4bb057b4ff04618a616a545c34f93fb535d42a992c1b97e79e6ffab7",
+    "SpyClash/Services/WebAuthenticationCoordinator.swift": "a493cdaeeac7cac7438c768818ed2946ab53767c7fa024eac7e37a3c2d129915",
+    "SpyClash/Services/Base44Client.swift": "f64a92ffaeaae4997dfe6fd038e336a63d8ad0463e6eacba359f39f88b99fa6f",
+    "SpyClash/Services/SupabaseLegacyAuth.swift": "2ebe46c55e72edfca0191bf0bb848f4ea6794f5ca1f120c78163c878dcc63c75",
+    "SpyClash/Services/SupabaseAppSession.swift": "a98d36627a050c917f86d913d1c7e0ec5a96944a33226ce01b1fde72819f956c",
+    "release/SupabaseMainCandidateConfiguration.json": "9329c469462c92c41fcac4916aa4ca1e3e93ae19e39fca1581e686e6e85a3e9d",
+    "web-auth/src/lib/mobileAppleAuthCallback.js": "43181117fe303ca2f6f3c49c069cac6fda99f3935b49b883c079421ad03eadd3",
+    "web-auth/src/lib/mobileAuthCallback.js": "a59964b250227975fe8093ed912a9eec094813d7df5017aa763e2fad14c09f3c"
+  },
+  "boundaries": {
+    "distributionSigned": false,
+    "uploaded": false,
+    "productionMutation": false,
+    "physicalAppleAcceptanceProved": false
+  }
+}

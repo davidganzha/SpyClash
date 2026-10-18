@@ -18,6 +18,7 @@ final class AppleSessionCompletionSession: NSObject, WebAuthenticationSession {
     private var terminal = false
     private var navigationCount = 0
     private var documentGeneration = 0
+    private var lastDiagnostic = AppleNativeHandoffDiagnostic(response: nil, destination: nil, redirectCount: 0)
 
     init(
         url: URL,
@@ -94,7 +95,14 @@ final class AppleSessionCompletionSession: NSObject, WebAuthenticationSession {
     }
 
     private func reject(_ error: AppleNativeHandoffError = .untrustedRedirect) {
-        finish(url: nil, error: error)
+        finish(url: nil, error: error.withDiagnostic(lastDiagnostic))
+    }
+
+    private func recordDiagnostic(response: URLResponse? = nil, destination: URL?) {
+        // This stores only bounded enums/flags, never the URL or response.
+        lastDiagnostic = AppleNativeHandoffDiagnostic(
+            response: response, destination: destination, redirectCount: navigationCount
+        )
     }
 
     /// Only the fixed native bootstrap and Base44 SSO routes may render. In
@@ -124,7 +132,7 @@ final class AppleSessionCompletionSession: NSObject, WebAuthenticationSession {
             _ = try AppleNativeHandoffPolicy.sessionAccessToken(from: url)
             finish(url: url, error: nil)
         } catch {
-            finish(url: nil, error: error as? AppleNativeHandoffError ?? .invalidCallback)
+            reject(error as? AppleNativeHandoffError ?? .invalidCallback)
         }
         return true
     }
@@ -139,11 +147,34 @@ extension AppleSessionCompletionSession: WKNavigationDelegate {
     func webView(_ webView: WKWebView, decidePolicyFor navigationAction: WKNavigationAction,
                  decisionHandler: @escaping @MainActor @Sendable (WKNavigationActionPolicy) -> Void) {
         guard owns(webView) else { decisionHandler(.cancel); return }
-        guard navigationAction.targetFrame?.isMainFrame == true,
-              !navigationAction.shouldPerformDownload,
-              let url = navigationAction.request.url else {
+        // An auxiliary frame is not an authentication result. Block it without
+        // letting it terminate the independently owned main-document attempt.
+        if navigationAction.targetFrame?.isMainFrame == false {
             decisionHandler(.cancel)
-            reject()
+            return
+        }
+        if let url = navigationAction.request.url,
+           AppleNativeHandoffPolicy.isCallbackDestination(url),
+           !navigationAction.sourceFrame.isMainFrame {
+            // A child cannot install credentials through _top or a new window,
+            // or replace diagnostics belonging to the main document.
+            decisionHandler(.cancel)
+            return
+        }
+        recordDiagnostic(destination: navigationAction.request.url)
+        guard navigationAction.targetFrame != nil else {
+            decisionHandler(.cancel)
+            reject(.validation(.navigationPopup))
+            return
+        }
+        guard !navigationAction.shouldPerformDownload else {
+            decisionHandler(.cancel)
+            reject(.validation(.navigationDownload))
+            return
+        }
+        guard let url = navigationAction.request.url else {
+            decisionHandler(.cancel)
+            reject(.validation(.navigationURL))
             return
         }
         // Stop before a callback page, its SDK, or its credential-bearing URL
@@ -154,14 +185,20 @@ extension AppleSessionCompletionSession: WKNavigationDelegate {
             return
         }
         navigationCount += 1
+        recordDiagnostic(destination: url)
         guard navigationCount <= 16 else {
             decisionHandler(.cancel)
             reject(.redirectLimit)
             return
         }
-        guard Self.permitsSessionDocument(url), navigationAction.request.httpMethod == "GET" else {
+        guard Self.permitsSessionDocument(url) else {
             decisionHandler(.cancel)
-            reject()
+            reject(.validation(.navigationDocument))
+            return
+        }
+        guard navigationAction.request.httpMethod == "GET" else {
+            decisionHandler(.cancel)
+            reject(.validation(.navigationMethod))
             return
         }
         decisionHandler(.allow)
@@ -170,14 +207,19 @@ extension AppleSessionCompletionSession: WKNavigationDelegate {
     func webView(_ webView: WKWebView, decidePolicyFor navigationResponse: WKNavigationResponse,
                  decisionHandler: @escaping @MainActor @Sendable (WKNavigationResponsePolicy) -> Void) {
         guard owns(webView) else { decisionHandler(.cancel); return }
-        guard navigationResponse.isForMainFrame, let url = navigationResponse.response.url else {
-            decisionHandler(.cancel); reject(); return
+        guard navigationResponse.isForMainFrame else { decisionHandler(.cancel); return }
+        recordDiagnostic(response: navigationResponse.response, destination: navigationResponse.response.url)
+        guard let url = navigationResponse.response.url else {
+            decisionHandler(.cancel); reject(.validation(.navigationURL)); return
         }
         if AppleNativeHandoffPolicy.isCallbackDestination(url) {
             decisionHandler(.cancel); _ = completeIfCallback(url); return
         }
-        guard Self.permitsSessionDocument(url), navigationResponse.canShowMIMEType else {
-            decisionHandler(.cancel); reject(); return
+        guard Self.permitsSessionDocument(url) else {
+            decisionHandler(.cancel); reject(.validation(.navigationDocument)); return
+        }
+        guard navigationResponse.canShowMIMEType else {
+            decisionHandler(.cancel); reject(.validation(.navigationMIME)); return
         }
         if let response = navigationResponse.response as? HTTPURLResponse, !(200..<400).contains(response.statusCode) {
             decisionHandler(.cancel)
@@ -232,19 +274,28 @@ extension AppleSessionCompletionSession: WKNavigationDelegate {
 
     func webView(_ webView: WKWebView, navigationAction: WKNavigationAction, didBecome download: WKDownload) {
         download.cancel { _ in }
-        if owns(webView) { reject() }
+        if owns(webView), navigationAction.targetFrame?.isMainFrame != false {
+            recordDiagnostic(destination: navigationAction.request.url)
+            reject(.validation(.navigationDownload))
+        }
     }
 
     func webView(_ webView: WKWebView, navigationResponse: WKNavigationResponse, didBecome download: WKDownload) {
         download.cancel { _ in }
-        if owns(webView) { reject() }
+        if owns(webView), navigationResponse.isForMainFrame {
+            recordDiagnostic(response: navigationResponse.response, destination: navigationResponse.response.url)
+            reject(.validation(.navigationDownload))
+        }
     }
 }
 
 extension AppleSessionCompletionSession: WKUIDelegate {
     func webView(_ webView: WKWebView, createWebViewWith configuration: WKWebViewConfiguration,
                  for navigationAction: WKNavigationAction, windowFeatures: WKWindowFeatures) -> WKWebView? {
-        if owns(webView) { reject() }
+        if owns(webView), navigationAction.sourceFrame.isMainFrame {
+            recordDiagnostic(destination: navigationAction.request.url)
+            reject(.validation(.navigationPopup))
+        }
         return nil
     }
 

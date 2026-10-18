@@ -122,15 +122,45 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
         await assertCleanedUp(try XCTUnwrap(fixture.webView))
     }
 
+    func testIncidentalFramesDoNotTerminateTheMainAppleAttempt() async throws {
+        for frameURL in ["about:blank", "https://foreign.invalid/incidental-auth-frame"] {
+            try await assertFrameCannotCompleteOrTerminateMainAttempt(frameURL: frameURL)
+        }
+    }
+
     func testSubframeCannotCompleteTheMainAppleAttempt() async throws {
-        let terminal = expectation(description: "Subframe callback is rejected")
-        let fixture = AppleWebKitFixture(script: "const frame = document.createElement('iframe'); frame.src = 'spyclash://auth?auth_provider=apple&access_token=synthetic-subframe'; document.body.appendChild(frame);")
-        let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
-        XCTAssertTrue(session.start())
-        await fulfillment(of: [terminal], timeout: 15)
-        XCTAssertNil(fixture.callback)
-        XCTAssertNotNil(fixture.error)
-        await assertCleanedUp(try XCTUnwrap(fixture.webView))
+        for frameURL in [
+            "spyclash://auth?auth_provider=apple&access_token=synthetic-subframe-only",
+            "https://spyclash.com/MobileAppleAuthCallback.html?auth_provider=apple&access_token=synthetic-subframe-only"
+        ] {
+            try await assertFrameCannotCompleteOrTerminateMainAttempt(frameURL: frameURL)
+        }
+    }
+
+    func testRejectedNavigationActionsRetainOnlyBoundedDiagnostics() async throws {
+        let secret = "synthetic-private-diagnostic-value"
+        let postURL = "https://spyclash.com/functions/appleAuthBroker?action=native-bootstrap&ticket=\(secret)"
+        let popupURL = "https://spyclash.com/MobileAppleAuthCallback.html?auth_provider=apple&access_token=\(secret)"
+        let cases: [(script: String, enablesPopupFixture: Bool, code: AppleNativeHandoffFailureCode, suffix: String)] = [
+            ("window.location.replace(\(jsString("https://foreign.invalid/private-path?private_query=\(secret)")));", false,
+             .navigationDocument, "-s0-cN-uUN-q10-pN-fN"),
+            ("const form = document.createElement('form'); form.method = 'POST'; form.action = \(jsString(postURL)); document.body.appendChild(form); form.submit(); form.remove();", false,
+             .navigationMethod, "-s0-cN-uNB-q10-pN-fN"),
+            ("window.open(\(jsString(popupURL)), '_blank');", true,
+             .navigationPopup, "-s0-cN-uAC-q3-pA-fN")
+        ]
+        for item in cases {
+            let terminal = expectation(description: "Actual WebKit action is rejected")
+            let fixture = AppleWebKitFixture(script: item.script, enablesPopupFixture: item.enablesPopupFixture)
+            let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
+            XCTAssertTrue(session.start())
+            await fulfillment(of: [terminal], timeout: 15)
+            let view = try XCTUnwrap(fixture.webView)
+            XCTAssertNil(fixture.callback)
+            XCTAssertEqual(fixture.completionCount, 1)
+            try assertBoundedDiagnostic(fixture.error, code: item.code, suffix: item.suffix, secret: secret)
+            await assertCleanedUp(view)
+        }
     }
 
     func testRealWebKitCookieStoreIsPrivateToOneAttempt() async throws {
@@ -207,18 +237,108 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
     }
 
     func testCoordinatorDeadlineCleansUpRealWebKit() async throws {
+        let ready = expectation(description: "Real WebKit document is waiting for authentication")
         let fixture = AppleWebKitFixture(script: "window.webkit.messageHandlers.fixtureReady.postMessage('waiting');")
+        fixture.onMessage = { _ in ready.fulfill() }
+        let timer = AsyncStream<Void>.makeStream(bufferingPolicy: .bufferingNewest(1))
+        var currentTime = Date()
         let coordinator = WebAuthenticationCoordinator(makeSession: { url, completion in
             fixture.session(url: url, completion: completion)
+        }, now: { currentTime }, sleep: { _ in
+            for await _ in timer.stream { return }
         })
+        let authentication = Task { try await coordinator.authenticate(url: bootstrapURL, timeout: 90) }
+        defer { timer.continuation.finish(); authentication.cancel() }
+        await fulfillment(of: [ready], timeout: 15)
+        let view = try XCTUnwrap(fixture.webView)
+        // A 250ms real timer raced cold WebKit process startup. Advance the
+        // injected deadline only once an actual loaded document is waiting;
+        // expiry must still cancel its session and satisfy every cleanup check.
+        let loadDeadline = Date().addingTimeInterval(2)
+        while view.isLoading && Date() < loadDeadline {
+            try await Task.sleep(for: .milliseconds(10))
+        }
+        XCTAssertFalse(view.isLoading)
+        XCTAssertNotNil(view.navigationDelegate)
+        currentTime.addTimeInterval(91)
+        timer.continuation.yield(())
         do {
-            _ = try await coordinator.authenticate(url: bootstrapURL, timeout: 0.25)
+            _ = try await authentication.value
             XCTFail("A document with no callback must expire")
         } catch let error as WebAuthenticationError {
             XCTAssertEqual(error, .expired)
         }
-        await assertCleanedUp(try XCTUnwrap(fixture.webView))
+        await assertCleanedUp(view)
         XCTAssertNil(fixture.callback)
+    }
+
+    private func assertBoundedDiagnostic(
+        _ error: (any Error)?,
+        code: AppleNativeHandoffFailureCode,
+        suffix: String,
+        secret: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) throws {
+        let failure = try XCTUnwrap(error as? AppleNativeHandoffError, file: file, line: line)
+        XCTAssertEqual(failure.supportCode, code, file: file, line: line)
+        guard case .diagnosed(_, let diagnostic) = failure else {
+            XCTFail("The failure must preserve bounded navigation context", file: file, line: line)
+            return
+        }
+        XCTAssertTrue((0...13).contains(diagnostic.redirectCount), file: file, line: line)
+        XCTAssertEqual(failure.diagnosticIdentifier, "SCA177-\(code.rawValue)-r\(diagnostic.redirectCount)\(suffix)", file: file, line: line)
+        for representation in [failure.diagnosticIdentifier, failure.localizedDescription, String(reflecting: failure)] {
+            for forbidden in [secret, "foreign.invalid", "spyclash.com", "private-path", "private_query", "X-Private-Fixture"] {
+                XCTAssertFalse(representation.contains(forbidden), "Diagnostic must exclude private input", file: file, line: line)
+            }
+        }
+    }
+
+    private func assertFrameCannotCompleteOrTerminateMainAttempt(
+        frameURL: String,
+        file: StaticString = #filePath,
+        line: UInt = #line
+    ) async throws {
+        let terminal = expectation(description: "Only the later main-frame callback completes")
+        let fixture = AppleWebKitFixture(script: """
+            const frame = document.createElement('iframe');
+            frame.src = \(jsString(frameURL));
+            document.body.appendChild(frame);
+            setTimeout(() => {
+                window.webkit.messageHandlers.fixtureReady.postMessage('main-callback-ready');
+                window.location.replace('spyclash://auth?auth_provider=apple&access_token=synthetic-main-after-frame');
+            }, 200);
+            """)
+        var mainCallbackWasReached = false
+        fixture.onMessage = { [weak fixture] message in
+            guard message == "main-callback-ready", let fixture else { return }
+            mainCallbackWasReached = true
+            XCTAssertEqual(fixture.completionCount, 0, "The incidental frame must not complete or fail authentication", file: file, line: line)
+            XCTAssertNil(fixture.callback, file: file, line: line)
+            XCTAssertNil(fixture.error, file: file, line: line)
+            XCTAssertNil(fixture.webView?.superview, file: file, line: line)
+            XCTAssertNil(fixture.webView?.window, file: file, line: line)
+        }
+        let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
+        XCTAssertTrue(session.start(), file: file, line: line)
+        let view = try XCTUnwrap(fixture.webView, file: file, line: line)
+        XCTAssertNil(view.superview, file: file, line: line)
+        XCTAssertNil(view.window, file: file, line: line)
+
+        await fulfillment(of: [terminal], timeout: 15)
+
+        XCTAssertTrue(mainCallbackWasReached, "The main document must survive until its own callback", file: file, line: line)
+        XCTAssertNil(fixture.error, file: file, line: line)
+        XCTAssertEqual(
+            try AppleNativeHandoffPolicy.sessionAccessToken(from: XCTUnwrap(fixture.callback, file: file, line: line)),
+            "synthetic-main-after-frame", file: file, line: line
+        )
+        XCTAssertEqual(fixture.completionCount, 1, file: file, line: line)
+        XCTAssertEqual(fixture.initialLoadCount, 1, file: file, line: line)
+        await assertCleanedUp(view, file: file, line: line)
+        session.cancel()
+        XCTAssertEqual(fixture.completionCount, 1, file: file, line: line)
     }
 
     private func assertCleanedUp(_ view: WKWebView, file: StaticString = #filePath, line: UInt = #line) async {
@@ -243,6 +363,7 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
 @MainActor
 private final class AppleWebKitFixture: NSObject, WKScriptMessageHandler {
     let script: String
+    private let enablesPopupFixture: Bool
     var webView: WKWebView?
     var initialLoadCount = 0
     var completionCount = 0
@@ -251,7 +372,10 @@ private final class AppleWebKitFixture: NSObject, WKScriptMessageHandler {
     var lastMessage: String?
     var onMessage: (@MainActor (String?) -> Void)?
 
-    init(script: String) { self.script = script }
+    init(script: String, enablesPopupFixture: Bool = false) {
+        self.script = script
+        self.enablesPopupFixture = enablesPopupFixture
+    }
 
     func session(url: URL, onCompletion: @escaping @MainActor () -> Void) -> AppleSessionCompletionSession {
         session(url: url) { [weak self] callback, error in
@@ -271,6 +395,12 @@ private final class AppleWebKitFixture: NSObject, WKScriptMessageHandler {
             var proxy = ProxyConfiguration(httpCONNECTProxy: .hostPort(host: .ipv4(.loopback), port: 9))
             proxy.allowFailover = false
             configuration.websiteDataStore.proxyConfigurations = [proxy]
+            // Only the popup-denial fixture enables generation of a real
+            // new-window action. The production delegate must still deny it;
+            // every other fixture retains the production preference.
+            if self.enablesPopupFixture {
+                configuration.preferences.javaScriptCanOpenWindowsAutomatically = true
+            }
             configuration.userContentController.add(AppleWebKitWeakMessageHandler(target: self), name: "fixtureReady")
             let view = WKWebView(frame: .zero, configuration: configuration)
             self.webView = view

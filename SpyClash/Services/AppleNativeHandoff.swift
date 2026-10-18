@@ -56,6 +56,10 @@ enum AppleNativeHandoffFailureCode: String, Equatable, Sendable {
     case callbackFragment = "H20", callbackOrigin = "H21", callbackQuery = "H22"
     case callbackProvider = "H23", callbackPayload = "H24", callbackMissingToken = "H25"
     case callbackDuplicateQuery = "H26"
+    // WebKit completion failures remain fixed categories. The code identifies
+    // the rejected operation without retaining a URL, header or credential.
+    case navigationPopup = "H30", navigationDownload = "H31", navigationURL = "H32"
+    case navigationMethod = "H33", navigationDocument = "H34", navigationMIME = "H35"
 }
 
 struct AppleNativeHandoffDiagnostic: Equatable, Sendable {
