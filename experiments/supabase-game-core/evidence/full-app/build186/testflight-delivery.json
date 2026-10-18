@@ -1,0 +1,181 @@
+{
+  "recordedAtUTC": "2026-10-18T22:23:32.505726+00:00",
+  "authorization": "Explicit approval in this chat to sign and upload 186 only for David and Dima.",
+  "sourceCommit": "3fdd43eee82e8bfedcd704faf5529b2b0cb0dfc3",
+  "appID": "6793534085",
+  "bundleID": "com.spyclash.ios",
+  "marketingVersion": "1.0.3",
+  "build": "186",
+  "status": "DELIVERED_INTERNAL_ONLY",
+  "artifact": {
+    "ipaSHA256": "68cc8e5d7c506a950ce62da96f269419447d09c340cb7b56e043ff22d159a469",
+    "ipaBytes": 12786121,
+    "sourceFileCount": 1313,
+    "sourceByteIdenticalFiles": 1311,
+    "signingOnlyExceptionPaths": [
+      "SpyClash.xcodeproj/project.pbxproj",
+      "project.yml"
+    ],
+    "sourceManifestSHA256": "de9e628d6f7ac27fd18695d42b88e394df7ab0047f3223b45ffadc684881aab2",
+    "effectiveExport": {
+      "destination": "export",
+      "method": "app-store-connect",
+      "signingStyle": "manual",
+      "testFlightInternalTestingOnly": true,
+      "manageAppVersionAndBuildNumber": false,
+      "teamID": "3Z64QKNL54"
+    },
+    "preservedCopiesByteIdentical": true
+  },
+  "verification": {
+    "source": {
+      "exactCommit": true,
+      "workingTreeClean": true,
+      "snapshotUnchanged": true,
+      "workingFilesUnchanged": true,
+      "onlySigningExceptionFiles": true,
+      "projectOnlyIntendedSigningKeysChanged": true,
+      "version186": true,
+      "exportOptionsSameAs185": true,
+      "manualInternalOnlyExport": true,
+      "archiveMainSupabaseRelease": true,
+      "export186Only": true
+    },
+    "archive": {
+      "archiveSucceeded": true,
+      "noBuildErrors": true,
+      "noDelegateMismatchWarnings": true,
+      "snapshotUnchanged": true,
+      "workingSourceUnchanged": true,
+      "main186": true,
+      "widget186": true,
+      "strictSignaturesValid": true,
+      "expectedTeam": true,
+      "notDebuggable": true,
+      "appleSignInDefault": true,
+      "productionAPNs": true,
+      "supabaseMainCandidate": true,
+      "configurationByteIdentical": true,
+      "isolatedProject": true,
+      "appleGoogleBillingEnabled": true,
+      "pushDeletionDisabled": true
+    },
+    "independentIPA": {
+      "exactMainIdentity": true,
+      "exactWidgetIdentity": true,
+      "team3Z64QKNL54": true,
+      "appleSignInDefault": true,
+      "productionAPNsEntitlement": true,
+      "getTaskAllowFalse": true,
+      "appStoreProfiles": true,
+      "internalOnlyMarkerTrue": true,
+      "strictSignaturesPass": true,
+      "onlyExpectedExtension": true,
+      "immutableBackendProject": true,
+      "mainBackendModeCorrect": true,
+      "committedConfigByteIdentical": true,
+      "billingAppleGoogleEnabled": true,
+      "pushDeletionDisabled": true,
+      "publishableKeyFormatOnly": true,
+      "noStoreKitFixturesOrPrivateKeyFiles": true,
+      "noPrivateKeyOrSecretKeyMarkers": true,
+      "noEmbeddedServiceRoleJWT": true
+    },
+    "portal": {
+      "exactMainApp": true,
+      "targetPrivateInternalGroup": true,
+      "targetOnlyDavidAndDima": true,
+      "noAutomaticAllBuildAccess": true,
+      "exactApprovedSource": true,
+      "exactBuildIdentity": true,
+      "exactMarketingVersion": true,
+      "validAndUnexpired": true,
+      "explicitlyInternalOnly": true,
+      "internalTestingReady": true,
+      "externalTestingNotApplicable": true,
+      "assignedOnlyApprovedGroup": true,
+      "noIndividualTesterAssignments": true,
+      "groupControlsAndMembersUnchanged": true,
+      "existingBuildAssignmentsUnchanged": true,
+      "appStoreVersionsAndAttachedBuildsUnchanged": true
+    }
+  },
+  "appleUpload": {
+    "appleValidation": "PASS",
+    "validationExitCode": 0,
+    "appleUpload": "PASS",
+    "uploadExitCode": 0,
+    "deliveryUUID": "76084d26-e12c-432e-a47b-3a2e9c225833"
+  },
+  "testFlight": {
+    "id": "76084d26-e12c-432e-a47b-3a2e9c225833",
+    "version": "186",
+    "marketingVersion": "1.0.3",
+    "processingState": "VALID",
+    "audience": "INTERNAL_ONLY",
+    "expired": false,
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "NOT_APPLICABLE",
+    "verifiedAtUTC": "2026-10-18T22:23:28.577Z",
+    "groupID": "47a13858-b43b-44a1-bf3e-285722cec320",
+    "groupName": "LIMITLESS Internal QA",
+    "approvedTesters": [
+      {
+        "id": "569dc033-570c-42f7-bbc3-611f6c9cb527",
+        "name": "David Ganzha"
+      },
+      {
+        "id": "7818c591-2a6e-40de-924f-f060d753c1e0",
+        "name": "Dima Ianushevych"
+      }
+    ],
+    "effectiveTesterIDs": [
+      "569dc033-570c-42f7-bbc3-611f6c9cb527",
+      "7818c591-2a6e-40de-924f-f060d753c1e0"
+    ],
+    "assignmentHTTPStatus": 204
+  },
+  "githubCI": {
+    "url": "https://github.com/davidganzha/SpyClash/actions/runs/39084428879",
+    "commit": "3fdd43eee82e8bfedcd704faf5529b2b0cb0dfc3",
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "client-conflicts",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "backend-conflicts",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "localReceiptSHA256": {
+    "authorization186.json": "c8ada2acdb80b8d36b9c2ac4ad0cf0306889a68efa460108a41cbf70c1e1cfe3",
+    "asc-preflight-initial186.json": "5fd9dd3385441598b9579a48ef4791b8f88a398aaf65b61193c8c0e49c433e23",
+    "asc-preflight186.json": "e9e0e148a7c7c4d34bcd4e3484697bc101355730c886155eae3c64828143a6da",
+    "apple-upload-receipt.json": "6b171840c23feea54050196cf0f5bb566528b8fbcca55e3a09a9f78b2d55c6f8",
+    "asc-processing186.json": "d7011a95e321ee3de359741ce6be182934e61b88df759aa3afe7b0860df1541c",
+    "asc-assignment186.json": "b149b967ed6ff2d68a95e7ed29d7ed19e2276ee7a1395e31f088ac8d4e4eefc8",
+    "asc-final186.json": "3c0935f28eecf58a2c3f00e2b6dce9da821cd93796c835c4ba2012b2f3976e6f",
+    "ipa-independent-audit186.json": "d52c0b38b52f4156f331045cedd548e31761180952cf8980f0effb195a7462c0",
+    "native/source-proof.json": "de9e628d6f7ac27fd18695d42b88e394df7ab0047f3223b45ffadc684881aab2",
+    "native/source-verification186.json": "8030d918ec634db1cdffa00b58f2015369aa57f21859c6802f0334b58ffe2681",
+    "native/archive-audit186.json": "624f75bbb69828fbe196dac352285fc90568e96abed2aa54c213db7f441a5566",
+    "native/native-release-receipt186.json": "7c636c3c9ef6fb6a9433295d6286d2b0b5aec648b420c73eb111c7c44d993f8f",
+    "native/ExportOptions-effective.plist": "0d63f139958cebb9f0138b4bd1a4344af990c941497b002ee0a7ad67d841b9a7",
+    "ci186.json": "d204377f0c00e47fbea911816a009d590d43d81c103c9c6f8e559066a920ff00"
+  },
+  "scope": {
+    "backendDeployment": false,
+    "websiteDeployment": false,
+    "publicAppStoreChange": false,
+    "externalTesting": false,
+    "groupMembershipChange": false,
+    "physicalAppleSignInAcceptanceProved": false,
+    "testerInstallationProved": false
+  }
+}
