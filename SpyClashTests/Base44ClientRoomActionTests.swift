@@ -2219,28 +2219,58 @@ final class Base44ClientRoomActionTests: XCTestCase {
         )
     }
 
-    func testRadarRoomInviteQueuesBehindPresenceConnectionAttempt() {
-        XCTAssertTrue(
-            RadarRoomInviteDeliveryPolicy.shouldQueueForActiveConnectionAttempt(
-                hasRangingAttempt: false,
-                hasPresenceAttempt: true,
-                isConnecting: false
+    func testRadarRoomInviteDispatchesImmediatelyWhenDisconnected() {
+        var delivery = RadarRoomInviteDelivery()
+
+        XCTAssertEqual(delivery.directAttemptCount, 0)
+        XCTAssertEqual(delivery.nextAction(isConnected: false), .inviteDirectly)
+        XCTAssertEqual(delivery.directAttemptCount, 1)
+    }
+
+    func testRadarRoomInviteRetriesOnceAfterConnectionAttemptFails() {
+        var delivery = RadarRoomInviteDelivery()
+
+        XCTAssertEqual(delivery.nextAction(isConnected: false), .inviteDirectly)
+        // A later .notConnected callback gets one fallback attempt instead
+        // of leaving the explicit room invite behind presence discovery.
+        XCTAssertEqual(delivery.nextAction(isConnected: false), .inviteDirectly)
+        XCTAssertEqual(delivery.directAttemptCount, 2)
+    }
+
+    func testRadarRoomInviteRepeatedDisconnectedCallbacksCannotRestartRetryBudget() {
+        var delivery = RadarRoomInviteDelivery()
+        XCTAssertEqual(delivery.nextAction(isConnected: false), .inviteDirectly)
+        XCTAssertEqual(delivery.nextAction(isConnected: false), .inviteDirectly)
+
+        for callback in 1...20 {
+            XCTAssertEqual(
+                delivery.nextAction(isConnected: false),
+                .awaitConnection,
+                "Repeated disconnected callback \(callback) must not create another invitation"
             )
-        )
-        XCTAssertTrue(
-            RadarRoomInviteDeliveryPolicy.shouldQueueForActiveConnectionAttempt(
-                hasRangingAttempt: false,
-                hasPresenceAttempt: false,
-                isConnecting: true
-            )
-        )
-        XCTAssertFalse(
-            RadarRoomInviteDeliveryPolicy.shouldQueueForActiveConnectionAttempt(
-                hasRangingAttempt: false,
-                hasPresenceAttempt: false,
-                isConnecting: false
-            )
-        )
+        }
+        XCTAssertEqual(delivery.directAttemptCount, 2)
+
+        // Exhausting connection attempts must still allow delivery when the
+        // session becomes writable, without replenishing the attempt budget.
+        XCTAssertEqual(delivery.nextAction(isConnected: true), .sendReliably)
+        XCTAssertEqual(delivery.nextAction(isConnected: false), .awaitConnection)
+        XCTAssertEqual(delivery.directAttemptCount, 2)
+    }
+
+    func testRadarRoomInviteConnectedDeliveryDoesNotSpendDirectRetryBudget() {
+        var delivery = RadarRoomInviteDelivery()
+
+        for _ in 0..<3 {
+            XCTAssertEqual(delivery.nextAction(isConnected: true), .sendReliably)
+        }
+        XCTAssertEqual(delivery.directAttemptCount, 0)
+
+        XCTAssertEqual(delivery.nextAction(isConnected: false), .inviteDirectly)
+        XCTAssertEqual(delivery.nextAction(isConnected: true), .sendReliably)
+        XCTAssertEqual(delivery.directAttemptCount, 1)
+        XCTAssertEqual(delivery.nextAction(isConnected: false), .inviteDirectly)
+        XCTAssertEqual(delivery.directAttemptCount, 2)
     }
 
     func testAcceptingCapturedRadarInvitePreservesNewerInvite() async {

@@ -599,13 +599,22 @@ enum RadarPresenceVersionPolicy {
     }
 }
 
-enum RadarRoomInviteDeliveryPolicy {
-    static func shouldQueueForActiveConnectionAttempt(
-        hasRangingAttempt: Bool,
-        hasPresenceAttempt: Bool,
-        isConnecting: Bool
-    ) -> Bool {
-        hasRangingAttempt || hasPresenceAttempt || isConnecting
+enum RadarRoomInviteDeliveryAction: Equatable {
+    case sendReliably
+    case inviteDirectly
+    case awaitConnection
+}
+
+struct RadarRoomInviteDelivery {
+    private(set) var directAttemptCount = 0
+
+    mutating func nextAction(isConnected: Bool) -> RadarRoomInviteDeliveryAction {
+        if isConnected { return .sendReliably }
+        // The first tap dispatches immediately, even during presence/ranging
+        // setup. A stale failure callback gets at most one direct retry.
+        guard directAttemptCount < 2 else { return .awaitConnection }
+        directAttemptCount += 1
+        return .inviteDirectly
     }
 }
 
@@ -1224,7 +1233,9 @@ final class RadarNearbyService: NSObject {
     private var legacyRangingRetryCounts: [String: Int] = [:]
     private var legacyRangingRetryRunIDs: [String: UUID] = [:]
     private var roomInviteConnectionAttempts: [String: String] = [:]
+    private var roomInviteDeliveries: [String: RadarRoomInviteDelivery] = [:]
     private var invitationTimeoutRunIDs: [String: UUID] = [:]
+    private var invitationDeadlines: [String: ContinuousClock.Instant] = [:]
     private var receivedRoomInvites: [RadarReceivedRoomInviteKey: RadarReceivedRoomInviteState] = [:]
     private var receivedRoomInviteOrder: [RadarReceivedRoomInviteKey] = []
     private var pendingRoomInvites: [String: RadarWireMessage] = [:]
@@ -1372,9 +1383,11 @@ final class RadarNearbyService: NSObject {
             incomingInvitation = nil
             outgoingInvitationStates.removeAll()
             pendingInvitationIDs.removeAll()
+            roomInviteDeliveries.removeAll()
             pendingRoomInvites.removeAll()
             roomInviteConnectionAttempts.removeAll()
             invitationTimeoutRunIDs.removeAll()
+            invitationDeadlines.removeAll()
             receivedRoomInvites.removeAll()
             receivedRoomInviteOrder.removeAll()
         }
@@ -1747,6 +1760,9 @@ final class RadarNearbyService: NSObject {
 
         let invitationID = UUID().uuidString
         pendingInvitationIDs[peer.id] = invitationID
+        roomInviteDeliveries[peer.id] = RadarRoomInviteDelivery()
+        invitationTimeoutRunIDs[peer.id] = nil
+        invitationDeadlines[peer.id] = nil
         roomInvitationLifetimes.removeValue(forKey: peer.id)?.cancel()
         roomInvitationLifetimes[peer.id] = RadarFrameworkLifetime()
         outgoingInvitationStates[peer.id] = .waiting
@@ -1778,6 +1794,10 @@ final class RadarNearbyService: NSObject {
             hostGamesPlayed: identity.gamesPlayed,
             hostWinRate: identity.winRate
         )
+        // Retain the same ID through context delivery, reliable delivery and
+        // reconnects. The receiver deduplicates it until response/cancellation.
+        pendingRoomInvites[peer.id] = message
+        scheduleInvitationTimeout(for: peer.id, invitationID: invitationID)
 
         if multipeerSession.connectedPeers.contains(peerID) {
             let sent = await send(message, to: peerID)
@@ -1788,22 +1808,12 @@ final class RadarNearbyService: NSObject {
                 scheduleInvitationTimeout(for: peer.id, invitationID: invitationID)
                 return .sent
             }
-            markInvitationUnavailable(for: peer.id, invitationID: invitationID)
-            return .unavailable
+            return beginDirectRoomInviteConnection(message, to: peerID, forceDirect: true)
+                ? .sent
+                : .unavailable
         }
 
-        if roomInviteConnectionAttempts[peer.id] != nil
-            || RadarRoomInviteDeliveryPolicy.shouldQueueForActiveConnectionAttempt(
-                hasRangingAttempt: rangingInviteAttempts[peer.id] != nil,
-                hasPresenceAttempt: presenceInviteAttempts[peer.id] != nil,
-                isConnecting: connectingPeerIDs.contains(peer.id)
-            ) {
-            roomInviteConnectionAttempts[peer.id] = invitationID
-            pendingRoomInvites[peer.id] = message
-            scheduleInvitationTimeout(for: peer.id, invitationID: invitationID)
-            return .sent
-        }
-
+        // User intent must never wait for a background handshake's watchdog.
         return beginDirectRoomInviteConnection(message, to: peerID)
             ? .sent
             : .unavailable
@@ -1812,13 +1822,14 @@ final class RadarNearbyService: NSObject {
     @discardableResult
     private func beginDirectRoomInviteConnection(
         _ message: RadarWireMessage,
-        to peerID: MCPeerID
+        to peerID: MCPeerID,
+        forceDirect: Bool = false
     ) -> Bool {
         let id = peerID.displayName
         guard let invitationID = message.invitationID,
               pendingInvitationIDs[id] == invitationID else { return false }
 
-        pendingRoomInvites[id] = nil
+        pendingRoomInvites[id] = message
         guard let browser,
               let multipeerSession,
               let context = encoded(message) else {
@@ -1826,7 +1837,15 @@ final class RadarNearbyService: NSObject {
             return false
         }
 
-        if multipeerSession.connectedPeers.contains(peerID) {
+        let isConnected = !forceDirect && multipeerSession.connectedPeers.contains(peerID)
+        guard isConnected || hasAvailableRemoteSessionSlot(for: id) else {
+            debugLog("room invitation capacity reached peer=\(id)")
+            markInvitationUnavailable(for: id, invitationID: invitationID)
+            return false
+        }
+        let action = roomInviteDeliveries[id, default: RadarRoomInviteDelivery()]
+            .nextAction(isConnected: isConnected)
+        if action == .sendReliably {
             Task { @MainActor [weak self] in
                 guard let self,
                       self.pendingInvitationIDs[id] == invitationID else { return }
@@ -1835,27 +1854,33 @@ final class RadarNearbyService: NSObject {
                 if sent {
                     self.scheduleInvitationTimeout(for: id, invitationID: invitationID)
                 } else {
-                    self.markInvitationUnavailable(for: id, invitationID: invitationID)
+                    self.beginDirectRoomInviteConnection(message, to: peerID, forceDirect: true)
                 }
             }
             return true
         }
 
-        guard hasAvailableRemoteSessionSlot(for: id) else {
-            debugLog("room invitation capacity reached peer=\(id)")
-            markInvitationUnavailable(for: id, invitationID: invitationID)
-            return false
-        }
         roomInviteConnectionAttempts[id] = invitationID
-        enqueueInvitation(
-            to: peerID,
-            browser: browser,
-            session: multipeerSession,
-            context: context,
-            timeout: 15,
-            invitationLifetime: roomInvitationLifetimes[id]
-        )
         scheduleInvitationTimeout(for: id, invitationID: invitationID)
+        if action == .inviteDirectly {
+            guard let deadline = invitationDeadlines[id] else { return false }
+            let remaining = ContinuousClock.now.duration(to: deadline).components
+            let remainingSeconds = Double(remaining.seconds)
+                + Double(remaining.attoseconds) / 1e18
+            guard remainingSeconds > 0 else {
+                markInvitationUnavailable(for: id, invitationID: invitationID)
+                return false
+            }
+            enqueueInvitation(
+                to: peerID,
+                browser: browser,
+                session: multipeerSession,
+                context: context,
+                timeout: min(15, remainingSeconds),
+                invitationLifetime: roomInvitationLifetimes[id],
+                deadline: deadline
+            )
+        }
         return true
     }
 
@@ -1868,8 +1893,10 @@ final class RadarNearbyService: NSObject {
         }
 
         roomInvitationLifetimes.removeValue(forKey: peerID)?.cancel()
+        roomInviteDeliveries[peerID] = nil
         pendingRoomInvites[peerID] = nil
         invitationTimeoutRunIDs[peerID] = nil
+        invitationDeadlines[peerID] = nil
         if roomInviteConnectionAttempts[peerID] == invitationID {
             roomInviteConnectionAttempts[peerID] = nil
         }
@@ -1901,13 +1928,6 @@ final class RadarNearbyService: NSObject {
             try? await Task.sleep(for: .seconds(6))
             guard lifetime.isActive else { return }
             self.clearStaleConnectingStateIfNeeded(for: peerID)
-            if let pendingInvite = self.pendingRoomInvites[peerID],
-               pendingInvite.invitationID == self.pendingInvitationIDs[peerID] {
-                self.beginDirectRoomInviteConnection(
-                    pendingInvite,
-                    to: remotePeerID
-                )
-            }
             self.removePeerIfNoLongerReachable(
                 peerID,
                 ignoringStaleConnectingState: true
@@ -2253,7 +2273,8 @@ final class RadarNearbyService: NSObject {
         session: MCSession,
         context: Data,
         timeout: TimeInterval,
-        invitationLifetime: RadarFrameworkLifetime? = nil
+        invitationLifetime: RadarFrameworkLifetime? = nil,
+        deadline: ContinuousClock.Instant? = nil
     ) {
         guard let browserLifetime else { return }
         let transportLifetime = transportLifetime
@@ -2263,11 +2284,18 @@ final class RadarNearbyService: NSObject {
         frameworkExecutor.perform {
             guard browserLifetime.isActive, transportLifetime.isActive,
                   invitationLifetime?.isActive != false else { return }
+            var remainingTimeout = timeout
+            if let deadline {
+                let remaining = ContinuousClock.now.duration(to: deadline).components
+                remainingTimeout = min(timeout, Double(remaining.seconds)
+                    + Double(remaining.attoseconds) / 1e18)
+                guard remainingTimeout > 0 else { return }
+            }
             browser.value.invitePeer(
                 peer.value,
                 to: session.value,
                 withContext: context,
-                timeout: timeout
+                timeout: remainingTimeout
             )
         }
     }
@@ -2477,8 +2505,10 @@ final class RadarNearbyService: NSObject {
         legacyRangingRetryRunIDs.removeAll()
         roomInviteConnectionAttempts.removeAll()
         invitationTimeoutRunIDs.removeAll()
+        invitationDeadlines.removeAll()
         pendingRoomInvites.removeAll()
         pendingInvitationIDs.removeAll()
+        roomInviteDeliveries.removeAll()
         roomInvitationLifetimes.values.forEach { $0.cancel() }
         roomInvitationLifetimes.removeAll()
         pendingDirectRoomInvites.removeAll()
@@ -2644,9 +2674,11 @@ final class RadarNearbyService: NSObject {
         legacyRangingRetryRunIDs[id] = nil
         roomInviteConnectionAttempts[id] = nil
         invitationTimeoutRunIDs[id] = nil
+        invitationDeadlines[id] = nil
         pendingRoomInvites[id] = nil
         pendingInvitationIDs[id] = nil
         roomInvitationLifetimes.removeValue(forKey: id)?.cancel()
+        roomInviteDeliveries[id] = nil
         outgoingInvitationStates[id] = nil
         if incomingInvitation?.sourcePeerID == id {
             if let invitation = incomingInvitation {
@@ -2685,7 +2717,6 @@ final class RadarNearbyService: NSObject {
             $0.displayName == id
         } == true
         let hasDirectRoomAttempt = roomInviteConnectionAttempts[id] != nil
-            && pendingRoomInvites[id] == nil
         guard !isConnected,
               presenceInviteAttempts[id] == nil,
               rangingInviteAttempts[id] == nil,
@@ -2749,13 +2780,12 @@ final class RadarNearbyService: NSObject {
                 return
             }
             self.presenceInviteAttempts[id] = nil
+            // A direct room invitation already owns its independent deadline.
+            // Background expiry cannot remove it or dispatch it a second time.
+            guard self.pendingInvitationIDs[id] == nil else { return }
             self.clearStaleConnectingStateIfNeeded(for: id)
             if !self.browsedPeerIDs.contains(id) {
                 self.removeTerminalPeerState(id)
-                return
-            }
-            if let pendingInvite = self.pendingRoomInvites[id] {
-                self.beginDirectRoomInviteConnection(pendingInvite, to: peerID)
                 return
             }
             self.schedulePresenceSubscriptionRetry(with: peerID)
@@ -2848,13 +2878,10 @@ final class RadarNearbyService: NSObject {
                 return
             }
             self.rangingInviteAttempts[id] = nil
+            guard self.pendingInvitationIDs[id] == nil else { return }
             self.clearStaleConnectingStateIfNeeded(for: id)
             if !self.browsedPeerIDs.contains(id) {
                 self.removeTerminalPeerState(id)
-                return
-            }
-            if let pendingInvite = self.pendingRoomInvites[id] {
-                self.beginDirectRoomInviteConnection(pendingInvite, to: peerID)
                 return
             }
             self.scheduleRangingRetry(with: peerID)
@@ -3065,10 +3092,7 @@ final class RadarNearbyService: NSObject {
             }
             Task { @MainActor [weak self] in
                 guard let self else { return }
-                _ = await self.send(
-                    .presenceUpdate(self.localPresenceSnapshot),
-                    to: peerID
-                )
+                // Flush explicit user intent before routine presence traffic.
                 if let pendingInvite,
                    let invitationID = pendingInvite.invitationID,
                    self.pendingInvitationIDs[id] == invitationID,
@@ -3078,15 +3102,18 @@ final class RadarNearbyService: NSObject {
                           self.pendingRoomInvites[id]?.invitationID == invitationID else {
                         return
                     }
-                    if sent {
-                        self.pendingRoomInvites[id] = nil
-                    } else {
+                    if !sent {
                         self.beginDirectRoomInviteConnection(
                             pendingInvite,
-                            to: peerID
+                            to: peerID,
+                            forceDirect: true
                         )
                     }
                 }
+                _ = await self.send(
+                    .presenceUpdate(self.localPresenceSnapshot),
+                    to: peerID
+                )
             }
 
         case .notConnected:
@@ -3101,7 +3128,7 @@ final class RadarNearbyService: NSObject {
                     : .unsupported
             }
             connectingPeerIDs.remove(id)
-            let roomInvitationID = roomInviteConnectionAttempts.removeValue(forKey: id)
+            let roomInvitationID = pendingInvitationIDs[id]
             let hadRangingInviteAttempt = rangingInviteAttempts.removeValue(forKey: id) != nil
             let wasRangingControl = rangingControlPeerIDs.remove(id) != nil
                 || hadRangingInviteAttempt
@@ -3110,15 +3137,21 @@ final class RadarNearbyService: NSObject {
             let wasPresenceControl = presenceControlPeerIDs.remove(id) != nil
                 || hadPresenceInviteAttempt
             stopRanging(with: id)
-            let pendingInvite = pendingRoomInvites.removeValue(forKey: id)
-            if browsedPeerIDs.contains(id) {
-                updatePrecision(for: id, state: defaultPrecisionState(for: id), distance: nil, angle: nil)
-                if let pendingInvite {
+            let pendingInvite = pendingRoomInvites[id]
+            if let pendingInvite,
+               let roomInvitationID,
+               pendingInvite.invitationID == roomInvitationID {
+                // MCSession reports peer state, not which overlapping browser
+                // invitation failed. A background failure must not fail the tap.
+                // Keep one deadline and at most one direct retry with the same ID.
+                roomInviteConnectionAttempts[id] = roomInvitationID
+                if browsedPeerIDs.contains(id) {
                     beginDirectRoomInviteConnection(pendingInvite, to: peerID)
-                } else if let roomInvitationID,
-                          pendingInvitationIDs[id] == roomInvitationID {
-                    markInvitationUnavailable(for: id, invitationID: roomInvitationID)
-                } else if wasPresenceControl {
+                }
+            } else if browsedPeerIDs.contains(id) {
+                roomInviteConnectionAttempts[id] = nil
+                updatePrecision(for: id, state: defaultPrecisionState(for: id), distance: nil, angle: nil)
+                if wasPresenceControl {
                     schedulePresenceSubscriptionRetry(with: peerID)
                 } else if wasRangingControl {
                     scheduleRangingRetry(with: peerID)
@@ -5095,8 +5128,10 @@ final class RadarNearbyService: NSObject {
         guard pendingInvitationIDs[peerID] == invitationID else { return }
         pendingInvitationIDs[peerID] = nil
         roomInvitationLifetimes.removeValue(forKey: peerID)?.cancel()
+        roomInviteDeliveries[peerID] = nil
         pendingRoomInvites[peerID] = nil
         invitationTimeoutRunIDs[peerID] = nil
+        invitationDeadlines[peerID] = nil
         if roomInviteConnectionAttempts[peerID] == invitationID {
             roomInviteConnectionAttempts[peerID] = nil
         }
@@ -5124,11 +5159,16 @@ final class RadarNearbyService: NSObject {
     }
 
     private func scheduleInvitationTimeout(for peerID: String, invitationID: String) {
+        // One absolute response budget per tap. Connection callbacks and the
+        // bounded retry must not restart this clock or extend waiting forever.
+        guard pendingInvitationIDs[peerID] == invitationID,
+              invitationTimeoutRunIDs[peerID] == nil else { return }
         let runID = UUID()
+        let deadline = ContinuousClock.now.advanced(by: .seconds(18))
         invitationTimeoutRunIDs[peerID] = runID
-        Task { @MainActor [weak self, executor = frameworkExecutor] in
-            await executor.value {}
-            try? await Task.sleep(for: .seconds(18))
+        invitationDeadlines[peerID] = deadline
+        Task { @MainActor [weak self] in
+            try? await Task.sleep(until: deadline, clock: .continuous)
             guard let self,
                   self.invitationTimeoutRunIDs[peerID] == runID else { return }
             if self.pendingInvitationIDs[peerID] == invitationID {
@@ -5136,6 +5176,7 @@ final class RadarNearbyService: NSObject {
                 return
             }
             self.invitationTimeoutRunIDs[peerID] = nil
+            self.invitationDeadlines[peerID] = nil
             guard self.roomInviteConnectionAttempts[peerID] == invitationID else { return }
             self.roomInviteConnectionAttempts[peerID] = nil
             self.clearStaleConnectingStateIfNeeded(for: peerID)
@@ -5150,8 +5191,10 @@ final class RadarNearbyService: NSObject {
         guard pendingInvitationIDs[peerID] == invitationID else { return }
         pendingInvitationIDs[peerID] = nil
         roomInvitationLifetimes.removeValue(forKey: peerID)?.cancel()
+        roomInviteDeliveries[peerID] = nil
         pendingRoomInvites[peerID] = nil
         invitationTimeoutRunIDs[peerID] = nil
+        invitationDeadlines[peerID] = nil
         if roomInviteConnectionAttempts[peerID] == invitationID {
             roomInviteConnectionAttempts[peerID] = nil
         }
@@ -5195,9 +5238,13 @@ final class RadarNearbyService: NSObject {
         let lifetime = transportLifetime
         let invitationLifetime = message.kind == .roomInvite
             ? roomInvitationLifetimes[peerID.displayName] : nil
-        if message.kind == .roomInvite, invitationLifetime == nil { return false }
+        let invitationDeadline = message.kind == .roomInvite
+            ? invitationDeadlines[peerID.displayName] : nil
+        if message.kind == .roomInvite,
+           invitationLifetime == nil || invitationDeadline == nil { return false }
         return await frameworkExecutor.value {
             guard lifetime.isActive, invitationLifetime?.isActive != false else { return false }
+            if let invitationDeadline, ContinuousClock.now >= invitationDeadline { return false }
             do {
                 try session.value.send(data, toPeers: [peer.value], with: .reliable)
                 return true
@@ -5699,6 +5746,8 @@ final class RadarNearbyService: NSObject {
         if availability == .inGame || invitePolicy == .blocked {
             pendingInvitationIDs[peerID] = nil
             pendingRoomInvites[peerID] = nil
+            roomInviteDeliveries[peerID] = nil
+            roomInvitationLifetimes.removeValue(forKey: peerID)?.cancel()
             // Keep an in-flight transport reservation until MCSession reports
             // its terminal state or its invitation-specific timeout fires.
         }
