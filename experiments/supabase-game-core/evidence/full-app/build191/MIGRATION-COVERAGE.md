@@ -2,6 +2,8 @@
 
 Reviewed source baseline: `a32c8e9c`, 2026-10-19. This is a source-based design review, not evidence that an import or deployment ran. No production writes were performed for this review.
 
+Production execution and subsequent readback are recorded separately in [PRODUCTION-MIGRATION.md](PRODUCTION-MIGRATION.md). This document retains the original design review and its scope limits.
+
 ## Completion contract
 
 The tracked source schemas name **27 entity types**, including the built-in `User` principal. Independent remote schema inventory and two complete row scans confirm **26 deployed types, 1,148 original rows, and no unknown remote types**. `AccountDeletionReceipt` is confirmed absent rather than an empty deployed table. Preserve every deployed entity's original rows, identifiers, timestamps and content in a private immutable archive, with explicit counts, canonical digests, pagination completion, and read errors. A complete product migration additionally requires that user-visible data can be read through the actual target handlers. An archive by itself does not restore an inbox, grant, friendship, history list or profile.

@@ -1,0 +1,86 @@
+{
+  "status": "applied_and_database_verified",
+  "project": "spyclash-game-core",
+  "project_ref": "bbkfsgnordtdiblgdzkg",
+  "reviewed_code_commit": "2dba8d18a93b5f0b3d5458e369b934382f0bf19c",
+  "build": 191,
+  "applied_at": "2026-10-19T11:12:21.205156Z",
+  "job_id": "07cd289e-80e2-45e1-b684-970af15ef420",
+  "source_digest": "add93243d5da025e1fb948cc1a2e45e5395f4942bb112709842bc3a279f0a5ad",
+  "source_content_digest": "8585e9e29b22a6f9b0e11dcc944ee6f6d251fd23a877e406b23810cd4af6049b",
+  "plan_digest": "96ba57ce58057376e52b9ed2d5cca96dee5bc2e061d4e5e0ce8fa84611a05e8c",
+  "worker": {
+    "slug": "bulk-legacy-migration",
+    "version": 1,
+    "verify_jwt": true,
+    "bundle_sha256": "c568fa3226dd9c2de99fad013f772c8f018dfafc3fbc22be78e88b032282b5d9"
+  },
+  "postflight": {
+    "ok": true,
+    "checks": 7,
+    "source_accounts": 61,
+    "source_spy_ids_preserved": 49,
+    "new_spy_ids": 12,
+    "total_profiles": 64,
+    "total_auth_users": 70,
+    "total_history": 212,
+    "total_packs": 21,
+    "total_friendships": 5,
+    "total_comments": 3,
+    "archive_rows": 1148,
+    "source_competitive": {
+      "games": 135,
+      "rating": 1040
+    },
+    "actual_mapped_competitive": {
+      "games": 135,
+      "rating": 1040
+    },
+    "new_identity_sessions": 0,
+    "error_codes": {},
+    "warning_codes": {}
+  },
+  "source_postflight": {
+    "captured_at": "2026-10-19T11:12:58.099Z",
+    "verified_at": "2026-10-19T11:13:12.183Z",
+    "schema_verified_at": "2026-10-19T11:13:13.137Z",
+    "full_source_content_matches_sealed_packet": true,
+    "remote_schema_matches_sealed_packet": true,
+    "changed_entities": [],
+    "source_rows": 1148,
+    "deployed_entities": 26
+  },
+  "previous_email_ownership": {
+    "users_checked": 61,
+    "exact_previous_email_matches": 61,
+    "missing_source_emails": 0,
+    "owner_mapping_mismatches": 0,
+    "changed_existing_spy_ids": 0,
+    "duplicate_email_groups": 0,
+    "checked_at": "2026-10-19 11:19:18.98449+00"
+  },
+  "operator_capability": {
+    "checked_at": "2026-10-19T11:14:18.053Z",
+    "status": 401,
+    "error": "unauthorized_or_busy",
+    "pass": true
+  },
+  "side_effect_check": {
+    "checked_at": "2026-10-19T11:16:17.506353Z",
+    "newly_imported_auth_sessions": 0,
+    "newly_imported_push_outbox_rows": 0
+  },
+  "runtime_verification": {
+    "production_data_readback": true,
+    "live_user_signin": false,
+    "physical_client": false,
+    "community_http_reader": false
+  },
+  "base44_dependencies_retained": [
+    "sign-in verification",
+    "Apple billing verification and revocation",
+    "AI generation and quota",
+    "push delivery",
+    "original-account deletion"
+  ]
+}
