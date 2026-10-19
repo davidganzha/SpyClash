@@ -93,6 +93,63 @@ Deno.test("projection preserves multi-spy teammate policy and never exposes secr
   }
 });
 
+Deno.test("host transfer preserves the roster and settings, resets readiness and changes authority", () => {
+  const g = new Game().lobby(4);
+  g.send("begin_ready_check");
+  g.send("toggle_ready", 1);
+  const prior = structuredClone(g.room!);
+  const target = prior.players[1];
+  const payload = {
+    target_user_id: target.user_id,
+    target_email: target.email,
+    expected_target_membership_id: target.membership_id,
+    expected_revision: prior.room_revision,
+  };
+  reject(() => g.send("transfer_host", 2, payload), "transfer_host_required");
+  g.send("transfer_host", 0, payload);
+  assert.equal(g.room!.host_email, actors[1].email);
+  assert.equal(g.room!.status, "waiting");
+  assert.deepEqual(g.room!.ready_players, []);
+  assert.deepEqual(g.room!.players, prior.players);
+  assert.deepEqual(lobbyStateFromRoom(g.room!), lobbyStateFromRoom(prior));
+  assert.equal(g.room!.lobby_revision, prior.lobby_revision);
+  assert.equal(g.room!.room_revision, prior.room_revision + 1);
+  reject(() => g.send("transfer_host", 0, payload), "transfer_host_required");
+  reject(() => g.send("update_game_duration", 0, { game_duration_seconds: 120 }));
+  g.send("update_game_duration", 1, { game_duration_seconds: 120 });
+  assert.equal(g.room!.game_duration_seconds, 120);
+  g.send("leave_room", 0);
+  assert.equal(g.room!.closed, false, "The former host leaves as a regular member");
+  assert.equal(g.room!.host_email, actors[1].email);
+  assert.equal(g.room!.players.length, 3);
+  g.send("close_room", 1);
+  assert.equal(g.room!.closed, true, "Only the new host owns the lobby close action");
+});
+
+Deno.test("host transfer rejects changed roster generation, room revision and active play", () => {
+  const g = new Game().lobby(4);
+  const target = g.room!.players[1];
+  const payload = {
+    target_user_id: target.user_id,
+    target_email: target.email,
+    expected_target_membership_id: target.membership_id,
+    expected_revision: g.room!.room_revision,
+  };
+  reject(() => g.send("transfer_host", 0, { ...payload, target_email: actors[2].email }));
+  reject(() => g.send("transfer_host", 0, { ...payload, expected_target_membership_id: "old-membership" }));
+  reject(() => g.send("transfer_host", 0, { ...payload, expected_revision: g.room!.room_revision - 1 }));
+  reject(() => g.send("transfer_host", 0, { ...payload, target_user_id: actors[0].id, target_email: actors[0].email }));
+  const original = structuredClone(g.room!);
+  const reusedID = structuredClone(target);
+  reusedID.email = actors[2].email;
+  g.room!.players.push(reusedID);
+  reject(() => g.send("transfer_host", 0, payload));
+  g.room = original;
+  g.start();
+  reject(() => g.send("transfer_host", 0, { ...payload, expected_revision: g.room!.room_revision }));
+  assert.equal(g.room!.host_email, actors[0].email);
+});
+
 Deno.test("question turns cycle, results after eight, next round and stale turn fence", () => {
   const g = new Game().lobby(4).start();
   const seen: string[] = [];

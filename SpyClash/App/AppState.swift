@@ -1552,6 +1552,8 @@ final class AppState: NSObject {
     private(set) var lobbySettingsSyncRoomID: String?
     private(set) var lobbySettingsRollbackEpoch = 0
     var presentedSheet: AppSheet?
+    var lobbyPlayerCardSelection: LobbyPlayerCardSelection?
+    var lobbyPlayerActionInFlight: UUID?
     var roomQRTarget: RoomQRTarget = SupabaseAppRuntime.permitsWebRoomLinks ? .web : .ios
     var language: AppLanguage = .stored {
         didSet {
@@ -5941,10 +5943,13 @@ final class AppState: NSObject {
             // Match the existing synthetic Community profile for lobby-card QA.
             previewRoom.players = previewRoom.playersList.map { player in
                 var player = player
-                if player.email == "cipher@spyclash.local" {
-                    player.userID = "preview-cipher"
-                }
+                player.userID = player.email == user?.email
+                    ? user?.id : "preview-" + String(player.email.split(separator: "@").first ?? "operative")
+                player.membershipID = "preview-membership-" + (player.userID ?? "self")
                 return player
+            }
+            if arguments.contains("--spyclash-preview-guest"), previewRoom.playersList.count > 1 {
+                previewRoom.hostEmail = previewRoom.playersList[1].email
             }
             activeRoom = previewRoom
         }

@@ -68,7 +68,7 @@ enum RoomActionTransportPolicy {
         switch action.trimmingCharacters(in: .whitespacesAndNewlines).lowercased() {
         case "submit_spy_guess":
             10
-        case "request_vote", "cast_detective_vote", "kick_player", "leave_room", "close_room":
+        case "request_vote", "cast_detective_vote", "kick_player", "transfer_host", "leave_room", "close_room":
             8
         case "get_room":
             4
@@ -735,6 +735,38 @@ final class Base44Client {
             targetUserID: player.userID,
             targetEmail: player.email,
             expectedTargetMembershipID: player.membershipID
+        )
+    }
+
+    /// Transfer authority to the exact roster membership shown by the caller.
+    /// Callers recover a timeout by reading the room, never by blindly replaying
+    /// a second transfer after authority may already have changed.
+    func transferRoomHost(room: GameRoom, targetPlayer: Player) async throws -> GameRoom {
+        guard let userID = targetPlayer.userID?.trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank,
+              userID.range(of: #"^[A-Za-z0-9][A-Za-z0-9._:-]{0,127}$"#, options: .regularExpression) != nil,
+              ["waiting", "ready_voting"].contains(room.normalizedStatus),
+              room.playersList.filter({ $0.userID?.trimmingCharacters(in: .whitespacesAndNewlines) == userID }).count == 1,
+              let currentTarget = room.playersList.first(where: {
+                  $0.userID?.trimmingCharacters(in: .whitespacesAndNewlines) == userID &&
+                      $0.email.trimmingCharacters(in: .whitespacesAndNewlines)
+                      .caseInsensitiveCompare(targetPlayer.email.trimmingCharacters(in: .whitespacesAndNewlines)) == .orderedSame
+              }),
+              currentTarget.membershipID == targetPlayer.membershipID,
+              currentTarget.email.caseInsensitiveCompare(room.hostEmail ?? "") != .orderedSame else {
+            throw Base44Error(message: "This operative is no longer available for host transfer.", statusCode: 409, code: "transfer_target_invalid")
+        }
+        let membershipID = currentTarget.membershipID?
+            .trimmingCharacters(in: .whitespacesAndNewlines).nilIfBlank ??
+            "legacy_\(room.id.trimmingCharacters(in: .whitespacesAndNewlines))_\(userID)"
+        return try await roomAction(
+            "transfer_host",
+            roomID: room.id,
+            targetUserID: userID,
+            targetEmail: currentTarget.email.trimmingCharacters(in: .whitespacesAndNewlines),
+            expectedTargetMembershipID: membershipID,
+            expectedRevision: RoomExitRevisionPolicy.expectedRevision(roomRevision: room.roomRevision),
+            expectedMembershipID: room.viewerMembershipID,
+            allowsTypedConflictRetry: false
         )
     }
 

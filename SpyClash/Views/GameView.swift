@@ -2103,8 +2103,6 @@ struct GameView: View {
     @State private var isVotingReplay = false
     @State private var isResettingRoom = false
     @State private var activeLobbyReturnVoteState = ActiveLobbyReturnVoteState()
-    @State private var lobbyProfileTarget: LobbyPlayerProfileTarget?
-    @State private var lobbyProfileTab = CommunityTab.network
     @State private var roomKickCoordinator = RoomKickCoordinatorState()
     @State private var roomKickConfirmation: RoomKickConfirmation?
     @State private var replayAutoStartCoordinator = ReplayAutoStartCoordinatorState()
@@ -2283,46 +2281,6 @@ struct GameView: View {
         return message
     }
 
-    private func lobbyProfileSheet(_ target: LobbyPlayerProfileTarget) -> some View {
-        NavigationStack {
-            CommunityView(
-                selectedTab: $lobbyProfileTab,
-                dockRequest: .initial,
-                externalNetworkState: nil,
-                onAttentionChange: { _ in },
-                onExit: { lobbyProfileTarget = nil },
-                initialProfileUserID: target.id
-            )
-            .toolbar {
-                ToolbarItem(placement: .topBarTrailing) {
-                    Button {
-                        lobbyProfileTarget = nil
-                    } label: {
-                        Image(systemName: "xmark")
-                    }
-                    .accessibilityLabel(copy.returnToLobby)
-                }
-            }
-        }
-        .presentationDragIndicator(.visible)
-    }
-
-    private var rootWithLobbyProfileSheet: some View {
-        rootWithRoomKickConfirmation
-        .sheet(item: $lobbyProfileTarget) { target in
-            lobbyProfileSheet(target)
-
-        }
-        .onChange(of: appState.user?.id) { _, _ in
-            lobbyProfileTarget = nil
-        }
-        .onChange(of: appState.activeRoom?.normalizedStatus) { _, newStatus in
-            if !["waiting", "ready_voting"].contains(newStatus ?? "") {
-                lobbyProfileTarget = nil
-            }
-        }
-    }
-
     var body: some View {
         productionBody
 #if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
@@ -2331,7 +2289,7 @@ struct GameView: View {
     }
 
     private var productionBody: some View {
-        rootWithLobbyProfileSheet
+        rootWithRoomKickConfirmation
         .disabled(detectiveVoteCancellationPresentation != nil)
         .allowsHitTesting(detectiveVoteCancellationPresentation == nil)
         .accessibilityHidden(detectiveVoteCancellationPresentation != nil)
@@ -2407,6 +2365,10 @@ struct GameView: View {
         }
         .onChange(of: appState.activeRoom?.playersList.count) { _, _ in
             reconcileSpyCountForRosterChange()
+        }
+        .onChange(of: appState.activeRoom?.hostEmail) { _, _ in
+            guard let room = appState.activeRoom else { return }
+            applyAuthoritativeLobbyState(from: room, force: true)
         }
         .onChange(of: appState.roomFriendsNavigationRequest) { _, request in
             guard request != nil else { return }
@@ -10347,9 +10309,11 @@ struct GameView: View {
 
     private func openLobbyPlayerProfile(_ player: Player, room: GameRoom) {
         guard appState.activeRoom?.id == room.id,
-              let target = LobbyPlayerProfileTarget(player: player, room: room) else { return }
-        lobbyProfileTab = .network
-        lobbyProfileTarget = target
+              let target = LobbyPlayerCardSelection(player: player, room: room,
+                  actorID: appState.user?.id, actorEmail: appState.user?.email) else { return }
+        withAnimation(reduceMotion ? .easeOut(duration: 0.12) : .spring(response: 0.38, dampingFraction: 0.84)) {
+            appState.lobbyPlayerCardSelection = target
+        }
         HapticManager.shared.fire(.buttonPress)
     }
 

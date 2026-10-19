@@ -442,9 +442,16 @@ struct AppShellView: View {
                 }
             }
             .blur(radius: roomSyncBlurRadius)
-            .disabled(showsBlockingRoomSyncOverlay)
-            .allowsHitTesting(!showsBlockingRoomSyncOverlay)
-            .accessibilityHidden(showsBlockingRoomSyncOverlay)
+            .disabled(showsBlockingRoomSyncOverlay || appState.lobbyPlayerCardSelection != nil)
+            .allowsHitTesting(!showsBlockingRoomSyncOverlay && appState.lobbyPlayerCardSelection == nil)
+            .accessibilityHidden(showsBlockingRoomSyncOverlay || appState.lobbyPlayerCardSelection != nil)
+
+            if let selection = appState.lobbyPlayerCardSelection {
+                LobbyPlayerCardOverlay(selection: selection)
+                    .id(selection.id)
+                    .transition(reduceMotion ? .opacity : .opacity.combined(with: .scale(scale: 0.92)))
+                    .zIndex(90)
+            }
 
             if let operation = appState.roomSyncOperation,
                showsBlockingRoomSyncOverlay {

@@ -1333,6 +1333,82 @@ final class Base44ClientRoomActionTests: XCTestCase {
         )
     }
 
+    func testHostTransferSendsExactRosterIdentityAndRevisionWithoutAutomaticRetry() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.leaseConflictResponse(for: request, code: "active_lease", retryable: true)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+        var room = GameRoom.previewRoom(status: "waiting")
+        var target = try XCTUnwrap(room.playersList.dropFirst().first)
+        target.userID = "target-user-current"
+        target.membershipID = "membership-target-current"
+        room.players = room.playersList.map { $0.email == target.email ? target : $0 }
+        room.roomRevision = 42
+
+        do {
+            _ = try await makeClient().transferRoomHost(room: room, targetPlayer: target)
+            XCTFail("Expected host transfer conflict")
+        } catch let error as Base44Error {
+            XCTAssertEqual(error.code, "active_lease")
+        }
+        let bodies = try recorder.requestBodies()
+        XCTAssertEqual(bodies.count, 1, "An ambiguous transfer must be reconciled with a read")
+        let body = try XCTUnwrap(bodies.first)
+        XCTAssertEqual(body["action"] as? String, "transfer_host")
+        XCTAssertEqual(body["target_user_id"] as? String, target.userID)
+        XCTAssertEqual(body["target_email"] as? String, target.email)
+        XCTAssertEqual(body["expected_target_membership_id"] as? String, target.membershipID)
+        XCTAssertEqual(body["expected_revision"] as? Int, 42)
+        XCTAssertEqual(recorder.requestTimeoutIntervals(), [8])
+    }
+
+    func testHostTransferRejectsMissingPublicIdentityAndStaleMembershipBeforeSending() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+        var room = GameRoom.previewRoom(status: "waiting")
+        var target = try XCTUnwrap(room.playersList.dropFirst().first)
+        target.userID = "target-user-current"
+        target.membershipID = "membership-target-current"
+        room.players = room.playersList.map { $0.email == target.email ? target : $0 }
+        var missingIdentity = target
+        missingIdentity.userID = nil
+        var staleMembership = target
+        staleMembership.membershipID = "membership-target-previous"
+        let client = makeClient()
+        for invalid in [missingIdentity, staleMembership] {
+            do {
+                _ = try await client.transferRoomHost(room: room, targetPlayer: invalid)
+                XCTFail("Expected invalid target rejection")
+            } catch let error as Base44Error {
+                XCTAssertEqual(error.code, "transfer_target_invalid")
+            }
+        }
+        XCTAssertTrue(try recorder.requestBodies().isEmpty)
+    }
+
+    func testHostTransferCanFenceLegacyMembershipUsingItsPublicIdentity() async throws {
+        let recorder = RequestRecorder()
+        MockURLProtocol.requestHandler = { request in
+            try recorder.append(request)
+            return MockURLProtocol.roomResponse(for: request)
+        }
+        defer { MockURLProtocol.requestHandler = nil }
+        var room = GameRoom.previewRoom(status: "waiting")
+        var target = try XCTUnwrap(room.playersList.dropFirst().first)
+        target.userID = "target-user-legacy"
+        target.membershipID = nil
+        room.players = room.playersList.map { $0.email == target.email ? target : $0 }
+        _ = try await makeClient().transferRoomHost(room: room, targetPlayer: target)
+        let body = try XCTUnwrap(recorder.requestBodies().first)
+        XCTAssertEqual(body["expected_target_membership_id"] as? String, "legacy_\(room.id)_target-user-legacy")
+    }
+
     func testHostRoomProjectionDecodesTargetMembershipGenerationForKickCAS() throws {
         let room = try JSONDecoder().decode(
             GameRoom.self,

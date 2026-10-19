@@ -13,6 +13,7 @@ import { detectiveVoteRequestTransition, detectiveVoteLeavePatch, isDetectiveVot
 import { assertLobbySettingsAccess, validatedGameMode, validatedGameDuration, gameModePatch, gameDurationPatch } from "./rules/room-interaction-safety.ts";
 import { activeGameLobbyReturnTransition } from "./rules/active-game-lobby-return-policy.ts";
 import { lobbyKickTransition } from "./rules/lobby-kick-policy.ts";
+import { lobbyHostTransferTransition } from "./rules/lobby-host-transfer-policy.ts";
 import { replayVoteTransition, replayVoteState, replayResetMembershipPatch } from "./rules/replay-policy.ts";
 import { replayAutoStartPatch, replayAutoStartAlreadyComplete, replaySourceMatchID, assertExpectedReplaySourceMatch } from "./rules/replay-auto-start-policy.ts";
 import { hostDepartureUsesMembershipTransition } from "./rules/finished-room-departure-policy.ts";
@@ -488,6 +489,10 @@ export function reduceGame(input: GameInput): GameTransition {
       const transition = lobbyKickTransition(room, user.email, body);
       if (body.expected_target_membership_id && clean(body.expected_target_membership_id) !== playerMembershipGeneration(room, transition.removedPlayer)) failure("Kick target rejoined", "kick_target_membership_conflict");
       patch({ ...transition.patch, ...lobbyMembershipClampPatch(room, transition.patch.players.length) }); break;
+    }
+    case "transfer_host": {
+      const transition = lobbyHostTransferTransition(room, user, body);
+      patch(transition.patch); break;
     }
     case "arm_roulette": {
       requireHost(room, user);

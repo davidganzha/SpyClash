@@ -43,6 +43,7 @@ import {
   activeGameLobbyReturnTransition,
 } from "./active-game-lobby-return-policy.ts";
 import { lobbyKickTransition } from "./lobby-kick-policy.ts";
+import { lobbyHostTransferTransition } from "./lobby-host-transfer-policy.ts";
 import { hostDepartureUsesMembershipTransition } from "./finished-room-departure-policy.ts";
 import {
   replayResetMembershipPatch,
@@ -2233,6 +2234,19 @@ async function toggleReady(base44, room, user) {
   );
 }
 
+async function transferHost(base44, room, user, body) {
+  const { patch } = lobbyHostTransferTransition(room, user, body);
+  try {
+    // The leased snapshot must still match the exact client revision. One CAS
+    // is sufficient: replaying an authority change after a lost response could
+    // affect a later host generation. The client reconciles with get_room.
+    return await updateRoom(base44, room, patch);
+  } catch (error) {
+    if (error && typeof error === "object") error.retryable = false;
+    throw error;
+  }
+}
+
 async function votePlayAgain(base44, room, user, body) {
   requirePlayer(room, user);
   room = await ensureTerminalOutboxCommitBeforeMutation(base44, room);
@@ -3899,7 +3913,11 @@ async function executeRoomAction(
   }
 
   if (!["join_room", "close_room"].includes(action)) {
-    room = await refreshActorCapabilities(base44, room, user, body);
+    // Transfer is bound to the revision the user confirmed. A separate
+    // capability update would advance that revision before the transfer CAS.
+    if (action !== "transfer_host") {
+      room = await refreshActorCapabilities(base44, room, user, body);
+    }
   }
 
   assertGameActionAllowedWhilePaused(room, action);
@@ -3922,6 +3940,8 @@ async function executeRoomAction(
       return await voteReturnToLobby(base44, room, user, body, options);
     case "kick_player":
       return await kickPlayer(base44, room, user, body);
+    case "transfer_host":
+      return await transferHost(base44, room, user, body);
     case "toggle_ready":
       return await toggleReady(base44, room, user);
     case "vote_play_again":
@@ -4945,6 +4965,11 @@ Deno.serve(async (req) => {
           ...body,
           __server_kick_target_membership_id: captured.generation,
         };
+      }
+      if (action === "transfer_host") {
+        // Fail closed before acquiring leases, then revalidate the same
+        // revision and membership against the authoritative leased snapshot.
+        lobbyHostTransferTransition(room, user, body);
       }
       if (action === "leave_room" || action === "close_room") {
         return {
