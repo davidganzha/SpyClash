@@ -1,0 +1,252 @@
+{
+  "recordedAtUTC": "2026-10-19T09:34:54.393193+00:00",
+  "authorization": "Explicit current-chat approval to deploy appleAuthBroker and autoRegisterUserV2, sign and upload 187 only for David and Dima.",
+  "sourceCommit": "1cdddd89314f17e0c9ae97bcff38e2e6bb08cc73",
+  "appID": "6793534085",
+  "bundleID": "com.spyclash.ios",
+  "marketingVersion": "1.0.3",
+  "build": "187",
+  "status": "DELIVERED_INTERNAL_ONLY",
+  "artifact": {
+    "ipaSHA256": "f06bfef6c7b57bc0d54e4a1db09d3bff940f6fe664dc016bdf6ca8abc9a89ed4",
+    "ipaBytes": 12791290,
+    "sourceFileCount": 1330,
+    "sourceByteIdenticalFiles": 1328,
+    "signingOnlyExceptionPaths": [
+      "SpyClash.xcodeproj/project.pbxproj",
+      "project.yml"
+    ],
+    "sourceManifestSHA256": "872c65f47eb48695bc445495b41d542349fa61e8d427ffad2f1b4acfc26c6804",
+    "historicalPreparationProofUnchanged": true,
+    "effectiveExport": {
+      "destination": "export",
+      "method": "app-store-connect",
+      "signingStyle": "manual",
+      "teamID": "3Z64QKNL54",
+      "testFlightInternalTestingOnly": true,
+      "manageAppVersionAndBuildNumber": false
+    },
+    "preservedCopiesByteIdentical": true
+  },
+  "verification": {
+    "source": {
+      "explicitCurrent187Authorization": true,
+      "preparationProofUnmodified": true,
+      "exactCommit": true,
+      "historicalPreparationWasUnsigned": true,
+      "exactSnapshotFileSet": true,
+      "sourceFileModesUnchanged": true,
+      "yamlOnlyIntendedSigningKeysChanged": true,
+      "requiredLocalSigningAssetsPresent": true,
+      "workingTreeClean": true,
+      "snapshotUnchanged": true,
+      "workingFilesUnchanged": true,
+      "onlySigningExceptionFiles": true,
+      "projectOnlyIntendedSigningKeysChanged": true,
+      "version187": true,
+      "exportOptionsSameAs186": true,
+      "manualInternalOnlyExport": true,
+      "archiveMainSupabaseRelease": true,
+      "export187Only": true
+    },
+    "archive": {
+      "archiveSucceeded": true,
+      "supabaseReleaseCompilerFlags": true,
+      "noBuildErrors": true,
+      "noDelegateMismatchWarnings": true,
+      "snapshotUnchanged": true,
+      "workingSourceUnchanged": true,
+      "main187": true,
+      "widget187": true,
+      "strictSignaturesValid": true,
+      "expectedTeam": true,
+      "notDebuggable": true,
+      "appleSignInDefault": true,
+      "productionAPNs": true,
+      "supabaseMainCandidate": true,
+      "configurationByteIdentical": true,
+      "isolatedProject": true,
+      "appleGoogleBillingEnabled": true,
+      "pushDeletionDisabled": true
+    },
+    "signingIPA": {
+      "exactMainIdentity": true,
+      "exactWidgetIdentity": true,
+      "exactSigningCertificate": true,
+      "exactProfiles": true,
+      "profileApplePushMatch": true,
+      "team3Z64QKNL54": true,
+      "appleSignInDefault": true,
+      "productionAPNsEntitlement": true,
+      "getTaskAllowFalse": true,
+      "appStoreProfiles": true,
+      "internalOnlyMarkerTrue": true,
+      "strictSignaturesPass": true,
+      "onlyExpectedExtension": true,
+      "immutableBackendProject": true,
+      "mainBackendModeCorrect": true,
+      "committedConfigByteIdentical": true,
+      "billingAppleGoogleEnabled": true,
+      "pushDeletionDisabled": true,
+      "publishableKeyFormatOnly": true,
+      "noStoreKitFixturesOrPrivateKeyFiles": true,
+      "noPrivateKeyOrSecretKeyMarkers": true,
+      "noEmbeddedServiceRoleJWT": true
+    },
+    "independentIPA": {
+      "exactMainIdentity": true,
+      "exactWidgetIdentity": true,
+      "team3Z64QKNL54": true,
+      "appleSignInDefault": true,
+      "productionAPNsEntitlement": true,
+      "getTaskAllowFalse": true,
+      "appStoreProfiles": true,
+      "internalOnlyMarkerTrue": true,
+      "strictSignaturesPass": true,
+      "onlyExpectedExtension": true,
+      "immutableBackendProject": true,
+      "mainBackendModeCorrect": true,
+      "committedConfigByteIdentical": true,
+      "billingAppleGoogleEnabled": true,
+      "pushDeletionDisabled": true,
+      "publishableKeyFormatOnly": true,
+      "noStoreKitFixturesOrPrivateKeyFiles": true,
+      "noPrivateKeyOrSecretKeyMarkers": true,
+      "noEmbeddedServiceRoleJWT": true
+    },
+    "independentReview": "NO_BLOCKERS",
+    "portal": {
+      "exactMainApp": true,
+      "targetPrivateInternalGroup": true,
+      "targetOnlyDavidAndDima": true,
+      "noAutomaticAllBuildAccess": true,
+      "exactApprovedSource": true,
+      "exactBuildIdentity": true,
+      "exactMarketingVersion": true,
+      "validAndUnexpired": true,
+      "explicitlyInternalOnly": true,
+      "internalTestingReady": true,
+      "externalTestingNotApplicable": true,
+      "assignedOnlyApprovedGroup": true,
+      "noIndividualTesterAssignments": true,
+      "groupControlsAndMembersUnchanged": true,
+      "existingBuildAssignmentsUnchanged": true,
+      "appStoreVersionsAndAttachedBuildsUnchanged": true
+    },
+    "backend": {
+      "commandSucceeded": true,
+      "deploymentWorkingCopyUnchanged": true,
+      "exactFunctionFileSets": true,
+      "frozenPackageUnchanged": true,
+      "functionInventoryUnchanged": true,
+      "nonTargetNamesAndAutomationCountsUnchanged": true,
+      "normalizedConfigsMatch": true,
+      "runtimeReadbackMatches": true,
+      "twoTargetsReportedDeployed": true
+    },
+    "serverRuntimeFilesIndependentlyReverified": 19
+  },
+  "appleUpload": {
+    "appleValidation": "PASS",
+    "validationExitCode": 0,
+    "appleUpload": "PASS",
+    "uploadExitCode": 0,
+    "deliveryUUID": "87358a43-c43c-4fc8-a8af-c88f3aa6334b"
+  },
+  "testFlight": {
+    "id": "87358a43-c43c-4fc8-a8af-c88f3aa6334b",
+    "version": "187",
+    "marketingVersion": "1.0.3",
+    "processingState": "VALID",
+    "audience": "INTERNAL_ONLY",
+    "expired": false,
+    "internalBuildState": "IN_BETA_TESTING",
+    "externalBuildState": "NOT_APPLICABLE",
+    "verifiedAtUTC": "2026-10-19T09:34:48.891Z",
+    "groupID": "47a13858-b43b-44a1-bf3e-285722cec320",
+    "groupName": "LIMITLESS Internal QA",
+    "approvedTesters": [
+      {
+        "id": "569dc033-570c-42f7-bbc3-611f6c9cb527",
+        "name": "David Ganzha"
+      },
+      {
+        "id": "7818c591-2a6e-40de-924f-f060d753c1e0",
+        "name": "Dima Ianushevych"
+      }
+    ],
+    "effectiveTesterIDs": [
+      "569dc033-570c-42f7-bbc3-611f6c9cb527",
+      "7818c591-2a6e-40de-924f-f060d753c1e0"
+    ],
+    "assignmentHTTPStatus": 204
+  },
+  "backend": {
+    "appID": "69a0e57fa939f578082f8091",
+    "functions": [
+      "appleAuthBroker",
+      "autoRegisterUserV2"
+    ],
+    "status": "DEPLOYED_AND_READ_BACK",
+    "verifiedAtUTC": "2026-10-19T09:26:21.908726+00:00",
+    "runtimeFilesVerified": 19,
+    "normalizedConfigsVerified": 2,
+    "manifestSHA256": "28367f50e72064193593bb41b117b59b1f0ad41095bcd5bf596a091be6c6f1d0",
+    "nonTargetEvidenceBoundary": "CLI inventory names and automation counts only, not non-target source or configuration contents"
+  },
+  "githubCI": {
+    "url": "https://github.com/davidganzha/SpyClash/actions/runs/39175934177",
+    "commit": "1cdddd89314f17e0c9ae97bcff38e2e6bb08cc73",
+    "status": "completed",
+    "conclusion": "success",
+    "jobs": [
+      {
+        "name": "client-conflicts",
+        "status": "completed",
+        "conclusion": "success"
+      },
+      {
+        "name": "backend-conflicts",
+        "status": "completed",
+        "conclusion": "success"
+      }
+    ]
+  },
+  "localReceiptSHA256": {
+    "authorization187.json": "87e4cb5e2206e94052afd4fbfa6937837fc25a9e3e8587d4b42b55bc65070c4a",
+    "asc-preflight-initial187.json": "a2485212f7d2c382c95f82aa1740dd529569b79d5b4aa1d420ed177921c7d7d0",
+    "asc-preflight187.json": "662e616584d85263a3eb996186bcc1fad0d56e8022b73c89ae395ffdcff28393",
+    "asc-preflight-stability187.json": "a21f436e1f2eecb36ff7a27c44e02c3d26597a282da3089c3c983def93b52941",
+    "apple-upload-receipt.json": "1a2e78cdad08962e98af15e80a901e62e99e3ec3aa0c316e8f7e6b6fe3fc4321",
+    "asc-processing187.json": "4aa5a0cc8b2d8e6384beced68148f4073e60c063728ef2046ffe3a9719849225",
+    "asc-assignment187.json": "31430997b81c9da1566941114c03002c1df9df6071fd9599dc9fc3e5d101a102",
+    "asc-final187.json": "26855cc7d5e41ccffbc1e8c72371d2a7ed4db2c1dc933b6a8814ebeeea89a7c6",
+    "ipa-independent-audit187.json": "ee44be681aaf8e2b7e5da52f9a40a02902a2db86ecdf9f76cc57415354e99801",
+    "native/source-proof.json": "b0a56b54b51d72595023301b2c0986da0650adc8915bbe0a2e536763b3c1cb7c",
+    "native/source-manifest187.json": "872c65f47eb48695bc445495b41d542349fa61e8d427ffad2f1b4acfc26c6804",
+    "native/source-verification187-after-export.json": "dcfa4c0dd788e8379d208063c028cc916ec853dfa98aa6f4f8b91ea41a3f486d",
+    "native/archive-audit187.json": "b2379db5e292af04296e9a8a4a384ddb7680128c8c339e93338f89022023157d",
+    "native/ipa-audit187.json": "7acb9ba6a98c8706b48368abd8ec591d0f1e1e90edba9c0718ee1c681e0469ba",
+    "native/native-release-receipt187.json": "57c07cee7873bb2bc017f8bd8aeccb1b48082f48985a3caab2ea34f509b82c33",
+    "native/independent-review-summary187.json": "d955c0e4f3948e195078ade21f45ab7a24717ecd1b19f2dbe614b3dc5e98d90c",
+    "native/ExportOptions-effective.plist": "0d63f139958cebb9f0138b4bd1a4344af990c941497b002ee0a7ad67d841b9a7",
+    "ci187.json": "44ba9a3533e3144602c93406ebbf276383118915a469fcddf98d5a0f26f30be8",
+    "backend-20261019T092333Z/deployment-readback.json": "1b0ac17deeabd7dac33f3b20d7e9394bc5fc1edf3dc351357807a9d12096d9d3",
+    "backend-20261019T092333Z/root-readback-verification.json": "447ade551c7ca5663ff7cd4d5e8c8bee30c7fa04d560b5397365f758596c55eb",
+    "backend-20261019T092333Z/deployment-command.json": "ffa7595421f4237b7f34c958a9de62105a0716cb0080486f46f13c6bfa0f8a21"
+  },
+  "scope": {
+    "backendDeployment": [
+      "appleAuthBroker",
+      "autoRegisterUserV2"
+    ],
+    "websiteDeployment": false,
+    "publicAppStoreChange": false,
+    "externalTesting": false,
+    "groupMembershipChange": false,
+    "providerConfigurationChange": false,
+    "testerInstallationProved": false,
+    "repeatedPhysicalAppleGoogleAcceptanceProved": false
+  },
+  "remainingAcceptance": "Install exact build187 on both physical iPhones; repeated and alternating Apple/Google sign-ins, cancellation/retry, relaunch/session continuity, and concurrent independent clients remain unverified."
+}

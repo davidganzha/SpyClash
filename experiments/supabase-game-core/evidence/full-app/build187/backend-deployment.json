@@ -1,0 +1,197 @@
+{
+  "appID": "69a0e57fa939f578082f8091",
+  "authorizedMutations": [
+    {
+      "functions": [
+        "appleAuthBroker",
+        "autoRegisterUserV2"
+      ],
+      "operation": "functions deploy"
+    }
+  ],
+  "checkedAt": "2026-10-19T09:26:21.908726+00:00",
+  "checks": {
+    "commandSucceeded": true,
+    "deploymentWorkingCopyUnchanged": true,
+    "exactFunctionFileSets": true,
+    "frozenPackageUnchanged": true,
+    "functionInventoryUnchanged": true,
+    "nonTargetNamesAndAutomationCountsUnchanged": true,
+    "normalizedConfigsMatch": true,
+    "runtimeReadbackMatches": true,
+    "twoTargetsReportedDeployed": true
+  },
+  "functions": [
+    {
+      "exactFileSet": true,
+      "files": [
+        {
+          "actualSHA256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8",
+          "expectedSHA256": "81e78a37d9e322e9b8eab1c692a36fe5284a988b5bff564ac745a46b5413f6d8",
+          "file": "apple-code-exchange.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "7e87ac4e500d9f3474d8f7a9f0f6925ddf234fe6f32b11320ba37ffdabac69cb",
+          "expectedSHA256": "7e87ac4e500d9f3474d8f7a9f0f6925ddf234fe6f32b11320ba37ffdabac69cb",
+          "file": "apple-credential-error-policy.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "47878797b24e4294acb503f80b2cd4a4a7b4ecf9da94fadfde89ca5f829194c7",
+          "expectedSHA256": "47878797b24e4294acb503f80b2cd4a4a7b4ecf9da94fadfde89ca5f829194c7",
+          "file": "apple-sign-in-credential.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b",
+          "expectedSHA256": "6527d660d9d97201e38fdef97df095cfbe928963f5b3717be07586f2f4af422b",
+          "file": "apple-token-compensation.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "5b4fc02314734b78807d4a8ab490731683eb10218ecb235ff262a08023b5147f",
+          "expectedSHA256": "5b4fc02314734b78807d4a8ab490731683eb10218ecb235ff262a08023b5147f",
+          "file": "auth-store-recovery.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+          "expectedSHA256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+          "file": "billing-identity-lifecycle.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb",
+          "expectedSHA256": "c0821401296cf58ec16a8cc2507aed4b76b4b6599e44a384e0d1619771b888fb",
+          "file": "confirmation.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "9e4ea57911533bdb3c63426d4a958a93c508f15923835f17091c98fc403f84b5",
+          "expectedSHA256": "9e4ea57911533bdb3c63426d4a958a93c508f15923835f17091c98fc403f84b5",
+          "file": "entry.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "5abd228604f60784a1ea86d3bab008f4b35326500748ca8433e1f69debfdac50",
+          "expectedSHA256": "5abd228604f60784a1ea86d3bab008f4b35326500748ca8433e1f69debfdac50",
+          "file": "google-state-recovery.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7",
+          "expectedSHA256": "1f14b7f0a101001ebbaaf50a60eb015641a35e2dddd8c05ad718f28c047ea0e7",
+          "file": "handoff.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "5b593a95ef655a5375b6aa901f165ef9f790b09d2d23a63e284dd15282bff361",
+          "expectedSHA256": "5b593a95ef655a5375b6aa901f165ef9f790b09d2d23a63e284dd15282bff361",
+          "file": "native-handoff.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+          "expectedSHA256": "0c9cae4aa1886d3d264248042f6c9954f12fbeecaeedab163c7ed8150fd7786d",
+          "file": "provider.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df",
+          "expectedSHA256": "d0b643d2bf5c02b6242c71bc983f60e6cd4a372b9942d240b1518d55c1f854df",
+          "file": "service-role-request.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8",
+          "expectedSHA256": "ea8376cd27a48cff5f7eeb4e9732fc7e629b0cd1fe3da8e7f8b5dcaf933bfdc8",
+          "file": "transaction.ts",
+          "matches": true
+        }
+      ],
+      "name": "appleAuthBroker",
+      "normalizedConfigMatches": true
+    },
+    {
+      "exactFileSet": true,
+      "files": [
+        {
+          "actualSHA256": "47878797b24e4294acb503f80b2cd4a4a7b4ecf9da94fadfde89ca5f829194c7",
+          "expectedSHA256": "47878797b24e4294acb503f80b2cd4a4a7b4ecf9da94fadfde89ca5f829194c7",
+          "file": "apple-sign-in-credential.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "5b4fc02314734b78807d4a8ab490731683eb10218ecb235ff262a08023b5147f",
+          "expectedSHA256": "5b4fc02314734b78807d4a8ab490731683eb10218ecb235ff262a08023b5147f",
+          "file": "auth-store-recovery.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "7f7b4e20791132f0ef9acf068df0e0d2335f01554a6ca17ee1c3d36aa8c74220",
+          "expectedSHA256": "7f7b4e20791132f0ef9acf068df0e0d2335f01554a6ca17ee1c3d36aa8c74220",
+          "file": "base44-context.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+          "expectedSHA256": "0802f14dc7edbc4107c96db19dbd2c09f5ac010003aad9adff385adacd152851",
+          "file": "billing-identity-lifecycle.ts",
+          "matches": true
+        },
+        {
+          "actualSHA256": "52d290d4d08685ae50f5c9dde5c5a5ce4e12d3fa80308e2b5190816b93afad78",
+          "expectedSHA256": "52d290d4d08685ae50f5c9dde5c5a5ce4e12d3fa80308e2b5190816b93afad78",
+          "file": "entry.ts",
+          "matches": true
+        }
+      ],
+      "name": "autoRegisterUserV2",
+      "normalizedConfigMatches": true
+    }
+  ],
+  "manifestSHA256": "28367f50e72064193593bb41b117b59b1f0ad41095bcd5bf596a091be6c6f1d0",
+  "nonTargetEvidenceBoundary": "CLI inventory names and automation counts only, not non-target source or configuration contents",
+  "nonTargetFunctionCount": 17,
+  "normalizedConfigsVerified": 2,
+  "operations": [
+    {
+      "command": [
+        "npx",
+        "--offline",
+        "--yes",
+        "base44@0.1.25",
+        "functions",
+        "pull",
+        "appleAuthBroker"
+      ],
+      "completedAt": "2026-10-19T09:26:17.817026+00:00",
+      "exitCode": 0,
+      "startedAt": "2026-10-19T09:26:15.453794+00:00",
+      "stderrSHA256": "c9dda8e356a1bd65cf5bd31576905f3d2b8afb2596ffe6e2e5b7d38640b60d6a",
+      "stdoutSHA256": "0cdd279dbcd04f1935a418fb40b755da0b53202df6595eb5b06b3a436bc7dec8"
+    },
+    {
+      "command": [
+        "npx",
+        "--offline",
+        "--yes",
+        "base44@0.1.25",
+        "functions",
+        "pull",
+        "autoRegisterUserV2"
+      ],
+      "completedAt": "2026-10-19T09:26:19.875800+00:00",
+      "exitCode": 0,
+      "startedAt": "2026-10-19T09:26:17.817177+00:00",
+      "stderrSHA256": "fe30d94e56f0bbc8a705a207d2338010e93bb7c20a839ddde50eeaeb3c129e1f",
+      "stdoutSHA256": "0cdd279dbcd04f1935a418fb40b755da0b53202df6595eb5b06b3a436bc7dec8"
+    }
+  ],
+  "physicalDeviceAcceptance": false,
+  "providerCalls": 0,
+  "runtimeFilesVerified": 19,
+  "sourceCommit": "1cdddd89314f17e0c9ae97bcff38e2e6bb08cc73",
+  "status": "PASS"
+}
