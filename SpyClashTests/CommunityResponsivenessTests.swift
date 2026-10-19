@@ -6,6 +6,69 @@ import XCTest
 #endif
 
 final class CommunityResponsivenessTests: XCTestCase {
+    func testDirectoryActionsUsePendingRequestDirectionAndPreferIncomingWhenCrossed() {
+        let incoming = relationship("incoming", profileID: "friend", status: "pending", direction: "incoming")
+        let outgoing = relationship("outgoing", profileID: "friend", status: "pending", direction: "outgoing")
+
+        let sent = CommunityDirectoryRelationshipResolver.resolve(profileID: "friend", network: state(outgoing: [outgoing]))
+        XCTAssertEqual(sent, CommunityRelationshipSummary(id: outgoing.id, status: "pending", direction: "outgoing"))
+
+        let received = CommunityDirectoryRelationshipResolver.resolve(profileID: "friend", network: state(incoming: [incoming]))
+        XCTAssertEqual(received, CommunityRelationshipSummary(id: incoming.id, status: "pending", direction: "incoming"))
+
+        let crossed = CommunityDirectoryRelationshipResolver.resolve(
+            profileID: "friend", network: state(incoming: [incoming], outgoing: [outgoing])
+        )
+        XCTAssertEqual(crossed, received, "A received request must remain actionable when an old outgoing request also exists.")
+    }
+
+    func testDirectoryActionsKeepConfirmedFriendshipOverDuplicatePendingRequests() {
+        let friend = relationship("friendship", profileID: "friend")
+        let incoming = relationship("incoming", profileID: "friend", status: "pending", direction: "incoming")
+        let outgoing = relationship("outgoing", profileID: "friend", status: "pending", direction: "outgoing")
+        let network = state(friends: [friend], incoming: [incoming], outgoing: [outgoing])
+
+        XCTAssertEqual(
+            CommunityDirectoryRelationshipResolver.resolve(profileID: "friend", network: network),
+            CommunityRelationshipSummary(id: friend.id, status: "accepted", direction: friend.direction)
+        )
+    }
+
+    func testDirectoryActionsHonorBlockOverEveryOtherRelationship() {
+        let friend = relationship("friendship", profileID: "friend")
+        let incoming = relationship("incoming", profileID: "friend", status: "pending", direction: "incoming")
+        let outgoing = relationship("outgoing", profileID: "friend", status: "pending", direction: "outgoing")
+        let blocked = relationship("block", profileID: "friend", status: "blocked")
+        let network = CommunityState(me: profile("me"), friends: [friend], incoming: [incoming], outgoing: [outgoing], blocked: [blocked])
+
+        XCTAssertEqual(
+            CommunityDirectoryRelationshipResolver.resolve(profileID: "friend", network: network),
+            CommunityRelationshipSummary(id: blocked.id, status: "blocked", direction: blocked.direction)
+        )
+    }
+
+    func testDirectoryActionsFollowOptimisticAcceptanceAndCancellation() throws {
+        let incoming = relationship("incoming", profileID: "friend", status: "pending", direction: "incoming")
+        let original = state(incoming: [incoming])
+        let accept = try XCTUnwrap(CommunityOptimisticRelationshipChange(state: original, action: "accept", friendshipID: incoming.id))
+        XCTAssertEqual(
+            CommunityDirectoryRelationshipResolver.resolve(profileID: "friend", network: accept.applying(to: original))?.status,
+            "accepted"
+        )
+
+        let outgoing = relationship("outgoing", profileID: "friend", status: "pending", direction: "outgoing")
+        let sent = state(outgoing: [outgoing])
+        let cancel = try XCTUnwrap(CommunityOptimisticRelationshipChange(state: sent, action: "cancel_request", friendshipID: outgoing.id))
+        XCTAssertNil(CommunityDirectoryRelationshipResolver.resolve(profileID: "friend", network: cancel.applying(to: sent)))
+    }
+
+    func testDirectoryActionsDoNotReuseUnrelatedRelationshipsOrRequireLoadedNetwork() {
+        let network = state(friends: [relationship("friendship", profileID: "friend")])
+        XCTAssertNil(CommunityDirectoryRelationshipResolver.resolve(profileID: "stranger", network: network))
+        XCTAssertNil(CommunityDirectoryRelationshipResolver.resolve(profileID: "me", network: network))
+        XCTAssertNil(CommunityDirectoryRelationshipResolver.resolve(profileID: "friend", network: nil))
+    }
+
     func testNavigationOrMutationInvalidatesAnOlderProfileCatchUp() {
         var requests = CommunityProfileRequestState()
         let catchUp = requests.begin()

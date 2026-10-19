@@ -1,0 +1,147 @@
+{
+  "audit_version": 1,
+  "read_only": true,
+  "production_mutations": false,
+  "source": {
+    "users": 61,
+    "roles": {
+      "admin": 1,
+      "user": 60
+    },
+    "onboarded": 15,
+    "verified": 61,
+    "missing_name": 0,
+    "missing_or_invalid_spy_id": 12,
+    "duplicate_valid_spy_ids": 0,
+    "synthetic_email_domains": 0,
+    "currently_deleting_users": 0,
+    "game_history_rows": 205,
+    "app_id": "69a0e57fa939f578082f8091",
+    "word_packs": 21,
+    "friendships": 5,
+    "profile_comments": 3,
+    "checked_at": "2026-10-19T10:05:03.035Z",
+    "access": "authenticated Base44 CLI administrator entity reads; no backend function invocation"
+  },
+  "supabase": {
+    "project_ref": "bbkfsgnordtdiblgdzkg",
+    "project_name": "spyclash-game-core",
+    "counts": {
+      "profiles": 8,
+      "auth_users": 14,
+      "friendships": 0,
+      "legacy_links": 5,
+      "active_profiles": 8,
+      "profile_comments": 0,
+      "legacy_import_rows": 110,
+      "legacy_import_runs": 5,
+      "legacy_pending_social": 0,
+      "legacy_session_accounts": 5,
+      "active_profiles_with_link": 5
+    },
+    "checked_at": "2026-10-19T10:03:36.473357+00:00",
+    "import_states": [
+      {
+        "count": 5,
+        "status": "complete",
+        "social_status": "deferred_verified_export_required",
+        "profile_applied": true
+      }
+    ],
+    "profile_states": [
+      {
+        "count": 8,
+        "state": "active"
+      }
+    ],
+    "import_entities": [
+      {
+        "count": 5,
+        "entity": "User"
+      },
+      {
+        "count": 18,
+        "entity": "WordPack"
+      },
+      {
+        "count": 87,
+        "entity": "GameHistory"
+      }
+    ],
+    "friendship_states": null,
+    "pending_social_states": null,
+    "profile_classification": {
+      "verified_legacy_accounts": 5,
+      "known_cloud_test_fixture_profiles": 3,
+      "fixture_match_method": "SHA256 email equality against existing private cloud-actors.json; no emails or credentials retained"
+    },
+    "deployed_functions": {
+      "app_services": 10,
+      "legacy_session": 3
+    }
+  },
+  "identity": {
+    "target_linked": 5,
+    "linked_present_in_source": 5,
+    "source_not_linked": 56,
+    "links_absent_from_source": 0
+  },
+  "social_reconciliation": {
+    "total": 8,
+    "ready": 2,
+    "deferred": 6,
+    "missing_source_participant_rows": 0,
+    "entities": {
+      "Friendship": {
+        "total": 5,
+        "ready": 2,
+        "deferred": 3,
+        "one_unmapped": 2,
+        "both_unmapped": 1,
+        "missing_source_participant_rows": 0
+      },
+      "ProfileComment": {
+        "total": 3,
+        "ready": 0,
+        "deferred": 3,
+        "one_unmapped": 0,
+        "both_unmapped": 3,
+        "missing_source_participant_rows": 0
+      }
+    },
+    "statuses": {
+      "accepted": 5
+    }
+  },
+  "social_dry_run": {
+    "checked_at": "2026-10-19T10:06:52.590Z",
+    "dry_run": true,
+    "source_key": "https://spyclash.com/69a0e57fa939f578082f8091",
+    "source_digest": "8870bece11f3705df96b6d30539ee2ab1a4703873cdc8b7114ac8c0ded4e5777",
+    "total": 8,
+    "ready_count": 2,
+    "deferred_count": 6,
+    "entities": {
+      "Friendship": {
+        "total": 5,
+        "ready": 2,
+        "deferred": 3
+      },
+      "ProfileComment": {
+        "total": 3,
+        "ready": 0,
+        "deferred": 3
+      }
+    },
+    "mapping_source": "live_active_verified_legacy_links_join_active_profiles",
+    "applied": 0,
+    "raw_export_saved": false,
+    "production_mutations": false
+  },
+  "limitations": [
+    "Current snapshots are independent read transactions, not a cross-system atomic export.",
+    "No raw user rows, emails, names, IDs, comment bodies, or credentials saved in this evidence.",
+    "Read-only dry run is not an executable bulk account import package; refresh source and mappings before any authorized application.",
+    "61 current source principals includes one administrator. Existing source directory does not filter administrator or incomplete onboarding; viewer blocks are applied separately."
+  ]
+}

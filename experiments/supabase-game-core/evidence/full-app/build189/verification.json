@@ -1,0 +1,47 @@
+{
+  "date": "2026-10-19",
+  "build": "189",
+  "version": "1.0.3",
+  "backend_mode": "supabase-main-candidate",
+  "source_base": "dc5bd528899541744050556d747aba28909d93f1",
+  "branch": "davidganzha/community-friendship-189",
+  "simulator": "SpyClash Supabase Lab C",
+  "simulator_id": "FE7D0047-8DF2-4930-97FE-2F3F1548911E",
+  "preview_data": true,
+  "live_process_id": 62777,
+  "tests": {
+    "CommunityResponsivenessTests": 16,
+    "NavigationSwipeTests": 12,
+    "total": 28,
+    "failures": 0,
+    "result_bundle": "/tmp/spyclash-friendship189-final-tests.xcresult"
+  },
+  "rendered_locales": [
+    "ru",
+    "en",
+    "uk",
+    "es"
+  ],
+  "interactions_verified": [
+    "Find: add Vega -> sent request",
+    "Sent status opens Requests",
+    "Cancel Vega -> outgoing row removed",
+    "Accept Signal -> Friends2, request count reduced",
+    "Friends More -> named removal confirmation -> remove Cipher only",
+    "Open accepted Signal profile -> full card and accepted status",
+    "Friends search104827 matches SPY ID104-827",
+    "Empty friends has Find friends CTA",
+    "Scrolled Find -> sent Echo -> Requests restores title and section controls",
+    "Requests -> Friends direct tab works"
+  ],
+  "production_mutations": false,
+  "physical_device_test": false,
+  "testflight_uploaded": false,
+  "source_sha256": {
+    "SpyClash/Views/CommunityView.swift": "9b810e64a1e949d3c5fc5b6346f349581a14a2d94ce3172b6e3c04bc4b7ff987",
+    "SpyClash/Views/SpyBackground.swift": "9c8723cc84f2c19d1db52aa35a938177028e7fb92c7ec45fa380cfff160ef3b2",
+    "SpyClashTests/CommunityResponsivenessTests.swift": "901e54621fe572412e7822050330ba48d5f31816eb941dff4bd4a8bd0696e532",
+    "project.yml": "f7ddc7c4efbf12182de617fce59d6591092c7f69e79293cc8c65fb28ccdae697",
+    "SpyClash.xcodeproj/project.pbxproj": "c835099bea0fb78ec43b698baa4fd9c34a05a34c950a3d681546f71f9b403f90"
+  }
+}
