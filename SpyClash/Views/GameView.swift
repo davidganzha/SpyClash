@@ -3413,7 +3413,7 @@ struct GameView: View {
                 SpyLobbyHeroHeader(
                     title: "RADAR",
                     status: localized(en: "NEARBY", ru: "РЯДОМ", es: "CERCA", uk: "ПОРУЧ"),
-                    count: roomRadar.peers.count,
+                    count: roomRadar.directoryPeers.count,
                     statusAccent: roomRadarStatusColor
                 )
                     .padding(.horizontal, 18)
@@ -3472,7 +3472,7 @@ struct GameView: View {
 
                         ScrollView(.vertical, showsIndicators: true) {
                             LazyVGrid(columns: columns, spacing: 8) {
-                                if roomRadar.peers.isEmpty {
+                                if roomRadar.directoryPeers.isEmpty {
                                     ForEach(0..<4, id: \.self) { index in
                                         NearbySpyIDPlaceholder(
                                             index: index,
@@ -3481,7 +3481,7 @@ struct GameView: View {
                                         )
                                     }
                                 } else {
-                                    ForEach(roomRadar.peers) { peer in
+                                    ForEach(roomRadar.directoryPeers) { peer in
                                         NearbySpyIDCard(
                                             peer: peer,
                                             language: appState.language,
@@ -3499,7 +3499,7 @@ struct GameView: View {
                                 reduceMotion
                                     ? .easeOut(duration: 0.14)
                                     : .spring(response: 0.48, dampingFraction: 0.88),
-                                value: roomRadar.peers.map(\.id)
+                                value: roomRadar.directoryPeers.map(\.id)
                             )
                         }
                         .scrollBounceBehavior(.basedOnSize, axes: .vertical)
@@ -3511,10 +3511,10 @@ struct GameView: View {
         .clipShape(CutCornerShape(cut: 12))
         .accessibilityElement(children: .contain)
         .accessibilityLabel(localized(
-            en: "Radar, \(roomRadar.peers.count) nearby operatives",
-            ru: "Радар, игроков рядом: \(roomRadar.peers.count)",
-            es: "Radar, agentes cercanos: \(roomRadar.peers.count)",
-            uk: "Радар, гравців поруч: \(roomRadar.peers.count)"
+            en: "Radar, \(roomRadar.directoryPeers.count) nearby operatives",
+            ru: "Радар, игроков рядом: \(roomRadar.directoryPeers.count)",
+            es: "Radar, agentes cercanos: \(roomRadar.directoryPeers.count)",
+            uk: "Радар, гравців поруч: \(roomRadar.directoryPeers.count)"
         ))
     }
 
@@ -3831,7 +3831,7 @@ struct GameView: View {
         case .granted, .unsupported:
             break
         }
-        return roomRadar.peers.isEmpty ? SpyTheme.amber : SpyTheme.green
+        return roomRadar.directoryPeers.isEmpty ? SpyTheme.amber : SpyTheme.green
     }
 
     private var roomRadarNeedsRangefinderRecovery: Bool {
@@ -3921,7 +3921,7 @@ struct GameView: View {
         case .granted, .unsupported:
             break
         }
-        if roomRadar.peers.isEmpty {
+        if roomRadar.directoryPeers.isEmpty {
             return localized(
                 en: "SCANNING FOR OPEN SPYCLASH DEVICES",
                 ru: "ИЩЕМ УСТРОЙСТВА С ОТКРЫТЫМ SPYCLASH",

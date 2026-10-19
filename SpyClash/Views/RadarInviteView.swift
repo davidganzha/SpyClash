@@ -157,13 +157,13 @@ struct RadarInviteView: View {
             HStack(alignment: .firstTextBaseline) {
                 Spacer()
 
-                Text(String(format: "%02d", radar.peers.count))
+                Text(String(format: "%02d", radar.directoryPeers.count))
                     .font(.system(size: 10, weight: .black, design: .monospaced))
-                    .foregroundStyle(radar.peers.isEmpty ? SpyTheme.faint : SpyTheme.green)
+                    .foregroundStyle(radar.directoryPeers.isEmpty ? SpyTheme.faint : SpyTheme.green)
             }
 
             LazyVGrid(columns: columns, spacing: 10) {
-                if radar.peers.isEmpty {
+                if radar.directoryPeers.isEmpty {
                     ForEach(0..<4, id: \.self) { index in
                         NearbySpyIDPlaceholder(
                             index: index,
@@ -172,7 +172,7 @@ struct RadarInviteView: View {
                         )
                     }
                 } else {
-                    ForEach(radar.peers) { peer in
+                    ForEach(radar.directoryPeers) { peer in
                         NearbySpyIDCard(
                             peer: peer,
                             language: appState.language,
@@ -186,10 +186,10 @@ struct RadarInviteView: View {
             }
             .animation(
                 reduceMotion ? .easeOut(duration: 0.14) : .spring(response: 0.48, dampingFraction: 0.88),
-                value: radar.peers.map(\.id)
+                value: radar.directoryPeers.map(\.id)
             )
 
-            if radar.peers.isEmpty {
+            if radar.directoryPeers.isEmpty {
                 Text(localized(
                     en: "WAITING FOR OPEN SPYCLASH DEVICES NEARBY",
                     ru: "ЖДЁМ УСТРОЙСТВА С ОТКРЫТЫМ SPYCLASH РЯДОМ",

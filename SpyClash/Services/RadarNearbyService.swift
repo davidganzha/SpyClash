@@ -122,6 +122,16 @@ struct RadarNearbyPeer: Identifiable, Equatable {
     let distanceMeters: Double?
     let horizontalAngleRadians: Double?
     let relativePosition: RadarRelativePosition?
+
+    func hasSameDirectoryContent(as other: RadarNearbyPeer) -> Bool {
+        id == other.id && spyID == other.spyID
+            && spyCardTheme == other.spyCardTheme
+            && spyCardAccent == other.spyCardAccent
+            && spyCardBadge == other.spyCardBadge
+            && callSign == other.callSign && avatar == other.avatar
+            && invitePolicy == other.invitePolicy
+            && availability == other.availability && source == other.source
+    }
 }
 
 struct RadarIncomingInvitation: Identifiable, Equatable {
@@ -1015,6 +1025,64 @@ enum RadarCameraAssistanceGate {
     }
 }
 
+/// Framework calls may synchronously wait for network/camera services. Keep
+/// those waits off the UI actor and preserve start/invite/stop ordering.
+final class RadarFrameworkExecutor: @unchecked Sendable {
+    private let queue: DispatchQueue
+
+    init(label: String = "app.spyclash.radar.transport") {
+        queue = DispatchQueue(label: label, qos: .userInitiated)
+    }
+
+    func perform(_ operation: @escaping @Sendable () -> Void) {
+        queue.async(execute: operation)
+    }
+
+    func value<Value: Sendable>(
+        _ operation: @escaping @Sendable () -> Value
+    ) async -> Value {
+        await withCheckedContinuation { continuation in
+            queue.async { continuation.resume(returning: operation()) }
+        }
+    }
+}
+
+/// Cancelling a lifetime never waits for an in-flight framework call. Queued
+/// work checks this flag before touching objects that the UI has retired.
+final class RadarFrameworkLifetime: @unchecked Sendable {
+    private let lock = NSLock()
+    private var active = true
+
+    var isActive: Bool {
+        lock.lock()
+        defer { lock.unlock() }
+        return active
+    }
+
+    func cancel() {
+        lock.lock()
+        active = false
+        lock.unlock()
+    }
+}
+
+private struct RadarPreparedTransport: @unchecked Sendable {
+    let peerID: MCPeerID
+    let session: MCSession
+}
+
+private struct SendableNearbyConfiguration: @unchecked Sendable {
+    let value: NINearbyPeerConfiguration
+}
+
+private struct SendableSpatialSession: @unchecked Sendable {
+    let value: ARSession
+}
+
+private struct SendableSpatialConfiguration: @unchecked Sendable {
+    let value: ARWorldTrackingConfiguration
+}
+
 @MainActor
 @Observable
 final class RadarNearbyService: NSObject {
@@ -1029,7 +1097,7 @@ final class RadarNearbyService: NSObject {
     // Multipeer identity contract changes. This prevents cached Bonjour peers
     // from an older random-ID build appearing as duplicate live devices.
     private static let protocolVersion = RadarPeerProtocolPolicy.advertisedVersion
-    private static let peerIDStorageKey = "spyclash.radar.multipeer-id"
+    nonisolated private static let peerIDStorageKey = "spyclash.radar.multipeer-id"
 
     private static var canVerifyRangefinderAccess: Bool {
 #if targetEnvironment(simulator)
@@ -1041,7 +1109,17 @@ final class RadarNearbyService: NSObject {
 
     let localNetworkPermissions: OnboardingPermissionCoordinator
 
-    private(set) var peers: [RadarNearbyPeer] = []
+    private(set) var peers: [RadarNearbyPeer] = [] {
+        didSet {
+            guard peers.count != directoryPeers.count
+                || !zip(peers, directoryPeers).allSatisfy({ $0.hasSameDirectoryContent(as: $1) })
+            else { return }
+            directoryPeers = peers
+        }
+    }
+    /// Invitation cards do not render measurements. Updating distance at up
+    /// to 12 Hz per peer must not invalidate the entire lobby/card hierarchy.
+    private(set) var directoryPeers: [RadarNearbyPeer] = []
     private(set) var scanState: RadarScanState = .idle
     private(set) var incomingInvitation: RadarIncomingInvitation?
     private(set) var outgoingInvitationStates: [String: RadarOutgoingInvitationState] = [:]
@@ -1096,6 +1174,17 @@ final class RadarNearbyService: NSObject {
     private var multipeerSession: MCSession?
     private var advertiser: MCNearbyServiceAdvertiser?
     private var browser: MCNearbyServiceBrowser?
+    nonisolated private let frameworkExecutor = RadarFrameworkExecutor()
+    nonisolated private let measurementExecutor = RadarFrameworkExecutor(
+        label: "app.spyclash.radar.measurements"
+    )
+    private var transportLifetime = RadarFrameworkLifetime()
+    private var browserLifetime: RadarFrameworkLifetime?
+    private var advertiserLifetime: RadarFrameworkLifetime?
+    private var nearbySessionLifetimes: [ObjectIdentifier: RadarFrameworkLifetime] = [:]
+    private var spatialSessionLifetime: RadarFrameworkLifetime?
+    @ObservationIgnored private var transportBuildTask: Task<Void, Never>?
+    private var transportBuildID: UUID?
     private var discoveredPeerIDs: [String: MCPeerID] = [:]
     private var browsedPeerIDs: Set<String> = []
     private var connectingPeerIDs: Set<String> = []
@@ -1140,6 +1229,8 @@ final class RadarNearbyService: NSObject {
     private var receivedRoomInviteOrder: [RadarReceivedRoomInviteKey] = []
     private var pendingRoomInvites: [String: RadarWireMessage] = [:]
     private var pendingInvitationIDs: [String: String] = [:]
+    private var roomInvitationLifetimes: [String: RadarFrameworkLifetime] = [:]
+    private var pendingDirectRoomInvites: [RadarReceivedRoomInviteKey: RadarWireMessage] = [:]
     private var rangingContexts: [String: RadarRangingContext] = [:]
     private var rangingPeerIDsBySession: [ObjectIdentifier: String] = [:]
     private var activeRangefinderProbe: RadarRangefinderProbeContext?
@@ -1166,6 +1257,32 @@ final class RadarNearbyService: NSObject {
     private var previewRangefinderAccessState: RadarRangefinderAccessState?
     private(set) var transportRebuildCountForTesting = 0
     private(set) var browserStartCountForTesting = 0
+
+    var hasActiveTransportForTesting: Bool {
+        multipeerSession != nil && advertiser != nil && localPeerID != nil
+    }
+
+    var transportGenerationIDForTesting: ObjectIdentifier {
+        ObjectIdentifier(transportLifetime)
+    }
+
+    func enqueueFrameworkOperationForTesting(_ operation: @escaping @Sendable () -> Void) {
+        frameworkExecutor.perform(operation)
+    }
+
+    func enqueueMeasurementOperationForTesting(_ operation: @escaping @Sendable () -> Void) {
+        measurementExecutor.perform(operation)
+    }
+
+    func awaitFrameworkOperationsForTesting() async {
+        // Installation resumes on MainActor and may enqueue advertising and
+        // browsing, so drain only after the current construction has installed.
+        while let task = transportBuildTask {
+            await task.value
+        }
+        await frameworkExecutor.value {}
+        await measurementExecutor.value {}
+    }
 #endif
 
     var hasRecoverableRangingFailure: Bool {
@@ -1505,7 +1622,7 @@ final class RadarNearbyService: NSObject {
             return
         }
 
-        if advertiser == nil || multipeerSession == nil {
+        if transportBuildTask == nil, advertiser == nil || multipeerSession == nil {
             rebuildTransportIfNeeded()
         }
         startBrowserIfPossible()
@@ -1549,44 +1666,18 @@ final class RadarNearbyService: NSObject {
     }
 
     func stopScanning() {
-        cancelEmptyDiscoveryRecovery()
+        let hadTransport = multipeerSession != nil || transportBuildTask != nil
         wantsScanning = false
         wantsCameraAssistance = false
         cameraAuthorizationRequestID = nil
-        clearAllRangefinderProbeResources(notifyPeer: true)
-        normalizeRangefinderStateAfterConnectionLoss()
-        browser?.stopBrowsingForPeers()
-        browser = nil
-        multipeerSession?.disconnect()
-        stopAllRanging()
-        rangingInviteAttempts.removeAll()
-        legacyRangingRetryCounts.removeAll()
-        legacyRangingRetryRunIDs.removeAll()
-        connectingPeerIDs.removeAll()
-        pendingRoomInvites.removeAll()
-        pendingInvitationIDs.removeAll()
-        outgoingInvitationStates.removeAll()
-        presencePublishTask?.cancel()
-        presencePublishTask = nil
-        presencePublishRunID = nil
-        pendingLocalPresenceSnapshot = nil
-        discoveredPeerIDs.removeAll()
-        browsedPeerIDs.removeAll()
-        presenceControlPeerIDs.removeAll()
-        presenceInviteAttempts.removeAll()
-        presenceRetryCounts.removeAll()
-        peerPresenceRevisions.removeAll()
-        rangefinderProbeCapablePeerIDs.removeAll()
-        connectedRangingCapablePeerIDs.removeAll()
-        rangingControlPeerIDs.removeAll()
-        lastAppliedLegacyTokenCursors.removeAll()
-        pendingRangingConfigurationRefreshPeerIDs.removeAll()
-        clearAllRangingExchangeState()
-        roomInviteConnectionAttempts.removeAll()
-        invitationTimeoutRunIDs.removeAll()
-        peers.removeAll()
+        // A disconnected MCSession must not be reused by a rapid reopen while
+        // its disconnect is still queued. Retire the complete generation now.
+        stopTransport(clearPeers: true)
         scanState = .idle
-        stopSpatialARSession()
+        if hadTransport, allowsTransport, isApplicationActive, identity != nil {
+            // Continue accepting invitations while this device is off Radar.
+            rebuildTransportIfNeeded()
+        }
         refreshIdleTimerProtection()
     }
 
@@ -1656,6 +1747,8 @@ final class RadarNearbyService: NSObject {
 
         let invitationID = UUID().uuidString
         pendingInvitationIDs[peer.id] = invitationID
+        roomInvitationLifetimes.removeValue(forKey: peer.id)?.cancel()
+        roomInvitationLifetimes[peer.id] = RadarFrameworkLifetime()
         outgoingInvitationStates[peer.id] = .waiting
 
 #if DEBUG
@@ -1734,11 +1827,14 @@ final class RadarNearbyService: NSObject {
         }
 
         if multipeerSession.connectedPeers.contains(peerID) {
-            scheduleInvitationTimeout(for: id, invitationID: invitationID)
             Task { @MainActor [weak self] in
                 guard let self,
                       self.pendingInvitationIDs[id] == invitationID else { return }
-                if !(await self.send(message, to: peerID)) {
+                let sent = await self.send(message, to: peerID)
+                guard self.pendingInvitationIDs[id] == invitationID else { return }
+                if sent {
+                    self.scheduleInvitationTimeout(for: id, invitationID: invitationID)
+                } else {
                     self.markInvitationUnavailable(for: id, invitationID: invitationID)
                 }
             }
@@ -1751,11 +1847,13 @@ final class RadarNearbyService: NSObject {
             return false
         }
         roomInviteConnectionAttempts[id] = invitationID
-        browser.invitePeer(
-            peerID,
-            to: multipeerSession,
-            withContext: context,
-            timeout: 15
+        enqueueInvitation(
+            to: peerID,
+            browser: browser,
+            session: multipeerSession,
+            context: context,
+            timeout: 15,
+            invitationLifetime: roomInvitationLifetimes[id]
         )
         scheduleInvitationTimeout(for: id, invitationID: invitationID)
         return true
@@ -1769,6 +1867,7 @@ final class RadarNearbyService: NSObject {
             return
         }
 
+        roomInvitationLifetimes.removeValue(forKey: peerID)?.cancel()
         pendingRoomInvites[peerID] = nil
         invitationTimeoutRunIDs[peerID] = nil
         if roomInviteConnectionAttempts[peerID] == invitationID {
@@ -1788,17 +1887,19 @@ final class RadarNearbyService: NSObject {
         let cancellation = RadarWireMessage.roomInviteCancellation(
             invitationID: invitationID
         )
-
+        let lifetime = transportLifetime
         Task { @MainActor [weak self] in
-            guard let self else { return }
+            guard let self, lifetime.isActive else { return }
             await self.deliverInvitationCancellation(
                 cancellation,
                 to: remotePeerID
             )
+            await self.frameworkExecutor.value {}
             // The fallback cancellation invitation has a five-second timeout.
             // If Bonjour was already lost and MCSession never reports a final
             // state, do not retain a ghost Radar card indefinitely.
             try? await Task.sleep(for: .seconds(6))
+            guard lifetime.isActive else { return }
             self.clearStaleConnectingStateIfNeeded(for: peerID)
             if let pendingInvite = self.pendingRoomInvites[peerID],
                pendingInvite.invitationID == self.pendingInvitationIDs[peerID] {
@@ -1822,18 +1923,22 @@ final class RadarNearbyService: NSObject {
         // while MCSession is still connecting. Keep cancellation local and
         // immediate, then retry delivery until that encrypted session becomes
         // writable. The browser context is the fallback when no session forms.
+        let lifetime = transportLifetime
         for _ in 0..<14 {
+            guard lifetime.isActive, !Task.isCancelled else { return }
             if await send(cancellation, to: remotePeerID) { return }
             try? await Task.sleep(for: .milliseconds(120))
         }
 
-        guard let browser,
+        guard lifetime.isActive,
+              let browser,
               let multipeerSession,
               let context = encoded(cancellation) else { return }
-        browser.invitePeer(
-            remotePeerID,
-            to: multipeerSession,
-            withContext: context,
+        enqueueInvitation(
+            to: remotePeerID,
+            browser: browser,
+            session: multipeerSession,
+            context: context,
             timeout: 5
         )
     }
@@ -2008,32 +2113,58 @@ final class RadarNearbyService: NSObject {
 
     private func rebuildTransportIfNeeded() {
         stopTransport(clearPeers: true)
-        guard allowsTransport, isApplicationActive, let identity else { return }
+        guard allowsTransport, isApplicationActive, identity != nil else { return }
 #if DEBUG
         transportRebuildCountForTesting &+= 1
 #endif
-
-        let peerID = Self.persistentPeerID()
-        debugLog("transport rebuilt localPeer=\(peerID.displayName)")
-        let multipeerSession = MCSession(
-            peer: peerID,
-            securityIdentity: nil,
-            encryptionPreference: .required
-        )
-        multipeerSession.delegate = self
-
-        localPeerID = peerID
-        self.multipeerSession = multipeerSession
-        restartAdvertisingIfPossible(identity: identity, peerID: peerID)
-
-        if wantsScanning {
-            startBrowserIfPossible()
-        }
+        let buildID = UUID()
+        transportBuildID = buildID
+        let lifetime = transportLifetime
+        let executor = frameworkExecutor
+        transportBuildTask = Task { @MainActor [weak self] in
+            let prepared = await executor.value { () -> RadarPreparedTransport? in
+                guard lifetime.isActive else { return nil }
+                let peerID = Self.persistentPeerID()
+                let session = MCSession(
+                    peer: peerID,
+                    securityIdentity: nil,
+                    encryptionPreference: .required
+                )
+                guard lifetime.isActive else {
+                    session.disconnect()
+                    return nil
+                }
+                return RadarPreparedTransport(peerID: peerID, session: session)
+            }
+            guard let self,
+                  self.transportBuildID == buildID,
+                  lifetime.isActive,
+                  self.allowsTransport,
+                  self.isApplicationActive,
+                  let identity = self.identity,
+                  let prepared else {
+                if let prepared {
+                    executor.perform { prepared.session.disconnect() }
+                }
+                return
+            }
+            self.transportBuildTask = nil
+            self.transportBuildID = nil
+            self.localPeerID = prepared.peerID
+            self.multipeerSession = prepared.session
+            prepared.session.delegate = self
+            self.debugLog("transport rebuilt localPeer=\(prepared.peerID.displayName)")
+            self.restartAdvertisingIfPossible(identity: identity, peerID: prepared.peerID)
+            if self.wantsScanning {
+                self.startBrowserIfPossible()
+                self.reconcileRangefinderReadiness()
+            }
 #if DEBUG
-        if usesPreviewRangingPeers {
-            applyPreviewRangingPeers()
-        }
+            if self.usesPreviewRangingPeers {
+                self.applyPreviewRangingPeers()
+            }
 #endif
+        }
     }
 
     private func restartAdvertisingIfPossible() {
@@ -2041,9 +2172,7 @@ final class RadarNearbyService: NSObject {
               isApplicationActive,
               let identity,
               let localPeerID else {
-            advertiser?.delegate = nil
-            advertiser?.stopAdvertisingPeer()
-            advertiser = nil
+            retireAdvertiser()
             return
         }
         restartAdvertisingIfPossible(identity: identity, peerID: localPeerID)
@@ -2054,13 +2183,10 @@ final class RadarNearbyService: NSObject {
         peerID: MCPeerID
     ) {
         guard allowsTransport else {
-            advertiser?.delegate = nil
-            advertiser?.stopAdvertisingPeer()
-            advertiser = nil
+            retireAdvertiser()
             return
         }
-        advertiser?.delegate = nil
-        advertiser?.stopAdvertisingPeer()
+        retireAdvertiser()
 
         let advertiser = MCNearbyServiceAdvertiser(
             peer: peerID,
@@ -2085,8 +2211,61 @@ final class RadarNearbyService: NSObject {
         )
         advertiser.delegate = self
         self.advertiser = advertiser
-        advertiser.startAdvertisingPeer()
+        let lifetime = RadarFrameworkLifetime()
+        advertiserLifetime = lifetime
+        let sendableAdvertiser = SendableNearbyAdvertiser(value: advertiser)
+        frameworkExecutor.perform {
+            guard lifetime.isActive else { return }
+            sendableAdvertiser.value.startAdvertisingPeer()
+        }
         scheduleTransportStabilityReset(for: advertiser)
+    }
+
+    private func retireBrowser() {
+        browserLifetime?.cancel()
+        browserLifetime = nil
+        let retired = browser.map(SendableNearbyBrowser.init(value:))
+        browser?.delegate = nil
+        browser = nil
+        if let retired {
+            frameworkExecutor.perform { retired.value.stopBrowsingForPeers() }
+        }
+    }
+
+    private func retireAdvertiser() {
+        advertiserLifetime?.cancel()
+        advertiserLifetime = nil
+        let retired = advertiser.map(SendableNearbyAdvertiser.init(value:))
+        advertiser?.delegate = nil
+        advertiser = nil
+        if let retired {
+            frameworkExecutor.perform { retired.value.stopAdvertisingPeer() }
+        }
+    }
+
+    private func enqueueInvitation(
+        to peerID: MCPeerID,
+        browser: MCNearbyServiceBrowser,
+        session: MCSession,
+        context: Data,
+        timeout: TimeInterval,
+        invitationLifetime: RadarFrameworkLifetime? = nil
+    ) {
+        guard let browserLifetime else { return }
+        let transportLifetime = transportLifetime
+        let browser = SendableNearbyBrowser(value: browser)
+        let session = SendableMultipeerSession(value: session)
+        let peer = SendableRadarPeerID(value: peerID)
+        frameworkExecutor.perform {
+            guard browserLifetime.isActive, transportLifetime.isActive,
+                  invitationLifetime?.isActive != false else { return }
+            browser.value.invitePeer(
+                peer.value,
+                to: session.value,
+                withContext: context,
+                timeout: timeout
+            )
+        }
     }
 
     private func startBrowserIfPossible() {
@@ -2105,7 +2284,13 @@ final class RadarNearbyService: NSObject {
         browser.delegate = self
         self.browser = browser
         scanState = .scanning
-        browser.startBrowsingForPeers()
+        let lifetime = RadarFrameworkLifetime()
+        browserLifetime = lifetime
+        let sendableBrowser = SendableNearbyBrowser(value: browser)
+        frameworkExecutor.perform {
+            guard lifetime.isActive else { return }
+            sendableBrowser.value.startBrowsingForPeers()
+        }
 #if DEBUG
         browserStartCountForTesting &+= 1
 #endif
@@ -2121,7 +2306,8 @@ final class RadarNearbyService: NSObject {
               ) else { return }
         let runID = UUID()
         emptyDiscoveryRecoveryRunID = runID
-        emptyDiscoveryRecoveryTask = Task { @MainActor [weak self] in
+        emptyDiscoveryRecoveryTask = Task { @MainActor [weak self, executor = frameworkExecutor] in
+            await executor.value {}
             do {
                 try await Task.sleep(for: .seconds(delay))
             } catch {
@@ -2151,9 +2337,7 @@ final class RadarNearbyService: NSObject {
             return
         }
         emptyDiscoveryRefreshCount += 1
-        browser?.delegate = nil
-        browser?.stopBrowsingForPeers()
-        browser = nil
+        retireBrowser()
         debugLog("refreshing empty discovery attempt=\(emptyDiscoveryRefreshCount)")
         startBrowserIfPossible()
     }
@@ -2211,7 +2395,8 @@ final class RadarNearbyService: NSObject {
         for advertiser: MCNearbyServiceAdvertiser
     ) {
         transportStabilityTask?.cancel()
-        transportStabilityTask = Task { @MainActor [weak self, weak advertiser] in
+        transportStabilityTask = Task { @MainActor [weak self, weak advertiser, executor = frameworkExecutor] in
+            await executor.value {}
             do {
                 try await Task.sleep(for: .seconds(5))
             } catch {
@@ -2253,17 +2438,21 @@ final class RadarNearbyService: NSObject {
         presencePublishTask = nil
         presencePublishRunID = nil
         pendingLocalPresenceSnapshot = nil
-        browser?.delegate = nil
-        advertiser?.delegate = nil
+        transportBuildTask?.cancel()
+        transportBuildTask = nil
+        transportBuildID = nil
+        transportLifetime.cancel()
+        transportLifetime = RadarFrameworkLifetime()
+        retireBrowser()
+        retireAdvertiser()
+        let retiredSession = multipeerSession.map(SendableMultipeerSession.init(value:))
         multipeerSession?.delegate = nil
-        browser?.stopBrowsingForPeers()
-        advertiser?.stopAdvertisingPeer()
-        multipeerSession?.disconnect()
-        stopAllRanging()
-        browser = nil
-        advertiser = nil
         multipeerSession = nil
         localPeerID = nil
+        if let retiredSession {
+            frameworkExecutor.perform { retiredSession.value.disconnect() }
+        }
+        stopAllRanging()
         connectionEpochs.removeAll()
         lastConnectedEpochs.removeAll()
         lastAppliedLegacyTokenCursors.removeAll()
@@ -2286,6 +2475,9 @@ final class RadarNearbyService: NSObject {
         invitationTimeoutRunIDs.removeAll()
         pendingRoomInvites.removeAll()
         pendingInvitationIDs.removeAll()
+        roomInvitationLifetimes.values.forEach { $0.cancel() }
+        roomInvitationLifetimes.removeAll()
+        pendingDirectRoomInvites.removeAll()
         outgoingInvitationStates.removeAll()
         if clearPeers {
             peers.removeAll()
@@ -2450,6 +2642,7 @@ final class RadarNearbyService: NSObject {
         invitationTimeoutRunIDs[id] = nil
         pendingRoomInvites[id] = nil
         pendingInvitationIDs[id] = nil
+        roomInvitationLifetimes.removeValue(forKey: id)?.cancel()
         outgoingInvitationStates[id] = nil
         if incomingInvitation?.sourcePeerID == id {
             if let invitation = incomingInvitation {
@@ -2533,14 +2726,16 @@ final class RadarNearbyService: NSObject {
         presenceInviteAttempts[id] = attemptID
         presenceRetryCounts[id, default: 0] += 1
         debugLog("subscribing to presence peer=\(id) attempt=\(attemptID.uuidString.prefix(6))")
-        browser.invitePeer(
-            peerID,
-            to: multipeerSession,
-            withContext: context,
+        enqueueInvitation(
+            to: peerID,
+            browser: browser,
+            session: multipeerSession,
+            context: context,
             timeout: 10
         )
 
-        Task { @MainActor [weak self] in
+        Task { @MainActor [weak self, executor = frameworkExecutor] in
+            await executor.value {}
             try? await Task.sleep(for: .seconds(11))
             guard let self,
                   self.presenceInviteAttempts[id] == attemptID else { return }
@@ -2630,9 +2825,16 @@ final class RadarNearbyService: NSObject {
         let attemptID = UUID()
         debugLog("sending ranging invitation peer=\(id) attempt=\(attemptID.uuidString.prefix(6))")
         rangingInviteAttempts[id] = attemptID
-        browser.invitePeer(peerID, to: multipeerSession, withContext: context, timeout: 15)
+        enqueueInvitation(
+            to: peerID,
+            browser: browser,
+            session: multipeerSession,
+            context: context,
+            timeout: 15
+        )
 
-        Task { @MainActor [weak self] in
+        Task { @MainActor [weak self, executor = frameworkExecutor] in
+            await executor.value {}
             try? await Task.sleep(for: .seconds(16))
             guard let self,
                   self.rangingInviteAttempts[id] == attemptID else { return }
@@ -2744,8 +2946,26 @@ final class RadarNearbyService: NSObject {
             }
             discoveredPeerIDs[peerID.displayName] = peerID
             connectingPeerIDs.insert(peerID.displayName)
-            invitationHandler(true, multipeerSession)
-            handleRoomInvite(message, from: peerID)
+            if multipeerSession.connectedPeers.contains(peerID) {
+                invitationHandler(true, multipeerSession)
+                handleRoomInvite(message, from: peerID)
+            } else {
+                guard let invitationID = message.invitationID else {
+                    invitationHandler(false, nil)
+                    return
+                }
+                let key = RadarReceivedRoomInviteKey(
+                    sourcePeerID: peerID.displayName,
+                    invitationID: invitationID
+                )
+                guard pendingDirectRoomInvites[key] != nil
+                    || pendingDirectRoomInvites.count < Self.maximumRememberedRoomInvites else {
+                    invitationHandler(false, nil)
+                    return
+                }
+                pendingDirectRoomInvites[key] = message
+                invitationHandler(true, multipeerSession)
+            }
 
         case .roomInviteCancel:
             handleRoomInviteCancellation(message, from: peerID)
@@ -2784,6 +3004,14 @@ final class RadarNearbyService: NSObject {
         debugLog("multipeer state=\(state.rawValue) peer=\(id)")
         switch state {
         case .connected:
+            // Context can arrive before encryption finishes. Present/reply only
+            // once the connection can deliver blocked, busy and acceptance ACKs.
+            let incomingKeys = pendingDirectRoomInvites.keys.filter { $0.sourcePeerID == id }
+            for key in incomingKeys {
+                if let message = pendingDirectRoomInvites.removeValue(forKey: key) {
+                    handleRoomInvite(message, from: peerID)
+                }
+            }
             if let connectionEpoch {
                 lastConnectedEpochs[id] = connectionEpoch
             }
@@ -2862,6 +3090,7 @@ final class RadarNearbyService: NSObject {
             }
 
         case .notConnected:
+            pendingDirectRoomInvites = pendingDirectRoomInvites.filter { $0.key.sourcePeerID != id }
             lastAppliedLegacyTokenCursors[id] = nil
             clearRangefinderProbeResponders(for: id)
             if let context = activeRangefinderProbe,
@@ -3040,7 +3269,7 @@ final class RadarNearbyService: NSObject {
                 withRootObject: localToken,
                 requiringSecureCoding: true
               ) else {
-            nearbySession.invalidate()
+            retireNearbySession(nearbySession)
             debugLog("NI local token unavailable peer=\(id)")
             updatePrecision(for: id, state: .unavailable, distance: nil, angle: nil)
             scheduleRangingRecovery(
@@ -3070,8 +3299,6 @@ final class RadarNearbyService: NSObject {
                 with: preservedRemoteToken,
                 tokenData: preservedRemoteTokenData
             )
-        } else {
-            scheduleRangingTokenExchangeTimeout(rangingContext, for: id)
         }
 
         Task { @MainActor [weak self] in
@@ -3084,6 +3311,9 @@ final class RadarNearbyService: NSObject {
             guard self.rangingContexts[id] === rangingContext else { return }
             if sent {
                 rangingContext.localTokenDeliveryConfirmed = true
+                if rangingContext.remoteToken == nil {
+                    self.scheduleRangingTokenExchangeTimeout(rangingContext, for: id)
+                }
             }
             guard self.isApplicationActive else {
                 if !sent {
@@ -3647,7 +3877,6 @@ final class RadarNearbyService: NSObject {
         guard activeRangefinderProbe === context,
               isApplicationActive,
               context.nearbySession == nil else { return }
-        scheduleRangefinderProbeRequestTimeout(context)
         let attemptID = UUID()
         context.requestSendAttemptID = attemptID
         Task { @MainActor [weak self, weak context] in
@@ -3661,7 +3890,9 @@ final class RadarNearbyService: NSObject {
                   context.nearbySession == nil else { return }
             context.requestSendAttemptID = nil
             guard self.isApplicationActive else { return }
-            if !sent {
+            if sent {
+                self.scheduleRangefinderProbeRequestTimeout(context)
+            } else {
                 self.finishActiveRangefinderProbe(with: .unavailable)
             }
         }
@@ -3731,7 +3962,7 @@ final class RadarNearbyService: NSObject {
                 withRootObject: token,
                 requiringSecureCoding: true
               ) else {
-            nearbySession.invalidate()
+            retireNearbySession(nearbySession)
             return
         }
 
@@ -3786,7 +4017,7 @@ final class RadarNearbyService: NSObject {
 
         let configuration = NINearbyPeerConfiguration(peerToken: peerToken)
         configuration.isExtendedDistanceMeasurementEnabled = false
-        nearbySession.run(configuration)
+        enqueueNearbyRun(nearbySession, configuration: configuration)
         debugLog("rangefinder permission run peer=\(peerID.displayName) probe=\(context.id.prefix(6))")
     }
 
@@ -4362,7 +4593,7 @@ final class RadarNearbyService: NSObject {
         if let nearbySession = context.nearbySession {
             rangefinderProbeIDsBySession[ObjectIdentifier(nearbySession)] = nil
             nearbySession.delegate = nil
-            nearbySession.invalidate()
+            retireNearbySession(nearbySession)
         }
         if notifyPeer {
             let peerID = context.peerID
@@ -4380,7 +4611,8 @@ final class RadarNearbyService: NSObject {
         _ context: RadarRangefinderProbeContext
     ) {
         context.timeoutTask?.cancel()
-        context.timeoutTask = Task { @MainActor [weak self, weak context] in
+        context.timeoutTask = Task { @MainActor [weak self, weak context, executor = measurementExecutor] in
+            await executor.value {}
             do {
                 try await Task.sleep(for: .seconds(300))
             } catch {
@@ -4405,7 +4637,7 @@ final class RadarNearbyService: NSObject {
         }
         responder.timeoutTask?.cancel()
         responder.timeoutTask = nil
-        responder.nearbySession.invalidate()
+        retireNearbySession(responder.nearbySession)
     }
 
     private func scheduleRangefinderResponderTimeout(
@@ -4508,7 +4740,7 @@ final class RadarNearbyService: NSObject {
         context.suspensionDidEnd = false
         let configuration = NINearbyPeerConfiguration(peerToken: peerToken)
         configuration.isExtendedDistanceMeasurementEnabled = false
-        session.run(configuration)
+        enqueueNearbyRun(session, configuration: configuration)
         return true
     }
 
@@ -4635,7 +4867,7 @@ final class RadarNearbyService: NSObject {
         rangingContext.didFallbackToBaseRanging = true
         rangingContext.remoteToken = peerToken
         rangingContext.remoteTokenData = tokenData
-        rangingContext.nearbySession.run(configuration)
+        enqueueNearbyRun(rangingContext.nearbySession, configuration: configuration)
         debugLog("NI ranging run peer=\(id) camera=\(configuration.isCameraAssistanceEnabled)")
         scheduleMeasurementAvailabilityCheck(
             for: id,
@@ -4736,6 +4968,7 @@ final class RadarNearbyService: NSObject {
             sourcePeerID: peerID.displayName,
             invitationID: invitationID
         )
+        pendingDirectRoomInvites[invitationKey] = nil
         setReceivedRoomInviteState(.cancelled, for: invitationKey)
         if RadarInvitationCancellationPolicy.matches(
             invitation: incomingInvitation,
@@ -4839,12 +5072,18 @@ final class RadarNearbyService: NSObject {
             response: response
         )
 
-        // Browser invitations establish the encrypted MCSession just after the
-        // room-invite context arrives. Wait briefly so blocked/busy answers are
-        // returned on that same local connection instead of being dropped.
-        for _ in 0..<14 {
+        // Direct contexts are held until connected. Keep a bounded retry for
+        // transient connection changes, scoped to this transport generation.
+        let lifetime = transportLifetime
+        await frameworkExecutor.value {}
+        let deadline = ContinuousClock.now.advanced(by: .seconds(18))
+        while lifetime.isActive, !Task.isCancelled, ContinuousClock.now < deadline {
             if await send(message, to: peerID) { return }
-            try? await Task.sleep(for: .milliseconds(120))
+            do {
+                try await Task.sleep(for: .milliseconds(120))
+            } catch {
+                return
+            }
         }
     }
 
@@ -4855,6 +5094,7 @@ final class RadarNearbyService: NSObject {
     ) {
         guard pendingInvitationIDs[peerID] == invitationID else { return }
         pendingInvitationIDs[peerID] = nil
+        roomInvitationLifetimes.removeValue(forKey: peerID)?.cancel()
         pendingRoomInvites[peerID] = nil
         invitationTimeoutRunIDs[peerID] = nil
         if roomInviteConnectionAttempts[peerID] == invitationID {
@@ -4886,7 +5126,8 @@ final class RadarNearbyService: NSObject {
     private func scheduleInvitationTimeout(for peerID: String, invitationID: String) {
         let runID = UUID()
         invitationTimeoutRunIDs[peerID] = runID
-        Task { @MainActor [weak self] in
+        Task { @MainActor [weak self, executor = frameworkExecutor] in
+            await executor.value {}
             try? await Task.sleep(for: .seconds(18))
             guard let self,
                   self.invitationTimeoutRunIDs[peerID] == runID else { return }
@@ -4908,6 +5149,7 @@ final class RadarNearbyService: NSObject {
     private func markInvitationUnavailable(for peerID: String, invitationID: String) {
         guard pendingInvitationIDs[peerID] == invitationID else { return }
         pendingInvitationIDs[peerID] = nil
+        roomInvitationLifetimes.removeValue(forKey: peerID)?.cancel()
         pendingRoomInvites[peerID] = nil
         invitationTimeoutRunIDs[peerID] = nil
         if roomInviteConnectionAttempts[peerID] == invitationID {
@@ -4950,14 +5192,19 @@ final class RadarNearbyService: NSObject {
 
         let session = SendableMultipeerSession(value: multipeerSession)
         let peer = SendableRadarPeerID(value: peerID)
-        return await Task.detached(priority: .userInitiated) {
+        let lifetime = transportLifetime
+        let invitationLifetime = message.kind == .roomInvite
+            ? roomInvitationLifetimes[peerID.displayName] : nil
+        if message.kind == .roomInvite, invitationLifetime == nil { return false }
+        return await frameworkExecutor.value {
+            guard lifetime.isActive, invitationLifetime?.isActive != false else { return false }
             do {
                 try session.value.send(data, toPeers: [peer.value], with: .reliable)
                 return true
             } catch {
                 return false
             }
-        }.value
+        }
     }
 
     private func encoded(_ message: RadarWireMessage) -> Data? {
@@ -4987,7 +5234,14 @@ final class RadarNearbyService: NSObject {
             )
         configuration.isCameraAssistanceEnabled = canUseCameraAssistance
         if canUseCameraAssistance, let spatialARSession = ensureSpatialARSession() {
-            nearbySession.setARSession(spatialARSession)
+            let nearbyLifetime = lifetime(for: nearbySession)
+            let spatialLifetime = spatialSessionLifetime
+            let nearby = SendableNearbySession(value: nearbySession)
+            let spatial = SendableSpatialSession(value: spatialARSession)
+            measurementExecutor.perform {
+                guard nearbyLifetime.isActive, spatialLifetime?.isActive == true else { return }
+                nearby.value.setARSession(spatial.value)
+            }
         }
     }
 
@@ -5041,7 +5295,8 @@ final class RadarNearbyService: NSObject {
         for id: String,
         nearbySession: NISession
     ) {
-        Task { @MainActor [weak self] in
+        Task { @MainActor [weak self, executor = measurementExecutor] in
+            await executor.value {}
             try? await Task.sleep(for: .seconds(4))
             guard let self,
                   let context = self.rangingContexts[id],
@@ -5081,8 +5336,36 @@ final class RadarNearbyService: NSObject {
                 for: context.nearbySession,
                 allowCameraAssistance: !context.didFallbackToBaseRanging
             )
-            context.nearbySession.run(configuration)
+            enqueueNearbyRun(context.nearbySession, configuration: configuration)
         }
+    }
+
+    private func lifetime(for nearbySession: NISession) -> RadarFrameworkLifetime {
+        let id = ObjectIdentifier(nearbySession)
+        if let lifetime = nearbySessionLifetimes[id] { return lifetime }
+        let lifetime = RadarFrameworkLifetime()
+        nearbySessionLifetimes[id] = lifetime
+        return lifetime
+    }
+
+    private func enqueueNearbyRun(
+        _ nearbySession: NISession,
+        configuration: NINearbyPeerConfiguration
+    ) {
+        let lifetime = lifetime(for: nearbySession)
+        let session = SendableNearbySession(value: nearbySession)
+        let configuration = SendableNearbyConfiguration(value: configuration)
+        measurementExecutor.perform {
+            guard lifetime.isActive else { return }
+            session.value.run(configuration.value)
+        }
+    }
+
+    private func retireNearbySession(_ nearbySession: NISession) {
+        nearbySessionLifetimes.removeValue(forKey: ObjectIdentifier(nearbySession))?.cancel()
+        nearbySession.delegate = nil
+        let session = SendableNearbySession(value: nearbySession)
+        measurementExecutor.perform { session.value.invalidate() }
     }
 
     private func ensureSpatialARSession() -> ARSession? {
@@ -5097,18 +5380,30 @@ final class RadarNearbyService: NSObject {
         spatialARSession.delegate = self
         let configuration = ARWorldTrackingConfiguration()
         configuration.worldAlignment = .gravity
-        spatialARSession.run(
-            configuration,
-            options: [.resetTracking, .removeExistingAnchors]
-        )
+        let lifetime = RadarFrameworkLifetime()
+        spatialSessionLifetime = lifetime
         self.spatialARSession = spatialARSession
+        let session = SendableSpatialSession(value: spatialARSession)
+        let sendableConfiguration = SendableSpatialConfiguration(value: configuration)
+        measurementExecutor.perform {
+            guard lifetime.isActive else { return }
+            session.value.run(
+                sendableConfiguration.value,
+                options: [.resetTracking, .removeExistingAnchors]
+            )
+        }
         return spatialARSession
     }
 
     private func stopSpatialARSession() {
+        spatialSessionLifetime?.cancel()
+        spatialSessionLifetime = nil
+        let retired = spatialARSession.map(SendableSpatialSession.init(value:))
         spatialARSession?.delegate = nil
-        spatialARSession?.pause()
         spatialARSession = nil
+        if let retired {
+            measurementExecutor.perform { retired.value.pause() }
+        }
     }
 
     private func updateRanging(
@@ -5196,7 +5491,7 @@ final class RadarNearbyService: NSObject {
             for: context.nearbySession,
             allowCameraAssistance: true
         )
-        context.nearbySession.run(configuration)
+        enqueueNearbyRun(context.nearbySession, configuration: configuration)
         debugLog("NI upgraded to camera assistance peer=\(id)")
     }
 
@@ -5580,7 +5875,7 @@ final class RadarNearbyService: NSObject {
             for: nearbySession,
             allowCameraAssistance: !didFallback
         )
-        nearbySession.run(configuration)
+        enqueueNearbyRun(nearbySession, configuration: configuration)
         updatePrecision(for: id, state: .measuring, distance: nil, angle: nil)
     }
 
@@ -5593,6 +5888,7 @@ final class RadarNearbyService: NSObject {
             return nil
         }
         debugLog("NI invalidated peer=\(id) error=\(errorDescription)")
+        nearbySessionLifetimes.removeValue(forKey: ObjectIdentifier(nearbySession))?.cancel()
         rangingPeerIDsBySession[ObjectIdentifier(nearbySession)] = nil
         pendingRangingConfigurationRefreshPeerIDs.remove(id)
         let context = rangingContexts.removeValue(forKey: id)
@@ -5633,7 +5929,7 @@ final class RadarNearbyService: NSObject {
         context.tokenExchangeRetryRunID = nil
         rangingPeerIDsBySession[ObjectIdentifier(context.nearbySession)] = nil
         context.nearbySession.delegate = nil
-        context.nearbySession.invalidate()
+        retireNearbySession(context.nearbySession)
         if rangingContexts.isEmpty {
             stopSpatialARSession()
         }
@@ -5652,13 +5948,13 @@ final class RadarNearbyService: NSObject {
             context.tokenExchangeRetryTask = nil
             context.tokenExchangeRetryRunID = nil
             context.nearbySession.delegate = nil
-            context.nearbySession.invalidate()
+            retireNearbySession(context.nearbySession)
         }
         stopSpatialARSession()
         refreshIdleTimerProtection()
     }
 
-    private static func persistentPeerID() -> MCPeerID {
+    nonisolated private static func persistentPeerID() -> MCPeerID {
         if let archivedPeerID = UserDefaults.standard.data(forKey: peerIDStorageKey),
            let peerID = try? NSKeyedUnarchiver.unarchivedObject(
                ofClass: MCPeerID.self,
@@ -5871,20 +6167,28 @@ extension RadarNearbyService: MCNearbyServiceAdvertiserDelegate {
         let activeAdvertiser = SendableNearbyAdvertiser(value: advertiser)
         let peer = SendableRadarPeerID(value: peerID)
         let handler = SendableInvitationHandler(value: invitationHandler)
+        let executor = frameworkExecutor
         Task { @MainActor [weak self] in
             guard let self else {
-                handler.value(false, nil)
+                executor.perform { handler.value(false, nil) }
                 return
             }
             guard self.allowsTransport,
                   self.advertiser === activeAdvertiser.value else {
-                handler.value(false, nil)
+                executor.perform { handler.value(false, nil) }
                 return
             }
+            let lifetime = self.transportLifetime
             self.handleConnectionRequest(
                 from: peer.value,
                 context: context,
-                invitationHandler: handler.value
+                invitationHandler: { accepted, session in
+                    let session = session.map(SendableMultipeerSession.init(value:))
+                    executor.perform {
+                        let isAccepted = accepted && lifetime.isActive
+                        handler.value(isAccepted, isAccepted ? session?.value : nil)
+                    }
+                }
             )
         }
     }

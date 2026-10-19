@@ -311,6 +311,7 @@ final class LocalNetworkPermissionLifecycleTests: XCTestCase {
         XCTAssertEqual(radar.transportRebuildCountForTesting, 0)
         browsers.browsers[1].emit(.ready)
         await waitForStatus(.granted, coordinator: coordinator)
+        await radar.awaitFrameworkOperationsForTesting()
 
         XCTAssertTrue(radar.canDisplayDirectory)
         XCTAssertFalse(radar.hasDeniedPermission)
@@ -412,3 +413,167 @@ private final class PermissionTestClock {
         for (_, continuation) in pending { continuation.resume() }
     }
 }
+
+#if DEBUG
+@MainActor
+final class RadarFrameworkResponsivenessTests: XCTestCase {
+    func testLogoutDuringBlockedConstructionCannotRestoreTransport() async throws {
+        let radar = RadarNearbyService()
+        let started = expectation(description: "Framework queue held")
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal(); radar.configure(user: nil, allowsTransport: false) }
+        radar.enqueueFrameworkOperationForTesting {
+            started.fulfill()
+            _ = release.wait(timeout: .now() + 3)
+        }
+        await fulfillment(of: [started], timeout: 1)
+        radar.configure(user: try user())
+        radar.setApplicationActive(true)
+        radar.startScanning()
+        let oldGeneration = radar.transportGenerationIDForTesting
+        radar.configure(user: nil, allowsTransport: false)
+        XCTAssertNotEqual(radar.transportGenerationIDForTesting, oldGeneration)
+        XCTAssertFalse(radar.hasActiveTransportForTesting)
+        XCTAssertEqual(radar.scanState, .idle)
+        release.signal()
+        await radar.awaitFrameworkOperationsForTesting()
+        // Drain the cancelled builder's MainActor completion as well.
+        await Task.yield()
+        XCTAssertFalse(radar.hasActiveTransportForTesting)
+        XCTAssertTrue(radar.peers.isEmpty)
+    }
+
+    func testRapidRadarReopenRetiresOldGenerationWithoutBlockingUI() async throws {
+        let radar = RadarNearbyService()
+        defer { radar.configure(user: nil, allowsTransport: false) }
+        radar.configure(user: try user())
+        radar.setApplicationActive(true)
+        radar.startScanning()
+        await radar.awaitFrameworkOperationsForTesting()
+        XCTAssertTrue(radar.hasActiveTransportForTesting)
+        let oldGeneration = radar.transportGenerationIDForTesting
+        let started = expectation(description: "Framework queue held before close")
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        radar.enqueueFrameworkOperationForTesting {
+            started.fulfill()
+            _ = release.wait(timeout: .now() + 3)
+        }
+        await fulfillment(of: [started], timeout: 1)
+        radar.stopScanning()
+        radar.startScanning()
+        radar.stopScanning()
+        radar.startScanning()
+        XCTAssertNotEqual(radar.transportGenerationIDForTesting, oldGeneration)
+        XCTAssertFalse(radar.hasActiveTransportForTesting)
+        release.signal()
+        await radar.awaitFrameworkOperationsForTesting()
+        XCTAssertTrue(radar.hasActiveTransportForTesting)
+        XCTAssertEqual(radar.scanState, .scanning)
+    }
+
+    private func user() throws -> SpyUser {
+        try JSONDecoder().decode(SpyUser.self, from: Data(
+            #"{"id":"radar-responsiveness-test","email":"radar-performance@example.invalid"}"#.utf8
+        ))
+    }
+
+    func testDirectoryProjectionIgnoresMeasurementsButPreservesInviteEligibility() {
+        func peer(distance: Double? = nil,
+                  availability: RadarPlayerAvailability = .available,
+                  policy: RadarInvitePolicy = .ask,
+                  callSign: String = "Operative") -> RadarNearbyPeer {
+            RadarNearbyPeer(
+                id: "peer", spyID: "123-456", spyCardTheme: .field,
+                spyCardAccent: .signalRed, spyCardBadge: .operative,
+                callSign: callSign, avatar: "🔥", invitePolicy: policy,
+                availability: availability, source: .iphone,
+                precisionState: distance == nil ? .available : .measuring,
+                directionState: distance == nil ? .waiting : .tracking,
+                distanceMeters: distance, horizontalAngleRadians: distance == nil ? nil : 0.1,
+                relativePosition: distance.map { .init(xMeters: 0.1, zMeters: $0) }
+            )
+        }
+        let original = peer()
+        for tick in 0..<720 {
+            XCTAssertTrue(original.hasSameDirectoryContent(as: peer(distance: Double(tick) / 100)))
+        }
+        XCTAssertFalse(original.hasSameDirectoryContent(as: peer(availability: .inGame)))
+        XCTAssertFalse(original.hasSameDirectoryContent(as: peer(policy: .blocked)))
+        XCTAssertFalse(original.hasSameDirectoryContent(as: peer(callSign: "Renamed")))
+    }
+
+    func testBlockedFrameworkWorkLeavesMainActorResponsiveAndPreservesOrdering() async {
+        let executor = RadarFrameworkExecutor()
+        let started = expectation(description: "Framework operation started off main")
+        let completed = expectation(description: "Second operation follows first")
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let sequence = RadarTestSequence()
+        executor.perform {
+            XCTAssertFalse(Thread.isMainThread)
+            sequence.append(1)
+            started.fulfill()
+            XCTAssertEqual(release.wait(timeout: .now() + 3), .success)
+            sequence.append(2)
+        }
+        await fulfillment(of: [started], timeout: 1)
+        executor.perform {
+            XCTAssertFalse(Thread.isMainThread)
+            sequence.append(3)
+            completed.fulfill()
+        }
+        // This MainActor turn must execute while the framework queue is held.
+        XCTAssertEqual(sequence.values, [1])
+        release.signal()
+        await fulfillment(of: [completed], timeout: 2)
+        XCTAssertEqual(sequence.values, [1, 2, 3])
+    }
+
+    func testRetiredLifetimeSkipsQueuedInviteButReplacementStillRuns() async {
+        let executor = RadarFrameworkExecutor()
+        let retired = RadarFrameworkLifetime()
+        let replacement = RadarFrameworkLifetime()
+        let started = expectation(description: "Queue held before invitations")
+        let release = DispatchSemaphore(value: 0)
+        defer { release.signal() }
+        let sequence = RadarTestSequence()
+        executor.perform {
+            started.fulfill()
+            _ = release.wait(timeout: .now() + 3)
+        }
+        await fulfillment(of: [started], timeout: 1)
+        executor.perform {
+            guard retired.isActive else { return }
+            sequence.append(1)
+        }
+        retired.cancel()
+        executor.perform {
+            guard replacement.isActive else { return }
+            sequence.append(2)
+        }
+        release.signal()
+        await executor.value { () }
+        XCTAssertEqual(sequence.values, [2])
+        XCTAssertFalse(retired.isActive)
+        XCTAssertTrue(replacement.isActive)
+    }
+}
+
+private final class RadarTestSequence: @unchecked Sendable {
+    private let lock = NSLock()
+    private var storage: [Int] = []
+
+    func append(_ value: Int) {
+        lock.lock()
+        defer { lock.unlock() }
+        storage.append(value)
+    }
+
+    var values: [Int] {
+        lock.lock()
+        defer { lock.unlock() }
+        return storage
+    }
+}
+#endif

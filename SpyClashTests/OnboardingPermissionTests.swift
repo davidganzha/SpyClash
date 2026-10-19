@@ -1000,7 +1000,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
 
 #if DEBUG
     @MainActor
-    func testEmptyDiscoveryRefreshKeepsSessionAndDefersToPendingInvitation() throws {
+    func testEmptyDiscoveryRefreshKeepsSessionAndDefersToPendingInvitation() async throws {
         let user = try JSONDecoder().decode(
             SpyUser.self,
             from: Data(#"{"id":"empty-radar-user","email":"empty-radar@example.com"}"#.utf8)
@@ -1010,6 +1010,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         radar.configure(user: user)
         radar.setApplicationActive(true)
         radar.startScanning()
+        await radar.awaitFrameworkOperationsForTesting()
         let initialRebuilds = radar.transportRebuildCountForTesting
         let initialBrowserStarts = radar.browserStartCountForTesting
 
@@ -1021,6 +1022,9 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
 
         radar.stopScanning()
         radar.startScanning()
+        await radar.awaitFrameworkOperationsForTesting()
+        let rebuildsAfterReopen = radar.transportRebuildCountForTesting
+        XCTAssertGreaterThan(rebuildsAfterReopen, initialRebuilds)
         let browserStartsAfterReopen = radar.browserStartCountForTesting
         let invitation = RadarIncomingInvitation(
             roomCode: "ABC123", hostCallSign: "Host", hostAvatar: "🕵️"
@@ -1030,7 +1034,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
 
         XCTAssertEqual(radar.browserStartCountForTesting, browserStartsAfterReopen)
         XCTAssertEqual(radar.incomingInvitation, invitation)
-        XCTAssertEqual(radar.transportRebuildCountForTesting, initialRebuilds)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, rebuildsAfterReopen)
 
         radar.setApplicationActive(false)
         radar.refreshEmptyDiscoveryIfNeeded()
@@ -1092,7 +1096,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
     }
 
     @MainActor
-    func testRadarRetryRecoversPreviewScanAfterUnavailableTransport() throws {
+    func testRadarRetryRecoversPreviewScanAfterUnavailableTransport() async throws {
         let user = try JSONDecoder().decode(
             SpyUser.self,
             from: Data(#"{"id":"radar-retry-user","email":"radar-retry@example.com"}"#.utf8)
@@ -1118,6 +1122,7 @@ final class OnboardingPermissionStatusMappingTests: XCTestCase {
         let rebuildCountBeforeExplicitRetry = radar.transportRebuildCountForTesting
 
         radar.retryScanning()
+        await radar.awaitFrameworkOperationsForTesting()
 
         XCTAssertEqual(radar.scanState, .scanning)
         XCTAssertFalse(radar.peers.isEmpty)
