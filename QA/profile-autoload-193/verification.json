@@ -1,0 +1,708 @@
+{
+  "date": "2026-10-19",
+  "version": "1.0.3",
+  "build": 193,
+  "branch": "davidganzha/social-integration-192",
+  "baseline": "2fef3178315d73690e8d7a920cd53bf834bf612a",
+  "tests": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 93604,
+      "counts": {
+        "passed": 37,
+        "failed": 0,
+        "skipped": 0
+      },
+      "target": "simulator"
+    },
+    "artifacts": {
+      "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/test_sim_2026-10-19T11-40-34-455Z_pid2549_f71a2c8d.log",
+      "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-19T11-40-34-456Z_pid2549_cb19837d.xcresult",
+      "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/test-products/test_sim_2026-10-19T11-40-34-456Z_pid2549_c44c1528.xctestproducts"
+    },
+    "tests": {
+      "selected": [
+        "SpyClashTests/CommunityDirectoryLoadingTests/testAccountSwitchClearsCacheAndRejectsPreviousAccountResponse",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testCancelledInitialViewTaskLeavesFirstPageRetryable",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testChangedQueryRejectsOldResultEvenWhenTransportIgnoresCancellation",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testChangedQueryRejectsStaleFailureAndClearsOldPaginationImmediately",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testFailedInitialPageDoesNotCreateAnAutomaticRetryLoop",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testFailureKeepsRowsStopsAutomaticRequestsAndRetryUsesSameOffset",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testFreshQueryCacheRestoresContinuationAndExpiredCacheReloads",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testInvalidationCannotRecacheCurrentDirectoryAndInjectionWorksAfterInit",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testNonAdvancingCursorStopsButEmptyAdvancingPageCanContinue",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testPagesDeduplicateInternallyAndReplaceEarlierSummaryWithoutReordering",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testQueryCacheEvictsLeastRecentlyUsedAndSkipsOversizedDirectories",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testRealtimeChangesWinOverInflightPageAndUpdateCachedQueries",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testRepeatedVisibilitySignalsLoadEachPageOnlyOnce",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testStaleFirstPageRefreshResetsServerCursorAndDoesNotSkipDisplacedProfiles",
+        "SpyClashTests/CommunityDirectoryLoadingTests/testSuspendCancelsAndResumeCanLoadBeforeOldTransportUnwinds",
+        "SpyClashTests/CommunityResponsivenessTests/testAcceptProjectsFriendImmediatelyWithoutDuplicatingExistingPair",
+        "SpyClashTests/CommunityResponsivenessTests/testAuthoritativeInboxRefreshAllowsNewRequestsThatReuseSourceIDs",
+        "SpyClashTests/CommunityResponsivenessTests/testCancelOnlyChangesOutgoingRequestAndCanBeRolledBack",
+        "SpyClashTests/CommunityResponsivenessTests/testConfirmedBlockWinsOverOptimisticAcceptAndItsRollback",
+        "SpyClashTests/CommunityResponsivenessTests/testDecliningDuplicatePendingRequestDoesNotRemoveConfirmedFriend",
+        "SpyClashTests/CommunityResponsivenessTests/testDirectoryActionsDoNotReuseUnrelatedRelationshipsOrRequireLoadedNetwork",
+        "SpyClashTests/CommunityResponsivenessTests/testDirectoryActionsFollowOptimisticAcceptanceAndCancellation",
+        "SpyClashTests/CommunityResponsivenessTests/testDirectoryActionsHonorBlockOverEveryOtherRelationship",
+        "SpyClashTests/CommunityResponsivenessTests/testDirectoryActionsKeepConfirmedFriendshipOverDuplicatePendingRequests",
+        "SpyClashTests/CommunityResponsivenessTests/testDirectoryActionsUsePendingRequestDirectionAndPreferIncomingWhenCrossed",
+        "SpyClashTests/CommunityResponsivenessTests/testEmptyPreviewAppliesOnlyBeforeSharedStateExists",
+        "SpyClashTests/CommunityResponsivenessTests/testFailedAcceptRestoresRequestAndKeepsUnrelatedIncomingUpdate",
+        "SpyClashTests/CommunityResponsivenessTests/testInboxAcceptedInviteRemainsRetryableUntilJoinIsConfirmed",
+        "SpyClashTests/CommunityResponsivenessTests/testInboxCompletedAcceptStillRespectsNewBlock",
+        "SpyClashTests/CommunityResponsivenessTests/testInboxConcurrentAcceptsKeepBothFriendsAndUnrelatedIncomingRequest",
+        "SpyClashTests/CommunityResponsivenessTests/testNavigationOrMutationInvalidatesAnOlderProfileCatchUp",
+        "SpyClashTests/CommunityResponsivenessTests/testOptimisticChangesAndRollbackNeverCrossAccounts",
+        "SpyClashTests/CommunityResponsivenessTests/testProfileReadCannotOverwriteASignalThatStartedAfterIt",
+        "SpyClashTests/CommunityResponsivenessTests/testProjectionAndRollbackPreserveRoomInvitesAndBlockedPlayers",
+        "SpyClashTests/CommunityResponsivenessTests/testRemovalIsImmediateAndRollbackPreservesOtherFriends",
+        "SpyClashTests/CommunityResponsivenessTests/testSharedPreviewAcceptanceAndFriendRemovalSurviveScreenRemounts",
+        "SpyClashTests/CommunityResponsivenessTests/testWrongDirectionUnknownIDAndUnsupportedActionCannotCreateProjection"
+      ],
+      "discovered": {
+        "total": 37,
+        "items": [
+          "SpyClashTests/CommunityDirectoryLoadingTests/testAccountSwitchClearsCacheAndRejectsPreviousAccountResponse",
+          "SpyClashTests/CommunityDirectoryLoadingTests/testCancelledInitialViewTaskLeavesFirstPageRetryable",
+          "SpyClashTests/CommunityDirectoryLoadingTests/testChangedQueryRejectsOldResultEvenWhenTransportIgnoresCancellation",
+          "SpyClashTests/CommunityDirectoryLoadingTests/testChangedQueryRejectsStaleFailureAndClearsOldPaginationImmediately",
+          "SpyClashTests/CommunityDirectoryLoadingTests/testFailedInitialPageDoesNotCreateAnAutomaticRetryLoop",
+          "SpyClashTests/CommunityDirectoryLoadingTests/testFailureKeepsRowsStopsAutomaticRequestsAndRetryUsesSameOffset"
+        ]
+      }
+    },
+    "diagnostics": {
+      "warnings": [
+        {
+          "message": "'VNDetectBarcodesRequestRevision1' was deprecated in iOS 17.0: renamed to 'VNDetectBarcodesRequestRevision3'",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClashTests/QRScannerTests.swift:91"
+        },
+        {
+          "message": "'usesCPUOnly' was deprecated in iOS 17.0",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClashTests/QRScannerTests.swift:92"
+        }
+      ],
+      "errors": [],
+      "testFailures": []
+    },
+    "testCases": [
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testAccountSwitchClearsCacheAndRejectsPreviousAccountResponse",
+        "status": "passed",
+        "durationMs": 17
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testCancelledInitialViewTaskLeavesFirstPageRetryable",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testChangedQueryRejectsOldResultEvenWhenTransportIgnoresCancellation",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testChangedQueryRejectsStaleFailureAndClearsOldPaginationImmediately",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testFailedInitialPageDoesNotCreateAnAutomaticRetryLoop",
+        "status": "passed",
+        "durationMs": 6
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testFailureKeepsRowsStopsAutomaticRequestsAndRetryUsesSameOffset",
+        "status": "passed",
+        "durationMs": 3
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testFreshQueryCacheRestoresContinuationAndExpiredCacheReloads",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testInvalidationCannotRecacheCurrentDirectoryAndInjectionWorksAfterInit",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testNonAdvancingCursorStopsButEmptyAdvancingPageCanContinue",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testPagesDeduplicateInternallyAndReplaceEarlierSummaryWithoutReordering",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testQueryCacheEvictsLeastRecentlyUsedAndSkipsOversizedDirectories",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testRealtimeChangesWinOverInflightPageAndUpdateCachedQueries",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testRepeatedVisibilitySignalsLoadEachPageOnlyOnce",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testStaleFirstPageRefreshResetsServerCursorAndDoesNotSkipDisplacedProfiles",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "suite": "CommunityDirectoryLoadingTests",
+        "test": "testSuspendCancelsAndResumeCanLoadBeforeOldTransportUnwinds",
+        "status": "passed",
+        "durationMs": 15
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testAcceptProjectsFriendImmediatelyWithoutDuplicatingExistingPair",
+        "status": "passed",
+        "durationMs": 2
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testAuthoritativeInboxRefreshAllowsNewRequestsThatReuseSourceIDs",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testCancelOnlyChangesOutgoingRequestAndCanBeRolledBack",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testConfirmedBlockWinsOverOptimisticAcceptAndItsRollback",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testDecliningDuplicatePendingRequestDoesNotRemoveConfirmedFriend",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testDirectoryActionsDoNotReuseUnrelatedRelationshipsOrRequireLoadedNetwork",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testDirectoryActionsFollowOptimisticAcceptanceAndCancellation",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testDirectoryActionsHonorBlockOverEveryOtherRelationship",
+        "status": "passed",
+        "durationMs": 4
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testDirectoryActionsKeepConfirmedFriendshipOverDuplicatePendingRequests",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testDirectoryActionsUsePendingRequestDirectionAndPreferIncomingWhenCrossed",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testEmptyPreviewAppliesOnlyBeforeSharedStateExists",
+        "status": "passed",
+        "durationMs": 16
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testFailedAcceptRestoresRequestAndKeepsUnrelatedIncomingUpdate",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testInboxAcceptedInviteRemainsRetryableUntilJoinIsConfirmed",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testInboxCompletedAcceptStillRespectsNewBlock",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testInboxConcurrentAcceptsKeepBothFriendsAndUnrelatedIncomingRequest",
+        "status": "passed",
+        "durationMs": 16
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testNavigationOrMutationInvalidatesAnOlderProfileCatchUp",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testOptimisticChangesAndRollbackNeverCrossAccounts",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testProfileReadCannotOverwriteASignalThatStartedAfterIt",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testProjectionAndRollbackPreserveRoomInvitesAndBlockedPlayers",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testRemovalIsImmediateAndRollbackPreservesOtherFriends",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testSharedPreviewAcceptanceAndFriendRemovalSurviveScreenRemounts",
+        "status": "passed",
+        "durationMs": 1
+      },
+      {
+        "suite": "CommunityResponsivenessTests",
+        "test": "testWrongDirectionUnknownIDAndUnsupportedActionCannotCreateProjection",
+        "status": "passed",
+        "durationMs": 1
+      }
+    ]
+  },
+  "buildResult": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 110337,
+      "target": "simulator"
+    },
+    "artifacts": {
+      "appPath": "/tmp/SpyClashDirectory193-DerivedData/Build/Products/SupabaseDebug-iphonesimulator/SpyClash.app",
+      "bundleId": "com.spyclash.ios",
+      "processId": 16324,
+      "simulatorId": "CF9C8F53-AC2A-437D-9EC9-87F61A31644F",
+      "buildLogPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/build_run_sim_2026-10-19T11-42-17-006Z_pid2549_4cda22db.log",
+      "runtimeLogPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/com.spyclash.ios_2026-10-19T11-44-04-291Z_helperpid16302_ownerpid2549_f0e4676e.log",
+      "osLogPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/com.spyclash.ios_oslog_2026-10-19T11-44-07-293Z_helperpid16393_ownerpid2549_9179d135.log"
+    },
+    "diagnostics": {
+      "warnings": [
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/App/AppState.swift:1770"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/App/AppState.swift:2825"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:263"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:287"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:328"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:379"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:391"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:403"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:475"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1143"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1187"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1327"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1380"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1412"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1427"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1438"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1463"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1493"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1723"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1779"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1968"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1975"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:1985"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Services/Base44Client.swift:2026"
+        },
+        {
+          "message": "code after 'return' will never be executed",
+          "location": "/Users/davidganzha/.codex/worktrees/social-integration192/SpyClash/SpyClash/Views/CommunityView.swift:56"
+        }
+      ],
+      "errors": []
+    }
+  },
+  "uiChecks": [
+    "Initial render shows 24 summaries and no Load More button",
+    "Five upward swipes load all 60 synthetic profiles, including final Operative 56",
+    "Global SPYID search 900-056 finds the final fixture profile directly",
+    "Clearing search restores 24-item cached first page",
+    "First page and final page screenshots visually inspected"
+  ],
+  "captures": {
+    "initial": {
+      "type": "runtime-snapshot",
+      "rs": "1",
+      "screenHash": "08lk63p",
+      "seq": 6,
+      "count": 140,
+      "targets": [
+        "e15|tap|button|ДРУЗЬЯ, 1||community.section.friends",
+        "e18|tap|button|ЗАПРОСЫ, 2||community.section.requests",
+        "e33|tap|button|🎭, CIPHER, 104-827||",
+        "e40|tap|button|🔥, SIGNAL, 777-123||",
+        "e44|tap|button|Принять запрос от Signal||",
+        "e48|tap|button|📡, ECHO, 813-029||",
+        "e56|tap|button|🛰️, VEGA, 615-208||",
+        "e133|tap|button|Потяните вниз, чтобы открыть командное меню|Ожидают действия: 5|spy-command-menu-drag-handle",
+        "e136|tap|button|Открыть главную SpyClash|Ожидают действия: 5|shell.header.home",
+        "e28|typeText|text-field|Позывной или 000-000|Позывной или 000-000|",
+        "e21|tap|button|НАЙТИ||community.section.discover",
+        "e24|tap|button|Скопировать свой SPYID||",
+        "e52|tap|button|ОТПРАВЛЕН||",
+        "e60|tap|button|Добавить Vega в друзья||",
+        "e128|tap|button|Вернуться назад||dock.community.exit",
+        "e129|tap|button|Сообщество|Ожидают действия: 2, Ожидают действия: 2|dock.community.network",
+        "e132|tap|button|Мой публичный профиль||dock.community.me"
+      ],
+      "scroll": [
+        "e8|swipe|scroll-view|||"
+      ],
+      "text": [
+        "e135|text|text|5 ожидающих элементов Сообщества|Ожидают действия: 5|",
+        "e137|text|text|SPY||",
+        "e138|text|text|CLASH||",
+        "e10|text|text|// СООБЩЕСТВО, СЕТЬ ОПЕРАТИВНИКОВ||",
+        "e11|text|text|// СООБЩЕСТВО||",
+        "e12|text|text|СЕТЬ ОПЕРАТИВНИКОВ||",
+        "e139|text|text|Версия SpyClash 1.193v||",
+        "e13|text|text|ТВОИ ЛЮДИ||",
+        "e14|text|text|Находи друзей. Собирайтесь на следующую игру.||",
+        "e16|text|text|ДРУЗЬЯ||",
+        "e19|text|text|ЗАПРОСЫ||",
+        "e17|text|text|1||",
+        "e20|text|text|2||",
+        "e22|text|text|ТВОЙ SPYID||",
+        "e26|text|text|КОПИРОВАТЬ||",
+        "e23|text|text|350-911||",
+        "e27|text|text|Ищи по позывному или SPYID, чтобы добавить друга.||",
+        "e29|text|text|НАЙТИ ЛЮДЕЙ||",
+        "e30|text|text|ПОКАЗАНО: 24||",
+        "e35|text|text|CIPHER||",
+        "e34|text|text|🎭||",
+        "e38|text|text|В ДРУЗЬЯХ||",
+        "e36|text|text|104-827||",
+        "e42|text|text|SIGNAL||",
+        "e41|text|text|🔥||",
+        "e46|text|text|ПРИНЯТЬ||",
+        "e43|text|text|777-123||",
+        "e50|text|text|ECHO||",
+        "e49|text|text|📡||",
+        "e54|text|text|ОТПРАВЛЕН||",
+        "e51|text|text|813-029||",
+        "e131|text|text|Сообщество|Ожидают действия: 2|",
+        "e58|text|text|VEGA||",
+        "e57|text|text|🛰️||",
+        "e62|text|text|ДОБАВИТЬ||",
+        "e59|text|text|615-208||"
+      ],
+      "udid": "CF9C8F53-AC2A-437D-9EC9-87F61A31644F"
+    },
+    "end": {
+      "type": "runtime-snapshot",
+      "rs": "1",
+      "screenHash": "1dno5uc",
+      "seq": 12,
+      "count": 157,
+      "targets": [
+        "e81|tap|button|🕵️, OPERATIVE 49, 900-049||",
+        "e85|tap|button|Добавить Operative 49 в друзья||",
+        "e89|tap|button|🕵️, OPERATIVE 50, 900-050||",
+        "e93|tap|button|Добавить Operative 50 в друзья||",
+        "e97|tap|button|🕵️, OPERATIVE 51, 900-051||",
+        "e101|tap|button|Добавить Operative 51 в друзья||",
+        "e105|tap|button|🕵️, OPERATIVE 52, 900-052||",
+        "e109|tap|button|Добавить Operative 52 в друзья||",
+        "e113|tap|button|🕵️, OPERATIVE 53, 900-053||",
+        "e117|tap|button|Добавить Operative 53 в друзья||",
+        "e121|tap|button|🕵️, OPERATIVE 54, 900-054||",
+        "e125|tap|button|Добавить Operative 54 в друзья||",
+        "e129|tap|button|🕵️, OPERATIVE 55, 900-055||",
+        "e133|tap|button|Добавить Operative 55 в друзья||",
+        "e137|tap|button|🕵️, OPERATIVE 56, 900-056||",
+        "e141|tap|button|Добавить Operative 56 в друзья||",
+        "e150|tap|button|Потяните вниз, чтобы открыть командное меню|Ожидают действия: 5|spy-command-menu-drag-handle",
+        "e153|tap|button|Открыть главную SpyClash|Ожидают действия: 5|shell.header.home",
+        "e145|tap|button|Вернуться назад||dock.community.exit",
+        "e146|tap|button|Сообщество|Ожидают действия: 2, Ожидают действия: 2|dock.community.network",
+        "e149|tap|button|Мой публичный профиль||dock.community.me"
+      ],
+      "scroll": [
+        "e8|swipe|scroll-view|||"
+      ],
+      "text": [
+        "e74|text|text|🕵️||",
+        "e76|text|text|900-048||",
+        "e83|text|text|OPERATIVE 49||",
+        "e82|text|text|🕵️||",
+        "e152|text|text|5 ожидающих элементов Сообщества|Ожидают действия: 5|",
+        "e154|text|text|SPY||",
+        "e155|text|text|CLASH||",
+        "e87|text|text|ДОБАВИТЬ||",
+        "e84|text|text|900-049||",
+        "e156|text|text|Версия SpyClash 1.193v||",
+        "e91|text|text|OPERATIVE 50||",
+        "e90|text|text|🕵️||",
+        "e95|text|text|ДОБАВИТЬ||",
+        "e92|text|text|900-050||",
+        "e99|text|text|OPERATIVE 51||",
+        "e98|text|text|🕵️||",
+        "e103|text|text|ДОБАВИТЬ||",
+        "e100|text|text|900-051||",
+        "e107|text|text|OPERATIVE 52||",
+        "e106|text|text|🕵️||",
+        "e111|text|text|ДОБАВИТЬ||",
+        "e108|text|text|900-052||",
+        "e115|text|text|OPERATIVE 53||",
+        "e114|text|text|🕵️||",
+        "e119|text|text|ДОБАВИТЬ||",
+        "e116|text|text|900-053||",
+        "e123|text|text|OPERATIVE 54||",
+        "e122|text|text|🕵️||",
+        "e127|text|text|ДОБАВИТЬ||",
+        "e124|text|text|900-054||",
+        "e131|text|text|OPERATIVE 55||",
+        "e130|text|text|🕵️||",
+        "e135|text|text|ДОБАВИТЬ||",
+        "e132|text|text|900-055||",
+        "e139|text|text|OPERATIVE 56||",
+        "e138|text|text|🕵️||",
+        "e143|text|text|ДОБАВИТЬ||",
+        "e140|text|text|900-056||",
+        "e148|text|text|Сообщество|Ожидают действия: 2|"
+      ],
+      "udid": "CF9C8F53-AC2A-437D-9EC9-87F61A31644F"
+    },
+    "search": {
+      "type": "runtime-snapshot",
+      "rs": "1",
+      "screenHash": "00jocv8",
+      "seq": 14,
+      "count": 120,
+      "targets": [
+        "e15|tap|button|ДРУЗЬЯ, 1||community.section.friends",
+        "e18|tap|button|ЗАПРОСЫ, 2||community.section.requests",
+        "e34|tap|button|🕵️, OPERATIVE 56, 900-056||",
+        "e38|tap|button|Добавить Operative 56 в друзья||",
+        "e47|tap|button|Потяните вниз, чтобы открыть командное меню|Ожидают действия: 5|spy-command-menu-drag-handle",
+        "e50|tap|button|Открыть главную SpyClash|Ожидают действия: 5|shell.header.home",
+        "e28|typeText|text-field|Позывной или 000-000|900-056|",
+        "e21|tap|button|НАЙТИ||community.section.discover",
+        "e24|tap|button|Скопировать свой SPYID||",
+        "e29|tap|button|Очистить поиск||xmark.circle.fill",
+        "e42|tap|button|Вернуться назад||dock.community.exit",
+        "e43|tap|button|Сообщество|Ожидают действия: 2, Ожидают действия: 2|dock.community.network",
+        "e46|tap|button|Мой публичный профиль||dock.community.me"
+      ],
+      "scroll": [
+        "e8|swipe|scroll-view|||"
+      ],
+      "text": [
+        "e49|text|text|5 ожидающих элементов Сообщества|Ожидают действия: 5|",
+        "e51|text|text|SPY||",
+        "e52|text|text|CLASH||",
+        "e53|text|text|Версия SpyClash 1.193v||",
+        "e10|text|text|// СООБЩЕСТВО, СЕТЬ ОПЕРАТИВНИКОВ||",
+        "e11|text|text|// СООБЩЕСТВО||",
+        "e12|text|text|СЕТЬ ОПЕРАТИВНИКОВ||",
+        "e13|text|text|ТВОИ ЛЮДИ||",
+        "e14|text|text|Находи друзей. Собирайтесь на следующую игру.||",
+        "e16|text|text|ДРУЗЬЯ||",
+        "e19|text|text|ЗАПРОСЫ||",
+        "e17|text|text|1||",
+        "e20|text|text|2||",
+        "e22|text|text|ТВОЙ SPYID||",
+        "e26|text|text|КОПИРОВАТЬ||",
+        "e23|text|text|350-911||",
+        "e27|text|text|Ищи по позывному или SPYID, чтобы добавить друга.||",
+        "e30|text|text|РЕЗУЛЬТАТЫ ПОИСКА||",
+        "e31|text|text|ПОКАЗАНО: 1||",
+        "e36|text|text|OPERATIVE 56||",
+        "e35|text|text|🕵️||",
+        "e40|text|text|ДОБАВИТЬ||",
+        "e37|text|text|900-056||",
+        "e45|text|text|Сообщество|Ожидают действия: 2|"
+      ],
+      "udid": "CF9C8F53-AC2A-437D-9EC9-87F61A31644F"
+    },
+    "restored": {
+      "type": "runtime-snapshot",
+      "rs": "1",
+      "screenHash": "0wciump",
+      "seq": 17,
+      "count": 143,
+      "targets": [
+        "e15|tap|button|ДРУЗЬЯ, 1||community.section.friends",
+        "e18|tap|button|ЗАПРОСЫ, 2||community.section.requests",
+        "e33|tap|button|🎭, CIPHER, 104-827||",
+        "e40|tap|button|🔥, SIGNAL, 777-123||",
+        "e44|tap|button|Принять запрос от Signal||",
+        "e48|tap|button|📡, ECHO, 813-029||",
+        "e56|tap|button|🛰️, VEGA, 615-208||",
+        "e133|tap|button|Потяните вниз, чтобы открыть командное меню|Ожидают действия: 5|spy-command-menu-drag-handle",
+        "e136|tap|button|Открыть главную SpyClash|Ожидают действия: 5|shell.header.home",
+        "e28|typeText|text-field|Позывной или 000-000|Позывной или 000-000|",
+        "e21|tap|button|НАЙТИ||community.section.discover",
+        "e24|tap|button|Скопировать свой SPYID||",
+        "e52|tap|button|ОТПРАВЛЕН||",
+        "e60|tap|button|Добавить Vega в друзья||",
+        "e128|tap|button|Вернуться назад||dock.community.exit",
+        "e129|tap|button|Сообщество|Ожидают действия: 2, Ожидают действия: 2|dock.community.network",
+        "e132|tap|button|Мой публичный профиль||dock.community.me"
+      ],
+      "scroll": [
+        "e8|swipe|scroll-view|||"
+      ],
+      "text": [
+        "e135|text|text|5 ожидающих элементов Сообщества|Ожидают действия: 5|",
+        "e137|text|text|SPY||",
+        "e138|text|text|CLASH||",
+        "e10|text|text|// СООБЩЕСТВО, СЕТЬ ОПЕРАТИВНИКОВ||",
+        "e11|text|text|// СООБЩЕСТВО||",
+        "e12|text|text|СЕТЬ ОПЕРАТИВНИКОВ||",
+        "e139|text|text|Версия SpyClash 1.193v||",
+        "e13|text|text|ТВОИ ЛЮДИ||",
+        "e14|text|text|Находи друзей. Собирайтесь на следующую игру.||",
+        "e16|text|text|ДРУЗЬЯ||",
+        "e19|text|text|ЗАПРОСЫ||",
+        "e17|text|text|1||",
+        "e20|text|text|2||",
+        "e22|text|text|ТВОЙ SPYID||",
+        "e26|text|text|КОПИРОВАТЬ||",
+        "e23|text|text|350-911||",
+        "e27|text|text|Ищи по позывному или SPYID, чтобы добавить друга.||",
+        "e29|text|text|НАЙТИ ЛЮДЕЙ||",
+        "e30|text|text|ПОКАЗАНО: 24||",
+        "e35|text|text|CIPHER||",
+        "e34|text|text|🎭||",
+        "e38|text|text|В ДРУЗЬЯХ||",
+        "e36|text|text|104-827||",
+        "e42|text|text|SIGNAL||",
+        "e41|text|text|🔥||",
+        "e46|text|text|ПРИНЯТЬ||",
+        "e43|text|text|777-123||",
+        "e50|text|text|ECHO||",
+        "e49|text|text|📡||",
+        "e54|text|text|ОТПРАВЛЕН||",
+        "e51|text|text|813-029||",
+        "e131|text|text|Сообщество|Ожидают действия: 2|",
+        "e58|text|text|VEGA||",
+        "e57|text|text|🛰️||",
+        "e62|text|text|ДОБАВИТЬ||",
+        "e59|text|text|615-208||"
+      ],
+      "udid": "CF9C8F53-AC2A-437D-9EC9-87F61A31644F"
+    }
+  },
+  "limits": "Synthetic DEBUG preview; no production deploy, TestFlight upload, physical-device or live multi-account validation."
+}

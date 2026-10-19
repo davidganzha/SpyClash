@@ -126,6 +126,19 @@ private struct CommunityFriendRemoval: Identifiable {
     let profile: PublicSpyProfile
 }
 
+private struct CommunityDirectoryAutoloadKey: Equatable {
+    let query: String
+    let nextOffset: Int?
+    let hasLoaded: Bool
+    let completionRevision: Int
+    let enabled: Bool
+}
+
+private struct CommunityDirectorySearchKey: Equatable {
+    let query: String
+    let isReady: Bool
+}
+
 struct CommunityMeTransitionResolver {
     static func canCommit(selfUserID: String?, activeAction: String?) -> Bool {
         selfUserID?.nilIfBlank != nil && activeAction == nil
@@ -268,8 +281,12 @@ struct CommunityView: View {
     var initialProfileUserID: String? = nil
 
     @State private var network: CommunityState?
-    @State private var directory: [PublicSpyProfile] = []
-    @State private var nextDirectoryOffset: Int?
+    @State private var directoryLoader = CommunityDirectoryLoader()
+    @State private var directoryViewportHeight: CGFloat = 0
+    @State private var directoryEndIsNear = false
+    @State private var directorySearchReady = false
+    @State private var directoryScrollRevision = 0
+    @State private var isCommunityVisible = false
     @State private var query = ""
     @State private var friendQuery = ""
     @State private var peopleSection: CommunityPeopleSection = .friends
@@ -279,8 +296,6 @@ struct CommunityView: View {
     @State private var profileHistory: [String] = []
     @State private var commentDraft = ""
     @State private var isInitialLoading = true
-    @State private var isDirectoryLoading = false
-    @State private var directoryLoadFailed = false
     @State private var isProfileLoading = false
     @State private var didLoadInitialContent = false
     @State private var activeAction: String?
@@ -295,7 +310,6 @@ struct CommunityView: View {
     @State private var optimisticDeclinedInviteID: String?
     @State private var realtimeRefreshTask: Task<Void, Never>?
     @State private var realtimeRefreshID = UUID()
-    @State private var directoryRequestID: UUID?
     @State private var realtimeRefreshRequested = false
     @State private var realtimeDirectoryRefreshRequested = false
     @State private var profileRefreshPending = false
@@ -309,7 +323,7 @@ struct CommunityView: View {
     @State private var latestProfileRevisions: [String: Int] = [:]
     @State private var profileSignalGenerations: [String: Int] = [:]
 
-    var body: some View {
+    private var communityPage: some View {
         PageChrome(
             eyebrow: localized(en: "// COMMUNITY", ru: "// СООБЩЕСТВО", es: "// COMUNIDAD", uk: "// СПІЛЬНОТА"),
             status: localized(en: "OPERATIVE NETWORK", ru: "СЕТЬ ОПЕРАТИВНИКОВ", es: "RED DE OPERATIVOS", uk: "МЕРЕЖА ОПЕРАТИВНИКІВ"),
@@ -326,7 +340,55 @@ struct CommunityView: View {
             }
         }
         .background(SpyTheme.black)
+    }
+
+    private var directoryAwarePage: some View {
+        communityPage
+        .coordinateSpace(name: "community.directory.viewport")
+        .onGeometryChange(for: CGFloat.self) { $0.size.height } action: {
+            directoryViewportHeight = $0
+        }
+        .onAppear {
+            isCommunityVisible = true
+            directoryLoader.resume()
+        }
+        .onChange(of: query) { _, _ in
+            // Invalidate the old request immediately, before the search debounce.
+            directorySearchReady = false
+            directoryScrollRevision += 1
+            configureDirectory()
+        }
+        .task(id: CommunityDirectorySearchKey(query: query, isReady: didLoadInitialContent)) {
+            guard didLoadInitialContent else { return }
+            do { try await Task.sleep(for: .milliseconds(320)) } catch { return }
+            guard !Task.isCancelled else { return }
+            await loadDirectory(reset: true)
+        }
+        .task(id: directoryAutoloadKey) {
+            guard directoryAutoloadKey.enabled else { return }
+            if directoryLoader.hasLoaded {
+                // Let the newly appended page lay out before measuring demand
+                // again; a stale footer position must not drain every page.
+                do { try await Task.sleep(for: .milliseconds(80)) } catch { return }
+                guard !Task.isCancelled, directoryAutoloadKey.enabled else { return }
+                await directoryLoader.loadMore()
+            } else {
+                await loadDirectory(reset: true)
+            }
+        }
+        .onChange(of: directoryLoader.resetRevision) { _, _ in
+            // An expired snapshot gets a fresh server cursor; its new first
+            // page should start at the top, not at the old list's scroll offset.
+            if peopleSection == .discover, activeProfile == nil {
+                directoryScrollRevision += 1
+            }
+        }
+    }
+
+    var body: some View {
+        directoryAwarePage
         .task {
+            configureDirectory()
             let generation = mutationGeneration
             // The shell keeps the last Community dock selection. Re-entering
             // on Me therefore needs the same deferred transition as a cold
@@ -349,10 +411,19 @@ struct CommunityView: View {
             startProfileRealtime()
             await completePendingSelfProfileTransitionIfPossible()
         }
-        .onDisappear { stopProfileRealtime() }
+        .onDisappear {
+            isCommunityVisible = false
+            directoryLoader.suspend()
+            stopProfileRealtime()
+        }
         .onChange(of: scenePhase) { _, phase in
-            if phase == .active { startProfileRealtime() }
-            else { stopProfileRealtime() }
+            if phase == .active {
+                directoryLoader.resume()
+                startProfileRealtime()
+            } else {
+                directoryLoader.suspend()
+                stopProfileRealtime()
+            }
         }
         .task(id: profileRefreshTaskKey) {
             guard let scope = profileRefreshTaskKey else { return }
@@ -414,9 +485,9 @@ struct CommunityView: View {
             peopleSection = .friends
             friendRemovalTarget = nil
             network = nil
-            directory = []
-            directoryRequestID = nil
-            isDirectoryLoading = false
+            directorySearchReady = false
+            directoryEndIsNear = false
+            configureDirectory()
             profileRealtime.stop()
             realtimeRefreshTask?.cancel()
             realtimeRefreshTask = nil
@@ -431,12 +502,6 @@ struct CommunityView: View {
         }
         .onChange(of: message) { _, newMessage in
             publishCommunityToast(newMessage)
-        }
-        .task(id: query) {
-            guard didLoadInitialContent else { return }
-            try? await Task.sleep(for: .milliseconds(320))
-            guard !Task.isCancelled else { return }
-            await loadDirectory(reset: true)
         }
         .confirmationDialog(
             localized(en: "REPORT CONTENT", ru: "ПОЖАЛОВАТЬСЯ", es: "REPORTAR CONTENIDO", uk: "ПОВІДОМИТИ ПРО ПОРУШЕННЯ"),
@@ -538,7 +603,7 @@ struct CommunityView: View {
     }
 
     private var peopleSectionScrollTarget: String {
-        "community.people.top.\(peopleSection.rawValue)"
+        "community.people.top.\(peopleSection.rawValue).\(directoryScrollRevision)"
     }
 
     private var blockPromptPresented: Binding<Bool> {
@@ -816,9 +881,10 @@ struct CommunityView: View {
     }
 
     private var discoveryScene: some View {
-        VStack(alignment: .leading, spacing: 16) {
+        let viewportHeight = directoryViewportHeight
+        return VStack(alignment: .leading, spacing: 16) {
             if let me = network?.me { mySpyIDStrip(me) }
-            if !isInitialLoading, network == nil || directoryLoadFailed { directoryUnavailable }
+            if !isInitialLoading, network == nil || directoryLoader.failedOffset == 0 { directoryUnavailable }
 
             Text(localized(en: "Search by callsign or SPYID to add a friend.", ru: "Ищи по позывному или SPYID, чтобы добавить друга.", es: "Busca por alias o SPYID para añadir un amigo.", uk: "Шукай за позивним або SPYID, щоб додати друга."))
                 .font(.system(size: 12))
@@ -841,8 +907,8 @@ struct CommunityView: View {
                     .foregroundStyle(SpyTheme.red)
             }
 
-            if visibleDirectory.isEmpty, !isDirectoryLoading, !isInitialLoading {
-                if !directoryLoadFailed, network != nil {
+            if visibleDirectory.isEmpty, !directoryLoader.isLoading, !isInitialLoading {
+                if directoryLoader.failedOffset == nil, directoryLoader.nextOffset == nil, network != nil {
                     emptyDirectory
                 }
             } else {
@@ -851,7 +917,18 @@ struct CommunityView: View {
                 }
             }
 
-            if isDirectoryLoading || isInitialLoading {
+            directoryLoadingFooter
+                .onGeometryChange(for: Bool.self) { geometry in
+                    let frame = geometry.frame(in: .named("community.directory.viewport"))
+                    return viewportHeight > 0 && frame.maxY > 0 &&
+                        frame.minY < viewportHeight + 360
+                } action: { directoryEndIsNear = $0 }
+        }
+    }
+
+    private var directoryLoadingFooter: some View {
+        VStack(spacing: 10) {
+            if directoryLoader.isLoading || isInitialLoading {
                 HStack(spacing: 9) {
                     SpySpinner(size: 16, accent: SpyTheme.red)
                     Text(localized(en: "SCANNING NETWORK", ru: "СКАНИРОВАНИЕ СЕТИ", es: "ESCANEANDO RED", uk: "СКАНУВАННЯ МЕРЕЖІ"))
@@ -860,16 +937,32 @@ struct CommunityView: View {
                         .foregroundStyle(SpyTheme.muted)
                 }
                 .frame(maxWidth: .infinity, minHeight: 48)
-            } else if let nextDirectoryOffset {
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("community.directory.loading")
+            } else if let failedOffset = directoryLoader.failedOffset, failedOffset > 0 {
+                Text(localized(
+                    en: "Couldn't load more people. Your loaded profiles are still here.",
+                    ru: "Не удалось загрузить следующих людей. Загруженные профили доступны.",
+                    es: "No se pudieron cargar más personas. Los perfiles cargados siguen disponibles.",
+                    uk: "Не вдалося завантажити наступних людей. Завантажені профілі доступні."
+                ))
+                .font(.system(size: 12))
+                .foregroundStyle(SpyTheme.muted)
+                .multilineTextAlignment(.center)
                 Button {
-                    Task { await loadDirectory(reset: false, offset: nextDirectoryOffset) }
+                    Task { await directoryLoader.retry() }
                 } label: {
                     commandLabel(
-                        localized(en: "LOAD MORE OPERATIVES", ru: "ЗАГРУЗИТЬ ЕЩЕ", es: "CARGAR MAS", uk: "ЗАВАНТАЖИТИ ЩЕ"),
-                        icon: "arrow.down"
+                        localized(en: "RETRY", ru: "ПОВТОРИТЬ", es: "REINTENTAR", uk: "СПРОБУВАТИ ЗНОВУ"),
+                        icon: "arrow.clockwise"
                     )
                 }
                 .buttonStyle(SpyButtonStyle(variant: .ghost))
+                .accessibilityIdentifier("community.directory.retry")
+            } else {
+                // A stable geometry sentinel, including pages filtered entirely
+                // by self/blocked IDs. It does not trigger from view creation.
+                Color.clear.frame(height: 1).accessibilityHidden(true)
             }
         }
     }
@@ -1559,7 +1652,7 @@ struct CommunityView: View {
 
     private var visibleDirectory: [PublicSpyProfile] {
         let blockedIDs = Set(network?.blocked.map { $0.profile.id } ?? [])
-        return directory.filter { $0.id != network?.me.id && !blockedIDs.contains($0.id) }
+        return directoryLoader.profiles.filter { $0.id != network?.me.id && !blockedIDs.contains($0.id) }
     }
 
     private func discoveryRow(_ profile: PublicSpyProfile) -> some View {
@@ -2058,8 +2151,7 @@ struct CommunityView: View {
 
         if appState.shouldUsePreviewData {
             network = CommunityState.previewState(reusing: externalNetworkState)
-            directory = CommunityPreview.directory.filter { $0.id != CommunityPreview.night.id }
-            nextDirectoryOffset = nil
+            await loadDirectory(reset: true)
 #if DEBUG
             if let section = ProcessInfo.processInfo.arguments
                 .first(where: { $0.hasPrefix("--spyclash-preview-community-section=") })
@@ -2162,8 +2254,8 @@ struct CommunityView: View {
                 let refreshDirectory = realtimeDirectoryRefreshRequested
                 realtimeDirectoryRefreshRequested = false
                 networkRefreshGeneration += 1
-                // Only the first page is needed after reconnect. Ordinary
-                // relationship events do not redownload the public directory.
+                // Fresh cached pages survive reconnects; ordinary relationship
+                // events do not redownload the public directory.
                 if refreshDirectory, SupabaseAppRuntime.isEnabled {
                     async let directoryLoad: Void = loadDirectory(reset: true)
                     async let profileLoad: Void = refreshVisibleProfile()
@@ -2216,7 +2308,7 @@ struct CommunityView: View {
             activeProfile = detail
             isProfileLoading = false
             reconcileActiveProfileRelationship()
-            if let index = directory.firstIndex(where: { $0.id == profileID }) { directory[index] = detail.profile }
+            directoryLoader.updateProfile(detail.profile)
         } catch {
             guard !Task.isCancelled, appState.user?.id == actorID, mutationGeneration == generation,
                   activeProfile?.profile.id == profileID, profileRequestState.accepts(requestID) else { return }
@@ -2238,11 +2330,9 @@ struct CommunityView: View {
             guard !Task.isCancelled, appState.user?.id == actorID, mutationGeneration == generation,
                   latestProfileRevisions[signal.profileUserID] == signal.revision else { return }
             profileCache[signal.profileUserID] = detail
-            if let index = directory.firstIndex(where: { $0.id == signal.profileUserID }) {
-                directory[index] = detail.profile
-            } else if query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty {
-                directory.append(detail.profile)
-            }
+            directoryLoader.updateProfile(
+                detail.profile, appendIfMissing: query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+            )
             if activeProfile?.profile.id == signal.profileUserID {
                 activeProfile = detail
                 isProfileLoading = false
@@ -2257,7 +2347,7 @@ struct CommunityView: View {
             // A temporary read failure is not proof that the player disappeared.
             latestProfileRevisions[signal.profileUserID] = nil
             if let error = error as? Base44Error, error.statusCode == 404 {
-                directory.removeAll { $0.id == signal.profileUserID }
+                directoryLoader.removeProfile(userID: signal.profileUserID)
                 profileCache[signal.profileUserID] = nil
             }
         }
@@ -2293,55 +2383,52 @@ struct CommunityView: View {
         didLoadInitialContent = true
     }
 
-    private func loadDirectory(reset: Bool, offset: Int = 0) async {
-        guard reset || !isDirectoryLoading else { return }
-        let requestID = UUID()
+    private var directoryAutoloadKey: CommunityDirectoryAutoloadKey {
+        CommunityDirectoryAutoloadKey(
+            query: directoryLoader.query,
+            nextOffset: directoryLoader.nextOffset,
+            hasLoaded: directoryLoader.hasLoaded,
+            completionRevision: directoryLoader.completionRevision,
+            enabled: isCommunityVisible && scenePhase == .active &&
+                peopleSection == .discover && selectedTab == .network && activeProfile == nil &&
+                (directorySearchReady || (didLoadInitialContent && query.isEmpty)) &&
+                (!directoryLoader.hasLoaded || (directoryEndIsNear && directoryLoader.nextOffset != nil)) &&
+                directoryLoader.failedOffset == nil
+        )
+    }
+
+    private func configureDirectory() {
+        let client = appState.client
+        let isPreview = appState.shouldUsePreviewData
+        directoryLoader.configure(
+            actorID: isPreview ? CommunityPreview.me.id : appState.user?.id,
+            query: query,
+            loadPage: { query, offset, limit in
+                if isPreview {
+                    return try await CommunityPreview.directoryPage(query: query, offset: offset, limit: limit)
+                }
+                return try await client.communityDirectory(query: query, offset: offset, limit: limit)
+            }
+        )
+    }
+
+    private func loadDirectory(reset: Bool, force: Bool = false) async {
         let expectedQuery = query
-        let actorID = appState.user?.id
-        directoryRequestID = requestID
-        isDirectoryLoading = true
-        defer { if directoryRequestID == requestID { isDirectoryLoading = false } }
-
-        if appState.shouldUsePreviewData {
-            let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
-            directory = CommunityPreview.directory.filter { profile in
-                profile.id != CommunityPreview.night.id &&
-                    (
-                        normalized.isEmpty ||
-                            profile.displayName.lowercased().contains(normalized) ||
-                            profile.spyID.lowercased().contains(normalized.replacingOccurrences(of: " ", with: ""))
-                    )
-            }
-            nextDirectoryOffset = nil
-            return
-        }
-
-        do {
-            let page = try await appState.client.communityDirectory(query: expectedQuery, offset: offset)
-            guard !Task.isCancelled, appState.user?.id == actorID,
-                  directoryRequestID == requestID, query == expectedQuery else { return }
-            if reset {
-                directory = page.profiles
-                directoryLoadFailed = false
-            } else {
-                let known = Set(directory.map(\.id))
-                directory.append(contentsOf: page.profiles.filter { !known.contains($0.id) })
-            }
-            nextDirectoryOffset = page.nextOffset
-        } catch is CancellationError {
-            return
-        } catch {
-            guard appState.user?.id == actorID, directoryRequestID == requestID else { return }
-            if reset { directoryLoadFailed = true }
-            showError(error)
+        let generation = mutationGeneration
+        configureDirectory()
+        if reset {
+            await directoryLoader.loadInitial(force: force)
+            guard !Task.isCancelled, query == expectedQuery, mutationGeneration == generation else { return }
+            directorySearchReady = true
+        } else {
+            await directoryLoader.loadMore()
         }
     }
 
     private func retryInitialContent() async {
-        guard !isDirectoryLoading else { return }
+        guard !directoryLoader.isLoading else { return }
         message = ""
-        directoryLoadFailed = false
-        await loadDirectory(reset: true)
+        await directoryLoader.retry()
         if network == nil { await loadInitialNetwork() }
     }
 
@@ -2585,7 +2672,7 @@ struct CommunityView: View {
         if appState.shouldUsePreviewData {
             activeProfile = nil
             profileHistory.removeAll()
-            directory.removeAll { $0.id == profile.id }
+            directoryLoader.removeProfile(userID: profile.id)
             message = localized(en: "OPERATIVE BLOCKED", ru: "ОПЕРАТИВНИК ЗАБЛОКИРОВАН", es: "OPERATIVO BLOQUEADO", uk: "ОПЕРАТИВНИКА ЗАБЛОКОВАНО")
             messageKind = .success
             return
@@ -2599,7 +2686,7 @@ struct CommunityView: View {
             profileHistory.removeAll()
             selectedTab = .network
             commentDraft = ""
-            directory.removeAll { $0.id == profile.id }
+            directoryLoader.removeProfile(userID: profile.id)
             message = localized(
                 en: "OPERATIVE BLOCKED — COMMENTS AND INVITES REMOVED",
                 ru: "ОПЕРАТИВНИК ЗАБЛОКИРОВАН — ЗАПИСИ И ПРИГЛАШЕНИЯ УДАЛЕНЫ",
@@ -3661,6 +3748,31 @@ private enum CommunityPreview {
     )
 
     static let directory = [me, cipher, signal, echo, vega, night]
+
+    static func directoryPage(query: String, offset: Int, limit: Int) async throws -> CommunityDirectoryPage {
+        var profiles = directory.filter { $0.id != night.id && $0.id != me.id }
+#if DEBUG
+        if ProcessInfo.processInfo.arguments.contains("--spyclash-preview-directory-pagination") {
+            profiles += (1...56).map { index in
+                PublicSpyProfile(
+                    id: "preview-operative-\(index)", spyID: String(format: "900-%03d", index),
+                    displayName: String(format: "Operative %02d", index), avatar: "🕵️",
+                    spyCardTheme: "field", spyCardAccent: "signal_red", spyCardBadge: "operative",
+                    rating: index * 10, gamesPlayed: index, gamesWon: index / 2, winRate: 50
+                )
+            }
+            try await Task.sleep(for: .milliseconds(180))
+        }
+#endif
+        let normalized = query.trimmingCharacters(in: .whitespacesAndNewlines).lowercased()
+        profiles = profiles.filter {
+            normalized.isEmpty || $0.displayName.lowercased().contains(normalized) ||
+                $0.spyID.contains(normalized.replacingOccurrences(of: " ", with: ""))
+        }
+        let page = Array(profiles.dropFirst(offset).prefix(limit))
+        let nextOffset = offset + page.count
+        return CommunityDirectoryPage(profiles: page, nextOffset: nextOffset < profiles.count ? nextOffset : nil)
+    }
 
     static func profile(userID: String, viewerID: String?) -> CommunityProfileDetail? {
         guard let profile = directory.first(where: { $0.id == userID }) else { return nil }
