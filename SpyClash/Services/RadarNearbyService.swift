@@ -2136,9 +2136,15 @@ final class RadarNearbyService: NSObject {
                 }
                 return RadarPreparedTransport(peerID: peerID, session: session)
             }
-            guard let self,
-                  self.transportBuildID == buildID,
-                  lifetime.isActive,
+            guard let self, self.transportBuildID == buildID else {
+                if let prepared {
+                    executor.perform { prepared.session.disconnect() }
+                }
+                return
+            }
+            self.transportBuildTask = nil
+            self.transportBuildID = nil
+            guard lifetime.isActive,
                   self.allowsTransport,
                   self.isApplicationActive,
                   let identity = self.identity,
@@ -2148,8 +2154,6 @@ final class RadarNearbyService: NSObject {
                 }
                 return
             }
-            self.transportBuildTask = nil
-            self.transportBuildID = nil
             self.localPeerID = prepared.peerID
             self.multipeerSession = prepared.session
             prepared.session.delegate = self
@@ -2950,13 +2954,9 @@ final class RadarNearbyService: NSObject {
                 invitationHandler(true, multipeerSession)
                 handleRoomInvite(message, from: peerID)
             } else {
-                guard let invitationID = message.invitationID else {
-                    invitationHandler(false, nil)
-                    return
-                }
                 let key = RadarReceivedRoomInviteKey(
                     sourcePeerID: peerID.displayName,
-                    invitationID: invitationID
+                    invitationID: message.invitationID ?? UUID().uuidString
                 )
                 guard pendingDirectRoomInvites[key] != nil
                     || pendingDirectRoomInvites.count < Self.maximumRememberedRoomInvites else {
