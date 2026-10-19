@@ -45,9 +45,7 @@ final class NotificationInboxStore {
     @ObservationIgnored private let pageSize: Int
 
     private(set) var accountID: String?
-    private(set) var unread = NotificationInboxUnreadCounts.zero {
-        didSet { unreadRevision &+= 1 }
-    }
+    private(set) var unread = NotificationInboxUnreadCounts.zero
     private(set) var isSummaryLoading = false
     private(set) var summaryError: String?
     private(set) var mutationError: String?
@@ -59,11 +57,18 @@ final class NotificationInboxStore {
     private(set) var usesPreviewData = false
     private(set) var feeds: [NotificationInboxScope: NotificationInboxFeedState]
 
-    var selectedScope: NotificationInboxScope = .global
+    var selectedScope: NotificationInboxScope = .personal
 
     @ObservationIgnored private var generation: UInt64 = 0
-    @ObservationIgnored private var unreadRevision: UInt64 = 0
+    @ObservationIgnored private var unreadRevisions: [NotificationInboxScope: UInt64] = [:]
+    @ObservationIgnored private var readSequence: UInt64 = 0
+    @ObservationIgnored private var acceptedReadSequences: [NotificationInboxScope: UInt64] = [:]
+    @ObservationIgnored private var feedRevisions: [NotificationInboxScope: UInt64] = [:]
     @ObservationIgnored private var activeMutationScopes: Set<NotificationInboxScope> = []
+    @ObservationIgnored private var mutationWaiters: [NotificationInboxScope: [CheckedContinuation<Void, Never>]] = [:]
+    @ObservationIgnored private var pendingRefreshScopes: Set<NotificationInboxScope> = []
+    @ObservationIgnored private var retryCancelledInitialLoads: Set<NotificationInboxScope> = []
+    @ObservationIgnored private var summaryRefreshRequested = false
 
     init(
         client: any NotificationInboxClientProtocol,
@@ -106,9 +111,17 @@ final class NotificationInboxStore {
         pendingItemIDs = []
         markingAllScopes = []
         activeMutationScopes = []
+        resumeMutationWaiters()
+        unreadRevisions = [:]
+        readSequence = 0
+        acceptedReadSequences = [:]
+        feedRevisions = [:]
+        pendingRefreshScopes = []
+        retryCancelledInitialLoads = []
+        summaryRefreshRequested = false
         isPublishing = false
         usesPreviewData = false
-        selectedScope = .global
+        selectedScope = .personal
         feeds = Dictionary(
             uniqueKeysWithValues: NotificationInboxScope.allCases.map {
                 ($0, NotificationInboxFeedState())
@@ -135,35 +148,74 @@ final class NotificationInboxStore {
 
     func loadInitial() async {
         guard !usesPreviewData else { return }
-        async let summary: Void = refreshSummary()
-        async let page: Void = loadIfNeeded(scope: selectedScope)
-        _ = await (summary, page)
+        // A page already contains both badge counts. Refresh on return while
+        // keeping cached rows visible, without a duplicate summary scan.
+        let currentFeed = feed(for: selectedScope)
+        guard !currentFeed.isRefreshing, !currentFeed.isLoadingMore else {
+            if currentFeed.loadState == .loading { retryCancelledInitialLoads.insert(selectedScope) }
+            return
+        }
+        await refresh(scope: selectedScope)
     }
 
     func loadIfNeeded(scope: NotificationInboxScope) async {
         guard !usesPreviewData else { return }
-        guard feed(for: scope).loadState == .idle else { return }
+        switch feed(for: scope).loadState {
+        case .idle, .failed: break
+        case .loading:
+            retryCancelledInitialLoads.insert(scope)
+            return
+        case .loaded: return
+        }
         await refresh(scope: scope)
+    }
+
+    /// Realtime invalidations refresh visible/cached personal rows as well as
+    /// badges. A signal during a read or receipt queues one trailing refresh.
+    func reconcileAfterSocialChange() async {
+        guard !usesPreviewData else { return }
+        let refreshPersonal = feed(for: .personal).loadState != .idle
+        let refreshGlobal = selectedScope == .global && feed(for: .global).loadState != .idle
+        if refreshPersonal && refreshGlobal {
+            async let personal: Void = refresh(scope: .personal)
+            async let global: Void = refresh(scope: .global)
+            _ = await (personal, global)
+        } else if refreshPersonal {
+            await refresh(scope: .personal)
+        } else if refreshGlobal {
+            await refresh(scope: .global)
+        } else {
+            await refreshSummary()
+        }
     }
 
     func refreshSummary() async {
         guard !usesPreviewData else { return }
-        guard !isSummaryLoading, let context = requestContext() else { return }
+        guard let context = requestContext() else { return }
+        guard !isSummaryLoading else { summaryRefreshRequested = true; return }
 
         isSummaryLoading = true
-        let requestedUnreadRevision = unreadRevision
+        let requestedUnreadRevisions = unreadRevisions
+        let requestSequence = nextReadSequence()
         summaryError = nil
         defer {
             if isCurrent(context) {
                 isSummaryLoading = false
+                if summaryRefreshRequested {
+                    summaryRefreshRequested = false
+                    Task { [weak self] in
+                        guard let self, self.isCurrent(context) else { return }
+                        await self.refreshSummary()
+                    }
+                }
             }
         }
 
         do {
             let response = try await client.notificationInboxSummary()
-            guard isCurrent(context),
-                  unreadRevision == requestedUnreadRevision else { return }
-            unread = response.unread
+            try Task.checkCancellation()
+            guard isCurrent(context) else { return }
+            applyUnread(response.unread, requestedRevisions: requestedUnreadRevisions, sequence: requestSequence)
         } catch is CancellationError {
             return
         } catch {
@@ -190,33 +242,31 @@ final class NotificationInboxStore {
         }
 
         let scope = item.scope
-        guard item.isUnread,
-              let context = requestContext(),
-              !activeMutationScopes.contains(scope) else {
+        guard item.isUnread, let context = requestContext() else {
             return !item.isUnread
         }
+        guard await waitForMutation(scope: scope, context: context) else { return false }
 
         let originalFeed = feed(for: scope)
-        guard !originalFeed.isRefreshing,
-              !originalFeed.isLoadingMore,
-              let index = originalFeed.items.firstIndex(where: { $0.id == item.id }),
-              originalFeed.items[index].isUnread else {
-            return false
-        }
+        guard let index = originalFeed.items.firstIndex(where: { $0.id == item.id }) else { return false }
+        guard originalFeed.items[index].isUnread else { return true }
 
-        let originalUnread = unread
+        let originalUnread = unread.count(for: scope)
         activeMutationScopes.insert(scope)
+        feedRevisions[scope, default: 0] &+= 1
         pendingItemIDs.insert(item.id)
         mutationError = nil
         var optimisticFeed = originalFeed
         optimisticFeed.items[index] = optimisticFeed.items[index].markingRead(at: Self.currentTimestamp())
         feeds[scope] = optimisticFeed
-        unread = unread.replacing(scope, with: unread.count(for: scope) - 1)
+        setUnread(unread.replacing(scope, with: originalUnread - 1), scopes: [scope])
 
         defer {
             if isCurrent(context) {
                 activeMutationScopes.remove(scope)
                 pendingItemIDs.remove(item.id)
+                resumeMutationWaiters(scope: scope)
+                schedulePendingRefresh(scope: scope, context: context)
             }
         }
 
@@ -234,17 +284,17 @@ final class NotificationInboxStore {
                 committedFeed.items[committedIndex] = serverItem
                 feeds[scope] = committedFeed
             }
-            unread = response.unread
+            setUnread(response.unread, scopes: [scope])
             return true
         } catch is CancellationError {
             guard isCurrent(context) else { return false }
-            feeds[scope] = originalFeed
-            unread = originalUnread
+            restoreReadState(from: originalFeed, itemIDs: [item.id], scope: scope)
+            setUnread(unread.replacing(scope, with: originalUnread), scopes: [scope])
             return false
         } catch {
             guard isCurrent(context) else { return false }
-            feeds[scope] = originalFeed
-            unread = originalUnread
+            restoreReadState(from: originalFeed, itemIDs: [item.id], scope: scope)
+            setUnread(unread.replacing(scope, with: originalUnread), scopes: [scope])
             mutationError = errorMessage(from: error)
             return false
         }
@@ -256,18 +306,18 @@ final class NotificationInboxStore {
             return markAllPreviewItemsRead(scope: scope)
         }
 
-        guard unread.count(for: scope) > 0,
-              let context = requestContext(),
-              !activeMutationScopes.contains(scope) else {
+        guard let context = requestContext() else { return false }
+        guard await waitForMutation(scope: scope, context: context) else { return false }
+        guard unread.count(for: scope) > 0 else {
             return unread.count(for: scope) == 0
         }
 
         let originalFeed = feed(for: scope)
-        guard !originalFeed.isRefreshing, !originalFeed.isLoadingMore else { return false }
 
-        let originalUnread = unread
+        let originalUnread = unread.count(for: scope)
         let timestamp = Self.currentTimestamp()
         activeMutationScopes.insert(scope)
+        feedRevisions[scope, default: 0] &+= 1
         markingAllScopes.insert(scope)
         mutationError = nil
 
@@ -276,12 +326,14 @@ final class NotificationInboxStore {
             $0.isUnread ? $0.markingRead(at: timestamp) : $0
         }
         feeds[scope] = optimisticFeed
-        unread = unread.replacing(scope, with: 0)
+        setUnread(unread.replacing(scope, with: 0), scopes: [scope])
 
         defer {
             if isCurrent(context) {
                 activeMutationScopes.remove(scope)
                 markingAllScopes.remove(scope)
+                resumeMutationWaiters(scope: scope)
+                schedulePendingRefresh(scope: scope, context: context)
             }
         }
 
@@ -292,17 +344,17 @@ final class NotificationInboxStore {
             guard response.ok else {
                 throw Base44Error(message: "Notifications were not marked as read.", statusCode: 502)
             }
-            unread = response.unread
+            setUnread(response.unread, scopes: [scope])
             return true
         } catch is CancellationError {
             guard isCurrent(context) else { return false }
-            feeds[scope] = originalFeed
-            unread = originalUnread
+            restoreReadState(from: originalFeed, itemIDs: Set(originalFeed.items.map(\.id)), scope: scope)
+            setUnread(unread.replacing(scope, with: originalUnread), scopes: [scope])
             return false
         } catch {
             guard isCurrent(context) else { return false }
-            feeds[scope] = originalFeed
-            unread = originalUnread
+            restoreReadState(from: originalFeed, itemIDs: Set(originalFeed.items.map(\.id)), scope: scope)
+            setUnread(unread.replacing(scope, with: originalUnread), scopes: [scope])
             mutationError = errorMessage(from: error)
             return false
         }
@@ -322,6 +374,8 @@ final class NotificationInboxStore {
         }
 
         isPublishing = true
+        let requestedUnreadRevisions = unreadRevisions
+        let requestSequence = nextReadSequence()
         pendingPublishRequestID = draft.requestID
         publishingError = nil
         defer {
@@ -344,8 +398,16 @@ final class NotificationInboxStore {
             globalFeed.loadState = .loaded
             globalFeed.errorMessage = nil
             feeds[.global] = globalFeed
+            feedRevisions[.global, default: 0] &+= 1
             if let responseUnread = response.unread {
-                unread = responseUnread
+                if activeMutationScopes.contains(.global) {
+                    pendingRefreshScopes.insert(.global)
+                } else {
+                    // Publishing is a completed write, so its own scope wins
+                    // over reads that began before the new item existed.
+                    setUnread(responseUnread, scopes: [.global])
+                }
+                applyUnread(responseUnread, requestedRevisions: requestedUnreadRevisions, sequence: requestSequence)
             }
             pendingPublishRequestID = nil
             return true
@@ -385,9 +447,17 @@ final class NotificationInboxStore {
         pendingItemIDs = []
         markingAllScopes = []
         activeMutationScopes = []
+        resumeMutationWaiters()
+        unreadRevisions = [:]
+        readSequence = 0
+        acceptedReadSequences = [:]
+        feedRevisions = [:]
+        pendingRefreshScopes = []
+        retryCancelledInitialLoads = []
+        summaryRefreshRequested = false
         isPublishing = false
         usesPreviewData = true
-        selectedScope = .global
+        selectedScope = .personal
         feeds = Dictionary(
             uniqueKeysWithValues: NotificationInboxScope.allCases.map { scope in
                 let page = NotificationInboxPreview.page(for: scope)
@@ -405,16 +475,23 @@ final class NotificationInboxStore {
 #endif
 
     private func load(scope: NotificationInboxScope, reset: Bool) async {
-        guard let context = requestContext(),
-              !activeMutationScopes.contains(scope) else {
+        guard let context = requestContext() else { return }
+        guard !activeMutationScopes.contains(scope) else {
+            if reset { pendingRefreshScopes.insert(scope) }
             return
         }
 
         var currentFeed = feed(for: scope)
-        guard !currentFeed.isRefreshing, !currentFeed.isLoadingMore else { return }
+        guard !currentFeed.isRefreshing, !currentFeed.isLoadingMore else {
+            if reset { pendingRefreshScopes.insert(scope) }
+            return
+        }
         if !reset, currentFeed.nextCursor?.nilIfBlank == nil { return }
 
         let cursor = reset ? nil : currentFeed.nextCursor
+        let requestedFeedRevision = feedRevisions[scope, default: 0]
+        let requestedUnreadRevisions = unreadRevisions
+        let requestSequence = nextReadSequence()
         if reset {
             currentFeed.isRefreshing = true
             if currentFeed.items.isEmpty {
@@ -432,6 +509,8 @@ final class NotificationInboxStore {
                 finishedFeed.isRefreshing = false
                 finishedFeed.isLoadingMore = false
                 feeds[scope] = finishedFeed
+                retryCancelledInitialLoads.remove(scope)
+                schedulePendingRefresh(scope: scope, context: context)
             }
         }
 
@@ -441,7 +520,12 @@ final class NotificationInboxStore {
                 cursor: cursor,
                 limit: pageSize
             )
+            try Task.checkCancellation()
             guard isCurrent(context) else { return }
+            guard feedRevisions[scope, default: 0] == requestedFeedRevision else {
+                pendingRefreshScopes.insert(scope)
+                return
+            }
             if let responseScope = response.scope, responseScope != scope {
                 throw Base44Error(message: "Notification scope mismatch.", statusCode: 502)
             }
@@ -454,16 +538,101 @@ final class NotificationInboxStore {
             loadedFeed.errorMessage = nil
             loadedFeed.nextCursor = response.nextCursor
             feeds[scope] = loadedFeed
-            unread = response.unread
+            applyUnread(response.unread, requestedRevisions: requestedUnreadRevisions, sequence: requestSequence)
         } catch is CancellationError {
+            guard isCurrent(context) else { return }
+            var cancelledFeed = feed(for: scope)
+            if cancelledFeed.loadState == .loading {
+                cancelledFeed.loadState = cancelledFeed.items.isEmpty ? .idle : .loaded
+                feeds[scope] = cancelledFeed
+                // A returning view may have asked for this page while its old
+                // cancelled request was still unwinding. Its task already
+                // returned, so restart once instead of leaving it at idle.
+                if retryCancelledInitialLoads.contains(scope) {
+                    pendingRefreshScopes.insert(scope)
+                }
+            }
             return
         } catch {
             guard isCurrent(context) else { return }
+            guard feedRevisions[scope, default: 0] == requestedFeedRevision else {
+                pendingRefreshScopes.insert(scope)
+                return
+            }
             let message = errorMessage(from: error)
             var failedFeed = feed(for: scope)
             failedFeed.errorMessage = message
             failedFeed.loadState = failedFeed.items.isEmpty ? .failed(message: message) : .loaded
             feeds[scope] = failedFeed
+        }
+    }
+
+    private func setUnread(_ counts: NotificationInboxUnreadCounts, scopes: Set<NotificationInboxScope>) {
+        var next = unread
+        for scope in scopes {
+            next = next.replacing(scope, with: counts.count(for: scope))
+            unreadRevisions[scope, default: 0] &+= 1
+        }
+        unread = next
+    }
+
+    private func applyUnread(
+        _ counts: NotificationInboxUnreadCounts,
+        requestedRevisions: [NotificationInboxScope: UInt64],
+        sequence: UInt64
+    ) {
+        var next = unread
+        for scope in NotificationInboxScope.allCases {
+            guard !activeMutationScopes.contains(scope),
+                  unreadRevisions[scope, default: 0] == requestedRevisions[scope, default: 0],
+                  sequence >= acceptedReadSequences[scope, default: 0] else { continue }
+            next = next.replacing(scope, with: counts.count(for: scope))
+            acceptedReadSequences[scope] = sequence
+        }
+        unread = next
+    }
+
+    private func nextReadSequence() -> UInt64 {
+        readSequence &+= 1
+        return readSequence
+    }
+
+    private func restoreReadState(
+        from original: NotificationInboxFeedState,
+        itemIDs: Set<String>,
+        scope: NotificationInboxScope
+    ) {
+        let originals = Dictionary(uniqueKeysWithValues: original.items.map { ($0.id, $0) })
+        var current = feed(for: scope)
+        current.items = current.items.map { item in
+            itemIDs.contains(item.id) ? originals[item.id] ?? item : item
+        }
+        // Keep current loading flags and unrelated/new rows. An older snapshot
+        // must never restore a spinner that already completed.
+        feeds[scope] = current
+    }
+
+    private func waitForMutation(scope: NotificationInboxScope, context: RequestContext) async -> Bool {
+        while activeMutationScopes.contains(scope), isCurrent(context), !Task.isCancelled {
+            await withCheckedContinuation { mutationWaiters[scope, default: []].append($0) }
+        }
+        return isCurrent(context) && !Task.isCancelled
+    }
+
+    private func resumeMutationWaiters(scope: NotificationInboxScope? = nil) {
+        for selected in scope.map({ [$0] }) ?? NotificationInboxScope.allCases {
+            let waiters = mutationWaiters.removeValue(forKey: selected) ?? []
+            for waiter in waiters { waiter.resume() }
+        }
+    }
+
+    private func schedulePendingRefresh(scope: NotificationInboxScope, context: RequestContext) {
+        guard !activeMutationScopes.contains(scope),
+              !feed(for: scope).isRefreshing, !feed(for: scope).isLoadingMore,
+              pendingRefreshScopes.remove(scope) != nil else { return }
+        Task { [weak self] in
+            guard let self, self.isCurrent(context) else { return }
+            await self.refresh(scope: scope)
         }
     }
 

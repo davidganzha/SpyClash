@@ -814,8 +814,8 @@ final class PushNotificationCoordinator {
             let itemID = (userInfo["announcement_id"] as? String)?.nilIfBlank
             return .notifications(scope: .global, itemID: itemID)
         }
-        if type == "friend_request" {
-            return .communityRequests
+        if type == "friend_request" || type == "room_invite" {
+            return .notifications(scope: .personal, itemID: nil)
         }
 
         if let rawCode = (userInfo["room_code"] ?? userInfo["code"]) as? String {

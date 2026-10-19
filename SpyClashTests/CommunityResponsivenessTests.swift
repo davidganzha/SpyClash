@@ -137,6 +137,66 @@ final class CommunityResponsivenessTests: XCTestCase {
         XCTAssertEqual(change.rollingBack(in: projected), original)
     }
 
+    func testInboxConcurrentAcceptsKeepBothFriendsAndUnrelatedIncomingRequest() throws {
+        let first = relationship("first", profileID: "alice", status: "pending", direction: "incoming")
+        let second = relationship("second", profileID: "bob", status: "pending", direction: "incoming")
+        let third = relationship("third", profileID: "charlie", status: "pending", direction: "incoming")
+        let original = state(incoming: [first, second])
+        let changes = try [first, second].map {
+            try XCTUnwrap(CommunityOptimisticRelationshipChange(state: original, action: "accept", friendshipID: $0.id))
+        }
+        let staleSnapshotWithNewRequest = state(incoming: [first, second, third])
+        for orderedChanges in [changes, Array(changes.reversed())] {
+            let result = NotificationInboxSocialProjection.applying(
+                friendChanges: orderedChanges, resolvedInviteIDs: [], to: staleSnapshotWithNewRequest)
+            XCTAssertEqual(Set(result.friends.map(\.id)), [first.id, second.id])
+            XCTAssertEqual(result.incoming, [third])
+        }
+    }
+
+    func testInboxCompletedAcceptStillRespectsNewBlock() throws {
+        let request = relationship("request", profileID: "alice", status: "pending", direction: "incoming")
+        let original = state(incoming: [request])
+        let change = try XCTUnwrap(CommunityOptimisticRelationshipChange(state: original, action: "accept", friendshipID: request.id))
+        let blocked = relationship("block", profileID: "alice", status: "blocked")
+        let latest = CommunityState(me: original.me, friends: [], incoming: [request], outgoing: [], blocked: [blocked])
+        let result = NotificationInboxSocialProjection.applying(friendChanges: [change], resolvedInviteIDs: [], to: latest)
+        XCTAssertTrue(result.incoming.isEmpty)
+        XCTAssertTrue(result.friends.isEmpty)
+        XCTAssertEqual(result.blocked, [blocked])
+    }
+
+    func testInboxAcceptedInviteRemainsRetryableUntilJoinIsConfirmed() {
+        let invite = CommunityRoomInvite(id: "one", status: "pending", roomID: "room-one", roomCode: "ABC123", createdAt: "2026-10-19T10:00:00Z", sender: profile("alice"))
+        let other = CommunityRoomInvite(id: "two", status: "pending", roomID: "room-two", roomCode: "DEF456", createdAt: "2026-10-19T10:00:00Z", sender: profile("bob"))
+        let initial = CommunityState(me: profile("me"), friends: [], incoming: [], outgoing: [], incomingRoomInvites: [invite, other])
+        let accepted = NotificationInboxSocialProjection.acceptingInvite(invite, roomCode: "ABC123", in: initial)
+        XCTAssertEqual(accepted.incomingRoomInvites.first?.status, "accepted")
+        XCTAssertEqual(accepted.incomingRoomInvites.map(\.id), [invite.id, other.id])
+        let joined = NotificationInboxSocialProjection.applying(friendChanges: [], resolvedInviteIDs: [invite.id], to: accepted)
+        XCTAssertEqual(joined.incomingRoomInvites, [other])
+    }
+
+    func testAuthoritativeInboxRefreshAllowsNewRequestsThatReuseSourceIDs() throws {
+        let request = relationship("reused-friendship", profileID: "alice", status: "pending", direction: "incoming")
+        let invite = CommunityRoomInvite(id: "reused-invite", status: "pending", roomID: "room", roomCode: "ABC123", createdAt: "2026-10-19T10:00:00Z", sender: profile("bob"))
+        let snapshot = CommunityState(me: profile("me"), friends: [], incoming: [request], outgoing: [], incomingRoomInvites: [invite])
+        let change = try XCTUnwrap(CommunityOptimisticRelationshipChange(state: snapshot, action: "decline", friendshipID: request.id))
+        var friends = [request.id: change]
+        var invites: Set<String> = [invite.id]
+        let local = NotificationInboxSocialProjection.reconciling(snapshot,
+            completedFriendChanges: &friends, completedInviteIDs: &invites, authoritativeSnapshot: false)
+        XCTAssertTrue(local.incoming.isEmpty)
+        XCTAssertTrue(local.incomingRoomInvites.isEmpty)
+        XCTAssertEqual(friends.count, 1)
+        let fresh = NotificationInboxSocialProjection.reconciling(snapshot,
+            completedFriendChanges: &friends, completedInviteIDs: &invites, authoritativeSnapshot: true)
+        XCTAssertEqual(fresh.incoming, [request])
+        XCTAssertEqual(fresh.incomingRoomInvites, [invite])
+        XCTAssertTrue(friends.isEmpty)
+        XCTAssertTrue(invites.isEmpty)
+    }
+
     private func state(actor: String = "me", friends: [CommunityRelationship] = [], incoming: [CommunityRelationship] = [], outgoing: [CommunityRelationship] = []) -> CommunityState {
         CommunityState(me: profile(actor), friends: friends, incoming: incoming, outgoing: outgoing)
     }
