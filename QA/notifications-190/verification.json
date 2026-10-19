@@ -1,0 +1,28 @@
+{
+  "tests": {
+    "status": "SUCCEEDED",
+    "durationMs": 45574,
+    "counts": {
+      "passed": 68,
+      "failed": 0,
+      "skipped": 0
+    },
+    "target": "simulator"
+  },
+  "testArtifacts": {
+    "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/test_sim_2026-10-19T10-17-18-402Z_pid44209_0f17c676.log",
+    "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-19T10-17-18-402Z_pid44209_c6073147.xcresult",
+    "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/test-products/test_sim_2026-10-19T10-17-18-402Z_pid44209_343dfa95.xctestproducts"
+  },
+  "build": {
+    "status": "SUCCEEDED",
+    "durationMs": 42128,
+    "target": "simulator"
+  },
+  "buildArtifacts": {
+    "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/build_sim_2026-10-19T10-18-14-781Z_pid44209_cee1cb76.log"
+  },
+  "backendMode": "supabase-main-candidate",
+  "version": "1.0.3 (190)",
+  "previewOnly": true
+}

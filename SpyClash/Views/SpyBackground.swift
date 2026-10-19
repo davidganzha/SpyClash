@@ -147,6 +147,7 @@ struct PageChrome<Content: View>: View {
     let showsPageTopEdge: Bool
     let topReserve: CGFloat
     let scrollTarget: String?
+    let scrollTargetAnchor: UnitPoint
     @ViewBuilder var content: Content
 
     init(
@@ -155,6 +156,7 @@ struct PageChrome<Content: View>: View {
         showsPageTopEdge: Bool = true,
         topReserve: CGFloat = 80,
         scrollTarget: String? = nil,
+        scrollTargetAnchor: UnitPoint = .bottom,
         @ViewBuilder content: () -> Content
     ) {
         self.eyebrow = eyebrow
@@ -162,6 +164,7 @@ struct PageChrome<Content: View>: View {
         self.showsPageTopEdge = showsPageTopEdge
         self.topReserve = topReserve
         self.scrollTarget = scrollTarget
+        self.scrollTargetAnchor = scrollTargetAnchor
         self.content = content()
     }
 
@@ -211,7 +214,7 @@ struct PageChrome<Content: View>: View {
         guard let target else { return }
         DispatchQueue.main.async {
             withAnimation(reduceMotion ? nil : .smooth(duration: 0.28)) {
-                proxy.scrollTo(target, anchor: .bottom)
+                proxy.scrollTo(target, anchor: scrollTargetAnchor)
             }
         }
     }

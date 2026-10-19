@@ -239,6 +239,49 @@ enum ShellSupplementaryRefreshPolicy {
     }
 }
 
+/// Combines independent social mutations without installing a mutation's stale
+/// whole-network response. Joining and resolving an invite remain separate steps.
+enum NotificationInboxSocialProjection {
+    static func applying(
+        friendChanges: [CommunityOptimisticRelationshipChange],
+        resolvedInviteIDs: Set<String>,
+        to state: CommunityState
+    ) -> CommunityState {
+        let projected = friendChanges.reduce(state) { changeState, change in change.applying(to: changeState) }
+        return CommunityState(me: projected.me, friends: projected.friends,
+            incoming: projected.incoming, outgoing: projected.outgoing, blocked: projected.blocked,
+            incomingRoomInvites: projected.incomingRoomInvites.filter { !resolvedInviteIDs.contains($0.id) })
+    }
+
+    static func reconciling(
+        _ state: CommunityState,
+        completedFriendChanges: inout [String: CommunityOptimisticRelationshipChange],
+        completedInviteIDs: inout Set<String>,
+        authoritativeSnapshot: Bool
+    ) -> CommunityState {
+        if authoritativeSnapshot {
+            // Source IDs can be reused for a new request. A read started after
+            // all mutations completed owns the truth, including those new rows.
+            completedFriendChanges.removeAll()
+            completedInviteIDs.removeAll()
+        }
+        return applying(friendChanges: Array(completedFriendChanges.values),
+            resolvedInviteIDs: completedInviteIDs, to: state)
+    }
+
+    static func acceptingInvite(
+        _ invite: CommunityRoomInvite,
+        roomCode: String,
+        in state: CommunityState
+    ) -> CommunityState {
+        let accepted = CommunityRoomInvite(id: invite.id, status: "accepted", roomID: invite.roomID,
+            roomCode: roomCode, createdAt: invite.createdAt, sender: invite.sender)
+        return CommunityState(me: state.me, friends: state.friends,
+            incoming: state.incoming, outgoing: state.outgoing, blocked: state.blocked,
+            incomingRoomInvites: state.incomingRoomInvites.map { $0.id == invite.id ? accepted : $0 })
+    }
+}
+
 struct AppShellView: View {
     @Environment(AppState.self) private var appState
     @SpyReduceMotion private var reduceMotion
@@ -250,6 +293,12 @@ struct AppShellView: View {
     @State private var communityAttention = CommunityAttentionSnapshot.empty
     @State private var communityNetworkState: CommunityState?
     @State private var communityAttentionRequestID: UUID?
+    @State private var communityAttentionRefreshRequested = false
+    @State private var pendingSocialItemIDs: Set<String> = []
+    @State private var completedFriendChanges: [String: CommunityOptimisticRelationshipChange] = [:]
+    @State private var completedRoomInviteIDs: Set<String> = []
+    @State private var inboxSocialGeneration = UUID()
+    @State private var inboxRoomJoinID: String?
     @State private var primarySwipeOffset: CGFloat = 0
     @State private var primarySwipeTarget: AppTab?
     @State private var primarySwipeDirection: TabSwipeDirection?
@@ -291,10 +340,13 @@ struct AppShellView: View {
                             CommunityView(
                                 selectedTab: $communityTab,
                                 dockRequest: communityDockRequest,
-                                externalNetworkState: communityNetworkState,
+                                externalNetworkState: sharedCommunityNetworkState,
                                 onAttentionChange: { state in
                                     communityAttentionRequestID = nil
                                     installCommunityAttention(state, announceNew: false)
+                                    if !appState.shouldUsePreviewData {
+                                        Task { await appState.notificationInbox.reconcileAfterSocialChange() }
+                                    }
                                 }
                             ) {
                                 appState.closeCommunity()
@@ -306,6 +358,11 @@ struct AppShellView: View {
                                 language: appState.language,
                                 canPublishGlobal: appState.user?.role == "admin",
                                 onOpenItem: { item in
+                                    if item.isSocialRequest, communityNetworkState == nil,
+                                       !appState.shouldUsePreviewData {
+                                        appState.openCommunity()
+                                        return
+                                    }
                                     guard let rawLink = item.actionDeepLink?.nilIfBlank,
                                           let url = URL(string: rawLink) else {
                                         return
@@ -313,7 +370,12 @@ struct AppShellView: View {
                                     appState.handleIncomingURL(SupabaseAppRuntime.localURL(forServerLink: url))
                                 },
                                 focusItemID: appState.notificationFocusItemID,
-                                focusRequestID: appState.notificationFocusRequestID
+                                focusRequestID: appState.notificationFocusRequestID,
+                                pendingRequests: inboxPendingRequests,
+                                hasLoadedPendingRequests: appState.shouldUsePreviewData || communityNetworkState != nil,
+                                pendingSocialItemIDs: pendingSocialItemIDs,
+                                onSocialAction: beginInboxSocialAction,
+                                onRefreshPendingRequests: refreshCommunityAttention
                             )
                             .shellDockContentInset(visible: shouldShowDock)
                         } else if AppTab.primaryCases.contains(contentTab) {
@@ -471,10 +533,24 @@ struct AppShellView: View {
         }
         .onChange(of: appState.activeRoom?.id) { _, roomID in
             if roomID != nil, let communityNetworkState {
-                installCommunityAttention(communityNetworkState, announceNew: false)
+                installCommunityAttention(communityNetworkState, announceNew: false, resolvingCompletedActions: false)
             }
             guard roomID == nil, appState.selectedTab == .game else { return }
             appState.selectedTab = .home
+        }
+        .onChange(of: appState.user?.id) { _, _ in
+            inboxSocialGeneration = UUID()
+            pendingSocialItemIDs.removeAll()
+            completedFriendChanges.removeAll()
+            completedRoomInviteIDs.removeAll()
+            inboxRoomJoinID = nil
+            communityAttentionRequestID = nil
+            communityAttentionRefreshRequested = false
+            communityNetworkState = nil
+            communityAttention = .empty
+        }
+        .onChange(of: appState.notificationInboxInvalidationRevision) { _, _ in
+            Task { await refreshCommunityAttention() }
         }
         .onChange(of: appState.shellRoute) { _, route in
             guard route == .main else { return }
@@ -499,6 +575,15 @@ struct AppShellView: View {
             ) else { return }
 
 #if DEBUG
+            if appState.shouldUsePreviewData {
+                if let state = sharedCommunityNetworkState {
+                    installCommunityAttention(state, announceNew: false)
+                }
+                if let previewCount = communityAttentionPreviewCount {
+                    communityAttention = .preview(count: previewCount)
+                }
+                return
+            }
             if let previewCount = communityAttentionPreviewCount {
                 communityAttention = .preview(count: previewCount)
                 return
@@ -526,6 +611,9 @@ struct AppShellView: View {
             }
 #endif
 
+            // Supabase's social listener owns the inbox invalidation stream.
+            // The separate periodic fallback is only needed by Base44.
+            guard !SupabaseAppRuntime.isEnabled else { return }
             await monitorNotificationInbox()
         }
         .onChange(of: appState.notificationInbox.unread.total, initial: true) { _, _ in
@@ -870,6 +958,210 @@ struct AppShellView: View {
     }
 #endif
 
+    private var sharedCommunityNetworkState: CommunityState? {
+#if DEBUG
+        if appState.shouldUsePreviewData {
+            return CommunityState.previewState(reusing: communityNetworkState)
+        }
+#endif
+        return communityNetworkState
+    }
+
+    private var inboxPendingRequests: [NotificationInboxPendingRequest] {
+        guard let state = sharedCommunityNetworkState, state.me.id == appState.user?.id else { return [] }
+        let invitations = state.incomingRoomInvites.map { invite in
+            NotificationInboxPendingRequest(
+                id: "invite:\(invite.id)", sourceID: invite.id,
+                displayName: invite.sender.displayName, avatar: invite.sender.avatar,
+                subtitle: localizedCommunityAttention(
+                    en: "Invites you to room \(invite.roomCode)", ru: "Приглашает в комнату \(invite.roomCode)",
+                    es: "Te invita a la sala \(invite.roomCode)", uk: "Запрошує до кімнати \(invite.roomCode)"
+                ), primaryAction: .join
+            )
+        }
+        let friendships = state.incoming.map { relationship in
+            NotificationInboxPendingRequest(
+                id: "friend:\(relationship.id)", sourceID: relationship.id,
+                displayName: relationship.profile.displayName, avatar: relationship.profile.avatar,
+                primaryAction: .accept
+            )
+        }
+        return invitations + friendships
+    }
+
+    private func beginInboxSocialAction(
+        _ request: NotificationInboxPendingRequest,
+        _ action: NotificationInboxSocialActionKind
+    ) {
+        guard let userID = appState.user?.id,
+              inboxPendingRequests.contains(where: { $0.id == request.id }),
+              !pendingSocialItemIDs.contains(request.id),
+              action == request.primaryAction || action == .decline else { return }
+        if action == .join {
+            guard inboxRoomJoinID == nil else { return }
+            inboxRoomJoinID = request.id
+        }
+        pendingSocialItemIDs.insert(request.id)
+        communityAttentionRequestID = nil
+        let generation = inboxSocialGeneration
+        HapticManager.shared.fire(.buttonPress)
+        Task { @MainActor in
+            await performInboxSocialAction(request, action: action, userID: userID, generation: generation)
+        }
+    }
+
+    @MainActor
+    private func performInboxSocialAction(
+        _ request: NotificationInboxPendingRequest,
+        action: NotificationInboxSocialActionKind,
+        userID: String,
+        generation: UUID
+    ) async {
+#if SPYCLASH_SUPABASE
+        let accountGeneration = SupabaseAppSession.shared.generation
+#endif
+        func isCurrent() -> Bool {
+            guard appState.user?.id == userID, inboxSocialGeneration == generation else { return false }
+#if SPYCLASH_SUPABASE
+            return SupabaseAppSession.shared.generation == accountGeneration
+#else
+            return true
+#endif
+        }
+        defer {
+            if appState.user?.id == userID, inboxSocialGeneration == generation {
+                pendingSocialItemIDs.remove(request.id)
+                if inboxRoomJoinID == request.id { inboxRoomJoinID = nil }
+                if pendingSocialItemIDs.isEmpty, !appState.shouldUsePreviewData {
+                    Task { @MainActor in
+                        guard appState.user?.id == userID, inboxSocialGeneration == generation else { return }
+                        async let attention: Void = refreshCommunityAttention()
+                        async let inbox: Void = appState.notificationInbox.reconcileAfterSocialChange()
+                        _ = await (attention, inbox)
+                    }
+                }
+            }
+        }
+
+#if DEBUG
+        if appState.shouldUsePreviewData {
+            await Task.yield()
+            guard isCurrent(), let state = sharedCommunityNetworkState else { return }
+            let updated: CommunityState
+            if request.primaryAction == .accept {
+                let verb = action == .accept ? "accept" : "decline"
+                guard let change = CommunityOptimisticRelationshipChange(
+                    state: state, action: verb, friendshipID: request.sourceID
+                ) else { return }
+                updated = change.applying(to: state)
+            } else {
+                updated = NotificationInboxSocialProjection.applying(
+                    friendChanges: [], resolvedInviteIDs: [request.sourceID], to: state)
+            }
+            installCommunityAttention(updated, for: userID, announceNew: false)
+            showInboxSocialSuccess(action)
+            return
+        }
+#endif
+        do {
+            guard isCurrent(), let state = communityNetworkState, state.me.id == userID else { return }
+            if request.primaryAction == .accept {
+                let verb = action == .accept ? "accept" : "decline"
+                guard let change = CommunityOptimisticRelationshipChange(
+                    state: state, action: verb, friendshipID: request.sourceID
+                ) else { return }
+                _ = try await appState.client.communityRelationshipAction(verb, friendshipID: request.sourceID)
+                guard isCurrent(), let latestState = communityNetworkState else { return }
+                // Responses carry a whole network snapshot. Merge only this
+                // relationship so concurrent decisions cannot undo each other.
+                completedFriendChanges[request.sourceID] = change
+                installCommunityAttention(change.applying(to: latestState), for: userID,
+                    announceNew: false, resolvingCompletedActions: false)
+            } else {
+                guard let invite = state.incomingRoomInvites.first(where: { $0.id == request.sourceID }) else { return }
+                if action == .decline {
+                    _ = try await appState.client.communityRoomInviteAction("decline_room_invite", inviteID: invite.id)
+                    guard isCurrent(), let latestState = communityNetworkState else { return }
+                    completedRoomInviteIDs.insert(invite.id)
+                    installCommunityAttention(latestState, for: userID,
+                        announceNew: false, resolvingCompletedActions: false)
+                } else {
+                    try requireAvailableInboxRoom(invite)
+                    var roomCode = invite.roomCode
+                    if invite.status.lowercased() != "accepted" {
+                        let result = try await appState.client.communityRoomInviteAction("accept_room_invite", inviteID: invite.id)
+                        guard isCurrent() else { return }
+                        roomCode = result.roomCode ?? invite.roomCode
+                        // Keep the accepted invite on screen until joining succeeds.
+                        // A failed join can retry without repeating acceptance.
+                        if let latestState = communityNetworkState {
+                            let updated = NotificationInboxSocialProjection.acceptingInvite(invite, roomCode: roomCode, in: latestState)
+                            installCommunityAttention(updated, for: userID,
+                                announceNew: false, resolvingCompletedActions: false)
+                        }
+                    }
+                    try requireAvailableInboxRoom(invite)
+                    let joined = await appState.joinRoom(code: roomCode)
+                    guard isCurrent() else { return }
+                    guard joined else {
+                        throw Base44Error(message: appState.deepLinkStatus?.nilIfBlank ?? localizedCommunityAttention(
+                            en: "Could not join. Your invitation is ready to retry.",
+                            ru: "Не удалось войти. Приглашение сохранено — попробуйте ещё раз.",
+                            es: "No se pudo entrar. Puedes volver a intentarlo.",
+                            uk: "Не вдалося увійти. Запрошення збережено — спробуйте ще раз."
+                        ))
+                    }
+                    completedRoomInviteIDs.insert(invite.id)
+                    var cleanupIDs = pendingRoomInviteCleanupIDs(for: userID)
+                    cleanupIDs.insert(invite.id)
+                    UserDefaults.standard.set(Array(cleanupIDs).sorted(),
+                        forKey: pendingRoomInviteCleanupStorageKey(userID: userID))
+                    if let latestState = communityNetworkState {
+                        installCommunityAttention(latestState, for: userID,
+                            announceNew: false, resolvingCompletedActions: false)
+                    }
+                    Task { @MainActor in
+                        guard isCurrent() else { return }
+                        await retryPendingRoomInviteCleanups(for: userID)
+                        guard isCurrent() else { return }
+                        await appState.notificationInbox.reconcileAfterSocialChange()
+                    }
+                }
+            }
+            showInboxSocialSuccess(action)
+        } catch is CancellationError {
+            return
+        } catch {
+            guard isCurrent() else { return }
+            appState.showToast(error.localizedDescription, kind: .error)
+            HapticManager.shared.fire(.notification(.error))
+        }
+    }
+
+    private func requireAvailableInboxRoom(_ invite: CommunityRoomInvite) throws {
+        guard let current = appState.activeRoom, current.id != invite.roomID else { return }
+        throw Base44Error(message: localizedCommunityAttention(
+            en: "Leave your current room before joining this invitation.",
+            ru: "Сначала выйдите из текущей комнаты, затем примите приглашение.",
+            es: "Sal de la sala actual antes de unirte a esta invitación.",
+            uk: "Спочатку вийдіть із поточної кімнати, потім прийміть запрошення."
+        ))
+    }
+
+    private func showInboxSocialSuccess(_ action: NotificationInboxSocialActionKind) {
+        let title: String
+        switch action {
+        case .accept:
+            title = localizedCommunityAttention(en: "Friend added", ru: "Друг добавлен", es: "Amigo añadido", uk: "Друга додано")
+        case .decline:
+            title = localizedCommunityAttention(en: "Request declined", ru: "Запрос отклонён", es: "Solicitud rechazada", uk: "Запит відхилено")
+        case .join:
+            title = localizedCommunityAttention(en: "Room ready", ru: "Комната открыта", es: "Sala lista", uk: "Кімнату відкрито")
+        }
+        appState.showToast(title, kind: .success)
+        HapticManager.shared.fire(.notification(.success))
+    }
+
     private func monitorCommunityAttention() async {
 #if SPYCLASH_SUPABASE
         guard let userID = appState.user?.id else { return }
@@ -901,7 +1193,7 @@ struct AppShellView: View {
             guard !Task.isCancelled, appState.user?.id == userID,
                   SupabaseAppSession.shared.generation == accountGeneration else { return }
             async let community: Void = refreshCommunityAttention()
-            async let inbox: Void = appState.notificationInbox.refreshSummary()
+            async let inbox: Void = appState.notificationInbox.reconcileAfterSocialChange()
             _ = await (community, inbox)
         }
         return
@@ -937,6 +1229,9 @@ struct AppShellView: View {
     }
 
     private func refreshCommunityAttention() async {
+        // Mutations merge their own row into the newest snapshot. An unrelated
+        // full read must not replace a successful action while another is pending.
+        guard pendingSocialItemIDs.isEmpty, !appState.shouldUsePreviewData else { return }
         guard let userID = appState.user?.id else {
             communityAttention = .empty
             communityNetworkState = nil
@@ -944,8 +1239,23 @@ struct AppShellView: View {
             return
         }
 
+        guard communityAttentionRequestID == nil else {
+            communityAttentionRefreshRequested = true
+            return
+        }
         let requestID = UUID()
         communityAttentionRequestID = requestID
+        defer {
+            if communityAttentionRequestID == requestID {
+                communityAttentionRequestID = nil
+                if communityAttentionRefreshRequested {
+                    communityAttentionRefreshRequested = false
+                    if !Task.isCancelled, scenePhase == .active, appState.user?.id == userID {
+                        Task { await refreshCommunityAttention() }
+                    }
+                }
+            }
+        }
 #if SPYCLASH_SUPABASE
         let accountGeneration = SupabaseAppSession.shared.generation
 #endif
@@ -960,7 +1270,7 @@ struct AppShellView: View {
 #if SPYCLASH_SUPABASE
             guard SupabaseAppSession.shared.generation == accountGeneration else { return }
 #endif
-            installCommunityAttention(state, for: userID, announceNew: true)
+            installCommunityAttention(state, for: userID, announceNew: true, resolvingCompletedActions: true)
             await retryPendingRoomInviteCleanups(for: userID)
         } catch is CancellationError {
             return
@@ -969,22 +1279,31 @@ struct AppShellView: View {
             // visible retry/error path, so a transient poll must stay silent.
         }
 
-        if communityAttentionRequestID == requestID {
-            communityAttentionRequestID = nil
-        }
     }
 
     private func installCommunityAttention(
         _ state: CommunityState,
         for userID: String? = nil,
-        announceNew: Bool
+        announceNew: Bool,
+        resolvingCompletedActions: Bool = false
     ) {
         guard let resolvedUserID = userID ?? appState.user?.id else {
             communityAttention = .empty
             return
         }
 
-        let visibleState = stateHidingPendingRoomInviteCleanups(state, userID: resolvedUserID)
+        guard state.me.id == resolvedUserID else { return }
+#if DEBUG
+        if appState.shouldUsePreviewData {
+            communityNetworkState = state
+            communityAttention = CommunityAttentionSnapshot(state: state)
+            return
+        }
+#endif
+        let reconciledState = NotificationInboxSocialProjection.reconciling(
+            state, completedFriendChanges: &completedFriendChanges,
+            completedInviteIDs: &completedRoomInviteIDs, authoritativeSnapshot: resolvingCompletedActions)
+        let visibleState = stateHidingPendingRoomInviteCleanups(reconciledState, userID: resolvedUserID)
         let next = CommunityAttentionSnapshot(state: visibleState)
         let seenIDs = storedCommunityAttentionIDs(for: resolvedUserID)
         let newIDs = next.allIDs.subtracting(seenIDs)
@@ -1032,16 +1351,16 @@ struct AppShellView: View {
             )
             detail = snapshot.senderName(forRoomInviteIDs: newIDs).map {
                 localizedCommunityAttention(
-                    en: "From \($0). Open Community to respond.",
-                    ru: "От \($0). Откройте Сообщество, чтобы ответить.",
-                    es: "De \($0). Abre Comunidad para responder.",
-                    uk: "Від \($0). Відкрийте Спільноту, щоб відповісти."
+                    en: "From \($0). Open Notifications to respond.",
+                    ru: "От \($0). Откройте уведомления, чтобы ответить.",
+                    es: "De \($0). Abre Notificaciones para responder.",
+                    uk: "Від \($0). Відкрийте сповіщення, щоб відповісти."
                 )
             } ?? localizedCommunityAttention(
-                en: "Open Community to respond.",
-                ru: "Откройте Сообщество, чтобы ответить.",
-                es: "Abre Comunidad para responder.",
-                uk: "Відкрийте Спільноту, щоб відповісти."
+                en: "Open Notifications to respond.",
+                ru: "Откройте уведомления, чтобы ответить.",
+                es: "Abre Notificaciones para responder.",
+                uk: "Відкрийте сповіщення, щоб відповісти."
             )
             systemImage = "door.left.hand.open"
         } else {
@@ -1053,16 +1372,16 @@ struct AppShellView: View {
             )
             detail = snapshot.senderName(forFriendRequestIDs: newIDs).map {
                 localizedCommunityAttention(
-                    en: "From \($0). Open Community to respond.",
-                    ru: "От \($0). Откройте Сообщество, чтобы ответить.",
-                    es: "De \($0). Abre Comunidad para responder.",
-                    uk: "Від \($0). Відкрийте Спільноту, щоб відповісти."
+                    en: "From \($0). Open Notifications to respond.",
+                    ru: "От \($0). Откройте уведомления, чтобы ответить.",
+                    es: "De \($0). Abre Notificaciones para responder.",
+                    uk: "Від \($0). Відкрийте сповіщення, щоб відповісти."
                 )
             } ?? localizedCommunityAttention(
-                en: "Open Community to respond.",
-                ru: "Откройте Сообщество, чтобы ответить.",
-                es: "Abre Comunidad para responder.",
-                uk: "Відкрийте Спільноту, щоб відповісти."
+                en: "Open Notifications to respond.",
+                ru: "Откройте уведомления, чтобы ответить.",
+                es: "Abre Notificaciones para responder.",
+                uk: "Відкрийте сповіщення, щоб відповісти."
             )
             systemImage = "person.crop.circle.badge.plus"
         }

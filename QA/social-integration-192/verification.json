@@ -1,0 +1,263 @@
+{
+  "date": "2026-10-19",
+  "version": "1.0.3",
+  "build": 192,
+  "branch": "davidganzha/social-integration-192",
+  "sources": {
+    "baseline": "a32c8e9ce154a7cde52f5d3b3c2ba63de47bb2fc",
+    "inbox": "493a1890d8c4590964e3d0d2a3f1014be45316ba",
+    "friends": "96067d209f09819ae00265addbe78f7cba97da07"
+  },
+  "tests": {
+    "status": "SUCCEEDED",
+    "durationMs": 82473,
+    "counts": {
+      "passed": 91,
+      "failed": 0,
+      "skipped": 0
+    },
+    "target": "simulator",
+    "artifacts": {
+      "buildLogPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/test_sim_2026-10-19T11-07-52-119Z_pid44209_2ca21aad.log",
+      "xcresultPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/result-bundles/test_sim_2026-10-19T11-07-52-120Z_pid44209_52d2a09f.xcresult",
+      "testProductsPath": "~/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/test-products/test_sim_2026-10-19T11-07-52-121Z_pid44209_cb9199f7.xctestproducts"
+    }
+  },
+  "buildResult": {
+    "summary": {
+      "status": "SUCCEEDED",
+      "durationMs": 48544,
+      "target": "simulator"
+    },
+    "artifacts": {
+      "appPath": "/tmp/SpyClashSocial192-DerivedData/Build/Products/SupabaseDebug-iphonesimulator/SpyClash.app",
+      "bundleId": "com.spyclash.ios",
+      "processId": 83988,
+      "simulatorId": "CF9C8F53-AC2A-437D-9EC9-87F61A31644F",
+      "buildLogPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/build_run_sim_2026-10-19T11-09-18-169Z_pid44209_b68f10d0.log",
+      "runtimeLogPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/com.spyclash.ios_2026-10-19T11-10-05-052Z_helperpid83982_ownerpid44209_9775209a.log",
+      "osLogPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/com.spyclash.ios_oslog_2026-10-19T11-10-06-679Z_helperpid84115_ownerpid44209_d5e12ac2.log"
+    }
+  },
+  "finalLaunch": {
+    "simulatorId": "CF9C8F53-AC2A-437D-9EC9-87F61A31644F",
+    "bundleId": "com.spyclash.ios",
+    "processId": 86089,
+    "runtimeLogPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/com.spyclash.ios_2026-10-19T11-12-04-433Z_helperpid86085_ownerpid44209_bfa328a4.log",
+    "osLogPath": "/Users/davidganzha/Library/Developer/XcodeBuildMCP/workspaces/SpyClash-f8b83e29e9ef/logs/com.spyclash.ios_oslog_2026-10-19T11-12-06-392Z_helperpid86146_ownerpid44209_ab5b59d4.log"
+  },
+  "backendMode": "supabase-main-candidate",
+  "simulatorName": "SpyClash Social 192",
+  "preview": true,
+  "interactionResults": [
+    "Accept Signal from Personal → Signal appears in Friends, friends count 2",
+    "Return to Personal → accepted request stays absent",
+    "Decline Cipher room invitation in Friends → Personal shows no pending invitations",
+    "Personal and General layouts visually reviewed in Russian",
+    "Restart on Friends with original preview requests for user review"
+  ],
+  "captures": {
+    "friendsAfterAcceptance": {
+      "type": "runtime-snapshot",
+      "rs": "1",
+      "screenHash": "0ws0mxq",
+      "seq": 14,
+      "count": 65,
+      "targets": [
+        "e15|tap|button|ДРУЗЬЯ, 2||community.section.friends",
+        "e18|tap|button|ЗАПРОСЫ, 1||community.section.requests",
+        "e29|tap|button|Отклонить приглашение от Cipher||xmark",
+        "e37|tap|button|🎭, CIPHER, 104-827||",
+        "e45|tap|button|🔥, SIGNAL, 777-123||",
+        "e58|tap|button|Потяните вниз, чтобы открыть командное меню|Ожидают действия: 4|spy-command-menu-drag-handle",
+        "e61|tap|button|Открыть главную SpyClash|Ожидают действия: 4|shell.header.home",
+        "e34|typeText|text-field|Поиск среди друзей|Поиск среди друзей|",
+        "e21|tap|button|НАЙТИ||community.section.discover",
+        "e26|tap|button|Войти в комнату Cipher||",
+        "e31|tap|button|НАЙТИ ДРУЗЕЙ||",
+        "e41|tap|button|Действия для Cipher||",
+        "e42|tap|button|||",
+        "e49|tap|button|Действия для Signal||",
+        "e50|tap|button|||",
+        "e53|tap|button|Вернуться назад||dock.community.exit",
+        "e54|tap|button|Сообщество|Ожидают действия: 1, Ожидают действия: 1|dock.community.network",
+        "e57|tap|button|Мой публичный профиль||dock.community.me"
+      ],
+      "scroll": [
+        "e8|swipe|scroll-view|||"
+      ],
+      "text": [
+        "e60|text|text|4 ожидающих элементов Сообщества|Ожидают действия: 4|",
+        "e62|text|text|SPY||",
+        "e63|text|text|CLASH||",
+        "e64|text|text|Версия SpyClash 1.192v||",
+        "e10|text|text|// СООБЩЕСТВО, СЕТЬ ОПЕРАТИВНИКОВ||",
+        "e11|text|text|// СООБЩЕСТВО||",
+        "e12|text|text|СЕТЬ ОПЕРАТИВНИКОВ||",
+        "e13|text|text|ТВОИ ЛЮДИ||",
+        "e14|text|text|Находи друзей. Собирайтесь на следующую игру.||",
+        "e16|text|text|ДРУЗЬЯ||",
+        "e19|text|text|ЗАПРОСЫ||",
+        "e17|text|text|2||",
+        "e20|text|text|1||",
+        "e24|text|text|Cipher||",
+        "e23|text|text|🎭||",
+        "e28|text|text|ВОЙТИ||",
+        "e25|text|text|КОМНАТА S6RC3V||",
+        "e33|text|text|НАЙТИ ДРУЗЕЙ||",
+        "e30|text|text|МОИ ДРУЗЬЯ||",
+        "e39|text|text|CIPHER||",
+        "e38|text|text|🎭||",
+        "e40|text|text|104-827||",
+        "e47|text|text|SIGNAL||",
+        "e46|text|text|🔥||",
+        "e48|text|text|777-123||",
+        "e56|text|text|Сообщество|Ожидают действия: 1|"
+      ],
+      "udid": "CF9C8F53-AC2A-437D-9EC9-87F61A31644F"
+    },
+    "inboxAfterReturn": {
+      "type": "runtime-snapshot",
+      "rs": "1",
+      "screenHash": "12wcuvs",
+      "seq": 17,
+      "count": 47,
+      "targets": [
+        "e17|tap|button|Личные, непрочитано: 1||notifications.scope.personal",
+        "e20|tap|button|Общие, непрочитано: 2||notifications.scope.global",
+        "e40|tap|button|Потяните вниз, чтобы открыть командное меню|Ожидают действия: 4|spy-command-menu-drag-handle",
+        "e43|tap|button|Открыть главную SpyClash|Ожидают действия: 4|shell.header.home",
+        "e24|tap|button|Прочитать все||notifications.markAll",
+        "e32|tap|button|Войти в игру||notifications.request.invite:room-invite-1.primary",
+        "e35|tap|button|Отклонить||notifications.request.invite:room-invite-1.decline",
+        "e37|tap|button|ДОМОЙ||dock.home",
+        "e38|tap|button|КОЛОДЫ||dock.packs",
+        "e39|tap|button|ПРОФИЛЬ||dock.profile"
+      ],
+      "scroll": [
+        "e8|swipe|scroll-view|||"
+      ],
+      "text": [
+        "e42|text|text|4 ожидающих элементов Сообщества|Ожидают действия: 4|",
+        "e44|text|text|SPY||",
+        "e45|text|text|CLASH||",
+        "e46|text|text|Версия SpyClash 1.192v||",
+        "e10|text|text|// УВЕДОМЛЕНИЯ, НЕПРОЧИТАНО: 3||",
+        "e11|text|text|// УВЕДОМЛЕНИЯ||",
+        "e12|text|text|НЕПРОЧИТАНО: 3||",
+        "e13|text|text|Уведомления||",
+        "e14|text|text|Друзья, приглашения и новости||",
+        "e15|text|text|Push-уведомления пока не подключены к тестовой сборке. Сообщения доступны здесь, во входящих.||notifications.stagingPushUnavailable",
+        "e18|text|text|Личные||",
+        "e21|text|text|Общие||",
+        "e19|text|text|1||",
+        "e22|text|text|2||",
+        "e23|text|text|Заявки в друзья и приглашения в игру||",
+        "e26|text|text|Прочитать все||",
+        "e29|text|text|🎭||",
+        "e30|text|text|Cipher||",
+        "e31|text|text|Приглашает в комнату S6RC3V||",
+        "e34|text|text|Войти в игру||"
+      ],
+      "udid": "CF9C8F53-AC2A-437D-9EC9-87F61A31644F"
+    },
+    "inboxAfterCommunityDecline": {
+      "type": "runtime-snapshot",
+      "rs": "1",
+      "screenHash": "0vz81fi",
+      "seq": 25,
+      "count": 41,
+      "targets": [
+        "e17|tap|button|Личные, непрочитано: 1||notifications.scope.personal",
+        "e20|tap|button|Общие, непрочитано: 2||notifications.scope.global",
+        "e34|tap|button|Потяните вниз, чтобы открыть командное меню|Ожидают действия: 3|spy-command-menu-drag-handle",
+        "e37|tap|button|Открыть главную SpyClash|Ожидают действия: 3|shell.header.home",
+        "e24|tap|button|Прочитать все||notifications.markAll",
+        "e31|tap|button|ДОМОЙ||dock.home",
+        "e32|tap|button|КОЛОДЫ||dock.packs",
+        "e33|tap|button|ПРОФИЛЬ||dock.profile"
+      ],
+      "scroll": [
+        "e8|swipe|scroll-view|||"
+      ],
+      "text": [
+        "e36|text|text|3 ожидающих элементов Сообщества|Ожидают действия: 3|",
+        "e38|text|text|SPY||",
+        "e39|text|text|CLASH||",
+        "e40|text|text|Версия SpyClash 1.192v||",
+        "e10|text|text|// УВЕДОМЛЕНИЯ, НЕПРОЧИТАНО: 3||",
+        "e11|text|text|// УВЕДОМЛЕНИЯ||",
+        "e12|text|text|НЕПРОЧИТАНО: 3||",
+        "e13|text|text|Уведомления||",
+        "e14|text|text|Друзья, приглашения и новости||",
+        "e15|text|text|Push-уведомления пока не подключены к тестовой сборке. Сообщения доступны здесь, во входящих.||notifications.stagingPushUnavailable",
+        "e18|text|text|Личные||",
+        "e21|text|text|Общие||",
+        "e19|text|text|1||",
+        "e22|text|text|2||",
+        "e23|text|text|Заявки в друзья и приглашения в игру||",
+        "e26|text|text|Прочитать все||",
+        "e28|text|text|Приглашений пока нет||notifications.empty.personal",
+        "e29|text|text|Здесь появятся заявки в друзья и приглашения в игру. Принимайте их одним нажатием.||notifications.empty.personal"
+      ],
+      "udid": "CF9C8F53-AC2A-437D-9EC9-87F61A31644F"
+    },
+    "finalScreen": {
+      "type": "runtime-snapshot",
+      "rs": "1",
+      "screenHash": "16imitt",
+      "seq": 26,
+      "count": 62,
+      "targets": [
+        "e15|tap|button|ДРУЗЬЯ, 1||community.section.friends",
+        "e18|tap|button|ЗАПРОСЫ, 2||community.section.requests",
+        "e22|tap|button|ЗАПРОСЫ В ДРУЗЬЯ · 1, Signal||community.reviewRequests",
+        "e34|tap|button|Отклонить приглашение от Cipher||xmark",
+        "e42|tap|button|🎭, CIPHER, 104-827||",
+        "e55|tap|button|Потяните вниз, чтобы открыть командное меню|Ожидают действия: 5|spy-command-menu-drag-handle",
+        "e58|tap|button|Открыть главную SpyClash|Ожидают действия: 5|shell.header.home",
+        "e39|typeText|text-field|Поиск среди друзей|Поиск среди друзей|",
+        "e21|tap|button|НАЙТИ||community.section.discover",
+        "e31|tap|button|Войти в комнату Cipher||",
+        "e36|tap|button|НАЙТИ ДРУЗЕЙ||",
+        "e46|tap|button|Действия для Cipher||",
+        "e47|tap|button|||",
+        "e50|tap|button|Вернуться назад||dock.community.exit",
+        "e51|tap|button|Сообщество|Ожидают действия: 2, Ожидают действия: 2|dock.community.network",
+        "e54|tap|button|Мой публичный профиль||dock.community.me"
+      ],
+      "scroll": [
+        "e8|swipe|scroll-view|||"
+      ],
+      "text": [
+        "e57|text|text|5 ожидающих элементов Сообщества|Ожидают действия: 5|",
+        "e59|text|text|SPY||",
+        "e60|text|text|CLASH||",
+        "e61|text|text|Версия SpyClash 1.192v||",
+        "e10|text|text|// СООБЩЕСТВО, СЕТЬ ОПЕРАТИВНИКОВ||",
+        "e11|text|text|// СООБЩЕСТВО||",
+        "e12|text|text|СЕТЬ ОПЕРАТИВНИКОВ||",
+        "e13|text|text|ТВОИ ЛЮДИ||",
+        "e14|text|text|Находи друзей. Собирайтесь на следующую игру.||",
+        "e16|text|text|ДРУЗЬЯ||",
+        "e19|text|text|ЗАПРОСЫ||",
+        "e17|text|text|1||",
+        "e20|text|text|2||",
+        "e24|text|text|ЗАПРОСЫ В ДРУЗЬЯ · 1||",
+        "e25|text|text|Signal||",
+        "e29|text|text|Cipher||",
+        "e28|text|text|🎭||",
+        "e33|text|text|ВОЙТИ||",
+        "e30|text|text|КОМНАТА S6RC3V||",
+        "e38|text|text|НАЙТИ ДРУЗЕЙ||",
+        "e35|text|text|МОИ ДРУЗЬЯ||",
+        "e44|text|text|CIPHER||",
+        "e43|text|text|🎭||",
+        "e45|text|text|104-827||",
+        "e53|text|text|Сообщество|Ожидают действия: 2|"
+      ],
+      "udid": "CF9C8F53-AC2A-437D-9EC9-87F61A31644F"
+    }
+  },
+  "limits": "Synthetic DEBUG preview; no production deploy, data migration, TestFlight, real two-account or physical-device delivery test."
+}

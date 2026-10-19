@@ -7,6 +7,23 @@ enum NotificationInboxScope: String, Codable, CaseIterable, Identifiable, Sendab
     var id: String { rawValue }
 }
 
+enum NotificationInboxSocialActionKind: Equatable, Sendable {
+    case accept
+    case decline
+    case join
+}
+
+/// A current, actionable request from the community snapshot. Notification
+/// event IDs are deliberately never treated as friendship or invitation IDs.
+struct NotificationInboxPendingRequest: Identifiable, Equatable, Sendable {
+    let id: String
+    let sourceID: String
+    let displayName: String
+    var avatar: String? = nil
+    var subtitle: String? = nil
+    let primaryAction: NotificationInboxSocialActionKind
+}
+
 enum NotificationInboxImportance: String, Codable, CaseIterable, Identifiable, Sendable {
     case quiet
     case important
@@ -89,6 +106,7 @@ struct NotificationInboxItem: Codable, Identifiable, Equatable, Sendable {
 
     var isUnread: Bool { readAt?.isEmpty != false }
     var isImportant: Bool { importance == .important }
+    var isSocialRequest: Bool { kind == "friend_request" || kind == "room_invite" }
 
     /// The Inbox itself is already the destination for notification links.
     /// Treating that fallback as a row action only renders an OPEN affordance

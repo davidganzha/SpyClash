@@ -1341,12 +1341,15 @@ enum SpyClashCustomRoute: Equatable {
         case "notifications":
             let scopeQuery = query.first(where: { $0.name == "scope" })
             let scopeValue = scopeQuery?.value?.lowercased()
-            let scope = scopeValue.flatMap(NotificationInboxScope.init(rawValue:)) ?? .global
+            let scope = scopeValue.flatMap(NotificationInboxScope.init(rawValue:)) ?? .personal
             let itemQuery = query.first(where: { ["item_id", "id"].contains($0.name) })
             let itemID = itemQuery?.value?.nilIfBlank
             return .notifications(scope: scope, itemID: itemID)
 
         case "community":
+            if ["requests", "invites"].contains(url.pathComponents.last?.lowercased() ?? "") {
+                return .notifications(scope: .personal, itemID: nil)
+            }
             return .community
 
         case "match":
@@ -1485,6 +1488,7 @@ final class AppState: NSObject {
     private(set) var isHomeLandingPresentationRequested = false
     var notificationFocusItemID: String?
     var notificationFocusRequestID = 0
+    private(set) var notificationInboxInvalidationRevision = 0
     var localSetupRequestID = 0
     private(set) var roomFriendsNavigationRequest: RoomFriendsNavigationRequest?
     private(set) var wordPacksRevision = 0
@@ -4785,7 +4789,7 @@ final class AppState: NSObject {
     }
 
     func openNotifications(
-        scope: NotificationInboxScope = .global,
+        scope: NotificationInboxScope = .personal,
         itemID: String? = nil
     ) {
         guard !SupabaseTestEnvironment.isEnabled else { showToast(SupabaseTestEnvironment.unavailableMessage, kind: .warning); return }
@@ -4818,14 +4822,10 @@ final class AppState: NSObject {
     private func refreshNotificationInboxAfterPush() {
         guard !SupabaseTestEnvironment.isEnabled else { return }
         guard user != nil else { return }
+        notificationInboxInvalidationRevision &+= 1
         Task { @MainActor [weak self] in
             guard let self else { return }
-            await self.notificationInbox.refreshSummary()
-            if self.shellRoute == .notifications {
-                await self.notificationInbox.refresh(
-                    scope: self.notificationInbox.selectedScope
-                )
-            }
+            await self.notificationInbox.reconcileAfterSocialChange()
         }
     }
 
@@ -5133,7 +5133,7 @@ final class AppState: NSObject {
                     deferNotificationRoute(route)
                 }
             case .notifications(let scope, let itemID):
-                openNotifications(scope: scope ?? .global, itemID: itemID)
+                openNotifications(scope: scope ?? .personal, itemID: itemID)
             case .room, .url:
                 break
             }
@@ -5183,7 +5183,7 @@ final class AppState: NSObject {
             openCommunity()
         case .notifications(let scope, let itemID):
             pendingNotificationRoute = nil
-            openNotifications(scope: scope ?? .global, itemID: itemID)
+            openNotifications(scope: scope ?? .personal, itemID: itemID)
         case .activeGame:
             guard activeRoom != nil else {
                 guard attemptedActiveGameGeneration == pendingNotificationRouteGeneration else {

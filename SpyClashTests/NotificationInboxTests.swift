@@ -235,7 +235,7 @@ final class NotificationInboxModelTests: XCTestCase {
         )
         XCTAssertEqual(
             SpyClashCustomRoute.parse(try XCTUnwrap(URL(string: "spyclash://community/invites"))),
-            .community
+            .notifications(scope: .personal, itemID: nil)
         )
         XCTAssertEqual(
             SpyClashCustomRoute.parse(try XCTUnwrap(URL(string: "spyclash://match/room-1"))),
@@ -267,10 +267,257 @@ final class NotificationInboxModelTests: XCTestCase {
             "Unknown custom hosts must never fall through as legacy room codes."
         )
     }
+
+    func testSocialDeepLinksOpenPersonalActionsWithoutChangingGenericCommunityRoute() throws {
+        for link in ["spyclash://community/requests", "spyclash://community/invites", "spyclash://notifications"] {
+            XCTAssertEqual(SpyClashCustomRoute.parse(try XCTUnwrap(URL(string: link))),
+                           .notifications(scope: .personal, itemID: nil))
+        }
+        XCTAssertEqual(SpyClashCustomRoute.parse(try XCTUnwrap(URL(string: "spyclash://community"))), .community)
+        XCTAssertEqual(SpyClashCustomRoute.parse(try XCTUnwrap(URL(string: "spyclash://notifications?scope=global"))),
+                       .notifications(scope: .global, itemID: nil))
+    }
+
+    func testRoomInvitePushOpensPendingActionsEvenWithoutRoomCode() {
+        for payload: [AnyHashable: Any] in [
+            ["event_type": "friend_request"],
+            ["event_type": "room_invite"],
+            ["event_type": "room_invite", "room_code": "ABC123"]
+        ] {
+            guard case let .notifications(scope, itemID) = PushNotificationCoordinator.notificationRoute(from: payload) else {
+                return XCTFail("Room invite must open personal actions, including when no game is active.")
+            }
+            XCTAssertEqual(scope, .personal)
+            XCTAssertNil(itemID)
+        }
+    }
 }
 
 @MainActor
 final class NotificationInboxStoreTests: XCTestCase {
+    func testPersonalIsDefaultAndCancelledFirstLoadCanBeRetried() async {
+        let client = NotificationInboxClientStub()
+        var pending: CheckedContinuation<NotificationInboxPage, Error>?
+        client.listHandler = { _, _, _ in
+            try await withCheckedThrowingContinuation { pending = $0 }
+        }
+        let store = NotificationInboxStore(client: client, accountID: "user-a")
+        XCTAssertEqual(store.selectedScope, .personal)
+        let loading = Task { await store.loadInitial() }
+        while pending == nil { await Task.yield() }
+        loading.cancel()
+        pending?.resume(throwing: CancellationError())
+        await loading.value
+
+        XCTAssertEqual(store.feed(for: .personal).loadState, .idle)
+        XCTAssertFalse(store.feed(for: .personal).isRefreshing)
+        client.listHandler = { scope, _, _ in NotificationInboxPreview.page(for: scope) }
+        await store.loadIfNeeded(scope: .personal)
+        XCTAssertEqual(store.feed(for: .personal).loadState, .loaded)
+        XCTAssertEqual(client.callCount, 2, "A first page contains badge counts; no extra summary request is needed.")
+        store.selectScope(.global)
+        store.bindAccount("user-b")
+        XCTAssertEqual(store.selectedScope, .personal)
+    }
+
+    func testOldOtherScopePageCannotRestoreUnreadAfterReceipt() async throws {
+        let client = NotificationInboxClientStub()
+        var pending: CheckedContinuation<NotificationInboxPage, Never>?
+        client.listHandler = { _, _, _ in await withCheckedContinuation { pending = $0 } }
+        client.markReadHandler = { _ in NotificationInboxMutationResponse(unread: .zero) }
+        let personalPage = NotificationInboxPreview.page(for: .personal)
+        let store = NotificationInboxStore(client: client, initialPages: [.personal: personalPage], accountID: "user-a")
+        let loading = Task { await store.refresh(scope: .global) }
+        while pending == nil { await Task.yield() }
+
+        let success = await store.markRead(try XCTUnwrap(personalPage.items.first))
+        XCTAssertTrue(success)
+        pending?.resume(returning: NotificationInboxPreview.page(for: .global))
+        await loading.value
+
+        XCTAssertEqual(store.unread.personal, 0, "A stale global page must not resurrect a personal badge.")
+        XCTAssertEqual(store.unread.global, NotificationInboxPreview.unread.global)
+    }
+
+    func testReturningBeforeCancelledFirstLoadUnwindsAutomaticallyRetriesOnce() async {
+        let client = NotificationInboxClientStub()
+        var pending: CheckedContinuation<NotificationInboxPage, Error>?
+        var listCalls = 0
+        client.listHandler = { scope, _, _ in
+            listCalls += 1
+            if listCalls == 1 { return try await withCheckedThrowingContinuation { pending = $0 } }
+            return NotificationInboxPreview.page(for: scope)
+        }
+        let store = NotificationInboxStore(client: client, accountID: "user-a")
+        let oldViewLoad = Task { await store.loadInitial() }
+        while pending == nil { await Task.yield() }
+        oldViewLoad.cancel()
+
+        // The new view's tasks run before the old transport acknowledges cancellation.
+        await store.loadInitial()
+        await store.loadIfNeeded(scope: .personal)
+        XCTAssertEqual(listCalls, 1)
+        pending?.resume(throwing: CancellationError())
+        await oldViewLoad.value
+        for _ in 0..<100 where listCalls < 2 || store.feed(for: .personal).isRefreshing { await Task.yield() }
+
+        XCTAssertEqual(listCalls, 2)
+        XCTAssertEqual(store.feed(for: .personal).loadState, .loaded)
+        XCTAssertFalse(store.feed(for: .personal).isRefreshing)
+        XCTAssertEqual(store.feed(for: .personal).items, NotificationInboxPreview.personalItems)
+    }
+
+    func testOverlappingInitialViewTasksReuseSuccessfulFirstLoad() async {
+        let client = NotificationInboxClientStub()
+        var pending: CheckedContinuation<NotificationInboxPage, Never>?
+        var listCalls = 0
+        client.listHandler = { scope, _, _ in
+            listCalls += 1
+            if listCalls == 1 { return await withCheckedContinuation { pending = $0 } }
+            return NotificationInboxPreview.page(for: scope)
+        }
+        let store = NotificationInboxStore(client: client, accountID: "user-a")
+        let first = Task { await store.loadIfNeeded(scope: .personal) }
+        while pending == nil { await Task.yield() }
+        await store.loadInitial()
+        await store.loadIfNeeded(scope: .personal)
+        pending?.resume(returning: NotificationInboxPreview.page(for: .personal))
+        await first.value
+        for _ in 0..<20 { await Task.yield() }
+
+        XCTAssertEqual(listCalls, 1, "Retry intent is consumed only by cancellation, never a successful initial page.")
+        XCTAssertEqual(store.feed(for: .personal).loadState, .loaded)
+    }
+
+    func testFailedReceiptRollsBackOnlyItsScope() async throws {
+        let client = NotificationInboxClientStub()
+        var pending: CheckedContinuation<NotificationInboxMutationResponse, Error>?
+        client.markAllHandler = { _ in try await withCheckedThrowingContinuation { pending = $0 } }
+        client.markReadHandler = { _ in NotificationInboxMutationResponse(unread: .zero) }
+        let personalPage = NotificationInboxPreview.page(for: .personal)
+        let store = NotificationInboxStore(client: client, initialPages: [
+            .personal: personalPage, .global: NotificationInboxPreview.page(for: .global)
+        ], accountID: "user-a")
+        let mutation = Task { await store.markAllRead(scope: .global) }
+        while pending == nil { await Task.yield() }
+        let personalSucceeded = await store.markRead(try XCTUnwrap(personalPage.items.first))
+        XCTAssertTrue(personalSucceeded)
+        pending?.resume(throwing: NotificationInboxTestError.expectedFailure)
+        let globalSucceeded = await mutation.value
+
+        XCTAssertFalse(globalSucceeded)
+        XCTAssertEqual(store.unread.personal, 0)
+        XCTAssertEqual(store.unread.global, NotificationInboxPreview.unread.global)
+        XCTAssertFalse(try XCTUnwrap(store.feed(for: .personal).items.first).isUnread)
+    }
+
+    func testReadReceiptDuringRefreshWinsOverStalePageAndReloadsOnce() async throws {
+        let client = NotificationInboxClientStub()
+        var pending: CheckedContinuation<NotificationInboxPage, Never>?
+        var listCalls = 0
+        let page = NotificationInboxPreview.page(for: .personal)
+        let item = try XCTUnwrap(page.items.first)
+        let readItem = item.markingRead(at: "2026-10-19T10:00:00Z")
+        client.listHandler = { scope, _, _ in
+            listCalls += 1
+            if listCalls == 1 { return await withCheckedContinuation { pending = $0 } }
+            return NotificationInboxPage(scope: scope, items: [readItem], unread: .zero)
+        }
+        client.markReadHandler = { _ in NotificationInboxMutationResponse(item: readItem, unread: .zero) }
+        let store = NotificationInboxStore(client: client, initialPages: [.personal: page], accountID: "user-a")
+        let loading = Task { await store.refresh(scope: .personal) }
+        while pending == nil { await Task.yield() }
+
+        let success = await store.markRead(item)
+        XCTAssertTrue(success, "A background refresh must not block opening or reading a notification.")
+        pending?.resume(returning: page)
+        await loading.value
+        for _ in 0..<100 where listCalls < 2 || store.feed(for: .personal).isRefreshing { await Task.yield() }
+
+        XCTAssertEqual(listCalls, 2)
+        XCTAssertFalse(try XCTUnwrap(store.feed(for: .personal).items.first).isUnread)
+        XCTAssertEqual(store.unread.personal, 0)
+        XCTAssertFalse(store.feed(for: .personal).isRefreshing)
+    }
+
+    func testSocialSignalsDuringReadCoalesceAndRefreshCachedRows() async {
+        let client = NotificationInboxClientStub()
+        var pending: CheckedContinuation<NotificationInboxPage, Never>?
+        var listCalls = 0
+        client.listHandler = { scope, _, _ in
+            listCalls += 1
+            if listCalls == 1 { return await withCheckedContinuation { pending = $0 } }
+            return NotificationInboxPage(scope: scope, items: [], unread: .zero)
+        }
+        let page = NotificationInboxPreview.page(for: .personal)
+        let store = NotificationInboxStore(client: client, initialPages: [.personal: page], accountID: "user-a")
+        let loading = Task { await store.reconcileAfterSocialChange() }
+        while pending == nil { await Task.yield() }
+        await store.reconcileAfterSocialChange()
+        await store.reconcileAfterSocialChange()
+        pending?.resume(returning: page)
+        await loading.value
+        for _ in 0..<100 where listCalls < 2 || store.feed(for: .personal).isRefreshing { await Task.yield() }
+
+        XCTAssertEqual(listCalls, 2, "A signal burst needs one trailing read, without cancelling the first.")
+        XCTAssertEqual(client.callCount, 2, "Page responses already include summary counts.")
+        XCTAssertTrue(store.feed(for: .personal).items.isEmpty, "Resolved requests must disappear from cached personal notifications.")
+        XCTAssertEqual(store.unread.personal, 0)
+    }
+
+    func testRapidRowReadsQueueReceiptsWithoutLosingSecondRead() async throws {
+        let client = NotificationInboxClientStub()
+        var firstPending: CheckedContinuation<NotificationInboxMutationResponse, Never>?
+        var markedIDs: [String] = []
+        client.markReadHandler = { id in
+            markedIDs.append(id)
+            if markedIDs.count == 1 { return await withCheckedContinuation { firstPending = $0 } }
+            return NotificationInboxMutationResponse(unread: .zero)
+        }
+        let page = NotificationInboxPreview.page(for: .global)
+        let store = NotificationInboxStore(client: client, initialPages: [.global: page], accountID: "user-a")
+        let first = Task { await store.markRead(page.items[0]) }
+        while firstPending == nil { await Task.yield() }
+        let second = Task { await store.markRead(page.items[1]) }
+        await Task.yield()
+        XCTAssertEqual(markedIDs.count, 1)
+        firstPending?.resume(returning: NotificationInboxMutationResponse(unread: .init(global: 1, personal: 1)))
+        let firstSucceeded = await first.value
+        let secondSucceeded = await second.value
+
+        XCTAssertTrue(firstSucceeded)
+        XCTAssertTrue(secondSucceeded)
+        XCTAssertEqual(markedIDs, page.items.map(\.id))
+        XCTAssertTrue(store.feed(for: .global).items.allSatisfy { !$0.isUnread })
+        XCTAssertEqual(store.unread.global, 0)
+    }
+
+    func testQueuedReadCannotCrossAccountBoundary() async {
+        let client = NotificationInboxClientStub()
+        var firstPending: CheckedContinuation<NotificationInboxMutationResponse, Never>?
+        var markedIDs: [String] = []
+        client.markReadHandler = { id in
+            markedIDs.append(id)
+            return await withCheckedContinuation { firstPending = $0 }
+        }
+        let page = NotificationInboxPreview.page(for: .global)
+        let store = NotificationInboxStore(client: client, initialPages: [.global: page], accountID: "user-a")
+        let first = Task { await store.markRead(page.items[0]) }
+        while firstPending == nil { await Task.yield() }
+        let second = Task { await store.markRead(page.items[1]) }
+        await Task.yield()
+        store.bindAccount("user-b")
+        firstPending?.resume(returning: NotificationInboxMutationResponse(unread: page.unread))
+        let firstSucceeded = await first.value
+        let secondSucceeded = await second.value
+
+        XCTAssertFalse(firstSucceeded)
+        XCTAssertFalse(secondSucceeded)
+        XCTAssertEqual(markedIDs, [page.items[0].id])
+        XCTAssertEqual(store.unread, .zero)
+        XCTAssertTrue(store.feed(for: .global).items.isEmpty)
+    }
+
     func testLateSummaryCannotRestoreBadgeAfterPersonalFeedBecomesEmpty() async {
         let client = NotificationInboxClientStub()
         var pendingSummary: CheckedContinuation<NotificationInboxSummary, Never>?
@@ -299,6 +546,34 @@ final class NotificationInboxStoreTests: XCTestCase {
         }
         await store.refreshSummary()
         XCTAssertEqual(store.unread.personal, 2, "A subsequent summary must still report new notifications.")
+    }
+
+    func testNewerPageCountsWinWhenOlderSummaryCompletesFirst() async {
+        let client = NotificationInboxClientStub()
+        var pendingSummary: CheckedContinuation<NotificationInboxSummary, Never>?
+        var pendingPage: CheckedContinuation<NotificationInboxPage, Never>?
+        client.summaryHandler = { await withCheckedContinuation { pendingSummary = $0 } }
+        client.listHandler = { _, _, _ in await withCheckedContinuation { pendingPage = $0 } }
+        let store = NotificationInboxStore(client: client, accountID: "user-a")
+        let summary = Task { await store.refreshSummary() }
+        while pendingSummary == nil { await Task.yield() }
+        let page = Task { await store.refresh(scope: .personal) }
+        while pendingPage == nil { await Task.yield() }
+
+        pendingSummary?.resume(returning: NotificationInboxSummary(unread: .init(global: 0, personal: 1)))
+        await summary.value
+        XCTAssertEqual(store.unread.personal, 1)
+        let items = NotificationInboxPreview.globalItems.map {
+            NotificationInboxItem(id: "personal:\($0.id)", scope: .personal, kind: "friend_request",
+                                  importance: .important, title: $0.title, body: $0.body,
+                                  publishedAt: $0.publishedAt, readAt: nil, actionDeepLink: nil)
+        }
+        pendingPage?.resume(returning: NotificationInboxPage(scope: .personal, items: items,
+                                                            unread: .init(global: 0, personal: 2)))
+        await page.value
+
+        XCTAssertEqual(store.feed(for: .personal).items.count, 2)
+        XCTAssertEqual(store.unread.personal, 2, "Read completion must not invalidate a later-started read; only local mutations do.")
     }
 
     func testRefreshLoadsRequestedScopeAndUnreadCounts() async {

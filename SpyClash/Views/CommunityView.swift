@@ -115,6 +115,17 @@ private struct CommunityActionFeedback: Equatable {
     let successTitle: String
 }
 
+private enum CommunityPeopleSection: String, CaseIterable, Identifiable {
+    case friends, requests, discover
+
+    var id: String { rawValue }
+}
+
+private struct CommunityFriendRemoval: Identifiable {
+    let id: String
+    let profile: PublicSpyProfile
+}
+
 struct CommunityMeTransitionResolver {
     static func canCommit(selfUserID: String?, activeAction: String?) -> Bool {
         selfUserID?.nilIfBlank != nil && activeAction == nil
@@ -159,6 +170,17 @@ enum CommunityProfileRelationshipResolver {
             status: record.status,
             direction: record.direction
         )
+    }
+}
+
+enum CommunityDirectoryRelationshipResolver {
+    static func resolve(profileID: String, network: CommunityState?) -> CommunityRelationshipSummary? {
+        guard let network, profileID != network.me.id else { return nil }
+        let record = network.blocked.first { $0.profile.id == profileID }
+            ?? network.friends.first { $0.profile.id == profileID }
+            ?? network.incoming.first { $0.profile.id == profileID }
+            ?? network.outgoing.first { $0.profile.id == profileID }
+        return record.map { CommunityRelationshipSummary(id: $0.id, status: $0.status, direction: $0.direction) }
     }
 }
 
@@ -249,6 +271,8 @@ struct CommunityView: View {
     @State private var directory: [PublicSpyProfile] = []
     @State private var nextDirectoryOffset: Int?
     @State private var query = ""
+    @State private var friendQuery = ""
+    @State private var peopleSection: CommunityPeopleSection = .friends
     @State private var activeProfile: CommunityProfileDetail?
     @State private var profileCache: [String: CommunityProfileDetail] = [:]
     @State private var profileRequestState = CommunityProfileRequestState()
@@ -280,6 +304,7 @@ struct CommunityView: View {
     @State private var reportTarget: CommunityReportTarget?
     @State private var blockTarget: PublicSpyProfile?
     @State private var unblockTarget: CommunityRelationship?
+    @State private var friendRemovalTarget: CommunityFriendRemoval?
     @State private var profileRealtime = CommunityProfileRealtimeService()
     @State private var latestProfileRevisions: [String: Int] = [:]
     @State private var profileSignalGenerations: [String: Int] = [:]
@@ -287,11 +312,18 @@ struct CommunityView: View {
     var body: some View {
         PageChrome(
             eyebrow: localized(en: "// COMMUNITY", ru: "// СООБЩЕСТВО", es: "// COMUNIDAD", uk: "// СПІЛЬНОТА"),
-            status: localized(en: "OPERATIVE NETWORK", ru: "СЕТЬ ОПЕРАТИВНИКОВ", es: "RED DE OPERATIVOS", uk: "МЕРЕЖА ОПЕРАТИВНИКІВ")
+            status: localized(en: "OPERATIVE NETWORK", ru: "СЕТЬ ОПЕРАТИВНИКОВ", es: "RED DE OPERATIVOS", uk: "МЕРЕЖА ОПЕРАТИВНИКІВ"),
+            scrollTarget: peopleSectionScrollTarget,
+            scrollTargetAnchor: .top
         ) {
-            sceneContent
-                .padding(.horizontal, 18)
-                .padding(.top, 14)
+            VStack(spacing: 0) {
+                // Only this marker changes identity. The scene and its loading
+                // tasks stay mounted when a list switches to another section.
+                Color.clear.frame(height: 0).id(peopleSectionScrollTarget)
+                sceneContent
+                    .padding(.horizontal, 18)
+                    .padding(.top, 14)
+            }
         }
         .background(SpyTheme.black)
         .task {
@@ -377,6 +409,10 @@ struct CommunityView: View {
             profileRequestState.invalidate()
             isProfileLoading = false
             activeProfile = nil
+            friendQuery = ""
+            query = ""
+            peopleSection = .friends
+            friendRemovalTarget = nil
             network = nil
             directory = []
             directoryRequestID = nil
@@ -462,6 +498,36 @@ struct CommunityView: View {
                 uk: "\(relationship.profile.displayName) знову зможе знайти тебе та зв’язатися через Спільноту."
             ))
         }
+        .confirmationDialog(
+            localized(en: "REMOVE FRIEND?", ru: "УДАЛИТЬ ИЗ ДРУЗЕЙ?", es: "¿ELIMINAR AMIGO?", uk: "ВИДАЛИТИ З ДРУЗІВ?"),
+            isPresented: Binding(
+                get: { friendRemovalTarget != nil },
+                set: { if !$0 { friendRemovalTarget = nil } }
+            ),
+            titleVisibility: .visible,
+            presenting: friendRemovalTarget
+        ) { target in
+            Button(localized(en: "REMOVE FRIEND", ru: "УДАЛИТЬ ИЗ ДРУЗЕЙ", es: "ELIMINAR AMIGO", uk: "ВИДАЛИТИ З ДРУЗІВ"), role: .destructive) {
+                friendRemovalTarget = nil
+                let feedbackID = relationshipFeedbackID("remove_friend", target.id)
+                guard beginActionFeedback(
+                    id: feedbackID,
+                    waitingTitle: localized(en: "REMOVING...", ru: "УДАЛЯЕМ...", es: "ELIMINANDO...", uk: "ВИДАЛЯЄМО..."),
+                    successTitle: localized(en: "REMOVED", ru: "УДАЛЕНО", es: "ELIMINADO", uk: "ВИДАЛЕНО")
+                ) else { return }
+                Task { await relationshipAction("remove_friend", target.id) }
+            }
+            Button(localized(en: "CANCEL", ru: "ОТМЕНА", es: "CANCELAR", uk: "СКАСУВАТИ"), role: .cancel) {
+                friendRemovalTarget = nil
+            }
+        } message: { target in
+            Text(localized(
+                en: "\(target.profile.displayName) will leave your friends list. You can send a new request later.",
+                ru: "\(target.profile.displayName) исчезнет из списка друзей. Позже можно отправить новый запрос.",
+                es: "\(target.profile.displayName) dejará tu lista de amigos. Puedes enviar otra solicitud después.",
+                uk: "\(target.profile.displayName) зникне зі списку друзів. Пізніше можна надіслати новий запит."
+            ))
+        }
     }
 
     private var reportPromptPresented: Binding<Bool> {
@@ -469,6 +535,10 @@ struct CommunityView: View {
             get: { reportTarget != nil },
             set: { if !$0 { reportTarget = nil } }
         )
+    }
+
+    private var peopleSectionScrollTarget: String {
+        "community.people.top.\(peopleSection.rawValue)"
     }
 
     private var blockPromptPresented: Binding<Bool> {
@@ -533,84 +603,251 @@ struct CommunityView: View {
     }
 
     private var directoryScene: some View {
-        VStack(alignment: .leading, spacing: 16) {
-            VStack(alignment: .leading, spacing: 7) {
-                SpySceneKicker(
-                    title: localized(en: "PUBLIC DIRECTORY", ru: "ПУБЛИЧНЫЙ КАТАЛОГ", es: "DIRECTORIO PÚBLICO", uk: "ПУБЛІЧНИЙ КАТАЛОГ"),
-                    status: localized(en: "DISCOVER", ru: "ПОИСК", es: "DESCUBRIR", uk: "ПОШУК"),
-                    accent: SpyTheme.red
-                )
-
-                Text(localized(
-                    en: "FIND YOUR NEXT OPERATIVE",
-                    ru: "НАЙДИ СВОЕГО ОПЕРАТИВНИКА",
-                    es: "ENCUENTRA TU OPERATIVO",
-                    uk: "ЗНАЙДИ НОВОГО ОПЕРАТИВНИКА"
-                ))
+        VStack(alignment: .leading, spacing: 18) {
+            VStack(alignment: .leading, spacing: 6) {
+                Text(localized(en: "YOUR PEOPLE", ru: "ТВОИ ЛЮДИ", es: "TU GENTE", uk: "ТВОЇ ЛЮДИ"))
                 .font(SpyTheme.brandFont(size: 29))
                 .tracking(0.8)
                 .foregroundStyle(.white)
-                .spyFitted(lines: 2, scale: 0.68)
 
                 Text(localized(
-                    en: "Search by callsign or SPYID. Every card is the operative's real public identity.",
-                    ru: "Ищи по позывному или SPYID. Каждая карточка — настоящая публичная личность игрока.",
-                    es: "Busca por alias o SPYID. Cada tarjeta es la identidad pública real del jugador.",
-                    uk: "Шукай за позивним або SPYID. Кожна картка показує справжній публічний профіль оперативника."
+                    en: "Find friends. Build your next game together.",
+                    ru: "Находи друзей. Собирайтесь на следующую игру.",
+                    es: "Encuentra amigos. Preparad la próxima partida.",
+                    uk: "Знаходь друзів. Збирайтеся на наступну гру."
                 ))
-                .font(.system(size: 10, weight: .medium, design: .monospaced))
+                .font(.system(size: 12, weight: .medium))
                 .foregroundStyle(SpyTheme.muted)
                 .fixedSize(horizontal: false, vertical: true)
             }
-            .spyWebEntrance(delay: 0.02, duration: 0.40, y: 10)
 
+            peopleSectionPicker
+
+            switch peopleSection {
+            case .friends:
+                myFriendsScene
+            case .requests:
+                requestsScene
+            case .discover:
+                discoveryScene
+            }
+        }
+    }
+
+    private var peopleSectionPicker: some View {
+        HStack(spacing: 4) {
+            ForEach(CommunityPeopleSection.allCases) { section in
+                Button {
+                    HapticManager.shared.fire(.tabSelection)
+                    withAnimation(.snappy(duration: 0.18)) { peopleSection = section }
+                } label: {
+                    HStack(spacing: 5) {
+                        Text(peopleSectionTitle(section))
+                            .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            .lineLimit(1)
+                            .minimumScaleFactor(0.85)
+                        if let count = peopleSectionCount(section), count > 0 {
+                            Text("\(count)")
+                                .font(.system(size: 10, weight: .black, design: .monospaced))
+                                .padding(.horizontal, 5)
+                                .frame(minWidth: 19, minHeight: 19)
+                                .background(section == .requests ? SpyTheme.amber.opacity(0.20) : Color.white.opacity(0.12))
+                                .foregroundStyle(section == .requests ? SpyTheme.amber : .white)
+                                .clipShape(Capsule())
+                        }
+                    }
+                    .foregroundStyle(peopleSection == section ? .white : SpyTheme.muted)
+                    .frame(maxWidth: .infinity, minHeight: 48)
+                    .background(peopleSection == section ? SpyTheme.red.opacity(0.17) : .clear)
+                    .overlay(alignment: .bottom) {
+                        Rectangle().fill(peopleSection == section ? SpyTheme.red : .clear).frame(height: 2)
+                    }
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(.plain)
+                .accessibilityAddTraits(peopleSection == section ? .isSelected : [])
+                .accessibilityIdentifier("community.section.\(section.rawValue)")
+            }
+        }
+        .background(SpyTheme.panel)
+        .clipShape(CutCornerShape(cut: 7))
+    }
+
+    private func peopleSectionTitle(_ section: CommunityPeopleSection) -> String {
+        switch section {
+        case .friends: localized(en: "FRIENDS", ru: "ДРУЗЬЯ", es: "AMIGOS", uk: "ДРУЗІ")
+        case .requests: localized(en: "REQUESTS", ru: "ЗАПРОСЫ", es: "SOLICITUDES", uk: "ЗАПИТИ")
+        case .discover: localized(en: "FIND", ru: "НАЙТИ", es: "BUSCAR", uk: "ЗНАЙТИ")
+        }
+    }
+
+    private func peopleSectionCount(_ section: CommunityPeopleSection) -> Int? {
+        switch section {
+        case .friends: network?.friends.count
+        case .requests: network.map { $0.incoming.count + $0.incomingRoomInvites.count }
+        case .discover: nil
+        }
+    }
+
+    private var myFriendsScene: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let network, !network.incoming.isEmpty {
+                Button {
+                    withAnimation(.snappy(duration: 0.18)) { peopleSection = .requests }
+                } label: {
+                    HStack(spacing: 12) {
+                        Image(systemName: "person.crop.circle.badge.plus")
+                            .font(.system(size: 22, weight: .medium))
+                        VStack(alignment: .leading, spacing: 4) {
+                            Text(localized(en: "FRIEND REQUESTS · \(network.incoming.count)", ru: "ЗАПРОСЫ В ДРУЗЬЯ · \(network.incoming.count)", es: "SOLICITUDES · \(network.incoming.count)", uk: "ЗАПИТИ В ДРУЗІ · \(network.incoming.count)"))
+                                .font(.system(size: 11, weight: .bold, design: .monospaced))
+                            Text(network.incoming.prefix(2).map { $0.profile.displayName }.joined(separator: ", "))
+                                .font(.system(size: 12))
+                                .foregroundStyle(SpyTheme.muted)
+                                .lineLimit(1)
+                        }
+                        Spacer(minLength: 0)
+                        Image(systemName: "chevron.right").font(.system(size: 13, weight: .bold))
+                    }
+                    .foregroundStyle(SpyTheme.amber)
+                    .padding(14)
+                    .frame(maxWidth: .infinity, minHeight: 64, alignment: .leading)
+                    .background(SpyTheme.amber.opacity(0.07))
+                    .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.amber.opacity(0.30), lineWidth: 1))
+                    .contentShape(Rectangle())
+                }
+                .buttonStyle(SpyWebPressStyle())
+                .accessibilityIdentifier("community.reviewRequests")
+            }
+
+            roomInviteSection
+
+            HStack {
+                Text(localized(en: "MY FRIENDS", ru: "МОИ ДРУЗЬЯ", es: "MIS AMIGOS", uk: "МОЇ ДРУЗІ"))
+                    .font(SpyTheme.micro)
+                    .foregroundStyle(SpyTheme.muted)
+                Spacer()
+                Button {
+                    withAnimation(.snappy(duration: 0.18)) { peopleSection = .discover }
+                } label: {
+                    Label(localized(en: "ADD FRIENDS", ru: "НАЙТИ ДРУЗЕЙ", es: "AÑADIR AMIGOS", uk: "ЗНАЙТИ ДРУЗІВ"), systemImage: "person.badge.plus")
+                        .font(.system(size: 10, weight: .bold, design: .monospaced))
+                        .foregroundStyle(SpyTheme.red)
+                        .frame(minHeight: 44)
+                }
+                .buttonStyle(.plain)
+            }
+
+            if let network {
+                if network.friends.isEmpty {
+                    peopleEmptyState(
+                        icon: "person.2",
+                        title: localized(en: "YOUR NEXT GAME STARTS HERE", ru: "СЛЕДУЮЩАЯ ИГРА НАЧИНАЕТСЯ ЗДЕСЬ", es: "TU PRÓXIMA PARTIDA EMPIEZA AQUÍ", uk: "НАСТУПНА ГРА ПОЧИНАЄТЬСЯ ТУТ"),
+                        message: localized(en: "Find someone by callsign or SPYID and send your first friend request.", ru: "Найди друга по позывному или SPYID и отправь первый запрос.", es: "Busca por alias o SPYID y envía tu primera solicitud de amistad.", uk: "Знайди друга за позивним або SPYID і надішли перший запит."),
+                        actionTitle: localized(en: "FIND FRIENDS", ru: "НАЙТИ ДРУЗЕЙ", es: "BUSCAR AMIGOS", uk: "ЗНАЙТИ ДРУЗІВ")
+                    ) { peopleSection = .discover }
+                } else {
+                    peopleSearchField(text: $friendQuery, placeholder: localized(en: "Search your friends", ru: "Поиск среди друзей", es: "Buscar entre tus amigos", uk: "Пошук серед друзів"))
+                    let friends = filteredFriends(network.friends)
+                    if friends.isEmpty {
+                        peopleEmptyState(
+                            icon: "magnifyingglass",
+                            title: localized(en: "NO MATCHING FRIENDS", ru: "ДРУЗЬЯ НЕ НАЙДЕНЫ", es: "NO HAY COINCIDENCIAS", uk: "ДРУЗІВ НЕ ЗНАЙДЕНО"),
+                            message: localized(en: "Try another name, or find them in the community.", ru: "Попробуй другое имя или найди друга в сообществе.", es: "Prueba otro nombre o búscalo en la comunidad.", uk: "Спробуй інше ім’я або знайди друга у спільноті."),
+                            actionTitle: localized(en: "FIND IN COMMUNITY", ru: "ПОИСК В СООБЩЕСТВЕ", es: "BUSCAR EN LA COMUNIDAD", uk: "ПОШУК У СПІЛЬНОТІ")
+                        ) { query = friendQuery; peopleSection = .discover }
+                    } else {
+                        LazyVStack(spacing: 10) {
+                            ForEach(friends) { friend in friendRow(friend) }
+                        }
+                    }
+                }
+            } else if isInitialLoading {
+                SpySpinner(size: 24, accent: SpyTheme.red).frame(maxWidth: .infinity, minHeight: 100)
+            } else {
+                directoryUnavailable
+            }
+        }
+    }
+
+    private func filteredFriends(_ friends: [CommunityRelationship]) -> [CommunityRelationship] {
+        let normalized = friendQuery.trimmingCharacters(in: .whitespacesAndNewlines)
+        let digits = normalized.filter(\.isNumber)
+        let isSpyIDQuery = !digits.isEmpty && normalized.allSatisfy { $0.isNumber || $0 == "-" || $0.isWhitespace }
+        return friends.filter {
+            normalized.isEmpty || $0.profile.displayName.localizedCaseInsensitiveContains(normalized) ||
+                (isSpyIDQuery && $0.profile.spyID.filter(\.isNumber).contains(digits))
+        }.sorted { $0.profile.displayName.localizedCaseInsensitiveCompare($1.profile.displayName) == .orderedAscending }
+    }
+
+    private var requestsScene: some View {
+        VStack(alignment: .leading, spacing: 16) {
             incomingAttentionSections
+            if let network {
+                if network.incoming.isEmpty, network.incomingRoomInvites.isEmpty {
+                    peopleEmptyState(
+                        icon: "tray",
+                        title: localized(en: "ALL CAUGHT UP", ru: "НОВЫХ ЗАПРОСОВ НЕТ", es: "TODO AL DÍA", uk: "НОВИХ ЗАПИТІВ НЕМАЄ"),
+                        message: localized(en: "New friend requests and room invites will appear here.", ru: "Здесь появятся новые запросы в друзья и приглашения в игру.", es: "Aquí aparecerán las nuevas solicitudes e invitaciones a partidas.", uk: "Тут з’являться нові запити в друзі та запрошення до гри.")
+                    )
+                }
+                SpyPanel(accent: SpyTheme.muted) {
+                    VStack(alignment: .leading, spacing: 12) {
+                        SpySceneKicker(
+                            title: localized(en: "SENT REQUESTS", ru: "ОТПРАВЛЕННЫЕ", es: "SOLICITUDES ENVIADAS", uk: "НАДІСЛАНІ ЗАПИТИ"),
+                            status: "\(network.outgoing.count)", accent: SpyTheme.muted
+                        )
+                        if network.outgoing.isEmpty {
+                            Text(localized(en: "No requests waiting for a reply.", ru: "Нет запросов, ожидающих ответа.", es: "No hay solicitudes pendientes de respuesta.", uk: "Немає запитів, що очікують на відповідь."))
+                                .font(.system(size: 12))
+                                .foregroundStyle(SpyTheme.muted)
+                                .padding(.vertical, 6)
+                        } else {
+                            ForEach(network.outgoing) { outgoingFriendRow($0) }
+                        }
+                    }
+                }
+            } else if isInitialLoading {
+                SpySpinner(size: 24, accent: SpyTheme.red).frame(maxWidth: .infinity, minHeight: 100)
+            } else {
+                directoryUnavailable
+            }
+        }
+    }
+
+    private var discoveryScene: some View {
+        VStack(alignment: .leading, spacing: 16) {
+            if let me = network?.me { mySpyIDStrip(me) }
+            if !isInitialLoading, network == nil || directoryLoadFailed { directoryUnavailable }
+
+            Text(localized(en: "Search by callsign or SPYID to add a friend.", ru: "Ищи по позывному или SPYID, чтобы добавить друга.", es: "Busca por alias o SPYID para añadir un amigo.", uk: "Шукай за позивним або SPYID, щоб додати друга."))
+                .font(.system(size: 12))
+                .foregroundStyle(SpyTheme.muted)
 
             searchField
 
             HStack {
-                Text(localized(en: "OPERATIVES", ru: "ОПЕРАТИВНИКИ", es: "OPERATIVOS", uk: "ОПЕРАТИВНИКИ"))
+                Text(query.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty
+                    ? localized(en: "DISCOVER PEOPLE", ru: "НАЙТИ ЛЮДЕЙ", es: "DESCUBRE PERSONAS", uk: "ЗНАЙТИ ЛЮДЕЙ")
+                    : localized(en: "SEARCH RESULTS", ru: "РЕЗУЛЬТАТЫ ПОИСКА", es: "RESULTADOS", uk: "РЕЗУЛЬТАТИ ПОШУКУ"))
                     .font(SpyTheme.micro)
                     .tracking(1.2)
                     .foregroundStyle(SpyTheme.dim)
 
                 Spacer()
 
-                Text("\(directory.count)")
+                Text(localized(en: "\(visibleDirectory.count) SHOWN", ru: "ПОКАЗАНО: \(visibleDirectory.count)", es: "\(visibleDirectory.count) VISIBLES", uk: "ПОКАЗАНО: \(visibleDirectory.count)"))
                     .font(.system(size: 10, weight: .black, design: .monospaced))
                     .foregroundStyle(SpyTheme.red)
             }
 
-            if directory.isEmpty, !isDirectoryLoading, !isInitialLoading {
-                if directoryLoadFailed {
-                    directoryUnavailable
-                } else {
+            if visibleDirectory.isEmpty, !isDirectoryLoading, !isInitialLoading {
+                if !directoryLoadFailed, network != nil {
                     emptyDirectory
                 }
             } else {
-                LazyVGrid(
-                    columns: [
-                        GridItem(.flexible(), spacing: 10),
-                        GridItem(.flexible(), spacing: 10)
-                    ],
-                    spacing: 10
-                ) {
-                    ForEach(Array(directory.enumerated()), id: \.element.id) { index, profile in
-                        Button {
-                            Task {
-                                await openProfile(
-                                    profile.id,
-                                    rememberingCurrent: false,
-                                    placeholder: profile
-                                )
-                            }
-                        } label: {
-                            CommunitySpyCard(profile: profile, language: appState.language, size: .compact)
-                        }
-                        .buttonStyle(SpyWebPressStyle(pressedScale: 0.985))
-                        .accessibilityHint(localized(en: "Open public profile", ru: "Открыть публичный профиль", es: "Abrir perfil publico", uk: "Відкрити публічний профіль"))
-                        .spyWebEntrance(delay: min(Double(index) * 0.035, 0.24), duration: 0.42, y: 12, scale: 0.99)
-                    }
+                LazyVStack(spacing: 10) {
+                    ForEach(visibleDirectory) { profile in discoveryRow(profile) }
                 }
             }
 
@@ -638,31 +875,30 @@ struct CommunityView: View {
     }
 
     private var searchField: some View {
+        peopleSearchField(
+            text: $query,
+            placeholder: localized(en: "Callsign or 000-000", ru: "Позывной или 000-000", es: "Alias o 000-000", uk: "Позивний або 000-000")
+        )
+    }
+
+    private func peopleSearchField(text: Binding<String>, placeholder: String) -> some View {
         HStack(spacing: 10) {
             Image(systemName: "magnifyingglass")
                 .font(.system(size: 17, weight: .bold))
-                .foregroundStyle(query.isEmpty ? SpyTheme.muted : SpyTheme.red)
+                .foregroundStyle(text.wrappedValue.isEmpty ? SpyTheme.muted : SpyTheme.red)
                 .accessibilityHidden(true)
 
-            TextField(
-                localized(en: "CALLSIGN OR 000-000", ru: "ПОЗЫВНОЙ ИЛИ 000-000", es: "ALIAS O 000-000", uk: "ПОЗИВНИЙ АБО 000-000"),
-                text: $query
-            )
+            TextField(placeholder, text: text)
             .autocorrectionDisabled()
             .textInputAutocapitalization(.never)
             .font(.system(size: 13, weight: .bold, design: .monospaced))
             .foregroundStyle(.white)
             .submitLabel(.search)
-            .accessibilityLabel(localized(
-                en: "Search operatives",
-                ru: "Поиск оперативников",
-                es: "Buscar operativos",
-                uk: "Пошук оперативників"
-            ))
+            .accessibilityLabel(placeholder)
 
-            if !query.isEmpty {
+            if !text.wrappedValue.isEmpty {
                 Button {
-                    query = ""
+                    text.wrappedValue = ""
                 } label: {
                     Image(systemName: "xmark.circle.fill")
                         .font(.system(size: 17, weight: .semibold))
@@ -675,27 +911,92 @@ struct CommunityView: View {
             }
         }
         .padding(.leading, 15)
-        .padding(.trailing, query.isEmpty ? 15 : 4)
+        .padding(.trailing, text.wrappedValue.isEmpty ? 15 : 4)
         .frame(minHeight: 56)
         .background(SpyTheme.panel)
-        .overlay(CutCornerShape(cut: 9).stroke(query.isEmpty ? SpyTheme.strokeStrong : SpyTheme.red.opacity(0.62), lineWidth: 1))
+        .overlay(CutCornerShape(cut: 9).stroke(text.wrappedValue.isEmpty ? SpyTheme.strokeStrong : SpyTheme.red.opacity(0.62), lineWidth: 1))
         .clipShape(CutCornerShape(cut: 9))
-        .shadow(color: query.isEmpty ? .clear : SpyTheme.red.opacity(0.10), radius: 12)
+        .shadow(color: text.wrappedValue.isEmpty ? .clear : SpyTheme.red.opacity(0.10), radius: 12)
     }
 
     private var emptyDirectory: some View {
-        VStack(spacing: 12) {
-            Image(systemName: "person.2.slash")
-                .font(.system(size: 27, weight: .light))
-                .foregroundStyle(SpyTheme.faint)
+        peopleEmptyState(
+            icon: "magnifyingglass",
+            title: localized(en: "NO ONE FOUND", ru: "НИКОГО НЕ НАЙДЕНО", es: "NO HAY RESULTADOS", uk: "НІКОГО НЕ ЗНАЙДЕНО"),
+            message: localized(en: "Check the callsign or ask your friend for their six-digit SPYID.", ru: "Проверь позывной или попроси у друга его шестизначный SPYID.", es: "Comprueba el alias o pide a tu amigo su SPYID de seis dígitos.", uk: "Перевір позивний або попроси у друга його шестизначний SPYID."),
+            actionTitle: query.isEmpty ? nil : localized(en: "CLEAR SEARCH", ru: "ОЧИСТИТЬ ПОИСК", es: "BORRAR BÚSQUEDA", uk: "ОЧИСТИТИ ПОШУК")
+        ) { query = "" }
+    }
 
-            Text(localized(en: "NO OPERATIVES FOUND", ru: "ОПЕРАТИВНИКИ НЕ НАЙДЕНЫ", es: "NO SE ENCONTRARON OPERATIVOS", uk: "ОПЕРАТИВНИКІВ НЕ ЗНАЙДЕНО"))
-                .font(SpyTheme.micro)
-                .tracking(0.8)
+    private func peopleEmptyState(
+        icon: String,
+        title: String,
+        message: String,
+        actionTitle: String? = nil,
+        action: @escaping () -> Void = {}
+    ) -> some View {
+        VStack(spacing: 12) {
+            Image(systemName: icon)
+                .font(.system(size: 29, weight: .light))
+                .foregroundStyle(SpyTheme.red)
+                .accessibilityHidden(true)
+            Text(title)
+                .font(.system(size: 13, weight: .bold, design: .monospaced))
+                .foregroundStyle(.white)
+            Text(message)
+                .font(.system(size: 13))
                 .foregroundStyle(SpyTheme.muted)
+                .fixedSize(horizontal: false, vertical: true)
+            if let actionTitle {
+                Button(action: action) {
+                    Label(actionTitle, systemImage: "magnifyingglass")
+                        .font(.system(size: 11, weight: .bold, design: .monospaced))
+                        .frame(maxWidth: .infinity, minHeight: 48)
+                        .foregroundStyle(.white)
+                        .background(SpyTheme.red)
+                        .clipShape(CutCornerShape(cut: 7))
+                }
+                .buttonStyle(SpyWebPressStyle())
+                .padding(.top, 4)
+            }
         }
-        .frame(maxWidth: .infinity, minHeight: 160)
+        .multilineTextAlignment(.center)
+        .padding(22)
+        .frame(maxWidth: .infinity)
+        .background(SpyTheme.panel)
         .overlay(CutCornerShape(cut: 10).stroke(SpyTheme.stroke, lineWidth: 1))
+    }
+
+    private func mySpyIDStrip(_ profile: PublicSpyProfile) -> some View {
+        HStack(spacing: 12) {
+            VStack(alignment: .leading, spacing: 5) {
+                Text(localized(en: "YOUR SPYID", ru: "ТВОЙ SPYID", es: "TU SPYID", uk: "ТВІЙ SPYID"))
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.muted)
+                Text(profile.spyID)
+                    .font(.system(size: 22, weight: .bold, design: .monospaced))
+                    .tracking(2)
+                    .foregroundStyle(.white)
+            }
+            Spacer(minLength: 8)
+            Button {
+                UIPasteboard.general.string = profile.spyID
+                HapticManager.shared.fire(.buttonPress)
+                appState.showToast(localized(en: "SPYID COPIED", ru: "SPYID СКОПИРОВАН", es: "SPYID COPIADO", uk: "SPYID СКОПІЙОВАНО"), kind: .success)
+            } label: {
+                Label(localized(en: "COPY", ru: "КОПИРОВАТЬ", es: "COPIAR", uk: "КОПІЮВАТИ"), systemImage: "doc.on.doc")
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.red)
+                    .padding(.horizontal, 12)
+                    .frame(minHeight: 44)
+                    .overlay(CutCornerShape(cut: 6).stroke(SpyTheme.red.opacity(0.45), lineWidth: 1))
+            }
+            .buttonStyle(SpyWebPressStyle())
+            .accessibilityLabel(localized(en: "Copy your SPYID", ru: "Скопировать свой SPYID", es: "Copiar tu SPYID", uk: "Скопіювати свій SPYID"))
+        }
+        .padding(14)
+        .background(SpyTheme.panel)
+        .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.strokeStrong, lineWidth: 1))
     }
 
     private var directoryUnavailable: some View {
@@ -810,42 +1111,19 @@ struct CommunityView: View {
         let relationship = resolvedRelationship(for: detail)
         SpyPanel(accent: relationshipAccent(relationship), motionDelay: 0.05) {
             VStack(alignment: .leading, spacing: 11) {
-                SpySceneKicker(
-                    title: localized(en: "CONNECTION", ru: "СВЯЗЬ", es: "CONEXION", uk: "ЗВ’ЯЗОК"),
-                    status: relationshipTitle(relationship),
-                    accent: relationshipAccent(relationship)
-                )
+                HStack(spacing: 8) {
+                    SpySceneKicker(
+                        title: localized(en: "CONNECTION", ru: "СВЯЗЬ", es: "CONEXION", uk: "ЗВ’ЯЗОК"),
+                        status: relationshipTitle(relationship),
+                        accent: relationshipAccent(relationship)
+                    )
+                    profileMoreMenu(detail.profile, relationship: relationship)
+                }
 
                 relationshipButtons(detail)
 
-                HStack(spacing: 9) {
-                    communityActionButton(
-                        localized(en: "REPORT", ru: "ЖАЛОБА", es: "REPORTAR", uk: "ПОСКАРЖИТИСЯ"),
-                        icon: "flag.fill",
-                        color: SpyTheme.amber
-                    ) {
-                        reportTarget = .user(detail.profile)
-                    }
-
-                    communityActionButton(
-                        localized(en: "BLOCK", ru: "БЛОКИРОВАТЬ", es: "BLOQUEAR", uk: "ЗАБЛОКУВАТИ"),
-                        icon: "person.crop.circle.badge.xmark",
-                        color: SpyTheme.red
-                    ) {
-                        blockTarget = detail.profile
-                    }
-                }
-
                 if let room = inviteRoom(for: detail) {
-                    communityActionButton(
-                        localized(en: "INVITE TO ROOM \(room.code)", ru: "ПРИГЛАСИТЬ В КОМНАТУ \(room.code)", es: "INVITAR A SALA \(room.code)", uk: "ЗАПРОСИТИ ДО КІМНАТИ \(room.code)"),
-                        icon: "paperplane.fill", color: SpyTheme.red, filled: true,
-                        feedbackID: "invite-\(detail.profile.id)",
-                        waitingTitle: localized(en: "SENDING INVITE...", ru: "ОТПРАВЛЯЕМ ПРИГЛАШЕНИЕ...", es: "ENVIANDO INVITACIÓN...", uk: "НАДСИЛАЄМО ЗАПРОШЕННЯ..."),
-                        successTitle: localized(en: "INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA", uk: "ЗАПРОШЕННЯ НАДІСЛАНО")
-                    ) {
-                        await inviteToRoom(detail.profile, room: room)
-                    }
+                    roomInvitationButton(detail.profile, room: room)
                 }
             }
         }
@@ -868,25 +1146,11 @@ struct CommunityView: View {
                 await sendFriendRequest(to: detail.profile.id)
             }
         } else if relationship?.status == "accepted" {
-            HStack(spacing: 9) {
-                connectionStatus(
-                    localized(en: "FRIENDS", ru: "В ДРУЗЬЯХ", es: "AMIGOS", uk: "У ДРУЗЯХ"),
-                    icon: "checkmark.circle.fill",
-                    color: SpyTheme.green
-                )
-
-                communityActionButton(
-                    localized(en: "REMOVE", ru: "УДАЛИТЬ", es: "ELIMINAR", uk: "ВИДАЛИТИ"),
-                    icon: "person.badge.minus",
-                    color: SpyTheme.muted,
-                    feedbackID: relationship.map { relationshipFeedbackID("remove_friend", $0.id) },
-                    waitingTitle: localized(en: "REMOVING...", ru: "УДАЛЯЕМ...", es: "ELIMINANDO...", uk: "ВИДАЛЯЄМО..."),
-                    successTitle: localized(en: "REMOVED", ru: "УДАЛЕНО", es: "ELIMINADO", uk: "ВИДАЛЕНО")
-                ) {
-                    guard let relationship else { return }
-                    await relationshipAction("remove_friend", relationship.id)
-                }
-            }
+            connectionStatus(
+                localized(en: "FRIENDS", ru: "В ДРУЗЬЯХ", es: "AMIGOS", uk: "У ДРУЗЯХ"),
+                icon: "checkmark.circle.fill",
+                color: SpyTheme.green
+            )
         } else if let relationship, relationship.status == "pending", relationship.direction == "incoming" {
             HStack(spacing: 9) {
                 communityActionButton(
@@ -970,27 +1234,13 @@ struct CommunityView: View {
 
     @ViewBuilder
     private var incomingAttentionSections: some View {
-        if let network, !network.incomingRoomInvites.isEmpty {
-            SpyPanel(accent: SpyTheme.red, motionDelay: 0.05) {
-                VStack(alignment: .leading, spacing: 10) {
-                    SpySceneKicker(
-                        title: localized(en: "ROOM INVITES", ru: "ПРИГЛАШЕНИЯ В КОМНАТУ", es: "INVITACIONES A SALA", uk: "ЗАПРОШЕННЯ ДО КІМНАТ"),
-                        status: "\(network.incomingRoomInvites.count)",
-                        accent: SpyTheme.red
-                    )
-
-                    ForEach(network.incomingRoomInvites) { invite in
-                        roomInviteRow(invite)
-                    }
-                }
-            }
-        }
+        roomInviteSection
 
         if let network, !network.incoming.isEmpty {
             SpyPanel(accent: SpyTheme.amber, motionDelay: 0.08) {
                 VStack(alignment: .leading, spacing: 10) {
                     SpySceneKicker(
-                        title: localized(en: "FRIEND REQUESTS", ru: "ЗАПРОСЫ В ДРУЗЬЯ", es: "SOLICITUDES DE AMISTAD", uk: "ЗАПИТИ В ДРУЗІ"),
+                        title: localized(en: "INCOMING REQUESTS", ru: "ВХОДЯЩИЕ ЗАПРОСЫ", es: "SOLICITUDES RECIBIDAS", uk: "ВХІДНІ ЗАПИТИ"),
                         status: "\(network.incoming.count)",
                         accent: SpyTheme.amber
                     )
@@ -998,6 +1248,17 @@ struct CommunityView: View {
                     ForEach(network.incoming) { record in
                         incomingFriendRow(record)
                     }
+                }
+            }
+        }
+    }
+
+    @ViewBuilder
+    private var roomInviteSection: some View {
+        if let network, !network.incomingRoomInvites.isEmpty {
+            VStack(alignment: .leading, spacing: 10) {
+                ForEach(network.incomingRoomInvites) { invite in
+                    roomInviteRow(invite)
                 }
             }
         }
@@ -1237,6 +1498,7 @@ struct CommunityView: View {
                 ) {
                     await relationshipDecision("accept", record.id)
                 }
+                .accessibilityLabel(localized(en: "Accept \(record.profile.displayName)'s request", ru: "Принять запрос от \(record.profile.displayName)", es: "Aceptar solicitud de \(record.profile.displayName)", uk: "Прийняти запит від \(record.profile.displayName)"))
 
                 communityActionButton(
                     localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR", uk: "ВІДХИЛИТИ"),
@@ -1248,64 +1510,193 @@ struct CommunityView: View {
                 ) {
                     await relationshipDecision("decline", record.id)
                 }
+                .accessibilityLabel(localized(en: "Decline \(record.profile.displayName)'s request", ru: "Отклонить запрос от \(record.profile.displayName)", es: "Rechazar solicitud de \(record.profile.displayName)", uk: "Відхилити запит від \(record.profile.displayName)"))
             }
         }
         .padding(.bottom, 4)
     }
 
-    private func roomInviteRow(_ invite: CommunityRoomInvite) -> some View {
-        VStack(alignment: .leading, spacing: 9) {
-            HStack(spacing: 10) {
-                Text(invite.sender.avatar)
-                    .font(.system(size: 21))
-                    .frame(width: 44, height: 44)
-                    .background(SpyTheme.black)
-                    .overlay(Rectangle().stroke(SpyTheme.strokeStrong, lineWidth: 1))
-
-                VStack(alignment: .leading, spacing: 3) {
-                    Text(invite.sender.displayName.uppercased())
-                        .font(.system(size: 11, weight: .black, design: .monospaced))
-                        .foregroundStyle(.white)
-                        .lineLimit(1)
-                    Text(localized(en: "ROOM \(invite.roomCode)", ru: "КОМНАТА \(invite.roomCode)", es: "SALA \(invite.roomCode)", uk: "КІМНАТА \(invite.roomCode)"))
-                        .font(.system(size: 9, weight: .bold, design: .monospaced))
-                        .foregroundStyle(SpyTheme.red)
+    private func friendRow(_ record: CommunityRelationship) -> some View {
+        VStack(spacing: 10) {
+            HStack(spacing: 6) {
+                operativeRow(record.profile, showsChevron: false) {
+                    Task { await openProfile(record.profile.id, rememberingCurrent: false, placeholder: record.profile) }
                 }
-
-                Spacer()
+                profileMoreMenu(record.profile, relationship: CommunityRelationshipSummary(id: record.id, status: record.status, direction: record.direction))
             }
-
-            HStack(spacing: 9) {
-                communityActionButton(
-                    localized(en: "JOIN", ru: "ВОЙТИ", es: "ENTRAR", uk: "УВІЙТИ"),
-                    icon: "arrow.right",
-                    color: SpyTheme.red,
-                    filled: true,
-                    feedbackID: roomInviteFeedbackID("accept", invite.id),
-                    waitingTitle: localized(en: "ACCEPTING...", ru: "ПРИНИМАЕМ...", es: "ACEPTANDO...", uk: "ПРИЙМАЄМО..."),
-                    successTitle: localized(en: "READY", ru: "ГОТОВО", es: "LISTO", uk: "ГОТОВО")
-                ) {
-                    await acceptRoomInvite(invite)
-                }
-
-                communityActionButton(
-                    localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR", uk: "ВІДХИЛИТИ"),
-                    icon: "xmark",
-                    color: SpyTheme.muted,
-                    feedbackID: roomInviteFeedbackID("decline", invite.id),
-                    waitingTitle: localized(en: "DECLINING...", ru: "ОТКЛОНЯЕМ...", es: "RECHAZANDO...", uk: "ВІДХИЛЯЄМО..."),
-                    successTitle: localized(en: "DECLINED", ru: "ОТКЛОНЕНО", es: "RECHAZADO", uk: "ВІДХИЛЕНО")
-                ) {
-                    await declineRoomInvite(invite)
-                }
+            if let room = appState.activeRoom, room.normalizedStatus == "waiting" {
+                roomInvitationButton(record.profile, room: room)
             }
         }
-        .padding(11)
-        .background(SpyTheme.black.opacity(0.58))
-        .overlay(Rectangle().stroke(SpyTheme.stroke, lineWidth: 1))
+        .padding(12)
+        .background(SpyTheme.panel)
+        .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.stroke, lineWidth: 1))
     }
 
-    private func operativeRow(_ profile: PublicSpyProfile, action: @escaping () -> Void) -> some View {
+    private func outgoingFriendRow(_ record: CommunityRelationship) -> some View {
+        VStack(alignment: .leading, spacing: 8) {
+            operativeRow(record.profile) {
+                Task { await openProfile(record.profile.id, rememberingCurrent: false, placeholder: record.profile) }
+            }
+            HStack(spacing: 10) {
+                Label(localized(en: "AWAITING REPLY", ru: "ОЖИДАЕМ ОТВЕТА", es: "ESPERANDO RESPUESTA", uk: "ЧЕКАЄМО НА ВІДПОВІДЬ"), systemImage: "clock")
+                    .font(.system(size: 10, weight: .medium, design: .monospaced))
+                    .foregroundStyle(SpyTheme.amber)
+                    .frame(maxWidth: .infinity, alignment: .leading)
+                communityActionButton(
+                    localized(en: "CANCEL", ru: "ОТМЕНИТЬ", es: "CANCELAR", uk: "СКАСУВАТИ"),
+                    icon: "xmark", color: SpyTheme.muted,
+                    feedbackID: relationshipFeedbackID("cancel_request", record.id),
+                    waitingTitle: localized(en: "CANCELLING...", ru: "ОТМЕНЯЕМ...", es: "CANCELANDO...", uk: "СКАСОВУЄМО..."),
+                    successTitle: localized(en: "CANCELLED", ru: "ОТМЕНЕНО", es: "CANCELADO", uk: "СКАСОВАНО")
+                ) { await relationshipAction("cancel_request", record.id) }
+                .frame(width: 122)
+                .accessibilityLabel(localized(en: "Cancel request to \(record.profile.displayName)", ru: "Отменить запрос для \(record.profile.displayName)", es: "Cancelar solicitud a \(record.profile.displayName)", uk: "Скасувати запит до \(record.profile.displayName)"))
+            }
+        }
+        .padding(.vertical, 6)
+    }
+
+    private var visibleDirectory: [PublicSpyProfile] {
+        let blockedIDs = Set(network?.blocked.map { $0.profile.id } ?? [])
+        return directory.filter { $0.id != network?.me.id && !blockedIDs.contains($0.id) }
+    }
+
+    private func discoveryRow(_ profile: PublicSpyProfile) -> some View {
+        HStack(spacing: 10) {
+            operativeRow(profile, showsChevron: false) {
+                Task { await openProfile(profile.id, rememberingCurrent: false, placeholder: profile) }
+            }
+            discoveryConnection(profile)
+                .frame(width: 112)
+        }
+        .padding(12)
+        .background(SpyTheme.panel)
+        .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.stroke, lineWidth: 1))
+    }
+
+    @ViewBuilder
+    private func discoveryConnection(_ profile: PublicSpyProfile) -> some View {
+        let relationship = CommunityDirectoryRelationshipResolver.resolve(profileID: profile.id, network: network)
+        if network == nil {
+            Text(localized(en: "LOADING", ru: "ЗАГРУЗКА", es: "CARGANDO", uk: "ЗАВАНТАЖЕННЯ"))
+                .font(.system(size: 9, weight: .bold, design: .monospaced))
+                .foregroundStyle(SpyTheme.muted)
+                .frame(minHeight: 46)
+        } else if relationship?.status == "accepted" {
+            connectionStatus(localized(en: "FRIENDS", ru: "В ДРУЗЬЯХ", es: "AMIGOS", uk: "У ДРУЗЯХ"), icon: "checkmark", color: SpyTheme.green)
+        } else if let relationship, relationship.status == "pending", relationship.direction == "incoming" {
+            communityActionButton(
+                localized(en: "ACCEPT", ru: "ПРИНЯТЬ", es: "ACEPTAR", uk: "ПРИЙНЯТИ"),
+                icon: "checkmark", color: SpyTheme.green, filled: true,
+                feedbackID: relationshipFeedbackID("accept", relationship.id),
+                waitingTitle: localized(en: "ACCEPTING...", ru: "ПРИНИМАЕМ...", es: "ACEPTANDO...", uk: "ПРИЙМАЄМО..."),
+                successTitle: localized(en: "ACCEPTED", ru: "ПРИНЯТО", es: "ACEPTADO", uk: "ПРИЙНЯТО")
+            ) { await relationshipDecision("accept", relationship.id) }
+            .accessibilityLabel(localized(en: "Accept \(profile.displayName)'s request", ru: "Принять запрос от \(profile.displayName)", es: "Aceptar solicitud de \(profile.displayName)", uk: "Прийняти запит від \(profile.displayName)"))
+        } else if relationship?.status == "pending" {
+            Button { peopleSection = .requests } label: {
+                connectionStatus(localized(en: "SENT", ru: "ОТПРАВЛЕН", es: "ENVIADA", uk: "НАДІСЛАНО"), icon: "clock", color: SpyTheme.amber)
+            }
+            .buttonStyle(.plain)
+            .accessibilityHint(localized(en: "Manage sent requests", ru: "Управление отправленными запросами", es: "Gestionar solicitudes enviadas", uk: "Керувати надісланими запитами"))
+        } else if relationship?.status == "blocked" {
+            connectionStatus(localized(en: "BLOCKED", ru: "БЛОК", es: "BLOQUEADO", uk: "БЛОК"), icon: "hand.raised", color: SpyTheme.muted)
+        } else {
+            communityActionButton(
+                localized(en: "ADD", ru: "ДОБАВИТЬ", es: "AÑADIR", uk: "ДОДАТИ"),
+                icon: "person.badge.plus", color: SpyTheme.red, filled: true,
+                feedbackID: "friend-\(profile.id)",
+                waitingTitle: localized(en: "SENDING...", ru: "ОТПРАВКА...", es: "ENVIANDO...", uk: "НАДСИЛАННЯ..."),
+                successTitle: localized(en: "SENT", ru: "ОТПРАВЛЕН", es: "ENVIADA", uk: "НАДІСЛАНО")
+            ) { await sendFriendRequest(to: profile.id) }
+            .accessibilityLabel(localized(en: "Add \(profile.displayName) as a friend", ru: "Добавить \(profile.displayName) в друзья", es: "Añadir a \(profile.displayName) como amigo", uk: "Додати \(profile.displayName) у друзі"))
+        }
+    }
+
+    private func profileMoreMenu(_ profile: PublicSpyProfile, relationship: CommunityRelationshipSummary?) -> some View {
+        Menu {
+            if let relationship, relationship.status == "accepted" {
+                Button(role: .destructive) {
+                    friendRemovalTarget = CommunityFriendRemoval(id: relationship.id, profile: profile)
+                } label: {
+                    Label(localized(en: "Remove friend", ru: "Удалить из друзей", es: "Eliminar amigo", uk: "Видалити з друзів"), systemImage: "person.badge.minus")
+                }
+            }
+            Button {
+                reportTarget = .user(profile)
+            } label: {
+                Label(localized(en: "Report profile", ru: "Пожаловаться", es: "Reportar perfil", uk: "Поскаржитися"), systemImage: "flag")
+            }
+            Button(role: .destructive) {
+                blockTarget = profile
+            } label: {
+                Label(localized(en: "Block operative", ru: "Заблокировать", es: "Bloquear operativo", uk: "Заблокувати"), systemImage: "hand.raised")
+            }
+        } label: {
+            Image(systemName: "ellipsis")
+                .font(.system(size: 18, weight: .bold))
+                .foregroundStyle(SpyTheme.muted)
+                .frame(width: 44, height: 44)
+                .contentShape(Rectangle())
+        }
+        .disabled(activeAction != nil)
+        .accessibilityLabel(localized(en: "Actions for \(profile.displayName)", ru: "Действия для \(profile.displayName)", es: "Acciones para \(profile.displayName)", uk: "Дії для \(profile.displayName)"))
+    }
+
+    private func roomInvitationButton(_ profile: PublicSpyProfile, room: GameRoom) -> some View {
+        communityActionButton(
+            localized(en: "INVITE TO ROOM \(room.code)", ru: "ПРИГЛАСИТЬ В КОМНАТУ \(room.code)", es: "INVITAR A SALA \(room.code)", uk: "ЗАПРОСИТИ ДО КІМНАТИ \(room.code)"),
+            icon: "paperplane.fill", color: SpyTheme.red, filled: true,
+            feedbackID: "invite-\(profile.id)",
+            waitingTitle: localized(en: "SENDING INVITE...", ru: "ОТПРАВЛЯЕМ ПРИГЛАШЕНИЕ...", es: "ENVIANDO INVITACIÓN...", uk: "НАДСИЛАЄМО ЗАПРОШЕННЯ..."),
+            successTitle: localized(en: "INVITE SENT", ru: "ПРИГЛАШЕНИЕ ОТПРАВЛЕНО", es: "INVITACIÓN ENVIADA", uk: "ЗАПРОШЕННЯ НАДІСЛАНО")
+        ) { await inviteToRoom(profile, room: room) }
+    }
+
+    private func roomInviteRow(_ invite: CommunityRoomInvite) -> some View {
+        HStack(spacing: 10) {
+            Text(invite.sender.avatar)
+                .font(.system(size: 23))
+                .accessibilityHidden(true)
+            VStack(alignment: .leading, spacing: 4) {
+                Text(invite.sender.displayName)
+                    .font(.system(size: 12, weight: .bold))
+                    .foregroundStyle(.white)
+                    .lineLimit(1)
+                Text(localized(en: "ROOM \(invite.roomCode)", ru: "КОМНАТА \(invite.roomCode)", es: "SALA \(invite.roomCode)", uk: "КІМНАТА \(invite.roomCode)"))
+                    .font(.system(size: 9, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.red)
+                    .lineLimit(1)
+            }
+            .frame(maxWidth: .infinity, alignment: .leading)
+
+            communityActionButton(
+                localized(en: "JOIN", ru: "ВОЙТИ", es: "ENTRAR", uk: "УВІЙТИ"),
+                icon: "arrow.right", color: SpyTheme.red, filled: true,
+                feedbackID: roomInviteFeedbackID("accept", invite.id),
+                waitingTitle: localized(en: "JOINING...", ru: "ВХОДИМ...", es: "ENTRANDO...", uk: "ВХОДИМО..."),
+                successTitle: localized(en: "READY", ru: "ГОТОВО", es: "LISTO", uk: "ГОТОВО")
+            ) { await acceptRoomInvite(invite) }
+            .frame(width: 82)
+            .accessibilityLabel(localized(en: "Join \(invite.sender.displayName)'s room", ru: "Войти в комнату \(invite.sender.displayName)", es: "Entrar en la sala de \(invite.sender.displayName)", uk: "Увійти до кімнати \(invite.sender.displayName)"))
+
+            communityActionButton(
+                "", icon: "xmark", color: SpyTheme.muted,
+                feedbackID: roomInviteFeedbackID("decline", invite.id),
+                waitingTitle: "…",
+                successTitle: localized(en: "DONE", ru: "ГОТОВО", es: "LISTO", uk: "ГОТОВО")
+            ) { await declineRoomInvite(invite) }
+            .frame(width: 44)
+            .accessibilityLabel(localized(en: "Decline invitation from \(invite.sender.displayName)", ru: "Отклонить приглашение от \(invite.sender.displayName)", es: "Rechazar invitación de \(invite.sender.displayName)", uk: "Відхилити запрошення від \(invite.sender.displayName)"))
+        }
+        .padding(12)
+        .background(SpyTheme.red.opacity(0.06))
+        .overlay(CutCornerShape(cut: 8).stroke(SpyTheme.red.opacity(0.28), lineWidth: 1))
+        .accessibilityElement(children: .contain)
+    }
+
+    private func operativeRow(_ profile: PublicSpyProfile, showsChevron: Bool = true, action: @escaping () -> Void) -> some View {
         Button(action: action) {
             HStack(spacing: 11) {
                 Text(profile.avatar)
@@ -1316,25 +1707,30 @@ struct CommunityView: View {
 
                 VStack(alignment: .leading, spacing: 3) {
                     Text(profile.displayName.uppercased())
-                        .font(.system(size: 11, weight: .black, design: .monospaced))
+                        .font(.system(size: 13, weight: .bold, design: .monospaced))
                         .foregroundStyle(.white)
                         .lineLimit(1)
                     Text(profile.spyID)
-                        .font(.system(size: 8, weight: .bold, design: .monospaced))
+                        .font(.system(size: 11, weight: .medium, design: .monospaced))
                         .tracking(0.7)
                         .foregroundStyle(SpyTheme.muted)
                 }
 
                 Spacer(minLength: 8)
 
-                Image(systemName: "chevron.right")
-                    .font(.system(size: 13, weight: .black))
-                    .foregroundStyle(SpyTheme.red)
+                if showsChevron {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 13, weight: .black))
+                        .foregroundStyle(SpyTheme.red)
+                }
             }
             .frame(minHeight: 52)
             .contentShape(Rectangle())
         }
         .buttonStyle(SpyWebPressStyle(pressedScale: 0.985))
+        .accessibilityElement(children: .ignore)
+        .accessibilityLabel("\(profile.displayName), SPYID \(profile.spyID)")
+        .accessibilityHint(localized(en: "Open public profile", ru: "Открыть публичный профиль", es: "Abrir perfil público", uk: "Відкрити публічний профіль"))
     }
 
     private func blockedOperativeRow(_ relationship: CommunityRelationship) -> some View {
@@ -1436,12 +1832,12 @@ struct CommunityView: View {
                 } else {
                     Image(systemName: icon)
                         .font(.system(size: 12, weight: .black))
-                    Text(title)
+                    if !title.isEmpty { Text(title) }
                 }
             }
-            .font(.system(size: 9, weight: .black, design: .monospaced))
+            .font(.system(size: 11, weight: .bold, design: .monospaced))
             .tracking(0.35)
-            .spyFitted(scale: 0.58, alignment: .center)
+            .spyFitted(lines: 2, scale: 0.85, alignment: .center)
             .foregroundStyle(filled && feedback?.phase != .failure ? Color.black.opacity(0.82) : feedbackColor)
             .frame(maxWidth: .infinity, minHeight: 46)
             .background(filled && feedback?.phase != .failure ? feedbackColor : feedbackColor.opacity(feedback == nil ? 0 : 0.10))
@@ -1601,7 +1997,7 @@ struct CommunityView: View {
     }
 
     private func inviteRoom(for detail: CommunityProfileDetail) -> GameRoom? {
-        guard detail.relationship?.status.lowercased() == "accepted" else { return nil }
+        guard resolvedRelationship(for: detail)?.status.lowercased() == "accepted" else { return nil }
         guard let room = appState.activeRoom, room.normalizedStatus == "waiting" else { return nil }
         return room
     }
@@ -1661,16 +2057,23 @@ struct CommunityView: View {
         }
 
         if appState.shouldUsePreviewData {
-            network = .preview
+            network = CommunityState.previewState(reusing: externalNetworkState)
             directory = CommunityPreview.directory.filter { $0.id != CommunityPreview.night.id }
             nextDirectoryOffset = nil
 #if DEBUG
+            if let section = ProcessInfo.processInfo.arguments
+                .first(where: { $0.hasPrefix("--spyclash-preview-community-section=") })
+                .map({ String($0.dropFirst("--spyclash-preview-community-section=".count)) })
+                .flatMap(CommunityPeopleSection.init(rawValue:)) {
+                peopleSection = section
+            }
             if let target = ProcessInfo.processInfo.arguments
                 .first(where: { $0.hasPrefix("--spyclash-preview-community-profile=") })
                 .map({ String($0.dropFirst("--spyclash-preview-community-profile=".count)) }) {
                 let userID = target == "me" ? CommunityPreview.me.id : target
                 selectedTab = userID == CommunityPreview.me.id ? .me : .network
                 activeProfile = CommunityPreview.profile(userID: userID, viewerID: CommunityPreview.me.id)
+                reconcileActiveProfileRelationship()
             }
 #endif
             return
@@ -1695,6 +2098,10 @@ struct CommunityView: View {
     }
 
     private func loadInitialNetwork() async {
+        guard !appState.shouldUsePreviewData else {
+            network = CommunityState.previewState(reusing: externalNetworkState ?? network)
+            return
+        }
         let actorID = appState.user?.id
         let generation = mutationGeneration
         let refreshGeneration = networkRefreshGeneration
@@ -1715,7 +2122,8 @@ struct CommunityView: View {
 
     @MainActor
     private func startProfileRealtime() {
-        guard scenePhase == .active, let token = appState.client.currentAccessToken,
+        guard !appState.shouldUsePreviewData,
+              scenePhase == .active, let token = appState.client.currentAccessToken,
               let userID = appState.user?.id else { return }
         profileRealtime.onSignal = { signal in
             Task { await applyProfileSignal(signal) }
@@ -1965,6 +2373,7 @@ struct CommunityView: View {
             if let detail = CommunityPreview.profile(userID: userID, viewerID: network?.me.id) {
                 profileCache[userID] = detail
                 activeProfile = detail
+                reconcileActiveProfileRelationship()
             }
             isProfileLoading = false
             return
@@ -2037,7 +2446,17 @@ struct CommunityView: View {
         let actorID = appState.user?.id
         let generation = mutationGeneration
         do {
-            if !appState.shouldUsePreviewData {
+            if appState.shouldUsePreviewData, let state = network,
+               let profile = CommunityPreview.directory.first(where: { $0.id == userID }) {
+                network = CommunityState(
+                    me: state.me, friends: state.friends, incoming: state.incoming,
+                    outgoing: state.outgoing.filter { $0.profile.id != userID } + [
+                        CommunityRelationship(id: "preview-request-\(userID)", status: "pending", direction: "outgoing", profile: profile)
+                    ],
+                    blocked: state.blocked, incomingRoomInvites: state.incomingRoomInvites
+                )
+                reconcileActiveProfileRelationship()
+            } else if !appState.shouldUsePreviewData {
                 let state = try await appState.client.sendFriendRequest(userID: userID)
                 guard appState.user?.id == actorID, mutationGeneration == generation else { return }
                 network = sanitizedNetworkState(state)
@@ -3229,7 +3648,19 @@ private enum CommunityPreview {
         detectiveWinRate: 78
     )
 
-    static let directory = [me, cipher, signal, night]
+    static let echo = PublicSpyProfile(
+        id: "preview-echo", spyID: "813-029", displayName: "Echo", avatar: "📡",
+        spyCardTheme: "field", spyCardAccent: "signal_red", spyCardBadge: "operative",
+        rating: 120, gamesPlayed: 8, gamesWon: 4, winRate: 50
+    )
+
+    static let vega = PublicSpyProfile(
+        id: "preview-vega", spyID: "615-208", displayName: "Vega", avatar: "🛰️",
+        spyCardTheme: "dossier", spyCardAccent: "clearance_amber", spyCardBadge: "analyst",
+        rating: 240, gamesPlayed: 16, gamesWon: 10, winRate: 63
+    )
+
+    static let directory = [me, cipher, signal, echo, vega, night]
 
     static func profile(userID: String, viewerID: String?) -> CommunityProfileDetail? {
         guard let profile = directory.first(where: { $0.id == userID }) else { return nil }
@@ -3259,7 +3690,18 @@ private enum CommunityPreview {
     }
 }
 
-private extension CommunityState {
+extension CommunityState {
+    static func previewState(
+        reusing state: CommunityState?,
+        arguments: [String] = ProcessInfo.processInfo.arguments
+    ) -> CommunityState {
+        if let state, state.me.id == preview.me.id { return state }
+        if arguments.contains("--spyclash-preview-community-empty") {
+            return CommunityState(me: preview.me, friends: [], incoming: [], outgoing: [], blocked: [], incomingRoomInvites: [])
+        }
+        return preview
+    }
+
     static let preview = CommunityState(
         me: CommunityPreview.me,
         friends: [
@@ -3278,7 +3720,9 @@ private extension CommunityState {
                 profile: CommunityPreview.signal
             )
         ],
-        outgoing: [],
+        outgoing: [
+            CommunityRelationship(id: "outgoing-1", status: "pending", direction: "outgoing", profile: CommunityPreview.echo)
+        ],
         blocked: [
             CommunityRelationship(
                 id: "blocked-1",
@@ -3294,7 +3738,7 @@ private extension CommunityState {
                 roomID: "preview-room",
                 roomCode: "S6RC3V",
                 createdAt: "2026-07-14T08:10:00Z",
-                sender: CommunityPreview.night
+                sender: CommunityPreview.cipher
             )
         ]
     )
