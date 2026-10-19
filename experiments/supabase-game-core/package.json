@@ -21,7 +21,10 @@
     "app:test": "node scripts/app-services-local.mjs",
     "app:apply": "node scripts/app-services-local.mjs apply",
     "app:check": "deno check --config supabase/functions/app-services/deno.json supabase/functions/app-services/index.ts supabase/functions/legacy-session/index.ts supabase/functions/app-services/legacy-social.ts scripts/legacy-social-export.ts",
-    "app:cloud-test": "node scripts/app-services-cloud-test.mjs"
+    "app:cloud-test": "node scripts/app-services-cloud-test.mjs",
+    "migration:check": "deno check supabase/functions/bulk-legacy-migration/index.ts scripts/bulk-migration/prepare.ts scripts/bulk-migration/attestation.ts scripts/bulk-migration/schema-inventory.ts scripts/bulk-migration/source-export-cli.ts",
+    "migration:test": "deno test scripts/bulk-migration/source-export.test.ts scripts/bulk-migration/ancillary.test.ts scripts/bulk-migration/attestation.test.ts scripts/bulk-migration/schema-inventory.test.ts && node --experimental-transform-types --test scripts/bulk-migration/core.test.mjs",
+    "migration:rehearse": "node --experimental-transform-types scripts/bulk-migration/rehearse.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "2.117.3",

@@ -1,0 +1,261 @@
+{
+  "version": 1,
+  "source": {
+    "origin": "https://spyclash.com",
+    "appID": "69a0e57fa939f578082f8091"
+  },
+  "captured_at": "2026-10-19T10:30:09.994Z",
+  "verified_at": "2026-10-19T10:30:24.466Z",
+  "digest": "7a51624a000781dd999d434159361e48485afef11fc710b51df0477c80d392eb",
+  "read_only": true,
+  "complete_known_entity_inventory": true,
+  "schema_inventory_origin": "tracked_base44_entities_plus_builtin_User; each_named_entity_read_or_exact_schema_absence_verified_twice",
+  "consistency": "two_complete_matching_reads_not_cross_entity_transaction",
+  "entities": [
+    {
+      "entity": "AccountDeletionReceipt",
+      "count": 0,
+      "sourceAvailability": "confirmed_schema_absent",
+      "firstPassDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "verifiedDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "schemaDigest": "2624f1dd6fc891fa4cd2b0c94cb394fc8aaca2b117197ab650c14447c66c070d"
+    },
+    {
+      "entity": "AiGenerationQuota",
+      "count": 4,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "25b8f877c49fe6f6e60deb283b4e35009c850fda60142011b489c236034ca2dc",
+      "verifiedDigest": "25b8f877c49fe6f6e60deb283b4e35009c850fda60142011b489c236034ca2dc",
+      "schemaDigest": "19e7924c3e35053c475af10ba1aca68adb750615ffa9c44d3018f1bb5c6eaf22"
+    },
+    {
+      "entity": "AiGenerationUsage",
+      "count": 6,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "a49b706a0ed88a4b0ed4e5094e97aaa4f2baa30722da3db90dd6a5fb9d464f29",
+      "verifiedDigest": "a49b706a0ed88a4b0ed4e5094e97aaa4f2baa30722da3db90dd6a5fb9d464f29",
+      "schemaDigest": "82ab10cd94264c90a9ec68d6f5c4714691ed4dba91a38569c9c6f1bfef94fe29"
+    },
+    {
+      "entity": "AiWordPackCacheVariant",
+      "count": 21,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "942705865cc36c108fe6db69f21f0c8c700cc0b88c54de3cbc25277b2b81aa47",
+      "verifiedDigest": "942705865cc36c108fe6db69f21f0c8c700cc0b88c54de3cbc25277b2b81aa47",
+      "schemaDigest": "052f493b5c70ce99e01ad142b5c84a72a01a7e50ff6f66f5fb7f12621026d91c"
+    },
+    {
+      "entity": "AiWordPackOperation",
+      "count": 11,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "8d48f5a4c32e5d6a0c463be1274c8babb5fbab85470de7ef90215a81e61a0b9a",
+      "verifiedDigest": "8d48f5a4c32e5d6a0c463be1274c8babb5fbab85470de7ef90215a81e61a0b9a",
+      "schemaDigest": "1752f5f52c9d7a2fb606fd3b16beb64af37aa4ecd442ab66174751d1a0c9e685"
+    },
+    {
+      "entity": "AiWordPackRequestResult",
+      "count": 16,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "51a0641e85a33343ab057e21424b290e452daca7db808aa041835b0f0a1768af",
+      "verifiedDigest": "51a0641e85a33343ab057e21424b290e452daca7db808aa041835b0f0a1768af",
+      "schemaDigest": "0778fe9415b4663a35dd68e10686d4449f07480b725cf38968f426b3ffca3ce9"
+    },
+    {
+      "entity": "AppStoreAccount",
+      "count": 3,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "6ee837116fedc7492f9a96a97803b4bc5027d8bacde6d5a3075dee9adf44503c",
+      "verifiedDigest": "6ee837116fedc7492f9a96a97803b4bc5027d8bacde6d5a3075dee9adf44503c",
+      "schemaDigest": "7fe689aa7269e24d21ab082253fcb00dbcb88eba2dbf34f3e1d8c0f8da03c530"
+    },
+    {
+      "entity": "AppleSignInCredential",
+      "count": 29,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "b9f4d2bedc40e0345440f8958d869c7b116c6f358d988ca9f9c680f10e1714c1",
+      "verifiedDigest": "b9f4d2bedc40e0345440f8958d869c7b116c6f358d988ca9f9c680f10e1714c1",
+      "schemaDigest": "1f13564c14e0936cd7e0651343d4047aefff1f13d57a94e171d00eb9043e74ea"
+    },
+    {
+      "entity": "BillingIdentityLifecycle",
+      "count": 99,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "d42fe799c412df97da3413f6268d47dabedbcae94b31c07be30853e4a5f6244d",
+      "verifiedDigest": "d42fe799c412df97da3413f6268d47dabedbcae94b31c07be30853e4a5f6244d",
+      "schemaDigest": "aae9886536f487e643422b93b1279575c7f4273d354fe7b1e45462e26bc00cfc"
+    },
+    {
+      "entity": "CommunityProfileSignal",
+      "count": 51,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "879802eeb9bfb883fb8b75340ef6a760c32582279b252739a9524a8f8d908520",
+      "verifiedDigest": "879802eeb9bfb883fb8b75340ef6a760c32582279b252739a9524a8f8d908520",
+      "schemaDigest": "ed67cc3abb77df44b302d2a5745673597217d4ec7aa3e340bbd6d63aa72b7b62"
+    },
+    {
+      "entity": "CommunityReport",
+      "count": 1,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "4c466936417496af660e7be35bbe8fdd0a90ef89cec15bd9b733b2ad9585d047",
+      "verifiedDigest": "4c466936417496af660e7be35bbe8fdd0a90ef89cec15bd9b733b2ad9585d047",
+      "schemaDigest": "76ec1473bc3300dd4597161b416fe02127ca4874b02f43df2da713b098b850cb"
+    },
+    {
+      "entity": "Entitlement",
+      "count": 1,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "93258ef1510e8fd85e34af3e2b0855b500fcf2ea332fc3789297943e8f8f5beb",
+      "verifiedDigest": "93258ef1510e8fd85e34af3e2b0855b500fcf2ea332fc3789297943e8f8f5beb",
+      "schemaDigest": "cd299b3d636c48f1f7edb548d172433072b13feb0567dff059e70f14f8ab9452"
+    },
+    {
+      "entity": "Friendship",
+      "count": 5,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "49ddc32f827b70571dec8dfa3658b3dfc0a51a9f9b1aa73a90b17abce18b88c4",
+      "verifiedDigest": "49ddc32f827b70571dec8dfa3658b3dfc0a51a9f9b1aa73a90b17abce18b88c4",
+      "schemaDigest": "0b7261f91ca0f5e91f8e894f0741807dcfcf51a3f011f5f3495687fa2810ed25"
+    },
+    {
+      "entity": "GameHistory",
+      "count": 205,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "605e94b3e95fbcac8153c5ff41c96c384868bfc18dfa86453f2a8565f266626e",
+      "verifiedDigest": "605e94b3e95fbcac8153c5ff41c96c384868bfc18dfa86453f2a8565f266626e",
+      "schemaDigest": "22ebd62d77fc884c801138fce83971d28d9e621611e638af05377febab646b3b"
+    },
+    {
+      "entity": "GameRoom",
+      "count": 22,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "ee2fc46e08880429d486787fea55d284deec9fa49092fbac6faebfc13e41bc98",
+      "verifiedDigest": "ee2fc46e08880429d486787fea55d284deec9fa49092fbac6faebfc13e41bc98",
+      "schemaDigest": "e9981c079adc8cc0768d7f017cd4c154bb41095cc5a5478340a83954c2aa3e3c"
+    },
+    {
+      "entity": "GameRoomSignal",
+      "count": 154,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "38a8ece3638465cee005504047d823a73564fdd44717c0fc8c45b161d3e6bcbe",
+      "verifiedDigest": "38a8ece3638465cee005504047d823a73564fdd44717c0fc8c45b161d3e6bcbe",
+      "schemaDigest": "650615e83b372abe15459b06cc4bb3365b5f97ff948cad1dd7b6b8f76f0492e5"
+    },
+    {
+      "entity": "LiveActivityRegistration",
+      "count": 42,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "e6b2d2ef5a70d2d039d60ead6cf0d9b0f208a4f0e0278522f3dfa21316ec6475",
+      "verifiedDigest": "e6b2d2ef5a70d2d039d60ead6cf0d9b0f208a4f0e0278522f3dfa21316ec6475",
+      "schemaDigest": "ef86ac74971408e18dc82bc7dc0960d49f509d6df9dd5a751b47c3a4d51fc835"
+    },
+    {
+      "entity": "MembershipGrant",
+      "count": 0,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "verifiedDigest": "4f53cda18c2baa0c0354bb5f9a3ecbe5ed12ab4d8e11ba873c2f11161202b945",
+      "schemaDigest": "7024c22f9ac1031e377702441aa774fad186fc829053ebc12784367725f6021f"
+    },
+    {
+      "entity": "MembershipSignal",
+      "count": 1,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "bdde19cdc35a2d31229a87f171f4ae60bbce8c16b9bac5530e3906964dd7f2e7",
+      "verifiedDigest": "bdde19cdc35a2d31229a87f171f4ae60bbce8c16b9bac5530e3906964dd7f2e7",
+      "schemaDigest": "d69307948253c30e1fd24d1d13c31ee4b93f2796ba5264408f29ea01e43c63eb"
+    },
+    {
+      "entity": "NotificationAnnouncement",
+      "count": 2,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "57bb9ef081e1ada4eabc8987530471868f0e5c89f2b64d7baf6955e8b081b529",
+      "verifiedDigest": "57bb9ef081e1ada4eabc8987530471868f0e5c89f2b64d7baf6955e8b081b529",
+      "schemaDigest": "4907c4a1abe0b55c11929e55f286000346ec67ec06cf21c1607b5dcf3ec3ac92"
+    },
+    {
+      "entity": "NotificationReadReceipt",
+      "count": 11,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "069cb02df6288ad30779dc48d2b29d802cfe21dd108feacf30f6158787b0bd9b",
+      "verifiedDigest": "069cb02df6288ad30779dc48d2b29d802cfe21dd108feacf30f6158787b0bd9b",
+      "schemaDigest": "e768c51fe906bb0aa1c05bb83c77fceeb3739411b9822fbad240d7b82fa2859c"
+    },
+    {
+      "entity": "ProfileComment",
+      "count": 3,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "5104f0517d9b71d35ec04124501d6246db3b80e80683c96d58bfa88f54831e26",
+      "verifiedDigest": "5104f0517d9b71d35ec04124501d6246db3b80e80683c96d58bfa88f54831e26",
+      "schemaDigest": "1952b3485e5600ac35c43a616dc3d760e6c839b4fd373dd3144d7e53ed3a2937"
+    },
+    {
+      "entity": "PushDeviceRegistration",
+      "count": 41,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "54aac37b8962bae3f6019d9c1e8ec1780e033a3d035807e1c7d23c1925746239",
+      "verifiedDigest": "54aac37b8962bae3f6019d9c1e8ec1780e033a3d035807e1c7d23c1925746239",
+      "schemaDigest": "7dca234d1c4af9a7df1df0fd0a5d1f2cdd2d1d3db9f908126b8b3464008d1796"
+    },
+    {
+      "entity": "PushNotificationEvent",
+      "count": 337,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "41e351ab1d47c7542e66f29cbb2006a65d5b6e1d5c525403918cf76d49346f5a",
+      "verifiedDigest": "41e351ab1d47c7542e66f29cbb2006a65d5b6e1d5c525403918cf76d49346f5a",
+      "schemaDigest": "5c7a84ddadeec7d153549f2fe77ba7a4c8047454caba9aaaa1080d259e7685b4"
+    },
+    {
+      "entity": "RoomInvite",
+      "count": 1,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "0d4bfe296c4937ff1dc8b476a97afd9e14535b7c0bd4138f60e5caecac826890",
+      "verifiedDigest": "0d4bfe296c4937ff1dc8b476a97afd9e14535b7c0bd4138f60e5caecac826890",
+      "schemaDigest": "1c1f3919fd1480178f23ab055c7179318aa0c4c9aec69454d7f2b3537be62867"
+    },
+    {
+      "entity": "User",
+      "count": 61,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "52ce9713a4465a1d8e61ccfb49513a0f62ec799cb6ce996ddf2f78610eaa2a4d",
+      "verifiedDigest": "52ce9713a4465a1d8e61ccfb49513a0f62ec799cb6ce996ddf2f78610eaa2a4d",
+      "schemaDigest": "06dd6a6314c94b66bb6a467ed5d03aebc9e951c1dd7a31ef65f11b8fb9a4c1b9"
+    },
+    {
+      "entity": "WordPack",
+      "count": 21,
+      "sourceAvailability": "deployed",
+      "firstPassDigest": "9891a6740f1277a082fbac6c4e28326386e4478105f3a09a70f119ef642916e5",
+      "verifiedDigest": "9891a6740f1277a082fbac6c4e28326386e4478105f3a09a70f119ef642916e5",
+      "schemaDigest": "9030d6227c87a6ece4eebdd942601e58b486880fea4cd3c46e775e210e53aef2"
+    }
+  ],
+  "total_rows": 1148,
+  "users": {
+    "total": 61,
+    "valid_spy_ids": 49,
+    "duplicate_valid_spy_ids": 0,
+    "missing_or_invalid_spy_ids": 12,
+    "verified": 61,
+    "has_name": 61,
+    "onboarded": 15,
+    "administrators": 1
+  },
+  "relationships": {
+    "Friendship": {
+      "rows": 5,
+      "missing_source_participant_rows": 0
+    },
+    "ProfileComment": {
+      "rows": 3,
+      "missing_source_participant_rows": 0
+    },
+    "RoomInvite": {
+      "rows": 1,
+      "missing_source_participant_rows": 0
+    }
+  },
+  "raw_payload_committed": false,
+  "archive_mode": "0600",
+  "archive_directory_mode": "0700",
+  "production_mutations": false
+}

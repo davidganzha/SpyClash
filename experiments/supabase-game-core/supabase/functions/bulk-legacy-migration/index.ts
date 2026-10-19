@@ -1,0 +1,11 @@
+import postgres from 'postgres';
+import {createMigrationHandler} from '../../../scripts/bulk-migration/coordinator.ts';
+const origin=Deno.env.get('SUPABASE_URL')||'';
+if(origin!=='https://bbkfsgnordtdiblgdzkg.supabase.co')throw new Error('Unexpected migration project');
+const connection=new URL(Deno.env.get('SUPABASE_DB_URL')||'');
+if(connection.hostname!=='db.bbkfsgnordtdiblgdzkg.supabase.co'||connection.username!=='postgres')throw new Error('Unexpected migration database');
+connection.hostname='aws-0-eu-west-1.pooler.supabase.com';connection.port='6543';connection.username='postgres.bbkfsgnordtdiblgdzkg';
+const db=postgres(connection.href,{prepare:false,max:1,idle_timeout:10,connect_timeout:8,ssl:'require'});
+const serviceKey=Deno.env.get('SUPABASE_SERVICE_ROLE_KEY');
+if(!serviceKey)throw new Error('Missing server Auth credential');
+Deno.serve(createMigrationHandler({db,origin,serviceKey}));

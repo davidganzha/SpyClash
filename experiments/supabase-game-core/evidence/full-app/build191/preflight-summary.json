@@ -1,0 +1,53 @@
+{
+  "production_mutations": false,
+  "source_rows": 1148,
+  "source_entities": 26,
+  "source_digest": "7a51624a000781dd999d434159361e48485afef11fc710b51df0477c80d392eb",
+  "plan_digest": "269e80541b77657e5643f3b4526034ef4c88bc1163c6144f5cca0549ca4e3923",
+  "core": {
+    "source_users": 61,
+    "accounts_to_provision": 56,
+    "profiles_to_insert": 56,
+    "profiles_preserved": 5,
+    "packs_to_insert": 1,
+    "history_to_insert": 113,
+    "friendships_to_insert": 5,
+    "comments_to_insert": 3,
+    "issues": 0,
+    "archive_only": 7
+  },
+  "ancillary": {
+    "announcements_to_insert": 2,
+    "events_to_insert": 5,
+    "visible_events_to_insert": 0,
+    "read_receipts_to_merge": 9,
+    "reports_to_insert": 1,
+    "archive_only": 357,
+    "issues": 0,
+    "warnings": 0
+  },
+  "issues": 0,
+  "source_spy_ids_preserved": 49,
+  "new_spy_ids": 12,
+  "source_inventory_complete": true,
+  "validation": {
+    "focused_tests_passed": 59,
+    "private_full_snapshot_postgres_checks_passed": 16,
+    "synthetic_postgres_checks_passed": 15,
+    "real_local_auth_admin_explicit_uuid_check": true,
+    "real_local_auth_sessions_issued": 0,
+    "remote_production_mutations": 0,
+    "typescript_check": "passed",
+    "whitespace_check": "passed"
+  },
+  "expected_target": {
+    "active_profiles": 64,
+    "source_users": 61,
+    "preexisting_test_profiles_preserved": 3,
+    "history_rows": 212,
+    "word_pack_rows": 21,
+    "friendships": 5,
+    "comments": 3
+  },
+  "scope_limit": "Data backfill and lossless archive; Base44 auth, billing, AI, push and deletion bridges remain operational dependencies."
+}

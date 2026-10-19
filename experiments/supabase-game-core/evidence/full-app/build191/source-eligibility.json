@@ -1,0 +1,86 @@
+{
+  "snapshot_digest": "7a51624a000781dd999d434159361e48485afef11fc710b51df0477c80d392eb",
+  "users": {
+    "duplicate_normalized_email_groups": 0,
+    "missing_email": 0
+  },
+  "ownership": {
+    "GameHistory": {
+      "no_stable_id": 70,
+      "unique_email_owner": 65,
+      "no_matching_email_owner": 5,
+      "stable_id_present": 135,
+      "stable_id_current": 135
+    },
+    "WordPack": {
+      "stable_id_present": 21,
+      "stable_id_current": 19,
+      "stable_id_missing_source_user": 2
+    },
+    "Entitlement": {
+      "stable_id_present": 1,
+      "stable_id_current": 1
+    }
+  },
+  "states": {
+    "GameRoom": {
+      "waiting": 11,
+      "finished": 11
+    },
+    "PushNotificationEvent": {
+      "no_devices": 124,
+      "cancelled": 206,
+      "failed": 7
+    },
+    "NotificationAnnouncement": {
+      "withdrawn": 2
+    },
+    "BillingIdentityLifecycle": {
+      "active": 98,
+      "deleting": 1
+    },
+    "AppleSignInCredential": {
+      "pending": 28,
+      "bound": 1
+    },
+    "RoomInvite": {
+      "expired": 1
+    },
+    "LiveActivityRegistration": {
+      "active": 42
+    },
+    "PushDeviceRegistration": {
+      "active": 41
+    }
+  },
+  "source_reference_gaps": {
+    "PushNotificationEvent": {
+      "rows": 337,
+      "no_current_source_user": 23
+    },
+    "NotificationReadReceipt": {
+      "rows": 11,
+      "no_current_source_user": 2
+    },
+    "AppStoreAccount": {
+      "rows": 3,
+      "no_current_source_user": 1
+    },
+    "AppleSignInCredential": {
+      "rows": 29,
+      "no_current_source_user": 28
+    },
+    "PushDeviceRegistration": {
+      "rows": 41,
+      "no_current_source_user": 7
+    },
+    "LiveActivityRegistration": {
+      "rows": 42,
+      "no_current_source_user": 7
+    },
+    "AiGenerationUsage": {
+      "rows": 6,
+      "no_current_source_user": 0
+    }
+  }
+}

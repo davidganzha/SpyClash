@@ -1,0 +1,62 @@
+{
+  "mode": "private-full-snapshot",
+  "passed": 16,
+  "checks": [
+    "actual migration/application schemas applied to a new isolated database",
+    "private live baseline cloned with exact JSON timestamps and retained target data",
+    "sealed HTTP upload rejects wrong token, wrong digest and replacement of a committed payload",
+    "incorrect operator capability and oversized requests perform no Auth or data action",
+    "reservations persist first without creating verified ownership or sessions",
+    "Auth failure leaves functional data unchanged and reservations resumable",
+    "bounded Auth provisioning recovers a lost create acknowledgement with one immutable UUID",
+    "missing or stale independent source attestation prevents functional apply",
+    "reviewed target drift rejects all functional writes",
+    "archive failure rolls back the complete functional transaction",
+    "all source records archived byte-semantically and all planned data/IDs applied with current data preserved",
+    "applied job replay is idempotent and makes no Auth call",
+    "fresh planning respects provenance and cannot duplicate or resurrect imported content",
+    "rollback refuses newer user activity atomically",
+    "rollback restores original data while retaining immutable Auth/reservation identity",
+    "verified bridge adopts the reserved UUID and complete progress without reimporting"
+  ],
+  "source_rows": 1148,
+  "source_users": 61,
+  "core_counts": {
+    "source_users": 61,
+    "accounts_to_provision": 56,
+    "profiles_to_insert": 56,
+    "profiles_preserved": 5,
+    "packs_to_insert": 1,
+    "history_to_insert": 113,
+    "friendships_to_insert": 5,
+    "comments_to_insert": 3,
+    "issues": 0,
+    "archive_only": 7
+  },
+  "ancillary_counts": {
+    "announcements_to_insert": 2,
+    "events_to_insert": 5,
+    "visible_events_to_insert": 0,
+    "read_receipts_to_merge": 9,
+    "reports_to_insert": 1,
+    "archive_only": 357,
+    "issues": 0,
+    "warnings": 0
+  },
+  "result_profiles": 64,
+  "result_history": 212,
+  "auth_provisions": 56,
+  "remote_network_calls": 0,
+  "production_mutations": 0,
+  "isolated_database_removed": true,
+  "synthetic_checks_passed": 15,
+  "unit_tests": {
+    "passed": 18,
+    "failed": 0
+  },
+  "limitations": [
+    "Auth Admin transport is mocked in the isolated rehearsal; separate local real Auth API verification is performed by the coordinator task.",
+    "Base44 credential verification and Auth session transport are mocked for the existing legacy-session adoption check.",
+    "No production data is changed by this rehearsal."
+  ]
+}

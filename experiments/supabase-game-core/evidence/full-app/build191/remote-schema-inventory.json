@@ -1,0 +1,56 @@
+{
+  "checked_at": "2026-10-19T10:35:10.179953+00:00",
+  "source_app": "69a0e57fa939f578082f8091",
+  "source_snapshot_digest": "7a51624a000781dd999d434159361e48485afef11fc710b51df0477c80d392eb",
+  "endpoint": "https://app.base44.com/api/apps/69a0e57fa939f578082f8091/entity-schemas",
+  "method": "GET",
+  "endpoint_evidence": "Installed Base44 CLI core/resources/entity/api.ts uses entity-schemas; same authenticated admin endpoint queried read-only",
+  "remote_total": 26,
+  "remote_entity_names": [
+    "AiGenerationQuota",
+    "AiGenerationUsage",
+    "AiWordPackCacheVariant",
+    "AiWordPackOperation",
+    "AiWordPackRequestResult",
+    "AppStoreAccount",
+    "AppleSignInCredential",
+    "BillingIdentityLifecycle",
+    "CommunityProfileSignal",
+    "CommunityReport",
+    "Entitlement",
+    "Friendship",
+    "GameHistory",
+    "GameRoom",
+    "GameRoomSignal",
+    "LiveActivityRegistration",
+    "MembershipGrant",
+    "MembershipSignal",
+    "NotificationAnnouncement",
+    "NotificationReadReceipt",
+    "ProfileComment",
+    "PushDeviceRegistration",
+    "PushNotificationEvent",
+    "RoomInvite",
+    "User",
+    "WordPack"
+  ],
+  "two_complete_schema_reads_match": true,
+  "schema_inventory_digest": "88d8419cb4be31a3550c1d2fd19a4247cc3aa96085bd0472205823f3bf57c6aa",
+  "all_remote_entities_exported": true,
+  "unknown_remote_entities": [],
+  "tracked_but_absent": [
+    "AccountDeletionReceipt"
+  ],
+  "asset_audit": {
+    "entities": [
+      "User",
+      "WordPack"
+    ],
+    "recursive_all_string_values": true,
+    "http_urls": 0,
+    "unique_urls": 0,
+    "domains": {},
+    "field_paths": {}
+  },
+  "production_mutations": false
+}
