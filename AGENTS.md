@@ -12,3 +12,9 @@
 - Keep the version values in `project.yml` and `SpyClash.xcodeproj/project.pbxproj` synchronized. Change `MARKETING_VERSION` only for an intentional release-version change requested by the user or required by the release plan.
 - Commit each completed, verified change as a scoped Git commit and push that commit to the current GitHub branch unless the user explicitly asks not to push.
 - Never mix unrelated pre-existing worktree changes into the checkpoint commit. A GitHub push is not authorization for any production action listed above.
+
+# Simulator authentication builds
+
+- Build Simulator apps intended for runtime use with `CODE_SIGNING_ALLOWED=YES`. Disabling signing can remove the application identity needed by Keychain even though the app launches.
+- Install Simulator runtime builds through `scripts/install-ios-simulator-app.py --simulator <UDID> <app-path>`. It validates the signature and Simulator Keychain identity before installation and verifies the installed copy without deleting app data.
+- A successful build or visual-only QA does not prove authentication. For an auth repair, verify real sign-in and session restoration after terminating and relaunching the installed app.
