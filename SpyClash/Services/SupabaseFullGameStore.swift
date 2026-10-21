@@ -27,6 +27,11 @@ final class SupabaseFullGameStore {
         let body: JSONValue
         var acknowledgement: JSONValue?
     }
+    private struct CommandTask {
+        let id: UUID
+        let source: JSONValue
+        let task: Task<JSONValue, Error>
+    }
     private struct SavedState: Codable {
         let actorID: String
         let roomID: String?
@@ -45,9 +50,25 @@ final class SupabaseFullGameStore {
     private(set) var lastReceipt: JSONValue = .null
     private(set) var signalRevisions: [Int] = []
     private(set) var commandInFlight = false
+    /// Ordinary requests are invisible to recovery UI; only an unresolved
+    /// failure (or a restored journal) enters this state.
+    private(set) var isRecoveringSavedCommand = false
+    private(set) var recoveryGeneration = 0
+    private(set) var recoveredResponse: JSONValue = .null
+    private(set) var recoveredAction: String?
     @ObservationIgnored private var transport: (any SupabaseFullGameTransport)?
     @ObservationIgnored private let evidenceDirectory: URL
     @ObservationIgnored private let automaticallyWatches: Bool
+    @ObservationIgnored private let automaticallyRecovers: Bool
+    @ObservationIgnored private let recoverySleep: (Duration) async throws -> Void
+    @ObservationIgnored private let recoveryNow: () -> ContinuousClock.Instant
+    @ObservationIgnored private var recoveryNotBefore: ContinuousClock.Instant?
+    @ObservationIgnored private var recoveryTask: Task<Void, Never>?
+    @ObservationIgnored private var recoveryWorkerID: UUID?
+    @ObservationIgnored private var activeCommandTask: Task<JSONValue, Error>?
+    @ObservationIgnored private var activeCommandID: String?
+    @ObservationIgnored private var foregroundConsumers: [String: Int] = [:]
+    @ObservationIgnored private var commandTasks: [CommandTask] = []
     @ObservationIgnored private var roomEpoch = 0
     @ObservationIgnored private var transportEpoch = 0
     @ObservationIgnored private var reconciliationTask: Task<Void, Never>?
@@ -60,8 +81,13 @@ final class SupabaseFullGameStore {
     var roomContextGeneration: Int { roomEpoch }
     var pendingIDs: [String] { pending.map { [$0.requestID] } ?? [] }
 
-    init(transport: (any SupabaseFullGameTransport)? = nil, actorID: String = "", name: String = "Player", evidenceDirectory: URL? = nil, automaticallyWatches: Bool = true) {
+    init(transport: (any SupabaseFullGameTransport)? = nil, actorID: String = "", name: String = "Player", evidenceDirectory: URL? = nil, automaticallyWatches: Bool = true, automaticallyRecovers: Bool = true,
+         recoverySleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+         recoveryNow: @escaping () -> ContinuousClock.Instant = { .now }) {
         self.automaticallyWatches = automaticallyWatches
+        self.automaticallyRecovers = automaticallyRecovers
+        self.recoverySleep = recoverySleep
+        self.recoveryNow = recoveryNow
         self.transport = transport
         self.userID = actorID
         self.name = name
@@ -80,11 +106,17 @@ final class SupabaseFullGameStore {
         transportEpoch += 1
         roomEpoch += 1
         reconciliationTask?.cancel(); reconciliationTask = nil
+        recoveryTask?.cancel(); recoveryTask = nil; recoveryWorkerID = nil
+        activeCommandTask?.cancel(); activeCommandTask = nil; activeCommandID = nil
+        foregroundConsumers = [:]
+        commandTasks.forEach { $0.task.cancel() }; commandTasks = []
         stopWatch()
         transport = nil; userID = ""; name = "Player"
         room = nil; roomID = nil; snapshot = .null; pending = nil
         lastError = ""; lastReceipt = .null; signalRevisions = []
         commandInFlight = false; refreshInFlight = false
+        isRecoveringSavedCommand = false; recoveryNotBefore = nil
+        recoveredResponse = .null; recoveredAction = nil
     }
 
     func connect(transport backend: any SupabaseFullGameTransport, name: String) async throws {
@@ -110,6 +142,7 @@ final class SupabaseFullGameStore {
             lastError = Self.failure(error).error.code ?? "room_restore_failed"
         }
         guard connectionEpoch == transportEpoch, userID == backend.userID else { throw CancellationError() }
+        resumePendingRecovery()
         reconciliationTask?.cancel()
         reconciliationTask = Task { [weak self] in
             while !Task.isCancelled {
@@ -137,11 +170,13 @@ final class SupabaseFullGameStore {
 
     private func readRoom(_ body: [String: JSONValue], expectedRoomID: String?, activates: Bool) async throws -> GameRoom? {
         let generation = roomEpoch
+        let connection = transportEpoch
         let actor = userID
         let membership = room?.viewerMembershipID
         do {
             let response = try await read(body)
-            guard actor == userID, generation == roomEpoch, room?.viewerMembershipID == membership else { throw Self.staleContext }
+            guard connection == transportEpoch, actor == userID, generation == roomEpoch,
+                  room?.viewerMembershipID == membership else { throw Self.staleContext }
             guard response.object?.keys.contains("room") == true else { throw Self.invalidResponse }
             if response["room"].isNull {
                 clearRoom(expectedRoomID: expectedRoomID, generation: generation, membership: membership)
@@ -154,7 +189,7 @@ final class SupabaseFullGameStore {
             return roomID == candidate.id ? room : candidate
         } catch {
             let failure = Self.failure(error).error
-            if actor == userID, generation == roomEpoch,
+            if connection == transportEpoch, actor == userID, generation == roomEpoch,
                Self.isMembershipLoss(failure) {
                 clearRoom(expectedRoomID: expectedRoomID, generation: generation, membership: membership)
                 return nil
@@ -166,12 +201,22 @@ final class SupabaseFullGameStore {
     @discardableResult
     func command(_ input: [String: JSONValue]) async throws -> JSONValue {
         guard transport != nil, !userID.isEmpty else { throw Self.notSignedIn }
-        guard !commandInFlight else { throw Self.recoveryRequired }
         let source = JSONValue.object(input)
-        if let pending {
-            guard pending.actorID == userID, pending.source == source else { throw Self.recoveryRequired }
+        if let existing = commandTasks.first(where: { $0.source == source }) { return try await existing.task.value }
+        if let pending, pending.actorID == userID, pending.source == source {
+            // Repeated taps observe the same operation, including its original
+            // request ID and all its original optimistic-concurrency fences.
             return try await retryPendingResponse()
         }
+        let connection = transportEpoch
+        let actor = userID
+        let generation = roomEpoch
+        let membership = room?.viewerMembershipID
+        let match = room?.matchID
+        let revision = room?.roomRevision
+        let lobbyRevision = room?.lobbyRevision
+        // Bind this new intent before awaiting a preceding command. A queued
+        // tap must never silently become an action in a different match/turn.
         var body = input
         let requestID = input["request_id"]?.string ?? UUID().uuidString.lowercased()
         guard UUID(uuidString: requestID) != nil, let action = body["action"]?.string else { throw Self.invalidResponse }
@@ -190,7 +235,46 @@ final class SupabaseFullGameStore {
                 body["expected_revision"] = .number(Double(revision))
             }
         }
-        pending = Intent(requestID: requestID, actorID: userID, source: source, body: .object(body))
+        let queuedID = UUID()
+        let intent = Intent(requestID: requestID, actorID: actor, source: source, body: .object(body))
+        let task = Task { [weak self] () async throws -> JSONValue in
+            guard let self else { throw CancellationError() }
+            defer { self.commandTasks.removeAll { $0.id == queuedID } }
+            try Task.checkCancellation()
+            guard connection == self.transportEpoch, actor == self.userID else { throw CancellationError() }
+            return try await self.sendNewIntent(intent, connection: connection, generation: generation,
+                                                membership: membership, match: match, revision: revision, lobbyRevision: lobbyRevision)
+        }
+        commandTasks.append(CommandTask(id: queuedID, source: source, task: task))
+        return try await task.value
+    }
+
+    private func sendNewIntent(_ intent: Intent, connection: Int, generation: Int, membership: String?, match: String?, revision: Int?, lobbyRevision: Int?) async throws -> JSONValue {
+        let action = intent.body["action"].string ?? ""
+        // A different intent may follow an ordinary in-flight action or a
+        // successful recovery, but is never sent beside an unresolved write.
+        while pending != nil {
+            if pending?.source == intent.source { return try await retryPendingResponse() }
+            do { _ = try await pendingResponse(consumesResponse: false) }
+            catch {
+                guard connection == transportEpoch, intent.actorID == userID else { throw CancellationError() }
+                if pending != nil { throw Self.recoveryRequired }
+                throw error
+            }
+            guard connection == transportEpoch, intent.actorID == userID else { throw CancellationError() }
+            guard generation == roomEpoch, membership == room?.viewerMembershipID, match == room?.matchID else { throw Self.staleContext }
+            if Self.turnActions.contains(action), let expected = intent.body.object?["expected_revision"], expected != snapshot["room_revision"] {
+                throw Self.staleContext
+            }
+            if action == "arm_roulette", let expected = intent.body.object?["expected_lobby_revision"], expected != snapshot["lobby_revision"] {
+                throw Self.staleContext
+            }
+        }
+        guard connection == transportEpoch, intent.actorID == userID else { throw CancellationError() }
+        guard generation == roomEpoch, membership == room?.viewerMembershipID, match == room?.matchID else { throw Self.staleContext }
+        if Self.turnActions.contains(action), revision != room?.roomRevision { throw Self.staleContext }
+        if action == "arm_roulette", lobbyRevision != room?.lobbyRevision { throw Self.staleContext }
+        pending = intent
         do { try persistJournal() }
         catch { pending = nil; throw error }
         return try await retryPendingResponse()
@@ -204,69 +288,197 @@ final class SupabaseFullGameStore {
     }
 
     func retryPendingResponse() async throws -> JSONValue {
-        guard let transport, let intent = pending, intent.actorID == userID else { throw Self.notSignedIn }
-        guard !commandInFlight else { throw Self.recoveryRequired }
-        let commandEpoch = transportEpoch
-        let commandActor = userID
+        try await pendingResponse(consumesResponse: true)
+    }
+
+    /// Called on foreground entry, reconnection and normal reconciliation.
+    /// Recovery replays only the journaled request; it never builds a new one.
+    func resumePendingRecovery() {
+        scheduleAutomaticRecovery(immediate: true)
+    }
+
+    private func pendingResponse(consumesResponse: Bool) async throws -> JSONValue {
+        guard let intent = pending, intent.actorID == userID, transport != nil else { throw Self.notSignedIn }
+        let connection = transportEpoch
+        if consumesResponse { foregroundConsumers[intent.requestID, default: 0] += 1 }
+        defer {
+            if consumesResponse, connection == transportEpoch {
+                foregroundConsumers[intent.requestID, default: 1] -= 1
+                if foregroundConsumers[intent.requestID] == 0 { foregroundConsumers[intent.requestID] = nil }
+            }
+        }
+        if let activeCommandTask, activeCommandID == intent.requestID { return try await activeCommandTask.value }
         commandInFlight = true
-        defer { if commandEpoch == transportEpoch, commandActor == userID { commandInFlight = false } }
+        activeCommandID = intent.requestID
+        let task = Task { [weak self] () async throws -> JSONValue in
+            guard let self else { throw CancellationError() }
+            defer {
+                if connection == self.transportEpoch, self.activeCommandID == intent.requestID {
+                    self.activeCommandTask = nil; self.activeCommandID = nil
+                    self.commandInFlight = false
+                }
+            }
+            do { return try await self.sendPending(intent, connection: connection) }
+            catch {
+                guard connection == self.transportEpoch, intent.actorID == self.userID else { throw CancellationError() }
+                if self.pending?.requestID == intent.requestID {
+                    self.isRecoveringSavedCommand = true
+                    self.lastError = Self.failure(error).error.code ?? "request_failed"
+                    self.scheduleAutomaticRecovery(immediate: false)
+                }
+                self.persistEvidence()
+                throw error
+            }
+        }
+        activeCommandTask = task
+        return try await task.value
+    }
+
+    private func sendPending(_ intent: Intent, connection: Int) async throws -> JSONValue {
+        guard let transport else { throw Self.notSignedIn }
+        if isRecoveringSavedCommand, let deadline = recoveryNotBefore, deadline > recoveryNow() {
+            try await recoverySleep(recoveryNow().duration(to: deadline))
+            try Task.checkCancellation()
+            guard connection == transportEpoch, intent.actorID == userID,
+                  pending?.requestID == intent.requestID else { throw CancellationError() }
+        }
+        let generation = roomEpoch
+        let membership = room?.viewerMembershipID
+        let isReplay = isRecoveringSavedCommand
         let response: JSONValue
         if let acknowledgement = intent.acknowledgement {
             // A known commit is resolved by an authoritative read, never by
             // resending or repeatedly decoding a stale/malformed projection.
             response = try await recoverAcknowledgement(acknowledgement, intent: intent)
         } else {
-            do { response = try await transport.fullGame(intent.body) }
+            let received: JSONValue
+            do { received = try await transport.fullGame(intent.body) }
             catch {
-                guard commandEpoch == transportEpoch, commandActor == userID else { throw CancellationError() }
+                guard connection == transportEpoch, intent.actorID == userID else { throw CancellationError() }
                 let failure = Self.failure(error)
-                if !failure.ambiguous { pending = nil; try? persistJournal() }
+                if failure.ambiguous, let seconds = failure.error.retryAfterSeconds, seconds > 0 {
+                    recoveryNotBefore = recoveryNow().advanced(by: .seconds(seconds))
+                }
+                if !failure.ambiguous {
+                    pending = nil
+                    do { try persistJournal() }
+                    catch { pending = intent; throw error }
+                    isRecoveringSavedCommand = false
+                    stopAutomaticRecovery()
+                }
                 lastError = failure.error.code ?? "request_failed"
-                persistEvidence()
                 throw failure.error
             }
-            guard commandEpoch == transportEpoch, commandActor == userID,
+            guard connection == transportEpoch, intent.actorID == userID,
                   pending?.requestID == intent.requestID else { throw CancellationError() }
-            // A valid receipt identifies a known commit. An invalid envelope
-            // remains an unknown outcome and is retried with the original ID.
-            guard response["receipt"]["request_id"].string == intent.requestID else { throw Self.invalidResponse }
-            pending?.acknowledgement = response
+            guard received["receipt"]["request_id"].string == intent.requestID else { throw Self.invalidResponse }
+            pending?.acknowledgement = received
             try persistJournal()
-            lastReceipt = response["receipt"]
+            lastReceipt = received["receipt"]
             let action = intent.body["action"].string ?? ""
-            let target = response["receipt"]["room_id"].string ?? intent.body["room_id"].string
-            if ["leave_room", "close_room"].contains(action), let target {
+            let target = received["receipt"]["room_id"].string ?? intent.body["room_id"].string
+            if isReplay || generation != roomEpoch || membership != room?.viewerMembershipID {
+                // A replayed receipt may contain a former membership/role even
+                // after leaving or being kicked. Re-authorize it with a read.
+                response = try await recoverAcknowledgement(received, intent: intent,
+                                                            activates: generation == roomEpoch && membership == room?.viewerMembershipID)
+            } else if ["leave_room", "close_room"].contains(action), let target {
                 _ = try await refreshRoom(id: target)
-            } else if !response["room"].isNull {
-                let candidate = try Self.decodeRoom(response["room"])
-                guard candidate.id == target, (candidate.roomRevision ?? 0) >= response["receipt"]["revision"].integer else { throw Self.invalidResponse }
-                try adopt(response["room"], activates: ["create_room", "join_room"].contains(action))
+                response = received
+            } else if !received["room"].isNull {
+                let candidate = try Self.decodeRoom(received["room"])
+                guard candidate.id == target, (candidate.roomRevision ?? 0) >= received["receipt"]["revision"].integer else { throw Self.invalidResponse }
+                if candidate.id == roomID, let currentMembership = room?.viewerMembershipID,
+                   candidate.viewerMembershipID != currentMembership {
+                    response = try await recoverAcknowledgement(received, intent: intent, activates: false)
+                } else {
+                    try adopt(received["room"], activates: ["create_room", "join_room"].contains(action))
+                    response = received
+                }
             } else if let target, !Self.packActions.contains(action) {
                 let current = try await refreshRoom(id: target)
-                if let current, (current.roomRevision ?? 0) < response["receipt"]["revision"].integer { throw Self.invalidResponse }
+                if let current, (current.roomRevision ?? 0) < received["receipt"]["revision"].integer { throw Self.invalidResponse }
+                response = received
             } else if Self.packActions.contains(action) {
-                try Self.validatePackResponse(response, action: action)
+                try Self.validatePackResponse(received, action: action)
+                response = received
             } else { throw Self.invalidResponse }
         }
-        guard commandEpoch == transportEpoch, commandActor == userID,
+        guard connection == transportEpoch, intent.actorID == userID,
               pending?.requestID == intent.requestID else { throw CancellationError() }
+        let wasRecovering = isRecoveringSavedCommand
+        let committed = pending
         pending = nil
+        do { try persistJournal() }
+        catch { pending = committed; throw error }
+        isRecoveringSavedCommand = false
+        stopAutomaticRecovery()
         lastError = ""
-        try persistJournal()
+        if wasRecovering, foregroundConsumers[intent.requestID, default: 0] == 0 {
+            recoveredResponse = response
+            recoveredAction = intent.body["action"].string
+            recoveryGeneration += 1
+        }
         persistEvidence()
         return response
     }
 
-    private func recoverAcknowledgement(_ response: JSONValue, intent: Intent) async throws -> JSONValue {
+    private func stopAutomaticRecovery() {
+        recoveryTask?.cancel(); recoveryTask = nil; recoveryWorkerID = nil
+        recoveryNotBefore = nil
+    }
+
+    private func scheduleAutomaticRecovery(immediate: Bool) {
+        guard automaticallyRecovers, isRecoveringSavedCommand, let intent = pending,
+              intent.actorID == userID, transport != nil, recoveryTask == nil else { return }
+        let connection = transportEpoch
+        let workerID = UUID()
+        let sleep = recoverySleep
+        recoveryWorkerID = workerID
+        // Each wake has a bounded retry burst; normal reconciliation will
+        // resume a later burst during a longer outage without busy-looping.
+        let delays: [Duration] = immediate ? [.zero, .seconds(1), .seconds(2), .seconds(4)]
+                                           : [.milliseconds(400), .seconds(1), .seconds(2), .seconds(4)]
+        recoveryTask = Task { [weak self] in
+            defer {
+                if let self, self.recoveryWorkerID == workerID {
+                    self.recoveryTask = nil; self.recoveryWorkerID = nil
+                }
+            }
+            for baseDelay in delays {
+                var delay = baseDelay
+                if let self, let deadline = self.recoveryNotBefore {
+                    delay = max(delay, self.recoveryNow().duration(to: deadline))
+                }
+                do {
+                    if delay > .zero { try await sleep(delay) }
+                    try Task.checkCancellation()
+                } catch { return }
+                guard let self, self.transportEpoch == connection,
+                      self.userID == intent.actorID, self.pending?.requestID == intent.requestID else { return }
+                do { _ = try await self.pendingResponse(consumesResponse: false); return }
+                catch {
+                    guard self.transportEpoch == connection, self.pending?.requestID == intent.requestID else { return }
+                }
+            }
+        }
+    }
+
+    private func recoverAcknowledgement(_ response: JSONValue, intent: Intent, activates: Bool = true) async throws -> JSONValue {
         guard response["receipt"]["request_id"].string == intent.requestID else { throw Self.invalidResponse }
         lastReceipt = response["receipt"]
         let action = intent.body["action"].string ?? ""
         if Self.packActions.contains(action) {
-            try Self.validatePackResponse(response, action: action)
-            return response
+            if (try? Self.validatePackResponse(response, action: action)) != nil { return response }
+            guard let packID = response["pack"]["id"].string ?? intent.body["pack_id"].string else { throw Self.invalidResponse }
+            let fresh = try await read(["action": .string("get_word_pack"), "pack_id": .string(packID)])
+            try Self.validatePackResponse(fresh, action: action)
+            var latest = response.object ?? [:]
+            latest["pack"] = fresh["pack"]
+            return .object(latest)
         }
         guard let target = response["receipt"]["room_id"].string ?? intent.body["room_id"].string else { throw Self.invalidResponse }
-        let current = try await refreshRoom(id: target, activates: ["create_room", "join_room"].contains(action))
+        let current = try await refreshRoom(id: target, activates: activates && ["create_room", "join_room"].contains(action))
         if let current, (current.roomRevision ?? 0) < response["receipt"]["revision"].integer { throw Self.invalidResponse }
         var latest = response.object ?? [:]
         latest["room"] = try current.map(Self.json) ?? .null
@@ -335,6 +547,7 @@ final class SupabaseFullGameStore {
     }
 
     private func reconcile() async {
+        resumePendingRecovery()
         guard !refreshInFlight, let roomID else { return }
         let epoch = roomEpoch
         let connection = transportEpoch
@@ -342,10 +555,10 @@ final class SupabaseFullGameStore {
         defer { if connection == transportEpoch { refreshInFlight = false } }
         do { _ = try await refreshRoom(id: roomID); scheduleWatch() }
         catch {
-            guard epoch == roomEpoch else { return }
+            guard connection == transportEpoch, epoch == roomEpoch else { return }
             lastError = Self.failure(error).error.code ?? "refresh_failed"
         }
-        guard epoch == roomEpoch else { return }
+        guard connection == transportEpoch, epoch == roomEpoch else { return }
         persistEvidence()
     }
 
@@ -353,6 +566,7 @@ final class SupabaseFullGameStore {
         guard let data = try? Data(contentsOf: journalURL),
               let saved = try? JSONDecoder().decode(SavedState.self, from: data), saved.actorID == userID else { return }
         pending = saved.pending?.actorID == userID ? saved.pending : nil
+        isRecoveringSavedCommand = pending != nil
         // A cached role is never displayed before an authorized current read.
         roomID = saved.roomID
     }
@@ -396,19 +610,24 @@ final class SupabaseFullGameStore {
         try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(value))
     }
     static func failure(_ error: Error) -> FullGameTransportFailure {
-        if let failure = error as? FullGameTransportFailure { return failure }
-        if let error = error as? Base44Error { return FullGameTransportFailure(error: error, ambiguous: false) }
+        if let failure = error as? FullGameTransportFailure {
+            return FullGameTransportFailure(error: failure.error, ambiguous: failure.ambiguous || isTransient(failure.error))
+        }
+        if let error = error as? Base44Error { return FullGameTransportFailure(error: error, ambiguous: isTransient(error)) }
         let lab = safeFailure(error)
-        return FullGameTransportFailure(error: Base44Error(message: "Connection interrupted. Your saved action can be retried.", statusCode: 503, code: lab.code, retryable: true), ambiguous: lab.ambiguous)
+        return FullGameTransportFailure(error: Base44Error(message: "Connection interrupted. Reconnecting automatically.", statusCode: 503, code: lab.code, retryable: true), ambiguous: lab.ambiguous)
+    }
+    private static func isTransient(_ error: Base44Error) -> Bool {
+        error.retryable || [401, 408, 425, 429].contains(error.statusCode ?? 0) || (error.statusCode ?? 0) >= 500
     }
     private static func isMembershipLoss(_ error: Base44Error) -> Bool {
         ["not_member", "room_not_found", "room_access_revoked", "room_departed"].contains(error.code ?? "") || error.statusCode == 404
     }
     private static let turnActions: Set<String> = ["advance_question", "advance_association", "start_association", "stop_association_spin", "mark_answer_heard", "continue_round"]
     private static let packActions: Set<String> = ["create_word_pack", "update_word_pack", "delete_word_pack"]
-    static var recoveryRequired: Base44Error { Base44Error(message: "A saved action is still unresolved. Retry it before another action.", statusCode: 409, code: "pending_command_requires_retry") }
+    static var recoveryRequired: Base44Error { Base44Error(message: "Synchronizing your previous action. Please wait a moment.", statusCode: 409, code: "pending_command_requires_retry") }
     static var notSignedIn: Base44Error { Base44Error(message: "Test account is not signed in.", statusCode: 401, code: "not_signed_in") }
-    static var invalidResponse: Base44Error { Base44Error(message: "The server response could not be confirmed. Retry the saved action.", statusCode: 502, code: "invalid_full_game_response", retryable: true) }
+    static var invalidResponse: Base44Error { Base44Error(message: "The server response could not be confirmed. Synchronizing automatically.", statusCode: 502, code: "invalid_full_game_response", retryable: true) }
     static var staleContext: Base44Error { Base44Error(message: "Room context changed.", statusCode: 409, code: "stale_room_context") }
 }
 #endif

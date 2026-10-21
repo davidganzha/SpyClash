@@ -2940,6 +2940,7 @@ final class AppState: NSObject {
 #if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         guard user != nil, !isRestoring, roomSyncOperation == nil else { return }
         let adapter = client.supabaseAdapter
+        adapter.store.resumePendingRecovery()
         guard let roomID = adapter.store.roomID else {
             synchronizeSupabaseTestRoom()
             return

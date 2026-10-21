@@ -2284,7 +2284,14 @@ struct GameView: View {
     var body: some View {
         productionBody
 #if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
-            .safeAreaInset(edge: .bottom, spacing: 0) { SupabaseGameRecoveryBanner() }
+            .safeAreaInset(edge: .bottom, spacing: 0) {
+                SupabaseGameRecoveryBanner { response in
+                    let adapter = SupabaseGameAdapter.shared
+                    if adapter.store.recoveredAction == "mark_role_card_read",
+                       response["receipt"]["room_id"].string == appState.activeRoom?.id,
+                       adapter.ownRoleConfirmed { revealRole = false }
+                }
+            }
 #endif
     }
 
@@ -8288,6 +8295,13 @@ struct GameView: View {
             await Task.yield()
             guard status == rawStatus,
                   let message = userFacingStatus(rawStatus) else { return }
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
+            if SupabaseGameAdapter.shared.store.isRecoveringSavedCommand,
+               ["SAVED ACTION", "CONNECTION INTERRUPTED", "SYNCHRONIZING YOUR PREVIOUS ACTION", "SYNCHRONIZING AUTOMATICALLY", "PENDING_COMMAND_REQUIRES_RETRY"].contains(where: rawStatus.uppercased().contains) {
+                status = ""
+                return
+            }
+#endif
             appState.showToast(message, kind: toastKind(for: rawStatus))
             status = ""
         }
@@ -8308,7 +8322,7 @@ struct GameView: View {
     private func toastKind(for rawStatus: String) -> AppToastKind {
         let upper = rawStatus.uppercased()
         let errorMarkers = [
-            "ERROR", "FAILED", "COULDN'T", "UNABLE", "EXPIRED", "TRACEBACK", "[401]",
+            "ERROR", "FAILED", "COULDN'T", "UNABLE", "EXPIRED", "TRACEBACK", "[401]", "[409]", "[502]", "[503]",
             "ОШИБ", "НЕ УДАЛ", "ИСТЕКЛ", "NO SE PUDO", "ERROR DE",
             "ПОМИЛ", "НЕ ВДАЛ", "ЗАВЕРШИЛ"
         ]
@@ -11262,7 +11276,7 @@ struct GameView: View {
     }
 
     private func markCardRead(_ room: GameRoom) async {
-        guard let user = appState.user else { return }
+        guard let user = appState.user, !isMarkingCardRead else { return }
         if appState.shouldUsePreviewData {
             var previewRoom = room
             var cardsRead = previewRoom.cardsReadList
@@ -11289,6 +11303,9 @@ struct GameView: View {
             status = copy.cardConfirmedStatus
             HapticManager.shared.fire(.notification(.success))
         } catch {
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
+            if SupabaseGameAdapter.shared.store.isRecoveringSavedCommand { return }
+#endif
             status = error.localizedDescription.uppercased()
             HapticManager.shared.fire(.notification(.error))
         }

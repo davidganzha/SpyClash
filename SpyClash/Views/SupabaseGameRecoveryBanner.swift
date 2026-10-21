@@ -1,42 +1,47 @@
 #if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
 import SwiftUI
 
-/// Recovery augments the original game surface without replacing its controls.
+/// Saved requests recover in the store; the UI only explains a longer wait.
 struct SupabaseGameRecoveryBanner: View {
     @Environment(AppState.self) private var appState
     var onRecovered: (JSONValue) async -> Void = { _ in }
-    @State private var retrying = false
-    @State private var message = ""
     private var adapter: SupabaseGameAdapter { .shared }
 
     var body: some View {
-        if adapter.hasPendingRecovery && !adapter.store.commandInFlight {
-            VStack(spacing: 8) {
-                Text(appState.language == .ru ? "Действие сохранено. Восстанови связь и повтори." : "Your action is saved. Reconnect and retry.")
-                    .font(.caption)
-                if !message.isEmpty { Text(message).font(.caption2) }
-                Button(appState.language == .ru ? "Повторить действие" : "Retry saved action") {
-                    guard !retrying else { return }
-                    retrying = true
-                    Task { @MainActor in
-                        defer { retrying = false }
-                        do {
-                            let response = try await adapter.retrySavedCommand()
-                            appState.synchronizeSupabaseTestRoom()
-                            message = ""
-                            await onRecovered(response)
-                        } catch { message = error.localizedDescription }
-                    }
+        Group {
+            if adapter.store.isRecoveringSavedCommand {
+                HStack(spacing: 10) {
+                    ProgressView().tint(SpyTheme.amber)
+                    Text(recoveryMessage).font(.caption)
                 }
-                .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
-                .disabled(retrying)
-                .accessibilityIdentifier("supabase.fullGameRetry")
+                .foregroundStyle(SpyTheme.amber)
+                .padding(12)
+                .frame(maxWidth: .infinity)
+                .background(SpyTheme.black)
+                .accessibilityElement(children: .combine)
+                .accessibilityIdentifier("supabase.fullGameRecovery")
             }
-            .foregroundStyle(SpyTheme.amber)
-            .padding(12)
-            .frame(maxWidth: .infinity)
-            .background(SpyTheme.black)
-            .accessibilityIdentifier("supabase.fullGameRecovery")
+        }
+        .onChange(of: adapter.store.recoveryGeneration) { _, _ in
+            let actor = adapter.store.userID
+            let generation = adapter.store.recoveryGeneration
+            guard actor == appState.user?.id else { return }
+            let response = adapter.store.recoveredResponse
+            appState.synchronizeSupabaseTestRoom()
+            Task { @MainActor in
+                guard actor == appState.user?.id, actor == adapter.store.userID,
+                      generation == adapter.store.recoveryGeneration else { return }
+                await onRecovered(response)
+            }
+        }
+    }
+
+    private var recoveryMessage: String {
+        switch appState.language {
+        case .ru: "Восстанавливаем связь. Действие завершится автоматически."
+        case .es: "Restableciendo la conexión. La acción se completará automáticamente."
+        case .uk: "Відновлюємо зв’язок. Дія завершиться автоматично."
+        default: "Reconnecting. Your action will complete automatically."
         }
     }
 }

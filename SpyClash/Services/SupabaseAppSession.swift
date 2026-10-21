@@ -339,9 +339,18 @@ final class SupabaseAppSession {
             guard epoch == generation else { throw CancellationError() }
             return result
         } catch let error as Base44Error {
-            throw FullGameTransportFailure(error: error, ambiguous: !(400..<500).contains(error.statusCode ?? 0))
+            // A gateway timeout, throttling response or transient credential
+            // failure does not settle an earlier attempt of this request ID.
+            // Keep the immutable gameplay intent until a definitive response.
+            throw FullGameTransportFailure(error: error, ambiguous: !Self.isDefinitiveFullGameFailure(error))
         }
     }
+
+    private static func isDefinitiveFullGameFailure(_ error: Base44Error) -> Bool {
+        guard let status = error.statusCode else { return false }
+        return (400..<500).contains(status) && ![401, 408, 425, 429].contains(status) && !error.retryable
+    }
+
     static func decodeSession(_ value: JSONValue) throws -> SupabaseStoredSession {
         guard let access = value["access_token"].string, !access.isEmpty,
               let refresh = value["refresh_token"].string, !refresh.isEmpty,
@@ -408,7 +417,14 @@ final class SupabaseAppSession {
             // The binding retry contract requires the server's explicit flag;
             // a generic 503 must not invent retry permission for this code.
             let retryable = code == "apple_account_binding_busy" ? details["retryable"].bool : response.statusCode >= 500 || details["retryable"].bool
-            throw Base44Error(message: details["message"].string ?? details["msg"].string ?? details["error_description"].string ?? "The request could not be completed.", statusCode: response.statusCode, code: code, retryable: retryable)
+            let bodyDelay: Int?
+            if case .number(let seconds) = details["retry_after_seconds"], seconds.isFinite, seconds >= 0 {
+                bodyDelay = Int(exactly: seconds.rounded(.up))
+            } else { bodyDelay = nil }
+            let headerDelay = response.value(forHTTPHeaderField: "Retry-After")
+                .flatMap { Int($0.trimmingCharacters(in: .whitespacesAndNewlines)) }
+                .flatMap { $0 >= 0 ? $0 : nil }
+            throw Base44Error(message: details["message"].string ?? details["msg"].string ?? details["error_description"].string ?? "The request could not be completed.", statusCode: response.statusCode, code: code, retryable: retryable, retryAfterSeconds: bodyDelay ?? headerDelay)
         }
         return json
     }

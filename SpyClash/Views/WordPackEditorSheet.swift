@@ -26,6 +26,8 @@ struct WordPackEditorSheet: View {
     @State private var lastSuccessfulAISignature: WordPackAIGenerationSignature?
     @State private var activeGenerationID: UUID?
     @State private var activeSaveID: UUID?
+    @State private var recoveringSaveRequestID: String?
+    @State private var recoveringSaveDraft: WordPackDraft?
     @State private var operationTask: Task<Void, Never>?
     @State private var accessSheet: LimitlessSheet?
     @FocusState private var focusedField: Field?
@@ -137,10 +139,15 @@ struct WordPackEditorSheet: View {
 #if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         .safeAreaInset(edge: .bottom, spacing: 0) {
             SupabaseGameRecoveryBanner { response in
+                guard let recoveringSaveRequestID,
+                      response["receipt"]["request_id"].string == recoveringSaveRequestID,
+                      ["create_word_pack", "update_word_pack"].contains(SupabaseGameAdapter.shared.store.recoveredAction ?? ""),
+                      route.pack == nil || response["pack"]["id"].string == route.pack?.id else { return }
                 if let pack = try? JSONDecoder().decode(WordPack.self, from: response["pack"].data()) {
+                    self.recoveringSaveRequestID = nil
                     onSaved(pack)
                     appState.markWordPacksChanged()
-                    dismiss()
+                    if draft == recoveringSaveDraft { dismiss() }
                 }
             }
         }
@@ -959,7 +966,11 @@ struct WordPackEditorSheet: View {
     }
 
     private var isBusy: Bool {
-        isGenerating || isSaving
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
+        if let recoveringSaveRequestID,
+           SupabaseGameAdapter.shared.store.pending?.requestID == recoveringSaveRequestID { return true }
+#endif
+        return isGenerating || isSaving
     }
 
     private var hasUnsavedChanges: Bool {
@@ -1247,6 +1258,20 @@ struct WordPackEditorSheet: View {
             return
         } catch {
             guard activeSaveID == saveID else { return }
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
+            if let pending = SupabaseGameAdapter.shared.store.pending,
+               pending.actorID == appState.user?.id,
+               pending.body["action"].string == (route.pack == nil ? "create_word_pack" : "update_word_pack"),
+               pending.body["pack_id"].string == route.pack?.id,
+               pending.body["name"].string == draftToSave.normalizedName,
+               pending.body["category"].string == (draftToSave.normalizedCategory.nilIfBlank ?? draftToSave.normalizedName),
+               pending.body["words"] == .array(draftToSave.words.map(JSONValue.string)) {
+                recoveringSaveRequestID = pending.requestID
+                recoveringSaveDraft = draftToSave
+                message = nil
+                return
+            }
+#endif
             message = EditorMessage(
                 text: error.localizedDescription.uppercased(),
                 kind: .error

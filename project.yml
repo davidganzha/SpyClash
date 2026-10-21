@@ -10,7 +10,7 @@ configs:
   SupabaseRelease: release
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 195
+    CURRENT_PROJECT_VERSION: 196
     MARKETING_VERSION: 1.0.3
     SWIFT_VERSION: 6.0
 packages:
@@ -384,6 +384,9 @@ schemes:
       config: Debug
     test:
       config: Debug
+      environmentVariables:
+        # Unit tests use injected transports, never a Simulator's saved lab account.
+        LAB_CONFIG_PATH: /dev/null
       targets:
         - SpyClashSupabaseTests
     management:

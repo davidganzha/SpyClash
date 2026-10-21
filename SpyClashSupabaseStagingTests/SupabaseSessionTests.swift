@@ -120,17 +120,18 @@ private final class StagingURLProtocol: URLProtocol, @unchecked Sendable {
         var requests: [URLRequest] = []
         var bodies: [Data] = []
         var statusCode = 200
-        func reset(response: Data, statusCode: Int = 200) { lock.lock(); defer { lock.unlock() }; calls = 0; self.response = response; responses = [:]; sequences = [:]; requests = []; bodies = []; self.statusCode = statusCode }
-        func reset(responses: [String: Data]) { lock.lock(); defer { lock.unlock() }; calls = 0; response = Data(); self.responses = responses; sequences = [:]; requests = []; bodies = []; statusCode = 200 }
-        func reset(sequences: [String: [(Int, Data)]]) { lock.lock(); defer { lock.unlock() }; calls = 0; response = Data(); responses = [:]; self.sequences = sequences; requests = []; bodies = []; statusCode = 200 }
-        func next(request: URLRequest, body: Data) -> (Int, Data) {
+        var headers: [String: String] = [:]
+        func reset(response: Data, statusCode: Int = 200, headers: [String: String] = [:]) { lock.lock(); defer { lock.unlock() }; calls = 0; self.response = response; responses = [:]; sequences = [:]; requests = []; bodies = []; self.statusCode = statusCode; self.headers = headers }
+        func reset(responses: [String: Data]) { lock.lock(); defer { lock.unlock() }; calls = 0; response = Data(); self.responses = responses; sequences = [:]; requests = []; bodies = []; statusCode = 200; headers = [:] }
+        func reset(sequences: [String: [(Int, Data)]]) { lock.lock(); defer { lock.unlock() }; calls = 0; response = Data(); responses = [:]; self.sequences = sequences; requests = []; bodies = []; statusCode = 200; headers = [:] }
+        func next(request: URLRequest, body: Data) -> (Int, Data, [String: String]) {
             lock.lock(); defer { lock.unlock() }
             calls += 1; requests.append(request); bodies.append(body)
             let path = request.url?.path ?? ""
             if var queue = sequences[path], !queue.isEmpty {
-                let response = queue.removeFirst(); sequences[path] = queue; return response
+                let response = queue.removeFirst(); sequences[path] = queue; return (response.0, response.1, headers)
             }
-            return (statusCode, responses[path] ?? response)
+            return (statusCode, responses[path] ?? response, headers)
         }
         var recordedRequests: [URLRequest] { lock.lock(); defer { lock.unlock() }; return requests }
         var recordedBodies: [Data] { lock.lock(); defer { lock.unlock() }; return bodies }
@@ -151,13 +152,13 @@ private final class StagingURLProtocol: URLProtocol, @unchecked Sendable {
                 body.append(contentsOf: buffer.prefix(count))
             }
         }
-        let (status, data) = Self.state.next(request: request, body: body)
+        let (status, data, headers) = Self.state.next(request: request, body: body)
         DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { [self] in
             if status == -1 {
                 client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
                 return
             }
-            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"])!
+            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"].merging(headers) { _, replacement in replacement })!
             client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
             client?.urlProtocol(self, didLoad: data)
             client?.urlProtocolDidFinishLoading(self)
@@ -243,6 +244,60 @@ extension SupabaseSessionTests {
         catch { XCTAssertEqual(StagingURLProtocol.state.count, 2) }
         XCTAssertEqual(auth.userID, actor)
         XCTAssertEqual(auth.accessToken, "current-supabase")
+    }
+
+    func testFullGameHTTPFailuresPreserveUnresolvedCommandsUntilDefinitiveRejection() async throws {
+        let command: JSONValue = .object([
+            "action": .string("mark_role_card_read"),
+            "room_id": .string("22222222-2222-4222-8222-222222222222"),
+            "request_id": .string("33333333-3333-4333-8333-333333333333"),
+            "expected_match_id": .string("44444444-4444-4444-8444-444444444444")
+        ])
+        for (status, retryable, ambiguous) in [
+            (401, false, true), (408, false, true), (425, false, true), (429, false, true),
+            (409, true, true), (503, true, true),
+            (400, false, false), (403, false, false), (409, false, false)
+        ] {
+            let body = Data("{\"code\":\"game_rejected\",\"retryable\":\(retryable)}".utf8)
+            StagingURLProtocol.state.reset(response: body, statusCode: status)
+            do {
+                _ = try await storedAuth().fullGame(command)
+                XCTFail("HTTP \(status) unexpectedly succeeded")
+            } catch let failure as FullGameTransportFailure {
+                XCTAssertEqual(failure.ambiguous, ambiguous, "HTTP \(status), retryable=\(retryable)")
+                XCTAssertEqual(failure.error.statusCode, status)
+                XCTAssertEqual(failure.error.code, "game_rejected")
+            } catch {
+                XCTFail("Unexpected failure type: \(type(of: error))")
+            }
+            XCTAssertEqual(StagingURLProtocol.state.count, 1, "The journal owns retries; this transport attempt stays bounded")
+            let request = try XCTUnwrap(StagingURLProtocol.state.recordedRequests.first)
+            XCTAssertEqual(request.url?.path, "/functions/v1/full-game-core")
+            XCTAssertEqual(request.value(forHTTPHeaderField: "Authorization"), "Bearer current-supabase")
+            let sent = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(StagingURLProtocol.state.recordedBodies.first))
+            XCTAssertEqual(sent, command)
+        }
+    }
+
+    func testFullGamePreservesRateLimitCooldownFromBodyOrSecondsHeader() async throws {
+        for (body, header, expected) in [
+            (#"{"code":"rate_limited","retry_after_seconds":30}"#, nil, 30),
+            (#"{"code":"rate_limited"}"#, "45", 45),
+            (#"{"code":"rate_limited","retry_after_seconds":1.5}"#, nil, 2),
+            (#"{"code":"rate_limited","retry_after_seconds":-1}"#, "-10", nil),
+            (#"{"code":"rate_limited","retry_after_seconds":1e100}"#, "invalid", nil)
+        ] as [(String, String?, Int?)] {
+            StagingURLProtocol.state.reset(response: Data(body.utf8), statusCode: 429,
+                                           headers: header.map { ["Retry-After": $0] } ?? [:])
+            do {
+                _ = try await storedAuth().fullGame(.object(["action": .string("get_active_room")]))
+                XCTFail("Throttled request unexpectedly succeeded")
+            } catch let failure as FullGameTransportFailure {
+                XCTAssertTrue(failure.ambiguous)
+                XCTAssertEqual(failure.error.retryAfterSeconds, expected)
+            } catch { XCTFail("Unexpected failure type: \(type(of: error))") }
+            XCTAssertEqual(StagingURLProtocol.state.count, 1)
+        }
     }
 
     func testLegacyRecoveryAndResendUseOwnerEmailWithoutSessionHeaders() async throws {

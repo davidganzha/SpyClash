@@ -6,6 +6,7 @@ import XCTest
 final class Base44IsolationTests: XCTestCase {
     func testProductionAuthPushAndGameRoutesNeverReachBase44Transport() async throws {
         XCTAssertTrue(SupabaseTestEnvironment.isEnabled)
+        XCTAssertEqual(SupabaseTestEnvironment.configurationURL.path, "/dev/null", "Unit tests must not restore a saved Simulator lab account")
         let observer = IsolationRequestObserver.shared
         observer.reset()
         let configuration = URLSessionConfiguration.ephemeral
@@ -30,7 +31,10 @@ final class Base44IsolationTests: XCTestCase {
                 identityToken: "synthetic-identity", authorizationCode: "synthetic-code",
                 rawNonce: "synthetic-nonce", state: "synthetic-state", appleUserID: "synthetic-user",
                 email: nil, givenName: nil, familyName: nil
-            ))
+            ), handoff: { _ in
+                XCTFail("Test backend must reject Apple auth before starting a production handoff")
+                throw URLError(.unsupportedURL)
+            })
         }
         XCTAssertEqual(observer.count, 0, "Native Apple bootstrap must not escape the test backend")
 

@@ -121,7 +121,7 @@ struct HomeView: View {
         ))
 #if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         .safeAreaInset(edge: .bottom, spacing: 0) {
-            if hasSupabaseRecovery { supabaseRecoveryBanner }
+            supabaseRecoveryBanner
         }
 #endif
     }
@@ -136,48 +136,19 @@ struct HomeView: View {
 
 #if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
     private var supabaseRecoveryBanner: some View {
-        VStack(spacing: 10) {
-            Text(localized(
-                en: "Your action is saved. Reconnect and retry before creating or joining another room.",
-                ru: "Действие сохранено. Восстанови связь и повтори его, прежде чем создавать или открывать другую комнату.",
-                es: "La acción está guardada. Reconecta y reintenta antes de crear o entrar en otra sala.",
-                uk: "Дію збережено. Віднови зв’язок і повтори її, перш ніж створювати чи відкривати іншу кімнату."
-            ))
-            .font(.caption)
-            .multilineTextAlignment(.center)
-            .foregroundStyle(SpyTheme.amber)
-            .accessibilityIdentifier("supabase.homePending")
-            Button(localized(en: "Retry saved action", ru: "Повторить действие", es: "Reintentar acción", uk: "Повторити дію")) {
-                Task { await retrySupabaseRecovery() }
+        SupabaseGameRecoveryBanner { response in
+            let adapter = SupabaseGameAdapter.shared
+            guard ["create_room", "join_room"].contains(adapter.store.recoveredAction ?? ""),
+                  let room = adapter.currentRoom,
+                  response["receipt"]["room_id"].string == room.id else { return }
+            do {
+                try appState.confirmExplicitRoomActivation(room)
+                appState.activeRoom = room
+                appState.selectedTab = .game
+            } catch {
+                statusText = roomErrorMessage(error)
+                statusKind = .error
             }
-            .buttonStyle(SpyCinematicButtonStyle(variant: .secondary))
-            .disabled(isLoading)
-            .accessibilityIdentifier("supabase.homeRetry")
-        }
-        .padding(16)
-        .frame(maxWidth: .infinity)
-        .background(SpyTheme.black)
-    }
-
-    private func retrySupabaseRecovery() async {
-        guard !isLoading, let userID = appState.user?.id else { return }
-        isLoading = true
-        defer { isLoading = false }
-        do {
-            let room = try await SupabaseGameAdapter.shared.retryPending()
-            try Task.checkCancellation()
-            guard appState.user?.id == userID else { return }
-            if let room { try appState.confirmExplicitRoomActivation(room) }
-            appState.activeRoom = room
-            if room != nil { appState.selectedTab = .game }
-            statusText = localized(en: "Saved action recovered", ru: "Действие восстановлено", es: "Acción recuperada", uk: "Дію відновлено")
-            statusKind = .success
-        } catch is CancellationError {
-            return
-        } catch {
-            guard appState.user?.id == userID else { return }
-            statusText = roomErrorMessage(error)
-            statusKind = .error
         }
     }
 #endif
@@ -1029,6 +1000,14 @@ struct HomeView: View {
         Task { @MainActor in
             await Task.yield()
             guard statusText == message else { return }
+#if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
+            if SupabaseGameAdapter.shared.store.isRecoveringSavedCommand,
+               ["SAVED ACTION", "CONNECTION INTERRUPTED", "SYNCHRONIZING YOUR PREVIOUS ACTION", "SYNCHRONIZING AUTOMATICALLY", "PENDING_COMMAND_REQUIRES_RETRY"].contains(where: message.uppercased().contains) {
+                statusText = ""
+                statusKind = nil
+                return
+            }
+#endif
             appState.showToast(
                 message,
                 kind: statusKind == .success ? .success : .error

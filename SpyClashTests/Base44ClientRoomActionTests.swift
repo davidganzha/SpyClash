@@ -2477,7 +2477,7 @@ final class Base44ClientRoomActionTests: XCTestCase {
         XCTAssertNil(radar.incomingInvitation)
     }
 
-    func testRadarProfileRefreshPreservesInviteAndTransportButAccountChangeClearsThem() {
+    func testRadarProfileRefreshPreservesInviteAndTransportButAccountChangeClearsThem() async {
         let radar = RadarNearbyService()
         radar.setApplicationActive(true)
         defer { radar.configure(user: nil, allowsTransport: false) }
@@ -2509,17 +2509,39 @@ final class Base44ClientRoomActionTests: XCTestCase {
         radar.startScanning()
         let initialRebuilds = radar.transportRebuildCountForTesting
         let initialBrowserStarts = radar.browserStartCountForTesting
+        let initialGeneration = radar.transportGenerationIDForTesting
+        // No suspension has occurred on MainActor, so construction is still
+        // pending. A profile refresh must not cancel this first generation.
+        XCTAssertEqual(initialRebuilds, 1)
+        XCTAssertFalse(radar.hasActiveTransportForTesting)
         radar.presentForConfirmation(invitation)
         radar.configure(user: refreshedUser)
 
         XCTAssertEqual(radar.incomingInvitation, invitation)
         XCTAssertEqual(radar.transportRebuildCountForTesting, initialRebuilds)
         XCTAssertEqual(radar.browserStartCountForTesting, initialBrowserStarts)
+        XCTAssertEqual(radar.transportGenerationIDForTesting, initialGeneration)
+
+        radar.setApplicationActive(false, stopTransportWhenInactive: false)
+        radar.setApplicationActive(true)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, initialRebuilds)
+        XCTAssertEqual(radar.transportGenerationIDForTesting, initialGeneration)
+
+        await radar.awaitFrameworkOperationsForTesting()
+        XCTAssertTrue(radar.hasActiveTransportForTesting)
+        let browserStartsAfterConstruction = radar.browserStartCountForTesting
+        XCTAssertEqual(browserStartsAfterConstruction, initialBrowserStarts + 1)
+        radar.configure(user: originalUser)
+        XCTAssertEqual(radar.incomingInvitation, invitation)
+        XCTAssertEqual(radar.transportRebuildCountForTesting, initialRebuilds)
+        XCTAssertEqual(radar.browserStartCountForTesting, browserStartsAfterConstruction)
+        XCTAssertEqual(radar.transportGenerationIDForTesting, initialGeneration)
 
         radar.configure(user: nextAccount)
 
         XCTAssertNil(radar.incomingInvitation)
         XCTAssertGreaterThan(radar.transportRebuildCountForTesting, initialRebuilds)
+        XCTAssertNotEqual(radar.transportGenerationIDForTesting, initialGeneration)
     }
 
     func testRadarCombinedProfileAndBlockedPolicyPreservesBlockAndRejectsInvitation() {

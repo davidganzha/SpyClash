@@ -38,6 +38,7 @@ struct WordPacksView: View {
 #if SPYCLASH_SUPABASE_TEST || SPYCLASH_SUPABASE
         .safeAreaInset(edge: .bottom, spacing: 0) {
             SupabaseGameRecoveryBanner { _ in
+                guard ["create_word_pack", "update_word_pack", "delete_word_pack"].contains(SupabaseGameAdapter.shared.store.recoveredAction ?? "") else { return }
                 appState.markWordPacksChanged()
                 await load()
             }

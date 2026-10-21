@@ -73,7 +73,7 @@ final class SupabaseGameAdapterTests: XCTestCase {
         XCTAssertFalse(store.hasPendingRecovery)
     }
 
-    func testPendingBlocksDifferentActionAndRoomWithoutTransport() async throws {
+    func testPendingRecoversOriginalBeforeAllowingDifferentActionAndRoom() async throws {
         let (transport, store) = makeStore()
         try store.adopt(.object(fixture()))
         transport.handler = { _ in throw URLError(.networkConnectionLost) }
@@ -85,7 +85,8 @@ final class SupabaseGameAdapterTests: XCTestCase {
         await expectCode("pending_command_requires_retry") {
             _ = try await store.command(["action": .string("join_room"), "room_code": .string("XYZ789")])
         }
-        XCTAssertEqual(transport.requests.count, 1)
+        XCTAssertEqual(transport.requests.count, 3)
+        XCTAssertTrue(transport.requests.allSatisfy { $0 == original?.body }, "Only the original saved action may be retried")
         XCTAssertEqual(store.pending, original)
     }
 
@@ -213,6 +214,348 @@ final class SupabaseGameAdapterTests: XCTestCase {
         XCTAssertFalse(store.hasPendingRecovery)
     }
 
+    func testTimeoutRecoversAutomaticallyWithOriginalRequestAndAuthoritativeRead() async throws {
+        let clock = RecoveryTestClock()
+        let (transport, store) = makeStore(automaticallyRecovers: true, recoverySleep: clock.sleep)
+        try store.adopt(.object(fixture()))
+        var writes = 0
+        transport.handler = { request in
+            if request["action"].string == "get_room" { return .object(["room": .object(self.fixture(revision: 13))]) }
+            writes += 1
+            if writes == 1 { throw URLError(.timedOut) }
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        _ = try? await store.command(["action": .string("advance_question"), "room_id": .string(roomID)])
+        XCTAssertTrue(store.isRecoveringSavedCommand)
+        await until { clock.delays.count == 1 }
+        clock.advance()
+        await until { !store.hasPendingRecovery }
+        XCTAssertEqual(transport.requests[0], transport.requests[1])
+        XCTAssertEqual(transport.requests[1]["expected_revision"].integer, 12)
+        XCTAssertEqual(transport.requests[1]["expected_membership_id"].string, membershipID)
+        XCTAssertEqual(transport.requests[1]["expected_match_id"].string, matchID)
+        XCTAssertEqual(transport.requests.last?["action"].string, "get_room")
+        XCTAssertEqual(store.room?.roomRevision, 13)
+        XCTAssertEqual(store.recoveryGeneration, 1)
+        XCTAssertEqual(store.recoveredAction, "advance_question")
+        XCTAssertFalse(store.isRecoveringSavedCommand)
+    }
+
+    func testAcknowledgedMalformedProjectionRecoversAutomaticallyWithoutAnotherWrite() async throws {
+        let clock = RecoveryTestClock()
+        let (transport, store) = makeStore(automaticallyRecovers: true, recoverySleep: clock.sleep)
+        try store.adopt(.object(fixture()))
+        transport.handler = { request in
+            if request["action"].string == "get_room" { return .object(["room": .object(self.fixture(revision: 13))]) }
+            return self.response(request: request, room: .object(["id": .string(self.roomID)]), revision: 13)
+        }
+        await expectCode("invalid_full_game_response") {
+            _ = try await store.command(["action": .string("mark_role_card_read"), "room_id": .string(self.roomID)])
+        }
+        XCTAssertNotNil(store.pending?.acknowledgement)
+        await until { clock.delays.count == 1 }
+        clock.advance()
+        await until { !store.hasPendingRecovery }
+        XCTAssertEqual(transport.requests.compactMap { $0["action"].string }, ["mark_role_card_read", "get_room"])
+        XCTAssertEqual(store.room?.roomRevision, 13)
+        XCTAssertEqual(store.recoveryGeneration, 1)
+    }
+
+    func testRecoveryBackoffIsBoundedAndForegroundWakeResumesSameIntent() async throws {
+        let clock = RecoveryTestClock()
+        let (transport, store) = makeStore(automaticallyRecovers: true, recoverySleep: clock.sleep)
+        try store.adopt(.object(fixture()))
+        transport.handler = { _ in throw URLError(.notConnectedToInternet) }
+        _ = try? await store.command(["action": .string("toggle_ready"), "room_id": .string(roomID)])
+        for attempt in 1...4 {
+            await until { clock.delays.count == attempt }
+            clock.advance()
+            await until { transport.requests.count == attempt + 1 && !store.commandInFlight }
+        }
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(clock.delays, [.milliseconds(400), .seconds(1), .seconds(2), .seconds(4)])
+        XCTAssertEqual(transport.requests.count, 5)
+        XCTAssertTrue(store.hasPendingRecovery)
+        transport.handler = { request in
+            if request["action"].string == "get_room" { return .object(["room": .object(self.fixture(revision: 13))]) }
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        store.resumePendingRecovery()
+        await until { !store.hasPendingRecovery }
+        XCTAssertEqual(transport.requests[0], transport.requests[5])
+        XCTAssertEqual(store.recoveryGeneration, 1)
+    }
+
+    func testConnectRestoresJournalAndRecoversWithoutUserRetry() async throws {
+        let directory = temporaryDirectory()
+        let (transport, original) = makeStore(directory: directory)
+        try original.adopt(.object(fixture()))
+        transport.handler = { _ in throw URLError(.networkConnectionLost) }
+        _ = try? await original.command(["action": .string("toggle_ready"), "room_id": .string(roomID)])
+        let saved = try XCTUnwrap(original.pending)
+        original.disconnect()
+        let restored = SupabaseFullGameStore(evidenceDirectory: directory, automaticallyWatches: false)
+        defer { restored.disconnect() }
+        transport.handler = { request in
+            if ["get_room", "get_active_room"].contains(request["action"].string ?? "") {
+                return .object(["room": .object(self.fixture(revision: 13))])
+            }
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        try await restored.connect(transport: transport, name: "Viewer")
+        await until { !restored.hasPendingRecovery }
+        XCTAssertEqual(transport.requests.filter { $0["action"].string == "toggle_ready" }, [saved.body, saved.body])
+        XCTAssertEqual(restored.room?.roomRevision, 13)
+        XCTAssertEqual(restored.recoveryGeneration, 1)
+    }
+
+    func testConcurrentIdenticalTapsShareOneRequestAndNeverShowRecoveryForOrdinaryFlight() async throws {
+        let (transport, store) = makeStore()
+        let gate = RecoveryTestGate()
+        try store.adopt(.object(fixture()))
+        transport.handler = { request in
+            await gate.wait()
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        let input: [String: JSONValue] = ["action": .string("toggle_ready"), "room_id": .string(roomID)]
+        let first = Task { try await store.command(input) }
+        await until { transport.requests.count == 1 }
+        let second = Task { try await store.command(input) }
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertTrue(store.commandInFlight)
+        XCTAssertFalse(store.isRecoveringSavedCommand)
+        XCTAssertEqual(transport.requests.count, 1)
+        gate.open()
+        let a = try await first.value
+        let b = try await second.value
+        XCTAssertEqual(a, b)
+        XCTAssertEqual(transport.requests.count, 1)
+        XCTAssertEqual(store.recoveryGeneration, 0)
+    }
+
+    func testDuplicateDifferentTapsQueuedBehindAnotherCommandShareTheirRequest() async throws {
+        let (transport, store) = makeStore()
+        let firstGate = RecoveryTestGate()
+        let secondGate = RecoveryTestGate()
+        try store.adopt(.object(fixture()))
+        transport.handler = { request in
+            if request["action"].string == "toggle_ready" { await firstGate.wait() }
+            else { await secondGate.wait() }
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        let first = Task { try await store.command(["action": .string("toggle_ready"), "room_id": .string(self.roomID)]) }
+        await until { transport.requests.count == 1 }
+        let next: [String: JSONValue] = ["action": .string("mark_role_card_read"), "room_id": .string(roomID)]
+        let second = Task { try await store.command(next) }
+        let duplicate = Task { try await store.command(next) }
+        for _ in 0..<10 { await Task.yield() }
+        firstGate.open()
+        _ = try await first.value
+        await until { transport.requests.count == 2 }
+        secondGate.open()
+        let a = try await second.value
+        let b = try await duplicate.value
+        XCTAssertEqual(a, b)
+        XCTAssertEqual(transport.requests.compactMap { $0["action"].string }, ["toggle_ready", "mark_role_card_read"])
+    }
+
+    func testDifferentActionAutomaticallyResolvesPreviousIntentBeforeSending() async throws {
+        let (transport, store) = makeStore()
+        try store.adopt(.object(fixture()))
+        transport.handler = { _ in throw URLError(.timedOut) }
+        _ = try? await store.command(["action": .string("toggle_ready"), "room_id": .string(roomID)])
+        let saved = try XCTUnwrap(store.pending)
+        transport.handler = { request in
+            if request["action"].string == "get_room" { return .object(["room": .object(self.fixture(revision: 13))]) }
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        _ = try await store.command(["action": .string("mark_role_card_read"), "room_id": .string(roomID)])
+        XCTAssertEqual(transport.requests[1], saved.body)
+        XCTAssertEqual(transport.requests.compactMap { $0["action"].string }, ["toggle_ready", "toggle_ready", "get_room", "mark_role_card_read"])
+        XCTAssertFalse(store.hasPendingRecovery)
+    }
+
+    func testQueuedTurnNeverRebindsAfterPrecedingCommandChangesRevision() async throws {
+        let (transport, store) = makeStore()
+        let gate = RecoveryTestGate()
+        try store.adopt(.object(fixture()))
+        transport.handler = { request in
+            await gate.wait()
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        let first = Task { try await store.command(["action": .string("toggle_ready"), "room_id": .string(self.roomID)]) }
+        await until { transport.requests.count == 1 }
+        let next = Task { try await store.command(["action": .string("advance_question"), "room_id": .string(self.roomID)]) }
+        for _ in 0..<10 { await Task.yield() }
+        gate.open()
+        _ = try await first.value
+        await expectCode("stale_room_context") { _ = try await next.value }
+        XCTAssertEqual(transport.requests.count, 1)
+    }
+
+    func testDelayedOldAccountCommandCannotMutateNewConnectionOrPublishRecovery() async throws {
+        let (transport, store) = makeStore()
+        let gate = RecoveryTestGate()
+        try store.adopt(.object(fixture()))
+        transport.handler = { request in
+            await gate.wait()
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        let old = Task { try await store.command(["action": .string("toggle_ready"), "room_id": .string(self.roomID)]) }
+        await until { transport.requests.count == 1 }
+        let other = FakeFullGameTransport(userID: host)
+        other.handler = { _ in .object(["room": .null]) }
+        try await store.connect(transport: other, name: "Host")
+        gate.open()
+        do { _ = try await old.value; XCTFail("Old connection must be cancelled") }
+        catch { XCTAssertTrue(error is CancellationError) }
+        XCTAssertEqual(store.userID, host)
+        XCTAssertNil(store.room)
+        XCTAssertNil(store.pending)
+        XCTAssertEqual(store.lastReceipt, .null)
+        XCTAssertEqual(store.recoveryGeneration, 0)
+        XCTAssertFalse(store.isRecoveringSavedCommand)
+    }
+
+    func testDelayedReadCannotChangeSameAccountAfterReconnect() async throws {
+        let (transport, store) = makeStore()
+        let gate = RecoveryTestGate()
+        try store.adopt(.object(fixture()))
+        transport.handler = { _ in
+            await gate.wait()
+            return .object(["room": .object(self.fixture(revision: 13))])
+        }
+        let old = Task { try await store.refreshRoom(id: self.roomID) }
+        await until { transport.requests.count == 1 }
+        let replacement = FakeFullGameTransport(userID: viewer)
+        replacement.handler = { _ in .object(["room": .null]) }
+        try await store.connect(transport: replacement, name: "Viewer")
+        gate.open()
+        await expectCode("stale_room_context") { _ = try await old.value }
+        XCTAssertNil(store.room)
+        XCTAssertNil(store.roomID)
+    }
+
+    func testReplayedReceiptCannotResurrectMembershipAfterAuthoritativeRemoval() async throws {
+        let clock = RecoveryTestClock()
+        let (transport, store) = makeStore(automaticallyRecovers: true, recoverySleep: clock.sleep)
+        try store.adopt(.object(fixture()))
+        transport.handler = { _ in throw URLError(.timedOut) }
+        _ = try? await store.command(["action": .string("mark_role_card_read"), "room_id": .string(roomID)])
+        transport.handler = { request in
+            if request["action"].string == "get_room" { throw Base44Error(message: "Removed", statusCode: 403, code: "not_member") }
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        _ = try await store.refreshRoom(id: roomID)
+        XCTAssertNil(store.room)
+        await until { clock.delays.count == 1 }
+        clock.advance()
+        await until { !store.hasPendingRecovery }
+        XCTAssertNil(store.room)
+        XCTAssertNil(store.roomID)
+        XCTAssertEqual(store.recoveredResponse["room"], .null)
+        XCTAssertEqual(transport.requests.filter { $0["action"].string == "mark_role_card_read" }.count, 2)
+    }
+
+    func testRetryableHTTPFailureKeepsOriginalIntentForAutomaticRecovery() async throws {
+        let clock = RecoveryTestClock()
+        let (transport, store) = makeStore(automaticallyRecovers: true, recoverySleep: clock.sleep)
+        try store.adopt(.object(fixture()))
+        transport.handler = { _ in throw FullGameTransportFailure(error: Base44Error(message: "Slow down", statusCode: 429, code: "rate_limited", retryable: true), ambiguous: false) }
+        await expectCode("rate_limited") { _ = try await store.command(["action": .string("toggle_ready"), "room_id": .string(self.roomID)]) }
+        XCTAssertNotNil(store.pending)
+        transport.handler = { request in
+            if request["action"].string == "get_room" { return .object(["room": .object(self.fixture(revision: 13))]) }
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        await until { clock.delays.count == 1 }
+        clock.advance()
+        await until { !store.hasPendingRecovery }
+        XCTAssertEqual(transport.requests[0], transport.requests[1])
+    }
+
+    func testServerCooldownIsRespectedAcrossForegroundRecoveryWake() async throws {
+        let clock = RecoveryTestClock()
+        let (transport, store) = makeStore(automaticallyRecovers: true, recoverySleep: clock.sleep, recoveryNow: { clock.now })
+        try store.adopt(.object(fixture()))
+        transport.handler = { _ in throw FullGameTransportFailure(error: Base44Error(message: "Slow down", statusCode: 429, code: "rate_limited", retryable: true, retryAfterSeconds: 30), ambiguous: false) }
+        _ = try? await store.command(["action": .string("toggle_ready"), "room_id": .string(roomID)])
+        await until { clock.delays.count == 1 }
+        XCTAssertEqual(clock.delays, [.seconds(30)])
+        store.resumePendingRecovery()
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(transport.requests.count, 1)
+        transport.handler = { request in
+            if request["action"].string == "get_room" { return .object(["room": .object(self.fixture(revision: 13))]) }
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        clock.advance()
+        await until { !store.hasPendingRecovery }
+        XCTAssertEqual(transport.requests[0], transport.requests[1])
+    }
+
+    func testForegroundConsumerOfBackgroundRetryDoesNotPublishDuplicateCompletion() async throws {
+        let clock = RecoveryTestClock()
+        let gate = RecoveryTestGate()
+        let (transport, store) = makeStore(automaticallyRecovers: true, recoverySleep: clock.sleep)
+        try store.adopt(.object(fixture()))
+        let input: [String: JSONValue] = ["action": .string("toggle_ready"), "room_id": .string(roomID)]
+        transport.handler = { _ in throw URLError(.timedOut) }
+        _ = try? await store.command(input)
+        transport.handler = { request in
+            if request["action"].string == "get_room" { return .object(["room": .object(self.fixture(revision: 13))]) }
+            await gate.wait()
+            return self.response(request: request, room: .object(self.fixture(revision: 13)), revision: 13)
+        }
+        await until { clock.delays.count == 1 }
+        clock.advance()
+        await until { transport.requests.count == 2 }
+        let foreground = Task { try await store.command(input) }
+        for _ in 0..<10 { await Task.yield() }
+        gate.open()
+        _ = try await foreground.value
+        XCTAssertFalse(store.hasPendingRecovery)
+        XCTAssertEqual(store.recoveryGeneration, 0)
+        XCTAssertEqual(transport.requests.filter { $0["action"].string == "toggle_ready" }.count, 2)
+    }
+
+    func testDefinitiveRejectionNeverEntersAutomaticRecovery() async throws {
+        let clock = RecoveryTestClock()
+        let (transport, store) = makeStore(automaticallyRecovers: true, recoverySleep: clock.sleep)
+        try store.adopt(.object(fixture()))
+        transport.handler = { _ in throw FullGameTransportFailure(error: Base44Error(message: "Changed", statusCode: 409, code: "room_revision_conflict"), ambiguous: false) }
+        await expectCode("room_revision_conflict") { _ = try await store.command(["action": .string("advance_question"), "room_id": .string(self.roomID)]) }
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertFalse(store.hasPendingRecovery)
+        XCTAssertFalse(store.isRecoveringSavedCommand)
+        XCTAssertTrue(clock.delays.isEmpty)
+        XCTAssertEqual(store.recoveryGeneration, 0)
+    }
+
+    func testBackgroundPackRecoveryPublishesOriginalReceiptAndPackOnce() async throws {
+        let clock = RecoveryTestClock()
+        let (transport, store) = makeStore(automaticallyRecovers: true, recoverySleep: clock.sleep)
+        let input: [String: JSONValue] = ["action": .string("create_word_pack"), "name": .string("Objects"), "words": .array([.string("Camera")])]
+        transport.handler = { _ in throw URLError(.timedOut) }
+        _ = try? await store.command(input)
+        let saved = try XCTUnwrap(store.pending)
+        transport.handler = { request in
+            .object(["receipt": .object(["request_id": request["request_id"]]),
+                     "pack": .object(["id": .string("60000000-0000-0000-0000-000000000001"), "name": .string("Objects"), "words": .array([.string("Camera")])])])
+        }
+        await until { clock.delays.count == 1 }
+        clock.advance()
+        await until { !store.hasPendingRecovery }
+        XCTAssertEqual(store.recoveryGeneration, 1)
+        XCTAssertEqual(store.recoveredAction, "create_word_pack")
+        XCTAssertEqual(store.recoveredResponse["receipt"]["request_id"].string, saved.requestID)
+        XCTAssertEqual(store.recoveredResponse["pack"]["name"].string, "Objects")
+        store.resumePendingRecovery()
+        for _ in 0..<10 { await Task.yield() }
+        XCTAssertEqual(store.recoveryGeneration, 1)
+        XCTAssertEqual(transport.requests.count, 2)
+    }
+
     func testGeneratorStaysOnBase44AndNeverCallsSupabase() async throws {
         let (transport, store) = makeStore()
         let adapter = SupabaseGameAdapter(store: store)
@@ -229,9 +572,21 @@ final class SupabaseGameAdapterTests: XCTestCase {
         catch { XCTFail("Unexpected \(type(of: error))", file: file, line: line) }
     }
 
-    private func makeStore(directory: URL? = nil) -> (FakeFullGameTransport, SupabaseFullGameStore) {
+    private func until(_ condition: () -> Bool, file: StaticString = #filePath, line: UInt = #line) async {
+        for _ in 0..<1_000 {
+            if condition() { return }
+            await Task.yield()
+        }
+        XCTAssertTrue(condition(), "Expected controlled asynchronous operation to finish", file: file, line: line)
+    }
+
+    private func makeStore(directory: URL? = nil, automaticallyRecovers: Bool = false,
+                           recoverySleep: @escaping (Duration) async throws -> Void = { try await Task.sleep(for: $0) },
+                           recoveryNow: @escaping () -> ContinuousClock.Instant = { .now }) -> (FakeFullGameTransport, SupabaseFullGameStore) {
         let transport = FakeFullGameTransport(userID: viewer)
-        let store = SupabaseFullGameStore(transport: transport, actorID: viewer, evidenceDirectory: directory ?? temporaryDirectory(), automaticallyWatches: false)
+        let store = SupabaseFullGameStore(transport: transport, actorID: viewer, evidenceDirectory: directory ?? temporaryDirectory(), automaticallyWatches: false,
+                                          automaticallyRecovers: automaticallyRecovers, recoverySleep: recoverySleep, recoveryNow: recoveryNow)
+        addTeardownBlock { @MainActor in store.disconnect() }
         return (transport, store)
     }
     private func temporaryDirectory() -> URL {
@@ -270,4 +625,40 @@ private final class FakeFullGameTransport: SupabaseFullGameTransport {
     }
     func watch(roomID: String, table: String) async throws {}
     func disconnectRealtime() {}
+}
+
+/// Explicit continuations make network/retry ordering deterministic; no test
+/// waits for the production backoff or depends on a live backend.
+@MainActor
+private final class RecoveryTestClock {
+    private(set) var delays: [Duration] = []
+    private(set) var now = ContinuousClock.now
+    private var sleepers: [(Duration, CheckedContinuation<Void, Never>)] = []
+    func sleep(_ duration: Duration) async throws {
+        delays.append(duration)
+        await withCheckedContinuation { sleepers.append((duration, $0)) }
+        try Task.checkCancellation()
+    }
+    func advance() {
+        guard !sleepers.isEmpty else { return }
+        let (duration, sleeper) = sleepers.removeFirst()
+        now = now.advanced(by: duration)
+        sleeper.resume()
+    }
+}
+
+@MainActor
+private final class RecoveryTestGate {
+    private var isOpen = false
+    private var waiters: [CheckedContinuation<Void, Never>] = []
+    func wait() async {
+        if isOpen { return }
+        await withCheckedContinuation { waiters.append($0) }
+    }
+    func open() {
+        isOpen = true
+        let pending = waiters
+        waiters = []
+        pending.forEach { $0.resume() }
+    }
 }

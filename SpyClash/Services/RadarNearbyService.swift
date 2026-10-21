@@ -1419,7 +1419,9 @@ final class RadarNearbyService: NSObject {
 
         // Profile refreshes must preserve the session, discoveries, ranging
         // exchanges and invitations owned by this same account.
-        if transportAccessChanged || accountChanged || multipeerSession == nil || localPeerID == nil {
+        let transportNeedsConstruction = transportBuildTask == nil
+            && (multipeerSession == nil || localPeerID == nil)
+        if transportAccessChanged || accountChanged || transportNeedsConstruction {
             rebuildTransportIfNeeded()
         } else if identityChanged || policyChanged {
             publishLocalPresence()
@@ -1482,7 +1484,7 @@ final class RadarNearbyService: NSObject {
             if allowsTransport, wantsCameraAssistance {
                 requestCameraAuthorizationForExplicitRadarUse()
             }
-            if allowsTransport,
+            if allowsTransport, transportBuildTask == nil,
                advertiser == nil || multipeerSession == nil || localPeerID == nil {
                 rebuildTransportIfNeeded()
             }
