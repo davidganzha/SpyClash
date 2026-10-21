@@ -556,6 +556,16 @@ struct AppShellView: View {
             communityNetworkState = nil
             communityAttention = .empty
         }
+        .onChange(of: appState.friendRoomInvitations.response) { _, response in
+            guard let response else { return }
+            guard let request = inboxPendingRequests.first(where: { $0.id == "invite:\(response.inviteID)" }),
+                  !pendingSocialItemIDs.contains(request.id),
+                  response.action != .join || inboxRoomJoinID == nil else {
+                appState.friendRoomInvitations.finishResponse(response.id)
+                return
+            }
+            beginInboxSocialAction(request, response.action)
+        }
         .onChange(of: appState.notificationInboxInvalidationRevision) { _, _ in
             Task { await refreshCommunityAttention() }
         }
@@ -1011,9 +1021,14 @@ struct AppShellView: View {
         pendingSocialItemIDs.insert(request.id)
         communityAttentionRequestID = nil
         let generation = inboxSocialGeneration
+        let bannerResponse = appState.friendRoomInvitations.response
         HapticManager.shared.fire(.buttonPress)
         Task { @MainActor in
             await performInboxSocialAction(request, action: action, userID: userID, generation: generation)
+            if let bannerResponse, bannerResponse.inviteID == request.sourceID,
+               appState.user?.id == userID, inboxSocialGeneration == generation {
+                appState.friendRoomInvitations.finishResponse(bannerResponse.id)
+            }
         }
     }
 
@@ -1302,8 +1317,13 @@ struct AppShellView: View {
         guard state.me.id == resolvedUserID else { return }
 #if DEBUG
         if appState.shouldUsePreviewData {
+            let newIDs = Set(state.incomingRoomInvites.map(\.id)).subtracting(
+                Set(communityNetworkState?.incomingRoomInvites.map(\.id) ?? []))
             communityNetworkState = state
             communityAttention = CommunityAttentionSnapshot(state: state)
+            appState.friendRoomInvitations.reconcile(state.incomingRoomInvites,
+                newIDs: ProcessInfo.processInfo.arguments.contains("--spyclash-preview-friend-invite") ? newIDs : [],
+                activeRoomID: appState.activeRoom?.id)
             return
         }
 #endif
@@ -1317,11 +1337,18 @@ struct AppShellView: View {
 
         communityAttention = next
         communityNetworkState = visibleState
+        let newRoomInviteIDs = Set(visibleState.incomingRoomInvites.filter {
+            newIDs.contains("room:\($0.id)")
+        }.map(\.id))
+        appState.friendRoomInvitations.reconcile(visibleState.incomingRoomInvites,
+            newIDs: newRoomInviteIDs, activeRoomID: appState.activeRoom?.id)
+        if !newRoomInviteIDs.isEmpty { HapticManager.shared.fire(.notification(.warning)) }
         guard !newIDs.isEmpty else { return }
 
         storeCommunityAttentionIDs(seenIDs.union(next.allIDs), for: resolvedUserID)
-        if announceNew {
-            publishCommunityAttentionToast(for: next, newIDs: newIDs)
+        let newFriendIDs = newIDs.intersection(next.friendRequestIDs)
+        if announceNew, !newFriendIDs.isEmpty {
+            publishCommunityAttentionToast(for: next, newIDs: newFriendIDs)
         }
     }
 

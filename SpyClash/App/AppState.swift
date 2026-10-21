@@ -1407,7 +1407,10 @@ final class AppState: NSObject {
         didSet {
             let previousUserID = oldValue?.id
             let accountChanged = previousUserID != user?.id
-            if accountChanged { appleHandoffFailure = nil }
+            if accountChanged {
+                appleHandoffFailure = nil
+                friendRoomInvitations = FriendRoomInvitationPresentation()
+            }
             bindMembershipAccount()
             if SupabaseTestEnvironment.isEnabled { return }
             if accountChanged {
@@ -1486,6 +1489,7 @@ final class AppState: NSObject {
     var shellRoute: AppShellRoute = .main
     var homeRootRequestID = 0
     private(set) var isHomeLandingPresentationRequested = false
+    var friendRoomInvitations = FriendRoomInvitationPresentation()
     var notificationFocusItemID: String?
     var notificationFocusRequestID = 0
     private(set) var notificationInboxInvalidationRevision = 0

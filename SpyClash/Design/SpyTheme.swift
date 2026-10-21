@@ -1705,7 +1705,7 @@ extension View {
         // global notices on every presentation surface so they cannot be hidden
         // behind a QR scanner, tutorial, legal page, or word-pack editor.
         overlay {
-            GlobalRadarInvitationLayer()
+            GlobalInvitationLayer()
         }
         .overlay(alignment: .bottomTrailing) {
             GlobalToastLayer()
@@ -1714,16 +1714,22 @@ extension View {
     }
 }
 
-private struct GlobalRadarInvitationLayer: View {
+private struct GlobalInvitationLayer: View {
     @Environment(AppState.self) private var appState
 
     var body: some View {
         if appState.authHomeRevealPhase == .idle,
-           !appState.requiresOnboarding,
-           let invitation = appState.radarNearby.incomingInvitation {
-            RadarIncomingInvitationOverlay(invitation: invitation)
-                .id(invitation.id)
-                .accessibilityAddTraits(.isModal)
+           !appState.requiresOnboarding {
+            if let invitation = appState.radarNearby.incomingInvitation,
+               appState.friendRoomInvitations.response == nil {
+                RadarIncomingInvitationOverlay(invitation: invitation)
+                    .id(invitation.id)
+                    .accessibilityAddTraits(.isModal)
+            } else if let invitation = appState.friendRoomInvitations.current {
+                FriendIncomingInvitationOverlay(invitation: invitation)
+                    .id(invitation.id)
+                    .accessibilityAddTraits(.isModal)
+            }
         }
     }
 }

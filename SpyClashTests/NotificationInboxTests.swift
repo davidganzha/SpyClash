@@ -1198,3 +1198,72 @@ private extension NotificationRequestRecorder {
         return data
     }
 }
+
+final class FriendRoomInvitationPresentationTests: XCTestCase {
+    private func invite(_ id: String, status: String = "pending", roomID: String = "another-room") -> CommunityRoomInvite {
+        let template = CommunityState.preview.incomingRoomInvites[0]
+        return CommunityRoomInvite(id: id, status: status, roomID: roomID,
+            roomCode: template.roomCode, createdAt: template.createdAt, sender: template.sender)
+    }
+
+    func testRepeatedUpdatesKeepOneCardAndQueueNewInvitations() {
+        var presentation = FriendRoomInvitationPresentation()
+        presentation.reconcile([invite("first")], newIDs: ["first"], activeRoomID: nil)
+        presentation.reconcile([invite("second"), invite("first")], newIDs: ["second", "first"], activeRoomID: nil)
+        XCTAssertEqual(presentation.queue.map(\.id), ["first", "second"])
+        presentation.dismiss("first")
+        presentation.reconcile([invite("first"), invite("second")], newIDs: [], activeRoomID: nil)
+        XCTAssertEqual(presentation.queue.map(\.id), ["second"], "Later must not reappear on the next refresh.")
+    }
+
+    func testResolvedAndExpiredInvitationsAreRemovedAndCurrentRoomIsExcluded() {
+        var presentation = FriendRoomInvitationPresentation()
+        presentation.reconcile([invite("declined"), invite("expired"), invite("current", roomID: "current-room")],
+            newIDs: ["declined", "expired", "current"], activeRoomID: "current-room")
+        XCTAssertEqual(presentation.queue.count, 2)
+        presentation.reconcile([invite("declined", status: "declined")], newIDs: [], activeRoomID: nil)
+        XCTAssertNil(presentation.current)
+    }
+
+    func testAcceptedInvitationStaysAvailableWhenJoinFails() throws {
+        var presentation = FriendRoomInvitationPresentation()
+        presentation.reconcile([invite("first")], newIDs: ["first"], activeRoomID: nil)
+        presentation.respond(to: "first", action: .join)
+        let response = try XCTUnwrap(presentation.response)
+        presentation.reconcile([invite("first", status: "accepted")], newIDs: [], activeRoomID: nil)
+        presentation.finishResponse(response.id)
+        XCTAssertEqual(presentation.current?.status, "accepted")
+        presentation.respond(to: "first", action: .join)
+        XCTAssertEqual(presentation.response?.action, .join)
+        XCTAssertNotEqual(presentation.response?.id, response.id)
+    }
+
+    func testDoubleTapAndOtherPresentationCannotReplaceAnActiveDecision() throws {
+        var presentation = FriendRoomInvitationPresentation()
+        presentation.reconcile([invite("first"), invite("second")], newIDs: ["first", "second"], activeRoomID: nil)
+        presentation.respond(to: "first", action: .join)
+        let response = try XCTUnwrap(presentation.response)
+        presentation.respond(to: "first", action: .decline)
+        presentation.respond(to: "second", action: .join)
+        presentation.dismiss("first")
+        presentation.finishResponse(UUID())
+        XCTAssertEqual(presentation.response, response)
+        XCTAssertEqual(presentation.current?.id, "first")
+    }
+
+    func testEnteringInvitedRoomRemovesBanner() {
+        var presentation = FriendRoomInvitationPresentation()
+        presentation.reconcile([invite("first")], newIDs: ["first"], activeRoomID: nil)
+        presentation.reconcile([invite("first", status: "accepted")], newIDs: [], activeRoomID: "another-room")
+        XCTAssertNil(presentation.current)
+    }
+
+    func testOldAcceptedInvitationsAreNotPresentedAsNewAndUnsupportedResponsesAreIgnored() {
+        var presentation = FriendRoomInvitationPresentation()
+        presentation.reconcile([invite("old", status: "accepted"), invite("new")], newIDs: ["old", "new"], activeRoomID: nil)
+        XCTAssertEqual(presentation.queue.map(\.id), ["new"])
+        presentation.respond(to: "old", action: .join)
+        presentation.respond(to: "new", action: .accept)
+        XCTAssertNil(presentation.response)
+    }
+}

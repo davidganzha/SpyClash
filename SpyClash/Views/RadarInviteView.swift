@@ -1559,8 +1559,86 @@ private extension View {
 struct RadarIncomingInvitationOverlay: View {
     @Environment(AppState.self) private var appState
     let invitation: RadarIncomingInvitation
-
     @State private var isJoining = false
+
+    var body: some View {
+        IncomingInvitationOverlay(invitation: IncomingInvitationDetails(invitation),
+            isJoining: isJoining, isBusy: isJoining || appState.isRadarInvitationJoinInProgress,
+            onDecline: { appState.declineRadarInvitation(invitation) },
+            onJoin: {
+                isJoining = true
+                Task {
+                    _ = await appState.acceptRadarInvitation(invitation)
+                    isJoining = false
+                }
+            })
+    }
+}
+
+struct FriendIncomingInvitationOverlay: View {
+    @Environment(AppState.self) private var appState
+    let invitation: CommunityRoomInvite
+
+    var body: some View {
+        IncomingInvitationOverlay(invitation: IncomingInvitationDetails(invitation), fromFriends: true,
+            isJoining: appState.friendRoomInvitations.response?.action == .join,
+            isBusy: appState.friendRoomInvitations.response != nil || appState.isRadarInvitationJoinInProgress,
+            onDecline: { appState.friendRoomInvitations.respond(to: invitation.id, action: .decline) },
+            onJoin: { appState.friendRoomInvitations.respond(to: invitation.id, action: .join) },
+            onLater: { appState.friendRoomInvitations.dismiss(invitation.id) })
+    }
+}
+
+/// Shared visual data; friend invitations never enter the nearby Radar protocol.
+private struct IncomingInvitationDetails {
+    let roomCode: String
+    let hostCallSign: String
+    let hostAvatar: String
+    let hostSpyID: String
+    let hostSpyCardTheme: SpyCardThemeID
+    let hostSpyCardAccent: SpyCardAccentID
+    let hostSpyCardBadge: SpyCardBadgeID
+    let hostRating: Int
+    let hostGamesPlayed: Int
+    let hostWinRate: Int
+
+    init(_ invitation: RadarIncomingInvitation) {
+        roomCode = invitation.roomCode
+        hostCallSign = invitation.hostCallSign
+        hostAvatar = invitation.hostAvatar
+        hostSpyID = invitation.hostSpyID
+        hostSpyCardTheme = invitation.hostSpyCardTheme
+        hostSpyCardAccent = invitation.hostSpyCardAccent
+        hostSpyCardBadge = invitation.hostSpyCardBadge
+        hostRating = invitation.hostRating
+        hostGamesPlayed = invitation.hostGamesPlayed
+        hostWinRate = invitation.hostWinRate
+    }
+
+    init(_ invitation: CommunityRoomInvite) {
+        roomCode = invitation.roomCode
+        let sender = invitation.sender
+        hostCallSign = sender.displayName
+        hostAvatar = sender.avatar
+        hostSpyID = sender.spyID
+        hostSpyCardTheme = SpyCardThemeID(rawValue: sender.spyCardTheme) ?? .field
+        hostSpyCardAccent = SpyCardAccentID(rawValue: sender.spyCardAccent) ?? .signalRed
+        hostSpyCardBadge = SpyCardBadgeID(rawValue: sender.spyCardBadge) ?? .operative
+        hostRating = sender.rating
+        hostGamesPlayed = sender.gamesPlayed
+        hostWinRate = sender.winRate
+    }
+}
+
+private struct IncomingInvitationOverlay: View {
+    @Environment(AppState.self) private var appState
+    let invitation: IncomingInvitationDetails
+    var fromFriends = false
+    let isJoining: Bool
+    let isBusy: Bool
+    let onDecline: () -> Void
+    let onJoin: () -> Void
+    var onLater: (() -> Void)? = nil
 
     var body: some View {
         ZStack {
@@ -1585,12 +1663,12 @@ struct RadarIncomingInvitationOverlay: View {
         }
         .transition(.opacity.combined(with: .scale(scale: 0.96)))
         .zIndex(500)
-        .accessibilityIdentifier("radar.incomingInvitation")
+        .accessibilityIdentifier(fromFriends ? "friends.incomingInvitation" : "radar.incomingInvitation")
     }
 
     private var invitationPanel: some View {
         VStack(spacing: 15) {
-            RadarIncomingSpyCard(invitation: invitation, language: appState.language)
+            IncomingInvitationSpyCard(invitation: invitation, language: appState.language, fromFriends: fromFriends)
 
             VStack(spacing: 7) {
                 HStack(spacing: 7) {
@@ -1600,10 +1678,10 @@ struct RadarIncomingInvitationOverlay: View {
                         .shadow(color: SpyTheme.red.opacity(0.55), radius: 5)
 
                     Text(localized(
-                    en: "RADAR INVITATION",
-                    ru: "ПРИГЛАШЕНИЕ ПО РАДАРУ",
-                    es: "INVITACIÓN POR RADAR",
-                    uk: "ЗАПРОШЕННЯ ЧЕРЕЗ РАДАР"
+                    en: fromFriends ? "FRIEND INVITATION" : "RADAR INVITATION",
+                    ru: fromFriends ? "ПРИГЛАШЕНИЕ ОТ ДРУГА" : "ПРИГЛАШЕНИЕ ПО РАДАРУ",
+                    es: fromFriends ? "INVITACIÓN DE UN AMIGO" : "INVITACIÓN POR RADAR",
+                    uk: fromFriends ? "ЗАПРОШЕННЯ ВІД ДРУГА" : "ЗАПРОШЕННЯ ЧЕРЕЗ РАДАР"
                     ))
                     .font(.system(size: 8, weight: .black, design: .monospaced))
                     .tracking(0.75)
@@ -1611,10 +1689,10 @@ struct RadarIncomingInvitationOverlay: View {
                 }
 
                 Text(localized(
-                    en: "FOUND ON RADAR",
-                    ru: "ВАС НАШЛИ ПО РАДАРУ",
-                    es: "LOCALIZADO POR RADAR",
-                    uk: "ВАС ЗНАЙШЛИ ЧЕРЕЗ РАДАР"
+                    en: fromFriends ? "LET’S PLAY TOGETHER" : "FOUND ON RADAR",
+                    ru: fromFriends ? "ДРУГ ЗОВЁТ В ИГРУ" : "ВАС НАШЛИ ПО РАДАРУ",
+                    es: fromFriends ? "JUGUEMOS JUNTOS" : "LOCALIZADO POR RADAR",
+                    uk: fromFriends ? "ДРУГ КЛИЧЕ ДО ГРИ" : "ВАС ЗНАЙШЛИ ЧЕРЕЗ РАДАР"
                 ))
                 .font(SpyTheme.brandFont(size: 25))
                 .tracking(0.8)
@@ -1637,19 +1715,16 @@ struct RadarIncomingInvitationOverlay: View {
 
             HStack(spacing: 10) {
                 Button {
-                    appState.declineRadarInvitation(invitation)
+                    onDecline()
                 } label: {
                     Text(localized(en: "DECLINE", ru: "ОТКЛОНИТЬ", es: "RECHAZAR", uk: "ВІДХИЛИТИ"))
                 }
                 .buttonStyle(SpyButtonStyle(variant: .outline))
-                .disabled(isJoining || appState.isRadarInvitationJoinInProgress)
+                .disabled(isBusy)
+                .accessibilityIdentifier(fromFriends ? "friends.invitation.decline" : "radar.invitation.decline")
 
                 Button {
-                    Task {
-                        isJoining = true
-                        _ = await appState.acceptRadarInvitation(invitation)
-                        isJoining = false
-                    }
+                    onJoin()
                 } label: {
                     Text(localized(
                         en: isJoining ? "JOINING..." : "JOIN",
@@ -1659,7 +1734,17 @@ struct RadarIncomingInvitationOverlay: View {
                     ))
                 }
                 .buttonStyle(SpyButtonStyle(variant: .red))
-                .disabled(isJoining || appState.isRadarInvitationJoinInProgress)
+                .disabled(isBusy)
+                .accessibilityIdentifier(fromFriends ? "friends.invitation.join" : "radar.invitation.join")
+            }
+
+            if let onLater {
+                Button(localized(en: "LATER", ru: "ПОЗЖЕ", es: "MÁS TARDE", uk: "ПІЗНІШЕ"), action: onLater)
+                    .font(.system(size: 10, weight: .bold, design: .monospaced))
+                    .foregroundStyle(SpyTheme.dim)
+                    .frame(minHeight: 44)
+                    .disabled(isBusy)
+                    .accessibilityIdentifier("friends.invitation.later")
             }
         }
         .padding(14)
@@ -1679,9 +1764,10 @@ struct RadarIncomingInvitationOverlay: View {
     }
 }
 
-private struct RadarIncomingSpyCard: View {
-    let invitation: RadarIncomingInvitation
+private struct IncomingInvitationSpyCard: View {
+    let invitation: IncomingInvitationDetails
     let language: AppLanguage
+    var fromFriends = false
 
     var body: some View {
         GeometryReader { proxy in
@@ -1713,7 +1799,7 @@ private struct RadarIncomingSpyCard: View {
                         Circle()
                             .fill(accent)
                             .frame(width: 5, height: 5)
-                        Text("RADAR")
+                        Text(fromFriends ? friendsLabel : "RADAR")
                             .font(.system(size: 8, weight: .black, design: .monospaced))
                             .tracking(0.12)
                             .foregroundStyle(accent)
@@ -1877,6 +1963,15 @@ private struct RadarIncomingSpyCard: View {
         .aspectRatio(1.50, contentMode: .fit)
         .accessibilityElement(children: .ignore)
         .accessibilityLabel(accessibilityLabel)
+    }
+
+    private var friendsLabel: String {
+        switch language {
+        case .ru: "ДРУЗЬЯ"
+        case .es: "AMIGOS"
+        case .uk: "ДРУЗІ"
+        default: "FRIENDS"
+        }
     }
 
     private enum Metric {

@@ -364,3 +364,43 @@ enum NotificationInboxPreview {
         )
     }
 }
+
+/// Presentation only: decisions still use the shared inbox accept/join path.
+/// Repeated social snapshots update the queued cards without presenting them twice.
+struct FriendRoomInvitationPresentation {
+    struct Response: Equatable {
+        let id = UUID()
+        let inviteID: String
+        let action: NotificationInboxSocialActionKind
+    }
+
+    private(set) var queue: [CommunityRoomInvite] = []
+    private(set) var response: Response?
+    var current: CommunityRoomInvite? { queue.first }
+
+    mutating func reconcile(_ invitations: [CommunityRoomInvite], newIDs: Set<String>, activeRoomID: String?) {
+        let available = invitations.filter {
+            ["pending", "accepted"].contains($0.status.lowercased()) && $0.roomID != activeRoomID
+        }
+        queue = queue.compactMap { queued in available.first { $0.id == queued.id } }
+        for invitation in available where invitation.status.lowercased() == "pending" {
+            guard newIDs.contains(invitation.id), !queue.contains(where: { $0.id == invitation.id }) else { continue }
+            queue.append(invitation)
+        }
+    }
+
+    mutating func respond(to inviteID: String, action: NotificationInboxSocialActionKind) {
+        guard response == nil, current?.id == inviteID, action == .join || action == .decline else { return }
+        response = Response(inviteID: inviteID, action: action)
+    }
+
+    mutating func finishResponse(_ responseID: UUID) {
+        guard response?.id == responseID else { return }
+        response = nil
+    }
+
+    mutating func dismiss(_ inviteID: String) {
+        guard response == nil else { return }
+        queue.removeAll { $0.id == inviteID }
+    }
+}

@@ -10,7 +10,7 @@ configs:
   SupabaseRelease: release
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 195
+    CURRENT_PROJECT_VERSION: 196
     MARKETING_VERSION: 1.0.3
     SWIFT_VERSION: 6.0
 packages:
