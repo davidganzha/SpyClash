@@ -227,22 +227,41 @@ final class AppleSessionCompletionWebKitTests: XCTestCase {
 
     func testInteractiveProviderAndForeignNavigationsAreBlocked() async throws {
         let rejected = [
-            "https://appleid.apple.com/auth/authorize?client_id=synthetic",
-            "https://spyclash.com/login",
-            "https://app.base44.com/login",
-            "https://foreign.invalid/steal?ticket=synthetic",
-            "https://spyclash.com.evil.invalid/functions/appleAuthBroker?action=authorize"
+            ("Apple provider", "https://appleid.apple.com/auth/authorize?client_id=synthetic"),
+            ("SpyClash login", "https://spyclash.com/login"),
+            ("Base44 login", "https://app.base44.com/login"),
+            ("Foreign host", "https://foreign.invalid/steal?ticket=synthetic"),
+            ("Lookalike host", "https://spyclash.com.evil.invalid/functions/appleAuthBroker?action=authorize")
         ]
-        for target in rejected {
-            let terminal = expectation(description: "Interactive or foreign navigation blocked")
-            let fixture = AppleWebKitFixture(script: "window.location.replace(\(jsString(target)));")
+        for (scenario, target) in rejected {
+            let ready = expectation(description: "\(scenario): fixture document loaded")
+            let terminal = expectation(description: "\(scenario): navigation rejected by policy")
+            let fixture = AppleWebKitFixture(script: """
+                window.addEventListener('load', () => {
+                    window.webkit.messageHandlers.fixtureReady.postMessage('navigation-document-ready');
+                }, { once: true });
+                """)
+            fixture.onMessage = { message in
+                if message == "navigation-document-ready" { ready.fulfill() }
+            }
             let session = fixture.session(url: bootstrapURL) { terminal.fulfill() }
+            defer { session.cancel(); fixture.onMessage = nil }
             XCTAssertTrue(session.start())
             let view = try XCTUnwrap(fixture.webView)
+
+            // A cold CI WebContent process has taken over 23 seconds to start.
+            // Establish document readiness separately so policy timing measures
+            // the rejected navigation, and a startup failure cannot pass as one.
+            await fulfillment(of: [ready], timeout: 45)
+            guard fixture.lastMessage == "navigation-document-ready" else { return }
+            XCTAssertEqual(fixture.completionCount, 0, scenario)
+            XCTAssertNil(fixture.error, scenario)
+            _ = try await view.evaluateJavaScript("window.location.replace(\(jsString(target))); null;")
             await fulfillment(of: [terminal], timeout: 15)
-            XCTAssertNil(fixture.callback)
-            XCTAssertNotNil(fixture.error)
-            XCTAssertNotEqual(view.url?.absoluteString, target)
+            XCTAssertNil(fixture.callback, scenario)
+            XCTAssertEqual((fixture.error as? AppleNativeHandoffError)?.supportCode, .navigationDocument, scenario)
+            XCTAssertEqual(fixture.completionCount, 1, scenario)
+            XCTAssertNotEqual(view.url?.absoluteString, target, scenario)
             await assertCleanedUp(view)
         }
     }

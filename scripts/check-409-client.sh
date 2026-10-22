@@ -25,6 +25,7 @@ xcodebuild test -project SpyClash.xcodeproj -scheme SpyClash \
   -destination "$destination" \
   -derivedDataPath "${SPYCLASH_TEST_DERIVED_DATA:-$results/DerivedData}" \
   -resultBundlePath "$results/Tests.xcresult" \
+  -parallel-testing-enabled NO \
   -only-testing:SpyClashTests/Base44ClientRoomActionTests \
   -only-testing:SpyClashTests/StoreKitFixtureTransportTests \
   -only-testing:SpyClashTests/AppleNativeHandoffTests \
