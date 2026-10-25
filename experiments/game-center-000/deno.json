@@ -1,0 +1,6 @@
+{
+  "imports": {"postgres": "npm:postgres@3.4.9", "@peculiar/x509": "npm:@peculiar/x509@2.2.0", "reflect-metadata": "npm:reflect-metadata@0.2.2"},
+  "compilerOptions": {"strict": true, "checkJs": false},
+  "nodeModulesDir": "auto",
+  "lock": true
+}

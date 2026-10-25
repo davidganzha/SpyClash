@@ -10,7 +10,7 @@ configs:
   SupabaseRelease: release
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 197
+    CURRENT_PROJECT_VERSION: 198
     MARKETING_VERSION: 1.0.3
     SWIFT_VERSION: 6.0
 packages:
@@ -237,6 +237,102 @@ targets:
       - package: SocketIO
       - target: SpyClashSupabaseStagingWidgets
         embed: true
+  SpyClashGameCenter:
+    type: application
+    platform: iOS
+    entitlements:
+      path: SpyClashGameCenterTests/Support/GameCenter.entitlements
+      properties:
+        com.apple.developer.game-center: true
+    sources:
+      - path: SpyClash
+        excludes:
+          - "Services/HapticManager [0-9]*.swift"
+          - "SWIFTUI_MIGRATION.md"
+          - "Resources/Info.plist"
+          - "Resources/SpyClash.entitlements"
+          - "Resources/*.lproj/InfoPlist.strings"
+      - path: experiments/supabase-game-core/ios/Sources/JSONValue.swift
+      - path: experiments/supabase-game-core/ios/Sources/LabConfiguration.swift
+      - path: experiments/supabase-game-core/ios/Sources/BackendClient.swift
+      - path: experiments/supabase-game-core/ios/Sources/LabStore.swift
+      - path: experiments/supabase-game-core/ios/Configuration/BackendAllowlist.json
+        buildPhase: resources
+      - path: SpyClashGameCenterTests/Support/GameCenterAppConfiguration.json
+        buildPhase: resources
+    info:
+      path: SpyClashGameCenterTests/Support/GameCenterApp-Info.plist
+      properties:
+        CFBundleDisplayName: SpyClash 0000
+        SpyClashBackendMode: game-center-experiment
+        SpyClashExperimentLabel: "0.000 / 0000"
+        NSAppTransportSecurity:
+          NSAllowsLocalNetworking: true
+          NSExceptionDomains:
+            "127.0.0.1":
+              NSExceptionAllowsInsecureHTTPLoads: true
+        CFBundleShortVersionString: "$(MARKETING_VERSION)"
+        CFBundleVersion: "$(CURRENT_PROJECT_VERSION)"
+        LSRequiresIPhoneOS: true
+        ITSAppUsesNonExemptEncryption: false
+        NSSupportsLiveActivities: true
+        NSSupportsLiveActivitiesFrequentUpdates: true
+        NSLocalNetworkUsageDescription: Find nearby SpyClash players and deliver room invitations.
+        NSBonjourServices:
+          - _spyclash-radar._tcp
+          - _spyclash-radar._udp
+          - _spy-gc000._tcp
+          - _spy-gc000._udp
+        UIAppFonts:
+          - Rajdhani-Bold.ttf
+        UILaunchScreen:
+          UIColorName: LaunchBackground
+          UIImageName: LaunchLogo
+        UISupportedInterfaceOrientations:
+          - UIInterfaceOrientationPortrait
+        NSCameraUsageDescription: Scan a test room QR code.
+        NSNearbyInteractionUsageDescription: Measure the distance to nearby SpyClash players so the radar can show precise proximity.
+        CFBundleURLTypes:
+          - CFBundleURLName: com.spyclash.gamecenter000
+            CFBundleURLSchemes:
+              - spyclash-gamecenter000
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.spyclash.ios.gamecenter000
+        PRODUCT_MODULE_NAME: SpyClashGameCenter
+        MARKETING_VERSION: 0.0.0
+        CURRENT_PROJECT_VERSION: 1
+        DEVELOPMENT_TEAM: 3Z64QKNL54
+        CODE_SIGN_STYLE: Automatic
+        CODE_SIGN_IDENTITY: Apple Development
+        SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SPYCLASH_SUPABASE SPYCLASH_GAME_CENTER_EXPERIMENT"
+        TARGETED_DEVICE_FAMILY: 1
+        ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME: AccentColor
+      configs:
+        Debug:
+          APS_ENVIRONMENT: development
+        Release:
+          APS_ENVIRONMENT: production
+    preBuildScripts:
+      - name: Verify isolated Game Center configuration
+        script: python3 "$SRCROOT/scripts/check-gamecenter-experiment.py"
+        basedOnDependencyAnalysis: false
+    dependencies:
+      - package: SocketIO
+  SpyClashGameCenterTests:
+    type: bundle.unit-test
+    platform: iOS
+    sources:
+      - path: SpyClashGameCenterTests
+        excludes:
+          - Support
+    dependencies:
+      - target: SpyClashGameCenter
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.spyclash.ios.gamecenter000.tests
+        GENERATE_INFOPLIST_FILE: true
+        TARGETED_DEVICE_FAMILY: 1
   SpyClashSupabaseStagingWidgets:
     type: app-extension
     platform: iOS
@@ -352,6 +448,20 @@ targets:
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: 1
 schemes:
+  SpyClash-GameCenter-000:
+    build:
+      targets:
+        SpyClashGameCenter: all
+    run:
+      config: Debug
+    test:
+      config: Debug
+      targets:
+        - SpyClashGameCenterTests
+    archive:
+      config: Release
+    management:
+      shared: true
   SpyClash-Supabase-Main-Candidate:
     build:
       targets:

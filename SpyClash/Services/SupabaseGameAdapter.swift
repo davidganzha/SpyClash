@@ -15,7 +15,12 @@ final class SupabaseGameAdapter {
         let session = SupabaseAppSession.shared
         guard session.userID == profile.id else { throw SupabaseFullGameStore.notSignedIn }
         if connectedGeneration != session.generation {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+            try await store.connect(transport: SupabaseAppGameTransport(auth: session), name: profile.callSign,
+                                    restoreActiveRoom: profile.onboardingCompleted == true)
+#else
             try await store.connect(transport: SupabaseAppGameTransport(auth: session), name: profile.callSign)
+#endif
             connectedGeneration = session.generation
         }
         user = profile

@@ -119,7 +119,7 @@ final class SupabaseFullGameStore {
         recoveredResponse = .null; recoveredAction = nil
     }
 
-    func connect(transport backend: any SupabaseFullGameTransport, name: String) async throws {
+    func connect(transport backend: any SupabaseFullGameTransport, name: String, restoreActiveRoom: Bool = true) async throws {
         disconnect()
         transport = backend
         userID = backend.userID
@@ -136,7 +136,7 @@ final class SupabaseFullGameStore {
             }
             self.persistEvidence()
         }
-        do { _ = try await refreshActiveRoom(preferredRoomID: roomID) }
+        do { if restoreActiveRoom { _ = try await refreshActiveRoom(preferredRoomID: roomID) } }
         catch {
             guard connectionEpoch == transportEpoch, userID == backend.userID else { throw CancellationError() }
             lastError = Self.failure(error).error.code ?? "room_restore_failed"

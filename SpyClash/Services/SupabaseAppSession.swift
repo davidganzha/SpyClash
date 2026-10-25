@@ -2,12 +2,18 @@
 import Foundation
 import Security
 
+enum SupabaseNativeCredentialKind: String, Codable, Sendable {
+    case gameCenter = "game_center"
+    case email
+}
+
 /// Credentials belong to a project and app bundle, separate from Base44 and the game lab.
 struct SupabaseStoredSession: Codable, Equatable, Sendable {
     let accessToken: String
     let refreshToken: String
     let userID: String
     let expiresAt: Date
+    var nativeCredentialKind: SupabaseNativeCredentialKind? = nil
 }
 
 enum SupabaseSessionKeychain {
@@ -93,6 +99,16 @@ final class SupabaseAppSession {
             guard session?.accessToken == accessToken else { throw Self.invalidSession }
             return
         }
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        if candidate.nativeCredentialKind != nil {
+            try persistSession(candidate)
+            removeLegacy(); legacyCredential = nil
+            refreshTask?.cancel(); refreshTask = nil
+            session = candidate; candidates.removeAll(); legacyCandidates.removeAll(); candidateExchangeID = nil
+            generation = UUID()
+            return
+        }
+#endif
         guard let legacy = legacyCandidates[accessToken], legacy.actorID == candidate.userID else { throw Self.invalidSession }
         let previousLegacy = legacyCredential
         try persistLegacy(legacy)
@@ -210,6 +226,11 @@ final class SupabaseAppSession {
     }
     func ensureAccessToken(forceLegacyValidation: Bool = false) async throws -> String {
         guard let current = session else { throw Self.invalidSession }
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        if current.nativeCredentialKind != nil {
+            return try await ensureNativeAccessToken(forceRefresh: forceLegacyValidation)
+        }
+#endif
         if !forceLegacyValidation, current.expiresAt.timeIntervalSinceNow > 60 { return current.accessToken }
         if let refreshTask { return try await refreshTask.value.accessToken }
         let epoch = generation
@@ -389,7 +410,11 @@ final class SupabaseAppSession {
     }
     private func request(path: String, method: String, body: JSONValue, token: String? = nil) async throws -> JSONValue {
         let configuration = try configuration()
-        guard path.hasPrefix("/auth/v1/") || ["/functions/v1/app-services", "/functions/v1/full-game-core", "/functions/v1/legacy-session"].contains(path),
+        var allowedFunctions = ["/functions/v1/app-services", "/functions/v1/full-game-core", "/functions/v1/legacy-session"]
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        allowedFunctions = ["/functions/v1/app-services", "/functions/v1/full-game-core", "/functions/v1/game-center-session"]
+#endif
+        guard path.hasPrefix("/auth/v1/") || allowedFunctions.contains(path),
               let origin = URL(string: configuration.backendURL),
               let url = URL(string: configuration.backendURL + path), url.scheme == origin.scheme, url.host == origin.host, url.port == origin.port else { throw Self.invalidSession }
         var request = URLRequest(url: url)
@@ -433,6 +458,119 @@ final class SupabaseAppSession {
         Base44Error(message: "The sign-in service returned an invalid response. Please try again.", statusCode: 502,
                     code: "supabase_session_response_invalid", retryable: true)
     }
+
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+    func exchangeGameCenter(proof: GameCenterIdentityProof, requireCurrentAttempt: @MainActor () throws -> Void = {}) async throws -> LoginResponse {
+        let body = try JSONDecoder().decode(JSONValue.self, from: JSONEncoder().encode(proof))
+        return try await nativeCandidate(kind: .gameCenter, requireCurrentAttempt: requireCurrentAttempt) {
+            let value = try await self.request(path: "/functions/v1/game-center-session", method: "POST", body: body)
+            guard value["provider"].string == "game_center" else { throw Self.invalidSessionResponse }
+            return value
+        }
+    }
+
+    func nativeEmailLogin(email: String, password: String, requireCurrentAttempt: @MainActor () throws -> Void = {}) async throws -> LoginResponse {
+        try await nativeCandidate(kind: .email, requireCurrentAttempt: requireCurrentAttempt) {
+            try await self.request(path: "/auth/v1/token?grant_type=password", method: "POST", body: .object(["email": .string(email), "password": .string(password)]))
+        }
+    }
+
+    func nativeEmailRegister(email: String, password: String, requireCurrentAttempt: @MainActor () throws -> Void = {}) async throws -> LoginResponse? {
+        // A server may require email confirmation. A response with no access
+        // token intentionally leaves AuthView on its existing verification step.
+        do {
+            return try await nativeCandidate(kind: .email, requireCurrentAttempt: requireCurrentAttempt) {
+                let value = try await self.request(path: "/auth/v1/signup", method: "POST", body: .object(["email": .string(email), "password": .string(password)]))
+                guard value["access_token"].string != nil else {
+                    // GoTrue returns either a user object or an envelope when
+                    // confirmation is pending; a blank 2xx is never success.
+                    guard let id = value["id"].string ?? value["user"]["id"].string,
+                          UUID(uuidString: id) != nil else { throw Self.invalidSessionResponse }
+                    throw Base44Error(message: "Confirm your email to continue.", code: "email_verification_required")
+                }
+                return value
+            }
+        } catch let error as Base44Error where error.code == "email_verification_required" {
+            try Task.checkCancellation(); try requireCurrentAttempt()
+            return nil
+        }
+    }
+
+    func nativeEmailVerify(email: String, code: String, requireCurrentAttempt: @MainActor () throws -> Void = {}) async throws -> LoginResponse {
+        guard SupabaseAppRuntime.acceptsEmailOTP(code, length: 6) else {
+            throw Base44Error(message: "Enter the six-digit confirmation code.", code: "invalid_email_otp")
+        }
+        return try await nativeCandidate(kind: .email, requireCurrentAttempt: requireCurrentAttempt) {
+            try await self.request(path: "/auth/v1/verify", method: "POST", body: .object(["type": .string("signup"), "email": .string(email), "token": .string(code)]))
+        }
+    }
+
+    func nativeEmailResend(email: String) async throws {
+        _ = try await request(path: "/auth/v1/resend", method: "POST", body: .object(["type": .string("signup"), "email": .string(email)]))
+    }
+
+    func nativeRequestRecovery(email: String) async throws {
+        _ = try await request(path: "/auth/v1/recover?redirect_to=spyclash-gamecenter000%3A%2F%2Freset-password", method: "POST", body: .object(["email": .string(email)]))
+    }
+
+    func nativeResetPassword(token: String, password: String) async throws {
+        _ = try await request(path: "/auth/v1/user", method: "PUT", body: .object(["password": .string(password)]), token: token)
+    }
+
+    private func nativeCandidate(kind: SupabaseNativeCredentialKind, requireCurrentAttempt: @MainActor () throws -> Void = {}, exchange: () async throws -> JSONValue) async throws -> LoginResponse {
+        try Task.checkCancellation(); try requireCurrentAttempt()
+        let epoch = generation
+        let exchangeID = UUID()
+        candidateExchangeID = exchangeID
+        candidates.removeAll(); legacyCandidates.removeAll()
+        func requireOwnership() throws {
+            try Task.checkCancellation()
+            guard generation == epoch, candidateExchangeID == exchangeID else { throw CancellationError() }
+            try requireCurrentAttempt()
+        }
+        do {
+            let response = try await exchange()
+            try requireOwnership()
+            var candidate = try Self.decodeSession(response)
+            candidate.nativeCredentialKind = kind
+            candidates[candidate.accessToken] = candidate
+            let user = try await profile(accessToken: candidate.accessToken)
+            try requireOwnership()
+            return LoginResponse(accessToken: candidate.accessToken, user: user)
+        } catch {
+            if candidateExchangeID == exchangeID {
+                candidateExchangeID = nil; candidates.removeAll(); legacyCandidates.removeAll()
+            }
+            throw error
+        }
+    }
+
+    private func ensureNativeAccessToken(forceRefresh: Bool) async throws -> String {
+        guard let current = session, let kind = current.nativeCredentialKind else { throw Self.invalidSession }
+        if !forceRefresh, current.expiresAt.timeIntervalSinceNow > 60 { return current.accessToken }
+        if let refreshTask { return try await refreshTask.value.accessToken }
+        let epoch = generation
+        let task = Task { @MainActor in
+            let json: JSONValue
+            do {
+                json = try await self.request(path: "/auth/v1/token?grant_type=refresh_token", method: "POST", body: .object(["refresh_token": .string(current.refreshToken)]))
+            } catch let error as Base44Error where [400, 401, 403].contains(error.statusCode ?? 0)
+                && ["refresh_token_not_found", "refresh_token_already_used", "invalid_grant", "session_not_found", "user_not_found", "user_banned"].contains(error.code ?? "") {
+                throw Self.invalidSession
+            }
+            var next = try Self.decodeSession(json)
+            guard self.generation == epoch, !Task.isCancelled else { throw CancellationError() }
+            guard next.userID == current.userID else { throw Self.invalidSession }
+            next.nativeCredentialKind = kind
+            try self.persistSession(next)
+            self.session = next
+            return next
+        }
+        refreshTask = task
+        defer { if generation == epoch { refreshTask = nil } }
+        return try await task.value.accessToken
+    }
+#endif
 }
 
 private final class SupabaseNoRedirectDelegate: NSObject, URLSessionTaskDelegate, @unchecked Sendable {

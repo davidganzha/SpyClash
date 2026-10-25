@@ -1,0 +1,13 @@
+import {cloudEnvironment} from '../game-center-session/backend/cloud-configuration.mjs';
+import postgres from 'postgres';
+import {experimentalConfiguration} from '../game-center-session/backend/configuration.mjs';
+import {createAuthAPI} from '../game-center-session/backend/service.mjs';
+import {createHandler} from './handler.ts';
+import {GameServiceError} from './service.ts';
+const config=experimentalConfiguration(cloudEnvironment(Deno.env.toObject()));
+const db=postgres(config.databaseURL,{prepare:false,max:3,idle_timeout:15,connect_timeout:8,...(config.local?{}:{ssl:'require'})});
+const auth=createAuthAPI(config);
+const authenticate=async(token:string)=>{
+  try{return await auth.request('/user','GET',undefined,token);}catch{throw new GameServiceError('unauthorized','Sign in to continue.',401);}
+};
+Deno.serve(createHandler({db,authenticate}));

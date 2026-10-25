@@ -1451,6 +1451,12 @@ final class AppState: NSObject {
     var supabaseTestConfigurationError: String?
     var isRestoring = true
     var isBusy = false
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+    private(set) var isGameCenterSigningIn = false
+    @ObservationIgnored private let gameCenterAuthentication = GameCenterAuthentication()
+    @ObservationIgnored private let gameCenterAutomaticEntry = GameCenterAutomaticEntryPolicy()
+    @ObservationIgnored private var gameCenterManualEntryID: UUID?
+#endif
     private(set) var isApplicationActive = false
     private(set) var isAppleAuthorizationPending = false
     private var appleAuthorizationRequestID: UUID?
@@ -3503,6 +3509,95 @@ final class AppState: NSObject {
 #endif
     }
 
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+    /// Cold start first restores a saved account. Game Center is only asked
+    /// when there is no account to restore and no explicit recovery intent.
+    func runAutomaticGameCenterSignInIfNeeded() async {
+        guard ProcessInfo.processInfo.environment["XCTestConfigurationFilePath"] == nil,
+              !Task.isCancelled, !shouldUsePreviewData,
+              gameCenterAutomaticEntry.begin(
+                hasUser: user != nil,
+                hasSavedSession: client.hasSessionToken || sessionTokenRead()?.nilIfBlank != nil,
+                isBusy: isBusy,
+                recoveryPresented: authPhase.isRecoveryPresentation
+              ), let attemptID = beginAuthenticationAttempt() else { return }
+        isGameCenterSigningIn = true
+        defer {
+            if authenticationAttemptID == attemptID {
+                isGameCenterSigningIn = false
+                finishAuthenticationAttempt(attemptID)
+            }
+        }
+        do {
+            let proof = try await gameCenterAuthentication.authenticate()
+            try requireCurrentAuthentication(attemptID)
+            let response = try await SupabaseAppSession.shared.exchangeGameCenter(proof: proof) {
+                try self.requireCurrentAuthentication(attemptID)
+            }
+            try requireCurrentAuthentication(attemptID)
+            try await client.commitAuthenticatedToken(response.accessToken, user: response.user)
+            try requireCurrentAuthentication(attemptID, checkSession: false)
+            sessionTokenSave(response.accessToken)
+            reconcileLanguagePreference(with: response.user.language)
+            user = response.user
+            selectedTab = .home
+            shellRoute = .main
+            isGameCenterSigningIn = false
+            // RootView uses the account's actual onboarding state. A returning
+            // player keeps their progress; a new player opens OnboardingView.
+            if !requiresOnboarding { startPostAuthActiveRoomRestoreIfNeeded() }
+        } catch {
+            guard authenticationAttemptID == attemptID,
+                  authenticationSessionGeneration == client.sessionGeneration,
+                  !Task.isCancelled else { return }
+            isGameCenterSigningIn = false
+            presentClassicRegistrationAfterGameCenter()
+        }
+    }
+
+    func cancelGameCenterSignIn() {
+        guard isGameCenterSigningIn else { return }
+        stopGameCenterEntry()
+        presentClassicRegistrationAfterGameCenter()
+    }
+
+    func prepareGameCenterManualEntry() -> UUID? {
+        guard user == nil, !client.hasSessionToken, !isBusy,
+              !authPhase.isRecoveryPresentation else { return nil }
+        let requestID = UUID()
+        gameCenterManualEntryID = requestID
+        return requestID
+    }
+
+    func loginWithGameCenter(requestID: UUID) async {
+        guard gameCenterManualEntryID == requestID,
+              user == nil, !client.hasSessionToken, !isBusy,
+              !authPhase.isRecoveryPresentation else { return }
+        gameCenterManualEntryID = nil
+        gameCenterAutomaticEntry.allowExplicitEntry()
+        await runAutomaticGameCenterSignInIfNeeded()
+    }
+
+    private func stopGameCenterEntry() {
+        gameCenterManualEntryID = nil
+        gameCenterAutomaticEntry.disableAutomaticEntry()
+        guard isGameCenterSigningIn else { return }
+        isGameCenterSigningIn = false
+        gameCenterAuthentication.cancel()
+        authenticationAttemptID = nil
+        authenticationSessionGeneration = nil
+        isBusy = false
+    }
+
+    private func presentClassicRegistrationAfterGameCenter() {
+        // Declining the system prompt is a normal choice, not an error toast.
+        authError = nil
+        authNotice = nil
+        authPhase = .registerEmail
+        authPresentationRequestID &+= 1
+    }
+#endif
+
     func login(email: String, password: String) async {
         guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
         await performAuth { attemptID in
@@ -3526,7 +3621,9 @@ final class AppState: NSObject {
     func register(email: String, password: String) async {
         guard !SupabaseTestEnvironment.isEnabled else { authError = SupabaseTestEnvironment.unavailableMessage; return }
         await performAuth { attemptID in
-            let immediateSession = try await self.client.registerReturningSession(email: email, password: password)
+            let immediateSession = try await self.client.registerReturningSession(email: email, password: password) {
+                try self.requireCurrentAuthentication(attemptID)
+            }
             try self.requireCurrentAuthentication(attemptID)
             if let response = immediateSession {
                 try await self.client.commitAuthenticatedToken(response.accessToken, user: response.user)
@@ -3992,6 +4089,9 @@ final class AppState: NSObject {
 #endif
 
     func logout() {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        stopGameCenterEntry()
+#endif
         invalidateSessionRestore()
         authenticationAttemptID = nil
         authenticationSessionGeneration = nil
@@ -5353,6 +5453,9 @@ final class AppState: NSObject {
     }
 
     private func presentPasswordRecovery(token: String) {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        stopGameCenterEntry()
+#endif
         // A recovery link is a new authentication intent. Late browser,
         // email and foreground responses must not replace its form or notice.
         invalidateSessionRestore()
@@ -5400,6 +5503,10 @@ final class AppState: NSObject {
     }
 
     func beginAuthenticationAttempt() -> UUID? {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        gameCenterManualEntryID = nil
+        if isGameCenterSigningIn { stopGameCenterEntry() }
+#endif
         guard !isBusy else { return nil }
         invalidateSessionRestore()
         let id = UUID()

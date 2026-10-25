@@ -1,0 +1,24 @@
+{
+  "name": "spyclash-game-center-000",
+  "private": true,
+  "version": "0.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=22"
+  },
+  "scripts": {
+    "test": "node --test --test-concurrency=1 tests/*.test.mjs",
+    "test:local": "node scripts/local.mjs test",
+    "serve:local": "node scripts/local.mjs serve",
+    "prepare:package": "node scripts/prepare-package.mjs"
+  },
+  "dependencies": {
+    "@peculiar/x509": "2.2.0",
+    "postgres": "3.4.9",
+    "reflect-metadata": "0.2.2"
+  },
+  "devDependencies": {
+    "deno": "2.9.6",
+    "supabase": "2.120.0"
+  }
+}

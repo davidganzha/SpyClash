@@ -4,7 +4,10 @@ import Foundation
 enum SupabaseAppRuntime {
 #if SPYCLASH_SUPABASE
     static let isEnabled = true
-#if SPYCLASH_SUPABASE_MAIN_CANDIDATE
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+    static let callbackScheme = "spyclash-gamecenter000"
+    static let isMainHybrid = false
+#elseif SPYCLASH_SUPABASE_MAIN_CANDIDATE
     static let callbackScheme = "spyclash"
     static let isMainHybrid = true
 #else
@@ -35,10 +38,18 @@ enum SupabaseAppRuntime {
     }
     static var permitsWebRoomLinks: Bool { !isEnabled && !SupabaseTestEnvironment.isEnabled }
     static var radarServiceType: String {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        return "spy-gc000"
+#else
         isEnabled || SupabaseTestEnvironment.isEnabled ? "spy-bbkfsg" : "spyclash-radar"
+#endif
     }
     static var radarBackendNamespace: String {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        return "supabase:" + SupabaseAppConfiguration.configuredProjectReference
+#else
         isEnabled || SupabaseTestEnvironment.isEnabled ? "supabase:bbkfsgnordtdiblgdzkg" : "base44"
+#endif
     }
     static func acceptsRadarBackend(_ namespace: String?) -> Bool {
         if isEnabled || SupabaseTestEnvironment.isEnabled { return namespace == radarBackendNamespace }
@@ -95,13 +106,21 @@ struct SupabaseAppConfiguration: Codable, Equatable, Sendable {
     var mainAccountDeletionEnabled: Bool = false
     var emailOTPLength: Int? = nil
     var resolvedEmailOTPLength: Int { 6 }
-    var projectReference: String { "bbkfsgnordtdiblgdzkg" }
+    var projectReference: String {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        backendURL == "http://127.0.0.1:56330" ? "gamecenter000-local" : "ovowoixuyabccgkxcexp"
+#else
+        "bbkfsgnordtdiblgdzkg"
+#endif
+    }
     static var configuredProjectReference: String {
         (try? bundled().projectReference) ?? "invalid-configuration"
     }
 
     static func bundled() throws -> Self {
-#if SPYCLASH_SUPABASE_MAIN_CANDIDATE
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        let resource = "GameCenterAppConfiguration"
+#elseif SPYCLASH_SUPABASE_MAIN_CANDIDATE
         let resource = "SupabaseMainCandidateConfiguration"
 #else
         let resource = "SupabaseAppConfiguration"
@@ -114,13 +133,39 @@ struct SupabaseAppConfiguration: Codable, Equatable, Sendable {
     }
 
     func validated() throws -> Self {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        // Exact allowlist: local QA and the separate user-selected test project.
+        // The working game's project can never be selected by this target.
+        guard ["http://127.0.0.1:56330", "https://ovowoixuyabccgkxcexp.supabase.co"].contains(backendURL),
+              Self.isPublicLocalKey(publishableKey),
+              !appleSignInEnabled, !googleSignInEnabled,
+              !permitsLegacyBilling, !permitsLegacyPush, !mainAccountDeletionEnabled,
+              emailOTPLength == nil || emailOTPLength == 6 else {
+            throw Base44Error(message: "The isolated test server configuration is invalid.", code: "experiment_configuration_invalid")
+        }
+#else
         guard backendURL == "https://bbkfsgnordtdiblgdzkg.supabase.co",
               publishableKey.hasPrefix("sb_publishable_"), !publishableKey.contains(where: { $0.isWhitespace }),
               emailOTPLength == nil || emailOTPLength == 6 else {
             throw Base44Error(message: "The staging backend configuration is invalid.", code: "staging_configuration_invalid")
         }
+#endif
         return self
     }
+
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+    private static func isPublicLocalKey(_ key: String) -> Bool {
+        guard !key.contains(where: { $0.isWhitespace }) else { return false }
+        if key.hasPrefix("sb_publishable_") { return true }
+        let parts = key.split(separator: ".")
+        guard parts.count == 3 else { return false }
+        var payload = String(parts[1]).replacingOccurrences(of: "-", with: "+").replacingOccurrences(of: "_", with: "/")
+        payload += String(repeating: "=", count: (4 - payload.count % 4) % 4)
+        guard let data = Data(base64Encoded: payload),
+              let claims = try? JSONSerialization.jsonObject(with: data) as? [String: Any] else { return false }
+        return claims["role"] as? String == "anon"
+    }
+#endif
 }
 
 extension SupabaseAppConfiguration {

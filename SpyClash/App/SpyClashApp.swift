@@ -15,6 +15,9 @@ struct SpyClashApp: App {
                 .tint(SpyTheme.red)
                 .task {
                     await appState.restoreSession()
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+                    await appState.runAutomaticGameCenterSignInIfNeeded()
+#endif
                 }
                 .task(id: MembershipActivityScope(account: appState.membershipScope, active: scenePhase == .active)) {
                     guard !SupabaseTestEnvironment.isEnabled else { return }
@@ -51,11 +54,21 @@ private struct RootView: View {
 
     var body: some View {
         ZStack {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+            if appState.isGameCenterSigningIn {
+                GameCenterEntryView()
+            } else if appState.isRestoring {
+                BootView()
+            } else {
+                restoredContent
+            }
+#else
             if appState.isRestoring {
                 BootView()
             } else {
                 restoredContent
             }
+#endif
         }
         .background(SpyBackground())
         .buttonStyle(SpyWebPressStyle())

@@ -1,0 +1,7 @@
+{
+  "backendURL": "https://ovowoixuyabccgkxcexp.supabase.co",
+  "publishableKey": "sb_publishable_t8dcSC9JZ015cUtZsYTVpw_aO1zB0bj",
+  "appleSignInEnabled": false,
+  "googleSignInEnabled": false,
+  "emailOTPLength": 6
+}

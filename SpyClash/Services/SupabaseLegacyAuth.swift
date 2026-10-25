@@ -111,6 +111,9 @@ final class SupabaseLegacyAuth {
             !value.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains)
     }
     private func request<T: Decodable>(_ route: String, fields: [String: String]) async throws -> T {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        throw Base44Error(message: "Production authentication is disabled in this experiment.", statusCode: 403, code: "production_auth_disabled")
+#endif
         guard ["auth/login", "auth/register", "auth/verify-otp", "auth/resend-otp", "auth/reset-password-request", "auth/reset-password", "functions/autoRegisterUser", "functions/autoRegisterUserV2"].contains(route) else {
             throw Base44Error(message: "This Base44 endpoint is unavailable in staging.", code: "legacy_route_disallowed")
         }

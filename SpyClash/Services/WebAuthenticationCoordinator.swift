@@ -218,6 +218,19 @@ enum ResetPasswordLinkParser {
             items = fragmentComponents.queryItems ?? []
         } else { items = components.queryItems ?? [] }
         let names = items.map(\.name)
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        if isCustom, components.percentEncodedQuery == nil,
+           Set(names).count == names.count,
+           items.first(where: { $0.name == "type" })?.value == "recovery",
+           !items.contains(where: { ["token", "reset_token", "resetToken", "error", "error_description"].contains($0.name) }),
+           let token = items.first(where: { $0.name == "access_token" })?.value,
+           !token.isEmpty, token.utf8.count <= 20_000,
+           token == token.trimmingCharacters(in: .whitespacesAndNewlines),
+           !token.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) {
+            return token
+        }
+        return nil
+#else
         let tokenFields = items.filter { ["token", "reset_token", "resetToken"].contains($0.name) }
         guard Set(names).count == names.count, tokenFields.count == 1,
               !items.contains(where: { ["access_token", "error", "error_description"].contains($0.name) }),
@@ -225,5 +238,6 @@ enum ResetPasswordLinkParser {
               token == token.trimmingCharacters(in: .whitespacesAndNewlines),
               !token.unicodeScalars.contains(where: CharacterSet.controlCharacters.contains) else { return nil }
         return token
+#endif
     }
 }

@@ -298,7 +298,9 @@ final class Base44Client {
         try Task.checkCancellation()
         try requireCurrentAttempt()
         let response: LoginResponse
-#if SPYCLASH_SUPABASE
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        return try await SupabaseAppSession.shared.nativeEmailLogin(email: email, password: password, requireCurrentAttempt: requireCurrentAttempt)
+#elseif SPYCLASH_SUPABASE
         let authGeneration = SupabaseAppSession.shared.generation
         response = try await SupabaseLegacyAuth.shared.login(email: email, password: password)
         guard authGeneration == SupabaseAppSession.shared.generation, !Task.isCancelled else { throw CancellationError() }
@@ -321,7 +323,10 @@ final class Base44Client {
     }
 
     func register(email: String, password: String) async throws {
-#if SPYCLASH_SUPABASE
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        _ = try await SupabaseAppSession.shared.nativeEmailRegister(email: email, password: password)
+        return
+#elseif SPYCLASH_SUPABASE
         try await SupabaseLegacyAuth.shared.register(email: email, password: password)
         return
 #endif
@@ -332,8 +337,10 @@ final class Base44Client {
         )
     }
 
-    func registerReturningSession(email: String, password: String) async throws -> LoginResponse? {
-#if SPYCLASH_SUPABASE
+    func registerReturningSession(email: String, password: String, requireCurrentAttempt: @MainActor () throws -> Void = {}) async throws -> LoginResponse? {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        return try await SupabaseAppSession.shared.nativeEmailRegister(email: email, password: password, requireCurrentAttempt: requireCurrentAttempt)
+#elseif SPYCLASH_SUPABASE
         try await SupabaseLegacyAuth.shared.register(email: email, password: password)
         return nil
 #else
@@ -349,7 +356,10 @@ final class Base44Client {
         try Task.checkCancellation()
         try requireCurrentAttempt()
         let response: VerifyResponse
-#if SPYCLASH_SUPABASE
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        let native = try await SupabaseAppSession.shared.nativeEmailVerify(email: email, code: code, requireCurrentAttempt: requireCurrentAttempt)
+        return VerifyResponse(accessToken: native.accessToken, user: native.user)
+#elseif SPYCLASH_SUPABASE
         let authGeneration = SupabaseAppSession.shared.generation
         response = try await SupabaseLegacyAuth.shared.verify(email: email, code: code)
         guard authGeneration == SupabaseAppSession.shared.generation, !Task.isCancelled else { throw CancellationError() }
@@ -372,7 +382,10 @@ final class Base44Client {
     }
 
     func resendOTP(email: String) async throws {
-#if SPYCLASH_SUPABASE
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        try await SupabaseAppSession.shared.nativeEmailResend(email: email)
+        return
+#elseif SPYCLASH_SUPABASE
         try await SupabaseLegacyAuth.shared.resend(email: email)
         return
 #endif
@@ -384,7 +397,10 @@ final class Base44Client {
     }
 
     func requestPasswordReset(email: String) async throws {
-#if SPYCLASH_SUPABASE
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        try await SupabaseAppSession.shared.nativeRequestRecovery(email: email)
+        return
+#elseif SPYCLASH_SUPABASE
         try await SupabaseLegacyAuth.shared.requestRecovery(email: email)
         return
 #endif
@@ -396,7 +412,10 @@ final class Base44Client {
     }
 
     func resetPassword(token: String, newPassword: String) async throws {
-#if SPYCLASH_SUPABASE
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        try await SupabaseAppSession.shared.nativeResetPassword(token: token, password: newPassword)
+        return
+#elseif SPYCLASH_SUPABASE
         try await SupabaseLegacyAuth.shared.resetPassword(token: token, password: newPassword)
         return
 #endif
