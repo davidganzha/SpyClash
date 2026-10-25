@@ -301,7 +301,7 @@ targets:
         PRODUCT_BUNDLE_IDENTIFIER: com.spyclash.ios.gamecenter000
         PRODUCT_MODULE_NAME: SpyClashGameCenter
         MARKETING_VERSION: 0.0.0
-        CURRENT_PROJECT_VERSION: 1
+        CURRENT_PROJECT_VERSION: 2
         DEVELOPMENT_TEAM: 3Z64QKNL54
         CODE_SIGN_STYLE: Automatic
         CODE_SIGN_IDENTITY: Apple Development

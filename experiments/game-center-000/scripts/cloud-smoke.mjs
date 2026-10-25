@@ -31,7 +31,7 @@ if(action==='signup'){
  if(session.user.id!==record.userID)throw new Error('Unexpected test actor');
  const current=await request('/functions/v1/app-services',{service:'profile',action:'current'},session.access_token);
  if(current.id!==record.userID||current.onboarding_completed!==false)throw new Error('Initial profile was not new and unfinished');
- const saved=await request('/functions/v1/app-services',{service:'profile',action:'onboarding',language:'en',onboarding_version:1,acquisition_source:'other',request_id:randomUUID()},session.access_token);
+ const saved=await request('/functions/v1/app-services',{service:'profile',action:'onboarding',language:'en',onboarding_version:2,onboarding_completed:true,onboarding_completed_at:new Date().toISOString(),request_id:randomUUID()},session.access_token);
  const readback=await request('/functions/v1/app-services',{service:'profile',action:'current'},session.access_token);
  if(!saved.onboarding_completed||!readback.onboarding_completed)throw new Error('Onboarding did not persist');
  const refreshed=await request('/auth/v1/token?grant_type=refresh_token',{refresh_token:session.refresh_token});

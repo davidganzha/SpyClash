@@ -350,6 +350,170 @@ final class NativeSessionTests: XCTestCase {
     }
 }
 
+@MainActor
+final class OnboardingSessionRecoveryTests: XCTestCase {
+    func testRejectedSessionOpensSignInAndPreservesSelectedLanguageWithoutCompletingOnboarding() async throws {
+        let profile = try makeUser()
+        var cleared = 0
+        let recovering = try makeState(clearToken: { cleared += 1 })
+        recovering.user = profile
+        recovering.setOnboardingLanguage(.ru)
+        recovering.gameCenterOnboardingCompletionOverride = { _ in
+            throw Base44Error(message: "Sign in to continue.", statusCode: 401, code: "unauthorized")
+        }
+
+        await recovering.finishOnboarding()
+
+        XCTAssertNil(recovering.user)
+        XCTAssertEqual(cleared, 1)
+        XCTAssertEqual(recovering.authPhase, .email)
+        XCTAssertEqual(recovering.authPresentationRequestID, 1)
+        XCTAssertEqual(recovering.authError, "Сессия истекла. Войдите снова, чтобы завершить настройку.")
+        XCTAssertEqual(recovering.language, .ru)
+        XCTAssertEqual(AppLanguage.stored, .ru)
+        XCTAssertFalse(recovering.isFinishingOnboarding)
+        XCTAssertFalse(recovering.isGameCenterSigningIn)
+        XCTAssertNil(OnboardingProgressStore.completedVersion(for: profile.id))
+        XCTAssertNil(OnboardingProgressStore.pendingSubmission(for: profile.id))
+        XCTAssertEqual(recovering.toastNotices.last?.title, recovering.authError)
+    }
+
+    func testTransientServiceFailureKeepsAccountAndOnboardingAvailableForRetry() async throws {
+        var cleared = 0
+        let state = try makeState(clearToken: { cleared += 1 })
+        let profile = try makeUser()
+        state.user = profile
+        state.setOnboardingLanguage(.uk)
+        var submissions = 0
+        state.gameCenterOnboardingCompletionOverride = { _ in
+            submissions += 1
+            throw Base44Error(message: "Service temporarily unavailable.", statusCode: 503, code: "auth_unavailable", retryable: true)
+        }
+
+        await state.finishOnboarding()
+        await state.finishOnboarding()
+
+        XCTAssertEqual(submissions, 2)
+        XCTAssertEqual(state.user?.id, profile.id)
+        XCTAssertTrue(state.requiresOnboarding)
+        XCTAssertEqual(state.language, .uk)
+        XCTAssertEqual(cleared, 0)
+        XCTAssertEqual(state.authPresentationRequestID, 0)
+        XCTAssertNil(state.authError)
+        XCTAssertFalse(state.isFinishingOnboarding)
+        XCTAssertNil(OnboardingProgressStore.completedVersion(for: profile.id))
+    }
+
+    func testLateUnauthorizedCannotSignOutReplacementAccount() async throws {
+        var cleared = 0
+        let state = try makeState(clearToken: { cleared += 1 })
+        state.user = try makeUser()
+        let pending = PendingOnboardingResponse()
+        state.gameCenterOnboardingCompletionOverride = { _ in try await pending.wait() }
+        let attempt = Task { await state.finishOnboarding() }
+        try await waitUntil { pending.continuation != nil }
+        let replacement = try makeUser()
+        state.user = replacement
+        pending.rejectUnauthorized()
+        await attempt.value
+
+        XCTAssertEqual(state.user?.id, replacement.id)
+        XCTAssertEqual(cleared, 0)
+        XCTAssertEqual(state.authPresentationRequestID, 0)
+        XCTAssertTrue(state.toastNotices.isEmpty)
+        XCTAssertFalse(state.isFinishingOnboarding)
+    }
+
+    func testLateUnauthorizedCannotSignOutNewSessionForSameAccount() async throws {
+        var cleared = 0
+        let state = try makeState(clearToken: { cleared += 1 })
+        let profile = try makeUser()
+        state.user = profile
+        let pending = PendingOnboardingResponse()
+        state.gameCenterOnboardingCompletionOverride = { _ in try await pending.wait() }
+        let attempt = Task { await state.finishOnboarding() }
+        try await waitUntil { pending.continuation != nil }
+        // No credentials exist in this clean test process; clearing rotates the
+        // same generation used when an account receives a replacement session.
+        SupabaseAppSession.shared.clear(revokeRemote: false)
+        pending.rejectUnauthorized()
+        await attempt.value
+
+        XCTAssertEqual(state.user?.id, profile.id)
+        XCTAssertEqual(cleared, 0)
+        XCTAssertEqual(state.authPresentationRequestID, 0)
+        XCTAssertTrue(state.toastNotices.isEmpty)
+        XCTAssertFalse(state.isFinishingOnboarding)
+    }
+
+    func testCancelledOnboardingDoesNotInterpretLateUnauthorizedAsLogout() async throws {
+        var cleared = 0
+        let state = try makeState(clearToken: { cleared += 1 })
+        let profile = try makeUser()
+        state.user = profile
+        let pending = PendingOnboardingResponse()
+        state.gameCenterOnboardingCompletionOverride = { _ in try await pending.wait() }
+        let attempt = Task { await state.finishOnboarding() }
+        try await waitUntil { pending.continuation != nil }
+        attempt.cancel()
+        pending.rejectUnauthorized()
+        await attempt.value
+
+        XCTAssertEqual(state.user?.id, profile.id)
+        XCTAssertEqual(cleared, 0)
+        XCTAssertEqual(state.authPresentationRequestID, 0)
+        XCTAssertTrue(state.toastNotices.isEmpty)
+        XCTAssertFalse(state.isFinishingOnboarding)
+    }
+
+    private func makeState(clearToken: @escaping @MainActor () -> Void = {}) throws -> AppState {
+        // These tests exercise the real logout cleanup. Never revoke an account
+        // left on a shared manual-QA device: run this suite on a clean simulator.
+        try XCTSkipIf(SupabaseAppSession.shared.accessToken != nil, "Onboarding recovery tests require a clean QA Simulator with no saved account.")
+        let language = UserDefaults.standard.string(forKey: AppLanguage.storageKey)
+        let automaticEntry: Bool? = UserDefaults.standard.object(forKey: GameCenterAutomaticEntryPolicy.optOutKey) == nil
+            ? nil : UserDefaults.standard.bool(forKey: GameCenterAutomaticEntryPolicy.optOutKey)
+        addTeardownBlock {
+            UserDefaults.standard.set(language, forKey: AppLanguage.storageKey)
+            UserDefaults.standard.set(automaticEntry, forKey: GameCenterAutomaticEntryPolicy.optOutKey)
+        }
+        let state = AppState(client: Base44Client(), readStoredToken: { nil }, saveStoredToken: { _ in }, clearStoredToken: clearToken)
+        state.isRestoring = false
+        return state
+    }
+
+    private func makeUser() throws -> SpyUser {
+        let id = UUID().uuidString.lowercased()
+        addTeardownBlock { OnboardingProgressStore.clear(for: id) }
+        return try JSONDecoder().decode(SpyUser.self, from: Data("""
+        {"id":"\(id)","email":"\(id)@example.test","display_name":"Onboarding QA",
+         "language":"en","onboarding_completed":false,"onboarding_version":0}
+        """.utf8))
+    }
+
+    private func waitUntil(_ condition: @MainActor () -> Bool) async throws {
+        for _ in 0..<200 {
+            if condition() { return }
+            try await Task.sleep(for: .milliseconds(5))
+        }
+        XCTFail("Onboarding request did not suspend")
+        throw URLError(.timedOut)
+    }
+}
+
+@MainActor
+private final class PendingOnboardingResponse {
+    var continuation: CheckedContinuation<SpyUser, Error>?
+    func wait() async throws -> SpyUser {
+        try await withCheckedThrowingContinuation { continuation = $0 }
+    }
+    func rejectUnauthorized() {
+        let continuation = continuation
+        self.continuation = nil
+        continuation?.resume(throwing: Base44Error(message: "Sign in to continue.", statusCode: 401, code: "unauthorized"))
+    }
+}
+
 private final class NativeSessionURLProtocol: URLProtocol, @unchecked Sendable {
     struct Reply: Sendable {
         var body: Data

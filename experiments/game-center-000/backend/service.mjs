@@ -14,10 +14,24 @@ export function createAuthAPI(config, fetcher = fetch) {
           ...(body === undefined ? {} : {body: JSON.stringify(body)})});
       } catch { throw unavailable(); }
       if (response.status === 404 && method === 'GET') return undefined;
+      if (path === '/user' && [401, 403].includes(response.status)) {
+        throw new GameCenterError('auth_session_invalid', 'Sign in to continue.', 401);
+      }
       if (!response.ok) throw unavailable();
       const raw = await response.text(); if (raw.length > 128_000) throw unavailable();
       try { return raw ? JSON.parse(raw) : {}; } catch { throw unavailable(); }
     },
+  };
+}
+/** Preserve transient Auth failures. Only an explicit rejected bearer may
+ * become a terminal app authentication error and send the player back to login. */
+export function createActorAuthenticator(auth, unauthorizedError) {
+  return async token => {
+    try { return await auth.request('/user', 'GET', undefined, token); }
+    catch (error) {
+      if (error instanceof GameCenterError && error.code === 'auth_session_invalid') throw unauthorizedError();
+      throw error;
+    }
   };
 }
 export async function exchangeGameCenter(body, {verify = createAssertionVerifier(), repository, auth}) {

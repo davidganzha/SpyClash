@@ -117,3 +117,22 @@ Verified:
 The hosted signup endpoint rejects reserved `@example.com` addresses. The cloud password/onboarding test therefore used an explicitly synthetic SQL-seeded fixture; it is **not** proof of email delivery or public signup confirmation. Local public signup was tested separately by the iOS task. No fake-auth endpoint or synthetic Game Center trust material is deployed.
 
 A live Apple Game Center assertion and its first-login/return-login behavior still require the separately signed experimental app on an Apple device. No TestFlight upload or production release was performed by this backend task.
+
+
+## Onboarding QA session repair — 2026-10-25
+
+After the first UI verification, its disposable Auth user was removed while the simulator still retained that user's session. The subsequent onboarding completion correctly failed authorization: Auth logs at 14:07–14:12 UTC showed `403 user_not_found`, and the database had no user or profile for the deleted UUID. The iOS screen displayed a generic save error. This was a QA cleanup mistake, not an onboarding database-save failure.
+
+A new persistent QA identity was created with a new UUID and remains available for the user-driven simulator test. Its credentials are stored only in the ignored mode-0600 `.local/gamecenter-onboarding-qa.json`. It must not be deleted or signed out by test cleanup. A distinct disposable identity verified the exact current iOS onboarding payload (version 2, Russian language, `onboarding_completed=true`, completion timestamp, omitted acquisition source) with successful cloud save/readback, then was removed by its exact UUID.
+
+The isolated backend now distinguishes terminal authentication rejection from service outages. Auth `/user` 401/403 becomes app/core `401 unauthorized`, `retryable:false`. Auth network errors, 429 and 5xx remain `503 app_service_unavailable` / `503 game_service_unavailable`, `retryable:true`, so the app must retain the session and allow retry. This correction is deployed only to `ovowoixuyabccgkxcexp`.
+
+Current active deployment readback after this correction:
+
+| Endpoint | Version | Exact source matches | Bundle SHA-256 |
+| --- | --- | --- | --- |
+| `game-center-session` | 5 | 15/15 | `fe4f0b4a2ea485bbeed3ac9eb8efeb41f24cde45f645047dc467e0c58becbe6e` |
+| `app-services` | 3 | 60/60 | `adb5e0274ab23a9252b065d9fab457ab9234ed4846389e9fd14efe442b981995` |
+| `full-game-core` | 3 | 39/39 | `af9b501e40249acd8766275a588633a470560001b328cecc0b25abff70a8d716` |
+
+16 backend unit/security tests pass, including terminal-vs-transient Auth boundary cases; all three generated Edge entry points pass `deno check`. The earlier zero-user cleanup snapshot is historical: the new persistent QA identity is intentionally retained.

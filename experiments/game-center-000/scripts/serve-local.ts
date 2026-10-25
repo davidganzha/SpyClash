@@ -1,3 +1,4 @@
+import {createActorAuthenticator} from '../backend/service.mjs';
 import {createExperimentalRuntime} from '../backend/runtime.mjs';
 import {ensureProfile} from '../../supabase-game-core/supabase/functions/app-services/profile.ts';
 import {createAppHandler} from '../../supabase-game-core/supabase/functions/app-services/handler.ts';
@@ -5,10 +6,7 @@ import {AppServiceError} from '../../supabase-game-core/supabase/functions/app-s
 import {createHandler as createGameHandler} from '../../supabase-game-core/supabase/functions/full-game-core/handler.ts';
 const runtime=createExperimentalRuntime(Deno.env.toObject(),ensureProfile);
 if(!runtime.config.local)throw new Error('Local router refuses cloud environments.');
-const authenticate=async(token:string)=>{
-  try{return await runtime.auth.request('/user','GET',undefined,token);}
-  catch{throw new AppServiceError('unauthorized','Sign in to continue.',401);}
-};
+const authenticate=createActorAuthenticator(runtime.auth,()=>new AppServiceError('unauthorized','Sign in to continue.',401));
 const app=createAppHandler({db:runtime.db,authenticate,config:{}});
 const game=createGameHandler({db:runtime.db,authenticate});
 Deno.serve({hostname:'127.0.0.1',port:56330,onListen:()=>console.log('Experimental 000 backend listening at http://127.0.0.1:56330 (loopback only).')},async request=>{

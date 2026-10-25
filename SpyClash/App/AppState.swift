@@ -1456,6 +1456,10 @@ final class AppState: NSObject {
     @ObservationIgnored private let gameCenterAuthentication = GameCenterAuthentication()
     @ObservationIgnored private let gameCenterAutomaticEntry = GameCenterAutomaticEntryPolicy()
     @ObservationIgnored private var gameCenterManualEntryID: UUID?
+    @ObservationIgnored private var gameCenterOnboardingAttemptID: UUID?
+#if DEBUG
+    @ObservationIgnored var gameCenterOnboardingCompletionOverride: (@MainActor (OnboardingSubmission) async throws -> SpyUser)?
+#endif
 #endif
     private(set) var isApplicationActive = false
     private(set) var isAppleAuthorizationPending = false
@@ -4091,6 +4095,7 @@ final class AppState: NSObject {
     func logout() {
 #if SPYCLASH_GAME_CENTER_EXPERIMENT
         stopGameCenterEntry()
+        gameCenterOnboardingAttemptID = nil
 #endif
         invalidateSessionRestore()
         authenticationAttemptID = nil
@@ -4253,7 +4258,19 @@ final class AppState: NSObject {
         onboardingSyncTask = nil
         onboardingSyncUserID = nil
         isFinishingOnboarding = true
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        let attemptID = UUID()
+        let sessionGeneration = client.sessionGeneration
+        gameCenterOnboardingAttemptID = attemptID
+        defer {
+            if gameCenterOnboardingAttemptID == attemptID {
+                gameCenterOnboardingAttemptID = nil
+                isFinishingOnboarding = false
+            }
+        }
+#else
         defer { isFinishingOnboarding = false }
+#endif
 
         let submission = OnboardingSubmission(
             language: language,
@@ -4267,10 +4284,14 @@ final class AppState: NSObject {
 #if DEBUG
         if !isUIPreviewMode {
             do {
-                updatedUser = try await client.completeOnboarding(submission)
+                updatedUser = try await submitOnboarding(submission)
             } catch is CancellationError {
                 return
             } catch {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+                guard ownsGameCenterOnboarding(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+                if recoverGameCenterOnboardingSession(after: error) { return }
+#endif
                 guard authenticatedUser.onboardingCompleted != false,
                       Self.canDeferOnboardingSync(after: error) else {
                     showToast(onboardingSaveFailureMessage, kind: .error)
@@ -4281,10 +4302,14 @@ final class AppState: NSObject {
         }
 #else
         do {
-            updatedUser = try await client.completeOnboarding(submission)
+            updatedUser = try await submitOnboarding(submission)
         } catch is CancellationError {
             return
         } catch {
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+            guard ownsGameCenterOnboarding(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+            if recoverGameCenterOnboardingSession(after: error) { return }
+#endif
             guard authenticatedUser.onboardingCompleted != false,
                   Self.canDeferOnboardingSync(after: error) else {
                 showToast(onboardingSaveFailureMessage, kind: .error)
@@ -4294,6 +4319,9 @@ final class AppState: NSObject {
         }
 #endif
 
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        guard ownsGameCenterOnboarding(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else { return }
+#endif
         guard user?.id == authenticatedUser.id else { return }
 
         onboardingLaunchMessage = nil
@@ -4305,6 +4333,15 @@ final class AppState: NSObject {
         // account gate. This keeps Onboarding and Home from ever sharing a
         // visible frame.
         try? await Task.sleep(for: .milliseconds(120))
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+        guard ownsGameCenterOnboarding(attemptID, userID: authenticatedUser.id, generation: sessionGeneration) else {
+            if gameCenterOnboardingAttemptID == attemptID {
+                onboardingLaunchMessage = nil
+                authHomeRevealPhase = .idle
+            }
+            return
+        }
+#endif
         guard user?.id == authenticatedUser.id else {
             onboardingLaunchMessage = nil
             authHomeRevealPhase = .idle
@@ -4349,6 +4386,43 @@ final class AppState: NSObject {
         }
         await consumePendingRoutesIfPossible()
     }
+
+    private func submitOnboarding(_ submission: OnboardingSubmission) async throws -> SpyUser {
+#if DEBUG && SPYCLASH_GAME_CENTER_EXPERIMENT
+        if let gameCenterOnboardingCompletionOverride {
+            return try await gameCenterOnboardingCompletionOverride(submission)
+        }
+#endif
+        return try await client.completeOnboarding(submission)
+    }
+
+#if SPYCLASH_GAME_CENTER_EXPERIMENT
+    private func ownsGameCenterOnboarding(_ attemptID: UUID, userID: String, generation: UUID) -> Bool {
+        !Task.isCancelled && gameCenterOnboardingAttemptID == attemptID &&
+            user?.id == userID && client.sessionGeneration == generation
+    }
+
+    /// A rejected session cannot save onboarding on retry. Clear only the
+    /// current attempt's account and reopen sign-in, leaving language and any
+    /// previously saved account-scoped progress intact. Outages remain retryable.
+    private func recoverGameCenterOnboardingSession(after error: Error) -> Bool {
+        guard let error = error as? Base44Error, error.statusCode == 401 else { return false }
+        let message = onboardingSessionExpiredMessage
+        logout()
+        authError = message
+        authPresentationRequestID &+= 1
+        return true
+    }
+
+    private var onboardingSessionExpiredMessage: String {
+        switch language {
+        case .en: "Your session has expired. Sign in again to finish setup."
+        case .es: "Tu sesión ha caducado. Vuelve a iniciar sesión para terminar la configuración."
+        case .ru: "Сессия истекла. Войдите снова, чтобы завершить настройку."
+        case .uk: "Сесія завершилася. Увійдіть знову, щоб завершити налаштування."
+        }
+    }
+#endif
 
     private static func canDeferOnboardingSync(after error: Error) -> Bool {
         guard let error = error as? Base44Error else { return true }
