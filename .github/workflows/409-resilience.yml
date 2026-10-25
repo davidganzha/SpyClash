@@ -11,6 +11,8 @@ on:
       - 'experiments/supabase-game-core/tests/auto-register-v2/**'
       - 'scripts/**'
       - 'project.yml'
+      - 'release/SupabasePublicConfiguration.json'
+      - 'release/SupabaseMainCandidateConfiguration.json'
       - 'SpyClash.xcodeproj/**'
       - '.github/workflows/409-resilience.yml'
   pull_request:
@@ -23,6 +25,8 @@ on:
       - 'experiments/supabase-game-core/tests/auto-register-v2/**'
       - 'scripts/**'
       - 'project.yml'
+      - 'release/SupabasePublicConfiguration.json'
+      - 'release/SupabaseMainCandidateConfiguration.json'
       - 'SpyClash.xcodeproj/**'
       - '.github/workflows/409-resilience.yml'
 
@@ -56,3 +60,12 @@ jobs:
           persist-credentials: false
           fetch-depth: 0
       - run: sh scripts/check-409-client.sh
+  public-release-configuration:
+    runs-on: macos-26
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v7
+        with:
+          persist-credentials: false
+          fetch-depth: 0
+      - run: sh scripts/check-public-release-config.sh

@@ -1,0 +1,10 @@
+{
+  "backendURL": "https://bbkfsgnordtdiblgdzkg.supabase.co",
+  "publishableKey": "sb_publishable_ngQBF-1M3POztbg8CYnBow_tBKGssBX",
+  "appleSignInEnabled": true,
+  "googleSignInEnabled": true,
+  "emailOTPLength": 6,
+  "permitsLegacyBilling": true,
+  "permitsLegacyPush": false,
+  "mainAccountDeletionEnabled": true
+}

@@ -171,9 +171,69 @@ fi
 
 bundle_id=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleIdentifier' "$app/Info.plist")
 backend_mode=$(/usr/libexec/PlistBuddy -c 'Print :SpyClashBackendMode' "$app/Info.plist" 2>/dev/null || true)
-if [ "$backend_mode" = 'supabase-main-candidate' ]; then
-  fail "This main-app candidate uses the isolated Supabase test project. Production backend configuration and release approval are required before distribution."
-fi
+case "$backend_mode" in
+  supabase-main-candidate)
+    fail "This main-app candidate is restricted to internal testing. Use the explicit public Supabase release configuration after verifying its backend prerequisites."
+    ;;
+  supabase-public)
+    # This verifies the package's explicit public route, not server deployment
+    # or account-deletion acceptance. Delivery must verify those separately.
+    python3 - "$app" "$root/release" <<'PY'
+import json
+import plistlib
+import sys
+from pathlib import Path
+
+app, source = map(Path, sys.argv[1:])
+
+def require(condition, message):
+    if not condition:
+        raise SystemExit(message)
+
+public_name = "SupabasePublicConfiguration.json"
+bundled = app / public_name
+require(bundled.is_file(), "Public Supabase bundle is missing its explicit production configuration.")
+for forbidden in ["SupabaseMainCandidateConfiguration.json", "SupabaseAppConfiguration.json", "BackendAllowlist.json"]:
+    require(not any(app.rglob(forbidden)), "Public Supabase bundle contains a candidate, staging or lab configuration.")
+try:
+    public_bytes = bundled.read_bytes()
+    public = json.loads(public_bytes)
+    candidate = json.loads((source / "SupabaseMainCandidateConfiguration.json").read_bytes())
+    info = plistlib.loads((app / "Info.plist").read_bytes())
+except (OSError, ValueError, plistlib.InvalidFileException):
+    raise SystemExit("Public Supabase configuration cannot be validated.")
+require(isinstance(public, dict) and isinstance(candidate, dict), "Public Supabase configuration must be an object.")
+require(public.get("backendURL") == "https://bbkfsgnordtdiblgdzkg.supabase.co", "Public Supabase configuration selects an unexpected backend.")
+key = public.get("publishableKey")
+require(isinstance(key, str) and key.startswith("sb_publishable_") and not any(c.isspace() for c in key), "Public Supabase configuration must use a publishable key.")
+require(public.get("mainAccountDeletionEnabled") is True, "Public Supabase configuration must enable full account deletion.")
+require(all(public.get(name) is True for name in ["appleSignInEnabled", "googleSignInEnabled", "permitsLegacyBilling"]), "Public Supabase configuration must retain Apple, Google and native billing.")
+require(public.get("permitsLegacyPush") is False, "Public Supabase configuration unexpectedly enables legacy push.")
+require(type(public.get("emailOTPLength")) is int and public["emailOTPLength"] == 6, "Public Supabase configuration must retain six-digit email verification.")
+require(public == {**candidate, "mainAccountDeletionEnabled": True}, "Public Supabase configuration differs from the candidate beyond full account deletion.")
+try:
+    source_bytes = (source / public_name).read_bytes()
+except OSError:
+    raise SystemExit("The reviewed public Supabase source configuration is missing.")
+require(public_bytes == source_bytes, "Bundled public Supabase configuration differs from the reviewed source.")
+schemes = [scheme for entry in info.get("CFBundleURLTypes", []) for scheme in entry.get("CFBundleURLSchemes", [])]
+require(schemes == ["spyclash"], "Public Supabase bundle must retain the original spyclash callback scheme.")
+PY
+    backend_gate_summary='public Supabase package; backend deployment/readiness not verified'
+    ;;
+  ''|base44)
+    if [ -n "$(find "$app" -type f \( -name SupabasePublicConfiguration.json -o -name SupabaseMainCandidateConfiguration.json -o -name SupabaseAppConfiguration.json -o -name BackendAllowlist.json \) -print -quit)" ]; then
+      fail "Legacy Base44 release contains a Supabase or lab configuration."
+    fi
+    backend_gate_summary='legacy Base44 package'
+    ;;
+  *) fail "The release bundle selects an unsupported backend mode." ;;
+esac
+internal_only=$(/usr/libexec/PlistBuddy -c 'Print :TFInternalTestingOnly' "$app/Info.plist" 2>/dev/null || true)
+case "$internal_only" in
+  ''|false) ;;
+  *) fail "An internal-only TestFlight bundle cannot pass the public release gate." ;;
+esac
 marketing_version=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleShortVersionString' "$app/Info.plist")
 build_number=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleVersion' "$app/Info.plist")
 bundle_executable=$(/usr/libexec/PlistBuddy -c 'Print :CFBundleExecutable' "$app/Info.plist")
@@ -409,4 +469,4 @@ case "$commerce_scan_status" in
     ;;
 esac
 
-echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), 1024px opaque App Store icon present, Live Activity extension embedded, $entitlement_gate_summary, no audio files or playback paths, privacy manifest exact with Purchase History, Apple StoreKit and expected LIMITLESS product present, no local StoreKit configuration or retired commerce copy."
+echo "iOS Release bundle gate passed: $bundle_id $marketing_version ($build_number), $backend_gate_summary, 1024px opaque App Store icon present, Live Activity extension embedded, $entitlement_gate_summary, no audio files or playback paths, privacy manifest exact with Purchase History, Apple StoreKit and expected LIMITLESS product present, no local StoreKit configuration or retired commerce copy."

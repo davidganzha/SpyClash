@@ -4,7 +4,7 @@ import Foundation
 enum SupabaseAppRuntime {
 #if SPYCLASH_SUPABASE
     static let isEnabled = true
-#if SPYCLASH_SUPABASE_MAIN_CANDIDATE
+#if SPYCLASH_SUPABASE_MAIN_CANDIDATE || SPYCLASH_SUPABASE_PUBLIC
     static let callbackScheme = "spyclash"
     static let isMainHybrid = true
 #else
@@ -101,7 +101,9 @@ struct SupabaseAppConfiguration: Codable, Equatable, Sendable {
     }
 
     static func bundled() throws -> Self {
-#if SPYCLASH_SUPABASE_MAIN_CANDIDATE
+#if SPYCLASH_SUPABASE_PUBLIC
+        let resource = "SupabasePublicConfiguration"
+#elseif SPYCLASH_SUPABASE_MAIN_CANDIDATE
         let resource = "SupabaseMainCandidateConfiguration"
 #else
         let resource = "SupabaseAppConfiguration"
@@ -114,6 +116,11 @@ struct SupabaseAppConfiguration: Codable, Equatable, Sendable {
     }
 
     func validated() throws -> Self {
+#if SPYCLASH_SUPABASE_PUBLIC
+        guard mainAccountDeletionEnabled, appleSignInEnabled, googleSignInEnabled, permitsLegacyBilling else {
+            throw Base44Error(message: "The public backend configuration is incomplete.", code: "public_configuration_invalid")
+        }
+#endif
         guard backendURL == "https://bbkfsgnordtdiblgdzkg.supabase.co",
               publishableKey.hasPrefix("sb_publishable_"), !publishableKey.contains(where: { $0.isWhitespace }),
               emailOTPLength == nil || emailOTPLength == 6 else {

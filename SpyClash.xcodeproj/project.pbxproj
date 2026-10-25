@@ -36,6 +36,7 @@
 		106AE27F4B2724A17C722789 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22314E28DB2385F7A05ABC74 /* HistoryView.swift */; };
 		107EE4E6916D0B2FCEE8F827 /* SpyTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */; };
 		1092B5EFB160C0394B75C5E4 /* KeychainStore.swift in Sources */ = {isa = PBXBuildFile; fileRef = 7C72E6B177BD60A0DABC0A4A /* KeychainStore.swift */; };
+		1177863BA1C20FB73E5F473E /* SupabasePublicConfiguration.json in Resources */ = {isa = PBXBuildFile; fileRef = DA400F739EC74706A363FA0B /* SupabasePublicConfiguration.json */; };
 		1237FE47502FB08C11F86513 /* HistoryView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 22314E28DB2385F7A05ABC74 /* HistoryView.swift */; };
 		1319A4EAFCA079FE24D5A2B3 /* PrivacyInfo.xcprivacy in Resources */ = {isa = PBXBuildFile; fileRef = 9C904BBF810EAAFF591F9659 /* PrivacyInfo.xcprivacy */; };
 		138D4E2D9BDF375CF36C08F5 /* OnboardingPermissionTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 0E6103AB3131936FE120B988 /* OnboardingPermissionTests.swift */; };
@@ -75,6 +76,7 @@
 		2F95F6BCE1DCA4F427AAE308 /* WelcomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = CE1AF213121DB5A761660563 /* WelcomeView.swift */; };
 		2FD859D49783D84FC9942DAC /* WordPackCardsUITests.swift in Sources */ = {isa = PBXBuildFile; fileRef = 9EE782106300DFB616AF9B1F /* WordPackCardsUITests.swift */; };
 		309F817C661DCC3A931B4F28 /* AppTab.swift in Sources */ = {isa = PBXBuildFile; fileRef = DA586ACEEC2D7E92F3621A49 /* AppTab.swift */; };
+		30C55028FF9156F0B409A186 /* SupabasePublicReleaseTests.swift in Sources */ = {isa = PBXBuildFile; fileRef = B95A2D741697760ECF94CA2C /* SupabasePublicReleaseTests.swift */; };
 		3159EFBB317BADEB054053A9 /* LabConfiguration.swift in Sources */ = {isa = PBXBuildFile; fileRef = 03A02561E0935B7FDA0396C6 /* LabConfiguration.swift */; };
 		320672F1370735C4463AF92E /* Membership.swift in Sources */ = {isa = PBXBuildFile; fileRef = 026F4AEBE8A76B12EE72FAC6 /* Membership.swift */; };
 		32A32FB529A80D299F2FCAC9 /* HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 16DD679CA8E36033E9AD5D76 /* HomeView.swift */; };
@@ -378,6 +380,13 @@
 			remoteGlobalIDString = C444DE5C5C13E9B8D18119D6;
 			remoteInfo = SpyClashSupabaseStaging;
 		};
+		FAC4A47FC4B9A8C9234705C5 /* PBXContainerItemProxy */ = {
+			isa = PBXContainerItemProxy;
+			containerPortal = 19208BECA25401009A21A96A /* Project object */;
+			proxyType = 1;
+			remoteGlobalIDString = 77A6DFFF9D8CFBF19BE6C3C9;
+			remoteInfo = SpyClash;
+		};
 		FE56CF8070059492C246B51F /* PBXContainerItemProxy */ = {
 			isa = PBXContainerItemProxy;
 			containerPortal = 19208BECA25401009A21A96A /* Project object */;
@@ -526,6 +535,7 @@
 		B50EAE76ED873FFED393BDB8 /* WordPackPersistenceIntegrationTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPackPersistenceIntegrationTests.swift; sourceTree = "<group>"; };
 		B7DA7D7405C80D4685A10F92 /* es */ = {isa = PBXFileReference; lastKnownFileType = text.plist.strings; name = es; path = es.lproj/InfoPlist.strings; sourceTree = "<group>"; };
 		B81713411A03923224780579 /* WordPackDraft.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WordPackDraft.swift; sourceTree = "<group>"; };
+		B95A2D741697760ECF94CA2C /* SupabasePublicReleaseTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabasePublicReleaseTests.swift; sourceTree = "<group>"; };
 		BA73BD6B334F5A9F54F3E659 /* PlayerSpyCard3DView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = PlayerSpyCard3DView.swift; sourceTree = "<group>"; };
 		BBE35ADCE6A8428B76F3A58B /* LabStore.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LabStore.swift; sourceTree = "<group>"; };
 		BDDD6B72D176640B3190D628 /* LocalPrivateDecisionViews.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LocalPrivateDecisionViews.swift; sourceTree = "<group>"; };
@@ -549,9 +559,11 @@
 		D4099E8C62A0035BAA41AC71 /* SpyClashSupabaseTest.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = SpyClashSupabaseTest.app; sourceTree = BUILT_PRODUCTS_DIR; };
 		D6575BABB395718344476FA1 /* OnboardingModels.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnboardingModels.swift; sourceTree = "<group>"; };
 		D67CB7923E19DDEA905468EC /* OnlineRoundState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OnlineRoundState.swift; sourceTree = "<group>"; };
+		DA400F739EC74706A363FA0B /* SupabasePublicConfiguration.json */ = {isa = PBXFileReference; lastKnownFileType = text.json; path = SupabasePublicConfiguration.json; sourceTree = "<group>"; };
 		DA586ACEEC2D7E92F3621A49 /* AppTab.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppTab.swift; sourceTree = "<group>"; };
 		DB38FB6B74A483175220231A /* SocketIO-MIT.txt */ = {isa = PBXFileReference; lastKnownFileType = text; path = "SocketIO-MIT.txt"; sourceTree = "<group>"; };
 		DBF611A1F11FF70BB08253DA /* CommunityResponsivenessTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CommunityResponsivenessTests.swift; sourceTree = "<group>"; };
+		DEF20BA2E05C5B9074E9A4A2 /* SpyClashPublicReleaseTests.xctest */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.cfbundle; path = SpyClashPublicReleaseTests.xctest; sourceTree = BUILT_PRODUCTS_DIR; };
 		DF4FD9ADA1D27731462AEF4E /* StoreKitManager.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = StoreKitManager.swift; sourceTree = "<group>"; };
 		E3AF0D5E1F1101B0893BC27F /* SupabaseAppStoreRetryTests.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SupabaseAppStoreRetryTests.swift; sourceTree = "<group>"; };
 		E3EC24BA3BA2A7A16F039946 /* SpyTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SpyTheme.swift; sourceTree = "<group>"; };
@@ -731,6 +743,7 @@
 			isa = PBXGroup;
 			children = (
 				A01D249EEE029FBB05286504 /* SpyClash.app */,
+				DEF20BA2E05C5B9074E9A4A2 /* SpyClashPublicReleaseTests.xctest */,
 				3CD32BA5F02442CAD3E5A34F /* SpyClashSettingsUITests.xctest */,
 				32B420A4FD121192E4509F81 /* SpyClashSupabaseStaging.app */,
 				5BFB1EE4DC2A4CED19EAE2D2 /* SpyClashSupabaseStagingTests.xctest */,
@@ -784,6 +797,7 @@
 			isa = PBXGroup;
 			children = (
 				629B0667C115C691DE8E43F0 /* SupabaseMainCandidateConfiguration.json */,
+				DA400F739EC74706A363FA0B /* SupabasePublicConfiguration.json */,
 			);
 			path = release;
 			sourceTree = "<group>";
@@ -816,6 +830,7 @@
 				6C5B707CA0A5ADFB4E85FD4B /* SessionRestoreTests.swift */,
 				EA17B78E221F34E47BEC5A8D /* StoreKitProductCatalogTests.swift */,
 				32506C28F05EE47E2211DB75 /* StoreKitSandboxIntegrationTests.swift */,
+				B95A2D741697760ECF94CA2C /* SupabasePublicReleaseTests.swift */,
 				8ADE534BA93394DA3C6521FA /* WebAuthenticationCoordinatorTests.swift */,
 				5CF183979BDB403CB777230B /* WordGenerationRetryTests.swift */,
 				C8D58811816F930A78503187 /* WordPackDraftTests.swift */,
@@ -954,6 +969,24 @@
 			);
 			productName = SpyClashTests;
 			productReference = 37FD3AD53D245670F659C1E4 /* SpyClashTests.xctest */;
+			productType = "com.apple.product-type.bundle.unit-test";
+		};
+		428CA54F281BEC91DDD40C60 /* SpyClashPublicReleaseTests */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 0FFA35320E6A0BC6919DCBAB /* Build configuration list for PBXNativeTarget "SpyClashPublicReleaseTests" */;
+			buildPhases = (
+				365A8AF55C5E90A521C5B40B /* Sources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+				5C861B4BD6B1600A0EDA2AD6 /* PBXTargetDependency */,
+			);
+			name = SpyClashPublicReleaseTests;
+			packageProductDependencies = (
+			);
+			productName = SpyClashPublicReleaseTests;
+			productReference = DEF20BA2E05C5B9074E9A4A2 /* SpyClashPublicReleaseTests.xctest */;
 			productType = "com.apple.product-type.bundle.unit-test";
 		};
 		5D31AE0988C4D672C8A81AF3 /* SpyClashSupabaseTests */ = {
@@ -1107,6 +1140,10 @@
 						DevelopmentTeam = 3Z64QKNL54;
 						ProvisioningStyle = Automatic;
 					};
+					428CA54F281BEC91DDD40C60 = {
+						DevelopmentTeam = 3Z64QKNL54;
+						ProvisioningStyle = Automatic;
+					};
 					77A6DFFF9D8CFBF19BE6C3C9 = {
 						DevelopmentTeam = 3Z64QKNL54;
 					};
@@ -1151,6 +1188,7 @@
 			projectRoot = "";
 			targets = (
 				77A6DFFF9D8CFBF19BE6C3C9 /* SpyClash */,
+				428CA54F281BEC91DDD40C60 /* SpyClashPublicReleaseTests */,
 				9B56FFA5405221D0F9865ACB /* SpyClashSettingsUITests */,
 				C444DE5C5C13E9B8D18119D6 /* SpyClashSupabaseStaging */,
 				B88CFE4E2B226D37B284B64E /* SpyClashSupabaseStagingTests */,
@@ -1200,6 +1238,7 @@
 				71EFCB4E56D0E1AFBB55CD75 /* SocketIO-MIT.txt in Resources */,
 				A390D4427BA1EA3B2F024075 /* Starscream-Apache-2.0.txt in Resources */,
 				4D1A36BD42CCBE2B2E256EF2 /* SupabaseMainCandidateConfiguration.json in Resources */,
+				1177863BA1C20FB73E5F473E /* SupabasePublicConfiguration.json in Resources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1321,6 +1360,14 @@
 				8F5527BE8F4788FE7E8E06CF /* SupabaseMutationJournalTests.swift in Sources */,
 				F48E759F49C6CADA47DD79F0 /* SupabaseSessionTests.swift in Sources */,
 				C13E0EBECB6241A198663B29 /* SupabaseSocialRealtimeTests.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+		365A8AF55C5E90A521C5B40B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				30C55028FF9156F0B409A186 /* SupabasePublicReleaseTests.swift in Sources */,
 			);
 			runOnlyForDeploymentPostprocessing = 0;
 		};
@@ -1592,6 +1639,11 @@
 			target = 77A6DFFF9D8CFBF19BE6C3C9 /* SpyClash */;
 			targetProxy = C8D320679A26AB0D706C67F2 /* PBXContainerItemProxy */;
 		};
+		5C861B4BD6B1600A0EDA2AD6 /* PBXTargetDependency */ = {
+			isa = PBXTargetDependency;
+			target = 77A6DFFF9D8CFBF19BE6C3C9 /* SpyClash */;
+			targetProxy = FAC4A47FC4B9A8C9234705C5 /* PBXContainerItemProxy */;
+		};
 		98895E8DA71E665516954E4A /* PBXTargetDependency */ = {
 			isa = PBXTargetDependency;
 			target = C444DE5C5C13E9B8D18119D6 /* SpyClashSupabaseStaging */;
@@ -1630,6 +1682,26 @@
 /* End PBXVariantGroup section */
 
 /* Begin XCBuildConfiguration section */
+		0414B34CFEB1300113FF7836 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.publicreleasetests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClash.app/SpyClash";
+			};
+			name = Release;
+		};
 		095BB75380E2E0E9EA774D5B /* SupabaseRelease */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1647,6 +1719,43 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClashSupabaseStaging.app/SpyClashSupabaseStaging";
 			};
 			name = SupabaseRelease;
+		};
+		09A60A325CC494FDD6EFA608 /* SupabasePublicRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.supabasetest.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClashSupabaseTest.app/SpyClashSupabaseTest";
+			};
+			name = SupabasePublicRelease;
+		};
+		0D3099F7D624C7CC324E42E4 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.publicreleasetests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClash.app/SpyClash";
+			};
+			name = Debug;
 		};
 		0F89800B3B2377369E709659 /* Debug */ = {
 			isa = XCBuildConfiguration;
@@ -1682,6 +1791,26 @@
 					"@loader_path/Frameworks",
 				);
 				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClash.app/SpyClash";
+			};
+			name = SupabaseRelease;
+		};
+		1364828F8DD1B16CEBFE8CBF /* SupabaseRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.publicreleasetests;
 				SDKROOT = iphoneos;
 				TARGETED_DEVICE_FAMILY = 1;
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClash.app/SpyClash";
@@ -1728,6 +1857,26 @@
 			};
 			name = Debug;
 		};
+		329B0AF63EC98D82A50B9EF9 /* SupabasePublicRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				INFOPLIST_FILE = "SpyClashSupabaseTests/Support/TestApp-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.supabasetest;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SPYCLASH_SUPABASE_TEST";
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = SupabasePublicRelease;
+		};
 		365D3BB48F24DD369A39102B /* Debug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -1765,6 +1914,24 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClashSupabaseStaging.app/SpyClashSupabaseStaging";
 			};
 			name = SupabaseDebug;
+		};
+		4094D6C85875DDC4EA48F36F /* SupabasePublicRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				GENERATE_INFOPLIST_FILE = YES;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.supabasetest.stagingtests;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SPYCLASH_SUPABASE_STAGING_TESTS";
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClashSupabaseStaging.app/SpyClashSupabaseStaging";
+			};
+			name = SupabasePublicRelease;
 		};
 		40DA76EE30151FBE40B69E03 /* SupabaseDebug */ = {
 			isa = XCBuildConfiguration;
@@ -1835,7 +2002,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 3Z64QKNL54;
-				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) SupabaseMainCandidateConfiguration.json BackendAllowlist.json";
+				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) SupabaseMainCandidateConfiguration.json SupabasePublicConfiguration.json BackendAllowlist.json";
 				INFOPLIST_FILE = SpyClash/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1878,7 +2045,7 @@
 				CODE_SIGN_IDENTITY = "Apple Distribution";
 				CODE_SIGN_STYLE = Manual;
 				DEVELOPMENT_TEAM = 3Z64QKNL54;
-				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) SupabaseMainCandidateConfiguration.json BackendAllowlist.json";
+				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) SupabaseMainCandidateConfiguration.json SupabasePublicConfiguration.json BackendAllowlist.json";
 				INFOPLIST_FILE = SpyClash/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -1975,6 +2142,27 @@
 			};
 			name = SupabaseDebug;
 		};
+		63D4FDA26C96705F907F432A /* SupabasePublicRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SpyClashSupabaseStagingTests/Support/Staging.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Development";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				INFOPLIST_FILE = "SpyClashSupabaseStagingTests/Support/StagingApp-Info.plist";
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.supabasetest;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SPYCLASH_SUPABASE";
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = SupabasePublicRelease;
+		};
 		76F80F7F3207C310AA342612 /* SupabaseDebug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2009,7 +2197,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 197;
+				CURRENT_PROJECT_VERSION = 198;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2070,6 +2258,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) SupabasePublicConfiguration.json";
 				INFOPLIST_FILE = SpyClash/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -2137,6 +2326,47 @@
 				TARGETED_DEVICE_FAMILY = 1;
 			};
 			name = Debug;
+		};
+		9AC8974C69A74F9972643437 /* SupabasePublicRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				INFOPLIST_FILE = "SpyClashSupabaseStagingTests/Support/Widget-Info.plist";
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.supabasetest.widgets;
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SPYCLASH_SUPABASE";
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = SupabasePublicRelease;
+		};
+		A0926674BDE8A7DEA31EF40F /* SupabasePublicRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = "com.spyclash.ios.settings-uitests";
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_TARGET_NAME = SpyClash;
+			};
+			name = SupabasePublicRelease;
 		};
 		A326D45C2EEE9689CF4B0D82 /* SupabaseRelease */ = {
 			isa = XCBuildConfiguration;
@@ -2214,7 +2444,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 197;
+				CURRENT_PROJECT_VERSION = 198;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2255,6 +2485,84 @@
 			};
 			name = SupabaseDebug;
 		};
+		BCCACF5E22657C728FF1A2BA /* SupabasePublicRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.tests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClash.app/SpyClash";
+			};
+			name = SupabasePublicRelease;
+		};
+		BDEDDCCBE777E0382594F43B /* SupabasePublicRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				CURRENT_PROJECT_VERSION = 198;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MARKETING_VERSION = 1.0.3;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = SupabasePublicRelease;
+		};
 		BF196DE7F6524F5055BF7B9A /* Release */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2272,6 +2580,31 @@
 				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClashSupabaseStaging.app/SpyClashSupabaseStaging";
 			};
 			name = Release;
+		};
+		C0C9AB466CBFD41565D84CBF /* SupabasePublicRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APS_ENVIRONMENT = production;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_ENTITLEMENTS = SpyClash/Resources/SpyClash.entitlements;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) SupabaseMainCandidateConfiguration.json BackendAllowlist.json";
+				INFOPLIST_FILE = SpyClash/Resources/Info.plist;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios;
+				PROVISIONING_PROFILE_SPECIFIER = "SpyClash App Store 2026-07-26";
+				SDKROOT = iphoneos;
+				SPYCLASH_BACKEND_MODE = "supabase-public";
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SPYCLASH_SUPABASE SPYCLASH_SUPABASE_PUBLIC";
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = SupabasePublicRelease;
 		};
 		C323402FFDE79B9ACEE53149 /* SupabaseRelease */ = {
 			isa = XCBuildConfiguration;
@@ -2347,7 +2680,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 197;
+				CURRENT_PROJECT_VERSION = 198;
 				DEBUG_INFORMATION_FORMAT = dwarf;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
 				ENABLE_TESTABILITY = YES;
@@ -2417,6 +2750,26 @@
 			};
 			name = Debug;
 		};
+		D2302F5E7BE2C74D25372FC4 /* SupabaseDebug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.publicreleasetests;
+				SDKROOT = iphoneos;
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClash.app/SpyClash";
+			};
+			name = SupabaseDebug;
+		};
 		D48B641AF1ADF31938B75FDB /* SupabaseRelease */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2451,7 +2804,7 @@
 				CLANG_WARN_UNREACHABLE_CODE = YES;
 				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
 				COPY_PHASE_STRIP = NO;
-				CURRENT_PROJECT_VERSION = 197;
+				CURRENT_PROJECT_VERSION = 198;
 				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
 				ENABLE_NS_ASSERTIONS = NO;
 				ENABLE_STRICT_OBJC_MSGSEND = YES;
@@ -2495,6 +2848,27 @@
 			};
 			name = SupabaseDebug;
 		};
+		E3C3DCDC654E5AC454120CDA /* SupabasePublicRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				BUNDLE_LOADER = "$(TEST_HOST)";
+				CODE_SIGN_STYLE = Automatic;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				GENERATE_INFOPLIST_FILE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@loader_path/Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.publicreleasetests;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "$(inherited) SPYCLASH_SUPABASE_PUBLIC";
+				TARGETED_DEVICE_FAMILY = 1;
+				TEST_HOST = "$(BUILT_PRODUCTS_DIR)/SpyClash.app/SpyClash";
+			};
+			name = SupabasePublicRelease;
+		};
 		E62A2E043367A82DBC3B53B4 /* SupabaseDebug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2505,6 +2879,7 @@
 				CODE_SIGN_IDENTITY = "iPhone Developer";
 				CODE_SIGN_STYLE = Automatic;
 				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				EXCLUDED_SOURCE_FILE_NAMES = "$(inherited) SupabasePublicConfiguration.json";
 				INFOPLIST_FILE = SpyClash/Resources/Info.plist;
 				LD_RUNPATH_SEARCH_PATHS = (
 					"$(inherited)",
@@ -2560,6 +2935,28 @@
 			};
 			name = Debug;
 		};
+		F033B3769065CB44144048D9 /* SupabasePublicRelease */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				APPLICATION_EXTENSION_API_ONLY = YES;
+				CODE_SIGN_IDENTITY = "Apple Distribution";
+				CODE_SIGN_STYLE = Manual;
+				DEVELOPMENT_TEAM = 3Z64QKNL54;
+				INFOPLIST_FILE = SpyClashWidgets/Info.plist;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+					"@executable_path/../../Frameworks",
+				);
+				PRODUCT_BUNDLE_IDENTIFIER = com.spyclash.ios.widgets;
+				PROVISIONING_PROFILE_SPECIFIER = "SpyClash Widgets App Store 2026-07-26";
+				SDKROOT = iphoneos;
+				SKIP_INSTALL = YES;
+				TARGETED_DEVICE_FAMILY = 1;
+			};
+			name = SupabasePublicRelease;
+		};
 		F6865DC344C494AE964D369C /* SupabaseDebug */ = {
 			isa = XCBuildConfiguration;
 			buildSettings = {
@@ -2604,12 +3001,25 @@
 /* End XCBuildConfiguration section */
 
 /* Begin XCConfigurationList section */
+		0FFA35320E6A0BC6919DCBAB /* Build configuration list for PBXNativeTarget "SpyClashPublicReleaseTests" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0D3099F7D624C7CC324E42E4 /* Debug */,
+				0414B34CFEB1300113FF7836 /* Release */,
+				D2302F5E7BE2C74D25372FC4 /* SupabaseDebug */,
+				E3C3DCDC654E5AC454120CDA /* SupabasePublicRelease */,
+				1364828F8DD1B16CEBFE8CBF /* SupabaseRelease */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
 		3557A5B7C632F0105E5A73BE /* Build configuration list for PBXProject "SpyClash" */ = {
 			isa = XCConfigurationList;
 			buildConfigurations = (
 				CD98D449BCC056243D149F1A /* Debug */,
 				B27C89F969CB99AC3F0B6B4C /* Release */,
 				76F80F7F3207C310AA342612 /* SupabaseDebug */,
+				BDEDDCCBE777E0382594F43B /* SupabasePublicRelease */,
 				D48B641AF1ADF31938B75FDB /* SupabaseRelease */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -2621,6 +3031,7 @@
 				365D3BB48F24DD369A39102B /* Debug */,
 				E763C2DDF70E3A7FC63F880A /* Release */,
 				D79CD17718F64ADDEF54B4B3 /* SupabaseDebug */,
+				F033B3769065CB44144048D9 /* SupabasePublicRelease */,
 				C323402FFDE79B9ACEE53149 /* SupabaseRelease */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -2632,6 +3043,7 @@
 				4393FD6808737C78B10A8C10 /* Debug */,
 				BF196DE7F6524F5055BF7B9A /* Release */,
 				39C79C0B2BC8202B3FC3FE08 /* SupabaseDebug */,
+				4094D6C85875DDC4EA48F36F /* SupabasePublicRelease */,
 				095BB75380E2E0E9EA774D5B /* SupabaseRelease */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -2643,6 +3055,7 @@
 				2B7A41326E10906BDB901D46 /* Debug */,
 				42AFE6168C0285E68865BB23 /* Release */,
 				C56067C396F7C8A7370AC00A /* SupabaseDebug */,
+				BCCACF5E22657C728FF1A2BA /* SupabasePublicRelease */,
 				119DAE867DBCA71C44A228AD /* SupabaseRelease */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -2654,6 +3067,7 @@
 				D112EC548FA104B0D063C342 /* Debug */,
 				58469C5C3E1182A9C5077CC6 /* Release */,
 				F6865DC344C494AE964D369C /* SupabaseDebug */,
+				63D4FDA26C96705F907F432A /* SupabasePublicRelease */,
 				A326D45C2EEE9689CF4B0D82 /* SupabaseRelease */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -2665,6 +3079,7 @@
 				0F89800B3B2377369E709659 /* Debug */,
 				4DEB93180CD11ABFBAAE9F6B /* Release */,
 				1E59C1741F647923BF337670 /* SupabaseDebug */,
+				329B0AF63EC98D82A50B9EF9 /* SupabasePublicRelease */,
 				FC73FAFE77905CB4FAC9C459 /* SupabaseRelease */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -2676,6 +3091,7 @@
 				9226592EAE0A096F7DD473D7 /* Debug */,
 				CF5DF711F4381ECDCB1607C7 /* Release */,
 				B8C2760DB0376AF4F6ABC50B /* SupabaseDebug */,
+				09A60A325CC494FDD6EFA608 /* SupabasePublicRelease */,
 				8DEEE26B3F4018B2FD158B45 /* SupabaseRelease */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -2687,6 +3103,7 @@
 				9A1E5AD75F6A21A0F12450DC /* Debug */,
 				5020A5751D770795693952CC /* Release */,
 				40DA76EE30151FBE40B69E03 /* SupabaseDebug */,
+				9AC8974C69A74F9972643437 /* SupabasePublicRelease */,
 				ABA838DC32AC42629E8F2770 /* SupabaseRelease */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -2698,6 +3115,7 @@
 				4BB519F2F24F5D23AEDB46C3 /* Debug */,
 				4E1DB2AD0C9C81B11182EF13 /* Release */,
 				E62A2E043367A82DBC3B53B4 /* SupabaseDebug */,
+				C0C9AB466CBFD41565D84CBF /* SupabasePublicRelease */,
 				8BB26D9C9C36397718C03FC2 /* SupabaseRelease */,
 			);
 			defaultConfigurationIsVisible = 0;
@@ -2709,6 +3127,7 @@
 				E994F17748125A4D6A216D53 /* Debug */,
 				509C2AE77842D870341F0238 /* Release */,
 				616906625CD6C7235C5EF612 /* SupabaseDebug */,
+				A0926674BDE8A7DEA31EF40F /* SupabasePublicRelease */,
 				82318CC4B3A186B7644CBBE8 /* SupabaseRelease */,
 			);
 			defaultConfigurationIsVisible = 0;

@@ -86,6 +86,29 @@ make_fixture() {
   printf '%s\n' "$app"
 }
 
+make_public_fixture() {
+  public_app=$(make_fixture "$@")
+  plist_add "$public_app/Info.plist" 'Add :SpyClashBackendMode string supabase-public'
+  plist_add "$public_app/Info.plist" 'Add :CFBundleURLTypes array'
+  plist_add "$public_app/Info.plist" 'Add :CFBundleURLTypes:0 dict'
+  plist_add "$public_app/Info.plist" 'Add :CFBundleURLTypes:0:CFBundleURLSchemes array'
+  plist_add "$public_app/Info.plist" 'Add :CFBundleURLTypes:0:CFBundleURLSchemes:0 string spyclash'
+  cp "$root/release/SupabasePublicConfiguration.json" "$public_app/SupabasePublicConfiguration.json"
+  printf '%s\n' "$public_app"
+}
+
+change_public_config() {
+  python3 - "$1/SupabasePublicConfiguration.json" "$2" "$3" <<'PY'
+import json
+import sys
+from pathlib import Path
+path = Path(sys.argv[1])
+value = json.loads(path.read_text())
+value[sys.argv[2]] = json.loads(sys.argv[3])
+path.write_text(json.dumps(value, indent=2) + "\n")
+PY
+}
+
 pass_count=0
 fail_count=0
 
@@ -129,7 +152,104 @@ signed_app=$(make_fixture "$test_root/signed" iphoneos true)
 candidate_app=$(make_fixture "$test_root/candidate" iphoneos true)
 plist_add "$candidate_app/Info.plist" 'Add :SpyClashBackendMode string supabase-main-candidate'
 expect_fail_with "signed main candidate cannot distribute the test backend" \
-  'isolated Supabase test project' "$gate" --signed "$candidate_app"
+  'restricted to internal testing' "$gate" --signed "$candidate_app"
+public_app=$(make_public_fixture "$test_root/public" iphoneos true)
+expect_pass "explicit public Supabase package passes signed checks" "$gate" --signed "$public_app"
+expect_pass "public package result does not claim backend readiness" \
+  /bin/sh -c '"$1" --signed "$2" | grep -F "backend deployment/readiness not verified"' \
+  sh "$gate" "$public_app"
+public_simulator=$(make_public_fixture "$test_root/public-simulator" iphonesimulator false)
+expect_pass "public Supabase package can be inspected without signing in Simulator mode" \
+  "$gate" --simulator "$public_simulator"
+
+missing_public_config=$(make_public_fixture "$test_root/public-missing" iphoneos true)
+rm "$missing_public_config/SupabasePublicConfiguration.json"
+expect_fail_with "public Supabase requires its explicit resource" \
+  'missing its explicit production configuration' "$gate" --signed "$missing_public_config"
+
+malformed_public_config=$(make_public_fixture "$test_root/public-malformed" iphoneos true)
+printf '%s\n' '{' >"$malformed_public_config/SupabasePublicConfiguration.json"
+expect_fail_with "public Supabase rejects malformed configuration" \
+  'configuration cannot be validated' "$gate" --signed "$malformed_public_config"
+
+wrong_public_backend=$(make_public_fixture "$test_root/public-wrong-backend" iphoneos true)
+change_public_config "$wrong_public_backend" backendURL '"https://other-project.supabase.co"'
+expect_fail_with "public Supabase rejects an unintended backend" \
+  'selects an unexpected backend' "$gate" --signed "$wrong_public_backend"
+
+secret_public_key=$(make_public_fixture "$test_root/public-secret-key" iphoneos true)
+change_public_config "$secret_public_key" publishableKey '"sb_secret_fixture"'
+expect_fail_with "public Supabase rejects a secret key" \
+  'must use a publishable key' "$gate" --signed "$secret_public_key"
+
+changed_public_key=$(make_public_fixture "$test_root/public-changed-key" iphoneos true)
+change_public_config "$changed_public_key" publishableKey '"sb_publishable_unreviewed"'
+expect_fail_with "public Supabase retains the candidate backend credential" \
+  'differs from the candidate beyond full account deletion' "$gate" --signed "$changed_public_key"
+
+no_public_deletion=$(make_public_fixture "$test_root/public-no-deletion" iphoneos true)
+change_public_config "$no_public_deletion" mainAccountDeletionEnabled false
+expect_fail_with "public Supabase cannot disable account deletion" \
+  'must enable full account deletion' "$gate" --signed "$no_public_deletion"
+
+string_public_deletion=$(make_public_fixture "$test_root/public-string-deletion" iphoneos true)
+change_public_config "$string_public_deletion" mainAccountDeletionEnabled '"true"'
+expect_fail_with "public Supabase requires a boolean deletion capability" \
+  'must enable full account deletion' "$gate" --signed "$string_public_deletion"
+
+for capability in appleSignInEnabled googleSignInEnabled permitsLegacyBilling; do
+  disabled_public_capability=$(make_public_fixture "$test_root/public-disabled-$capability" iphoneos true)
+  change_public_config "$disabled_public_capability" "$capability" false
+  expect_fail_with "public Supabase retains $capability" \
+    'must retain Apple, Google and native billing' "$gate" --signed "$disabled_public_capability"
+done
+
+unexpected_public_push=$(make_public_fixture "$test_root/public-unexpected-push" iphoneos true)
+change_public_config "$unexpected_public_push" permitsLegacyPush true
+expect_fail_with "public Supabase does not silently enable unverified push" \
+  'unexpectedly enables legacy push' "$gate" --signed "$unexpected_public_push"
+
+wrong_public_otp=$(make_public_fixture "$test_root/public-wrong-otp" iphoneos true)
+change_public_config "$wrong_public_otp" emailOTPLength 8
+expect_fail_with "public Supabase preserves six-digit email verification" \
+  'must retain six-digit email verification' "$gate" --signed "$wrong_public_otp"
+
+changed_public_bytes=$(make_public_fixture "$test_root/public-changed-bytes" iphoneos true)
+printf '\n' >>"$changed_public_bytes/SupabasePublicConfiguration.json"
+expect_fail_with "public Supabase config must match reviewed source bytes" \
+  'differs from the reviewed source' "$gate" --signed "$changed_public_bytes"
+
+wrong_public_callback=$(make_public_fixture "$test_root/public-wrong-callback" iphoneos true)
+/usr/libexec/PlistBuddy -c 'Set :CFBundleURLTypes:0:CFBundleURLSchemes:0 spyclash-supabasetest' \
+  "$wrong_public_callback/Info.plist" >/dev/null
+expect_fail_with "public Supabase retains the original callback scheme" \
+  'must retain the original spyclash callback scheme' "$gate" --signed "$wrong_public_callback"
+
+for leaked_config in SupabaseMainCandidateConfiguration.json SupabaseAppConfiguration.json BackendAllowlist.json; do
+  public_leak=$(make_public_fixture "$test_root/public-leaked-$leaked_config" iphoneos true)
+  printf '%s\n' '{}' >"$public_leak/PlugIns/SpyClashWidgets.appex/$leaked_config"
+  expect_fail_with "public Supabase rejects nested $leaked_config" \
+    'contains a candidate, staging or lab configuration' "$gate" --signed "$public_leak"
+done
+
+public_internal_only=$(make_public_fixture "$test_root/public-internal-only" iphoneos true)
+plist_add "$public_internal_only/Info.plist" 'Add :TFInternalTestingOnly bool true'
+expect_fail_with "public Supabase rejects an internal-only TestFlight artifact" \
+  'internal-only TestFlight bundle cannot pass' "$gate" --signed "$public_internal_only"
+legacy_internal_only=$(make_fixture "$test_root/legacy-internal-only" iphoneos true)
+plist_add "$legacy_internal_only/Info.plist" 'Add :TFInternalTestingOnly bool true'
+expect_fail_with "legacy public gate also rejects internal-only TestFlight artifacts" \
+  'internal-only TestFlight bundle cannot pass' "$gate" --signed "$legacy_internal_only"
+
+unknown_backend=$(make_fixture "$test_root/unknown-backend" iphoneos true)
+plist_add "$unknown_backend/Info.plist" 'Add :SpyClashBackendMode string unexpected'
+expect_fail_with "unknown backend mode cannot bypass either public route" \
+  'unsupported backend mode' "$gate" --signed "$unknown_backend"
+legacy_public_leak=$(make_fixture "$test_root/legacy-public-config" iphoneos true)
+cp "$root/release/SupabasePublicConfiguration.json" "$legacy_public_leak/SupabasePublicConfiguration.json"
+expect_fail_with "legacy Base44 remains isolated from the new public configuration" \
+  'Legacy Base44 release contains a Supabase or lab configuration' "$gate" --signed "$legacy_public_leak"
+
 debug_dylib_app=$(make_fixture "$test_root/debug-dylib" iphonesimulator false)
 : >"$debug_dylib_app/SpyClash"
 printf '%s\n' 'com.spyclash.ios.limitless.weekly' >"$debug_dylib_app/SpyClash.debug.dylib"

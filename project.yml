@@ -8,9 +8,10 @@ configs:
   Release: release
   SupabaseDebug: debug
   SupabaseRelease: release
+  SupabasePublicRelease: release
 settings:
   base:
-    CURRENT_PROJECT_VERSION: 197
+    CURRENT_PROJECT_VERSION: 198
     MARKETING_VERSION: 1.0.3
     SWIFT_VERSION: 6.0
 packages:
@@ -40,6 +41,8 @@ targets:
       - path: experiments/supabase-game-core/ios/Configuration/BackendAllowlist.json
         buildPhase: resources
       - path: release/SupabaseMainCandidateConfiguration.json
+        buildPhase: resources
+      - path: release/SupabasePublicConfiguration.json
         buildPhase: resources
       - path: LICENSES/Rajdhani-OFL-1.1.txt
         buildPhase: resources
@@ -95,18 +98,28 @@ targets:
       configs:
         SupabaseDebug:
           APS_ENVIRONMENT: development
+          EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) SupabasePublicConfiguration.json"
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) DEBUG SPYCLASH_SUPABASE SPYCLASH_SUPABASE_MAIN_CANDIDATE"
           SPYCLASH_BACKEND_MODE: supabase-main-candidate
         SupabaseRelease:
           APS_ENVIRONMENT: production
+          EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) SupabasePublicConfiguration.json"
           SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SPYCLASH_SUPABASE SPYCLASH_SUPABASE_MAIN_CANDIDATE"
           SPYCLASH_BACKEND_MODE: supabase-main-candidate
+        SupabasePublicRelease:
+          APS_ENVIRONMENT: production
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SPYCLASH_SUPABASE SPYCLASH_SUPABASE_PUBLIC"
+          SPYCLASH_BACKEND_MODE: supabase-public
+          EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) SupabaseMainCandidateConfiguration.json BackendAllowlist.json"
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: SpyClash App Store 2026-07-26
         Debug:
           APS_ENVIRONMENT: development
-          EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) SupabaseMainCandidateConfiguration.json BackendAllowlist.json"
+          EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) SupabaseMainCandidateConfiguration.json SupabasePublicConfiguration.json BackendAllowlist.json"
         Release:
           APS_ENVIRONMENT: production
-          EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) SupabaseMainCandidateConfiguration.json BackendAllowlist.json"
+          EXCLUDED_SOURCE_FILE_NAMES: "$(inherited) SupabaseMainCandidateConfiguration.json SupabasePublicConfiguration.json BackendAllowlist.json"
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Distribution
           PROVISIONING_PROFILE_SPECIFIER: SpyClash App Store 2026-07-26
@@ -317,6 +330,10 @@ targets:
         APPLICATION_EXTENSION_API_ONLY: true
         TARGETED_DEVICE_FAMILY: 1
       configs:
+        SupabasePublicRelease:
+          CODE_SIGN_STYLE: Manual
+          CODE_SIGN_IDENTITY: Apple Distribution
+          PROVISIONING_PROFILE_SPECIFIER: SpyClash Widgets App Store 2026-07-26
         Release:
           CODE_SIGN_STYLE: Manual
           CODE_SIGN_IDENTITY: Apple Distribution
@@ -327,6 +344,8 @@ targets:
     deploymentTarget: "17.0"
     sources:
       - path: SpyClashTests
+        excludes:
+          - SupabasePublicReleaseTests.swift
     dependencies:
       - target: SpyClash
     settings:
@@ -336,6 +355,24 @@ targets:
         DEVELOPMENT_TEAM: 3Z64QKNL54
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: 1
+  SpyClashPublicReleaseTests:
+    type: bundle.unit-test
+    platform: iOS
+    deploymentTarget: "17.0"
+    sources:
+      - path: SpyClashTests/SupabasePublicReleaseTests.swift
+    dependencies:
+      - target: SpyClash
+    settings:
+      base:
+        PRODUCT_BUNDLE_IDENTIFIER: com.spyclash.ios.publicreleasetests
+        GENERATE_INFOPLIST_FILE: true
+        DEVELOPMENT_TEAM: 3Z64QKNL54
+        CODE_SIGN_STYLE: Automatic
+        TARGETED_DEVICE_FAMILY: 1
+      configs:
+        SupabasePublicRelease:
+          SWIFT_ACTIVE_COMPILATION_CONDITIONS: "$(inherited) SPYCLASH_SUPABASE_PUBLIC"
   SpyClashSettingsUITests:
     type: bundle.ui-testing
     platform: iOS
@@ -352,6 +389,26 @@ targets:
         CODE_SIGN_STYLE: Automatic
         TARGETED_DEVICE_FAMILY: 1
 schemes:
+  SpyClash-Supabase-Public:
+    build:
+      targets:
+        SpyClash: all
+    run:
+      config: SupabasePublicRelease
+    analyze:
+      config: SupabasePublicRelease
+    profile:
+      config: SupabasePublicRelease
+    test:
+      config: SupabasePublicRelease
+      environmentVariables:
+        LAB_CONFIG_PATH: /dev/null
+      targets:
+        - SpyClashPublicReleaseTests
+    archive:
+      config: SupabasePublicRelease
+    management:
+      shared: true
   SpyClash-Supabase-Main-Candidate:
     build:
       targets:
