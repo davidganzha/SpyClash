@@ -235,6 +235,7 @@ final class SupabaseAppSession {
         body["service"] = .string(service); body["action"] = .string(action)
         let epoch = generation
         let isAppStoreDelivery = write && service == "membership" && action == "sync_transaction"
+        let isAccountDeletion = write && service == "profile" && action == "delete" && fields["deletion_scope"]?.string == "account"
         let deliveryLease = isAppStoreDelivery ? try await appStoreDeliveryQueue.acquire(timeout: 120) : nil
         defer { if let deliveryLease { appStoreDeliveryQueue.release(deliveryLease) } }
         try Task.checkCancellation()
@@ -267,11 +268,21 @@ final class SupabaseAppSession {
                 value = try await authenticatedRequest(path: "/functions/v1/app-services", body: .object(wireBody), token: credential, epoch: epoch, permitsRevalidation: token == nil)
             }
             guard epoch == generation else { throw CancellationError() }
+            if isAccountDeletion {
+                guard userID == actorID else { throw CancellationError() }
+                // A generic successful profile purge does not prove that the
+                // original account was deleted. Keep its intent until both
+                // backends have confirmed the requested deletion scope.
+                guard value["success"].bool, value["original_account_deleted"].bool else {
+                    throw Base44Error(message: "Account deletion was not confirmed. Please retry.", statusCode: 502,
+                                      code: "account_deletion_response_invalid", retryable: true)
+                }
+            }
             let result = try JSONDecoder.base44.decode(T.self, from: value.data())
             if write, let requestID = body["request_id"]?.string { try mutationJournal.acknowledge(actorID: actorID, requestID: requestID) }
             return result
         } catch let error as Base44Error {
-            if isAppStoreDelivery {
+            if isAppStoreDelivery || isAccountDeletion {
                 try Task.checkCancellation()
                 guard epoch == generation, userID == actorID else { throw CancellationError() }
             }
@@ -279,6 +290,7 @@ final class SupabaseAppSession {
             // Preserve its immutable intent so sign-in can safely resume it.
             if write, let status = error.statusCode, (400..<500).contains(status), status != 401,
                !isAppStoreDelivery || Self.isDefinitiveAppStoreFailure(error),
+               !isAccountDeletion || Self.isDefinitiveAccountDeletionFailure(error),
                let requestID = body["request_id"]?.string {
                 try mutationJournal.acknowledge(actorID: actorID, requestID: requestID)
             }
@@ -330,6 +342,11 @@ final class SupabaseAppSession {
     private static func isDefinitiveAppStoreFailure(_ error: Base44Error) -> Bool {
         guard let status = error.statusCode else { return false }
         return (400..<500).contains(status) && ![401, 408, 425, 429].contains(status) && !error.retryable
+    }
+    private static func isDefinitiveAccountDeletionFailure(_ error: Base44Error) -> Bool {
+        // A different server-side intent cannot be fixed by generating yet
+        // another UUID. Preserve this request instead of creating a loop.
+        error.code != "account_deletion_request_conflict" && isDefinitiveAppStoreFailure(error)
     }
     func fullGame(_ body: JSONValue) async throws -> JSONValue {
         let epoch = generation

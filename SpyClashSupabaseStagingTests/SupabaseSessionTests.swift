@@ -121,9 +121,26 @@ private final class StagingURLProtocol: URLProtocol, @unchecked Sendable {
         var bodies: [Data] = []
         var statusCode = 200
         var headers: [String: String] = [:]
-        func reset(response: Data, statusCode: Int = 200, headers: [String: String] = [:]) { lock.lock(); defer { lock.unlock() }; calls = 0; self.response = response; responses = [:]; sequences = [:]; requests = []; bodies = []; self.statusCode = statusCode; self.headers = headers }
-        func reset(responses: [String: Data]) { lock.lock(); defer { lock.unlock() }; calls = 0; response = Data(); self.responses = responses; sequences = [:]; requests = []; bodies = []; statusCode = 200; headers = [:] }
-        func reset(sequences: [String: [(Int, Data)]]) { lock.lock(); defer { lock.unlock() }; calls = 0; response = Data(); responses = [:]; self.sequences = sequences; requests = []; bodies = []; statusCode = 200; headers = [:] }
+        var holdResponses = false
+        var deferredResponses: [@Sendable () -> Void] = []
+        func reset(response: Data, statusCode: Int = 200, headers: [String: String] = [:], holdResponses: Bool = false) { lock.lock(); defer { lock.unlock() }; calls = 0; self.response = response; responses = [:]; sequences = [:]; requests = []; bodies = []; self.statusCode = statusCode; self.headers = headers; self.holdResponses = holdResponses; deferredResponses = [] }
+        func reset(responses: [String: Data]) { lock.lock(); defer { lock.unlock() }; calls = 0; response = Data(); self.responses = responses; sequences = [:]; requests = []; bodies = []; statusCode = 200; headers = [:]; holdResponses = false; deferredResponses = [] }
+        func reset(sequences: [String: [(Int, Data)]]) { lock.lock(); defer { lock.unlock() }; calls = 0; response = Data(); responses = [:]; self.sequences = sequences; requests = []; bodies = []; statusCode = 200; headers = [:]; holdResponses = false; deferredResponses = [] }
+        func deliver(_ response: @escaping @Sendable () -> Void) {
+            lock.lock()
+            let held = holdResponses
+            if held { deferredResponses.append(response) }
+            lock.unlock()
+            if !held { response() }
+        }
+        func releaseResponses() {
+            lock.lock()
+            holdResponses = false
+            let pending = deferredResponses
+            deferredResponses = []
+            lock.unlock()
+            pending.forEach { $0() }
+        }
         func next(request: URLRequest, body: Data) -> (Int, Data, [String: String]) {
             lock.lock(); defer { lock.unlock() }
             calls += 1; requests.append(request); bodies.append(body)
@@ -153,15 +170,17 @@ private final class StagingURLProtocol: URLProtocol, @unchecked Sendable {
             }
         }
         let (status, data, headers) = Self.state.next(request: request, body: body)
-        DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { [self] in
-            if status == -1 {
-                client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
-                return
+        Self.state.deliver { [self] in
+            DispatchQueue.global().asyncAfter(deadline: .now() + 0.05) { [self] in
+                if status == -1 {
+                    client?.urlProtocol(self, didFailWithError: URLError(.networkConnectionLost))
+                    return
+                }
+                let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"].merging(headers) { _, replacement in replacement })!
+                client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
+                client?.urlProtocol(self, didLoad: data)
+                client?.urlProtocolDidFinishLoading(self)
             }
-            let response = HTTPURLResponse(url: request.url!, statusCode: status, httpVersion: "HTTP/1.1", headerFields: ["Content-Type": "application/json"].merging(headers) { _, replacement in replacement })!
-            client?.urlProtocol(self, didReceive: response, cacheStoragePolicy: .notAllowed)
-            client?.urlProtocol(self, didLoad: data)
-            client?.urlProtocolDidFinishLoading(self)
         }
     }
     override func stopLoading() {}
@@ -402,6 +421,128 @@ extension SupabaseSessionTests {
         XCTAssertFalse(saved.contains("private-legacy-credential"))
         XCTAssertFalse(saved.contains("base44_access_token"))
         XCTAssertTrue(saved.contains("request_id"))
+    }
+
+    private var confirmedAccountDeletion: Data {
+        Data(#"{"success":true,"original_account_deleted":true,"manual_apple_revocation_required":true,"auth_cleanup_pending":true}"#.utf8)
+    }
+
+    private func deleteOriginalAccount(using auth: SupabaseAppSession) async throws -> AccountDeletionResult {
+        try await auth.service("profile", action: "delete", fields: ["deletion_scope": .string("account")],
+                               write: true, includeLegacyCredential: true)
+    }
+
+    func testAccountDeletionKeepsExactIntentAcrossRestartAndUnresolvedResponses() async throws {
+        let unresolved: [(Int, String)] = [
+            (401, #"{"code":"unauthorized","retryable":false}"#),
+            (408, #"{"code":"http_timeout","retryable":false}"#),
+            (425, #"{"code":"too_early","retryable":false}"#),
+            (429, #"{"code":"rate_limited","retryable":false}"#),
+            (409, #"{"code":"deletion_busy","retryable":true}"#),
+            (409, #"{"code":"account_deletion_request_conflict","retryable":false}"#),
+            (503, #"{"code":"account_deletion_pending","retryable":true}"#),
+            (200, "not-json"),
+            (200, #"{"success":true}"#),
+            (200, #"{"success":false,"original_account_deleted":true}"#)
+        ]
+        for (status, body) in unresolved {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            StagingURLProtocol.state.reset(sequences: ["/functions/v1/app-services": [
+                (-1, Data()), (status, Data(body.utf8)), (200, confirmedAccountDeletion)
+            ]])
+            do {
+                _ = try await deleteOriginalAccount(using: storedAuth(directory: directory))
+                XCTFail("A lost acknowledgement must remain unresolved")
+            } catch let error as Base44Error {
+                XCTAssertEqual(error.code, "supabase_transport_interrupted")
+            }
+            do {
+                _ = try await deleteOriginalAccount(using: storedAuth(directory: directory))
+                XCTFail("An unresolved response must not confirm deletion: \(status), \(body)")
+            } catch { }
+            let result = try await deleteOriginalAccount(using: storedAuth(directory: directory))
+            XCTAssertTrue(result.success)
+            XCTAssertTrue(result.manualAppleRevocationRequired)
+            let bodies = try StagingURLProtocol.state.recordedBodies.map { try JSONDecoder().decode(JSONValue.self, from: $0) }
+            XCTAssertEqual(bodies.count, 3)
+            let first = try XCTUnwrap(bodies.first)
+            XCTAssertNotNil(UUID(uuidString: try XCTUnwrap(first["request_id"].string)))
+            XCTAssertTrue(bodies.allSatisfy { $0 == first }, "Restarts must retain the exact deletion intent: \(status), \(body)")
+            XCTAssertEqual(first["deletion_scope"].string, "account")
+            XCTAssertEqual(first["base44_access_token"].string, "private-legacy-credential")
+            XCTAssertTrue(StagingURLProtocol.state.recordedRequests.allSatisfy {
+                $0.url?.path == "/functions/v1/app-services" && $0.timeoutInterval == 90
+            })
+            let persisted = try Data(contentsOf: directory.appendingPathComponent(actor + ".json"))
+            XCTAssertEqual(try JSONDecoder().decode(JSONValue.self, from: persisted).array.count, 0,
+                           "Only the confirmed full deletion may acknowledge this intent")
+        }
+    }
+
+    func testAccountDeletionSessionRevalidationFailurePreservesOriginalRequest() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        StagingURLProtocol.state.reset(sequences: [
+            "/functions/v1/app-services": [
+                (-1, Data()),
+                (401, Data(#"{"code":"legacy_session_revalidation_required"}"#.utf8)),
+                (200, confirmedAccountDeletion)
+            ],
+            "/functions/v1/legacy-session": [(200, Data(#"{"access_token":"incomplete-session"}"#.utf8))]
+        ])
+        for _ in 0..<2 {
+            do {
+                _ = try await deleteOriginalAccount(using: storedAuth(directory: directory))
+                XCTFail("An unconfirmed deletion must retain its request")
+            } catch { }
+        }
+        _ = try await deleteOriginalAccount(using: storedAuth(directory: directory))
+        let requests = StagingURLProtocol.state.recordedRequests
+        let bodies = StagingURLProtocol.state.recordedBodies
+        let deletionBodies = try zip(requests, bodies).filter { $0.0.url?.path == "/functions/v1/app-services" }
+            .map { try JSONDecoder().decode(JSONValue.self, from: $0.1) }
+        XCTAssertEqual(requests.count, 4)
+        XCTAssertEqual(deletionBodies.count, 3)
+        XCTAssertTrue(deletionBodies.allSatisfy { $0 == deletionBodies.first })
+    }
+
+    func testAccountDeletionDefinitiveRejectionReleasesItsRequest() async throws {
+        for (status, code) in [(400, "invalid_deletion_scope"), (403, "account_unavailable"), (409, "legacy_owner_mismatch")] {
+            let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+            defer { try? FileManager.default.removeItem(at: directory) }
+            StagingURLProtocol.state.reset(sequences: ["/functions/v1/app-services": [
+                (status, Data("{\"code\":\"\(code)\",\"retryable\":false}".utf8)), (200, confirmedAccountDeletion)
+            ]])
+            do {
+                _ = try await deleteOriginalAccount(using: storedAuth(directory: directory))
+                XCTFail("A definitive rejection must not report success")
+            } catch let error as Base44Error { XCTAssertEqual(error.code, code) }
+            _ = try await deleteOriginalAccount(using: storedAuth(directory: directory))
+            let bodies = try StagingURLProtocol.state.recordedBodies.map { try JSONDecoder().decode(JSONValue.self, from: $0) }
+            XCTAssertEqual(bodies.count, 2)
+            XCTAssertNotEqual(bodies.first?["request_id"], bodies.last?["request_id"], code)
+        }
+    }
+
+    func testAccountDeletionLateRejectionAfterLogoutDoesNotAcknowledgeSavedIntent() async throws {
+        let directory = FileManager.default.temporaryDirectory.appendingPathComponent(UUID().uuidString)
+        defer { try? FileManager.default.removeItem(at: directory) }
+        StagingURLProtocol.state.reset(response: Data(#"{"code":"legacy_owner_mismatch","retryable":false}"#.utf8), statusCode: 409, holdResponses: true)
+        defer { StagingURLProtocol.state.releaseResponses() }
+        let auth = storedAuth(directory: directory)
+        let task = Task { try await deleteOriginalAccount(using: auth) }
+        for _ in 0..<100 where StagingURLProtocol.state.count == 0 { try await Task.sleep(for: .milliseconds(5)) }
+        XCTAssertEqual(StagingURLProtocol.state.count, 1)
+        auth.clear(revokeRemote: false)
+        StagingURLProtocol.state.releaseResponses()
+        do { _ = try await task.value; XCTFail("A departed account's response must be cancelled") }
+        catch { XCTAssertTrue(RequestCancellationPolicy.isCancellation(error)) }
+        let original = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(StagingURLProtocol.state.recordedBodies.first))
+        StagingURLProtocol.state.reset(response: confirmedAccountDeletion)
+        _ = try await deleteOriginalAccount(using: storedAuth(directory: directory))
+        let retry = try JSONDecoder().decode(JSONValue.self, from: XCTUnwrap(StagingURLProtocol.state.recordedBodies.first))
+        XCTAssertEqual(retry, original)
     }
 
     func testMembershipCredentialOnlyReachesExplicitBridgeActions() async throws {
